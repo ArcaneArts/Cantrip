@@ -336,6 +336,9 @@ export class CuaJavascriptContexts {
     if (context.busy) throw new CuaProcessError("capacity", "not-sent");
     context.busy = true;
     const images: CuaSnapshot[] = [];
+    let lastHostOperation: CuaJavascriptAction["operation"] | undefined;
+    let completedHostCalls = 0;
+    let inputRequested = false;
     let hostTransportFailure: CuaProcessError | undefined;
     const active = AbortSignal.any([
       context.controller.signal,
@@ -366,8 +369,9 @@ export class CuaJavascriptContexts {
             const signal = AbortSignal.any([active, callSignal]);
             this.live(context, signal);
             const parsed = cuaJavascriptActionSchema.safeParse(input);
-            if (!parsed.success) throw new CuaNativeError("invalid-request");
+            if (!parsed.success) throw new CuaNativeError("script-action");
             const action = parsed.data;
+            lastHostOperation = action.operation;
             const startedAtMs = Date.now();
             const state = () => {
               try {
@@ -389,7 +393,19 @@ export class CuaJavascriptContexts {
                 signal,
               );
               this.live(context, signal);
+              if (
+                [
+                  "perform",
+                  "click",
+                  "press",
+                  "globalClick",
+                  "processClick",
+                  "backgroundClick",
+                ].includes(action.operation)
+              )
+                inputRequested = true;
               const result = await this.host(context, action, signal, images);
+              completedHostCalls += 1;
               if (result && typeof result === "object" && "input" in result)
                 inputReceipt = result.input as CuaInputReceipt;
               this.live(context, signal);
@@ -459,6 +475,9 @@ export class CuaJavascriptContexts {
       // Failed/ambiguous scripts are never replayed. Their variables, queued
       // host work and native attachment are disposed together.
       this.dispose(context, false);
+      if (failure instanceof CuaNativeError) {
+        failure.message += ` Evaluation context: ${completedHostCalls} completed host operations; last requested operation: ${lastHostOperation ?? "none"}. ${inputRequested ? "Input was requested; use its receipt/error to determine dispatch, and do not replay uncertain input." : "No input operation was requested in this evaluation."} JavaScript state and attachment were cleared; another reset is unnecessary.`;
+      }
       throw failure;
     } finally {
       context.busy = false;

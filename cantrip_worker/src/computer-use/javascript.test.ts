@@ -406,7 +406,7 @@ describe("worker JavaScript ownership before MCP activation", () => {
     const opts = options();
     await expect(
       service.evaluateJavascript(scope, "test", opts),
-    ).rejects.toMatchObject({ code: "invalid-request" });
+    ).rejects.toMatchObject({ code: "script-action" });
     expect(opts.authorize).not.toHaveBeenCalled();
     expect(
       request.mock.calls.filter(
@@ -729,3 +729,47 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
     });
   },
 );
+
+describe("CUA evaluation failure context", () => {
+  it("distinguishes a search-script throw from mouse input and permits the next evaluation", async () => {
+    let fail = true;
+    const { service } = fixture(async (opts) => {
+      await opts.onHostCall!(
+        { operation: "targets" },
+        new AbortController().signal,
+      );
+      if (fail) throw new CuaNativeError("script-evaluation");
+      return "recovered";
+    });
+    const opts = options();
+    await expect(
+      service.evaluateJavascript(scope, "search", opts),
+    ).rejects.toMatchObject({
+      code: "script-evaluation",
+      message: expect.stringContaining(
+        "last requested operation: targets. No input operation was requested",
+      ),
+    });
+    fail = false;
+    await expect(
+      service.evaluateJavascript(scope, "corrected search", opts),
+    ).resolves.toMatchObject({ value: "recovered" });
+  });
+});
+
+it("preserves native error codes and reports when an input method was requested", async () => {
+  const { service } = fixture(async (opts) => {
+    await opts.onHostCall!(
+      { operation: "click", point: { x: 10, y: 20 } },
+      new AbortController().signal,
+    );
+  });
+  await expect(
+    service.evaluateJavascript(scope, "click", options()),
+  ).rejects.toMatchObject({
+    code: "session-not-found",
+    message: expect.stringContaining(
+      "last requested operation: click. Input was requested",
+    ),
+  });
+});

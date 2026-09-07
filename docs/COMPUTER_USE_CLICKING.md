@@ -64,6 +64,23 @@ Preserve the user's cursor appearance unless a change was requested. Current
 MCP guidance uses ordinary prepared clicks consistently; Accessibility control
 lookup is optional when choosing an explicit reference action.
 
+API 12 adds `await cua.findWindows({application: "Brave", title: "Piano"})`.
+It searches all inventory pages with case-insensitive substring matching and
+returns `{targets, truncated}` (at most 32 matches). Inspect the candidates before
+attaching one; narrow the query when truncated or ambiguous. Do not match an
+entire title exactly: Brave appends an audio indicator while the piano plays.
+Reuse the attachment within a turn, taking a fresh snapshot before choosing points.
+
+JavaScript exceptions are reported as `script-evaluation`, including exceptions
+raised after successful inventory calls. Malformed method arguments are
+`script-action`; native host errors retain their actual code. The worker adds
+the last requested host operation, count of completed operations, and whether
+input was requested during that evaluation. A failed search is not evidence of
+a failed click. Failed evaluations already clear their state and attachment;
+another reset is unnecessary. Earlier input can still have occurred, so do not
+replay it merely because later JavaScript failed. Update the helper and restart
+the worker to load API 12.
+
 API 11 reduces timeline rendering work: gaps shorter than a display frame keep
 only the endpoint, and cosmetic travel samples more than 16 ms late are skipped.
 Native down/up events remain ordered and are never dropped by this optimization.

@@ -100,15 +100,24 @@ fn validate_action(source: &str) -> Result<Value> {
     if source.len() > 15 * 1024 * 1024 {
         return Err(capacity());
     }
-    let action: HostAction = serde_json::from_str(source).map_err(|_| script_error())?;
+    let action: HostAction = serde_json::from_str(source)
+        .map_err(|_| CuaError::new(ErrorCode::ScriptAction, "Invalid CUA method arguments."))?;
     match action {
         HostAction::Perform { command } => command.validate()?,
-        HostAction::Wait { ms } if ms > 10000 => return Err(script_error()),
+        HostAction::Wait { ms } if ms > 10000 => {
+            return Err(CuaError::new(
+                ErrorCode::ScriptAction,
+                "Invalid CUA method arguments.",
+            ));
+        }
         HostAction::Targets { after: Some(after) } => validate_id(&after)?,
         HostAction::Attach { target } => {
             validate_id(&target.target_id)?;
             if !(1..=MAX_SEQUENCE).contains(&target.target_generation) {
-                return Err(script_error());
+                return Err(CuaError::new(
+                    ErrorCode::ScriptAction,
+                    "Invalid CUA method arguments.",
+                ));
             }
         }
         HostAction::Press { reference } => validate_id(&reference)?,
@@ -121,15 +130,22 @@ fn validate_action(source: &str) -> Result<Value> {
         | HostAction::ProcessClick { point: Some(point) }
             if !point.x.is_finite() || !point.y.is_finite() || point.x < 0.0 || point.y < 0.0 =>
         {
-            return Err(script_error());
+            return Err(CuaError::new(
+                ErrorCode::ScriptAction,
+                "Invalid CUA method arguments.",
+            ));
         }
         _ => {}
     }
-    serde_json::from_str(source).map_err(|_| script_error())
+    serde_json::from_str(source)
+        .map_err(|_| CuaError::new(ErrorCode::ScriptAction, "Invalid CUA method arguments."))
 }
 
 fn script_error() -> CuaError {
-    CuaError::invalid("JavaScript evaluation failed.")
+    CuaError::new(
+        ErrorCode::ScriptEvaluation,
+        "JavaScript evaluation failed. This is not a native input rejection; earlier host operations may have completed.",
+    )
 }
 fn capacity() -> CuaError {
     CuaError::new(ErrorCode::Capacity, "JavaScript execution limit exceeded.")
@@ -153,7 +169,7 @@ for (const name of ['SharedArrayBuffer', 'Atomics', 'WeakRef', 'FinalizationRegi
       : call({operation:'perform',command:{kind:'timeline',frames:[{atMs:0,pointerDown:point,pointerModifiers:modifiers},{atMs:holdMs,pointerUp:true}]}});
   };
   Object.defineProperty(globalThis, 'cua', { value: Object.freeze({
-    help: () => ({apiVersion:11, methods:{typeText:"typeText(text): up to 8192 UTF-8 bytes, existing target keyboard responder",keyPress:"keyPress(key, modifiers=[]): Enter, Tab, Escape, arrows, letters/digits; Shift,Control,Alt,Meta",scroll:"scroll(deltaY, deltaX=0, point?): pixel deltas, positive down/right",wait:"wait(ms): 0-10000 ms; use timeline atMs for tightly timed sequences",click:"click(point?) rapidly moves the custom cursor before one ordinary click with automatic target-only preparation; omitted point uses the agent cursor",preparedPointerPress:"preparedPointerPress(point, holdMs=150) queues target-only AppKit preparation then one unmodified pointer press in the same native request; experimental, no foreground/raise request; receipt activation:true and delivery unverified",prepareWindowInput:"prepareWindowInput() requests target-only AppKit activation without requesting WindowServer foreground or raising; no mouse/modifier input; experimental, inspect receipt effects",requestFocus:"requestFocus() activates and raises the attached window; sends no click",commandClick:"commandClick(point, holdMs=150) sends a real Command-modified mouse press without requesting focus",pointerPress:"pointerPress(point, holdMs=150, modifiers=[]) automatically prepares unmodified presses; explicit Shift,Control,Alt,Meta retain modified delivery; modifiers are NOT held timeline keys",inputTimeline:"inputTimeline(frames): atMs, keyDown, keyUp, pointerDown, pointerUp, pointerModifiers on pointerDown; every unmodified pointerDown automatically prepares its window immediately before dispatch",clickDrag:"clickDrag(start,end,durationMs=200) automatically prepares the window immediately before one hold/move/release",keyChord:"keyChord(keys,holdMs=500)"}, limits:{scriptBytes:2097152,hostCalls:16384,timelineFrames:131072,timelineMs:7200000,hostActionBytes:15728640,outputBytes:32768,maxHeldKeys:16,maxSnapshots:2,maxWallMs:7500000}, notes:"Use one native timeline for a preplanned stable interface to avoid model round trips between music chunks. Custom-cursor travel uses cubic ease-out (fast start, decelerating arrival), with no ease-in. Ordinary unmodified clicks animate in up to 90 ms before input. Timelines also animate within existing button-up gaps, arriving before the next scheduled pointerDown without retiming notes; zero-gap presses snap. Overdue cosmetic travel frames are skipped rather than delaying native input further. Native timeline requests use the full bounded performance budget, not scheduled duration plus five seconds. Stop remains immediate and releases held input. Drag follows actual native motion. No automatic foreground switch or retries after uncertain input. Command is visible to the target and may change link/selection behavior. An installed helper update requires a worker restart to replace an already running helper."}),
+    help: () => ({apiVersion:12, methods:{findWindows:"findWindows({application?,title?}) scans all target pages and returns {targets,truncated}, up to 32 matches; case-insensitive substring matching, windows only; inspect candidates before attaching",targets:"targets({after?}) returns one inventory page; nextCursor continues it",attach:"attach({targetId,targetGeneration}) uses the selected target id and generation",snapshot:"snapshot() captures the attached window",getState:"getState() returns {session}; reuse its target within this turn",typeText:"typeText(text): up to 8192 UTF-8 bytes, existing target keyboard responder",keyPress:"keyPress(key, modifiers=[]): Enter, Tab, Escape, arrows, letters/digits; Shift,Control,Alt,Meta",scroll:"scroll(deltaY, deltaX=0, point?): pixel deltas, positive down/right",wait:"wait(ms): 0-10000 ms; use timeline atMs for tightly timed sequences",click:"click(point?) rapidly moves the custom cursor before one ordinary click with automatic target-only preparation; omitted point uses the agent cursor",preparedPointerPress:"preparedPointerPress(point, holdMs=150) queues target-only AppKit preparation then one unmodified pointer press in the same native request; experimental, no foreground/raise request; receipt activation:true and delivery unverified",prepareWindowInput:"prepareWindowInput() requests target-only AppKit activation without requesting WindowServer foreground or raising; no mouse/modifier input; experimental, inspect receipt effects",requestFocus:"requestFocus() activates and raises the attached window; sends no click",commandClick:"commandClick(point, holdMs=150) sends a real Command-modified mouse press without requesting focus",pointerPress:"pointerPress(point, holdMs=150, modifiers=[]) automatically prepares unmodified presses; explicit Shift,Control,Alt,Meta retain modified delivery; modifiers are NOT held timeline keys",inputTimeline:"inputTimeline(frames): [{atMs:0,pointerDown:{x:100,y:200}},{atMs:150,pointerUp:true}]; keyDown/keyUp are arrays; pointerUp is a boolean, not a point; pointerModifiers only on pointerDown; every unmodified pointerDown automatically prepares its window immediately before dispatch",clickDrag:"clickDrag(start,end,durationMs=200) automatically prepares the window immediately before one hold/move/release",keyChord:"keyChord(keys,holdMs=500)"}, limits:{scriptBytes:2097152,hostCalls:16384,timelineFrames:131072,timelineMs:7200000,hostActionBytes:15728640,outputBytes:32768,maxHeldKeys:16,maxSnapshots:2,maxWallMs:7500000}, notes:"Use one native timeline for a preplanned stable interface to avoid model round trips between music chunks. Custom-cursor travel uses cubic ease-out (fast start, decelerating arrival), with no ease-in. Ordinary unmodified clicks animate in up to 90 ms before input. Timelines also animate within existing button-up gaps, arriving before the next scheduled pointerDown without retiming notes; zero-gap presses snap. Overdue cosmetic travel frames are skipped rather than delaying native input further. Native timeline requests use the full bounded performance budget, not scheduled duration plus five seconds. Stop remains immediate and releases held input. Drag follows actual native motion. No automatic foreground switch or retries after uncertain input. Command is visible to the target and may change link/selection behavior. An installed helper update requires a worker restart to replace an already running helper."}),
     preparedPointerPress: (point, holdMs = 150) => call({operation:'perform',command:{kind:'prepared-press',point,holdMs}}),
     prepareWindowInput: () => call({operation:'perform',command:{kind:'window-input'}}),
     requestFocus: () => call({operation:'perform',command:{kind:'focus'}}),
@@ -172,6 +188,27 @@ for (const name of ['SharedArrayBuffer', 'Atomics', 'WeakRef', 'FinalizationRegi
           Object.keys(options).some(key => key !== 'after') ||
           ('after' in options && typeof options.after !== 'string')) throw new Error('Invalid target page options');
       return call({operation:'targets', ...options});
+    },
+    findWindows: async (options = {}) => {
+      if (options === null || typeof options !== 'object' || Array.isArray(options) ||
+          Object.keys(options).some(key => !['application','title'].includes(key)) ||
+          Object.values(options).some(value => typeof value !== 'string' || value.length > 4096))
+        throw new Error('findWindows expects optional application/title strings');
+      const matches = [];
+      let after;
+      let truncated = false;
+      do {
+        const page = await call({operation:'targets', ...(after === undefined ? {} : {after})});
+        for (const target of page.targets) {
+          if (target.kind !== 'window' ||
+              Object.entries(options).some(([key,value]) => !(target[key] || '').toLowerCase().includes(value.toLowerCase()))) continue;
+          if (matches.length === 32) return {targets:matches, truncated:true};
+          matches.push(target);
+        }
+        after = page.nextCursor;
+        if (!after && page.truncated) truncated = true;
+      } while (after);
+      return {targets:matches, truncated};
     },
     attach: target => call({operation:'attach', target}),
     click: point => pointerPress(point),
@@ -279,7 +316,13 @@ impl Session {
                         let action = match validate_action(&source) {
                             Ok(action) => action,
                             Err(error) => {
-                                bridge.borrow().fault.set(Some(error.code));
+                                bridge.borrow().fault.set(Some(
+                                    if error.code == ErrorCode::InvalidRequest {
+                                        ErrorCode::ScriptAction
+                                    } else {
+                                        error.code
+                                    },
+                                ));
                                 return Err(Exception::throw_type(&ctx, "Invalid CUA action."));
                             }
                         };
@@ -444,7 +487,7 @@ impl Session {
         match self.bridge.borrow().fault.get() {
             Some(ErrorCode::Cancelled) => Err(cancelled()),
             Some(ErrorCode::Capacity) => Err(capacity()),
-            Some(_) => Err(script_error()),
+            Some(code) => Err(CuaError::new(code, "Invalid CUA method arguments.")),
             None => Ok(()),
         }
     }
@@ -533,14 +576,7 @@ impl Session {
                             "JavaScript left unfinished background work.",
                         )));
                     }
-                    return Some(self.finish_value(active).map_err(|error| {
-                        if error.code == ErrorCode::InvalidRequest && self.bridge.borrow().calls == 0 {
-                            CuaError::new(ErrorCode::ScriptEvaluation,
-                                "JavaScript evaluation failed before any computer-use host action was dispatched. Persistent let/const bindings cannot be redeclared; use a block or fresh variable names.")
-                        } else {
-                            error
-                        }
-                    }));
+                    return Some(self.finish_value(active));
                 }
                 Err(_) => return Some(Err(script_error())),
             }
@@ -861,6 +897,134 @@ pub(crate) fn spawn(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // The reported piano failure was a successful inventory search followed by
+    // a script-authored throw: Brave had appended an audio indicator to its title.
+    #[test]
+    fn window_search_handles_audio_suffix_across_pages_without_input() {
+        for (source, success) in [
+            (
+                r#"await cua.findWindows({application:'brave',title:'piano'})"#,
+                true,
+            ),
+            (
+                r#"let page=await cua.targets(); let found; while(true){found=page.targets.find(t=>t.title==='Virtual Piano'); if(found||!page.nextCursor)break; page=await cua.targets({after:page.nextCursor});} if(!found)throw new Error('Piano not found'); found"#,
+                false,
+            ),
+        ] {
+            let (frames, receiver) = crossbeam_channel::bounded(4);
+            let binding = serde_json::from_value(
+                json!({"sessionId":"search","workerId":"worker","chatId":"chat"}),
+            )
+            .unwrap();
+            let mut session = Session::new(binding, frames).unwrap();
+            session
+                .start(
+                    1,
+                    source.into(),
+                    default_wall_timeout_ms(),
+                    Cancellation::default(),
+                )
+                .unwrap();
+            for (call_id, data) in [
+                (
+                    1,
+                    json!({"targets":[{"kind":"monitor","application":"Brave","title":"Piano"}],"nextCursor":"window-a"}),
+                ),
+                (
+                    2,
+                    json!({"targets":[{"kind":"window","application":"Brave Browser","title":"Virtual Piano 🔊","id":"window-b","generation":2}]}),
+                ),
+            ] {
+                assert!(session.step().is_none());
+                let Message::HostCall { action, .. } = receiver.try_recv().unwrap().header.message
+                else {
+                    panic!("expected inventory");
+                };
+                assert_eq!(action["operation"], "targets");
+                if call_id == 2 {
+                    assert_eq!(action["after"], "window-a");
+                }
+                session.reply(1, call_id, Outcome::Ok { data }).unwrap();
+            }
+            let result = session.step().unwrap();
+            if success {
+                let result = result.unwrap();
+                assert_eq!(result["targets"][0]["id"], "window-b");
+                assert_eq!(result["targets"].as_array().unwrap().len(), 1);
+                assert_eq!(result["truncated"], false);
+            } else {
+                assert_eq!(result.unwrap_err().code, ErrorCode::ScriptEvaluation);
+            }
+            assert!(
+                receiver.is_empty(),
+                "Search must never attach or dispatch input"
+            );
+        }
+    }
+
+    #[test]
+    fn window_search_reports_ambiguity_and_incomplete_inventory() {
+        for (count, omitted, expected_count, expected_truncated) in [
+            (2, false, 2, false),
+            (33, false, 32, true),
+            (1, true, 1, true),
+            (0, false, 0, false),
+        ] {
+            let (frames, receiver) = crossbeam_channel::bounded(4);
+            let binding = serde_json::from_value(
+                json!({"sessionId":"search-bound","workerId":"worker","chatId":"chat"}),
+            )
+            .unwrap();
+            let mut session = Session::new(binding, frames).unwrap();
+            session
+                .start(
+                    1,
+                    "await cua.findWindows({title:'Piano'})".into(),
+                    default_wall_timeout_ms(),
+                    Cancellation::default(),
+                )
+                .unwrap();
+            assert!(session.step().is_none());
+            receiver.try_recv().unwrap();
+            let targets: Vec<_> = (0..count)
+                .map(|i| json!({"kind":"window","title":"Piano","id":format!("window-{i}")}))
+                .collect();
+            session
+                .reply(
+                    1,
+                    1,
+                    Outcome::Ok {
+                        data: json!({"targets":targets,"truncated":omitted}),
+                    },
+                )
+                .unwrap();
+            let result = session.step().unwrap().unwrap();
+            assert_eq!(result["targets"].as_array().unwrap().len(), expected_count);
+            assert_eq!(result["truncated"], expected_truncated);
+            assert!(receiver.is_empty());
+        }
+    }
+
+    #[test]
+    fn malformed_mouse_timeline_has_an_argument_error_before_dispatch() {
+        for release in [r#"{x:1,y:2}"#, r#"{button:'left'}"#] {
+            let (frames, receiver) = crossbeam_channel::bounded(4);
+            let binding = serde_json::from_value(
+                json!({"sessionId":"arguments","workerId":"worker","chatId":"chat"}),
+            )
+            .unwrap();
+            let mut session = Session::new(binding, frames).unwrap();
+            let result = session.start(1, format!("await cua.inputTimeline([{{atMs:0,pointerDown:{{x:1,y:2}}}},{{atMs:50,pointerUp:{release}}}])"), default_wall_timeout_ms(), Cancellation::default());
+            let error = match result {
+                Err(error) => error,
+                Ok(()) => session.step().unwrap().unwrap_err(),
+            };
+            assert_eq!(error.code, ErrorCode::ScriptAction);
+            assert!(receiver.is_empty());
+        }
+    }
+
     #[test]
     fn macro_bootstrap_sends_bounded_host_commands() {
         for (script, expected) in [
@@ -1096,11 +1260,11 @@ mod tests {
                 ),
                 (
                     "try { await cua.click(); } catch (e) { throw {code:e.code}; }",
-                    ErrorCode::InvalidRequest,
+                    ErrorCode::ScriptEvaluation,
                 ),
                 (
                     "try { await cua.click(); } catch {} throw new Error('private detail')",
-                    ErrorCode::InvalidRequest,
+                    ErrorCode::ScriptEvaluation,
                 ),
             ] {
                 let binding = serde_json::from_value(
@@ -1200,7 +1364,7 @@ mod tests {
             )
             .unwrap();
         let error = session.step().unwrap().unwrap_err();
-        assert_eq!(error.code, ErrorCode::InvalidRequest);
+        assert_eq!(error.code, ErrorCode::ScriptEvaluation);
         assert!(!error.message.contains("private runtime detail"));
     }
 
