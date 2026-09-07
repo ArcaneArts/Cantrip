@@ -1,0 +1,11 @@
+--- a/src/vs/workbench/browser/parts/editor/textEditor.ts
++++ b/src/vs/workbench/browser/parts/editor/textEditor.ts
+@@ -165,7 +165,7 @@
+ 	protected getConfigurationOverrides(configuration: IEditorConfiguration): ICodeEditorOptions {
+ 		return {
+ 			overviewRulerLanes: 3,
+-			lineNumbersMinChars: 3,
++			lineNumbersMinChars: 1,
+ 			fixedOverflowWidgets: true,
+ 			...this.getReadonlyConfiguration(this.input?.isReadonly()),
+ 			renderValidationDecorations: configuration.problems?.visibility !== false ? 'on' : 'off'
