@@ -2,6 +2,17 @@
 
 Status: implemented through Milestone 7.
 
+## Tab bar display
+
+Settings → Appearance independently selects Tabs, Icons, or Hybrid for the top
+tab bar and bottom rail. Defaults are Tabs on top and Icons on the bottom; the
+right rail is always icons-only. Preferences are saved per device.
+
+Hybrid preserves order and collapses trailing labels into 40px icon slots as
+available width decreases, restoring 160px labeled slots when space returns.
+Scrolling remains available only when even the icon slots cannot fit. Display
+changes do not move, close, or recolor tabs, and include temporary file tabs.
+
 ## Tab colors
 
 Every project surface tab and file preview offers **Color…** in its context

@@ -1,0 +1,5 @@
+[data-tab-display] [data-condensed="true"] .tab-color-content span,
+[data-tab-display] [data-condensed="true"] [aria-label^="Actions for"],
+[data-tab-display] [data-condensed="true"] [aria-label^="Close preview"] {
+  display: none;
+}

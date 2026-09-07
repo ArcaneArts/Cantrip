@@ -16,6 +16,16 @@ const sortableState = vi.hoisted(() => ({
   options: [] as Array<Record<string, unknown>>,
 }));
 
+const display = vi.hoisted(() => ({
+  mode: "icons" as "icons" | "tabs" | "hybrid",
+  width: 248,
+}));
+vi.mock("@/lib/tab-display", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/tab-display")>()),
+  useTabDisplay: () => display.mode,
+  useTabBarWidth: () => ({ setElement: () => {}, width: display.width }),
+}));
+
 vi.mock("@dnd-kit/core", () => ({
   useDroppable: () => ({ isOver: false, setNodeRef: vi.fn() }),
 }));
@@ -194,12 +204,50 @@ function renderRail({
 
 describe("dock rail tabs", () => {
   beforeEach(() => {
+    display.mode = "icons";
     sortableState.contexts.length = 0;
     sortableState.options.length = 0;
     (
       globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
     ).IS_REACT_ACT_ENVIRONMENT = true;
   });
+
+  it.each([
+    ["bottom", "tabs", 2],
+    ["bottom", "icons", 0],
+    ["bottom", "hybrid", 1],
+    ["right", "tabs", 0],
+    ["right", "hybrid", 0],
+  ] as const)(
+    "renders %s in %s mode with %i labels",
+    async (region, mode, labels) => {
+      display.mode = mode;
+      let renderer!: TestRenderer.ReactTestRenderer;
+      await act(async () => {
+        renderer = renderRail({
+          activeTabKey: null,
+          region,
+          surfaces: [
+            surface("browser", "one", "Browser", 0),
+            surface("terminal", "two", "Terminal", 1),
+          ],
+        });
+      });
+      const buttons = renderer.root.findAll(
+        (node) =>
+          node.type === "button" &&
+          String(node.props["aria-label"]).endsWith(`in ${region} dock`),
+      );
+      expect(buttons).toHaveLength(2);
+      expect(
+        buttons.filter(
+          (button) =>
+            button.findAllByProps({ className: "truncate" }).length > 0,
+        ),
+      ).toHaveLength(labels);
+      await act(async () => renderer.unmount());
+    },
+  );
 
   it.each([
     ["right", "vertical"],

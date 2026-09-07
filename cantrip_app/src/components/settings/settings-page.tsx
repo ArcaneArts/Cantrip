@@ -1,4 +1,5 @@
 import { ComputerUseEffectsSettings } from "./computer-use-effects-settings";
+import { TabDisplaySettings } from "./tab-display-settings";
 import type {
   CodeAppearance,
   CodexDeviceLogin,
@@ -1607,7 +1608,7 @@ export function SettingsPage({
     !generalSearch ||
     matchesSearch(
       generalSearch,
-      "appearance theme system light dark high contrast pro mode opacity transparency vibrancy blur macos operating system elite experimental reveal effects configure",
+      "appearance theme system light dark high contrast pro mode opacity transparency vibrancy blur macos operating system elite experimental reveal effects configure tab bar top bottom rail icons tabs hybrid display",
     );
   const desktopStreamingMatches =
     !generalSearch ||
@@ -1763,6 +1764,9 @@ export function SettingsPage({
               <div className="min-w-0 divide-y overflow-hidden border-y">
                 {section === "appearance" && appearanceMatches ? (
                   <section>
+                    <div className="px-3 py-3">
+                      <TabDisplaySettings />
+                    </div>
                     <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-3">
                       <div className="flex min-w-0 items-center gap-2.5">
                         <Palette className="size-4 shrink-0 text-muted-foreground" />
