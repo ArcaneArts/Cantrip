@@ -18,6 +18,23 @@ window order unchanged. API 10 uses fast cubic ease-out cursor travel. These
 observations establish the tested path, not compatibility with every application.
 Input receipts still do not prove that an application acted on an event.
 
+## Enable computer use
+
+Computer use is off by default for existing and new accounts. Enable it in
+**Settings → General → Computer use** before starting a new agent turn. While
+disabled, agents receive only “Computer use is not enabled.” and no managed CUA
+tools or setup guidance. The chat-header Computer use button has been removed.
+
+When enabled on macOS, this settings section offers **Open Accessibility settings**
+and **Open Screen Recording settings**. These open this Mac's System Settings;
+grant access there for Cantrip or cantrip-cua on the computer running the worker.
+The buttons do not grant permissions or open a remote worker's settings.
+
+Turning the setting off revokes active CUA sessions and approvals through the
+existing authority-generation notifications, including selected YOLO profiles.
+Later operations are denied; enabling again requires a new agent turn. Existing
+macOS permission grants are not removed by this app setting.
+
 ## Finding the tools
 
 Cantrip automatically manages a dedicated `cantrip_cua` MCP server for authorized

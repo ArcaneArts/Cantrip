@@ -42,6 +42,7 @@ export const configurablePermissionProfileIdSchema = z.enum([
 ]);
 
 export const userSettingsSchema = z.object({
+  computerUseEnabled: z.boolean().default(false),
   protectedComputerUseCursor: cuaCursorPreferenceRecordSchema
     .nullable()
     .optional(),
@@ -100,6 +101,7 @@ export const userSettingsUpdateSchema = userSettingsSchema
     destinationRevision: true,
   })
   .extend({
+    computerUseEnabled: z.boolean().optional(),
     contentGutters: z.boolean().optional(),
     eliteMode: z.boolean().optional(),
     eliteRevealConfig: eliteRevealConfigSchema.optional(),

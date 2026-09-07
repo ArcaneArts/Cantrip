@@ -118,6 +118,7 @@ export function createComputerUsePreviewFixture(options: {
     contextKind: "standalone",
     worktreeId: null,
     scratchRootId: "fixture-scratch",
+    computerUseEnabled: true,
     computerUseAuthorityGeneration: 1,
     isPrimary: true,
     worktreePolicy: null,

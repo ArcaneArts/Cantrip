@@ -42,6 +42,16 @@ describe("managed CUA MCP configuration", () => {
       ).not.toContain("await cua.targets()");
     },
   );
+  it("gives disabled agent turns only a brief computer-use notice", () => {
+    const instructions = cantripChatThreadParams(
+      true,
+      "ide",
+      [],
+    ).developerInstructions;
+    expect(instructions).toContain("Computer use is not enabled.");
+    expect(instructions).not.toContain("cua.targets");
+    expect(instructions).not.toContain("cantrip_cua");
+  });
   it("keeps dedicated guidance compact and uses current ordinary click routing", () => {
     expect(CUA_MCP_INSTRUCTIONS.length).toBeLessThan(6000);
     expect(CUA_MCP_INSTRUCTIONS).toContain(

@@ -1408,6 +1408,13 @@
       "when": 1788628840958,
       "tag": "0200_computer_use_cursor_preference",
       "breakpoints": true
+    },
+    {
+      "idx": 201,
+      "version": "7",
+      "when": 1788747120216,
+      "tag": "0201_computer_use_opt_in",
+      "breakpoints": true
     }
   ]
 }

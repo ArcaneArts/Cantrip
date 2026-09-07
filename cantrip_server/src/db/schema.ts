@@ -1032,6 +1032,9 @@ export const userSettings = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     // Keep the non-null identity first: Drizzle uses the first selected column
     // to distinguish a missing row when this table is left-joined.
+    computerUseEnabled: boolean("computer_use_enabled")
+      .notNull()
+      .default(false),
     protectedComputerUseCursor: jsonb(
       "protected_computer_use_cursor",
     ).$type<CuaCursorPreferenceRecord>(),

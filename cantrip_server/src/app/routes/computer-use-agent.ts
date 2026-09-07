@@ -26,6 +26,7 @@ export function resolveComputerUseAgentAuthority(input: {
   const { binding, context } = input;
   const now = input.now ?? Date.now();
   if (
+    context.computerUseEnabled !== true ||
     binding.ownerId !== input.ownerId ||
     Date.parse(binding.issuedAt) > now + 60_000 ||
     Date.parse(binding.expiresAt) <= now ||
@@ -93,6 +94,10 @@ export function installComputerUseAgentRoutes(
             authentication.ownerId,
             binding.chatId,
           );
+          if (context && context.computerUseEnabled !== true)
+            return reply
+              .code(403)
+              .send({ error: "Computer use is not enabled." });
           const authority =
             context &&
             resolveComputerUseAgentAuthority({

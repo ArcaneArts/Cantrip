@@ -42,6 +42,7 @@ function context(): ChatExecutionContext {
     chatId: "chat",
     workerId: "worker",
     executionLaneId: "lane",
+    computerUseEnabled: true,
     computerUseAuthorityGeneration: 1,
     status: "idle",
     threadId: "eventually-consistent-native-thread",
@@ -62,6 +63,14 @@ const resolve = (value: CantripMcpBinding, current = context()) =>
   });
 
 describe("computer-use server authority", () => {
+  it.each([false, undefined])(
+    "does not authorize computer use without opt-in (%s)",
+    (computerUseEnabled) => {
+      expect(
+        resolve(binding(now), { ...context(), computerUseEnabled }),
+      ).toBeNull();
+    },
+  );
   it("returns selected YOLO even when its effective filesystem policy is read-only", () => {
     expect(resolve(binding(now))).toMatchObject({
       profile: {

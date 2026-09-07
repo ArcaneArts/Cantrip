@@ -93,6 +93,7 @@ function setup(options: { preview?: boolean } = {}) {
       status: "idle",
       scratchRootId: "scratch-one",
       projectId: null,
+      computerUseEnabled: true,
       computerUseAuthorityGeneration: 1,
       permissionProfileId: ":workspace",
       isPrimary: true,
