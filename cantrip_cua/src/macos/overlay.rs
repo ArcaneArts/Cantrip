@@ -48,13 +48,13 @@ fn owned_ids() -> &'static Mutex<HashSet<u32>> {
 pub(super) fn owns(id: u32) -> bool {
     owned_ids().lock().unwrap().contains(&id)
 }
-struct Window {
-    id: u32,
-    pid: u32,
-    level: isize,
-    bounds: Bounds,
+pub(super) struct Window {
+    pub id: u32,
+    pub pid: u32,
+    pub level: isize,
+    pub bounds: Bounds,
 }
-fn windows() -> Vec<Window> {
+pub(super) fn windows() -> Vec<Window> {
     unsafe {
         let array = CGWindowListCopyWindowInfo(1 | 16, 0);
         if array.is_null() {
@@ -108,57 +108,85 @@ fn windows() -> Vec<Window> {
         result
     }
 }
-struct Panel {
-    window: Retained<AnyObject>,
-    image_view: Retained<AnyObject>,
-    id: u32,
-    rendered: String,
+pub(super) struct OverlayWindow {
+    object: Retained<AnyObject>,
+    pub id: u32,
 }
-impl Drop for Panel {
+impl std::ops::Deref for OverlayWindow {
+    type Target = AnyObject;
+    fn deref(&self) -> &AnyObject {
+        &self.object
+    }
+}
+impl Drop for OverlayWindow {
     fn drop(&mut self) {
         unsafe {
-            let _: () = msg_send![&*self.window, orderOut: Option::<&AnyObject>::None];
+            let _: () = msg_send![&*self.object,orderOut:Option::<&AnyObject>::None];
         }
-        owned_ids().lock().unwrap().remove(&self.id);
+        unsafe {
+            let _: () = msg_send![&*self.object, close];
+        }
+        forget_window(self.id);
     }
+}
+// Shared nonactivating window policy for effect and cursor panels.
+pub(super) fn create_window() -> Option<OverlayWindow> {
+    unsafe {
+        let app_class = AnyClass::get(c"NSApplication")?;
+        let app: Retained<AnyObject> = msg_send![app_class, sharedApplication];
+        let _: bool = msg_send![&*app, setActivationPolicy: 1_isize]; // Accessory, never activate.
+        let panel_class = AnyClass::get(c"NSPanel")?;
+        let allocated: Allocated<AnyObject> = msg_send![panel_class, alloc];
+        let window: Retained<AnyObject> = msg_send![allocated, initWithContentRect: CGRect::new(CGPoint::ZERO, CGSize::new(1.0,1.0)), styleMask: 128_usize, backing: 2_usize, defer: false];
+        let _: () = msg_send![&*window, setReleasedWhenClosed: false];
+        let _: () = msg_send![&*window, setOpaque: false];
+        let _: () = msg_send![&*window, setHasShadow: false];
+        let _: () = msg_send![&*window, setIgnoresMouseEvents: true];
+        let _: () = msg_send![&*window, setHidesOnDeactivate: false];
+        let _: () = msg_send![&*window, setBecomesKeyOnlyIfNeeded: true];
+        let _: () = msg_send![&*window, setFloatingPanel: false];
+        let _: () = msg_send![&*window, setCollectionBehavior: (1_usize | 16 | 64 | 256)];
+        let _: () = msg_send![&*window, setSharingType: 1_usize];
+        let color_class = AnyClass::get(c"NSColor")?;
+        let color: Retained<AnyObject> = msg_send![color_class, clearColor];
+        let _: () = msg_send![&*window, setBackgroundColor: &*color];
+        let number: isize = msg_send![&*window, windowNumber];
+        if number <= 0 {
+            super::diagnostic_phase("overlay-no-window-number");
+        }
+        let id = u32::try_from(number).ok().filter(|id| *id > 0)?;
+        super::diagnostic_phase("overlay-panel-created");
+        owned_ids().lock().unwrap().insert(id);
+        Some(OverlayWindow { object: window, id })
+    }
+}
+pub(super) fn forget_window(id: u32) {
+    owned_ids().lock().unwrap().remove(&id);
+}
+pub(super) fn appkit_frame(bounds: Bounds) -> CGRect {
+    let top = unsafe { CGDisplayBounds(CGMainDisplayID()).size.height };
+    CGRect::new(
+        CGPoint::new(bounds.x, top - bounds.y - bounds.height),
+        CGSize::new(bounds.width, bounds.height),
+    )
+}
+struct Panel {
+    window: OverlayWindow,
+    image_view: Retained<AnyObject>,
+    rendered: String,
 }
 impl Panel {
     fn new() -> Option<Self> {
         unsafe {
-            let app_class = AnyClass::get(c"NSApplication")?;
-            let app: Retained<AnyObject> = msg_send![app_class, sharedApplication];
-            let _: bool = msg_send![&*app, setActivationPolicy: 1_isize]; // Accessory, never activate.
-            let panel_class = AnyClass::get(c"NSPanel")?;
-            let allocated: Allocated<AnyObject> = msg_send![panel_class, alloc];
-            let window: Retained<AnyObject> = msg_send![allocated, initWithContentRect: CGRect::new(CGPoint::ZERO, CGSize::new(1.0,1.0)), styleMask: 128_usize, backing: 2_usize, defer: false];
-            let _: () = msg_send![&*window, setReleasedWhenClosed: false];
-            let _: () = msg_send![&*window, setOpaque: false];
-            let _: () = msg_send![&*window, setHasShadow: false];
-            let _: () = msg_send![&*window, setIgnoresMouseEvents: true];
-            let _: () = msg_send![&*window, setHidesOnDeactivate: false];
-            let _: () = msg_send![&*window, setBecomesKeyOnlyIfNeeded: true];
-            let _: () = msg_send![&*window, setFloatingPanel: false];
-            let _: () = msg_send![&*window, setCollectionBehavior: (1_usize | 16 | 64 | 256)];
-            let _: () = msg_send![&*window, setSharingType: 1_usize];
-            let color_class = AnyClass::get(c"NSColor")?;
-            let color: Retained<AnyObject> = msg_send![color_class, clearColor];
-            let _: () = msg_send![&*window, setBackgroundColor: &*color];
+            let window = create_window()?;
             let view_class = AnyClass::get(c"NSImageView")?;
             let allocated: Allocated<AnyObject> = msg_send![view_class, alloc];
             let image_view: Retained<AnyObject> = msg_send![allocated, initWithFrame: CGRect::ZERO];
             let _: () = msg_send![&*image_view, setImageScaling: 1_usize];
             let _: () = msg_send![&*window, setContentView: &*image_view];
-            let number: isize = msg_send![&*window, windowNumber];
-            if number <= 0 {
-                super::diagnostic_phase("overlay-no-window-number");
-            }
-            let id = u32::try_from(number).ok().filter(|id| *id > 0)?;
-            super::diagnostic_phase("overlay-panel-created");
-            owned_ids().lock().unwrap().insert(id);
             Some(Self {
                 window,
                 image_view,
-                id,
                 rendered: String::new(),
             })
         }
@@ -206,8 +234,7 @@ impl Panel {
                 msg_send![&*self.image_view, setFrame: CGRect::new(CGPoint::ZERO,frame.size)];
             let _: () = msg_send![&*self.window, setLevel: native.level];
             // Order only this nonactivating panel; never order or raise the target.
-            let _: () =
-                msg_send![&*self.window, orderWindow: 1_isize, relativeTo: native.id as isize];
+            let _: () = msg_send![&*self.window, orderWindow: 1_isize, relativeTo: super::window_effects::cursor_anchor(native.id) as isize];
             let _: () = msg_send![&*self.window, displayIfNeeded];
         }
         Some(())
@@ -343,6 +370,9 @@ fn schedule(animating: bool) {
 }
 fn refresh() {
     let windows = windows();
+    refresh_with_windows(&windows);
+}
+pub(super) fn refresh_with_windows(windows: &[Window]) {
     PRESENTATION.with_borrow_mut(|p| {
         p.panels.retain(|id, _| {
             p.sessions.iter().any(|s| {

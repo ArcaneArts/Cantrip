@@ -29,6 +29,22 @@ impl Raster {
 }
 
 pub trait CaptureBackend: Send {
+    fn configure_effects(
+        &mut self,
+        configuration: crate::effects::Configuration,
+    ) -> Result<serde_json::Value> {
+        if configuration.effect != crate::effects::EffectId::Off {
+            return Err(CuaError::new(
+                ErrorCode::Unsupported,
+                "Window effects require the macOS native renderer.",
+            ));
+        }
+        Ok(serde_json::json!({"supported":false,"configuration":configuration,"windows":[]}))
+    }
+    fn effects_status(&mut self) -> serde_json::Value {
+        serde_json::json!({"supported":false,"configuration":crate::effects::Configuration::default(),"windows":[]})
+    }
+
     /// Presentation is best effort and must never change an input result.
     fn present_cursors(&mut self, _sessions: Vec<crate::service::SessionState>) {}
     /// Finish this presentation update before subsequent input dispatch. Display

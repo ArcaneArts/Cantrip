@@ -184,6 +184,7 @@ impl Agent {
     }
     pub fn sample(&self, now: u64) -> Self {
         let mut sample = self.clone();
+        sample.visible &= self.bounds.contains_local(self.position);
         let decay = (-seconds(now.saturating_sub(self.motion_ns)) / IDLE_TAU).exp();
         sample.raw_velocity = self.raw_velocity.map(|v| v * decay);
         sample.smoothed_velocity = self.filtered.map(|v| v * decay);
@@ -223,6 +224,22 @@ impl Telemetry {
                 agent.revision = state.cursor.revision;
             }
             agent.appearance(&state.cursor);
+            agent.bounds = target.bounds;
+            agent.scale = target.scale_factor;
+        }
+    }
+    pub fn geometry(&mut self, target: &Target, now: u64) {
+        for agent in self
+            .agents
+            .values_mut()
+            .filter(|a| a.target_id == target.id && a.generation == target.generation)
+        {
+            if agent.bounds.width != target.bounds.width
+                || agent.bounds.height != target.bounds.height
+                || agent.scale != target.scale_factor
+            {
+                agent.move_to(agent.position, now, true);
+            }
             agent.bounds = target.bounds;
             agent.scale = target.scale_factor;
         }

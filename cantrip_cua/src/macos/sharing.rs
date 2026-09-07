@@ -114,6 +114,11 @@ struct Streams {
 }
 thread_local! { static STREAMS: RefCell<Streams> = RefCell::default(); }
 
+pub(super) fn release_for_effect(target: &crate::target::Target) {
+    STREAMS.with_borrow_mut(|s| {
+        s.leases.remove(&(target.id.clone(), target.generation));
+    });
+}
 pub(super) fn retain_sessions(sessions: &[SessionState]) {
     let alive: HashSet<Key> = sessions
         .iter()
@@ -205,6 +210,13 @@ pub(super) unsafe fn capture(
     pending: Arc<Pending<NativeCapture>>,
 ) {
     if pending.cancelled() {
+        return;
+    }
+    if super::window_effects::capturing(&source.candidate.target) {
+        release_for_effect(&source.candidate.target);
+        unsafe {
+            begin_capture(source, pending);
+        }
         return;
     }
     if source.candidate.target.kind != TargetKind::Window {

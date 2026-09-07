@@ -352,3 +352,40 @@ fn effect_parameters_have_defaults_and_reject_invalid_values() {
     config.parameters.insert("showTelemetry".into(), 0.5);
     assert!(config.validate().is_err());
 }
+
+#[test]
+fn effect_configuration_is_explicitly_unsupported_on_backends_without_a_renderer() {
+    use cantrip_cua::{
+        backend::FakeBackend,
+        cancellation::Cancellation,
+        error::ErrorCode,
+        service::{CuaService, Operation},
+    };
+    let mut service = CuaService::new(FakeBackend::default());
+    let result = service
+        .execute(
+            Operation::EffectsConfigure {
+                configuration: Configuration::default(),
+            },
+            &Cancellation::default(),
+            0,
+        )
+        .unwrap();
+    assert_eq!(result.data["configuration"]["effect"], "off");
+    assert_eq!(result.data["supported"], false);
+    let error = service
+        .execute(
+            Operation::EffectsConfigure {
+                configuration: Configuration {
+                    effect: EffectId::DebugGradient,
+                    ..Configuration::default()
+                },
+            },
+            &Cancellation::default(),
+            0,
+        )
+        .err()
+        .unwrap();
+    assert_eq!(error.code, ErrorCode::Unsupported);
+    assert_eq!(service.session_count(), 0);
+}
