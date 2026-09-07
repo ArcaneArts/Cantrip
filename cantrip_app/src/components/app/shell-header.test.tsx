@@ -5,6 +5,33 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 
 import { navigateMobileSettingsBack, ShellHeader } from "./shell-header";
 
+describe("desktop settings workspace", () => {
+  it.each(["ide", "chat"])(
+    "returns to the preserved %s workspace",
+    (appMode) => {
+      const setShowSettings = vi.fn();
+      const header = ShellHeader({
+        bindings: {
+          appMode,
+          showSettings: true,
+          compactShell: false,
+          overlayTitlebar: true,
+          sidebarToggleVisible: true,
+          setShowSettings,
+        },
+      });
+      const markup = renderToStaticMarkup(header);
+      expect(markup).toContain(
+        appMode === "ide" ? "Back to Project" : "Back to Chat",
+      );
+      expect(markup).toContain("padding-left:5.5rem");
+      expect(markup).not.toContain("Expand sidebar");
+      header.props.children[0].props.onClick();
+      expect(setShowSettings).toHaveBeenCalledExactlyOnceWith(false);
+    },
+  );
+});
+
 describe("ShellHeader mobile Chat chrome", () => {
   it("renders one Chat header after switching from a selected IDE project", () => {
     const markup = renderToStaticMarkup(

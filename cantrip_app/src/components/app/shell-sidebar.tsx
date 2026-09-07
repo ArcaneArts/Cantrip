@@ -185,6 +185,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
               : "transition-[width] duration-150 ease-out motion-reduce:transition-none",
           )}
           style={{
+            display: showSettings ? "none" : undefined,
             width: desktopSidebarDrawer
               ? undefined
               : sidebarCollapsed
