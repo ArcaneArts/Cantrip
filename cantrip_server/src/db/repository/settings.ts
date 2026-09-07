@@ -88,6 +88,7 @@ export class SettingsRepository {
         sidebarWidth: 288,
         showChatPromptOverlay: true,
         randomAgentNames: false,
+        startNewAgentChatsInCodexCli: false,
         desktopFrameRate: 30,
         desktopStreamQuality: "adaptive",
         defaultModelId: DEFAULT_MODEL_ID,
@@ -119,6 +120,7 @@ export class SettingsRepository {
         sidebarWidth: 288,
         showChatPromptOverlay: true,
         randomAgentNames: false,
+        startNewAgentChatsInCodexCli: false,
         desktopFrameRate: 30,
         desktopStreamQuality: "adaptive",
         defaultModelId: null,
@@ -304,6 +306,7 @@ export class SettingsRepository {
         settings.workspaceLayoutProfile as UserSettings["workspaceLayoutProfile"],
       showChatPromptOverlay: settings.showChatPromptOverlay,
       randomAgentNames: settings.randomAgentNames,
+      startNewAgentChatsInCodexCli: settings.startNewAgentChatsInCodexCli,
       desktopFrameRate:
         settings.desktopFrameRate as UserSettings["desktopFrameRate"],
       desktopStreamQuality:

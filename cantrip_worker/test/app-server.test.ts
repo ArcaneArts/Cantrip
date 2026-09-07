@@ -44,6 +44,7 @@ import {
   commandTelemetryFromStart,
   completedActivityTimestamps,
   completedCodexThreadTurnFromRead,
+  collaborationModeFingerprint,
   failClosedAgentInteractionReply,
   findActiveChatTurn,
   goalShouldContinue,
@@ -69,6 +70,35 @@ import {
   workspaceSnapshotFromPorcelainRecords,
   workspaceHasGitMetadata,
 } from "../src/codex/app-server.js";
+
+describe("Codex collaboration settings fingerprints", () => {
+  it("changes when a warmed thread switches model or reasoning effort", () => {
+    const baseline = {
+      mode: "default",
+      settings: {
+        developer_instructions: null,
+        model: "gpt-5.6-sol",
+        reasoning_effort: "medium",
+      },
+    } as const;
+
+    expect(collaborationModeFingerprint(baseline)).not.toBe(
+      collaborationModeFingerprint({
+        ...baseline,
+        settings: { ...baseline.settings, model: "gpt-6-astra" },
+      }),
+    );
+    expect(collaborationModeFingerprint(baseline)).not.toBe(
+      collaborationModeFingerprint({
+        ...baseline,
+        settings: { ...baseline.settings, reasoning_effort: "high" },
+      }),
+    );
+    expect(collaborationModeFingerprint(baseline)).toBe(
+      collaborationModeFingerprint(baseline),
+    );
+  });
+});
 
 describe("external Codex thread change coalescing", () => {
   it("emits one bounded metadata-only revision for a noisy thread burst", () => {

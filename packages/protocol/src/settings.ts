@@ -62,6 +62,7 @@ export const userSettingsSchema = z.object({
   workspaceLayoutProfile: workspaceLayoutProfileSchema.default("hybrid"),
   showChatPromptOverlay: z.boolean().default(true),
   randomAgentNames: z.boolean().default(false),
+  startNewAgentChatsInCodexCli: z.boolean().default(false),
   desktopFrameRate: z.union([z.literal(15), z.literal(30), z.literal(60)]),
   desktopStreamQuality: z.enum(["adaptive", "data-saver", "balanced", "sharp"]),
   defaultModelId: z.string().min(1).nullable(),
@@ -122,6 +123,7 @@ export const userSettingsUpdateSchema = userSettingsSchema
     defaultWorkerId: z.string().min(1).nullable().optional(),
     showChatPromptOverlay: z.boolean().optional(),
     randomAgentNames: z.boolean().optional(),
+    startNewAgentChatsInCodexCli: z.boolean().optional(),
     automaticReplicaProvisioning: z.boolean().optional(),
     automaticReplicaSynchronization: z
       .enum(["off", "verify-only", "fast-forward-primary"])

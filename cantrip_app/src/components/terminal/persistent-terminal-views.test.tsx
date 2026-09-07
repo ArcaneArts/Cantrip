@@ -90,6 +90,7 @@ function render(
   ownedTerminals: TerminalSummary[],
   active = true,
   excludedIds: ReadonlySet<string> = new Set(),
+  prewarmedTerminals: TerminalSummary[] = [],
 ) {
   return createElement(PersistentTerminalViews, {
     active,
@@ -100,6 +101,7 @@ function render(
     onServicePanelOpenChange: vi.fn(),
     ownedTerminals,
     pendingInputs: [],
+    prewarmedTerminals,
     selectedTerminal,
     servicePanelTerminalId: null,
     excludedIds,
@@ -185,6 +187,33 @@ describe("Persistent terminal views", () => {
 
     await act(async () => renderer.unmount());
     expect(lifecycle.released).toEqual([first.id, second.id]);
+  });
+
+  it("mounts a prewarmed Codex console without making it visible", async () => {
+    const consoleTerminal = terminal("codex-console", "chat-one");
+    let renderer!: TestRenderer.ReactTestRenderer;
+
+    await act(async () => {
+      renderer = TestRenderer.create(
+        render(null, [consoleTerminal], true, new Set(), [consoleTerminal]),
+      );
+    });
+
+    expect(lifecycle.created).toEqual([consoleTerminal.id]);
+    expect(
+      renderer.root.findByProps({
+        "data-mock-terminal-view": true,
+        "data-terminal-id": consoleTerminal.id,
+      }).props["data-visible"],
+    ).toBe(false);
+  });
+
+  it("ignores a prewarm request after terminal ownership is removed", () => {
+    const consoleTerminal = terminal("removed-console", "chat-one");
+
+    expect(
+      retainTerminalSurfaceTabs([], [], null, 12, [consoleTerminal]),
+    ).toEqual([]);
   });
 
   it("releases a retained terminal owner when its pane transfers to a pop-out", async () => {
