@@ -1,5 +1,5 @@
-//! Target-only AppKit input preparation. This sends one activation notification,
-//! not a mouse event, a WindowServer front-process request, or a raise operation.
+//! Target-only AppKit input preparation. This sends activation and key-window records,
+//! without a WindowServer front-process request or a raise operation.
 //! Record layout: trycua/cua platform-macos input/skylight.rs and yabai's
 //! window_manager_focus_window_without_raise. Unlike those full sequences, we
 //! never send a deactivation notification to the human's foreground process.
@@ -55,20 +55,72 @@ fn activation_record(window: u32) -> [u8; 248] {
     bytes[0x8a] = 1;
     bytes
 }
+// Native make-key record layout used by yabai and trycua's SkyLight bridge.
+// These records address the target window only; no defocus record, foreground
+// request, HID post, or primer click is sent to the human's application.
+fn key_window_record(window: u32, kind: u8) -> [u8; 248] {
+    let mut record = [0; 248];
+    record[4] = 248;
+    record[8] = kind;
+    record[0x3a] = 0x10;
+    record[0x3c..0x40].copy_from_slice(&window.to_le_bytes());
+    record[0x20..0x30].fill(0xff);
+    record
+}
+
+/// Read WindowServer's foreground PID, independent of cached AppKit activation.
+pub(super) fn foreground_pid() -> Option<u32> {
+    type Front = unsafe extern "C" fn(*mut ProcessSerialNumber) -> i32;
+    type Pid = unsafe extern "C" fn(*const ProcessSerialNumber, *mut i32) -> i32;
+    static READERS: OnceLock<Option<(Front, Pid)>> = OnceLock::new();
+    let (front, pid) = READERS
+        .get_or_init(|| unsafe {
+            let handle = dlopen(
+                c"/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight".as_ptr(),
+                2,
+            );
+            if handle.is_null() {
+                return None;
+            }
+            let front = dlsym(handle, c"_SLPSGetFrontProcess".as_ptr());
+            let pid = dlsym((-2_isize) as *mut c_void, c"GetProcessPID".as_ptr());
+            if front.is_null() || pid.is_null() {
+                return None;
+            }
+            Some((
+                std::mem::transmute::<*mut c_void, Front>(front),
+                std::mem::transmute::<*mut c_void, Pid>(pid),
+            ))
+        })
+        .as_ref()?;
+    let mut psn = ProcessSerialNumber::default();
+    let mut value = 0;
+    if unsafe { front(&mut psn) } != 0 || unsafe { pid(&psn, &mut value) } != 0 {
+        return None;
+    }
+    u32::try_from(value).ok().filter(|pid| *pid > 0)
+}
+
 fn send_record(
     window: u32,
     cancel: &Cancellation,
     mut post: impl FnMut(&[u8; 248]) -> i32,
 ) -> Result<()> {
     cancel.check()?;
-    let status = post(&activation_record(window));
-    if status != 0 {
-        return Err(CuaError::new(
-            ErrorCode::InputUnknown,
-            format!(
-                "Window input preparation returned OSStatus {status} after an attempted activation record. No mouse input was sent; observe before another action."
-            ),
-        ));
+    for record in [
+        activation_record(window),
+        key_window_record(window, 1),
+        key_window_record(window, 2),
+    ] {
+        let status = post(&record);
+        if status != 0 {
+            return Err(CuaError::new(
+                ErrorCode::InputUnknown,
+                format!(
+                    "Window input preparation returned OSStatus {status} during target-window preparation. The requested pointer gesture was not posted; preparation may have changed app state. Observe before another action."
+                ),
+            ));
+        }
     }
     Ok(())
 }
@@ -145,18 +197,23 @@ mod tests {
         assert_eq!(err.code, ErrorCode::InputUnknown);
     }
     #[test]
-    fn sends_one_target_activation_record_without_mouse_or_defocus_records() {
+    fn sends_target_activation_then_balanced_key_window_records() {
         let mut calls = 0;
         send_record(0x12345678, &Cancellation::default(), |record| {
             calls += 1;
-            assert_eq!(record[8], 0x0d);
-            assert_eq!(record[0x8a], 1);
+            assert_eq!(record[8], [0x0d, 1, 2][calls - 1]);
             assert_eq!(&record[0x3c..0x40], &[0x78, 0x56, 0x34, 0x12]);
-            assert_eq!(record.iter().filter(|&&b| b != 0).count(), 7);
+            if calls == 1 {
+                assert_eq!(record[0x8a], 1);
+            } else {
+                assert_eq!(record[0x8a], 0);
+                assert_eq!(record[0x3a], 0x10);
+                assert!(record[0x20..0x30].iter().all(|&b| b == 0xff));
+            }
             0
         })
         .unwrap();
-        assert_eq!(calls, 1);
+        assert_eq!(calls, 3);
     }
     #[test]
     fn stop_prevents_post_and_post_errors_are_uncertain_without_retry() {

@@ -46,7 +46,8 @@ pub struct InputReceipt {
     pub control: Option<Control>,
     pub method: &'static str,
     pub activation: bool,
-    // AX confirms action dispatch, never the user's intended application result.
+    // Successful native posting/AX dispatch, never application acceptance.
+    // Interrupted or ambiguous dispatch remains unknown.
     pub outcome: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub position: Option<crate::target::Point>,

@@ -13,6 +13,7 @@ use std::{
     collections::HashMap,
     ffi::c_void,
     ptr,
+    sync::OnceLock,
     time::{Duration, Instant},
 };
 type Ref = *const c_void;
@@ -687,43 +688,85 @@ pub(super) fn activate_for_click(
 
 /// Read-only focus samples. AX errors are unavailable evidence, not input gates.
 pub(super) struct FocusSample {
-    app: Option<Owned>,
-    window: Option<Owned>,
+    pid: Option<u32>,
+    window: Option<u32>,
 }
 impl FocusSample {
     pub(super) fn capture() -> Self {
-        let app = (|| -> Result<Owned> {
-            let system = Owned::take(unsafe { AXUIElementCreateSystemWide() })?;
-            read_result(unsafe { AXUIElementSetMessagingTimeout(system.0, 0.05) })?;
-            system.attr("AXFocusedApplication")
-        })()
-        .ok();
-        let window = app.as_ref().and_then(|app| {
+        let pid = super::window_input::foreground_pid();
+        let window = pid.and_then(|pid| {
+            let app = Owned::take(unsafe { AXUIElementCreateApplication(pid as i32) }).ok()?;
             read_result(unsafe { AXUIElementSetMessagingTimeout(app.0, 0.05) }).ok()?;
-            app.attr("AXFocusedWindow").ok()
+            let focused = app.attr("AXFocusedWindow").ok()?;
+            type WindowId = unsafe extern "C" fn(Ref, *mut u32) -> i32;
+            unsafe extern "C" {
+                fn dlsym(handle: *mut c_void, name: *const std::ffi::c_char) -> *mut c_void;
+            }
+            static GET_WINDOW: OnceLock<Option<WindowId>> = OnceLock::new();
+            let get = GET_WINDOW
+                .get_or_init(|| unsafe {
+                    let symbol =
+                        dlsym((-2_isize) as *mut c_void, c"_AXUIElementGetWindow".as_ptr());
+                    (!symbol.is_null())
+                        .then(|| std::mem::transmute::<*mut c_void, WindowId>(symbol))
+                })
+                .as_ref()?;
+            let mut id = 0;
+            (unsafe { get(focused.0, &mut id) } == 0 && id != 0).then_some(id)
         });
-        Self { app, window }
+        Self { pid, window }
+    }
+    pub(super) fn target_focused(&self, target: &Target) -> Option<bool> {
+        if target.kind != TargetKind::Window {
+            return None;
+        }
+        let pid = target.process_id?;
+        if self.pid? != pid {
+            return Some(false);
+        }
+        let window = target
+            .id
+            .strip_prefix("macos-window-")?
+            .parse::<u32>()
+            .ok()?;
+        Some(self.window? == window)
     }
     pub(super) fn compare(
         &self,
         after: &Self,
     ) -> (crate::input::ObservedChange, crate::input::ObservedChange) {
-        let compare = |left: &Option<Owned>, right: &Option<Owned>| {
-            use crate::input::ObservedChange::*;
-            match (left, right) {
-                (Some(a), Some(b)) => {
-                    if a.same(b) {
-                        Unchanged
-                    } else {
-                        Changed
-                    }
-                }
-                _ => Unknown,
-            }
-        };
         (
-            compare(&self.app, &after.app),
-            compare(&self.window, &after.window),
+            crate::input::observed_change(self.pid.as_ref(), after.pid.as_ref()),
+            crate::input::observed_change(self.window.as_ref(), after.window.as_ref()),
         )
+    }
+}
+
+#[cfg(test)]
+mod focus_tests {
+    use super::*;
+    use crate::backend::{CaptureBackend, FakeBackend};
+    #[test]
+    fn exact_window_and_foreground_process_are_both_required_for_focus() {
+        let mut target = FakeBackend
+            .targets(&Cancellation::default())
+            .unwrap()
+            .remove(0);
+        target.kind = TargetKind::Window;
+        target.id = "macos-window-42".into();
+        target.process_id = Some(7);
+        for (pid, window, expected) in [
+            (Some(7), Some(42), Some(true)),
+            (Some(8), Some(42), Some(false)),
+            (Some(7), Some(43), Some(false)),
+            (Some(8), None, Some(false)),
+            (Some(7), None, None),
+            (None, Some(42), None),
+        ] {
+            assert_eq!(
+                FocusSample { pid, window }.target_focused(&target),
+                expected
+            );
+        }
     }
 }

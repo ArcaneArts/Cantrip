@@ -274,6 +274,11 @@ const cuaKeyboardKeys = [
   ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
 ] as const;
 
+const cuaKeyboardKeySchema = z
+  .string()
+  .transform((key) => (/^[a-z]$/.test(key) ? key.toUpperCase() : key))
+  .pipe(z.enum(cuaKeyboardKeys));
+
 const cuaModifiersSchema = z
   .array(z.enum(["Shift", "Control", "Alt", "Meta"]))
   .max(4)
@@ -289,8 +294,8 @@ const cuaMouseButtonSchema = z.enum([
 
 const cuaTimelineFrameSchema = z.strictObject({
   atMs: z.number().int().min(0).max(CUA_MAX_TIMELINE_MS),
-  keyDown: z.array(z.string().max(16)).max(16).default([]),
-  keyUp: z.array(z.string().max(16)).max(16).default([]),
+  keyDown: z.array(cuaKeyboardKeySchema).max(16).default([]),
+  keyUp: z.array(cuaKeyboardKeySchema).max(16).default([]),
   pointerDown: cuaPointSchema.optional(),
   pointerUp: z.boolean().default(false),
   pointerModifiers: cuaModifiersSchema,
@@ -375,7 +380,7 @@ export const cuaInputCommandSchema = z.discriminatedUnion("kind", [
   }),
   z.strictObject({
     kind: z.literal("key"),
-    key: z.enum(cuaKeyboardKeys),
+    key: cuaKeyboardKeySchema,
     modifiers: cuaModifiersSchema,
   }),
   z.strictObject({

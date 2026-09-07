@@ -82,7 +82,7 @@ const nativeMessages: Record<CuaNativeErrorCode, string> = {
   "script-evaluation":
     "JavaScript evaluation failed in the script, not necessarily in native input. Check window matching and ordinary JavaScript errors; use cua.findWindows({application,title}) with a partial title because window titles can change (for example an audio indicator). Persistent top-level let/const bindings cannot be redeclared; use a block { ... } for temporary variables. Earlier host operations may have completed; do not replay input based on this error.",
   "script-action":
-    "Invalid CUA method arguments; that action was not dispatched. Read cua.help() for signatures. Mouse timeline example: [{atMs:0,pointerDown:{x:100,y:200}},{atMs:150,pointerUp:true}]. pointerUp must be true, not a point or button object; keyDown/keyUp must be arrays. Earlier actions in the script may have completed.",
+    "Invalid CUA method arguments; that action was not dispatched. Read cua.help('key') or cua.help('mouse') for signatures. Letter keys accept either case. Command-K: keyPress('k', ['Meta']) or keyChord(['k'], 500, ['Meta']). Mouse timeline example: [{atMs:0,pointerDown:{x:100,y:200}},{atMs:150,pointerUp:true}]. pointerUp must be true, not a point or button object; keyDown/keyUp must be arrays. Earlier actions in the script may have completed.",
   "protocol-version": "The computer-use protocol version is unsupported.",
   capacity: "The computer-use operation exceeded a runtime limit.",
   cancelled: "The computer-use operation was cancelled by the runtime.",

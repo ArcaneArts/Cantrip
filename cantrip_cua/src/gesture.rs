@@ -34,6 +34,7 @@ pub enum InputCommand {
         modifiers: Vec<Modifier>,
     },
     Key {
+        #[serde(deserialize_with = "deserialize_key")]
         key: String,
         #[serde(default)]
         modifiers: Vec<Modifier>,
@@ -192,6 +193,23 @@ impl InputCommand {
         }
     }
 }
+pub fn normalize_key(key: String) -> String {
+    if key.len() == 1 && key.as_bytes()[0].is_ascii_lowercase() {
+        key.to_ascii_uppercase()
+    } else {
+        key
+    }
+}
+fn deserialize_key<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> std::result::Result<String, D::Error> {
+    String::deserialize(d).map(normalize_key)
+}
+pub fn deserialize_keys<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> std::result::Result<Vec<String>, D::Error> {
+    Vec::<String>::deserialize(d).map(|keys| keys.into_iter().map(normalize_key).collect())
+}
 /// Physical ANSI key positions for shortcuts. Unicode text does not use this map.
 pub fn key_code(key: &str) -> Option<u16> {
     Some(match key {
@@ -348,6 +366,19 @@ pub fn wait_until(deadline: Instant, cancel: &Cancellation) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn lowercase_shortcuts_and_timeline_keys_are_canonicalized_before_validation() {
+        let key: InputCommand = serde_json::from_value(
+            serde_json::json!({"kind":"key","key":"k","modifiers":["Meta"]}),
+        )
+        .unwrap();
+        key.validate().unwrap();
+        assert_eq!(serde_json::to_value(&key).unwrap()["key"], "K");
+        let timeline: InputCommand = serde_json::from_value(serde_json::json!({"kind":"timeline","frames":[{"atMs":0,"keyDown":["k"]},{"atMs":10,"keyUp":["K"]}]})).unwrap();
+        timeline.validate().unwrap();
+        let duplicate: InputCommand = serde_json::from_value(serde_json::json!({"kind":"timeline","frames":[{"atMs":0,"keyDown":["k","K"]},{"atMs":10,"keyUp":["k","K"]}]})).unwrap();
+        assert!(duplicate.validate().is_err());
+    }
     #[test]
     fn prepared_press_is_a_single_bounded_unmodified_action() {
         for hold_ms in [0, 150, 1000, 2000, 7_200_000] {
