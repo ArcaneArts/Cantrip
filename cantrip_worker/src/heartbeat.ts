@@ -1,3 +1,8 @@
+import {
+  cuaEffectPreferencesSchema,
+  type CuaEffectPreferences,
+} from "@cantrip/protocol/computer-use-effects";
+import { readBoundedJsonResponse } from "./mcp/http.js";
 import os from "node:os";
 
 import {
@@ -104,7 +109,7 @@ export function createHeartbeat(
 export async function sendHeartbeat(
   config: WorkerConfig,
   heartbeat: WorkerHeartbeat,
-): Promise<void> {
+): Promise<CuaEffectPreferences | null> {
   const response = await fetch(
     `${config.serverUrl}/api/internal/workers/heartbeat`,
     {
@@ -123,4 +128,13 @@ export async function sendHeartbeat(
       `Cantrip Server rejected heartbeat with HTTP ${response.status}.`,
     );
   }
+  const value = await readBoundedJsonResponse(response, 256 * 1024);
+  // Older servers omit presentation preferences; they do not authorize effects.
+  const preferences =
+    value && typeof value === "object" && "computerUseEffects" in value
+      ? value.computerUseEffects
+      : undefined;
+  return preferences === undefined
+    ? null
+    : cuaEffectPreferencesSchema.parse(preferences);
 }

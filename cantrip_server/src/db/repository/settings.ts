@@ -289,6 +289,8 @@ export class SettingsRepository {
     const settings = firstOrThrow(rows, "loading user settings");
     return {
       computerUseEnabled: settings.computerUseEnabled,
+      computerUseEffects: settings.computerUseEffects,
+      computerUseEffectsRevision: settings.computerUseEffectsRevision,
       protectedComputerUseCursor: settings.protectedComputerUseCursor,
       theme: settings.theme as ThemePreference,
       highContrast: settings.highContrast,
