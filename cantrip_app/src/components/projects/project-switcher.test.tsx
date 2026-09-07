@@ -44,7 +44,6 @@ describe("project switcher", () => {
         selectedProjectId="project-2"
         workspaces={workspaces}
         onAddProject={vi.fn()}
-        onCreateTab={vi.fn()}
         onManageWorkspaces={vi.fn()}
         onOpenProjectSettings={vi.fn()}
         onRemoveProject={vi.fn()}
@@ -56,7 +55,8 @@ describe("project switcher", () => {
     expect(markup).toContain('aria-label="Switch project"');
     expect(markup).toContain("Client work");
     expect(markup).toContain("CareMap");
-    expect(markup).toContain('aria-label="Add tab to CareMap"');
+    expect(markup).toContain('aria-label="Project actions for CareMap"');
+    expect(markup).not.toContain('aria-label="Add tab');
     expect(markup).not.toContain('aria-label="Add project to Client work"');
     expect(markup).toContain('data-slot="project-switcher-footer"');
     expect(markup).toContain("justify-between");
@@ -69,7 +69,7 @@ describe("project switcher", () => {
     );
   });
 
-  it("hides the add-tab action when no project is selected", () => {
+  it("hides project actions when no project is selected", () => {
     const markup = renderToStaticMarkup(
       <ProjectSwitcher
         activeWorkspaceId="client"
@@ -77,7 +77,6 @@ describe("project switcher", () => {
         selectedProjectId={null}
         workspaces={workspaces}
         onAddProject={vi.fn()}
-        onCreateTab={vi.fn()}
         onManageWorkspaces={vi.fn()}
         onOpenProjectSettings={vi.fn()}
         onRemoveProject={vi.fn()}
@@ -87,11 +86,12 @@ describe("project switcher", () => {
     );
 
     expect(markup).toContain("Select project");
+    expect(markup).not.toContain('aria-label="Project actions');
     expect(markup).not.toContain('aria-label="Add tab');
     expect(markup).not.toContain("Select a project before adding a tab");
   });
 
-  it("routes the compact add action to the shared tab picker", () => {
+  it("offers project actions beside the current project instead of a tab picker", () => {
     const markup = renderToStaticMarkup(
       <ProjectSwitcher
         activeWorkspaceId="default"
@@ -99,17 +99,16 @@ describe("project switcher", () => {
         selectedProjectId="project-1"
         workspaces={workspaces}
         onAddProject={vi.fn()}
-        onCreateTab={vi.fn()}
         onManageWorkspaces={vi.fn()}
         onOpenProjectSettings={vi.fn()}
-        onOpenTabPicker={vi.fn()}
         onRemoveProject={vi.fn()}
         onSelectProject={vi.fn()}
         onSelectWorkspace={vi.fn()}
       />,
     );
 
-    expect(markup).toContain('aria-label="Choose tab for Cantrip"');
+    expect(markup).toContain('aria-label="Project actions for Cantrip"');
+    expect(markup).not.toContain('aria-label="Choose tab');
     expect(markup).not.toContain('aria-label="Add tab to Cantrip"');
   });
 });
