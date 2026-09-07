@@ -3934,6 +3934,20 @@ export function collaborationModeFingerprint(
   return JSON.stringify(collaborationMode);
 }
 
+type LoadThreadOptions = Pick<
+  RunAgentTurnOptions,
+  | "cwd"
+  | "mcpServers"
+  | "model"
+  | "permissionProfileId"
+  | "provider"
+  | "threadId"
+> & {
+  executionProfile?: RunAgentTurnOptions["executionProfile"];
+  resultMode?: RunAgentTurnOptions["resultMode"];
+  subagentDefaults?: RuntimeSubagentDefaults | null;
+};
+
 export class CodexAppServer implements CodexRuntime {
   readonly #activeTurns = new Map<string, ActiveTurn>();
   readonly #activeTurnsByThread = new Map<string, ActiveTurn>();
@@ -3949,6 +3963,7 @@ export class CodexAppServer implements CodexRuntime {
     string,
     CodexExternalImportStatus
   >();
+  readonly #threadLoads = new Map<string, Promise<string | null>>();
   readonly #consoleExecutions = new CodexConsoleExecutions();
   readonly #externalTurnBaselines = new Map<string, Set<string>>();
   readonly #externalThreadChanges = new CodexExternalThreadChangeCoalescer(
@@ -5966,22 +5981,44 @@ export class CodexAppServer implements CodexRuntime {
   }
 
   private async loadThread(
-    options: Pick<
-      RunAgentTurnOptions,
-      | "cwd"
-      | "mcpServers"
-      | "model"
-      | "permissionProfileId"
-      | "provider"
-      | "threadId"
-    > & {
-      executionProfile?: RunAgentTurnOptions["executionProfile"];
-      resultMode?: RunAgentTurnOptions["resultMode"];
-      subagentDefaults?: RuntimeSubagentDefaults | null;
-    },
+    options: LoadThreadOptions,
     create = true,
   ): Promise<string | null> {
+    if (!options.threadId) return this.loadThreadNow(options, create);
+    const key = options.threadId;
+    const previous = this.#threadLoads.get(key);
+    const pending = (previous ?? Promise.resolve())
+      .catch(() => undefined)
+      .then(() => this.loadThreadNow(options, create));
+    this.#threadLoads.set(key, pending);
+    try {
+      return await pending;
+    } finally {
+      if (this.#threadLoads.get(key) === pending) this.#threadLoads.delete(key);
+    }
+  }
+
+  private async loadThreadNow(
+    options: LoadThreadOptions,
+    create: boolean,
+  ): Promise<string | null> {
     const structuredReadOnly = options.resultMode?.kind === "structured";
+    // Plan/goal inspection supplies no MCP configuration. It must not turn an
+    // omitted field into an empty tool set or overwrite developer instructions.
+    // Loading an existing native thread without overrides preserves its config.
+    if (
+      options.threadId &&
+      options.mcpServers === undefined &&
+      !structuredReadOnly
+    ) {
+      if (this.#loadedThreads.has(options.threadId)) return options.threadId;
+      const resumed = (await this.request("thread/resume", {
+        threadId: options.threadId,
+      })) as ThreadResponse;
+      this.#loadedThreads.add(resumed.thread.id);
+      return resumed.thread.id;
+    }
+
     const permissionKey = structuredReadOnly
       ? "cantrip:task-read-only"
       : options.permissionProfileId;
