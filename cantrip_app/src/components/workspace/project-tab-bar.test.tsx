@@ -353,6 +353,7 @@ describe("project pane tab strip", () => {
       "preview-file.ts",
     );
     expect(previewButton.props.className).toContain("italic");
+    expect(JSON.stringify(renderer.toJSON())).toContain("Color…");
 
     await act(async () => previewButton.props.onClick());
     expect(onSelect).toHaveBeenCalledOnce();
@@ -436,6 +437,8 @@ describe("project pane tab strip", () => {
     expect(markup).toContain("index.ts");
     expect(markup).toContain("Agent chat");
     expect(markup.match(/role="tab"/gu)).toHaveLength(2);
+    expect(markup.match(/Color…/gu)).toHaveLength(2);
+    expect(markup.match(/data-tab-color="neutral"/gu)).toHaveLength(2);
   });
 
   it("uses visual indexes for drag targets when persisted positions are sparse", async () => {

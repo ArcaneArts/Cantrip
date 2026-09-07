@@ -220,6 +220,7 @@ describe("dock rail tabs", () => {
       });
 
       const rail = renderer.root.findByProps({ "data-dock-rail": region });
+      expect(textContent(rail).match(/Color…/gu)).toHaveLength(2);
       expect(rail.props.className.split(/\s+/u)).not.toContain("bg-background");
       expect(sortableState.contexts.at(-1)).toEqual({
         items: [
