@@ -213,6 +213,7 @@ describe("desktop app mode menu", () => {
       );
 
       const label = showSettings ? "Close settings" : "Open settings";
+      expect(markup.includes("display:none")).toBe(showSettings);
       expect(markup.indexOf("Server switcher")).toBeLessThan(
         markup.indexOf(`aria-label="${label}"`),
       );

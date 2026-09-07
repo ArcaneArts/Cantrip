@@ -1,4 +1,5 @@
 import {
+  ArrowLeft,
   FolderOpen,
   GitBranch,
   PanelLeftOpen,
@@ -117,6 +118,34 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
       : appMode === "ide"
         ? switchToChat
         : switchToIde;
+  if (showSettings && !compactShell) {
+    return (
+      <header
+        className={cn(
+          "relative z-30 flex shrink-0 items-center gap-4 px-4",
+          overlayTitlebar ? "h-8 text-xs" : "h-16 text-sm",
+        )}
+        data-slot="content-titlebar"
+        data-tauri-drag-region={overlayTitlebar ? "" : undefined}
+        style={{
+          paddingLeft: desktopPopoutTitlebarLeftInset(true, overlayTitlebar),
+        }}
+      >
+        <Button
+          variant="ghost"
+          size="sm"
+          className={overlayTitlebar ? "h-6 text-xs" : undefined}
+          onClick={() => setShowSettings(false)}
+        >
+          <ArrowLeft className="size-4" />
+          {appMode === "ide" ? "Back to Project" : "Back to Chat"}
+        </Button>
+        <span data-tauri-drag-region={overlayTitlebar ? "" : undefined}>
+          Settings
+        </span>
+      </header>
+    );
+  }
   return (
     <>
       {compactShell && showImporter ? (
