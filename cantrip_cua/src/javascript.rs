@@ -146,15 +146,21 @@ for (const name of ['SharedArrayBuffer', 'Atomics', 'WeakRef', 'FinalizationRegi
 }
 ((host, stringify) => {
   const call = action => host(stringify(action));
+  const pointerPress = (point, holdMs = 150, modifiers = []) => {
+    if (!Array.isArray(modifiers)) throw new Error('Pointer modifiers must be an array');
+    return modifiers.length === 0
+      ? call({operation:'perform',command:{kind:'prepared-press',point,holdMs}})
+      : call({operation:'perform',command:{kind:'timeline',frames:[{atMs:0,pointerDown:point,pointerModifiers:modifiers},{atMs:holdMs,pointerUp:true}]}});
+  };
   Object.defineProperty(globalThis, 'cua', { value: Object.freeze({
-    help: () => ({apiVersion:5, methods:{preparedPointerPress:"preparedPointerPress(point, holdMs=150) queues target-only AppKit preparation then one unmodified pointer press in the same native request; experimental, no foreground/raise request; receipt activation:true and delivery unverified",prepareWindowInput:"prepareWindowInput() requests target-only AppKit activation without requesting WindowServer foreground or raising; no mouse/modifier input; experimental, inspect receipt effects",requestFocus:"requestFocus() activates and raises the attached window; sends no click",commandClick:"commandClick(point, holdMs=150) sends a real Command-modified mouse press without requesting focus",pointerPress:"pointerPress(point, holdMs=150, modifiers=[]) where modifiers are Shift,Control,Alt,Meta; modifiers are NOT held timeline keys",inputTimeline:"inputTimeline(frames): atMs, keyDown, keyUp, pointerDown, pointerUp, pointerModifiers on pointerDown",keyChord:"keyChord(keys,holdMs=500)"}, limits:{scriptBytes:2097152,hostCalls:16384,timelineFrames:131072,timelineMs:7200000,hostActionBytes:15728640,outputBytes:32768,maxHeldKeys:16,maxSnapshots:2,maxWallMs:7500000}, notes:"Use one native timeline for a preplanned stable interface to avoid model round trips between music chunks. No automatic focus or retries after uncertain input. Command is visible to the target and may change link/selection behavior. An installed helper update requires a worker restart to replace an already running helper."}),
+    help: () => ({apiVersion:6, methods:{click:"click(point?) sends one ordinary click with automatic target-only preparation; omitted point uses the agent cursor",preparedPointerPress:"preparedPointerPress(point, holdMs=150) queues target-only AppKit preparation then one unmodified pointer press in the same native request; experimental, no foreground/raise request; receipt activation:true and delivery unverified",prepareWindowInput:"prepareWindowInput() requests target-only AppKit activation without requesting WindowServer foreground or raising; no mouse/modifier input; experimental, inspect receipt effects",requestFocus:"requestFocus() activates and raises the attached window; sends no click",commandClick:"commandClick(point, holdMs=150) sends a real Command-modified mouse press without requesting focus",pointerPress:"pointerPress(point, holdMs=150, modifiers=[]) automatically prepares unmodified presses; explicit Shift,Control,Alt,Meta retain modified delivery; modifiers are NOT held timeline keys",inputTimeline:"inputTimeline(frames): atMs, keyDown, keyUp, pointerDown, pointerUp, pointerModifiers on pointerDown",keyChord:"keyChord(keys,holdMs=500)"}, limits:{scriptBytes:2097152,hostCalls:16384,timelineFrames:131072,timelineMs:7200000,hostActionBytes:15728640,outputBytes:32768,maxHeldKeys:16,maxSnapshots:2,maxWallMs:7500000}, notes:"Use one native timeline for a preplanned stable interface to avoid model round trips between music chunks. No automatic foreground switch or retries after uncertain input. Command is visible to the target and may change link/selection behavior. An installed helper update requires a worker restart to replace an already running helper."}),
     preparedPointerPress: (point, holdMs = 150) => call({operation:'perform',command:{kind:'prepared-press',point,holdMs}}),
     prepareWindowInput: () => call({operation:'perform',command:{kind:'window-input'}}),
     requestFocus: () => call({operation:'perform',command:{kind:'focus'}}),
     commandClick: (point, holdMs = 150) => call({operation:'perform',command:{kind:'timeline',frames:[{atMs:0,pointerDown:point,pointerModifiers:['Meta']},{atMs:holdMs,pointerUp:true}]}}),
     keyChord: (keys, holdMs = 500) => call({operation:'perform', command:{kind:'timeline',frames:[{atMs:0,keyDown:keys},{atMs:holdMs,keyUp:keys}]}}),
     inputTimeline: frames => call({operation:'perform',command:{kind:'timeline',frames}}),
-    pointerPress: (point, holdMs = 150, modifiers = []) => call({operation:'perform',command:{kind:'timeline',frames:[{atMs:0,pointerDown:point,pointerModifiers:modifiers},{atMs:holdMs,pointerUp:true}]}}),
+    pointerPress,
     typeText: text => call({operation:'perform', command:{kind:'text',text}}),
     keyPress: (key, modifiers = []) => call({operation:'perform', command:{kind:'key',key,modifiers}}),
     clickDrag: (start, end, durationMs = 200) => call({operation:'perform', command:{kind:'drag',start,end,durationMs}}),
@@ -168,7 +174,7 @@ for (const name of ['SharedArrayBuffer', 'Atomics', 'WeakRef', 'FinalizationRegi
       return call({operation:'targets', ...options});
     },
     attach: target => call({operation:'attach', target}),
-    click: point => call({operation:'click', point}),
+    click: point => pointerPress(point),
     backgroundClick: point => call({operation:'backgroundClick', point}),
     processClick: point => call({operation:'processClick', point}),
     globalClick: point => call({operation:'globalClick', point}),
@@ -859,6 +865,18 @@ mod tests {
     fn macro_bootstrap_sends_bounded_host_commands() {
         for (script, expected) in [
             (
+                r#"await cua.click({x:12,y:34})"#,
+                json!({"operation":"perform","command":{"kind":"prepared-press","point":{"x":12,"y":34},"holdMs":150}}),
+            ),
+            (
+                r#"await cua.click()"#,
+                json!({"operation":"perform","command":{"kind":"prepared-press","holdMs":150}}),
+            ),
+            (
+                r#"await cua.pointerPress({x:12,y:34},7200000,[])"#,
+                json!({"operation":"perform","command":{"kind":"prepared-press","point":{"x":12,"y":34},"holdMs":7200000}}),
+            ),
+            (
                 r#"await cua.preparedPointerPress({x:12,y:34},1000)"#,
                 json!({"operation":"perform","command":{"kind":"prepared-press","point":{"x":12,"y":34},"holdMs":1000}}),
             ),
@@ -880,7 +898,7 @@ mod tests {
             ),
             (
                 r#"await cua.pointerPress({x:10,y:20},200)"#,
-                json!({"operation":"perform","command":{"kind":"timeline","frames":[{"atMs":0,"pointerDown":{"x":10,"y":20},"pointerModifiers":[]},{"atMs":200,"pointerUp":true}]}}),
+                json!({"operation":"perform","command":{"kind":"prepared-press","point":{"x":10,"y":20},"holdMs":200}}),
             ),
             (
                 r#"await cua.pointerPress({x:10,y:20},150,["Meta"])"#,

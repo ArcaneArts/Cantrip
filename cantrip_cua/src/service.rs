@@ -642,7 +642,9 @@ impl<B: CaptureBackend> CuaService<B> {
                         target.bounds.to_global(*end)?;
                         *start
                     }
-                    crate::gesture::InputCommand::PreparedPress { point, .. } => *point,
+                    crate::gesture::InputCommand::PreparedPress { point, .. } => {
+                        point.unwrap_or(state.cursor.position)
+                    }
                     crate::gesture::InputCommand::Scroll { point, .. } => {
                         point.unwrap_or(state.cursor.position)
                     }

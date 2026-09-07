@@ -435,16 +435,25 @@ export class CantripCuaService {
           signal: active,
           ...(operation === "input.perform" &&
           "command" in fields &&
-          (fields.command as CuaInputCommand).kind === "timeline"
+          ["timeline", "prepared-press"].includes(
+            (fields.command as CuaInputCommand).kind,
+          )
             ? {
                 timeoutMs: Math.max(
                   15_000,
-                  (
-                    fields.command as Extract<
-                      CuaInputCommand,
-                      { kind: "timeline" }
-                    >
-                  ).frames.at(-1)!.atMs + 5_000,
+                  ((fields.command as CuaInputCommand).kind === "prepared-press"
+                    ? (
+                        fields.command as Extract<
+                          CuaInputCommand,
+                          { kind: "prepared-press" }
+                        >
+                      ).holdMs
+                    : (
+                        fields.command as Extract<
+                          CuaInputCommand,
+                          { kind: "timeline" }
+                        >
+                      ).frames.at(-1)!.atMs) + 5_000,
                 ),
               }
             : {}),
@@ -491,7 +500,7 @@ export class CantripCuaService {
                 record.state?.cursor.position,
               )
             : command.kind === "prepared-press"
-              ? command.point
+              ? (command.point ?? record.state?.cursor.position)
               : command.kind === "drag"
                 ? command.end
                 : command.kind === "scroll"

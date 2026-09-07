@@ -291,8 +291,8 @@ export const cuaInputCommandSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("window-input") }),
   z.strictObject({
     kind: z.literal("prepared-press"),
-    point: cuaPointSchema,
-    holdMs: z.number().int().min(1).max(2000),
+    point: cuaPointSchema.optional(),
+    holdMs: z.number().int().min(0).max(7200000),
   }),
   z.strictObject({ kind: z.literal("timeline"), frames: cuaTimelineSchema }),
   z.strictObject({

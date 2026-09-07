@@ -293,8 +293,8 @@ it("keeps prepared press unmodified, bounded and visibly uncertain", () => {
     { modifiers: ["Meta"] },
     { globalInput: true },
     { targetId: "other" },
-    { holdMs: 0 },
-    { holdMs: 2001 },
+    { holdMs: -1 },
+    { holdMs: 7200001 },
   ]) {
     expect(
       cuaInputCommandSchema.safeParse({ ...command, ...extra }).success,
@@ -321,4 +321,18 @@ it("keeps prepared press unmodified, bounded and visibly uncertain", () => {
   expect(matchesInputReceipt(receipt, receipt.method, { x: 13, y: 34 })).toBe(
     false,
   );
+});
+
+it("preserves cursor-only clicks and the existing long pointer hold range", () => {
+  expect(
+    cuaInputCommandSchema.parse({ kind: "prepared-press", holdMs: 150 }),
+  ).toEqual({ kind: "prepared-press", holdMs: 150 });
+  for (const holdMs of [0, 7200000])
+    expect(
+      cuaInputCommandSchema.safeParse({
+        kind: "prepared-press",
+        point: { x: 1, y: 2 },
+        holdMs,
+      }).success,
+    ).toBe(true);
 });
