@@ -5742,6 +5742,7 @@ export async function createTerminal(
   paneId?: string,
   target?: ExecutionTarget,
   directoryPath?: string,
+  targetRegion?: ProjectPaneRegion,
 ) {
   const id = crypto.randomUUID();
   const titleProtection = await surfaceTitleEncryption.protect(
@@ -5766,6 +5767,7 @@ export async function createTerminal(
         stateProtection,
         ...placement,
         ...(paneId ? { paneId } : {}),
+        ...(!paneId && targetRegion ? { targetRegion } : {}),
       }),
     ),
   );

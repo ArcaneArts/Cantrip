@@ -211,7 +211,13 @@ export function PersistentSurfaceLayer({
               ? sidebarFilePreview.paneId
               : (selectedPane?.id ?? selectedPaneSurfaces.at(-1)?.paneId);
             if (selectedProject) {
-              createProjectSurface(selectedProject.id, kind, paneId, target);
+              createProjectSurface(
+                selectedProject.id,
+                kind,
+                paneId,
+                target,
+                paneId ? undefined : "center",
+              );
             }
           }}
           onClose={closeSurfaceView}

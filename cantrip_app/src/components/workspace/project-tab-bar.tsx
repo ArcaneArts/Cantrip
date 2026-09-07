@@ -55,6 +55,7 @@ import {
   workspaceSurfaceDropPreview,
   workspaceSurfaceDragId,
   workspacePaneStripDropId,
+  workspaceRegionDropId,
 } from "@/lib/workspace-dnd-model";
 
 export interface ProjectPaneTabStripProps {
@@ -159,19 +160,25 @@ export function ProjectPaneTabStrip({
     drag: workspaceDnd.activeDrag,
     drop: workspaceDnd.dropTarget,
     memberCount: surfaces.length,
-    paneId,
+    paneId: paneId === "empty" ? null : paneId,
     region: paneRegion,
   });
   const paneStripDrop = useDroppable({
-    id: workspacePaneStripDropId(paneId),
-    disabled: paneId === "empty" || projectId === "empty",
+    id:
+      paneId === "empty"
+        ? workspaceRegionDropId("center")
+        : workspacePaneStripDropId(paneId),
+    disabled: projectId === "empty",
     data: {
-      drop: {
-        type: "pane-strip",
-        projectId,
-        paneId,
-        memberPosition: surfaces.length,
-      },
+      drop:
+        paneId === "empty"
+          ? { type: "region", projectId, paneId: null, region: "center" }
+          : {
+              type: "pane-strip",
+              projectId,
+              paneId,
+              memberPosition: surfaces.length,
+            },
     } satisfies WorkspaceDndData,
   });
 

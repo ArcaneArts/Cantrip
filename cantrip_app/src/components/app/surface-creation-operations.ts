@@ -400,8 +400,10 @@ export function useTerminalCreationOperation({
       worktreeId,
       target,
       initialInput: _initialInput,
+      targetRegion,
     }: {
       initialInput?: string;
+      targetRegion?: "center" | "right" | "bottom" | "left";
       projectId: string;
       directoryPath?: string;
       paneId?: string;
@@ -416,6 +418,7 @@ export function useTerminalCreationOperation({
         paneId,
         target,
         directoryPath,
+        targetRegion,
       ),
     onSuccess: (terminal, { initialInput }) => {
       queryClient.setQueryData<TerminalSummary[]>(
