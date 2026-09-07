@@ -409,6 +409,7 @@ impl CaptureBackend for MacOsBackend {
         let selected = target.clone();
         let (pending, receiver) = self.calls.begin(cancellation)?;
         let request = pending.clone();
+        request.stage(pending::CaptureStage::Inventory);
         diagnostic_phase("capture-queued");
         DispatchQueue::main().exec_async(move || {
             if request.cancelled() { return; }
@@ -550,7 +551,8 @@ unsafe fn read_inventory(
             )?,
             Err(error) => {
                 diagnostic_candidate_rejection("display", &error);
-                output.truncated = true;
+                // Invalid/uncapturable entries are not missing selectable
+                // targets. Only pagination truncates the usable inventory.
                 let native_id = unsafe { display.displayID() };
                 let id = format!("macos-display-{native_id}");
                 if tracked.contains(&id) {
@@ -585,7 +587,8 @@ unsafe fn read_inventory(
             )?,
             Err(error) => {
                 diagnostic_candidate_rejection("window", &error);
-                output.truncated = true;
+                // Invalid/uncapturable entries are not missing selectable
+                // targets. Only pagination truncates the usable inventory.
                 let id = format!("macos-window-{}", unsafe { window.windowID() });
                 if tracked.contains(&id) {
                     output
@@ -891,6 +894,7 @@ unsafe fn display_candidate(
 }
 
 unsafe fn begin_capture(source: SelectedSource, pending: Arc<Pending<NativeCapture>>) {
+    pending.stage(pending::CaptureStage::Image);
     if pending.cancelled() {
         return;
     }

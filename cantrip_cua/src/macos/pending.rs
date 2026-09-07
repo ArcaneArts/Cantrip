@@ -5,7 +5,7 @@ use crate::{
 use std::{
     sync::{
         Arc,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -22,10 +22,18 @@ impl Drop for Permit {
     }
 }
 
+#[derive(Clone, Copy)]
+#[repr(u8)]
+pub(super) enum CaptureStage {
+    Inventory = 1,
+    Image = 2,
+}
+
 pub(super) struct Pending<T> {
     _permit: Permit,
     cancellation: Cancellation,
     retired: AtomicBool,
+    stage: AtomicU8,
     sender: crossbeam_channel::Sender<Result<T>>,
 }
 
@@ -50,6 +58,7 @@ impl NativeCalls {
                 _permit: Permit(self.0.clone()),
                 cancellation: cancellation.clone(),
                 retired: AtomicBool::new(false),
+                stage: AtomicU8::new(0),
                 sender,
             }),
             receiver,
@@ -58,6 +67,10 @@ impl NativeCalls {
 }
 
 impl<T> Pending<T> {
+    pub(super) fn stage(&self, stage: CaptureStage) {
+        self.stage.store(stage as u8, Ordering::Release);
+    }
+
     pub(super) fn cancelled(&self) -> bool {
         self.retired.load(Ordering::Acquire) || self.cancellation.is_cancelled()
     }
@@ -83,7 +96,11 @@ impl<T> Pending<T> {
             let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
                 self.retired.store(true, Ordering::Release);
                 return Err(CuaError::new(
-                    ErrorCode::CaptureFailed,
+                    match self.stage.load(Ordering::Acquire) {
+                        1 => ErrorCode::CaptureInventoryTimeout,
+                        2 => ErrorCode::CaptureImageTimeout,
+                        _ => ErrorCode::CaptureFailed,
+                    },
                     "macOS did not complete capture before its deadline.",
                 ));
             };
@@ -146,6 +163,25 @@ mod tests {
         );
         pending.deliver(Ok(1));
         assert!(receiver.try_recv().is_err());
+    }
+    #[test]
+    fn timeout_identifies_the_unfinished_native_stage() {
+        for (stage, expected) in [
+            (CaptureStage::Inventory, ErrorCode::CaptureInventoryTimeout),
+            (CaptureStage::Image, ErrorCode::CaptureImageTimeout),
+        ] {
+            let (pending, receiver) = NativeCalls::default()
+                .begin::<()>(&Cancellation::default())
+                .unwrap();
+            pending.stage(stage);
+            assert_eq!(
+                pending
+                    .wait_for(&receiver, Duration::ZERO)
+                    .unwrap_err()
+                    .code,
+                expected
+            );
+        }
     }
     #[test]
     fn callback_delivery_never_blocks_or_replays() {

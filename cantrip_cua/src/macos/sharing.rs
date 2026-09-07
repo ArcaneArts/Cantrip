@@ -5,7 +5,7 @@ use super::{
     NativeCapture, SelectedSource, begin_capture, diagnostic_phase, native_error, pending::Pending,
 };
 use crate::{
-    error::{CuaError, ErrorCode},
+    error::CuaError,
     service::{MAX_SESSIONS, SessionState},
     target::{Bounds, TargetKind},
 };
@@ -82,7 +82,6 @@ struct Lease {
     bounds: Bounds,
     token: Arc<()>,
     last_used: Instant,
-    waiting: Option<(SelectedSource, Arc<Pending<NativeCapture>>)>,
 }
 impl Drop for Lease {
     fn drop(&mut self) {
@@ -234,7 +233,15 @@ pub(super) unsafe fn capture(
     let work = RefCell::new(Some((inputs, source, pending)));
     let block = RcBlock::new(move || {
         if let Some((inputs, source, pending)) = work.borrow_mut().take() {
-            start_or_reuse(inputs, source, pending);
+            if pending.cancelled() {
+                return;
+            }
+            // The keep-rendering/sharing stream is auxiliary. Its asynchronous
+            // startup must never gate or consume the screenshot deadline.
+            start_or_reuse(inputs, &source.candidate.target);
+            unsafe {
+                begin_capture(source, pending);
+            }
         }
     });
     unsafe {
@@ -242,15 +249,10 @@ pub(super) unsafe fn capture(
     }
 }
 
-fn start_or_reuse(inputs: Inputs, source: SelectedSource, pending: Arc<Pending<NativeCapture>>) {
-    if pending.cancelled() {
-        return;
-    }
-    let target = &source.candidate.target;
+fn start_or_reuse(inputs: Inputs, target: &crate::target::Target) {
     let key = (target.id.clone(), target.generation);
     let reuse = STREAMS.with_borrow_mut(|state| {
         if let Some(lease) = state.leases.get_mut(&key)
-            && lease.waiting.is_none()
             && lease.bounds == target.bounds
             && unsafe { lease.inputs.display.displayID() == inputs.display.displayID() }
             && !lease.output.ivars().stopped.load(Ordering::Acquire)
@@ -263,16 +265,10 @@ fn start_or_reuse(inputs: Inputs, source: SelectedSource, pending: Arc<Pending<N
     });
     if reuse {
         diagnostic_phase("window-sharing-reused");
-        unsafe {
-            begin_capture(source, pending);
-        }
         return;
     }
     if STREAMS.with_borrow(|state| state.leases.len() >= MAX_SESSIONS) {
-        pending.deliver(Err(CuaError::new(
-            ErrorCode::Capacity,
-            "Active window sharing limit reached.",
-        )));
+        diagnostic_phase("window-sharing-capacity");
         return;
     }
     let output: Retained<Output> = unsafe {
@@ -289,14 +285,14 @@ fn start_or_reuse(inputs: Inputs, source: SelectedSource, pending: Arc<Pending<N
             Some(ProtocolObject::from_ref(&*output)),
         )
     };
-    if let Err(error) = unsafe {
+    if let Err(_error) = unsafe {
         stream.addStreamOutput_type_sampleHandlerQueue_error(
             ProtocolObject::from_ref(&*output),
             SCStreamOutputType::Screen,
             Some(DispatchQueue::main()),
         )
     } {
-        pending.deliver(Err(native_error(&error)));
+        diagnostic_phase("window-sharing-output-error");
         return;
     }
     let token = Arc::new(());
@@ -307,7 +303,6 @@ fn start_or_reuse(inputs: Inputs, source: SelectedSource, pending: Arc<Pending<N
         bounds: target.bounds,
         token: token.clone(),
         last_used: Instant::now(),
-        waiting: Some((source, pending)),
     };
     STREAMS.with_borrow_mut(|state| {
         state.leases.insert(key.clone(), lease);
@@ -343,31 +338,21 @@ fn start_or_reuse(inputs: Inputs, source: SelectedSource, pending: Arc<Pending<N
     }
 }
 fn finish_start(key: Key, token: Arc<()>, error: Option<CuaError>) -> bool {
-    let work = STREAMS.with_borrow_mut(|state| {
-        let lease = state.leases.get_mut(&key)?;
+    STREAMS.with_borrow_mut(|state| {
+        let Some(lease) = state.leases.get(&key) else {
+            return false;
+        };
         if !Arc::ptr_eq(&lease.token, &token) {
-            return None;
+            return false;
         }
-        let work = lease.waiting.take()?;
-        if error.is_some() || work.1.cancelled() {
-            state.leases.remove(&key);
-        }
-        Some(work)
-    });
-    if let Some((source, pending)) = work {
-        if let Some(error) = error {
+        if error.is_some() {
             diagnostic_phase("window-sharing-start-error");
-            pending.deliver(Err(error));
-        } else if !pending.cancelled() {
+            state.leases.remove(&key);
+        } else {
             diagnostic_phase("window-sharing-started");
-            unsafe {
-                begin_capture(source, pending);
-            }
         }
         true
-    } else {
-        false
-    }
+    })
 }
 
 #[cfg(test)]

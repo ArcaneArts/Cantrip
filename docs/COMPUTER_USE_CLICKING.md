@@ -885,3 +885,32 @@ and the computer-use setting apply. The receipt is `method:"system-media"`,
 not proof that a particular player reacted. The event pair releases on Stop;
 no mouse movement or foreground request is made. Tests inspect event buffers
 without posting media input. Restart the worker to load the API 14 helper.
+
+## Observation recovery and startup (API 16)
+
+A failed screenshot or recoverable script/argument error clears the failed
+QuickJS engine and its variables, while retaining the separately authorized
+window attachment. The next evaluation can use `await cua.snapshot()` directly.
+Do not replay earlier input just because its verification screenshot failed.
+Actual Stop, permission revocation, transport failure and explicit reset still
+close the attachment. Each subsequent action still passes authorization.
+
+Use `await cua.wait(800)` for a short pause. Browser timers such as `setTimeout`
+are unavailable in the sandbox.
+
+Window inventory pagination describes selectable targets. Omitted invalid
+native entries no longer make a complete scan look truncated and force a second
+attach call when `openWindow` finds exactly one match. Genuine partial pages
+still carry `nextCursor`/`truncated` and ambiguous matches still require selection.
+
+The auxiliary window sharing stream starts independently of screenshots. Its
+startup, capacity, or interruption cannot reject or delay the screenshot behind
+its asynchronous completion. ScreenCaptureKit still owns the actual screenshot
+operation. If it exceeds the existing 10-second deadline, errors distinguish
+`capture-inventory-timeout` from `capture-image-timeout`; neither closes a healthy
+attachment or proves whether preceding input succeeded.
+
+Manual retest: on the same already-authorized application, open one matching
+window and request several snapshots across ordinary UI changes. There should be
+no reattach after a capture error. Record any timeout code and elapsed tool time.
+This check does not require sending messages or repeating unverified input.

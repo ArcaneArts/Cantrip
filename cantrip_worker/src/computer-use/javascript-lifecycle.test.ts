@@ -356,6 +356,70 @@ describe("JavaScript lifetime and reset regressions", () => {
 });
 
 describe("worker-owned JavaScript snapshot disposal", () => {
+  it.each([
+    "capture-failed",
+    "capture-inventory-timeout",
+    "capture-image-timeout",
+    "script-action",
+    "script-evaluation",
+    "script-syntax",
+  ] as const)(
+    "retains the authorized attachment after %s without replay or another attach",
+    async (code) => {
+      const { service, setEvaluate, beforeSnapshot, request } = fixture();
+      const opts = options();
+      setEvaluate(async (_source, requestOptions) => attach(requestOptions));
+      await service.evaluateJavascript(scope, "attach", opts);
+      const attached = service.javascriptSession(scope, opts.executionSignal)!;
+      const signal = service.javascriptSessionSignal(
+        scope,
+        opts.executionSignal,
+      )!;
+      beforeSnapshot(() => {
+        throw new CuaNativeError(code);
+      });
+      setEvaluate(async (_source, requestOptions) =>
+        host(requestOptions, { operation: "snapshot" }),
+      );
+      await expect(
+        service.evaluateJavascript(scope, "snapshot", opts),
+      ).rejects.toThrow("window attachment was retained");
+      expect(signal.aborted).toBe(false);
+      expect(service.javascriptSession(scope, opts.executionSignal)).toEqual(
+        attached,
+      );
+      expect(
+        request.mock.calls.filter(
+          ([input]) =>
+            (input as { operation: string }).operation === "target.attach",
+        ),
+      ).toHaveLength(1);
+      expect(
+        request.mock.calls.some(([input]) =>
+          ["javascript.reset", "session.close"].includes(
+            (input as { operation: string }).operation,
+          ),
+        ),
+      ).toBe(false);
+      beforeSnapshot(undefined);
+      const captured = await service.evaluateJavascript(
+        scope,
+        "snapshot",
+        opts,
+      );
+      expect(captured.images).toHaveLength(1);
+      expect(captured.images[0]!.session.binding.sessionId).toBe(
+        attached.binding.sessionId,
+      );
+      // Stop still reaches the retained attachment and cannot be undone by retry.
+      service.cancelScope(scope);
+      expect(signal.aborted).toBe(true);
+      await expect(
+        service.evaluateJavascript(scope, "snapshot", opts),
+      ).rejects.toMatchObject({ code: "cancelled" });
+    },
+  );
+
   it("returns only actual worker captures, not an image claimed by script output", async () => {
     const { service, setEvaluate, payloads } = fixture();
     const forged = { images: [{ payload: "forged" }], imageIndex: 99 };
