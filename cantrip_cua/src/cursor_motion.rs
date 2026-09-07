@@ -14,7 +14,8 @@ pub fn travel(start: Point, end: Point) -> Vec<(Duration, Point)> {
     (1..=steps)
         .map(|i| {
             let t = f64::from(i) / f64::from(steps);
-            let eased = t * t * (3.0 - 2.0 * t);
+            // Cubic ease-out: maximum speed immediately, then deceleration.
+            let eased = 1.0 - (1.0 - t).powi(3);
             let point = if i == steps {
                 end
             } else {
@@ -104,7 +105,16 @@ mod tests {
             assert!(points.last().unwrap().0 <= Duration::from_millis(90));
             assert!(points.len() <= 6);
             let mut last = Duration::ZERO;
+            let mut previous = start;
+            let mut previous_step = f64::INFINITY;
             for (at, p) in points {
+                let step = (p.x - previous.x).hypot(p.y - previous.y);
+                assert!(
+                    step <= previous_step,
+                    "equal-time steps must decelerate from the start"
+                );
+                previous = p;
+                previous_step = step;
                 assert!(at >= last);
                 last = at;
                 assert!((start.x.min(end.x)..=start.x.max(end.x)).contains(&p.x));
