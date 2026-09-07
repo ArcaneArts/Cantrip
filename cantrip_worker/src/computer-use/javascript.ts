@@ -472,11 +472,29 @@ export class CuaJavascriptContexts {
         hostTransportFailure
           ? hostTransportFailure
           : error;
-      // Failed/ambiguous scripts are never replayed. Their variables, queued
-      // host work and native attachment are disposed together.
-      this.dispose(context, false);
+      // Rust drops the failed QuickJS engine (including queued jobs) before
+      // returning an error. A failed observation or script does not invalidate
+      // the separately owned native attachment. Keep it for the next explicitly
+      // requested action; never replay this evaluation or its input.
+      const keepAttachment =
+        failure instanceof CuaNativeError &&
+        [
+          "capture-failed",
+          "capture-inventory-timeout",
+          "capture-image-timeout",
+          "script-syntax",
+          "script-evaluation",
+          "script-action",
+          "control-not-found",
+          "control-ambiguous",
+          "control-inspection-incomplete",
+          "unsupported",
+        ].includes(failure.code) &&
+        !active.aborted &&
+        this.contexts.get(context.identity) === context;
+      if (!keepAttachment) this.dispose(context, false);
       if (failure instanceof CuaNativeError) {
-        failure.message += ` Evaluation context: ${completedHostCalls} completed host operations; last requested operation: ${lastHostOperation ?? "none"}. ${inputRequested ? "Input was requested; use its receipt/error to determine dispatch, and do not replay uncertain input." : "No input operation was requested in this evaluation."} JavaScript state and attachment were cleared; another reset is unnecessary.`;
+        failure.message += ` Evaluation context: ${completedHostCalls} completed host operations; last requested operation: ${lastHostOperation ?? "none"}. ${inputRequested ? "Input was requested; use its receipt/error to determine dispatch, and do not replay uncertain input." : "No input operation was requested in this evaluation."} ${keepAttachment ? (context.sessionId ? "JavaScript variables were cleared, but the window attachment was retained. Continue with cua.snapshot() or the next requested action; do not reset or reattach solely because of this error." : "JavaScript variables were cleared; no window is attached. Correct the script and continue without resetting.") : "JavaScript state and attachment were cleared; another reset is unnecessary."}`;
       }
       throw failure;
     } finally {

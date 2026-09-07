@@ -57,6 +57,8 @@ export const CUA_NATIVE_ERROR_CODES = [
   "input-unknown",
   "input-failed",
   "capture-failed",
+  "capture-inventory-timeout",
+  "capture-image-timeout",
   "permission-denied",
 ] as const;
 export type CuaNativeErrorCode = (typeof CUA_NATIVE_ERROR_CODES)[number];
@@ -104,6 +106,10 @@ const nativeMessages: Record<CuaNativeErrorCode, string> = {
   "input-unknown":
     "Input outcome is unknown. Do not retry or fall back; take a fresh snapshot to inspect the result.",
   "input-failed": "The native input request failed before dispatch.",
+  "capture-inventory-timeout":
+    "macOS did not finish enumerating the capture target within 10 seconds. No screenshot was produced; this does not establish input failure. Request another observation without replaying prior input.",
+  "capture-image-timeout":
+    "macOS found the target but did not finish producing screenshot pixels within 10 seconds. This does not establish input failure. Request another observation without replaying prior input.",
   "capture-failed":
     "The computer-use process could not capture the selected target.",
   "permission-denied": "The operating system denied computer-use permission.",

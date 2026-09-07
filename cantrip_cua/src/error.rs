@@ -28,6 +28,8 @@ pub enum ErrorCode {
     TargetNotFound,
     StaleTarget,
     CaptureFailed,
+    CaptureInventoryTimeout,
+    CaptureImageTimeout,
     StaleElement,
     InputUnknown,
     InputFailed,

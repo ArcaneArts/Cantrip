@@ -597,6 +597,33 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
       services.push(service);
       return { service, launch };
     }
+    it("drops failed engine variables while reusing the authorized native attachment", async () => {
+      const { service, launch } = create();
+      const opts = options();
+      await service.evaluateJavascript(
+        scope,
+        "let marker = 42; { const page = await cua.targets(); const t = page.targets[0]; await cua.attach({targetId:t.id,targetGeneration:t.generation}); }",
+        opts,
+      );
+      const attached = service.javascriptSession(scope, opts.executionSignal)!;
+      opts.authorize.mockImplementationOnce(async () => {
+        throw new CuaNativeError("capture-image-timeout");
+      });
+      await expect(
+        service.evaluateJavascript(scope, "await cua.snapshot()", opts),
+      ).rejects.toMatchObject({ code: "capture-image-timeout" });
+      const result = await service.evaluateJavascript(
+        scope,
+        "await cua.snapshot(); typeof marker",
+        opts,
+      );
+      expect(result.value).toBe("undefined");
+      expect(result.images[0]!.session.binding.sessionId).toBe(
+        attached.binding.sessionId,
+      );
+      expect(launch).toHaveBeenCalledTimes(1);
+    });
+
     it("preserves lexical variables and top-level await, then resets without relaunching", async () => {
       const { service, launch } = create();
       const opts = options();
@@ -689,7 +716,12 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
           opts,
         ),
       ).rejects.toBeInstanceOf(CuaNativeError);
-      expect(service.javascriptSession(scope, opts.executionSignal)).toBeNull();
+      expect(
+        service.javascriptSession(scope, opts.executionSignal)?.target?.id,
+      ).toBe("fake-window");
+      expect(
+        (await service.evaluateJavascript(scope, "typeof secret", opts)).value,
+      ).toBe("undefined");
     });
     it("ends an actual JS lifetime on native session Stop, even with no approval entry", async () => {
       const { service } = create();
