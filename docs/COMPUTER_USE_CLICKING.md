@@ -10,6 +10,14 @@ Use an updated development build and worker;
 an older installed app may not include these tools. No installed app, saved QA
 profile, credentials or macOS permissions were changed by those initial click implementations.
 
+Current development acceptance also covers ordinary unfocused clicks in a
+partly-covered Brave piano window, audible drag across keys, and pointer timelines
+with visible custom-cursor travel. The user confirmed these results; recorded
+timeline effects reported the human pointer, foreground application/window and
+window order unchanged. API 10 uses fast cubic ease-out cursor travel. These
+observations establish the tested path, not compatibility with every application.
+Input receipts still do not prove that an application acted on an event.
+
 ## Finding the tools
 
 Cantrip automatically manages a dedicated `cantrip_cua` MCP server for authorized
@@ -312,9 +320,10 @@ activity, or exclude later asynchronous application changes. Failed operations
 without a receipt have no effects measurement; do not infer unchanged state.
 The protected Trajectory summary displays the sampled changes.
 
-An explicit process-targeted coordinate attempt is now available as described
-below. Covered-window user acceptance is pending;
-the earlier foreground/global-click acceptance below does not satisfy it.
+An explicit process-targeted coordinate attempt is available as described below.
+The user accepted the ordinary prepared-input path in an unfocused, partly-covered
+Brave window. The earlier foreground/global-click test is separate evidence and
+does not establish background support for other applications.
 
 ## Experimental background coordinate input
 
@@ -496,7 +505,9 @@ y = py * session.target.bounds.height / model.height
 Do not add the desktop origin or multiply by display scale. Rust resolves the
 current target geometry and applies its global origin. A coordinate receipt
 returns both logical `position` and `globalPosition`, the method, activation and
-`outcome: "dispatched"`. Global clicks can move the human system pointer.
+outcome. Window-directed posting reports `unknown` / `unverified`; a
+`dispatched` outcome also requires observation to establish the application result.
+Global clicks can move the human system pointer.
 `moveCursor` still changes only the logical agent cursor.
 
 The teal “Agent” ring is a visual marker rendered into CUA snapshots and shown
