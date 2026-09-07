@@ -34,6 +34,7 @@ export const cuaEffectConfigurationSchema = z.discriminatedUnion("effect", [
         radius: z.number().min(32).max(320).optional(),
         motion: z.number().min(0).max(2).optional(),
         ripple: z.number().min(0).max(2).optional(),
+        dissipation: z.number().min(0.1).max(5).optional(),
       })
       .default({}),
   }),

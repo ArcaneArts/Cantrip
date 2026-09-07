@@ -610,6 +610,21 @@ mod tests {
             data.events[0].position = [64., 64., 0.5, 0.5];
             data.events[0].timing[1] = 0.17;
             assert_ne!(render(&data), original, "a recent press must ripple");
+            let ripple = render(&data);
+            data.parameters[1][0] = 0.1;
+            data.events[0].timing[1] = 1.7;
+            assert_eq!(
+                render(&data),
+                ripple,
+                "slow dissipation stretches ripple time"
+            );
+            data.parameters[1][0] = 5.0;
+            assert_eq!(
+                render(&data),
+                original,
+                "fast dissipation expires the ripple"
+            );
+            data.parameters[1][0] = 1.0;
             data.events[0].timing[1] = 0.7;
             assert_eq!(render(&data), original, "old press ripples must decay away");
             data.cursors[0].state[0] = 1;
