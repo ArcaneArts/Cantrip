@@ -453,7 +453,8 @@ impl<'a> Canvas<'a> {
     }
 
     fn glow(&mut self, point: Point, style: CursorStyle, size: f64, color: [u8; 4], strength: u8) {
-        let spread = (size * 0.35).max(4.0);
+        // Extend the halo beyond the silhouette by more than one cursor length.
+        let spread = size * 1.35;
         let (left, top, right, bottom) = if style == CursorStyle::Arrow {
             (
                 point.x - spread,

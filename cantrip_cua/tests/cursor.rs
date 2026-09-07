@@ -433,6 +433,6 @@ fn click_glow_fades_without_changing_the_input_receipt_or_hotspot() {
     assert!(state.presentation(220).glow_strength() < state.glow_strength());
     assert_eq!(faded.action, state.action);
     assert_eq!(faded.position, state.position);
-    // Click feedback has no separate outcome label below the cursor.
-    assert_eq!(pixel(&clicked, 200, 44, 75), &[0, 0, 0, 0]);
+    // The enlarged halo reaches well beyond the 24-point cursor body.
+    assert!(pixel(&clicked, 200, 44, 75)[3] > 0);
 }
