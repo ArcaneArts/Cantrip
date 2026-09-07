@@ -169,7 +169,7 @@ for (const name of ['SharedArrayBuffer', 'Atomics', 'WeakRef', 'FinalizationRegi
       : call({operation:'perform',command:{kind:'timeline',frames:[{atMs:0,pointerDown:point,pointerModifiers:modifiers},{atMs:holdMs,pointerUp:true}]}});
   };
   Object.defineProperty(globalThis, 'cua', { value: Object.freeze({
-    help: () => ({apiVersion:12, methods:{findWindows:"findWindows({application?,title?}) scans all target pages and returns {targets,truncated}, up to 32 matches; case-insensitive substring matching, windows only; inspect candidates before attaching",targets:"targets({after?}) returns one inventory page; nextCursor continues it",attach:"attach({targetId,targetGeneration}) uses the selected target id and generation",snapshot:"snapshot() captures the attached window",getState:"getState() returns {session}; reuse its target within this turn",typeText:"typeText(text): up to 8192 UTF-8 bytes, existing target keyboard responder",keyPress:"keyPress(key, modifiers=[]): Enter, Tab, Escape, arrows, letters/digits; Shift,Control,Alt,Meta",scroll:"scroll(deltaY, deltaX=0, point?): pixel deltas, positive down/right",wait:"wait(ms): 0-10000 ms; use timeline atMs for tightly timed sequences",click:"click(point?) rapidly moves the custom cursor before one ordinary click with automatic target-only preparation; omitted point uses the agent cursor",preparedPointerPress:"preparedPointerPress(point, holdMs=150) queues target-only AppKit preparation then one unmodified pointer press in the same native request; experimental, no foreground/raise request; receipt activation:true and delivery unverified",prepareWindowInput:"prepareWindowInput() requests target-only AppKit activation without requesting WindowServer foreground or raising; no mouse/modifier input; experimental, inspect receipt effects",requestFocus:"requestFocus() activates and raises the attached window; sends no click",commandClick:"commandClick(point, holdMs=150) sends a real Command-modified mouse press without requesting focus",pointerPress:"pointerPress(point, holdMs=150, modifiers=[]) automatically prepares unmodified presses; explicit Shift,Control,Alt,Meta retain modified delivery; modifiers are NOT held timeline keys",inputTimeline:"inputTimeline(frames): [{atMs:0,pointerDown:{x:100,y:200}},{atMs:150,pointerUp:true}]; keyDown/keyUp are arrays; pointerUp is a boolean, not a point; pointerModifiers only on pointerDown; every unmodified pointerDown automatically prepares its window immediately before dispatch",clickDrag:"clickDrag(start,end,durationMs=200) automatically prepares the window immediately before one hold/move/release",keyChord:"keyChord(keys,holdMs=500)"}, limits:{scriptBytes:2097152,hostCalls:16384,timelineFrames:131072,timelineMs:7200000,hostActionBytes:15728640,outputBytes:32768,maxHeldKeys:16,maxSnapshots:2,maxWallMs:7500000}, notes:"Use one native timeline for a preplanned stable interface to avoid model round trips between music chunks. Custom-cursor travel uses cubic ease-out (fast start, decelerating arrival), with no ease-in. Ordinary unmodified clicks animate in up to 90 ms before input. Timelines also animate within existing button-up gaps, arriving before the next scheduled pointerDown without retiming notes; zero-gap presses snap. Overdue cosmetic travel frames are skipped rather than delaying native input further. Native timeline requests use the full bounded performance budget, not scheduled duration plus five seconds. Stop remains immediate and releases held input. Drag follows actual native motion. No automatic foreground switch or retries after uncertain input. Command is visible to the target and may change link/selection behavior. An installed helper update requires a worker restart to replace an already running helper."}),
+    help: () => ({apiVersion:13, quickStart:{script:"await cua.openWindow({application:\"Brave\",title:\"Piano\"})",notes:"Use partial application/title text for the requested existing window. openWindow searches, attaches a unique match, and returns a screenshot. No initial reset, help-plus-inventory dump, exact-title loop, click or focus request is needed. Reuse the attachment for subsequent input; snapshot again when needed."}, methods:{openWindow:"openWindow({application?,title?}) searches existing windows, attaches one unique match and captures it; returns status attached, not-found, or choose-window with candidates; does not launch/focus/click",findWindows:"findWindows({application?,title?}) scans all target pages and returns {targets,truncated}, up to 32 matches; case-insensitive substring matching, windows only; inspect candidates before attaching",targets:"targets({after?}) returns one inventory page; nextCursor continues it",attach:"attach({targetId,targetGeneration}) uses the selected target id and generation",snapshot:"snapshot() captures the attached window",getState:"getState() returns {session}; reuse its target within this turn",typeText:"typeText(text): up to 8192 UTF-8 bytes, existing target keyboard responder",keyPress:"keyPress(key, modifiers=[]): Enter, Tab, Escape, arrows, letters/digits; Shift,Control,Alt,Meta",scroll:"scroll(deltaY, deltaX=0, point?): pixel deltas, positive down/right",wait:"wait(ms): 0-10000 ms; use timeline atMs for tightly timed sequences",click:"click(point?) rapidly moves the custom cursor before one ordinary click with automatic target-only preparation; omitted point uses the agent cursor",preparedPointerPress:"preparedPointerPress(point, holdMs=150) queues target-only AppKit preparation then one unmodified pointer press in the same native request; experimental, no foreground/raise request; receipt activation:true and delivery unverified",prepareWindowInput:"prepareWindowInput() requests target-only AppKit activation without requesting WindowServer foreground or raising; no mouse/modifier input; experimental, inspect receipt effects",requestFocus:"requestFocus() activates and raises the attached window; sends no click",commandClick:"commandClick(point, holdMs=150) sends a real Command-modified mouse press without requesting focus",pointerPress:"pointerPress(point, holdMs=150, modifiers=[]) automatically prepares unmodified presses; explicit Shift,Control,Alt,Meta retain modified delivery; modifiers are NOT held timeline keys",inputTimeline:"inputTimeline(frames): [{atMs:0,pointerDown:{x:100,y:200}},{atMs:150,pointerUp:true}]; keyDown/keyUp are arrays; pointerUp is a boolean, not a point; pointerModifiers only on pointerDown; every unmodified pointerDown automatically prepares its window immediately before dispatch",clickDrag:"clickDrag(start,end,durationMs=200) automatically prepares the window immediately before one hold/move/release",keyChord:"keyChord(keys,holdMs=500)"}, limits:{scriptBytes:2097152,hostCalls:16384,timelineFrames:131072,timelineMs:7200000,hostActionBytes:15728640,outputBytes:32768,maxHeldKeys:16,maxSnapshots:2,maxWallMs:7500000}, notes:"Use one native timeline for a preplanned stable interface to avoid model round trips between music chunks. Custom-cursor travel uses cubic ease-out (fast start, decelerating arrival), with no ease-in. Ordinary unmodified clicks animate in up to 90 ms before input. Timelines also animate within existing button-up gaps, arriving before the next scheduled pointerDown without retiming notes; zero-gap presses snap. Overdue cosmetic travel frames are skipped rather than delaying native input further. Native timeline requests use the full bounded performance budget, not scheduled duration plus five seconds. Stop remains immediate and releases held input. Drag follows actual native motion. No automatic foreground switch or retries after uncertain input. Command is visible to the target and may change link/selection behavior. An installed helper update requires a worker restart to replace an already running helper."}),
     preparedPointerPress: (point, holdMs = 150) => call({operation:'perform',command:{kind:'prepared-press',point,holdMs}}),
     prepareWindowInput: () => call({operation:'perform',command:{kind:'window-input'}}),
     requestFocus: () => call({operation:'perform',command:{kind:'focus'}}),
@@ -209,6 +209,17 @@ for (const name of ['SharedArrayBuffer', 'Atomics', 'WeakRef', 'FinalizationRegi
         if (!after && page.truncated) truncated = true;
       } while (after);
       return {targets:matches, truncated};
+    },
+    openWindow: async options => {
+      const result = await cua.findWindows(options);
+      if (result.truncated || result.targets.length > 1)
+        return {status:'choose-window', ...result, next:'Narrow application/title or inspect these candidates, then attach the intended id/generation and snapshot. No window was attached by this call.'};
+      if (result.targets.length === 0)
+        return {status:'not-found', ...result, next:'Try a shorter application/title substring or findWindows({application:...}) to inspect current titles. No window was attached by this call.'};
+      const target = result.targets[0];
+      await call({operation:'attach', target:{targetId:target.id,targetGeneration:target.generation}});
+      const snapshot = await call({operation:'snapshot'});
+      return {status:'attached', target:snapshot.session.target, snapshot};
     },
     attach: target => call({operation:'attach', target}),
     click: point => pointerPress(point),
@@ -1003,6 +1014,98 @@ mod tests {
             assert_eq!(result["targets"].as_array().unwrap().len(), expected_count);
             assert_eq!(result["truncated"], expected_truncated);
             assert!(receiver.is_empty());
+        }
+    }
+
+    #[test]
+    fn open_window_searches_attaches_and_captures_without_input() {
+        let (frames, receiver) = crossbeam_channel::bounded(4);
+        let binding =
+            serde_json::from_value(json!({"sessionId":"open","workerId":"worker","chatId":"chat"}))
+                .unwrap();
+        let mut session = Session::new(binding, frames).unwrap();
+        session
+            .start(
+                1,
+                "await cua.openWindow({application:'Brave',title:'Piano'})".into(),
+                default_wall_timeout_ms(),
+                Cancellation::default(),
+            )
+            .unwrap();
+        let target = json!({"kind":"window","application":"Brave Browser","title":"Virtual Piano 🔊","id":"window-piano","generation":4});
+        for (call_id, operation, data) in [
+            (1, "targets", json!({"targets":[],"nextCursor":"window-a"})),
+            (2, "targets", json!({"targets":[target.clone()]})),
+            (3, "attach", json!({"session":{"target":target.clone()}})),
+            (
+                4,
+                "snapshot",
+                json!({"session":{"target":target.clone()},"imageIndex":0}),
+            ),
+        ] {
+            assert!(session.step().is_none());
+            let Message::HostCall { action, .. } = receiver.try_recv().unwrap().header.message
+            else {
+                panic!("expected host action");
+            };
+            assert_eq!(action["operation"], operation);
+            if operation == "attach" {
+                assert_eq!(
+                    action["target"],
+                    json!({"targetId":"window-piano","targetGeneration":4})
+                );
+            }
+            session.reply(1, call_id, Outcome::Ok { data }).unwrap();
+        }
+        let result = session.step().unwrap().unwrap();
+        assert_eq!(result["status"], "attached");
+        assert_eq!(result["target"], target);
+        assert_eq!(result["snapshot"]["imageIndex"], 0);
+        assert!(receiver.is_empty());
+    }
+
+    #[test]
+    fn open_window_returns_choices_without_attaching_an_arbitrary_window() {
+        for (count, truncated, status) in [
+            (0, false, "not-found"),
+            (2, false, "choose-window"),
+            (1, true, "choose-window"),
+        ] {
+            let (frames, receiver) = crossbeam_channel::bounded(4);
+            let binding = serde_json::from_value(
+                json!({"sessionId":"choices","workerId":"worker","chatId":"chat"}),
+            )
+            .unwrap();
+            let mut session = Session::new(binding, frames).unwrap();
+            session
+                .start(
+                    1,
+                    "await cua.openWindow({title:'Piano'})".into(),
+                    default_wall_timeout_ms(),
+                    Cancellation::default(),
+                )
+                .unwrap();
+            assert!(session.step().is_none());
+            receiver.try_recv().unwrap();
+            let targets: Vec<_> = (0..count)
+                .map(|i| json!({"kind":"window","title":"Piano","id":format!("window-{i}")}))
+                .collect();
+            session
+                .reply(
+                    1,
+                    1,
+                    Outcome::Ok {
+                        data: json!({"targets":targets,"truncated":truncated}),
+                    },
+                )
+                .unwrap();
+            let result = session.step().unwrap().unwrap();
+            assert_eq!(result["status"], status);
+            assert!(result["next"].is_string());
+            assert!(
+                receiver.is_empty(),
+                "Ambiguous or missing matches must not attach, capture or send input"
+            );
         }
     }
 

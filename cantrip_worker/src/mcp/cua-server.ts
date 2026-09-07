@@ -96,7 +96,7 @@ export function createCuaMcpServer(gateway: CuaMcpGateway) {
     "js_reset",
     {
       description:
-        "Dispose this agent turn's JavaScript state and target attachment. Does not grant new authority after Stop or a permission-profile change; start a new agent turn after revocation.",
+        "Explicitly discard saved JavaScript variables and target attachment when that is desired. Not a startup step: new turns start clean, and failed evaluations already reset automatically. Does not grant new authority after Stop or a permission-profile change; start a new agent turn after revocation.",
       inputSchema: z.strictObject({}),
       annotations: {
         readOnlyHint: false,
