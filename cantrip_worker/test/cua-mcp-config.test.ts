@@ -26,7 +26,7 @@ describe("managed CUA MCP configuration", () => {
       const instructions = cantripChatThreadParams(true, profile, [
         cua,
       ]).developerInstructions;
-      expect(instructions).toContain("cua.targets()");
+      expect(instructions).toContain("cua.openWindow(");
       expect(instructions).toContain("namespace is separate from `cantrip`");
       expect(instructions).toContain(
         "an empty registry does not mean native CUA is unavailable",
@@ -35,11 +35,11 @@ describe("managed CUA MCP configuration", () => {
       expect(
         cantripChatThreadParams(true, profile, [{ ...cua, enabled: false }])
           .developerInstructions,
-      ).not.toContain("await cua.targets()");
+      ).not.toContain("cua.openWindow(");
       expect(
         cantripChatThreadParams(true, profile, [{ ...cua, name: "unrelated" }])
           .developerInstructions,
-      ).not.toContain("await cua.targets()");
+      ).not.toContain("cua.openWindow(");
     },
   );
   it("gives disabled agent turns only a brief computer-use notice", () => {
@@ -50,6 +50,7 @@ describe("managed CUA MCP configuration", () => {
     ).developerInstructions;
     expect(instructions).toContain("Computer use is not enabled.");
     expect(instructions).not.toContain("cua.targets");
+    expect(instructions).not.toContain("cua.openWindow");
     expect(instructions).not.toContain("cantrip_cua");
   });
   it("keeps dedicated guidance compact and uses current ordinary click routing", () => {

@@ -42,11 +42,15 @@ agent turns. Its `js` and `js_reset` tools use the computer-use transport for
 images and turn-scoped authorization. They have a different namespace from the
 general `cantrip` project tools and are not a CLI subcommand.
 
-Start with `cantrip_cua/js` and `{"script":"await cua.targets()"}`. Discover that
+Start with `cantrip_cua/js` and a script such as
+`await cua.openWindow({application:"Brave",title:"Piano"})` (API 13). Discover that
 exact server name if tools are deferred; do not dump every tool's full description
-or restrict discovery to the `cantrip` namespace. The returned native inventory
-provides the IDs and generations needed to attach an application window and take
-a snapshot. Window sharing starts automatically during capture.
+or restrict discovery to the `cantrip` namespace. The helper finds an existing
+window using partial text, attaches a unique match and returns a screenshot; it does not launch or focus applications or send input.
+A `not-found` result asks for a broader query; `choose-window` returns candidates
+for explicit selection. Neither result changes any previous attachment, so do not
+continue input against an earlier window after an unsuccessful search. Window
+sharing starts automatically during capture.
 
 The ordinary `cantrip.target_list` registry and its `remote-desktop`/`remote-surface`
 entries are separate. Empty lists there do not establish that native CUA is
@@ -58,8 +62,10 @@ AppleScript or shell automation is not the Cantrip CUA fallback.
 ### Efficient discovery and playback
 
 Discover `cantrip_cua` by exact tool name and list names before requesting full
-metadata. Read `cua.help()` once for the running API. Page targets only until the
-intended window is found; reuse its attachment within the current agent turn.
+metadata. Use `openWindow` for the initial observation and reuse its attachment
+within the current agent turn. Read `cua.help()` when needed for signatures;
+its quick-start example also points to `openWindow`. No initial reset or full
+help-plus-inventory dump is needed.
 Preserve the user's cursor appearance unless a change was requested. Current
 MCP guidance uses ordinary prepared clicks consistently; Accessibility control
 lookup is optional when choosing an explicit reference action.
