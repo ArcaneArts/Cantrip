@@ -336,3 +336,84 @@ it("preserves cursor-only clicks and the existing long pointer hold range", () =
       }).success,
     ).toBe(true);
 });
+
+it("accepts named mouse buttons and event-local keyboard modifiers", () => {
+  for (const button of ["left", "right", "middle", "back", "forward"]) {
+    expect(
+      cuaInputCommandSchema.parse({
+        kind: "prepared-press",
+        point: { x: 1, y: 2 },
+        holdMs: 150,
+        button,
+      }),
+    ).toMatchObject({ button });
+    expect(
+      cuaInputCommandSchema.safeParse({
+        kind: "timeline",
+        frames: [
+          {
+            atMs: 0,
+            pointerDown: { x: 1, y: 2 },
+            pointerButton: button,
+            pointerModifiers: ["Meta"],
+            keyDown: ["F12"],
+            keyModifiers: ["Control", "Shift"],
+          },
+          { atMs: 100, pointerUp: true, keyUp: ["F12"] },
+        ],
+      }).success,
+    ).toBe(true);
+  }
+  for (const frames of [
+    [{ atMs: 0, pointerButton: "back" }],
+    [{ atMs: 0, keyModifiers: ["Meta"] }],
+    [
+      { atMs: 0, keyDown: ["A"], keyModifiers: ["Meta", "Meta"] },
+      { atMs: 1, keyUp: ["A"] },
+    ],
+    [
+      { atMs: 0, pointerDown: { x: 1, y: 2 }, pointerButton: "unknown" },
+      { atMs: 1, pointerUp: true },
+    ],
+  ])
+    expect(
+      cuaInputCommandSchema.safeParse({ kind: "timeline", frames }).success,
+    ).toBe(false);
+});
+
+it("exposes explicit system media keys with honest system-scoped receipts", () => {
+  for (const key of [
+    "PlayPause",
+    "NextTrack",
+    "PreviousTrack",
+    "FastForward",
+    "Rewind",
+    "VolumeUp",
+    "VolumeDown",
+    "VolumeMute",
+  ]) {
+    expect(cuaInputCommandSchema.parse({ kind: "media", key })).toEqual({
+      kind: "media",
+      key,
+      modifiers: [],
+    });
+  }
+  expect(
+    cuaInputCommandSchema.safeParse({ kind: "media", key: "Bogus" }).success,
+  ).toBe(false);
+  const receipt = {
+    method: "system-media",
+    activation: false,
+    outcome: "unknown",
+  } as const;
+  expect(matchesInputReceipt(receipt, "system-media")).toBe(true);
+  expect(
+    matchesInputReceipt({ ...receipt, outcome: "dispatched" }, "system-media"),
+  ).toBe(false);
+  expect(
+    matchesInputReceipt(
+      { ...receipt, windowDelivery: "unverified" },
+      "system-media",
+    ),
+  ).toBe(false);
+});

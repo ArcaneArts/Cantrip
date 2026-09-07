@@ -84,6 +84,7 @@ export const cuaSessionSchema = z.strictObject({
           "background-coordinate",
           "background-text",
           "background-key",
+          "system-media",
           "background-drag",
           "background-scroll",
           "background-timeline",
@@ -224,17 +225,77 @@ export const cuaControlsResultSchema = z.strictObject({
     truncated: z.boolean(),
   }),
 });
+const cuaKeyboardKeys = [
+  "F1",
+  "F2",
+  "F3",
+  "F4",
+  "F5",
+  "F6",
+  "F7",
+  "F8",
+  "F9",
+  "F10",
+  "F11",
+  "F12",
+  "F13",
+  "F14",
+  "F15",
+  "F16",
+  "F17",
+  "F18",
+  "F19",
+  "F20",
+  "Minus",
+  "Equal",
+  "BracketLeft",
+  "BracketRight",
+  "Backslash",
+  "Semicolon",
+  "Quote",
+  "Comma",
+  "Period",
+  "Slash",
+  "Backquote",
+  "Enter",
+  "Tab",
+  "Escape",
+  "Backspace",
+  "Delete",
+  "ArrowLeft",
+  "ArrowRight",
+  "ArrowUp",
+  "ArrowDown",
+  "Home",
+  "End",
+  "PageUp",
+  "PageDown",
+  "Space",
+  ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+] as const;
+
+const cuaModifiersSchema = z
+  .array(z.enum(["Shift", "Control", "Alt", "Meta"]))
+  .max(4)
+  .refine((items) => new Set(items).size === items.length)
+  .default([]);
+const cuaMouseButtonSchema = z.enum([
+  "left",
+  "right",
+  "middle",
+  "back",
+  "forward",
+]);
+
 const cuaTimelineFrameSchema = z.strictObject({
   atMs: z.number().int().min(0).max(CUA_MAX_TIMELINE_MS),
   keyDown: z.array(z.string().max(16)).max(16).default([]),
   keyUp: z.array(z.string().max(16)).max(16).default([]),
   pointerDown: cuaPointSchema.optional(),
   pointerUp: z.boolean().default(false),
-  pointerModifiers: z
-    .array(z.enum(["Shift", "Control", "Alt", "Meta"]))
-    .max(4)
-    .refine((items) => new Set(items).size === items.length)
-    .default([]),
+  pointerModifiers: cuaModifiersSchema,
+  pointerButton: cuaMouseButtonSchema.optional(),
+  keyModifiers: cuaModifiersSchema,
 });
 const cuaTimelineSchema = z
   .array(cuaTimelineFrameSchema)
@@ -244,25 +305,11 @@ const cuaTimelineSchema = z
     const held = new Set<string>();
     let pointer = false;
     let at = 0;
-    const keys = new Set([
-      "Enter",
-      "Tab",
-      "Escape",
-      "Backspace",
-      "Delete",
-      "ArrowLeft",
-      "ArrowRight",
-      "ArrowUp",
-      "ArrowDown",
-      "Home",
-      "End",
-      "PageUp",
-      "PageDown",
-      "Space",
-      ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
-    ]);
+    const keys = new Set<string>(cuaKeyboardKeys);
     for (const frame of frames) {
       if (frame.atMs < at) return false;
+      if (frame.pointerButton && !frame.pointerDown) return false;
+      if (frame.keyModifiers.length && !frame.keyDown.length) return false;
       if (frame.pointerModifiers.length && !frame.pointerDown) return false;
       at = frame.atMs;
       for (const key of frame.keyUp) {
@@ -293,8 +340,23 @@ export const cuaInputCommandSchema = z.discriminatedUnion("kind", [
     kind: z.literal("prepared-press"),
     point: cuaPointSchema.optional(),
     holdMs: z.number().int().min(0).max(7200000),
+    button: cuaMouseButtonSchema.optional(),
   }),
   z.strictObject({ kind: z.literal("timeline"), frames: cuaTimelineSchema }),
+  z.strictObject({
+    kind: z.literal("media"),
+    key: z.enum([
+      "PlayPause",
+      "NextTrack",
+      "PreviousTrack",
+      "FastForward",
+      "Rewind",
+      "VolumeUp",
+      "VolumeDown",
+      "VolumeMute",
+    ]),
+    modifiers: cuaModifiersSchema,
+  }),
   z.strictObject({
     kind: z.literal("text"),
     text: z
@@ -313,28 +375,8 @@ export const cuaInputCommandSchema = z.discriminatedUnion("kind", [
   }),
   z.strictObject({
     kind: z.literal("key"),
-    key: z.enum([
-      "Enter",
-      "Tab",
-      "Escape",
-      "Backspace",
-      "Delete",
-      "ArrowLeft",
-      "ArrowRight",
-      "ArrowUp",
-      "ArrowDown",
-      "Home",
-      "End",
-      "PageUp",
-      "PageDown",
-      "Space",
-      ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".split(""),
-    ]),
-    modifiers: z
-      .array(z.enum(["Shift", "Control", "Alt", "Meta"]))
-      .max(4)
-      .refine((value) => new Set(value).size === value.length)
-      .default([]),
+    key: z.enum(cuaKeyboardKeys),
+    modifiers: cuaModifiersSchema,
   }),
   z.strictObject({
     kind: z.literal("drag"),
@@ -360,6 +402,7 @@ export const cuaInputReceiptSchema = z.strictObject({
     "background-coordinate",
     "background-text",
     "background-key",
+    "system-media",
     "background-drag",
     "background-scroll",
     "background-timeline",

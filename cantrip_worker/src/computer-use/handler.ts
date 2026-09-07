@@ -381,7 +381,9 @@ export async function handleComputerUseOperation(
                 ? activityAction.command.kind === "focus" ||
                   activityAction.command.kind === "window-input"
                   ? activityAction.command.kind
-                  : `background-${activityAction.command.kind}`
+                  : activityAction.command.kind === "media"
+                    ? "system-media"
+                    : `background-${activityAction.command.kind}`
                 : activityAction?.operation === "input.click" &&
                     activityAction.globalInput
                   ? "coordinate"

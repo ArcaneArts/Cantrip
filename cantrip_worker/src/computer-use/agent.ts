@@ -392,7 +392,9 @@ export class CuaAgentCoordinator {
                   ? outcome.action.command.kind === "focus" ||
                     outcome.action.command.kind === "window-input"
                     ? outcome.action.command.kind
-                    : `background-${outcome.action.command.kind}`
+                    : outcome.action.command.kind === "media"
+                      ? "system-media"
+                      : `background-${outcome.action.command.kind}`
                   : outcome.action.operation === "globalClick"
                     ? "coordinate"
                     : outcome.action.operation === "backgroundClick"
