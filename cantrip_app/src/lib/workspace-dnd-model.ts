@@ -57,7 +57,7 @@ export type WorkspaceDropTarget =
   | {
       type: "region";
       projectId: string;
-      region: Extract<ProjectPaneRegion, "right" | "bottom">;
+      region: Extract<ProjectPaneRegion, "center" | "right" | "bottom">;
       paneId: string | null;
     };
 
@@ -363,7 +363,7 @@ export function workspacePaneTargetDropId(paneId: string): string {
 }
 
 export function workspaceRegionDropId(
-  region: Extract<ProjectPaneRegion, "right" | "bottom">,
+  region: Extract<ProjectPaneRegion, "center" | "right" | "bottom">,
 ): string {
   return `workspace:region:${region}`;
 }

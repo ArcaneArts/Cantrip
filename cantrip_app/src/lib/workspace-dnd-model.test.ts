@@ -319,6 +319,57 @@ describe("workspace pane drag legality", () => {
     });
   });
 
+  it("moves a dock tab into an empty center and shows its insertion preview", () => {
+    const dockLayout = {
+      ...layout,
+      panes: layout.panes.filter((pane) => pane.region !== "center"),
+    };
+    const bottomDrag = {
+      ...drag,
+      paneId: "pane-bottom",
+      tabKey: "terminal:dock",
+      label: "Dock terminal",
+      position: 0,
+      visualKind: "terminal" as const,
+    };
+    const drop = {
+      type: "region" as const,
+      projectId: "project-1",
+      region: "center" as const,
+      paneId: null,
+    };
+    const decision = decideWorkspaceDrop(dockLayout, bottomDrag, drop);
+    expect(decision).toMatchObject({
+      status: "valid",
+      operation: {
+        command: {
+          type: "move-member",
+          tabKey: "terminal:dock",
+          targetPaneId: null,
+          targetRegion: "center",
+          targetMemberPosition: 0,
+        },
+      },
+    });
+    expect(
+      workspaceSurfaceDropPreview({
+        decision,
+        drag: bottomDrag,
+        drop,
+        memberCount: 0,
+        paneId: null,
+        region: "center",
+      }),
+    ).toMatchObject({ tabKey: "terminal:dock", memberPosition: 0 });
+    expect(
+      decideWorkspaceDrop(
+        dockLayout,
+        { ...bottomDrag, supportedRegions: ["bottom"] },
+        drop,
+      ).status,
+    ).toBe("invalid");
+  });
+
   it("projects a cross-container insertion only while the drop is valid", () => {
     const bottomDrag = {
       ...drag,
