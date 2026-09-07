@@ -293,7 +293,10 @@ outside this foundation.
    at 1 and input feedback enabled. Select the Mac worker to view its status.
 3. Open the same Brave piano window with recognizable text, colors, and changing
    content. Give a Cantrip agent the prompt below. The effect begins when the
-   agent attaches that window. Look for filtered live pixels and the animated
+   agent attaches that window. Agent-owned sessions close at the end of the turn,
+   so the prompt includes a 90-second observation period before the final reply;
+   perform the window/settings checks during that period. Look for filtered live
+   pixels and the animated
    **FX** badge near its upper-left corner. The separate cursor and glow should
    keep their own colors above the filter.
 4. Watch cursor travel, a held click, and a drag. Velocity lines should respond
@@ -333,11 +336,22 @@ Take another screenshot. Report the target ID, window bounds, snapshot dimension
 coordinates used, exact input receipts, and any actual errors. Distinguish input
 dispatch from application acceptance. Do not claim that notes sounded or that the
 physical cursor/focus remained unchanged unless you have evidence. Do not replay
-uncertain input. Leave the target attached while I check movement and resizing;
-when I say to finish, detach it so I can verify the overlay disappears.
+uncertain input.
+
+After the input test, keep this turn active for 90 seconds using short CUA waits
+within the advertised per-call limits, plus occasional read-only snapshots, so I
+can move, resize, and cover the window.
+Send a brief progress message when this observation period begins. Do not issue
+more input during it. If window geometry changes invalidate the attachment,
+reacquire the same window for observation only. If I disable computer use or stop
+the turn, respect that immediately. Otherwise detach at the end of the period
+and give your final report so I can verify cleanup. Do not promise to retain an
+agent-owned session after your turn ends.
 ```
 
-For shader editing, use the development workflow above and intentionally introduce
-one syntax error, then fix it. The UI should report the file and line while the
+For shader editing, use the development workflow above during an active
+observation turn and intentionally introduce one syntax error, then fix it.
+Request a longer observation period or another observation-only turn if needed.
+The UI should report the file and line while the
 last working effect remains live; saving the correction should replace it. Large
 compiler diagnostics are capped at 16 KiB to protect the helper’s metadata channel.
