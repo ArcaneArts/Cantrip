@@ -85,7 +85,7 @@ const DEBUG_PARAMETERS: &[Parameter] = &[
         max: 1.0,
     },
 ];
-// Order is the fragment parameter ABI: strength, radius, motion, ripple.
+// Order is the fragment parameter ABI: strength, radius, motion, ripple, dissipation.
 const WARP_PARAMETERS: &[Parameter] = &[
     Parameter {
         id: "strength",
@@ -118,6 +118,14 @@ const WARP_PARAMETERS: &[Parameter] = &[
         default: 1.0,
         min: 0.0,
         max: 2.0,
+    },
+    Parameter {
+        id: "dissipation",
+        label: "Dissipation speed",
+        kind: "float",
+        default: 1.0,
+        min: 0.1,
+        max: 5.0,
     },
 ];
 pub const DESCRIPTORS: &[Descriptor] = &[

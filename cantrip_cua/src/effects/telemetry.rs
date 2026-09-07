@@ -183,14 +183,19 @@ impl Agent {
         }
     }
     pub fn sample(&self, now: u64) -> Self {
+        self.sample_with_dissipation(now, 1.0)
+    }
+    /// Effect-only decay; retained motion, raw velocity, and input times are unchanged.
+    fn sample_with_dissipation(&self, now: u64, speed: f64) -> Self {
         let mut sample = self.clone();
         sample.visible &= self.bounds.contains_local(self.position);
         let decay = (-seconds(now.saturating_sub(self.motion_ns)) / IDLE_TAU).exp();
         sample.raw_velocity = self.raw_velocity.map(|v| v * decay);
-        sample.smoothed_velocity = self.filtered.map(|v| v * decay);
-        sample
-            .events
-            .retain(|e| now.saturating_sub(e.at_ns) <= EVENT_LIFETIME_NS);
+        let warp_decay = (-seconds(now.saturating_sub(self.motion_ns)) * speed / IDLE_TAU).exp();
+        sample.smoothed_velocity = self.filtered.map(|v| v * warp_decay);
+        sample.events.retain(|e| {
+            now.saturating_sub(e.at_ns) <= EVENT_LIFETIME_NS.max((650_000_000.0 / speed) as u64)
+        });
         sample
     }
 }
@@ -268,11 +273,25 @@ impl Telemetry {
             .filter(|a| a.target_id == target.id && a.generation == target.generation)
     }
     pub fn window(&self, id: &str, generation: u64, now: u64) -> Vec<Agent> {
+        self.window_with_dissipation(id, generation, now, 1.0)
+    }
+    pub fn window_with_dissipation(
+        &self,
+        id: &str,
+        generation: u64,
+        now: u64,
+        speed: f64,
+    ) -> Vec<Agent> {
+        let speed = if speed.is_finite() {
+            speed.clamp(0.1, 5.0)
+        } else {
+            1.0
+        };
         let mut result: Vec<_> = self
             .agents
             .values()
             .filter(|a| a.target_id == id && a.generation == generation)
-            .map(|a| a.sample(now))
+            .map(|a| a.sample_with_dissipation(now, speed))
             .collect();
         result.sort_by_key(|a| a.identity);
         result.truncate(super::MAX_CURSORS);

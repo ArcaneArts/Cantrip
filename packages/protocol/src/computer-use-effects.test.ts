@@ -56,6 +56,8 @@ describe("window effect preferences", () => {
       { strength: -1 },
       { radius: 31 },
       { motion: 3 },
+      { dissipation: 0 },
+      { dissipation: 6 },
       { ripple: Infinity },
       { showTelemetry: 1 },
     ]) {

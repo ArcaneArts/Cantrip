@@ -143,7 +143,8 @@ export function ComputerUseEffectsSettings({
           <p className="text-muted-foreground">
             A subtle lens at rest, a stronger wake during movement, and a brief
             ripple on clicks. Only the window image bends; input coordinates
-            stay unchanged.
+            stay unchanged. Lower dissipation lingers like molasses; higher
+            values settle faster.
           </p>
           {(
             [
@@ -170,6 +171,14 @@ export function ComputerUseEffectsSettings({
                 min: 0,
                 max: 2,
                 step: 0.05,
+              },
+              {
+                key: "dissipation",
+                label: "Dissipation speed",
+                fallback: 1,
+                min: 0.1,
+                max: 5,
+                step: 0.1,
               },
               {
                 key: "ripple",

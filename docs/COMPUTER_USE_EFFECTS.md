@@ -36,10 +36,11 @@ There is no debug badge or inversion in this effect.
 | Warp radius (logical points) | 110 | 32–320 |
 | Motion response | 1 | 0–2 |
 | Click ripple | 1 | 0–2 |
+| Dissipation speed | 1 | 0.1–5; lower lingers, higher settles faster |
 
-Parameters occupy the first uniform lane in that order. Motion uses the existing
+Strength, radius, motion, and ripple occupy the first uniform lane; dissipation occupies the next lane’s X component. Motion uses the existing
 frame-independent smoothed velocity; a stationary cursor keeps only a small lens.
-Press ripples expire after 650 ms. Overlapping contributions have a shared maximum
+At speed 1, press ripples expire after 650 ms. Speed 0.1 stretches them to 6.5 seconds and slows motion-wake decay tenfold; speed 5 shortens both fivefold. The warp’s sampled smoothed velocity uses this decay without changing the cursor trajectory, raw velocity, or retained input timestamps. Recent events remain bounded to 32 per agent and 64 per frame, so dense input can replace older ripples. Overlapping contributions have a shared maximum
 displacement and fade at the window boundary. It needs continuous rendering for
 motion/decay, but no history texture or extra capture stream.
 

@@ -36,6 +36,7 @@ describe("window effect settings", () => {
       "Warp strength",
       "Warp radius (points)",
       "Motion response",
+      "Dissipation speed",
       "Click ripple",
     ])
       expect(html).toContain(label);

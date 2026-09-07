@@ -91,6 +91,41 @@ fn velocity_smoothing_is_independent_of_sample_and_movement_rate() {
     );
 }
 #[test]
+fn warp_dissipation_changes_decay_without_retiming_motion_or_input() {
+    let (mut telemetry, state) = moving(10_000_000);
+    telemetry.input(
+        "agent",
+        state.target.as_ref().unwrap(),
+        event(EventKind::Press, 0, 0),
+        300_000_000,
+    );
+    let sample = |now, speed| {
+        telemetry
+            .window_with_dissipation("window", 1, now, speed)
+            .remove(0)
+    };
+    let normal = sample(700_000_000, 1.0);
+    let slow = sample(700_000_000, 0.1);
+    let fast = sample(700_000_000, 5.0);
+    assert!(slow.smoothed_velocity[0] > normal.smoothed_velocity[0] * 10.0);
+    assert!(fast.smoothed_velocity[0] < normal.smoothed_velocity[0] / 10.0);
+    assert_eq!(slow.raw_velocity, normal.raw_velocity);
+    assert_eq!(slow.position, normal.position);
+    assert_eq!(slow.last_press_ns, Some(300_000_000));
+    assert_eq!(sample(3_300_000_000, 0.1).events.len(), 1);
+    assert!(sample(7_300_000_000, 0.1).events.is_empty());
+    assert!(
+        telemetry.window("window", 1, 3_300_000_000)[0]
+            .events
+            .is_empty()
+    );
+    // Rendering at one decay speed never mutates the source for another effect.
+    assert_eq!(
+        sample(700_000_000, 1.0).smoothed_velocity,
+        normal.smoothed_velocity
+    );
+}
+#[test]
 fn geometry_changes_reset_motion_but_window_translation_does_not() {
     let (mut telemetry, mut state) = moving(10_000_000);
     // Bring the service cursor up to the last actual presentation position.

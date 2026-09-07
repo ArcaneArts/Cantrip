@@ -97,7 +97,7 @@ fragment float4 cantrip_cursor_warp(CantripVertex in [[stage_in]],
     }
     for (uint i=0; i<min(frame.header.z,CANTRIP_MAX_EVENTS); ++i) {
         CantripEvent e = frame.events[i];
-        float age = e.timing.y;
+        float age = e.timing.y * max(frame.parameters[1].x, 0.1f);
         if (!e.event.w || (e.event.x != 1 && e.event.x != 6) || age < 0 || age >= 0.65f) continue;
         float2 delta = p-e.position.xy;
         float distance = length(delta);

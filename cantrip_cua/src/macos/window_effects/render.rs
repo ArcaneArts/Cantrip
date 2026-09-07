@@ -177,7 +177,7 @@ fn run(device: gpu::Device, layer: RenderLayer, shared: &Shared) -> Result<(), S
                 return Ok(());
             }
             let now = now_ns();
-            let agents = crate::effects::live::window(&job.target, now);
+            let agents = crate::effects::live::window(&job.target, now, &job.active.configuration);
             let uniform = FrameUniform::new(
                 FrameTiming {
                     epoch_ns: job.epoch,

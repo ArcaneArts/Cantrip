@@ -24,8 +24,13 @@ pub fn movement(session: &str, target: &Target, point: Point, discontinuity: boo
 pub fn input(session: &str, target: &Target, event: InputEvent) {
     with(|s| s.input(session, target, event, now_ns()));
 }
-pub fn window(target: &Target, now: u64) -> Vec<Agent> {
-    with(|s| s.window(&target.id, target.generation, now))
+pub fn window(target: &Target, now: u64, config: &super::Configuration) -> Vec<Agent> {
+    let speed = if config.effect == super::EffectId::CursorWarp {
+        config.value("dissipation") as f64
+    } else {
+        1.0
+    };
+    with(|s| s.window_with_dissipation(&target.id, target.generation, now, speed))
 }
 
 pub fn geometry(target: &Target) {
