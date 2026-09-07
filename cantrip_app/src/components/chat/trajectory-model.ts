@@ -566,6 +566,35 @@ function messageEvent(
   };
 }
 
+function settleSupersededFileChanges(events: TrajectoryEvent[]): void {
+  const runningFileChangeByAgent = new Map<string, TrajectoryEvent>();
+  for (const event of events) {
+    const runningFileChange = runningFileChangeByAgent.get(event.agentKey);
+    if (runningFileChange && runningFileChange.id !== event.id) {
+      const completedAtMs = Math.max(runningFileChange.startMs, event.startMs);
+      runningFileChange.activity = runningFileChange.activity
+        ? settleRunningActivity(
+            runningFileChange.activity,
+            "completed",
+            completedAtMs,
+          )
+        : null;
+      runningFileChange.completedAtMs = completedAtMs;
+      runningFileChange.status = "completed";
+      runningFileChange.timingQuality = "derived";
+      runningFileChange.updatedAtMs = completedAtMs;
+      runningFileChangeByAgent.delete(event.agentKey);
+    }
+    if (
+      event.kind === "fileChange" &&
+      event.lane === "changes" &&
+      event.status === "running"
+    ) {
+      runningFileChangeByAgent.set(event.agentKey, event);
+    }
+  }
+}
+
 function formatTurnTitle(opening: ChatMessage): string {
   const text = compactText(messageText(opening), 72);
   return text || "Agent turn";
@@ -1144,6 +1173,7 @@ export function projectTrajectory(input: {
       left.contentIndex - right.contentIndex ||
       left.id.localeCompare(right.id),
   );
+  settleSupersededFileChanges(events);
   const endMs = completedAtMs ?? input.nowMs;
   const laneCounts = { input: 0, model: 0, tools: 0, changes: 0 };
   const statusCounts = { running: 0, completed: 0, failed: 0, declined: 0 };
