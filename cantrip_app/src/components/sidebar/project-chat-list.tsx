@@ -9,13 +9,7 @@ import type {
   ProjectSummary,
   ProjectReplicaJobSummary,
 } from "@cantrip/protocol";
-import {
-  CircleAlert,
-  LayoutDashboard,
-  Loader2,
-  MoreHorizontal,
-  WifiOff,
-} from "lucide-react";
+import { CircleAlert, LayoutDashboard, Loader2, WifiOff } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import {
@@ -31,7 +25,6 @@ import {
 } from "@/components/sidebar/project-sidebar-file-tree";
 import {
   ProjectContextMenu,
-  ProjectDropdownMenu,
   type ProjectMenuActions,
 } from "@/components/projects/project-actions-menu";
 import { ProjectRemovalDialog } from "@/components/projects/project-removal-dialog";
@@ -131,21 +124,6 @@ export function ProjectOverviewTab({
               </span>
             ) : null}
           </button>
-          {settingUp && !folderBlocked ? null : (
-            <ProjectDropdownMenu actions={actions}>
-              <button
-                type="button"
-                aria-label={`Project actions for ${project.name}`}
-                onClick={(event) => event.stopPropagation()}
-                className="mr-1 grid size-7 shrink-0 place-items-center rounded text-muted-foreground opacity-0 hover:bg-background hover:text-foreground group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 [@media(pointer:coarse)]:opacity-100"
-              >
-                <MoreHorizontal className="size-3.5" />
-                <span className="sr-only">
-                  Project actions for {project.name}
-                </span>
-              </button>
-            </ProjectDropdownMenu>
-          )}
         </div>
       </ProjectContextMenu>
       {children}

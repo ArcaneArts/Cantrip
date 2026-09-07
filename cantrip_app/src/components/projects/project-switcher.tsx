@@ -1,13 +1,20 @@
 import type {
-  ExecutionTarget,
   ProjectSummary,
   ProjectWorkspaceSummary,
 } from "@cantrip/protocol";
-import { Check, ChevronDown, FolderGit2, Plus, Settings } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  FolderGit2,
+  MoreHorizontal,
+  Plus,
+  Settings,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 
 import {
   ProjectContextMenu,
+  ProjectDropdownMenu,
   type ProjectMenuActions,
 } from "@/components/projects/project-actions-menu";
 import {
@@ -29,11 +36,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import {
-  ProjectSurfaceCreateMenu,
-  type ProjectSurfaceCreateKind,
-  type ProjectSurfacePlacementContext,
-} from "@/components/workspace/project-surface-create-menu";
 import { searchProjects } from "@/lib/project-workspaces";
 import { cn } from "@/lib/utils";
 
@@ -55,12 +57,9 @@ function projectContext(
 
 export function ProjectSwitcher({
   activeWorkspaceId,
-  creatingTabKinds,
   onAddProject,
-  onCreateTab,
   onManageWorkspaces,
   onOpenProjectSettings,
-  onOpenTabPicker,
   onRemoveProject,
   onRevealProject,
   onSelectProject,
@@ -68,16 +67,12 @@ export function ProjectSwitcher({
   projectRevealLabel,
   projects,
   selectedProjectId,
-  tabPlacement,
   workspaces,
 }: {
   activeWorkspaceId: string | null;
-  creatingTabKinds?: ReadonlySet<ProjectSurfaceCreateKind>;
   onAddProject(source: ProjectCreateSource): void;
-  onCreateTab(kind: ProjectSurfaceCreateKind, target?: ExecutionTarget): void;
   onManageWorkspaces(): void;
   onOpenProjectSettings(projectId: string): void;
-  onOpenTabPicker?(): void;
   onRemoveProject(projectId: string, deleteLocalFiles: boolean): Promise<void>;
   onRevealProject?: (
     project: ProjectSummary,
@@ -88,7 +83,6 @@ export function ProjectSwitcher({
   projectRevealLabel?: string;
   projects: ProjectSummary[];
   selectedProjectId: string | null;
-  tabPlacement?: ProjectSurfacePlacementContext;
   workspaces: ProjectWorkspaceSummary[];
 }) {
   const activeWorkspace =
@@ -297,35 +291,29 @@ export function ProjectSwitcher({
             </Command>
           </PopoverContent>
         </Popover>
-        {selectedProject && onOpenTabPicker ? (
-          <Button
-            aria-label={`Choose tab for ${selectedProject.name}`}
-            className="size-7 shrink-0"
-            onClick={onOpenTabPicker}
-            size="icon"
-            type="button"
-            variant="ghost"
+        {selectedProject ? (
+          <ProjectDropdownMenu
+            actions={{
+              onOpenSettings: () => onOpenProjectSettings(selectedProject.id),
+              onRemove: () => setRemoveProjectTarget(selectedProject),
+              onReveal:
+                selectedProject.source && projectRevealLabel && onRevealProject
+                  ? (localFolder) => revealProject(selectedProject, localFolder)
+                  : undefined,
+              revealDisabled: revealingProjectId !== null,
+              revealLabel: projectRevealLabel,
+            }}
           >
-            <Plus className="size-4" />
-          </Button>
-        ) : selectedProject ? (
-          <ProjectSurfaceCreateMenu
-            align="end"
-            creatingKinds={creatingTabKinds}
-            onCreate={onCreateTab}
-            placement={tabPlacement}
-            trigger={
-              <Button
-                type="button"
-                size="icon"
-                variant="ghost"
-                className="size-7 shrink-0"
-                aria-label={`Add tab to ${selectedProject.name}`}
-              >
-                <Plus className="size-4" />
-              </Button>
-            }
-          />
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="size-7 shrink-0"
+              aria-label={`Project actions for ${selectedProject.name}`}
+            >
+              <MoreHorizontal className="size-4" />
+            </Button>
+          </ProjectDropdownMenu>
         ) : null}
       </div>
       <ProjectRemovalDialog

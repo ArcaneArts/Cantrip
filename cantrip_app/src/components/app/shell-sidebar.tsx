@@ -92,10 +92,8 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
     archivedStandaloneChats,
     beginSidebarResize,
     bootstrap,
-    createProjectSurface,
     createSidebarExplorerMutation,
     createSidebarFolder,
-    creatingSurfaceKinds,
     deleteSidebarFileEntry,
     desktopSidebarDrawer,
     desktopSidebarDrawerOpen,
@@ -135,12 +133,10 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
     selectProjectWorkspace,
     selectStandaloneChat,
     selectedExplorer,
-    selectedPlacementContext,
     selectedProject,
     selectedProjectId,
     selectedStandaloneChatId,
     setDesktopSidebarDrawerOpen,
-    setMobileSurfacePickerOpen,
     setSettingsSection,
     setShowArchivedStandaloneChats,
     setShowImporter,
@@ -350,18 +346,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                     workspaces={projectWorkspaces.data ?? []}
                     onSelectWorkspace={selectProjectWorkspace}
                     onSelectProject={selectProjectFromSidebar}
-                    creatingTabKinds={creatingSurfaceKinds}
                     onAddProject={openProjectCreateSource}
-                    onCreateTab={(kind, target) => {
-                      if (selectedProject) {
-                        createProjectSurface(
-                          selectedProject.id,
-                          kind,
-                          undefined,
-                          target,
-                        );
-                      }
-                    }}
                     onManageWorkspaces={() => {
                       setDesktopSidebarDrawerOpen(false);
                       setSettingsSection("workspaces");
@@ -371,14 +356,6 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                       setShowProjectSettings(false);
                     }}
                     onOpenProjectSettings={openProjectSettings}
-                    onOpenTabPicker={
-                      desktopSidebarDrawer
-                        ? () => {
-                            setDesktopSidebarDrawerOpen(false);
-                            setMobileSurfacePickerOpen(true);
-                          }
-                        : undefined
-                    }
                     onRemoveProject={(projectId, deleteLocalFiles) =>
                       removeProjectMutation
                         .mutateAsync({ projectId, deleteLocalFiles })
@@ -397,7 +374,6 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                       )
                     }
                     projectRevealLabel={projectRevealLabel ?? undefined}
-                    tabPlacement={selectedPlacementContext}
                   />
                 </div>
 
