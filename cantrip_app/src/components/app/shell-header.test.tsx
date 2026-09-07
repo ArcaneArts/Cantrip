@@ -5,7 +5,29 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 
 import { navigateMobileSettingsBack, ShellHeader } from "./shell-header";
 
+const mouseBack = vi.hoisted(() => ({ callback: null as (() => void) | null }));
+vi.mock("./use-mouse-back", () => ({
+  useMouseBack: (callback: (() => void) | null) => {
+    mouseBack.callback = callback;
+  },
+}));
+
 describe("desktop settings workspace", () => {
+  it.each([
+    ["showSettings", "setShowSettings"],
+    ["showProjectSettings", "setShowProjectSettings"],
+    ["showProjectOverview", "setShowProjectOverview"],
+  ])("wires mouse Back from %s to its return action", (flag, setter) => {
+    const close = vi.fn();
+    renderToStaticMarkup(
+      <ShellHeader
+        bindings={{ appMode: "ide", [flag]: true, [setter]: close }}
+      />,
+    );
+    expect(mouseBack.callback).not.toBeNull();
+    mouseBack.callback?.();
+    expect(close).toHaveBeenCalledExactlyOnceWith(false);
+  });
   it("returns from Overview without selecting or closing a tab", () => {
     const setShowProjectOverview = vi.fn();
     const header = ShellHeader({
