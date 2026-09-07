@@ -121,10 +121,10 @@ impl Delivery {
         unsafe { (self.post)(pid, event) };
     }
 }
-fn routing_fields(pid: i32, window: u32, group: i64, click_state: i64) -> [(u32, i64); 8] {
+fn routing_fields(pid: i32, window: u32, group: i64, click_state: i64) -> [(u32, i64); 7] {
     [
         (1, click_state),
-        (3, 0),
+        // Preserve the button number set by CGEventCreateMouseEvent.
         (7, 3),
         (40, i64::from(pid)),
         (51, i64::from(window)),

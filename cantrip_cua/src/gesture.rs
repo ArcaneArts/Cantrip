@@ -19,12 +19,19 @@ pub enum InputCommand {
         point: Option<Point>,
         #[serde(rename = "holdMs")]
         hold_ms: u64,
+        #[serde(default)]
+        button: MouseButton,
     },
     Timeline {
         frames: Vec<crate::timeline::InputFrame>,
     },
     Text {
         text: String,
+    },
+    Media {
+        key: MediaKey,
+        #[serde(default)]
+        modifiers: Vec<Modifier>,
     },
     Key {
         key: String,
@@ -53,6 +60,70 @@ pub enum Modifier {
     Alt,
     Meta,
 }
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum MouseButton {
+    #[default]
+    Left,
+    Right,
+    Middle,
+    Back,
+    Forward,
+}
+impl MouseButton {
+    pub fn number(self) -> u32 {
+        match self {
+            Self::Left => 0,
+            Self::Right => 1,
+            Self::Middle => 2,
+            Self::Back => 3,
+            Self::Forward => 4,
+        }
+    }
+    pub fn event_types(self) -> (u32, u32) {
+        match self {
+            Self::Left => (1, 2),
+            Self::Right => (3, 4),
+            _ => (25, 26),
+        }
+    }
+}
+/// IOKit hidsystem/ev_keymap.h consumer-key codes, not ANSI key positions.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+pub enum MediaKey {
+    PlayPause,
+    NextTrack,
+    PreviousTrack,
+    FastForward,
+    Rewind,
+    VolumeUp,
+    VolumeDown,
+    VolumeMute,
+}
+impl MediaKey {
+    pub fn code(self) -> u16 {
+        match self {
+            Self::VolumeUp => 0,
+            Self::VolumeDown => 1,
+            Self::VolumeMute => 7,
+            Self::PlayPause => 16,
+            Self::NextTrack => 17,
+            Self::PreviousTrack => 18,
+            Self::FastForward => 19,
+            Self::Rewind => 20,
+        }
+    }
+    pub fn data(self, down: bool) -> isize {
+        ((self.code() as isize) << 16) | ((if down { 0xA } else { 0xB }) << 8)
+    }
+}
+pub fn valid_modifiers(modifiers: &[Modifier]) -> bool {
+    modifiers.len() <= 4
+        && modifiers
+            .iter()
+            .enumerate()
+            .all(|(i, m)| !modifiers[..i].contains(m))
+}
 fn default_duration() -> u64 {
     200
 }
@@ -65,6 +136,7 @@ impl InputCommand {
             Self::Timeline { .. } => "background-timeline",
             Self::Text { .. } => "background-text",
             Self::Key { .. } => "background-key",
+            Self::Media { .. } => "system-media",
             Self::Drag { .. } => "background-drag",
             Self::Scroll { .. } => "background-scroll",
         }
@@ -83,9 +155,9 @@ impl InputCommand {
         let point = |p: Point| p.x.is_finite() && p.y.is_finite() && p.x >= 0.0 && p.y >= 0.0;
         let valid = match self {
             Self::Focus {} | Self::WindowInput {} => true,
-            Self::PreparedPress { point: p, hold_ms } => {
-                p.is_none_or(point) && *hold_ms <= 7_200_000
-            }
+            Self::PreparedPress {
+                point: p, hold_ms, ..
+            } => p.is_none_or(point) && *hold_ms <= 7_200_000,
             Self::Timeline { frames } => return crate::timeline::validate(frames),
             Self::Text { text } => {
                 !text.is_empty()
@@ -94,14 +166,8 @@ impl InputCommand {
                         .chars()
                         .any(|c| c.is_ascii_control() && !matches!(c, '\n' | '\r' | '\t'))
             }
-            Self::Key { key, modifiers } => {
-                key_code(key).is_some()
-                    && modifiers.len() <= 4
-                    && modifiers
-                        .iter()
-                        .enumerate()
-                        .all(|(i, m)| !modifiers[..i].contains(m))
-            }
+            Self::Key { key, modifiers } => key_code(key).is_some() && valid_modifiers(modifiers),
+            Self::Media { modifiers, .. } => valid_modifiers(modifiers),
             Self::Drag {
                 start,
                 end,
@@ -129,6 +195,37 @@ impl InputCommand {
 /// Physical ANSI key positions for shortcuts. Unicode text does not use this map.
 pub fn key_code(key: &str) -> Option<u16> {
     Some(match key {
+        "F1" => 122,
+        "F2" => 120,
+        "F3" => 99,
+        "F4" => 118,
+        "F5" => 96,
+        "F6" => 97,
+        "F7" => 98,
+        "F8" => 100,
+        "F9" => 101,
+        "F10" => 109,
+        "F11" => 103,
+        "F12" => 111,
+        "F13" => 105,
+        "F14" => 107,
+        "F15" => 113,
+        "F16" => 106,
+        "F17" => 64,
+        "F18" => 79,
+        "F19" => 80,
+        "F20" => 90,
+        "Minus" => 27,
+        "Equal" => 24,
+        "BracketLeft" => 33,
+        "BracketRight" => 30,
+        "Backslash" => 42,
+        "Semicolon" => 41,
+        "Quote" => 39,
+        "Comma" => 43,
+        "Period" => 47,
+        "Slash" => 44,
+        "Backquote" => 50,
         "Enter" => 36,
         "Tab" => 48,
         "Escape" => 53,
@@ -257,6 +354,7 @@ mod tests {
             let command = InputCommand::PreparedPress {
                 point: Some(Point { x: 12., y: 34. }),
                 hold_ms,
+                button: MouseButton::Left,
             };
             command.validate().unwrap();
             assert_eq!(command.method(), "background-prepared-press");
@@ -265,7 +363,8 @@ mod tests {
             assert!(
                 InputCommand::PreparedPress {
                     point: Some(Point { x: 0., y: 0. }),
-                    hold_ms
+                    hold_ms,
+                    button: MouseButton::Left,
                 }
                 .validate()
                 .is_err()

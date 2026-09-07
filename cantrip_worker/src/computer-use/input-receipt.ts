@@ -29,6 +29,15 @@ export function matchesInputReceipt(
     !receipt.activation
   )
     return false;
+  if (method === "system-media") {
+    return (
+      receipt.outcome === "unknown" &&
+      !receipt.activation &&
+      receipt.windowDelivery === undefined &&
+      receipt.position === undefined &&
+      receipt.globalPosition === undefined
+    );
+  }
   if (method === "process-coordinate" || method.startsWith("background-")) {
     if (
       receipt.outcome !== "unknown" ||

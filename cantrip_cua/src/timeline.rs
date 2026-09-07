@@ -25,6 +25,11 @@ pub struct InputFrame {
     /// Modifiers belong to this pointer-down and its matching up, not keyboard keys.
     #[serde(default)]
     pub pointer_modifiers: Vec<crate::gesture::Modifier>,
+    #[serde(default)]
+    pub pointer_button: Option<crate::gesture::MouseButton>,
+    /// Event-local flags retained for matching key ups, including Stop cleanup.
+    #[serde(default)]
+    pub key_modifiers: Vec<crate::gesture::Modifier>,
 }
 pub fn validate(frames: &[InputFrame]) -> Result<()> {
     let invalid = || {
@@ -43,6 +48,9 @@ pub fn validate(frames: &[InputFrame]) -> Result<()> {
             || frame.at_ms > 7_200_000
             || frame.key_down.len() > 16
             || frame.key_up.len() > 16
+            || (frame.pointer_button.is_some() && frame.pointer_down.is_none())
+            || (!frame.key_modifiers.is_empty() && frame.key_down.is_empty())
+            || !crate::gesture::valid_modifiers(&frame.key_modifiers)
             || frame.pointer_modifiers.len() > 4
             || (!frame.pointer_modifiers.is_empty() && frame.pointer_down.is_none())
             || frame
@@ -240,6 +248,24 @@ pub fn run(
 mod tests {
     use super::*;
     use std::cell::RefCell;
+    #[test]
+    fn extended_buttons_and_keyboard_flags_validate_before_dispatch() {
+        for button in ["left", "right", "middle", "back", "forward"] {
+            let frames: Vec<InputFrame> = serde_json::from_value(serde_json::json!([
+                {"atMs":0,"pointerDown":{"x":1,"y":2},"pointerButton":button,"keyDown":["F12"],"keyModifiers":["Meta","Shift"]},
+                {"atMs":100,"pointerUp":true,"keyUp":["F12"]}
+            ])).unwrap();
+            validate(&frames).unwrap();
+        }
+        for value in [
+            serde_json::json!([{"atMs":0,"pointerButton":"back"}]),
+            serde_json::json!([{"atMs":0,"keyModifiers":["Meta"]}]),
+            serde_json::json!([{"atMs":0,"keyDown":["A"],"keyModifiers":["Meta","Meta"]},{"atMs":1,"keyUp":["A"]}]),
+        ] {
+            let frames: Vec<InputFrame> = serde_json::from_value(value).unwrap();
+            assert!(validate(&frames).is_err());
+        }
+    }
     #[test]
     fn piano_travel_fits_release_gaps_without_retiming_input_or_dragging() {
         let p = Point {

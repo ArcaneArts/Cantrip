@@ -475,12 +475,14 @@ export class CantripCuaService {
       if (extra && "input" in extra) {
         const method =
           operation === "input.perform" && "command" in fields
-            ? ["focus", "window-input"].includes(
+            ? ["focus", "window-input", "media"].includes(
                 (fields.command as CuaInputCommand).kind,
               )
-              ? ((fields.command as CuaInputCommand).kind as
-                  "focus" | "window-input")
-              : (`background-${(fields.command as Exclude<CuaInputCommand, { kind: "focus" | "window-input" }>).kind}` as const)
+              ? (fields.command as CuaInputCommand).kind === "media"
+                ? "system-media"
+                : ((fields.command as CuaInputCommand).kind as
+                    "focus" | "window-input")
+              : (`background-${(fields.command as Exclude<CuaInputCommand, { kind: "focus" | "window-input" | "media" }>).kind}` as const)
             : operation === "input.press"
               ? "accessibility"
               : "delivery" in fields && fields.delivery === "background"
@@ -517,7 +519,9 @@ export class CantripCuaService {
           !matchesInputReceipt(
             extra.input,
             method,
-            method === "focus" || method === "window-input"
+            method === "focus" ||
+              method === "window-input" ||
+              method === "system-media"
               ? undefined
               : position,
             command &&

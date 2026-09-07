@@ -795,3 +795,63 @@ checks key-window state and `acceptsFirstMouse`; this supports the inactive-wind
 hypothesis but does not identify the branch taken in the user's trial. The
 reference "make key" records carry a Command modifier and are synthetic mouse
 records, so they are not an unmodified-click solution and are not used here.
+
+
+## Extended input (API 14)
+
+Mouse input now accepts `left`, `right`, `middle`, `back`, and `forward`.
+These are actual native mouse buttons (Quartz 0–4), not keyboard-shortcut
+substitutions. Back/forward behavior depends on the target application's support.
+Window delivery preserves the human cursor and the existing background routing.
+
+```js
+await cua.click({x:120,y:90}, {button:"middle"});
+await cua.click({x:120,y:90}, {button:"back"});
+await cua.pointerPress({x:120,y:90}, 150, ["Shift"], "right");
+await cua.keyPress("A", ["Meta"]);
+await cua.keyPress("F12", ["Control", "Shift"]);
+await cua.keyChord(["C", "B", "M"], 500, ["Shift"]);
+```
+
+`click(point?, {button, modifiers, holdMs})` keeps the existing left-button defaults.
+`pointerPress(point, holdMs=150, modifiers=[], button="left")` supports the same
+buttons. `clickDrag` continues to use the left button.
+Keyboard modifiers already supported by `keyPress` are `Shift`, `Control`, `Alt`
+(Option on macOS), and `Meta` (Command on macOS). `keyChord` now accepts a third
+modifier-array argument. Function keys F1–F20 and physical ANSI punctuation names
+`Minus`, `Equal`, `BracketLeft`, `BracketRight`, `Backslash`, `Semicolon`, `Quote`,
+`Comma`, `Period`, `Slash`, and `Backquote` are also supported. Use `typeText` for
+literal Unicode text instead of physical key positions.
+
+Timeline frames may set `pointerButton` alongside `pointerDown` and `keyModifiers`
+alongside `keyDown`. Modifiers are event-local flags, not separately held hardware
+keys. Each down retains its button/flags for its matching up and Stop cleanup.
+`pointerUp` remains a boolean; do not repeat `pointerButton` or modifier arrays on
+release-only frames. Existing ordered, balanced timeline rules still apply.
+
+```js
+await cua.inputTimeline([
+  {atMs:0, keyDown:["A"], keyModifiers:["Meta"]},
+  {atMs:100, keyUp:["A"]},
+  {atMs:200, pointerDown:{x:120,y:90}, pointerButton:"forward"},
+  {atMs:350, pointerUp:true}
+]);
+```
+
+`cua.mediaKey(key, modifiers=[])` is explicitly **system-wide**, even with a window
+attached. Use it for requested playback or volume controls, never as a fallback
+for a window click. Supported keys are `PlayPause`, `NextTrack`, `PreviousTrack`,
+`FastForward`, `Rewind`, `VolumeUp`, `VolumeDown`, and `VolumeMute`.
+
+```js
+await cua.mediaKey("PlayPause");
+await cua.mediaKey("VolumeDown");
+```
+
+On macOS these use consumer-key events with the IOKit `NX_KEYTYPE` codes rather
+than pretending media buttons are ANSI keys. Normal CUA native-input authority
+and the computer-use setting apply. The receipt is `method:"system-media"`,
+`outcome:"unknown"`, with no window-delivery or click-position claim. Dispatch is
+not proof that a particular player reacted. The event pair releases on Stop;
+no mouse movement or foreground request is made. Tests inspect event buffers
+without posting media input. Restart the worker to load the API 14 helper.

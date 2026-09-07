@@ -1,5 +1,5 @@
 //! Experimental window-directed macros. Activation requires explicit focus/preparation.
-//! No global post, clipboard,
+//! Window input never globally posts; explicit consumer keys use the media module. No clipboard,
 //! hardware pointer warp or modifier-state suppression. Void SPI cannot certify
 //! which responder consumed an event; every completed macro remains unverified.
 use crate::{
@@ -68,6 +68,14 @@ impl Event {
         unsafe { CGEventSetFlags(self.0, modifier_flags(modifiers)) };
     }
     fn mouse(source: Ref, kind: u32, point: Point) -> Result<Self> {
+        Self::mouse_button(source, kind, point, crate::gesture::MouseButton::Left)
+    }
+    fn mouse_button(
+        source: Ref,
+        kind: u32,
+        point: Point,
+        button: crate::gesture::MouseButton,
+    ) -> Result<Self> {
         Self::owned(unsafe {
             CGEventCreateMouseEvent(
                 source,
@@ -76,7 +84,7 @@ impl Event {
                     x: point.x,
                     y: point.y,
                 },
-                0,
+                button.number(),
             )
         })
     }
@@ -89,6 +97,22 @@ pub(super) fn perform(
     progress: &mut dyn FnMut(Point, bool),
 ) -> Result<(Target, InputReceipt)> {
     command.validate()?;
+    if let InputCommand::Media { key, modifiers } = command {
+        super::media::press(*key, modifiers, cancel)?;
+        return Ok((
+            target.clone(),
+            InputReceipt {
+                control: None,
+                method: "system-media",
+                activation: false,
+                outcome: "unknown",
+                position: None,
+                global_position: None,
+                effects: None,
+                window_delivery: None,
+            },
+        ));
+    }
     if matches!(command, InputCommand::Focus {}) {
         let mut current = target.clone();
         current.bounds = super::accessibility::request_focus(target, cancel)?;
@@ -154,15 +178,18 @@ pub(super) fn perform(
     };
     let mut final_position = position;
     match command {
-        InputCommand::Focus {} | InputCommand::WindowInput {} => {
+        InputCommand::Focus {} | InputCommand::WindowInput {} | InputCommand::Media { .. } => {
             unreachable!("focus handled without allocating mouse input")
         }
-        InputCommand::PreparedPress { hold_ms, .. } => {
+        InputCommand::PreparedPress {
+            hold_ms, button, ..
+        } => {
             let point = position;
             // Allocate and address the complete pair before the activation request.
             let tracking = Event::mouse(source.0, 5, global)?;
-            let down = Event::mouse(source.0, 1, global)?;
-            let up = Event::mouse(source.0, 2, global)?;
+            let (down_type, up_type) = button.event_types();
+            let down = Event::mouse_button(source.0, down_type, global, *button)?;
+            let up = Event::mouse_button(source.0, up_type, global, *button)?;
             for event in [&tracking, &down, &up] {
                 prepare(event, point, true);
             }
@@ -208,6 +235,8 @@ pub(super) fn perform(
                         Event::owned(unsafe { CGEventCreateKeyboardEvent(source.0, code, false) })?;
                     prepare(&down, position, false);
                     prepare(&up, position, false);
+                    down.set_modifiers(&frame.key_modifiers);
+                    up.set_modifiers(&frame.key_modifiers);
                     let i = pairs.len();
                     pairs.push(PreparedPair {
                         down,
@@ -221,8 +250,10 @@ pub(super) fn perform(
                 if let Some(point) = frame.pointer_down {
                     let global = target.bounds.to_global(point)?;
                     let tracking = Event::mouse(source.0, 5, global)?;
-                    let down = Event::mouse(source.0, 1, global)?;
-                    let up = Event::mouse(source.0, 2, global)?;
+                    let button = frame.pointer_button.unwrap_or_default();
+                    let (down_type, up_type) = button.event_types();
+                    let down = Event::mouse_button(source.0, down_type, global, button)?;
+                    let up = Event::mouse_button(source.0, up_type, global, button)?;
                     prepare(&tracking, point, true);
                     prepare(&down, point, true);
                     prepare(&up, point, true);
@@ -433,6 +464,39 @@ mod tests {
     #[link(name = "CoreGraphics", kind = "framework")]
     unsafe extern "C" {
         fn CGEventGetFlags(event: Ref) -> u64;
+    }
+    #[test]
+    fn native_buttons_survive_window_routing_without_posting() {
+        use crate::gesture::MouseButton::*;
+        unsafe extern "C" {
+            fn CGEventGetType(event: Ref) -> u32;
+            fn CGEventGetIntegerValueField(event: Ref, field: u32) -> i64;
+        }
+        let source = Event::owned(unsafe { CGEventSourceCreate(-1) }).unwrap();
+        let delivery = super::super::skylight::Delivery::load().unwrap();
+        for (button, expected_number, types) in [
+            (Left, 0, (1, 2)),
+            (Right, 1, (3, 4)),
+            (Middle, 2, (25, 26)),
+            (Back, 3, (25, 26)),
+            (Forward, 4, (25, 26)),
+        ] {
+            assert_eq!(button.event_types(), types);
+            for kind in [types.0, types.1] {
+                let point = Point { x: 10.0, y: 20.0 };
+                let event = Event::mouse_button(source.0, kind, point, button).unwrap();
+                unsafe {
+                    delivery.prepare(event.0, 77, 123, point, 42, 1);
+                }
+                event.set_modifiers(&[crate::gesture::Modifier::Meta]);
+                unsafe {
+                    assert_eq!(CGEventGetType(event.0), kind);
+                    assert_eq!(CGEventGetIntegerValueField(event.0, 3), expected_number);
+                    assert_eq!(CGEventGetIntegerValueField(event.0, 51), 123);
+                    assert_eq!(CGEventGetFlags(event.0), 1 << 20);
+                }
+            }
+        }
     }
     #[test]
     fn pointer_modifier_flags_do_not_leak_into_keyboard_events() {

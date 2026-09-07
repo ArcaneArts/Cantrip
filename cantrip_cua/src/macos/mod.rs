@@ -5,6 +5,7 @@ mod click;
 mod effects;
 mod geometry;
 mod gesture;
+mod media;
 mod overlay;
 mod pending;
 mod registry;
