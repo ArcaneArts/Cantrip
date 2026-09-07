@@ -5,6 +5,7 @@ mod click;
 mod effects;
 mod geometry;
 mod gesture;
+mod input_telemetry;
 mod media;
 mod overlay;
 mod pending;
@@ -242,7 +243,7 @@ impl CaptureBackend for MacOsBackend {
     ) -> Result<(Target, crate::input::InputReceipt)> {
         self.accessibility.clear(session);
         let current = self.resolve_target(&target.id, target.generation, cancel)?;
-        effects::observe(|| click::background_click(&current, point, cancel))
+        effects::observe(|| click::background_click(session, &current, point, cancel))
     }
 
     fn click(
@@ -265,7 +266,7 @@ impl CaptureBackend for MacOsBackend {
         cancel: &Cancellation,
     ) -> Result<(Target, crate::input::InputReceipt)> {
         self.accessibility.clear(session);
-        effects::observe(|| click::process_click(target, position, cancel))
+        effects::observe(|| click::process_click(session, target, position, cancel))
     }
     fn global_click(
         &mut self,
@@ -275,7 +276,7 @@ impl CaptureBackend for MacOsBackend {
         cancel: &Cancellation,
     ) -> Result<(Target, crate::input::InputReceipt)> {
         self.accessibility.clear(session);
-        effects::observe(|| click::click(target, position, cancel))
+        effects::observe(|| click::click(session, target, position, cancel))
     }
     fn perform(
         &mut self,
@@ -289,10 +290,22 @@ impl CaptureBackend for MacOsBackend {
         self.accessibility.clear(session);
         let current = self.resolve_target(&target.id, target.generation, cancel)?;
         effects::observe(|| {
-            gesture::perform(&current, command, position, cancel, &mut |point, action| {
-                progress(point);
-                overlay::move_cursor(session, &current, point, action.then_some(command.method()));
-            })
+            gesture::perform(
+                session,
+                &current,
+                command,
+                position,
+                cancel,
+                &mut |point, action| {
+                    progress(point);
+                    overlay::move_cursor(
+                        session,
+                        &current,
+                        point,
+                        action.then_some(command.method()),
+                    );
+                },
+            )
         })
     }
     fn native_input(&self) -> bool {
