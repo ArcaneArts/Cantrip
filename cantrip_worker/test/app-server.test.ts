@@ -1,3 +1,4 @@
+import { managedCuaMcpServer } from "../src/mcp/managed.js";
 import { describe, expect, it, vi } from "vitest";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -1293,6 +1294,25 @@ describe("Codex agent interaction bridge", () => {
 });
 
 describe("managed Cantrip MCP guidance", () => {
+  it("replaces disabled guidance when a console has the managed CUA tools", () => {
+    const server = managedCuaMcpServer(
+      { command: "node", arguments: ["cua-host.js"] },
+      "/connection.json",
+    );
+    const enabled = cantripChatThreadParams(true, "ide", [server]);
+    expect(enabled.developerInstructions).toContain("cantrip_cua");
+    expect(enabled.developerInstructions).not.toContain(
+      "Computer use is not enabled.",
+    );
+    const disabled = cantripChatThreadParams(true, "ide", [
+      { ...server, enabled: false },
+    ]);
+    expect(disabled.developerInstructions).toContain(
+      "Computer use is not enabled.",
+    );
+    expect(disabled.developerInstructions).not.toContain("cua.openWindow");
+  });
+
   it("registers no Cantrip dynamic tools for new or resumed threads", () => {
     expect(CANTRIP_DYNAMIC_TOOLS_OVERRIDE).toEqual({ dynamicTools: [] });
     const newThreadParams = cantripChatThreadParams();
@@ -1333,10 +1353,10 @@ describe("managed Cantrip MCP guidance", () => {
 
   it("adds non-Git guidance only when local Git metadata is absent", () => {
     expect(cantripChatThreadParams(true).developerInstructions).toBe(
-      CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS,
+      `Computer use is not enabled.\n\n${CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS}`,
     );
     expect(cantripChatThreadParams(false).developerInstructions).toBe(
-      `${CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS}\n\n${NON_GIT_WORKSPACE_DEVELOPER_INSTRUCTIONS}`,
+      `Computer use is not enabled.\n\n${CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS}\n\n${NON_GIT_WORKSPACE_DEVELOPER_INSTRUCTIONS}`,
     );
     expect(NON_GIT_WORKSPACE_DEVELOPER_INSTRUCTIONS).toContain(
       "Do not run Git or GitHub commands",
@@ -1349,7 +1369,7 @@ describe("managed Cantrip MCP guidance", () => {
   it("uses a compact standalone thread profile without IDE guidance", () => {
     const params = cantripChatThreadParams(true, "standalone-chat");
     expect(params.developerInstructions).toBe(
-      STANDALONE_CHAT_DEVELOPER_INSTRUCTIONS,
+      `Computer use is not enabled.\n\n${STANDALONE_CHAT_DEVELOPER_INSTRUCTIONS}`,
     );
     expect(params.developerInstructions).toContain("managed `cantrip`");
     expect(params.developerInstructions).toContain("`web_search`");

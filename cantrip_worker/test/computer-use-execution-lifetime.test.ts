@@ -591,3 +591,113 @@ describe("Codex runtime computer-use scope", () => {
     f.runtime.close();
   });
 });
+
+describe("linked CLI execution tracking", () => {
+  async function consoleFixture() {
+    const runtime = new CodexAppServer(
+      "/unused/codex",
+      "/unused/data",
+      "/unused/home",
+      unprobedCodexRuntimeReport,
+    );
+    const native = runtime as any;
+    vi.spyOn(native, "ensureStarted").mockResolvedValue(undefined);
+    const load = vi.spyOn(native, "loadThread").mockResolvedValue("console");
+    let turns: any[] = [];
+    const request = vi
+      .spyOn(native, "request")
+      .mockImplementation(async (method: unknown) =>
+        method === "thread/read"
+          ? { thread: { id: "console", status: { type: "active" }, turns } }
+          : {},
+      );
+    const options = {
+      chatId: "chat",
+      threadId: "console",
+      cwd: "/unused",
+      mcpServers: [],
+      model: {},
+      provider: {},
+    } as any;
+    await runtime.prepareExternalSync(options);
+    const notify = (method: string, params: unknown) =>
+      native.handleMessage(Buffer.from(JSON.stringify({ method, params })));
+    const start = (id = "turn") =>
+      notify("turn/started", {
+        threadId: "console",
+        turn: { id, startedAt: 1 },
+      });
+    const resolve = (turnId = "turn") =>
+      runtime.resolveConsoleComputerUseExecution({
+        chatId: "chat",
+        threadId: "console",
+        turnId,
+      });
+    return {
+      runtime,
+      native,
+      load,
+      request,
+      options,
+      notify,
+      start,
+      resolve,
+      setTurns: (value: any[]) => {
+        turns = value;
+      },
+    };
+  }
+
+  it("requires a prepared root and an actual native start before authorizing CUA", async () => {
+    const f = await consoleFixture();
+    expect(f.resolve()).toBeNull();
+    f.start();
+    const signal = f.resolve()!.signal;
+    f.notify("turn/completed", {
+      threadId: "console",
+      turn: { id: "turn", status: "completed" },
+    });
+    expect(signal.aborted).toBe(true);
+    f.start();
+    expect(f.resolve()).toBeNull();
+  });
+
+  it("keeps newer turns alive after a late completion and cancels them on thread close", async () => {
+    const f = await consoleFixture();
+    f.start("old");
+    const old = f.resolve("old")!.signal;
+    f.start("new");
+    expect(old.aborted).toBe(true);
+    f.notify("turn/completed", {
+      threadId: "console",
+      turn: { id: "old", status: "completed" },
+    });
+    const current = f.resolve("new")!.signal;
+    expect(current.aborted).toBe(false);
+    f.notify("thread/closed", { threadId: "console" });
+    expect(current.aborted).toBe(true);
+  });
+
+  it("does not unload a live CLI turn when tool configuration changes", async () => {
+    const f = await consoleFixture();
+    f.start();
+    f.load.mockRestore();
+    f.request.mockClear();
+    expect(
+      await f.native.loadThread({
+        ...f.options,
+        mcpServers: [{ name: "changed", enabled: true }],
+      }),
+    ).toBe("console");
+    expect(f.request).not.toHaveBeenCalled();
+    expect(f.resolve()?.signal.aborted).toBe(false);
+  });
+
+  it("still publishes CLI start notifications while CUA tracks the turn", async () => {
+    const f = await consoleFixture();
+    const changed = vi.fn();
+    f.runtime.setExternalThreadChangeObserver(changed);
+    f.start();
+    await vi.waitFor(() => expect(changed).toHaveBeenCalled());
+  });
+});

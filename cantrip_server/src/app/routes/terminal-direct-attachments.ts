@@ -1,3 +1,5 @@
+import { prepareConsoleExecutionContext } from "../../chats/console-context.js";
+import { managedConsoleChat } from "../../chats/execution-helpers.js";
 import { randomUUID } from "node:crypto";
 
 import {
@@ -37,6 +39,7 @@ export interface TerminalDirectAttachmentRouteDependencies {
   repository: Pick<
     ServerRepository,
     | "getChatExecutionContext"
+    | "ensureChatConsoleExecutionLane"
     | "getTerminalExecutionContext"
     | "getWorker"
     | "listEffectiveMcpServers"
@@ -123,7 +126,8 @@ export function installTerminalDirectAttachmentRoute(
             { type: "terminal.open" }
           >["launch"] = { type: "shell" };
           if (context.linkedChatId) {
-            const chat = await repository.getChatExecutionContext(
+            const chat = await prepareConsoleExecutionContext(
+              repository,
               principal.user.id,
               context.linkedChatId,
             );
@@ -136,6 +140,7 @@ export function installTerminalDirectAttachmentRoute(
             }
             launch = {
               type: "codex",
+              managedChat: managedConsoleChat(chat),
               threadId: chat.threadId,
               model: runtime.model,
               provider: runtime.provider,

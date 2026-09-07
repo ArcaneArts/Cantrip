@@ -1,3 +1,5 @@
+import { prepareConsoleExecutionContext } from "../../chats/console-context.js";
+import { managedConsoleChat } from "../../chats/execution-helpers.js";
 import { randomUUID } from "node:crypto";
 
 import {
@@ -44,6 +46,7 @@ export interface TerminalRelayWebSocketRouteDependencies {
   repository: Pick<
     ServerRepository,
     | "getChatExecutionContext"
+    | "ensureChatConsoleExecutionLane"
     | "getTerminalExecutionContext"
     | "listEffectiveMcpServers"
   >;
@@ -226,7 +229,8 @@ export function installTerminalRelayWebSocketRoute(
             { type: "terminal.open" }
           >["launch"] = { type: "shell" };
           if (context.linkedChatId) {
-            const chat = await repository.getChatExecutionContext(
+            const chat = await prepareConsoleExecutionContext(
+              repository,
               ownerId,
               context.linkedChatId,
             );
@@ -238,6 +242,7 @@ export function installTerminalRelayWebSocketRoute(
             }
             launch = {
               type: "codex",
+              managedChat: managedConsoleChat(chat),
               threadId: chat.threadId,
               model: runtime.model,
               provider: runtime.provider,
