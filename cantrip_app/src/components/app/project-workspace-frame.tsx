@@ -921,7 +921,7 @@ export function ProjectWorkspaceFrame({
     );
     return (
       <div
-        className="min-w-0 overflow-hidden border-b"
+        className="min-w-0 overflow-hidden border-b border-transparent transition-colors duration-150 hover:border-border motion-reduce:transition-none"
         data-project-pane-id={presentation.pane.id}
         key={`${presentation.pane.id}:tabs`}
       >
