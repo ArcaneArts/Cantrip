@@ -78,7 +78,7 @@ User testing on 2026-09-06 found that the same piano mouse press worked with
 Brave focused and visible, but failed with Brave unfocused and still visible.
 Keyboard notes worked unfocused. This isolates an inactive-window mouse issue;
 it does not establish a permission, coordinate-scale or covered-capture failure.
-Plain background mouse delivery remains unresolved for this target.
+The combined preparation-and-press route subsequently sounded G4 with Brave unfocused and partly covered, with no observed focus change or physical-pointer movement. API 6 makes that route the ordinary click default; no separate preparation is needed.
 
 For an **explicitly requested Command-click diagnostic**, use:
 
@@ -102,7 +102,7 @@ route. Published [background-click research](https://github.com/Lakr233/bgclick-
 identifies this flag as an inactive-window delivery technique, but Cantrip has
 now received user confirmation that a Command-modified G4 press sounded with
 Brave unfocused, while sampled pointer/foreground/window order stayed unchanged.
-Ordinary inactive mouse input remains unverified. Observe
+The combined ordinary-click route also has the bounded user confirmation above. Observe
 sound, visible key response, foreground focus and the physical pointer. A native
 `unknown` receipt still does not prove acceptance.
 
@@ -188,16 +188,26 @@ of uncertain input.
 
 ## Custom-cursor actions (current development behavior)
 
-Ordinary `cua.click()` acts at the custom cursor through the attached window's
-Accessibility controls. `cua.click({x,y})` first updates that logical position.
-The helper searches the selected window hierarchy, not the desktop under the
-physical pointer. It does not request activation, window raising or system
-pointer movement. There is no automatic global-input fallback.
+In API 6, `cua.click({x,y})` and unmodified `cua.pointerPress({x,y},holdMs)`
+automatically queue target-only AppKit preparation immediately before one ordinary
+pointer press. No agent-side preparation step or special experimental method is
+needed. `cua.click()` uses the current custom cursor position. The helper neither
+adds Command nor requests WindowServer foreground/raising or physical-pointer
+movement. It does not require an Accessibility control to exist at the point.
+The preparation may affect the target application's internal active state;
+receipts disclose `activation:true`, with actual foreground effects separately.
+The receipt remains `background-prepared-press`, `unknown`, and `unverified`.
+There is no automatic fallback or retry. `preparedPointerPress` remains available
+for callers using API 5. Explicit modified presses retain their previous route.
+
+The default hold is 150 ms. Ordinary `pointerPress` keeps its prior timeline
+range of 0–7200000 ms; zero still sends a down/up pair. Stop releases held input.
+Reference-based `cua.press(reference)` remains an explicit Accessibility action.
+Keyboard timelines, drag, scrolling, and explicit low-level legacy click delivery
+are unchanged by this default-method promotion.
 
 Use `await cua.moveCursor({x,y}); await cua.click(); await cua.snapshot()` after
-attaching a window in the current agent turn. Successful dispatch adds an outer
-ring, center dot and `[dispatched]` label to the existing cursor appearance until
-the next movement. Native click attempts that return errors retain a labelled
+attaching a window in the current agent turn. The cursor marker reports the dispatch outcome; an `unknown` label does not mean the target accepted the action. Native click attempts that return errors retain a labelled
 ring (`[failed]`, `[unsupported]`, `[cancelled]` or `[unknown]`) without the
 dispatch dot in the next observation. Unknown means do not retry automatically.
 The original tool error still propagates; the marker does not convert failure
@@ -210,7 +220,7 @@ reference press clears the previous marker before attempting the action.
 
 To identify what will receive the action, call `await cua.controls({x,y})`
 with the intended window-local point. It uses the same bounded, point-specific
-window traversal as `click`, without moving the cursor or sending input. This
+window traversal for Accessibility discovery, without moving the cursor or sending input. This
 can find controls omitted from the shorter `cua.controls()` list. Inspect the
 returned labels, roles and bounds, then use `cua.press(reference)` for the
 intended control. A truncated result is partial; it is not proof that no other
@@ -243,8 +253,8 @@ Global mouse input now requires explicit `cua.globalClick({x,y})` (or
 activation and shared-pointer behavior. Do not use it for requests to preserve
 the human pointer or act in a covered window without changing focus.
 
-Targeted clicks require a uniquely resolved pressable control. Missing,
-ambiguous or incomplete control information returns an error. Applications may
+Accessibility reference presses require a uniquely resolved pressable control. Missing,
+ambiguous or incomplete control information returns an error for that route; ordinary coordinate clicks do not depend on this inspection. Applications may
 cause their own focus changes when responding to an action; `activation: false`
 means Cantrip did not request activation, not that focus was measured unchanged.
 Native receipts now include `effects`: pointer, foreground application,
@@ -379,7 +389,7 @@ covered window or pointer independence. No private event fields or APIs are used
    `cua.press(reference)` and `cua.snapshot()` through managed JavaScript.
 2. Try an explicit coordinate action: “Capture this window, single-left-click
    [a harmless position], then capture and describe the result.” This uses
-   `cua.click({x,y})` to resolve a pressable control in the selected window.
+   `cua.click({x,y})` with automatic target-only preparation in the selected window.
    Only for expressly requested shared-pointer input use `cua.globalClick({x,y})`;
    global window clicks activate and raise the target before posting input.
 3. Outside selected YOLO, expect separate native-input approval through the
@@ -569,7 +579,7 @@ It sends no mouse event and does not restore previous focus. Receipts distinguis
 after any focus attempt remain uncertain. This method is never an implicit retry
 or a substitute for background input.
 
-## Experimental target-only AppKit preparation (API 4)
+## Historical target-only AppKit preparation trial (API 4)
 
 User QA established that Command-modified pointer input triggers piano notes in
 unfocused Brave. Ordinary mouse input still fails. Earlier trace evidence showed
@@ -591,7 +601,7 @@ before/after effects report foreground app/window, ordering and system pointer.
 Errors after posting report uncertain state, never a safe-to-retry failure.
 The ordinary mouse methods and Command-click route are unchanged.
 
-Test after restarting the development worker:
+Historical test sequence (superseded by the API 6 defaults above):
 
 1. Keep Brave visible but another application focused.
 2. Attach the exact piano window and call `await cua.prepareWindowInput()` once.
@@ -623,7 +633,7 @@ candidate. The helper allocates and addresses the tracking/down/up events first,
 then queues target-only preparation followed immediately by one unmodified press
 in the same native request. There is no model round trip, extra/primer click,
 Command flag, foreground request, window raise, or prior-app deactivation.
-The default hold is 150 ms, with explicit holds from 1 to 2000 ms. Ordinary
+The original API 5 hold range was 1–2000 ms; API 6 preserves the ordinary pointer method's existing 0–7200000 ms range. Ordinary
 `pointerPress`, keyboard timelines, and explicit Command-click are unchanged.
 
 Preparation failure prevents the press. After preparation is dispatched, any
@@ -633,13 +643,12 @@ and `windowDelivery: unverified`, with before/after effects. The activation fiel
 discloses the request, not proof that focus changed. AppKit can react to the
 notification; foreground preservation and actual acceptance still require QA.
 
-Test with API 5 after restarting the development worker: keep the piano window
+Historical API 5 test, since confirmed by the user: keep the piano window
 unfocused, attach its current window ID/generation, and take a fresh snapshot.
 Choose a white key, then call `preparedPointerPress(point,1000)` exactly once.
 Report its receipt and whether a note sounded, the custom cursor appeared, or
 physical pointer/focus/window order changed. Do not separately prepare, add
-modifiers, request focus, or retry. No native integration test has established
-that this timing candidate works.
+modifiers, request focus, or retry. User QA confirmed this combined press sounded G4 while Brave remained unfocused and partly covered. No further covered-window test is required for this promotion; other apps and full occlusion remain outside that observation.
 
 Source inspection also distinguishes application activation from the target
 window's key state. On the inspected macOS build, AppKit's left-mouse handler

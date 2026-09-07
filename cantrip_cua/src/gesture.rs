@@ -15,7 +15,8 @@ pub enum InputCommand {
     WindowInput {},
     #[serde(rename = "prepared-press")]
     PreparedPress {
-        point: Point,
+        #[serde(default)]
+        point: Option<Point>,
         #[serde(rename = "holdMs")]
         hold_ms: u64,
     },
@@ -72,7 +73,9 @@ impl InputCommand {
         let point = |p: Point| p.x.is_finite() && p.y.is_finite() && p.x >= 0.0 && p.y >= 0.0;
         let valid = match self {
             Self::Focus {} | Self::WindowInput {} => true,
-            Self::PreparedPress { point: p, hold_ms } => point(*p) && (1..=2000).contains(hold_ms),
+            Self::PreparedPress { point: p, hold_ms } => {
+                p.is_none_or(point) && *hold_ms <= 7_200_000
+            }
             Self::Timeline { frames } => return crate::timeline::validate(frames),
             Self::Text { text } => {
                 !text.is_empty()
@@ -240,18 +243,18 @@ mod tests {
     use super::*;
     #[test]
     fn prepared_press_is_a_single_bounded_unmodified_action() {
-        for hold_ms in [1, 150, 1000, 2000] {
+        for hold_ms in [0, 150, 1000, 2000, 7_200_000] {
             let command = InputCommand::PreparedPress {
-                point: Point { x: 12., y: 34. },
+                point: Some(Point { x: 12., y: 34. }),
                 hold_ms,
             };
             command.validate().unwrap();
             assert_eq!(command.method(), "background-prepared-press");
         }
-        for hold_ms in [0, 2001, u64::MAX] {
+        for hold_ms in [7_200_001, u64::MAX] {
             assert!(
                 InputCommand::PreparedPress {
-                    point: Point { x: 0., y: 0. },
+                    point: Some(Point { x: 0., y: 0. }),
                     hold_ms
                 }
                 .validate()

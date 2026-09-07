@@ -156,13 +156,14 @@ pub(super) fn perform(
         InputCommand::Focus {} | InputCommand::WindowInput {} => {
             unreachable!("focus handled without allocating mouse input")
         }
-        InputCommand::PreparedPress { point, hold_ms } => {
+        InputCommand::PreparedPress { hold_ms, .. } => {
+            let point = position;
             // Allocate and address the complete pair before the activation request.
             let tracking = Event::mouse(source.0, 5, global)?;
             let down = Event::mouse(source.0, 1, global)?;
             let up = Event::mouse(source.0, 2, global)?;
             for event in [&tracking, &down, &up] {
-                prepare(event, *point, true);
+                prepare(event, point, true);
             }
             super::window_input::prepare_then(pid, window, cancel, || {
                 held_gesture(
@@ -172,8 +173,8 @@ pub(super) fn perform(
                         post(&down);
                     },
                     || {
-                        final_position = *point;
-                        progress(*point);
+                        final_position = point;
+                        progress(point);
                         wait_until(Instant::now() + Duration::from_millis(*hold_ms), cancel)
                     },
                     || post(&up),
