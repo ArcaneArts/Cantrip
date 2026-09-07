@@ -17,6 +17,17 @@ Acceptance requires the user's report of that complete outcome. Work is solo,
 with sequential worktree PRs and squash auto-merge. The latest testing instruction leaves live acceptance to the user; implementation
 continues between useful cycles and stops when only that acceptance remains.
 
+### Current refinement: cubic ease-out preference
+
+The user confirmed API 9 timeline animation looks good and requested a faster
+initial snap. API 10 replaces smoothstep with cubic ease-out, `1 - (1 - t)^3`,
+for ordinary clicks and timeline travel. Duration, event deadlines, exact
+endpoints, Stop behavior and native drag motion remain unchanged. The existing
+motion test now verifies step distances decrease immediately, with no ease-in.
+Three focused motion tests, compilation, Clippy, formatting and diff checks
+passed. This is a presentation preference refinement of the accepted timeline
+behavior; no live input, integration testing or CI jobs were run.
+
 ### Current refinement: timeline cursor travel
 
 Recorded user QA showed Für Elise used one `inputTimeline` with 105 ms mouse

@@ -111,7 +111,9 @@ sound, visible key response, foreground focus and the physical pointer. A native
 
 Ordinary `cua.click(point)` and unmodified `cua.pointerPress(point, holdMs)`
 now move the custom cursor rapidly to the requested point before posting input.
-Travel uses smooth interpolation at about 60 frames/second, nominally 60–90 ms
+API 10 uses cubic ease-out interpolation, `1 - (1 - t)^3`: fast immediately,
+then decelerating into the target, with no ease-in. Travel runs at about
+60 frames/second, nominally 60–90 ms
 according to distance. The final presentation update completes before the native
 click starts; rendering load can extend elapsed time. The movement posts no OS
 mouse events, preserves cursor appearance/trails, and stays behind covering
