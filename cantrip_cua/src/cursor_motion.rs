@@ -29,38 +29,103 @@ pub fn travel(start: Point, end: Point) -> Vec<(Duration, Point)> {
         .collect()
 }
 
-/// Fit visual travel into an existing release-to-press gap without delaying input.
-pub fn before_deadline(
+/// A timed cubic Bezier segment sampled lazily. Storage is independent of the
+/// gap duration, so a long musical rest never allocates thousands of frames.
+#[derive(Clone, Debug)]
+pub struct TimedSpline {
     start: Point,
     end: Point,
-    available: Duration,
-    deadline: Duration,
-) -> Vec<(Duration, Point)> {
-    let gap = deadline.saturating_sub(available);
-    if gap.is_zero() || start == end {
-        return vec![];
-    }
-    let path = travel(start, end);
-    let duration = path.last().unwrap().0;
-    if duration.is_zero() {
-        return vec![];
-    }
-    let allotted = duration.min(gap);
-    let begins = deadline - allotted;
-    // A compressed 6 ms gap needs one endpoint, not four rasterizations.
-    // Retain evenly spaced samples and the exact endpoint at at most ~60 Hz.
-    let samples = ((allotted.as_secs_f64() * 60.0).ceil() as usize)
-        .max(1)
-        .min(path.len());
-    (1..=samples)
-        .map(|i| path[(i * path.len()).div_ceil(samples) - 1])
-        .map(|(at, point)| {
-            (
-                begins + allotted.mul_f64(at.as_secs_f64() / duration.as_secs_f64()),
-                point,
-            )
+    controls: [Point; 2],
+    begins: Duration,
+    duration: Duration,
+    sample: u64,
+    samples: u64,
+}
+impl TimedSpline {
+    pub fn new(
+        previous: Option<Point>,
+        start: Point,
+        end: Point,
+        next: Option<Point>,
+        begins: Duration,
+        deadline: Duration,
+    ) -> Option<Self> {
+        let duration = deadline.saturating_sub(begins);
+        if duration.is_zero() || start == end {
+            return None;
+        }
+        // Neighboring click locations give the spline a natural entry/exit
+        // direction. Keep its control hull inside the endpoints' rectangle:
+        // the visual path cannot overshoot the target window or a piano row.
+        let clamp = |p: Point| Point {
+            x: p.x.clamp(start.x.min(end.x), start.x.max(end.x)),
+            y: p.y.clamp(start.y.min(end.y), start.y.max(end.y)),
+        };
+        let previous = previous.unwrap_or(start);
+        let next = next.unwrap_or(end);
+        let controls = [
+            clamp(Point {
+                x: start.x + (end.x - previous.x) / 6.0,
+                y: start.y + (end.y - previous.y) / 6.0,
+            }),
+            clamp(Point {
+                x: end.x - (next.x - start.x) / 6.0,
+                y: end.y - (next.y - start.y) / 6.0,
+            }),
+        ];
+        Some(Self {
+            start,
+            end,
+            controls,
+            begins,
+            duration,
+            sample: 0,
+            samples: (duration.as_secs_f64() * 60.0).ceil().max(1.0) as u64,
         })
-        .collect()
+    }
+    fn sample_position(&self, t: f64) -> Point {
+        if t >= 1.0 {
+            return self.end;
+        }
+        // Known deadlines allow smooth acceleration and braking across the
+        // whole gap. Unknown future actions retain travel()'s cubic ease-out.
+        let t = (t * t * t * (10.0 + t * (-15.0 + 6.0 * t))).clamp(0.0, 1.0);
+        let u = 1.0 - t;
+        let axis =
+            |a, b, c, d| u * u * u * a + 3.0 * u * u * t * b + 3.0 * u * t * t * c + t * t * t * d;
+        Point {
+            x: axis(
+                self.start.x,
+                self.controls[0].x,
+                self.controls[1].x,
+                self.end.x,
+            )
+            .clamp(self.start.x.min(self.end.x), self.start.x.max(self.end.x)),
+            y: axis(
+                self.start.y,
+                self.controls[0].y,
+                self.controls[1].y,
+                self.end.y,
+            )
+            .clamp(self.start.y.min(self.end.y), self.start.y.max(self.end.y)),
+        }
+    }
+}
+impl Iterator for TimedSpline {
+    type Item = (Duration, Point);
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.sample == self.samples {
+            return None;
+        }
+        self.sample += 1;
+        let t = self.sample as f64 / self.samples as f64;
+        let at = if self.sample == self.samples {
+            self.begins + self.duration
+        } else {
+            self.begins + self.duration.mul_f64(t)
+        };
+        Some((at, self.sample_position(t)))
+    }
 }
 
 pub fn animate(
@@ -82,34 +147,86 @@ pub fn animate(
 mod tests {
     use super::*;
     #[test]
-    fn short_piano_gaps_do_not_queue_multiple_renders_inside_one_display_frame() {
-        let start = Point { x: 0.0, y: 0.0 };
-        let end = Point { x: 500.0, y: 200.0 };
-        for gap in [1, 6, 10, 16] {
-            let deadline = Duration::from_millis(gap);
-            assert_eq!(
-                before_deadline(start, end, Duration::ZERO, deadline),
-                vec![(deadline, end)]
-            );
+    fn timed_splines_use_the_full_gap_and_land_without_overshoot() {
+        let start = Point { x: 100., y: 200. };
+        let end = Point { x: 900., y: 500. };
+        for ms in [1, 6, 16, 50, 115, 1000, 3000] {
+            let begins = Duration::from_millis(105);
+            let deadline = begins + Duration::from_millis(ms);
+            let points: Vec<_> = TimedSpline::new(
+                Some(Point { x: 0., y: 900. }),
+                start,
+                end,
+                Some(Point { x: 1500., y: 10. }),
+                begins,
+                deadline,
+            )
+            .unwrap()
+            .collect();
+            assert_eq!(points.last(), Some(&(deadline, end)));
+            assert!(points[0].0 - begins <= Duration::from_millis(17));
+            assert!(points.windows(2).all(|w| w[0].0 < w[1].0));
+            for (_, p) in &points {
+                assert!((100.0..=900.0).contains(&p.x));
+                assert!((200.0..=500.0).contains(&p.y));
+            }
+            if ms <= 16 {
+                assert_eq!(points.len(), 1);
+            }
+            if ms >= 1000 {
+                let halfway = points[points.len() / 2 - 1].1;
+                assert!(halfway.x > start.x + 100. && halfway.x < end.x - 100.);
+                assert!(points.len() >= 60);
+            }
         }
-        assert!(before_deadline(start, end, Duration::ZERO, Duration::from_millis(100)).len() >= 4);
+        assert!(TimedSpline::new(None, start, end, None, Duration::ZERO, Duration::ZERO).is_none());
+        assert!(
+            TimedSpline::new(
+                None,
+                start,
+                start,
+                None,
+                Duration::ZERO,
+                Duration::from_secs(1)
+            )
+            .is_none()
+        );
     }
     #[test]
-    fn timeline_gap_compresses_travel_and_keeps_the_deadline() {
-        let start = Point { x: 0.0, y: 0.0 };
-        let end = Point { x: 900.0, y: 200.0 };
-        for gap in [1, 10, 50, 115] {
-            let available = Duration::from_millis(105);
-            let deadline = available + Duration::from_millis(gap);
-            let points = before_deadline(start, end, available, deadline);
-            assert_eq!(points.last(), Some(&(deadline, end)));
-            assert!(
-                points
-                    .iter()
-                    .all(|(at, _)| *at > available && *at <= deadline)
-            );
-        }
-        assert!(before_deadline(start, end, Duration::ZERO, Duration::ZERO).is_empty());
+    fn lookahead_bends_the_path_and_long_gaps_stay_lazy() {
+        let start = Point { x: 0., y: 0. };
+        let end = Point { x: 500., y: 500. };
+        let straight = TimedSpline::new(
+            None,
+            start,
+            end,
+            None,
+            Duration::ZERO,
+            Duration::from_secs(2),
+        )
+        .unwrap();
+        let curved = TimedSpline::new(
+            Some(Point { x: 0., y: 500. }),
+            start,
+            end,
+            Some(Point { x: 1000., y: 500. }),
+            Duration::ZERO,
+            Duration::from_secs(2),
+        )
+        .unwrap();
+        assert_ne!(straight.sample_position(0.25), curved.sample_position(0.25));
+        let mut long = TimedSpline::new(
+            None,
+            start,
+            end,
+            None,
+            Duration::ZERO,
+            Duration::from_secs(7200),
+        )
+        .unwrap();
+        assert!(std::mem::size_of_val(&long) < 256);
+        assert_eq!(long.samples, 432000);
+        assert!(long.next().unwrap().0 <= Duration::from_millis(17));
     }
     #[test]
     fn fast_travel_is_bounded_and_lands_exactly_without_overshoot() {

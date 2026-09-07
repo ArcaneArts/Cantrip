@@ -90,7 +90,7 @@ the worker to load API 12.
 API 11 reduces timeline rendering work: gaps shorter than a display frame keep
 only the endpoint, and cosmetic travel samples more than 16 ms late are skipped.
 Native down/up events remain ordered and are never dropped by this optimization.
-Longer gaps retain cubic ease-out travel. Timing remains best effort.
+API 15 uses the full known gap for a timed spline instead of concentrating travel in the final 60–90 ms. Timing remains best effort.
 
 A timeline's final `atMs` schedules input; it is not a completion deadline. The
 native request now uses the existing 2-hour-plus-5-second performance budget,
@@ -197,6 +197,36 @@ Brave unfocused, while sampled pointer/foreground/window order stayed unchanged.
 The combined ordinary-click route also has the bounded user confirmation above. Observe
 sound, visible key response, foreground focus and the physical pointer. A native
 `unknown` receipt still does not prove acceptance.
+
+### Planned cursor travel (API 15)
+
+Use one `cua.inputTimeline(frames)` for known clicks on an interface that stays
+stable between actions. Cursor presentation now uses the full release-to-press
+gap, with a cubic Bezier path guided by neighboring click positions and smooth
+acceleration/braking. Controls stay inside the endpoint rectangle, preventing
+overshoot outside the window or the selected piano row. Long gaps give slower,
+smoother movement; short gaps compress it to arrive at the same input deadline.
+
+The first click can include a positive `atMs` to allow travel from the current
+cursor. Zero-gap clicks still snap because there is no available travel time.
+No animation is added while a button is held; drag follows actual input motion.
+Key down/up order, pointer holds, cancellation cleanup, and input receipts stay
+unchanged. Cosmetic samples are generated lazily at approximately 60 Hz, keeping
+memory proportional to input events rather than elapsed score time; late visual
+samples are skipped. Display scheduling and native preparation remain best
+effort, not hard real-time guarantees.
+
+For an unknown future (`await cua.wait(...); await cua.click(...)`, separate tool
+calls, or conditional JavaScript), ordinary click deceleration remains unchanged.
+The harness never evaluates a script twice or guesses future input. Put known
+clicks and their timing in `inputTimeline` to enable lookahead automatically.
+
+Manual piano test: choose three fresh key coordinates A/B/C, then play one native
+timeline: A down at 500 ms, up at 600; B down at 1600, up at 1700; C down at 2000,
+up at 2100; A down at 2200, up at 2300. Look for a smooth initial approach and
+travel across the long gap, followed by faster travel across the shorter gaps,
+with the cursor at each key when pressed. Compare one subsequent ordinary click
+for the existing ease-out behavior. Do not replay a cancelled or uncertain run.
 
 ### Fast cursor travel before clicks (API 8)
 
