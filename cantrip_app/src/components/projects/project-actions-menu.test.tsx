@@ -35,6 +35,7 @@ import {
 } from "./project-actions-menu";
 
 const actions: ProjectMenuActions = {
+  onOpenOverview: vi.fn(),
   onOpenSettings: vi.fn(),
   onRemove: vi.fn(),
   onReveal: vi.fn(),
@@ -57,6 +58,7 @@ describe("project action menus", () => {
       expect(markup).toContain(`data-slot="${slot}"`);
       expect(markup).toContain("z-[100]");
       expect(markup).toContain("Project Settings");
+      if (_kind === "dropdown") expect(markup).toContain("Overview");
       expect(markup).toContain("Reveal in Finder");
       expect(markup).toContain("Remove project");
     },

@@ -8,6 +8,7 @@ export function projectFrameVisibility({
   showProjectSettings,
   showServerAdmin,
   showSettings,
+  showProjectOverview = false,
   sidebarFilePreviewVisible: _sidebarFilePreviewVisible,
   workspaceDestination,
 }: {
@@ -18,6 +19,7 @@ export function projectFrameVisibility({
   showProjectSettings: boolean;
   showServerAdmin: boolean;
   showSettings: boolean;
+  showProjectOverview?: boolean;
   sidebarFilePreviewVisible: boolean;
   workspaceDestination: WorkspaceSelection["destination"];
 }) {
@@ -26,6 +28,7 @@ export function projectFrameVisibility({
     !mobileProjectSelectorOpen &&
     !showImporter &&
     !showSettings &&
+    !showProjectOverview &&
     !showArchivedStandaloneChats &&
     !showServerAdmin &&
     !showProjectSettings,

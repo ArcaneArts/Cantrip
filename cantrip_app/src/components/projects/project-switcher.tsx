@@ -60,6 +60,7 @@ export function ProjectSwitcher({
   onAddProject,
   onManageWorkspaces,
   onOpenProjectSettings,
+  onOpenOverview,
   onRemoveProject,
   onRevealProject,
   onSelectProject,
@@ -73,6 +74,7 @@ export function ProjectSwitcher({
   onAddProject(source: ProjectCreateSource): void;
   onManageWorkspaces(): void;
   onOpenProjectSettings(projectId: string): void;
+  onOpenOverview?(): void;
   onRemoveProject(projectId: string, deleteLocalFiles: boolean): Promise<void>;
   onRevealProject?: (
     project: ProjectSummary,
@@ -295,6 +297,7 @@ export function ProjectSwitcher({
           <ProjectDropdownMenu
             actions={{
               onOpenSettings: () => onOpenProjectSettings(selectedProject.id),
+              onOpenOverview,
               onRemove: () => setRemoveProjectTarget(selectedProject),
               onReveal:
                 selectedProject.source && projectRevealLabel && onRevealProject

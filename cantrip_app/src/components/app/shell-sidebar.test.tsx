@@ -164,6 +164,10 @@ describe("desktop app mode menu", () => {
     expect(mocks.projectChatListProps).toHaveLength(1);
     bindings.showProjectSettings = false;
     expect(render()).not.toContain("display:none");
+    bindings.showProjectOverview = true;
+    expect(render()).toContain("display:none");
+    bindings.showProjectOverview = false;
+    expect(render()).not.toContain("display:none");
   });
 
   it.each([false, true])(

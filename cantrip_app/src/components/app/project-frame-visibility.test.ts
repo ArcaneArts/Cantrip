@@ -45,7 +45,7 @@ describe("project frame visibility", () => {
     ).toEqual({ docked: true, railsVisible: true });
   });
 
-  it.each(["showSettings", "showProjectSettings"])(
+  it.each(["showSettings", "showProjectSettings", "showProjectOverview"])(
     "hides panes and rails while %s owns the content area",
     (setting) => {
       expect(

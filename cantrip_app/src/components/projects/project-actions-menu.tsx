@@ -1,6 +1,6 @@
 import * as ContextMenuPrimitive from "@radix-ui/react-context-menu";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
-import { Settings, Trash2 } from "lucide-react";
+import { LayoutDashboard, Settings, Trash2 } from "lucide-react";
 import { useRef, type ReactNode } from "react";
 
 import {
@@ -14,6 +14,7 @@ import {
 import { cn } from "@/lib/utils";
 
 export interface ProjectMenuActions {
+  onOpenOverview?(): void;
   onOpenSettings(): void;
   onRemove(): void;
   onReveal?: (localFolder: boolean) => void;
@@ -82,6 +83,7 @@ function ContextItems({
 }
 
 function DropdownItems({
+  onOpenOverview,
   onOpenSettings,
   onRemove,
   onReveal,
@@ -91,6 +93,14 @@ function DropdownItems({
   const reveal = useRevealSelection(onReveal);
   return (
     <>
+      {onOpenOverview ? (
+        <DropdownMenuPrimitive.Item
+          className={itemClass}
+          onSelect={onOpenOverview}
+        >
+          <LayoutDashboard className="size-4" /> Overview
+        </DropdownMenuPrimitive.Item>
+      ) : null}
       <DropdownMenuPrimitive.Item
         className={itemClass}
         onSelect={onOpenSettings}
