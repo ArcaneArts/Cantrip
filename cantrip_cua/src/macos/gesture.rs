@@ -281,18 +281,18 @@ pub(super) fn perform(
                 .iter()
                 .map(|p| p.pointer.as_ref().map(|(point, _)| *point))
                 .collect();
-            let (schedule, travel_points) =
+            let schedule =
                 crate::timeline::with_pointer_travel(schedule, &pointer_points, position);
             crate::timeline::run(
-                &schedule,
+                schedule,
                 pairs.len(),
                 cancel,
                 |transition| {
                     let (i, is_down) = match transition {
                         Transition::Down(i) => (i, true),
                         Transition::Up(i) => (i, false),
-                        Transition::Move(i) => {
-                            final_position = travel_points[i];
+                        Transition::Move(point) => {
+                            final_position = point;
                             progress(final_position, false);
                             return;
                         }
