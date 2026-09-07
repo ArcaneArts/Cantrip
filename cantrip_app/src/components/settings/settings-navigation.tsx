@@ -87,24 +87,24 @@ function SettingsSectionList<SectionId extends string>({
   sections: readonly SettingsNavigationSection<SectionId>[];
 }) {
   return (
-    <div className="grid gap-1" role="list">
+    <div className="grid gap-1 md:gap-0.5" role="list">
       {sections.map(({ description, icon: Icon, id, label }) => (
         <button
           key={id}
           type="button"
           aria-current={activeSection === id ? "page" : undefined}
           className={cn(
-            "group flex w-full items-center gap-3 rounded-md px-3 py-2 text-left transition-colors",
+            "group flex w-full items-center gap-3 rounded-md px-3 py-2 text-left transition-colors md:h-8 md:gap-2 md:px-2 md:py-1",
             activeSection === id
               ? "bg-muted text-foreground"
               : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
           )}
           onClick={() => onSelect(id)}
         >
-          <Icon className="size-4 shrink-0" />
+          <Icon className="size-4 shrink-0 md:size-3.5" />
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-medium">{label}</span>
-            <span className="block truncate text-[11px] text-muted-foreground">
+            <span className="block truncate text-[11px] text-muted-foreground md:hidden">
               {description}
             </span>
           </span>
