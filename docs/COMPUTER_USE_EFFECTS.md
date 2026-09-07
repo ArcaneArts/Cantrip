@@ -21,6 +21,36 @@ capture/effect surface is shared by all sessions attached to a window. No input
 receipt is changed by presentation success or failure. Generated event telemetry
 is not evidence that the application accepted the input.
 
+## Cursor warp
+
+Select **Settings → General → Computer use → Window effects → Cursor warp**.
+This fragment samples the clean window through a subtle lens around each visible
+agent cursor, adds a wake from smoothed cursor velocity, and emits expanding
+ripples at recent mouse presses or accessibility actions. The cursor and glow
+remain above the effect. It changes neither agent screenshots nor input coordinates.
+There is no debug badge or inversion in this effect.
+
+| Parameter | Default | Range |
+| --- | --- | --- |
+| Warp strength | 1 | 0–2; 0 is exact pass-through |
+| Warp radius (logical points) | 110 | 32–320 |
+| Motion response | 1 | 0–2 |
+| Click ripple | 1 | 0–2 |
+
+Parameters occupy the first uniform lane in that order. Motion uses the existing
+frame-independent smoothed velocity; a stationary cursor keeps only a small lens.
+Press ripples expire after 650 ms. Overlapping contributions have a shared maximum
+displacement and fade at the window boundary. It needs continuous rendering for
+motion/decay, but no history texture or extra capture stream.
+
+For manual testing, reuse the piano prompt below with Cursor warp selected.
+Watch straight key edges bend during cursor travel and a brief ripple on a press;
+wait to see the motion wake settle back to the subtle lens. Try strength 0 and
+then 1, and compare the agent's clean screenshot. Effects remain Off by default.
+Restart the development worker after updating the bundled helper, using the same
+profile as before. The live shader replacement environment variable, if set,
+overrides bundled shaders; unset it and restart to test this bundled effect.
+
 ## Shader ABI version 1
 
 `cantrip_cua/src/effects/uniforms.rs` and `cantrip_cua/shaders/contract.metal`
@@ -278,8 +308,8 @@ they do not remap the application’s input coordinates.
 
 Window stacking, full-screen/Space transitions, visual alignment, and perceived
 latency still require the manual test below. Source review and offscreen tests do
-not constitute visual acceptance. A polished motion-warp effect is intentionally
-outside this foundation.
+not constitute visual acceptance. The bundled cursor warp provides a first motion-sensitive effect; its visual tuning
+can be adjusted in settings.
 
 ## Manual test after updating
 

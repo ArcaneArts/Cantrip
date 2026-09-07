@@ -41,6 +41,8 @@ export function ComputerUseEffectsSettings({
   });
   const debug =
     configuration.effect === "debug-gradient" ? configuration.parameters : null;
+  const warp =
+    configuration.effect === "cursor-warp" ? configuration.parameters : null;
   const setParameter = (
     key: "strength" | "radius" | "showTelemetry",
     value: number,
@@ -134,6 +136,79 @@ export function ComputerUseEffectsSettings({
             />
             Show cursor velocity and input feedback
           </label>
+        </div>
+      ) : null}
+      {warp ? (
+        <div className="space-y-2">
+          <p className="text-muted-foreground">
+            A subtle lens at rest, a stronger wake during movement, and a brief
+            ripple on clicks. Only the window image bends; input coordinates
+            stay unchanged.
+          </p>
+          {(
+            [
+              {
+                key: "strength",
+                label: "Warp strength",
+                fallback: 1,
+                min: 0,
+                max: 2,
+                step: 0.05,
+              },
+              {
+                key: "radius",
+                label: "Warp radius (points)",
+                fallback: 110,
+                min: 32,
+                max: 320,
+                step: 1,
+              },
+              {
+                key: "motion",
+                label: "Motion response",
+                fallback: 1,
+                min: 0,
+                max: 2,
+                step: 0.05,
+              },
+              {
+                key: "ripple",
+                label: "Click ripple",
+                fallback: 1,
+                min: 0,
+                max: 2,
+                step: 0.05,
+              },
+            ] as const
+          ).map((parameter) => (
+            <label
+              key={parameter.key}
+              className="flex items-center justify-between gap-3"
+            >
+              {parameter.label}
+              <input
+                aria-label={parameter.label}
+                type="number"
+                min={parameter.min}
+                max={parameter.max}
+                step={parameter.step}
+                disabled={pending}
+                className="w-24 rounded-md border bg-background px-2 py-1"
+                key={`${parameter.key}:${warp[parameter.key]}`}
+                defaultValue={warp[parameter.key] ?? parameter.fallback}
+                onBlur={(event) => {
+                  const next = cuaEffectConfigurationSchema.safeParse({
+                    effect: "cursor-warp",
+                    parameters: {
+                      ...warp,
+                      [parameter.key]: event.target.valueAsNumber,
+                    },
+                  });
+                  if (next.success) onChange(next.data);
+                }}
+              />
+            </label>
+          ))}
         </div>
       ) : null}
       <div className="flex flex-wrap items-center gap-2">

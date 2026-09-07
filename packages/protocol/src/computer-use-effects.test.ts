@@ -41,6 +41,32 @@ describe("window effect preferences", () => {
       }).success,
     ).toBe(false);
   });
+  it("accepts warp preferences and enforces its parameter ranges", () => {
+    expect(
+      cuaEffectConfigurationSchema.parse({ effect: "cursor-warp" }),
+    ).toEqual({ effect: "cursor-warp", parameters: {} });
+    const computerUseEffects = {
+      effect: "cursor-warp",
+      parameters: { strength: 2, radius: 320, motion: 0, ripple: 1 },
+    };
+    expect(userSettingsUpdateSchema.parse({ computerUseEffects })).toEqual({
+      computerUseEffects,
+    });
+    for (const parameters of [
+      { strength: -1 },
+      { radius: 31 },
+      { motion: 3 },
+      { ripple: Infinity },
+      { showTelemetry: 1 },
+    ]) {
+      expect(
+        cuaEffectConfigurationSchema.safeParse({
+          effect: "cursor-warp",
+          parameters,
+        }).success,
+      ).toBe(false);
+    }
+  });
   it("keeps revisions server-owned and ordinary settings patches independent", () => {
     expect(
       userSettingsUpdateSchema.parse({

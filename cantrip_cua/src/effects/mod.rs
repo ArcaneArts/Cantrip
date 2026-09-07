@@ -28,6 +28,7 @@ pub enum EffectId {
     Off,
     PassThrough,
     DebugGradient,
+    CursorWarp,
 }
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -84,6 +85,41 @@ const DEBUG_PARAMETERS: &[Parameter] = &[
         max: 1.0,
     },
 ];
+// Order is the fragment parameter ABI: strength, radius, motion, ripple.
+const WARP_PARAMETERS: &[Parameter] = &[
+    Parameter {
+        id: "strength",
+        label: "Warp strength",
+        kind: "float",
+        default: 1.0,
+        min: 0.0,
+        max: 2.0,
+    },
+    Parameter {
+        id: "radius",
+        label: "Warp radius",
+        kind: "float",
+        default: 110.0,
+        min: 32.0,
+        max: 320.0,
+    },
+    Parameter {
+        id: "motion",
+        label: "Motion response",
+        kind: "float",
+        default: 1.0,
+        min: 0.0,
+        max: 2.0,
+    },
+    Parameter {
+        id: "ripple",
+        label: "Click ripple",
+        kind: "float",
+        default: 1.0,
+        min: 0.0,
+        max: 2.0,
+    },
+];
 pub const DESCRIPTORS: &[Descriptor] = &[
     Descriptor {
         id: EffectId::Off,
@@ -111,6 +147,15 @@ pub const DESCRIPTORS: &[Descriptor] = &[
         continuous: true,
         history: false,
         parameters: DEBUG_PARAMETERS,
+    },
+    Descriptor {
+        id: EffectId::CursorWarp,
+        label: "Cursor warp",
+        contract_version: CONTRACT_VERSION,
+        fragment: "cantrip_cursor_warp",
+        continuous: true,
+        history: false,
+        parameters: WARP_PARAMETERS,
     },
 ];
 impl Configuration {

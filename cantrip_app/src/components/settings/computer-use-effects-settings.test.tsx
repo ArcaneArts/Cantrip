@@ -26,6 +26,23 @@ describe("window effect settings", () => {
     expect(html).toContain("Agent screenshots keep the original colors");
     expect(html).not.toContain("Inversion strength");
   });
+  it("offers warp controls with saved values and no debug diagnostics", () => {
+    const html = render({
+      effect: "cursor-warp",
+      parameters: { strength: 1.5, radius: 140, motion: 0.5, ripple: 0 },
+    });
+    expect(html).toContain('value="cursor-warp" selected=""');
+    for (const label of [
+      "Warp strength",
+      "Warp radius (points)",
+      "Motion response",
+      "Click ripple",
+    ])
+      expect(html).toContain(label);
+    expect(html).toContain('value="1.5"');
+    expect(html).toContain('value="140"');
+    expect(html).not.toContain("Inversion strength");
+  });
   it("exposes the debug shader parameters", () => {
     const html = render({
       effect: "debug-gradient",

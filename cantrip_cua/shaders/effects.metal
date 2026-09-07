@@ -66,3 +66,53 @@ fragment float4 cantrip_debug_gradient(CantripVertex in [[stage_in]],
     }
     return float4(color * pixel.a, pixel.a);
 }
+
+// Local lens + velocity wake + expanding press ripples. Sample clean video only;
+// the separately composited cursor is never part of this displacement field.
+fragment float4 cantrip_cursor_warp(CantripVertex in [[stage_in]],
+    texture2d<float> source [[texture(0)]],
+    constant CantripFrame &frame [[buffer(0)]]) {
+    float strength = frame.parameters[0].x;
+    if (strength <= 0) return source.sample(windowSampler, in.uv);
+    float radius = max(frame.parameters[0].y, 1.0f);
+    float motion = frame.parameters[0].z;
+    float ripple = frame.parameters[0].w;
+    float2 size = max(frame.window.xy, float2(1));
+    float2 p = in.uv * size;
+    float2 displacement = float2(0);
+    for (uint i=0; i<min(frame.header.y,CANTRIP_MAX_CURSORS); ++i) {
+        CantripCursor c = frame.cursors[i];
+        if (!c.state.x) continue;
+        float2 delta = p-c.position.xy;
+        float distance = length(delta);
+        if (distance >= radius) continue;
+        float falloff = 1.0f-smoothstep(0.0f,radius,distance);
+        falloff *= falloff;
+        float speed = length(c.velocity.zw);
+        float response = 1.0f-exp(-speed/900.0f);
+        float2 direction = c.velocity.zw/max(speed,1.0f);
+        // Tiny resting lens, stronger while moving or holding a button.
+        displacement += delta*falloff*(0.025f+0.10f*response*motion+(c.state.y ? 0.025f : 0.0f));
+        displacement -= direction*(radius*0.12f*response*motion*falloff);
+    }
+    for (uint i=0; i<min(frame.header.z,CANTRIP_MAX_EVENTS); ++i) {
+        CantripEvent e = frame.events[i];
+        float age = e.timing.y;
+        if (!e.event.w || (e.event.x != 1 && e.event.x != 6) || age < 0 || age >= 0.65f) continue;
+        float2 delta = p-e.position.xy;
+        float distance = length(delta);
+        if (distance >= radius*1.4f) continue;
+        float travel = radius*(0.12f+1.8f*age);
+        float band = (distance-travel)/max(radius*0.12f,1.0f);
+        float envelope = exp(-band*band)*(1.0f-smoothstep(0.0f,0.65f,age));
+        envelope *= 1.0f-smoothstep(radius,radius*1.4f,distance);
+        displacement += delta/max(distance,1.0f)*sin(band*2.4f)*envelope*radius*0.045f*ripple;
+    }
+    // Bound overlapping agents/clicks and fade at the window boundary so the
+    // filter cannot pull a long clamped edge smear across the application.
+    displacement *= strength;
+    displacement *= min(1.0f,radius*0.22f/max(length(displacement),0.001f));
+    float edge = min(min(p.x,p.y),min(size.x-p.x,size.y-p.y));
+    displacement *= smoothstep(0.0f,min(radius*0.25f,24.0f),edge);
+    return source.sample(windowSampler,clamp((p+displacement)/size,float2(0),float2(1)));
+}

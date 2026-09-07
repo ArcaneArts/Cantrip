@@ -544,6 +544,90 @@ mod tests {
         });
     }
     #[test]
+    fn warp_responds_to_motion_and_clicks_without_changing_clean_video() {
+        objc2::rc::autoreleasepool(|_| {
+            let device = MTLCreateSystemDefaultDevice().expect("Metal test device");
+            let mut gpu = Gpu::new(device.clone()).unwrap();
+            let original = std::array::from_fn(|i| match i % 4 {
+                0 => ((i / 4) % 4) * 60,
+                1 => (i / 16) * 60,
+                2 => 90,
+                _ => 255,
+            } as u8);
+            let source = texture(&device, &original);
+            let output = texture(&device, &[0; 64]);
+            let frame = Arc::new(Frame {
+                _owner: FrameOwner::Synthetic,
+                texture: source.clone(),
+                source_ns: 0,
+            });
+            let config = Configuration {
+                effect: EffectId::CursorWarp,
+                ..Configuration::default()
+            };
+            config.validate().unwrap();
+            let pipeline = compile(&device, &config, BUNDLED).unwrap();
+            assert!(pipeline.continuous);
+            assert!(!pipeline.history);
+            let mut data = uniform(&config);
+            data.window = [128., 128., 4. / 128., 4. / 128.];
+            let mut serial = 0;
+            let mut render = |data: &FrameUniform| {
+                serial += 1;
+                assert!(
+                    gpu.render(
+                        frame.clone(),
+                        &pipeline,
+                        data,
+                        Destination {
+                            texture: &output,
+                            drawable: None,
+                            generation: 1,
+                            source_sequence: serial,
+                        }
+                    )
+                    .unwrap()
+                );
+                wait(&gpu, serial);
+                pixels(&output)
+            };
+            assert_eq!(
+                render(&data),
+                original,
+                "no cursors/events means clean pixels"
+            );
+            data.header[1] = 1;
+            data.cursors[0].state[0] = 1;
+            data.cursors[0].position = [64., 64., 0.5, 0.5];
+            let idle = render(&data);
+            data.cursors[0].velocity = [0., 0., 1800., 0.];
+            let moving = render(&data);
+            assert_ne!(moving, idle, "motion must change the sampled video");
+            data.cursors[0].state[0] = 0;
+            assert_eq!(render(&data), original, "invisible cursors do not warp");
+            data.header[2] = 1;
+            data.events[0].event = [1, 0, 0, 1];
+            data.events[0].position = [64., 64., 0.5, 0.5];
+            data.events[0].timing[1] = 0.17;
+            assert_ne!(render(&data), original, "a recent press must ripple");
+            data.events[0].timing[1] = 0.7;
+            assert_eq!(render(&data), original, "old press ripples must decay away");
+            data.cursors[0].state[0] = 1;
+            data.events[0].timing[1] = 0.17;
+            data.parameters[0][0] = 0.;
+            assert_eq!(
+                render(&data),
+                original,
+                "zero strength is pass-through even with input"
+            );
+            assert_eq!(
+                pixels(&source),
+                original,
+                "clean source must remain unmodified"
+            );
+        });
+    }
+    #[test]
     fn history_is_initialized_and_stays_separate_from_capture() {
         objc2::rc::autoreleasepool(|_| {
             let device = MTLCreateSystemDefaultDevice().expect("Metal test device");
