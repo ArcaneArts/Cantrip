@@ -5,6 +5,7 @@ export const cuaEffectIdSchema = z.enum([
   "off",
   "pass-through",
   "debug-gradient",
+  "cursor-warp",
 ]);
 export const cuaEffectConfigurationSchema = z.discriminatedUnion("effect", [
   z.strictObject({
@@ -25,6 +26,17 @@ export const cuaEffectConfigurationSchema = z.discriminatedUnion("effect", [
       })
       .default({}),
   }),
+  z.strictObject({
+    effect: z.literal("cursor-warp"),
+    parameters: z
+      .strictObject({
+        strength: z.number().min(0).max(2).optional(),
+        radius: z.number().min(32).max(320).optional(),
+        motion: z.number().min(0).max(2).optional(),
+        ripple: z.number().min(0).max(2).optional(),
+      })
+      .default({}),
+  }),
 ]);
 export type CuaEffectConfiguration = z.infer<
   typeof cuaEffectConfigurationSchema
@@ -37,6 +49,7 @@ export const CUA_EFFECTS = [
   { id: "off", label: "Off" },
   { id: "pass-through", label: "Pass-through" },
   { id: "debug-gradient", label: "Debug gradient inversion" },
+  { id: "cursor-warp", label: "Cursor warp" },
 ] as const;
 
 /** Monotonic durable revision prevents a delayed heartbeat undoing a new save. */
