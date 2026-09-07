@@ -62,6 +62,8 @@ export const cuaEffectStatusSchema = z.object({
   supported: z.boolean(),
   configuration: cuaEffectConfigurationSchema,
   compiling: z.boolean().optional(),
+  shaderSource: z.string().nullable().optional(),
+  activeEffect: cuaEffectIdSchema.nullable().optional(),
   shaderError: z.string().nullable().optional(),
   windows: z.array(
     z.object({

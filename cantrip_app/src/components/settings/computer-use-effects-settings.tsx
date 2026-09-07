@@ -175,6 +175,17 @@ export function ComputerUseEffectsSettings({
                   ? "Window effects are off."
                   : "Effects will appear on windows attached through computer use."}
       </p>
+      {native?.shaderSource &&
+      native.shaderSource !== "bundled-effects.metal" ? (
+        <p className="break-all text-muted-foreground">
+          Development shader: {native.shaderSource}
+        </p>
+      ) : null}
+      {native?.shaderError && native.activeEffect ? (
+        <p className="text-muted-foreground">
+          The last working effect remains active.
+        </p>
+      ) : null}
       {status.error ||
       status.data?.error ||
       native?.shaderError ||

@@ -1,5 +1,6 @@
 //! Window-effect data only. Source capture, effect output, and cursor pixels are separate.
 pub mod live;
+pub mod source;
 pub mod telemetry;
 pub mod uniforms;
 

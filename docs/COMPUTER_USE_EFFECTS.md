@@ -4,8 +4,8 @@ The foundation is being delivered in sequential manual-change PRs. The shader
 ABI and native telemetry are merged in PR #1814; clean capture, Metal rendering,
 panel ordering, bundled fragments, and optional history are merged in PR #1815.
 Account settings now propagate through the server and worker to the native helper.
-Effects remain Off by default. Development shader replacement and the final
-lifecycle/delivery audit remain required follow-up work.
+Effects remain Off by default. The implementation review, platform limits, and
+manual acceptance procedure are recorded below.
 
 ## Composition contract
 
@@ -166,16 +166,10 @@ The native approach follows Apple's documentation for
 [IOSurface-backed screen frames](https://developer.apple.com/documentation/screencapturekit/capturing-screen-content-in-macos),
 and [CoreVideo Metal texture import](https://developer.apple.com/documentation/corevideo/cvmetaltexturecachecreatetexturefromimage(_:_:_:_:_:_:_:_:_:)).
 
-## Remaining delivery and manual acceptance
+## Validation scope
 
-The remaining milestone must provide development shader replacement with useful
-compilation diagnostics and last-working-pipeline/original-window fallback.
-It must finish the lifecycle review and document concrete platform limitations.
-
-After those milestones, build/install development artifacts without launching or
-restarting the app. The final handoff will include exact setup instructions and
-a copyable agent prompt for checking filtering, clean agent snapshots,
-unfiltered cursors, click/drag telemetry, window alignment, stacking, and cleanup.
+Development artifact installation and the final handoff follow the merged
+implementation. The manual acceptance procedure below covers the live behavior.
 
 Focused offscreen Metal tests use synthetic textures (no desktop capture, window,
 or input). They check pass-through orientation/pixel preservation, debug output
@@ -205,3 +199,145 @@ It reports compiler/render errors and unsupported backends; a status of
 correctness. Rendering configuration errors do not revoke input authorization or
 cause agent input to be replayed. Disabling computer use still uses the existing
 session-revocation and input-cleanup behavior.
+
+## Development fragment shader replacement
+
+On the Mac running the worker, choose a local UTF-8 fragment file before starting
+that worker. For example, from the repository root:
+
+```sh
+cp cantrip_cua/shaders/effects.metal /tmp/cantrip-window-effect.metal
+CANTRIP_CUA_EFFECT_SHADER=/tmp/cantrip-window-effect.metal pnpm dev
+```
+
+Then select **Debug gradient inversion** in Settings and have an agent attach a
+window. The helper reads the file on its dedicated compiler thread every 250 ms
+while a window owns an enabled effect. Saving changed source recompiles it; no
+worker restart is needed for subsequent edits. Source is limited to 1 MiB, with
+one latest source/result retained. This opt-in development file is local to the
+worker host; it is not an agent tool argument or a saved account setting.
+
+The runtime prepends `contract.metal`, including the fixed vertex function. Do
+not duplicate it. Without metadata, the selected effect descriptor supplies the
+fragment name and animation/history requirements. For a custom fragment, include
+one metadata comment anywhere in the file:
+
+```metal
+// cantrip-effect: {"contractVersion":1,"fragment":"my_effect","continuous":true,"history":false}
+constexpr sampler cleanSampler(coord::normalized, address::clamp_to_edge, filter::linear);
+fragment float4 my_effect(CantripVertex in [[stage_in]],
+    texture2d<float> clean [[texture(0)]],
+    texture2d<float> previousOutput [[texture(1)]],
+    constant CantripFrame &frame [[buffer(0)]]) {
+    float4 pixel = clean.sample(cleanSampler, in.uv);
+    float pulse = 0.05f * (1.0f + sin(frame.time.x));
+    pixel.rgb = mix(pixel.rgb, pixel.a - pixel.rgb, pulse);
+    return pixel;
+}
+```
+
+Use `continuous: true` whenever the effect responds to time or cursor/input
+changes on otherwise static video. Set `history: true` to allocate the two
+renderer-owned history textures; texture 1 starts transparent black and contains
+the previous processed output thereafter. History resets on resize, source
+invalidation, effect replacement, and parameter changes. Texture 0 always stays
+clean. The active settings descriptor still defines parameter order/types:
+selecting Debug exposes strength, radius, and showTelemetry in the first three
+scalar slots. To add a new bundled effect with different parameters, extend the
+native descriptor registry, matching protocol/settings definitions, and fragment
+entry point together.
+
+The settings status displays the active development filename and errors. Metal
+line numbers refer to the original file, not the prepended ABI. Missing files,
+invalid metadata, missing entry points, and compilation errors preserve the last
+working pipeline; if none exists, the original window remains visible. Fixing
+and saving the file retries automatically. Disabling effects or ending the last
+session releases the watcher and GPU/capture resources. To return to bundled
+shaders, unset `CANTRIP_CUA_EFFECT_SHADER` and restart the worker.
+
+No production rendering path reads pixels back to the CPU. Development file
+reading and compilation never run on the input, capture, or AppKit queues.
+
+## Implementation review and limits
+
+| Requirement | Implementation evidence |
+| --- | --- |
+| Clean video and independent cursor/effect layers | `macos/window_effects/capture.rs` uses a desktop-independent original-window filter with cursor capture disabled; `macos/overlay.rs` orders cursor panels above the separate effect panel. Monitor snapshots exclude helper-owned panels, and window snapshots retain their original filter. |
+| GPU-only live image processing and bounded ownership | `gpu.rs` imports retained CoreVideo images as Metal textures; command completion releases source owners. `render.rs` replaces pending jobs and bounds in-flight GPU commands to three. No image encoding/readback occurs in this path. |
+| Static-video animation and history | The active pipeline’s continuous flag schedules rendering without new source frames; history textures are separate render targets, initialized before sampling and reset on source/pipeline geometry changes. |
+| Shared motion/input ABI | `effects/telemetry.rs`, `live.rs`, and `uniforms.rs` provide the versioned frame contract from the same native cursor presentation and generated input events. Unit checks cover layout, elapsed-time smoothing/decay, identity, held state, and geometry changes. |
+| Settings, reconnection, and Off | Protocol validation, server migration 0202, worker heartbeat synchronization, and `computer-use/effects.ts` keep durable revisions ordered without launching a helper from settings. |
+| Shader replacement and failure handling | `compiler.rs` has one latest job/result and watches the explicit local file off the input/main queues. Failed compilation preserves the active pipeline; GPU/capture errors remove the panel. Stalled drawable presentation reveals the original window while fresh rendering is retried. |
+| Window/session lifecycle | The native owner matches current window ID/PID, updates position/scale, resets on resize, removes surfaces when the window leaves the on-screen inventory, and drops all resources when Off or the final attached session ends. Panel creation never activates or raises the target. |
+
+The output format is SDR BGRA8/sRGB; this is not an HDR-preserving compositor.
+Effects require macOS 14 or later. Other backends report unsupported when an
+actual effect operation is attempted. Capture-protected or unavailable content
+can only produce what ScreenCaptureKit supplies. Effects are presentation-only;
+they do not remap the application’s input coordinates.
+
+Window stacking, full-screen/Space transitions, visual alignment, and perceived
+latency still require the manual test below. Source review and offscreen tests do
+not constitute visual acceptance. A polished motion-warp effect is intentionally
+outside this foundation.
+
+## Manual test after updating
+
+1. Stop the current development session and restart it from the updated Primary
+   checkout using the same command/profile as before (`pnpm dev` for browser dev,
+   or `pnpm devtop` for desktop dev). Server startup applies migration 0202. Use
+   the same profile so the configured provider/model and existing preferences
+   remain available. Do not switch between these profiles for this test.
+2. Open **Settings → General → Computer use**. Enable computer use if needed;
+   select **Debug gradient inversion** under **Window effects**. Leave strength
+   at 1 and input feedback enabled. Select the Mac worker to view its status.
+3. Open the same Brave piano window with recognizable text, colors, and changing
+   content. Give a Cantrip agent the prompt below. The effect begins when the
+   agent attaches that window. Look for filtered live pixels and the animated
+   **FX** badge near its upper-left corner. The separate cursor and glow should
+   keep their own colors above the filter.
+4. Watch cursor travel, a held click, and a drag. Velocity lines should respond
+   to movement, settle while idle, and click rings should decay. Check that the
+   agent’s screenshot shows original colors and no FX badge, even while you see
+   the filter. Compare the two views rather than treating the agent’s claim as
+   proof. Listen for notes yourself; screenshots do not prove sound.
+5. Move and resize the piano window, move it between displays, partially cover
+   it, minimize/restore it, and try your usual full-screen/Space transition. The
+   overlay should remain aligned and behind unrelated foreground windows, or
+   reveal the original window while waiting for a fresh frame. It must not
+   steal focus or move your system pointer.
+6. Select **Pass-through**, then **Off**. Pass-through should show the clean live
+   pixels; Off should remove the full-window panel while leaving ordinary CUA
+   available. Turning computer use off should stop its sessions. Ending the last
+   attached session should also remove the effect. If desired, attach a second
+   agent to the same window to check one shared effect with separate cursors.
+
+Copyable agent prompt:
+
+```text
+Use Cantrip’s computer-use tools to test the existing Brave virtual-piano window.
+Read the current CUA help and attach the specific application window. Use fresh
+window-local coordinates from your snapshot; do not attach an entire monitor or
+request focus, global input, or changes to my system pointer.
+
+Capture the window first. Describe a few recognizable original colors and text,
+and report whether your screenshot contains an “FX” badge near the upper-left.
+I am testing a user-only filter; report what your actual screenshot shows.
+
+Move your custom cursor between three visible white keys with brief pauses,
+then hold one key with a pointer press for about 500 ms. Finally perform one
+smooth, roughly one-second clickDrag across five adjacent white keys. Choose all
+coordinates from a fresh snapshot. Do not navigate away or type into anything.
+
+Take another screenshot. Report the target ID, window bounds, snapshot dimensions,
+coordinates used, exact input receipts, and any actual errors. Distinguish input
+dispatch from application acceptance. Do not claim that notes sounded or that the
+physical cursor/focus remained unchanged unless you have evidence. Do not replay
+uncertain input. Leave the target attached while I check movement and resizing;
+when I say to finish, detach it so I can verify the overlay disappears.
+```
+
+For shader editing, use the development workflow above and intentionally introduce
+one syntax error, then fix it. The UI should report the file and line while the
+last working effect remains live; saving the correction should replace it. Large
+compiler diagnostics are capped at 16 KiB to protect the helper’s metadata channel.
