@@ -3,7 +3,10 @@ import { z } from "zod";
 import { resolveCuaBinary } from "./binary.js";
 import { waitBeforeCuaSend } from "./cancellation.js";
 import { CuaProcessError } from "./errors.js";
-import { matchesInputReceipt } from "./input-receipt.js";
+import {
+  inputRequestsPreparation,
+  matchesInputReceipt,
+} from "./input-receipt.js";
 import {
   CuaJavascriptContexts,
   type CuaJavascriptOptions,
@@ -518,6 +521,11 @@ export class CantripCuaService {
             method === "focus" || method === "window-input"
               ? undefined
               : position,
+            command &&
+              command.kind !== "focus" &&
+              command.kind !== "window-input"
+              ? inputRequestsPreparation(command)
+              : undefined,
           )
         )
           return this.protocolFailure(record.runtime);

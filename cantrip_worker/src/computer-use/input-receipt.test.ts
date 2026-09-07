@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { matchesInputReceipt } from "./input-receipt.js";
-import type { CuaInputReceipt } from "./types.js";
+import {
+  inputRequestsPreparation,
+  matchesInputReceipt,
+} from "./input-receipt.js";
+import { cuaInputCommandSchema, type CuaInputReceipt } from "./types.js";
 
 const point = { x: 55, y: 797 };
 const accessibility: CuaInputReceipt = {
@@ -90,4 +93,61 @@ it("requires unverified unknown receipts for experimental background delivery", 
     ),
   ).toBe(false);
   expect(matchesInputReceipt(receipt, "process-coordinate")).toBe(false);
+});
+
+it("checks preparation receipts against mouse actions while leaving keyboard timelines alone", () => {
+  for (const [command, expected] of [
+    [{ kind: "drag", start: { x: 1, y: 2 }, end: { x: 3, y: 4 } }, true],
+    [
+      {
+        kind: "timeline",
+        frames: [
+          { atMs: 0, keyDown: ["C"] },
+          { atMs: 50, keyUp: ["C"] },
+        ],
+      },
+      false,
+    ],
+    [
+      {
+        kind: "timeline",
+        frames: [
+          { atMs: 0, pointerDown: point },
+          { atMs: 50, pointerUp: true },
+        ],
+      },
+      true,
+    ],
+    [
+      {
+        kind: "timeline",
+        frames: [
+          { atMs: 0, pointerDown: point, pointerModifiers: ["Meta"] },
+          { atMs: 50, pointerUp: true },
+        ],
+      },
+      false,
+    ],
+  ] as const) {
+    expect(inputRequestsPreparation(cuaInputCommandSchema.parse(command))).toBe(
+      expected,
+    );
+    const receipt: CuaInputReceipt = {
+      method: "background-timeline",
+      activation: expected,
+      outcome: "unknown",
+      windowDelivery: "unverified",
+    };
+    expect(
+      matchesInputReceipt(receipt, receipt.method, undefined, expected),
+    ).toBe(true);
+    expect(
+      matchesInputReceipt(
+        { ...receipt, activation: !expected },
+        receipt.method,
+        undefined,
+        expected,
+      ),
+    ).toBe(false);
+  }
 });

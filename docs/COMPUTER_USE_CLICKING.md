@@ -34,8 +34,9 @@ AppleScript or shell automation is not the Cantrip CUA fallback.
 
 The current development helper adds these awaited methods on an attached
 application window. They use experimental macOS window-directed native events;
-they never choose global input, request activation or move/restore the human
-pointer. App compatibility and actual background delivery require user testing.
+they never choose global input, request foreground focus or move/restore the human
+pointer. Drag requests target-only AppKit preparation immediately before down;
+text, keys and scrolling do not. App compatibility and actual background delivery require user testing.
 
 ```js
 await cua.typeText("Hello 🦀");
@@ -105,6 +106,24 @@ Brave unfocused, while sampled pointer/foreground/window order stayed unchanged.
 The combined ordinary-click route also has the bounded user confirmation above. Observe
 sound, visible key response, foreground focus and the physical pointer. A native
 `unknown` receipt still does not prove acceptance.
+
+### Automatic preparation for mouse macros (API 7)
+
+`clickDrag` and each unmodified `pointerDown` in `inputTimeline` now use the
+same target-only preparation as ordinary clicks. Preparation occurs at dispatch,
+after the scheduled wait, immediately before tracking/down. No extra click,
+Command modifier, focus request or artificial delay is inserted. Keyboard-only
+frames and explicit modified mouse presses retain their existing delivery.
+
+Receipts keep `background-drag` / `background-timeline` and report
+`activation: true` when preparation was requested. This describes AppKit input
+preparation, not a verified foreground change. Timelines without unmodified
+pointer presses report false. Failed operations without a receipt report
+activation as unknown rather than claiming none occurred.
+
+A preparation error stops remaining frames and releases any already-held keys
+or button. Nothing retries. Ordinary unfocused clicking has user confirmation;
+unfocused drag and scripted presses remain for user acceptance testing.
 
 ### Chords and explicit down/up timelines
 
