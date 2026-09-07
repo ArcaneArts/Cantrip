@@ -1,5 +1,10 @@
 //! GPU resources only. Native windows and capture owners stay in sibling modules.
-use crate::effects::{Configuration, uniforms::FrameUniform};
+#[cfg(test)]
+use crate::effects::Configuration;
+use crate::effects::{
+    source::{ShaderSource, diagnostic},
+    uniforms::FrameUniform,
+};
 use block2::RcBlock;
 use objc2::{rc::Retained, runtime::ProtocolObject};
 use objc2_core_foundation::CFRetained;
@@ -26,34 +31,35 @@ pub(super) type Texture = Retained<ProtocolObject<dyn MTLTexture>>;
 pub(super) struct Pipeline {
     state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
     pub history: bool,
+    pub continuous: bool,
+    pub source: String,
 }
+#[cfg(test)]
 pub(super) fn compile(
     device: &Device,
     config: &Configuration,
     source: &str,
 ) -> Result<Pipeline, String> {
+    compile_source(device, &ShaderSource::bundled(config, source))
+}
+pub(super) fn compile_source(device: &Device, source: &ShaderSource) -> Result<Pipeline, String> {
     let library = device
         .newLibraryWithSource_options_error(
-            &NSString::from_str(&format!("{CONTRACT}\n{source}")),
+            &NSString::from_str(&source.compilation_source(CONTRACT)),
             None,
         )
         .map_err(|e| {
-            format!(
+            diagnostic(format!(
                 "Metal shader compilation failed: {}",
                 e.localizedDescription()
-            )
+            ))
         })?;
     let vertex = library
         .newFunctionWithName(&NSString::from_str("cantrip_surface"))
         .ok_or("Missing fixed vertex entry point")?;
     let fragment = library
-        .newFunctionWithName(&NSString::from_str(config.descriptor().fragment))
-        .ok_or_else(|| {
-            format!(
-                "Missing fragment entry point {}",
-                config.descriptor().fragment
-            )
-        })?;
+        .newFunctionWithName(&NSString::from_str(&source.fragment))
+        .ok_or_else(|| format!("Missing fragment entry point {}", &source.fragment))?;
     let descriptor = MTLRenderPipelineDescriptor::new();
     descriptor.setVertexFunction(Some(&vertex));
     descriptor.setFragmentFunction(Some(&fragment));
@@ -66,14 +72,16 @@ pub(super) fn compile(
     let state = device
         .newRenderPipelineStateWithDescriptor_error(&descriptor)
         .map_err(|e| {
-            format!(
+            diagnostic(format!(
                 "Metal pipeline creation failed: {}",
                 e.localizedDescription()
-            )
+            ))
         })?;
     Ok(Pipeline {
         state,
-        history: config.descriptor().history,
+        history: source.history,
+        continuous: source.continuous,
+        source: source.label.clone(),
     })
 }
 

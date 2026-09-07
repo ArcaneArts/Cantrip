@@ -1,6 +1,8 @@
 //! Main-queue window ownership and presentation. Shader compilation runs off
 //! the main/executor queues; no capture/presentation error changes CUA input.
 mod capture;
+mod compiler;
+use compiler::{Compiler, Job as CompileJob};
 mod gpu;
 mod panel;
 mod render;
@@ -14,103 +16,10 @@ use block2::RcBlock;
 use dispatch2::{DispatchQueue, DispatchTime};
 use objc2::rc::autoreleasepool;
 use objc2_foundation::NSError;
-use objc2_metal::MTLCreateSystemDefaultDevice;
 use objc2_screen_capture_kit::{SCShareableContent, SCWindow};
 use serde_json::{Value, json};
-use std::{
-    cell::RefCell,
-    collections::BTreeMap,
-    sync::{
-        Arc,
-        mpsc::{self, Receiver, SyncSender, TryRecvError},
-    },
-    time::Duration,
-};
+use std::{cell::RefCell, collections::BTreeMap, sync::Arc, time::Duration};
 type Key = (String, u64);
-struct CompileJob {
-    revision: u64,
-    configuration: Configuration,
-}
-struct CompileResult {
-    revision: u64,
-    configuration: Configuration,
-    result: Result<gpu::Pipeline, String>,
-}
-struct Compiler {
-    device: gpu::Device,
-    send: SyncSender<CompileJob>,
-    receive: Receiver<CompileResult>,
-    running: bool,
-    queued: Option<CompileJob>,
-}
-impl Compiler {
-    fn new() -> Result<Self, String> {
-        let device = MTLCreateSystemDefaultDevice().ok_or("Metal device is unavailable")?;
-        let native = device.clone();
-        let (send, jobs) = mpsc::sync_channel::<CompileJob>(1);
-        let (results, receive) = mpsc::sync_channel(1);
-        std::thread::Builder::new()
-            .name("cua-shader-compiler".into())
-            .spawn(move || {
-                while let Ok(job) = jobs.recv() {
-                    let result = autoreleasepool(|_| {
-                        gpu::compile(&native, &job.configuration, gpu::BUNDLED)
-                    });
-                    if results
-                        .send(CompileResult {
-                            revision: job.revision,
-                            configuration: job.configuration,
-                            result,
-                        })
-                        .is_err()
-                    {
-                        break;
-                    }
-                }
-            })
-            .map_err(|e| format!("Could not start shader compiler: {e}"))?;
-        Ok(Self {
-            device,
-            send,
-            receive,
-            running: false,
-            queued: None,
-        })
-    }
-    fn pump(&mut self) -> Option<CompileResult> {
-        let result = match self.receive.try_recv() {
-            Ok(result) => {
-                self.running = false;
-                Some(result)
-            }
-            Err(TryRecvError::Empty) => None,
-            Err(TryRecvError::Disconnected) => {
-                self.running = false;
-                self.queued.take().map(|j| CompileResult {
-                    revision: j.revision,
-                    configuration: j.configuration,
-                    result: Err("Shader compiler stopped".into()),
-                })
-            }
-        };
-        if !self.running
-            && let Some(job) = self.queued.take()
-        {
-            match self.send.try_send(job) {
-                Ok(()) => self.running = true,
-                Err(mpsc::TrySendError::Full(job)) => self.queued = Some(job),
-                Err(mpsc::TrySendError::Disconnected(job)) => {
-                    return Some(CompileResult {
-                        revision: job.revision,
-                        configuration: job.configuration,
-                        result: Err("Shader compiler stopped".into()),
-                    });
-                }
-            }
-        }
-        result
-    }
-}
 #[derive(Clone)]
 pub(super) struct Active {
     pipeline: gpu::Pipeline,
@@ -193,14 +102,21 @@ impl Surface {
             return Ok(());
         };
         let presented = self.renderer.presented();
-        let ready = presented.generation == self.generation;
+        // A drawable can become unavailable while a window is occluded. If
+        // frames stop completing while newer content/animation is expected,
+        // reveal the original window and keep trying for a fresh drawable.
+        // A genuinely static pass-through image remains valid indefinitely.
+        let needs_progress =
+            active.pipeline.continuous || presented.source_sequence != frame.sequence;
+        let ready = presented.generation == self.generation
+            && (!needs_progress || now_ns().saturating_sub(presented.at_ns) < 2_000_000_000);
         self.panel.show(native, ready);
         // Retry initial rendering until a completed frame exists. After that,
         // pass-through needs no GPU submission when the source is unchanged.
         if !self.dirty
             && ready
             && presented.source_sequence == frame.sequence
-            && !active.configuration.descriptor().continuous
+            && !active.pipeline.continuous
         {
             return Ok(());
         }
@@ -273,13 +189,14 @@ pub(super) fn configure(configuration: Configuration) -> Value {
                     .as_ref()
                     .is_some_and(|a| a.configuration.effect == configuration.effect)
             {
-                Arc::make_mut(s.active.as_mut().unwrap()).configuration = configuration;
+                Arc::make_mut(s.active.as_mut().unwrap()).configuration = configuration.clone();
                 for surface in s.surfaces.values_mut() {
                     surface.dirty = true;
                     surface.generation = surface.generation.wrapping_add(1);
                     surface.renderer.invalidate(surface.generation);
                 }
-            } else {
+            }
+            if configuration.effect != EffectId::Off {
                 request_compile(s);
             }
             schedule(s);
@@ -298,7 +215,7 @@ fn request_compile(s: &mut State) {
         }
     }
     if let Some(c) = &mut s.compiler {
-        c.queued = Some(CompileJob {
+        c.request(CompileJob {
             revision: s.revision,
             configuration: s.configuration.clone(),
         });
@@ -328,6 +245,7 @@ pub(super) fn sessions(mut sessions: Vec<SessionState>) {
                 }
                 s.compiler = None;
                 s.active = None;
+                s.compile_error = None;
             } else if s.configuration.effect != EffectId::Off
                 && s.active.is_none()
                 && s.compiler.is_none()
@@ -343,7 +261,9 @@ pub(super) fn status() -> Value {
     let mut result = Value::Null;
     DispatchQueue::main().exec_sync(||STATE.with_borrow(|s| {
         result=json!({"supported":true,"contractVersion":crate::effects::CONTRACT_VERSION,"effects":crate::effects::DESCRIPTORS,"configuration":s.configuration,"shaderError":s.compile_error,
-            "compiling":s.compiler.as_ref().is_some_and(|c|c.running || c.queued.is_some()),
+            "shaderSource":s.active.as_ref().map(|a| &a.pipeline.source),
+            "activeEffect":s.active.as_ref().map(|a| a.configuration.effect),
+            "compiling":s.compiler.as_ref().is_some_and(Compiler::busy),
             "windows":s.targets.iter().map(|(k,t)|json!({"targetId":t.id,"generation":t.generation,
                 "phase":if s.failures.contains_key(k) {"failed"} else if s.surfaces.get(k).is_some_and(|w|w.panel.shown) {"presenting"} else if s.configuration.effect==EffectId::Off {"off"} else {"waiting"},
                 "error":s.failures.get(k)})).collect::<Vec<_>>()});
@@ -367,7 +287,7 @@ fn tick() {
             if s.configuration.effect == EffectId::Off {
                 return vec![];
             }
-            if let Some(result) = s.compiler.as_mut().and_then(Compiler::pump)
+            if let Some(result) = s.compiler.as_ref().and_then(Compiler::pump)
                 && result.revision == s.revision
             {
                 match result.result {
