@@ -321,7 +321,6 @@ export const workerEventEnvelopeSchema = z.object({
 
 export const workerNotificationSchema = z.discriminatedUnion("type", [
   cuaApprovalTerminalSchema,
-  cuaApprovalRequestEventSchema,
   workerLinkPeerSignalNotificationSchema,
   workerLinkPeerCandidateNotificationSchema,
   z

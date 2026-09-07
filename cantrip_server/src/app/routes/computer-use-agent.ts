@@ -93,7 +93,6 @@ export function installComputerUseAgentRoutes(
           const context = await repository.getChatExecutionContext(
             authentication.ownerId,
             binding.chatId,
-            true,
           );
           if (context && context.computerUseEnabled !== true)
             return reply

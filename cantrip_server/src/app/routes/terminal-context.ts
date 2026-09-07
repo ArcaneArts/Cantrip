@@ -1,5 +1,3 @@
-import { prepareConsoleExecutionContext } from "../../chats/console-context.js";
-import { managedConsoleChat } from "../../chats/execution-helpers.js";
 import {
   encryptedLinkedConsoleCreateSchema,
   protectedScriptCommandListSchema,
@@ -73,8 +71,7 @@ export function installChatLinkedConsoleRoute(
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
-      let context = await prepareConsoleExecutionContext(
-        repository,
+      let context = await repository.getChatExecutionContext(
         applicationOwnerId(),
         request.params.chatId,
       );
@@ -93,8 +90,7 @@ export function installChatLinkedConsoleRoute(
           .code(409)
           .send({ error: "No provider route is currently available." });
       }
-      // Reopening a console also refreshes its tools and current settings.
-      {
+      if (!context.threadId || !runtimeCanResumeContext(context, runtime)) {
         if (!bridge.isConnected(context.workerId)) {
           return reply.code(503).send({ error: "Project worker is offline." });
         }
@@ -106,11 +102,8 @@ export function installChatLinkedConsoleRoute(
           );
           const result = (await bridge.request(context.workerId, {
             type: "chat.thread.ensure",
-            managedChat: managedConsoleChat(context),
             cwd: context.cwd,
-            threadId: runtimeCanResumeContext(context, runtime)
-              ? context.threadId
-              : null,
+            threadId: null,
             planMode: context.planMode,
             model: runtime.model,
             provider: runtime.provider,
@@ -136,7 +129,6 @@ export function installChatLinkedConsoleRoute(
           const updated = await repository.getChatExecutionContext(
             applicationOwnerId(),
             context.chatId,
-            true,
           );
           if (!updated) throw new Error("Chat source not found.");
           context = updated;

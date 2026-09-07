@@ -1,4 +1,3 @@
-import { managedChatRuntimeSchema } from "./worker-runtime-support.js";
 import { z } from "zod";
 import { cuaAgentAuthoritySchema } from "./computer-use-agent.js";
 import {
@@ -309,7 +308,6 @@ export const workerChatCommandSchemas = [
   }),
   z.object({
     type: z.literal("chat.thread.ensure"),
-    managedChat: managedChatRuntimeSchema.optional(),
     cwd: z.string().min(1),
     threadId: z.string().min(1).nullable(),
     planMode: planModeSchema,

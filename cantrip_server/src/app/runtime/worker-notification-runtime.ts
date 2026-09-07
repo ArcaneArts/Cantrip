@@ -1,5 +1,3 @@
-import { applyComputerUseAgentEvent } from "./computer-use-agent-events.js";
-import type { createLiveMutationRuntime } from "./live-mutation-runtime.js";
 import {
   codeGraphProjectStatusSchema,
   gitManagedOperationWorkerStateSchema,
@@ -107,9 +105,6 @@ export interface WorkerNotificationRuntimeDependencies {
     notification: Extract<WorkerNotification, { type: "chat.turn.outcome" }>,
   ) => Promise<void>;
   repository: ServerRepository;
-  recordLiveEncryptedAgentInteractionRequest: ReturnType<
-    typeof createLiveMutationRuntime
-  >["recordLiveEncryptedAgentInteractionRequest"];
   resolveAccountAuthTarget: (
     providerId: string,
     accountId?: string,
@@ -150,7 +145,6 @@ export function createWorkerNotificationRuntime({
   resolveAccountAuthTarget,
   runAsOwner,
   serverId,
-  recordLiveEncryptedAgentInteractionRequest,
   terminalizeLiveAgentInteractionRequest,
   computerUseApprovalPublications,
   updateTerminalStatus,
@@ -533,48 +527,6 @@ export function createWorkerNotificationRuntime({
     workerId: string,
     notification: WorkerNotification,
   ): Promise<void> => {
-    if (notification.type === "computer-use.approval.request") {
-      const chatId = notification.request.provenance.chatId;
-      if (!chatId)
-        throw new Error("Computer-use console approval chat is missing.");
-      const publish = async () => {
-        const context = chatId
-          ? await repository.getChatExecutionContext(ownerId, chatId, true)
-          : null;
-        if (
-          !context?.executionLaneId ||
-          context.workerId !== workerId ||
-          context.computerUseEnabled !== true
-        )
-          throw new Error(
-            "Computer-use console approval placement is unavailable.",
-          );
-        await applyComputerUseAgentEvent({
-          event: notification,
-          ownerId,
-          workerId,
-          chatId: context.chatId,
-          projectId: context.projectId,
-          executionLaneId: context.executionLaneId,
-          record: recordLiveEncryptedAgentInteractionRequest,
-          terminalize: terminalizeLiveAgentInteractionRequest,
-          lookup: (...args) =>
-            repository.getAgentInteractionRequestByKey(...args),
-        });
-      };
-      if (computerUseApprovalPublications) {
-        await computerUseApprovalPublications.publish(
-          {
-            ownerId,
-            workerId,
-            chatId,
-            requestKey: notification.request.requestKey,
-          },
-          publish,
-        );
-      } else await publish();
-      return;
-    }
     if (notification.type === "computer-use.approval.terminal") {
       await applyComputerUseApprovalTerminal({
         ownerId,
@@ -677,7 +629,6 @@ export function createWorkerNotificationRuntime({
           const current = await repository.getChatExecutionContext(
             ownerId,
             context.chatId,
-            true,
           );
           if (
             !current ||

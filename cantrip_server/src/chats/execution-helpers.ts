@@ -127,29 +127,3 @@ export function continuationPrompt(
     .join("\n\n");
   return `Continue this existing Cantrip conversation. The server-owned history follows:\n\n${transcript}\n\nUSER: ${prompt}`;
 }
-
-export function managedConsoleChat(context: ChatExecutionContext) {
-  if (!context.executionLaneId) return undefined;
-  const common = {
-    chatId: context.chatId,
-    executionLaneId: context.executionLaneId,
-    computerUseEnabled: context.computerUseEnabled === true,
-  };
-  return context.contextKind === "project"
-    ? {
-        ...common,
-        contextKind: "project" as const,
-        projectId: context.projectId,
-        worktreeId: context.worktreeId,
-        rootKind: context.rootKind,
-        scratchRootId: null,
-      }
-    : {
-        ...common,
-        contextKind: "standalone" as const,
-        projectId: null,
-        worktreeId: null,
-        rootKind: null,
-        scratchRootId: context.scratchRootId,
-      };
-}

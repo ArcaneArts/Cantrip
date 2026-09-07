@@ -1,4 +1,3 @@
-import { consoleCuaExecutor } from "./computer-use/console.js";
 import { createHash, randomUUID } from "node:crypto";
 import { lstat, mkdtemp, realpath, rm } from "node:fs/promises";
 import os from "node:os";
@@ -782,28 +781,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         token: config.token,
       }),
   });
-  mcpBroker.setComputerUseExecutor(
-    consoleCuaExecutor({
-      coordinator: computerUseAgents,
-      resolve: (input) => {
-        for (const runtime of codexRuntimes.values()) {
-          const execution = runtime.resolveConsoleComputerUseExecution(input);
-          if (execution) return execution;
-        }
-        return null;
-      },
-      authority: (binding, signal) =>
-        requestComputerUseAuthority({
-          binding,
-          signal,
-          serverUrl: config.serverUrl,
-          token: config.token,
-        }),
-      publish: async (event) => {
-        if (!workerNotificationEmitter?.(event))
-          throw new Error("Computer-use approval publication is unavailable.");
-      },
-    }),
+  mcpBroker.setComputerUseExecutor((...args) =>
+    computerUseAgents.execute(...args),
   );
   const computerUsePreviews = new CuaPreviewCoordinator({
     publishActivity: (activity, contentDomain, emit) =>
@@ -4580,30 +4559,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               !terminals.hasLiveSession(command.terminalId)
             ) {
               const mcpServers = command.launch.mcpServers
-                ? await agentMcpServers(
-                    cwd,
-                    command.launch.mcpServers,
-                    command.launch.managedChat
-                      ? {
-                          ...command.launch.managedChat,
-                          workerId: config.workerId,
-                          permissionProfileId:
-                            command.launch.permissionProfileId ?? ":workspace",
-                        }
-                      : undefined,
-                    command.launch.managedChat?.contextKind === "standalone"
-                      ? "standalone-web"
-                      : "ide",
-                    command.launch.managedChat?.computerUseEnabled === true,
-                  )
+                ? await agentMcpServers(cwd, command.launch.mcpServers)
                 : undefined;
-              if (command.launch.managedChat)
-                cliBroker.bindCodexThread(command.launch.threadId, {
-                  chatId: command.launch.managedChat.chatId,
-                  executionLaneId: command.launch.managedChat.executionLaneId,
-                });
               await runtime.prepareExternalSync({
-                chatId: command.launch.managedChat?.chatId,
                 cwd,
                 executionProfile: "ide",
                 mcpServers,
@@ -5664,21 +5622,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           provider: provider(),
         }).ensureThread({
           cwd: command.cwd,
-          mcpServers: await agentMcpServers(
-            command.cwd,
-            command.mcpServers,
-            command.managedChat
-              ? {
-                  ...command.managedChat,
-                  workerId: config.workerId,
-                  permissionProfileId: command.permissionProfileId,
-                }
-              : undefined,
-            command.managedChat?.contextKind === "standalone"
-              ? "standalone-web"
-              : "ide",
-            command.managedChat?.computerUseEnabled === true,
-          ),
+          mcpServers: await agentMcpServers(command.cwd, command.mcpServers),
           model: command.model,
           permissionProfileId: command.permissionProfileId,
           planMode: command.planMode,

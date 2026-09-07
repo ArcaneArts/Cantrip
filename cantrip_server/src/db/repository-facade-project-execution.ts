@@ -1064,16 +1064,6 @@ export abstract class ProjectExecutionRepositoryFacade extends IdentityModelRepo
     return this.chatExecutionLanes.resetInterruptedChatExecutions();
   }
 
-  async ensureChatConsoleExecutionLane(
-    ownerId: string,
-    chatId: string,
-  ): Promise<void> {
-    return this.chatExecutionLanes.ensureChatConsoleExecutionLane(
-      ownerId,
-      chatId,
-    );
-  }
-
   async startChatExecutionLane(
     ownerId: string,
     chatId: string,

@@ -360,59 +360,6 @@ export class ChatExecutionLaneRepository {
     });
   }
 
-  /** Reserve the current placement before a CLI can start its first turn.
-   * Warming a console must not mark a chat running or create an unread result. */
-  async ensureChatConsoleExecutionLane(
-    ownerId: string,
-    chatId: string,
-  ): Promise<void> {
-    await this.database.transaction(async (transaction) => {
-      await transaction.execute(projectChatExecutionLock(ownerId, chatId));
-      const [row] = await transaction
-        .select({ chat: schema.chats, worktree: schema.projectWorktrees })
-        .from(schema.chats)
-        .innerJoin(
-          schema.projectWorktrees,
-          eq(schema.projectWorktrees.id, schema.chats.activeWorktreeId),
-        )
-        .where(
-          and(
-            eq(schema.chats.id, chatId),
-            eq(schema.chats.ownerId, ownerId),
-            isNull(schema.chats.archivedAt),
-          ),
-        )
-        .limit(1);
-      if (!row)
-        throw new ExecutionLaneConflictError(
-          "Chat console placement not found.",
-        );
-      const [existing] = await transaction
-        .select({ id: schema.chatExecutionLanes.id })
-        .from(schema.chatExecutionLanes)
-        .where(
-          and(
-            eq(schema.chatExecutionLanes.chatId, chatId),
-            eq(schema.chatExecutionLanes.worktreeId, row.worktree.id),
-            ne(schema.chatExecutionLanes.state, "released"),
-          ),
-        )
-        .limit(1);
-      if (existing) return;
-      await transaction.insert(schema.chatExecutionLanes).values({
-        id: randomUUID(),
-        chatId,
-        worktreeId: row.worktree.id,
-        workerId: row.worktree.workerId,
-        acquiringActor: "user",
-        exclusive: !row.worktree.isPrimary,
-        purpose: "Linked Codex console",
-        state: "suspended",
-        startingHead: row.worktree.head,
-      });
-    });
-  }
-
   async startChatExecutionLane(
     ownerId: string,
     chatId: string,

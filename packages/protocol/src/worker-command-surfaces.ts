@@ -1,4 +1,3 @@
-import { managedChatRuntimeSchema } from "./worker-runtime-support.js";
 import { z } from "zod";
 import {
   attachmentChunkOpaqueSchema,
@@ -97,7 +96,6 @@ export const workerSurfaceCommandSchemas = [
         z.object({ type: z.literal("shell") }),
         z.object({
           type: z.literal("codex"),
-          managedChat: managedChatRuntimeSchema.optional(),
           threadId: z.string().min(1).nullable(),
           model: workerRuntimeModelSchema,
           provider: workerRuntimeProviderSchema,

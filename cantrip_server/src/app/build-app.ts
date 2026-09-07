@@ -311,8 +311,6 @@ export async function buildApp({
   const computerUseApprovalPublications =
     createComputerUseApprovalPublications();
   const workerNotificationRuntime = createWorkerNotificationRuntime({
-    recordLiveEncryptedAgentInteractionRequest: (...args) =>
-      recordLiveEncryptedAgentInteractionRequest(...args),
     activeProviderAuthObservations,
     app,
     applicationOwnerId,

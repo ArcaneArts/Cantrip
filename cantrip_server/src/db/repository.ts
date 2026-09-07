@@ -909,13 +909,8 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
   async getChatExecutionContext(
     ownerId: string,
     chatId: string,
-    includeReservedLane = false,
   ): Promise<ChatExecutionContext | null> {
-    return this.chatRuntimeContext.getChatExecutionContext(
-      ownerId,
-      chatId,
-      includeReservedLane,
-    );
+    return this.chatRuntimeContext.getChatExecutionContext(ownerId, chatId);
   }
 
   async listChatExecutionContextsByThreadId(
