@@ -97,12 +97,14 @@ export function useWorkspaceLiveScopes({
 }
 
 export function useWorkspaceSelectionReconciliation({
+  openCenterTab = false,
   layout,
   pendingSurfaceSelection,
   selectedProjectId,
   setPendingSurfaceSelection,
   setWorkspaceSelection,
 }: {
+  openCenterTab?: boolean;
   layout: ProjectTabLayoutSummary | undefined;
   pendingSurfaceSelection: PendingSurfaceSelection | null;
   selectedProjectId: string | null;
@@ -132,6 +134,7 @@ export function useWorkspaceSelectionReconciliation({
         current,
         layout,
         pendingTabKey,
+        openCenterTab,
       );
       return pendingTabKey
         ? selectWorkspaceTab(reconciled, layout, pendingTabKey)
@@ -139,6 +142,7 @@ export function useWorkspaceSelectionReconciliation({
     });
     if (pendingTabKey) setPendingSurfaceSelection(null);
   }, [
+    openCenterTab,
     layout,
     pendingSurfaceSelection,
     selectedProjectId,

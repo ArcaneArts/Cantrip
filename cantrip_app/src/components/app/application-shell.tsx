@@ -1754,6 +1754,8 @@ export function App() {
   }, [createdRepositoryOnboarding, projects.data]);
 
   useWorkspaceSelectionReconciliation({
+    openCenterTab:
+      !compactShell && !isPopout && projectOverviewSection === "overview",
     layout: tabLayout.data,
     pendingSurfaceSelection,
     selectedProjectId,
