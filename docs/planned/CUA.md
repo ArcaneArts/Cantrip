@@ -7,15 +7,33 @@ verification remain unperformed. Accessibility press and single-left coordinate
 clicking are implemented and merged. The user confirmed inspect → click → inspect
 in a Codex window on 2026-09-05, satisfying this bounded clicking goal.
 The full computer-use roadmap is unfinished. The subsequent custom-cursor and
-covered-window goal is active; the earlier global-click test is not its acceptance.
+covered-window goal is complete for the user-tested macOS window-directed path;
+its acceptance is recorded below, independently of the earlier global-click test.
 
 ## Custom-cursor and covered-window progress
 
 Goal: act in a covered application window through the custom cursor while
 preserving the human pointer, foreground application and window ordering.
-Acceptance requires the user's report of that complete outcome. Work is solo,
-with sequential worktree PRs and squash auto-merge. The latest testing instruction leaves live acceptance to the user; implementation
-continues between useful cycles and stops when only that acceptance remains.
+The user confirmed ordinary unfocused clicks in the partly-covered Brave piano,
+then audible C4→G4 drag with smooth desktop cursor motion, correct timeline clicks,
+and API 9 cursor animation. Recorded timeline effects reported the human pointer,
+foreground application/window and window order unchanged. Fresh window snapshots
+remained available after input; the piano's transient audio result was confirmed
+by the user, not inferred from a dispatch receipt or a persistent key highlight.
+
+API 10's requested cubic ease-out preference is merged in
+[PR #1805](https://github.com/ArcaneArts/Cantrip/pull/1805). No new full integration
+pass is required for that presentation-only curve change. The source audit retains
+window-scoped AX handles, direct window capture, explicit global-input separation,
+worker/session ownership, effective permission decisions and durable approvals,
+Stop/release cleanup, and protected method/outcome/effects records.
+
+This closes the focused goal. It does not certify every application, minimized
+windows, simultaneous users/agents, other operating systems, or release packaging.
+Native window-directed receipts remain `unknown` / `unverified`; application
+acceptance still requires observation. The broader roadmap below remains open.
+The following entries retain cycle-time evidence; historical pending-test notes
+are superseded by this acceptance record only for the cases confirmed above.
 
 ### Current refinement: cubic ease-out preference
 
@@ -38,9 +56,9 @@ down. Original key/mouse event times and ordering remain unchanged; movement
 posts no native input, does not occur during mouse holds, and displays no click
 marker. Zero-gap presses snap. Ordinary click and drag behavior remain intact.
 Travel uses 60–90 ms and at least four smooth steps when the gap permits,
-avoiding two large jumps between nearby keys. Visual acceptance remains for
-the user. Thirteen focused Rust unit tests, dependency/worker builds, Clippy,
-formatting and diff checks passed. No live input, app launch, integration tests
+avoiding two large jumps between nearby keys. The user subsequently confirmed
+the animation looks good. Thirteen focused Rust unit tests, dependency/worker
+builds, Clippy, formatting and diff checks passed. No live input, app launch, integration tests
 or CI jobs were run.
 
 ### Current refinement: fast pre-click cursor travel
@@ -54,7 +72,8 @@ follows actual native events, and explicit timeline timing is unchanged.
 No OS mouse movement, extra click or implicit focus request is added.
 Three focused Rust unit tests, dependency/worker builds, Clippy, formatting
 and diff checks passed. No live input, app launch, integration tests or CI jobs
-were run. Live visual acceptance of the new travel remains for the user.
+were run. Subsequent timeline-specific travel and visual acceptance are recorded
+above.
 
 ### Current refinement: prepared drag and pointer timelines
 
@@ -66,9 +85,9 @@ cleanup releases prior held inputs if later preparation fails; no retries,
 extra clicks or global input are introduced. Receipt activation distinguishes
 preparation from observed foreground effects; missing receipts remain unknown.
 Validation: 57 TypeScript and 11 Rust unit tests, dependency/worker builds,
-Clippy, formatting and diff checks passed. Live drag and timeline acceptance
-remain for the user. No native/UI integration suite, app launch or CI jobs
-were run in this cycle. The broader roadmap below remains
+Clippy, formatting and diff checks passed. The user subsequently confirmed
+the drag and timeline clicks, as recorded above. No native/UI integration suite,
+app launch or CI jobs were run in this cycle. The broader roadmap below remains
 separate from this focused custom-cursor goal.
 
 ### Target-only AppKit input preparation
