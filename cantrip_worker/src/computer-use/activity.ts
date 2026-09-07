@@ -104,7 +104,9 @@ export function computerUseActivity(input: {
         ? {
             method: input.inputMethod ?? "accessibility",
             activation:
-              input.inputMethod === "coordinate"
+              input.inputMethod === "coordinate" ||
+              input.inputMethod === "background-drag" ||
+              input.inputMethod === "background-timeline"
                 ? null
                 : input.inputMethod === "focus" ||
                   input.inputMethod === "window-input" ||

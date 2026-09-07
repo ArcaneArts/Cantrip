@@ -14,9 +14,23 @@ covered-window goal is active; the earlier global-click test is not its acceptan
 Goal: act in a covered application window through the custom cursor while
 preserving the human pointer, foreground application and window ordering.
 Acceptance requires the user's report of that complete outcome. Work is solo,
-with sequential worktree PRs and squash auto-merge. The user subsequently
-authorized agent-driven interactive testing; implementation does not pause
-between useful cycles.
+with sequential worktree PRs and squash auto-merge. The latest testing instruction leaves live acceptance to the user; implementation
+continues between useful cycles and stops when only that acceptance remains.
+
+### Current refinement: prepared drag and pointer timelines
+
+The user confirmed API 6 ordinary clicks work unfocused after the successful
+partly-covered Brave piano trial. API 7 extends the same immediate target-only
+preparation to drag and each unmodified timeline pointer-down. Keyboard-only
+frames and explicitly modified clicks preserve their previous route. Native
+cleanup releases prior held inputs if later preparation fails; no retries,
+extra clicks or global input are introduced. Receipt activation distinguishes
+preparation from observed foreground effects; missing receipts remain unknown.
+Validation: 57 TypeScript and 11 Rust unit tests, dependency/worker builds,
+Clippy, formatting and diff checks passed. Live drag and timeline acceptance
+remain for the user. No native/UI integration suite, app launch or CI jobs
+were run in this cycle. The broader roadmap below remains
+separate from this focused custom-cursor goal.
 
 ### Target-only AppKit input preparation
 

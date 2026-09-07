@@ -69,6 +69,16 @@ impl InputCommand {
             Self::Scroll { .. } => "background-scroll",
         }
     }
+    /// Requested target-only AppKit preparation, not proof of foreground change.
+    pub fn prepares_window(&self) -> bool {
+        match self {
+            Self::PreparedPress { .. } | Self::Drag { .. } => true,
+            Self::Timeline { frames } => frames
+                .iter()
+                .any(|f| f.pointer_down.is_some() && f.pointer_modifiers.is_empty()),
+            _ => false,
+        }
+    }
     pub fn validate(&self) -> Result<()> {
         let point = |p: Point| p.x.is_finite() && p.y.is_finite() && p.x >= 0.0 && p.y >= 0.0;
         let valid = match self {
@@ -323,5 +333,39 @@ mod tests {
         );
         assert_eq!(*events.borrow(), ["down", "up"]);
         assert_eq!(result.unwrap_err().code, ErrorCode::InputUnknown);
+    }
+}
+
+#[cfg(test)]
+mod preparation_tests {
+    use super::*;
+    #[test]
+    fn only_drag_and_unmodified_pointer_actions_request_preparation() {
+        for (value, expected) in [
+            (
+                serde_json::json!({"kind":"prepared-press","holdMs":150}),
+                true,
+            ),
+            (
+                serde_json::json!({"kind":"drag","start":{"x":1,"y":2},"end":{"x":3,"y":4}}),
+                true,
+            ),
+            (
+                serde_json::json!({"kind":"timeline","frames":[{"atMs":0,"keyDown":["C"]},{"atMs":50,"keyUp":["C"]}]}),
+                false,
+            ),
+            (
+                serde_json::json!({"kind":"timeline","frames":[{"atMs":0,"pointerDown":{"x":1,"y":2}},{"atMs":50,"pointerUp":true}]}),
+                true,
+            ),
+            (
+                serde_json::json!({"kind":"timeline","frames":[{"atMs":0,"pointerDown":{"x":1,"y":2},"pointerModifiers":["Meta"]},{"atMs":50,"pointerUp":true}]}),
+                false,
+            ),
+        ] {
+            let command: InputCommand = serde_json::from_value(value).unwrap();
+            command.validate().unwrap();
+            assert_eq!(command.prepares_window(), expected);
+        }
     }
 }

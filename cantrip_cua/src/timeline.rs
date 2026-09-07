@@ -101,6 +101,7 @@ pub fn dispatch(
     count: usize,
     cancel: &Cancellation,
     post: impl FnMut(Transition),
+    mut prepare: impl FnMut(Transition) -> Result<()>,
     mut wait: impl FnMut(Duration) -> Result<()>,
 ) -> Result<()> {
     struct Held<F: FnMut(Transition)> {
@@ -134,6 +135,12 @@ pub fn dispatch(
                 result = Err(error);
                 break;
             }
+            // Preparation can fail before Down. Arm its cleanup only after
+            // successful preparation, then post without an intervening wait.
+            if let Err(error) = prepare(event) {
+                result = Err(error);
+                break;
+            }
             match event {
                 Transition::Down(i) => held.keys[i] = true,
                 Transition::Up(i) => held.keys[i] = false,
@@ -159,9 +166,10 @@ pub fn run(
     count: usize,
     cancel: &Cancellation,
     post: impl FnMut(Transition),
+    prepare: impl FnMut(Transition) -> Result<()>,
 ) -> Result<()> {
     let start = Instant::now();
-    dispatch(frames, count, cancel, post, |at| {
+    dispatch(frames, count, cancel, post, prepare, |at| {
         wait_until(start + at, cancel)
     })
 }
@@ -192,6 +200,7 @@ mod tests {
             3,
             &Cancellation::default(),
             |e| events.borrow_mut().push(e),
+            |_| Ok(()),
             |at| {
                 waits.borrow_mut().push(at);
                 Ok(())
@@ -230,9 +239,102 @@ mod tests {
                 c.cancel();
             },
             |_| Ok(()),
+            |_| Ok(()),
         );
         assert_eq!(result.unwrap_err().code, ErrorCode::InputUnknown);
         assert_eq!(*events.borrow(), [Transition::Down(0), Transition::Up(0)]);
+    }
+    #[test]
+    fn preparation_failure_releases_prior_keys_but_not_an_unposted_pointer() {
+        let calls = RefCell::new(vec![]);
+        let frames = [Frame {
+            at: Duration::ZERO,
+            events: vec![
+                Transition::Down(0),
+                Transition::Down(1),
+                Transition::Down(2),
+            ],
+        }];
+        let error = dispatch(
+            &frames,
+            3,
+            &Cancellation::default(),
+            |e| calls.borrow_mut().push(format!("post {e:?}")),
+            |e| {
+                calls.borrow_mut().push(format!("prepare {e:?}"));
+                if e == Transition::Down(1) {
+                    return Err(CuaError::new(
+                        ErrorCode::Unsupported,
+                        "preparation unavailable",
+                    ));
+                }
+                Ok(())
+            },
+            |_| Ok(()),
+        )
+        .unwrap_err();
+        assert_eq!(error.code, ErrorCode::InputUnknown);
+        assert_eq!(
+            *calls.borrow(),
+            [
+                "prepare Down(0)",
+                "post Down(0)",
+                "prepare Down(1)",
+                "post Up(0)",
+            ]
+        );
+    }
+    #[test]
+    fn preparation_runs_at_each_scheduled_down_without_extra_waits() {
+        let calls = RefCell::new(vec![]);
+        let frames = [Frame {
+            at: Duration::from_millis(500),
+            events: vec![
+                Transition::Down(0),
+                Transition::Up(0),
+                Transition::Down(1),
+                Transition::Up(1),
+            ],
+        }];
+        dispatch(
+            &frames,
+            2,
+            &Cancellation::default(),
+            |e| calls.borrow_mut().push(format!("post {e:?}")),
+            |e| {
+                if matches!(e, Transition::Down(_)) {
+                    calls.borrow_mut().push(format!("prepare {e:?}"));
+                }
+                Ok(())
+            },
+            |at| {
+                calls.borrow_mut().push(format!("wait {}", at.as_millis()));
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            *calls.borrow(),
+            [
+                "wait 500",
+                "prepare Down(0)",
+                "post Down(0)",
+                "post Up(0)",
+                "prepare Down(1)",
+                "post Down(1)",
+                "post Up(1)"
+            ]
+        );
+        let error = dispatch(
+            &frames,
+            2,
+            &Cancellation::default(),
+            |_| panic!("no input or cleanup before first down"),
+            |_| Err(CuaError::new(ErrorCode::Unsupported, "unavailable")),
+            |_| Ok(()),
+        )
+        .unwrap_err();
+        assert_eq!(error.code, ErrorCode::Unsupported);
     }
     #[test]
     fn pointer_modifiers_require_a_down_and_are_unique() {

@@ -160,3 +160,19 @@ describe("protected computer-use activity metadata", () => {
     },
   );
 });
+
+it.each(["background-drag", "background-timeline"] as const)(
+  "does not invent absent activation on a failed %s",
+  (method) => {
+    const activity = computerUseActivity({
+      ...input(),
+      operation: "input.perform",
+      inputMethod: method,
+      failed: true,
+      error: new CuaNativeError("input-unknown"),
+    });
+    expect(agentActivitySchema.parse(activity)).toMatchObject({
+      input: { method, activation: null, outcome: "unknown" },
+    });
+  },
+);

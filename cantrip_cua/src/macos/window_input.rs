@@ -104,7 +104,7 @@ fn after_preparation(
     prepare()?;
     action().map_err(|_| CuaError::new(
         ErrorCode::InputUnknown,
-        "Prepared press stopped after activation was attempted. Button-up cleanup was sent if down began. Observe; do not replay automatically.",
+        "Prepared pointer action stopped after activation was attempted. Button-up cleanup was sent if down began. Observe; do not replay automatically.",
     ))
 }
 #[cfg(test)]

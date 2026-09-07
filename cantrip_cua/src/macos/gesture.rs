@@ -44,6 +44,7 @@ struct PreparedPair {
     down: Event,
     up: Event,
     pointer: Option<(Point, Event)>,
+    prepare_window: bool,
 }
 impl Drop for Event {
     fn drop(&mut self) {
@@ -212,6 +213,7 @@ pub(super) fn perform(
                         down,
                         up,
                         pointer: None,
+                        prepare_window: false,
                     });
                     keys.insert(key.clone(), i);
                     events.push(Transition::Down(i));
@@ -232,6 +234,7 @@ pub(super) fn perform(
                         down,
                         up,
                         pointer: Some((point, tracking)),
+                        prepare_window: frame.pointer_modifiers.is_empty(),
                     });
                     pointer = Some(i);
                     events.push(Transition::Down(i));
@@ -241,23 +244,40 @@ pub(super) fn perform(
                     events,
                 });
             }
-            crate::timeline::run(&schedule, pairs.len(), cancel, |transition| {
-                let (i, is_down) = match transition {
-                    Transition::Down(i) => (i, true),
-                    Transition::Up(i) => (i, false),
-                };
-                let PreparedPair { down, up, pointer } = &pairs[i];
-                if let Some((point, tracking)) = pointer {
-                    if is_down {
-                        post(tracking);
+            crate::timeline::run(
+                &schedule,
+                pairs.len(),
+                cancel,
+                |transition| {
+                    let (i, is_down) = match transition {
+                        Transition::Down(i) => (i, true),
+                        Transition::Up(i) => (i, false),
+                    };
+                    let PreparedPair {
+                        down, up, pointer, ..
+                    } = &pairs[i];
+                    if let Some((point, tracking)) = pointer {
+                        if is_down {
+                            post(tracking);
+                        }
+                        post(if is_down { down } else { up });
+                        final_position = *point;
+                        progress(*point);
+                    } else {
+                        post(if is_down { down } else { up });
                     }
-                    post(if is_down { down } else { up });
-                    final_position = *point;
-                    progress(*point);
-                } else {
-                    post(if is_down { down } else { up });
-                }
-            })?;
+                },
+                |transition| {
+                    if let Transition::Down(i) = transition
+                        && pairs[i].prepare_window
+                    {
+                        // Stop during preparation must prevent Down, while
+                        // still reporting the attempted activation as uncertain.
+                        super::window_input::prepare_then(pid, window, cancel, || cancel.check())?;
+                    }
+                    Ok(())
+                },
+            )?;
         }
         InputCommand::Text { .. } | InputCommand::Key { .. } => {
             let units: Vec<(u16, Vec<u16>, u64)> = match command {
@@ -331,28 +351,28 @@ pub(super) fn perform(
                 releases.push(up);
             }
             let last = Cell::new(0);
-            cancel.check()?;
-            post(&tracking);
-            wait_until(Instant::now() + Duration::from_millis(12), cancel)
-                .map_err(|_| drag_unknown())?;
-            held_gesture(
-                cancel,
-                || post(&down),
-                || {
-                    progress(*start);
-                    let started = Instant::now();
-                    for (i, (at, point, event)) in moves.iter().enumerate() {
-                        wait_until(started + *at, cancel)?;
-                        post(event);
-                        last.set(i + 1);
-                        final_position = *point;
-                        progress(*point);
-                    }
-                    Ok(())
-                },
-                || post(&releases[last.get()]),
-            )
-            .map_err(|_| drag_unknown())?;
+            super::window_input::prepare_then(pid, window, cancel, || {
+                held_gesture(
+                    cancel,
+                    || {
+                        post(&tracking);
+                        post(&down);
+                    },
+                    || {
+                        progress(*start);
+                        let started = Instant::now();
+                        for (i, (at, point, event)) in moves.iter().enumerate() {
+                            wait_until(started + *at, cancel)?;
+                            post(event);
+                            last.set(i + 1);
+                            final_position = *point;
+                            progress(*point);
+                        }
+                        Ok(())
+                    },
+                    || post(&releases[last.get()]),
+                )
+            })?;
         }
         InputCommand::Scroll {
             delta_x, delta_y, ..
@@ -380,7 +400,7 @@ pub(super) fn perform(
         InputReceipt {
             control: None,
             method: command.method(),
-            activation: matches!(command, InputCommand::PreparedPress { .. }),
+            activation: command.prepares_window(),
             outcome: "unknown",
             position: Some(final_position),
             global_position: Some(target.bounds.to_global(final_position)?),
@@ -393,13 +413,6 @@ fn unknown() -> CuaError {
     CuaError::new(
         ErrorCode::InputUnknown,
         "Text input stopped after dispatch began; key-up cleanup was sent. Do not replay the text automatically.",
-    )
-}
-
-fn drag_unknown() -> CuaError {
-    CuaError::new(
-        ErrorCode::InputUnknown,
-        "Drag stopped after tracking began; button-up cleanup was sent if down was posted. Do not replay automatically.",
     )
 }
 

@@ -1,12 +1,29 @@
-import type { CuaInputReceipt, CuaPoint } from "./types.js";
+import type { CuaInputCommand, CuaInputReceipt, CuaPoint } from "./types.js";
+
+/** Requested preparation only; receipts still report actual sampled effects. */
+export function inputRequestsPreparation(command: CuaInputCommand): boolean {
+  return (
+    command.kind === "prepared-press" ||
+    command.kind === "drag" ||
+    (command.kind === "timeline" &&
+      command.frames.some(
+        (frame) =>
+          frame.pointerDown !== undefined &&
+          frame.pointerModifiers.length === 0,
+      ))
+  );
+}
 
 /** Validate the actual response against the requested delivery and logical point. */
 export function matchesInputReceipt(
   receipt: CuaInputReceipt,
   method: CuaInputReceipt["method"],
   position?: CuaPoint,
+  activation?: boolean,
 ): boolean {
   if (receipt.method !== method) return false;
+  if (activation !== undefined && receipt.activation !== activation)
+    return false;
   if (
     ["focus", "window-input", "background-prepared-press"].includes(method) &&
     !receipt.activation
