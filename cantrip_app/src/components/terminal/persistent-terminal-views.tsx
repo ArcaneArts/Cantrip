@@ -13,6 +13,7 @@ import { TerminalView } from "./terminal-view";
 // without bound.
 export const MAX_RETAINED_TERMINAL_VIEWS = 12;
 const EMPTY_EXCLUDED_TERMINAL_IDS: ReadonlySet<string> = new Set();
+const EMPTY_PREWARMED_TERMINALS: readonly TerminalSummary[] = [];
 
 export interface PendingTerminalInput {
   data: string;
@@ -25,6 +26,7 @@ export function retainTerminalSurfaceTabs(
   owned: readonly TerminalSummary[],
   selected: TerminalSummary | null,
   limit = MAX_RETAINED_TERMINAL_VIEWS,
+  prewarmed: readonly TerminalSummary[] = [],
 ): TerminalSummary[] {
   const available = new Map(
     owned
@@ -37,6 +39,15 @@ export function retainTerminalSurfaceTabs(
   const next = retained
     .map((terminal) => available.get(terminal.id))
     .filter((terminal): terminal is TerminalSummary => Boolean(terminal));
+  for (const terminal of prewarmed) {
+    const availableTerminal = available.get(terminal.id);
+    if (!availableTerminal) continue;
+    const existingIndex = next.findIndex(
+      (candidate) => candidate.id === availableTerminal.id,
+    );
+    if (existingIndex >= 0) next.splice(existingIndex, 1);
+    next.push(availableTerminal);
+  }
   if (selected && selected.kind !== "run-configuration") {
     const existingIndex = next.findIndex(
       (terminal) => terminal.id === selected.id,
@@ -57,6 +68,7 @@ export function PersistentTerminalViews({
   onPendingInputSent,
   onServicePanelOpenChange,
   ownedTerminals,
+  prewarmedTerminals = EMPTY_PREWARMED_TERMINALS,
   pendingInputs,
   selectedTerminal,
   servicePanelTerminalId,
@@ -72,6 +84,7 @@ export function PersistentTerminalViews({
   onPendingInputSent(inputId: string): void;
   onServicePanelOpenChange(terminalId: string, open: boolean): void;
   ownedTerminals: readonly TerminalSummary[];
+  prewarmedTerminals?: readonly TerminalSummary[];
   pendingInputs: readonly PendingTerminalInput[];
   selectedTerminal: TerminalSummary | null;
   servicePanelTerminalId: string | null;
@@ -99,6 +112,10 @@ export function PersistentTerminalViews({
     selectedTerminal && !excludedIds.has(selectedTerminal.id)
       ? selectedTerminal
       : null;
+  const availablePrewarmedTerminals = useMemo(
+    () => prewarmedTerminals.filter(({ id }) => !excludedIds.has(id)),
+    [excludedIds, prewarmedTerminals],
+  );
   const [retainedTerminals, setRetainedTerminals] = useState<TerminalSummary[]>(
     () =>
       visibleTerminals.reduce(
@@ -112,6 +129,8 @@ export function PersistentTerminalViews({
           [],
           availableOwnedTerminals,
           availableSelectedTerminal,
+          MAX_RETAINED_TERMINAL_VIEWS,
+          availablePrewarmedTerminals,
         ),
       ),
   );
@@ -128,10 +147,13 @@ export function PersistentTerminalViews({
           retainedTerminals,
           availableOwnedTerminals,
           availableSelectedTerminal,
+          MAX_RETAINED_TERMINAL_VIEWS,
+          availablePrewarmedTerminals,
         ),
       ),
     [
       availableOwnedTerminals,
+      availablePrewarmedTerminals,
       availableSelectedTerminal,
       retainedTerminals,
       visibleTerminals,
@@ -152,10 +174,17 @@ export function PersistentTerminalViews({
           current,
           availableOwnedTerminals,
           availableSelectedTerminal,
+          MAX_RETAINED_TERMINAL_VIEWS,
+          availablePrewarmedTerminals,
         ),
       ),
     );
-  }, [availableOwnedTerminals, availableSelectedTerminal, visibleTerminals]);
+  }, [
+    availableOwnedTerminals,
+    availablePrewarmedTerminals,
+    availableSelectedTerminal,
+    visibleTerminals,
+  ]);
 
   useEffect(() => {
     const current = new Map(

@@ -6044,6 +6044,7 @@ describe("Cantrip protocol", () => {
       eliteMode: true,
       eliteRevealConfig: DEFAULT_ELITE_REVEAL_CONFIG,
       showChatPromptOverlay: true,
+      startNewAgentChatsInCodexCli: false,
       defaultPermissionProfileId: ":workspace",
       defaultWorkerId: null,
       automaticReplicaProvisioning: false,
@@ -6059,6 +6060,9 @@ describe("Cantrip protocol", () => {
     expect(
       userSettingsUpdateSchema.parse({ workspaceLayoutProfile: "agent" }),
     ).toEqual({ workspaceLayoutProfile: "agent" });
+    expect(
+      userSettingsUpdateSchema.parse({ startNewAgentChatsInCodexCli: true }),
+    ).toEqual({ startNewAgentChatsInCodexCli: true });
     expect(
       userSettingsUpdateSchema.safeParse({ workspaceLayoutProfile: "wide" })
         .success,

@@ -107,6 +107,7 @@ function DeleteHarness({ queryClient }: { queryClient: QueryClient }) {
   const mutation = useChatDeleteOperation({
     queryClient,
     selectedProjectId: projectId,
+    setChatConsoleInitialized: vi.fn(),
     setChatConsoleOpen: vi.fn(),
     setProjectTaskChatIds: vi.fn(),
     setTaskChatViewIds: vi.fn(),
