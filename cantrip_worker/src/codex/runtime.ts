@@ -142,7 +142,7 @@ export interface CodexRuntime {
       | "permissionProfileId"
       | "provider"
       | "threadId"
-    > & { threadId: string },
+    > & { threadId: string; chatId?: string },
   ): Promise<void>;
   compactThread(
     options: CompactAgentThreadOptions,

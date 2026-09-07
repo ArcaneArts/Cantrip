@@ -372,3 +372,27 @@ export type WorkerLogStreamBatch = z.infer<typeof workerLogStreamBatchSchema>;
 export type WorkerLogStreamServerMessage = z.infer<
   typeof workerLogStreamServerMessageSchema
 >;
+
+/** Server-owned placement for a linked console, identical to a managed turn. */
+export const managedChatRuntimeSchema = z.discriminatedUnion("contextKind", [
+  z.object({
+    contextKind: z.literal("project"),
+    chatId: z.string().min(1),
+    executionLaneId: z.string().min(1),
+    projectId: z.string().min(1),
+    worktreeId: z.string().min(1),
+    rootKind: z.enum(["folder-root", "git-worktree"]),
+    scratchRootId: z.null(),
+    computerUseEnabled: z.boolean().default(false),
+  }),
+  z.object({
+    contextKind: z.literal("standalone"),
+    chatId: z.string().min(1),
+    executionLaneId: z.string().min(1),
+    projectId: z.null(),
+    worktreeId: z.null(),
+    rootKind: z.null(),
+    scratchRootId: z.string().min(1),
+    computerUseEnabled: z.boolean().default(false),
+  }),
+]);

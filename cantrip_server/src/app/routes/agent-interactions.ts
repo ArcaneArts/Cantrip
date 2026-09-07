@@ -157,6 +157,7 @@ export function installAgentInteractionRoutes(
         const context = await repository.getChatExecutionContext(
           applicationOwnerId(),
           existing.provenance.chatId,
+          true,
         );
         if (
           !context ||
@@ -275,6 +276,7 @@ async function respondToComputerUseApproval(
       ? await repository.getChatExecutionContext(
           ownerId,
           existing.provenance.chatId,
+          true,
         )
       : null;
     if (

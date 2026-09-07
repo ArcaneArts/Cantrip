@@ -1,3 +1,4 @@
+import { managedConsoleChat } from "../../chats/execution-helpers.js";
 import {
   chatModelUpdateSchema,
   chatPermissionProfileStateSchema,
@@ -144,6 +145,7 @@ export function installChatRuntimeConfigurationRoutes(
     if (!context.threadId || !bridge.isConnected(context.workerId)) return;
     const result = (await bridge.request(context.workerId, {
       type: "chat.thread.ensure",
+      managedChat: managedConsoleChat(context),
       cwd: context.cwd,
       threadId: context.threadId,
       planMode: context.planMode,
@@ -183,6 +185,7 @@ export function installChatRuntimeConfigurationRoutes(
       const context = await repository.getChatExecutionContext(
         applicationOwnerId(),
         request.params.chatId,
+        true,
       );
       if (!context) {
         return reply.code(404).send({ error: "Chat source not found." });
@@ -247,6 +250,7 @@ export function installChatRuntimeConfigurationRoutes(
     const context = await repository.getChatExecutionContext(
       applicationOwnerId(),
       request.params.chatId,
+      true,
     );
     if (!context) {
       return reply.code(404).send({ error: "Chat source not found." });
@@ -303,6 +307,7 @@ export function installChatRuntimeConfigurationRoutes(
       const context = await repository.getChatExecutionContext(
         applicationOwnerId(),
         request.params.chatId,
+        true,
       );
       if (!context) {
         return reply.code(404).send({ error: "Chat source not found." });
@@ -372,6 +377,7 @@ export function installChatRuntimeConfigurationRoutes(
       const context = await repository.getChatExecutionContext(
         applicationOwnerId(),
         request.params.chatId,
+        true,
       );
       if (!context) {
         return reply.code(404).send({ error: "Chat source not found." });
@@ -390,6 +396,7 @@ export function installChatRuntimeConfigurationRoutes(
       const context = await repository.getChatExecutionContext(
         applicationOwnerId(),
         request.params.chatId,
+        true,
       );
       if (!context) {
         return reply.code(404).send({ error: "Chat source not found." });
@@ -439,6 +446,7 @@ export function installChatRuntimeConfigurationRoutes(
       const refreshed = await repository.getChatExecutionContext(
         applicationOwnerId(),
         context.chatId,
+        true,
       );
       if (!refreshed) {
         return reply.code(404).send({ error: "Chat source not found." });

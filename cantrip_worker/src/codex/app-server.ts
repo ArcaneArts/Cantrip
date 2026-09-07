@@ -1,3 +1,4 @@
+import { CodexConsoleExecutions } from "./execution-lifetime.js";
 import {
   CUA_DISCOVERY_GUIDANCE,
   CUA_START_GUIDANCE,
@@ -3948,6 +3949,7 @@ export class CodexAppServer implements CodexRuntime {
     string,
     CodexExternalImportStatus
   >();
+  readonly #consoleExecutions = new CodexConsoleExecutions();
   readonly #externalTurnBaselines = new Map<string, Set<string>>();
   readonly #externalThreadChanges = new CodexExternalThreadChangeCoalescer(
     (change) => this.#externalThreadChangeObserver?.(change),
@@ -4024,7 +4026,7 @@ export class CodexAppServer implements CodexRuntime {
     change: CodexExternalThreadChangeKind,
   ): void {
     if (
-      this.hasActiveThread(threadId) ||
+      this.#rootExecutionsByThread.has(threadId) ||
       !this.#externalTurnBaselines.has(threadId)
     ) {
       return;
@@ -5124,7 +5126,7 @@ export class CodexAppServer implements CodexRuntime {
       | "permissionProfileId"
       | "provider"
       | "threadId"
-    > & { threadId: string },
+    > & { threadId: string; chatId?: string },
   ): Promise<void> {
     await this.ensureStarted(
       options.model,
@@ -5143,6 +5145,8 @@ export class CodexAppServer implements CodexRuntime {
         "The Codex console thread is no longer available on this worker.",
       );
     }
+    if (options.chatId)
+      this.#consoleExecutions.prepare(options.chatId, threadId);
     let response: CodexThreadReadResponse;
     try {
       response = (await this.request("thread/read", {
@@ -5646,6 +5650,7 @@ export class CodexAppServer implements CodexRuntime {
     this.#readyMcpConfigFingerprintsByThread.clear();
     this.#permissionProfilesByThread.clear();
     this.#externalImportStatuses.clear();
+    this.#consoleExecutions.clear();
     this.#externalTurnBaselines.clear();
     this.#externalThreadChanges.clear();
     this.#mcpOauthStatuses.clear();
@@ -5862,6 +5867,7 @@ export class CodexAppServer implements CodexRuntime {
     this.#collaborationModes.clear();
     this.#collaborationModeFingerprints.clear();
     this.#externalImportStatuses.clear();
+    this.#consoleExecutions.clear();
     this.#externalTurnBaselines.clear();
     this.#externalThreadChanges.clear();
     this.#mcpOauthStatuses.clear();
@@ -5995,6 +6001,9 @@ export class CodexAppServer implements CodexRuntime {
     const mcpConfigFingerprint = mcpConfig ? JSON.stringify(mcpConfig) : null;
     const hasGitMetadata = await workspaceHasGitMetadata(options.cwd);
     let threadId = options.threadId;
+    // A console reattach or a second UI submission must not unsubscribe a live
+    // turn while refreshing its configuration. Callers can report it as busy.
+    if (threadId && this.hasActiveThread(threadId)) return threadId;
     if (
       threadId &&
       (!this.#loadedThreads.has(threadId) ||
@@ -6161,7 +6170,19 @@ export class CodexAppServer implements CodexRuntime {
   }
 
   private hasActiveThread(threadId: string): boolean {
-    return this.#rootExecutionsByThread.has(threadId);
+    return (
+      this.#rootExecutionsByThread.has(threadId) ||
+      this.#consoleExecutions.active(null, threadId) !== null
+    );
+  }
+
+  resolveConsoleComputerUseExecution(input: {
+    chatId: string;
+    threadId: string;
+    turnId: string;
+  }): CodexComputerUseExecution | null {
+    if (this.#rootExecutionsByThread.has(input.threadId)) return null;
+    return this.#consoleExecutions.resolve(input);
   }
 
   /** Native root/child ownership for lifecycle cancellation, even before CUA is used. */
@@ -6230,6 +6251,8 @@ export class CodexAppServer implements CodexRuntime {
   }
 
   private observeComputerUseTurnStart(threadId: string, turnId: string): void {
+    if (!this.#rootExecutionsByThread.has(threadId))
+      this.#consoleExecutions.observe(threadId, turnId);
     const execution = this.#rootExecutionsByThread.get(threadId);
     if (!execution) return;
     if (threadId === execution.rootThreadId) {
@@ -6244,6 +6267,7 @@ export class CodexAppServer implements CodexRuntime {
   }
 
   private abortComputerUseThread(threadId: string): void {
+    this.#consoleExecutions.abort(threadId);
     const execution = this.#rootExecutionsByThread.get(threadId);
     if (!execution) return;
     if (threadId === execution.rootThreadId)
@@ -7314,6 +7338,7 @@ export class CodexAppServer implements CodexRuntime {
       this.#collaborationModes.clear();
       this.#collaborationModeFingerprints.clear();
       this.#externalImportStatuses.clear();
+      this.#consoleExecutions.clear();
       this.#externalTurnBaselines.clear();
       this.#externalThreadChanges.clear();
       this.#mcpOauthStatuses.clear();
@@ -7365,6 +7390,7 @@ export class CodexAppServer implements CodexRuntime {
       this.#readyMcpConfigFingerprintsByThread.clear();
       this.#permissionProfilesByThread.clear();
       this.#externalImportStatuses.clear();
+      this.#consoleExecutions.clear();
       this.#externalTurnBaselines.clear();
       this.#externalThreadChanges.clear();
       this.#mcpOauthStatuses.clear();
@@ -8442,6 +8468,7 @@ export class CodexAppServer implements CodexRuntime {
 
     if (message.method === "turn/completed") {
       const params = message.params as TurnCompletedParams;
+      this.#consoleExecutions.abort(params.threadId, params.turn.id);
       const execution = this.#rootExecutionsByThread.get(params.threadId);
       const lifetime =
         params.threadId === execution?.rootThreadId

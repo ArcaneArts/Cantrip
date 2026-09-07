@@ -9,7 +9,7 @@ import {
   type UserSettings,
   type WorktreePolicy,
 } from "@cantrip/protocol";
-import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, eq, ne, isNotNull, isNull, sql } from "drizzle-orm";
 
 import * as schema from "../schema.js";
 import {
@@ -39,6 +39,7 @@ export class ChatRuntimeContextRepository {
   async getChatExecutionContext(
     ownerId: string,
     chatId: string,
+    includeReservedLane = false,
   ): Promise<ChatExecutionContext | null> {
     const identities = await this.database
       .select({ contextKind: schema.chats.contextKind })
@@ -90,7 +91,10 @@ export class ChatRuntimeContextRepository {
         schema.chatExecutionLanes,
         and(
           eq(schema.chatExecutionLanes.chatId, schema.chats.id),
-          eq(schema.chatExecutionLanes.state, "active"),
+          eq(schema.chatExecutionLanes.worktreeId, schema.projectWorktrees.id),
+          includeReservedLane
+            ? ne(schema.chatExecutionLanes.state, "released")
+            : eq(schema.chatExecutionLanes.state, "active"),
         ),
       )
       .where(and(eq(schema.chats.id, chatId), isNull(schema.chats.archivedAt)))
