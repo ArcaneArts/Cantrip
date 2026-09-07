@@ -2025,7 +2025,7 @@ export function App() {
     activeWorktreeTarget, agentInspectOpenChats, appActionContext, appMode,
     appToast, archiveStandaloneChat, archivedStandaloneChats, beginSidebarResize, bindChatWorktree,
     bindWorktreeMutation, bootstrap, browsers, chatRelocationOpen, chatRelocations,
-    chats, chatConsoleOpenChats, closeCompactProject, closeProjectTask, closeSidebarFilePreview, codeAppearance,
+    chats, closeCompactProject, closeProjectTask, closeSidebarFilePreview, codeAppearance,
     codeHeader, codeTabs, commandBarOpen, compactManagedHeader, compactShell,
     completeSidebarFilePinHandoff, contentRootRef, contentScrolled, createProjectSurface, createSidebarExplorerMutation, createSidebarFolder,
     createWorkspaceMutation, createWorktreeMutation, creatingSurfaceKinds, currentRelocation, deleteBrowserMutation, dockPresentationMutation,
@@ -2078,7 +2078,7 @@ export function App() {
     sidebarInlineExplorer, sidebarPreviewExplorer, sidebarPreviewSuccessorExplorer, sidebarRef, sidebarResizing, sidebarWidth,
     standaloneChatCreationAvailable, standaloneChatCreationUnavailableReason, standaloneChatWorkerAvailable, standaloneChats, standaloneFilePath,
     standaloneFilesOpen, stopAndDeleteRunTerminalMutation, surfaceCreationFailure, switchToChat, switchToIde,
-    tabLayout, tabLayoutMutation, terminals, terminalCommandPaletteTerminalId, terminalServiceTerminalId, updateBrowserMutation, updateCodeTabMutation,
+    tabLayout, tabLayoutMutation, terminalCommandPaletteTerminalId, terminalServiceTerminalId, updateBrowserMutation, updateCodeTabMutation,
     visibleProjects, workers, workspaceDragError, workspaceSelection, worktreeActionError,
     worktreeCreateTarget, worktreeStatuses, worktrees,
   };

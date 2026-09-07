@@ -61,45 +61,6 @@ function bindings() {
 }
 
 describe("project pane render bindings", () => {
-  it.each([true, false])(
-    "routes the pane to its own CLI when open=%s",
-    (open) => {
-      const chat = { id: "chat-one" };
-      const terminal = { id: "console-one", linkedChatId: chat.id };
-      const result = projectPaneRenderBindings(
-        {
-          ...bindings(),
-          chatConsoleOpenChats: new Set(open ? [chat.id] : []),
-          terminals: { data: [terminal] },
-        },
-        presentation(false, {
-          kind: "chat",
-          tabKey: "chat:chat-one",
-          entity: chat,
-        } as ProjectSurface),
-      );
-      expect(result.terminalSurfaceVisible).toBe(open);
-      expect(result.selectedTerminal).toBe(open ? terminal : undefined);
-      expect(result.linkedConsoleChat).toBe(open ? chat : undefined);
-    },
-  );
-
-  it("does not show another chat's terminal while the CLI is being created", () => {
-    const result = projectPaneRenderBindings(
-      {
-        ...bindings(),
-        chatConsoleOpenChats: new Set(["chat-one"]),
-        terminals: { data: [{ id: "other-console", linkedChatId: "other" }] },
-      },
-      presentation(true, {
-        kind: "chat",
-        tabKey: "chat:chat-one",
-        entity: { id: "chat-one" },
-      } as ProjectSurface),
-    );
-    expect(result.terminalSurfaceVisible).toBe(false);
-    expect(result.selectedTerminal).toBeUndefined();
-  });
   it("lets only the focused pane publish shell header state", () => {
     const shell = bindings();
 

@@ -5,7 +5,6 @@ import { describe, expect, it, vi } from "vitest";
 import { PersistentSurfaceLayer } from "./persistent-surface-layer";
 
 const surfaceProps = vi.hoisted(() => ({
-  terminal: null as Record<string, unknown> | null,
   code: null as Record<string, unknown> | null,
   explorer: null as Record<string, unknown> | null,
 }));
@@ -19,10 +18,7 @@ vi.mock("@/components/app/application-shell-surfaces", () => ({
     surfaceProps.explorer = props;
     return null;
   },
-  PersistentTerminalViews: (props: Record<string, unknown>) => {
-    surfaceProps.terminal = props;
-    return null;
-  },
+  PersistentTerminalViews: () => null,
 }));
 
 vi.mock("@/components/workspace/project-tab-bar", () => ({
@@ -30,57 +26,6 @@ vi.mock("@/components/workspace/project-tab-bar", () => ({
 }));
 
 describe("persistent surface layer", () => {
-  it("places a chat CLI in its pane and removes the placement when toggled back", async () => {
-    (
-      globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
-    ).IS_REACT_ACT_ENVIRONMENT = true;
-    const terminal = { id: "cli-one", linkedChatId: "chat-one" };
-    const portalTarget = {};
-    const bindings = {
-      appMode: "ide",
-      openExplorers: [],
-      selectedProjectId: "project-1",
-      terminals: { data: [terminal] },
-      dockPanePresentations: [
-        {
-          activeSurface: { kind: "chat", entity: { id: "chat-one" } },
-          focused: false,
-          gridArea: "right-body",
-          pane: { id: "right" },
-          portalTarget,
-        },
-      ],
-    };
-    let renderer!: TestRenderer.ReactTestRenderer;
-    await act(async () => {
-      renderer = TestRenderer.create(
-        <PersistentSurfaceLayer
-          bindings={{
-            ...bindings,
-            chatConsoleOpenChats: new Set(["chat-one"]),
-          }}
-        />,
-      );
-    });
-    expect(surfaceProps.terminal?.visiblePlacements).toEqual([
-      {
-        terminal,
-        focused: false,
-        gridArea: "right-body",
-        paneId: "right",
-        portalTarget,
-      },
-    ]);
-    await act(async () => {
-      renderer.update(
-        <PersistentSurfaceLayer
-          bindings={{ ...bindings, chatConsoleOpenChats: new Set() }}
-        />,
-      );
-    });
-    expect(surfaceProps.terminal?.visiblePlacements).toEqual([]);
-    await act(async () => renderer.unmount());
-  });
   it("places an active sidebar preview in its pane without hiding other panes", async () => {
     (
       globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
