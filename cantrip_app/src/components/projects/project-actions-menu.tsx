@@ -54,7 +54,7 @@ function ContextItems({
         className={itemClass}
         onSelect={onOpenSettings}
       >
-        <Settings className="size-4" /> Settings
+        <Settings className="size-4" /> Project Settings
       </ContextMenuPrimitive.Item>
       {onReveal ? (
         <ContextMenuPrimitive.Item
@@ -95,7 +95,7 @@ function DropdownItems({
         className={itemClass}
         onSelect={onOpenSettings}
       >
-        <Settings className="size-4" /> Settings
+        <Settings className="size-4" /> Project Settings
       </DropdownMenuPrimitive.Item>
       {onReveal ? (
         <DropdownMenuPrimitive.Item

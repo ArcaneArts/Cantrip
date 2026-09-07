@@ -147,6 +147,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
     setSidebarCollapsed,
     showArchivedStandaloneChats,
     showSettings,
+    showProjectSettings,
     sidebarCollapsed,
     sidebarExpanded,
     sidebarExplorer,
@@ -185,7 +186,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
               : "transition-[width] duration-150 ease-out motion-reduce:transition-none",
           )}
           style={{
-            display: showSettings ? "none" : undefined,
+            display: showSettings || showProjectSettings ? "none" : undefined,
             width: desktopSidebarDrawer
               ? undefined
               : sidebarCollapsed

@@ -118,7 +118,7 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
       : appMode === "ide"
         ? switchToChat
         : switchToIde;
-  if (showSettings && !compactShell) {
+  if ((showSettings || showProjectSettings) && !compactShell) {
     return (
       <header
         className={cn(
@@ -135,13 +135,19 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
           variant="ghost"
           size="sm"
           className={overlayTitlebar ? "h-6 text-xs" : undefined}
-          onClick={() => setShowSettings(false)}
+          onClick={() =>
+            showSettings
+              ? setShowSettings(false)
+              : setShowProjectSettings(false)
+          }
         >
           <ArrowLeft className="size-4" />
-          {appMode === "ide" ? "Back to Project" : "Back to Chat"}
+          {showProjectSettings || appMode === "ide"
+            ? "Back to Project"
+            : "Back to Chat"}
         </Button>
         <span data-tauri-drag-region={overlayTitlebar ? "" : undefined}>
-          Settings
+          {showSettings ? "Settings" : "Project Settings"}
         </span>
       </header>
     );
