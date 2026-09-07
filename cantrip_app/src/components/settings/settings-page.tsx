@@ -1,4 +1,5 @@
 import { ComputerUseEffectsSettings } from "./computer-use-effects-settings";
+import { Monitor } from "lucide-react";
 import { TabDisplaySettings } from "./tab-display-settings";
 import type {
   CodeAppearance,
@@ -172,6 +173,8 @@ import {
 
 export type SettingsSection =
   | "general"
+  | "computer-use"
+  | "remote-desktop"
   | "appearance"
   | "usage"
   | "code"
@@ -195,12 +198,6 @@ export const settingsNavigationSections: readonly SettingsNavigationSection<Sett
       icon: SlidersHorizontal,
       searchItems: [
         {
-          id: "computer-use",
-          label: "Computer use",
-          description: "Enable computer use and open macOS permissions.",
-          keywords: ["accessibility privacy screen recording"],
-        },
-        {
           id: "workspace-layout-profile",
           label: "Project workspace profile",
           description: "First-open destinations for new project tabs.",
@@ -218,12 +215,6 @@ export const settingsNavigationSections: readonly SettingsNavigationSection<Sett
           description: "Permission defaults for standalone conversations.",
         },
         {
-          id: "remote-desktop",
-          label: "Remote Desktop",
-          description: "Frame rate and streaming quality.",
-          keywords: ["fps adaptive data saver bandwidth"],
-        },
-        {
           id: "updates",
           label: "Cantrip updates",
           description: "Desktop releases, downloads, and installation.",
@@ -233,6 +224,39 @@ export const settingsNavigationSections: readonly SettingsNavigationSection<Sett
           label: "Anonymous recovery",
           description: "Export the recovery file for local encrypted data.",
           keywords: ["encryption key backup restore"],
+        },
+      ],
+    },
+    {
+      id: "computer-use",
+      label: "Computer Use",
+      description: "Agent computer access and window effects",
+      icon: Monitor,
+      searchItems: [
+        {
+          id: "computer-use",
+          label: "Computer Use",
+          description:
+            "Enable computer use, macOS permissions, and window effects.",
+          keywords: [
+            "accessibility privacy screen recording window effects filter worker capture",
+          ],
+        },
+      ],
+    },
+    {
+      id: "remote-desktop",
+      label: "Remote Desktop",
+      description: "Frame rate and streaming quality",
+      icon: Gauge,
+      searchItems: [
+        {
+          id: "remote-desktop",
+          label: "Remote Desktop",
+          description: "Frame rate and streaming quality.",
+          keywords: [
+            "fps adaptive data saver bandwidth sharp balanced latency",
+          ],
         },
       ],
     },
@@ -1614,7 +1638,7 @@ export function SettingsPage({
     !generalSearch ||
     matchesSearch(
       generalSearch,
-      "remote desktop streaming frame rate fps quality adaptive latency bandwidth data saver sharp",
+      "remote desktop streaming frame rate fps quality adaptive latency bandwidth data saver sharp balanced",
     );
   const permissionDefaultsMatch =
     !generalSearch ||
@@ -1638,7 +1662,7 @@ export function SettingsPage({
     !generalSearch ||
     matchesSearch(
       generalSearch,
-      "computer use accessibility privacy screen recording",
+      "computer use accessibility privacy screen recording window effects filter worker capture",
     );
   const chatDisplayMatches =
     !generalSearch ||
@@ -1704,14 +1728,16 @@ export function SettingsPage({
       ? providersMatch || modelsMatch
       : section === "appearance"
         ? appearanceMatches
-        : computerUseMatches ||
-          workspaceLayoutProfileMatches ||
-          permissionDefaultsMatch ||
-          agentNamingMatches ||
-          chatDisplayMatches ||
-          desktopStreamingMatches ||
-          encryptionRecoveryMatches ||
-          desktopUpdateMatches;
+        : section === "computer-use"
+          ? computerUseMatches
+          : section === "remote-desktop"
+            ? desktopStreamingMatches
+            : workspaceLayoutProfileMatches ||
+              permissionDefaultsMatch ||
+              agentNamingMatches ||
+              chatDisplayMatches ||
+              encryptionRecoveryMatches ||
+              desktopUpdateMatches;
 
   useEffect(() => {
     setSection(initialSection);
@@ -1752,7 +1778,7 @@ export function SettingsPage({
           className={`min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden ${section === "code" ? "overflow-hidden" : section === "logs" || section === "elite" ? "overflow-hidden p-3 sm:p-4" : "overflow-y-auto p-4 sm:p-6"}`}
         >
           <div
-            className={`${section === "general" || section === "appearance" || section === "models" ? "grid" : "hidden"} w-full min-w-0 gap-4`}
+            className={`${section === "general" || section === "appearance" || section === "models" || section === "computer-use" || section === "remote-desktop" ? "grid" : "hidden"} w-full min-w-0 gap-4`}
           >
             {settings.isError ? (
               <p className="text-sm text-destructive">
@@ -1910,7 +1936,7 @@ export function SettingsPage({
                   </section>
                 ) : null}
 
-                {section === "general" && computerUseMatches ? (
+                {section === "computer-use" && computerUseMatches ? (
                   <div>
                     <ComputerUseSettings
                       enabled={
@@ -2092,7 +2118,7 @@ export function SettingsPage({
                   </section>
                 ) : null}
 
-                {section === "general" && desktopStreamingMatches ? (
+                {section === "remote-desktop" && desktopStreamingMatches ? (
                   <section>
                     <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-3">
                       <div className="flex min-w-0 items-center gap-2.5">
