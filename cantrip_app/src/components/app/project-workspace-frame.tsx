@@ -40,6 +40,7 @@ import {
 } from "@/components/app/global-content-host";
 import { resolvedCenterLayoutRoot } from "@/components/app/center-split-layout";
 import { CenterSplitWorkspace } from "@/components/app/center-split-workspace";
+import { EmptyWorkspace } from "./empty-workspace";
 import { DockResizeControl } from "@/components/app/dock-resize-control";
 import { PersistentSurfaceLayer } from "@/components/app/persistent-surface-layer";
 import { projectPaneRenderBindings } from "@/components/app/project-pane-render-bindings";
@@ -170,11 +171,12 @@ function SortableDockRailTab({
   });
   const canDelete = surfaceCanDelete(surface);
   const tooltipSide = region === "right" ? "left" : "top";
-  const action = !active
-    ? "Focus"
-    : surface.member.dockPresentation?.preferredMode === "closed"
+  const action =
+    surface.member.dockPresentation?.preferredMode === "closed"
       ? "Expand"
-      : "Collapse";
+      : active
+        ? "Collapse"
+        : "Focus";
   const actionLabel = `${action} ${surface.title}`;
   return (
     <div
@@ -433,7 +435,10 @@ export function DockRail({
                 />
               ) : null}
               <SortableDockRailTab
-                active={surface.tabKey === activeTabKey}
+                active={
+                  surface.tabKey === activeTabKey &&
+                  surface.member.dockPresentation?.preferredMode !== "closed"
+                }
                 expanded={memberPosition < expanded}
                 disabled={pending}
                 memberPosition={memberPosition}
@@ -513,7 +518,11 @@ function genericPaneBody(
         data-project-pane-id={presentation.pane.id}
         style={nested ? undefined : { gridArea: presentation.gridArea }}
       >
-        Loading pane…
+        {presentation.surfaces.length === 0 ? (
+          <EmptyWorkspace />
+        ) : (
+          "Loading pane…"
+        )}
       </div>
     );
   }
@@ -671,7 +680,6 @@ export function ProjectWorkspaceFrame({
       ),
     [bindings.paneOwnedElsewhere, bindings.projectSurfaces],
   );
-  const centers = presentations.filter(({ pane }) => pane.region === "center");
   const right = presentations.find(({ pane }) => pane.region === "right");
   const bottom = presentations.find(({ pane }) => pane.region === "bottom");
   const preferenceFor = (presentation: VisibleProjectPane | undefined) =>
@@ -691,7 +699,8 @@ export function ProjectWorkspaceFrame({
   const { bottomFraction, grid, rightFraction } =
     responsiveProjectWorkspaceGridModel({
       bottom: bottomRendered,
-      center: Boolean(centerRoot && centers.length > 0),
+      // An empty center is still a workspace; docks must not consume its space.
+      center: true,
       frameHeight: frameSize.height,
       frameWidth: frameSize.width,
       fullRegion,
@@ -1141,6 +1150,36 @@ export function ProjectWorkspaceFrame({
             : { gridColumn: 1, gridRow: 1 }
         }
       >
+        {docked && !centerRoot && !fullRegion ? (
+          <div
+            className="flex min-h-0 min-w-0 flex-col overflow-hidden"
+            style={{ gridArea: "center-root" }}
+          >
+            <ProjectPaneTabStrip
+              activeTabKey=""
+              allowedCreateKinds={createKindsForPaneRegion("center")}
+              creatingKinds={bindings.creatingSurfaceKinds}
+              onCreate={(kind, target) =>
+                bindings.createProjectSurface(
+                  bindings.selectedProject.id,
+                  kind,
+                  undefined,
+                  target,
+                  "center",
+                )
+              }
+              onClose={bindings.closeSurfaceView}
+              onDelete={bindings.deleteSurfaceResource}
+              onRename={bindings.renameSurface}
+              onSelect={bindings.selectTopTab}
+              paneRegion="center"
+              placement={bindings.selectedPlacementContext}
+              projectId={bindings.selectedProject.id}
+              surfaces={[]}
+            />
+            <EmptyWorkspace />
+          </div>
+        ) : null}
         {docked && centerRoot && !fullRegion ? (
           <div
             className="grid min-h-0 min-w-0 overflow-hidden"

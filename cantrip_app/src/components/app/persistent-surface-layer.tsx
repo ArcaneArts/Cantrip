@@ -192,8 +192,7 @@ export function PersistentSurfaceLayer({
       !showServerAdmin &&
       !showProjectSettings &&
       !selectedPaneOwnedElsewhere &&
-      Boolean(selectedProject) &&
-      (selectedPaneSurfaces.length > 0 || showSidebarPreviewTab) ? (
+      Boolean(selectedProject) ? (
         <ProjectPaneTabStrip
           activeTabKey={selectedTabKey ?? ""}
           creatingKinds={creatingSurfaceKinds}

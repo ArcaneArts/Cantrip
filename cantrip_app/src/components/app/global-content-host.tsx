@@ -6,19 +6,16 @@ import type {
 import type { QueryClient } from "@tanstack/react-query";
 import {
   CircleAlert,
-  Code2,
   ExternalLink,
   Folder,
-  FolderTree,
-  Globe2,
   Loader2,
   MessageSquare,
   Plus,
   RefreshCw,
-  SquareTerminal,
   WifiOff,
 } from "lucide-react";
 import { Suspense, type ReactNode } from "react";
+import { EmptyWorkspace } from "./empty-workspace";
 import {
   BrowserView,
   RemoteDesktopView,
@@ -1064,97 +1061,7 @@ export function GlobalContentHost({
                   ) : null}
                 </div>
               ) : (
-                <EmptyState>
-                  <EmptyStateContent>
-                    <EmptyStateIcon>
-                      <SquareTerminal className="size-5" />
-                    </EmptyStateIcon>
-                    <EmptyStateTitle as="h1">No tabs yet</EmptyStateTitle>
-                    <EmptyStateDescription>
-                      Start a Codex agent, shell, file explorer, Code workspace,
-                      or browser in {selectedProject.name}.
-                    </EmptyStateDescription>
-                    <EmptyStateActions>
-                      <Button
-                        disabled={newChat.isPending || !selectedProject.source}
-                        onClick={() =>
-                          newChat.mutate({ projectId: selectedProject.id })
-                        }
-                      >
-                        {newChat.isPending ? (
-                          <Loader2 className="size-4 animate-spin" />
-                        ) : (
-                          <Plus className="size-4" />
-                        )}
-                        Agent
-                      </Button>
-                      <Button
-                        variant="outline"
-                        disabled={
-                          newTerminal.isPending || !selectedProject.source
-                        }
-                        onClick={() =>
-                          newTerminal.mutate({ projectId: selectedProject.id })
-                        }
-                      >
-                        {newTerminal.isPending ? (
-                          <Loader2 className="size-4 animate-spin" />
-                        ) : (
-                          <Plus className="size-4" />
-                        )}
-                        Terminal
-                      </Button>
-                      <Button
-                        variant="outline"
-                        disabled={
-                          newExplorer.isPending || !selectedProject.source
-                        }
-                        onClick={() =>
-                          newExplorer.mutate({ projectId: selectedProject.id })
-                        }
-                      >
-                        {newExplorer.isPending ? (
-                          <Loader2 className="size-4 animate-spin" />
-                        ) : (
-                          <FolderTree className="size-4" />
-                        )}
-                        Explorer
-                      </Button>
-                      <Button
-                        variant="outline"
-                        disabled={
-                          newBrowser.isPending || !selectedProject.source
-                        }
-                        onClick={() =>
-                          newBrowser.mutate({ projectId: selectedProject.id })
-                        }
-                      >
-                        {newBrowser.isPending ? (
-                          <Loader2 className="size-4 animate-spin" />
-                        ) : (
-                          <Globe2 className="size-4" />
-                        )}
-                        Browser
-                      </Button>
-                      <Button
-                        variant="outline"
-                        disabled={
-                          newCodeTab.isPending || !selectedProject.source
-                        }
-                        onClick={() =>
-                          newCodeTab.mutate({ projectId: selectedProject.id })
-                        }
-                      >
-                        {newCodeTab.isPending ? (
-                          <Loader2 className="size-4 animate-spin" />
-                        ) : (
-                          <Code2 className="size-4" />
-                        )}
-                        Code
-                      </Button>
-                    </EmptyStateActions>
-                  </EmptyStateContent>
-                </EmptyState>
+                <EmptyWorkspace />
               )}
             </ProjectOverviewHost>
           ) : (
