@@ -25,6 +25,7 @@ import { TooltipButton } from "@/components/ui/tooltip";
 import { desktopPopoutTitlebarLeftInset } from "@/lib/desktop-popout";
 import { sidebarFileName } from "@/lib/sidebar-file-tabs";
 import { cn } from "@/lib/utils";
+import { useMouseBack } from "./use-mouse-back";
 type ShellHeaderBindings = Readonly<Record<string, any>>;
 
 export function navigateMobileSettingsBack(
@@ -114,6 +115,15 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
     worktreeStatuses,
     worktrees,
   } = bindings;
+  useMouseBack(
+    showSettings
+      ? () => setShowSettings(false)
+      : showProjectSettings
+        ? () => setShowProjectSettings(false)
+        : showProjectOverview
+          ? () => setShowProjectOverview(false)
+          : null,
+  );
   const switchAppMode =
     isPopout || appMode === null
       ? null
