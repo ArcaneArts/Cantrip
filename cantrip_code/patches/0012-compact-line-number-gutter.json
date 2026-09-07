@@ -1,0 +1,15 @@
+{
+  "id": "0012-compact-line-number-gutter",
+  "title": "Size the line-number gutter to the file's actual digits",
+  "reason": "The embedded editor reserves at least three character columns for line numbers, leaving unnecessary space before short-file line numbers. The workbench hardcodes lineNumbersMinChars and does not expose it as a user setting or extension API. Lower the minimum to one so the existing editor layout grows the gutter to fit the actual line count, while retaining glyph-margin breakpoints, folding, and change decorations.",
+  "upstreamCommit": "4ffe2270acdf711bbefecc3e8c79f4b3631640e5",
+  "files": [
+    "src/vs/workbench/browser/parts/editor/textEditor.ts"
+  ],
+  "validation": [
+    "pnpm code:patch -- --source cantrip_code/upstream --check",
+    "pnpm code:source:verify",
+    "Open short and long files in Cantrip Code; verify line numbers use only the columns needed for their digits and gutter controls remain usable"
+  ],
+  "removal": "Remove if upstream exposes a supported line-number minimum-width setting or adopts an adaptive one-character minimum."
+}
