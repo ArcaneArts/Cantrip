@@ -74,7 +74,7 @@ describe("input receipt delivery validation", () => {
   });
 });
 
-it("requires unverified unknown receipts for experimental background delivery", () => {
+it("accepts completed background dispatch while requiring unverified window delivery", () => {
   const receipt = {
     method: "background-coordinate" as const,
     activation: false,
@@ -91,7 +91,7 @@ it("requires unverified unknown receipts for experimental background delivery", 
       { ...receipt, outcome: "dispatched" },
       "background-coordinate",
     ),
-  ).toBe(false);
+  ).toBe(true);
   expect(matchesInputReceipt(receipt, "process-coordinate")).toBe(false);
 });
 
@@ -151,3 +151,44 @@ it("checks preparation receipts against mouse actions while leaving keyboard tim
     ).toBe(false);
   }
 });
+
+it.each([
+  "background-prepared-press",
+  "background-timeline",
+  "background-key",
+  "background-text",
+  "background-drag",
+  "background-scroll",
+  "system-media",
+] as const)(
+  "accepts current and legacy %s outcomes without interpreting user activity as cancellation",
+  (method) => {
+    for (const outcome of ["dispatched", "unknown"] as const) {
+      const receipt: CuaInputReceipt = {
+        method,
+        outcome,
+        activation: method === "background-prepared-press",
+        ...(method === "system-media"
+          ? {}
+          : { windowDelivery: "unverified" as const }),
+        effects: {
+          beforeAtMs: 1,
+          afterAtMs: 2,
+          sampling: "before-after-dispatch",
+          foregroundApplication: "changed",
+          foregroundWindow: "changed",
+          pointer: "changed",
+          windowOrder: "changed",
+        },
+      };
+      expect(matchesInputReceipt(receipt, method)).toBe(true);
+      if (method !== "system-media")
+        expect(
+          matchesInputReceipt(
+            { ...receipt, windowDelivery: undefined },
+            method,
+          ),
+        ).toBe(false);
+    }
+  },
+);

@@ -77,15 +77,15 @@ describe("CUA worker composition without activation", () => {
       CuaProcessError,
     );
     await expect(service.capabilities(scope)).rejects.toMatchObject({
-      code: "unavailable",
+      code: "spawn-failed",
     });
-    expect(launch).toHaveBeenCalledTimes(1);
+    expect(launch).toHaveBeenCalledTimes(2);
     expect(service.status()).toMatchObject({
-      state: "failed",
+      state: "restart-available",
       lastFailure: "spawn-failed",
     });
   });
-  it("records synchronous launch failure rather than repeatedly trying to launch", async () => {
+  it("allows a fresh attempt after a synchronous launch failure without retrying one request", async () => {
     const launch = vi.fn(launchCuaTransport);
     const service = new CantripCuaService({
       workerId: "worker",
@@ -97,9 +97,9 @@ describe("CUA worker composition without activation", () => {
       code: "spawn-failed",
     });
     await expect(service.capabilities(scope)).rejects.toMatchObject({
-      code: "unavailable",
+      code: "spawn-failed",
     });
-    expect(launch).toHaveBeenCalledTimes(1);
+    expect(launch).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -518,7 +518,7 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
       release.resolve();
       expect((await survivor).capture).toBe(true);
     });
-    it("allows exactly one explicit crash restart and never revives or replays old sessions", async () => {
+    it("allows fresh authorized requests after repeated crashes without reviving or replaying old sessions", async () => {
       const { service, children, launch } = create();
       const session = await service.open(scope, monitor);
       await crash(children[0]!);
@@ -528,12 +528,12 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
       expect(launch).toHaveBeenCalledTimes(2);
       expect(service.status().sessions).toBe(0);
       await crash(children[1]!);
-      await expect(service.targets(scope)).rejects.toMatchObject({
-        code: "unavailable",
-      });
-      expect(launch).toHaveBeenCalledTimes(2);
+      expect(service.status().state).toBe("restart-available");
+      await service.targets(scope);
+      expect(launch).toHaveBeenCalledTimes(3);
+      expect(service.status().sessions).toBe(0);
     });
-    it("detects corrupted image bytes and closes the malformed helper without restart", async () => {
+    it("rejects corrupted pixels and retires the helper until a fresh request", async () => {
       const { service } = create({
         transform: (operation, response) => {
           if (
@@ -548,7 +548,9 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
       await expect(
         service.snapshot(scope, session.binding.sessionId, monitor),
       ).rejects.toMatchObject({ code: "protocol-error" });
-      expect(service.status().state).toBe("failed");
+      expect(service.status().state).toBe("restart-available");
+      await service.targets(scope);
+      expect(service.status().state).toBe("running");
     });
     it("rejects a response bound to a different owner context", async () => {
       const { service } = create({

@@ -577,7 +577,7 @@ describe("worker JavaScript ownership before MCP activation", () => {
         expect((await result).value).toHaveLength(bytes - 12);
       } else {
         await expect(result).rejects.toMatchObject({ code: "protocol-error" });
-        expect(service.status().state).toBe("failed");
+        expect(service.status().state).toBe("restart-available");
       }
     },
   );
@@ -597,6 +597,108 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
       services.push(service);
       return { service, launch };
     }
+    it.each([false, true])(
+      "preserves macOS dispatch receipts and identifies genuine protocol failures (%s)",
+      async (corrupt) => {
+        let session: unknown;
+        let performed = 0;
+        const launch = vi.fn<typeof launchCuaTransport>((binary, config) => {
+          const transport = launchCuaTransport(binary, config);
+          return {
+            get closed() {
+              return transport.closed;
+            },
+            close: () => transport.close(),
+            request: async (input, opts) => {
+              const operation = input as {
+                operation: string;
+                command?: { kind: string; point?: { x: number; y: number } };
+              };
+              if (operation.operation === "input.perform") {
+                performed++;
+                // Real QuickJS + native fake capture, with the receipt emitted by
+                // macOS substituted for the fake backend's unsupported input.
+                const point = operation.command?.point ?? { x: 10, y: 20 };
+                return {
+                  payload: Buffer.alloc(0),
+                  data: {
+                    session,
+                    input: {
+                      method:
+                        corrupt && performed === 1
+                          ? "background-key"
+                          : `background-${operation.command!.kind}`,
+                      activation: operation.command!.kind === "prepared-press",
+                      outcome: "dispatched",
+                      windowDelivery: "unverified",
+                      position: point,
+                      globalPosition: point,
+                    },
+                  },
+                };
+              }
+              const response = await transport.request(input, opts);
+              if (
+                response.data &&
+                typeof response.data === "object" &&
+                "session" in response.data
+              )
+                session = response.data.session;
+              return response;
+            },
+          };
+        });
+        const service = new CantripCuaService({
+          workerId: "worker",
+          binary: process.env.CANTRIP_CUA_TEST_BINARY!,
+          args: ["--backend", "fake"],
+          launch,
+        });
+        services.push(service);
+        const opts = options();
+        await service.evaluateJavascript(
+          scope,
+          "await cua.attach({targetId:'fake-window',targetGeneration:1})",
+          opts,
+        );
+        if (corrupt) {
+          await expect(
+            service.evaluateJavascript(
+              scope,
+              "await cua.click({x:10,y:20}); await cua.click({x:10,y:20})",
+              opts,
+            ),
+          ).rejects.toMatchObject({
+            code: "protocol-error",
+            message: expect.stringContaining(
+              "A worker restart is not required",
+            ),
+          });
+          expect(performed).toBe(1);
+          await service.evaluateJavascript(
+            scope,
+            "await cua.attach({targetId:'fake-window',targetGeneration:1}); await cua.snapshot()",
+            opts,
+          );
+          expect(launch).toHaveBeenCalledTimes(2);
+          expect(performed).toBe(1); // Recovery observes; it never replays input.
+          return;
+        }
+        const result = await service.evaluateJavascript(
+          scope,
+          "await cua.click({x:10,y:20}); await cua.click({x:10,y:20}); await cua.snapshot()",
+          opts,
+        );
+        expect(result.images).toHaveLength(1);
+        expect(performed).toBe(2);
+        expect(service.status()).toMatchObject({
+          state: "running",
+          sessions: 1,
+          lastFailure: null,
+        });
+        expect(launch).toHaveBeenCalledTimes(1);
+      },
+    );
     it("routes the reported Command-K variants past validation and returns targeted help", async () => {
       const { service } = create();
       const opts = options();

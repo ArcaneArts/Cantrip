@@ -130,6 +130,7 @@ interface Context {
   sessionId: string | null;
   busy: boolean;
   retiring: Promise<void> | null;
+  runtimeFailure?: CuaProcessError;
 }
 interface Lifetime {
   scope: CuaScope;
@@ -280,9 +281,14 @@ export class CuaJavascriptContexts {
     for (const [identity, lifetime] of this.lifetimes)
       if (matches(lifetime.scope)) this.revoke(identity);
   }
-  runtimeFailed(runtime: CuaJavascriptRuntime): void {
-    for (const context of this.contexts.values())
-      if (context.runtime === runtime) this.dispose(context, false);
+  runtimeFailed(runtime: CuaJavascriptRuntime, error: CuaProcessError): void {
+    for (const context of this.contexts.values()) {
+      if (context.runtime !== runtime) continue;
+      // Teardown aborts pending calls. Preserve its cause instead of reporting
+      // the resulting internal abort as a user cancellation.
+      context.runtimeFailure = error;
+      this.dispose(context, false);
+    }
   }
   nativeSessionClosed(sessionId: string, revoke: boolean): void {
     for (const context of this.contexts.values())
@@ -466,12 +472,13 @@ export class CuaJavascriptContexts {
       // The native host-result wire maps transport deadlines to cancellation.
       // Capture the actual cause before disposal aborts the context itself.
       const failure =
-        !active.aborted &&
+        context.runtimeFailure ??
+        (!active.aborted &&
         error instanceof CuaNativeError &&
         error.code === "cancelled" &&
         hostTransportFailure
           ? hostTransportFailure
-          : error;
+          : error);
       // Rust drops the failed QuickJS engine (including queued jobs) before
       // returning an error. A failed observation or script does not invalidate
       // the separately owned native attachment. Keep it for the next explicitly
@@ -495,6 +502,10 @@ export class CuaJavascriptContexts {
       if (!keepAttachment) this.dispose(context, false);
       if (failure instanceof CuaNativeError) {
         failure.message += ` Evaluation context: ${completedHostCalls} completed host operations; last requested operation: ${lastHostOperation ?? "none"}. ${inputRequested ? "Input was requested; use its receipt/error to determine dispatch, and do not replay uncertain input." : "No input operation was requested in this evaluation."} ${keepAttachment ? (context.sessionId ? "JavaScript variables were cleared, but the window attachment was retained. Continue with cua.snapshot() or the next requested action; do not reset or reattach solely because of this error." : "JavaScript variables were cleared; no window is attached. Correct the script and continue without resetting.") : "JavaScript state and attachment were cleared; another reset is unnecessary."}`;
+      }
+      if (context.runtimeFailure && failure instanceof CuaProcessError) {
+        failure.message +=
+          " The failed helper was retired and the attachment was cleared. A new authorized observation can start a fresh helper; reopen the requested window and inspect it. Do not replay uncertain input. A worker restart is not required.";
       }
       throw failure;
     } finally {

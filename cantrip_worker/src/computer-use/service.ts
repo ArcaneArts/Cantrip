@@ -61,7 +61,7 @@ export class CuaServiceError extends Error {
           "The selected CUA target changed; attach the current target.",
         disconnected: "The worker lost its authorized server connection.",
         unavailable:
-          "CUA helper failed; restart the worker after correcting the reported failure.",
+          "CUA helper is unavailable. A new authorized request can start a fresh helper; do not replay input from the failed request.",
         closed: "CUA worker service is closed.",
         capacity: "CUA operation or session capacity reached.",
       }[code],
@@ -104,7 +104,7 @@ export class CantripCuaService {
   private opening: Promise<Runtime> | null = null;
   private generation = 0;
   private crashes = 0;
-  private terminal = false;
+  private runtimeShutdown: Promise<void> = Promise.resolve();
   private stopped = false;
   private connected = true;
   private closing: Promise<void> | null = null;
@@ -132,15 +132,13 @@ export class CantripCuaService {
     return {
       state: this.stopped
         ? "closed"
-        : this.terminal
-          ? "failed"
-          : this.opening
-            ? "starting"
-            : this.runtime
-              ? "running"
-              : this.crashes
-                ? "restart-available"
-                : "idle",
+        : this.opening
+          ? "starting"
+          : this.runtime
+            ? "running"
+            : this.crashes
+              ? "restart-available"
+              : "idle",
       processGeneration: this.generation,
       sessions: this.sessions.size,
       connected: this.connected,
@@ -182,17 +180,12 @@ export class CantripCuaService {
     }
   }
 
-  private failRuntime(
-    runtime: Runtime,
-    error: CuaProcessError,
-    restartable = true,
-  ) {
+  private failRuntime(runtime: Runtime, error: CuaProcessError) {
     if (this.runtime !== runtime) return;
     this.runtime = null;
     this.lastFailure = error.code;
     this.crashes += 1;
-    this.terminal = !restartable || !runtime.capabilities || this.crashes > 1;
-    this.javascript.runtimeFailed(runtime);
+    this.javascript.runtimeFailed(runtime, error);
     for (const record of this.sessions.values()) {
       if (record.runtime === runtime) {
         this.sessions.delete(record.binding.sessionId);
@@ -200,8 +193,10 @@ export class CantripCuaService {
       }
     }
     // Transport termination is bounded. No operation is replayed and no helper
-    // starts here. A fresh authorized request may consume the one restart.
-    this.background(runtime.transport.close());
+    // starts here. Each fresh authorized request gets one new attempt, never a
+    // replay. Wait for this helper to exit before another can post input.
+    this.runtimeShutdown = runtime.transport.close();
+    this.background(this.runtimeShutdown);
   }
   private background(work: Promise<void>) {
     const safe = work.catch(() => {});
@@ -212,7 +207,23 @@ export class CantripCuaService {
     this.assertActive();
     if (this.opening) return this.opening;
     if (this.runtime) return Promise.resolve(this.runtime);
-    if (this.terminal) throw new CuaServiceError("unavailable");
+    const opening = (async () => {
+      await this.runtimeShutdown;
+      this.assertActive();
+      return this.launchRuntime();
+    })();
+    this.opening = opening;
+    void opening.then(
+      () => {
+        if (this.opening === opening) this.opening = null;
+      },
+      () => {
+        if (this.opening === opening) this.opening = null;
+      },
+    );
+    return opening;
+  }
+  private launchRuntime(): Promise<Runtime> {
     const generation = ++this.generation;
     let runtime: Runtime | null = null;
     let launchFailure: CuaProcessError | null = null;
@@ -223,21 +234,20 @@ export class CantripCuaService {
         {
           args: this.options.args,
           onFailure: (error) => {
-            if (runtime)
-              this.failRuntime(runtime, error, error.code !== "protocol-error");
+            if (runtime) this.failRuntime(runtime, error);
             else launchFailure = error;
           },
         },
       );
     } catch {
       this.lastFailure = "spawn-failed";
-      this.terminal = true;
+      this.crashes += 1;
       throw new CuaProcessError("spawn-failed", "not-sent");
     }
     const created: Runtime = { generation, capabilities: null, transport };
     runtime = created;
     this.runtime = created;
-    if (launchFailure) this.failRuntime(created, launchFailure, false);
+    if (launchFailure) this.failRuntime(created, launchFailure);
     const opening = (async () => {
       try {
         const response = await created.transport.request({
@@ -267,21 +277,17 @@ export class CantripCuaService {
           error instanceof CuaProcessError
             ? error
             : new CuaProcessError("protocol-error"),
-          false,
         );
         throw error;
-      } finally {
-        this.opening = null;
       }
     })();
-    this.opening = opening;
     return opening;
   }
   private parse<T>(runtime: Runtime, schema: z.ZodType<T>, data: unknown): T {
     const result = schema.safeParse(data);
     if (result.success) return result.data;
     const error = new CuaProcessError("protocol-error", "unknown");
-    this.failRuntime(runtime, error, false);
+    this.failRuntime(runtime, error);
     throw error;
   }
 
@@ -411,7 +417,7 @@ export class CantripCuaService {
   }
   private protocolFailure(runtime: Runtime): never {
     const error = new CuaProcessError("protocol-error", "unknown");
-    this.failRuntime(runtime, error, false);
+    this.failRuntime(runtime, error);
     throw error;
   }
   private async execute(

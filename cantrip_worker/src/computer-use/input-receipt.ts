@@ -14,7 +14,8 @@ export function inputRequestsPreparation(command: CuaInputCommand): boolean {
   );
 }
 
-/** Validate the actual response against the requested delivery and logical point. */
+/** Dispatch completion is distinct from app acceptance (windowDelivery).
+ * Validate the actual response against the requested delivery and logical point. */
 export function matchesInputReceipt(
   receipt: CuaInputReceipt,
   method: CuaInputReceipt["method"],
@@ -31,7 +32,7 @@ export function matchesInputReceipt(
     return false;
   if (method === "system-media") {
     return (
-      receipt.outcome === "unknown" &&
+      ["dispatched", "unknown"].includes(receipt.outcome) &&
       !receipt.activation &&
       receipt.windowDelivery === undefined &&
       receipt.position === undefined &&
@@ -40,7 +41,7 @@ export function matchesInputReceipt(
   }
   if (method === "process-coordinate" || method.startsWith("background-")) {
     if (
-      receipt.outcome !== "unknown" ||
+      !["dispatched", "unknown"].includes(receipt.outcome) ||
       receipt.windowDelivery !== "unverified"
     )
       return false;
