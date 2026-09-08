@@ -200,9 +200,101 @@ that view attachment, chat settings changes and cold recovery do not make furthe
 account configuration writes. This does not establish command/default-write
 mediation, which remains a later milestone. No desktop input is performed.
 
-**Still outstanding:** authorized command admission, origin-independent
-lifecycle/CUA authority, durable all-turn projection/replay, complete settings
-parity, eager GUI-first session startup and the full acceptance matrix. The
+**Pass 4 — shared native command admission:**
+
+The isolated implementation adds durable admission, dispatch, settlement and
+pending-reply records. Worker-protected request/result content is bound to its
+chat and operation; keyed digests avoid exposing guessable prompt hashes.
+Admission checks canonical placement, thread, route/account and activation.
+Dispatch rechecks the exact operation and runtime generation. An uncertain
+transport result does not authorize another native dispatch.
+
+A loopback gateway mediates terminal mutations before forwarding them. GUI
+controls join the same adapter and pending-interaction resolver. GUI Stop uses
+the admitted native session instead of selecting another executable model route.
+Preparing a rollback can bind an accepted parent operation without dispatching
+its future turn or granting computer-use authority. Excluded Task and standalone
+paths retain their existing execution behavior.
+
+Reviewed native work covers managed terminal reply acknowledgment and preventing
+implicit account-default writes when changing managed chat settings. A separate
+native gate requests fresh admission before each queued or goal-driven turn,
+including cold-resume queue wakeups. Its proposed native turn ID is retained
+through actual execution. Stop invalidates pending tickets outside the native
+per-thread request queue; a new explicit queue/goal start can rearm the runner.
+Normal child execution remains under the admitted root's authority.
+
+The final standard packaged build includes reviewed patches `0014` and `0015`;
+all 6,499 imported files and the ordered 14-patch series verify. The production
+worker gateway, runtime and adapter now pass terminal and queue fixtures against
+that binary and real Fastify/PGlite authority. They cover three actual turns,
+GUI Stop, fresh activation generations and final canonical idle state. Native
+queue/goal tests separately establish admission before model input, rejection of
+stale tickets and cold queue gating. These results do not establish the entire
+remote-TUI, history and settings acceptance matrix.
+
+Real database integration exposed two receipt defects: native acknowledgment
+and terminal evidence needed separate immutable protected records, and a scoped
+queue command's nested turn result must not be reconciled as if that command
+owned the execution. Both are corrected. GUI cleanup now retains its logical
+reservation until the server acknowledges committed completion; Stop and replies
+remain independent of this wait. An actual native GUI-parent/queued-successor
+fixture proves physical completion alone does not release the successor, and
+that the successor starts after canonical completion acknowledgment.
+
+GUI goal/compact/rollback commands carry full managed configuration. Goal creation
+uses one durable operation and the native goal runner without a duplicate
+synthetic initial turn. Pending-start Stop and delayed queue/goal commands are
+fenced by durable cancellation state. Fresh GUI retry admission now preserves
+one reserved logical lane while replacing attempt and authority generations;
+protected continuation transport and Stop/admission-race tests pass. Initial
+preparation runs inside the same cancelable retry boundary, with exact logical
+root cancellation retained even before preparation registers. A stopped older
+preparation cannot register a turn over a newer request.
+
+The actual packaged runtime passes five real-server/database cases: terminal,
+queue, GUI-to-queue handoff, GUI capacity retry and GUI compaction replacement.
+The capacity case reproduces native
+`active` → `systemError` → `serverOverloaded` → failed completion, waits the
+real retry delay, then obtains a fresh admission and completes successfully.
+`systemError` revokes CUA without prematurely discarding the admitted turn;
+actual closure/not-loaded events still tear it down. The compaction case uses an
+actual provider error, prepares the replacement under the shared coordinator,
+binds it through canonical continuation admission, and completes a fresh turn.
+Its queued successor remains gated until logical completion is acknowledged.
+It explicitly attaches a new view; automatic retargeting of an already-open TUI
+and transfer of existing queue/history are not established by this test.
+
+That replacement test exposed a reload that discarded the native gate when
+ordinary turn inputs omitted managed MCP configuration. The worker now retains
+acknowledged managed overlays separately from readiness caches, including the
+current runner generation. Omitted inputs inherit the owned overlay; explicit
+empty MCP and null child defaults remain removals. Managed configuration changes
+use the live update path without self-unsubscribing the sole observer. Catalog
+failure does not erase acknowledged ownership; actual closure or transport
+replacement does. A successful gate rebind updates the retained generation.
+
+Worker/adapter/coordinator/preparation selections pass 115 tests; root
+continuation, cancellation, transport, encryption
+and runner selections pass 28. Server admission/approval selections pass 48.
+App, worker and server typechecks pass. Ordered upstream verification passes.
+
+A broader worker selection before the final overlay change passed 134 tests
+and repeated the same three known
+`goal-streaming.test.ts` failures verified on the unchanged pass baseline: two
+legacy goal/identity timeouts and the missing first-checkpoint assertion. These
+are recorded failures, not successful goal-streaming validation. The final
+focused selection above covers the overlay changes; both legacy owned-close
+cases also pass a fresh targeted rerun. The packaged five-case native fixture
+passes in 29.96 seconds with local synthetic provider responses and real native
+protocol/database operations, without mocked admission or execution success.
+
+**Still outstanding:** completion of authorized command admission, origin-independent
+lifecycle/CUA authority, one shared queue owner, durable all-turn projection/replay,
+complete settings parity, eager GUI-first session startup and the full acceptance
+matrix. Native-thread replacement also needs complete presentation retargeting
+and queue/history continuity; canonical GUI retry handoff alone does not prove
+that an already-open TUI follows the replacement. The
 original GUI-first launch trigger remains until its prerequisites are
 implemented. No user app/worker restart, personal desktop interaction or CI job
 has been used.
@@ -215,16 +307,16 @@ content, supported tool/agent activity, attachments, settings, pending questions
 queue, usage/timing and authoritative turn outcome. Switching surfaces must not
 start, stop, duplicate, forget or reconfigure work.
 
-| Requirement | Current state | Needed result |
-| --- | --- | --- |
-| Add an agent tab and immediately boot the CLI | New chat creation does not launch a console | Prepare one bound native thread and one reusable PTY without inference; keep GUI view available/default |
-| Correct MCP before first input | GUI turn setup is richer than console/ensure setup | All entry points materialize the same complete, revisioned session configuration |
-| GUI `/model` behaves like its composer selector | Explicitly excluded from GUI slash commands | Same picker, validation and settings command; native `/model` reconciles back to the same chat |
-| CLI work appears live in GUI | External turns mostly use snapshot reconciliation | All native turns enter the same live projector and durable history |
-| GUI work appears in CLI | Same remote thread is already supported | Side-effect-free attach/resume, consistent settings and pending interactions |
-| Stop and follow-ups work from either surface | Control lookup assumes GUI-owned execution | Resolve the actual current native turn; acknowledge each command and input |
-| History survives reconnect/restart/failure | Memory baselines and best-effort revisions can lose repair work | Durable acknowledgment, replay and stable native item identity |
-| Computer use works after preboot and either input origin | Authority depends on GUI `runTurn` tracking | Idle session eligibility separated from exact, revocable native-turn authority |
+| Requirement                                              | Current state                                                   | Needed result                                                                                           |
+| -------------------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Add an agent tab and immediately boot the CLI            | New chat creation does not launch a console                     | Prepare one bound native thread and one reusable PTY without inference; keep GUI view available/default |
+| Correct MCP before first input                           | GUI turn setup is richer than console/ensure setup              | All entry points materialize the same complete, revisioned session configuration                        |
+| GUI `/model` behaves like its composer selector          | Explicitly excluded from GUI slash commands                     | Same picker, validation and settings command; native `/model` reconciles back to the same chat          |
+| CLI work appears live in GUI                             | External turns mostly use snapshot reconciliation               | All native turns enter the same live projector and durable history                                      |
+| GUI work appears in CLI                                  | Same remote thread is already supported                         | Side-effect-free attach/resume, consistent settings and pending interactions                            |
+| Stop and follow-ups work from either surface             | Control lookup assumes GUI-owned execution                      | Resolve the actual current native turn; acknowledge each command and input                              |
+| History survives reconnect/restart/failure               | Memory baselines and best-effort revisions can lose repair work | Durable acknowledgment, replay and stable native item identity                                          |
+| Computer use works after preboot and either input origin | Authority depends on GUI `runTurn` tracking                     | Idle session eligibility separated from exact, revocable native-turn authority                          |
 
 The target applies to managed **agent** chats. The separate standalone Chat
 product currently excludes external-console synchronization and has a narrower
@@ -251,28 +343,28 @@ Do not assume that the current public docs exactly match the bundled snapshot.
 
 ### Current source map
 
-| Source | Responsibility/evidence |
-| --- | --- |
-| [surface-creation-operations.ts](../cantrip_app/src/components/app/surface-creation-operations.ts#L63), `useProjectChatCreationOperation` | Creates chat and optional initial draft; no eager CLI initialization |
-| [terminal-context.ts](../cantrip_server/src/app/routes/terminal-context.ts#L48), `installChatLinkedConsoleRoute` | Resolves context, ensures thread if needed, persists association, creates/reuses linked terminal |
-| [worker index.ts](../cantrip_worker/src/index.ts#L1436), `agentMcpServers` | Complete managed MCP composition when attachment/capability material is supplied |
-| [worker index.ts](../cantrip_worker/src/index.ts#L4552), terminal attach; [thread ensure](../cantrip_worker/src/index.ts#L5619) | Thin MCP preparation, shared remote endpoint; no-thread launch can omit external-sync preparation |
-| [worker index.ts](../cantrip_worker/src/index.ts#L4999), GUI execution; [CUA registration](../cantrip_worker/src/index.ts#L5313) | Rich chat/lane attachment and actual-turn authority setup |
-| [terminal-manager.ts](../cantrip_worker/src/terminal-manager.ts#L175), `codexLaunch` | `--remote`, optional `resume`, model/effort and hardcoded permission arguments |
-| [app-server.ts](../cantrip_worker/src/codex/app-server.ts#L5954), `loadThread` | Configuration fingerprint, start/resume, instructions and managed MCP readiness |
-| [app-server.ts](../cantrip_worker/src/codex/app-server.ts#L5089), `syncThread` / `prepareExternalSync` | In-memory baseline and filtered history import |
-| [app-server.ts](../cantrip_worker/src/codex/app-server.ts#L6904), `notificationTarget` | GUI execution lookup used by live event handlers |
-| [app-server.ts](../cantrip_worker/src/codex/app-server.ts#L5518), `interruptChat` / `steerThread` | Controls depend on tracked GUI active turns |
-| [thread-change-reconciliation.ts](../cantrip_server/src/chats/thread-change-reconciliation.ts#L99) | Failed reconcile still consumes a revision |
-| [chat-thread-sync-runtime.ts](../cantrip_server/src/app/runtime/chat-thread-sync-runtime.ts#L55) | History import, status reconciliation and queued-turn release |
-| [thread-sync.ts](../cantrip_server/src/chats/thread-sync.ts#L14) | Existing `codex-sync:<turn>:<item>` stable message identity |
-| [agent-turn-projection.ts](../cantrip_app/src/components/chat/agent-turn-projection.ts#L137) | Rich GUI history/worked-for projection |
-| [chat-resource-refresh.ts](../cantrip_app/src/lib/chat-resource-refresh.ts#L41) | Live-connected UI disables fallback polling |
-| [slash-commands.ts](../cantrip_app/src/components/chat/slash-commands.ts#L12) | GUI excludes `/model`, `/permissions`, `/theme` |
-| [use-chat-transcript-controller.ts](../cantrip_app/src/components/chat/use-chat-transcript-controller.ts#L1256) | Composer configuration mutations and query invalidation |
-| [task-routes.ts](../cantrip_server/src/app/runtime/task-routes.ts#L1853) | Durable model configuration update; rejects active runtime edits |
-| [execution-lifetime.ts](../cantrip_worker/src/codex/execution-lifetime.ts#L3) | Exact native turn start/end/replacement and cancellation semantics |
-| [CUA coordinator](../cantrip_worker/src/computer-use/agent.ts#L160) and [broker](../cantrip_worker/src/mcp/broker.ts#L422) | Authenticated binding and active native-turn checks |
+| Source                                                                                                                                    | Responsibility/evidence                                                                           |
+| ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| [surface-creation-operations.ts](../cantrip_app/src/components/app/surface-creation-operations.ts#L63), `useProjectChatCreationOperation` | Creates chat and optional initial draft; no eager CLI initialization                              |
+| [terminal-context.ts](../cantrip_server/src/app/routes/terminal-context.ts#L48), `installChatLinkedConsoleRoute`                          | Resolves context, ensures thread if needed, persists association, creates/reuses linked terminal  |
+| [worker index.ts](../cantrip_worker/src/index.ts#L1436), `agentMcpServers`                                                                | Complete managed MCP composition when attachment/capability material is supplied                  |
+| [worker index.ts](../cantrip_worker/src/index.ts#L4552), terminal attach; [thread ensure](../cantrip_worker/src/index.ts#L5619)           | Thin MCP preparation, shared remote endpoint; no-thread launch can omit external-sync preparation |
+| [worker index.ts](../cantrip_worker/src/index.ts#L4999), GUI execution; [CUA registration](../cantrip_worker/src/index.ts#L5313)          | Rich chat/lane attachment and actual-turn authority setup                                         |
+| [terminal-manager.ts](../cantrip_worker/src/terminal-manager.ts#L175), `codexLaunch`                                                      | `--remote`, optional `resume`, model/effort and hardcoded permission arguments                    |
+| [app-server.ts](../cantrip_worker/src/codex/app-server.ts#L5954), `loadThread`                                                            | Configuration fingerprint, start/resume, instructions and managed MCP readiness                   |
+| [app-server.ts](../cantrip_worker/src/codex/app-server.ts#L5089), `syncThread` / `prepareExternalSync`                                    | In-memory baseline and filtered history import                                                    |
+| [app-server.ts](../cantrip_worker/src/codex/app-server.ts#L6904), `notificationTarget`                                                    | GUI execution lookup used by live event handlers                                                  |
+| [app-server.ts](../cantrip_worker/src/codex/app-server.ts#L5518), `interruptChat` / `steerThread`                                         | Controls depend on tracked GUI active turns                                                       |
+| [thread-change-reconciliation.ts](../cantrip_server/src/chats/thread-change-reconciliation.ts#L99)                                        | Failed reconcile still consumes a revision                                                        |
+| [chat-thread-sync-runtime.ts](../cantrip_server/src/app/runtime/chat-thread-sync-runtime.ts#L55)                                          | History import, status reconciliation and queued-turn release                                     |
+| [thread-sync.ts](../cantrip_server/src/chats/thread-sync.ts#L14)                                                                          | Existing `codex-sync:<turn>:<item>` stable message identity                                       |
+| [agent-turn-projection.ts](../cantrip_app/src/components/chat/agent-turn-projection.ts#L137)                                              | Rich GUI history/worked-for projection                                                            |
+| [chat-resource-refresh.ts](../cantrip_app/src/lib/chat-resource-refresh.ts#L41)                                                           | Live-connected UI disables fallback polling                                                       |
+| [slash-commands.ts](../cantrip_app/src/components/chat/slash-commands.ts#L12)                                                             | GUI excludes `/model`, `/permissions`, `/theme`                                                   |
+| [use-chat-transcript-controller.ts](../cantrip_app/src/components/chat/use-chat-transcript-controller.ts#L1256)                           | Composer configuration mutations and query invalidation                                           |
+| [task-routes.ts](../cantrip_server/src/app/runtime/task-routes.ts#L1853)                                                                  | Durable model configuration update; rejects active runtime edits                                  |
+| [execution-lifetime.ts](../cantrip_worker/src/codex/execution-lifetime.ts#L3)                                                             | Exact native turn start/end/replacement and cancellation semantics                                |
+| [CUA coordinator](../cantrip_worker/src/computer-use/agent.ts#L160) and [broker](../cantrip_worker/src/mcp/broker.ts#L422)                | Authenticated binding and active native-turn checks                                               |
 
 ## What already works and should be retained
 
@@ -532,13 +624,13 @@ host multiple sessions; do not accidentally create an app-server per UI pane.
 
 Maintain distinct states:
 
-| State domain | Examples | Must not imply |
-| --- | --- | --- |
-| Session preparation | preparing, ready, failed, disconnected | A model turn is running |
-| Native execution | idle, active exact turn, waiting, completed/failed/interrupted | UI transport is healthy |
-| Configuration | desired, pending, applied/effective, rejected | A queued request was applied |
-| Presentation | GUI attached, TUI attached, hidden, disconnected | Closing a view cancels work |
-| CUA eligibility/authority | enabled for session; granted for exact active turn | Idle preboot or history can perform input |
+| State domain              | Examples                                                       | Must not imply                            |
+| ------------------------- | -------------------------------------------------------------- | ----------------------------------------- |
+| Session preparation       | preparing, ready, failed, disconnected                         | A model turn is running                   |
+| Native execution          | idle, active exact turn, waiting, completed/failed/interrupted | UI transport is healthy                   |
+| Configuration             | desired, pending, applied/effective, rejected                  | A queued request was applied              |
+| Presentation              | GUI attached, TUI attached, hidden, disconnected               | Closing a view cancels work               |
+| CUA eligibility/authority | enabled for session; granted for exact active turn             | Idle preboot or history can perform input |
 
 Serialize creation/configuration/commands per session. Concurrent tab creation,
 first send and CLI attachment should join the same in-flight preparation rather
@@ -657,17 +749,17 @@ native `model/list`; merely synchronizing the selected value does not make the
 other choices available in the TUI. Keep cross-provider choices as explicit
 Cantrip route migrations rather than pretending native model strings encode them.
 
-| Setting | Required mapping and behavior |
-| --- | --- |
-| Root model | Map Cantrip model ID to native model plus provider/account/route. Reverse mapping must be unambiguous; duplicate slugs cannot select an arbitrary account. |
-| Reasoning effort | Use the selected model's supported values; preserve explicit/default semantics. Do not carry an invalid previous-model effort silently. |
-| Service tier | Add an explicit durable/product policy if supported. Native update distinguishes omitted (preserve), null (clear), and value (set). It is absent from current Cantrip model configuration. |
-| Permissions | Translate authoritative permission profile to native settings. A CLI change must receive the same policy validation; hardcoded terminal launch flags cannot become an escape hatch. Unrepresentable native settings need an explicit custom-state policy or rejection. |
-| Plan/collaboration mode | Retain existing projection but reconcile it in the same complete settings snapshot. |
-| Subagent settings | Cantrip root/custom-child configuration has no one-to-one `/model` equivalent. Preserve explicit custom child settings; root changes affect inherited settings only under the documented inheritance rule. |
-| Provider/account change | Native thread settings update has no provider-switch field. Treat cross-route selection as a controlled idle migration with documented thread continuity, or visibly reject unsupported migration. Do not claim a model-string update changed account/runtime. |
-| Account/user defaults | Native `/model` also writes config defaults. Keep this scope separate from chat selection; recommended managed mode changes the chat only, with an explicit action for account defaults. Mediate native config writes rather than silently changing other chats. |
-| MCP/instructions/CUA enablement | Full authoritative revision; metadata reads preserve it. Explicit disable removes tools/eligibility and revokes active CUA as required. |
+| Setting                         | Required mapping and behavior                                                                                                                                                                                                                                          |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Root model                      | Map Cantrip model ID to native model plus provider/account/route. Reverse mapping must be unambiguous; duplicate slugs cannot select an arbitrary account.                                                                                                             |
+| Reasoning effort                | Use the selected model's supported values; preserve explicit/default semantics. Do not carry an invalid previous-model effort silently.                                                                                                                                |
+| Service tier                    | Add an explicit durable/product policy if supported. Native update distinguishes omitted (preserve), null (clear), and value (set). It is absent from current Cantrip model configuration.                                                                             |
+| Permissions                     | Translate authoritative permission profile to native settings. A CLI change must receive the same policy validation; hardcoded terminal launch flags cannot become an escape hatch. Unrepresentable native settings need an explicit custom-state policy or rejection. |
+| Plan/collaboration mode         | Retain existing projection but reconcile it in the same complete settings snapshot.                                                                                                                                                                                    |
+| Subagent settings               | Cantrip root/custom-child configuration has no one-to-one `/model` equivalent. Preserve explicit custom child settings; root changes affect inherited settings only under the documented inheritance rule.                                                             |
+| Provider/account change         | Native thread settings update has no provider-switch field. Treat cross-route selection as a controlled idle migration with documented thread continuity, or visibly reject unsupported migration. Do not claim a model-string update changed account/runtime.         |
+| Account/user defaults           | Native `/model` also writes config defaults. Keep this scope separate from chat selection; recommended managed mode changes the chat only, with an explicit action for account defaults. Mediate native config writes rather than silently changing other chats.       |
+| MCP/instructions/CUA enablement | Full authoritative revision; metadata reads preserve it. Explicit disable removes tools/eligibility and revokes active CUA as required.                                                                                                                                |
 
 Implement GUI `/model` by opening the same picker/controller as the composer.
 If arguments are supported, resolve them through the same catalog and error
@@ -701,14 +793,14 @@ Each row is an independently reviewable PR/worktree/automerge cycle. Preserve
 working computer use and current GUI-first startup until the last enablement
 step. Do not reapply all reverted commits as one patch.
 
-| Cycle | Concrete deliverable | Required proof before the dependent cycle |
-| --- | --- | --- |
-| 1. Managed session preparation | One bound session descriptor, shared full MCP/context builder, serialized ensure/config, side-effect-free metadata reads and terminal attach | Racing prepare/send/attach produces one thread; reads and attach preserve MCP/instructions/model/security; explicit removals apply |
-| 2. Origin-independent lifecycle and commands | Shared native execution tracking, CLI command mediation, Stop/steer/queue/interaction ownership, actual-turn CUA registration | CLI-first and GUI-first turns get the same attribution/authority; Stop and later fresh turns work in both directions |
-| 3. Durable mirror and recovery | All-turn live projection, item deduplication, acknowledged replay, dirty retry, attachments and terminal summaries | Drop events, fail persistence, restart worker and reconnect: both views converge without duplicate input/history or false completion |
-| 4. Settings and slash parity | Complete native settings schema, desired/effective revisions, `/model` and `/permissions` UI commands, native TUI settings/default mediation | CLI choice survives next GUI turn; GUI choice is shown in TUI; concurrency/active-turn/default-scope cases are deterministic |
-| 5. Eager idle startup | Chat creation prepares session and PTY without inference; hidden TUI, GUI-first view, explicit boot/error state and reusable attachment | Empty tab starts exactly one CLI; immediate first send shares preparation; zero synthetic turns; failed startup is visible and retryable |
-| 6. Fidelity and rollout acceptance | Full matrix below on the pinned runtime; platform limitations resolved or clearly recorded; enable intended default | User can start, switch, interrupt, configure and continue from either surface with complete matching history/status |
+| Cycle                                        | Concrete deliverable                                                                                                                         | Required proof before the dependent cycle                                                                                                |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Managed session preparation               | One bound session descriptor, shared full MCP/context builder, serialized ensure/config, side-effect-free metadata reads and terminal attach | Racing prepare/send/attach produces one thread; reads and attach preserve MCP/instructions/model/security; explicit removals apply       |
+| 2. Origin-independent lifecycle and commands | Shared native execution tracking, CLI command mediation, Stop/steer/queue/interaction ownership, actual-turn CUA registration                | CLI-first and GUI-first turns get the same attribution/authority; Stop and later fresh turns work in both directions                     |
+| 3. Durable mirror and recovery               | All-turn live projection, item deduplication, acknowledged replay, dirty retry, attachments and terminal summaries                           | Drop events, fail persistence, restart worker and reconnect: both views converge without duplicate input/history or false completion     |
+| 4. Settings and slash parity                 | Complete native settings schema, desired/effective revisions, `/model` and `/permissions` UI commands, native TUI settings/default mediation | CLI choice survives next GUI turn; GUI choice is shown in TUI; concurrency/active-turn/default-scope cases are deterministic             |
+| 5. Eager idle startup                        | Chat creation prepares session and PTY without inference; hidden TUI, GUI-first view, explicit boot/error state and reusable attachment      | Empty tab starts exactly one CLI; immediate first send shares preparation; zero synthetic turns; failed startup is visible and retryable |
+| 6. Fidelity and rollout acceptance           | Full matrix below on the pinned runtime; platform limitations resolved or clearly recorded; enable intended default                          | User can start, switch, interrupt, configure and continue from either surface with complete matching history/status                      |
 
 Suggested code boundaries: worker session coordinator and command adapter;
 complete settings translator; lifecycle/event projector; server durable command
@@ -726,12 +818,12 @@ allowing an old worker to execute commands it cannot interpret.
 
 ### What the reverted experiments teach
 
-| Experiment | Current ancestry | Lesson |
-| --- | --- | --- |
-| #1835 (`271daeaa2`) eager CLI/new-tab preference | Reverted by `ea9ff4c97` | Combined startup, view preference and model behavior; separate those concerns |
-| #1841 (`a8eb77b26`) linked CLI placement | Reverted by `f1adb8cf3` | Rendering a terminal in a pane does not establish lifecycle parity |
+| Experiment                                         | Current ancestry        | Lesson                                                                              |
+| -------------------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------- |
+| #1835 (`271daeaa2`) eager CLI/new-tab preference   | Reverted by `ea9ff4c97` | Combined startup, view preference and model behavior; separate those concerns       |
+| #1841 (`a8eb77b26`) linked CLI placement           | Reverted by `f1adb8cf3` | Rendering a terminal in a pane does not establish lifecycle parity                  |
 | #1844 (`f4ad4fb99`) console CUA/external execution | Reverted by `1c3947a75` | Tools and exact-turn ownership need one shared design, not a second partial tracker |
-| #1845 (`c05dac31f`) metadata/config preservation | Reverted by `2a8c4f9d6` | Omitted-vs-explicit config and concurrent loads still need a deliberate fix |
+| #1845 (`c05dac31f`) metadata/config preservation   | Reverted by `2a8c4f9d6` | Omitted-vs-explicit config and concurrent loads still need a deliberate fix         |
 
 The relevant code is absent today. These commits are evidence and possible test
 ideas, not a declaration that their approaches were complete or safe to restore.
@@ -750,31 +842,31 @@ projection commit/replay acknowledgment and phase timings. Exclude tokens,
 credentials, raw screen data and message contents from ordinary logs. Distinguish
 prepare, MCP startup, TUI attach, model latency and projection latency.
 
-| Test | Observable pass condition |
-| --- | --- |
-| Empty tab preboot | Exactly one native thread and CLI PTY; no model turn/token use; GUI stays usable |
-| Creation/first-send/attach race | Same session and thread, one accepted input, complete config |
-| MCP enabled/disabled/config edit | Actual initialize/catalog and a harmless authorized tool call match the session revision; disabled state stays disabled |
-| Metadata/goal/plan reads | No configuration/instructions replacement or tool loss |
-| Attach idle and active with conflicting CLI defaults | Model/effort/tier/permissions/MCP remain unchanged merely by attaching |
-| CLI-first and GUI-first work | Both views receive user input, live text/tool state, final answer and matching turn outcome |
-| Shared-turn GUI input plus CLI steering | Both inputs and all items retained exactly once; no whole-turn origin exclusion |
-| Stop each direction | Exact active turn interrupted, held CUA released; stale Stop cannot kill next turn |
-| Follow-up during work and immediately after completion | Native acceptance/queue receipt visible; one execution; no disappearing or stranded message |
-| Approval/question reply in either surface | Same pending request; one accepted answer resolves both; late answer rejected visibly |
-| `/model`, composer and native TUI selection | Same effective result; choice survives next turn and reconnect; invalid choice retains previous effective state |
-| Model-picker inventory | Actual native `model/list` and GUI options cover the same eligible provider/account choices with deterministic route mapping |
-| Concurrent settings and active-turn edit | Revision ordering, pending next-turn state and no echo loop; running turn attribution unchanged |
-| Defaults, routes and subagent settings | Account defaults only change explicitly; duplicate native names never select arbitrary route; custom child settings preserved |
-| Service-tier clear/omit and permissions | Correct tri-state behavior and equivalent authorization; unsupported platform update reported honestly |
-| Missed completion with healthy UI connection | Dirty reconciliation retries and settles final history/status without requiring another user message |
-| Persistence failure after native read | Retry imports the same terminal turn; acknowledgment only follows commit |
-| Worker/runtime/UI reconnect and restart | Native live state and durable history reconcile; no false cancellation or duplicate turn, no old authority resurrection |
-| Concurrent history snapshot/live events | Final/newer items cannot regress; stable ordering and deduplication |
-| Images, tools, reasoning summaries, child agents, warnings | Supported item inventory retained; unresolved content explicitly labeled, never silently dropped |
-| Multi-chat/multi-window/mobile | No cross-chat input/authority/config leakage; view attach/resize/switch does not start duplicate work |
-| Startup/MCP/provider/auth failure | Correct failing phase and actual error; no phantom “working” or required worker restart for routine errors |
-| CUA duet and long timeline | Human input does not interrupt; explicit Stop does; CLI and GUI-originated authorized turns both work |
+| Test                                                       | Observable pass condition                                                                                                     |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Empty tab preboot                                          | Exactly one native thread and CLI PTY; no model turn/token use; GUI stays usable                                              |
+| Creation/first-send/attach race                            | Same session and thread, one accepted input, complete config                                                                  |
+| MCP enabled/disabled/config edit                           | Actual initialize/catalog and a harmless authorized tool call match the session revision; disabled state stays disabled       |
+| Metadata/goal/plan reads                                   | No configuration/instructions replacement or tool loss                                                                        |
+| Attach idle and active with conflicting CLI defaults       | Model/effort/tier/permissions/MCP remain unchanged merely by attaching                                                        |
+| CLI-first and GUI-first work                               | Both views receive user input, live text/tool state, final answer and matching turn outcome                                   |
+| Shared-turn GUI input plus CLI steering                    | Both inputs and all items retained exactly once; no whole-turn origin exclusion                                               |
+| Stop each direction                                        | Exact active turn interrupted, held CUA released; stale Stop cannot kill next turn                                            |
+| Follow-up during work and immediately after completion     | Native acceptance/queue receipt visible; one execution; no disappearing or stranded message                                   |
+| Approval/question reply in either surface                  | Same pending request; one accepted answer resolves both; late answer rejected visibly                                         |
+| `/model`, composer and native TUI selection                | Same effective result; choice survives next turn and reconnect; invalid choice retains previous effective state               |
+| Model-picker inventory                                     | Actual native `model/list` and GUI options cover the same eligible provider/account choices with deterministic route mapping  |
+| Concurrent settings and active-turn edit                   | Revision ordering, pending next-turn state and no echo loop; running turn attribution unchanged                               |
+| Defaults, routes and subagent settings                     | Account defaults only change explicitly; duplicate native names never select arbitrary route; custom child settings preserved |
+| Service-tier clear/omit and permissions                    | Correct tri-state behavior and equivalent authorization; unsupported platform update reported honestly                        |
+| Missed completion with healthy UI connection               | Dirty reconciliation retries and settles final history/status without requiring another user message                          |
+| Persistence failure after native read                      | Retry imports the same terminal turn; acknowledgment only follows commit                                                      |
+| Worker/runtime/UI reconnect and restart                    | Native live state and durable history reconcile; no false cancellation or duplicate turn, no old authority resurrection       |
+| Concurrent history snapshot/live events                    | Final/newer items cannot regress; stable ordering and deduplication                                                           |
+| Images, tools, reasoning summaries, child agents, warnings | Supported item inventory retained; unresolved content explicitly labeled, never silently dropped                              |
+| Multi-chat/multi-window/mobile                             | No cross-chat input/authority/config leakage; view attach/resize/switch does not start duplicate work                         |
+| Startup/MCP/provider/auth failure                          | Correct failing phase and actual error; no phantom “working” or required worker restart for routine errors                    |
+| CUA duet and long timeline                                 | Human input does not interrupt; explicit Stop does; CLI and GUI-originated authorized turns both work                         |
 
 User implementation test after the automated matrix: create a new empty agent
 chat, confirm the already-booted CLI, return to GUI, then initiate a short harmless
@@ -788,11 +880,11 @@ manual test was **not** performed during the audit.
 All checks ran against the unchanged audited source in the documentation
 worktree. No model inference, live computer input, app launch or CI job ran.
 
-| Check | Result | What it proves / does not prove |
-| --- | --- | --- |
-| Worker: `test/app-server.test.ts`, `src/codex/runtime.test.ts`, `test/external-chat-history.test.ts`, `test/mcp-managed.test.ts`, `test/mcp-profile.test.ts`, `test/cua-mcp-config.test.ts` | 97 passed, 2 failed | Current helpers/fixtures; not real bidirectional CLI execution |
-| Server: `test/chat-runtime-selection-api.test.ts`, `test/chat-thread-change-reconciliation.test.ts`, `test/chat-turn-outcome-recovery.test.ts` | 10 passed | Current selection/coalescing/recovery helpers; does not prove lossless mirror |
-| App: `src/lib/chat-transcript-sync.test.ts`, `src/components/chat/command-palette.test.ts` | 4 passed | Current external-sync eligibility and palette behavior |
+| Check                                                                                                                                                                                       | Result              | What it proves / does not prove                                               |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- | ----------------------------------------------------------------------------- |
+| Worker: `test/app-server.test.ts`, `src/codex/runtime.test.ts`, `test/external-chat-history.test.ts`, `test/mcp-managed.test.ts`, `test/mcp-profile.test.ts`, `test/cua-mcp-config.test.ts` | 97 passed, 2 failed | Current helpers/fixtures; not real bidirectional CLI execution                |
+| Server: `test/chat-runtime-selection-api.test.ts`, `test/chat-thread-change-reconciliation.test.ts`, `test/chat-turn-outcome-recovery.test.ts`                                              | 10 passed           | Current selection/coalescing/recovery helpers; does not prove lossless mirror |
+| App: `src/lib/chat-transcript-sync.test.ts`, `src/components/chat/command-palette.test.ts`                                                                                                  | 4 passed            | Current external-sync eligibility and palette behavior                        |
 
 The two existing worker failures are exact developer-instruction equality
 assertions at `app-server.test.ts:1305` and `:1321`. Actual current instructions

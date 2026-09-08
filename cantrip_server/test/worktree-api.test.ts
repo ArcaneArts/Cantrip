@@ -298,6 +298,9 @@ let standaloneChatTurnErrorOnce: Error | null = null;
 const standaloneChatFileOperationCommands: Array<
   Extract<WorkerCommand, { type: "chat.scratch.files.operation" }>
 > = [];
+const chatAutomationResumeCommands: Array<
+  Extract<WorkerCommand, { type: "chat.automation.resume" }>
+> = [];
 const chatPauseCommands: Array<
   Extract<WorkerCommand, { type: "chat.pause.set" }> & {
     timeoutMs: number | null | undefined;
@@ -1916,6 +1919,9 @@ const workerBridge = {
         }));
       case "chat.goal.get":
         return { goal: activeChatGoal };
+      case "chat.automation.resume":
+        chatAutomationResumeCommands.push(command);
+        return { resumed: activeChatGoal?.status === "active" };
       case "chat.turn":
         chatTurnCommands.push(command);
         if (command.executionProfile === "standalone-chat") {
@@ -7290,6 +7296,8 @@ describe.sequential("server worktree control plane", () => {
       threadId: storedThreadId,
     });
     const turnsBeforeRestartResume = chatTurnCommands.length;
+    const nativeResumesBeforeRestartResume =
+      chatAutomationResumeCommands.length;
     const restartResume = await app.inject({
       method: "PATCH",
       url: `/api/chats/${chat!.id}/pause`,
@@ -7299,12 +7307,14 @@ describe.sequential("server worktree control plane", () => {
     expect(chatPauseStateSchema.parse(restartResume.json())).toEqual({
       paused: false,
     });
-    await expect
-      .poll(() => chatTurnCommands.length)
-      .toBe(turnsBeforeRestartResume + 1);
-    expect(chatTurnCommands.at(-1)).toMatchObject({
+    expect(chatTurnCommands).toHaveLength(turnsBeforeRestartResume);
+    expect(chatAutomationResumeCommands).toHaveLength(
+      nativeResumesBeforeRestartResume + 1,
+    );
+    expect(chatAutomationResumeCommands.at(-1)).toMatchObject({
       chatId: chat!.id,
       threadId: storedThreadId,
+      session: { chatId: chat!.id, contextKind: "project" },
     });
   });
 });

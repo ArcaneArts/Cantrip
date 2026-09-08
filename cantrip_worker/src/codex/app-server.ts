@@ -1,3 +1,4 @@
+import { z } from "zod";
 import {
   CUA_DISCOVERY_GUIDANCE,
   CUA_START_GUIDANCE,
@@ -184,6 +185,12 @@ interface PendingRpcRequest {
 }
 
 interface ActiveTurn {
+  admission?: {
+    operationGeneration: string;
+    controller: AbortController;
+    initialTurnId: string | null;
+    resolvedRequestIds: Set<string>;
+  };
   agentScope: AgentScope | null;
   baseline: WorkspaceSnapshot;
   chatId: string | null;
@@ -212,6 +219,7 @@ interface ActiveTurn {
   onInteractionCleared?: (requestKey: string) => void;
   onInteractionExpired?: (requestKey: string) => void;
   onInteractionRequest?: (request: AgentInteractionRuntimeRequest) => void;
+  onNativeInteractionRequest?: (request: AdmittedNativeReply) => void;
   onCheckpoint?: (checkpoint: { text: string; turnId: string }) => void;
   onPlan?: (plan: {
     explanation: string | null;
@@ -1634,13 +1642,39 @@ interface NativePendingPlanQuestion {
 }
 
 interface NativePendingAgentInteraction {
+  requestMethod: string;
   active: ActiveTurn;
   request: AgentInteractionRuntimeRequest;
   rpcId: number | string;
   timeout: ReturnType<typeof setTimeout>;
 }
 
+export interface RunAgentTurnRetry {
+  reason: "capacity" | "invalid-compaction";
+  attempt: number;
+  operationGeneration: string | null;
+  threadId: string | null;
+  turnId: string | null;
+  nextThreadId: string | null;
+  error: unknown;
+  signal: AbortSignal;
+}
+
 export interface RunAgentTurnOptions {
+  operationGeneration?: string;
+  /** Exact logical-root cancellation before native dispatch; never a chat-wide active-turn interrupt. */
+  preparationSignal?: AbortSignal;
+  /** Performs initial managed preparation inside native retry/cancellation handling, without model input. */
+  onBeforeFirstAttempt?: (
+    signal: AbortSignal,
+  ) => Promise<Partial<RunAgentTurnOptions>>;
+  /** Replaces authority/options for an actual new native attempt after retry delay. */
+  onBeforeRetry?: (
+    retry: RunAgentTurnRetry,
+  ) => Promise<Partial<RunAgentTurnOptions>>;
+  onBeforeNativeDispatch?: (threadId: string) => Promise<void>;
+  onNativeReceipt?: (receipt: { turn: { id: string } }) => Promise<void>;
+  onNativeInteractionRequest?: (request: AdmittedNativeReply) => void;
   attachments?: RuntimeChatAttachment[];
   chatId: string;
   captureProtectedDiagnostics: boolean;
@@ -1686,6 +1720,122 @@ export interface RunAgentTurnOptions {
   onPlanQuestion?: ActiveTurn["onPlanQuestion"];
   onPlanQuestionResolved?: ActiveTurn["onPlanQuestionResolved"];
   onThreadLoaded?: (threadId: string) => void;
+}
+
+export type PrepareAdmittedNativeExecutionOptions = Pick<
+  RunAgentTurnOptions,
+  | "chatId"
+  | "cwd"
+  | "model"
+  | "provider"
+  | "captureProtectedDiagnostics"
+  | "onActivity"
+  | "onMessage"
+  | "onInteractionCleared"
+  | "onInteractionExpired"
+  | "onInteractionRequest"
+  | "onCheckpoint"
+  | "onPlan"
+  | "onPlanQuestion"
+  | "onPlanQuestionResolved"
+  | "onNativeInteractionRequest"
+> & {
+  operationGeneration: string;
+  threadId: string;
+  /** Native preallocated identity. Matching it does not itself start a turn. */
+  expectedTurnId?: string;
+};
+
+/** A received native JSON-RPC rejection, distinct from uncertain transport loss. */
+export class CodexNativeRpcError extends Error {
+  constructor(
+    message: string,
+    readonly nativeError: { code: number; message: string; data?: unknown },
+    readonly requestMethod?: string,
+  ) {
+    super(message);
+  }
+}
+
+export interface ManagedExecutionAttempt {
+  threadId: string;
+  runnerGeneration: string;
+  attemptId: string;
+  turnId: string;
+  trigger: "goal" | "queue";
+  input: Record<string, unknown>;
+}
+export interface ManagedExecutionDeclined extends Omit<
+  ManagedExecutionAttempt,
+  "input" | "trigger"
+> {
+  operationGeneration: string | null;
+  reason: string;
+}
+export interface ManagedExecutionResolution {
+  threadId: string;
+  runnerGeneration: string;
+  attemptId: string;
+  operationGeneration: string | null;
+  allow: boolean;
+}
+export interface ManagedExecutionGateHandler {
+  requested(
+    attempt: ManagedExecutionAttempt,
+    signal: AbortSignal,
+  ): Promise<void>;
+  declined(event: ManagedExecutionDeclined): void | Promise<void>;
+  failed(error: unknown): void;
+}
+
+export interface ManagedNativeGuiCommand {
+  operationId?: string;
+  method: string;
+  params: Record<string, unknown>;
+  reply?: {
+    requestId: string | number;
+    requestMethod: string;
+    turnId: string | null;
+  };
+  /** Executes the exact already resolved native mutation once admission succeeds. */
+  dispatch(): Promise<unknown>;
+}
+export type ManagedNativeCommandDispatcher = (
+  command: ManagedNativeGuiCommand,
+) => Promise<unknown>;
+
+export interface AdmittedNativeReplyIdentity {
+  operationGeneration: string;
+  rootThreadId: string;
+  requestId: string | number;
+}
+
+export interface AdmittedNativeReply extends AdmittedNativeReplyIdentity {
+  requestKey: string;
+  requestMethod: string;
+  threadId: string;
+  turnId: string | null;
+  kind: AgentInteractionRuntimeRequest["payload"]["kind"];
+}
+
+export type AdmittedNativeReplyResponse =
+  | { result: unknown; error?: never }
+  | {
+      error: { code: number; message: string; data?: unknown };
+      result?: never;
+    };
+
+/** Registration of an already admitted operation, before its native mutation. */
+export interface AdmittedNativeExecution {
+  readonly operationGeneration: string;
+  readonly threadId: string;
+  /** Whole operation lifetime; actual root/child turn signals remain separate. */
+  readonly signal: AbortSignal;
+  readonly completion: Promise<AgentTurnResult>;
+  assertCurrent(): void;
+  /** Actual native receipt, never fabricated to create a turn identity. */
+  bindReceipt(receipt: unknown): void;
+  fail(error: Error): void;
 }
 
 export interface RuntimeSubagentDefaults {
@@ -1739,6 +1889,7 @@ export type GoalRuntimeOptions = Pick<
 >;
 
 export interface PrepareManagedThreadOptions extends GoalRuntimeOptions {
+  executionGate?: { runnerGeneration: string };
   executionProfile: RunAgentTurnOptions["executionProfile"];
   subagentDefaults: RuntimeSubagentDefaults | null;
   planMode: PlanMode;
@@ -1944,7 +2095,7 @@ function managedThreadConfiguration(
       RunAgentTurnOptions,
       "mcpServers" | "executionProfile" | "subagentDefaults"
     >
-  >,
+  > & { executionGate?: { runnerGeneration: string } },
   hasGitMetadata: boolean,
 ) {
   const profile = options.executionProfile ?? "ide";
@@ -1958,6 +2109,7 @@ function managedThreadConfiguration(
       options.mcpServers,
     ).developerInstructions,
     multiAgentEnabled: enabled,
+    ...(options.executionGate ? { executionGate: options.executionGate } : {}),
     subagentModel: defaults?.model.name ?? null,
     subagentReasoningEffort: defaults?.model.reasoningEffort ?? null,
   };
@@ -3984,11 +4136,35 @@ export class CodexAppServer implements CodexRuntime {
   #externalThreadChangeObserver:
     ((change: CodexExternalThreadChange) => void) | null = null;
   readonly #goals = new Map<string, ThreadGoal>();
+  readonly #managedExecutionGateHandlers = new Map<
+    string,
+    {
+      handler: ManagedExecutionGateHandler;
+      controller: AbortController;
+      transportGeneration: string | null;
+      observedAttempts: Set<string>;
+    }
+  >();
+  readonly #managedNativeCommandDispatchers = new Map<
+    string,
+    ManagedNativeCommandDispatcher
+  >();
   readonly #imageSupport = new Map<string, boolean>();
   readonly #loadedThreads = new Set<string>();
   readonly #threadPreparationVersions = new Map<string, number>();
   readonly #mcpOauthStatuses = new Map<string, CodexMcpOauthStatus>();
   readonly #mcpConfigFingerprintsByThread = new Map<string, string>();
+  // Owned native configuration is distinct from readiness and survives failed catalog reads.
+  readonly #managedThreadOverlays = new Map<
+    string,
+    {
+      epoch: number;
+      options: Pick<
+        PrepareManagedThreadOptions,
+        "mcpServers" | "executionProfile" | "subagentDefaults" | "executionGate"
+      >;
+    }
+  >();
   readonly #managedConfigApplications = new Map<
     string,
     { epoch: number; fingerprint: string }
@@ -4000,15 +4176,17 @@ export class CodexAppServer implements CodexRuntime {
     string,
     NativePendingAgentInteraction
   >();
+  readonly #admittedReplyWaiters = new Set<() => void>();
   readonly #pendingCapacityRetries = new Map<
     string,
-    { controller: AbortController; threadId: string }
+    { controller: AbortController; threadId: string | null }
   >();
   readonly #pendingPlanQuestions = new Map<string, NativePendingPlanQuestion>();
   readonly #pausedChats = new Set<string>();
   readonly #runtimeDiagnostics: CodexRuntimeDiagnostic[] = [];
   #skillRoots: string[] = [];
   #appServerSessionId = randomUUID();
+  #nativeTransportGeneration: string | null = null;
   #child: ChildProcessWithoutNullStreams | null = null;
   #externalChatGptAuth: ExternalChatGptAuthSession | null = null;
   #externalChatGptReauthentication: Promise<void> | null = null;
@@ -4090,6 +4268,136 @@ export class CodexAppServer implements CodexRuntime {
     this.#mcpOauthStatuses.set(status.server, status);
   }
 
+  setManagedExecutionGateHandler(
+    runnerGeneration: string,
+    handler: ManagedExecutionGateHandler | null,
+  ): AbortSignal | null {
+    this.#managedExecutionGateHandlers
+      .get(runnerGeneration)
+      ?.controller.abort();
+    if (handler)
+      this.#managedExecutionGateHandlers.set(runnerGeneration, {
+        handler,
+        controller: new AbortController(),
+        transportGeneration: this.transportGeneration,
+        observedAttempts: new Set(),
+      });
+    else this.#managedExecutionGateHandlers.delete(runnerGeneration);
+    return (
+      this.#managedExecutionGateHandlers.get(runnerGeneration)?.controller
+        .signal ?? null
+    );
+  }
+
+  private clearManagedExecutionGateHandlers(): void {
+    for (const entry of this.#managedExecutionGateHandlers.values())
+      entry.controller.abort();
+    this.#managedExecutionGateHandlers.clear();
+  }
+
+  private assertManagedExecutionTransport(expected: string): void {
+    if (this.transportGeneration !== expected)
+      throw new Error(
+        "The managed execution runner belongs to a replaced native transport.",
+      );
+  }
+
+  async resolveManagedExecution(
+    params: ManagedExecutionResolution,
+    expectedTransportGeneration: string,
+  ): Promise<{ accepted: true }> {
+    this.assertManagedExecutionTransport(expectedTransportGeneration);
+    const result = await this.request("thread/managedExecution/resolve", {
+      threadId: params.threadId,
+      runnerGeneration: params.runnerGeneration,
+      attemptId: params.attemptId,
+      operationGeneration: params.operationGeneration,
+      allow: params.allow,
+    });
+    this.assertManagedExecutionTransport(expectedTransportGeneration);
+    return z.object({ accepted: z.literal(true) }).parse(result);
+  }
+
+  async invalidateManagedExecution(
+    params: { threadId: string; runnerGeneration: string },
+    expectedTransportGeneration: string,
+  ): Promise<{ invalidated: true }> {
+    this.assertManagedExecutionTransport(expectedTransportGeneration);
+    const result = await this.request("thread/managedExecution/invalidate", {
+      threadId: params.threadId,
+      runnerGeneration: params.runnerGeneration,
+    });
+    this.assertManagedExecutionTransport(expectedTransportGeneration);
+    return z.object({ invalidated: z.literal(true) }).parse(result);
+  }
+
+  async bindManagedExecution(
+    params: {
+      threadId: string;
+      runnerGeneration: string;
+      expectedRunnerGeneration: string | null;
+    },
+    expectedTransportGeneration: string,
+  ): Promise<{ bound: true }> {
+    this.assertManagedExecutionTransport(expectedTransportGeneration);
+    const result = await this.request("thread/managedExecution/bind", {
+      threadId: params.threadId,
+      runnerGeneration: params.runnerGeneration,
+      expectedRunnerGeneration: params.expectedRunnerGeneration,
+    });
+    this.assertManagedExecutionTransport(expectedTransportGeneration);
+    const bound = z.object({ bound: z.literal(true) }).parse(result);
+    const retained = this.#managedThreadOverlays.get(params.threadId);
+    if (retained?.epoch === this.#preparationEpoch) {
+      retained.options.executionGate = {
+        runnerGeneration: params.runnerGeneration,
+      };
+      this.#managedConfigApplications.delete(params.threadId);
+    }
+    return bound;
+  }
+
+  setManagedNativeCommandDispatcher(
+    threadId: string,
+    dispatcher: ManagedNativeCommandDispatcher | null,
+  ): void {
+    if (dispatcher)
+      this.#managedNativeCommandDispatchers.set(threadId, dispatcher);
+    else this.#managedNativeCommandDispatchers.delete(threadId);
+  }
+
+  private dispatchGuiNativeCommand(
+    threadId: string,
+    command: ManagedNativeGuiCommand,
+  ): Promise<unknown> {
+    const dispatcher = this.#managedNativeCommandDispatchers.get(threadId);
+    return dispatcher ? dispatcher(command) : command.dispatch();
+  }
+
+  private requestGuiThreadMutation(
+    method: string,
+    params: Record<string, unknown> & { threadId: string },
+    operationId?: string,
+  ): Promise<unknown> {
+    return this.dispatchGuiNativeCommand(params.threadId, {
+      operationId,
+      method,
+      params,
+      dispatch: () => this.request(method, params),
+    });
+  }
+
+  private managedGuiThread(threadId: string | null | undefined): string | null {
+    return threadId && this.#managedNativeCommandDispatchers.has(threadId)
+      ? threadId
+      : null;
+  }
+
+  private assertGuiTurnCurrent(active: ActiveTurn, turnId: string): void {
+    if (this.#activeTurns.get(turnId) !== active)
+      throw new Error("The native control belongs to a replaced turn.");
+  }
+
   setChatPaused(chatId: string, paused: boolean): void {
     if (paused) {
       this.#pausedChats.add(chatId);
@@ -4117,15 +4425,23 @@ export class CodexAppServer implements CodexRuntime {
       return null;
     }
     try {
-      await this.request(
-        "turn/pause",
-        {
-          threadId: active[1].threadId,
-          turnId: active[0],
-          paused,
+      const params = {
+        threadId: active[1].threadId,
+        turnId: active[0],
+        paused,
+      };
+      await this.dispatchGuiNativeCommand(active[1].threadId, {
+        method: "turn/pause",
+        params,
+        dispatch: () => {
+          this.assertGuiTurnCurrent(active[1], active[0]);
+          return this.request(
+            "turn/pause",
+            params,
+            CODEX_PAUSE_BOUNDARY_TIMEOUT_MS,
+          );
         },
-        CODEX_PAUSE_BOUNDARY_TIMEOUT_MS,
-      );
+      });
     } catch (error) {
       if (!this.#activeTurns.has(active[0])) return null;
       throw error;
@@ -4320,40 +4636,129 @@ export class CodexAppServer implements CodexRuntime {
   }
 
   async runTurn(options: RunAgentTurnOptions): Promise<AgentTurnResult> {
+    let currentOptions = options;
     let attemptedThreadId = options.threadId;
+    let nativeAttempt = 0;
     let compactionStateRetried = false;
     let capacityRetryAttempt = 0;
     for (;;) {
+      options.preparationSignal?.throwIfAborted();
+      nativeAttempt += 1;
       const attemptOptions: RunAgentTurnOptions = {
-        ...options,
+        ...currentOptions,
         threadId: attemptedThreadId,
         onThreadLoaded: (threadId) => {
           attemptedThreadId = threadId;
-          options.onThreadLoaded?.(threadId);
+          currentOptions.onThreadLoaded?.(threadId);
         },
       };
+      const preparation =
+        nativeAttempt === 1 && currentOptions.onBeforeFirstAttempt
+          ? {
+              controller: new AbortController(),
+              threadId: attemptedThreadId ?? null,
+            }
+          : null;
       try {
+        if (preparation) {
+          this.#pendingCapacityRetries.set(options.chatId, preparation);
+          const prepared = await currentOptions.onBeforeFirstAttempt!(
+            options.preparationSignal
+              ? AbortSignal.any([
+                  preparation.controller.signal,
+                  options.preparationSignal,
+                ])
+              : preparation.controller.signal,
+          );
+          preparation.controller.signal.throwIfAborted();
+          options.preparationSignal?.throwIfAborted();
+          currentOptions = { ...currentOptions, ...prepared };
+          attemptedThreadId =
+            prepared.threadId === undefined
+              ? attemptedThreadId
+              : prepared.threadId;
+          preparation.threadId = attemptedThreadId ?? null;
+          Object.assign(attemptOptions, prepared, {
+            threadId: attemptedThreadId,
+          });
+        }
         return await this.runTurnAttempt(attemptOptions);
       } catch (error) {
+        preparation?.controller.signal.throwIfAborted();
+        options.preparationSignal?.throwIfAborted();
+        const renew = async (
+          reason: RunAgentTurnRetry["reason"],
+          nextThreadId: string | null,
+          signal: AbortSignal,
+        ) => {
+          if (options.preparationSignal)
+            signal = AbortSignal.any([signal, options.preparationSignal]);
+          signal.throwIfAborted();
+          const updated = await currentOptions.onBeforeRetry?.({
+            reason,
+            attempt: nativeAttempt + 1,
+            operationGeneration: attemptOptions.operationGeneration ?? null,
+            threadId:
+              error instanceof CodexTurnFailureError
+                ? error.threadId
+                : attemptedThreadId,
+            turnId:
+              error instanceof CodexTurnFailureError ? error.turnId : null,
+            nextThreadId,
+            error,
+            signal,
+          });
+          signal.throwIfAborted();
+          if (
+            attemptOptions.operationGeneration &&
+            (!updated?.operationGeneration ||
+              updated.operationGeneration ===
+                attemptOptions.operationGeneration)
+          )
+            throw error;
+          currentOptions = { ...currentOptions, ...updated };
+          attemptedThreadId =
+            updated?.threadId === undefined ? nextThreadId : updated.threadId;
+        };
         if (
           attemptedThreadId &&
           !compactionStateRetried &&
           isInvalidCompactionBlobError(error)
         ) {
+          if (
+            attemptOptions.operationGeneration &&
+            !currentOptions.onBeforeRetry
+          )
+            throw error;
           compactionStateRetried = true;
-          this.forgetThread(attemptedThreadId);
+          const staleThreadId = attemptedThreadId;
+          const controller = preparation?.controller ?? new AbortController();
+          const pendingRetry = { controller, threadId: staleThreadId };
+          this.#pendingCapacityRetries.set(options.chatId, pendingRetry);
+          try {
+            await renew("invalid-compaction", null, controller.signal);
+          } finally {
+            if (
+              this.#pendingCapacityRetries.get(options.chatId) === pendingRetry
+            )
+              this.#pendingCapacityRetries.delete(options.chatId);
+          }
+          this.forgetThread(staleThreadId);
           workerLogger.warn(
             "Codex rejected stored compaction state; retrying the turn on a fresh thread",
             {
               chatId: options.chatId,
               providerKind: options.provider.kind,
-              staleThreadId: attemptedThreadId,
+              staleThreadId,
             },
           );
-          attemptedThreadId = null;
           continue;
         }
         if (!isServerOverloadedError(error)) throw error;
+        // Until the caller supplies fresh continuation admission, surface the
+        // actual native failure rather than reusing a prior managed grant.
+        if (attemptOptions.operationGeneration && !currentOptions.onBeforeRetry)
+          throw error;
         const delayMs = cantripCapacityRetryDelayMs(capacityRetryAttempt + 1);
         if (delayMs === null) throw error;
         capacityRetryAttempt += 1;
@@ -4372,7 +4777,7 @@ export class CodexAppServer implements CodexRuntime {
           null,
         );
         const retryMessage = "Model at capacity";
-        options.onActivity?.(
+        attemptOptions.onActivity?.(
           normalizeNoticeActivity({
             level: "warning",
             message: retryMessage,
@@ -4401,12 +4806,13 @@ export class CodexAppServer implements CodexRuntime {
           delayMs,
           nextAttemptAtMs,
         });
-        const controller = new AbortController();
+        const controller = preparation?.controller ?? new AbortController();
         const pendingRetry = { controller, threadId: error.threadId };
         this.#pendingCapacityRetries.set(options.chatId, pendingRetry);
         try {
           await waitForCapacityRetry(delayMs, controller.signal);
-          options.onActivity?.(
+          await renew("capacity", attemptedThreadId, controller.signal);
+          attemptOptions.onActivity?.(
             normalizeNoticeActivity({
               level: "warning",
               message: retryMessage,
@@ -4425,55 +4831,42 @@ export class CodexAppServer implements CodexRuntime {
             this.#pendingCapacityRetries.delete(options.chatId);
           }
         }
+      } finally {
+        if (
+          preparation &&
+          this.#pendingCapacityRetries.get(options.chatId) === preparation
+        )
+          this.#pendingCapacityRetries.delete(options.chatId);
       }
     }
   }
 
-  private async runTurnAttempt(
-    options: RunAgentTurnOptions,
-  ): Promise<AgentTurnResult> {
-    const resultMode = options.resultMode ?? { kind: "visible" as const };
-    if (options.automationPaused) this.#pausedChats.add(options.chatId);
-    await this.ensureStarted(
-      options.model,
-      options.provider,
-      options.subagentDefaults,
-      options.executionProfile,
-    );
-    const baseline = await workspaceSnapshot(options.cwd);
-    const threadId = await this.loadThread(options);
-    if (!threadId) {
-      throw new Error("Could not start a Codex thread.");
-    }
-    options.onThreadLoaded?.(threadId);
-    if (this.methodAvailable("thread/goal/get")) {
-      await this.refreshGoal(threadId);
-    }
-    const collaborationMode = this.methodAvailable("collaborationMode/list")
-      ? await this.updatePlanModeOnThread(
-          threadId,
-          options.planMode,
-          options.model,
-        )
-      : null;
-    if (options.planMode === "plan" && !collaborationMode) {
-      throw new Error(
-        "Plan Mode is unavailable in the installed Codex runtime.",
-      );
-    }
-    const turnPolicy = codexWorktreeTurnPolicy({
-      ...options,
-      permissionProfileActive: this.permissionProfilesSupported(),
-    });
-
-    if (this.hasActiveThread(threadId)) {
-      throw new Error(`Codex thread ${threadId} already has an active turn.`);
-    }
-
-    let activeTurn: ActiveTurn | undefined;
+  private createChatExecution(
+    options: PrepareAdmittedNativeExecutionOptions | RunAgentTurnOptions,
+    threadId: string,
+    baseline: WorkspaceSnapshot,
+    collaborationMode: NativeCollaborationMode | null,
+    resultMode: NonNullable<RunAgentTurnOptions["resultMode"]> = {
+      kind: "visible",
+    },
+  ): {
+    active: ActiveTurn;
+    completion: Promise<AgentTurnResult | AgentOperationResult>;
+  } {
+    let activeTurn!: ActiveTurn;
     const completion = new Promise<AgentTurnResult | AgentOperationResult>(
       (resolve, reject) => {
         activeTurn = {
+          ...(options.operationGeneration
+            ? {
+                admission: {
+                  operationGeneration: options.operationGeneration,
+                  controller: new AbortController(),
+                  initialTurnId: null,
+                  resolvedRequestIds: new Set(),
+                },
+              }
+            : {}),
           agentScope: null,
           baseline,
           captureProtectedDiagnostics: options.captureProtectedDiagnostics,
@@ -4502,6 +4895,7 @@ export class CodexAppServer implements CodexRuntime {
           onInteractionCleared: options.onInteractionCleared,
           onInteractionExpired: options.onInteractionExpired,
           onInteractionRequest: options.onInteractionRequest,
+          onNativeInteractionRequest: options.onNativeInteractionRequest,
           onCheckpoint: options.onCheckpoint,
           onPlan: options.onPlan,
           onPlanQuestion: options.onPlanQuestion,
@@ -4522,6 +4916,149 @@ export class CodexAppServer implements CodexRuntime {
       },
     );
 
+    void completion.catch(() => {});
+    return { active: activeTurn, completion };
+  }
+
+  /** Actual connected native transport incarnation, never a capability cache. */
+  get transportGeneration(): string | null {
+    return this.#socket?.readyState === WebSocket.OPEN
+      ? this.#nativeTransportGeneration
+      : null;
+  }
+
+  async prepareAdmittedNativeExecution(
+    options: PrepareAdmittedNativeExecutionOptions,
+  ): Promise<AdmittedNativeExecution> {
+    const epoch = this.#preparationEpoch;
+    const baseline = await workspaceSnapshot(options.cwd);
+    this.assertPreparationEpoch(epoch);
+    if (this.hasActiveThread(options.threadId)) {
+      throw new Error(
+        `Codex thread ${options.threadId} already has an active turn.`,
+      );
+    }
+    const { active, completion } = this.createChatExecution(
+      options,
+      options.threadId,
+      baseline,
+      null,
+    );
+    active.admission!.initialTurnId = options.expectedTurnId ?? null;
+    const controller = active.admission!.controller;
+    this.#activeTurnsByThread.set(options.threadId, active);
+    this.registerRootExecution(active);
+    const current = () =>
+      this.#preparationEpoch === epoch &&
+      this.#activeTurnsByThread.get(options.threadId) === active &&
+      !controller.signal.aborted;
+    const assertCurrent = () => {
+      if (!current())
+        throw new Error("The admitted native execution is no longer current.");
+    };
+    const fail = (error: Error) => {
+      if (!current()) return;
+      this.releaseActiveTurn(active);
+      clearTurnInspectionTelemetry(active);
+      active.reject(error);
+    };
+    const result = completion.then((value) =>
+      agentTurnResultSchema.parse(value),
+    );
+    // Forwarding can fail before the caller installs its completion observer.
+    void result.catch(() => {});
+    return {
+      operationGeneration: options.operationGeneration,
+      threadId: options.threadId,
+      signal: controller.signal,
+      completion: result,
+      assertCurrent,
+      fail,
+      bindReceipt: (receipt) => {
+        const value = receipt as { turn?: { id?: unknown } } | null;
+        const turnId = value?.turn?.id;
+        if (turnId === undefined) {
+          assertCurrent();
+          return;
+        }
+        if (typeof turnId !== "string" || !turnId) {
+          const error = new Error(
+            "Native execution returned an invalid turn identity.",
+          );
+          fail(error);
+          throw error;
+        }
+        const observed = active.admission!.initialTurnId;
+        if (observed && observed !== turnId) {
+          const error = new Error(
+            "Native execution receipt does not match its first observed turn.",
+          );
+          fail(error);
+          throw error;
+        }
+        // Terminal notifications may beat the native receipt. Never recreate
+        // their authority or bind this old handle to a replacement execution.
+        if (!current()) {
+          if (observed === turnId) return;
+          assertCurrent();
+        }
+        active.admission!.initialTurnId = turnId;
+        this.bindTurnStartResponse(turnId, active);
+      },
+    };
+  }
+
+  private async runTurnAttempt(
+    options: RunAgentTurnOptions,
+  ): Promise<AgentTurnResult> {
+    const resultMode = options.resultMode ?? { kind: "visible" as const };
+    if (options.automationPaused) this.#pausedChats.add(options.chatId);
+    await this.ensureStarted(
+      options.model,
+      options.provider,
+      options.subagentDefaults,
+      options.executionProfile,
+    );
+    const baseline = await workspaceSnapshot(options.cwd);
+    const threadId = await this.loadThread(options);
+    options.preparationSignal?.throwIfAborted();
+    if (!threadId) {
+      throw new Error("Could not start a Codex thread.");
+    }
+    options.onThreadLoaded?.(threadId);
+    if (this.methodAvailable("thread/goal/get")) {
+      await this.refreshGoal(threadId);
+    }
+    const collaborationMode = this.methodAvailable("collaborationMode/list")
+      ? await this.updatePlanModeOnThread(
+          threadId,
+          options.planMode,
+          options.model,
+        )
+      : null;
+    if (options.planMode === "plan" && !collaborationMode) {
+      throw new Error(
+        "Plan Mode is unavailable in the installed Codex runtime.",
+      );
+    }
+    const turnPolicy = codexWorktreeTurnPolicy({
+      ...options,
+      permissionProfileActive: this.permissionProfilesSupported(),
+    });
+
+    options.preparationSignal?.throwIfAborted();
+    if (this.hasActiveThread(threadId)) {
+      throw new Error(`Codex thread ${threadId} already has an active turn.`);
+    }
+
+    const { active: activeTurn, completion } = this.createChatExecution(
+      options,
+      threadId,
+      baseline,
+      collaborationMode,
+      resultMode,
+    );
+
     const availableSkills = options.skillNames.length
       ? await this.listSkills(options)
       : [];
@@ -4530,14 +5067,15 @@ export class CodexAppServer implements CodexRuntime {
         skill.path ? ([[skill.name, skill]] as const) : [],
       ),
     );
-    if (!activeTurn) {
-      throw new Error("Could not initialize the Codex turn.");
+    options.preparationSignal?.throwIfAborted();
+    if (this.hasActiveThread(threadId)) {
+      throw new Error(`Codex thread ${threadId} already has an active turn.`);
     }
     this.#activeTurnsByThread.set(threadId, activeTurn);
     this.registerRootExecution(activeTurn);
     let response: TurnStartResponse;
     try {
-      response = (await this.request("turn/start", {
+      const params = {
         threadId,
         ...codexWorkspaceContext(options.cwd),
         ...turnPolicy,
@@ -4562,12 +5100,20 @@ export class CodexAppServer implements CodexRuntime {
         ...(resultMode.kind === "structured"
           ? { outputSchema: resultMode.outputSchema }
           : {}),
-      })) as TurnStartResponse;
+      };
+      options.preparationSignal?.throwIfAborted();
+      await options.onBeforeNativeDispatch?.(threadId);
+      options.preparationSignal?.throwIfAborted();
+      response = (await this.request(
+        "turn/start",
+        params,
+      )) as TurnStartResponse;
     } catch (error) {
       this.releaseActiveTurn(activeTurn);
       throw error;
     }
     this.bindTurnStartResponse(response.turn.id, activeTurn);
+    await options.onNativeReceipt?.(response);
     if (options.captureProtectedDiagnostics) {
       emitTurnActivity(
         activeTurn,
@@ -5222,13 +5768,16 @@ export class CodexAppServer implements CodexRuntime {
     options: CompactAgentThreadOptions,
   ): Promise<{ accepted: true }> {
     const startedAtMs = Date.now();
-    await this.ensureStarted(
-      options.model,
-      options.provider,
-      null,
-      options.executionProfile,
-    );
-    const threadId = await this.loadThread(options, false);
+    let threadId = this.managedGuiThread(options.threadId);
+    if (!threadId) {
+      await this.ensureStarted(
+        options.model,
+        options.provider,
+        null,
+        options.executionProfile,
+      );
+      threadId = await this.loadThread(options, false);
+    }
     if (!threadId) {
       throw new Error(
         "The Codex thread is no longer available on this worker.",
@@ -5237,7 +5786,7 @@ export class CodexAppServer implements CodexRuntime {
     if (this.hasActiveThread(threadId)) {
       throw new Error(`Codex thread ${threadId} already has an active turn.`);
     }
-    await this.request("thread/compact/start", { threadId });
+    await this.requestGuiThreadMutation("thread/compact/start", { threadId });
     workerLogger.event("info", "Codex thread compaction accepted", {
       event: "codex.thread.compact",
       subsystem: "codex",
@@ -5254,13 +5803,16 @@ export class CodexAppServer implements CodexRuntime {
     options: CompactAgentThreadOptions & { clientMessageId: string },
   ): Promise<{ rolledBack: true }> {
     const startedAtMs = Date.now();
-    await this.ensureStarted(
-      options.model,
-      options.provider,
-      null,
-      options.executionProfile,
-    );
-    const threadId = await this.loadThread(options, false);
+    let threadId = this.managedGuiThread(options.threadId);
+    if (!threadId) {
+      await this.ensureStarted(
+        options.model,
+        options.provider,
+        null,
+        options.executionProfile,
+      );
+      threadId = await this.loadThread(options, false);
+    }
     if (!threadId) {
       throw new Error(
         "The Codex thread is no longer available on this worker.",
@@ -5284,19 +5836,19 @@ export class CodexAppServer implements CodexRuntime {
     }
     if (this.methodAvailable("thread/revert")) {
       try {
-        await this.request("thread/revert", {
+        await this.requestGuiThreadMutation("thread/revert", {
           threadId,
           beforeTurnId: boundary.turnId,
         });
       } catch (error) {
         if (!/paginated|not supported/iu.test(String(error))) throw error;
-        await this.request("thread/rollback", {
+        await this.requestGuiThreadMutation("thread/rollback", {
           threadId,
           numTurns: boundary.numTurns,
         });
       }
     } else {
-      await this.request("thread/rollback", {
+      await this.requestGuiThreadMutation("thread/rollback", {
         threadId,
         numTurns: boundary.numTurns,
       });
@@ -5314,10 +5866,38 @@ export class CodexAppServer implements CodexRuntime {
     return { rolledBack: true };
   }
 
+  async resumeManagedAutomation(options: {
+    threadId: string;
+  }): Promise<{ resumed: boolean }> {
+    const threadId = this.managedGuiThread(options.threadId);
+    if (!threadId)
+      throw new Error(
+        "Automation resume requires its bound managed native session.",
+      );
+    const { goal } = await this.refreshGoal(threadId);
+    if (goal?.status === "active") {
+      const response = chatGoalResponseSchema.parse(
+        await this.requestGuiThreadMutation("thread/goal/set", {
+          threadId,
+          status: "active",
+        }),
+      );
+      this.cacheGoal(response);
+      return { resumed: true };
+    }
+    const queue = z
+      .object({ data: z.array(z.unknown()) })
+      .parse(await this.request("thread/queue/list", { threadId, limit: 1 }));
+    if (!queue.data.length) return { resumed: false };
+    await this.requestGuiThreadMutation("thread/queue/start", { threadId });
+    return { resumed: true };
+  }
+
   async getGoal(
     options: GoalRuntimeOptions & { threadId: string },
   ): Promise<ChatGoalResponse> {
-    await this.ensureStarted(options.model, options.provider);
+    if (!this.managedGuiThread(options.threadId))
+      await this.ensureStarted(options.model, options.provider);
     // Native goal reads support unloaded threads. Reading metadata must not
     // resume with an incomplete MCP/model/permission configuration.
     return this.refreshGoal(options.threadId);
@@ -5327,17 +5907,25 @@ export class CodexAppServer implements CodexRuntime {
     options: GoalRuntimeOptions & {
       objective: string;
       tokenBudget?: number | null;
+      operationId?: string;
     },
   ): Promise<ChatGoalResponse> {
-    await this.ensureStarted(options.model, options.provider);
-    const threadId = await this.loadThread(options, true, "preserve");
+    let threadId = this.managedGuiThread(options.threadId);
+    if (!threadId) {
+      await this.ensureStarted(options.model, options.provider);
+      threadId = await this.loadThread(options, true, "preserve");
+    }
     if (!threadId) {
       throw new Error("Could not start a Codex thread for the goal.");
     }
     const existing = await this.refreshGoal(threadId);
     if (existing.goal?.status === "complete") {
       const cleared = chatGoalClearSchema.parse(
-        await this.request("thread/goal/clear", { threadId }),
+        await this.requestGuiThreadMutation(
+          "thread/goal/clear",
+          { threadId },
+          options.operationId ? `${options.operationId}:clear` : undefined,
+        ),
       );
       if (!cleared.cleared) {
         throw new Error("Could not replace the completed Codex goal.");
@@ -5345,12 +5933,16 @@ export class CodexAppServer implements CodexRuntime {
       this.#goals.delete(threadId);
     }
     const response = chatGoalResponseSchema.parse(
-      await this.request("thread/goal/set", {
-        threadId,
-        objective: options.objective,
-        status: "active",
-        tokenBudget: options.tokenBudget ?? null,
-      }),
+      await this.requestGuiThreadMutation(
+        "thread/goal/set",
+        {
+          threadId,
+          objective: options.objective,
+          status: "active",
+          tokenBudget: options.tokenBudget ?? null,
+        },
+        options.operationId,
+      ),
     );
     this.cacheGoal(response);
     return response;
@@ -5362,15 +5954,18 @@ export class CodexAppServer implements CodexRuntime {
       threadId: string;
     },
   ): Promise<ChatGoalResponse> {
-    await this.ensureStarted(options.model, options.provider);
-    const threadId = await this.loadThread(options, false, "preserve");
+    let threadId = this.managedGuiThread(options.threadId);
+    if (!threadId) {
+      await this.ensureStarted(options.model, options.provider);
+      threadId = await this.loadThread(options, false, "preserve");
+    }
     if (!threadId) {
       throw new Error(
         "The Codex thread is no longer available on this worker.",
       );
     }
     const response = chatGoalResponseSchema.parse(
-      await this.request("thread/goal/set", {
+      await this.requestGuiThreadMutation("thread/goal/set", {
         threadId,
         status: options.status,
       }),
@@ -5382,15 +5977,18 @@ export class CodexAppServer implements CodexRuntime {
   async clearGoal(
     options: GoalRuntimeOptions & { threadId: string },
   ): Promise<{ cleared: boolean }> {
-    await this.ensureStarted(options.model, options.provider);
-    const threadId = await this.loadThread(options, false, "preserve");
+    let threadId = this.managedGuiThread(options.threadId);
+    if (!threadId) {
+      await this.ensureStarted(options.model, options.provider);
+      threadId = await this.loadThread(options, false, "preserve");
+    }
     if (!threadId) {
       throw new Error(
         "The Codex thread is no longer available on this worker.",
       );
     }
     const response = chatGoalClearSchema.parse(
-      await this.request("thread/goal/clear", { threadId }),
+      await this.requestGuiThreadMutation("thread/goal/clear", { threadId }),
     );
     if (response.cleared) this.#goals.delete(threadId);
     return response;
@@ -5578,6 +6176,107 @@ export class CodexAppServer implements CodexRuntime {
     return { mode: options.mode, threadId };
   }
 
+  private admittedReplyPending(
+    input: AdmittedNativeReplyIdentity,
+  ): NativePendingAgentInteraction | null {
+    const execution = this.#rootExecutionsByThread.get(input.rootThreadId);
+    if (
+      !execution ||
+      execution.rootThreadId !== input.rootThreadId ||
+      execution.active.admission?.operationGeneration !==
+        input.operationGeneration ||
+      execution.active.admission.controller.signal.aborted
+    )
+      return null;
+    return (
+      [...this.#pendingAgentInteractions.values()].find(
+        (pending) =>
+          pending.active === execution.active &&
+          pending.rpcId === input.requestId,
+      ) ?? null
+    );
+  }
+
+  pendingAdmittedNativeReply(
+    input: AdmittedNativeReplyIdentity,
+  ): AdmittedNativeReply | null {
+    const pending = this.admittedReplyPending(input);
+    return pending
+      ? {
+          ...input,
+          requestKey: pending.request.requestKey,
+          requestMethod: pending.requestMethod,
+          threadId: pending.request.threadId,
+          turnId: pending.request.turnId,
+          kind: pending.request.payload.kind,
+        }
+      : null;
+  }
+
+  awaitPendingAdmittedNativeReply(
+    input: AdmittedNativeReplyIdentity,
+  ): Promise<AdmittedNativeReply> {
+    const known = this.pendingAdmittedNativeReply(input);
+    if (known) return Promise.resolve(known);
+    const active = this.#rootExecutionsByThread.get(input.rootThreadId)?.active;
+    const admission = active?.admission;
+    if (
+      !admission ||
+      admission.operationGeneration !== input.operationGeneration ||
+      admission.controller.signal.aborted ||
+      admission.resolvedRequestIds.has(
+        `${typeof input.requestId}:${input.requestId}`,
+      )
+    ) {
+      return Promise.reject(
+        new Error("The native reply operation is no longer current."),
+      );
+    }
+    return new Promise((resolve, reject) => {
+      const cleanup = () => {
+        this.#admittedReplyWaiters.delete(observed);
+        admission.controller.signal.removeEventListener("abort", aborted);
+      };
+      const aborted = () => {
+        cleanup();
+        reject(
+          new Error(
+            "The native reply operation ended before its request was observed.",
+          ),
+        );
+      };
+      const observed = () => {
+        const pending = this.pendingAdmittedNativeReply(input);
+        if (!pending) return;
+        cleanup();
+        resolve(pending);
+      };
+      this.#admittedReplyWaiters.add(observed);
+      admission.controller.signal.addEventListener("abort", aborted, {
+        once: true,
+      });
+      observed();
+    });
+  }
+
+  resolveAdmittedNativeReply(
+    input: AdmittedNativeReplyIdentity & {
+      response: AdmittedNativeReplyResponse;
+    },
+  ): { accepted: true } {
+    const pending = this.admittedReplyPending(input);
+    if (!pending)
+      throw new Error(
+        "The native reply is no longer pending for this operation.",
+      );
+    // Consume before transport send. An uncertain failure cannot authorize replay
+    // or let a simultaneous GUI/console response win the same native request.
+    this.releaseAgentInteraction(pending);
+    this.send({ id: pending.rpcId, ...input.response });
+    pending.active.onInteractionCleared?.(pending.request.requestKey);
+    return { accepted: true };
+  }
+
   async answerAgentInteraction(
     requestKey: string,
     response: AgentInteractionResponse,
@@ -5589,11 +6288,23 @@ export class CodexAppServer implements CodexRuntime {
     if (pending.request.payload.kind !== response.kind) {
       throw new Error("The agent interaction response kind does not match.");
     }
-    this.send({
-      id: pending.rpcId,
-      result: codexResultForAgentInteraction(response),
+    const result = codexResultForAgentInteraction(response);
+    await this.dispatchGuiNativeCommand(pending.active.threadId, {
+      method: "serverRequest/reply",
+      params: { result },
+      reply: {
+        requestId: pending.rpcId,
+        requestMethod: pending.requestMethod,
+        turnId: pending.request.turnId,
+      },
+      dispatch: async () => {
+        if (this.#pendingAgentInteractions.get(requestKey) !== pending)
+          throw new Error("The agent interaction is no longer pending.");
+        this.releaseAgentInteraction(pending);
+        this.send({ id: pending.rpcId, result });
+        return { accepted: true };
+      },
     });
-    this.releaseAgentInteraction(pending);
     return agentInteractionAcceptedSchema.parse({ accepted: true });
   }
 
@@ -5620,6 +6331,20 @@ export class CodexAppServer implements CodexRuntime {
     const active = findActiveChatTurn(this.#activeTurns, chatId, threadId);
     if (!active) {
       const pendingRetry = this.#pendingCapacityRetries.get(chatId);
+      // An autonomous runner can be awaiting admission before it has a native
+      // turn. The admitted dispatch hook invalidates that runner; do not invent
+      // a turn identity or send an invalid raw turn/interrupt request.
+      if (threadId && this.#managedNativeCommandDispatchers.has(threadId)) {
+        await this.dispatchGuiNativeCommand(threadId, {
+          method: "turn/interrupt",
+          params: { threadId },
+          dispatch: async () => {
+            pendingRetry?.controller.abort();
+            return { interrupted: Boolean(pendingRetry) };
+          },
+        });
+        return { interrupted: Boolean(pendingRetry) };
+      }
       if (!pendingRetry) return { interrupted: false };
       pendingRetry.controller.abort();
       workerLogger.event("info", "Codex capacity retry interrupted", {
@@ -5639,9 +6364,14 @@ export class CodexAppServer implements CodexRuntime {
     // interrupt acknowledgement is pending or ultimately fails.
     if (execution) this.abortComputerUseExecution(execution);
     try {
-      await this.request("turn/interrupt", {
-        threadId: active[1].threadId,
-        turnId: active[0],
+      const params = { threadId: active[1].threadId, turnId: active[0] };
+      await this.dispatchGuiNativeCommand(active[1].threadId, {
+        method: "turn/interrupt",
+        params,
+        dispatch: () => {
+          this.assertGuiTurnCurrent(active[1], active[0]);
+          return this.request("turn/interrupt", params);
+        },
       });
     } catch (error) {
       active[1].interruptionRequestedAtMs = previousRequest;
@@ -5675,7 +6405,7 @@ export class CodexAppServer implements CodexRuntime {
       throw new Error("The Codex thread does not have an active turn.");
     }
     const activeThreadId = active[1].threadId;
-    const result = (await this.request("turn/steer", {
+    const params = {
       threadId: activeThreadId,
       input: await this.turnAttachmentInputs(
         prompt,
@@ -5684,6 +6414,14 @@ export class CodexAppServer implements CodexRuntime {
         provider,
       ),
       expectedTurnId: active[0],
+    };
+    const result = (await this.dispatchGuiNativeCommand(activeThreadId, {
+      method: "turn/steer",
+      params,
+      dispatch: () => {
+        this.assertGuiTurnCurrent(active[1], active[0]);
+        return this.request("turn/steer", params);
+      },
     })) as { turnId: string };
     workerLogger.event("info", "Codex turn steering accepted", {
       event: "codex.turn.steer",
@@ -5724,6 +6462,7 @@ export class CodexAppServer implements CodexRuntime {
     this.#runtimeIsZai = false;
     this.#starting = null;
     this.#loadedThreads.clear();
+    this.#managedNativeCommandDispatchers.clear();
     for (const execution of this.#rootExecutionsByActive.values()) {
       for (const state of execution.agents.values()) {
         clearTurnInspectionTelemetry(state);
@@ -5735,6 +6474,7 @@ export class CodexAppServer implements CodexRuntime {
     this.#knownAgentThreads.clear();
     this.#mcpConfigFingerprintsByThread.clear();
     this.#managedConfigApplications.clear();
+    this.#managedThreadOverlays.clear();
     this.#readyMcpConfigFingerprintsByThread.clear();
     this.#permissionProfilesByThread.clear();
     this.#externalImportStatuses.clear();
@@ -5937,6 +6677,7 @@ export class CodexAppServer implements CodexRuntime {
   }
 
   private stopFailedStart(): void {
+    this.clearManagedExecutionGateHandlers();
     this.#preparationEpoch += 1;
     this.#threadPreparations.clear();
     this.#threadPreparationVersions.clear();
@@ -5953,6 +6694,7 @@ export class CodexAppServer implements CodexRuntime {
     this.#loadedThreads.clear();
     this.#mcpConfigFingerprintsByThread.clear();
     this.#managedConfigApplications.clear();
+    this.#managedThreadOverlays.clear();
     this.#readyMcpConfigFingerprintsByThread.clear();
     this.#permissionProfilesByThread.clear();
     this.#collaborationModes.clear();
@@ -6070,6 +6812,7 @@ export class CodexAppServer implements CodexRuntime {
       subagentDefaults?: RuntimeSubagentDefaults | null;
       onThreadIdentified?: PrepareManagedThreadOptions["onThreadIdentified"];
       managedConfiguration?: boolean;
+      executionGate?: PrepareManagedThreadOptions["executionGate"];
     },
     create = true,
     intent: "configure" | "preserve" = "configure",
@@ -6115,11 +6858,34 @@ export class CodexAppServer implements CodexRuntime {
       subagentDefaults?: RuntimeSubagentDefaults | null;
       onThreadIdentified?: PrepareManagedThreadOptions["onThreadIdentified"];
       managedConfiguration?: boolean;
+      executionGate?: PrepareManagedThreadOptions["executionGate"];
     },
     create: boolean,
     intent: "configure" | "preserve",
     epoch: number,
   ): Promise<string | null> {
+    // Resolve omission against this transport's actual acknowledged ownership,
+    // before an owned unsubscribe can emit thread/closed and clear its caches.
+    const retained = options.threadId
+      ? this.#managedThreadOverlays.get(options.threadId)
+      : undefined;
+    if (retained?.epoch === epoch) {
+      options = {
+        ...options,
+        managedConfiguration: true,
+        mcpServers:
+          options.mcpServers === undefined
+            ? retained.options.mcpServers
+            : options.mcpServers,
+        executionProfile:
+          options.executionProfile ?? retained.options.executionProfile,
+        subagentDefaults:
+          options.subagentDefaults === undefined
+            ? retained.options.subagentDefaults
+            : options.subagentDefaults,
+        executionGate: options.executionGate ?? retained.options.executionGate,
+      };
+    }
     let preparingThreadId = options.threadId;
     let threadVersion = preparingThreadId
       ? (this.#threadPreparationVersions.get(preparingThreadId) ?? 0)
@@ -6241,6 +7007,7 @@ export class CodexAppServer implements CodexRuntime {
       });
       try {
         if (
+          !options.managedConfiguration &&
           this.#loadedThreads.has(threadId) &&
           this.#mcpConfigFingerprintsByThread.get(threadId) !==
             threadConfigFingerprint
@@ -6381,6 +7148,7 @@ export class CodexAppServer implements CodexRuntime {
   private async applyManagedThreadConfiguration(
     threadId: string,
     options: Pick<RunAgentTurnOptions, "cwd" | "mcpServers"> & {
+      executionGate?: PrepareManagedThreadOptions["executionGate"];
       executionProfile?: RunAgentTurnOptions["executionProfile"];
       subagentDefaults?: RuntimeSubagentDefaults | null;
     },
@@ -6413,6 +7181,17 @@ export class CodexAppServer implements CodexRuntime {
         "Codex did not acknowledge the managed configuration for the requested thread.",
       );
     }
+    this.#managedThreadOverlays.set(threadId, {
+      epoch: this.#preparationEpoch,
+      options: structuredClone({
+        mcpServers: options.mcpServers,
+        executionProfile: options.executionProfile ?? "ide",
+        subagentDefaults: options.subagentDefaults ?? null,
+        ...(options.executionGate
+          ? { executionGate: options.executionGate }
+          : {}),
+      }),
+    });
     await this.ensureManagedMcpReady(
       threadId,
       options.mcpServers,
@@ -6506,6 +7285,11 @@ export class CodexAppServer implements CodexRuntime {
     if (!signal) return null;
     return {
       chatId: execution.active.chatId,
+      ...(execution.active.admission
+        ? {
+            operationGeneration: execution.active.admission.operationGeneration,
+          }
+        : {}),
       threadId: input.threadId,
       turnId: input.turnId,
       rootThreadId: execution.rootThreadId,
@@ -6542,6 +7326,12 @@ export class CodexAppServer implements CodexRuntime {
     const execution = this.#rootExecutionsByThread.get(threadId);
     if (!execution) return;
     if (threadId === execution.rootThreadId) {
+      if (execution.active.admission) {
+        const admission = execution.active.admission;
+        if (admission.initialTurnId && admission.initialTurnId !== turnId)
+          return;
+        admission.initialTurnId ??= turnId;
+      }
       if (execution.computerUseLifetime.observe(turnId))
         for (const state of execution.agents.values())
           state.computerUseLifetime.abort();
@@ -6552,12 +7342,19 @@ export class CodexAppServer implements CodexRuntime {
     }
   }
 
-  private abortComputerUseThread(threadId: string): void {
+  private abortComputerUseThread(threadId: string, closed = true): void {
     const execution = this.#rootExecutionsByThread.get(threadId);
     if (!execution) return;
-    if (threadId === execution.rootThreadId)
+    if (threadId === execution.rootThreadId) {
       this.abortComputerUseExecution(execution);
-    else execution.agents.get(threadId)?.computerUseLifetime.abort();
+      if (closed && execution.active.admission) {
+        this.releaseActiveTurn(execution.active);
+        clearTurnInspectionTelemetry(execution.active);
+        execution.active.reject(
+          new Error("The admitted native execution's thread closed."),
+        );
+      }
+    } else execution.agents.get(threadId)?.computerUseLifetime.abort();
   }
 
   private agentScope(
@@ -7229,8 +8026,12 @@ export class CodexAppServer implements CodexRuntime {
       threadId === execution.rootThreadId
         ? execution.computerUseLifetime.turnId
         : execution.agents.get(threadId)?.computerUseLifetime.turnId;
+    if (execution.active.admission && !startedTurnId && !startingTurn)
+      return null;
     if (startedTurnId && startedTurnId !== turnId && !startingTurn) return null;
     if (threadId === execution.rootThreadId) {
+      const admittedTurnId = execution.active.admission?.initialTurnId;
+      if (admittedTurnId && admittedTurnId !== turnId) return null;
       this.bindRootTurn(execution, turnId);
       return {
         active: execution.active,
@@ -7312,6 +8113,11 @@ export class CodexAppServer implements CodexRuntime {
     for (const [turnId, candidate] of this.#activeTurns) {
       if (candidate === active) this.#activeTurns.delete(turnId);
     }
+    this.clearInteractionsForTurn(
+      active,
+      "The native execution ended before the interaction was answered.",
+    );
+    active.admission?.controller.abort();
     if (!execution) return true;
     this.abortComputerUseExecution(execution);
     const releasedThreadIds = new Set([
@@ -7320,9 +8126,11 @@ export class CodexAppServer implements CodexRuntime {
     ]);
     for (const state of execution.agents.values()) {
       clearTurnInspectionTelemetry(state);
-      this.#rootExecutionsByThread.delete(state.threadId);
+      if (this.#rootExecutionsByThread.get(state.threadId) === execution)
+        this.#rootExecutionsByThread.delete(state.threadId);
     }
-    this.#rootExecutionsByThread.delete(execution.rootThreadId);
+    if (this.#rootExecutionsByThread.get(execution.rootThreadId) === execution)
+      this.#rootExecutionsByThread.delete(execution.rootThreadId);
     this.#rootExecutionsByActive.delete(active);
     for (const [threadId, metadata] of this.#orphanAgentThreads) {
       if (
@@ -7343,6 +8151,7 @@ export class CodexAppServer implements CodexRuntime {
     this.#loadedThreads.delete(threadId);
     this.#mcpConfigFingerprintsByThread.delete(threadId);
     this.#managedConfigApplications.delete(threadId);
+    this.#managedThreadOverlays.delete(threadId);
     this.#readyMcpConfigFingerprintsByThread.delete(threadId);
     this.#permissionProfilesByThread.delete(threadId);
     this.#collaborationModes.delete(threadId);
@@ -7586,6 +8395,7 @@ export class CodexAppServer implements CodexRuntime {
       });
     });
     this.#socket = socket;
+    this.#nativeTransportGeneration = randomUUID();
     workerLogger.event("debug", "Codex app-server transport connected", {
       event: "codex.runtime.transport",
       subsystem: "codex",
@@ -7626,6 +8436,7 @@ export class CodexAppServer implements CodexRuntime {
       this.#loadedThreads.clear();
       this.#mcpConfigFingerprintsByThread.clear();
       this.#managedConfigApplications.clear();
+      this.#managedThreadOverlays.clear();
       this.#readyMcpConfigFingerprintsByThread.clear();
       this.#permissionProfilesByThread.clear();
       this.#collaborationModes.clear();
@@ -7680,6 +8491,7 @@ export class CodexAppServer implements CodexRuntime {
       this.#loadedThreads.clear();
       this.#mcpConfigFingerprintsByThread.clear();
       this.#managedConfigApplications.clear();
+      this.#managedThreadOverlays.clear();
       this.#readyMcpConfigFingerprintsByThread.clear();
       this.#permissionProfilesByThread.clear();
       this.#externalImportStatuses.clear();
@@ -7902,11 +8714,13 @@ export class CodexAppServer implements CodexRuntime {
           },
         );
         pending.reject(
-          new Error(
+          new CodexNativeRpcError(
             readableCodexProviderError(message.error.message, {
               secrets: this.#diagnosticSecrets,
               zai: this.#runtimeIsZai,
             }),
+            message.error,
+            pending.method,
           ),
         );
       } else {
@@ -8007,7 +8821,13 @@ export class CodexAppServer implements CodexRuntime {
         params.status.type === "notLoaded" ||
         params.status.type === "systemError"
       )
-        this.abortComputerUseThread(params.threadId);
+        // systemError precedes the actual typed turn/completed failure (for
+        // example serverOverloaded). Revoke CUA now, but preserve that result
+        // and its exact execution identity for retry/terminal handling.
+        this.abortComputerUseThread(
+          params.threadId,
+          params.status.type === "notLoaded",
+        );
       const execution = this.#rootExecutionsByThread.get(params.threadId);
       const state = execution?.agents.get(params.threadId);
       if (state) {
@@ -8295,6 +9115,91 @@ export class CodexAppServer implements CodexRuntime {
         },
       );
       if (activity) emitTurnActivity(state, activity);
+      return;
+    }
+
+    if (
+      message.method === "thread/managedExecution/requested" ||
+      message.method === "thread/managedExecution/declined"
+    ) {
+      const base = z.object({
+        threadId: z.string().min(1),
+        runnerGeneration: z.string().min(1),
+        attemptId: z.string().min(1),
+        turnId: z.string().min(1),
+      });
+      const parsed = base.safeParse(message.params);
+      if (!parsed.success) return;
+      const entry = this.#managedExecutionGateHandlers.get(
+        parsed.data.runnerGeneration,
+      );
+      const transport = this.transportGeneration;
+      if (
+        !transport ||
+        (entry?.transportGeneration && entry.transportGeneration !== transport)
+      )
+        return;
+      if (entry) entry.transportGeneration ??= transport;
+      if (message.method === "thread/managedExecution/requested") {
+        const request = base
+          .extend({
+            trigger: z.enum(["goal", "queue"]),
+            input: z.record(z.string(), z.unknown()),
+          })
+          .safeParse(message.params);
+        if (!request.success) {
+          entry?.handler.failed(request.error);
+          void this.resolveManagedExecution(
+            { ...parsed.data, operationGeneration: null, allow: false },
+            transport,
+          ).catch((error) => entry?.handler.failed(error));
+          return;
+        }
+        if (entry) {
+          if (entry.observedAttempts.has(request.data.attemptId)) return;
+          entry.observedAttempts.add(request.data.attemptId);
+          if (entry.observedAttempts.size > 1000)
+            entry.observedAttempts.delete(
+              entry.observedAttempts.values().next().value!,
+            );
+        }
+        const task = entry
+          ? Promise.resolve().then(() => {
+              entry.controller.signal.throwIfAborted();
+              return entry.handler.requested(
+                request.data,
+                entry.controller.signal,
+              );
+            })
+          : Promise.reject(
+              new Error("No managed runner owns this native attempt."),
+            );
+        void task.catch(async (error) => {
+          entry?.handler.failed(error);
+          try {
+            await this.resolveManagedExecution(
+              { ...parsed.data, operationGeneration: null, allow: false },
+              transport,
+            );
+          } catch (failure) {
+            entry?.handler.failed(failure);
+          }
+        });
+      } else if (entry) {
+        const declined = base
+          .extend({
+            operationGeneration: z.string().nullable(),
+            reason: z.string(),
+          })
+          .safeParse(message.params);
+        if (!declined.success) {
+          entry.handler.failed(declined.error);
+          return;
+        }
+        void Promise.resolve()
+          .then(() => entry.handler.declined(declined.data))
+          .catch((error) => entry.handler.failed(error));
+      }
       return;
     }
 
@@ -8766,6 +9671,7 @@ export class CodexAppServer implements CodexRuntime {
         params.threadId === execution?.rootThreadId
           ? execution.computerUseLifetime
           : execution?.agents.get(params.threadId)?.computerUseLifetime;
+      if (execution?.active.admission && !lifetime?.turnId) return;
       // Late completion of A must not release the still-running B execution.
       // Only real turn starts advance this bounded lifetime, not telemetry.
       if (lifetime?.turnId && lifetime.turnId !== params.turn.id) return;
@@ -9014,7 +9920,13 @@ export class CodexAppServer implements CodexRuntime {
         if (!isCurrent()) return;
       }
       clearTurnInspectionTelemetry(active);
-      if (active.executionKind === "chat" && this.#goals.has(active.threadId)) {
+      // Managed autonomous runners obtain a fresh admission for every actual
+      // turn. Retain the legacy continuous goal behavior only outside that path.
+      if (
+        active.executionKind === "chat" &&
+        !active.admission &&
+        this.#goals.has(active.threadId)
+      ) {
         const response = await this.refreshGoal(active.threadId, isCurrent);
         if (!isCurrent()) return;
         if (
@@ -9349,13 +10261,13 @@ export class CodexAppServer implements CodexRuntime {
     const request = agentInteractionRequestFromServerRequest(
       message.method ?? "",
       message.params,
-      `codex:${this.#appServerSessionId}:${String(message.id)}`,
+      `codex:${this.#appServerSessionId}:${typeof message.id}:${String(message.id)}`,
     );
     if (request) {
       const active = request.turnId
         ? this.activeTurnForNotification(request.threadId, request.turnId)
         : this.#rootExecutionsByThread.get(request.threadId)?.active;
-      if (!active?.onInteractionRequest) {
+      if (!active || (!active.onInteractionRequest && !active.admission)) {
         this.send({
           id: message.id,
           ...failClosedAgentInteractionReply(
@@ -9375,7 +10287,12 @@ export class CodexAppServer implements CodexRuntime {
         });
         return;
       }
-      this.registerAgentInteraction(active, message.id, request);
+      this.registerAgentInteraction(
+        active,
+        message.id,
+        request,
+        message.method ?? "",
+      );
       if (
         request.payload.kind === "userInput" &&
         request.turnId &&
@@ -9550,10 +10467,11 @@ export class CodexAppServer implements CodexRuntime {
     active: ActiveTurn,
     rpcId: number | string,
     request: AgentInteractionRuntimeRequest,
+    requestMethod = "",
   ): void {
     const existing = this.#pendingAgentInteractions.get(request.requestKey);
     if (existing) {
-      if (String(existing.rpcId) !== String(rpcId)) {
+      if (existing.rpcId !== rpcId) {
         throw new Error("Agent interaction request key was reused.");
       }
       return;
@@ -9564,9 +10482,18 @@ export class CodexAppServer implements CodexRuntime {
       Math.max(0, Date.parse(request.expiresAt) - Date.now()),
     );
     timeout.unref();
-    pending = { active, request, rpcId, timeout };
+    pending = { active, request, requestMethod, rpcId, timeout };
     this.#pendingAgentInteractions.set(request.requestKey, pending);
     try {
+      for (const observed of [...this.#admittedReplyWaiters]) observed();
+      if (active.admission) {
+        const metadata = this.pendingAdmittedNativeReply({
+          operationGeneration: active.admission.operationGeneration,
+          rootThreadId: active.threadId,
+          requestId: rpcId,
+        });
+        if (metadata) active.onNativeInteractionRequest?.(metadata);
+      }
       active.onInteractionRequest?.(request);
     } catch (error) {
       this.releaseAgentInteraction(pending);
@@ -9599,6 +10526,13 @@ export class CodexAppServer implements CodexRuntime {
     pending: NativePendingAgentInteraction,
   ): void {
     clearTimeout(pending.timeout);
+    if (
+      this.#pendingAgentInteractions.get(pending.request.requestKey) !== pending
+    )
+      return;
+    pending.active.admission?.resolvedRequestIds.add(
+      `${typeof pending.rpcId}:${pending.rpcId}`,
+    );
     this.#pendingAgentInteractions.delete(pending.request.requestKey);
     const planQuestion = this.#pendingPlanQuestions.get(
       pending.request.requestKey,
@@ -9640,6 +10574,8 @@ export class CodexAppServer implements CodexRuntime {
   }
 
   private handleExit(error: Error): void {
+    this.clearManagedExecutionGateHandlers();
+    this.#nativeTransportGeneration = null;
     this.#preparationEpoch += 1;
     this.#threadPreparations.clear();
     this.#threadPreparationVersions.clear();
@@ -9657,6 +10593,7 @@ export class CodexAppServer implements CodexRuntime {
     this.#pendingAgentInteractions.clear();
     this.#pendingPlanQuestions.clear();
     for (const active of this.#activeTurnsByThread.values()) {
+      active.admission?.controller.abort();
       if (active.timeout) clearTimeout(active.timeout);
       flushActiveAgentMessage(active, false);
       clearTurnInspectionTelemetry(active);

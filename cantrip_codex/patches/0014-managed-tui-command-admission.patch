@@ -1,0 +1,671 @@
+diff --git a/codex-rs/app-server-client/src/lib.rs b/codex-rs/app-server-client/src/lib.rs
+index 6a96e10..d1bc438 100644
+--- a/codex-rs/app-server-client/src/lib.rs
++++ b/codex-rs/app-server-client/src/lib.rs
+@@ -677,6 +677,13 @@ impl AppServerRequestHandle {
+ }
+ 
+ impl AppServerClient {
++    pub fn managed_gateway_thread_id(&self) -> Option<&str> {
++        match self {
++            Self::Remote(client) => client.managed_gateway_thread_id(),
++            Self::InProcess(_) => None,
++        }
++    }
++
+     pub fn codex_home(&self, local_codex_home: &AbsolutePathBuf) -> Option<AppServerPath> {
+         match self {
+             Self::InProcess(_) => Some(AppServerPath::from_app_server(
+diff --git a/codex-rs/app-server-client/src/managed_gateway_tests.rs b/codex-rs/app-server-client/src/managed_gateway_tests.rs
+new file mode 100644
+index 0000000..ee833fe
+--- /dev/null
++++ b/codex-rs/app-server-client/src/managed_gateway_tests.rs
+@@ -0,0 +1,150 @@
++use super::*;
++use tokio_tungstenite::tungstenite::protocol::Role;
++
++async fn fixture(managed: bool) -> RemoteAppServerClient {
++    let (client_io, server_io) = tokio::io::duplex(65536);
++    tokio::spawn(async move {
++        let mut server = WebSocketStream::from_raw_socket(server_io, Role::Server, None).await;
++        let init: JSONRPCRequest = match server.next().await.unwrap().unwrap() {
++            Message::Text(text) => serde_json::from_str(&text).unwrap(),
++            _ => panic!("expected initialization"),
++        };
++        let mut result = serde_json::json!({"userAgent":"codex/0.153.4", "codexHome":"/fixture"});
++        if managed {
++            result["cantripManagedGateway"] = serde_json::json!({
++                "version":1,"replyMethod":"cantrip/managed/reply","threadId":"bound-thread"
++            });
++        }
++        server
++            .send(Message::Text(
++                serde_json::to_string(&JSONRPCResponse {
++                    id: init.id,
++                    result,
++                })
++                .unwrap()
++                .into(),
++            ))
++            .await
++            .unwrap();
++        let _initialized = server.next().await.unwrap().unwrap();
++        for index in 0..4 {
++            let frame: JSONRPCMessage = match server.next().await.unwrap().unwrap() {
++                Message::Text(text) => serde_json::from_str(&text).unwrap(),
++                _ => panic!("expected reply"),
++            };
++            if managed {
++                let JSONRPCMessage::Request(request) = frame else {
++                    panic!("managed reply must request acknowledgment")
++                };
++                assert_eq!(request.method, "cantrip/managed/reply");
++                let params = request.params.unwrap();
++                assert_eq!(params["requestId"], serde_json::json!(index));
++                assert_eq!(params.get("error").is_some(), index == 1);
++                let response = if index == 2 {
++                    JSONRPCMessage::Error(JSONRPCError {
++                        id: request.id,
++                        error: JSONRPCErrorError {
++                            code: -32001,
++                            message: "stale operation generation".to_string(),
++                            data: None,
++                        },
++                    })
++                } else {
++                    JSONRPCMessage::Response(JSONRPCResponse {
++                        id: request.id,
++                        result: if index == 3 {
++                            serde_json::json!({"delivered":true})
++                        } else {
++                            serde_json::json!({"delivered":true,"operationGeneration":"fresh-generation"})
++                        },
++                    })
++                };
++                server
++                    .send(Message::Text(
++                        serde_json::to_string(&response).unwrap().into(),
++                    ))
++                    .await
++                    .unwrap();
++            } else {
++                assert!(matches!(
++                    frame,
++                    JSONRPCMessage::Response(_) | JSONRPCMessage::Error(_)
++                ));
++            }
++        }
++        let _ = server.next().await;
++    });
++    let stream = WebSocketStream::from_raw_socket(client_io, Role::Client, None).await;
++    RemoteAppServerClient::connect_with_stream(
++        16,
++        "ws://fixture".to_string(),
++        stream,
++        serde_json::from_value(serde_json::json!({"clientInfo":{"name":"test","version":"1"}}))
++            .unwrap(),
++    )
++    .await
++    .unwrap()
++}
++
++#[tokio::test]
++async fn managed_gateway_replies_wait_for_authorized_ack_and_surface_errors() {
++    let client = fixture(true).await;
++    assert_eq!(client.managed_gateway_thread_id(), Some("bound-thread"));
++    client
++        .resolve_server_request(
++            RequestId::Integer(0),
++            serde_json::json!({"decision":"accept"}),
++        )
++        .await
++        .unwrap();
++    client
++        .reject_server_request(
++            RequestId::Integer(1),
++            JSONRPCErrorError {
++                code: -1,
++                message: "declined".to_string(),
++                data: None,
++            },
++        )
++        .await
++        .unwrap();
++    let error = client
++        .resolve_server_request(RequestId::Integer(2), serde_json::json!({}))
++        .await
++        .unwrap_err();
++    assert!(error.to_string().contains("stale operation generation"));
++    let error = client
++        .resolve_server_request(RequestId::Integer(3), serde_json::json!({}))
++        .await
++        .unwrap_err();
++    assert_eq!(error.kind(), ErrorKind::InvalidData);
++    client.shutdown().await.unwrap();
++}
++
++#[tokio::test]
++async fn ordinary_remote_replies_keep_native_wire_without_managed_ack() {
++    let client = fixture(false).await;
++    assert_eq!(client.managed_gateway_thread_id(), None);
++    for id in 0..4 {
++        client
++            .resolve_server_request(RequestId::Integer(id), serde_json::json!({}))
++            .await
++            .unwrap();
++    }
++    client.shutdown().await.unwrap();
++}
++
++#[test]
++fn managed_gateway_capability_rejects_partial_or_unknown_contracts() {
++    assert_eq!(parse_managed_gateway(&serde_json::json!({})).unwrap(), None);
++    for capability in [
++        serde_json::json!({"version":2,"replyMethod":"cantrip/managed/reply","threadId":"thread"}),
++        serde_json::json!({"version":1,"replyMethod":"other","threadId":"thread"}),
++        serde_json::json!({"version":1,"replyMethod":"cantrip/managed/reply"}),
++    ] {
++        assert!(
++            parse_managed_gateway(&serde_json::json!({"cantripManagedGateway":capability}))
++                .is_err()
++        );
++    }
++}
+diff --git a/codex-rs/app-server-client/src/remote.rs b/codex-rs/app-server-client/src/remote.rs
+index 0e375ee..2fad585 100644
+--- a/codex-rs/app-server-client/src/remote.rs
++++ b/codex-rs/app-server-client/src/remote.rs
+@@ -15,6 +15,8 @@ use std::collections::VecDeque;
+ use std::io::Error as IoError;
+ use std::io::ErrorKind;
+ use std::io::Result as IoResult;
++use std::sync::atomic::AtomicU64;
++use std::sync::atomic::Ordering;
+ use std::time::Duration;
+ 
+ use crate::AppServerEvent;
+@@ -154,6 +156,8 @@ pub struct RemoteAppServerClient {
+     pending_events: VecDeque<AppServerEvent>,
+     server_version: Option<String>,
+     codex_home: Option<String>,
++    managed_gateway_thread_id: Option<String>,
++    managed_reply_sequence: AtomicU64,
+     worker_handle: tokio::task::JoinHandle<()>,
+ }
+ 
+@@ -192,6 +196,46 @@ impl RemoteAppServerClient {
+         self.codex_home.as_deref()
+     }
+ 
++    /// A gateway-scoped thread; absent on ordinary remote connections.
++    pub fn managed_gateway_thread_id(&self) -> Option<&str> {
++        self.managed_gateway_thread_id.as_deref()
++    }
++
++    async fn acknowledge_managed_reply(
++        &self,
++        request_id: RequestId,
++        response: serde_json::Value,
++    ) -> IoResult<()> {
++        let mut params = response;
++        params["requestId"] = serde_json::to_value(request_id).map_err(IoError::other)?;
++        let request_id = RequestId::String(format!(
++            "cantrip-managed-reply-{}",
++            self.managed_reply_sequence.fetch_add(1, Ordering::Relaxed)
++        ));
++        let result = self
++            .request_handle()
++            .request_json_rpc(JSONRPCRequest {
++                id: request_id,
++                method: "cantrip/managed/reply".to_string(),
++                params: Some(params),
++                trace: None,
++            })
++            .await?
++            .map_err(|error| IoError::other(error.message))?;
++        if result.get("delivered").and_then(serde_json::Value::as_bool) != Some(true)
++            || result
++                .get("operationGeneration")
++                .and_then(serde_json::Value::as_str)
++                .is_none_or(str::is_empty)
++        {
++            return Err(IoError::new(
++                ErrorKind::InvalidData,
++                "Invalid managed reply acknowledgment",
++            ));
++        }
++        Ok(())
++    }
++
+     async fn connect_with_stream<S>(
+         channel_capacity: usize,
+         endpoint: String,
+@@ -202,13 +246,14 @@ impl RemoteAppServerClient {
+         S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+     {
+         let mut stream = stream;
+-        let (pending_events, server_version, codex_home) = initialize_remote_connection(
+-            &mut stream,
+-            &endpoint,
+-            initialize_params,
+-            INITIALIZE_TIMEOUT,
+-        )
+-        .await?;
++        let (pending_events, server_version, codex_home, managed_gateway_thread_id) =
++            initialize_remote_connection(
++                &mut stream,
++                &endpoint,
++                initialize_params,
++                INITIALIZE_TIMEOUT,
++            )
++            .await?;
+ 
+         let (command_tx, mut command_rx) = mpsc::channel::<RemoteClientCommand>(channel_capacity);
+         let (event_tx, event_rx) = mpsc::unbounded_channel::<AppServerEvent>();
+@@ -480,6 +525,8 @@ impl RemoteAppServerClient {
+             pending_events: pending_events.into(),
+             server_version,
+             codex_home,
++            managed_gateway_thread_id,
++            managed_reply_sequence: AtomicU64::new(0),
+             worker_handle,
+         })
+     }
+@@ -543,6 +590,11 @@ impl RemoteAppServerClient {
+         request_id: RequestId,
+         result: JsonRpcResult,
+     ) -> IoResult<()> {
++        if self.managed_gateway_thread_id.is_some() {
++            return self
++                .acknowledge_managed_reply(request_id, serde_json::json!({"result": result}))
++                .await;
++        }
+         let (response_tx, response_rx) = oneshot::channel();
+         self.command_tx
+             .send(RemoteClientCommand::ResolveServerRequest {
+@@ -570,6 +622,11 @@ impl RemoteAppServerClient {
+         request_id: RequestId,
+         error: JSONRPCErrorError,
+     ) -> IoResult<()> {
++        if self.managed_gateway_thread_id.is_some() {
++            return self
++                .acknowledge_managed_reply(request_id, serde_json::json!({"error": error}))
++                .await;
++        }
+         let (response_tx, response_rx) = oneshot::channel();
+         self.command_tx
+             .send(RemoteClientCommand::RejectServerRequest {
+@@ -606,6 +663,8 @@ impl RemoteAppServerClient {
+             pending_events: _pending_events,
+             server_version: _server_version,
+             codex_home: _codex_home,
++            managed_gateway_thread_id: _,
++            managed_reply_sequence: _,
+             worker_handle,
+         } = self;
+         let mut worker_handle = worker_handle;
+@@ -800,7 +859,12 @@ async fn initialize_remote_connection<S>(
+     endpoint: &str,
+     params: InitializeParams,
+     initialize_timeout: Duration,
+-) -> IoResult<(Vec<AppServerEvent>, Option<String>, Option<String>)>
++) -> IoResult<(
++    Vec<AppServerEvent>,
++    Option<String>,
++    Option<String>,
++    Option<String>,
++)>
+ where
+     S: AsyncRead + AsyncWrite + Unpin,
+ {
+@@ -808,6 +872,7 @@ where
+     let mut pending_events = Vec::new();
+     let mut server_version = None;
+     let mut codex_home = None;
++    let mut managed_gateway_thread_id = None;
+     write_jsonrpc_message(
+         stream,
+         JSONRPCMessage::Request(jsonrpc_request_from_client_request(
+@@ -845,6 +910,7 @@ where
+                                 .and_then(serde_json::Value::as_str)
+                                 .filter(|codex_home| !codex_home.is_empty())
+                                 .map(str::to_string);
++                            managed_gateway_thread_id = parse_managed_gateway(&response.result)?;
+                             break Ok(());
+                         }
+                         JSONRPCMessage::Error(error) if error.id == initialize_request_id => {
+@@ -937,7 +1003,37 @@ where
+     )
+     .await?;
+ 
+-    Ok((pending_events, server_version, codex_home))
++    Ok((
++        pending_events,
++        server_version,
++        codex_home,
++        managed_gateway_thread_id,
++    ))
++}
++
++fn parse_managed_gateway(result: &serde_json::Value) -> IoResult<Option<String>> {
++    let Some(capability) = result.get("cantripManagedGateway") else {
++        return Ok(None);
++    };
++    let thread_id = capability
++        .get("threadId")
++        .and_then(serde_json::Value::as_str);
++    if capability
++        .get("version")
++        .and_then(serde_json::Value::as_u64)
++        != Some(1)
++        || capability
++            .get("replyMethod")
++            .and_then(serde_json::Value::as_str)
++            != Some("cantrip/managed/reply")
++        || thread_id.is_none_or(str::is_empty)
++    {
++        return Err(IoError::new(
++            ErrorKind::InvalidData,
++            "Unsupported managed gateway capability",
++        ));
++    }
++    Ok(thread_id.map(str::to_string))
+ }
+ 
+ fn app_server_event_from_notification(notification: JSONRPCNotification) -> Option<AppServerEvent> {
+@@ -1029,6 +1125,8 @@ mod tests {
+             pending_events: VecDeque::new(),
+             server_version: None,
+             codex_home: None,
++            managed_gateway_thread_id: None,
++            managed_reply_sequence: AtomicU64::new(0),
+             worker_handle,
+         };
+ 
+@@ -1038,3 +1136,7 @@ mod tests {
+             .expect("shutdown should complete when worker exits first");
+     }
+ }
++
++#[cfg(test)]
++#[path = "managed_gateway_tests.rs"]
++mod managed_gateway_tests;
+diff --git a/codex-rs/tui/src/app/event_dispatch.rs b/codex-rs/tui/src/app/event_dispatch.rs
+index d2ea7c5..4530c00 100644
+--- a/codex-rs/tui/src/app/event_dispatch.rs
++++ b/codex-rs/tui/src/app/event_dispatch.rs
+@@ -1619,6 +1619,9 @@ impl App {
+                 self.sync_active_thread_service_tier_to_cached_session()
+                     .await;
+ 
++                if app_server.is_managed_gateway_thread(self.chat_widget.thread_id()) {
++                    return Ok(AppRunControl::Continue);
++                }
+                 if let Some(default_effort) = default_effort.as_ref()
+                     && let Err(err) = crate::config_update::write_config_batch(
+                         app_server.request_handle(),
+@@ -2159,6 +2162,11 @@ impl App {
+                 }
+             }
+             AppEvent::PersistModelSelection { model, effort } => {
++                // Managed picker selections already submit thread/settings/update.
++                // Keep account defaults unchanged and do not claim a write succeeded.
++                if app_server.is_managed_gateway_thread(self.chat_widget.thread_id()) {
++                    return Ok(AppRunControl::Continue);
++                }
+                 match crate::config_update::write_config_batch(
+                     app_server.request_handle(),
+                     crate::config_update::build_model_selection_edits(
+@@ -2228,6 +2236,11 @@ impl App {
+                 self.chat_widget.on_plugin_mentions_loaded(plugins);
+             }
+             AppEvent::PersistPersonalitySelection { personality } => {
++                // Managed picker selections already submit thread/settings/update.
++                // Keep account defaults unchanged and do not claim a write succeeded.
++                if app_server.is_managed_gateway_thread(self.chat_widget.thread_id()) {
++                    return Ok(AppRunControl::Continue);
++                }
+                 match crate::config_update::write_config_batch(
+                     app_server.request_handle(),
+                     vec![crate::config_update::replace_config_value(
+@@ -2258,6 +2271,11 @@ impl App {
+                 self.config.service_tier = service_tier.clone();
+                 self.sync_active_thread_service_tier_to_cached_session()
+                     .await;
++                // Managed picker selections already submit thread/settings/update.
++                // Keep account defaults unchanged and do not claim a write succeeded.
++                if app_server.is_managed_gateway_thread(self.chat_widget.thread_id()) {
++                    return Ok(AppRunControl::Continue);
++                }
+                 let edits = crate::config_update::build_service_tier_selection_edits(
+                     service_tier.as_deref(),
+                 );
+@@ -2383,6 +2401,10 @@ impl App {
+                 self.chat_widget.set_approvals_reviewer(policy);
+                 self.sync_active_thread_permission_settings_to_cached_session()
+                     .await;
++                // Permission selection submits the thread override before this cache update.
++                if app_server.is_managed_gateway_thread(self.chat_widget.thread_id()) {
++                    return Ok(AppRunControl::Continue);
++                }
+                 if let Err(err) = crate::config_update::write_config_batch(
+                     app_server.request_handle(),
+                     vec![crate::config_update::replace_config_value(
+@@ -2463,6 +2485,9 @@ impl App {
+                 }
+             }
+             AppEvent::PersistPlanModeReasoningEffort(effort) => {
++                if app_server.is_managed_gateway_thread(self.chat_widget.thread_id()) {
++                    return Ok(AppRunControl::Continue);
++                }
+                 let key_path = "plan_mode_reasoning_effort";
+                 let edit = if let Some(effort) = effort {
+                     crate::config_update::replace_config_value(
+diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
+index 3a9b3db..4a95384 100644
+--- a/codex-rs/tui/src/app/tests.rs
++++ b/codex-rs/tui/src/app/tests.rs
+@@ -8650,3 +8650,6 @@ mod active_reconnect;
+ #[cfg(unix)]
+ #[path = "tests/navigation_reconnect_tests.rs"]
+ mod navigation_reconnect;
++
++#[path = "tests/managed_gateway_defaults.rs"]
++mod managed_gateway_defaults;
+diff --git a/codex-rs/tui/src/app/tests/managed_gateway_defaults.rs b/codex-rs/tui/src/app/tests/managed_gateway_defaults.rs
+new file mode 100644
+index 0000000..ba750a1
+--- /dev/null
++++ b/codex-rs/tui/src/app/tests/managed_gateway_defaults.rs
+@@ -0,0 +1,154 @@
++use super::*;
++use crate::app_server_session::ThreadParamsMode;
++use codex_app_server_client::AppServerClient;
++use codex_app_server_client::RemoteAppServerClient;
++use codex_app_server_client::RemoteAppServerConnectArgs;
++use codex_app_server_client::RemoteAppServerEndpoint;
++use futures::SinkExt;
++use futures::StreamExt;
++use pretty_assertions::assert_eq;
++use serde_json::json;
++use tokio_tungstenite::tungstenite::Message;
++
++#[tokio::test]
++async fn managed_gateway_picker_settings_keep_real_requests_without_implicit_default_writes()
++-> Result<()> {
++    for managed in [true, false] {
++        let mut app = make_test_app().await;
++        let thread_id = ThreadId::new();
++        app.active_thread_id = Some(thread_id);
++        app.primary_thread_id = Some(thread_id);
++        app.chat_widget
++            .handle_thread_session(test_thread_session(thread_id, app.config.cwd.to_path_buf()));
++        let requests = Arc::new(std::sync::Mutex::new(Vec::<serde_json::Value>::new()));
++        let observed = requests.clone();
++        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
++        let address = listener.local_addr()?;
++        let server = tokio::spawn(async move {
++            let (socket, _) = listener.accept().await.unwrap();
++            let mut socket = tokio_tungstenite::accept_async(socket).await.unwrap();
++            while let Some(Ok(Message::Text(text))) = socket.next().await {
++                let request: serde_json::Value = serde_json::from_str(&text).unwrap();
++                let Some(id) = request.get("id").cloned() else {
++                    continue;
++                };
++                let method = request["method"].as_str().unwrap();
++                let mut result = match method {
++                    "initialize" => json!({"userAgent":"codex/0.153.4"}),
++                    "config/batchWrite" => {
++                        json!({"status":"ok","version":"1","filePath":"/fixture/config.toml","overriddenMetadata":null})
++                    }
++                    _ => json!({}),
++                };
++                if managed && method == "initialize" {
++                    result["cantripManagedGateway"] = json!({"version":1,"threadId":thread_id.to_string(),"replyMethod":"cantrip/managed/reply"});
++                }
++                let response = if method == "thread/settings/update"
++                    && request["params"]["model"] == "unsupported-fixture"
++                {
++                    json!({"id":id,"error":{"code":-32601,"message":"method not found"}})
++                } else {
++                    json!({"id":id,"result":result})
++                };
++                observed.lock().unwrap().push(request);
++                socket
++                    .send(Message::Text(response.to_string().into()))
++                    .await
++                    .unwrap();
++            }
++        });
++        let remote = RemoteAppServerClient::connect(RemoteAppServerConnectArgs {
++            endpoint: RemoteAppServerEndpoint::WebSocket {
++                websocket_url: format!("ws://{address}"),
++                auth_token: None,
++            },
++            client_name: "managed-default-test".into(),
++            client_version: "1".into(),
++            experimental_api: true,
++            mcp_server_openai_form_elicitation: false,
++            opt_out_notification_methods: vec![],
++            channel_capacity: 16,
++        })
++        .await?;
++        let mut app_server =
++            AppServerSession::new(AppServerClient::Remote(remote), ThreadParamsMode::Remote);
++        assert_eq!(
++            app_server.is_managed_gateway_thread(Some(thread_id)),
++            managed
++        );
++        assert!(!app_server.is_managed_gateway_thread(Some(ThreadId::new())));
++        let mut tui = crate::tui::test_support::make_test_tui()?;
++        for event in [
++            AppEvent::UpdateReasoningEffort(Some(ReasoningEffortConfig::Low)),
++            AppEvent::UpdatePlanModeReasoningEffort(Some(ReasoningEffortConfig::Low)),
++            AppEvent::PersistPlanModeReasoningEffort(Some(ReasoningEffortConfig::Low)),
++            AppEvent::CodexOp(AppCommand::override_turn_context(
++                None,
++                None,
++                Some(ApprovalsReviewer::User),
++                None,
++                None,
++                None,
++                None,
++                None,
++                None,
++                None,
++                None,
++                None,
++            )),
++            AppEvent::UpdateApprovalsReviewer(ApprovalsReviewer::User),
++            AppEvent::PersistModelSelection {
++                model: "gpt-test".into(),
++                effort: Some(ReasoningEffortConfig::Low),
++            },
++            AppEvent::PersistPersonalitySelection {
++                personality: Personality::Pragmatic,
++            },
++            AppEvent::PersistServiceTierSelection {
++                service_tier: Some("flex".into()),
++            },
++        ] {
++            app.handle_event(&mut tui, &mut app_server, event).await?;
++        }
++        let recorded = requests.lock().unwrap().clone();
++        assert!(
++            recorded
++                .iter()
++                .any(|request| request["method"] == "thread/settings/update")
++        );
++        assert!(recorded.iter().any(|request| {
++            request["method"] == "thread/settings/update"
++                && request["params"]["approvalsReviewer"] == "user"
++        }));
++        let default_writes = recorded
++            .iter()
++            .filter(|request| request["method"] == "config/batchWrite")
++            .count();
++        assert_eq!(default_writes, if managed { 0 } else { 5 });
++        assert_eq!(app.config.service_tier.as_deref(), Some("flex"));
++        // A negotiated managed gateway must surface rejected settings. Ordinary
++        // older remote servers retain their existing capability downgrade.
++        for _ in 0..2 {
++            let rejected = app_server
++                .thread_settings_update(serde_json::from_value(json!({
++                    "threadId": thread_id.to_string(), "model": "unsupported-fixture"
++                }))?)
++                .await;
++            if managed {
++                assert!(rejected.is_err());
++            } else {
++                assert!(!rejected?);
++            }
++        }
++        let unsupported_requests = requests
++            .lock()
++            .unwrap()
++            .iter()
++            .filter(|request| request["params"]["model"] == "unsupported-fixture")
++            .count();
++        assert_eq!(unsupported_requests, if managed { 2 } else { 1 });
++        app_server.shutdown().await?;
++        server.await?;
++    }
++    Ok(())
++}
+diff --git a/codex-rs/tui/src/app_server_session.rs b/codex-rs/tui/src/app_server_session.rs
+index a29cc9a..f2bfa76 100644
+--- a/codex-rs/tui/src/app_server_session.rs
++++ b/codex-rs/tui/src/app_server_session.rs
+@@ -480,6 +480,12 @@ impl AppServerSession {
+         self.remote_cwd_override.as_deref()
+     }
+ 
++    pub(crate) fn is_managed_gateway_thread(&self, thread_id: Option<ThreadId>) -> bool {
++        thread_id.is_some_and(|thread_id| {
++            self.client.managed_gateway_thread_id() == Some(thread_id.to_string().as_str())
++        })
++    }
++
+     pub(crate) fn uses_remote_workspace(&self) -> bool {
+         matches!(self.thread_params_mode, ThreadParamsMode::Remote)
+     }
+@@ -1141,7 +1147,8 @@ impl AppServerSession {
+         &mut self,
+         params: ThreadSettingsUpdateParams,
+     ) -> Result<bool> {
+-        if !self.thread_settings_update_supported {
++        let managed = self.client.managed_gateway_thread_id() == Some(params.thread_id.as_str());
++        if !managed && !self.thread_settings_update_supported {
+             return Ok(false);
+         }
+         let request_id = self.next_request_id();
+@@ -1155,7 +1162,7 @@ impl AppServerSession {
+         {
+             Ok(_) => Ok(true),
+             Err(TypedRequestError::Server { source, .. })
+-                if is_thread_settings_update_unsupported(&source) =>
++                if !managed && is_thread_settings_update_unsupported(&source) =>
+             {
+                 // Older remote app servers can reject this experimental method as
+                 // method-not-found, experimental-capability-gated, or an unknown

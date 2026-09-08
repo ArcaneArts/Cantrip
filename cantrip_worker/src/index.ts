@@ -60,6 +60,7 @@ import {
   type ManagedSessionContext,
   type McpServerConfiguration,
   type McpServerOpaqueRuntime,
+  type NativeCommandReceipt,
   type WorktreeObservationTarget,
   type WorkerCommand,
   type WorkerEvent,
@@ -121,6 +122,7 @@ import {
 import { codexAccountHome } from "./codex/account-home.js";
 import {
   CodexAppServer,
+  codexChatThreadSecurityParams,
   codexRuntimeId,
   type AgentOperationResult,
   type RuntimeSubagentDefaults,
@@ -128,6 +130,15 @@ import {
 import { ManagedSessionCoordinator } from "./codex/managed-session.js";
 import { withManagedSessionMcpServers } from "./codex/managed-session-mcp.js";
 import { ThreadObservationRegistry } from "./codex/thread-observation.js";
+import {
+  createManagedNativeGateway,
+  type ManagedNativeGateway,
+} from "./codex/managed-native-gateway.js";
+import { ManagedNativeCommandSession } from "./codex/managed-native-command-session.js";
+import { ManagedExecutionRunner } from "./codex/managed-execution-runner.js";
+import { NativeCommandClient } from "./native-command-client.js";
+import { admitManagedGuiContinuation } from "./codex/managed-gui-continuation.js";
+import { ManagedGuiPreparationRegistry } from "./codex/managed-gui-preparation.js";
 import { CodexAuthClient } from "./codex/auth-client.js";
 import { verifyCodexInstallation } from "./codex/bundled-runtime.js";
 import { discoverCodexRuntime } from "./codex/discovery.js";
@@ -1816,6 +1827,44 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     path.join(config.dataDirectory, "managed-chat-sessions"),
   );
   const threadObservations = new ThreadObservationRegistry();
+  const nativeCommands = new NativeCommandClient({
+    serverUrl: config.serverUrl,
+    workerId: config.workerId,
+    token: () => config.token,
+  });
+  const managedNativeGateways = new Set<ManagedNativeGateway>();
+  const managedExecutionRunners = new WeakMap<
+    CodexAppServer,
+    Map<string, ManagedExecutionRunner>
+  >();
+  type ManagedBindingOptions = {
+    cwd: string;
+    threadId: string;
+    model: Extract<WorkerCommand, { type: "chat.turn" }>["model"];
+    provider: RuntimeProvider;
+    permissionProfileId: string;
+  };
+  const managedRunnerConfigurations = new WeakMap<
+    ManagedExecutionRunner,
+    Omit<ManagedBindingOptions, "threadId"> & { threadId?: string | null }
+  >();
+  const managedCurrentRuntimes = new Map<string, CodexAppServer>();
+  const managedCommandSessions = new WeakMap<
+    CodexAppServer,
+    Map<
+      string,
+      {
+        chatId: string;
+        threadId: string;
+        model: Extract<WorkerCommand, { type: "chat.turn" }>["model"];
+        provider: RuntimeProvider;
+        generation: string;
+        adapter: ManagedNativeCommandSession;
+        refresh(options: ManagedBindingOptions): void;
+        gateway?: Promise<ManagedNativeGateway>;
+      }
+    >
+  >();
   const observationScope = (
     chatId: string,
     threadId: string,
@@ -1848,6 +1897,82 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         ? session.worktreeId
         : session.scratchRootId,
   });
+  let managedGuiBridgeLifetime = new AbortController();
+  const managedGuiPreparations = new ManagedGuiPreparationRegistry();
+  const managedExecutionRunnerFor = (
+    runtime: CodexAppServer,
+    session: ManagedSessionContext,
+    options: {
+      cwd: string;
+      threadId?: string | null;
+      model: Extract<WorkerCommand, { type: "chat.turn" }>["model"];
+      provider: RuntimeProvider;
+      permissionProfileId: string;
+    },
+    replace = false,
+  ) => {
+    let runners = managedExecutionRunners.get(runtime);
+    if (!runners) {
+      runners = new Map();
+      managedExecutionRunners.set(runtime, runners);
+    }
+    const key = session.chatId;
+    const previous = runners.get(key);
+    if (!replace && previous?.belongsToCurrentTransport()) {
+      return previous;
+    }
+    options = { ...options };
+    const runner = new ManagedExecutionRunner(
+      runtime,
+      options.threadId ?? null,
+      {
+        requested: async (attempt, signal) => {
+          const ownerSignal = managedGuiBridgeLifetime.signal;
+          const entry = managedCommandSessionFor(runtime, session, {
+            ...options,
+            threadId: attempt.threadId,
+          });
+          const identity = managedSessionIdentity(session);
+          await entry.adapter.admitAutonomousAttempt(
+            attempt,
+            {
+              chatId: session.chatId,
+              threadId: attempt.threadId,
+              contextKind: session.contextKind,
+              projectId: session.projectId,
+              placementId: identity.placementId,
+              runtimeGeneration: entry.generation,
+              connectionId: `autonomous:${attempt.runnerGeneration}`,
+              modelRouteId: options.model.routeId,
+              providerAccountId: options.provider.accountId ?? null,
+            },
+            AbortSignal.any([signal, ownerSignal]),
+          );
+        },
+        declined: (event) => {
+          managedCommandSessions
+            .get(runtime)
+            ?.get(`${session.chatId}:${event.threadId}`)
+            ?.adapter.declineAutonomousAttempt(event);
+        },
+        failed: (error) =>
+          workerLogger.event(
+            "error",
+            "Managed autonomous turn admission failed",
+            {
+              event: "codex.native-command.autonomous-failed",
+              subsystem: "codex",
+              operation: "admit-autonomous-turn",
+              chatId: session.chatId,
+              error: workerLogError(error),
+            },
+          ),
+      },
+    );
+    if (!replace) runners.set(key, runner);
+    managedRunnerConfigurations.set(runner, options);
+    return runner;
+  };
   const prepareManagedSession = async (
     session: ManagedSessionContext,
     options: Omit<
@@ -1888,6 +2013,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           session.computerUseEnabled,
         ),
     );
+    const runner =
+      session.contextKind === "project"
+        ? managedExecutionRunnerFor(runtime, session, options)
+        : null;
     const result = await managedSessions.prepare({
       identity: managedSessionIdentity(session),
       runtime: preparationRuntime,
@@ -1897,14 +2026,323 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         subagentDefaults,
         mcpServers: undefined,
         intent,
+        ...(runner ? { executionGate: runner.configuration } : {}),
       },
     });
+    runner?.prepared(result.threadId);
+    if (runner) {
+      Object.assign(managedRunnerConfigurations.get(runner)!, options);
+      managedCommandSessionFor(runtime, session, {
+        ...options,
+        threadId: result.threadId,
+      });
+      managedCurrentRuntimes.set(session.chatId, runtime);
+    }
     threadObservations.bind(
       observationScope(session.chatId, result.threadId, options),
       runtime,
     );
     return { ...result, runtime, subagentDefaults };
   };
+
+  const managedCommandSessionFor = (
+    runtime: CodexAppServer,
+    session: ManagedSessionContext,
+    options: ManagedBindingOptions,
+  ) => {
+    const generation = runtime.transportGeneration;
+    if (!generation)
+      throw new Error("The managed native transport is not connected.");
+    let entries = managedCommandSessions.get(runtime);
+    if (!entries) {
+      entries = new Map();
+      managedCommandSessions.set(runtime, entries);
+    }
+    const key = `${session.chatId}:${options.threadId}`;
+    const prior = entries.get(key);
+    if (prior?.generation === generation) {
+      prior.refresh(options);
+      return prior;
+    }
+    if (prior?.gateway)
+      void prior.gateway
+        .then(async (gateway) => {
+          managedNativeGateways.delete(gateway);
+          await gateway.close();
+        })
+        .catch(() => {});
+    const identity = managedSessionIdentity(session);
+    options = { ...options };
+    const policy = {
+      cwd: options.cwd,
+      codexHome: accountBackedProvider(options.provider.kind)
+        ? accountHomeFor(
+            options.provider.credentialHomeKey ?? options.provider.id,
+          )
+        : codexHome,
+      permissionProfileId: options.permissionProfileId,
+      security: {
+        ...codexChatThreadSecurityParams(
+          options.permissionProfileId,
+          true,
+          false,
+        ),
+        approvalsReviewer: "user",
+      },
+    };
+    const adapter = new ManagedNativeCommandSession({
+      identity,
+      runtime,
+      client: nativeCommands,
+      encryption: workerEncryption,
+      beforeNativeDispatch: async (method, commandSession, intent) => {
+        const runner = managedExecutionRunners
+          .get(runtime)
+          ?.get(session.chatId);
+        if (
+          runner &&
+          commandSession.threadId &&
+          commandSession.runtimeGeneration
+        )
+          await runner.beforeNativeDispatch(
+            method,
+            commandSession.threadId,
+            commandSession.runtimeGeneration,
+            intent?.resumeAutonomy === true,
+          );
+      },
+      policy,
+      onError: (error, operationId) =>
+        workerLogger.event(
+          "error",
+          "Managed native operation publication failed",
+          {
+            event: "codex.native-command.publication-failed",
+            subsystem: "codex",
+            operation: "publish-native-command",
+            operationId,
+            error: workerLogError(error),
+          },
+        ),
+      beginExecution: async (grant, commandSession) => {
+        const execution = grant.execution;
+        if (
+          !execution ||
+          execution.cwd !== options.cwd ||
+          execution.modelRouteId !== options.model.routeId ||
+          execution.providerAccountId !== (options.provider.accountId ?? null)
+        ) {
+          throw new Error(
+            "The admitted execution requires its current managed runtime configuration.",
+          );
+        }
+        const sealer = new EncryptedChatEventSealer(
+          workerEncryption,
+          session.chatId,
+          { explanation: null, steps: [], question: null },
+        );
+        let publication: Promise<void> = Promise.resolve();
+        let publicationFailure: unknown;
+        let releaseCua: (() => Promise<void>) | null = null;
+        const emit = async (
+          event: Parameters<NativeCommandClient["event"]>[0]["event"],
+        ) => {
+          await nativeCommands.event({
+            operationId: grant.receipt.operationId,
+            operationGeneration: grant.receipt.operationGeneration,
+            event,
+          });
+        };
+        const enqueue = (build: () => Promise<Parameters<typeof emit>[0]>) => {
+          const pending = publication.then(async () => emit(await build()));
+          publication = pending.catch((error: unknown) => {
+            publicationFailure ??= error;
+          });
+          return pending;
+        };
+        const queue = (build: () => Promise<Parameters<typeof emit>[0]>) => {
+          void enqueue(build).catch(() => {});
+        };
+        const release = async () => {
+          const cleanup = releaseCua;
+          releaseCua = null;
+          await cleanup?.();
+          await publication;
+          if (publicationFailure) throw publicationFailure;
+        };
+        if (grant.computerUseAuthority && grant.receipt.executionLaneId) {
+          releaseCua = computerUseAgents.register({
+            initialAuthority: grant.computerUseAuthority,
+            ownerId: identity.ownerId,
+            serverId: identity.serverId,
+            workerId: identity.workerId,
+            chatId: session.chatId,
+            projectId: session.projectId,
+            contextKind: session.contextKind,
+            placementId: identity.placementId,
+            executionLaneId: grant.receipt.executionLaneId,
+            taskId: null,
+            rootThreadId: options.threadId,
+            ownsThread: (childThreadId) =>
+              runtime.ownsComputerUseThread(options.threadId, childThreadId),
+            resolve: (input) => runtime.resolveComputerUseExecution(input),
+            publish: (event) => enqueue(async () => event),
+            publishActivity: (activity) =>
+              queue(() => sealer.activity(activity)),
+          });
+        }
+        cliBroker.bindCodexThread(options.threadId, {
+          chatId: session.chatId,
+          executionLaneId: grant.receipt.executionLaneId!,
+        });
+        return {
+          options: {
+            chatId: session.chatId,
+            cwd: options.cwd,
+            model: options.model,
+            provider: options.provider,
+            captureProtectedDiagnostics: true,
+            onActivity: (activity) => queue(() => sealer.activity(activity)),
+            onMessage: (message) => queue(() => sealer.message(message)),
+            onCheckpoint: (checkpoint) =>
+              queue(() => sealer.checkpoint(checkpoint)),
+            onPlan: (plan) => queue(() => sealer.plan(plan)),
+            onPlanQuestion: (question) =>
+              queue(() => sealer.planQuestion(question)),
+            onPlanQuestionResolved: (questionId) =>
+              queue(() => sealer.planQuestionResolved(questionId)),
+            onInteractionRequest: (request) =>
+              queue(async () => ({
+                type: "agent.interaction.requested.protected",
+                request: await protectAgentInteractionRequest({
+                  request,
+                  service: workerEncryption,
+                }),
+              })),
+            onInteractionCleared: (requestKey) =>
+              queue(async () => ({
+                type: "agent.interaction.cleared",
+                requestKey,
+              })),
+            onInteractionExpired: (requestKey) =>
+              queue(async () => ({
+                type: "agent.interaction.expired",
+                requestKey,
+              })),
+            onNativeInteractionRequest: async (request) => {
+              await nativeCommands.pending({
+                session: commandSession,
+                activationGeneration: grant.receipt.activationGeneration!,
+                nativeRequestId: `${typeof request.requestId}:${request.requestId}`,
+                requestMethod: request.requestMethod,
+                turnId: request.turnId,
+              });
+            },
+          },
+          complete: async () => release(),
+          failed: async () => release(),
+          release,
+        };
+      },
+    });
+    const entry: {
+      chatId: string;
+      threadId: string;
+      model: Extract<WorkerCommand, { type: "chat.turn" }>["model"];
+      provider: RuntimeProvider;
+      generation: string;
+      adapter: ManagedNativeCommandSession;
+      gateway?: Promise<ManagedNativeGateway>;
+      refresh(next: ManagedBindingOptions): void;
+    } = {
+      generation,
+      adapter,
+      chatId: session.chatId,
+      threadId: options.threadId,
+      model: options.model,
+      provider: options.provider,
+      refresh(next) {
+        Object.assign(options, next);
+        entry.model = next.model;
+        entry.provider = next.provider;
+        policy.cwd = next.cwd;
+        policy.codexHome = accountBackedProvider(next.provider.kind)
+          ? accountHomeFor(next.provider.credentialHomeKey ?? next.provider.id)
+          : codexHome;
+        policy.permissionProfileId = next.permissionProfileId;
+        policy.security = {
+          ...codexChatThreadSecurityParams(
+            next.permissionProfileId,
+            true,
+            false,
+          ),
+          approvalsReviewer: "user",
+        };
+      },
+    };
+    runtime.setManagedNativeCommandDispatcher(options.threadId, (command) =>
+      adapter.executeGuiCommand(
+        {
+          chatId: identity.chatId,
+          threadId: options.threadId,
+          contextKind: identity.contextKind,
+          projectId: identity.projectId,
+          placementId: identity.placementId,
+          runtimeGeneration: generation,
+          connectionId: `gui-control:${generation}`,
+          modelRouteId: options.model.routeId,
+          providerAccountId: options.provider.accountId ?? null,
+        },
+        command,
+      ),
+    );
+    entries.set(key, entry);
+    return entry;
+  };
+
+  const currentManagedRuntime = (chatId: string, threadId: string | null) => {
+    const runtime = managedCurrentRuntimes.get(chatId);
+    if (!runtime || !threadId) return undefined;
+    const entry = managedCommandSessions
+      .get(runtime)
+      ?.get(`${chatId}:${threadId}`);
+    return entry?.generation === runtime.transportGeneration
+      ? runtime
+      : undefined;
+  };
+
+  const prepareManagedMutation = async (
+    command: {
+      session?: ManagedSessionContext;
+      cwd: string;
+      threadId: string | null;
+      model: Extract<WorkerCommand, { type: "chat.turn" }>["model"];
+      permissionProfileId: string;
+      subagentDefaults?: Extract<
+        WorkerCommand,
+        { type: "chat.thread.ensure" }
+      >["subagentDefaults"];
+      mcpServers?: McpServerOpaqueRuntime[];
+      planMode?: "default" | "plan";
+    },
+    provider: RuntimeProvider,
+  ) =>
+    command.session
+      ? prepareManagedSession(
+          command.session,
+          {
+            cwd: command.cwd,
+            threadId: command.threadId,
+            model: command.model,
+            provider,
+            permissionProfileId: command.permissionProfileId,
+            subagentDefaults: command.subagentDefaults,
+            mcpServers: command.mcpServers,
+            planMode: command.planMode ?? "default",
+          },
+          "preserve",
+        )
+      : null;
 
   const catalogRuntimeFor = (credentialHomeKey: string) => {
     let runtime = codexCatalogRuntimes.get(credentialHomeKey);
@@ -4707,6 +5145,56 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                 threadId: command.launch.threadId,
               });
             }
+            const upstreamUrl = await runtime.remoteEndpoint(
+              command.launch.model,
+              provider(),
+              {
+                subagentDefaults: prepared?.subagentDefaults ?? null,
+                executionProfile:
+                  command.launch.session?.contextKind === "standalone"
+                    ? "standalone-chat"
+                    : "ide",
+              },
+            );
+            let remoteUrl = upstreamUrl;
+            if (command.launch.session && prepared) {
+              const managed = managedCommandSessionFor(
+                runtime,
+                command.launch.session,
+                {
+                  cwd,
+                  threadId: prepared.threadId,
+                  model: command.launch.model,
+                  provider: provider(),
+                  permissionProfileId:
+                    command.launch.permissionProfileId ?? ":workspace",
+                },
+              );
+              managed.gateway ??= createManagedNativeGateway({
+                identity: {
+                  ...managedSessionIdentity(command.launch.session),
+                  threadId: prepared.threadId,
+                  runtimeGeneration: managed.generation,
+                  modelRouteId: command.launch.model.routeId,
+                  providerAccountId: provider().accountId ?? null,
+                },
+                upstreamUrl,
+                isCurrent: () =>
+                  runtime.transportGeneration === managed.generation,
+                admit: (operation) => managed.adapter.admit(operation),
+                resolveReply: (operation, frame) =>
+                  managed.adapter.resolveReply(operation, frame),
+              }).then((gateway) => {
+                managedNativeGateways.add(gateway);
+                return gateway;
+              });
+              try {
+                remoteUrl = (await managed.gateway).url;
+              } catch (error) {
+                managed.gateway = undefined;
+                throw error;
+              }
+            }
             const result = await terminals.open(
               command.terminalId,
               command.attachmentId,
@@ -4722,17 +5210,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                     )
                   : codexHome,
                 provider: provider(),
-                remoteUrl: await runtime.remoteEndpoint(
-                  command.launch.model,
-                  provider(),
-                  {
-                    subagentDefaults: prepared?.subagentDefaults ?? null,
-                    executionProfile:
-                      command.launch.session?.contextKind === "standalone"
-                        ? "standalone-chat"
-                        : "ide",
-                  },
-                ),
+                remoteUrl,
               },
               protectedEmit,
             );
@@ -5021,6 +5499,13 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           },
         });
       case "chat.turn": {
+        const preparationSignal = command.nativeCommandReceipt
+          ? managedGuiPreparations.signal(
+              command.chatId,
+              command.nativeCommandReceipt,
+            )
+          : undefined;
+        preparationSignal?.throwIfAborted();
         const standalone = command.executionProfile === "standalone-chat";
         if (
           standalone &&
@@ -5223,6 +5708,22 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           resultMode: AgentTurnResultMode,
         ) => {
           let observation: InferenceProgressObservation | null = null;
+          const nativeCommandState: {
+            receipt: NativeCommandReceipt | undefined;
+            prompt: string;
+            authority: typeof command.computerUseAuthority;
+            entry: ReturnType<typeof managedCommandSessionFor> | null;
+            dispatch:
+              Parameters<ManagedNativeCommandSession["dispatchGui"]>[1] | null;
+          } = {
+            receipt: command.nativeCommandReceipt,
+            prompt,
+            authority: command.computerUseAuthority,
+            entry: null,
+            dispatch: null,
+          };
+          const guiAdapters = new Set<ManagedNativeCommandSession>();
+          const guiBridgeSignal = managedGuiBridgeLifetime.signal;
           const computerUseRegistration: {
             release: (() => Promise<void>) | null;
             root: string | null;
@@ -5282,6 +5783,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           }
           try {
             const turnOptions: Parameters<typeof runtime.runTurn>[0] = {
+              preparationSignal: preparationSignal
+                ? AbortSignal.any([preparationSignal, guiBridgeSignal])
+                : undefined,
+              operationGeneration:
+                command.nativeCommandReceipt?.operationGeneration,
               automationPaused: pausedChats.has(command.chatId),
               attachments: openedAttachments.map((attachment) => ({
                 ...attachment,
@@ -5320,6 +5826,99 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               threadId: command.threadId,
               worktreeMode: command.worktreeMode,
               worktreePolicy: command.worktreePolicy,
+              onBeforeNativeDispatch: command.nativeCommandReceipt
+                ? async (threadId) => {
+                    const session: ManagedSessionContext =
+                      command.contextKind === "project"
+                        ? {
+                            contextKind: "project",
+                            chatId: command.chatId,
+                            projectId: command.policyProjectId!,
+                            worktreeId: command.worktreeId!,
+                            rootKind: command.rootKind!,
+                            scratchRootId: null,
+                            computerUseEnabled: Boolean(
+                              command.computerUseAuthority,
+                            ),
+                          }
+                        : {
+                            contextKind: "standalone",
+                            chatId: command.chatId,
+                            projectId: null,
+                            worktreeId: null,
+                            rootKind: null,
+                            scratchRootId: command.scratchRootId!,
+                            computerUseEnabled: Boolean(
+                              command.computerUseAuthority,
+                            ),
+                          };
+                    nativeCommandState.entry = managedCommandSessionFor(
+                      runtime,
+                      session,
+                      {
+                        cwd: command.cwd,
+                        threadId,
+                        model: command.model,
+                        provider: provider(),
+                        permissionProfileId: command.permissionProfileId,
+                      },
+                    );
+                    const identity = managedSessionIdentity(session);
+                    nativeCommandState.dispatch = {
+                      chatId: identity.chatId,
+                      threadId,
+                      contextKind: identity.contextKind,
+                      projectId: identity.projectId,
+                      placementId: identity.placementId,
+                      runtimeGeneration: nativeCommandState.entry.generation,
+                      connectionId: `gui:${command.nativeCommandReceipt!.operationGeneration}`,
+                      modelRouteId: command.model.routeId,
+                      providerAccountId: provider().accountId ?? null,
+                    };
+                    guiAdapters.add(nativeCommandState.entry.adapter);
+                    await nativeCommandState.entry.adapter.dispatchGui(
+                      nativeCommandState.receipt!,
+                      nativeCommandState.dispatch,
+                      command.nativeCommandReceipt!,
+                      guiBridgeSignal,
+                    );
+                  }
+                : undefined,
+              onNativeReceipt: command.nativeCommandReceipt
+                ? async (receipt) => {
+                    if (
+                      !nativeCommandState.entry ||
+                      !nativeCommandState.dispatch
+                    )
+                      throw new Error(
+                        "The GUI native dispatch identity is missing.",
+                      );
+                    await nativeCommandState.entry.adapter.guiReceipt(
+                      nativeCommandState.receipt!,
+                      nativeCommandState.dispatch,
+                      receipt,
+                    );
+                  }
+                : undefined,
+              onNativeInteractionRequest: command.nativeCommandReceipt
+                ? async (request) => {
+                    if (
+                      !nativeCommandState.dispatch ||
+                      !nativeCommandState.receipt!.activationGeneration
+                    )
+                      throw new Error(
+                        "The GUI native interaction identity is missing.",
+                      );
+                    await nativeCommands.pending({
+                      session: nativeCommandState.dispatch,
+                      activationGeneration:
+                        nativeCommandState.receipt!.activationGeneration,
+                      nativeRequestId: `${typeof request.requestId}:${request.requestId}`,
+                      requestMethod: request.requestMethod,
+                      turnId: request.turnId,
+                    });
+                  }
+                : undefined,
               ...(encryptedTaskOperation && !directTaskOperation
                 ? encryptedTaskSealer
                   ? {
@@ -5455,14 +6054,14 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               onThreadLoaded: (threadId) => {
                 if (
                   computerUseRegistration.root !== threadId &&
-                  command.computerUseAuthority &&
+                  nativeCommandState.authority &&
                   (encryptedChat || encryptedTask) &&
                   (!encryptedTaskOperation || directTaskOperation)
                 ) {
                   void computerUseRegistration.release?.().catch(() => {});
                   computerUseRegistration.root = threadId;
                   computerUseRegistration.release = computerUseAgents.register({
-                    initialAuthority: command.computerUseAuthority,
+                    initialAuthority: nativeCommandState.authority,
                     ownerId: workerEncryption.ownerId(),
                     serverId: workerEncryption.serverIdentity(),
                     workerId: config.workerId,
@@ -5498,43 +6097,242 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                 });
               },
             };
+            if (command.nativeCommandReceipt) {
+              const rootReceipt = command.nativeCommandReceipt;
+              turnOptions.onBeforeRetry = async (retry) => {
+                retry = {
+                  ...retry,
+                  signal: AbortSignal.any([retry.signal, guiBridgeSignal]),
+                };
+                retry.signal.throwIfAborted();
+                const previous = nativeCommandState.receipt!;
+                if (!retry.threadId) throw retry.error;
+                await computerUseRegistration.release?.();
+                computerUseRegistration.release = null;
+                computerUseRegistration.root = null;
+                const session: ManagedSessionContext = {
+                  contextKind: "project",
+                  chatId: command.chatId,
+                  computerUseEnabled: Boolean(command.computerUseAuthority),
+                  projectId: command.policyProjectId!,
+                  worktreeId: command.worktreeId!,
+                  rootKind: command.rootKind!,
+                  scratchRootId: null,
+                };
+                let nextPrompt = nativeCommandState.prompt;
+                if (
+                  retry.reason === "invalid-compaction" &&
+                  command.protectedPrompt
+                )
+                  nextPrompt = await openEncryptedChatTurn({
+                    history: command.protectedHistory,
+                    prompt: command.protectedPrompt,
+                    service: workerEncryption,
+                    threadId: null,
+                  });
+                let replacementRunner: ManagedExecutionRunner | null = null;
+                const admit = async (threadId: string) => {
+                  const entry = managedCommandSessionFor(runtime, session, {
+                    cwd: command.cwd,
+                    threadId,
+                    model: command.model,
+                    provider: provider(),
+                    permissionProfileId: command.permissionProfileId,
+                  });
+                  const identity = managedSessionIdentity(session);
+                  const dispatch = {
+                    chatId: identity.chatId,
+                    threadId,
+                    contextKind: identity.contextKind,
+                    projectId: identity.projectId,
+                    placementId: identity.placementId,
+                    runtimeGeneration: entry.generation,
+                    connectionId: `gui:${rootReceipt.operationGeneration}`,
+                    modelRouteId: command.model.routeId,
+                    providerAccountId: provider().accountId ?? null,
+                  };
+                  await admitManagedGuiContinuation({
+                    client: nativeCommands,
+                    encryption: workerEncryption,
+                    root: rootReceipt,
+                    previous,
+                    session: dispatch,
+                    retry,
+                    payload: {
+                      kind: "gui-continuation",
+                      prompt: nextPrompt,
+                      attachments: turnOptions.attachments,
+                      model: turnOptions.model,
+                      permissionProfileId: turnOptions.permissionProfileId,
+                      planMode: turnOptions.planMode,
+                    },
+                    ...(retry.reason === "invalid-compaction"
+                      ? {
+                          handoff: {
+                            expectedThreadId: retry.threadId!,
+                            replacementThreadId: threadId,
+                          },
+                        }
+                      : {}),
+                    onAdmitted: (grant) => {
+                      nativeCommandState.receipt = grant.receipt;
+                      nativeCommandState.prompt = nextPrompt;
+                      nativeCommandState.authority =
+                        grant.computerUseAuthority ?? undefined;
+                      if (
+                        grant.receipt.status !== "accepted" ||
+                        !grant.execution
+                      )
+                        return;
+                      entry.adapter.adoptGuiContinuation(
+                        nativeCommandState.entry === entry
+                          ? previous.operationGeneration
+                          : null,
+                        grant.receipt,
+                        dispatch,
+                        rootReceipt,
+                        guiBridgeSignal,
+                      );
+                      nativeCommandState.entry = entry;
+                      nativeCommandState.dispatch = dispatch;
+                      guiAdapters.add(entry.adapter);
+                      if (replacementRunner)
+                        managedExecutionRunners
+                          .get(runtime)!
+                          .set(session.chatId, replacementRunner);
+                    },
+                  });
+                };
+                let threadId = retry.threadId;
+                if (retry.reason === "invalid-compaction") {
+                  const runner = managedExecutionRunnerFor(
+                    runtime,
+                    session,
+                    {
+                      cwd: command.cwd,
+                      threadId: null,
+                      model: command.model,
+                      provider: provider(),
+                      permissionProfileId: command.permissionProfileId,
+                    },
+                    true,
+                  );
+                  replacementRunner = runner;
+                  const prepared = await managedSessions.replace(
+                    {
+                      identity: managedSessionIdentity(session),
+                      runtime,
+                      configuration: {
+                        cwd: command.cwd,
+                        threadId: retry.threadId,
+                        model: command.model,
+                        provider: provider(),
+                        permissionProfileId: command.permissionProfileId,
+                        executionProfile: command.executionProfile,
+                        subagentDefaults,
+                        mcpServers: resolvedMcpServers,
+                        planMode: command.planMode,
+                        intent: "configure",
+                        executionGate: runner.configuration,
+                      },
+                      onPrepared: async (replacementThreadId) => {
+                        runner.prepared(replacementThreadId);
+                        await admit(replacementThreadId);
+                      },
+                    },
+                    retry.threadId,
+                  );
+                  threadId = prepared.threadId;
+                  Object.assign(managedRunnerConfigurations.get(runner)!, {
+                    threadId,
+                  });
+                  managedCurrentRuntimes.set(session.chatId, runtime);
+                  threadObservations.bind(
+                    observationScope(command.chatId, threadId, turnOptions),
+                    runtime,
+                  );
+                } else {
+                  await admit(threadId);
+                }
+                return {
+                  operationGeneration:
+                    nativeCommandState.receipt!.operationGeneration,
+                  threadId,
+                  prompt: nextPrompt,
+                };
+              };
+            }
             // Preparation is shared with console creation, but the queue is
             // released before model execution so it cannot block Stop/replies.
             if (encryptedChat && !standalone) {
-              const session: ManagedSessionContext = {
-                contextKind: "project",
-                chatId: command.chatId,
-                computerUseEnabled: Boolean(command.computerUseAuthority),
-                projectId: command.policyProjectId!,
-                worktreeId: command.worktreeId!,
-                rootKind: command.rootKind!,
-                scratchRootId: null,
+              turnOptions.onBeforeFirstAttempt = async (signal) => {
+                signal = AbortSignal.any([signal, guiBridgeSignal]);
+                signal.throwIfAborted();
+                const session: ManagedSessionContext = {
+                  contextKind: "project",
+                  chatId: command.chatId,
+                  computerUseEnabled: Boolean(command.computerUseAuthority),
+                  projectId: command.policyProjectId!,
+                  worktreeId: command.worktreeId!,
+                  rootKind: command.rootKind!,
+                  scratchRootId: null,
+                };
+                const runner = command.nativeCommandReceipt
+                  ? managedExecutionRunnerFor(runtime, session, {
+                      cwd: command.cwd,
+                      threadId: command.threadId,
+                      model: command.model,
+                      provider: provider(),
+                      permissionProfileId: command.permissionProfileId,
+                    })
+                  : null;
+                const prepared = await managedSessions.prepare({
+                  identity: managedSessionIdentity(session),
+                  runtime,
+                  configuration: {
+                    cwd: command.cwd,
+                    threadId: command.threadId,
+                    model: command.model,
+                    provider: provider(),
+                    permissionProfileId: command.permissionProfileId,
+                    executionProfile: command.executionProfile,
+                    subagentDefaults,
+                    mcpServers: resolvedMcpServers,
+                    planMode: command.planMode,
+                    intent: "configure",
+                    ...(runner ? { executionGate: runner.configuration } : {}),
+                  },
+                });
+                signal.throwIfAborted();
+                runner?.prepared(prepared.threadId);
+                if (runner) {
+                  Object.assign(managedRunnerConfigurations.get(runner)!, {
+                    cwd: command.cwd,
+                    threadId: prepared.threadId,
+                    model: command.model,
+                    provider: provider(),
+                    permissionProfileId: command.permissionProfileId,
+                  });
+                  managedCommandSessionFor(runtime, session, {
+                    cwd: command.cwd,
+                    threadId: prepared.threadId,
+                    model: command.model,
+                    provider: provider(),
+                    permissionProfileId: command.permissionProfileId,
+                  });
+                  managedCurrentRuntimes.set(session.chatId, runtime);
+                }
+
+                threadObservations.bind(
+                  observationScope(
+                    command.chatId,
+                    prepared.threadId,
+                    turnOptions,
+                  ),
+                  runtime,
+                );
+                return { threadId: prepared.threadId };
               };
-              const prepared = await managedSessions.prepare({
-                identity: managedSessionIdentity(session),
-                runtime,
-                configuration: {
-                  cwd: command.cwd,
-                  threadId: command.threadId,
-                  model: command.model,
-                  provider: provider(),
-                  permissionProfileId: command.permissionProfileId,
-                  executionProfile: command.executionProfile,
-                  subagentDefaults,
-                  mcpServers: resolvedMcpServers,
-                  planMode: command.planMode,
-                  intent: "configure",
-                },
-              });
-              turnOptions.threadId = prepared.threadId;
-              threadObservations.bind(
-                observationScope(
-                  command.chatId,
-                  prepared.threadId,
-                  turnOptions,
-                ),
-                runtime,
-              );
             }
             return await finalizeCuaAgentTurn(
               () => runtime.runTurn(turnOptions),
@@ -5544,6 +6342,12 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               () => protectedEventQueue,
             );
           } finally {
+            if (command.nativeCommandReceipt)
+              for (const adapter of guiAdapters)
+                adapter.markGuiFinished(
+                  command.nativeCommandReceipt.operationId,
+                  command.nativeCommandReceipt.operationGeneration,
+                );
             try {
               await observation?.close();
             } catch (error) {
@@ -5616,6 +6420,108 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         }
         return runTurn(command.prompt!, command.resultMode);
       }
+      case "chat.native-logical.cancel": {
+        managedGuiPreparations.cancel(command.chatId, {
+          operationId: command.rootOperationId,
+          operationGeneration: command.rootOperationGeneration,
+        });
+        return {};
+      }
+      case "chat.native-logical.complete": {
+        managedGuiPreparations.complete(command.chatId, {
+          operationId: command.rootOperationId,
+          operationGeneration: command.rootOperationGeneration,
+        });
+        for (const runtime of codexRuntimes.values())
+          for (const entry of managedCommandSessions.get(runtime)?.values() ??
+            [])
+            if (entry.chatId === command.chatId)
+              entry.adapter.completeGuiLogical(
+                command.rootOperationId,
+                command.rootOperationGeneration,
+              );
+        return {};
+      }
+      case "chat.native-control": {
+        const matches = [...codexRuntimes.values()].flatMap((runtime) =>
+          [...(managedCommandSessions.get(runtime)?.values() ?? [])]
+            .filter(
+              (entry) =>
+                entry.chatId === command.chatId &&
+                (!command.threadId || entry.threadId === command.threadId) &&
+                runtime.transportGeneration === entry.generation &&
+                (command.nativeRuntimeGeneration === null
+                  ? managedCurrentRuntimes.get(command.chatId) === runtime
+                  : entry.generation === command.nativeRuntimeGeneration) &&
+                entry.adapter.currentActivationGeneration ===
+                  command.nativeActivationGeneration &&
+                (entry.model.routeId ?? null) === command.modelRouteId &&
+                (entry.provider.accountId ?? null) ===
+                  command.providerAccountId,
+            )
+            .map((entry) => ({ runtime, entry })),
+        );
+        if (matches.length !== 1)
+          throw new Error(
+            "The native control does not identify one connected managed session.",
+          );
+        const { runtime, entry } = matches[0]!;
+        return entry.adapter.withExpectedActivationGeneration(
+          command.nativeActivationGeneration,
+          async () => {
+            const control = command.control;
+            if (control.kind === "interrupt")
+              return runtime.interruptChat(command.chatId, entry.threadId);
+            if (control.kind === "pause") {
+              const active = await runtime.setActiveChatPaused(
+                command.chatId,
+                control.paused,
+              );
+              if (control.paused) pausedChats.add(command.chatId);
+              else pausedChats.delete(command.chatId);
+              return { paused: control.paused, active };
+            }
+            if (control.kind === "reply") {
+              const response = control.protectedResponse
+                ? await openAgentInteractionResponse({
+                    requestKey: control.requestKey,
+                    response: control.protectedResponse,
+                    service: workerEncryption,
+                  })
+                : control.response!;
+              return runtime.answerAgentInteraction(
+                control.requestKey,
+                response,
+              );
+            }
+            const prompt = await openEncryptedChatTurn({
+              history: [],
+              prompt: control.protectedPrompt,
+              service: workerEncryption,
+              threadId: entry.threadId,
+            });
+            const opened = await openWorkerAttachments(
+              control.attachments,
+              workerEncryption,
+            );
+            return runtime.steerThread(
+              command.chatId,
+              entry.threadId,
+              prompt,
+              opened.map((attachment) => ({
+                ...attachment,
+                path: attachments.resolve(
+                  command.chatId,
+                  attachment.id,
+                  attachment.fileName,
+                ),
+              })),
+              entry.model,
+              entry.provider,
+            );
+          },
+        );
+      }
       case "chat.pause.set": {
         const previouslyPaused = pausedChats.has(command.chatId);
         try {
@@ -5647,19 +6553,25 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           throw error;
         }
       }
-      case "chat.compact":
-        return runtimeFor({
-          executionProfile: command.executionProfile,
-          model: command.model,
-          provider: provider(),
-        }).compactThread({
+      case "chat.compact": {
+        const prepared = await prepareManagedMutation(command, provider());
+        return (
+          prepared?.runtime ??
+          currentManagedRuntime(command.chatId, command.threadId) ??
+          runtimeFor({
+            executionProfile: command.executionProfile,
+            model: command.model,
+            provider: provider(),
+          })
+        ).compactThread({
           cwd: command.cwd,
           executionProfile: command.executionProfile,
           model: command.model,
           permissionProfileId: command.permissionProfileId,
           provider: provider(),
-          threadId: command.threadId,
+          threadId: prepared?.threadId ?? command.threadId,
         });
+      }
       case "chat.interrupt":
         computerUseAgents.cancelChat(command.chatId);
         computerUsePreviews.cancelChat(command.chatId);
@@ -5690,25 +6602,69 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return computerUsePreviews.execute(command, async (event) =>
           emit(event),
         );
-      case "chat.turn.rollback":
-        return runtimeFor({
-          executionProfile: command.executionProfile,
-          model: command.model,
-          provider: provider(),
-        }).rollbackLatestChatTurn({
-          clientMessageId: command.clientMessageId,
+      case "chat.turn.rollback": {
+        const prepared = await prepareManagedMutation(command, provider());
+        const runtime =
+          prepared?.runtime ??
+          currentManagedRuntime(command.chatId, command.threadId) ??
+          runtimeFor({
+            executionProfile: command.executionProfile,
+            model: command.model,
+            provider: provider(),
+          });
+        const threadId = prepared?.threadId ?? command.threadId;
+        const rollback = () =>
+          runtime.rollbackLatestChatTurn({
+            clientMessageId: command.clientMessageId,
+            cwd: command.cwd,
+            executionProfile: command.executionProfile,
+            model: command.model,
+            permissionProfileId: command.permissionProfileId,
+            provider: provider(),
+            threadId,
+          });
+        if (!command.nativeCommandReceipt || !command.session)
+          return rollback();
+        const entry = managedCommandSessionFor(runtime, command.session, {
           cwd: command.cwd,
-          executionProfile: command.executionProfile,
+          threadId,
           model: command.model,
+          provider: provider(),
           permissionProfileId: command.permissionProfileId,
-          provider: provider(),
-          threadId: command.threadId,
         });
+        const identity = managedSessionIdentity(command.session);
+        return entry.adapter.withGuiPreparation(
+          command.nativeCommandReceipt,
+          {
+            chatId: command.chatId,
+            threadId,
+            contextKind: command.session.contextKind,
+            projectId: command.session.projectId,
+            placementId: identity.placementId,
+            runtimeGeneration: entry.generation,
+            connectionId: `gui:${command.nativeCommandReceipt.operationGeneration}`,
+            modelRouteId: command.model.routeId,
+            providerAccountId: provider().accountId ?? null,
+          },
+          rollback,
+        );
+      }
+      case "chat.automation.resume": {
+        const prepared = await prepareManagedMutation(command, provider());
+        if (!prepared)
+          throw new Error("Managed automation has no prepared session.");
+        return prepared.runtime.resumeManagedAutomation({
+          threadId: prepared.threadId,
+        });
+      }
       case "chat.goal.get": {
-        const result = await runtimeFor({
-          model: command.model,
-          provider: provider(),
-        }).getGoal({
+        const result = await (
+          currentManagedRuntime(command.chatId, command.threadId) ??
+          runtimeFor({
+            model: command.model,
+            provider: provider(),
+          })
+        ).getGoal({
           cwd: command.cwd,
           model: command.model,
           permissionProfileId: command.permissionProfileId,
@@ -5739,16 +6695,22 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                 ownerId: workerEncryption.ownerId(),
                 threadId: command.threadId,
               });
-        const result = await runtimeFor({
-          model: command.model,
-          provider: provider(),
-        }).createGoal({
+        const prepared = await prepareManagedMutation(command, provider());
+        const result = await (
+          prepared?.runtime ??
+          currentManagedRuntime(command.chatId, command.threadId) ??
+          runtimeFor({
+            model: command.model,
+            provider: provider(),
+          })
+        ).createGoal({
+          operationId: command.operationId,
           cwd: command.cwd,
           model: command.model,
           objective,
           permissionProfileId: command.permissionProfileId,
           provider: provider(),
-          threadId: command.threadId,
+          threadId: prepared?.threadId ?? command.threadId,
           tokenBudget: command.tokenBudget,
         });
         return encryptedTaskGoal
@@ -5763,16 +6725,21 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           : result;
       }
       case "chat.goal.update": {
-        const result = await runtimeFor({
-          model: command.model,
-          provider: provider(),
-        }).updateGoal({
+        const prepared = await prepareManagedMutation(command, provider());
+        const result = await (
+          prepared?.runtime ??
+          currentManagedRuntime(command.chatId, command.threadId) ??
+          runtimeFor({
+            model: command.model,
+            provider: provider(),
+          })
+        ).updateGoal({
           cwd: command.cwd,
           model: command.model,
           permissionProfileId: command.permissionProfileId,
           provider: provider(),
           status: command.status,
-          threadId: command.threadId,
+          threadId: prepared?.threadId ?? command.threadId,
         });
         return command.taskContext
           ? protectTaskGoalResult({
@@ -5785,17 +6752,23 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             })
           : result;
       }
-      case "chat.goal.clear":
-        return runtimeFor({
-          model: command.model,
-          provider: provider(),
-        }).clearGoal({
+      case "chat.goal.clear": {
+        const prepared = await prepareManagedMutation(command, provider());
+        return (
+          prepared?.runtime ??
+          currentManagedRuntime(command.chatId, command.threadId) ??
+          runtimeFor({
+            model: command.model,
+            provider: provider(),
+          })
+        ).clearGoal({
           cwd: command.cwd,
           model: command.model,
           permissionProfileId: command.permissionProfileId,
           provider: provider(),
-          threadId: command.threadId,
+          threadId: prepared?.threadId ?? command.threadId,
         });
+      }
       case "chat.thread.ensure":
         if (command.session) {
           const { threadId } = await prepareManagedSession(
@@ -6038,6 +7011,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     () => {
       // WorkerConnection retains already-authorized transport state during its
       // bounded reconnect grace and invokes this only on terminal loss.
+      managedGuiBridgeLifetime.abort(
+        new Error("The managed worker connection was lost."),
+      );
+      managedGuiPreparations.disconnect();
       tunnelDestinations.disconnect();
       directBroker.revokeAll();
       void workerLinkGateway.revokeAll("endpoint-disconnected");
@@ -6049,6 +7026,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     },
     undefined,
     (serverControlPlaneGeneration) => {
+      if (managedGuiBridgeLifetime.signal.aborted)
+        managedGuiBridgeLifetime = new AbortController();
       if (serverControlPlaneGeneration) {
         codeDirectEndpoints.synchronizeControlPlaneGeneration(
           serverControlPlaneGeneration,
@@ -6332,6 +7311,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     for (const client of grokAuthClients.values()) client.close();
     for (const client of serverManagedGrokClients.values()) client.close();
     terminals.closeAll();
+    await Promise.allSettled(
+      [...managedNativeGateways].map((gateway) => gateway.close()),
+    );
+    managedNativeGateways.clear();
     tunnelDestinations.close();
     await projectShares.closeAll();
     await code.close();

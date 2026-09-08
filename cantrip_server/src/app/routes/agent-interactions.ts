@@ -30,6 +30,7 @@ export interface AgentInteractionRouteDependencies {
   bridge: Pick<WorkerCommandBus, "isConnected" | "request">;
   repository: Pick<
     ServerRepository,
+    | "nativeCommands"
     | "listAgentInteractionRequests"
     | "getAgentInteractionRequest"
     | "validateEncryptedAgentInteractionResolution"
@@ -154,10 +155,11 @@ export function installAgentInteractionRoutes(
             error: "The interaction is not associated with an active chat.",
           });
         }
-        const context = await repository.getChatExecutionContext(
+        const control = await repository.nativeCommands.controlContext(
           applicationOwnerId(),
           existing.provenance.chatId,
         );
+        const context = control.context;
         if (
           !context ||
           context.workerId !== existing.provenance.workerId ||
@@ -170,8 +172,10 @@ export function installAgentInteractionRoutes(
         if (!bridge.isConnected(context.workerId)) {
           return reply.code(503).send({ error: "Project worker is offline." });
         }
-        const runtime = await runtimeForContext(context);
-        if (!runtime) {
+        const runtime = control.activationGeneration
+          ? null
+          : await runtimeForContext(context);
+        if (!control.activationGeneration && !runtime) {
           return reply
             .code(409)
             .send({ error: "Selected model was not found." });
@@ -180,32 +184,55 @@ export function installAgentInteractionRoutes(
           agentInteractionAcceptedSchema.parse(
             await bridge.request(
               context.workerId,
-              protectedInput
+              control.activationGeneration
                 ? {
-                    type: "agent.interaction.respond.protected",
-                    executionProfile:
-                      context.contextKind === "standalone"
-                        ? "standalone-chat"
-                        : "ide",
-                    requestKey: existing.requestKey,
-                    response: {
-                      classification: protectedInput.classification,
-                      protectedResponse: protectedInput.protectedResponse,
+                    type: "chat.native-control",
+                    chatId: context.chatId,
+                    threadId: context.threadId,
+                    nativeActivationGeneration: control.activationGeneration,
+                    nativeRuntimeGeneration: control.runtimeGeneration,
+                    modelRouteId: context.modelRouteId,
+                    providerAccountId: context.providerAccountId,
+                    control: {
+                      kind: "reply",
+                      requestKey: existing.requestKey,
+                      ...(protectedInput
+                        ? {
+                            protectedResponse: {
+                              classification: protectedInput.classification,
+                              protectedResponse:
+                                protectedInput.protectedResponse,
+                            },
+                          }
+                        : { response: visibleInput!.response }),
                     },
-                    model: runtime.model,
-                    provider: runtime.provider,
                   }
-                : {
-                    type: "agent.interaction.respond",
-                    executionProfile:
-                      context.contextKind === "standalone"
-                        ? "standalone-chat"
-                        : "ide",
-                    requestKey: existing.requestKey,
-                    response: visibleInput!.response,
-                    model: runtime.model,
-                    provider: runtime.provider,
-                  },
+                : protectedInput
+                  ? {
+                      type: "agent.interaction.respond.protected",
+                      executionProfile:
+                        context.contextKind === "standalone"
+                          ? "standalone-chat"
+                          : "ide",
+                      requestKey: existing.requestKey,
+                      response: {
+                        classification: protectedInput.classification,
+                        protectedResponse: protectedInput.protectedResponse,
+                      },
+                      model: runtime!.model,
+                      provider: runtime!.provider,
+                    }
+                  : {
+                      type: "agent.interaction.respond",
+                      executionProfile:
+                        context.contextKind === "standalone"
+                          ? "standalone-chat"
+                          : "ide",
+                      requestKey: existing.requestKey,
+                      response: visibleInput!.response,
+                      model: runtime!.model,
+                      provider: runtime!.provider,
+                    },
               { timeoutMs: 30_000 },
             ),
           );

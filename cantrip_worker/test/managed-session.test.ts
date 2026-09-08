@@ -86,6 +86,182 @@ async function fixture() {
 }
 
 describe("managed chat session preparation", () => {
+  it("retries an incompletely prepared replacement after restart without creating another thread", async () => {
+    const f = await fixture();
+    await f.coordinator.prepare(f.input);
+    f.prepareManagedThread.mockImplementationOnce(async (options) => {
+      expect(options).toMatchObject({
+        threadId: null,
+        intent: "configure",
+        mcpServers: [],
+      });
+      await options.onThreadIdentified?.("replacement");
+      throw new Error("managed configuration failed");
+    });
+    await expect(
+      f.coordinator.replace(f.input, "native-thread"),
+    ).rejects.toThrow("managed configuration failed");
+    const restored = new ManagedSessionCoordinator(f.directory);
+    await expect(restored.replace(f.input, "native-thread")).resolves.toEqual({
+      threadId: "replacement",
+    });
+    expect(f.prepareManagedThread.mock.calls[2]![0]).toMatchObject({
+      threadId: "replacement",
+      intent: "configure",
+    });
+    // Ordinary attachment retains the lineage marker for an idempotent handoff retry.
+    await restored.prepare({
+      ...f.input,
+      configuration: { ...f.input.configuration, intent: "preserve" },
+    });
+    await new ManagedSessionCoordinator(f.directory).replace(
+      f.input,
+      "native-thread",
+    );
+    expect(f.prepareManagedThread.mock.calls[4]![0]).toMatchObject({
+      threadId: "replacement",
+      intent: "preserve",
+    });
+    const journal = JSON.parse(
+      await readFile(
+        path.join(f.directory, (await readdir(f.directory))[0]!),
+        "utf8",
+      ),
+    );
+    expect(journal).toMatchObject({
+      threadId: "replacement",
+      replacementOf: "native-thread",
+      prepared: true,
+    });
+  });
+
+  it("retains an identified replacement across journal failure in the current process", async () => {
+    const f = await fixture();
+    await f.coordinator.prepare(f.input);
+    f.prepareManagedThread.mockImplementationOnce(async (options) => {
+      await rm(f.directory, { recursive: true });
+      await writeFile(f.directory, "obstruct replacement journal");
+      await options.onThreadIdentified?.("replacement");
+      return { threadId: "replacement" };
+    });
+    await expect(
+      f.coordinator.replace(f.input, "native-thread"),
+    ).rejects.toThrow();
+    await rm(f.directory);
+    await expect(
+      f.coordinator.replace(f.input, "native-thread"),
+    ).resolves.toEqual({ threadId: "replacement" });
+    expect(f.prepareManagedThread.mock.calls[2]![0]).toMatchObject({
+      threadId: "replacement",
+      intent: "configure",
+    });
+  });
+
+  it("serializes replacements and compare-and-swaps the actual previous association", async () => {
+    const f = await fixture();
+    await f.coordinator.prepare(f.input);
+    let release!: () => void;
+    const barrier = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    f.prepareManagedThread.mockImplementationOnce(async (options) => {
+      await options.onThreadIdentified?.("replacement");
+      await barrier;
+      return { threadId: "replacement" };
+    });
+    const first = f.coordinator.replace(f.input, "native-thread");
+    const second = f.coordinator.replace(f.input, "native-thread");
+    await vi.waitFor(() =>
+      expect(f.prepareManagedThread).toHaveBeenCalledTimes(2),
+    );
+    release();
+    await expect(first).resolves.toEqual({ threadId: "replacement" });
+    await expect(second).resolves.toEqual({ threadId: "replacement" });
+    expect(f.prepareManagedThread.mock.calls[2]![0].threadId).toBe(
+      "replacement",
+    );
+    const count = f.prepareManagedThread.mock.calls.length;
+    await expect(
+      f.coordinator.replace(f.input, "foreign-thread"),
+    ).rejects.toThrow("association changed");
+    await expect(
+      f.coordinator.replace(
+        { ...f.input, identity: { ...f.input.identity, placementId: "moved" } },
+        "native-thread",
+      ),
+    ).rejects.toThrow("association changed");
+    expect(f.prepareManagedThread).toHaveBeenCalledTimes(count);
+  });
+
+  it("keeps replacement preparation and canonical handoff serialized before an old-canonical attachment", async () => {
+    const f = await fixture();
+    await f.coordinator.prepare(f.input);
+    f.prepareManagedThread.mockImplementationOnce(async (options) => {
+      await options.onThreadIdentified?.("replacement");
+      return { threadId: "replacement" };
+    });
+    let release!: () => void;
+    const handoff = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const onPrepared = vi.fn(async (threadId: string) => {
+      const journal = JSON.parse(
+        await readFile(
+          path.join(f.directory, (await readdir(f.directory))[0]!),
+          "utf8",
+        ),
+      );
+      expect(journal).toMatchObject({
+        prepared: true,
+        threadId,
+        replacementOf: "native-thread",
+      });
+      await handoff;
+    });
+    const replacement = f.coordinator.replace(
+      { ...f.input, onPrepared },
+      "native-thread",
+    );
+    await vi.waitFor(() =>
+      expect(onPrepared).toHaveBeenCalledWith("replacement"),
+    );
+    const attach = f.coordinator.prepare({
+      ...f.input,
+      configuration: {
+        ...f.input.configuration,
+        threadId: "native-thread",
+        intent: "preserve",
+      },
+    });
+    await Promise.resolve();
+    expect(f.prepareManagedThread).toHaveBeenCalledTimes(2);
+    release();
+    await replacement;
+    await attach;
+    expect(f.prepareManagedThread).toHaveBeenCalledTimes(3);
+  });
+
+  it("requires an explicit canonical old identity when no recovery association exists", async () => {
+    const f = await fixture();
+    await expect(f.coordinator.replace(f.input, "old-thread")).rejects.toThrow(
+      "association changed",
+    );
+    expect(f.prepareManagedThread).not.toHaveBeenCalled();
+    await expect(
+      f.coordinator.replace(
+        {
+          ...f.input,
+          configuration: { ...f.input.configuration, threadId: "old-thread" },
+        },
+        "old-thread",
+      ),
+    ).resolves.toEqual({ threadId: "native-thread" });
+    expect(f.prepareManagedThread.mock.calls[0]![0]).toMatchObject({
+      threadId: null,
+      intent: "configure",
+    });
+  });
+
   it("serializes racing first send and attach around one newly identified thread", async () => {
     const { coordinator, input, prepareManagedThread } = await fixture();
     let release!: () => void;

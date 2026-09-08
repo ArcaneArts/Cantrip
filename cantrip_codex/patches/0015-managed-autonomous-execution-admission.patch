@@ -1,0 +1,1749 @@
+diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
+index bed8e5d..de5a662 100644
+--- a/codex-rs/app-server-protocol/src/protocol/common.rs
++++ b/codex-rs/app-server-protocol/src/protocol/common.rs
+@@ -630,6 +630,21 @@ client_request_definitions! {
+         serialization: thread_id(params.thread_id),
+         response: v2::ThreadSectionMoveResponse,
+     },
++    ManagedExecutionBind => "thread/managedExecution/bind" {
++        params: v2::ManagedExecutionBindParams,
++        serialization: None,
++        response: v2::ManagedExecutionBindResponse,
++    },
++    ManagedExecutionResolve => "thread/managedExecution/resolve" {
++        params: v2::ManagedExecutionResolveParams,
++        serialization: None,
++        response: v2::ManagedExecutionResolveResponse,
++    },
++    ManagedExecutionInvalidate => "thread/managedExecution/invalidate" {
++        params: v2::ManagedExecutionInvalidateParams,
++        serialization: None,
++        response: v2::ManagedExecutionInvalidateResponse,
++    },
+     ThreadManagedConfigUpdate => "thread/managedConfig/update" {
+         params: v2::ThreadManagedConfigUpdateParams,
+         serialization: thread_id(params.thread_id),
+@@ -1863,6 +1878,8 @@ server_notification_definitions! {
+     ThreadGoalUpdated => "thread/goal/updated" (v2::ThreadGoalUpdatedNotification),
+     ThreadGoalCleared => "thread/goal/cleared" (v2::ThreadGoalClearedNotification),
+     #[experimental("thread/queue/changed")]
++    ManagedExecutionRequested => "thread/managedExecution/requested" (v2::ManagedExecutionRequestedNotification),
++    ManagedExecutionDeclined => "thread/managedExecution/declined" (v2::ManagedExecutionDeclinedNotification),
+     ThreadQueueChanged => "thread/queue/changed" (v2::ThreadQueueChangedNotification),
+     #[experimental("project/changed")]
+     ProjectChanged => "project/changed" (v2::ProjectChangedNotification),
+diff --git a/codex-rs/app-server-protocol/src/protocol/v2/managed_execution.rs b/codex-rs/app-server-protocol/src/protocol/v2/managed_execution.rs
+new file mode 100644
+index 0000000..ff38d1f
+--- /dev/null
++++ b/codex-rs/app-server-protocol/src/protocol/v2/managed_execution.rs
+@@ -0,0 +1,124 @@
++use crate::JsonSchema;
++use crate::TS;
++use serde::{Deserialize, Serialize};
++
++#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
++#[serde(rename_all = "camelCase", deny_unknown_fields)]
++#[ts(export_to = "v2/")]
++pub struct ManagedExecutionGateConfig {
++    pub runner_generation: String,
++}
++
++#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
++#[serde(rename_all = "camelCase", deny_unknown_fields)]
++#[ts(export_to = "v2/")]
++pub struct ManagedExecutionBindParams {
++    pub thread_id: String,
++    pub runner_generation: String,
++    #[serde(deserialize_with = "Option::deserialize")]
++    #[schemars(
++        required,
++        schema_with = "crate::protocol::serde_helpers::nullable_string_schema"
++    )]
++    #[ts(type = "string | null")]
++    pub expected_runner_generation: Option<String>,
++}
++#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
++#[serde(rename_all = "camelCase", deny_unknown_fields)]
++#[ts(export_to = "v2/")]
++pub struct ManagedExecutionResolveParams {
++    pub thread_id: String,
++    pub runner_generation: String,
++    pub attempt_id: String,
++    #[serde(deserialize_with = "Option::deserialize")]
++    #[schemars(
++        required,
++        schema_with = "crate::protocol::serde_helpers::nullable_string_schema"
++    )]
++    #[ts(type = "string | null")]
++    pub operation_generation: Option<String>,
++    pub allow: bool,
++}
++#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
++#[serde(rename_all = "camelCase", deny_unknown_fields)]
++#[ts(export_to = "v2/")]
++pub struct ManagedExecutionInvalidateParams {
++    pub thread_id: String,
++    pub runner_generation: String,
++}
++#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
++#[serde(rename_all = "camelCase")]
++#[ts(export_to = "v2/")]
++pub struct ManagedExecutionBindResponse {
++    pub bound: bool,
++}
++#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
++#[serde(rename_all = "camelCase")]
++#[ts(export_to = "v2/")]
++pub struct ManagedExecutionResolveResponse {
++    pub accepted: bool,
++}
++#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
++#[serde(rename_all = "camelCase")]
++#[ts(export_to = "v2/")]
++pub struct ManagedExecutionInvalidateResponse {
++    pub invalidated: bool,
++}
++#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
++#[serde(rename_all = "camelCase")]
++#[ts(export_to = "v2/")]
++pub struct ManagedExecutionRequestedNotification {
++    pub thread_id: String,
++    pub runner_generation: String,
++    pub attempt_id: String,
++    pub turn_id: String,
++    pub trigger: String,
++    #[ts(type = "JsonValue")]
++    pub input: serde_json::Value,
++}
++#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
++#[serde(rename_all = "camelCase")]
++#[ts(export_to = "v2/")]
++pub struct ManagedExecutionDeclinedNotification {
++    pub thread_id: String,
++    pub runner_generation: String,
++    pub attempt_id: String,
++    pub turn_id: String,
++    pub operation_generation: Option<String>,
++    pub reason: String,
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use serde_json::json;
++    #[test]
++    fn managed_execution_protocol_requires_explicit_nullable_generation_and_rejects_unknown_fields()
++    {
++        let valid = json!({"threadId":"thread","runnerGeneration":"runner","attemptId":"attempt","operationGeneration":null,"allow":false});
++        assert!(serde_json::from_value::<ManagedExecutionResolveParams>(valid.clone()).is_ok());
++        let mut missing = valid.clone();
++        missing
++            .as_object_mut()
++            .unwrap()
++            .remove("operationGeneration");
++        assert!(serde_json::from_value::<ManagedExecutionResolveParams>(missing).is_err());
++        let mut unknown = valid;
++        unknown["ownerConnectionId"] = json!(1);
++        assert!(serde_json::from_value::<ManagedExecutionResolveParams>(unknown).is_err());
++        let schema =
++            serde_json::to_value(schemars::schema_for!(ManagedExecutionResolveParams)).unwrap();
++        assert!(
++            schema["required"]
++                .as_array()
++                .unwrap()
++                .contains(&json!("operationGeneration"))
++        );
++        assert!(
++            serde_json::from_value::<ManagedExecutionBindParams>(
++                json!({"threadId":"thread","runnerGeneration":"new"})
++            )
++            .is_err()
++        );
++    }
++}
+diff --git a/codex-rs/app-server-protocol/src/protocol/v2/mod.rs b/codex-rs/app-server-protocol/src/protocol/v2/mod.rs
+index 75416d1..5b5ab7d 100644
+--- a/codex-rs/app-server-protocol/src/protocol/v2/mod.rs
++++ b/codex-rs/app-server-protocol/src/protocol/v2/mod.rs
+@@ -17,6 +17,7 @@ mod feedback;
+ mod fs;
+ mod hook;
+ mod item;
++mod managed_execution;
+ mod mcp;
+ mod model;
+ mod notification;
+@@ -51,6 +52,7 @@ pub use feedback::*;
+ pub use fs::*;
+ pub use hook::*;
+ pub use item::*;
++pub use managed_execution::*;
+ pub use mcp::*;
+ pub use model::*;
+ pub use notification::*;
+diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
+index c81b4b1..44a21b7 100644
+--- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
++++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
+@@ -302,6 +302,10 @@ pub struct ThreadManagedConfigUpdateParams {
+ #[serde(rename_all = "camelCase", deny_unknown_fields)]
+ #[ts(export_to = "v2/")]
+ pub struct ThreadManagedConfiguration {
++    /// Optional connection-owned gate. Omission preserves an existing live guard.
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    #[ts(optional)]
++    pub execution_gate: Option<super::ManagedExecutionGateConfig>,
+     /// Full native MCP server map. An empty map removes all configured servers.
+     #[ts(type = "{ [key: string]: JsonValue }")]
+     pub mcp_servers: HashMap<String, JsonValue>,
+diff --git a/codex-rs/app-server/src/message_processor.rs b/codex-rs/app-server/src/message_processor.rs
+index d689424..ea34328 100644
+--- a/codex-rs/app-server/src/message_processor.rs
++++ b/codex-rs/app-server/src/message_processor.rs
+@@ -803,6 +803,8 @@ impl MessageProcessor {
+         session_state: &ConnectionSessionState,
+     ) {
+         session_state.rpc_gate.close().await;
++        self.outgoing
++            .invalidate_managed_execution_connection(connection_id);
+         session_state.mcp_event_streams.clear().await;
+         if timeout(
+             CONNECTION_RPC_DRAIN_TIMEOUT,
+@@ -1256,6 +1258,21 @@ impl MessageProcessor {
+             ClientRequest::ThreadSectionDelete { params, .. } => {
+                 self.thread_processor.thread_section_delete(params).await
+             }
++            ClientRequest::ManagedExecutionBind { params, .. } => {
++                self.turn_processor
++                    .managed_execution_bind(&request_id, params)
++                    .await
++            }
++            ClientRequest::ManagedExecutionResolve { params, .. } => {
++                self.turn_processor
++                    .managed_execution_resolve(&request_id, params)
++                    .await
++            }
++            ClientRequest::ManagedExecutionInvalidate { params, .. } => {
++                self.turn_processor
++                    .managed_execution_invalidate(&request_id, params)
++                    .await
++            }
+             ClientRequest::ThreadManagedConfigUpdate { params, .. } => {
+                 self.turn_processor
+                     .thread_managed_config_update(&request_id, params)
+diff --git a/codex-rs/app-server/src/notification_media.rs b/codex-rs/app-server/src/notification_media.rs
+index 844a312..3009846 100644
+--- a/codex-rs/app-server/src/notification_media.rs
++++ b/codex-rs/app-server/src/notification_media.rs
+@@ -132,7 +132,9 @@ pub(crate) fn without_notification_media(notification: ServerNotification) -> Se
+         | ServerNotification::ThreadRealtimeClosed(_)
+         | ServerNotification::WindowsWorldWritableWarning(_)
+         | ServerNotification::WindowsSandboxSetupCompleted(_)
+-        | ServerNotification::AccountLoginCompleted(_) => notification,
++        | ServerNotification::AccountLoginCompleted(_)
++        | ServerNotification::ManagedExecutionRequested(_)
++        | ServerNotification::ManagedExecutionDeclined(_) => notification,
+     }
+ }
+ 
+diff --git a/codex-rs/app-server/src/outgoing_message.rs b/codex-rs/app-server/src/outgoing_message.rs
+index 6624df8..ecb758f 100644
+--- a/codex-rs/app-server/src/outgoing_message.rs
++++ b/codex-rs/app-server/src/outgoing_message.rs
+@@ -102,6 +102,15 @@ pub(crate) enum OutgoingEnvelope {
+ 
+ /// Sends messages to the client and manages request callbacks.
+ pub(crate) struct OutgoingMessageSender {
++    pub(crate) managed_execution_gates: std::sync::Mutex<
++        HashMap<
++            String,
++            (
++                ConnectionId,
++                Arc<codex_core::managed_execution::ManagedExecutionGate>,
++            ),
++        >,
++    >,
+     next_server_request_id: AtomicI64,
+     sender: mpsc::Sender<OutgoingEnvelope>,
+     request_id_to_callback: Mutex<HashMap<RequestId, PendingCallbackEntry>>,
+@@ -221,6 +230,7 @@ impl OutgoingMessageSender {
+         analytics_events_client: AnalyticsEventsClient,
+     ) -> Self {
+         Self {
++            managed_execution_gates: std::sync::Mutex::new(HashMap::new()),
+             next_server_request_id: AtomicI64::new(0),
+             sender,
+             request_id_to_callback: Mutex::new(HashMap::new()),
+@@ -239,7 +249,22 @@ impl OutgoingMessageSender {
+         }
+     }
+ 
++    pub(crate) fn invalidate_managed_execution_connection(&self, connection_id: ConnectionId) {
++        let mut gates = self
++            .managed_execution_gates
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner);
++        gates.retain(|_, (owner, gate)| {
++            if *owner == connection_id {
++                gate.invalidate();
++                false
++            } else {
++                true
++            }
++        });
++    }
+     pub(crate) async fn connection_closed(&self, connection_id: ConnectionId) {
++        self.invalidate_managed_execution_connection(connection_id);
+         let mut request_contexts = self.request_contexts.lock().await;
+         request_contexts.retain(|request_id, _| request_id.connection_id != connection_id);
+     }
+@@ -594,6 +619,21 @@ impl OutgoingMessageSender {
+             .await;
+     }
+ 
++    /// Managed snapshots contain model-visible input; do not log or broadcast them.
++    pub(crate) async fn send_managed_execution_notification(
++        &self,
++        connection_id: ConnectionId,
++        notification: ServerNotification,
++    ) {
++        let _ = self
++            .sender
++            .send(OutgoingEnvelope::ToConnection {
++                connection_id,
++                message: timestamped_server_notification(notification),
++                write_complete_tx: None,
++            })
++            .await;
++    }
+     pub(crate) async fn send_server_notification_to_connections(
+         &self,
+         connection_ids: &[ConnectionId],
+diff --git a/codex-rs/app-server/src/request_processors/managed_configuration.rs b/codex-rs/app-server/src/request_processors/managed_configuration.rs
+index 386a41e..1882676 100644
+--- a/codex-rs/app-server/src/request_processors/managed_configuration.rs
++++ b/codex-rs/app-server/src/request_processors/managed_configuration.rs
+@@ -6,6 +6,8 @@ use codex_core::config::ManagedThreadConfiguration;
+ /// Decode the entire managed profile before any thread state or startup is changed.
+ pub(super) fn parse_managed_configuration(
+     params: ThreadManagedConfiguration,
++    outgoing: &std::sync::Arc<crate::outgoing_message::OutgoingMessageSender>,
++    connection_id: crate::outgoing_message::ConnectionId,
+ ) -> Result<ManagedThreadConfiguration, JSONRPCErrorError> {
+     let mcp_servers = params
+         .mcp_servers
+@@ -16,7 +18,12 @@ pub(super) fn parse_managed_configuration(
+                 .map_err(|err| invalid_params(format!("invalid managed MCP configuration: {err}")))
+         })
+         .collect::<Result<std::collections::HashMap<_, _>, _>>()?;
++    let execution_gate = params
++        .execution_gate
++        .map(|gate| outgoing.create_managed_execution_gate(connection_id, gate.runner_generation))
++        .transpose()?;
+     Ok(ManagedThreadConfiguration {
++        execution_gate,
+         mcp_servers,
+         developer_instructions: params.developer_instructions,
+         multi_agent_enabled: params.multi_agent_enabled,
+diff --git a/codex-rs/app-server/src/request_processors/managed_execution.rs b/codex-rs/app-server/src/request_processors/managed_execution.rs
+new file mode 100644
+index 0000000..7d300af
+--- /dev/null
++++ b/codex-rs/app-server/src/request_processors/managed_execution.rs
+@@ -0,0 +1,264 @@
++use super::*;
++use codex_app_server_protocol::{
++    ManagedExecutionBindParams, ManagedExecutionBindResponse, ManagedExecutionDeclinedNotification,
++    ManagedExecutionInvalidateParams, ManagedExecutionInvalidateResponse,
++    ManagedExecutionRequestedNotification, ManagedExecutionResolveParams,
++    ManagedExecutionResolveResponse, ServerNotification,
++};
++use codex_core::managed_execution::{ManagedExecutionEvent, ManagedExecutionGate};
++
++impl OutgoingMessageSender {
++    pub(crate) fn create_managed_execution_gate(
++        self: &Arc<Self>,
++        owner: crate::outgoing_message::ConnectionId,
++        generation: String,
++    ) -> Result<Arc<ManagedExecutionGate>, JSONRPCErrorError> {
++        if generation.trim().is_empty() {
++            return Err(invalid_params(
++                "managed runner generation must not be empty",
++            ));
++        }
++        let mut gates = self
++            .managed_execution_gates
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner);
++        if let Some((existing_owner, gate)) = gates.get(&generation) {
++            if *existing_owner != owner {
++                return Err(invalid_params(
++                    "managed runner belongs to another connection",
++                ));
++            }
++            return Ok(gate.clone());
++        }
++        let (events, mut receiver) = tokio::sync::mpsc::unbounded_channel();
++        let gate = ManagedExecutionGate::new(generation.clone(), events);
++        gates.insert(generation, (owner, gate.clone()));
++        let outgoing = Arc::downgrade(self);
++        tokio::spawn(async move {
++            while let Some(event) = receiver.recv().await {
++                let notification = match event {
++                    ManagedExecutionEvent::Requested {
++                        thread_id,
++                        runner_generation,
++                        attempt_id,
++                        turn_id,
++                        trigger,
++                        input,
++                    } => ServerNotification::ManagedExecutionRequested(
++                        ManagedExecutionRequestedNotification {
++                            thread_id: thread_id.to_string(),
++                            runner_generation,
++                            attempt_id,
++                            turn_id,
++                            trigger,
++                            input,
++                        },
++                    ),
++                    ManagedExecutionEvent::Declined {
++                        thread_id,
++                        runner_generation,
++                        attempt_id,
++                        turn_id,
++                        operation_generation,
++                        reason,
++                    } => ServerNotification::ManagedExecutionDeclined(
++                        ManagedExecutionDeclinedNotification {
++                            thread_id: thread_id.to_string(),
++                            runner_generation,
++                            attempt_id,
++                            turn_id,
++                            operation_generation,
++                            reason,
++                        },
++                    ),
++                };
++                let Some(outgoing) = outgoing.upgrade() else {
++                    break;
++                };
++                outgoing
++                    .send_managed_execution_notification(owner, notification)
++                    .await;
++            }
++        });
++        Ok(gate)
++    }
++    pub(crate) fn check_managed_execution_owner(
++        &self,
++        generation: &str,
++        owner: crate::outgoing_message::ConnectionId,
++        allow_disconnected: bool,
++    ) -> Result<(), JSONRPCErrorError> {
++        let gates = self
++            .managed_execution_gates
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner);
++        match gates.get(generation) {
++            Some((existing_owner, _)) if *existing_owner == owner => Ok(()),
++            None if allow_disconnected => Ok(()),
++            _ => Err(invalid_params(
++                "managed runner belongs to another or disconnected connection",
++            )),
++        }
++    }
++}
++impl TurnRequestProcessor {
++    pub(crate) async fn managed_execution_bind(
++        &self,
++        request_id: &ConnectionRequestId,
++        params: ManagedExecutionBindParams,
++    ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
++        let (_, thread) = self.load_thread(&params.thread_id).await?;
++        let previous = thread.managed_execution_gate().await;
++        if let Some(previous) = &previous {
++            if previous.runner_generation == params.runner_generation
++                && previous.is_same_rearm(&params.expected_runner_generation)
++            {
++                self.outgoing.check_managed_execution_owner(
++                    &previous.runner_generation,
++                    request_id.connection_id,
++                    false,
++                )?;
++                return Ok(Some(ManagedExecutionBindResponse { bound: true }.into()));
++            }
++        }
++        if previous
++            .as_ref()
++            .filter(|gate| !gate.is_inherited())
++            .map(|gate| gate.runner_generation.as_str())
++            != params.expected_runner_generation.as_deref()
++        {
++            return Err(invalid_params("managed runner generation changed"));
++        }
++        if let Some(previous) = &previous {
++            if previous.runner_generation == params.runner_generation {
++                return Err(invalid_params("rearm requires fresh runner generation"));
++            }
++            self.outgoing.check_managed_execution_owner(
++                &previous.runner_generation,
++                request_id.connection_id,
++                true,
++            )?;
++        }
++        let gate = self
++            .outgoing
++            .create_managed_execution_gate(request_id.connection_id, params.runner_generation)?;
++        gate.record_rearm(params.expected_runner_generation.clone())
++            .map_err(invalid_params)?;
++        thread
++            .bind_managed_execution_gate(gate, params.expected_runner_generation.as_deref())
++            .await
++            .map_err(invalid_params)?;
++        Ok(Some(ManagedExecutionBindResponse { bound: true }.into()))
++    }
++    pub(crate) async fn managed_execution_resolve(
++        &self,
++        request_id: &ConnectionRequestId,
++        params: ManagedExecutionResolveParams,
++    ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
++        let (thread_id, thread) = self.load_thread(&params.thread_id).await?;
++        let gate = thread
++            .managed_execution_gate()
++            .await
++            .ok_or_else(|| invalid_params("thread has no managed runner"))?;
++        if gate.runner_generation != params.runner_generation {
++            return Err(invalid_params("stale managed runner generation"));
++        }
++        self.outgoing.check_managed_execution_owner(
++            &params.runner_generation,
++            request_id.connection_id,
++            false,
++        )?;
++        gate.resolve(
++            thread_id,
++            &params.attempt_id,
++            params.operation_generation,
++            params.allow,
++        )
++        .map_err(invalid_params)?;
++        Ok(Some(
++            ManagedExecutionResolveResponse { accepted: true }.into(),
++        ))
++    }
++    pub(crate) async fn managed_execution_invalidate(
++        &self,
++        request_id: &ConnectionRequestId,
++        params: ManagedExecutionInvalidateParams,
++    ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
++        let (_, thread) = self.load_thread(&params.thread_id).await?;
++        let gate = thread
++            .managed_execution_gate()
++            .await
++            .ok_or_else(|| invalid_params("thread has no managed runner"))?;
++        if gate.runner_generation != params.runner_generation {
++            return Err(invalid_params("stale managed runner generation"));
++        }
++        self.outgoing.check_managed_execution_owner(
++            &params.runner_generation,
++            request_id.connection_id,
++            false,
++        )?;
++        gate.invalidate();
++        Ok(Some(
++            ManagedExecutionInvalidateResponse { invalidated: true }.into(),
++        ))
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::outgoing_message::{ConnectionId, OutgoingEnvelope};
++    #[tokio::test]
++    async fn managed_execution_owner_is_connection_scoped_and_disconnect_cancels_wait() {
++        let (outbound, mut messages) = tokio::sync::mpsc::channel(16);
++        let outgoing = Arc::new(OutgoingMessageSender::new(
++            outbound,
++            codex_analytics::AnalyticsEventsClient::disabled(),
++        ));
++        let gate = outgoing
++            .create_managed_execution_gate(ConnectionId(1), "runner".into())
++            .unwrap();
++        assert!(
++            outgoing
++                .create_managed_execution_gate(ConnectionId(2), "runner".into())
++                .is_err()
++        );
++        assert!(
++            outgoing
++                .check_managed_execution_owner("runner", ConnectionId(2), false)
++                .is_err()
++        );
++        let pending = {
++            let gate = gate.clone();
++            tokio::spawn(async move {
++                gate.request(
++                    ThreadId::new(),
++                    "turn".into(),
++                    "queue".into(),
++                    serde_json::json!({"private":"fixture"}),
++                )
++                .await
++            })
++        };
++        let notification = messages.recv().await.unwrap();
++        assert!(matches!(
++            notification,
++            OutgoingEnvelope::ToConnection {
++                connection_id: ConnectionId(1),
++                ..
++            }
++        ));
++        outgoing.invalidate_managed_execution_connection(ConnectionId(1));
++        assert!(pending.await.unwrap().is_err());
++        assert!(
++            outgoing
++                .check_managed_execution_owner("runner", ConnectionId(1), false)
++                .is_err()
++        );
++        assert!(
++            outgoing
++                .check_managed_execution_owner("runner", ConnectionId(2), true)
++                .is_ok()
++        );
++    }
++}
+diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
+index dbfd8ca..25ceea0 100644
+--- a/codex-rs/app-server/src/request_processors/thread_processor.rs
++++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
+@@ -1146,7 +1146,13 @@ impl ThreadRequestProcessor {
+             environments,
+         } = params;
+         let managed_config = managed_config
+-            .map(super::managed_configuration::parse_managed_configuration)
++            .map(|params| {
++                super::managed_configuration::parse_managed_configuration(
++                    params,
++                    &self.outgoing,
++                    request_id.connection_id,
++                )
++            })
+             .transpose()?;
+         if matches!(
+             history_mode,
+@@ -3860,8 +3866,11 @@ impl ThreadRequestProcessor {
+             }
+         };
+         if let Some(managed_config) = managed_config {
+-            let managed =
+-                super::managed_configuration::parse_managed_configuration(managed_config)?;
++            let managed = super::managed_configuration::parse_managed_configuration(
++                managed_config,
++                &self.outgoing,
++                request_id.connection_id,
++            )?;
+             config
+                 .apply_managed_thread_configuration(managed)
+                 .map_err(|err| invalid_params(format!("managed configuration rejected: {err}")))?;
+diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/codex-rs/app-server/src/request_processors/turn_processor.rs
+index 9b8866d..8b8b5ee 100644
+--- a/codex-rs/app-server/src/request_processors/turn_processor.rs
++++ b/codex-rs/app-server/src/request_processors/turn_processor.rs
+@@ -1,3 +1,5 @@
++#[path = "managed_execution.rs"]
++mod managed_execution;
+ use super::thread_input::ensure_direct_input_allowed;
+ use super::*;
+ use codex_agent_extension::AgentInvocation;
+@@ -199,16 +201,22 @@ impl TurnRequestProcessor {
+         let (_, thread) = self.load_thread(&params.thread_id).await?;
+         self.ensure_direct_input_allowed(request_id, thread.as_ref())
+             .await?;
+-        let managed =
+-            super::managed_configuration::parse_managed_configuration(params.managed_config)?;
++        if params.managed_config.execution_gate.is_some() {
++            if let Some(previous) = thread.managed_execution_gate().await {
++                self.outgoing.check_managed_execution_owner(
++                    &previous.runner_generation,
++                    request_id.connection_id,
++                    true,
++                )?;
++            }
++        }
++        let managed = super::managed_configuration::parse_managed_configuration(
++            params.managed_config,
++            &self.outgoing,
++            request_id.connection_id,
++        )?;
+         thread
+-            .update_managed_config(
+-                managed.mcp_servers,
+-                managed.developer_instructions,
+-                managed.multi_agent_enabled,
+-                managed.subagent_model,
+-                managed.subagent_reasoning_effort,
+-            )
++            .update_managed_configuration(managed)
+             .await
+             .map_err(|err| invalid_params(format!("managed configuration rejected: {err}")))?;
+         Ok(Some(
+diff --git a/codex-rs/app-server/tests/suite/v2/thread_queue.rs b/codex-rs/app-server/tests/suite/v2/thread_queue.rs
+index caaf4f7..a73eed6 100644
+--- a/codex-rs/app-server/tests/suite/v2/thread_queue.rs
++++ b/codex-rs/app-server/tests/suite/v2/thread_queue.rs
+@@ -1064,3 +1064,207 @@ fn text(value: &str) -> UserInput {
+         text_elements: Vec::new(),
+     }
+ }
++
++#[tokio::test]
++async fn managed_execution_queue_waits_for_owner_admission_and_requires_rearm() -> Result<()> {
++    use codex_app_server_protocol::{
++        ManagedExecutionDeclinedNotification, ManagedExecutionRequestedNotification,
++    };
++    let (mut app, _home, server) = queue_app(vec![create_final_assistant_message_sse_response(
++        "authorized queue",
++    )?])
++    .await?;
++    let thread = app.start_thread(serde_json::from_value(json!({"managedConfig":{
++        "mcpServers":{},"developerInstructions":null,"multiAgentEnabled":false,
++        "subagentModel":null,"subagentReasoningEffort":null,"executionGate":{"runnerGeneration":"runner-one"}
++    }}))?).await?.thread;
++    let queued = app
++        .send_raw_request(
++            "thread/queue/add",
++            Some(serde_json::to_value(submission(
++                &thread.id,
++                "exact queued input",
++            ))?),
++        )
++        .await?;
++    let proposed: ManagedExecutionRequestedNotification = timeout(
++        READ_TIMEOUT,
++        app.read_notification("thread/managedExecution/requested"),
++    )
++    .await??;
++    assert_eq!(proposed.runner_generation, "runner-one");
++    assert_eq!(
++        proposed.input["input"]["UserInput"]["content"][0]["text"],
++        "exact queued input"
++    );
++    assert!(server.received_requests().await.unwrap().is_empty());
++    let invalidate = app
++        .send_raw_request(
++            "thread/managedExecution/invalidate",
++            Some(json!({"threadId":thread.id,"runnerGeneration":"runner-one"})),
++        )
++        .await?;
++    let _: Value = timeout(READ_TIMEOUT, app.read_response(invalidate)).await??;
++    let declined: ManagedExecutionDeclinedNotification = timeout(
++        READ_TIMEOUT,
++        app.read_notification("thread/managedExecution/declined"),
++    )
++    .await??;
++    assert_eq!(declined.attempt_id, proposed.attempt_id);
++    assert_eq!(declined.operation_generation, None);
++    // The queue RPC may report the failed wake, but the durable item is retained.
++    let _ = timeout(
++        READ_TIMEOUT,
++        app.read_response::<ThreadQueueAddResponse>(queued),
++    )
++    .await?;
++    let stale = app.send_raw_request("thread/managedExecution/resolve", Some(json!({"threadId":thread.id,"runnerGeneration":"runner-one","attemptId":proposed.attempt_id,"operationGeneration":"stale","allow":true}))).await?;
++    timeout(
++        READ_TIMEOUT,
++        app.read_stream_until_error_message(RequestId::Integer(stale)),
++    )
++    .await??;
++    let rearm = app.send_raw_request("thread/managedExecution/bind", Some(json!({"threadId":thread.id,"runnerGeneration":"runner-two","expectedRunnerGeneration":"runner-one"}))).await?;
++    let _: Value = timeout(READ_TIMEOUT, app.read_response(rearm)).await??;
++    let same_bind = app.send_raw_request("thread/managedExecution/bind", Some(json!({"threadId":thread.id,"runnerGeneration":"runner-two","expectedRunnerGeneration":"runner-one"}))).await?;
++    let _: Value = timeout(READ_TIMEOUT, app.read_response(same_bind)).await??;
++    let start = app
++        .send_raw_request("thread/queue/start", Some(json!({"threadId":thread.id})))
++        .await?;
++    let proposed: ManagedExecutionRequestedNotification = timeout(
++        READ_TIMEOUT,
++        app.read_notification("thread/managedExecution/requested"),
++    )
++    .await??;
++    assert_eq!(proposed.runner_generation, "runner-two");
++    let allowed = app.send_raw_request("thread/managedExecution/resolve", Some(json!({"threadId":thread.id,"runnerGeneration":"runner-two","attemptId":proposed.attempt_id,"operationGeneration":"operation-two","allow":true}))).await?;
++    let _: Value = timeout(READ_TIMEOUT, app.read_response(allowed)).await??;
++    let started: ThreadQueueStartResponse =
++        timeout(READ_TIMEOUT, app.read_response(start)).await??;
++    assert_eq!(started.turn.id, proposed.turn_id);
++    let completed: TurnCompletedNotification =
++        timeout(READ_TIMEOUT, app.read_notification("turn/completed")).await??;
++    assert_eq!(completed.turn.id, proposed.turn_id);
++    assert_eq!(server.received_requests().await.unwrap().len(), 1);
++    Ok(())
++}
++
++#[tokio::test]
++async fn managed_execution_cold_queue_has_gate_before_resume_wakes_input() -> Result<()> {
++    use codex_app_server_protocol::{
++        ManagedExecutionDeclinedNotification, ManagedExecutionRequestedNotification,
++    };
++    let (mut app, home, server) = queue_app(Vec::new()).await?;
++    let profile = |generation: &str| {
++        json!({"mcpServers":{},"developerInstructions":null,
++        "multiAgentEnabled":false,"subagentModel":null,"subagentReasoningEffort":null,
++        "executionGate":{"runnerGeneration":generation}})
++    };
++    let thread = app
++        .start_thread(serde_json::from_value(
++            json!({"managedConfig":profile("cold-old")}),
++        )?)
++        .await?
++        .thread;
++    let invalidate = app
++        .send_raw_request(
++            "thread/managedExecution/invalidate",
++            Some(json!({"threadId":thread.id,"runnerGeneration":"cold-old"})),
++        )
++        .await?;
++    let _: Value = timeout(READ_TIMEOUT, app.read_response(invalidate)).await??;
++    let _ = queue_item(&mut app, submission(&thread.id, "cold durable input")).await?;
++    drop(app);
++    let mut app = TestAppServer::builder()
++        .with_codex_home(home.path())
++        .without_managed_config()
++        .build_initialized()
++        .await?;
++    let resume = app
++        .send_raw_request(
++            "thread/resume",
++            Some(json!({"threadId":thread.id,"managedConfig":profile("cold-new")})),
++        )
++        .await?;
++    let _: ThreadResumeResponse = timeout(READ_TIMEOUT, app.read_response(resume)).await??;
++    let proposed: ManagedExecutionRequestedNotification = timeout(
++        READ_TIMEOUT,
++        app.read_notification("thread/managedExecution/requested"),
++    )
++    .await??;
++    assert_eq!(proposed.runner_generation, "cold-new");
++    assert_eq!(
++        proposed.input["input"]["UserInput"]["content"][0]["text"],
++        "cold durable input"
++    );
++    assert!(server.received_requests().await.unwrap().is_empty());
++    let denied = app.send_raw_request("thread/managedExecution/resolve", Some(json!({"threadId":thread.id,"runnerGeneration":"cold-new","attemptId":proposed.attempt_id,"operationGeneration":null,"allow":false}))).await?;
++    let _: Value = timeout(READ_TIMEOUT, app.read_response(denied)).await??;
++    let declined: ManagedExecutionDeclinedNotification = timeout(
++        READ_TIMEOUT,
++        app.read_notification("thread/managedExecution/declined"),
++    )
++    .await??;
++    assert_eq!(declined.operation_generation, None);
++    assert!(server.received_requests().await.unwrap().is_empty());
++    Ok(())
++}
++
++#[tokio::test]
++async fn managed_execution_goal_proposes_exact_continuation_before_inference() -> Result<()> {
++    use codex_app_server_protocol::{
++        ManagedExecutionDeclinedNotification, ManagedExecutionRequestedNotification,
++    };
++    let (app, home, server) = queue_app(Vec::new()).await?;
++    drop(app);
++    let config_path = home.path().join("config.toml");
++    let mut config: toml::Value = toml::from_str(&std::fs::read_to_string(&config_path)?)?;
++    config
++        .as_table_mut()
++        .unwrap()
++        .entry("features")
++        .or_insert_with(|| toml::Value::Table(Default::default()))
++        .as_table_mut()
++        .unwrap()
++        .insert("goals".into(), toml::Value::Boolean(true));
++    std::fs::write(config_path, toml::to_string(&config)?)?;
++    let mut app = TestAppServer::builder()
++        .with_codex_home(home.path())
++        .without_managed_config()
++        .build_initialized()
++        .await?;
++    let thread = app.start_thread(serde_json::from_value(json!({"managedConfig":{
++        "mcpServers":{},"developerInstructions":null,"multiAgentEnabled":false,
++        "subagentModel":null,"subagentReasoningEffort":null,"executionGate":{"runnerGeneration":"goal-runner"}
++    }}))?).await?.thread;
++    let set = app
++        .send_raw_request(
++            "thread/goal/set",
++            Some(json!({"threadId":thread.id,"objective":"exact managed objective"})),
++        )
++        .await?;
++    let _: Value = timeout(READ_TIMEOUT, app.read_response(set)).await??;
++    let proposed: ManagedExecutionRequestedNotification = timeout(
++        READ_TIMEOUT,
++        app.read_notification("thread/managedExecution/requested"),
++    )
++    .await??;
++    assert_eq!(proposed.trigger, "goal");
++    assert_eq!(proposed.input["threadSettings"], json!({}));
++    assert!(
++        proposed.input["input"]["ResponseItem"]
++            .to_string()
++            .contains("exact managed objective")
++    );
++    assert!(server.received_requests().await.unwrap().is_empty());
++    let denied = app.send_raw_request("thread/managedExecution/resolve", Some(json!({"threadId":thread.id,"runnerGeneration":"goal-runner","attemptId":proposed.attempt_id,"operationGeneration":null,"allow":false}))).await?;
++    let _: Value = timeout(READ_TIMEOUT, app.read_response(denied)).await??;
++    let declined: ManagedExecutionDeclinedNotification = timeout(
++        READ_TIMEOUT,
++        app.read_notification("thread/managedExecution/declined"),
++    )
++    .await??;
++    assert_eq!(declined.turn_id, proposed.turn_id);
++    assert!(server.received_requests().await.unwrap().is_empty());
++    Ok(())
++}
+diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
+index f81434a..2415126 100644
+--- a/codex-rs/core/src/codex_thread.rs
++++ b/codex-rs/core/src/codex_thread.rs
+@@ -498,6 +498,21 @@ impl CodexThread {
+         }
+     }
+ 
++    pub async fn managed_execution_gate(
++        &self,
++    ) -> Option<Arc<crate::managed_execution::ManagedExecutionGate>> {
++        self.session.managed_execution_gate().await
++    }
++    pub async fn bind_managed_execution_gate(
++        &self,
++        gate: Arc<crate::managed_execution::ManagedExecutionGate>,
++        expected: Option<&str>,
++    ) -> Result<(), String> {
++        self.session
++            .bind_managed_execution_gate(gate, expected)
++            .await
++    }
++
+     async fn submit_turn_input_with_mode(
+         &self,
+         request: TurnInputRequest,
+@@ -510,7 +525,51 @@ impl CodexThread {
+                 .ensure_execution_capacity_for_turn_start(self)
+                 .await?;
+         }
+-        self.io.submit_turn_input(request, mode).await
++        let gate = if matches!(mode, TurnInputMode::StartIfIdle)
++            && matches!(
++                request.start.turn_trigger.as_deref(),
++                Some("goal" | "queue")
++            ) {
++            self.managed_execution_gate().await
++        } else {
++            None
++        };
++        if let Some(gate) = gate {
++            let turn_id = new_submission_id();
++            // Queue/goal producers submit inherited thread settings; never omit an
++            // unexpected compiled authority override from the protected admission input.
++            if request.thread_settings
++                != codex_protocol::protocol::ThreadSettingsOverrides::default()
++            {
++                return Err(CodexErr::InvalidRequest(
++                    "autonomous managed input contains unexpected thread overrides".into(),
++                ));
++            }
++            let snapshot = serde_json::json!({ "input": request.input, "threadSettings": {},
++                "start": request.start, "additionalContext": request.additional_context,
++                "responsesapiClientMetadata": request.responsesapi_client_metadata, "trace": request.trace });
++            let attempt_id = gate
++                .request(
++                    self.session_configured().thread_id,
++                    turn_id.clone(),
++                    request.start.turn_trigger.clone().unwrap(),
++                    snapshot,
++                )
++                .await
++                .map_err(CodexErr::InvalidRequest)?;
++            let result = self
++                .io
++                .submit_turn_input_with_id(request, mode, turn_id)
++                .await;
++            gate.finish(
++                &attempt_id,
++                matches!(&result, Ok(TurnInputSubmission::Started { .. })),
++                "Core declined admitted autonomous turn",
++            );
++            result
++        } else {
++            self.io.submit_turn_input(request, mode).await
++        }
+     }
+ 
+     /// Persist whether this thread is eligible for future memory generation.
+@@ -882,6 +941,12 @@ impl CodexThread {
+ 
+     /// Refresh MCP configuration and managed requirements without reloading unrelated settings.
+     /// Applies a complete managed profile to this loaded thread without changing root settings.
++    pub async fn update_managed_configuration(
++        &self,
++        managed: crate::config::ManagedThreadConfiguration,
++    ) -> ConstraintResult<()> {
++        self.session.update_managed_configuration(managed).await
++    }
+     pub async fn update_managed_config(
+         &self,
+         mcp_servers: std::collections::HashMap<String, codex_config::types::McpServerConfig>,
+diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
+index 5e58c99..c0783ce 100644
+--- a/codex-rs/core/src/config/mod.rs
++++ b/codex-rs/core/src/config/mod.rs
+@@ -606,6 +606,7 @@ pub enum ThreadStoreConfig {
+ /// This profile is in-memory only; credentials are never written to config or history.
+ #[derive(Debug, Clone, PartialEq)]
+ pub struct ManagedThreadConfiguration {
++    pub execution_gate: Option<Arc<crate::managed_execution::ManagedExecutionGate>>,
+     pub mcp_servers: HashMap<String, McpServerConfig>,
+     pub developer_instructions: Option<String>,
+     pub multi_agent_enabled: bool,
+@@ -1829,8 +1830,14 @@ impl Config {
+     /// Validate everything against this snapshot's requirements before publishing any field.
+     pub fn apply_managed_thread_configuration(
+         &mut self,
+-        managed: ManagedThreadConfiguration,
++        mut managed: ManagedThreadConfiguration,
+     ) -> ConstraintResult<()> {
++        if managed.execution_gate.is_none() {
++            managed.execution_gate = self
++                .managed_thread_configuration
++                .as_ref()
++                .and_then(|previous| previous.execution_gate.clone());
++        }
+         let mut mcp_servers = self.mcp_servers.clone();
+         mcp_servers.set(managed.mcp_servers.clone())?;
+         let mut features = self.features.clone();
+diff --git a/codex-rs/core/src/lib.rs b/codex-rs/core/src/lib.rs
+index b4e9792..f440d15 100644
+--- a/codex-rs/core/src/lib.rs
++++ b/codex-rs/core/src/lib.rs
+@@ -33,6 +33,7 @@ mod compact_remote;
+ mod compact_remote_history;
+ mod compact_remote_v2;
+ mod compact_token_budget;
++pub mod managed_execution;
+ pub use codex_network_proxy::EnvironmentNetworkPolicy;
+ pub use codex_network_proxy::NetworkDomainPermission;
+ pub use codex_network_proxy::NetworkDomainPermissionEntry;
+diff --git a/codex-rs/core/src/managed_execution.rs b/codex-rs/core/src/managed_execution.rs
+new file mode 100644
+index 0000000..8bc4e8e
+--- /dev/null
++++ b/codex-rs/core/src/managed_execution.rs
+@@ -0,0 +1,433 @@
++//! In-memory eligibility and one-use admission for autonomous managed turns.
++//! Input is sent only to the connection owner and never logged or persisted here.
++use codex_protocol::ThreadId;
++use serde_json::Value;
++use std::collections::HashMap;
++use std::sync::{Arc, Mutex};
++use tokio::sync::{mpsc, oneshot};
++
++#[derive(Clone)]
++pub enum ManagedExecutionEvent {
++    Requested {
++        thread_id: ThreadId,
++        runner_generation: String,
++        attempt_id: String,
++        turn_id: String,
++        trigger: String,
++        input: Value,
++    },
++    Declined {
++        thread_id: ThreadId,
++        runner_generation: String,
++        attempt_id: String,
++        turn_id: String,
++        operation_generation: Option<String>,
++        reason: String,
++    },
++}
++struct Attempt {
++    thread_id: ThreadId,
++    turn_id: String,
++    operation_generation: Option<String>,
++    reply: Option<oneshot::Sender<bool>>,
++    approved: bool,
++    consumed: bool,
++}
++#[derive(Default)]
++struct GateState {
++    closed: bool,
++    inherited: bool,
++    rearm_expected: Option<Option<String>>,
++    thread_id: Option<ThreadId>,
++    attempts: HashMap<String, Attempt>,
++}
++pub struct ManagedExecutionGate {
++    pub runner_generation: String,
++    state: Mutex<GateState>,
++    events: mpsc::UnboundedSender<ManagedExecutionEvent>,
++}
++impl std::fmt::Debug for ManagedExecutionGate {
++    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
++        f.debug_struct("ManagedExecutionGate")
++            .field("runner_generation", &self.runner_generation)
++            .finish_non_exhaustive()
++    }
++}
++impl PartialEq for ManagedExecutionGate {
++    fn eq(&self, other: &Self) -> bool {
++        std::ptr::eq(self, other)
++    }
++}
++impl ManagedExecutionGate {
++    pub fn new(
++        runner_generation: String,
++        events: mpsc::UnboundedSender<ManagedExecutionEvent>,
++    ) -> Arc<Self> {
++        Arc::new(Self {
++            runner_generation,
++            state: Mutex::new(GateState::default()),
++            events,
++        })
++    }
++    /// Fork eligibility is independent and closed until its own worker adopts it.
++    pub fn inherited_closed(thread_id: ThreadId) -> Arc<Self> {
++        let (events, _) = mpsc::unbounded_channel();
++        Arc::new(Self {
++            runner_generation: format!("inherited:{thread_id}"),
++            state: Mutex::new(GateState {
++                closed: true,
++                inherited: true,
++                thread_id: Some(thread_id),
++                ..Default::default()
++            }),
++            events,
++        })
++    }
++    pub fn is_inherited(&self) -> bool {
++        self.state
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner)
++            .inherited
++    }
++    pub fn record_rearm(&self, expected: Option<String>) -> Result<(), String> {
++        let mut state = self
++            .state
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner);
++        if state
++            .rearm_expected
++            .as_ref()
++            .is_some_and(|previous| previous != &expected)
++        {
++            return Err("runner generation already used for another rearm".into());
++        }
++        state.rearm_expected = Some(expected);
++        Ok(())
++    }
++    pub fn is_same_rearm(&self, expected: &Option<String>) -> bool {
++        self.state
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner)
++            .rearm_expected
++            .as_ref()
++            == Some(expected)
++    }
++    pub fn bind_thread(&self, thread_id: ThreadId) -> Result<(), String> {
++        let mut state = self
++            .state
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner);
++        if state.thread_id.is_some_and(|id| id != thread_id) {
++            return Err("managed runner belongs to another thread".into());
++        }
++        state.thread_id = Some(thread_id);
++        Ok(())
++    }
++    pub async fn request(
++        &self,
++        thread_id: ThreadId,
++        turn_id: String,
++        trigger: String,
++        input: Value,
++    ) -> Result<String, String> {
++        self.bind_thread(thread_id)?;
++        let attempt_id = uuid::Uuid::new_v4().to_string();
++        let (reply, receive) = oneshot::channel();
++        {
++            let mut state = self
++                .state
++                .lock()
++                .unwrap_or_else(std::sync::PoisonError::into_inner);
++            if state.closed {
++                return Err("managed runner requires explicit rearm".into());
++            }
++            state.attempts.insert(
++                attempt_id.clone(),
++                Attempt {
++                    thread_id,
++                    turn_id: turn_id.clone(),
++                    operation_generation: None,
++                    reply: Some(reply),
++                    approved: false,
++                    consumed: false,
++                },
++            );
++        }
++        if self
++            .events
++            .send(ManagedExecutionEvent::Requested {
++                thread_id,
++                runner_generation: self.runner_generation.clone(),
++                attempt_id: attempt_id.clone(),
++                turn_id,
++                trigger,
++                input,
++            })
++            .is_err()
++        {
++            self.finish(&attempt_id, false, "managed owner disconnected");
++            return Err("managed owner disconnected".into());
++        }
++        if receive.await.unwrap_or(false) {
++            Ok(attempt_id)
++        } else {
++            self.finish(&attempt_id, false, "managed attempt denied or invalidated");
++            Err("managed attempt denied or invalidated".into())
++        }
++    }
++    pub fn resolve(
++        &self,
++        thread_id: ThreadId,
++        attempt_id: &str,
++        operation_generation: Option<String>,
++        allow: bool,
++    ) -> Result<(), String> {
++        if allow && operation_generation.as_deref().is_none_or(str::is_empty) {
++            return Err("allowed attempt requires operation generation".into());
++        }
++        let mut state = self
++            .state
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner);
++        if state.closed {
++            return Err("managed runner invalidated".into());
++        }
++        let attempt = state
++            .attempts
++            .get_mut(attempt_id)
++            .ok_or("unknown managed attempt")?;
++        if attempt.thread_id != thread_id {
++            return Err("foreign managed attempt".into());
++        }
++        let reply = attempt
++            .reply
++            .take()
++            .ok_or("managed attempt already resolved")?;
++        attempt.operation_generation = operation_generation;
++        attempt.approved = allow;
++        if reply.send(allow).is_err() {
++            let attempt = state.attempts.remove(attempt_id);
++            drop(state);
++            if let Some(attempt) = attempt {
++                self.declined(
++                    attempt_id.to_string(),
++                    attempt,
++                    "managed attempt caller disconnected",
++                );
++            }
++            return Err("managed attempt no longer pending".into());
++        }
++        Ok(())
++    }
++    /// Synchronous commit point, called inside Core's ordered start decision before settings.
++    pub fn consume(&self, turn_id: &str) -> Result<(), String> {
++        let mut state = self
++            .state
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner);
++        if state.closed {
++            return Err("managed runner invalidated before start".into());
++        }
++        let attempt = state
++            .attempts
++            .values_mut()
++            .find(|attempt| attempt.turn_id == turn_id)
++            .ok_or("autonomous turn lacks managed admission")?;
++        if !attempt.approved || attempt.consumed {
++            return Err("managed admission unavailable or already consumed".into());
++        }
++        attempt.consumed = true;
++        Ok(())
++    }
++    pub fn finish(&self, attempt_id: &str, started: bool, reason: &str) {
++        let attempt = self
++            .state
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner)
++            .attempts
++            .remove(attempt_id);
++        if !started && let Some(attempt) = attempt {
++            self.declined(attempt_id.to_string(), attempt, reason);
++        }
++    }
++    fn declined(&self, attempt_id: String, attempt: Attempt, reason: &str) {
++        let _ = self.events.send(ManagedExecutionEvent::Declined {
++            thread_id: attempt.thread_id,
++            runner_generation: self.runner_generation.clone(),
++            attempt_id,
++            turn_id: attempt.turn_id,
++            operation_generation: attempt.operation_generation,
++            reason: reason.to_string(),
++        });
++        if let Some(reply) = attempt.reply {
++            let _ = reply.send(false);
++        }
++    }
++    pub fn invalidate(&self) {
++        let attempts = {
++            let mut state = self
++                .state
++                .lock()
++                .unwrap_or_else(std::sync::PoisonError::into_inner);
++            state.closed = true;
++            // A consumed ticket has already committed an admitted start in Core's ordered loop.
++            // Its actual turn terminal owns completion; Stop separately interrupts that turn.
++            let pending: Vec<_> = state
++                .attempts
++                .iter()
++                .filter(|(_, a)| !a.consumed)
++                .map(|(id, _)| id.clone())
++                .collect();
++            pending
++                .into_iter()
++                .filter_map(|id| state.attempts.remove(&id).map(|a| (id, a)))
++                .collect::<Vec<_>>()
++        };
++        for (id, attempt) in attempts {
++            self.declined(id, attempt, "managed runner invalidated");
++        }
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    #[tokio::test]
++    async fn managed_execution_ticket_is_one_use_and_invalidation_cannot_rearm() {
++        let (events, mut received) = mpsc::unbounded_channel();
++        let gate = ManagedExecutionGate::new("runner".into(), events);
++        let thread = ThreadId::new();
++        let pending = {
++            let gate = gate.clone();
++            tokio::spawn(async move {
++                gate.request(
++                    thread,
++                    "turn".into(),
++                    "queue".into(),
++                    serde_json::json!({"sensitive":"fixture"}),
++                )
++                .await
++            })
++        };
++        let ManagedExecutionEvent::Requested { attempt_id, .. } = received.recv().await.unwrap()
++        else {
++            panic!("expected request")
++        };
++        assert!(
++            gate.resolve(ThreadId::new(), &attempt_id, Some("operation".into()), true)
++                .is_err()
++        );
++        assert!(gate.resolve(thread, &attempt_id, None, true).is_err());
++        gate.resolve(thread, &attempt_id, Some("operation".into()), true)
++            .unwrap();
++        assert_eq!(pending.await.unwrap().unwrap(), attempt_id);
++        gate.consume("turn").unwrap();
++        assert!(gate.consume("turn").is_err());
++        gate.finish(&attempt_id, true, "");
++        gate.invalidate();
++        assert!(
++            gate.request(
++                thread,
++                "later".into(),
++                "queue".into(),
++                serde_json::json!({})
++            )
++            .await
++            .is_err()
++        );
++        assert!(received.try_recv().is_err());
++    }
++    #[tokio::test]
++    async fn managed_execution_pending_and_approved_tickets_decline_exactly_once() {
++        for approve in [false, true] {
++            let (events, mut received) = mpsc::unbounded_channel();
++            let gate = ManagedExecutionGate::new("runner".into(), events);
++            let thread = ThreadId::new();
++            let pending = {
++                let gate = gate.clone();
++                tokio::spawn(async move {
++                    gate.request(thread, "turn".into(), "goal".into(), serde_json::json!({}))
++                        .await
++                })
++            };
++            let ManagedExecutionEvent::Requested { attempt_id, .. } =
++                received.recv().await.unwrap()
++            else {
++                panic!("expected request")
++            };
++            if approve {
++                gate.resolve(thread, &attempt_id, Some("operation".into()), true)
++                    .unwrap();
++            }
++            gate.invalidate();
++            let _ = pending.await.unwrap();
++            assert!(gate.consume("turn").is_err());
++            gate.finish(&attempt_id, false, "late duplicate");
++            let ManagedExecutionEvent::Declined {
++                operation_generation,
++                ..
++            } = received.recv().await.unwrap()
++            else {
++                panic!("expected decline")
++            };
++            assert_eq!(
++                operation_generation,
++                approve.then(|| "operation".to_string())
++            );
++            assert!(received.try_recv().is_err());
++        }
++    }
++}
++
++#[cfg(test)]
++mod inheritance_tests {
++    use super::*;
++    #[tokio::test]
++    async fn managed_execution_fork_gate_is_closed_and_never_invalidates_parent() {
++        let (events, mut received) = mpsc::unbounded_channel();
++        let parent = ManagedExecutionGate::new("parent".into(), events);
++        let parent_id = ThreadId::new();
++        parent.bind_thread(parent_id).unwrap();
++        let fork_id = ThreadId::new();
++        let fork = ManagedExecutionGate::inherited_closed(fork_id);
++        assert!(fork.is_inherited());
++        fork.invalidate();
++        assert!(
++            fork.request(
++                fork_id,
++                "fork-turn".into(),
++                "goal".into(),
++                serde_json::json!({})
++            )
++            .await
++            .is_err()
++        );
++        let pending = {
++            let parent = parent.clone();
++            tokio::spawn(async move {
++                parent
++                    .request(
++                        parent_id,
++                        "parent-turn".into(),
++                        "queue".into(),
++                        serde_json::json!({}),
++                    )
++                    .await
++            })
++        };
++        let ManagedExecutionEvent::Requested { attempt_id, .. } = received.recv().await.unwrap()
++        else {
++            panic!("expected parent request")
++        };
++        parent
++            .resolve(
++                parent_id,
++                &attempt_id,
++                Some("parent-operation".into()),
++                true,
++            )
++            .unwrap();
++        assert!(pending.await.unwrap().is_ok());
++        parent.consume("parent-turn").unwrap();
++    }
++}
+diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
+index 0db7d27..6db6f30 100644
+--- a/codex-rs/core/src/session/mod.rs
++++ b/codex-rs/core/src/session/mod.rs
+@@ -885,11 +885,19 @@ impl SessionIo {
+     /// Once queued, dropping the waiter does not retract the call. If the
+     /// session loop exits before replying, the caller gets `InternalAgentDied`.
+     pub(crate) async fn submit_turn_input(
++        &self,
++        request: TurnInputRequest,
++        mode: TurnInputMode,
++    ) -> CodexResult<TurnInputSubmission> {
++        self.submit_turn_input_with_id(request, mode, new_submission_id())
++            .await
++    }
++    pub(crate) async fn submit_turn_input_with_id(
+         &self,
+         mut request: TurnInputRequest,
+         mode: TurnInputMode,
++        id: String,
+     ) -> CodexResult<TurnInputSubmission> {
+-        let id = new_submission_id();
+         let (reply_tx, reply_rx) = oneshot::channel();
+         let trace = request.trace.take();
+         self.submit_with_id(Submission {
+@@ -1911,6 +1919,20 @@ impl Session {
+         state.take_session_startup_prewarm()
+     }
+ 
++    pub(crate) async fn managed_execution_gate(
++        &self,
++    ) -> Option<Arc<crate::managed_execution::ManagedExecutionGate>> {
++        let state = self.state.lock().await;
++        if state.session_configuration.parent_thread_id.is_some() {
++            return None;
++        }
++        state
++            .session_configuration
++            .original_config_do_not_use
++            .managed_thread_configuration
++            .as_ref()
++            .and_then(|managed| managed.execution_gate.clone())
++    }
+     pub(crate) async fn get_config(&self) -> std::sync::Arc<Config> {
+         let state = self.state.lock().await;
+         state
+@@ -2002,6 +2024,34 @@ impl Session {
+         }
+     }
+ 
++    pub(crate) async fn bind_managed_execution_gate(
++        &self,
++        gate: Arc<crate::managed_execution::ManagedExecutionGate>,
++        expected: Option<&str>,
++    ) -> Result<(), String> {
++        gate.bind_thread(self.thread_id)?;
++        let mut state = self.state.lock().await;
++        let mut config = (*state.session_configuration.original_config_do_not_use).clone();
++        let managed = config
++            .managed_thread_configuration
++            .as_mut()
++            .ok_or("thread has no managed profile")?;
++        if managed
++            .execution_gate
++            .as_ref()
++            .filter(|gate| !gate.is_inherited())
++            .map(|gate| gate.runner_generation.as_str())
++            != expected
++        {
++            return Err("managed runner generation changed".into());
++        }
++        if let Some(previous) = &managed.execution_gate {
++            previous.invalidate();
++        }
++        managed.execution_gate = Some(gate);
++        state.session_configuration.original_config_do_not_use = Arc::new(config);
++        Ok(())
++    }
+     pub(crate) async fn update_managed_config(
+         &self,
+         mcp_servers: HashMap<String, McpServerConfig>,
+@@ -2010,17 +2060,40 @@ impl Session {
+         subagent_model: Option<String>,
+         subagent_reasoning_effort: Option<ReasoningEffortConfig>,
+     ) -> ConstraintResult<()> {
+-        let mut state = self.state.lock().await;
+-        // Validate the full replacement against current constraints on a private clone.
+-        // Neither errors nor concurrent root settings updates can publish a partial profile.
+-        let mut config = (*state.session_configuration.original_config_do_not_use).clone();
+-        config.apply_managed_thread_configuration(crate::config::ManagedThreadConfiguration {
++        self.update_managed_configuration(crate::config::ManagedThreadConfiguration {
++            execution_gate: None,
+             mcp_servers,
+-            developer_instructions: developer_instructions.clone(),
++            developer_instructions,
+             multi_agent_enabled,
+             subagent_model,
+             subagent_reasoning_effort,
+-        })?;
++        })
++        .await
++    }
++    pub(crate) async fn update_managed_configuration(
++        &self,
++        managed: crate::config::ManagedThreadConfiguration,
++    ) -> ConstraintResult<()> {
++        let mut state = self.state.lock().await;
++        let mut config = (*state.session_configuration.original_config_do_not_use).clone();
++        let developer_instructions = managed.developer_instructions.clone();
++        let previous_gate = config
++            .managed_thread_configuration
++            .as_ref()
++            .and_then(|profile| profile.execution_gate.clone());
++        config.apply_managed_thread_configuration(managed)?;
++        let next_gate = config
++            .managed_thread_configuration
++            .as_ref()
++            .and_then(|profile| profile.execution_gate.clone());
++        if let Some(previous) = previous_gate {
++            if next_gate
++                .as_ref()
++                .is_none_or(|next| !Arc::ptr_eq(&previous, next))
++            {
++                previous.invalidate();
++            }
++        }
+         state.session_configuration.developer_instructions = developer_instructions;
+         state.session_configuration.original_config_do_not_use = Arc::new(config);
+         self.mark_mcp_runtime_dirty();
+diff --git a/codex-rs/core/src/session/session.rs b/codex-rs/core/src/session/session.rs
+index 4bacdb8..95c9182 100644
+--- a/codex-rs/core/src/session/session.rs
++++ b/codex-rs/core/src/session/session.rs
+@@ -650,7 +650,7 @@ impl Session {
+     pub(crate) async fn new(
+         mut session_configuration: SessionConfiguration,
+         environment_selections: &[TurnEnvironmentSelection],
+-        config: Arc<Config>,
++        mut config: Arc<Config>,
+         user_instructions: Option<codex_extension_api::Instructions>,
+         installation_id: String,
+         auth_manager: Arc<AuthManager>,
+@@ -782,6 +782,28 @@ impl Session {
+                 ));
+             }
+         };
++        if parent_thread_id.is_none() {
++            if let Some(gate) = config
++                .managed_thread_configuration
++                .as_ref()
++                .and_then(|managed| managed.execution_gate.as_ref())
++            {
++                if matches!(&initial_history, InitialHistory::Forked(_)) {
++                    let mut fork_config = (*config).clone();
++                    if let Some(managed) = fork_config.managed_thread_configuration.as_mut() {
++                        managed.execution_gate = Some(
++                            crate::managed_execution::ManagedExecutionGate::inherited_closed(
++                                thread_id,
++                            ),
++                        );
++                    }
++                    config = Arc::new(fork_config);
++                    session_configuration.original_config_do_not_use = config.clone();
++                } else {
++                    gate.bind_thread(thread_id).map_err(anyhow::Error::msg)?;
++                }
++            }
++        }
+         let resumed_session_id = match &initial_history {
+             InitialHistory::Resumed(resumed) => {
+                 resumed.history.iter().find_map(|item| match item {
+diff --git a/codex-rs/core/src/session/turn_input.rs b/codex-rs/core/src/session/turn_input.rs
+index 2882931..1c7b069 100644
+--- a/codex-rs/core/src/session/turn_input.rs
++++ b/codex-rs/core/src/session/turn_input.rs
+@@ -338,6 +338,13 @@ async fn start_if_idle(
+         responsesapi_client_metadata,
+         ..
+     } = request;
++    if matches!(start.turn_trigger.as_deref(), Some("goal" | "queue")) {
++        let gate = session.managed_execution_gate().await;
++        if let Some(gate) = gate {
++            gate.consume(&submission_id)
++                .map_err(CodexErr::InvalidRequest)?;
++        }
++    }
+     let can_start_root_turn = start.parent_turn_id.is_none() && start.root_turn_id.is_none();
+     if session.input_queue.has_trigger_turn_mailbox_items().await {
+         return Ok(TurnInputSubmission::NotSubmitted {
+diff --git a/codex-rs/core/src/tasks/mod.rs b/codex-rs/core/src/tasks/mod.rs
+index 5f59967..a320e91 100644
+--- a/codex-rs/core/src/tasks/mod.rs
++++ b/codex-rs/core/src/tasks/mod.rs
+@@ -509,6 +509,11 @@ impl Session {
+     }
+ 
+     pub async fn abort_all_tasks(self: &Arc<Self>, reason: TurnAbortReason) {
++        if matches!(reason, TurnAbortReason::Interrupted) {
++            if let Some(gate) = self.managed_execution_gate().await {
++                gate.invalidate();
++            }
++        }
+         let mut aborted_turn = false;
+         let mut active_turn_to_clear = None;
+         let mut turn_context = None;
+diff --git a/codex-rs/protocol/src/protocol.rs b/codex-rs/protocol/src/protocol.rs
+index e640b9a..543c7ab 100644
+--- a/codex-rs/protocol/src/protocol.rs
++++ b/codex-rs/protocol/src/protocol.rs
+@@ -572,14 +572,16 @@ pub struct ThreadSettingsOverrides {
+ }
+ 
+ /// Source classification for client-supplied context.
+-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
++#[serde(rename_all = "camelCase")]
+ pub enum AdditionalContextKind {
+     Untrusted,
+     Application,
+ }
+ 
+ /// Client-supplied context keyed by an opaque source identifier.
+-#[derive(Debug, Clone, PartialEq, Eq)]
++#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
++#[serde(rename_all = "camelCase")]
+ pub struct AdditionalContextEntry {
+     pub value: String,
+     pub kind: AdditionalContextKind,
+diff --git a/codex-rs/protocol/src/turn_input.rs b/codex-rs/protocol/src/turn_input.rs
+index 4819d0f..7c2220b 100644
+--- a/codex-rs/protocol/src/turn_input.rs
++++ b/codex-rs/protocol/src/turn_input.rs
+@@ -156,7 +156,8 @@ pub enum CyberAccessProgram {
+ /// `final_output_json_schema` is a compatibility requirement: Core only
+ /// accepts the steer if the active turn already uses the same schema. For
+ /// child input, Core also compares root lineage to detect ambiguity.
+-#[derive(Clone, Debug, Default)]
++#[derive(Clone, Debug, Default, Serialize)]
++#[serde(rename_all = "camelCase")]
+ pub struct TurnStartOptions {
+     /// Source classification for the caller that starts a new turn.
+     /// Ignored when the submitted input steers an active turn.
+diff --git a/codex-rs/tui/src/app/app_server_event_targets.rs b/codex-rs/tui/src/app/app_server_event_targets.rs
+index 27359fd..74bf2ea 100644
+--- a/codex-rs/tui/src/app/app_server_event_targets.rs
++++ b/codex-rs/tui/src/app/app_server_event_targets.rs
+@@ -71,6 +71,12 @@ pub(super) fn server_notification_thread_target(
+         ServerNotification::ThreadGoalCleared(notification) => {
+             Some(notification.thread_id.as_str())
+         }
++        ServerNotification::ManagedExecutionRequested(notification) => {
++            Some(notification.thread_id.as_str())
++        }
++        ServerNotification::ManagedExecutionDeclined(notification) => {
++            Some(notification.thread_id.as_str())
++        }
+         ServerNotification::ThreadQueueChanged(notification) => {
+             Some(notification.thread_id.as_str())
+         }
+diff --git a/codex-rs/tui/src/chatwidget/protocol.rs b/codex-rs/tui/src/chatwidget/protocol.rs
+index 48083eb..db5460b 100644
+--- a/codex-rs/tui/src/chatwidget/protocol.rs
++++ b/codex-rs/tui/src/chatwidget/protocol.rs
+@@ -222,6 +222,8 @@ impl ChatWidget {
+             | ServerNotification::ThreadStatusChanged(_)
+             | ServerNotification::ThreadReverted(_)
+             | ServerNotification::ThreadQueueChanged(_)
++            | ServerNotification::ManagedExecutionRequested(_)
++            | ServerNotification::ManagedExecutionDeclined(_)
+             | ServerNotification::ThreadArchived(_)
+             | ServerNotification::ThreadDeleted(_)
+             | ServerNotification::ThreadUnarchived(_)

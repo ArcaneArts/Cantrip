@@ -1,3 +1,4 @@
+import { nativeCommandReceiptSchema } from "./native-commands.js";
 import { z } from "zod";
 import {
   managedSessionContextSchema,
@@ -104,6 +105,7 @@ export const workerChatCommandSchemas = [
   z
     .object({
       type: z.literal("chat.turn"),
+      nativeCommandReceipt: nativeCommandReceiptSchema.optional(),
       computerUseAuthority: cuaAgentAuthoritySchema.optional(),
       executionProfile: z.enum(["ide", "standalone-chat"]).default("ide"),
       contextKind: chatContextKindSchema.default("project"),
@@ -231,13 +233,77 @@ export const workerChatCommandSchemas = [
         });
       }
     }),
+  z
+    .object({
+      type: z.literal("chat.native-logical.complete"),
+      chatId: z.string().min(1),
+      rootOperationId: z.string().min(1),
+      rootOperationGeneration: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("chat.native-logical.cancel"),
+      chatId: z.string().min(1),
+      rootOperationId: z.string().min(1),
+      rootOperationGeneration: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("chat.native-control"),
+      chatId: z.string().min(1),
+      threadId: z.string().min(1).nullable(),
+      nativeActivationGeneration: z.string().min(1).nullable(),
+      nativeRuntimeGeneration: z.string().min(1).nullable(),
+      modelRouteId: z.string().min(1).nullable(),
+      providerAccountId: z.string().min(1).nullable(),
+      control: z.discriminatedUnion("kind", [
+        z.object({ kind: z.literal("interrupt") }).strict(),
+        z.object({ kind: z.literal("pause"), paused: z.boolean() }).strict(),
+        z
+          .object({
+            kind: z.literal("steer"),
+            protectedPrompt: chatMessageOpaqueContentSchema,
+            attachments: z
+              .array(workerChatAttachmentSchema)
+              .max(20)
+              .default([]),
+          })
+          .strict(),
+        z
+          .object({
+            kind: z.literal("reply"),
+            requestKey: z.string().min(1).max(200),
+            protectedResponse:
+              interactionResponseOpaqueContentSchema.optional(),
+            response: agentInteractionResponseSchema.optional(),
+          })
+          .strict()
+          .superRefine((value, context) => {
+            if (Boolean(value.protectedResponse) === Boolean(value.response))
+              context.addIssue({
+                code: "custom",
+                message: "Provide exactly one interaction response.",
+              });
+          }),
+      ]),
+    })
+    .strict(),
   z.object({
     type: z.literal("chat.pause.set"),
+    nativeActivationGeneration: z.string().min(1).nullable().optional(),
     chatId: z.string().min(1),
     paused: z.boolean(),
   }),
   z.object({
     type: z.literal("chat.compact"),
+    session: managedSessionContextSchema.optional(),
+    subagentDefaults: managedSessionSubagentDefaultsSchema
+      .nullable()
+      .optional(),
+    mcpServers: z.array(mcpServerOpaqueRuntimeSchema).max(200).optional(),
+    planMode: planModeSchema.optional(),
     executionProfile: z.enum(["ide", "standalone-chat"]).default("ide"),
     chatId: z.string().min(1),
     cwd: z.string().min(1),
@@ -248,6 +314,7 @@ export const workerChatCommandSchemas = [
   }),
   z.object({
     type: z.literal("chat.interrupt"),
+    nativeActivationGeneration: z.string().min(1).nullable().optional(),
     executionProfile: z.enum(["ide", "standalone-chat"]).default("ide"),
     chatId: z.string().min(1),
     threadId: z.string().min(1).nullable(),
@@ -256,9 +323,29 @@ export const workerChatCommandSchemas = [
   }),
   z.object({
     type: z.literal("chat.turn.rollback"),
+    nativeCommandReceipt: nativeCommandReceiptSchema.optional(),
+    session: managedSessionContextSchema.optional(),
+    subagentDefaults: managedSessionSubagentDefaultsSchema
+      .nullable()
+      .optional(),
+    mcpServers: z.array(mcpServerOpaqueRuntimeSchema).max(200).optional(),
+    planMode: planModeSchema.optional(),
     executionProfile: z.enum(["ide", "standalone-chat"]).default("ide"),
     chatId: z.string().min(1),
     clientMessageId: z.string().min(1).max(200),
+    cwd: z.string().min(1),
+    threadId: z.string().min(1),
+    model: workerRuntimeModelSchema,
+    provider: workerRuntimeProviderSchema,
+    permissionProfileId: permissionProfileIdSchema,
+  }),
+  z.object({
+    type: z.literal("chat.automation.resume"),
+    session: managedSessionContextSchema,
+    subagentDefaults: managedSessionSubagentDefaultsSchema.nullable(),
+    mcpServers: z.array(mcpServerOpaqueRuntimeSchema).max(200),
+    planMode: planModeSchema,
+    chatId: z.string().min(1),
     cwd: z.string().min(1),
     threadId: z.string().min(1),
     model: workerRuntimeModelSchema,
@@ -277,6 +364,13 @@ export const workerChatCommandSchemas = [
   }),
   z.object({
     type: z.literal("chat.goal.create"),
+    operationId: z.string().min(1).max(255).optional(),
+    session: managedSessionContextSchema.optional(),
+    subagentDefaults: managedSessionSubagentDefaultsSchema
+      .nullable()
+      .optional(),
+    mcpServers: z.array(mcpServerOpaqueRuntimeSchema).max(200).optional(),
+    planMode: planModeSchema.optional(),
     chatId: z.string().min(1),
     cwd: z.string().min(1),
     threadId: z.string().min(1).nullable(),
@@ -292,6 +386,12 @@ export const workerChatCommandSchemas = [
   }),
   z.object({
     type: z.literal("chat.goal.update"),
+    session: managedSessionContextSchema.optional(),
+    subagentDefaults: managedSessionSubagentDefaultsSchema
+      .nullable()
+      .optional(),
+    mcpServers: z.array(mcpServerOpaqueRuntimeSchema).max(200).optional(),
+    planMode: planModeSchema.optional(),
     chatId: z.string().min(1),
     cwd: z.string().min(1),
     threadId: z.string().min(1),
@@ -303,6 +403,12 @@ export const workerChatCommandSchemas = [
   }),
   z.object({
     type: z.literal("chat.goal.clear"),
+    session: managedSessionContextSchema.optional(),
+    subagentDefaults: managedSessionSubagentDefaultsSchema
+      .nullable()
+      .optional(),
+    mcpServers: z.array(mcpServerOpaqueRuntimeSchema).max(200).optional(),
+    planMode: planModeSchema.optional(),
     chatId: z.string().min(1),
     cwd: z.string().min(1),
     threadId: z.string().min(1),
@@ -379,6 +485,7 @@ export const workerChatCommandSchemas = [
   }),
   z.object({
     type: z.literal("agent.interaction.respond"),
+    nativeActivationGeneration: z.string().min(1).nullable().optional(),
     executionProfile: z.enum(["ide", "standalone-chat"]).default("ide"),
     requestKey: z.string().min(1).max(200),
     response: agentInteractionResponseSchema,
@@ -387,6 +494,7 @@ export const workerChatCommandSchemas = [
   }),
   z.object({
     type: z.literal("agent.interaction.respond.protected"),
+    nativeActivationGeneration: z.string().min(1).nullable().optional(),
     executionProfile: z.enum(["ide", "standalone-chat"]).default("ide"),
     requestKey: z.string().min(1).max(200),
     response: interactionResponseOpaqueContentSchema,
@@ -404,6 +512,7 @@ export const workerChatCommandSchemas = [
   z
     .object({
       type: z.literal("chat.steer"),
+      nativeActivationGeneration: z.string().min(1).nullable().optional(),
       executionProfile: z.enum(["ide", "standalone-chat"]).default("ide"),
       chatId: z.string().min(1),
       threadId: z.string().min(1).nullable(),

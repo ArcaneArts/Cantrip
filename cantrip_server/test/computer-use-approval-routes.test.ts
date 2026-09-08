@@ -108,6 +108,13 @@ function setup(options: { preview?: boolean } = {}) {
   }
   const applicationOwnerId = vi.fn(() => "owner-one");
   const repository = {
+    nativeCommands: {
+      controlContext: vi.fn(async (owner: string, chat: string) => ({
+        context: await repository.getChatExecutionContext(owner, chat),
+        activationGeneration: null as string | null,
+        runtimeGeneration: null as string | null,
+      })),
+    },
     listAgentInteractionRequests:
       vi.fn<
         AgentInteractionRouteDependencies["repository"]["listAgentInteractionRequests"]
@@ -575,5 +582,40 @@ describe("computer-use approval responses", () => {
       provider: runtime.provider,
     });
     expect(f.resolveProtected).not.toHaveBeenCalled();
+  });
+  it("resolves a managed Codex reply through its captured activation without consulting current model availability", async () => {
+    const f = setup();
+    delete f.state.interaction.provenance.owner;
+    f.state.interaction.provenance.threadId = "codex-thread";
+    f.state.context.threadId = "codex-thread";
+    f.repository.nativeCommands.controlContext.mockResolvedValue({
+      context: f.state.context,
+      activationGeneration: "active-native-generation",
+      runtimeGeneration: "active-native-runtime",
+    });
+    f.isConnected.mockReturnValue(true);
+    expect((await f.send()).statusCode).toBe(200);
+    expect(f.runtimeForContext).not.toHaveBeenCalled();
+    expect(f.request).toHaveBeenCalledExactlyOnceWith(
+      "worker-one",
+      {
+        type: "chat.native-control",
+        chatId: "chat-one",
+        threadId: "codex-thread",
+        nativeActivationGeneration: "active-native-generation",
+        nativeRuntimeGeneration: "active-native-runtime",
+        modelRouteId: f.state.context.modelRouteId,
+        providerAccountId: f.state.context.providerAccountId,
+        control: {
+          kind: "reply",
+          requestKey: "native-request-one",
+          protectedResponse: {
+            classification: resolution().classification,
+            protectedResponse: resolution().protectedResponse,
+          },
+        },
+      },
+      { timeoutMs: 30_000 },
+    );
   });
 });

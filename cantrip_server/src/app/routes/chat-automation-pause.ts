@@ -1,3 +1,4 @@
+import { managedConsoleSessionContext } from "../../terminals/managed-session.js";
 import { chatPauseStateSchema, chatPauseUpdateSchema } from "@cantrip/protocol";
 import type { FastifyInstance } from "fastify";
 
@@ -12,7 +13,10 @@ export interface ChatAutomationPauseRouteDependencies {
   publishChatSummary: (chatId: string, projectId: string | null) => void;
   repository: Pick<
     ServerRepository,
-    "getChatExecutionContext" | "listQueuedPrompts" | "setChatAutomationPaused"
+    | "getChatExecutionContext"
+    | "listQueuedPrompts"
+    | "setChatAutomationPaused"
+    | "nativeCommands"
   >;
   resumeChatAutomation: (chatId: string) => Promise<void>;
 }
@@ -35,10 +39,11 @@ export function installChatAutomationPauseRoute(
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
-      const context = await repository.getChatExecutionContext(
+      const control = await repository.nativeCommands.controlContext(
         applicationOwnerId(),
         request.params.chatId,
       );
+      const context = control.context;
       if (!context) {
         return reply.code(404).send({ error: "Chat source not found." });
       }
@@ -60,19 +65,53 @@ export function installChatAutomationPauseRoute(
         });
       }
 
+      const managedNative = managedConsoleSessionContext(context) !== undefined;
+      // Native goal/queue resume may start execution, so admission must observe
+      // the user's durable unpause before the worker forwards that mutation.
+      const resumed =
+        managedNative && !input.data.paused
+          ? await repository.setChatAutomationPaused(
+              applicationOwnerId(),
+              context.chatId,
+              false,
+            )
+          : null;
+      if (managedNative && !input.data.paused && !resumed)
+        return reply.code(404).send({ error: "Chat source not found." });
+      if (managedNative && !input.data.paused)
+        await repository.nativeCommands.resumeAutonomy(
+          applicationOwnerId(),
+          context.chatId,
+        );
       const workerConnected = bridge.isConnected(context.workerId);
+      const pauseCommand = (paused: boolean) =>
+        managedNative && control.activationGeneration
+          ? {
+              type: "chat.native-control" as const,
+              chatId: context.chatId,
+              threadId: context.threadId,
+              nativeActivationGeneration: control.activationGeneration,
+              nativeRuntimeGeneration: control.runtimeGeneration,
+              modelRouteId: context.modelRouteId,
+              providerAccountId: context.providerAccountId,
+              control: { kind: "pause" as const, paused },
+            }
+          : { type: "chat.pause.set" as const, chatId: context.chatId, paused };
+
       if (!input.data.paused && workerConnected) {
         try {
-          await bridge.request(
-            context.workerId,
-            {
-              type: "chat.pause.set",
-              chatId: context.chatId,
-              paused: false,
-            },
-            { timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS },
-          );
+          await bridge.request(context.workerId, pauseCommand(false), {
+            timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS,
+          });
         } catch (error) {
+          if (managedNative) {
+            await repository.setChatAutomationPaused(
+              applicationOwnerId(),
+              context.chatId,
+              true,
+            );
+            publishChatSummary(context.chatId, context.projectId);
+          }
           return reply.code(502).send({
             error: `The worker could not resume this chat: ${errorMessage(error)}`,
           });
@@ -81,15 +120,9 @@ export function installChatAutomationPauseRoute(
 
       if (input.data.paused && workerConnected) {
         try {
-          await bridge.request(
-            context.workerId,
-            {
-              type: "chat.pause.set",
-              chatId: context.chatId,
-              paused: true,
-            },
-            { timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS },
-          );
+          await bridge.request(context.workerId, pauseCommand(true), {
+            timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS,
+          });
         } catch (error) {
           return reply.code(502).send({
             error: `The worker could not pause this chat at a safe boundary: ${errorMessage(error)}`,
@@ -97,23 +130,19 @@ export function installChatAutomationPauseRoute(
         }
       }
 
-      const updated = await repository.setChatAutomationPaused(
-        applicationOwnerId(),
-        context.chatId,
-        input.data.paused,
-      );
+      const updated =
+        resumed ??
+        (await repository.setChatAutomationPaused(
+          applicationOwnerId(),
+          context.chatId,
+          input.data.paused,
+        ));
       if (!updated) {
         if (workerConnected) {
           await bridge
-            .request(
-              context.workerId,
-              {
-                type: "chat.pause.set",
-                chatId: context.chatId,
-                paused: !input.data.paused,
-              },
-              { timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS },
-            )
+            .request(context.workerId, pauseCommand(!input.data.paused), {
+              timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS,
+            })
             .catch(() => undefined);
         }
         return reply.code(404).send({ error: "Chat source not found." });
@@ -133,11 +162,7 @@ export function installChatAutomationPauseRoute(
           publishChatSummary(context.chatId, context.projectId);
           if (bridge.isConnected(context.workerId)) {
             await bridge
-              .request(context.workerId, {
-                type: "chat.pause.set",
-                chatId: context.chatId,
-                paused: true,
-              })
+              .request(context.workerId, pauseCommand(true))
               .catch(() => undefined);
           }
           return reply.code(409).send({

@@ -559,6 +559,8 @@ export function createLiveMutationRuntime({
   };
 
   return {
+    publishEncryptedChatMessage,
+    publishTaskMessage,
     appendLiveChatMessage,
     appendLiveEncryptedChatMessage,
     appendLiveTaskMessage,

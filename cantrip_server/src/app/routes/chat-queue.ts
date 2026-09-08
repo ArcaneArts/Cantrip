@@ -38,6 +38,7 @@ export interface ChatQueueRouteDependencies {
   ) => ReturnType<ServerRepository["reorderQueuedPrompts"]>;
   repository: Pick<
     ServerRepository,
+    | "nativeCommands"
     | "createEncryptedQueuedPrompt"
     | "getChatExecutionContext"
     | "getEncryptedMessageByIdempotencyKey"
@@ -253,10 +254,11 @@ export function installChatQueueRoutes(
       if (!queued) {
         return reply.code(404).send({ error: "Queued prompt not found." });
       }
-      let context = await repository.getChatExecutionContext(
+      const control = await repository.nativeCommands.controlContext(
         applicationOwnerId(),
         queued.chatId,
       );
+      let context = control.context;
       if (!context) return reply.code(404).send({ error: "Chat not found." });
       if (context.experience === "task") {
         return reply.code(409).send({
@@ -280,25 +282,49 @@ export function installChatQueueRoutes(
           if (!bridge.isConnected(context.workerId)) {
             throw new Error("The active Codex thread is unavailable.");
           }
-          const runtime = await runtimeForContext(context);
-          if (!runtime) throw new Error("Selected model was not found.");
+          const runtime = control.activationGeneration
+            ? null
+            : await runtimeForContext(context);
+          if (!control.activationGeneration && !runtime)
+            throw new Error("Selected model was not found.");
           const attachments = await resolvePromptAttachments(
             context,
             queued.classification.attachmentIds,
           );
-          await bridge.request(context.workerId, {
-            type: "chat.steer",
-            executionProfile:
-              context.contextKind === "standalone" ? "standalone-chat" : "ide",
-            chatId: context.chatId,
-            threadId: context.threadId,
-            protectedPrompt: queued.pendingMessage,
-            attachments: attachments.map((attachment) =>
-              toChatAttachmentOpaqueSummary(attachment),
-            ),
-            model: runtime.model,
-            provider: runtime.provider,
-          });
+          const workerAttachments = attachments.map((attachment) =>
+            toChatAttachmentOpaqueSummary(attachment),
+          );
+          await bridge.request(
+            context.workerId,
+            control.activationGeneration
+              ? {
+                  type: "chat.native-control",
+                  chatId: context.chatId,
+                  threadId: context.threadId,
+                  nativeActivationGeneration: control.activationGeneration,
+                  nativeRuntimeGeneration: control.runtimeGeneration,
+                  modelRouteId: context.modelRouteId,
+                  providerAccountId: context.providerAccountId,
+                  control: {
+                    kind: "steer",
+                    protectedPrompt: queued.pendingMessage,
+                    attachments: workerAttachments,
+                  },
+                }
+              : {
+                  type: "chat.steer",
+                  executionProfile:
+                    context.contextKind === "standalone"
+                      ? "standalone-chat"
+                      : "ide",
+                  chatId: context.chatId,
+                  threadId: context.threadId,
+                  protectedPrompt: queued.pendingMessage,
+                  attachments: workerAttachments,
+                  model: runtime!.model,
+                  provider: runtime!.provider,
+                },
+          );
           const appended = await appendLiveEncryptedChatMessage(
             applicationOwnerId(),
             context.chatId,

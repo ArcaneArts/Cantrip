@@ -1,3 +1,4 @@
+import { NativeCommandRepository } from "./repository/native-commands.js";
 import type {
   AgentInteractionRequest,
   AgentInteractionRequestCreate,
@@ -290,6 +291,7 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
   readonly runConfigurationState: RunConfigurationStateRepository;
   readonly worktreeLifecycle: WorktreeLifecycleRepository;
   readonly chatExecutionLanes: ChatExecutionLaneRepository;
+  readonly nativeCommands: NativeCommandRepository;
   readonly chatCatalog: ChatCatalogRepository;
   readonly chatState: ChatStateRepository;
   readonly chatArchiveLifecycle: ChatArchiveLifecycleRepository;
@@ -408,6 +410,11 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
       getProjectWorktreeContext: (ownerId, projectId, worktreeId) =>
         this.getProjectWorktreeContext(ownerId, projectId, worktreeId),
     });
+    this.nativeCommands = new NativeCommandRepository(
+      database,
+      this.chatExecutionLanes,
+      (transaction) => new ServerRepository(transaction, secretVault),
+    );
     this.chatCatalog = new ChatCatalogRepository(database, {
       getProjectWorktreeContext: (ownerId, projectId, worktreeId) =>
         this.getProjectWorktreeContext(ownerId, projectId, worktreeId),

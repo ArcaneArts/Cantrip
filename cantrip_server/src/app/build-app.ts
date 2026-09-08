@@ -1,3 +1,4 @@
+import { installInternalNativeCommandRoutes } from "./routes/internal-native-commands.js";
 import { randomBytes, randomUUID } from "node:crypto";
 import {
   encryptedBrowserUpdateSchema,
@@ -348,6 +349,8 @@ export async function buildApp({
     scheduleWorkerWorktreeObservation,
   } = workerNotificationRuntime;
   const {
+    publishEncryptedChatMessage,
+    publishTaskMessage,
     appendLiveChatMessage,
     appendLiveEncryptedChatMessage,
     appendLiveTaskMessage,
@@ -837,6 +840,8 @@ export async function buildApp({
     continuePendingWorktreeTransition,
     dispatchNextQueuedPrompt,
     publishChatInvalidation,
+    appendLiveEncryptedChatMessage,
+    taskMessageServerStub,
     queueTaskScheduleTick: () => queueTaskScheduleTick(),
     repository,
     resolveModelId,
@@ -1155,7 +1160,9 @@ export async function buildApp({
     bridge,
     interruptLiveAgentInteractionRequests,
     repository,
+    publishChatSummary,
     runtimeForContext,
+    routePairsForConfiguration,
   });
 
   installChatAutomationPauseRoute(app, {
@@ -1187,6 +1194,7 @@ export async function buildApp({
     resolveModelId,
     retainTaskGoalLease,
     runtimeForContext,
+    routePairsForConfiguration,
     scheduledTaskGoalTurnOptions,
     startGoalTurn,
     taskContentFromSummary,
@@ -1312,6 +1320,20 @@ export async function buildApp({
     serverId,
     repository,
     runAsOwner,
+  });
+  installInternalNativeCommandRoutes(app, {
+    config,
+    serverId,
+    repository,
+    runAsOwner,
+    dispatchNextQueuedPrompt,
+    live: {
+      publishEncryptedChatMessage,
+      publishTaskMessage,
+      publishChatSummary,
+      publishChatTurnBoundary,
+      publishChatInvalidation,
+    },
   });
   installInternalAgentToolRoutes(app, {
     appendAudit,
