@@ -1,0 +1,415 @@
+--- a/codex-rs/app-server/src/request_processors/thread_processor.rs
++++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
+@@ -4463,7 +4463,39 @@
+                 include_archived: true,
+                 include_history,
+             };
+-            self.thread_store.read_thread(params).await
++            let result = self.thread_store.read_thread(params.clone()).await;
++            let can_materialize_live_thread = match &result {
++                Ok(stored_thread) => stored_thread.archived_at.is_none(),
++                // The local store still returns its exact legacy missing-rollout
++                // error; other stores use ThreadNotFound. Match only this ID,
++                // preserving malformed/history/permission/storage errors.
++                Err(ThreadStoreError::ThreadNotFound { thread_id }) => {
++                    *thread_id == existing_thread_id
++                }
++                Err(ThreadStoreError::InvalidRequest { message }) => {
++                    message == &format!("no rollout found for thread id {existing_thread_id}")
++                }
++                Err(_) => false,
++            };
++            if can_materialize_live_thread {
++                match self.thread_manager.get_thread(existing_thread_id).await {
++                    Ok(thread) if !thread.config_snapshot().await.ephemeral => {
++                        // Cantrip can attach a second client before the first user turn.
++                        // The live barrier persists the actual recorder and its pending
++                        // metadata without inventing a turn or changing name/config.
++                        // Apply it after successful reads too: another join or a failed
++                        // metadata flush can leave the rollout visible before metadata.
++                        thread
++                            .persist_for_attachment()
++                            .await
++                            .map_err(thread_store_resume_read_error)?;
++                        self.thread_store.read_thread(params).await
++                    }
++                    _ => result,
++                }
++            } else {
++                result
++            }
+         };
+ 
+         let stored_thread = result.map_err(thread_store_resume_read_error)?;
+--- a/codex-rs/app-server/tests/suite/v2/thread_resume.rs
++++ b/codex-rs/app-server/tests/suite/v2/thread_resume.rs
+@@ -159,6 +159,125 @@
+ const CODEX_5_2_INSTRUCTIONS_TEMPLATE_DEFAULT: &str = "You are Codex, a coding agent based on GPT-5. You and the user share the same workspace and collaborate to achieve the user's goals.";
+ 
+ #[tokio::test]
++async fn thread_resume_materializes_empty_live_legacy_thread_without_a_turn() -> Result<()> {
++    assert_empty_live_thread_can_resume_without_a_turn(ThreadHistoryMode::Legacy).await
++}
++
++#[tokio::test]
++async fn thread_resume_materializes_empty_live_paginated_thread_without_a_turn() -> Result<()> {
++    assert_empty_live_thread_can_resume_without_a_turn(ThreadHistoryMode::Paginated).await
++}
++
++async fn assert_empty_live_thread_can_resume_without_a_turn(
++    history_mode: ThreadHistoryMode,
++) -> Result<()> {
++    let server = create_mock_responses_server_repeating_assistant("must not run").await;
++    let codex_home = TempDir::new()?;
++    mock_responses_config(&server.uri()).write(codex_home.path())?;
++    let mut client = TestAppServer::builder()
++        .with_codex_home(codex_home.path())
++        .build_initialized()
++        .await?;
++    let started = client
++        .start_thread(ThreadStartParams {
++            model: Some("gpt-5.4".to_string()),
++            approval_policy: Some(AskForApproval::OnRequest),
++            sandbox: Some(SandboxMode::ReadOnly),
++            history_mode: Some(history_mode),
++            developer_instructions: Some("Keep empty-thread attachment instructions".to_string()),
++            ..Default::default()
++        })
++        .await?;
++    assert!(started.thread.turns.is_empty());
++    assert!(started.thread.name.is_none());
++
++    for exclude_turns in [true, false] {
++        let request_id = client
++            .send_thread_resume_request(ThreadResumeParams {
++                thread_id: started.thread.id.clone(),
++                exclude_turns,
++                ..Default::default()
++            })
++            .await?;
++        let resumed: ThreadResumeResponse =
++            timeout(DEFAULT_READ_TIMEOUT, client.read_response(request_id)).await??;
++        assert_eq!(resumed.thread.id, started.thread.id);
++        assert_eq!(resumed.thread.session_id, started.thread.session_id);
++        assert_eq!(resumed.thread.history_mode, history_mode);
++        assert!(resumed.thread.turns.is_empty());
++        assert!(resumed.thread.name.is_none());
++        assert_eq!(resumed.model, started.model);
++        assert_eq!(resumed.model_provider, started.model_provider);
++        assert_eq!(resumed.reasoning_effort, started.reasoning_effort);
++        assert_eq!(resumed.approval_policy, started.approval_policy);
++        assert_eq!(resumed.approvals_reviewer, started.approvals_reviewer);
++        assert_eq!(resumed.sandbox, started.sandbox);
++        assert_eq!(
++            resumed.active_permission_profile,
++            started.active_permission_profile
++        );
++        assert_eq!(resumed.cwd, started.cwd);
++        assert_eq!(
++            resumed.runtime_workspace_roots,
++            started.runtime_workspace_roots
++        );
++        assert_eq!(resumed.instruction_sources, started.instruction_sources);
++    }
++    assert!(
++        server
++            .received_requests()
++            .await
++            .expect("recorded requests")
++            .iter()
++            .all(|request| !request.url.path().ends_with("/responses"))
++    );
++    timeout(DEFAULT_READ_TIMEOUT, client.shutdown_gracefully()).await??;
++    Ok(())
++}
++
++#[tokio::test]
++async fn thread_resume_does_not_persist_an_empty_ephemeral_thread() -> Result<()> {
++    let server = create_mock_responses_server_repeating_assistant("must not run").await;
++    let codex_home = TempDir::new()?;
++    mock_responses_config(&server.uri()).write(codex_home.path())?;
++    let mut client = TestAppServer::builder()
++        .with_codex_home(codex_home.path())
++        .build_initialized()
++        .await?;
++    let started = client
++        .start_thread(ThreadStartParams {
++            ephemeral: Some(true),
++            ..Default::default()
++        })
++        .await?;
++    assert!(started.thread.ephemeral);
++    assert!(started.thread.path.is_none());
++    let request_id = client
++        .send_thread_resume_request(ThreadResumeParams {
++            thread_id: started.thread.id.clone(),
++            ..Default::default()
++        })
++        .await?;
++    let error = timeout(
++        DEFAULT_READ_TIMEOUT,
++        client.read_stream_until_error_message(RequestId::Integer(request_id)),
++    )
++    .await??;
++    assert_eq!(error.error.code, -32600);
++    assert!(error.error.message.contains("no rollout found"));
++    assert!(
++        server
++            .received_requests()
++            .await
++            .expect("recorded requests")
++            .iter()
++            .all(|request| !request.url.path().ends_with("/responses"))
++    );
++    timeout(DEFAULT_READ_TIMEOUT, client.shutdown_gracefully()).await??;
++    Ok(())
++}
++
++#[tokio::test]
+ async fn thread_resume_paginated_model_context_preserves_original_metadata() -> Result<()> {
+     let server = create_mock_responses_server_repeating_assistant("Done").await;
+     let codex_home = TempDir::new()?;
+@@ -439,7 +558,7 @@
+ }
+ 
+ #[tokio::test]
+-async fn thread_resume_rejects_unmaterialized_thread() -> Result<()> {
++async fn thread_resume_accepts_unmaterialized_live_thread() -> Result<()> {
+     let server = create_mock_responses_server_repeating_assistant("Done").await;
+     let codex_home = TempDir::new()?;
+     mock_responses_config(&server.uri()).write(codex_home.path())?;
+@@ -459,26 +578,29 @@
+     let ThreadStartResponse { thread, .. } =
+         timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(start_id)).await??;
+ 
+-    // Resume should fail before the first user message materializes rollout storage.
++    // Resume materializes the live recorder without requiring a user message.
+     let resume_id = mcp
+         .send_thread_resume_request(ThreadResumeParams {
+             thread_id: thread.id.clone(),
+             ..Default::default()
+         })
+         .await?;
+-    let resume_err: JSONRPCError = timeout(
+-        DEFAULT_READ_TIMEOUT,
+-        mcp.read_stream_until_error_message(RequestId::Integer(resume_id)),
+-    )
+-    .await??;
++    let resumed: ThreadResumeResponse =
++        timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(resume_id)).await??;
++    assert_eq!(resumed.thread.id, thread.id);
++    assert_eq!(resumed.thread.session_id, thread.session_id);
++    assert_eq!(resumed.thread.name, thread.name);
++    assert_eq!(resumed.thread.preview, thread.preview);
++    assert!(resumed.thread.turns.is_empty());
+     assert!(
+-        resume_err
+-            .error
+-            .message
+-            .contains("no rollout found for thread id"),
+-        "unexpected resume error: {}",
+-        resume_err.error.message
++        server
++            .received_requests()
++            .await
++            .expect("recorded requests")
++            .iter()
++            .all(|request| !request.url.path().ends_with("/responses"))
+     );
++    timeout(DEFAULT_READ_TIMEOUT, mcp.shutdown_gracefully()).await??;
+ 
+     Ok(())
+ }
+--- a/codex-rs/core/src/codex_thread.rs
++++ b/codex-rs/core/src/codex_thread.rs
+@@ -296,6 +296,18 @@
+             .await;
+     }
+ 
++    /// Persist an attachment while preserving deferred resume-only metadata.
++    #[doc(hidden)]
++    pub async fn persist_for_attachment(&self) -> ThreadStoreResult<()> {
++        let live_thread = self
++            .session
++            .live_thread_for_persistence("persist attachment")
++            .map_err(|err| ThreadStoreError::Internal {
++                message: err.to_string(),
++            })?;
++        live_thread.persist_for_attachment().await
++    }
++
+     #[doc(hidden)]
+     pub async fn flush_rollout(&self) -> std::io::Result<()> {
+         self.session.flush_rollout().await
+--- a/codex-rs/thread-store/src/live_thread.rs
++++ b/codex-rs/thread-store/src/live_thread.rs
+@@ -265,6 +265,19 @@
+         self.flush_pending_metadata_update().await
+     }
+ 
++    /// Persist a live attachment without applying deferred resume-only metadata.
++    pub async fn persist_for_attachment(&self) -> ThreadStoreResult<()> {
++        self.thread_store
++            .persist_thread(self.thread_id, PersistContext::Standard)
++            .await?;
++        let update = self
++            .metadata_sync
++            .lock()
++            .await
++            .take_pending_update_for_attachment();
++        self.apply_pending_metadata_update(update).await
++    }
++
+     pub async fn flush(&self) -> ThreadStoreResult<()> {
+         self.thread_store.flush_thread(self.thread_id).await?;
+         self.flush_pending_metadata_update_for_existing_history()
+--- a/codex-rs/thread-store/src/thread_metadata_sync.rs
++++ b/codex-rs/thread-store/src/thread_metadata_sync.rs
+@@ -133,6 +133,15 @@
+                 patch,
+                 generation: self.pending_update_generation,
+             })
++    }
++
++    /// Attachment materializes new threads without flushing metadata reconstructed
++    /// from a resumed thread's history before its first new append.
++    pub(crate) fn take_pending_update_for_attachment(&self) -> Option<PendingThreadMetadataPatch> {
++        if self.defer_resume_update_until_append {
++            return None;
++        }
++        self.take_pending_update()
+     }
+ 
+     pub(crate) fn take_pending_update_for_existing_history(
+@@ -466,6 +475,84 @@
+         assert_eq!(update.patch.project_id, None);
+     }
+ 
++    #[tokio::test]
++    async fn attachment_preserves_create_metadata_until_successfully_applied() {
++        for history_mode in [ThreadHistoryMode::Legacy, ThreadHistoryMode::Paginated] {
++            let thread_id = ThreadId::new();
++            let mut sync = ThreadMetadataSync::for_create(&CreateThreadParams {
++                session_id: thread_id.into(),
++                thread_id,
++                extra_config: None,
++                forked_from_id: None,
++                parent_thread_id: None,
++                source: SessionSource::Exec,
++                thread_source: None,
++                originator: "test_originator".to_string(),
++                base_instructions: codex_protocol::models::BaseInstructions::default(),
++                dynamic_tools: Vec::new(),
++                selected_capability_roots: Vec::new(),
++                multi_agent_version: None,
++                history_mode,
++                history_base: None,
++                subagent_history_start_ordinal: None,
++                initial_window_id: uuid::Uuid::now_v7().to_string(),
++                metadata: ThreadPersistenceMetadata {
++                    cwd: None,
++                    model_provider: "test-provider".to_string(),
++                    memory_mode: ThreadMemoryMode::Enabled,
++                },
++            })
++            .await;
++            assert!(sync.take_pending_update_for_existing_history().is_none());
++            let initial = sync
++                .take_pending_update_for_attachment()
++                .expect("attachment must persist initial create metadata");
++            let retry = sync
++                .take_pending_update_for_attachment()
++                .expect("failed metadata writes must remain retryable");
++            assert_eq!(retry.generation, initial.generation);
++            assert_eq!(
++                serde_json::to_value(&retry.patch).expect("serialize retry metadata"),
++                serde_json::to_value(&initial.patch).expect("serialize initial metadata")
++            );
++            assert_eq!(retry.patch.model_provider.as_deref(), Some("test-provider"));
++            assert!(retry.patch.title.is_none());
++            sync.mark_pending_update_applied(&retry);
++            assert!(sync.take_pending_update_for_attachment().is_none());
++        }
++    }
++
++    #[test]
++    fn attachment_keeps_resumed_history_metadata_deferred_until_append() {
++        for history_mode in [ThreadHistoryMode::Legacy, ThreadHistoryMode::Paginated] {
++            let thread_id = ThreadId::new();
++            let mut meta = session_meta(thread_id);
++            meta.meta.history_mode = history_mode;
++            let mut sync = resume_sync(
++                thread_id,
++                vec![
++                    RolloutItem::SessionMeta(meta),
++                    RolloutItem::EventMsg(EventMsg::UserMessage(user_message("old history"))),
++                ],
++            );
++            assert!(sync.take_pending_update().is_some());
++            for _ in 0..2 {
++                assert!(
++                    sync.take_pending_update_for_attachment().is_none(),
++                    "joining a resumed thread must not flush reconstructed metadata"
++                );
++            }
++            let appended = sync
++                .observe_appended_items(&[RolloutItem::EventMsg(EventMsg::UserMessage(
++                    user_message("new append"),
++                ))])
++                .expect("new append releases deferred metadata");
++            assert!(sync.take_pending_update_for_attachment().is_some());
++            sync.mark_pending_update_applied(&appended);
++            assert!(sync.take_pending_update_for_attachment().is_none());
++        }
++    }
++
+     #[test]
+     fn resume_history_keeps_derived_metadata_pending_until_applied() {
+         let thread_id = ThreadId::new();
+--- a/codex-rs/thread-store/src/local/update_thread_metadata.rs
++++ b/codex-rs/thread-store/src/local/update_thread_metadata.rs
+@@ -70,25 +70,25 @@
+     let requires_rollout_compat =
+         staged_requires_rollout_compat || requires_rollout_compatibility_update(&patch);
+     let has_explicit_metadata = patch.name.is_some() || requires_rollout_compat;
+-    let history_mode = if has_explicit_metadata {
+-        match live_writer::live_writer_parts(store, thread_id).await {
+-            Ok((_recorder, _rollout_id, history_mode)) => Some(history_mode),
+-            Err(ThreadStoreError::ThreadNotFound { .. }) => Some(
+-                read_thread::read_thread(
+-                    store,
+-                    ReadThreadParams {
+-                        thread_id,
+-                        include_archived: params.include_archived,
+-                        include_history: false,
+-                    },
+-                )
+-                .await?
+-                .history_mode,
+-            ),
+-            Err(err) => return Err(err),
+-        }
+-    } else {
+-        None
++    // Live paginated threads require SQLite for observed metadata too. Treating
++    // initial metadata as optional can acknowledge a failed insert and lose the
++    // pending update, leaving a durable rollout that cannot be read or retried.
++    let history_mode = match live_writer::live_writer_parts(store, thread_id).await {
++        Ok((_recorder, _rollout_id, history_mode)) => Some(history_mode),
++        Err(ThreadStoreError::ThreadNotFound { .. }) if has_explicit_metadata => Some(
++            read_thread::read_thread(
++                store,
++                ReadThreadParams {
++                    thread_id,
++                    include_archived: params.include_archived,
++                    include_history: false,
++                },
++            )
++            .await?
++            .history_mode,
++        ),
++        Err(ThreadStoreError::ThreadNotFound { .. }) => None,
++        Err(err) => return Err(err),
+     };
+     let paginated = matches!(history_mode, Some(ThreadHistoryMode::Paginated));
+     let require_sqlite_write =

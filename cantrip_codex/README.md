@@ -46,6 +46,34 @@ OpenAI's two-entry SHA-256 manifest, and supplies them to Cargo. This preserves
 the upstream V8 sandbox without compiling V8 from source on every Cantrip
 target.
 
+## Managed empty-thread attachment
+
+The reviewed empty-thread resume patch lets a second remote client attach to a
+live durable thread before its first user message. By-ID resume persists the
+existing live recorder and pending metadata before following the normal resume
+path. This also covers concurrent joins and retry after a metadata write fails
+with the recorder already visible. Metadata reconstructed during cold resume
+remains deferred until a new append, as in native behavior. It does not rename
+the thread, change its configuration, or submit a model turn. Live paginated
+metadata writes are required and report actual SQLite failures; failed updates
+remain available for retry. Missing IDs, ephemeral threads and unrelated
+persistence errors retain their error behavior.
+
+The worker has opt-in regressions against the built native executable:
+
+```sh
+CANTRIP_CODEX_TEST_BINARY="$PWD/cantrip_codex/.build/darwin-arm64/bundle/codex" \
+  pnpm --dir cantrip_worker exec vitest run \
+  test/native-thread-observation.test.ts test/native-empty-thread-attach.test.ts
+```
+
+Run these opt-in tests with Node 24 or later (the metadata failure fixture uses
+`node:sqlite`). Use the corresponding bundle path on other platforms. The
+fixtures use isolated homes, a local rejecting provider and a harmless MCP catalog. They never use an
+account or submit model/computer input. The remote fixture uses independent
+WebSocket clients on the same actual app-server; it does not claim to validate
+Cantrip's complete GUI/TUI mirroring or command authorization.
+
 ## Manual upstream update
 
 Codex never updates itself inside a released worker. To advance it:
