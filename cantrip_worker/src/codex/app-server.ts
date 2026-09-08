@@ -3928,6 +3928,8 @@ export function completedCodexThreadTurnFromRead(
 }
 
 export class CodexAppServer implements CodexRuntime {
+  readonly #threadPreparations = new Map<string, Promise<void>>();
+  #preparationEpoch = 0;
   readonly #activeTurns = new Map<string, ActiveTurn>();
   readonly #activeTurnsByThread = new Map<string, ActiveTurn>();
   readonly #rootExecutionsByActive = new Map<ActiveTurn, RootExecution>();
@@ -5253,16 +5255,9 @@ export class CodexAppServer implements CodexRuntime {
     options: GoalRuntimeOptions & { threadId: string },
   ): Promise<ChatGoalResponse> {
     await this.ensureStarted(options.model, options.provider);
-    if (!this.methodAvailable("thread/goal/get")) {
-      return chatGoalResponseSchema.parse({ goal: null });
-    }
-    const threadId = await this.loadThread(options, false);
-    if (!threadId) {
-      throw new Error(
-        "The Codex thread is no longer available on this worker.",
-      );
-    }
-    return this.refreshGoal(threadId);
+    // Native goal reads support unloaded threads. Reading metadata must not
+    // resume with an incomplete MCP/model/permission configuration.
+    return this.refreshGoal(options.threadId);
   }
 
   async createGoal(
@@ -5272,7 +5267,7 @@ export class CodexAppServer implements CodexRuntime {
     },
   ): Promise<ChatGoalResponse> {
     await this.ensureStarted(options.model, options.provider);
-    const threadId = await this.loadThread(options);
+    const threadId = await this.loadThread(options, true, "preserve");
     if (!threadId) {
       throw new Error("Could not start a Codex thread for the goal.");
     }
@@ -5305,7 +5300,7 @@ export class CodexAppServer implements CodexRuntime {
     },
   ): Promise<ChatGoalResponse> {
     await this.ensureStarted(options.model, options.provider);
-    const threadId = await this.loadThread(options, false);
+    const threadId = await this.loadThread(options, false, "preserve");
     if (!threadId) {
       throw new Error(
         "The Codex thread is no longer available on this worker.",
@@ -5325,7 +5320,7 @@ export class CodexAppServer implements CodexRuntime {
     options: GoalRuntimeOptions & { threadId: string },
   ): Promise<{ cleared: boolean }> {
     await this.ensureStarted(options.model, options.provider);
-    const threadId = await this.loadThread(options, false);
+    const threadId = await this.loadThread(options, false, "preserve");
     if (!threadId) {
       throw new Error(
         "The Codex thread is no longer available on this worker.",
@@ -5342,17 +5337,13 @@ export class CodexAppServer implements CodexRuntime {
     options: GoalRuntimeOptions & { fallbackMode: PlanMode },
   ): Promise<{ mode: PlanMode; threadId: string | null }> {
     await this.ensureStarted(options.model, options.provider);
-    const threadId = await this.loadThread(options, false);
+    const threadId = await this.loadThread(options, false, "preserve");
     if (!threadId) {
       return { mode: options.fallbackMode, threadId: null };
     }
     const knownMode = this.#collaborationModes.get(threadId);
     if (knownMode) return { mode: knownMode, threadId };
-    await this.updatePlanModeOnThread(
-      threadId,
-      options.fallbackMode,
-      options.model,
-    );
+    // A missing native sample is not permission to apply the display fallback.
     return { mode: options.fallbackMode, threadId };
   }
 
@@ -5838,6 +5829,8 @@ export class CodexAppServer implements CodexRuntime {
   }
 
   private stopFailedStart(): void {
+    this.#preparationEpoch += 1;
+    this.#threadPreparations.clear();
     const socket = this.#socket;
     const child = this.#child;
     this.#socket = null;
@@ -5866,7 +5859,9 @@ export class CodexAppServer implements CodexRuntime {
     threadId: string,
     servers: NonNullable<RunAgentTurnOptions["mcpServers"]>,
     fingerprint: string,
+    assertCurrent: () => void = () => {},
   ): Promise<void> {
+    assertCurrent();
     const requirements = managedMcpToolRequirements(servers);
     if (!requirements.length) return;
     if (
@@ -5874,16 +5869,12 @@ export class CodexAppServer implements CodexRuntime {
     ) {
       return;
     }
-    if (!this.methodAvailable("mcpServerStatus/list")) {
-      throw new Error(
-        "The installed Codex runtime cannot verify required managed MCP servers.",
-      );
-    }
 
     const startedAtMs = Date.now();
     const deadline = startedAtMs + 10_000;
     let lastError: unknown = null;
     do {
+      assertCurrent();
       try {
         let cursor: string | null = null;
         const seenCursors = new Set<string>();
@@ -5897,6 +5888,7 @@ export class CodexAppServer implements CodexRuntime {
               threadId,
             }),
           );
+          assertCurrent();
           for (const status of page.servers) {
             const key = status.name.trim().toLowerCase();
             if (!available.has(key)) available.set(key, new Set());
@@ -5926,6 +5918,7 @@ export class CodexAppServer implements CodexRuntime {
           if (cursor) seenCursors.add(cursor);
         } while (cursor);
       } catch (error) {
+        assertCurrent();
         lastError = error;
       }
       if (Date.now() < deadline) {
@@ -5933,6 +5926,7 @@ export class CodexAppServer implements CodexRuntime {
       }
     } while (Date.now() < deadline);
 
+    assertCurrent();
     workerLogger.event("error", "Managed MCP servers did not become ready", {
       event: "codex.mcp.ready",
       subsystem: "codex",
@@ -5966,7 +5960,72 @@ export class CodexAppServer implements CodexRuntime {
       subagentDefaults?: RuntimeSubagentDefaults | null;
     },
     create = true,
+    intent: "configure" | "preserve" = "configure",
   ): Promise<string | null> {
+    const epoch = this.#preparationEpoch;
+    const prepare = () =>
+      this.loadPreparedThread(options, create, intent, epoch);
+    // Independent new chats do not have a shared key yet. Their coordinator
+    // must deduplicate by chat identity, never by a null native thread ID.
+    if (!options.threadId) return prepare();
+    const key = options.threadId;
+    const previous = this.#threadPreparations.get(key);
+    const result = (previous ?? Promise.resolve()).then(prepare);
+    const tail = result.then(
+      () => {},
+      () => {},
+    );
+    this.#threadPreparations.set(key, tail);
+    void tail.then(() => {
+      if (this.#threadPreparations.get(key) === tail)
+        this.#threadPreparations.delete(key);
+    });
+    return result;
+  }
+
+  private assertPreparationEpoch(epoch: number): void {
+    if (epoch !== this.#preparationEpoch)
+      throw new Error("Codex runtime changed during thread preparation.");
+  }
+
+  private async loadPreparedThread(
+    options: Pick<
+      RunAgentTurnOptions,
+      | "cwd"
+      | "mcpServers"
+      | "model"
+      | "permissionProfileId"
+      | "provider"
+      | "threadId"
+    > & {
+      executionProfile?: RunAgentTurnOptions["executionProfile"];
+      resultMode?: RunAgentTurnOptions["resultMode"];
+      subagentDefaults?: RuntimeSubagentDefaults | null;
+    },
+    create: boolean,
+    intent: "configure" | "preserve",
+    epoch: number,
+  ): Promise<string | null> {
+    const assertCurrent = () => this.assertPreparationEpoch(epoch);
+    assertCurrent();
+    const request = async (method: string, params: unknown) => {
+      assertCurrent();
+      const result = await this.request(method, params);
+      assertCurrent();
+      return result;
+    };
+    if (intent === "preserve" && options.threadId) {
+      if (!this.#loadedThreads.has(options.threadId)) {
+        const resumed = (await request("thread/resume", {
+          threadId: options.threadId,
+        })) as ThreadResponse;
+        if (resumed.thread.id !== options.threadId)
+          throw new Error("Codex resumed a different thread than requested.");
+        this.#loadedThreads.add(options.threadId);
+        // A preserving load does not establish an applied Cantrip configuration.
+      }
+      return options.threadId;
+    }
     const structuredReadOnly = options.resultMode?.kind === "structured";
     const permissionKey = structuredReadOnly
       ? "cantrip:task-read-only"
@@ -5986,6 +6045,7 @@ export class CodexAppServer implements CodexRuntime {
     const threadConfigFingerprint = JSON.stringify(threadConfig);
     const mcpConfigFingerprint = mcpConfig ? JSON.stringify(mcpConfig) : null;
     const hasGitMetadata = await workspaceHasGitMetadata(options.cwd);
+    assertCurrent();
     let threadId = options.threadId;
     if (
       threadId &&
@@ -6010,9 +6070,16 @@ export class CodexAppServer implements CodexRuntime {
           this.#mcpConfigFingerprintsByThread.get(threadId) !==
             threadConfigFingerprint
         ) {
-          await this.request("thread/unsubscribe", { threadId });
+          // Once unsubscribe is attempted, an uncertain reply cannot justify
+          // trusting the previous attachment or its MCP readiness.
+          assertCurrent();
+          this.#loadedThreads.delete(threadId);
+          this.#mcpConfigFingerprintsByThread.delete(threadId);
+          this.#readyMcpConfigFingerprintsByThread.delete(threadId);
+          this.#permissionProfilesByThread.delete(threadId);
+          await request("thread/unsubscribe", { threadId });
         }
-        const resumed = (await this.request("thread/resume", {
+        const resumed = (await request("thread/resume", {
           threadId,
           model: options.model.name,
           ...codexReasoningEffortParams(options.model),
@@ -6047,25 +6114,23 @@ export class CodexAppServer implements CodexRuntime {
           ...codexProviderLogContext(options.provider),
         });
       } catch (error) {
-        // Codex thread state is local to its worker/runtime. A normal turn can
-        // recover from replacement by starting a new thread; compaction cannot.
-        workerLogger.event("warn", "Codex chat thread resume fell back", {
+        workerLogger.event("warn", "Codex chat thread resume failed", {
           event: "codex.thread.resume",
           subsystem: "codex",
           operation: "resume-chat-thread",
-          status: "recovering",
+          status: "failed",
           reasonCode: "thread-resume-failed",
           threadId: requestedThreadId,
           durationMs: Date.now() - startedAtMs,
           error: workerLogError(error),
           ...codexProviderLogContext(options.provider),
         });
-        threadId = null;
+        throw error;
       }
     }
     if (!threadId && create) {
       const startedAtMs = Date.now();
-      const started = (await this.request("thread/start", {
+      const started = (await request("thread/start", {
         model: options.model.name,
         ...codexReasoningEffortParams(options.model),
         modelProvider,
@@ -6104,6 +6169,7 @@ export class CodexAppServer implements CodexRuntime {
         threadId,
         options.mcpServers,
         mcpConfigFingerprint,
+        assertCurrent,
       );
     }
     return threadId;
@@ -7268,9 +7334,11 @@ export class CodexAppServer implements CodexRuntime {
       runtimeId: processRuntimeId,
       durationMs: Date.now() - startedAtMs,
     });
-    socket.on("message", (data: RawData) => this.handleSocketMessage(data));
+    socket.on("message", (data: RawData) => {
+      if (this.#socket === socket) this.handleSocketMessage(data);
+    });
     socket.on("error", (error) => {
-      this.handleExit(error);
+      if (this.#socket === socket) this.handleExit(error);
     });
     socket.on("close", () => {
       if (this.#socket !== socket) return;
@@ -7310,6 +7378,7 @@ export class CodexAppServer implements CodexRuntime {
       this.#child = null;
     });
     child.once("exit", (code, signal) => {
+      if (this.#child !== child) return;
       workerLogger.event(
         code === 0 || signal === "SIGINT" || signal === "SIGTERM"
           ? "info"
@@ -9306,6 +9375,8 @@ export class CodexAppServer implements CodexRuntime {
   }
 
   private handleExit(error: Error): void {
+    this.#preparationEpoch += 1;
+    this.#threadPreparations.clear();
     for (const execution of this.#rootExecutionsByActive.values())
       this.abortComputerUseExecution(execution);
     for (const pending of this.#pending.values()) {

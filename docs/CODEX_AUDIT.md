@@ -21,12 +21,50 @@ the session and attach its CLI at chat creation, without submitting a prompt
 or forcing the user out of the GUI. Do not attach a second execution engine or
 use terminal text as the conversation database.
 
-This is an audit and implementation plan, not an implementation of eager
-startup. No startup behavior, permissions, running sessions or Codex code were
-changed during this audit. The reverted GUI-first behavior remains the baseline.
-The requested artifact is this report, delivered in its own PR/worktree with
-squash automerge. Each later implementation or documentation cycle should use
-its own PR/worktree/automerge too.
+The original audit was documentation only (PR #1849). Implementation progress
+below records subsequent passes; the source findings and baseline validation
+sections remain historical evidence, not claims about the final implementation.
+Each implementation pass uses its own PR/worktree and squash automerge.
+
+### Implementation progress
+
+**Pass 1 — metadata and existing-thread preparation:** goal reads now use native
+`thread/goal/get` directly, including unloaded threads. Existing-thread goal
+mutations and plan observation preserve native configuration; a cold preserving
+load sends only `threadId`. Plan observation no longer writes its display
+fallback into native settings. Missing applied plan information remains a
+fallback, not a confirmed native settings snapshot.
+
+Existing-thread preparation is serialized through native resume and MCP catalog
+readiness. Identical concurrent configurations reuse the result, while explicit
+empty MCP configuration remains an actual configuration operation. An attempted
+unsubscribe invalidates cached attachment/configuration/readiness; failed resume
+surfaces the actual error without silently creating a replacement conversation.
+Runtime teardown invalidates pending preparation, and retired socket/process
+callbacks cannot clear replacement runtime state. Managed MCP catalog requests
+now attempt the native operation without a capability-inventory prerequisite.
+
+Validation: 114 tests passed across eight focused worker files, including 14
+preparation regressions and one actual bundled Codex `0.153.4` protocol test;
+worker typecheck and diff/format checks passed. The native test uses an isolated
+home, a real stdio MCP fixture and a rejecting local provider, with zero model
+requests, turns or tool calls. It proves named-thread minimal resume preserves
+settings/MCP and metadata reads preserve plan mode; unloaded durable goal reads
+do not start the thread or MCP. The two stale disabled-CUA instruction fixtures
+identified during the audit now assert the existing disabled notice explicitly.
+
+**Discovered prerequisite:** native minimal resume of a newly started unnamed,
+empty thread fails with `no rollout found`, even while that thread is live.
+Naming the disposable test thread materializes it without inference; this is
+fixture setup, not an implemented eager-start workaround. Empty-thread attachment
+still needs a deliberate product/native solution and acceptance coverage.
+
+**Still outstanding:** the shared chat-keyed preparation coordinator and complete
+MCP builder, side-effect-free TUI attachment, full startup-incarnation guarding,
+command admission, origin-independent lifecycle/CUA authority, durable projection,
+settings parity, eager boot and the full acceptance matrix. Pass 1 does not enable
+eager startup or establish bidirectional mirroring. The GUI-first baseline stays
+in place until those prerequisites are implemented.
 
 ### What “perfect mirror” must mean
 
