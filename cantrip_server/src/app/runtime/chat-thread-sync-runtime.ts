@@ -80,6 +80,8 @@ export function createChatThreadSyncRuntime({
         chatId: context.chatId,
         cwd: context.cwd,
         threadId: context.threadId,
+        // The worker observes its bound runtime, including the exact child
+        // profile. Reading history does not select an executable child route.
         model: runtime.model,
         provider: runtime.provider,
       }),

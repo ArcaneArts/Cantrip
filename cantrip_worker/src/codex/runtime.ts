@@ -22,6 +22,7 @@ import type {
   CompactAgentThreadOptions,
   GoalRuntimeOptions,
   HydrateChatRelocationOptions,
+  PrepareManagedThreadOptions,
   RuntimeChatAttachment,
   RunAgentTurnOptions,
   RunAgentOperationOptions,
@@ -126,29 +127,48 @@ export interface CodexRuntime {
   remoteEndpoint(
     model: RunAgentTurnOptions["model"],
     provider: RunAgentTurnOptions["provider"],
+    profile?: Pick<
+      RunAgentTurnOptions,
+      "subagentDefaults" | "executionProfile"
+    >,
   ): Promise<string>;
   syncThread(
     options: Pick<
       RunAgentTurnOptions,
       "cwd" | "model" | "provider" | "threadId"
-    > & { threadId: string },
+    > & {
+      threadId: string;
+      executionProfile?: RunAgentTurnOptions["executionProfile"];
+      subagentDefaults?: RunAgentTurnOptions["subagentDefaults"];
+    },
   ): Promise<AgentThreadSync>;
+  observeThread(options: {
+    cwd: string;
+    threadId: string;
+  }): Promise<AgentThreadSync | null>;
   prepareExternalSync(
     options: Pick<
       RunAgentTurnOptions,
       | "cwd"
+      | "executionProfile"
       | "mcpServers"
       | "model"
       | "permissionProfileId"
       | "provider"
       | "threadId"
-    > & { threadId: string },
+    > & {
+      threadId: string;
+      subagentDefaults?: RunAgentTurnOptions["subagentDefaults"];
+    },
   ): Promise<void>;
   compactThread(
     options: CompactAgentThreadOptions,
   ): Promise<{ accepted: true }>;
   ensureThread(
     options: GoalRuntimeOptions & { planMode: PlanMode },
+  ): Promise<{ threadId: string }>;
+  prepareManagedThread(
+    options: PrepareManagedThreadOptions,
   ): Promise<{ threadId: string }>;
   hydrateChatRelocation(
     options: HydrateChatRelocationOptions,

@@ -1,5 +1,10 @@
 import { z } from "zod";
 import {
+  managedSessionContextSchema,
+  managedSessionSubagentDefaultsSchema,
+} from "./managed-session.js";
+import { planModeSchema } from "./chat-runtime.js";
+import {
   attachmentChunkOpaqueSchema,
   attachmentProtectedMetadataSchema,
   chatAttachmentSummarySchema,
@@ -96,6 +101,11 @@ export const workerSurfaceCommandSchemas = [
         z.object({ type: z.literal("shell") }),
         z.object({
           type: z.literal("codex"),
+          session: managedSessionContextSchema.optional(),
+          subagentDefaults: managedSessionSubagentDefaultsSchema
+            .nullable()
+            .optional(),
+          planMode: planModeSchema.optional(),
           threadId: z.string().min(1).nullable(),
           model: workerRuntimeModelSchema,
           provider: workerRuntimeProviderSchema,

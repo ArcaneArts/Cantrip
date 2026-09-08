@@ -1,0 +1,949 @@
+diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
+index df93ee2..bed8e5d 100644
+--- a/codex-rs/app-server-protocol/src/protocol/common.rs
++++ b/codex-rs/app-server-protocol/src/protocol/common.rs
+@@ -630,6 +630,11 @@ client_request_definitions! {
+         serialization: thread_id(params.thread_id),
+         response: v2::ThreadSectionMoveResponse,
+     },
++    ThreadManagedConfigUpdate => "thread/managedConfig/update" {
++        params: v2::ThreadManagedConfigUpdateParams,
++        serialization: thread_id(params.thread_id),
++        response: v2::ThreadManagedConfigUpdateResponse,
++    },
+     #[experimental("thread/settings/update")]
+     ThreadSettingsUpdate => "thread/settings/update" {
+         params: v2::ThreadSettingsUpdateParams,
+diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
+index 2ecc8e6..c81b4b1 100644
+--- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
++++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
+@@ -98,6 +98,9 @@ pub struct ThreadStartParams {
+     pub permissions: Option<String>,
+     #[ts(optional = nullable)]
+     pub config: Option<HashMap<String, JsonValue>>,
++    /// Complete thread-owned profile applied before MCP startup. Omission keeps ordinary config behavior.
++    #[ts(optional = nullable)]
++    pub managed_config: Option<ThreadManagedConfiguration>,
+     #[ts(optional = nullable)]
+     pub service_name: Option<String>,
+     #[ts(optional = nullable)]
+@@ -283,6 +286,63 @@ pub struct ThreadSettingsUpdateParams {
+ #[ts(export_to = "v2/")]
+ pub struct ThreadSettingsUpdateResponse {}
+ 
++/// Complete replacement of the managed configuration on an already loaded thread.
++/// Root model, permissions, collaboration mode, and other thread settings are preserved.
++#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
++#[serde(rename_all = "camelCase", deny_unknown_fields)]
++#[ts(export_to = "v2/")]
++pub struct ThreadManagedConfigUpdateParams {
++    pub thread_id: String,
++    #[serde(flatten)]
++    pub managed_config: ThreadManagedConfiguration,
++}
++
++/// Strict, complete thread-owned profile shared by startup and live updates.
++#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
++#[serde(rename_all = "camelCase", deny_unknown_fields)]
++#[ts(export_to = "v2/")]
++pub struct ThreadManagedConfiguration {
++    /// Full native MCP server map. An empty map removes all configured servers.
++    #[ts(type = "{ [key: string]: JsonValue }")]
++    pub mcp_servers: HashMap<String, JsonValue>,
++    #[serde(deserialize_with = "Option::deserialize")]
++    #[schemars(
++        required,
++        schema_with = "crate::protocol::serde_helpers::nullable_string_schema"
++    )]
++    #[ts(type = "string | null")]
++    pub developer_instructions: Option<String>,
++    /// Updates both features.multi_agent and agents.enabled.
++    pub multi_agent_enabled: bool,
++    #[serde(deserialize_with = "Option::deserialize")]
++    #[schemars(
++        required,
++        schema_with = "crate::protocol::serde_helpers::nullable_string_schema"
++    )]
++    #[ts(type = "string | null")]
++    pub subagent_model: Option<String>,
++    #[serde(deserialize_with = "Option::deserialize")]
++    #[schemars(required, schema_with = "nullable_managed_reasoning_effort_schema")]
++    #[ts(type = "ReasoningEffort | null")]
++    pub subagent_reasoning_effort: Option<ReasoningEffort>,
++}
++
++#[cfg(test)]
++fn nullable_managed_reasoning_effort_schema(
++    generator: &mut schemars::r#gen::SchemaGenerator,
++) -> schemars::schema::Schema {
++    generator.subschema_for::<Option<ReasoningEffort>>()
++}
++
++/// Configuration has been applied; MCP initialization is observed separately.
++#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
++#[serde(rename_all = "camelCase")]
++#[ts(export_to = "v2/")]
++pub struct ThreadManagedConfigUpdateResponse {
++    pub thread_id: String,
++    pub applied: bool,
++}
++
+ #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS, ExperimentalApi)]
+ #[serde(rename_all = "camelCase")]
+ #[ts(export_to = "v2/")]
+@@ -389,6 +449,10 @@ pub struct ThreadResumeParams {
+     pub permissions: Option<String>,
+     #[ts(optional = nullable)]
+     pub config: Option<HashMap<String, serde_json::Value>>,
++    /// Complete profile applied before a cold thread creates MCP processes.
++    /// Use thread/managedConfig/update to reconfigure an already loaded thread.
++    #[ts(optional = nullable)]
++    pub managed_config: Option<ThreadManagedConfiguration>,
+     #[ts(optional = nullable)]
+     pub base_instructions: Option<String>,
+     #[ts(optional = nullable)]
+@@ -2021,3 +2085,90 @@ pub struct ContextCompactedNotification {
+     pub thread_id: String,
+     pub turn_id: String,
+ }
++
++#[cfg(test)]
++mod managed_config_tests {
++    use super::ThreadManagedConfigUpdateParams;
++    use serde_json::json;
++
++    #[test]
++    fn managed_config_update_requires_explicit_complete_replacement() {
++        let complete = json!({
++            "threadId": "thread", "mcpServers": {}, "developerInstructions": null,
++            "multiAgentEnabled": false, "subagentModel": null, "subagentReasoningEffort": null
++        });
++        let parsed: ThreadManagedConfigUpdateParams =
++            serde_json::from_value(complete.clone()).unwrap();
++        assert!(parsed.managed_config.mcp_servers.is_empty());
++        assert_eq!(parsed.managed_config.developer_instructions, None);
++        for field in [
++            "threadId",
++            "mcpServers",
++            "developerInstructions",
++            "multiAgentEnabled",
++            "subagentModel",
++            "subagentReasoningEffort",
++        ] {
++            let mut missing = complete.clone();
++            missing.as_object_mut().unwrap().remove(field);
++            assert!(
++                serde_json::from_value::<ThreadManagedConfigUpdateParams>(missing).is_err(),
++                "must require {field}"
++            );
++        }
++        let mut start_profile = complete.clone();
++        start_profile.as_object_mut().unwrap().remove("threadId");
++        let start: super::ThreadStartParams = serde_json::from_value(json!({
++            "managedConfig": start_profile.clone()
++        }))
++        .unwrap();
++        assert!(start.managed_config.unwrap().mcp_servers.is_empty());
++        let resume: super::ThreadResumeParams = serde_json::from_value(json!({
++            "threadId": "thread", "managedConfig": start_profile.clone()
++        }))
++        .unwrap();
++        assert!(resume.managed_config.unwrap().mcp_servers.is_empty());
++        start_profile
++            .as_object_mut()
++            .unwrap()
++            .remove("developerInstructions");
++        assert!(
++            serde_json::from_value::<super::ThreadStartParams>(json!({
++                "managedConfig": start_profile
++            }))
++            .is_err()
++        );
++        let mut root_override = complete.clone();
++        root_override["model"] = json!("stale-worker-model");
++        assert!(serde_json::from_value::<ThreadManagedConfigUpdateParams>(root_override).is_err());
++
++        // Exercise the actual request envelope, including native custom effort
++        // support. A nonempty model-defined effort is valid; empty or nonstring
++        // efforts, omitted replacement fields, and unknown fields are not.
++        let request = |params| {
++            json!({
++                "id": 1, "method": "thread/managedConfig/update", "params": params
++            })
++        };
++        let mut custom_effort = complete.clone();
++        custom_effort["subagentReasoningEffort"] = json!("provider-custom-effort");
++        assert!(serde_json::from_value::<crate::ClientRequest>(request(custom_effort)).is_ok());
++        for invalid_effort in [json!(""), json!(42), json!(false)] {
++            let mut invalid = complete.clone();
++            invalid["subagentReasoningEffort"] = invalid_effort;
++            assert!(serde_json::from_value::<crate::ClientRequest>(request(invalid)).is_err());
++        }
++        for field in [
++            "developerInstructions",
++            "subagentModel",
++            "subagentReasoningEffort",
++        ] {
++            let mut invalid = complete.clone();
++            invalid.as_object_mut().unwrap().remove(field);
++            assert!(serde_json::from_value::<crate::ClientRequest>(request(invalid)).is_err());
++        }
++        let mut unknown = complete;
++        unknown["unexpected"] = json!(true);
++        assert!(serde_json::from_value::<crate::ClientRequest>(request(unknown)).is_err());
++    }
++}
+diff --git a/codex-rs/app-server/src/mcp_refresh.rs b/codex-rs/app-server/src/mcp_refresh.rs
+index 148ea6a..c7866e3 100644
+--- a/codex-rs/app-server/src/mcp_refresh.rs
++++ b/codex-rs/app-server/src/mcp_refresh.rs
+@@ -237,6 +237,125 @@ enabled = false
+         Ok(())
+     }
+ 
++    #[tokio::test]
++    async fn managed_config_update_survives_actual_reload_and_preserves_unowned_global_changes()
++    -> anyhow::Result<()> {
++        let (temp_dir, thread_manager, config_manager, _loader) = refresh_test_state().await?;
++        let mut sibling = None;
++        for id in thread_manager.list_thread_ids().await {
++            let thread = thread_manager.get_thread(id).await?;
++            if thread.config().await.cwd.ends_with("bad") {
++                thread_manager.remove_thread(&id).await;
++            } else {
++                sibling = Some(thread);
++            }
++        }
++        let initial_manager =
++            ConfigManager::without_managed_config_for_tests(temp_dir.path().to_path_buf());
++        let config = initial_manager
++            .load_for_cwd(
++                Some(HashMap::from([
++                    (
++                        "mcp_servers.old.command".to_string(),
++                        json!("old-managed-host"),
++                    ),
++                    ("mcp_servers.old.enabled".to_string(), json!(false)),
++                    (
++                        "agents.default_subagent_model".to_string(),
++                        json!("old-child"),
++                    ),
++                    (
++                        "agents.default_subagent_reasoning_effort".to_string(),
++                        json!("high"),
++                    ),
++                    (
++                        "developer_instructions".to_string(),
++                        json!("old instructions"),
++                    ),
++                ])),
++                ConfigOverrides::default(),
++                Some(temp_dir.path().join("good")),
++            )
++            .await?;
++        let thread = thread_manager
++            .start_thread(codex_core::StartThreadOptions::new(config))
++            .await?
++            .thread;
++        let servers = serde_json::from_value::<HashMap<String, McpServerConfig>>(json!({
++            "managed": {"command": "new-managed-host", "enabled": false,
++                "env": {"CANTRIP_MCP_CONNECTION_GENERATION": "new-binding"}}
++        }))?;
++        thread
++            .update_managed_config(
++                servers.clone(),
++                Some("new instructions".to_string()),
++                true,
++                Some("new-child".to_string()),
++                None,
++            )
++            .await?;
++        // This is also the rebuilding path used by the thread-scoped MCP catalog.
++        let rebuilt = load_refresh_config(thread.as_ref(), &config_manager).await?;
++        assert_eq!(rebuilt.mcp_servers.get(), &servers);
++        assert_eq!(
++            rebuilt.developer_instructions.as_deref(),
++            Some("new instructions")
++        );
++        assert_eq!(
++            rebuilt.agent_default_subagent_model.as_deref(),
++            Some("new-child")
++        );
++        assert_eq!(rebuilt.agent_default_subagent_reasoning_effort, None);
++        let global_config = r#"
++[features]
++secret_auth_storage = true
++[agents]
++default_subagent_model = "global-child"
++[mcp_servers.global]
++command = "global-mcp"
++enabled = false
++"#;
++        let config_path = temp_dir.path().join(codex_config::CONFIG_TOML_FILE);
++        std::fs::write(&config_path, global_config)?;
++        reload_mcp_config(&thread_manager, &config_manager).await?;
++        let current = thread.config().await;
++        assert_eq!(current.mcp_servers.get(), &servers);
++        assert_eq!(
++            current.developer_instructions.as_deref(),
++            Some("new instructions")
++        );
++        assert_eq!(
++            current.agent_default_subagent_model.as_deref(),
++            Some("new-child")
++        );
++        assert_eq!(current.agent_default_subagent_reasoning_effort, None);
++        assert_eq!(
++            current.auth_keyring_backend_kind(),
++            AuthKeyringBackendKind::Secrets
++        );
++        assert!(
++            sibling
++                .unwrap()
++                .config()
++                .await
++                .mcp_servers
++                .get()
++                .contains_key("global")
++        );
++        thread
++            .update_managed_config(HashMap::new(), None, false, None, None)
++            .await?;
++        reload_mcp_config(&thread_manager, &config_manager).await?;
++        let removed = thread.config().await;
++        assert!(removed.mcp_servers.get().is_empty());
++        assert_eq!(removed.developer_instructions, None);
++        assert_eq!(removed.agent_default_subagent_model, None);
++        assert_eq!(removed.agent_default_subagent_reasoning_effort, None);
++        assert!(!removed.agents_enabled);
++        assert_eq!(std::fs::read_to_string(config_path)?, global_config);
++        Ok(())
++    }
++
+     #[tokio::test]
+     async fn strict_refresh_installs_refreshed_thread_mcp_config() -> anyhow::Result<()> {
+         let (temp_dir, thread_manager, config_manager, _loader) = refresh_test_state().await?;
+diff --git a/codex-rs/app-server/src/message_processor.rs b/codex-rs/app-server/src/message_processor.rs
+index 3742463..d689424 100644
+--- a/codex-rs/app-server/src/message_processor.rs
++++ b/codex-rs/app-server/src/message_processor.rs
+@@ -1256,6 +1256,11 @@ impl MessageProcessor {
+             ClientRequest::ThreadSectionDelete { params, .. } => {
+                 self.thread_processor.thread_section_delete(params).await
+             }
++            ClientRequest::ThreadManagedConfigUpdate { params, .. } => {
++                self.turn_processor
++                    .thread_managed_config_update(&request_id, params)
++                    .await
++            }
+             ClientRequest::ThreadSettingsUpdate { params, .. } => {
+                 self.turn_processor
+                     .thread_settings_update(&request_id, params)
+diff --git a/codex-rs/app-server/src/request_processors.rs b/codex-rs/app-server/src/request_processors.rs
+index 81773cd..92380c0 100644
+--- a/codex-rs/app-server/src/request_processors.rs
++++ b/codex-rs/app-server/src/request_processors.rs
+@@ -1,3 +1,5 @@
++mod managed_configuration;
++
+ use crate::bespoke_event_handling::apply_bespoke_event_handling;
+ use crate::command_exec::CommandExecManager;
+ use crate::command_exec::StartCommandExecParams;
+diff --git a/codex-rs/app-server/src/request_processors/managed_configuration.rs b/codex-rs/app-server/src/request_processors/managed_configuration.rs
+new file mode 100644
+index 0000000..386a41e
+--- /dev/null
++++ b/codex-rs/app-server/src/request_processors/managed_configuration.rs
+@@ -0,0 +1,26 @@
++use crate::error_code::invalid_params;
++use codex_app_server_protocol::JSONRPCErrorError;
++use codex_app_server_protocol::ThreadManagedConfiguration;
++use codex_core::config::ManagedThreadConfiguration;
++
++/// Decode the entire managed profile before any thread state or startup is changed.
++pub(super) fn parse_managed_configuration(
++    params: ThreadManagedConfiguration,
++) -> Result<ManagedThreadConfiguration, JSONRPCErrorError> {
++    let mcp_servers = params
++        .mcp_servers
++        .into_iter()
++        .map(|(name, value)| {
++            serde_json::from_value::<codex_config::types::McpServerConfig>(value)
++                .map(|config| (name, config))
++                .map_err(|err| invalid_params(format!("invalid managed MCP configuration: {err}")))
++        })
++        .collect::<Result<std::collections::HashMap<_, _>, _>>()?;
++    Ok(ManagedThreadConfiguration {
++        mcp_servers,
++        developer_instructions: params.developer_instructions,
++        multi_agent_enabled: params.multi_agent_enabled,
++        subagent_model: params.subagent_model,
++        subagent_reasoning_effort: params.subagent_reasoning_effort,
++    })
++}
+diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
+index f87e06a..407aeb1 100644
+--- a/codex-rs/app-server/src/request_processors/thread_processor.rs
++++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
+@@ -1125,6 +1125,7 @@ impl ThreadRequestProcessor {
+             sandbox,
+             permissions,
+             config,
++            managed_config,
+             service_name,
+             base_instructions,
+             developer_instructions,
+@@ -1141,6 +1142,9 @@ impl ThreadRequestProcessor {
+             project_id,
+             environments,
+         } = params;
++        let managed_config = managed_config
++            .map(super::managed_configuration::parse_managed_configuration)
++            .transpose()?;
+         if matches!(
+             history_mode,
+             Some(codex_app_server_protocol::ThreadHistoryMode::Paginated)
+@@ -1219,6 +1223,7 @@ impl ThreadRequestProcessor {
+                 app_server_client_version,
+                 client_mcp_extensions,
+                 config,
++                managed_config,
+                 typesafe_overrides,
+                 dynamic_tools,
+                 selected_capability_roots.unwrap_or_default(),
+@@ -1298,6 +1303,7 @@ impl ThreadRequestProcessor {
+         app_server_client_version: Option<String>,
+         client_mcp_extensions: ClientMcpExtensions,
+         config_overrides: Option<HashMap<String, serde_json::Value>>,
++        managed_config: Option<codex_core::config::ManagedThreadConfiguration>,
+         typesafe_overrides: ConfigOverrides,
+         dynamic_tools: Option<Vec<DynamicToolSpec>>,
+         selected_capability_roots: Vec<SelectedCapabilityRoot>,
+@@ -1424,6 +1430,11 @@ impl ThreadRequestProcessor {
+         if !selected_capability_roots.is_empty() {
+             thread_extension_init.insert(selected_capability_roots);
+         }
++        if let Some(managed_config) = managed_config {
++            config
++                .apply_managed_thread_configuration(managed_config)
++                .map_err(|err| invalid_params(format!("managed configuration rejected: {err}")))?;
++        }
+         let mut start_options = StartThreadOptions::new(config);
+         let reserved_thread_id = if start_options.config.ephemeral {
+             None
+@@ -3646,6 +3657,7 @@ impl ThreadRequestProcessor {
+             sandbox,
+             permissions,
+             config: mut request_overrides,
++            managed_config,
+             base_instructions,
+             developer_instructions,
+             personality,
+@@ -3821,6 +3833,14 @@ impl ThreadRequestProcessor {
+                 return Ok(());
+             }
+         };
++        if let Some(managed_config) = managed_config {
++            let managed =
++                super::managed_configuration::parse_managed_configuration(managed_config)?;
++            config
++                .apply_managed_thread_configuration(managed)
++                .map_err(|err| invalid_params(format!("managed configuration rejected: {err}")))?;
++        }
++
+         if !has_explicit_model_resume_override
+             && persisted_metadata
+                 .as_ref()
+diff --git a/codex-rs/app-server/src/request_processors/thread_processor_tests.rs b/codex-rs/app-server/src/request_processors/thread_processor_tests.rs
+index 7d2b5cd..8f28120 100644
+--- a/codex-rs/app-server/src/request_processors/thread_processor_tests.rs
++++ b/codex-rs/app-server/src/request_processors/thread_processor_tests.rs
+@@ -669,6 +669,7 @@ mod thread_processor_behavior_tests {
+             approvals_reviewer: None,
+             sandbox: None,
+             permissions: None,
++            managed_config: None,
+             config: None,
+             base_instructions: None,
+             developer_instructions: None,
+diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/codex-rs/app-server/src/request_processors/turn_processor.rs
+index d2f547a..9b8866d 100644
+--- a/codex-rs/app-server/src/request_processors/turn_processor.rs
++++ b/codex-rs/app-server/src/request_processors/turn_processor.rs
+@@ -191,6 +191,35 @@ impl TurnRequestProcessor {
+             .map(|response| Some(response.into()))
+     }
+ 
++    pub(crate) async fn thread_managed_config_update(
++        &self,
++        request_id: &ConnectionRequestId,
++        params: codex_app_server_protocol::ThreadManagedConfigUpdateParams,
++    ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
++        let (_, thread) = self.load_thread(&params.thread_id).await?;
++        self.ensure_direct_input_allowed(request_id, thread.as_ref())
++            .await?;
++        let managed =
++            super::managed_configuration::parse_managed_configuration(params.managed_config)?;
++        thread
++            .update_managed_config(
++                managed.mcp_servers,
++                managed.developer_instructions,
++                managed.multi_agent_enabled,
++                managed.subagent_model,
++                managed.subagent_reasoning_effort,
++            )
++            .await
++            .map_err(|err| invalid_params(format!("managed configuration rejected: {err}")))?;
++        Ok(Some(
++            codex_app_server_protocol::ThreadManagedConfigUpdateResponse {
++                thread_id: params.thread_id,
++                applied: true,
++            }
++            .into(),
++        ))
++    }
++
+     pub(crate) async fn thread_settings_update(
+         &self,
+         request_id: &ConnectionRequestId,
+diff --git a/codex-rs/app-server/tests/suite/v2/skills_list.rs b/codex-rs/app-server/tests/suite/v2/skills_list.rs
+index f3cbb82..c4acae4 100644
+--- a/codex-rs/app-server/tests/suite/v2/skills_list.rs
++++ b/codex-rs/app-server/tests/suite/v2/skills_list.rs
+@@ -1299,6 +1299,7 @@ async fn skills_changed_notification_is_emitted_after_skill_change() -> Result<(
+             sandbox: None,
+             permissions: None,
+             config: None,
++            managed_config: None,
+             service_name: None,
+             base_instructions: None,
+             developer_instructions: None,
+diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
+index cb1d15d..f81434a 100644
+--- a/codex-rs/core/src/codex_thread.rs
++++ b/codex-rs/core/src/codex_thread.rs
+@@ -881,6 +881,26 @@ impl CodexThread {
+     }
+ 
+     /// Refresh MCP configuration and managed requirements without reloading unrelated settings.
++    /// Applies a complete managed profile to this loaded thread without changing root settings.
++    pub async fn update_managed_config(
++        &self,
++        mcp_servers: std::collections::HashMap<String, codex_config::types::McpServerConfig>,
++        developer_instructions: Option<String>,
++        multi_agent_enabled: bool,
++        subagent_model: Option<String>,
++        subagent_reasoning_effort: Option<codex_protocol::openai_models::ReasoningEffort>,
++    ) -> ConstraintResult<()> {
++        self.session
++            .update_managed_config(
++                mcp_servers,
++                developer_instructions,
++                multi_agent_enabled,
++                subagent_model,
++                subagent_reasoning_effort,
++            )
++            .await
++    }
++
+     pub async fn refresh_mcp_config(&self, next_config: crate::config::Config) {
+         self.session.refresh_mcp_config(next_config).await;
+     }
+diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
+index 5356a96..afc0fc4 100644
+--- a/codex-rs/core/src/config/mod.rs
++++ b/codex-rs/core/src/config/mod.rs
+@@ -602,6 +602,17 @@ pub enum ThreadStoreConfig {
+     InMemory { id: String },
+ }
+ 
++/// Complete thread-owned inputs applied after ordinary config layers and before use.
++/// This profile is in-memory only; credentials are never written to config or history.
++#[derive(Debug, Clone, PartialEq)]
++pub struct ManagedThreadConfiguration {
++    pub mcp_servers: HashMap<String, McpServerConfig>,
++    pub developer_instructions: Option<String>,
++    pub multi_agent_enabled: bool,
++    pub subagent_model: Option<String>,
++    pub subagent_reasoning_effort: Option<ReasoningEffort>,
++}
++
+ /// Application configuration loaded from disk and merged with overrides.
+ #[derive(Debug, Clone, PartialEq)]
+ pub struct Config {
+@@ -609,6 +620,9 @@ pub struct Config {
+     /// requirements).
+     pub config_layer_stack: ConfigLayerStack,
+ 
++    /// Thread-owned replacement, independent of stale startup request layers.
++    pub managed_thread_configuration: Option<ManagedThreadConfiguration>,
++
+     /// Warnings collected during config load that should be shown on startup.
+     pub startup_warnings: Vec<String>,
+ 
+@@ -1803,6 +1817,25 @@ impl Config {
+         }
+     }
+ 
++    /// Validate everything against this snapshot's requirements before publishing any field.
++    pub fn apply_managed_thread_configuration(
++        &mut self,
++        managed: ManagedThreadConfiguration,
++    ) -> ConstraintResult<()> {
++        let mut mcp_servers = self.mcp_servers.clone();
++        mcp_servers.set(managed.mcp_servers.clone())?;
++        let mut features = self.features.clone();
++        features.set_enabled(Feature::Collab, managed.multi_agent_enabled)?;
++        self.mcp_servers = mcp_servers;
++        self.features = features;
++        self.agents_enabled = managed.multi_agent_enabled;
++        self.agent_default_subagent_model = managed.subagent_model.clone();
++        self.agent_default_subagent_reasoning_effort = managed.subagent_reasoning_effort.clone();
++        self.developer_instructions = managed.developer_instructions.clone();
++        self.managed_thread_configuration = Some(managed);
++        Ok(())
++    }
++
+     pub async fn rebuild_preserving_session_layers(
+         &self,
+         refreshed_config: &Config,
+@@ -1844,7 +1877,7 @@ impl Config {
+             .map(AbsolutePathBuf::try_from)
+             .transpose()?;
+ 
+-        Self::load_config_with_layer_stack(
++        let mut config = Self::load_config_with_layer_stack(
+             LOCAL_FS.as_ref(),
+             cfg,
+             ConfigOverrides {
+@@ -1855,7 +1888,11 @@ impl Config {
+             refreshed_config.codex_home.clone(),
+             config_layer_stack,
+         )
+-        .await
++        .await?;
++        if let Some(managed) = &self.managed_thread_configuration {
++            config.apply_managed_thread_configuration(managed.clone())?;
++        }
++        Ok(config)
+     }
+ 
+     /// This is the preferred way to create an instance of [Config].
+@@ -4164,6 +4201,7 @@ impl Config {
+             base_instructions_provenance,
+             personality,
+             developer_instructions,
++            managed_thread_configuration: None,
+             compact_prompt,
+             include_permissions_instructions,
+             include_apps_instructions,
+diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
+index b5cee67..91dcc8a 100644
+--- a/codex-rs/core/src/session/mod.rs
++++ b/codex-rs/core/src/session/mod.rs
+@@ -1881,7 +1881,7 @@ impl Session {
+         state.session_configuration.provider.info().clone()
+     }
+ 
+-    pub(crate) async fn refresh_runtime_config(&self, next_config: Config) {
++    pub(crate) async fn refresh_runtime_config(&self, mut next_config: Config) {
+         // Refresh only the user layer from the incoming snapshot. Preserve thread-local
+         // layers such as request/session overrides that were present when this session
+         // was created.
+@@ -1891,6 +1891,14 @@ impl Session {
+             let previous_config = notify_config_contributors
+                 .then(|| self.build_effective_session_config(&state.session_configuration));
+             let mut config = (*state.session_configuration.original_config_do_not_use).clone();
++            // Reload planning can race a newer managed update. Rebase on the current
++            // owner under the lock, revalidating against the incoming requirements.
++            if let Some(managed) = &config.managed_thread_configuration
++                && let Err(err) = next_config.apply_managed_thread_configuration(managed.clone())
++            {
++                warn!("failed to refresh managed thread configuration: {err}");
++                return;
++            }
+             config.active_project = next_config.active_project.clone();
+             config.config_layer_stack = config
+                 .config_layer_stack
+@@ -1947,9 +1955,44 @@ impl Session {
+         }
+     }
+ 
+-    pub(crate) async fn refresh_mcp_config(&self, next_config: Config) {
++    pub(crate) async fn update_managed_config(
++        &self,
++        mcp_servers: HashMap<String, McpServerConfig>,
++        developer_instructions: Option<String>,
++        multi_agent_enabled: bool,
++        subagent_model: Option<String>,
++        subagent_reasoning_effort: Option<ReasoningEffortConfig>,
++    ) -> ConstraintResult<()> {
++        let mut state = self.state.lock().await;
++        // Validate the full replacement against current constraints on a private clone.
++        // Neither errors nor concurrent root settings updates can publish a partial profile.
++        let mut config = (*state.session_configuration.original_config_do_not_use).clone();
++        config.apply_managed_thread_configuration(crate::config::ManagedThreadConfiguration {
++            mcp_servers,
++            developer_instructions: developer_instructions.clone(),
++            multi_agent_enabled,
++            subagent_model,
++            subagent_reasoning_effort,
++        })?;
++        state.session_configuration.developer_instructions = developer_instructions;
++        state.session_configuration.original_config_do_not_use = Arc::new(config);
++        self.mark_mcp_runtime_dirty();
++        drop(state);
++        self.schedule_mcp_prewarm();
++        Ok(())
++    }
++
++    pub(crate) async fn refresh_mcp_config(&self, mut next_config: Config) {
+         let mut state = self.state.lock().await;
+         let mut config = (*state.session_configuration.original_config_do_not_use).clone();
++        // Reload planning can race a newer managed update. Rebase on the current
++        // owner under the lock, revalidating against the incoming requirements.
++        if let Some(managed) = &config.managed_thread_configuration
++            && let Err(err) = next_config.apply_managed_thread_configuration(managed.clone())
++        {
++            warn!("failed to refresh managed thread configuration: {err}");
++            return;
++        }
+         config.config_layer_stack = next_config
+             .config_layer_stack
+             .with_user_layer_from(&config.config_layer_stack);
+diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
+index 54d9911..54daef0 100644
+--- a/codex-rs/core/src/session/tests.rs
++++ b/codex-rs/core/src/session/tests.rs
+@@ -2046,6 +2046,218 @@ disabled_tools = [
+     );
+ }
+ 
++#[tokio::test]
++async fn managed_config_update_replaces_and_removes_profile_preserving_live_root_settings() {
++    let (session, _turn_context) = make_session_and_context().await;
++    // Represent current interactive settings, rather than a stale worker launch profile.
++    {
++        let mut state = session.state.lock().await;
++        let settings = Arc::make_mut(&mut state.session_configuration.step_settings);
++        settings.collaboration_mode.settings.model = "live-tui-model".to_string();
++        settings.collaboration_mode.settings.reasoning_effort = Some(ReasoningEffortConfig::High);
++        settings.service_tier = Some("priority".to_string());
++    }
++    let root_settings = session.thread_settings_snapshot().await;
++    let server = serde_json::from_value::<McpServerConfig>(json!({
++        "command": "managed-host",
++        "args": ["--connection-file", "/stable/connection.json"],
++        "env": {"CANTRIP_MCP_CONNECTION_GENERATION": "new-binding"},
++        "enabled": false,
++        "required": true,
++        "tool_timeout_sec": 0,
++        "enabled_tools": ["managed_tool"],
++        "disabled_tools": ["other_tool"],
++        "tools": {"managed_tool": {"output_token_limit": 512}}
++    }))
++    .expect("valid managed MCP server");
++    let servers = HashMap::from([("managed".to_string(), server)]);
++    session
++        .update_managed_config(
++            servers.clone(),
++            Some("managed instructions".to_string()),
++            true,
++            Some("custom-child".to_string()),
++            Some(ReasoningEffortConfig::Low),
++        )
++        .await
++        .expect("apply managed configuration");
++    let config = session.get_config().await;
++    assert_eq!(config.mcp_servers.get(), &servers);
++    assert_eq!(
++        config.developer_instructions.as_deref(),
++        Some("managed instructions")
++    );
++    assert_eq!(
++        config.agent_default_subagent_model.as_deref(),
++        Some("custom-child")
++    );
++    assert_eq!(
++        config.agent_default_subagent_reasoning_effort,
++        Some(ReasoningEffortConfig::Low)
++    );
++    assert!(config.features.enabled(Feature::Collab));
++    assert!(config.agents_enabled);
++    assert_eq!(
++        session
++            .state
++            .lock()
++            .await
++            .session_configuration
++            .developer_instructions,
++        config.developer_instructions
++    );
++    assert_eq!(session.thread_settings_snapshot().await, root_settings);
++
++    session
++        .update_managed_config(HashMap::new(), None, false, None, None)
++        .await
++        .expect("remove managed configuration");
++    let config = session.get_config().await;
++    assert!(config.mcp_servers.get().is_empty());
++    assert_eq!(config.developer_instructions, None);
++    assert_eq!(config.agent_default_subagent_model, None);
++    assert_eq!(config.agent_default_subagent_reasoning_effort, None);
++    assert!(!config.features.enabled(Feature::Collab));
++    assert!(!config.agents_enabled);
++    assert_eq!(
++        session
++            .state
++            .lock()
++            .await
++            .session_configuration
++            .developer_instructions,
++        None
++    );
++    assert_eq!(session.thread_settings_snapshot().await, root_settings);
++}
++
++#[tokio::test]
++async fn managed_config_update_rebases_stale_reload_and_revalidates_current_profile() {
++    let (session, _turn_context) = make_session_and_context().await;
++    let server = |generation: &str| {
++        serde_json::from_value::<McpServerConfig>(json!({
++            "command": "managed-host", "enabled": false,
++            "env": {"CANTRIP_MCP_CONNECTION_GENERATION": generation}
++        }))
++        .unwrap()
++    };
++    session
++        .update_managed_config(
++            HashMap::from([("managed".to_string(), server("old"))]),
++            Some("old".to_string()),
++            true,
++            Some("old-child".to_string()),
++            None,
++        )
++        .await
++        .unwrap();
++    let stale_refresh = session.get_config().await.as_ref().clone();
++    let current_servers = HashMap::from([("managed".to_string(), server("current"))]);
++    session
++        .update_managed_config(
++            current_servers.clone(),
++            Some("current".to_string()),
++            true,
++            Some("current-child".to_string()),
++            Some(ReasoningEffortConfig::Low),
++        )
++        .await
++        .unwrap();
++    for runtime_refresh in [false, true] {
++        if runtime_refresh {
++            session.refresh_runtime_config(stale_refresh.clone()).await;
++        } else {
++            session.refresh_mcp_config(stale_refresh.clone()).await;
++        }
++        let current = session.get_config().await;
++        assert_eq!(current.mcp_servers.get(), &current_servers);
++        assert_eq!(current.developer_instructions.as_deref(), Some("current"));
++        assert_eq!(
++            current.agent_default_subagent_model.as_deref(),
++            Some("current-child")
++        );
++        assert_eq!(
++            current.agent_default_subagent_reasoning_effort,
++            Some(ReasoningEffortConfig::Low)
++        );
++    }
++    // Incoming restrictions are still enforced against the newest owner, rather than
++    // accepting the stale snapshot or bypassing its validator with an assignment.
++    let mut rejecting_refresh = stale_refresh;
++    rejecting_refresh.mcp_servers = codex_config::Constrained::new(HashMap::new(), |servers| {
++        if servers.is_empty() {
++            Ok(())
++        } else {
++            Err(codex_config::ConstraintError::empty_field(
++                "test refreshed restriction",
++            ))
++        }
++    })
++    .unwrap();
++    let before = session.get_config().await;
++    session.refresh_mcp_config(rejecting_refresh.clone()).await;
++    assert!(Arc::ptr_eq(&before, &session.get_config().await));
++    session.refresh_runtime_config(rejecting_refresh).await;
++    assert!(Arc::ptr_eq(&before, &session.get_config().await));
++}
++
++#[tokio::test]
++async fn managed_config_update_constraint_rejection_leaves_entire_profile_unchanged() {
++    let (session, _turn_context) = make_session_and_context().await;
++    {
++        let mut state = session.state.lock().await;
++        let config = Arc::make_mut(&mut state.session_configuration.original_config_do_not_use);
++        config.mcp_servers = codex_config::Constrained::new(HashMap::new(), |servers| {
++            if servers.is_empty() {
++                Ok(())
++            } else {
++                Err(codex_config::ConstraintError::empty_field(
++                    "test managed restriction",
++                ))
++            }
++        })
++        .expect("valid initial constraint");
++    }
++    let before = session.get_config().await;
++    let root_settings = session.thread_settings_snapshot().await;
++    let instructions = session
++        .state
++        .lock()
++        .await
++        .session_configuration
++        .developer_instructions
++        .clone();
++    let server = serde_json::from_value::<McpServerConfig>(json!({
++        "url": "https://example.com/mcp", "enabled": false
++    }))
++    .expect("valid test server");
++    let result = session
++        .update_managed_config(
++            HashMap::from([("rejected".to_string(), server)]),
++            Some("must not publish".to_string()),
++            !before.agents_enabled,
++            Some("must-not-publish".to_string()),
++            Some(ReasoningEffortConfig::High),
++        )
++        .await;
++    assert!(result.is_err());
++    let after = session.get_config().await;
++    assert!(
++        Arc::ptr_eq(&before, &after),
++        "rejected update must not publish any configuration"
++    );
++    assert_eq!(
++        session
++            .state
++            .lock()
++            .await
++            .session_configuration
++            .developer_instructions,
++        instructions
++    );
++    assert_eq!(session.thread_settings_snapshot().await, root_settings);
++}
++
+ #[tokio::test]
+ async fn refresh_mcp_config_replaces_managed_server_and_plugin_requirements() {
+     let (session, _turn_context) = make_session_and_context().await;
+diff --git a/codex-rs/thread-manager-sample/src/main.rs b/codex-rs/thread-manager-sample/src/main.rs
+index 2781624..1701879 100644
+--- a/codex-rs/thread-manager-sample/src/main.rs
++++ b/codex-rs/thread-manager-sample/src/main.rs
+@@ -186,6 +186,7 @@ fn new_config(model: Option<String>, arg0_paths: Arg0DispatchPaths) -> anyhow::R
+ 
+     let mut config = Config {
+         config_layer_stack: ConfigLayerStack::default(),
++        managed_thread_configuration: None,
+         startup_warnings: Vec::new(),
+         bypass_hook_trust: false,
+         model,

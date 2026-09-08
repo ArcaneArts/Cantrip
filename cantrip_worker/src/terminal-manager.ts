@@ -177,7 +177,41 @@ function codexLaunch(
   cwd: string,
   environment: Record<string, string>,
 ): { command: string; args: string[]; env: Record<string, string> } {
+  // This is an attachment to the coordinator's already configured native
+  // thread. CLI defaults must not become thread configuration merely on open.
+  const env: Record<string, string> = {
+    ...environment,
+    CODEX_HOME: launch.codexHome,
+  };
+  delete env.CANTRIP_CODEX_ATTACH_THREAD_ID;
   const providerConfiguration = codexProviderConfiguration(launch.provider);
+  if (launch.session) {
+    if (!launch.threadId) {
+      throw new Error(
+        "Managed Codex attachment requires a bound native thread",
+      );
+    }
+    return {
+      command: launch.binary,
+      args: [
+        "--remote",
+        launch.remoteUrl,
+        // The local TUI still needs the account's provider to bootstrap auth.
+        // The scoped preserving resume does not send these as thread overrides.
+        ...providerConfiguration.arguments.flatMap((argument) => [
+          "-c",
+          argument,
+        ]),
+        "resume",
+        launch.threadId,
+      ],
+      env: {
+        ...env,
+        ...providerConfiguration.environment,
+        CANTRIP_CODEX_ATTACH_THREAD_ID: launch.threadId,
+      },
+    };
+  }
   const args = [
     "--remote",
     launch.remoteUrl,
@@ -204,8 +238,7 @@ function codexLaunch(
     command: launch.binary,
     args,
     env: {
-      ...environment,
-      CODEX_HOME: launch.codexHome,
+      ...env,
       ...providerConfiguration.environment,
     },
   };

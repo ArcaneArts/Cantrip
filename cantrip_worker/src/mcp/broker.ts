@@ -1,7 +1,6 @@
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import {
   chmodSync,
-  existsSync,
   mkdirSync,
   renameSync,
   rmSync,
@@ -15,6 +14,7 @@ import {
 } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
+import { z } from "zod";
 
 import {
   cantripAgentOperationResultSchema,
@@ -49,7 +49,6 @@ import { executeCantripMcpOperation } from "./operations.js";
 
 export const CANTRIP_MCP_BINDING_DIRECTORY = "agent-mcp-bindings";
 export const CANTRIP_MCP_BINDING_TTL_MS = 6 * 60 * 60 * 1_000;
-const CANTRIP_MCP_BINDING_RENEWAL_WINDOW_MS = 60_000;
 const CANTRIP_MCP_CAPABILITY_CACHE_MS = 60_000;
 export const CANTRIP_MCP_CONNECTION_FILE = "connection.json";
 export const CANTRIP_MCP_MAX_CONCURRENT_OPERATIONS = 4;
@@ -66,17 +65,38 @@ type BindingClaimsFor<Binding extends CantripMcpBinding> =
     : never;
 type BindingClaims = BindingClaimsFor<CantripMcpBinding>;
 
-type BindingInput = BindingClaims & {
+type BindingOptions = {
   computerUse?: boolean;
   legacyCanonicalRoot?: string | null;
   serverCompatibility?: CantripMcpServerCompatibility;
 };
 
+type BindingInput = BindingClaims & BindingOptions;
+type SessionClaimsFor<Binding extends CantripMcpBinding> =
+  Binding extends CantripMcpBinding
+    ? Omit<Binding, "bindingId" | "expiresAt" | "issuedAt" | "executionLaneId">
+    : never;
+type SessionClaims = SessionClaimsFor<CantripMcpBinding>;
+export type CantripMcpSessionInput = SessionClaims & BindingOptions;
+
+const sessionClaimOmissions = {
+  bindingId: true,
+  expiresAt: true,
+  issuedAt: true,
+  executionLaneId: true,
+} as const;
+const sessionClaimsSchema = z.discriminatedUnion("contextKind", [
+  cantripMcpBindingSchema.options[0].omit(sessionClaimOmissions),
+  cantripMcpBindingSchema.options[1].omit(sessionClaimOmissions),
+]);
+
 interface StoredBinding {
   activeRequests: number;
   computerUse: boolean;
   computerUseRequests: Set<AbortController>;
-  binding: CantripMcpBinding;
+  binding: CantripMcpBinding | null;
+  claims: SessionClaims;
+  issuedAt: string;
   connection: CantripMcpConnectionDocument;
   connectionPath: string;
   credential: string;
@@ -89,10 +109,13 @@ interface StoredBinding {
 const STALE_BINDING_RECOVERY =
   "Do not retry this operation on the same attachment. Start or resume a turn in the active Cantrip chat so the worker can refresh it.";
 
-export interface CantripMcpAttachment {
-  binding: CantripMcpBinding;
+export interface CantripMcpSessionAttachment {
   connection: CantripMcpConnectionDocument;
   connectionPath: string;
+}
+
+export interface CantripMcpAttachment extends CantripMcpSessionAttachment {
+  binding: CantripMcpBinding;
 }
 
 function authorized(requestValue: string | undefined, expected: string) {
@@ -103,8 +126,8 @@ function authorized(requestValue: string | undefined, expected: string) {
 }
 
 function bindingIdentityMatchesInput(
-  binding: CantripMcpBinding,
-  input: BindingClaims,
+  binding: SessionClaims,
+  input: SessionClaims,
 ): boolean {
   return (
     binding.ownerId === input.ownerId &&
@@ -114,6 +137,13 @@ function bindingIdentityMatchesInput(
     binding.chatId === input.chatId &&
     binding.workerId === input.workerId
   );
+}
+
+function removeConnectionDocument(stored: StoredBinding): void {
+  // Every replacement owns a new directory, so late cleanup cannot race a
+  // different broker's write. Cold sessions rehydrate the current path through
+  // the native managed-configuration update instead of restoring credentials.
+  rmSync(path.dirname(stored.connectionPath), { force: true, recursive: true });
 }
 
 function sendJson(
@@ -279,7 +309,9 @@ export class CantripMcpBroker {
     return value;
   }
 
-  createBinding(input: BindingInput): CantripMcpAttachment {
+  // Eligibility creates a real authenticated host without inventing a turn.
+  // Reattaching a view must not change an already active execution's claims.
+  createSession(input: CantripMcpSessionInput): CantripMcpSessionAttachment {
     if (!this.#server || !this.#endpoint) {
       throw new Error("Cantrip MCP broker is not running.");
     }
@@ -290,89 +322,56 @@ export class CantripMcpBroker {
         bindingProtocolVersion: 2,
         operations: [...input.allowedOperations],
       },
-      ...bindingClaims
+      ...sessionInput
     } = input;
+    const claims = sessionClaimsSchema.parse(sessionInput);
+    if (claims.workerId !== this.#config.workerId) {
+      throw new Error("Cantrip MCP binding belongs to a different worker.");
+    }
     const now = this.#now();
     for (const stored of this.#bindings.values()) {
-      if (stored.binding.chatId === input.chatId) {
-        if (
-          bindingIdentityMatchesInput(stored.binding, bindingClaims) &&
-          existsSync(stored.connectionPath) &&
-          Date.parse(stored.binding.expiresAt) - now >
-            CANTRIP_MCP_BINDING_RENEWAL_WINDOW_MS
-        ) {
-          // The server dispatches fresh lane, root, worktree, and permission
-          // claims for every turn. Keep the connection identity stable so a
-          // linked Codex console does not retain a revoked MCP host while those
-          // trusted claims are refreshed and revalidated server-side.
-          stored.binding = cantripMcpBindingSchema.parse({
-            ...bindingClaims,
-            bindingId: stored.binding.bindingId,
-            issuedAt: stored.binding.issuedAt,
-            expiresAt: stored.binding.expiresAt,
-          });
-          if (!computerUse) {
-            for (const controller of stored.computerUseRequests)
-              controller.abort();
-          }
+      if (stored.claims.chatId !== claims.chatId) continue;
+      if (
+        bindingIdentityMatchesInput(stored.claims, claims) &&
+        Date.parse(stored.connection.expiresAt) > now
+      ) {
+        if (!stored.binding) {
+          stored.claims = claims;
           stored.computerUse = computerUse;
           stored.legacyCanonicalRoot = legacyCanonicalRoot;
           stored.serverCompatibility = serverCompatibility;
-          stored.staleContextRejected = false;
-          stored.staleRejection = null;
-          workerLogger.event("debug", "Cantrip MCP binding refreshed", {
-            event: "mcp.binding.refreshed",
-            subsystem: "mcp-broker",
-            operation: "refresh-binding",
-            status: "completed",
-            workerId: stored.binding.workerId,
-            projectId: stored.binding.projectId ?? undefined,
-            chatId: stored.binding.chatId,
-            executionLaneId: stored.binding.executionLaneId,
-            worktreeId: stored.binding.worktreeId,
-            permissionProfileId: stored.binding.permissionProfileId,
-            counts: {
-              allowedOperations: stored.binding.allowedOperations.length,
-            },
-          });
-          return {
-            binding: stored.binding,
-            connection: stored.connection,
-            connectionPath: stored.connectionPath,
-          };
         }
-        this.revokeBinding(stored.binding.bindingId);
+        writeConnectionDocument(stored.connectionPath, stored.connection);
+        return {
+          connection: stored.connection,
+          connectionPath: stored.connectionPath,
+        };
       }
+      this.revokeBinding(stored.connection.bindingId);
     }
-    const issuedAtMs = now;
-    const binding = cantripMcpBindingSchema.parse({
-      ...bindingClaims,
-      bindingId: randomUUID(),
-      issuedAt: new Date(issuedAtMs).toISOString(),
-      expiresAt: new Date(issuedAtMs + this.#ttlMs).toISOString(),
-    });
-    if (binding.workerId !== this.#config.workerId) {
-      throw new Error("Cantrip MCP binding belongs to a different worker.");
-    }
+    const bindingId = randomUUID();
+    const issuedAt = new Date(now).toISOString();
     const credential = randomBytes(32).toString("base64url");
     const connectionPath = path.join(
       this.#bindingDirectory,
-      binding.bindingId,
+      bindingId,
       CANTRIP_MCP_CONNECTION_FILE,
     );
     const connection = cantripMcpConnectionDocumentSchema.parse({
       protocolVersion: 1,
       endpoint: this.#endpoint,
-      bindingId: binding.bindingId,
+      bindingId,
       credential,
-      expiresAt: binding.expiresAt,
+      expiresAt: new Date(now + this.#ttlMs).toISOString(),
     });
     writeConnectionDocument(connectionPath, connection);
-    this.#bindings.set(binding.bindingId, {
+    this.#bindings.set(bindingId, {
       activeRequests: 0,
       computerUse,
       computerUseRequests: new Set(),
-      binding,
+      binding: null,
+      claims,
+      issuedAt,
       connection,
       connectionPath,
       credential,
@@ -381,17 +380,80 @@ export class CantripMcpBroker {
       staleContextRejected: false,
       staleRejection: null,
     });
-    workerLogger.event("debug", "Cantrip MCP binding created", {
-      event: "mcp.binding.created",
+    return { connection, connectionPath };
+  }
+
+  createBinding(input: BindingInput): CantripMcpAttachment {
+    const {
+      computerUse = false,
+      legacyCanonicalRoot = null,
+      serverCompatibility = {
+        bindingProtocolVersion: 2,
+        operations: [...input.allowedOperations],
+      },
+      ...bindingClaims
+    } = input;
+    // Validate the active claims before changing an existing session.
+    const now = this.#now();
+    const validated = cantripMcpBindingSchema.parse({
+      ...bindingClaims,
+      bindingId: randomUUID(),
+      issuedAt: new Date(now).toISOString(),
+      expiresAt: new Date(now + this.#ttlMs).toISOString(),
+    });
+    const { executionLaneId: _lane, ...claims } = bindingClaims;
+    const attachment = this.createSession({
+      ...claims,
+      computerUse,
+      legacyCanonicalRoot,
+      serverCompatibility,
+    });
+    const stored = this.#bindings.get(attachment.connection.bindingId)!;
+    const binding = cantripMcpBindingSchema.parse({
+      ...validated,
+      bindingId: stored.connection.bindingId,
+      issuedAt: stored.issuedAt,
+      expiresAt: stored.connection.expiresAt,
+    });
+    if (
+      !computerUse ||
+      stored.binding?.executionLaneId !== binding.executionLaneId
+    ) {
+      for (const controller of stored.computerUseRequests) controller.abort();
+    }
+    stored.binding = binding;
+    stored.claims = sessionClaimsSchema.parse(claims);
+    stored.computerUse = computerUse;
+    stored.legacyCanonicalRoot = legacyCanonicalRoot;
+    stored.serverCompatibility = serverCompatibility;
+    stored.staleContextRejected = false;
+    stored.staleRejection = null;
+    workerLogger.event("debug", "Cantrip MCP binding activated", {
+      event: "mcp.binding.activated",
       subsystem: "mcp-broker",
-      operation: "create-binding",
+      operation: "activate-binding",
       status: "completed",
       workerId: binding.workerId,
       projectId: binding.projectId ?? undefined,
       chatId: binding.chatId,
+      executionLaneId: binding.executionLaneId,
+      worktreeId: binding.worktreeId,
+      permissionProfileId: binding.permissionProfileId,
       counts: { allowedOperations: binding.allowedOperations.length },
     });
-    return { binding, connection, connectionPath };
+    return { ...attachment, binding };
+  }
+
+  // A delayed completion/Stop from an older turn cannot deactivate its successor.
+  deactivateBinding(bindingId: string, executionLaneId: string): boolean {
+    const stored = this.#bindings.get(bindingId);
+    if (!stored?.binding || stored.binding.executionLaneId !== executionLaneId)
+      return false;
+    stored.binding = null;
+    stored.staleContextRejected = false;
+    stored.staleRejection = null;
+    for (const controller of stored.computerUseRequests) controller.abort();
+    return true;
   }
 
   revokeBinding(bindingId: string): boolean {
@@ -399,10 +461,7 @@ export class CantripMcpBroker {
     if (!stored) return false;
     this.#bindings.delete(bindingId);
     for (const controller of stored.computerUseRequests) controller.abort();
-    rmSync(path.dirname(stored.connectionPath), {
-      force: true,
-      recursive: true,
-    });
+    removeConnectionDocument(stored);
     return true;
   }
 
@@ -412,7 +471,7 @@ export class CantripMcpBroker {
   ): StoredBinding | null {
     const stored = this.#bindings.get(bindingId);
     if (!stored || !authorized(authorization, stored.credential)) return null;
-    if (Date.parse(stored.binding.expiresAt) <= this.#now()) {
+    if (Date.parse(stored.connection.expiresAt) <= this.#now()) {
       this.revokeBinding(bindingId);
       return null;
     }
@@ -441,6 +500,13 @@ export class CantripMcpBroker {
       if (!stored.computerUse || !this.#executeComputerUse) {
         sendJson(response, 403, {
           error: "Computer use is not enabled for this agent binding.",
+        });
+        return;
+      }
+      if (!stored.binding) {
+        sendJson(response, 409, {
+          code: "inactive-binding",
+          error: "This MCP session has no active execution binding.",
         });
         return;
       }
@@ -490,7 +556,6 @@ export class CantripMcpBroker {
 
   async start(): Promise<string> {
     if (this.#server) throw new Error("Cantrip MCP broker is already running.");
-    rmSync(this.#bindingDirectory, { force: true, recursive: true });
     const server = createServer((request, response) => {
       const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
       const handshake = /^\/v1\/bindings\/([0-9a-f-]+)$/u.exec(
@@ -507,8 +572,8 @@ export class CantripMcpBroker {
         }
         sendJson(response, 200, {
           protocolVersion: 1,
-          bindingId: stored.binding.bindingId,
-          expiresAt: stored.binding.expiresAt,
+          bindingId: stored.connection.bindingId,
+          expiresAt: stored.connection.expiresAt,
         });
         return;
       }
@@ -528,6 +593,7 @@ export class CantripMcpBroker {
         let requestId = randomUUID();
         let bindingId: string | null = null;
         let operation: string = "execute";
+        let requestBinding: CantripMcpBinding | null = null;
         try {
           const parsed = cantripMcpBrokerOperationRequestSchema.parse(
             await readJsonBody(request),
@@ -543,9 +609,16 @@ export class CantripMcpBroker {
             sendJson(response, 401, { error: "Unauthorized" });
             return;
           }
-          if (
-            !stored.binding.allowedOperations.includes(parsed.request.operation)
-          ) {
+          if (!stored.binding) {
+            sendJson(response, 409, {
+              code: "inactive-binding",
+              error: "This MCP session has no active execution binding.",
+            });
+            return;
+          }
+          const binding = stored.binding;
+          requestBinding = binding;
+          if (!binding.allowedOperations.includes(parsed.request.operation)) {
             sendJson(response, 403, {
               code: "forbidden",
               error: "This MCP binding does not allow that operation.",
@@ -575,7 +648,7 @@ export class CantripMcpBroker {
             const result = cantripAgentOperationResultSchema.parse(
               this.#encryptionService
                 ? await executeCantripMcpOperation({
-                    binding: stored.binding,
+                    binding,
                     execute: this.#execute,
                     request: parsed.request,
                     requestId,
@@ -583,19 +656,15 @@ export class CantripMcpBroker {
                     webService: this.#webService,
                   })
                 : parsed.request.operation === "context.get"
-                  ? await this.#execute(
-                      stored.binding,
-                      parsed.request,
-                      requestId,
-                    )
+                  ? await this.#execute(binding, parsed.request, requestId)
                   : (() => {
                       throw new Error(
                         "Worker encryption is unavailable for Cantrip MCP operations.",
                       );
                     })(),
             );
-            if (result.continuationScheduled) {
-              this.revokeBinding(stored.binding.bindingId);
+            if (result.continuationScheduled && stored.binding === binding) {
+              this.revokeBinding(stored.connection.bindingId);
             }
             sendJson(response, 200, result);
           } finally {
@@ -612,14 +681,14 @@ export class CantripMcpBroker {
               status: "failed",
               requestId,
               ...(bindingId ? { bindingId } : {}),
-              ...(stored
+              ...(requestBinding
                 ? {
-                    workerId: stored.binding.workerId,
-                    projectId: stored.binding.projectId ?? undefined,
-                    chatId: stored.binding.chatId,
-                    executionLaneId: stored.binding.executionLaneId,
-                    worktreeId: stored.binding.worktreeId,
-                    permissionProfileId: stored.binding.permissionProfileId,
+                    workerId: requestBinding.workerId,
+                    projectId: requestBinding.projectId ?? undefined,
+                    chatId: requestBinding.chatId,
+                    executionLaneId: requestBinding.executionLaneId,
+                    worktreeId: requestBinding.worktreeId,
+                    permissionProfileId: requestBinding.permissionProfileId,
                   }
                 : {}),
               error: workerLogError(error),
@@ -629,14 +698,24 @@ export class CantripMcpBroker {
             // the next turn can refresh its trusted claims in place, but latch
             // the rejection below so the current attachment cannot amplify the
             // same doomed request.
-            if (bindingId && error.code === "expired") {
+            if (
+              bindingId &&
+              requestBinding &&
+              stored?.binding === requestBinding &&
+              error.code === "expired"
+            ) {
               this.revokeBinding(bindingId);
             }
             const staleMessage =
               error.code === "stale-binding"
                 ? `${error.message} ${STALE_BINDING_RECOVERY}`.slice(0, 2_000)
                 : null;
-            if (stored && staleMessage) {
+            if (
+              stored &&
+              requestBinding &&
+              stored.binding === requestBinding &&
+              staleMessage
+            ) {
               stored.staleContextRejected = operation === "context.get";
               stored.staleRejection = staleMessage;
             }
@@ -695,8 +774,8 @@ export class CantripMcpBroker {
     this.#endpoint = `http://127.0.0.1:${address.port}`;
     this.#sweepTimer = setInterval(() => {
       for (const stored of this.#bindings.values()) {
-        if (Date.parse(stored.binding.expiresAt) <= this.#now()) {
-          this.revokeBinding(stored.binding.bindingId);
+        if (Date.parse(stored.connection.expiresAt) <= this.#now()) {
+          this.revokeBinding(stored.connection.bindingId);
         }
       }
     }, 60_000);

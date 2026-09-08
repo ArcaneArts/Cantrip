@@ -8,7 +8,7 @@ import { endpointContentContextSchema } from "@cantrip/protocol/endpoint-content
 import { repositoryOperationOpaqueSchema } from "@cantrip/protocol/repository-operation";
 import type { FastifyInstance, FastifyReply } from "fastify";
 
-import { effectivePermissionProfile } from "../../chats/execution-helpers.js";
+import { prepareManagedConsoleLaunch } from "../../terminals/managed-session.js";
 import type { DirectAttachmentCoordinator } from "../../direct-attachments/coordinator.js";
 import {
   ExecutionLaneConflictError,
@@ -29,7 +29,7 @@ type ApiFailureResponder = (reply: FastifyReply, error: unknown) => unknown;
 
 export interface TerminalContextRouteDependencies extends Pick<
   ModelRoutingRuntime,
-  "resolveModelId" | "runtimeCanResumeContext" | "runtimeForContext"
+  "runtimeCanResumeContext" | "runtimeForContext" | "routePairsForConfiguration"
 > {
   applicationOwnerId: () => string;
   bridge: LimitedWorkerCommandBus;
@@ -51,7 +51,7 @@ export function installChatLinkedConsoleRoute(
     applicationOwnerId,
     bridge,
     repository,
-    resolveModelId,
+    routePairsForConfiguration,
     runtimeCanResumeContext,
     runtimeForContext,
   }: Pick<
@@ -59,7 +59,7 @@ export function installChatLinkedConsoleRoute(
     | "applicationOwnerId"
     | "bridge"
     | "repository"
-    | "resolveModelId"
+    | "routePairsForConfiguration"
     | "runtimeCanResumeContext"
     | "runtimeForContext"
   >,
@@ -78,12 +78,16 @@ export function installChatLinkedConsoleRoute(
       if (!context) {
         return reply.code(404).send({ error: "Chat source not found." });
       }
+      if (context.contextKind === "standalone") {
+        return reply.code(409).send({
+          error: "Standalone Chats do not support linked Codex consoles.",
+        });
+      }
       if (context.experience === "task") {
         return reply.code(409).send({
           error: "Encrypted Task console state stays on its authorized worker.",
         });
       }
-      const modelId = await resolveModelId(context);
       const runtime = await runtimeForContext(context);
       if (!runtime) {
         return reply
@@ -95,36 +99,15 @@ export function installChatLinkedConsoleRoute(
           return reply.code(503).send({ error: "Project worker is offline." });
         }
         try {
-          const mcpServers = await repository.listEffectiveMcpServers(
-            applicationOwnerId(),
-            context.projectId,
-            context.workerId,
-          );
-          const result = (await bridge.request(context.workerId, {
-            type: "chat.thread.ensure",
-            cwd: context.cwd,
-            threadId: null,
-            planMode: context.planMode,
-            model: runtime.model,
-            provider: runtime.provider,
-            permissionProfileId:
-              effectivePermissionProfile(context).effectiveId,
-            mcpServers,
-          })) as { threadId?: unknown };
-          if (typeof result.threadId !== "string" || !result.threadId) {
-            throw new Error("Codex did not return a console thread.");
-          }
-          await repository.setChatModel(applicationOwnerId(), context.chatId, {
-            modelId,
-          });
-          await repository.updateChatRuntime(
-            context.chatId,
-            context.workerId,
-            context.worktreeId,
-            result.threadId,
-            runtime.routeId,
-            "ready",
-            runtime.provider.accountId,
+          await prepareManagedConsoleLaunch(
+            { ...context, threadId: null },
+            runtime,
+            {
+              ownerId: applicationOwnerId(),
+              bridge,
+              repository,
+              routePairsForConfiguration,
+            },
           );
           const updated = await repository.getChatExecutionContext(
             applicationOwnerId(),

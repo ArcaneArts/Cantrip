@@ -57,6 +57,7 @@ import {
   type GitManagedOperationWorkerState,
   type GitCommitActionResult,
   type GitStashMutationResult,
+  type ManagedSessionContext,
   type McpServerConfiguration,
   type McpServerOpaqueRuntime,
   type WorktreeObservationTarget,
@@ -124,6 +125,9 @@ import {
   type AgentOperationResult,
   type RuntimeSubagentDefaults,
 } from "./codex/app-server.js";
+import { ManagedSessionCoordinator } from "./codex/managed-session.js";
+import { withManagedSessionMcpServers } from "./codex/managed-session-mcp.js";
+import { ThreadObservationRegistry } from "./codex/thread-observation.js";
 import { CodexAuthClient } from "./codex/auth-client.js";
 import { verifyCodexInstallation } from "./codex/bundled-runtime.js";
 import { discoverCodexRuntime } from "./codex/discovery.js";
@@ -1440,7 +1444,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       | {
           contextKind: "project";
           chatId: string;
-          executionLaneId: string;
+          executionLaneId?: string;
           permissionProfileId: string;
           projectId: string;
           rootKind: "folder-root" | "git-worktree";
@@ -1451,7 +1455,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       | {
           contextKind: "standalone";
           chatId: string;
-          executionLaneId: string;
+          executionLaneId?: string;
           permissionProfileId: string;
           projectId: null;
           rootKind: null;
@@ -1547,30 +1551,36 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             computerUse: computerUseEnabled,
             ownerId: workerEncryption.ownerId(),
             chatId: effectiveAttachment.chatId,
-            executionLaneId: effectiveAttachment.executionLaneId,
             workerId: effectiveAttachment.workerId,
             permissionProfileId: effectiveAttachment.permissionProfileId,
             allowedOperations: [...cantripAllowedOperations],
             legacyCanonicalRoot: protectedLegacyRoot,
             serverCompatibility: serverCompatibility!,
           };
-          return effectiveAttachment.contextKind === "project"
+          const claims =
+            effectiveAttachment.contextKind === "project"
+              ? {
+                  ...commonClaims,
+                  contextKind: "project" as const,
+                  projectId: effectiveAttachment.projectId,
+                  worktreeId: effectiveAttachment.worktreeId,
+                  rootKind: effectiveAttachment.rootKind,
+                  scratchRootId: null,
+                }
+              : {
+                  ...commonClaims,
+                  contextKind: "standalone" as const,
+                  projectId: null,
+                  worktreeId: null,
+                  rootKind: null,
+                  scratchRootId: effectiveAttachment.scratchRootId,
+                };
+          return effectiveAttachment.executionLaneId
             ? mcpBroker.createBinding({
-                ...commonClaims,
-                contextKind: "project",
-                projectId: effectiveAttachment.projectId,
-                worktreeId: effectiveAttachment.worktreeId,
-                rootKind: effectiveAttachment.rootKind,
-                scratchRootId: null,
+                ...claims,
+                executionLaneId: effectiveAttachment.executionLaneId,
               })
-            : mcpBroker.createBinding({
-                ...commonClaims,
-                contextKind: "standalone",
-                projectId: null,
-                worktreeId: null,
-                rootKind: null,
-                scratchRootId: effectiveAttachment.scratchRootId,
-              });
+            : mcpBroker.createSession(claims);
         })()
       : null;
     const managedCantrip = cantripAttachment
@@ -1579,6 +1589,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           cantripAttachment.connectionPath,
           cantripMcpToolNamesForOperations(cantripAllowedOperations),
           profile,
+          cantripAttachment.connection.bindingId,
         )
       : null;
     if (managedCantrip) {
@@ -1601,6 +1612,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           ? managedCuaMcpServer(
               cuaMcpHostInvocation(),
               cantripAttachment.connectionPath,
+              cantripAttachment.connection.bindingId,
             )
           : null,
       ],
@@ -1798,6 +1810,100 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       codexRuntimes.set(runtimeId, runtime);
     }
     return runtime;
+  };
+
+  const managedSessions = new ManagedSessionCoordinator(
+    path.join(config.dataDirectory, "managed-chat-sessions"),
+  );
+  const threadObservations = new ThreadObservationRegistry();
+  const observationScope = (
+    chatId: string,
+    threadId: string,
+    options: Pick<
+      Parameters<CodexAppServer["syncThread"]>[0],
+      "cwd" | "model" | "provider"
+    >,
+  ) => ({
+    serverId: workerEncryption.serverIdentity(),
+    ownerId: workerEncryption.ownerId(),
+    workerId: config.workerId,
+    chatId,
+    threadId,
+    cwd: options.cwd,
+    modelRouteId: options.model.routeId,
+    providerId: options.provider.id,
+    providerKind: options.provider.kind,
+    providerAccountId: options.provider.accountId,
+    credentialHomeKey: options.provider.credentialHomeKey,
+  });
+  const managedSessionIdentity = (session: ManagedSessionContext) => ({
+    serverId: workerEncryption.serverIdentity(),
+    ownerId: workerEncryption.ownerId(),
+    workerId: config.workerId,
+    chatId: session.chatId,
+    projectId: session.projectId,
+    contextKind: session.contextKind,
+    placementId:
+      session.contextKind === "project"
+        ? session.worktreeId
+        : session.scratchRootId,
+  });
+  const prepareManagedSession = async (
+    session: ManagedSessionContext,
+    options: Omit<
+      Extract<WorkerCommand, { type: "chat.thread.ensure" }>,
+      "type" | "session" | "provider" | "mcpServers"
+    > & { provider: RuntimeProvider; mcpServers?: McpServerOpaqueRuntime[] },
+    intent: "configure" | "preserve",
+  ) => {
+    const executionProfile =
+      session.contextKind === "standalone" ? "standalone-chat" : "ide";
+    const subagentDefaults = options.subagentDefaults
+      ? {
+          model: options.subagentDefaults.model,
+          provider: await openRuntimeProvider({
+            provider: options.subagentDefaults.provider,
+            service: workerEncryption,
+          }),
+        }
+      : null;
+    const runtime = runtimeFor({
+      ...options,
+      executionProfile,
+      subagentDefaults,
+    });
+    const preparationRuntime = withManagedSessionMcpServers(
+      runtime,
+      options.mcpServers,
+      (configured) =>
+        agentMcpServers(
+          options.cwd,
+          configured,
+          {
+            ...session,
+            workerId: config.workerId,
+            permissionProfileId: options.permissionProfileId,
+          },
+          executionProfile === "ide" ? "ide" : "standalone-web",
+          session.computerUseEnabled,
+        ),
+    );
+    const result = await managedSessions.prepare({
+      identity: managedSessionIdentity(session),
+      runtime: preparationRuntime,
+      configuration: {
+        ...options,
+        executionProfile,
+        subagentDefaults,
+        mcpServers: undefined,
+        intent,
+      },
+    });
+    threadObservations.bind(
+      observationScope(session.chatId, result.threadId, options),
+      runtime,
+    );
+    return { ...result, runtime, subagentDefaults };
   };
 
   const catalogRuntimeFor = (credentialHomeKey: string) => {
@@ -4550,20 +4656,49 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             service: workerEncryption,
           });
           if (command.launch.type === "codex") {
-            const runtime = runtimeFor({
-              model: command.launch.model,
-              provider: provider(),
-            });
+            if (command.launch.session && !command.launch.threadId) {
+              throw new Error(
+                "The managed console has no bound native thread.",
+              );
+            }
+            const prepared = command.launch.session
+              ? await prepareManagedSession(
+                  command.launch.session,
+                  {
+                    cwd,
+                    threadId: command.launch.threadId,
+                    model: command.launch.model,
+                    provider: provider(),
+                    permissionProfileId:
+                      command.launch.permissionProfileId ?? ":workspace",
+                    planMode: command.launch.planMode ?? "default",
+                    mcpServers: command.launch.mcpServers,
+                    subagentDefaults: command.launch.subagentDefaults,
+                  },
+                  "preserve",
+                )
+              : null;
+            const runtime =
+              prepared?.runtime ??
+              runtimeFor({
+                model: command.launch.model,
+                provider: provider(),
+              });
             if (
               command.launch.threadId &&
               !terminals.hasLiveSession(command.terminalId)
             ) {
-              const mcpServers = command.launch.mcpServers
-                ? await agentMcpServers(cwd, command.launch.mcpServers)
-                : undefined;
+              const mcpServers =
+                !command.launch.session && command.launch.mcpServers
+                  ? await agentMcpServers(cwd, command.launch.mcpServers)
+                  : undefined;
               await runtime.prepareExternalSync({
                 cwd,
-                executionProfile: "ide",
+                subagentDefaults: prepared?.subagentDefaults,
+                executionProfile:
+                  command.launch.session?.contextKind === "standalone"
+                    ? "standalone-chat"
+                    : "ide",
                 mcpServers,
                 model: command.launch.model,
                 permissionProfileId:
@@ -4590,6 +4725,13 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                 remoteUrl: await runtime.remoteEndpoint(
                   command.launch.model,
                   provider(),
+                  {
+                    subagentDefaults: prepared?.subagentDefaults ?? null,
+                    executionProfile:
+                      command.launch.session?.contextKind === "standalone"
+                        ? "standalone-chat"
+                        : "ide",
+                  },
                 ),
               },
               protectedEmit,
@@ -5356,6 +5498,44 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                 });
               },
             };
+            // Preparation is shared with console creation, but the queue is
+            // released before model execution so it cannot block Stop/replies.
+            if (encryptedChat && !standalone) {
+              const session: ManagedSessionContext = {
+                contextKind: "project",
+                chatId: command.chatId,
+                computerUseEnabled: Boolean(command.computerUseAuthority),
+                projectId: command.policyProjectId!,
+                worktreeId: command.worktreeId!,
+                rootKind: command.rootKind!,
+                scratchRootId: null,
+              };
+              const prepared = await managedSessions.prepare({
+                identity: managedSessionIdentity(session),
+                runtime,
+                configuration: {
+                  cwd: command.cwd,
+                  threadId: command.threadId,
+                  model: command.model,
+                  provider: provider(),
+                  permissionProfileId: command.permissionProfileId,
+                  executionProfile: command.executionProfile,
+                  subagentDefaults,
+                  mcpServers: resolvedMcpServers,
+                  planMode: command.planMode,
+                  intent: "configure",
+                },
+              });
+              turnOptions.threadId = prepared.threadId;
+              threadObservations.bind(
+                observationScope(
+                  command.chatId,
+                  prepared.threadId,
+                  turnOptions,
+                ),
+                runtime,
+              );
+            }
             return await finalizeCuaAgentTurn(
               () => runtime.runTurn(turnOptions),
               async () => {
@@ -5617,6 +5797,14 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           threadId: command.threadId,
         });
       case "chat.thread.ensure":
+        if (command.session) {
+          const { threadId } = await prepareManagedSession(
+            command.session,
+            { ...command, provider: provider() },
+            "preserve",
+          );
+          return { threadId };
+        }
         return runtimeFor({
           model: command.model,
           provider: provider(),
@@ -5812,18 +6000,19 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           provider(),
         );
       }
-      case "chat.sync":
-        return runtimeFor({
-          executionProfile: command.executionProfile,
-          model: command.model,
+      case "chat.sync": {
+        const options = {
+          ...command,
           provider: provider(),
-        }).syncThread({
-          cwd: command.cwd,
-          executionProfile: command.executionProfile,
-          model: command.model,
-          provider: provider(),
-          threadId: command.threadId,
-        });
+          subagentDefaults: null,
+        };
+        return threadObservations.sync(
+          observationScope(command.chatId, command.threadId, options),
+          // A cold reader needs only authorized home/bootstrap context. It never
+          // resumes/configures the native thread or reconstructs a child route.
+          () => runtimeFor(options).syncThread(options),
+        );
+      }
     }
   };
   let commandWorkerLinkRespond: WorkerLinkFrameResponder;

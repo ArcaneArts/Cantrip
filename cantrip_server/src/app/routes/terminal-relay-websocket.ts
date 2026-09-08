@@ -12,7 +12,10 @@ import { STREAMING_WORKER_COMMAND_TIMEOUT_MS } from "../shared/constants.js";
 import type { AccountUsageRecorder } from "../../account-usage/bandwidth-meter.js";
 import { recordEncodedFrame } from "../../account-usage/frame-bandwidth.js";
 import { principalOwnerId } from "../../auth/principal.js";
-import { effectivePermissionProfile } from "../../chats/execution-helpers.js";
+import {
+  prepareManagedConsoleLaunch,
+  type ManagedConsoleRouting,
+} from "../../terminals/managed-session.js";
 import type {
   ChatExecutionContext,
   ModelRuntime,
@@ -30,7 +33,7 @@ export interface TerminalRelaySessionSocket {
   on(event: "close", listener: () => void): void;
 }
 
-export interface TerminalRelayWebSocketRouteDependencies {
+export interface TerminalRelayWebSocketRouteDependencies extends ManagedConsoleRouting {
   appOrigins: readonly string[];
   bridge: Pick<WorkerCommandBus, "isConnected" | "request">;
   registerAuthenticatedSocket: (
@@ -46,6 +49,8 @@ export interface TerminalRelayWebSocketRouteDependencies {
     | "getChatExecutionContext"
     | "getTerminalExecutionContext"
     | "listEffectiveMcpServers"
+    | "setChatModel"
+    | "updateChatRuntime"
   >;
   runtimeForContext: (
     context: ChatExecutionContext,
@@ -68,6 +73,7 @@ export function installTerminalRelayWebSocketRoute(
     registerSessionSocket,
     repository,
     runtimeForContext,
+    routePairsForConfiguration,
     serverId,
     updateTerminalStatus,
     usageRecorder,
@@ -236,18 +242,12 @@ export function installTerminalRelayWebSocketRoute(
                 "Choose a model for this chat before opening its Codex console.",
               );
             }
-            launch = {
-              type: "codex",
-              threadId: chat.threadId,
-              model: runtime.model,
-              provider: runtime.provider,
-              permissionProfileId: effectivePermissionProfile(chat).effectiveId,
-              mcpServers: await repository.listEffectiveMcpServers(
-                ownerId,
-                chat.projectId,
-                workerId,
-              ),
-            };
+            launch = await prepareManagedConsoleLaunch(chat, runtime, {
+              ownerId: ownerId,
+              bridge,
+              repository,
+              routePairsForConfiguration,
+            });
           }
           const result = terminalOpenResultSchema.parse(
             await bridge.request(

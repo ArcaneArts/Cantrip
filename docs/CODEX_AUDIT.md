@@ -81,12 +81,131 @@ tests. Worker typecheck, format/diff checks and pristine-upstream/patch
 verification passed. This verifies native empty-thread attachment, not the full
 CLI/GUI integration acceptance matrix below.
 
-**Still outstanding:** the shared chat-keyed preparation coordinator and complete
-MCP builder, side-effect-free TUI attachment, full startup-incarnation guarding,
-command admission, origin-independent lifecycle/CUA authority, durable projection,
-settings parity, eager boot and the full acceptance matrix. Pass 1 does not enable
-eager startup or establish bidirectional mirroring. The GUI-first baseline stays
-in place until those prerequisites are implemented.
+**Pass 3 — shared preparation and attachment:**
+
+The worker serializes preparation by authenticated server/owner/worker/chat
+identity and recovers the native thread through a private association journal.
+It records the actual thread before later configuration, MCP readiness or plan
+application can fail. A retry finishes incomplete preparation; subsequent view
+attachment preserves root settings. Placement, workspace, provider/account and
+route participate in recovery identity. The queue ends before model execution.
+The journal supplements canonical server routing and stores neither credentials
+nor prompts; command admission and history recovery remain separate work.
+
+Console creation, direct attachment, relay attachment and WorkerLink grants use
+one complete server configuration builder, including custom child models and
+idle CUA eligibility. Canonical thread binding must succeed before a new console
+can launch. Project agent chats use the shared coordinator for GUI preparation
+and console attachment. Standalone Chat remains outside console eligibility.
+MCP resolution runs after coordinator identity recovery: an omitted list on an
+existing preserving attachment remains omitted, while explicit `[]` replaces it
+and an unbound or incomplete session receives managed configuration.
+Current server routes always supply the complete managed map for cold recovery.
+A compatibility caller that cold-resumes with MCP omitted gets native minimal
+resume semantics: it cannot recover a transient managed overlay and may start
+inherited account MCP. That is not evidence of managed-profile preservation;
+durable configuration-revision recovery remains part of the outstanding goal.
+
+Idle MCP sessions expose initialization/catalog operations without granting a
+synthetic execution lane. Protected operations require actual active authority.
+Replacement and deactivation apply to the exact lane. Each replacement binding
+has its own opaque connection file and generation; an old broker cannot overwrite
+or remove a successor's file. Only the same live binding reuses a connection.
+CLI-originated turn registration is not implemented by this idle-session change.
+
+Reviewed native patches implement three related contracts:
+
+- `0011`: the exact bound remote TUI uses `PreserveExistingThread` and skips the
+  startup model-migration prompt. Managed launch omits model/security/cwd overrides
+  while retaining local provider bootstrap and the PTY workspace. Ordinary CLI
+  launches keep their normal prompt and configuration behavior.
+- `0012`: strict thread-scoped managed configuration replaces MCP, developer
+  instructions and child defaults while preserving current root settings. New
+  starts and cold resumes apply the replacement before MCP initialization;
+  shared live engines use `thread/managedConfig/update`. The owned in-memory
+  overlay survives ordinary configuration rebuilds and rebases concurrent reloads.
+  Validation precedes publication. The response acknowledges configuration, not
+  successful MCP initialization; the worker observes the actual catalog.
+- `0013`: new empty roots persist a complete owned settings snapshot before
+  attachment. Cold recovery restores exactly owned root settings, including
+  collaboration mode and canonical permission-profile material, under current
+  constraints. Explicit overrides remain authoritative; child/fork/wrong-owner
+  settings do not leak into the root. Managed MCP credentials are not persisted
+  in native rollout settings and are supplied freshly during preparation.
+
+Actual `thread/closed` and `notLoaded` events invalidate pending preparation and
+cached configuration/readiness. Ordinary idle events do not. Late configuration
+or plan replies cannot acknowledge a closed thread or replacement runtime.
+Only the worker's own unsubscribe/resume replacement can adopt a new preparation
+version; an unrelated close during cold resume rejects the stale response.
+Full native incarnation/command correlation remains a later pass.
+
+Plan Mode reads now return a live cached mode or an explicitly observational
+fallback without starting or loading a native thread. The prior cold read would
+initialize inherited account MCP without obtaining a settings notification.
+An isolated actual-native regression proves Plan GET leaves `thread/loaded/list`
+empty, MCP logs unchanged and provider requests at zero. This is not a complete
+native settings read API; desired/effective settings parity remains outstanding.
+
+The patch verifier now actually applies the ordered series to a disposable copy
+of manifest-verified source. It no longer checks dependent patches independently
+against untouched upstream. Two real-entrypoint regressions prove dependent
+patches apply, a broken later patch fails by name, and source/index stay unchanged.
+All 6,499 imported files and the 12-patch series verify successfully.
+
+History reads now follow the exact runtime bound during managed preparation,
+including its child profile, without selecting a currently executable child
+route. The binding includes authenticated server/owner/worker/chat identity,
+thread, workspace and root route/account. A live observation uses the existing
+transport directly; actual read errors propagate. Without a live binding,
+current authorized root bootstrap performs `thread/read` without loading the
+native thread or MCP. This retains existing history-baseline semantics; durable
+all-turn replay is not implemented by the observation registry.
+
+Cold recovery preserves the selected service tier independently from feature
+and model eligibility for an actual request. Patch `0013` captures the merged
+caller/snapshot selection before filtering and restores it only to the exact
+owned root; request filtering remains unchanged. Strict configuration validation
+accepts native custom effort strings and rejects invalid empty/nonstring values.
+
+Validation:
+
+- The standard `pnpm codex:build` completed and the final packaged runtime passed
+  all 13 tests across observation, empty-thread attachment, actual remote TUI and
+  production worker/coordinator fixtures. These exercise live/reopened/cold views,
+  exact session identity, complete root settings, managed catalog/credential
+  replacement, sibling isolation, invalid requests and actual storage failure
+  followed by same-session recovery.
+- The final native app-server resume suite passes all 64 tests. The selected-tier
+  ownership test and eight persisted-settings unit tests pass, including actual
+  cold recovery with feature filtering disabled. The full thread-store suite
+  passed 240 tests before the final tier-only change.
+- Worker preparation, coordinator, observation, MCP, terminal, runtime and CUA
+  lifetime/child-ownership selections pass 144 tests across 11 files.
+- Focused server selections pass 18 tests; two additional regressions exercise
+  actual requested and notification-driven reconciliation after real child-route
+  selection fails. Two real HTTP/database console cases also pass, covering
+  encrypted canonical binding, reuse and persistence failure/retry.
+- Managed protocol tests pass four tests; ordered patch-verifier regressions
+  pass two. Worker/server typechecks and diff/TypeScript formatting checks pass.
+  A read-only Rust formatting check identifies only the existing `TurnPause`
+  import ordering introduced by patch `0004`.
+
+Native fixtures use isolated homes and local rejecting providers and synthetic
+MCP services, with external plugin marketplace downloads disabled in those test
+homes. First start and cold recovery record zero excluded inherited MCP
+initializations and zero model requests. The production-worker fixture records
+initial native writable-project trust during new-thread creation, then verifies
+that view attachment, chat settings changes and cold recovery do not make further
+account configuration writes. This does not establish command/default-write
+mediation, which remains a later milestone. No desktop input is performed.
+
+**Still outstanding:** authorized command admission, origin-independent
+lifecycle/CUA authority, durable all-turn projection/replay, complete settings
+parity, eager GUI-first session startup and the full acceptance matrix. The
+original GUI-first launch trigger remains until its prerequisites are
+implemented. No user app/worker restart, personal desktop interaction or CI job
+has been used.
 
 ### What “perfect mirror” must mean
 

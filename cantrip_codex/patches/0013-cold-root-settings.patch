@@ -1,0 +1,1514 @@
+diff --git a/codex-rs/app-server/src/request_processors/persisted_resume_settings.rs b/codex-rs/app-server/src/request_processors/persisted_resume_settings.rs
+index 5e408b0..4d0ec99 100644
+--- a/codex-rs/app-server/src/request_processors/persisted_resume_settings.rs
++++ b/codex-rs/app-server/src/request_processors/persisted_resume_settings.rs
+@@ -14,6 +14,16 @@ pub(super) struct PersistedResumeSettings {
+ pub(super) fn latest_persisted_resume_settings(
+     history: &[RolloutItem],
+ ) -> Option<PersistedResumeSettings> {
++    latest_persisted_resume_settings_for_owner(history, None)
++}
++
++pub(super) fn latest_persisted_resume_settings_for_owner(
++    history: &[RolloutItem],
++    owner: Option<codex_protocol::ThreadId>,
++) -> Option<PersistedResumeSettings> {
++    let accepts = |event: &codex_protocol::protocol::ThreadSettingsAppliedEvent| {
++        owner.is_none() || event.thread_id == owner
++    };
+     history
+         .iter()
+         .enumerate()
+@@ -24,7 +34,9 @@ pub(super) fn latest_persisted_resume_settings(
+                 approvals_reviewer: turn_context.approvals_reviewer.or_else(|| {
+                     history[..index].iter().rev().find_map(|item| match item {
+                         RolloutItem::TurnContext(turn_context) => turn_context.approvals_reviewer,
+-                        RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(event)) => {
++                        RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(event))
++                            if accepts(event) =>
++                        {
+                             Some(event.thread_settings.approvals_reviewer)
+                         }
+                         _ => None,
+@@ -32,7 +44,7 @@ pub(super) fn latest_persisted_resume_settings(
+                 }),
+                 active_permission_profile: turn_context.active_permission_profile.clone(),
+             }),
+-            RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(event)) => {
++            RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(event)) if accepts(event) => {
+                 Some(PersistedResumeSettings {
+                     approval_policy: event.thread_settings.approval_policy,
+                     approvals_reviewer: Some(event.thread_settings.approvals_reviewer),
+@@ -49,3 +61,169 @@ pub(super) fn latest_persisted_resume_settings(
+ #[cfg(test)]
+ #[path = "persisted_resume_settings_tests.rs"]
+ mod tests;
++
++/// Full snapshots have authority only over the logical thread that emitted them.
++/// Imported/fork prefixes and old ownerless snapshots never configure a root.
++pub(super) fn latest_owned_thread_settings(
++    history: &[RolloutItem],
++    owner: codex_protocol::ThreadId,
++) -> Option<&codex_protocol::protocol::ThreadSettingsSnapshot> {
++    history.iter().rev().find_map(|item| match item {
++        RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(event))
++            if event.thread_id == Some(owner) =>
++        {
++            Some(&event.thread_settings)
++        }
++        _ => None,
++    })
++}
++
++/// The post-load portion preserves explicit null/default choices that cannot be
++/// represented by inserting an omitted TOML value into config overrides.
++pub(super) struct OwnedResumeSettings {
++    owner: codex_protocol::ThreadId,
++    snapshot: codex_protocol::protocol::ThreadSettingsSnapshot,
++    selected_service_tier: Option<String>,
++    restore_effort: bool,
++    restore_summary: bool,
++    restore_personality: bool,
++    restore_permissions: bool,
++}
++
++pub(super) fn merge_owned_resume_settings(
++    owner: codex_protocol::ThreadId,
++    snapshot: &codex_protocol::protocol::ThreadSettingsSnapshot,
++    request: &mut Option<std::collections::HashMap<String, serde_json::Value>>,
++    overrides: &mut codex_core::config::ConfigOverrides,
++) -> OwnedResumeSettings {
++    let contains = |key: &str| {
++        request
++            .as_ref()
++            .is_some_and(|values| values.contains_key(key))
++    };
++    // Preserve the selected value before config loading filters unsupported Fast
++    // selections. Explicit null chooses the default request tier; a saved None
++    // remains unset. Typed caller overrides take precedence over raw config.
++    let requested_service_tier = overrides.service_tier.clone().or_else(|| {
++        request
++            .as_ref()?
++            .get("service_tier")
++            .and_then(|value| serde_json::from_value::<Option<String>>(value.clone()).ok())
++    });
++    let selected_service_tier = match requested_service_tier {
++        Some(tier) => Some(tier.unwrap_or_else(|| {
++            codex_protocol::config_types::SERVICE_TIER_DEFAULT_REQUEST_VALUE.to_string()
++        })),
++        None => snapshot.service_tier.clone(),
++    }
++    .map(|tier| {
++        codex_protocol::config_types::ServiceTier::from_request_value(&tier)
++            .map_or(tier, |tier| tier.request_value().to_string())
++    });
++    let restore_effort = !contains("model_reasoning_effort");
++    let restore_summary = !contains("model_reasoning_summary");
++    let restore_personality = overrides.personality.is_none() && !contains("personality");
++    let permission_config_override = request.as_ref().is_some_and(|values| {
++        values.keys().any(|key| {
++            key == "permissions"
++                || key.starts_with("permissions.")
++                || key == "sandbox_workspace_write"
++                || key.starts_with("sandbox_workspace_write.")
++        })
++    });
++    let restore_permissions = overrides.sandbox_mode.is_none()
++        && overrides.permission_profile.is_none()
++        && overrides.default_permissions.is_none()
++        && !contains("sandbox_mode")
++        && !contains("default_permissions")
++        && !permission_config_override;
++    if overrides.model.is_none() && !contains("model") {
++        overrides.model = Some(snapshot.model.clone());
++    }
++    if overrides.model_provider.is_none() && !contains("model_provider") {
++        overrides.model_provider = Some(snapshot.model_provider_id.clone());
++    }
++    if overrides.service_tier.is_none() && !contains("service_tier") {
++        overrides.service_tier = Some(snapshot.service_tier.clone());
++    }
++    if overrides.cwd.is_none() && !contains("cwd") {
++        overrides.cwd = Some(snapshot.cwd.to_path_buf());
++    }
++    if overrides.workspace_roots.is_none() && !contains("workspace_roots") {
++        overrides.workspace_roots = snapshot.workspace_roots.clone();
++    }
++    if overrides.approval_policy.is_none() && !contains("approval_policy") {
++        overrides.approval_policy = Some(snapshot.approval_policy);
++    }
++    if overrides.approvals_reviewer.is_none() && !contains("approvals_reviewer") {
++        overrides.approvals_reviewer = Some(snapshot.approvals_reviewer);
++    }
++    if restore_permissions {
++        // Validate the exact persisted permission value through ordinary config
++        // requirements. A changed named-profile definition cannot silently replace it.
++        overrides.permission_profile = Some(
++            snapshot
++                .base_permission_profile
++                .as_ref()
++                .unwrap_or(&snapshot.permission_profile)
++                .clone(),
++        );
++    }
++    if restore_personality {
++        overrides.personality = snapshot.personality;
++    }
++    if restore_effort && let Some(effort) = snapshot.reasoning_effort.as_ref() {
++        request.get_or_insert_with(Default::default).insert(
++            "model_reasoning_effort".to_string(),
++            serde_json::to_value(effort).expect("reasoning effort is serializable"),
++        );
++    }
++    if restore_summary && let Some(summary) = snapshot.reasoning_summary.as_ref() {
++        request.get_or_insert_with(Default::default).insert(
++            "model_reasoning_summary".to_string(),
++            serde_json::to_value(summary).expect("reasoning summary is serializable"),
++        );
++    }
++    OwnedResumeSettings {
++        owner,
++        snapshot: snapshot.clone(),
++        selected_service_tier,
++        restore_effort,
++        restore_summary,
++        restore_personality,
++        restore_permissions,
++    }
++}
++
++impl OwnedResumeSettings {
++    pub(super) fn apply(self, config: &mut codex_core::config::Config) -> std::io::Result<()> {
++        if self.restore_effort {
++            config.model_reasoning_effort = self.snapshot.reasoning_effort;
++        }
++        if self.restore_summary {
++            config.model_reasoning_summary = self.snapshot.reasoning_summary;
++        }
++        if self.restore_personality {
++            config.personality = self.snapshot.personality;
++        }
++        if self.restore_permissions {
++            use codex_protocol::models::PermissionProfileSnapshot;
++            let profile = self
++                .snapshot
++                .base_permission_profile
++                .unwrap_or(self.snapshot.permission_profile);
++            let snapshot = match self.snapshot.active_permission_profile {
++                Some(active) => PermissionProfileSnapshot::active_with_profile_workspace_roots(
++                    profile,
++                    active,
++                    self.snapshot.profile_workspace_roots.unwrap_or_default(),
++                ),
++                None => PermissionProfileSnapshot::legacy(profile),
++            };
++            config.restore_persisted_permission_snapshot(snapshot)?;
++        }
++        config.resumed_service_tier = Some((self.owner, self.selected_service_tier));
++        config.resumed_collaboration_mode = Some((self.owner, self.snapshot.collaboration_mode));
++        Ok(())
++    }
++}
+diff --git a/codex-rs/app-server/src/request_processors/persisted_resume_settings_tests.rs b/codex-rs/app-server/src/request_processors/persisted_resume_settings_tests.rs
+index 792fc34..cb9aa6d 100644
+--- a/codex-rs/app-server/src/request_processors/persisted_resume_settings_tests.rs
++++ b/codex-rs/app-server/src/request_processors/persisted_resume_settings_tests.rs
+@@ -36,8 +36,11 @@ fn settings_item(
+                 approval_policy,
+                 approvals_reviewer,
+                 permission_profile: PermissionProfile::read_only(),
++                base_permission_profile: None,
+                 active_permission_profile,
+                 cwd: cwd(),
++                workspace_roots: None,
++                profile_workspace_roots: None,
+                 reasoning_effort: None,
+                 reasoning_summary: None,
+                 personality: None,
+@@ -160,3 +163,295 @@ fn older_reviewer_is_used_when_latest_turn_context_omits_it() {
+         })
+     );
+ }
++
++fn full_snapshot() -> ThreadSettingsSnapshot {
++    let RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(event)) = settings_item(
++        AskForApproval::OnRequest,
++        ApprovalsReviewer::User,
++        Some(ActivePermissionProfile::read_only()),
++    ) else {
++        unreachable!()
++    };
++    let mut snapshot = event.thread_settings;
++    snapshot.model = "persisted-model".to_string();
++    snapshot.model_provider_id = "persisted-provider".to_string();
++    snapshot.service_tier = Some("priority".to_string());
++    snapshot.reasoning_effort = Some(codex_protocol::openai_models::ReasoningEffort::High);
++    snapshot.reasoning_summary = Some(codex_protocol::config_types::ReasoningSummary::Detailed);
++    snapshot.workspace_roots = Some(vec![cwd()]);
++    snapshot.profile_workspace_roots = Some(vec![cwd()]);
++    snapshot.collaboration_mode.mode = ModeKind::Plan;
++    snapshot
++}
++
++#[test]
++fn full_restore_accepts_only_latest_owned_snapshot_not_foreign_or_ownerless_history() {
++    use super::latest_owned_thread_settings;
++    use super::latest_persisted_resume_settings_for_owner;
++    let owner = codex_protocol::ThreadId::new();
++    let foreign = codex_protocol::ThreadId::new();
++    let owned = full_snapshot();
++    let mut other = owned.clone();
++    other.model = "must-not-restore".to_string();
++    let item = |thread_id, snapshot| {
++        RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(
++            ThreadSettingsAppliedEvent {
++                thread_id,
++                thread_settings: snapshot,
++            },
++        ))
++    };
++    let foreign_history = vec![
++        item(Some(foreign), other.clone()),
++        item(None, other.clone()),
++    ];
++    assert!(latest_owned_thread_settings(&foreign_history, owner).is_none());
++    assert!(latest_persisted_resume_settings_for_owner(&foreign_history, Some(owner)).is_none());
++    let mut history = vec![item(Some(owner), owned.clone())];
++    history.extend(foreign_history);
++    // A frozen turn-context following a root settings update does not replace it.
++    history.push(turn_context_item(
++        "frozen",
++        AskForApproval::Never,
++        None,
++        None,
++    ));
++    assert_eq!(latest_owned_thread_settings(&history, owner), Some(&owned));
++    let mut latest = owned.clone();
++    latest.service_tier = None;
++    history.push(item(Some(owner), latest.clone()));
++    assert_eq!(latest_owned_thread_settings(&history, owner), Some(&latest));
++}
++
++#[test]
++fn full_restore_merges_each_setting_independently_of_explicit_model_or_provider() {
++    use super::merge_owned_resume_settings;
++    use codex_core::config::ConfigOverrides;
++    let snapshot = full_snapshot();
++    for mut overrides in [
++        ConfigOverrides {
++            model: Some("caller-model".to_string()),
++            ..Default::default()
++        },
++        ConfigOverrides {
++            model_provider: Some("caller-provider".to_string()),
++            ..Default::default()
++        },
++    ] {
++        let requested_model = overrides.model.clone();
++        let requested_provider = overrides.model_provider.clone();
++        let mut request = None;
++        merge_owned_resume_settings(
++            codex_protocol::ThreadId::new(),
++            &snapshot,
++            &mut request,
++            &mut overrides,
++        );
++        assert_eq!(
++            overrides.model,
++            requested_model.or_else(|| Some(snapshot.model.clone()))
++        );
++        assert_eq!(
++            overrides.model_provider,
++            requested_provider.or_else(|| Some(snapshot.model_provider_id.clone()))
++        );
++        assert_eq!(overrides.service_tier, Some(Some("priority".to_string())));
++        assert_eq!(overrides.approval_policy, Some(snapshot.approval_policy));
++        assert_eq!(
++            overrides.permission_profile,
++            Some(snapshot.permission_profile.clone())
++        );
++        assert_eq!(overrides.workspace_roots, snapshot.workspace_roots);
++        assert_eq!(
++            request.as_ref().unwrap().get("model_reasoning_effort"),
++            Some(&serde_json::json!("high"))
++        );
++    }
++}
++
++#[test]
++fn full_restore_preserves_explicit_clear_and_independent_config_overrides() {
++    use super::merge_owned_resume_settings;
++    use codex_core::config::ConfigOverrides;
++    use std::collections::HashMap;
++    let snapshot = full_snapshot();
++    let mut request = Some(HashMap::from([
++        ("model".to_string(), serde_json::json!("caller-model")),
++        (
++            "model_provider".to_string(),
++            serde_json::json!("caller-provider"),
++        ),
++        (
++            "model_reasoning_effort".to_string(),
++            serde_json::json!("low"),
++        ),
++        (
++            "model_reasoning_summary".to_string(),
++            serde_json::json!("auto"),
++        ),
++        (
++            "approvals_reviewer".to_string(),
++            serde_json::json!("auto_review"),
++        ),
++        (
++            "default_permissions".to_string(),
++            serde_json::json!(":workspace"),
++        ),
++    ]));
++    let expected_request = request.clone();
++    let mut overrides = ConfigOverrides {
++        service_tier: Some(None),
++        approval_policy: Some(AskForApproval::Never),
++        workspace_roots: Some(Vec::new()),
++        cwd: Some(cwd().join("caller").to_path_buf()),
++        ..Default::default()
++    };
++    let expected_cwd = overrides.cwd.clone();
++    let restore = merge_owned_resume_settings(
++        codex_protocol::ThreadId::new(),
++        &snapshot,
++        &mut request,
++        &mut overrides,
++    );
++    assert_eq!(request, expected_request);
++    assert_eq!(overrides.model, None);
++    assert_eq!(overrides.model_provider, None);
++    assert_eq!(overrides.service_tier, Some(None));
++    assert_eq!(overrides.approval_policy, Some(AskForApproval::Never));
++    assert_eq!(overrides.approvals_reviewer, None);
++    assert_eq!(overrides.permission_profile, None);
++    assert_eq!(overrides.workspace_roots, Some(Vec::new()));
++    assert_eq!(overrides.cwd, expected_cwd);
++    assert!(!restore.restore_effort && !restore.restore_summary && !restore.restore_permissions);
++}
++
++#[tokio::test]
++async fn full_restore_clears_omitted_snapshot_defaults_and_rejects_current_permission_constraints()
++{
++    use super::merge_owned_resume_settings;
++    use codex_core::config::{ConfigBuilder, ConfigOverrides, Constrained, Permissions};
++    let home = tempfile::tempdir().unwrap();
++    let mut config = ConfigBuilder::default()
++        .loader_overrides(codex_config::LoaderOverrides::without_managed_config_for_tests())
++        .codex_home(home.path().to_path_buf())
++        .harness_overrides(ConfigOverrides {
++            cwd: Some(home.path().to_path_buf()),
++            ..Default::default()
++        })
++        .build()
++        .await
++        .unwrap();
++    let owner = codex_protocol::ThreadId::new();
++    let mut snapshot = full_snapshot();
++    snapshot.service_tier = None;
++    snapshot.reasoning_effort = None;
++    snapshot.reasoning_summary = None;
++    snapshot.personality = None;
++    let mut overrides = ConfigOverrides::default();
++    let restore = merge_owned_resume_settings(owner, &snapshot, &mut None, &mut overrides);
++    assert_eq!(overrides.service_tier, Some(None));
++    config.model_reasoning_effort = Some(codex_protocol::openai_models::ReasoningEffort::Low);
++    config.model_reasoning_summary = Some(codex_protocol::config_types::ReasoningSummary::Detailed);
++    config.personality = Some(codex_protocol::config_types::Personality::Pragmatic);
++    restore.apply(&mut config).unwrap();
++    assert_eq!(config.model_reasoning_effort, None);
++    assert_eq!(config.model_reasoning_summary, None);
++    assert_eq!(config.personality, None);
++    assert_eq!(
++        config.resumed_collaboration_mode,
++        Some((owner, snapshot.collaboration_mode.clone()))
++    );
++    assert_eq!(
++        config.permissions.active_permission_profile(),
++        snapshot.active_permission_profile
++    );
++
++    // Explicit runtime roots replace old materialized grants. Persisted canonical
++    // symbolic grants must survive so subsequent root changes also remain correct.
++    let old_root = AbsolutePathBuf::from_absolute_path(home.path().join("old")).unwrap();
++    let new_root = AbsolutePathBuf::from_absolute_path(home.path().join("new")).unwrap();
++    let canonical = PermissionProfile::workspace_write();
++    snapshot.base_permission_profile = Some(canonical.clone());
++    snapshot.permission_profile = canonical
++        .clone()
++        .materialize_project_roots_with_workspace_roots(&[old_root]);
++    config.workspace_roots = vec![new_root.clone()];
++    config
++        .permissions
++        .set_workspace_roots(vec![new_root.clone()]);
++    let mut overrides = ConfigOverrides {
++        workspace_roots: Some(vec![new_root.clone()]),
++        ..Default::default()
++    };
++    let restore = merge_owned_resume_settings(owner, &snapshot, &mut None, &mut overrides);
++    assert_eq!(overrides.permission_profile, Some(canonical.clone()));
++    restore.apply(&mut config).unwrap();
++    assert_eq!(config.permissions.permission_profile(), &canonical);
++    assert_eq!(
++        config.permissions.effective_permission_profile(),
++        canonical.materialize_project_roots_with_workspace_roots(&[new_root])
++    );
++    snapshot.base_permission_profile = None;
++
++    // The snapshot is current and owned, but present managed constraints remain
++    // authoritative. Restoring cannot turn a read-only-only profile into full access.
++    config.permissions = Permissions::from_approval_and_profile(
++        Constrained::allow_any(AskForApproval::OnRequest),
++        Constrained::allow_only(PermissionProfile::read_only()),
++    )
++    .unwrap();
++    snapshot.permission_profile = PermissionProfile::Disabled;
++    let restore =
++        merge_owned_resume_settings(owner, &snapshot, &mut None, &mut ConfigOverrides::default());
++    assert!(restore.apply(&mut config).is_err());
++    assert_eq!(
++        config.permissions.permission_profile(),
++        &PermissionProfile::read_only()
++    );
++}
++
++#[tokio::test]
++async fn full_restore_preserves_selected_tier_and_explicit_clear_before_feature_filtering() {
++    use super::merge_owned_resume_settings;
++    use codex_core::config::{ConfigBuilder, ConfigOverrides};
++    use std::collections::HashMap;
++    let home = tempfile::tempdir().unwrap();
++    let mut config = ConfigBuilder::default()
++        .loader_overrides(codex_config::LoaderOverrides::without_managed_config_for_tests())
++        .codex_home(home.path().to_path_buf())
++        .harness_overrides(ConfigOverrides {
++            cwd: Some(home.path().to_path_buf()),
++            ..Default::default()
++        })
++        .build()
++        .await
++        .unwrap();
++    let owner = codex_protocol::ThreadId::new();
++    let mut snapshot = full_snapshot();
++    for (saved, typed, raw, expected) in [
++        (None, None, None, None),
++        (Some("flex"), None, None, Some("flex")),
++        (Some("priority"), None, None, Some("priority")),
++        (Some("flex"), Some(None), None, Some("default")),
++        (Some("flex"), Some(Some("priority")), None, Some("priority")),
++        (Some("flex"), None, Some("priority"), Some("priority")),
++        (Some("flex"), Some(None), Some("priority"), Some("default")),
++    ] {
++        snapshot.service_tier = saved.map(str::to_string);
++        let mut overrides = ConfigOverrides {
++            service_tier: typed.map(|tier| tier.map(str::to_string)),
++            ..Default::default()
++        };
++        let mut request =
++            raw.map(|tier| HashMap::from([("service_tier".to_string(), serde_json::json!(tier))]));
++        let restore = merge_owned_resume_settings(owner, &snapshot, &mut request, &mut overrides);
++        // Model/feature config loading may have filtered a selected priority tier.
++        config.service_tier = None;
++        config.resumed_service_tier = None;
++        restore.apply(&mut config).unwrap();
++        assert_eq!(
++            config.resumed_service_tier,
++            Some((owner, expected.map(str::to_string)))
++        );
++    }
++}
+diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
+index f87e06a..6b30312 100644
+--- a/codex-rs/app-server/src/request_processors/thread_processor.rs
++++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
+@@ -1,5 +1,8 @@
+ use super::persisted_resume_settings::PersistedResumeSettings;
++use super::persisted_resume_settings::latest_owned_thread_settings;
+ use super::persisted_resume_settings::latest_persisted_resume_settings;
++use super::persisted_resume_settings::latest_persisted_resume_settings_for_owner;
++use super::persisted_resume_settings::merge_owned_resume_settings;
+ use super::thread_enrichment::enrich_loaded_threads;
+ use super::thread_fork_goal::inherit_thread_goal_snapshot;
+ use super::thread_input::can_accept_direct_input;
+@@ -3800,13 +3803,36 @@ impl ThreadRequestProcessor {
+         }
+         let has_explicit_model_resume_override =
+             has_model_resume_override(request_overrides.as_ref(), &typesafe_overrides);
+-        let persisted_metadata = self
+-            .load_and_apply_persisted_resume_metadata(
++        let owned_settings = match &thread_history {
++            InitialHistory::Resumed(resumed)
++                if !thread_history
++                    .get_resumed_session_sources()
++                    .is_some_and(|(source, _)| source.is_non_root_agent()) =>
++            {
++                latest_owned_thread_settings(&resumed.history, resumed.conversation_id).map(
++                    |snapshot| {
++                        merge_owned_resume_settings(
++                            resumed.conversation_id,
++                            snapshot,
++                            &mut request_overrides,
++                            &mut typesafe_overrides,
++                        )
++                    },
++                )
++            }
++            _ => None,
++        };
++        // Full canonical rollout state wins over the partial SQLite projection.
++        let persisted_metadata = if owned_settings.is_some() {
++            None
++        } else {
++            self.load_and_apply_persisted_resume_metadata(
+                 &thread_history,
+                 &mut request_overrides,
+                 &mut typesafe_overrides,
+             )
+-            .await;
++            .await
++        };
+ 
+         // Derive a Config using the same logic as new conversation, honoring overrides if provided.
+         let mut config = match self
+@@ -3829,6 +3855,14 @@ impl ThreadRequestProcessor {
+             config.model_reasoning_effort = None;
+         }
+ 
++        if let Some(settings) = owned_settings {
++            settings.apply(&mut config).map_err(|error| {
++                invalid_params(format!(
++                    "persisted thread settings violate current requirements: {error}"
++                ))
++            })?;
++        }
++
+         let response_history = thread_history.clone();
+ 
+         match self
+@@ -4073,8 +4107,10 @@ impl ThreadRequestProcessor {
+         let InitialHistory::Resumed(resumed_history) = thread_history else {
+             return None;
+         };
+-        if let Some(persisted_settings) = latest_persisted_resume_settings(&resumed_history.history)
+-        {
++        if let Some(persisted_settings) = latest_persisted_resume_settings_for_owner(
++            &resumed_history.history,
++            Some(resumed_history.conversation_id),
++        ) {
+             if typesafe_overrides.approval_policy.is_none() {
+                 typesafe_overrides.approval_policy = Some(persisted_settings.approval_policy);
+             }
+diff --git a/codex-rs/app-server/tests/suite/v2/thread_resume.rs b/codex-rs/app-server/tests/suite/v2/thread_resume.rs
+index ee7f300..ad04c90 100644
+--- a/codex-rs/app-server/tests/suite/v2/thread_resume.rs
++++ b/codex-rs/app-server/tests/suite/v2/thread_resume.rs
+@@ -1338,7 +1338,7 @@ async fn thread_resume_preserves_acknowledged_model_effort_and_approvals_reviewe
+ }
+ 
+ #[tokio::test]
+-async fn cold_resume_reresolves_persisted_active_permission_profile() -> Result<()> {
++async fn cold_resume_preserves_owned_profile_when_account_definition_changes() -> Result<()> {
+     let server = create_mock_responses_server_repeating_assistant("Done").await;
+     for history_mode in [ThreadHistoryMode::Legacy, ThreadHistoryMode::Paginated] {
+         let codex_home = TempDir::new()?;
+@@ -1388,16 +1388,16 @@ async fn cold_resume_reresolves_persisted_active_permission_profile() -> Result<
+             ..
+         } = timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(resume_id)).await??;
+ 
+-        assert!(matches!(sandbox, AppSandboxPolicy::ReadOnly { .. }));
++        assert!(matches!(sandbox, AppSandboxPolicy::WorkspaceWrite { .. }));
+         assert_eq!(
+             active_permission_profile,
+             Some(ActivePermissionProfile {
+                 id: "dev".to_string(),
+-                extends: Some(BUILT_IN_PERMISSION_PROFILE_READ_ONLY.to_string()),
++                extends: Some(BUILT_IN_PERMISSION_PROFILE_WORKSPACE.to_string()),
+             })
+         );
+         assert!(
+-            !runtime_workspace_roots.contains(&AbsolutePathBuf::from_absolute_path(
++            runtime_workspace_roots.contains(&AbsolutePathBuf::from_absolute_path(
+                 previous_workspace_root.path(),
+             )?)
+         );
+@@ -1406,7 +1406,7 @@ async fn cold_resume_reresolves_persisted_active_permission_profile() -> Result<
+ }
+ 
+ #[tokio::test]
+-async fn cold_resume_with_removed_permission_profile_uses_configured_default() -> Result<()> {
++async fn cold_resume_preserves_owned_profile_when_account_profile_is_removed() -> Result<()> {
+     let server = create_mock_responses_server_repeating_assistant("Done").await;
+     for history_mode in [ThreadHistoryMode::Legacy, ThreadHistoryMode::Paginated] {
+         let codex_home = TempDir::new()?;
+@@ -1442,12 +1442,13 @@ async fn cold_resume_with_removed_permission_profile_uses_configured_default() -
+             ..
+         } = timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(resume_id)).await??;
+ 
+-        assert!(matches!(sandbox, AppSandboxPolicy::DangerFullAccess));
++        assert!(matches!(sandbox, AppSandboxPolicy::WorkspaceWrite { .. }));
+         assert_eq!(
+             active_permission_profile,
+-            Some(ActivePermissionProfile::new(
+-                BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS,
+-            ))
++            Some(ActivePermissionProfile {
++                id: "dev".to_string(),
++                extends: Some(BUILT_IN_PERMISSION_PROFILE_WORKSPACE.to_string()),
++            })
+         );
+     }
+     Ok(())
+@@ -1513,7 +1514,8 @@ async fn cold_resume_permission_overrides_win_over_persisted_profile() -> Result
+ }
+ 
+ #[tokio::test]
+-async fn cold_resume_without_active_permission_profile_uses_current_config() -> Result<()> {
++async fn cold_resume_preserves_owned_legacy_permissions_when_account_default_changes() -> Result<()>
++{
+     let server = create_mock_responses_server_repeating_assistant("Done").await;
+     let codex_home = TempDir::new()?;
+     mock_responses_config(&server.uri()).write(codex_home.path())?;
+@@ -1567,13 +1569,8 @@ async fn cold_resume_without_active_permission_profile_uses_current_config() ->
+         ..
+     } = timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(resume_id)).await??;
+ 
+-    assert!(matches!(sandbox, AppSandboxPolicy::WorkspaceWrite { .. }));
+-    assert_eq!(
+-        active_permission_profile,
+-        Some(ActivePermissionProfile::new(
+-            BUILT_IN_PERMISSION_PROFILE_WORKSPACE
+-        ))
+-    );
++    assert!(matches!(sandbox, AppSandboxPolicy::DangerFullAccess));
++    assert_eq!(active_permission_profile, None);
+     Ok(())
+ }
+ 
+@@ -2286,7 +2283,8 @@ async fn thread_resume_returns_rollout_history() -> Result<()> {
+     assert_eq!(thread.preview, preview);
+     assert_eq!(thread.model_provider, "mock_provider");
+     assert!(thread.path.as_ref().expect("thread path").is_absolute());
+-    assert_eq!(thread.cwd.as_path(), saved_cwd);
++    // Imported ownerless settings cannot replace canonical thread metadata.
++    assert_eq!(thread.cwd, test_absolute_path("/"));
+     assert_eq!(cwd, test_absolute_path("/"));
+     assert_eq!(thread.cli_version, "0.0.0");
+     assert_eq!(thread.source, SessionSource::Cli);
+@@ -6041,3 +6039,177 @@ async fn setup_rollout_fixture(codex_home: &Path, server_uri: &str) -> Result<Ro
+         before_modified,
+     })
+ }
++
++#[tokio::test]
++async fn empty_cold_resume_preserves_owned_settings_without_a_model_turn() -> Result<()> {
++    let server = create_mock_responses_server_repeating_assistant("must not run").await;
++    for (history_mode, selected_tier) in [
++        (ThreadHistoryMode::Legacy, Some("flex")),
++        (ThreadHistoryMode::Paginated, None),
++    ] {
++        let home = TempDir::new()?;
++        let workspace = TempDir::new()?;
++        let additional_root = TempDir::new()?;
++        mock_responses_config(&server.uri()).write(home.path())?;
++        let mut primary = TestAppServer::builder()
++            .with_codex_home(home.path())
++            .without_managed_config()
++            .build_initialized()
++            .await?;
++        let started = primary
++            .start_thread(ThreadStartParams {
++                model: Some("gpt-5.4".to_string()),
++                approval_policy: Some(AskForApproval::OnRequest),
++                sandbox: Some(SandboxMode::ReadOnly),
++                cwd: Some(workspace.path().to_string_lossy().into_owned()),
++                runtime_workspace_roots: Some(vec![
++                    AbsolutePathBuf::from_absolute_path(workspace.path())?,
++                    AbsolutePathBuf::from_absolute_path(additional_root.path())?,
++                ]),
++                history_mode: Some(history_mode),
++                ..Default::default()
++            })
++            .await?;
++        let attach_id = primary
++            .send_thread_resume_request(ThreadResumeParams {
++                thread_id: started.thread.id.clone(),
++                ..Default::default()
++            })
++            .await?;
++        let attached: ThreadResumeResponse =
++            timeout(DEFAULT_READ_TIMEOUT, primary.read_response(attach_id)).await??;
++        let rollout = attached
++            .thread
++            .path
++            .as_ref()
++            .expect("materialized empty thread");
++        let (items, _, _) = RolloutRecorder::load_rollout_items(rollout).await?;
++        assert!(items.iter().any(|item| matches!(item,
++            RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(event))
++                if event.thread_id == Some(ThreadId::from_string(&started.thread.id).unwrap())
++        )));
++        assert!(!items.iter().any(|item| matches!(
++            item,
++            RolloutItem::TurnContext(_)
++                | RolloutItem::ResponseItem(_)
++                | RolloutItem::EventMsg(EventMsg::TurnStarted(_))
++        )));
++        // A native change newer than preparation is authoritative even when no
++        // model turn ever ran. Capture the actual resulting notification.
++        let update_id = primary
++            .send_thread_settings_update_request(ThreadSettingsUpdateParams {
++                thread_id: started.thread.id.clone(),
++                model: Some("gpt-5.2-codex".to_string()),
++                effort: Some(ReasoningEffort::Medium),
++                service_tier: Some(selected_tier.map(str::to_string)),
++                summary: Some(codex_protocol::config_types::ReasoningSummary::Detailed),
++                personality: Some(Personality::Pragmatic),
++                collaboration_mode: Some(CollaborationMode {
++                    mode: ModeKind::Plan,
++                    settings: Settings {
++                        model: "gpt-5.2-codex".to_string(),
++                        reasoning_effort: Some(ReasoningEffort::Medium),
++                        developer_instructions: Some("Saved root plan instructions.".to_string()),
++                    },
++                }),
++                ..Default::default()
++            })
++            .await?;
++        let _: ThreadSettingsUpdateResponse =
++            timeout(DEFAULT_READ_TIMEOUT, primary.read_response(update_id)).await??;
++        let mut expected_settings = timeout(
++            DEFAULT_READ_TIMEOUT,
++            primary.read_stream_until_notification_message("thread/settings/updated"),
++        )
++        .await??
++        .params;
++        let latest_id = primary
++            .send_thread_resume_request(ThreadResumeParams {
++                thread_id: started.thread.id.clone(),
++                ..Default::default()
++            })
++            .await?;
++        let attached: ThreadResumeResponse =
++            timeout(DEFAULT_READ_TIMEOUT, primary.read_response(latest_id)).await??;
++        timeout(DEFAULT_READ_TIMEOUT, primary.shutdown_gracefully()).await??;
++
++        // User/account defaults are not a new setting selection for this thread.
++        MockResponsesConfig::new(&server.uri())
++            .with_model("gpt-5.4")
++            .with_root_config(
++                r#"
++default_permissions = ":danger-full-access"
++model_reasoning_effort = "high"
++features.fast_mode = false
++"#,
++            )
++            .write(home.path())?;
++        let mut cold = TestAppServer::builder()
++            .with_codex_home(home.path())
++            .without_managed_config()
++            .build_initialized()
++            .await?;
++        let resume_id = cold
++            .send_thread_resume_request(ThreadResumeParams {
++                thread_id: started.thread.id.clone(),
++                ..Default::default()
++            })
++            .await?;
++        let resumed: ThreadResumeResponse =
++            timeout(DEFAULT_READ_TIMEOUT, cold.read_response(resume_id)).await??;
++        assert!(resumed.thread.turns.is_empty());
++        assert_eq!(resumed.model, attached.model);
++        assert_eq!(resumed.model_provider, attached.model_provider);
++        assert_eq!(resumed.approval_policy, attached.approval_policy);
++        assert_eq!(resumed.approvals_reviewer, attached.approvals_reviewer);
++        assert_eq!(resumed.sandbox, attached.sandbox);
++        assert_eq!(
++            resumed.active_permission_profile,
++            attached.active_permission_profile
++        );
++        assert_eq!(resumed.cwd, attached.cwd);
++        assert_eq!(
++            resumed.runtime_workspace_roots,
++            attached.runtime_workspace_roots
++        );
++        assert_eq!(resumed.reasoning_effort, attached.reasoning_effort);
++        assert_eq!(resumed.service_tier, attached.service_tier);
++        // Native deduplicates unchanged settings. Toggle the already verified
++        // approval policy to observe the complete live snapshot without a turn.
++        let probe_policy = if resumed.approval_policy == AskForApproval::Never {
++            AskForApproval::OnRequest
++        } else {
++            AskForApproval::Never
++        };
++        expected_settings
++            .as_mut()
++            .expect("settings notification payload")["threadSettings"]["approvalPolicy"] =
++            serde_json::to_value(probe_policy)?;
++        let inspect_id = cold
++            .send_thread_settings_update_request(ThreadSettingsUpdateParams {
++                thread_id: started.thread.id.clone(),
++                approval_policy: Some(probe_policy),
++                ..Default::default()
++            })
++            .await?;
++        let _: ThreadSettingsUpdateResponse =
++            timeout(DEFAULT_READ_TIMEOUT, cold.read_response(inspect_id)).await??;
++        let restored_settings = timeout(
++            DEFAULT_READ_TIMEOUT,
++            cold.read_stream_until_notification_message("thread/settings/updated"),
++        )
++        .await??
++        .params;
++        assert_eq!(restored_settings, expected_settings);
++        timeout(DEFAULT_READ_TIMEOUT, cold.shutdown_gracefully()).await??;
++    }
++    assert!(
++        server
++            .received_requests()
++            .await
++            .expect("recorded requests")
++            .iter()
++            .all(|request| !request.url.path().ends_with("/responses"))
++    );
++    Ok(())
++}
+diff --git a/codex-rs/core/src/agent/control_tests.rs b/codex-rs/core/src/agent/control_tests.rs
+index a7acf93..a797fe0 100644
+--- a/codex-rs/core/src/agent/control_tests.rs
++++ b/codex-rs/core/src/agent/control_tests.rs
+@@ -1209,8 +1209,11 @@ async fn spawn_agent_fork_from_paginated_parent_uses_model_context_prefix() {
+                         approval_policy: AskForApproval::Never,
+                         approvals_reviewer: ApprovalsReviewer::User,
+                         permission_profile: PermissionProfile::workspace_write(),
++                        base_permission_profile: None,
+                         active_permission_profile: None,
+                         cwd: harness.config.cwd.clone(),
++                        workspace_roots: None,
++                        profile_workspace_roots: None,
+                         reasoning_effort: None,
+                         reasoning_summary: None,
+                         personality: None,
+diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
+index d19003a..77dd8a9 100644
+--- a/codex-rs/core/src/config/config_tests.rs
++++ b/codex-rs/core/src/config/config_tests.rs
+@@ -12905,3 +12905,60 @@ fn sqlite_home_env_conflict_reports_an_override() -> std::io::Result<()> {
+ 
+     Ok(())
+ }
++
++#[tokio::test]
++async fn persisted_permissions_respect_current_managed_profile_identity_and_definition()
++-> anyhow::Result<()> {
++    let home = TempDir::new()?;
++    let requirements = r#"
++default_permissions = "managed"
++[allowed_permission_profiles]
++managed = true
++[permissions.managed]
++extends = ":read-only"
++"#;
++    let mut config = ConfigBuilder::without_managed_config_for_tests()
++        .codex_home(home.path().to_path_buf())
++        .fallback_cwd(Some(home.path().to_path_buf()))
++        .cloud_config_bundle(
++            CloudConfigBundleFixture::loader_with_enterprise_requirement(requirements),
++        )
++        .build()
++        .await?;
++    let current = config.permissions.effective_permission_profile();
++    let active = config
++        .permissions
++        .active_permission_profile()
++        .expect("managed profile");
++    let exact = PermissionProfileSnapshot::active_with_profile_workspace_roots(
++        current.clone(),
++        active.clone(),
++        config.permissions.profile_workspace_roots().to_vec(),
++    );
++    config.restore_persisted_permission_snapshot(exact)?;
++    assert_eq!(config.permissions.effective_permission_profile(), current);
++
++    let renamed = PermissionProfileSnapshot::active(
++        current.clone(),
++        ActivePermissionProfile::new("not-allowed"),
++    );
++    let error = config
++        .restore_persisted_permission_snapshot(renamed)
++        .expect_err("current profile allowlist wins");
++    assert!(
++        error
++            .to_string()
++            .contains("disallowed by current requirements")
++    );
++    let prior_definition = PermissionProfileSnapshot::active(
++        PermissionProfile::workspace_write()
++            .materialize_project_roots_with_workspace_roots(&config.workspace_roots),
++        active,
++    );
++    let error = config
++        .restore_persisted_permission_snapshot(prior_definition)
++        .expect_err("new managed definition wins");
++    assert!(error.to_string().contains("current managed definition"));
++    assert_eq!(config.permissions.effective_permission_profile(), current);
++    Ok(())
++}
+diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
+index 171a36c..a32ef73 100644
+--- a/codex-rs/core/src/config/mod.rs
++++ b/codex-rs/core/src/config/mod.rs
+@@ -961,6 +961,15 @@ pub struct Config {
+     /// Value to use for `reasoning.effort` when making a request using the
+     /// Responses API.
+     pub model_reasoning_effort: Option<ReasoningEffort>,
++    /// Transient restoration of a specific thread's collaboration mode. Never
++    /// serialized as account defaults or applied to a new/forked/child thread.
++    pub resumed_collaboration_mode: Option<(
++        codex_protocol::ThreadId,
++        codex_protocol::config_types::CollaborationMode,
++    )>,
++    /// Selected service tier restored for one owned root resume. This transient
++    /// value retains unsupported selections independently of effective requests.
++    pub resumed_service_tier: Option<(codex_protocol::ThreadId, Option<String>)>,
+     /// Optional Plan-mode-specific reasoning effort override used by the TUI.
+     ///
+     /// When unset, Plan mode uses the built-in Plan preset default (currently
+@@ -4292,6 +4301,8 @@ impl Config {
+                 .unwrap_or(false),
+             guardian_policy_config,
+             model_reasoning_effort: cfg.model_reasoning_effort,
++            resumed_collaboration_mode: None,
++            resumed_service_tier: None,
+             plan_mode_reasoning_effort: cfg.plan_mode_reasoning_effort,
+             model_reasoning_summary: cfg.model_reasoning_summary,
+             model_catalog,
+@@ -4577,6 +4588,84 @@ impl Config {
+         codex_config::bundled_skills_enabled_from_stack(&self.config_layer_stack)
+     }
+ 
++    /// Restore a resolved thread profile without bypassing current managed policy.
++    pub fn restore_persisted_permission_snapshot(
++        &mut self,
++        snapshot: PermissionProfileSnapshot,
++    ) -> std::io::Result<()> {
++        if let Some(active) = snapshot.active_permission_profile() {
++            if !self.is_permission_profile_allowed(&active.id, snapshot.permission_profile()) {
++                return Err(std::io::Error::new(
++                    ErrorKind::InvalidInput,
++                    format!(
++                        "persisted permission profile `{}` is disallowed by current requirements",
++                        active.id
++                    ),
++                ));
++            }
++            let requirements = self.config_layer_stack.requirements_toml();
++            if requirements
++                .permissions
++                .as_ref()
++                .is_some_and(|permissions| permissions.profiles.contains_key(&active.id))
++            {
++                // Managed profile definitions are authoritative policy, unlike
++                // account defaults. Resolve their actual current grants and reject
++                // a changed definition until the caller explicitly selects it.
++                let cfg: ConfigToml = self
++                    .config_layer_stack
++                    .effective_config()
++                    .try_into()
++                    .map_err(|error| std::io::Error::new(ErrorKind::InvalidInput, error))?;
++                let profiles =
++                    merge_managed_permission_profiles(cfg.permissions.as_ref(), requirements)?;
++                let (filesystem, network) = compile_permission_profile_selection(
++                    profiles.as_ref(),
++                    &active.id,
++                    None,
++                    &mut Vec::new(),
++                )?;
++                let roots = compile_permission_profile_workspace_roots(
++                    profiles.as_ref(),
++                    &active.id,
++                    self.cwd.as_path(),
++                )?;
++                let current = PermissionProfile::from_runtime_permissions(
++                    &filesystem.with_materialized_project_roots_for_workspace_roots(&roots),
++                    network,
++                )
++                .materialize_project_roots_with_workspace_roots(&self.workspace_roots);
++                let restored = snapshot
++                    .permission_profile()
++                    .clone()
++                    .materialize_project_roots_with_workspace_roots(&self.workspace_roots);
++                if current != restored || roots != snapshot.profile_workspace_roots() {
++                    return Err(std::io::Error::new(
++                        ErrorKind::InvalidInput,
++                        format!(
++                            "persisted permission profile `{}` differs from its current managed definition; select the current profile explicitly",
++                            active.id
++                        ),
++                    ));
++                }
++            }
++        }
++        self.permissions
++            .set_permission_profile(snapshot.permission_profile().clone())?;
++        let profile = self.permissions.permission_profile().clone();
++        let restored = match snapshot.active_permission_profile() {
++            Some(active) => PermissionProfileSnapshot::active_with_profile_workspace_roots(
++                profile,
++                active,
++                snapshot.profile_workspace_roots().to_vec(),
++            ),
++            None => PermissionProfileSnapshot::legacy(profile),
++        };
++        self.permissions
++            .set_permission_profile_from_session_snapshot(restored)?;
++        Ok(())
++    }
++
+     /// Returns whether effective requirements allow selecting a concrete profile.
+     pub fn is_permission_profile_allowed(
+         &self,
+diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
+index 91dcc8a..0db7d27 100644
+--- a/codex-rs/core/src/session/mod.rs
++++ b/codex-rs/core/src/session/mod.rs
+@@ -709,22 +709,21 @@ impl Session {
+         };
+         // TODO (aibrahim): Consolidate config.model and config.model_reasoning_effort into config.collaboration_mode
+         // to avoid extracting these fields separately and constructing CollaborationMode here.
+-        let collaboration_mode = CollaborationMode {
+-            mode: ModeKind::Default,
+-            settings: Settings {
+-                model: model.clone(),
+-                reasoning_effort: config.model_reasoning_effort.clone(),
+-                developer_instructions: None,
+-            },
+-        };
++        let collaboration_mode =
++            initial_collaboration_mode(&config, &conversation_history, &session_source, &model);
+         let fast_mode_enabled = config.features.enabled(Feature::FastMode);
+         let initial_service_tier_warning = unsupported_service_tier_warning(
+             config.service_tier.as_deref(),
+             fast_mode_enabled,
+             &model_info,
+         );
+-        let service_tier =
+-            get_service_tier(config.service_tier.clone(), fast_mode_enabled, &model_info);
++        let service_tier = initial_service_tier(
++            &config,
++            &conversation_history,
++            &session_source,
++            fast_mode_enabled,
++            &model_info,
++        );
+         let session_configuration = SessionConfiguration {
+             provider: create_model_provider(
+                 config.model_provider.clone(),
+@@ -965,6 +964,54 @@ pub(crate) fn new_submission_id() -> String {
+     Uuid::now_v7().to_string()
+ }
+ 
++fn initial_collaboration_mode(
++    config: &Config,
++    history: &InitialHistory,
++    source: &SessionSource,
++    model: &str,
++) -> CollaborationMode {
++    let preserved = match (history, config.resumed_collaboration_mode.as_ref()) {
++        (InitialHistory::Resumed(resumed), Some((owner, mode)))
++            if resumed.conversation_id == *owner && !source.is_non_root_agent() =>
++        {
++            Some(mode.clone())
++        }
++        _ => None,
++    };
++    let mut mode = preserved.unwrap_or_else(|| CollaborationMode {
++        mode: ModeKind::Default,
++        settings: Settings {
++            model: model.to_string(),
++            reasoning_effort: config.model_reasoning_effort.clone(),
++            developer_instructions: None,
++        },
++    });
++    // Caller-selected model/effort have already been merged and validated during
++    // config load. Restoring plan mode must not undo either independent override.
++    mode.settings.model = model.to_string();
++    mode.settings.reasoning_effort = config.model_reasoning_effort.clone();
++    mode
++}
++
++fn initial_service_tier(
++    config: &Config,
++    history: &InitialHistory,
++    source: &SessionSource,
++    fast_mode_enabled: bool,
++    model_info: &ModelInfo,
++) -> Option<String> {
++    if let (InitialHistory::Resumed(resumed), Some((owner, selected))) =
++        (history, config.resumed_service_tier.as_ref())
++        && resumed.conversation_id == *owner
++        && !source.is_non_root_agent()
++    {
++        // Selected settings survive catalog/feature changes. ResolvedStepSettings
++        // independently filters what is actually sent on each model request.
++        return selected.clone();
++    }
++    get_service_tier(config.service_tier.clone(), fast_mode_enabled, model_info)
++}
++
+ fn get_service_tier(
+     configured_service_tier: Option<String>,
+     fast_mode_enabled: bool,
+diff --git a/codex-rs/core/src/session/session.rs b/codex-rs/core/src/session/session.rs
+index 3a1f7d2..4bacdb8 100644
+--- a/codex-rs/core/src/session/session.rs
++++ b/codex-rs/core/src/session/session.rs
+@@ -292,8 +292,17 @@ impl SessionConfiguration {
+             approval_policy: self.step_settings.approval_policy.value(),
+             approvals_reviewer: self.step_settings.approvals_reviewer,
+             permission_profile: self.materialized_permission_profile(environment_selections),
++            base_permission_profile: Some(self.permission_profile()),
+             active_permission_profile: self.active_permission_profile(),
+             cwd: self.legacy_fallback_cwd.clone(),
++            workspace_roots: Some(ThreadEnvironments::primary_workspace_roots_for(
++                environment_selections,
++            )),
++            profile_workspace_roots: Some(
++                self.permission_profile_state
++                    .profile_workspace_roots()
++                    .to_vec(),
++            ),
+             reasoning_effort: self.step_settings.collaboration_mode.reasoning_effort(),
+             reasoning_summary: self.step_settings.reasoning_summary,
+             personality: self.step_settings.personality,
+@@ -1526,6 +1535,17 @@ impl Session {
+                 let mut guard = network_policy_decider_session.write().await;
+                 *guard = Arc::downgrade(&sess);
+             }
++            // A new idle thread must carry its own settings without inserting a
++            // model-visible context or turn. Append errors fail startup before its
++            // configured event can be acknowledged; attachment's existing durability
++            // barrier flushes the recorder and checks metadata persistence.
++            if matches!(initial_history, InitialHistory::New | InitialHistory::Cleared)
++                && let Some(live_thread) = sess.live_thread()
++            {
++                live_thread.append_items(&[
++                    RolloutItem::EventMsg(super::thread_settings::applied_event(&sess).await),
++                ]).await?;
++            }
+             // Dispatch the SessionConfiguredEvent first and then report any errors.
+             // If resuming, include converted initial messages in the payload so UIs can render them immediately.
+             let initial_messages = initial_history.get_event_msgs();
+diff --git a/codex-rs/core/src/session/step_settings.rs b/codex-rs/core/src/session/step_settings.rs
+index 49502e8..4e81d01 100644
+--- a/codex-rs/core/src/session/step_settings.rs
++++ b/codex-rs/core/src/session/step_settings.rs
+@@ -25,8 +25,9 @@ pub(crate) struct StepSettings {
+     pub(crate) collaboration_mode: CollaborationMode,
+     /// `None` follows the pinned model's default.
+     pub(crate) reasoning_summary: Option<ReasoningSummary>,
+-    /// Normalized requested tier. Startup retains initial-model filtering;
+-    /// resolution filters the effective tier against the pinned model.
++    /// Normalized requested tier. New-session defaults retain initial-model
++    /// filtering; owned cold resumes preserve the selection. Resolution always
++    /// filters the effective tier against the pinned model.
+     pub(crate) service_tier: Option<String>,
+     pub(crate) personality: Option<Personality>,
+     pub(crate) approval_policy: Constrained<AskForApproval>,
+diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
+index 54daef0..a0eb063 100644
+--- a/codex-rs/core/src/session/tests.rs
++++ b/codex-rs/core/src/session/tests.rs
+@@ -12881,3 +12881,131 @@ async fn session_start_hooks_require_project_trust_without_config_toml() -> std:
+ 
+     Ok(())
+ }
++
++#[tokio::test]
++async fn cold_collaboration_mode_is_scoped_to_matching_root_resume() {
++    let owner = ThreadId::new();
++    let other = ThreadId::new();
++    let mut config = test_config().await;
++    config.model_reasoning_effort = Some(ReasoningEffortConfig::Low);
++    let plan = CollaborationMode {
++        mode: ModeKind::Plan,
++        settings: Settings {
++            model: "old-model".to_string(),
++            reasoning_effort: Some(ReasoningEffortConfig::High),
++            developer_instructions: Some("preserved plan instructions".to_string()),
++        },
++    };
++    config.resumed_collaboration_mode = Some((owner, plan.clone()));
++    let resumed = |conversation_id| {
++        InitialHistory::Resumed(ResumedHistory {
++            conversation_id,
++            history: Arc::new(Vec::new()),
++            rollout_path: None,
++        })
++    };
++    let restored = initial_collaboration_mode(
++        &config,
++        &resumed(owner),
++        &SessionSource::Exec,
++        "caller-model",
++    );
++    assert_eq!(restored.mode, ModeKind::Plan);
++    assert_eq!(
++        restored.settings.developer_instructions,
++        plan.settings.developer_instructions
++    );
++    assert_eq!(restored.settings.model, "caller-model");
++    assert_eq!(
++        restored.settings.reasoning_effort,
++        Some(ReasoningEffortConfig::Low)
++    );
++    for history in [
++        InitialHistory::New,
++        InitialHistory::Cleared,
++        InitialHistory::Forked(Vec::new()),
++        resumed(other),
++    ] {
++        let mode =
++            initial_collaboration_mode(&config, &history, &SessionSource::Exec, "child-model");
++        assert_eq!(mode.mode, ModeKind::Default);
++        assert_eq!(mode.settings.developer_instructions, None);
++    }
++    let child_source = SessionSource::SubAgent(SubAgentSource::Other("child".to_string()));
++    let mode = initial_collaboration_mode(&config, &resumed(owner), &child_source, "child-model");
++    assert_eq!(mode.mode, ModeKind::Default);
++    assert_eq!(mode.settings.developer_instructions, None);
++}
++
++#[tokio::test]
++async fn cold_selected_service_tier_is_owned_and_independent_of_request_support() {
++    let owner = ThreadId::new();
++    let mut config = test_config().await;
++    config.service_tier = None;
++    // Tier ownership does not depend on a collaboration-mode restoration marker.
++    config.resumed_collaboration_mode = None;
++    let model = model_with_default_service_tier(None);
++    let resumed = |conversation_id| {
++        InitialHistory::Resumed(ResumedHistory {
++            conversation_id,
++            history: Arc::new(Vec::new()),
++            rollout_path: None,
++        })
++    };
++    for selected in [None, Some("default"), Some("flex"), Some("priority")] {
++        let selected = selected.map(str::to_string);
++        config.resumed_service_tier = Some((owner, selected.clone()));
++        for fast_mode_enabled in [false, true] {
++            let restored = initial_service_tier(
++                &config,
++                &resumed(owner),
++                &SessionSource::Exec,
++                fast_mode_enabled,
++                &model,
++            );
++            assert_eq!(restored, selected);
++            let settings = Arc::new(StepSettings {
++                collaboration_mode: initial_collaboration_mode(
++                    &config,
++                    &resumed(owner),
++                    &SessionSource::Exec,
++                    "gpt-5.4",
++                ),
++                reasoning_summary: None,
++                service_tier: restored,
++                personality: None,
++                approval_policy: codex_config::Constrained::allow_any(AskForApproval::Never),
++                approvals_reviewer: ApprovalsReviewer::User,
++            });
++            let resolved =
++                ResolvedStepSettings::new(settings, Arc::new(model.clone()), fast_mode_enabled);
++            let expected_request = if fast_mode_enabled && selected.as_deref() != Some("flex") {
++                selected.clone()
++            } else {
++                None
++            };
++            assert_eq!(resolved.service_tier, expected_request);
++        }
++        for history in [
++            InitialHistory::New,
++            InitialHistory::Cleared,
++            InitialHistory::Forked(Vec::new()),
++            resumed(ThreadId::new()),
++        ] {
++            assert_eq!(
++                initial_service_tier(&config, &history, &SessionSource::Exec, true, &model),
++                None
++            );
++        }
++        assert_eq!(
++            initial_service_tier(
++                &config,
++                &resumed(owner),
++                &SessionSource::SubAgent(SubAgentSource::Other("child".to_string())),
++                true,
++                &model
++            ),
++            None
++        );
++    }
++}
+diff --git a/codex-rs/protocol/src/protocol.rs b/codex-rs/protocol/src/protocol.rs
+index f66722e..e640b9a 100644
+--- a/codex-rs/protocol/src/protocol.rs
++++ b/codex-rs/protocol/src/protocol.rs
+@@ -2203,10 +2203,22 @@ pub struct ThreadSettingsSnapshot {
+     pub approval_policy: AskForApproval,
+     pub approvals_reviewer: ApprovalsReviewer,
+     pub permission_profile: PermissionProfile,
++    /// Canonical profile before runtime roots are materialized. Allows explicit
++    /// root changes on resume without retaining old materialized write grants.
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    #[ts(optional)]
++    pub base_permission_profile: Option<PermissionProfile>,
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     #[ts(optional)]
+     pub active_permission_profile: Option<ActivePermissionProfile>,
+     pub cwd: AbsolutePathBuf,
++    /// Runtime roots are distinct from roots declared by a named permission profile.
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    #[ts(optional)]
++    pub workspace_roots: Option<Vec<AbsolutePathBuf>>,
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    #[ts(optional)]
++    pub profile_workspace_roots: Option<Vec<AbsolutePathBuf>>,
+     #[serde(skip_serializing_if = "Option::is_none")]
+     pub reasoning_effort: Option<ReasoningEffortConfig>,
+     #[serde(skip_serializing_if = "Option::is_none")]
+diff --git a/codex-rs/state/src/extract.rs b/codex-rs/state/src/extract.rs
+index 9437004..f996d13 100644
+--- a/codex-rs/state/src/extract.rs
++++ b/codex-rs/state/src/extract.rs
+@@ -123,7 +123,7 @@ fn apply_event_msg(metadata: &mut ThreadMetadata, event: &EventMsg) {
+                 set_preview_if_empty(metadata, Some(objective.to_string()));
+             }
+         }
+-        EventMsg::ThreadSettingsApplied(event) => {
++        EventMsg::ThreadSettingsApplied(event) if event.thread_id == Some(metadata.id) => {
+             let settings = &event.thread_settings;
+             metadata.model = Some(settings.model.clone());
+             metadata.model_provider = settings.model_provider_id.clone();
+@@ -604,9 +604,9 @@ mod tests {
+         let cwd = std::env::current_dir()
+             .expect("current directory")
+             .join("updated/workspace");
+-        let item = RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(
++        let mut item = RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(
+             ThreadSettingsAppliedEvent {
+-                thread_id: None,
++                thread_id: Some(metadata.id),
+                 thread_settings: ThreadSettingsSnapshot {
+                     model: "gpt-5.2-codex".to_string(),
+                     model_provider_id: "updated-provider".to_string(),
+@@ -614,8 +614,11 @@ mod tests {
+                     approval_policy: AskForApproval::Never,
+                     approvals_reviewer: ApprovalsReviewer::User,
+                     permission_profile: permission_profile.clone(),
++                    base_permission_profile: None,
+                     active_permission_profile: None,
+                     cwd: cwd.clone().try_into().expect("absolute settings cwd"),
++                    workspace_roots: None,
++                    profile_workspace_roots: None,
+                     reasoning_effort: Some(ReasoningEffort::Ultra),
+                     reasoning_summary: Some(ReasoningSummary::Auto),
+                     personality: None,
+@@ -631,6 +634,20 @@ mod tests {
+             },
+         ));
+ 
++        let original = metadata.clone();
++        for owner in [None, Some(ThreadId::new())] {
++            let RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(event)) = &mut item else {
++                unreachable!()
++            };
++            event.thread_id = owner;
++            apply_rollout_item(&mut metadata, &item, "test-provider");
++            assert_eq!(metadata, original);
++        }
++        let RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(event)) = &mut item else {
++            unreachable!()
++        };
++        event.thread_id = Some(metadata.id);
++
+         assert!(rollout_item_affects_thread_metadata(&item));
+         apply_rollout_item(&mut metadata, &item, "test-provider");
+ 
+diff --git a/codex-rs/thread-manager-sample/src/main.rs b/codex-rs/thread-manager-sample/src/main.rs
+index 2781624..b19952c 100644
+--- a/codex-rs/thread-manager-sample/src/main.rs
++++ b/codex-rs/thread-manager-sample/src/main.rs
+@@ -273,6 +273,8 @@ fn new_config(model: Option<String>, arg0_paths: Arg0DispatchPaths) -> anyhow::R
+         main_execve_wrapper_exe: arg0_paths.main_execve_wrapper_exe,
+         zsh_path: None,
+         model_reasoning_effort: None,
++        resumed_collaboration_mode: None,
++        resumed_service_tier: None,
+         plan_mode_reasoning_effort: None,
+         model_reasoning_summary: None,
+         model_catalog: None,
+diff --git a/codex-rs/thread-store/src/thread_metadata_sync.rs b/codex-rs/thread-store/src/thread_metadata_sync.rs
+index 37e111f..bbaf28b 100644
+--- a/codex-rs/thread-store/src/thread_metadata_sync.rs
++++ b/codex-rs/thread-store/src/thread_metadata_sync.rs
+@@ -297,7 +297,9 @@ impl ThreadMetadataSync {
+                         }
+                     }
+                 }
+-                RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(event)) => {
++                RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(event))
++                    if event.thread_id == Some(self.thread_id) =>
++                {
+                     let settings = &event.thread_settings;
+                     self.cwd_seen = true;
+                     update.model = Some(settings.model.clone());
+@@ -729,7 +731,7 @@ mod tests {
+ 
+         let mut item = RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(
+             ThreadSettingsAppliedEvent {
+-                thread_id: None,
++                thread_id: Some(thread_id),
+                 thread_settings: ThreadSettingsSnapshot {
+                     model: "gpt-5.2-codex".to_string(),
+                     model_provider_id: "updated-provider".to_string(),
+@@ -737,8 +739,11 @@ mod tests {
+                     approval_policy: AskForApproval::Never,
+                     approvals_reviewer: ApprovalsReviewer::User,
+                     permission_profile: permission_profile.clone(),
++                    base_permission_profile: None,
+                     active_permission_profile: None,
+                     cwd: cwd.clone().try_into().expect("absolute settings cwd"),
++                    workspace_roots: None,
++                    profile_workspace_roots: None,
+                     reasoning_effort: Some(ReasoningEffort::Ultra),
+                     reasoning_summary: Some(ReasoningSummary::Auto),
+                     personality: None,
+@@ -754,6 +759,23 @@ mod tests {
+             },
+         ));
+ 
++        for owner in [None, Some(ThreadId::new())] {
++            let RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(event)) = &mut item else {
++                unreachable!()
++            };
++            event.thread_id = owner;
++            if let Some(update) = sync.observe_appended_items(&[item.clone()]) {
++                assert_eq!(update.patch.model, None);
++                assert_eq!(update.patch.model_provider, None);
++                assert_eq!(update.patch.reasoning_effort, None);
++                assert_eq!(update.patch.permission_profile, None);
++            }
++        }
++        let RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(event)) = &mut item else {
++            unreachable!()
++        };
++        event.thread_id = Some(thread_id);
++
+         let update = sync
+             .observe_appended_items(&[item.clone()])
+             .expect("thread settings metadata update");

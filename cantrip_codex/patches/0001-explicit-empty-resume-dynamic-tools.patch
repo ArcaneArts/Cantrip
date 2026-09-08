@@ -104,3 +104,13 @@ index 6e15c01..260ef89 100644
      pub fn scan_rollout_items(&self, mut predicate: impl FnMut(&RolloutItem) -> bool) -> bool {
          match self {
              Self::New | Self::Cleared => false,
+--- a/codex-rs/app-server/src/request_processors/thread_processor_tests.rs
++++ b/codex-rs/app-server/src/request_processors/thread_processor_tests.rs
+@@ -673,6 +673,7 @@
+             base_instructions: None,
+             developer_instructions: None,
+             personality: None,
++            dynamic_tools: None,
+             exclude_turns: false,
+             initial_turns_page: None,
+         };
