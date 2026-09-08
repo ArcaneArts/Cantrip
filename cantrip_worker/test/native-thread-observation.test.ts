@@ -169,12 +169,11 @@ describe.skipIf(!binary)("pinned native thread observation", () => {
       expect(await request("thread/goal/get", { threadId })).toEqual({
         goal: null,
       });
-      // Empty threads are not materialized in the pinned runtime. Record the
-      // real error instead of presenting early attach as already supported.
-      const emptyResume = await client.request("thread/resume", { threadId });
-      expect(emptyResume.error).toMatchObject({ code: -32600 });
-      expect(emptyResume.error?.message).toContain("no rollout found");
-      // Materialize only this disposable fixture, without user input/inference.
+      // A second view can join an empty durable thread before naming or input.
+      const emptyResume = await request("thread/resume", { threadId });
+      expect(emptyResume.thread).toMatchObject({ id: threadId, turns: [] });
+      expect(effectiveSettings(emptyResume)).toEqual(before);
+      // Naming still persists this disposable fixture for the cold-read check.
       await request("thread/name/set", {
         threadId,
         name: "Observation regression",

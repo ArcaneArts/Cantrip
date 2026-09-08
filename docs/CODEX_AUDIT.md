@@ -28,7 +28,7 @@ Each implementation pass uses its own PR/worktree and squash automerge.
 
 ### Implementation progress
 
-**Pass 1 — metadata and existing-thread preparation:** goal reads now use native
+**Pass 1 (#1850) — metadata and existing-thread preparation:** goal reads now use native
 `thread/goal/get` directly, including unloaded threads. Existing-thread goal
 mutations and plan observation preserve native configuration; a cold preserving
 load sends only `threadId`. Plan observation no longer writes its display
@@ -53,11 +53,33 @@ settings/MCP and metadata reads preserve plan mode; unloaded durable goal reads
 do not start the thread or MCP. The two stale disabled-CUA instruction fixtures
 identified during the audit now assert the existing disabled notice explicitly.
 
-**Discovered prerequisite:** native minimal resume of a newly started unnamed,
-empty thread fails with `no rollout found`, even while that thread is live.
-Naming the disposable test thread materializes it without inference; this is
-fixture setup, not an implemented eager-start workaround. Empty-thread attachment
-still needs a deliberate product/native solution and acceptance coverage.
+**Pass 2 — live empty-thread attachment:**
+Pass 1 exposed native resume rejecting newly started unnamed, empty threads
+because their history was not yet materialized. Reviewed patch `0010` now
+persists the existing durable live recorder and pending creation metadata before
+by-ID attachment. It covers concurrent joins and retries after a metadata write
+fails with the recorder already visible. Resume-derived metadata remains
+deferred until a new append; opening another view does not flush those facts.
+
+The patch handles the typed missing-thread error and the pinned local store's
+exact missing-rollout error without inventing a prompt, name or replacement
+thread. Ephemeral, archived and unrelated storage/invalid-request failures retain
+their error paths. Live paginated metadata writes now require SQLite success,
+so a failed insertion is reported and its pending update remains retryable.
+Legacy optional metadata-indexing behavior is preserved.
+
+Validation of the updated native test build: all 49 resume tests and all 240
+thread-store tests pass using the upstream `ci-test` profile with
+`RUST_MIN_STACK=33554432`. The seven independent worker/native protocol tests
+also pass against that build. They cover concurrent remote clients for legacy
+and paginated history, unchanged thread/session identity and settings, MCP
+inventory, settings notifications, reconnect, invalid paths, ephemeral threads,
+real storage obstruction/repair and an SQLite-trigger metadata failure followed
+by same-session recovery. These fixtures submit no model turn or computer input.
+The final packaged release built successfully and passed the same seven protocol
+tests. Worker typecheck, format/diff checks and pristine-upstream/patch
+verification passed. This verifies native empty-thread attachment, not the full
+CLI/GUI integration acceptance matrix below.
 
 **Still outstanding:** the shared chat-keyed preparation coordinator and complete
 MCP builder, side-effect-free TUI attachment, full startup-incarnation guarding,
