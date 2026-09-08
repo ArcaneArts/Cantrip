@@ -1,3 +1,5 @@
+import { managedConsoleSessionContext } from "../../terminals/managed-session.js";
+import { mutateManagedGuiQueue } from "../runtime/managed-queue-input.js";
 import { randomUUID } from "node:crypto";
 
 import {
@@ -20,10 +22,14 @@ import type { ChatTurnStarter } from "./chat-turn-contracts.js";
 export interface ChatTurnSubmissionRouteDependencies {
   applicationOwnerId: () => string;
   beginTurn: ChatTurnStarter;
+  dispatchNextQueuedPrompt?: (chatId: string) => Promise<void>;
   bridge: Pick<WorkerCommandBus, "isConnected">;
   repository: Pick<
     ServerRepository,
     | "createEncryptedQueuedPrompt"
+    | "managedQueue"
+    | "nativeCommands"
+    | "getEncryptedQueuedPrompt"
     | "getChatExecutionContext"
     | "getEncryptedMessageByIdempotencyKey"
     | "getLatestEncryptedUserMessage"
@@ -52,6 +58,7 @@ export function installChatTurnSubmissionRoutes(
   {
     applicationOwnerId,
     beginTurn,
+    dispatchNextQueuedPrompt,
     bridge,
     repository,
     resolveModelId,
@@ -127,41 +134,65 @@ export function installChatTurnSubmissionRoutes(
         } catch (error) {
           return reply.code(409).send({ error: errorMessage(error) });
         }
-        const prompt = await repository.createEncryptedQueuedPrompt(
-          applicationOwnerId(),
-          context.chatId,
-          input.data.queuedPrompt,
-          attachments.map((attachment) =>
-            toChatAttachmentOpaqueSummary(attachment),
-          ),
-        );
-        if (prompt) {
-          app.log.info(
-            {
-              event: "chat.queue.enqueued",
-              subsystem: "chat-queue",
-              operation: "enqueue-prompt",
-              status: "queued",
-              chatId: context.chatId,
-              projectId: context.projectId,
-              workerId: context.workerId,
-              requestId: prompt.id,
-              counts: { attachments: prompt.attachments.length },
-              reasonCode: context.automationPaused
-                ? "automation-paused"
-                : "turn-active",
-            },
-            "Chat prompt queued behind active work",
-          );
-        }
-        return prompt
-          ? reply.code(202).send(
-              encryptedChatPromptSubmitResultSchema.parse({
+        try {
+          const prompt = managedConsoleSessionContext(context)
+            ? ((
+                await mutateManagedGuiQueue(
+                  repository,
+                  applicationOwnerId(),
+                  context,
+                  {
+                    kind: "add",
+                    prompt: input.data.queuedPrompt,
+                    attachments: attachments.map(toChatAttachmentOpaqueSummary),
+                  },
+                  {
+                    operationId: `gui-queue:add:${context.chatId}:${input.data.queuedPrompt.id}`,
+                  },
+                )
+              ).acceptedItem ??
+              (await repository.getEncryptedQueuedPrompt(
+                applicationOwnerId(),
+                input.data.queuedPrompt.id,
+              )))
+            : await repository.createEncryptedQueuedPrompt(
+                applicationOwnerId(),
+                context.chatId,
+                input.data.queuedPrompt,
+                attachments.map(toChatAttachmentOpaqueSummary),
+              );
+          if (prompt) {
+            app.log.info(
+              {
+                event: "chat.queue.enqueued",
+                subsystem: "chat-queue",
+                operation: "enqueue-prompt",
                 status: "queued",
-                prompt,
-              }),
-            )
-          : reply.code(404).send({ error: "Chat not found." });
+                chatId: context.chatId,
+                projectId: context.projectId,
+                workerId: context.workerId,
+                requestId: prompt.id,
+                counts: { attachments: prompt.attachments.length },
+                reasonCode: context.automationPaused
+                  ? "automation-paused"
+                  : "turn-active",
+              },
+              "Chat prompt queued behind active work",
+            );
+          }
+          if (prompt && managedConsoleSessionContext(context))
+            void dispatchNextQueuedPrompt?.(context.chatId);
+          return prompt
+            ? reply.code(202).send(
+                encryptedChatPromptSubmitResultSchema.parse({
+                  status: "queued",
+                  prompt,
+                }),
+              )
+            : reply.code(404).send({ error: "Chat not found." });
+        } catch (error) {
+          return reply.code(409).send({ error: errorMessage(error) });
+        }
       }
 
       try {

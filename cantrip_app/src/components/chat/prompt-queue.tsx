@@ -16,7 +16,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
-import type { QueuedPrompt } from "@cantrip/protocol";
+import type { ManagedQueueClaim, QueuedPrompt } from "@cantrip/protocol";
 import {
   CornerDownRight,
   GripVertical,
@@ -35,6 +35,15 @@ import {
 } from "@/components/ui/styled-menu";
 import { cn } from "@/lib/utils";
 
+const claimLabels = {
+  claimed: "Preparing",
+  accepted: "Starting",
+  dispatched: "Awaiting confirmation",
+  uncertain: "Start unconfirmed",
+  rejected: "Start failed",
+  consumed: "Started",
+};
+
 function PromptRow({
   disabled,
   executing,
@@ -43,6 +52,7 @@ function PromptRow({
   onFreeze,
   onSteer,
   prompt,
+  claim,
 }: {
   disabled: boolean;
   executing: boolean;
@@ -51,6 +61,7 @@ function PromptRow({
   onFreeze(): void;
   onSteer(): void;
   prompt: QueuedPrompt;
+  claim?: ManagedQueueClaim;
 }) {
   const sortable = useSortable({ id: prompt.id, disabled });
   const style: CSSProperties = {
@@ -102,6 +113,20 @@ function PromptRow({
           <Paperclip className="size-3" /> {prompt.attachments.length}
         </span>
       ) : null}
+      {claim ? (
+        <span
+          className="shrink-0 text-xs text-muted-foreground"
+          title={
+            claim.status === "rejected"
+              ? "The previous start attempt was rejected. Review the prompt before retrying."
+              : claim.status === "uncertain"
+                ? "The start result is unconfirmed. The prompt is retained while its status is reconciled."
+                : "This prompt has an active start request."
+          }
+        >
+          {claimLabels[claim.status]}
+        </span>
+      ) : null}
       <Button
         type="button"
         size="sm"
@@ -117,7 +142,8 @@ function PromptRow({
         }
         onClick={onSteer}
       >
-        <CornerDownRight className="size-3.5" /> Steer
+        <CornerDownRight className="size-3.5" />{" "}
+        {executing ? "Steer" : claim?.status === "rejected" ? "Retry" : "Start"}
       </Button>
       <DropdownMenuPrimitive.Root>
         <DropdownMenuPrimitive.Trigger asChild>
@@ -169,6 +195,7 @@ export function PromptQueue({
   onReorder,
   onSteer,
   prompts,
+  claims = [],
 }: {
   disabled: boolean;
   editingPromptId: string | null;
@@ -179,6 +206,7 @@ export function PromptQueue({
   onReorder(ids: string[]): void;
   onSteer(prompt: QueuedPrompt): void;
   prompts: QueuedPrompt[];
+  claims?: ManagedQueueClaim[];
 }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const sensors = useSensors(
@@ -186,6 +214,9 @@ export function PromptQueue({
   );
   const visible = prompts.filter(({ id }) => id !== editingPromptId);
   const active = prompts.find(({ id }) => id === activeId) ?? null;
+  const claimsByPrompt = new Map(
+    claims.map((claim) => [claim.promptId, claim]),
+  );
   const dragEnd = (event: DragEndEvent) => {
     setActiveId(null);
     if (!event.over || event.active.id === event.over.id) return;
@@ -211,18 +242,28 @@ export function PromptQueue({
           items={visible.map(({ id }) => id)}
           strategy={verticalListSortingStrategy}
         >
-          {visible.map((prompt) => (
-            <PromptRow
-              key={prompt.id}
-              prompt={prompt}
-              disabled={disabled}
-              executing={executing}
-              onDelete={() => onDelete(prompt)}
-              onEdit={() => onEdit(prompt)}
-              onFreeze={() => onFreeze(prompt)}
-              onSteer={() => onSteer(prompt)}
-            />
-          ))}
+          {visible.map((prompt) => {
+            const candidate = claimsByPrompt.get(prompt.id);
+            const claim =
+              candidate?.promptRevision === prompt.revision
+                ? candidate
+                : undefined;
+            return (
+              <PromptRow
+                key={prompt.id}
+                prompt={prompt}
+                claim={claim}
+                disabled={
+                  disabled || Boolean(claim && claim.status !== "rejected")
+                }
+                executing={executing}
+                onDelete={() => onDelete(prompt)}
+                onEdit={() => onEdit(prompt)}
+                onFreeze={() => onFreeze(prompt)}
+                onSteer={() => onSteer(prompt)}
+              />
+            );
+          })}
         </SortableContext>
         <DragOverlay dropAnimation={{ duration: 150, easing: "ease" }}>
           {active ? (

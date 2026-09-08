@@ -1661,6 +1661,9 @@ export interface RunAgentTurnRetry {
 }
 
 export interface RunAgentTurnOptions {
+  /** Already protected, complete native queue vector. Never flatten or append inferred skills. */
+  nativeInput?: ReadonlyArray<Record<string, unknown>>;
+  nativeClientUserMessageId?: string;
   operationGeneration?: string;
   /** Exact logical-root cancellation before native dispatch; never a chat-wide active-turn interrupt. */
   preparationSignal?: AbortSignal;
@@ -1763,6 +1766,7 @@ export interface ManagedExecutionAttempt {
   attemptId: string;
   turnId: string;
   trigger: "goal" | "queue";
+  goalEpoch?: string;
   input: Record<string, unknown>;
 }
 export interface ManagedExecutionDeclined extends Omit<
@@ -1790,6 +1794,7 @@ export interface ManagedExecutionGateHandler {
 
 export interface ManagedNativeGuiCommand {
   operationId?: string;
+  queueClaim?: { id: string; promptRevision: number };
   method: string;
   params: Record<string, unknown>;
   reply?: {
@@ -4136,6 +4141,13 @@ export class CodexAppServer implements CodexRuntime {
   #externalThreadChangeObserver:
     ((change: CodexExternalThreadChange) => void) | null = null;
   readonly #goals = new Map<string, ThreadGoal>();
+  readonly #managedQueueResumers = new Map<
+    string,
+    {
+      handler: () => Promise<{ resumed: boolean }>;
+      transportGeneration: string | null;
+    }
+  >();
   readonly #managedExecutionGateHandlers = new Map<
     string,
     {
@@ -4290,6 +4302,7 @@ export class CodexAppServer implements CodexRuntime {
   }
 
   private clearManagedExecutionGateHandlers(): void {
+    this.#managedQueueResumers.clear();
     for (const entry of this.#managedExecutionGateHandlers.values())
       entry.controller.abort();
     this.#managedExecutionGateHandlers.clear();
@@ -4331,6 +4344,136 @@ export class CodexAppServer implements CodexRuntime {
     return z.object({ invalidated: z.literal(true) }).parse(result);
   }
 
+  async wakeManagedExecution(
+    params: { threadId: string; runnerGeneration: string },
+    expectedTransportGeneration: string,
+  ): Promise<{ scheduled: boolean }> {
+    this.assertManagedExecutionTransport(expectedTransportGeneration);
+    const result = await this.request("thread/managedExecution/wake", {
+      threadId: params.threadId,
+      runnerGeneration: params.runnerGeneration,
+    });
+    this.assertManagedExecutionTransport(expectedTransportGeneration);
+    return z.object({ scheduled: z.boolean() }).parse(result);
+  }
+
+  async readManagedNativeQueue(
+    threadId: string,
+    expectedTransportGeneration: string,
+  ): Promise<
+    Array<{
+      id: string;
+      input: Record<string, unknown>[];
+      clientUserMessageId: string;
+    }>
+  > {
+    this.assertManagedExecutionTransport(expectedTransportGeneration);
+    const rows: Array<{
+      id: string;
+      input: Record<string, unknown>[];
+      clientUserMessageId: string;
+    }> = [];
+    let cursor: string | null = null;
+    do {
+      const page = z
+        .object({
+          data: z.array(
+            z.object({
+              id: z.string(),
+              input: z.array(z.record(z.string(), z.unknown())),
+              clientUserMessageId: z.string(),
+            }),
+          ),
+          nextCursor: z.string().nullable(),
+        })
+        .parse(
+          await this.request("thread/queue/list", {
+            threadId,
+            cursor,
+            limit: 100,
+          }),
+        );
+      this.assertManagedExecutionTransport(expectedTransportGeneration);
+      rows.push(...page.data);
+      cursor = page.nextCursor;
+    } while (cursor);
+    return rows;
+  }
+
+  async deleteManagedNativeQueue(
+    params: {
+      threadId: string;
+      runnerGeneration: string;
+      operationId: string;
+      queuedSubmissionId: string;
+      expectedInput: Record<string, unknown>[];
+      expectedClientUserMessageId: string;
+    },
+    expectedTransportGeneration: string,
+  ): Promise<{ deleted: boolean; conflict: boolean }> {
+    this.assertManagedExecutionTransport(expectedTransportGeneration);
+    const result = await this.request(
+      "thread/managedExecution/queueDelete",
+      params,
+    );
+    this.assertManagedExecutionTransport(expectedTransportGeneration);
+    return z
+      .object({ deleted: z.boolean(), conflict: z.boolean() })
+      .strict()
+      .parse(result);
+  }
+
+  async executeManagedQueueCommand(command: {
+    threadId: string;
+    operationId: string;
+    queueClaim: { id: string; promptRevision: number };
+    method:
+      | "thread/goal/set"
+      | "thread/goal/clear"
+      | "thread/settings/update"
+      | "thread/shellCommand";
+    params: Record<string, unknown>;
+    planMode?: "plan";
+    model?: RunAgentTurnOptions["model"];
+  }): Promise<unknown> {
+    if (
+      !this.managedGuiThread(command.threadId) ||
+      command.params.threadId !== command.threadId
+    )
+      throw new Error(
+        "The queued command requires its bound managed native thread.",
+      );
+    const params =
+      command.planMode && command.model
+        ? {
+            ...command.params,
+            collaborationMode: await this.collaborationMode(
+              command.planMode,
+              command.model,
+            ),
+          }
+        : command.params;
+    return this.dispatchGuiNativeCommand(command.threadId, {
+      operationId: command.operationId,
+      queueClaim: command.queueClaim,
+      method: command.method,
+      params,
+      dispatch: () => this.request(command.method, params),
+    });
+  }
+
+  setManagedQueueResume(
+    threadId: string,
+    handler: () => Promise<{ resumed: boolean }>,
+  ): () => void {
+    const entry = { handler, transportGeneration: this.transportGeneration };
+    this.#managedQueueResumers.set(threadId, entry);
+    return () => {
+      if (this.#managedQueueResumers.get(threadId) === entry)
+        this.#managedQueueResumers.delete(threadId);
+    };
+  }
+
   async bindManagedExecution(
     params: {
       threadId: string;
@@ -4363,7 +4506,10 @@ export class CodexAppServer implements CodexRuntime {
   ): void {
     if (dispatcher)
       this.#managedNativeCommandDispatchers.set(threadId, dispatcher);
-    else this.#managedNativeCommandDispatchers.delete(threadId);
+    else {
+      this.#managedNativeCommandDispatchers.delete(threadId);
+      this.#managedQueueResumers.delete(threadId);
+    }
   }
 
   private dispatchGuiNativeCommand(
@@ -5079,21 +5225,35 @@ export class CodexAppServer implements CodexRuntime {
         threadId,
         ...codexWorkspaceContext(options.cwd),
         ...turnPolicy,
-        clientUserMessageId: `cantrip:${options.clientMessageId}`,
-        input: [
-          ...(await this.turnAttachmentInputs(
-            options.prompt,
-            options.attachments ?? [],
-            options.model,
-            options.provider,
-          )),
-          ...options.skillNames.flatMap((name) => {
-            const skill = selectedSkills.get(name);
-            return skill?.path
-              ? [{ type: "skill", name: skill.name, path: skill.path }]
-              : [];
-          }),
-        ],
+        clientUserMessageId:
+          options.nativeClientUserMessageId ??
+          `cantrip:${options.clientMessageId}`,
+        input: options.nativeInput
+          ? [
+              ...structuredClone(options.nativeInput),
+              ...(options.attachments?.length
+                ? await this.turnAttachmentInputs(
+                    "",
+                    options.attachments,
+                    options.model,
+                    options.provider,
+                  )
+                : []),
+            ]
+          : [
+              ...(await this.turnAttachmentInputs(
+                options.prompt,
+                options.attachments ?? [],
+                options.model,
+                options.provider,
+              )),
+              ...options.skillNames.flatMap((name) => {
+                const skill = selectedSkills.get(name);
+                return skill?.path
+                  ? [{ type: "skill", name: skill.name, path: skill.path }]
+                  : [];
+              }),
+            ],
         model: options.model.name,
         ...codexReasoningEffortParams(options.model),
         ...(collaborationMode ? { collaborationMode } : {}),
@@ -5874,6 +6034,20 @@ export class CodexAppServer implements CodexRuntime {
       throw new Error(
         "Automation resume requires its bound managed native session.",
       );
+    const canonicalQueue = this.#managedQueueResumers.get(threadId);
+    if (canonicalQueue) {
+      if (canonicalQueue.transportGeneration !== this.transportGeneration)
+        throw new Error(
+          "The managed queue belongs to a replaced native transport.",
+        );
+      const result = await canonicalQueue.handler();
+      if (
+        canonicalQueue.transportGeneration !== this.transportGeneration ||
+        this.#managedQueueResumers.get(threadId) !== canonicalQueue
+      )
+        throw new Error("The managed queue was replaced during resume.");
+      if (result.resumed) return result;
+    }
     const { goal } = await this.refreshGoal(threadId);
     if (goal?.status === "active") {
       const response = chatGoalResponseSchema.parse(
@@ -5885,6 +6059,8 @@ export class CodexAppServer implements CodexRuntime {
       this.cacheGoal(response);
       return { resumed: true };
     }
+    // A selected canonical queue is the sole queue owner, including when empty.
+    if (canonicalQueue) return { resumed: false };
     const queue = z
       .object({ data: z.array(z.unknown()) })
       .parse(await this.request("thread/queue/list", { threadId, limit: 1 }));
@@ -6396,6 +6572,12 @@ export class CodexAppServer implements CodexRuntime {
     attachments: RuntimeChatAttachment[] = [],
     model?: RunAgentTurnOptions["model"],
     provider?: RunAgentTurnOptions["provider"],
+    queued?: {
+      operationId?: string;
+      queueClaim?: { id: string; promptRevision: number };
+      input?: ReadonlyArray<Record<string, unknown>>;
+      clientUserMessageId?: string;
+    },
   ): Promise<{ steered: true; turnId: string }> {
     const active = [...this.#activeTurns.entries()].find(
       ([, turn]) =>
@@ -6407,15 +6589,27 @@ export class CodexAppServer implements CodexRuntime {
     const activeThreadId = active[1].threadId;
     const params = {
       threadId: activeThreadId,
-      input: await this.turnAttachmentInputs(
-        prompt,
-        attachments,
-        model,
-        provider,
-      ),
+      ...(queued?.clientUserMessageId
+        ? { clientUserMessageId: queued.clientUserMessageId }
+        : {}),
+      input: queued?.input
+        ? [
+            ...structuredClone(queued.input),
+            ...(attachments.length
+              ? await this.turnAttachmentInputs(
+                  "",
+                  attachments,
+                  model,
+                  provider,
+                )
+              : []),
+          ]
+        : await this.turnAttachmentInputs(prompt, attachments, model, provider),
       expectedTurnId: active[0],
     };
     const result = (await this.dispatchGuiNativeCommand(activeThreadId, {
+      ...(queued?.operationId ? { operationId: queued.operationId } : {}),
+      ...(queued?.queueClaim ? { queueClaim: queued.queueClaim } : {}),
       method: "turn/steer",
       params,
       dispatch: () => {
@@ -9144,6 +9338,7 @@ export class CodexAppServer implements CodexRuntime {
         const request = base
           .extend({
             trigger: z.enum(["goal", "queue"]),
+            goalEpoch: z.string().min(1).optional(),
             input: z.record(z.string(), z.unknown()),
           })
           .safeParse(message.params);

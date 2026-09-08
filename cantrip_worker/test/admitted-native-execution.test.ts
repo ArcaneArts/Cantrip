@@ -445,6 +445,55 @@ describe("GUI native mutation admission dispatch", () => {
     expect(f.resolve()).toBeNull();
   });
 
+  it("dispatches queued steer with the exact native vector, client identity and canonical claim", async () => {
+    const f = fixture();
+    const handle = await f.runtime.prepareAdmittedNativeExecution(options);
+    f.start();
+    const dispatch = vi.fn(async (command) => command.dispatch());
+    f.runtime.setManagedNativeCommandDispatcher("root", dispatch);
+    const input = [
+      {
+        type: "text",
+        text: "keep",
+        text_elements: [
+          { byteRange: { start: 0, end: 4 }, placeholder: "keep" },
+        ],
+      },
+      { type: "mention", name: "reviewer", path: "agent://reviewer" },
+    ];
+    await f.runtime.steerThread(
+      "chat",
+      "root",
+      "not a replacement",
+      [],
+      [],
+      undefined,
+      {
+        operationId: "queued-steer",
+        queueClaim: { id: "claim", promptRevision: 2 },
+        input,
+        clientUserMessageId: "native-client",
+      },
+    );
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operationId: "queued-steer",
+        queueClaim: { id: "claim", promptRevision: 2 },
+        params: {
+          threadId: "root",
+          expectedTurnId: "turn-a",
+          input,
+          clientUserMessageId: "native-client",
+        },
+      }),
+    );
+    expect(f.request).toHaveBeenCalledWith(
+      "turn/steer",
+      expect.objectContaining({ input, clientUserMessageId: "native-client" }),
+    );
+    handle.fail(new Error("done"));
+  });
+
   it("waits for admitted pause, steer and Stop before dispatching exact native targets", async () => {
     const f = fixture();
     const handle = await f.runtime.prepareAdmittedNativeExecution(options);
@@ -715,6 +764,40 @@ describe("GUI admitted native dispatch hooks", () => {
     vi.spyOn(runtime, "loadThread").mockResolvedValue("root");
     return f;
   }
+  it("sends the queued native input vector unchanged through actual GUI turn/start", async () => {
+    const f = setup();
+    const input = [
+      {
+        type: "text",
+        text: "native text",
+        text_elements: [
+          { byteRange: { start: 0, end: 6 }, placeholder: "native" },
+        ],
+      },
+      { type: "skill", name: "chosen", path: "/actual/skill" },
+      { type: "image", url: "https://fixture/image" },
+    ];
+    f.request.mockImplementation(async (method) => {
+      if (method !== "turn/start") return {};
+      f.start();
+      f.end();
+      return { turn: { id: "turn-a" } };
+    });
+    await f.runtime.runTurn({
+      ...guiOptions(),
+      nativeInput: input,
+      nativeClientUserMessageId: "queued-native-client",
+      skillNames: ["must-not-infer-extra"],
+    });
+    expect(f.request).toHaveBeenCalledWith(
+      "turn/start",
+      expect.objectContaining({
+        input,
+        clientUserMessageId: "queued-native-client",
+      }),
+    );
+  });
+
   it("retains typed native failure after systemError before the GUI turn/start acknowledgment", async () => {
     const f = setup();
     f.request.mockImplementation(async (method) => {

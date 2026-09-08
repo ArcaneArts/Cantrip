@@ -4965,6 +4965,8 @@ export const chatRelocationSnapshots = pgTable(
 export const queuedPrompts = pgTable(
   "queued_prompts",
   {
+    revision: integer("revision").notNull().default(0),
+    state: text("state").notNull().default("pending"),
     id: text("id").primaryKey(),
     chatId: text("chat_id")
       .notNull()
@@ -5408,6 +5410,13 @@ export const nativeCommands = pgTable(
       .notNull()
       .references(() => chats.id, { onDelete: "cascade" }),
     logicalOperationId: text("logical_operation_id"),
+    queueResult: jsonb("queue_result").$type<{
+      acceptedItem?: import("@cantrip/protocol").EncryptedQueuedPrompt;
+    }>(),
+    logicalClientMessageId: text("logical_client_message_id"),
+    logicalCompletedAt: timestamp("logical_completed_at", {
+      withTimezone: true,
+    }),
     previousOperationId: text("previous_operation_id"),
     operationGeneration: text("operation_generation").notNull().unique(),
     activationGeneration: text("activation_generation"),
@@ -5521,5 +5530,112 @@ export const nativePendingRequests = pgTable(
     primaryKey({
       columns: [table.chatId, table.runtimeGeneration, table.nativeRequestId],
     }),
+  ],
+);
+
+/** Durable acknowledgement delivery: a completed logical root must release its worker barrier. */
+export const nativeLogicalCompletions = pgTable("native_logical_completions", {
+  attempts: integer("attempts").notNull().default(0),
+  nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  rootOperationId: text("root_operation_id")
+    .primaryKey()
+    .references(() => nativeCommands.operationId, { onDelete: "cascade" }),
+  rootOperationGeneration: text("root_operation_generation").notNull(),
+  ownerId: text("owner_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  workerId: text("worker_id")
+    .notNull()
+    .references(() => workers.id, { onDelete: "cascade" }),
+  chatId: text("chat_id")
+    .notNull()
+    .references(() => chats.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+export const managedQueueStates = pgTable("managed_queue_states", {
+  notifiedRevision: integer("notified_revision").notNull().default(-1),
+  notificationDueAt: timestamp("notification_due_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  chatId: text("chat_id")
+    .primaryKey()
+    .references(() => chats.id, { onDelete: "cascade" }),
+  revision: integer("revision").notNull().default(0),
+});
+export const managedQueueClaims = pgTable(
+  "managed_queue_claims",
+  {
+    requestOperationId: text("request_operation_id").references(
+      () => nativeCommands.operationId,
+      { onDelete: "set null" },
+    ),
+    id: text("id").primaryKey(),
+    chatId: text("chat_id")
+      .notNull()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    promptId: text("prompt_id")
+      .notNull()
+      .references(() => queuedPrompts.id, { onDelete: "cascade" }),
+    awaitingGoal: boolean("awaiting_goal").notNull().default(false),
+    goalEpoch: text("goal_epoch"),
+    goalOperationId: text("goal_operation_id").references(
+      () => nativeCommands.operationId,
+      { onDelete: "set null" },
+    ),
+    goalOperationGeneration: text("goal_operation_generation"),
+    promptRevision: integer("prompt_revision").notNull(),
+    status: text("status").notNull().default("claimed"),
+    operationId: text("operation_id").references(
+      () => nativeCommands.operationId,
+      { onDelete: "set null" },
+    ),
+    operationGeneration: text("operation_generation"),
+    nativeTurnId: text("native_turn_id"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("managed_queue_claims_live_prompt")
+      .on(table.promptId)
+      .where(
+        sql`${table.status} IN ('claimed','accepted','dispatched','uncertain')`,
+      ),
+  ],
+);
+/** A native queue snapshot cannot execute until its exact native removal is acknowledged. */
+export const managedQueueImports = pgTable(
+  "managed_queue_imports",
+  {
+    id: text("id").primaryKey(),
+    sourceKey: text("source_key").notNull(),
+    sourceDigest: text("source_digest").notNull(),
+    chatId: text("chat_id")
+      .notNull()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    workerId: text("worker_id")
+      .notNull()
+      .references(() => workers.id, { onDelete: "cascade" }),
+    protectedSource: jsonb("protected_source").notNull(),
+    nativeItemId: text("native_item_id").notNull(),
+    identity: jsonb("identity").notNull(),
+    runnerGeneration: text("runner_generation").notNull(),
+    promptId: text("prompt_id")
+      .notNull()
+      .references(() => queuedPrompts.id, { onDelete: "cascade" }),
+    status: text("status").notNull().default("pending"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("managed_queue_imports_source_unique").on(
+      table.sourceKey,
+      table.sourceDigest,
+    ),
   ],
 );

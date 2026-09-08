@@ -104,6 +104,10 @@ export type ChatTurnInput = Omit<ChatTurnCreate, "attachmentIds" | "mode"> & {
 };
 
 export interface ChatTurnOptions {
+  managedQueueClaim?: { id: string; promptRevision: number };
+  protectedNativeInput?: import("@cantrip/protocol").EncryptedPayloadEnvelope;
+  nativeClientUserMessageId?: string;
+  queuedPromptId?: string;
   acquiringActor?: "agent" | "user";
   encryptedTaskMessages?: {
     userMessage: TaskMessageOpaqueContent;
@@ -504,6 +508,9 @@ export function createChatTurnRuntime({
                     ownerId,
                     context.chatId,
                     protectedAdmissionInput!.idempotencyKey,
+                    ...(options.managedQueueClaim
+                      ? [options.managedQueueClaim.id]
+                      : []),
                   ]),
                 )
                 .digest("hex")}`,
@@ -537,6 +544,8 @@ export function createChatTurnRuntime({
             {
               acquiringActor: options.acquiringActor,
               purpose: options.purpose,
+              queueClaim: options.managedQueueClaim,
+              clientMessageId: protectedAdmissionInput!.id,
             },
           ),
         )
@@ -1054,6 +1063,9 @@ export function createChatTurnRuntime({
               {
                 type: "chat.turn",
                 nativeCommandReceipt,
+                protectedNativeInput: options.protectedNativeInput,
+                nativeClientUserMessageId: options.nativeClientUserMessageId,
+                queuedPromptId: options.queuedPromptId,
                 computerUseAuthority:
                   execution.computerUseEnabled === true
                     ? {

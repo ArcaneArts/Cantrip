@@ -66,6 +66,11 @@ export async function managedNativeCommandIntent(
           : null,
     permissionProfileId: context.permissionProfileId,
   };
+  if (
+    operation.method === "thread/goal/set" &&
+    (params.status === "active" || params.status === "paused")
+  )
+    intent.goalStatus = params.status;
   if (operation.method === "turn/pause") {
     if (typeof params.paused !== "boolean")
       throw new Error(

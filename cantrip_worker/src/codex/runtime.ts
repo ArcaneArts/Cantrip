@@ -230,6 +230,14 @@ export interface CodexRuntime {
     model: RunAgentTurnOptions["model"],
     provider: RunAgentTurnOptions["provider"],
   ): Promise<{ released: boolean }>;
+  setManagedQueueResume(
+    threadId: string,
+    handler: () => Promise<{ resumed: boolean }>,
+  ): () => void;
+  wakeManagedExecution(
+    params: { threadId: string; runnerGeneration: string },
+    expectedTransportGeneration: string,
+  ): Promise<{ scheduled: boolean }>;
   resumeManagedAutomation(options: {
     threadId: string;
   }): Promise<{ resumed: boolean }>;
@@ -286,6 +294,12 @@ export interface CodexRuntime {
     attachments?: RuntimeChatAttachment[],
     model?: RunAgentTurnOptions["model"],
     provider?: RunAgentTurnOptions["provider"],
+    queued?: {
+      operationId?: string;
+      queueClaim?: { id: string; promptRevision: number };
+      input?: ReadonlyArray<Record<string, unknown>>;
+      clientUserMessageId?: string;
+    },
   ): Promise<{ steered: true; turnId: string }>;
   diagnostics(): CodexRuntimeDiagnostic[];
   close(): void;

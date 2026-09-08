@@ -14,6 +14,7 @@ import {
   type AgentActivity,
   type AgentTurnResult,
   type ChatMessage,
+  type ChatAttachmentSummary,
   type ChatMessageCreate,
   type ChatTurnMode,
   type NormalizedAgentMessage,
@@ -250,6 +251,7 @@ export async function reprotectChatMessages(input: {
 }
 
 export async function protectChatTurn(input: {
+  attachments?: ChatAttachmentSummary[];
   idempotencyKey: string;
   messageId: string;
   mode: ChatTurnMode;
@@ -267,7 +269,13 @@ export async function protectChatTurn(input: {
     message: {
       role: "user",
       mode: input.mode,
-      content: [{ type: "text", text: input.text }],
+      content: [
+        ...(input.text ? [{ type: "text" as const, text: input.text }] : []),
+        ...(input.attachments ?? []).map((attachment) => ({
+          type: "attachment" as const,
+          attachment,
+        })),
+      ],
       reasoningEffort: input.reasoningEffort,
       idempotencyKey: input.idempotencyKey,
     },
@@ -275,7 +283,10 @@ export async function protectChatTurn(input: {
   });
   const component = input.service.componentKey("chat-content");
   const ownerId = input.service.ownerId();
-  const classification = { mode: input.mode, attachmentIds: [] as string[] };
+  const classification = {
+    mode: input.mode,
+    attachmentIds: (input.attachments ?? []).map(({ id }) => id),
+  };
   try {
     const queuedPrompt = queuedPromptOpaqueContentSchema.parse({
       id: input.promptId,

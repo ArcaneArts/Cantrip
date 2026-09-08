@@ -11,6 +11,8 @@ import path from "node:path";
 
 import {
   nativeCommandAdmissionSchema,
+  queuedPromptOpaqueContentSchema,
+  type ManagedQueueMutation,
   unprobedCodexRuntimeReport,
 } from "@cantrip/protocol";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -376,6 +378,98 @@ describe("durable native command admission", () => {
       code: "operation-already-dispatched",
     });
   });
+  it.each(["turn/start", "thread/goal/clear", "thread/goal/set"])(
+    "returns the committed %s receipt while its successor dispatch remains pending",
+    async (method) => {
+      const app = Fastify();
+      const repository = database.repository;
+      let rejectDispatch!: (error: Error) => void;
+      const dispatchPending = new Promise<void>((_resolve, reject) => {
+        rejectDispatch = reject;
+      });
+      const dispatchNextQueuedPrompt = vi.fn(() => dispatchPending);
+      const warning = vi.spyOn(app.log, "warn");
+      installInternalNativeCommandRoutes(app, {
+        config,
+        serverId: "fixture-server",
+        repository,
+        dispatchNextQueuedPrompt,
+        runAsOwner: async (_owner, operation) => operation(),
+        live: {
+          publishEncryptedChatMessage: () => {},
+          publishTaskMessage: () => {},
+          publishChatSummary: () => {},
+          publishChatTurnBoundary: () => {},
+          publishChatInvalidation: () => {},
+        },
+      });
+      const input = admission(
+        await repository.getChatExecutionContext(LOCAL_USER_ID, chatId),
+        {
+          method,
+          ...(method === "thread/goal/set"
+            ? {
+                intent: {
+                  scope: "thread",
+                  settingKeys: [],
+                  expectedTurnId: null,
+                  goalStatus: "paused",
+                },
+              }
+            : {}),
+        },
+      );
+      const grant = await repository.nativeCommands.admit(LOCAL_USER_ID, input);
+      expect(grant.receipt.status).toBe("accepted");
+      await dispatch(input, grant.receipt);
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const response = await Promise.race([
+          app.inject({
+            method: "POST",
+            url: "/api/internal/native-commands/receipt",
+            headers: { authorization: `Bearer ${config.workerToken}` },
+            payload: {
+              workerId,
+              operationId: input.operationId,
+              operationGeneration: grant.receipt.operationGeneration,
+              status: "applied",
+              protectedResult: null,
+              resultDigest: null,
+              rejectionCode: null,
+              executionComplete: method === "turn/start",
+            },
+          }),
+          new Promise<never>((_resolve, reject) => {
+            timeout = setTimeout(
+              () =>
+                reject(new Error("Native receipt waited for queued execution")),
+              2000,
+            );
+          }),
+        ]);
+        expect(response.statusCode, response.body).toBe(200);
+        expect(response.json()).toMatchObject({
+          receipt: { operationId: input.operationId, status: "applied" },
+        });
+        expect(dispatchNextQueuedPrompt).toHaveBeenCalledWith(chatId);
+        expect(
+          await repository.nativeCommands.get(
+            LOCAL_USER_ID,
+            workerId,
+            input.operationId,
+            grant.receipt.operationGeneration,
+          ),
+        ).toMatchObject({ status: "applied" });
+        rejectDispatch(new Error("Fixture successor preparation failed"));
+        await vi.waitFor(() => expect(warning).toHaveBeenCalledOnce());
+      } finally {
+        if (timeout) clearTimeout(timeout);
+        rejectDispatch(new Error("Fixture cleanup"));
+        await app.close();
+      }
+    },
+  );
   it("authenticates reverse calls and persists protected native events through the canonical repository", async () => {
     const app = Fastify();
     const repository = database.repository;
@@ -2121,7 +2215,7 @@ describe("durable native command admission", () => {
         rootOperationId: input.operationId,
         rootOperationGeneration: root.receipt.operationGeneration,
       },
-      { timeoutMs: 30_000 },
+      { ownerId: LOCAL_USER_ID, timeoutMs: 10_000 },
     );
     expect(onAcknowledgementError).not.toHaveBeenCalled();
     const next = admission(
@@ -2152,5 +2246,1489 @@ describe("durable native command admission", () => {
     ).toBe(nextGrant.receipt.activationGeneration);
     expect(onAcknowledgementError).toHaveBeenCalledOnce();
     await finish(next, nextGrant.receipt, "rejected");
+  });
+});
+
+function queuedFixture(modelId: string) {
+  const message = opaqueMessage("user");
+  return queuedPromptOpaqueContentSchema.parse({
+    id: randomUUID(),
+    classification: { mode: "default", attachmentIds: [] },
+    protectedContent: message.protectedContent,
+    modelId,
+    reasoningEffort: null,
+    customSubagentModel: false,
+    subagentModelId: null,
+    subagentReasoningEffort: null,
+    worktreeId: null,
+    frozen: false,
+    idempotencyKey: `queued:${message.id}`,
+    pendingMessage: message,
+    protectedNativeInput: message.protectedContent.envelope,
+    nativeClientUserMessageId: `cantrip:${message.id}`,
+    nativeAction: "literal",
+    executionMethod: "turn/start",
+  });
+}
+async function queueInput(
+  mutation: ManagedQueueMutation,
+  expectedRevision?: number,
+) {
+  const context = (await database.repository.getChatExecutionContext(
+    LOCAL_USER_ID,
+    chatId,
+  ))!;
+  const snapshot = await database.repository.managedQueue.snapshot(
+    LOCAL_USER_ID,
+    chatId,
+  );
+  return {
+    admission: admission(context, {
+      method: `thread/queue/${mutation.kind}`,
+      intent: {
+        scope: "thread",
+        settingKeys: [],
+        expectedTurnId: null,
+        ...(["add", "start"].includes(mutation.kind)
+          ? { resumeAutonomy: true }
+          : {}),
+      },
+    }),
+    mutation,
+    expectedRevision: expectedRevision ?? snapshot.revision,
+  };
+}
+async function clearQueueFixtures() {
+  const snapshot = await database.repository.managedQueue.snapshot(
+    LOCAL_USER_ID,
+    chatId,
+  );
+  for (const item of snapshot.items) {
+    if (item.state !== "pending")
+      throw new Error("Fixture left an unresolved queue claim");
+    await database.repository.managedQueue.mutate(
+      LOCAL_USER_ID,
+      await queueInput({
+        kind: "delete",
+        id: item.id,
+        expectedItemRevision: item.revision,
+      }),
+    );
+  }
+}
+describe("canonical managed queue and completion outbox", () => {
+  it("commits encrypted canonical mutations and receipts together, with revision CAS and cross-view replay", async () => {
+    const repository = database.repository;
+    const context = (await repository.getChatExecutionContext(
+      LOCAL_USER_ID,
+      chatId,
+    ))!;
+    const prompt = queuedFixture(context.modelId!);
+    const request = await queueInput({ kind: "add", prompt, attachments: [] });
+    const first = await repository.managedQueue.mutate(LOCAL_USER_ID, request);
+    expect(first.receipt.status).toBe("applied");
+    expect(first.items.find((item) => item.id === prompt.id)).toMatchObject({
+      revision: 0,
+      state: "pending",
+      protectedNativeInput: prompt.protectedNativeInput,
+    });
+    const replay = await repository.managedQueue.mutate(LOCAL_USER_ID, {
+      ...request,
+      admission: {
+        ...request.admission,
+        session: { ...request.admission.session, connectionId: "new-view" },
+      },
+    });
+    expect(replay.receipt.operationGeneration).toBe(
+      first.receipt.operationGeneration,
+    );
+    expect(replay.revision).toBe(first.revision);
+    const stale = await repository.managedQueue.mutate(
+      LOCAL_USER_ID,
+      await queueInput({
+        kind: "update",
+        id: prompt.id,
+        expectedItemRevision: 99,
+        prompt: { ...prompt, frozen: true },
+        attachments: [],
+      }),
+    );
+    expect(stale.receipt).toMatchObject({
+      status: "rejected",
+      rejectionCode: "queue-item-revision-conflict",
+    });
+    expect(stale.revision).toBe(first.revision);
+    const changed = await repository.managedQueue.mutate(
+      LOCAL_USER_ID,
+      await queueInput({
+        kind: "update",
+        id: prompt.id,
+        expectedItemRevision: 0,
+        prompt: { ...prompt, frozen: true },
+        attachments: [],
+      }),
+    );
+    expect(changed.items.find((item) => item.id === prompt.id)).toMatchObject({
+      revision: 1,
+      frozen: true,
+    });
+    expect(
+      await repository.managedQueue.claimNext(LOCAL_USER_ID, chatId),
+    ).toBeNull();
+    const staleOrder = await repository.managedQueue.mutate(
+      LOCAL_USER_ID,
+      await queueInput(
+        { kind: "reorder", ids: changed.items.map((item) => item.id) },
+        first.revision,
+      ),
+    );
+    expect(staleOrder.receipt.rejectionCode).toBe("queue-revision-conflict");
+    await clearQueueFixtures();
+  });
+  it("binds one immutable claim to admission and consumes only the actual native acknowledgement", async () => {
+    const repository = database.repository;
+    const context = (await repository.getChatExecutionContext(
+      LOCAL_USER_ID,
+      chatId,
+    ))!;
+    const prompt = queuedFixture(context.modelId!);
+    await repository.managedQueue.mutate(
+      LOCAL_USER_ID,
+      await queueInput({ kind: "add", prompt, attachments: [] }),
+    );
+    const claim = (await repository.managedQueue.claimNext(
+      LOCAL_USER_ID,
+      chatId,
+    ))!;
+    const input = admission(context, {
+      origin: "gui",
+      queueClaim: { id: claim.id, promptRevision: claim.promptRevision },
+    });
+    const grant = await repository.nativeCommands.admit(LOCAL_USER_ID, input);
+    expect(grant.receipt.status).toBe("accepted");
+    const duplicate = await repository.nativeCommands.admit(LOCAL_USER_ID, {
+      ...input,
+      operationId: randomUUID(),
+    });
+    expect(duplicate.receipt).toMatchObject({
+      status: "rejected",
+      rejectionCode: "stale-queue-claim",
+    });
+    await dispatch(input, grant.receipt);
+    await repository.nativeCommands.settle(LOCAL_USER_ID, {
+      workerId,
+      operationId: input.operationId,
+      operationGeneration: grant.receipt.operationGeneration,
+      status: "uncertain",
+      resultDigest: null,
+      protectedResult: null,
+      rejectionCode: null,
+      executionComplete: false,
+    });
+    expect(
+      await repository.managedQueue.releaseUnadmitted(
+        LOCAL_USER_ID,
+        chatId,
+        claim.id,
+      ),
+    ).toBe(false);
+    await expect(
+      repository.managedQueue.startReceipt(
+        LOCAL_USER_ID,
+        workerId,
+        input.session,
+        claim.id,
+      ),
+    ).rejects.toMatchObject({ code: "queue-dispatch-uncertain" });
+    const ack = {
+      workerId,
+      operationId: input.operationId,
+      operationGeneration: grant.receipt.operationGeneration,
+      status: "applied" as const,
+      resultDigest: "c".repeat(64),
+      protectedResult: opaqueMessage("assistant").protectedContent.envelope,
+      rejectionCode: null,
+      executionComplete: false,
+      reconciliation: {
+        nativeTurnId: "queued-actual-turn",
+        runtimeGeneration: input.session.runtimeGeneration!,
+      },
+    };
+    await repository.nativeCommands.settle(LOCAL_USER_ID, ack);
+    const receipt = await repository.managedQueue.startReceipt(
+      LOCAL_USER_ID,
+      workerId,
+      input.session,
+      claim.id,
+    );
+    expect(receipt).toMatchObject({
+      claim: { status: "consumed", nativeTurnId: "queued-actual-turn" },
+      receipt: { operationId: input.operationId },
+      protectedResult: ack.protectedResult,
+    });
+    expect(
+      (
+        await repository.managedQueue.snapshot(LOCAL_USER_ID, chatId)
+      ).items.some((item) => item.id === prompt.id),
+    ).toBe(false);
+    expect(
+      await repository.getEncryptedQueuedPrompt(LOCAL_USER_ID, prompt.id),
+    ).toMatchObject({
+      state: "consumed",
+      protectedNativeInput: prompt.protectedNativeInput,
+    });
+    await repository.nativeCommands.finishLogicalGui(
+      LOCAL_USER_ID,
+      workerId,
+      input.operationId,
+      grant.receipt.operationGeneration,
+      "idle",
+    );
+  });
+  it("reconciles queue receipts across an authorized per-item route change without relaxing mutation or placement fences", async () => {
+    const repository = database.repository;
+    const context = (await repository.getChatExecutionContext(
+      LOCAL_USER_ID,
+      chatId,
+    ))!;
+    const prompt = queuedFixture(context.modelId!);
+    const add = await queueInput({ kind: "add", prompt, attachments: [] });
+    await repository.managedQueue.mutate(LOCAL_USER_ID, add);
+    const start = await queueInput({ kind: "start", id: prompt.id });
+    const queued = await repository.managedQueue.mutate(LOCAL_USER_ID, start);
+    const claim = queued.claim!;
+    const input = admission(context, {
+      origin: "gui",
+      queueClaim: { id: claim.id, promptRevision: claim.promptRevision },
+    });
+    const grant = await repository.nativeCommands.admit(LOCAL_USER_ID, input);
+    expect(grant.receipt.status).toBe("accepted");
+    await dispatch(input, grant.receipt);
+    const protectedResult =
+      opaqueMessage("assistant").protectedContent.envelope;
+    await repository.nativeCommands.settle(LOCAL_USER_ID, {
+      workerId,
+      operationId: input.operationId,
+      operationGeneration: grant.receipt.operationGeneration,
+      status: "applied",
+      protectedResult,
+      resultDigest: "c".repeat(64),
+      rejectionCode: null,
+      executionComplete: false,
+    });
+    await repository.nativeCommands.finishLogicalGui(
+      LOCAL_USER_ID,
+      workerId,
+      input.operationId,
+      grant.receipt.operationGeneration,
+      "idle",
+    );
+    const runtime = (await repository.getModelRuntimes(LOCAL_USER_ID))[0]!;
+    const nextRoute =
+      context.modelRouteId === runtime.routeId ? null : runtime.routeId;
+    await repository.updateChatRuntime(
+      chatId,
+      workerId,
+      context.worktreeId,
+      context.threadId,
+      nextRoute,
+      "ready",
+      null,
+    );
+    try {
+      const current = (await repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        chatId,
+      ))!;
+      const session = {
+        ...admission(current).session,
+        runtimeGeneration: "runtime-after-route",
+        connectionId: "new-view",
+      };
+      expect(session.modelRouteId).not.toBe(context.modelRouteId);
+      const recovered = await repository.managedQueue.lookup(LOCAL_USER_ID, {
+        ...start.admission,
+        session,
+      });
+      expect(recovered).toMatchObject({
+        found: true,
+        receipt: { operationId: start.admission.operationId },
+        claim: { id: claim.id, status: "consumed" },
+      });
+      expect(
+        await repository.managedQueue.startReceipt(
+          LOCAL_USER_ID,
+          workerId,
+          session,
+          claim.id,
+        ),
+      ).toMatchObject({
+        receipt: { operationId: input.operationId },
+        protectedResult,
+      });
+      expect(
+        await repository.managedQueue.startReceipt(
+          LOCAL_USER_ID,
+          workerId,
+          start.admission.session,
+          claim.id,
+        ),
+      ).toMatchObject({ receipt: { operationId: input.operationId } });
+      await expect(
+        repository.managedQueue.mutate(LOCAL_USER_ID, {
+          ...start,
+          admission: { ...start.admission, session },
+        }),
+      ).rejects.toMatchObject({ code: "operation-id-conflict" });
+      await expect(
+        repository.managedQueue.lookup(LOCAL_USER_ID, start.admission),
+      ).rejects.toMatchObject({ code: "stale-queue-session" });
+      for (const changed of [
+        { threadId: "different-thread" },
+        { placementId: "different-placement" },
+        { providerAccountId: "unbound-account" },
+      ]) {
+        await expect(
+          repository.managedQueue.lookup(LOCAL_USER_ID, {
+            ...start.admission,
+            session: { ...session, ...changed },
+          }),
+        ).rejects.toMatchObject({ code: "stale-queue-session" });
+        await expect(
+          repository.managedQueue.startReceipt(
+            LOCAL_USER_ID,
+            workerId,
+            { ...session, ...changed },
+            claim.id,
+          ),
+        ).rejects.toMatchObject({ code: "stale-queue-session" });
+      }
+      expect(
+        (await repository.managedQueue.snapshot(LOCAL_USER_ID, chatId)).items,
+      ).toEqual([]);
+    } finally {
+      await repository.updateChatRuntime(
+        chatId,
+        workerId,
+        context.worktreeId,
+        context.threadId,
+        context.modelRouteId,
+        "ready",
+        null,
+      );
+    }
+  });
+  it("reads a committed receipt after a lost notification without cancelling or replaying its claim", async () => {
+    const { waitForManagedQueueReceipt } =
+      await import("../src/app/runtime/managed-queue-receipts.js");
+    const repository = database.repository;
+    const context = (await repository.getChatExecutionContext(
+      LOCAL_USER_ID,
+      chatId,
+    ))!;
+    const prompt = queuedFixture(context.modelId!);
+    await repository.managedQueue.mutate(
+      LOCAL_USER_ID,
+      await queueInput({ kind: "add", prompt, attachments: [] }),
+    );
+    const claim = (await repository.managedQueue.claimNext(
+      LOCAL_USER_ID,
+      chatId,
+    ))!;
+    const input = admission(context, {
+      origin: "gui",
+      queueClaim: { id: claim.id, promptRevision: claim.promptRevision },
+    });
+    const grant = await repository.nativeCommands.admit(LOCAL_USER_ID, input);
+    await dispatch(input, grant.receipt);
+    const controller = new AbortController();
+    const waiting = waitForManagedQueueReceipt(
+      repository,
+      LOCAL_USER_ID,
+      workerId,
+      input.session,
+      claim.id,
+      controller.signal,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    await repository.nativeCommands.settle(LOCAL_USER_ID, {
+      workerId,
+      operationId: input.operationId,
+      operationGeneration: grant.receipt.operationGeneration,
+      status: "applied",
+      resultDigest: "d".repeat(64),
+      protectedResult: opaqueMessage("assistant").protectedContent.envelope,
+      rejectionCode: null,
+      executionComplete: false,
+      reconciliation: {
+        nativeTurnId: "queued-lost-notification",
+        runtimeGeneration: input.session.runtimeGeneration!,
+      },
+    });
+    expect((await waiting).claim.nativeTurnId).toBe("queued-lost-notification");
+    await repository.nativeCommands.finishLogicalGui(
+      LOCAL_USER_ID,
+      workerId,
+      input.operationId,
+      grant.receipt.operationGeneration,
+      "idle",
+    );
+  });
+  it("retains a cancelled item for explicit recovery without automatically replaying it", async () => {
+    const repository = database.repository;
+    const context = (await repository.getChatExecutionContext(
+      LOCAL_USER_ID,
+      chatId,
+    ))!;
+    const prompt = queuedFixture(context.modelId!);
+    await repository.managedQueue.mutate(
+      LOCAL_USER_ID,
+      await queueInput({ kind: "add", prompt, attachments: [] }),
+    );
+    const claim = (await repository.managedQueue.claimNext(
+      LOCAL_USER_ID,
+      chatId,
+    ))!;
+    const input = admission(context, {
+      origin: "gui",
+      queueClaim: { id: claim.id, promptRevision: claim.promptRevision },
+    });
+    const grant = await repository.nativeCommands.admit(LOCAL_USER_ID, input);
+    await repository.nativeCommands.cancelPreparing(
+      LOCAL_USER_ID,
+      chatId,
+      grant.receipt.activationGeneration!,
+    );
+    expect(
+      await repository.getEncryptedQueuedPrompt(LOCAL_USER_ID, prompt.id),
+    ).toMatchObject({ state: "pending" });
+    await repository.nativeCommands.resumeAutonomy(LOCAL_USER_ID, chatId);
+    expect(
+      await repository.managedQueue.claimNext(LOCAL_USER_ID, chatId),
+    ).toBeNull();
+    await clearQueueFixtures();
+  });
+  it("durably records only exact logical completion and fences acknowledgment/defer identities", async () => {
+    const repository = database.repository;
+    const input = admission(
+      await repository.getChatExecutionContext(LOCAL_USER_ID, chatId),
+      { origin: "gui" },
+    );
+    const grant = await repository.nativeCommands.admit(LOCAL_USER_ID, input);
+    const tuple = [
+      LOCAL_USER_ID,
+      workerId,
+      chatId,
+      input.operationId,
+      grant.receipt.operationGeneration,
+    ] as const;
+    expect(
+      await repository.nativeCommands.getLogicalCompletion(...tuple),
+    ).toBeNull();
+    await expect(
+      repository.nativeCommands.finishLogicalGui(
+        LOCAL_USER_ID,
+        workerId,
+        input.operationId,
+        "wrong-generation",
+        "idle",
+      ),
+    ).rejects.toBeDefined();
+    expect(
+      await repository.nativeCommands.getLogicalCompletion(...tuple),
+    ).toBeNull();
+    await repository.nativeCommands.finishLogicalGui(
+      LOCAL_USER_ID,
+      workerId,
+      input.operationId,
+      grant.receipt.operationGeneration,
+      "idle",
+    );
+    expect(
+      await repository.nativeCommands.getLogicalCompletion(...tuple),
+    ).toMatchObject({ attempts: 0, rootOperationId: input.operationId });
+    expect(
+      await repository.nativeCommands.acknowledgeLogicalCompletion(
+        LOCAL_USER_ID,
+        workerId,
+        chatId,
+        input.operationId,
+        "wrong",
+      ),
+    ).toBe(false);
+    expect(
+      await repository.nativeCommands.deferLogicalCompletion(
+        ...tuple,
+        new Date(Date.now() + 60_000),
+      ),
+    ).toBe(true);
+    expect(
+      (
+        await repository.nativeCommands.listPendingLogicalCompletions(1000)
+      ).some((row) => row.rootOperationId === input.operationId),
+    ).toBe(false);
+    expect(
+      await repository.nativeCommands.getLogicalCompletion(...tuple),
+    ).toMatchObject({ attempts: 1 });
+    expect(
+      await repository.nativeCommands.acknowledgeLogicalCompletion(...tuple),
+    ).toBe(true);
+    expect(
+      await repository.nativeCommands.getLogicalCompletion(...tuple),
+    ).toBeNull();
+  });
+  it("keeps native imports nonexecutable through deletion conflicts and lost acknowledgments", async () => {
+    const repository = database.repository;
+    const context = (await repository.getChatExecutionContext(
+      LOCAL_USER_ID,
+      chatId,
+    ))!;
+    const prompt = queuedFixture(context.modelId!);
+    const session = admission(context).session;
+    const protectedSource = opaqueMessage("user").protectedContent.envelope;
+    const input = {
+      workerId,
+      session,
+      runnerGeneration: "runner-before-restart",
+      items: [
+        {
+          nativeItemId: randomUUID(),
+          sourceDigest: "a".repeat(64),
+          protectedSource,
+          prompt,
+          attachments: [],
+        },
+      ],
+    };
+    const imported = await repository.managedQueue.importNative(
+      LOCAL_USER_ID,
+      input,
+    );
+    const record = imported.imports[0]!;
+    expect(record).toMatchObject({
+      status: "pending",
+      protectedSource,
+      nativeDeleteOperationId: `queue-delete:${record.importId}`,
+    });
+    expect(imported.items.some((item) => item.id === prompt.id)).toBe(false);
+    expect(imported.pendingImports).toContainEqual(
+      expect.objectContaining({
+        importId: record.importId,
+        status: "pending",
+        prompt: expect.objectContaining({
+          id: prompt.id,
+          protectedNativeInput: prompt.protectedNativeInput,
+          state: "importing",
+        }),
+      }),
+    );
+    expect(
+      await repository.managedQueue.claimNext(LOCAL_USER_ID, chatId),
+    ).toBeNull();
+    const restarted = {
+      workerId,
+      session: {
+        ...session,
+        runtimeGeneration: "restarted-runtime",
+        connectionId: "restarted-view",
+      },
+      runnerGeneration: "runner-after-restart",
+      items: [],
+    };
+    const recovered = await repository.managedQueue.importNative(
+      LOCAL_USER_ID,
+      restarted,
+    );
+    expect(recovered.imports).toContainEqual(record);
+    const ack = {
+      ...restarted,
+      importId: record.importId,
+      sourceDigest: record.sourceDigest,
+      receipt: { deleted: false, conflict: false },
+    };
+    const { items: _, ...ackInput } = ack;
+    const uncertain = await repository.managedQueue.acknowledgeImport(
+      LOCAL_USER_ID,
+      ackInput,
+    );
+    expect(uncertain.pendingImports).toContainEqual(
+      expect.objectContaining({
+        importId: record.importId,
+        status: "uncertain",
+      }),
+    );
+    expect(uncertain.revision).toBeGreaterThan(imported.revision);
+    expect(
+      (await repository.managedQueue.acknowledgeImport(LOCAL_USER_ID, ackInput))
+        .revision,
+    ).toBe(uncertain.revision);
+    expect(
+      await repository.managedQueue.claimNext(LOCAL_USER_ID, chatId),
+    ).toBeNull();
+    await expect(
+      repository.managedQueue.acknowledgeImport(LOCAL_USER_ID, {
+        ...ackInput,
+        runnerGeneration: "stale",
+        receipt: { deleted: true, conflict: false },
+      }),
+    ).rejects.toMatchObject({ code: "stale-queue-import" });
+    const committed = await repository.managedQueue.acknowledgeImport(
+      LOCAL_USER_ID,
+      { ...ackInput, receipt: { deleted: true, conflict: false } },
+    );
+    expect(committed.items.find((item) => item.id === prompt.id)).toMatchObject(
+      { state: "pending" },
+    );
+    const duplicate = await repository.managedQueue.acknowledgeImport(
+      LOCAL_USER_ID,
+      { ...ackInput, receipt: { deleted: true, conflict: false } },
+    );
+    expect(duplicate.revision).toBe(committed.revision);
+    await clearQueueFixtures();
+  });
+  it("replaces only a conflicted staged native snapshot and never releases the superseded input", async () => {
+    const repository = database.repository;
+    const context = (await repository.getChatExecutionContext(
+      LOCAL_USER_ID,
+      chatId,
+    ))!;
+    const session = admission(context).session;
+    const prompt = queuedFixture(context.modelId!);
+    const input = {
+      workerId,
+      session,
+      runnerGeneration: "conflict-runner",
+      items: [
+        {
+          nativeItemId: randomUUID(),
+          sourceDigest: "b".repeat(64),
+          protectedSource: prompt.protectedContent.envelope,
+          prompt,
+          attachments: [],
+        },
+      ],
+    };
+    const first = await repository.managedQueue.importNative(
+      LOCAL_USER_ID,
+      input,
+    );
+    const record = first.imports[0]!;
+    await repository.managedQueue.acknowledgeImport(LOCAL_USER_ID, {
+      workerId,
+      session,
+      runnerGeneration: input.runnerGeneration,
+      importId: record.importId,
+      sourceDigest: record.sourceDigest,
+      receipt: { deleted: false, conflict: true },
+    });
+    const replacement = {
+      ...input,
+      items: [
+        {
+          ...input.items[0]!,
+          sourceDigest: "c".repeat(64),
+          prompt: { ...prompt, frozen: true },
+        },
+      ],
+    };
+    const revised = await repository.managedQueue.importNative(
+      LOCAL_USER_ID,
+      replacement,
+    );
+    expect(revised.imports[0]!.importId).not.toBe(record.importId);
+    expect(revised.items.some((item) => item.id === prompt.id)).toBe(false);
+    await expect(
+      repository.managedQueue.acknowledgeImport(LOCAL_USER_ID, {
+        workerId,
+        session,
+        runnerGeneration: input.runnerGeneration,
+        importId: record.importId,
+        sourceDigest: record.sourceDigest,
+        receipt: { deleted: true, conflict: false },
+      }),
+    ).rejects.toMatchObject({ code: "stale-queue-import" });
+    const latest = revised.imports[0]!;
+    await repository.managedQueue.acknowledgeImport(LOCAL_USER_ID, {
+      workerId,
+      session,
+      runnerGeneration: input.runnerGeneration,
+      importId: latest.importId,
+      sourceDigest: latest.sourceDigest,
+      receipt: { deleted: true, conflict: false },
+    });
+    expect(
+      await repository.managedQueue.claimNext(LOCAL_USER_ID, chatId),
+    ).toBeNull();
+    await clearQueueFixtures();
+  });
+
+  it("gives canonical queued input priority over autonomous goal attempts under admission lock", async () => {
+    const repository = database.repository;
+    const context = (await repository.getChatExecutionContext(
+      LOCAL_USER_ID,
+      chatId,
+    ))!;
+    const prompt = queuedFixture(context.modelId!);
+    await repository.managedQueue.mutate(
+      LOCAL_USER_ID,
+      await queueInput({ kind: "add", prompt, attachments: [] }),
+    );
+    const autonomous = admission(context, { origin: "autonomous" });
+    const denied = await repository.nativeCommands.admit(
+      LOCAL_USER_ID,
+      autonomous,
+    );
+    expect(denied.receipt).toMatchObject({
+      status: "rejected",
+      rejectionCode: "canonical-queue-pending",
+    });
+    const claim = (await repository.managedQueue.claimNext(
+      LOCAL_USER_ID,
+      chatId,
+    ))!;
+    const stillDenied = await repository.nativeCommands.admit(LOCAL_USER_ID, {
+      ...autonomous,
+      operationId: randomUUID(),
+    });
+    expect(stillDenied.receipt.rejectionCode).toBe("canonical-queue-pending");
+    await repository.managedQueue.releaseUnadmitted(
+      LOCAL_USER_ID,
+      chatId,
+      claim.id,
+    );
+    const allowedInput = { ...autonomous, operationId: randomUUID() };
+    const allowed = await repository.nativeCommands.admit(
+      LOCAL_USER_ID,
+      allowedInput,
+    );
+    expect(allowed.receipt.status).toBe("accepted");
+    await finish(allowedInput, allowed.receipt, "rejected");
+    await clearQueueFixtures();
+  });
+  it("retains a newer committed revision when an older worker notice is acknowledged", async () => {
+    const repository = database.repository;
+    const context = (await repository.getChatExecutionContext(
+      LOCAL_USER_ID,
+      chatId,
+    ))!;
+    const prompt = queuedFixture(context.modelId!);
+    const added = await repository.managedQueue.mutate(
+      LOCAL_USER_ID,
+      await queueInput({
+        kind: "add",
+        prompt: { ...prompt, frozen: true },
+        attachments: [],
+      }),
+    );
+    const changed = await repository.managedQueue.mutate(
+      LOCAL_USER_ID,
+      await queueInput({
+        kind: "update",
+        id: prompt.id,
+        expectedItemRevision: 0,
+        prompt: { ...prompt, frozen: true },
+        attachments: [],
+      }),
+    );
+    await repository.managedQueue.acknowledgeNotification(
+      chatId,
+      added.revision,
+    );
+    expect(
+      (await repository.managedQueue.pendingNotifications()).find(
+        (row) => row.chatId === chatId,
+      )?.revision,
+    ).toBe(changed.revision);
+    await repository.managedQueue.deferNotification(chatId);
+    expect(
+      (await repository.managedQueue.pendingNotifications()).some(
+        (row) => row.chatId === chatId,
+      ),
+    ).toBe(false);
+    await repository.managedQueue.acknowledgeNotification(
+      chatId,
+      added.revision,
+    );
+    const { createManagedQueueDelivery } =
+      await import("../src/app/runtime/managed-queue-delivery.js");
+    const request = vi.fn().mockResolvedValue({});
+    const publish = vi.fn();
+    const onError = vi.fn();
+    const delivery = createManagedQueueDelivery({
+      repository: repository.managedQueue,
+      bridge: { request } as never,
+      publish,
+      onError,
+    });
+    await delivery.runOnce();
+    delivery.stop();
+    expect(request).toHaveBeenCalledWith(
+      workerId,
+      { type: "chat.queue.changed", chatId, revision: changed.revision },
+      { ownerId: LOCAL_USER_ID, timeoutMs: 10000 },
+    );
+    expect(onError).not.toHaveBeenCalled();
+    expect(
+      (await repository.managedQueue.pendingNotifications()).some(
+        (row) => row.chatId === chatId,
+      ),
+    ).toBe(false);
+    await clearQueueFixtures();
+  });
+  it("reconciles immutable encrypted mutation acknowledgments over authenticated HTTP after removal", async () => {
+    const repository = database.repository;
+    const context = (await repository.getChatExecutionContext(
+      LOCAL_USER_ID,
+      chatId,
+    ))!;
+    const prompt = { ...queuedFixture(context.modelId!), frozen: true };
+    const add = await queueInput({ kind: "add", prompt, attachments: [] });
+    const initial = await repository.managedQueue.mutate(LOCAL_USER_ID, add);
+    const edit = await queueInput({
+      kind: "update",
+      id: prompt.id,
+      expectedItemRevision: 0,
+      prompt: { ...prompt, nativeAction: "plain" },
+      attachments: [],
+    });
+    const changed = await repository.managedQueue.mutate(LOCAL_USER_ID, edit);
+    const remove = await queueInput({
+      kind: "delete",
+      id: prompt.id,
+      expectedItemRevision: 1,
+    });
+    await repository.managedQueue.mutate(LOCAL_USER_ID, remove);
+    const app = Fastify();
+    const { installInternalNativeQueueRoutes } =
+      await import("../src/app/routes/internal-native-queue.js");
+    const dispatch = vi.fn();
+    installInternalNativeQueueRoutes(app, {
+      config,
+      repository,
+      runAsOwner: async (_owner, operation) => operation(),
+      dispatchNextQueuedPrompt: dispatch,
+      publishChatInvalidation: vi.fn(),
+    });
+    try {
+      const url = "/api/internal/native-queue/lookup";
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url,
+            payload: { admission: add.admission },
+          })
+        ).statusCode,
+      ).toBe(401);
+      for (const [request, accepted] of [
+        [add, initial],
+        [edit, changed],
+      ] as const) {
+        const response = await app.inject({
+          method: "POST",
+          url,
+          headers: { authorization: `Bearer ${config.workerToken}` },
+          payload: {
+            admission: {
+              ...request.admission,
+              session: {
+                ...request.admission.session,
+                connectionId: "new-socket",
+              },
+            },
+          },
+        });
+        expect(response.statusCode).toBe(200);
+        expect(response.json()).toMatchObject({
+          found: true,
+          acceptedItem: accepted.acceptedItem,
+          receipt: {
+            operationGeneration: accepted.receipt.operationGeneration,
+          },
+        });
+        expect(
+          response
+            .json()
+            .items.some((item: { id: string }) => item.id === prompt.id),
+        ).toBe(false);
+      }
+      const deleted = await app.inject({
+        method: "POST",
+        url,
+        headers: { authorization: `Bearer ${config.workerToken}` },
+        payload: { admission: remove.admission },
+      });
+      expect(deleted.json()).toMatchObject({
+        found: true,
+        receipt: { status: "applied" },
+      });
+      const conflict = await app.inject({
+        method: "POST",
+        url,
+        headers: { authorization: `Bearer ${config.workerToken}` },
+        payload: {
+          admission: { ...add.admission, payloadDigest: "f".repeat(64) },
+        },
+      });
+      expect(conflict.statusCode).toBe(409);
+      expect(dispatch).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("serves GUI revision CAS and reconciles a repeated edit before worker normalization", async () => {
+    const repository = database.repository;
+    const context = (await repository.getChatExecutionContext(
+      LOCAL_USER_ID,
+      chatId,
+    ))!;
+    const prompt = { ...queuedFixture(context.modelId!), frozen: true };
+    const app = Fastify();
+    const { installChatQueueRoutes } =
+      await import("../src/app/routes/chat-queue.js");
+    const normalize = vi.fn(
+      async (_worker: string, command: { prompt: typeof prompt }) => ({
+        ...command.prompt,
+        nativeAction: "plain",
+      }),
+    );
+    const dispatch = vi.fn();
+    installChatQueueRoutes(app, {
+      applicationOwnerId: () => LOCAL_USER_ID,
+      repository,
+      bridge: { isConnected: () => true, request: normalize },
+      beginTurn: vi.fn(),
+      dispatchNextQueuedPrompt: dispatch,
+      resolveModelId: async () => context.modelId!,
+      resolvePromptAttachments: async () => [],
+      runtimeForContext: async () => null,
+      sendModelConfigurationResolutionFailure: () => null,
+      appendLiveEncryptedChatMessage:
+        repository.appendEncryptedMessage.bind(repository),
+      deleteLiveQueuedPrompt: repository.deleteQueuedPrompt.bind(repository),
+      reorderLiveQueuedPrompts:
+        repository.reorderQueuedPrompts.bind(repository),
+    } as never);
+    try {
+      const created = await app.inject({
+        method: "POST",
+        url: `/api/chats/${chatId}/queue`,
+        payload: prompt,
+      });
+      expect(created.statusCode).toBe(201);
+      const snapshot = (
+        await app.inject({ method: "GET", url: `/api/chats/${chatId}/queue` })
+      ).json();
+      expect(snapshot).toMatchObject({
+        revision: expect.any(Number),
+        items: expect.arrayContaining([
+          expect.objectContaining({ id: prompt.id, revision: 0 }),
+        ]),
+      });
+      const edit = {
+        prompt,
+        expectedItemRevision: 0,
+        operationId: randomUUID(),
+      };
+      const updated = await app.inject({
+        method: "PATCH",
+        url: `/api/queued-prompts/${prompt.id}`,
+        payload: edit,
+      });
+      expect(updated.statusCode).toBe(200);
+      expect(updated.json()).toMatchObject({
+        id: prompt.id,
+        revision: 1,
+        nativeAction: "plain",
+      });
+      expect(normalize).toHaveBeenCalledOnce();
+      const stale = await app.inject({
+        method: "DELETE",
+        url: `/api/queued-prompts/${prompt.id}?expectedItemRevision=0&operationId=${randomUUID()}`,
+      });
+      expect(stale.statusCode).toBe(409);
+      const removed = await app.inject({
+        method: "DELETE",
+        url: `/api/queued-prompts/${prompt.id}?expectedItemRevision=1&operationId=${randomUUID()}`,
+      });
+      expect(removed.statusCode).toBe(204);
+      const lookup = await app.inject({
+        method: "GET",
+        url: `/api/chats/${chatId}/queue/operations/${edit.operationId}`,
+      });
+      expect(lookup.statusCode).toBe(200);
+      expect(lookup.json()).toMatchObject({
+        found: true,
+        acceptedItem: updated.json(),
+        receipt: { status: "applied" },
+      });
+      normalize.mockRejectedValue(
+        new Error("Worker unavailable after original edit"),
+      );
+      const repeated = await app.inject({
+        method: "PATCH",
+        url: `/api/queued-prompts/${prompt.id}`,
+        payload: edit,
+      });
+      expect(repeated.statusCode).toBe(200);
+      expect(repeated.json()).toEqual(updated.json());
+      expect(normalize).toHaveBeenCalledOnce();
+      expect(dispatch).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("holds queued goal handoff until an exact epoch attempt starts, including worker restart", async () => {
+    const repository = database.repository;
+    const context = (await repository.getChatExecutionContext(
+      LOCAL_USER_ID,
+      chatId,
+    ))!;
+    const prompt = {
+      ...queuedFixture(context.modelId!),
+      executionMethod: "thread/goal/set" as const,
+      nativeAction: "parseSlash" as const,
+    };
+    await repository.managedQueue.mutate(
+      LOCAL_USER_ID,
+      await queueInput({ kind: "add", prompt, attachments: [] }),
+    );
+    const claim = (await repository.managedQueue.claimNext(
+      LOCAL_USER_ID,
+      chatId,
+    ))!;
+    const next = queuedFixture(context.modelId!);
+    await repository.managedQueue.mutate(
+      LOCAL_USER_ID,
+      await queueInput({ kind: "add", prompt: next, attachments: [] }),
+    );
+    const parent = admission(context, {
+      origin: "gui",
+      method: "thread/goal/set",
+      queueClaim: { id: claim.id, promptRevision: claim.promptRevision },
+      intent: {
+        scope: "thread",
+        settingKeys: [],
+        expectedTurnId: null,
+        resumeAutonomy: true,
+        goalStatus: "active",
+      },
+    });
+    const grant = await repository.nativeCommands.admit(LOCAL_USER_ID, parent);
+    expect(grant.receipt.status).toBe("accepted");
+    await dispatch(parent, grant.receipt);
+    await repository.nativeCommands.settle(LOCAL_USER_ID, {
+      workerId,
+      operationId: parent.operationId,
+      operationGeneration: grant.receipt.operationGeneration,
+      status: "uncertain",
+      resultDigest: null,
+      protectedResult: null,
+      rejectionCode: null,
+      executionComplete: false,
+    });
+    const goalEpoch = "native-goal:configuration-7";
+    await repository.nativeCommands.settle(LOCAL_USER_ID, {
+      workerId,
+      operationId: parent.operationId,
+      operationGeneration: grant.receipt.operationGeneration,
+      status: "applied",
+      resultDigest: "e".repeat(64),
+      protectedResult: opaqueMessage("assistant").protectedContent.envelope,
+      rejectionCode: null,
+      executionComplete: false,
+      goalEpoch,
+    });
+    expect(
+      await repository.managedQueue.claimNext(LOCAL_USER_ID, chatId),
+    ).toBeNull();
+    expect(
+      (
+        await repository.managedQueue.snapshot(LOCAL_USER_ID, chatId)
+      ).claims.find((row) => row.id === claim.id),
+    ).toMatchObject({ awaitingGoal: true, goalEpoch, goalOperationId: null });
+    const supersede = await repository.nativeCommands.admit(LOCAL_USER_ID, {
+      ...parent,
+      operationId: randomUUID(),
+      queueClaim: undefined,
+    });
+    expect(supersede.receipt.rejectionCode).toBe("queue-goal-handoff-pending");
+    const handoff = {
+      claimId: claim.id,
+      operationId: parent.operationId,
+      operationGeneration: grant.receipt.operationGeneration,
+      goalEpoch,
+    };
+    const attempt = admission(context, {
+      origin: "autonomous",
+      session: {
+        ...parent.session,
+        runtimeGeneration: "runtime-after-restart",
+        connectionId: "new-owner",
+      },
+      goalQueueHandoff: handoff,
+      intent: {
+        scope: "thread",
+        settingKeys: [],
+        expectedTurnId: "actual-goal-first-turn",
+      },
+    });
+    const stale = await repository.nativeCommands.admit(LOCAL_USER_ID, {
+      ...attempt,
+      operationId: randomUUID(),
+      goalQueueHandoff: { ...handoff, goalEpoch: "same-objective-newer-epoch" },
+    });
+    expect(stale.receipt.rejectionCode).toBe("stale-goal-handoff");
+    const started = await repository.nativeCommands.admit(
+      LOCAL_USER_ID,
+      attempt,
+    );
+    expect(started.receipt.status).toBe("accepted");
+    await dispatch(attempt, started.receipt);
+    await repository.nativeCommands.settle(LOCAL_USER_ID, {
+      workerId,
+      operationId: attempt.operationId,
+      operationGeneration: started.receipt.operationGeneration,
+      status: "applied",
+      resultDigest: "f".repeat(64),
+      protectedResult: opaqueMessage("assistant").protectedContent.envelope,
+      rejectionCode: null,
+      executionComplete: false,
+      reconciliation: {
+        nativeTurnId: "actual-goal-first-turn",
+        runtimeGeneration: attempt.session.runtimeGeneration!,
+      },
+    });
+    expect(
+      await repository.getEncryptedQueuedPrompt(LOCAL_USER_ID, prompt.id),
+    ).toMatchObject({ state: "consumed" });
+    await finish(attempt, started.receipt);
+    const following = (await repository.managedQueue.claimNext(
+      LOCAL_USER_ID,
+      chatId,
+    ))!;
+    expect(following.promptId).toBe(next.id);
+    await repository.managedQueue.releaseUnadmitted(
+      LOCAL_USER_ID,
+      chatId,
+      following.id,
+    );
+    await clearQueueFixtures();
+  });
+  it("explicit goal clear cancels an unstarted handoff and rejects the late exact epoch", async () => {
+    const repository = database.repository;
+    const context = (await repository.getChatExecutionContext(
+      LOCAL_USER_ID,
+      chatId,
+    ))!;
+    const prompt = {
+      ...queuedFixture(context.modelId!),
+      executionMethod: "thread/goal/set" as const,
+    };
+    await repository.managedQueue.mutate(
+      LOCAL_USER_ID,
+      await queueInput({ kind: "add", prompt, attachments: [] }),
+    );
+    const claim = (await repository.managedQueue.claimNext(
+      LOCAL_USER_ID,
+      chatId,
+    ))!;
+    const parent = admission(context, {
+      origin: "gui",
+      method: "thread/goal/set",
+      queueClaim: { id: claim.id, promptRevision: claim.promptRevision },
+      intent: {
+        scope: "thread",
+        settingKeys: [],
+        expectedTurnId: null,
+        resumeAutonomy: true,
+      },
+    });
+    const grant = await repository.nativeCommands.admit(LOCAL_USER_ID, parent);
+    await dispatch(parent, grant.receipt);
+    await repository.nativeCommands.settle(LOCAL_USER_ID, {
+      workerId,
+      operationId: parent.operationId,
+      operationGeneration: grant.receipt.operationGeneration,
+      status: "applied",
+      resultDigest: "a".repeat(64),
+      protectedResult: opaqueMessage("assistant").protectedContent.envelope,
+      rejectionCode: null,
+      executionComplete: false,
+      goalEpoch: "cleared-goal:1",
+    });
+    const clear = admission(context, { method: "thread/goal/clear" });
+    const clearGrant = await repository.nativeCommands.admit(
+      LOCAL_USER_ID,
+      clear,
+    );
+    expect(clearGrant.receipt.status).toBe("accepted");
+    await dispatch(clear, clearGrant.receipt);
+    await finish(clear, clearGrant.receipt);
+    expect(
+      await repository.getEncryptedQueuedPrompt(LOCAL_USER_ID, prompt.id),
+    ).toMatchObject({ state: "pending" });
+    const late = await repository.nativeCommands.admit(
+      LOCAL_USER_ID,
+      admission(context, {
+        origin: "autonomous",
+        goalQueueHandoff: {
+          claimId: claim.id,
+          operationId: parent.operationId,
+          operationGeneration: grant.receipt.operationGeneration,
+          goalEpoch: "cleared-goal:1",
+        },
+      }),
+    );
+    expect(late.receipt.rejectionCode).toBe("stale-goal-handoff");
+    expect(
+      await repository.managedQueue.claimNext(LOCAL_USER_ID, chatId),
+    ).toBeNull();
+    await clearQueueFixtures();
+  });
+  it("queues GUI input while its first native thread is still being prepared without replacing the reserved lane", async () => {
+    const repository = database.repository;
+    const current = (await repository.getChatExecutionContext(
+      LOCAL_USER_ID,
+      chatId,
+    ))!;
+    const chat = await repository.createChat(
+      LOCAL_USER_ID,
+      current.projectId!,
+      { ...protectedChatFields(), worktreeMode: "agent-managed" },
+    );
+    const context = (await repository.getChatExecutionContext(
+      LOCAL_USER_ID,
+      chat!.id,
+    ))!;
+    const session = {
+      chatId: chat!.id,
+      threadId: null,
+      contextKind: context.contextKind,
+      projectId: context.projectId,
+      placementId: context.worktreeId!,
+      modelRouteId: context.modelRouteId,
+      providerAccountId: context.providerAccountId,
+      runtimeGeneration: null,
+      connectionId: null,
+    };
+    const parent = admission(context, { origin: "gui", session });
+    const grant = await repository.nativeCommands.admit(LOCAL_USER_ID, parent);
+    expect(grant.receipt.status).toBe("accepted");
+    const prompt = { ...queuedFixture(current.modelId!), frozen: true };
+    const { mutateManagedGuiQueue } =
+      await import("../src/app/runtime/managed-queue-input.js");
+    const queued = await mutateManagedGuiQueue(
+      repository,
+      LOCAL_USER_ID,
+      context,
+      { kind: "add", prompt, attachments: [] },
+      { operationId: randomUUID() },
+    );
+    expect(queued.receipt.status).toBe("applied");
+    expect(queued.items).toContainEqual(
+      expect.objectContaining({ id: prompt.id }),
+    );
+    expect(
+      (await repository.nativeCommands.controlContext(LOCAL_USER_ID, chat!.id))
+        .activationGeneration,
+    ).toBe(grant.receipt.activationGeneration);
+    await repository.nativeCommands.cancelPreparing(
+      LOCAL_USER_ID,
+      chat!.id,
+      grant.receipt.activationGeneration!,
+    );
+  });
+  it("cancels accepted queued goal authority before a delayed native dispatch", async () => {
+    const repository = database.repository;
+    const context = (await repository.getChatExecutionContext(
+      LOCAL_USER_ID,
+      chatId,
+    ))!;
+    const prompt = {
+      ...queuedFixture(context.modelId!),
+      executionMethod: "thread/goal/set" as const,
+    };
+    await repository.managedQueue.mutate(
+      LOCAL_USER_ID,
+      await queueInput({ kind: "add", prompt, attachments: [] }),
+    );
+    const claim = (await repository.managedQueue.claimNext(
+      LOCAL_USER_ID,
+      chatId,
+    ))!;
+    const parent = admission(context, {
+      origin: "gui",
+      method: "thread/goal/set",
+      queueClaim: { id: claim.id, promptRevision: claim.promptRevision },
+      intent: {
+        scope: "thread",
+        settingKeys: [],
+        expectedTurnId: null,
+        resumeAutonomy: true,
+      },
+    });
+    const grant = await repository.nativeCommands.admit(LOCAL_USER_ID, parent);
+    expect(grant.receipt.status).toBe("accepted");
+    const clear = admission(context, { method: "thread/goal/clear" });
+    const clearing = await repository.nativeCommands.admit(
+      LOCAL_USER_ID,
+      clear,
+    );
+    await dispatch(clear, clearing.receipt);
+    await finish(clear, clearing.receipt);
+    expect(
+      await repository.nativeCommands.get(
+        LOCAL_USER_ID,
+        workerId,
+        parent.operationId,
+        grant.receipt.operationGeneration,
+      ),
+    ).toMatchObject({
+      status: "rejected",
+      rejectionCode: "queue-goal-handoff-cancelled",
+    });
+    await expect(dispatch(parent, grant.receipt)).rejects.toBeDefined();
+    expect(
+      await repository.getEncryptedQueuedPrompt(LOCAL_USER_ID, prompt.id),
+    ).toMatchObject({ state: "pending" });
+    await clearQueueFixtures();
+  });
+
+  it("recovers the exact surviving worker GUI root into the completion outbox and fences a newer root", async () => {
+    const repository = database.repository;
+    const context = (await repository.getChatExecutionContext(
+      LOCAL_USER_ID,
+      chatId,
+    ))!;
+    const user = opaqueMessage("user");
+    const input = admission(context, {
+      origin: "gui",
+      intent: {
+        scope: "thread",
+        settingKeys: [],
+        expectedTurnId: "recovered-final-turn",
+      },
+    });
+    const grant = await repository.nativeCommands.admit(LOCAL_USER_ID, input, {
+      clientMessageId: user.id,
+    });
+    const attribution = {
+      contextKind: "project" as const,
+      executionLaneId: grant.receipt.executionLaneId!,
+      worktreeId: context.worktreeId!,
+      scratchRootId: null,
+    };
+    await repository.appendEncryptedMessage(
+      LOCAL_USER_ID,
+      chatId,
+      user,
+      attribution,
+    );
+    await repository.appendEncryptedMessage(
+      LOCAL_USER_ID,
+      chatId,
+      { ...opaqueMessage("assistant"), idempotencyKey: `assistant:${user.id}` },
+      attribution,
+    );
+    await dispatch(input, grant.receipt);
+    await repository.nativeCommands.settle(LOCAL_USER_ID, {
+      workerId,
+      operationId: input.operationId,
+      operationGeneration: grant.receipt.operationGeneration,
+      status: "applied",
+      resultDigest: "a".repeat(64),
+      protectedResult: opaqueMessage("assistant").protectedContent.envelope,
+      rejectionCode: null,
+      executionComplete: false,
+    });
+    const outcome = {
+      type: "chat.turn.outcome" as const,
+      chatId,
+      clientMessageId: user.id,
+      executionLaneId: grant.receipt.executionLaneId!,
+      contextKind: "project" as const,
+      worktreeId: context.worktreeId!,
+      scratchRootId: null,
+      nativeLogicalRoot: {
+        operationId: input.operationId,
+        operationGeneration: grant.receipt.operationGeneration,
+      },
+      outcome: {
+        ok: true as const,
+        result: {
+          threadId: input.session.threadId!,
+          turnId: "recovered-final-turn",
+          status: "completed" as const,
+          text: "",
+        },
+      },
+    };
+    const { createChatRecoveryRuntime } =
+      await import("../src/app/runtime/chat-recovery-runtime.js");
+    const request = vi.fn(
+      async (_worker: string, command: { type: string }) => {
+        if (command.type === "chat.native-logical.complete")
+          throw new Error("First logical ACK lost");
+        return {};
+      },
+    );
+    const noop = vi.fn();
+    const recovery = createChatRecoveryRuntime({
+      app: { log: { warn: noop, error: noop, info: noop } },
+      applicationOwnerId: () => LOCAL_USER_ID,
+      repository,
+      bridge: { request, isConnected: () => true },
+      runAsOwner: async (_owner: string, operation: () => Promise<unknown>) =>
+        operation(),
+      appendLiveEncryptedChatMessage:
+        repository.appendEncryptedMessage.bind(repository),
+      upsertLiveChatMessage: noop,
+      interruptLiveAgentInteractionRequests: noop,
+      publishChatTurnBoundary: noop,
+      publishChatInvalidation: noop,
+    } as never);
+    await recovery.recoverChatTurnOutcome(LOCAL_USER_ID, workerId, outcome);
+    expect(
+      await repository.nativeCommands.getLogicalCompletion(
+        LOCAL_USER_ID,
+        workerId,
+        chatId,
+        input.operationId,
+        grant.receipt.operationGeneration,
+      ),
+    ).toMatchObject({ rootOperationId: input.operationId });
+    expect(
+      (await repository.nativeCommands.controlContext(LOCAL_USER_ID, chatId))
+        .activationGeneration,
+    ).toBeNull();
+    expect(request).toHaveBeenCalledWith(
+      workerId,
+      {
+        type: "chat.native-logical.complete",
+        chatId,
+        rootOperationId: input.operationId,
+        rootOperationGeneration: grant.receipt.operationGeneration,
+      },
+      { ownerId: LOCAL_USER_ID, timeoutMs: 10000 },
+    );
+    const next = admission(
+      (await repository.getChatExecutionContext(LOCAL_USER_ID, chatId))!,
+      { origin: "gui" },
+    );
+    const newer = await repository.nativeCommands.admit(LOCAL_USER_ID, next, {
+      clientMessageId: randomUUID(),
+    });
+    expect(newer.receipt.status).toBe("accepted");
+    const requestCount = request.mock.calls.length;
+    await recovery.recoverChatTurnOutcome(LOCAL_USER_ID, workerId, outcome);
+    expect(request.mock.calls).toHaveLength(requestCount);
+    expect(
+      (await repository.nativeCommands.controlContext(LOCAL_USER_ID, chatId))
+        .activationGeneration,
+    ).toBe(newer.receipt.activationGeneration);
+    await finish(next, newer.receipt, "rejected");
   });
 });

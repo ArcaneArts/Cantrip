@@ -134,14 +134,21 @@ export class ChatStateRepository {
     chatId: string,
     paused: boolean,
   ): Promise<ContextualChatWireSummary | null> {
-    const rows = await this.database
-      .update(schema.chats)
-      .set({ automationPaused: paused, updatedAt: new Date() })
-      .where(
-        and(eq(schema.chats.id, chatId), eq(schema.chats.ownerId, ownerId)),
-      )
-      .returning();
-    return rows[0] ? toContextualChatWireSummary(rows[0]) : null;
+    return this.database.transaction(async (tx) => {
+      const rows = await tx
+        .update(schema.chats)
+        .set({ automationPaused: paused, updatedAt: new Date() })
+        .where(
+          and(eq(schema.chats.id, chatId), eq(schema.chats.ownerId, ownerId)),
+        )
+        .returning();
+      if (rows[0])
+        await tx
+          .update(schema.managedQueueStates)
+          .set({ revision: sql`${schema.managedQueueStates.revision}+1` })
+          .where(eq(schema.managedQueueStates.chatId, chatId));
+      return rows[0] ? toContextualChatWireSummary(rows[0]) : null;
+    });
   }
 
   async updateChatWorktree(

@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { lstat, mkdtemp, realpath, rm } from "node:fs/promises";
+import { lstat, mkdtemp, realpath, rm, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -137,6 +137,23 @@ import {
 import { ManagedNativeCommandSession } from "./codex/managed-native-command-session.js";
 import { ManagedExecutionRunner } from "./codex/managed-execution-runner.js";
 import { NativeCommandClient } from "./native-command-client.js";
+import { ManagedNativeQueueClient } from "./managed-native-queue-client.js";
+import {
+  ManagedNativeQueue,
+  managedQueueGoalHandoff,
+} from "./codex/managed-native-queue.js";
+import { ManagedNativeQueueScope } from "./codex/managed-native-queue-scope.js";
+import { ManagedNativeQueueCutover } from "./codex/managed-native-queue-cutover.js";
+import {
+  createManagedQueueInputCodec,
+  type ManagedQueueInputDefaults,
+  type NativeQueueUserInput,
+} from "./managed-queue-input.js";
+import { attachmentPromptText } from "./codex/attachment-inputs.js";
+import {
+  managedQueueTurnInput,
+  managedQueueNativeCommand,
+} from "./codex/managed-queue-command.js";
 import { admitManagedGuiContinuation } from "./codex/managed-gui-continuation.js";
 import { ManagedGuiPreparationRegistry } from "./codex/managed-gui-preparation.js";
 import { CodexAuthClient } from "./codex/auth-client.js";
@@ -1813,6 +1830,27 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           : globalCodexSkillRoots,
       );
       runtime.setExternalThreadChangeObserver((change) => {
+        if (change.changes.includes("queue") && runtime) {
+          for (const entry of managedCommandSessions.get(runtime)?.values() ??
+            [])
+            if (
+              entry.threadId === change.threadId &&
+              entry.generation === runtime.transportGeneration
+            )
+              void entry.synchronizeQueue().catch((error) =>
+                workerLogger.event(
+                  "warn",
+                  "Native queue import remains pending",
+                  {
+                    event: "codex.queue.import-pending",
+                    subsystem: "codex",
+                    operation: "import-native-queue",
+                    chatId: entry.chatId,
+                    error: workerLogError(error),
+                  },
+                ),
+              );
+        }
         workerNotificationEmitter?.({
           type: "chat.thread.changed",
           ...change,
@@ -1832,6 +1870,58 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     workerId: config.workerId,
     token: () => config.token,
   });
+  const nativeQueueClient = new ManagedNativeQueueClient({
+    serverUrl: config.serverUrl,
+    workerId: config.workerId,
+    token: () => config.token,
+  });
+  const projectQueueAttachments = async (
+    chatId: string,
+    content: Parameters<typeof openWorkerAttachments>[0],
+  ): Promise<NativeQueueUserInput[]> => {
+    const opened = await openWorkerAttachments(content, workerEncryption);
+    return Promise.all(
+      opened.map(async (attachment): Promise<NativeQueueUserInput> => {
+        const filePath = attachments.resolve(
+          chatId,
+          attachment.id,
+          attachment.fileName,
+        );
+        if (attachment.kind === "image" || attachment.kind === "audio") {
+          const bytes = await readFile(filePath);
+          try {
+            return {
+              type: attachment.kind,
+              url: `data:${attachment.mimeType};base64,${bytes.toString("base64")}`,
+            };
+          } finally {
+            bytes.fill(0);
+          }
+        }
+        return {
+          type: "text",
+          text: attachmentPromptText(
+            "",
+            [{ ...attachment, path: filePath }],
+            true,
+          ),
+          text_elements: [],
+        };
+      }),
+    );
+  };
+  const queueInputCodec = (
+    chatId: string,
+    defaults: () => ManagedQueueInputDefaults,
+  ) =>
+    createManagedQueueInputCodec({
+      encryption: workerEncryption,
+      chatId,
+      defaults,
+      attachmentStore: attachments,
+      openAttachments: (prompt) =>
+        projectQueueAttachments(chatId, prompt.attachments),
+    });
   const managedNativeGateways = new Set<ManagedNativeGateway>();
   const managedExecutionRunners = new WeakMap<
     CodexAppServer,
@@ -1843,6 +1933,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     model: Extract<WorkerCommand, { type: "chat.turn" }>["model"];
     provider: RuntimeProvider;
     permissionProfileId: string;
+    queueDefaults?: Partial<ManagedQueueInputDefaults>;
   };
   const managedRunnerConfigurations = new WeakMap<
     ManagedExecutionRunner,
@@ -1860,6 +1951,15 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         provider: RuntimeProvider;
         generation: string;
         adapter: ManagedNativeCommandSession;
+        queue: ManagedNativeQueue;
+        queueScope: ManagedNativeQueueScope;
+        codec: ReturnType<typeof createManagedQueueInputCodec>;
+        queueSession(): Parameters<
+          ManagedNativeCommandSession["executeGuiCommand"]
+        >[0];
+        resumeQueue(): Promise<{ resumed: boolean }>;
+        wakeQueue(): Promise<void>;
+        synchronizeQueue(): Promise<void>;
         refresh(options: ManagedBindingOptions): void;
         gateway?: Promise<ManagedNativeGateway>;
       }
@@ -1928,11 +2028,31 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       {
         requested: async (attempt, signal) => {
           const ownerSignal = managedGuiBridgeLifetime.signal;
+          if (attempt.trigger === "queue") {
+            const generation = runtime.transportGeneration;
+            if (!generation)
+              throw new Error("The native queue owner disconnected.");
+            await runtime.resolveManagedExecution(
+              { ...attempt, operationGeneration: null, allow: false },
+              generation,
+            );
+            return;
+          }
           const entry = managedCommandSessionFor(runtime, session, {
             ...options,
             threadId: attempt.threadId,
           });
           const identity = managedSessionIdentity(session);
+          const attemptSignal = AbortSignal.any([signal, ownerSignal]);
+          await entry.adapter.awaitGoalMutationSettled(attemptSignal);
+          const queueSnapshot = await nativeQueueClient.read(
+            { session: entry.queueSession() },
+            attemptSignal,
+          );
+          const handoff = managedQueueGoalHandoff(
+            queueSnapshot,
+            attempt.goalEpoch,
+          );
           await entry.adapter.admitAutonomousAttempt(
             attempt,
             {
@@ -1946,7 +2066,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               modelRouteId: options.model.routeId,
               providerAccountId: options.provider.accountId ?? null,
             },
-            AbortSignal.any([signal, ownerSignal]),
+            attemptSignal,
+            handoff,
           );
         },
         declined: (event) => {
@@ -2035,6 +2156,15 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       managedCommandSessionFor(runtime, session, {
         ...options,
         threadId: result.threadId,
+        queueDefaults: {
+          mode: options.planMode,
+          customSubagentModel: Boolean(options.subagentDefaults),
+          subagentModelId: options.subagentDefaults?.model.id ?? null,
+          subagentReasoningEffort:
+            options.subagentDefaults?.model.reasoningEffort ?? null,
+          worktreeId:
+            session.contextKind === "project" ? session.worktreeId : null,
+        },
       });
       managedCurrentRuntimes.set(session.chatId, runtime);
     }
@@ -2109,6 +2239,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             commandSession.threadId,
             commandSession.runtimeGeneration,
             intent?.resumeAutonomy === true,
+            method === "thread/goal/clear" ||
+              (method === "thread/goal/set" && intent?.goalStatus === "paused"),
           );
       },
       policy,
@@ -2245,6 +2377,144 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         };
       },
     });
+    const gatewayIdentity = {
+      ...identity,
+      threadId: options.threadId,
+      runtimeGeneration: generation,
+      modelRouteId: options.model.routeId,
+      providerAccountId: options.provider.accountId ?? null,
+    };
+    const queueScope = new ManagedNativeQueueScope(gatewayIdentity);
+    const codec = queueInputCodec(session.chatId, () => ({
+      mode: options.queueDefaults?.mode ?? "default",
+      modelId: options.model.id,
+      reasoningEffort: options.model.reasoningEffort,
+      worktreeId: session.contextKind === "project" ? session.worktreeId : null,
+      ...options.queueDefaults,
+    }));
+    const queueSession = () => ({
+      chatId: session.chatId,
+      threadId: options.threadId,
+      contextKind: identity.contextKind,
+      projectId: identity.projectId,
+      placementId: identity.placementId,
+      runtimeGeneration: generation,
+      connectionId: `queue-owner:${generation}`,
+      modelRouteId: options.model.routeId,
+      providerAccountId: options.provider.accountId ?? null,
+    });
+    const queue = new ManagedNativeQueue({
+      identity: queueScope.identity,
+      client: nativeQueueClient,
+      encryption: workerEncryption,
+      policy,
+      currentActivationGeneration: () => adapter.currentActivationGeneration,
+      preparePrompt: codec.preparePrompt,
+      openPrompt: codec.openPrompt,
+    });
+    const assertQueueCurrent = () => {
+      if (
+        runtime.transportGeneration !== generation ||
+        managedGuiBridgeLifetime.signal.aborted
+      )
+        throw new Error(
+          "The canonical queue belongs to a replaced worker session.",
+        );
+    };
+    const cutover = new ManagedNativeQueueCutover({
+      identity: queueScope.identity,
+      session: queueSession,
+      signal: () => managedGuiBridgeLifetime.signal,
+      assertCurrent: assertQueueCurrent,
+      runtime,
+      client: nativeQueueClient,
+      encryption: workerEncryption,
+      runnerGeneration: () => {
+        const runner = managedExecutionRunners
+          .get(runtime)
+          ?.get(session.chatId);
+        if (!runner)
+          throw new Error("The native queue has no managed execution owner.");
+        return runner.configuration.runnerGeneration;
+      },
+      preparePrompt: (input) =>
+        queueInputCodec(session.chatId, () => ({
+          mode: options.queueDefaults?.mode === "plan" ? "plan" : "default",
+          modelId: options.model.id,
+          reasoningEffort: options.model.reasoningEffort,
+          worktreeId:
+            session.contextKind === "project" ? session.worktreeId : null,
+        })).preparePrompt(input),
+      observe: (snapshot) =>
+        queue.publishRevision({
+          threadId: options.threadId,
+          revision: String(snapshot.revision),
+        }),
+    });
+    const synchronizeQueue = () => cutover.synchronize();
+    const eligibleQueueItem = (
+      snapshot: Awaited<ReturnType<ManagedNativeQueueClient["read"]>>,
+    ) =>
+      snapshot.items.find(
+        (item) =>
+          !item.frozen &&
+          item.state === "pending" &&
+          !snapshot.claims.some(
+            (claim) =>
+              claim.promptId === item.id &&
+              claim.promptRevision === item.revision &&
+              claim.status === "rejected",
+          ),
+      );
+    const resumeQueue = async (): Promise<{ resumed: boolean }> => {
+      assertQueueCurrent();
+      await synchronizeQueue();
+      const snapshot = await nativeQueueClient.read(
+        { session: queueSession() },
+        managedGuiBridgeLifetime.signal,
+      );
+      queue.publishRevision({
+        threadId: options.threadId,
+        revision: String(snapshot.revision),
+      });
+      const eligible = eligibleQueueItem(snapshot);
+      if (snapshot.paused || !eligible) return { resumed: false };
+      await queue.execute({
+        method: "thread/queue/start",
+        params: {
+          threadId: options.threadId,
+          queuedSubmissionId: eligible.id,
+          expectedRevision: snapshot.revision,
+          managed: {
+            operationId: `queue-resume:${session.chatId}:${eligible.id}:${eligible.revision}`,
+          },
+        },
+        identity: { ...queueScope.identity },
+        connectionId: queueSession().connectionId,
+        signal: managedGuiBridgeLifetime.signal,
+        assertCurrent: assertQueueCurrent,
+      });
+      return { resumed: true };
+    };
+    const wakeQueue = async () => {
+      assertQueueCurrent();
+      const snapshot = await nativeQueueClient.read(
+        { session: queueSession() },
+        managedGuiBridgeLifetime.signal,
+      );
+      queue.publishRevision({
+        threadId: options.threadId,
+        revision: String(snapshot.revision),
+      });
+      if (snapshot.paused || eligibleQueueItem(snapshot)) return;
+      const runner = managedExecutionRunners.get(runtime)?.get(session.chatId);
+      if (runner)
+        await runtime.wakeManagedExecution(
+          { threadId: options.threadId, ...runner.configuration },
+          generation,
+        );
+    };
+    runtime.setManagedQueueResume(options.threadId, resumeQueue);
     const entry: {
       chatId: string;
       threadId: string;
@@ -2252,16 +2522,47 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       provider: RuntimeProvider;
       generation: string;
       adapter: ManagedNativeCommandSession;
+      queue: ManagedNativeQueue;
+      queueScope: ManagedNativeQueueScope;
+      codec: ReturnType<typeof createManagedQueueInputCodec>;
+      queueSession: typeof queueSession;
+      resumeQueue: typeof resumeQueue;
+      wakeQueue: typeof wakeQueue;
+      synchronizeQueue: typeof synchronizeQueue;
       gateway?: Promise<ManagedNativeGateway>;
       refresh(next: ManagedBindingOptions): void;
     } = {
       generation,
       adapter,
+      queue,
+      queueScope,
+      codec,
+      queueSession,
+      resumeQueue,
+      wakeQueue,
+      synchronizeQueue,
       chatId: session.chatId,
       threadId: options.threadId,
       model: options.model,
       provider: options.provider,
       refresh(next) {
+        if (
+          queueScope.refresh({
+            ...queueScope.identity,
+            modelRouteId: next.model.routeId,
+            providerAccountId: next.provider.accountId ?? null,
+          })
+        ) {
+          const previousGateway = entry.gateway;
+          entry.gateway = undefined;
+          if (previousGateway)
+            void previousGateway
+              .then(async (gateway) => {
+                managedNativeGateways.delete(gateway);
+                await gateway.close();
+              })
+              .catch(() => {});
+        }
         Object.assign(options, next);
         entry.model = next.model;
         entry.provider = next.provider;
@@ -5170,6 +5471,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                     command.launch.permissionProfileId ?? ":workspace",
                 },
               );
+              const scopeIsCurrent = managed.queueScope.capture();
               managed.gateway ??= createManagedNativeGateway({
                 identity: {
                   ...managedSessionIdentity(command.launch.session),
@@ -5179,8 +5481,16 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                   providerAccountId: provider().accountId ?? null,
                 },
                 upstreamUrl,
+                queue: {
+                  execute: async (request) => {
+                    await managed.synchronizeQueue();
+                    return managed.queue.execute(request);
+                  },
+                  subscribe: (listener) => managed.queue.subscribe(listener),
+                },
                 isCurrent: () =>
-                  runtime.transportGeneration === managed.generation,
+                  runtime.transportGeneration === managed.generation &&
+                  scopeIsCurrent(),
                 admit: (operation) => managed.adapter.admit(operation),
                 resolveReply: (operation, frame) =>
                   managed.adapter.resolveReply(operation, frame),
@@ -5486,6 +5796,116 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           messages: command.messages,
           service: workerEncryption,
         });
+      case "chat.queue.prepare": {
+        const codec = queueInputCodec(command.chatId, () => ({
+          mode: command.prompt.classification.mode,
+          modelId: command.prompt.modelId,
+          reasoningEffort: command.prompt.reasoningEffort,
+        }));
+        return codec.normalizePrompt(command.prompt);
+      }
+      case "chat.queue.changed": {
+        const current = managedCurrentRuntimes.get(command.chatId);
+        const entries = current
+          ? managedCommandSessions.get(current)
+          : undefined;
+        for (const entry of entries?.values() ?? []) {
+          if (
+            entry.chatId !== command.chatId ||
+            current?.transportGeneration !== entry.generation
+          )
+            continue;
+          entry.queue.publishRevision({
+            threadId: entry.threadId,
+            revision: String(command.revision),
+          });
+          void entry.wakeQueue().catch((error) =>
+            workerLogger.event("warn", "Managed queue wake failed", {
+              event: "codex.queue.wake-failed",
+              subsystem: "codex",
+              operation: "wake-managed-queue",
+              chatId: command.chatId,
+              error: workerLogError(error),
+            }),
+          );
+        }
+        return { acknowledged: true };
+      }
+      case "chat.queue.execute": {
+        const prepared = await prepareManagedMutation(command, provider());
+        if (!prepared)
+          throw new Error("The queued action has no managed native session.");
+        const entry = managedCommandSessionFor(
+          prepared.runtime,
+          command.session,
+          {
+            cwd: command.cwd,
+            threadId: prepared.threadId,
+            model: command.model,
+            provider: provider(),
+            permissionProfileId: command.permissionProfileId,
+          },
+        );
+        const displayText = await openEncryptedChatTurn({
+          history: [],
+          prompt: command.protectedPrompt,
+          service: workerEncryption,
+          threadId: prepared.threadId,
+        });
+        const opened = command.protectedNativeInput
+          ? await entry.codec.openNativeInput({
+              promptId: command.queuedPromptId,
+              payload: command.protectedNativeInput,
+              text: displayText,
+              attachmentIds:
+                command.protectedPrompt.classification.attachmentIds,
+            })
+          : {
+              version: 1 as const,
+              input: [
+                { type: "text" as const, text: displayText, text_elements: [] },
+              ],
+              action: command.nativeAction ?? ("literal" as const),
+              executionMethod: command.executionMethod,
+              displayText,
+              attachmentMap: [],
+            };
+        if (
+          opened.executionMethod !== command.executionMethod ||
+          (command.nativeAction && opened.action !== command.nativeAction)
+        )
+          throw new Error(
+            "The queued action differs from its protected input.",
+          );
+        if (opened.executionMethod === "thread/goal/set") {
+          const extra = command.attachments.filter(
+            (attachment) =>
+              !opened.attachmentMap.some(
+                (mapping) => mapping.id === attachment.id,
+              ),
+          );
+          opened.input.push(
+            ...(await projectQueueAttachments(command.chatId, extra)),
+          );
+        }
+        const native = await managedQueueNativeCommand({
+          opened,
+          threadId: prepared.threadId,
+          promptId: command.queuedPromptId,
+          codexHome: accountBackedProvider(provider().kind)
+            ? accountHomeFor(provider().credentialHomeKey ?? provider().id)
+            : codexHome,
+        });
+        if (native.method !== command.executionMethod)
+          throw new Error("The queued command classification changed.");
+        return prepared.runtime.executeManagedQueueCommand({
+          ...native,
+          threadId: prepared.threadId,
+          operationId: `queue:${command.queueClaim.id}`,
+          queueClaim: command.queueClaim,
+          model: command.model,
+        });
+      }
       case "chat.turn.protect":
         return protectChatTurn({ ...command, service: workerEncryption });
       case "task.operation.prepare":
@@ -5589,6 +6009,39 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                 service: workerEncryption,
               }),
             )
+          : null;
+        const queuedNativeInput = command.protectedNativeInput
+          ? await (async () => {
+              if (
+                !encryptedChat ||
+                !command.protectedNativeInput ||
+                !command.queuedPromptId ||
+                !command.nativeCommandReceipt ||
+                !command.protectedPrompt
+              )
+                throw new Error(
+                  "Protected queue input requires its exact admitted managed chat turn.",
+                );
+              const text = await openEncryptedChatTurn({
+                history: [],
+                prompt: command.protectedPrompt,
+                service: workerEncryption,
+                threadId: command.threadId,
+              });
+              const codec = queueInputCodec(command.chatId, () => ({
+                mode: command.planMode,
+                modelId: command.model.id,
+                reasoningEffort: command.model.reasoningEffort,
+              }));
+              const opened = await codec.openNativeInput({
+                promptId: command.queuedPromptId,
+                payload: command.protectedNativeInput,
+                text,
+                attachmentIds:
+                  command.protectedPrompt.classification.attachmentIds,
+              });
+              return { ...opened, input: managedQueueTurnInput(opened) };
+            })()
           : null;
         const encryptedTaskSealer = encryptedTask
           ? new EncryptedTaskEventSealer(
@@ -5789,14 +6242,23 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               operationGeneration:
                 command.nativeCommandReceipt?.operationGeneration,
               automationPaused: pausedChats.has(command.chatId),
-              attachments: openedAttachments.map((attachment) => ({
-                ...attachment,
-                path: attachments.resolve(
-                  command.chatId,
-                  attachment.id,
-                  attachment.fileName,
-                ),
-              })),
+              nativeInput: queuedNativeInput?.input,
+              nativeClientUserMessageId: command.nativeClientUserMessageId,
+              attachments: openedAttachments
+                .filter(
+                  (attachment) =>
+                    !queuedNativeInput?.attachmentMap.some(
+                      (mapping) => mapping.id === attachment.id,
+                    ),
+                )
+                .map((attachment) => ({
+                  ...attachment,
+                  path: attachments.resolve(
+                    command.chatId,
+                    attachment.id,
+                    attachment.fileName,
+                  ),
+                })),
               chatId: command.chatId,
               captureProtectedDiagnostics: encryptedChat || encryptedTask,
               clientMessageId: command.clientMessageId,
@@ -5812,15 +6274,17 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               resultMode,
               prompt,
               rootKind: command.rootKind,
-              skillNames: encryptedTaskOperation
-                ? directTaskOperation
-                  ? mentionedSkillNames(prompt)
-                  : []
-                : standalone
-                  ? []
-                  : encryptedChat
+              skillNames: queuedNativeInput
+                ? []
+                : encryptedTaskOperation
+                  ? directTaskOperation
                     ? mentionedSkillNames(prompt)
-                    : command.skillNames,
+                    : []
+                  : standalone
+                    ? []
+                    : encryptedChat
+                      ? mentionedSkillNames(prompt)
+                      : command.skillNames,
               subagentDefaults,
               subagentProtocolVersion: command.subagentProtocolVersion,
               threadId: command.threadId,
@@ -6504,20 +6968,54 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               control.attachments,
               workerEncryption,
             );
+            const queued = command.protectedNativeInput
+              ? await (async () => {
+                  if (
+                    !command.protectedNativeInput ||
+                    !command.queuedPromptId ||
+                    !command.queueClaim ||
+                    !command.operationId
+                  )
+                    throw new Error(
+                      "The queued steer lacks its exact claim identity.",
+                    );
+                  const input = await entry.codec.openNativeInput({
+                    promptId: command.queuedPromptId,
+                    payload: command.protectedNativeInput,
+                    text: prompt,
+                    attachmentIds:
+                      control.protectedPrompt.classification.attachmentIds,
+                  });
+                  return { ...input, input: managedQueueTurnInput(input) };
+                })()
+              : null;
             return runtime.steerThread(
               command.chatId,
               entry.threadId,
               prompt,
-              opened.map((attachment) => ({
-                ...attachment,
-                path: attachments.resolve(
-                  command.chatId,
-                  attachment.id,
-                  attachment.fileName,
-                ),
-              })),
+              opened
+                .filter(
+                  (attachment) =>
+                    !queued?.attachmentMap.some(
+                      (mapping) => mapping.id === attachment.id,
+                    ),
+                )
+                .map((attachment) => ({
+                  ...attachment,
+                  path: attachments.resolve(
+                    command.chatId,
+                    attachment.id,
+                    attachment.fileName,
+                  ),
+                })),
               entry.model,
               entry.provider,
+              {
+                operationId: command.operationId,
+                queueClaim: command.queueClaim,
+                input: queued?.input,
+                clientUserMessageId: command.nativeClientUserMessageId,
+              },
             );
           },
         );

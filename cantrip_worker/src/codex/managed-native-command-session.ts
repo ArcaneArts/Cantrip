@@ -12,6 +12,7 @@ import type { ManagedSessionIdentity } from "./managed-session.js";
 import type {
   AgentTurnResult,
   NativeCommandAdmissionResult,
+  NativeCommandAdmission,
   NativeCommandReceipt,
   NativeCommandSession,
 } from "@cantrip/protocol";
@@ -39,6 +40,7 @@ interface Execution {
   session: NativeCommandSession;
   handle?: AdmittedNativeExecution;
   nativeTurnId?: string;
+  goalEpoch?: string;
   nativeDecline?: ManagedExecutionDeclined;
   expectedTurnId?: string;
   guiPreparation?: boolean;
@@ -86,7 +88,7 @@ export interface ManagedNativeCommandSessionOptions {
   beforeNativeDispatch?(
     method: string,
     session: NativeCommandSession,
-    intent?: { resumeAutonomy?: boolean },
+    intent?: { resumeAutonomy?: boolean; goalStatus?: "active" | "paused" },
   ): Promise<void>;
   /** Correlation-only diagnostics. Never log native frames or protected plaintext here. */
   onError(error: unknown, operationId: string): void;
@@ -98,6 +100,8 @@ const object = (value: unknown): value is NativeRpcFrame =>
 /** Shares the current admitted root across GUI and all attached terminal views. */
 export class ManagedNativeCommandSession {
   private active: Execution | null = null;
+  private goalMutationSettlement: Promise<void> | null = null;
+  private goalMutationResponse: Promise<void> | null = null;
   private readonly expectedActivation = new AsyncLocalStorage<{
     generation: string | null;
   }>();
@@ -166,6 +170,33 @@ export class ManagedNativeCommandSession {
     }
   }
 
+  /** Waits for the actual goal/set RPC receipt to be durably settled before correlating its first native attempt. */
+  async awaitGoalMutationSettled(signal: AbortSignal): Promise<void> {
+    const pending = this.goalMutationSettlement;
+    signal.throwIfAborted();
+    if (!pending) return;
+    await new Promise<void>((resolve, reject) => {
+      const aborted = () => {
+        cleanup();
+        reject(signal.reason);
+      };
+      const cleanup = () => signal.removeEventListener("abort", aborted);
+      signal.addEventListener("abort", aborted, { once: true });
+      void pending.then(
+        () => {
+          cleanup();
+          resolve();
+        },
+        (error) => {
+          cleanup();
+          reject(error);
+        },
+      );
+      if (signal.aborted) aborted();
+    });
+    signal.throwIfAborted();
+  }
+
   private clearExecution(execution: Execution): void {
     if (this.active === execution) this.active = null;
     execution.removeBridgeListener?.();
@@ -230,6 +261,9 @@ export class ManagedNativeCommandSession {
         : {}),
       rejectionCode: status === "rejected" ? "native-request-rejected" : null,
       executionComplete: complete,
+      ...(!terminal && execution.goalEpoch
+        ? { goalEpoch: execution.goalEpoch }
+        : {}),
       ...(complete ? { executionStatus } : {}),
       ...(terminal &&
       execution.nativeDecline &&
@@ -446,6 +480,7 @@ export class ManagedNativeCommandSession {
     attempt: ManagedExecutionAttempt,
     session: NativeCommandSession,
     signal: AbortSignal,
+    goalQueueHandoff?: NativeCommandAdmission["goalQueueHandoff"],
   ): Promise<void> {
     if (session.threadId !== attempt.threadId || !session.runtimeGeneration)
       throw new Error(
@@ -468,6 +503,7 @@ export class ManagedNativeCommandSession {
       kind: "start",
       method: "turn/start",
       expectedTurnId: attempt.turnId,
+      ...(goalQueueHandoff ? { goalQueueHandoff } : {}),
       frame: {
         method: "turn/start",
         params: { threadId: attempt.threadId },
@@ -545,6 +581,7 @@ export class ManagedNativeCommandSession {
     const operationId = command.operationId ?? randomUUID();
     const operation: ManagedNativeOperation = {
       operationId,
+      ...(command.queueClaim ? { queueClaim: command.queueClaim } : {}),
       origin: "gui",
       identity: {
         ...this.options.identity,
@@ -653,6 +690,10 @@ export class ManagedNativeCommandSession {
       intent,
       protectedPayload: protectedContent.envelope,
       payloadDigest: protectedContent.digest,
+      ...(operation.queueClaim ? { queueClaim: operation.queueClaim } : {}),
+      ...(operation.goalQueueHandoff
+        ? { goalQueueHandoff: operation.goalQueueHandoff }
+        : {}),
       expectedActivationGeneration: root?.receipt.activationGeneration ?? null,
       ...(operation.reply
         ? {
@@ -678,6 +719,10 @@ export class ManagedNativeCommandSession {
     let resolveReceipt!: () => void;
     const receiptObserved = new Promise<void>((resolve) => {
       resolveReceipt = resolve;
+    });
+    let resolveNativeResponse!: () => void;
+    const nativeResponseObserved = new Promise<void>((resolve) => {
+      resolveNativeResponse = resolve;
     });
     let nativeAcceptance: "applied" | "rejected" | "uncertain" = "rejected";
     const start = grant.receipt.startsExecution;
@@ -738,6 +783,12 @@ export class ManagedNativeCommandSession {
     return {
       operationGeneration: grant.receipt.operationGeneration,
       beforeForward: async () => {
+        const priorGoalResponse =
+          operation.method === "thread/goal/clear" ||
+          (operation.method === "thread/goal/set" &&
+            intent.goalStatus === "paused")
+            ? this.goalMutationResponse
+            : null;
         this.assertTransport(session);
         assertRootCurrent();
         if (start) {
@@ -782,9 +833,32 @@ export class ManagedNativeCommandSession {
           assertRootCurrent();
           this.assertTransport(session);
           execution.handle?.assertCurrent();
+          if (
+            operation.method === "thread/goal/set" &&
+            operation.queueClaim &&
+            intent.resumeAutonomy
+          ) {
+            this.goalMutationResponse = nativeResponseObserved;
+            void nativeResponseObserved.then(() => {
+              if (this.goalMutationResponse === nativeResponseObserved)
+                this.goalMutationResponse = null;
+            });
+            const pending = receiptObserved.then(() => acceptance);
+            this.goalMutationSettlement = pending;
+            void pending
+              .finally(() => {
+                if (this.goalMutationSettlement === pending)
+                  this.goalMutationSettlement = null;
+              })
+              .catch(() => {});
+          }
           await this.options.beforeNativeDispatch?.(operation.method, session, {
             resumeAutonomy: intent.resumeAutonomy === true,
+            ...(intent.goalStatus ? { goalStatus: intent.goalStatus } : {}),
           });
+          // Gate invalidation above releases a setter waiting on its first goal attempt.
+          // Order this clear/pause after that exact older native response, never after model work.
+          await priorGoalResponse;
           assertRootCurrent();
           this.assertTransport(session);
           execution.handle?.assertCurrent();
@@ -799,6 +873,7 @@ export class ManagedNativeCommandSession {
       },
       settle: (frame) =>
         (settlement ??= (async () => {
+          resolveNativeResponse();
           const rejected = frame !== null && "error" in frame;
           nativeAcceptance = rejected
             ? "rejected"
@@ -809,6 +884,14 @@ export class ManagedNativeCommandSession {
             if (rejected)
               execution.handle?.fail(new Error("Native request was rejected."));
             if (frame && !rejected && object(frame.result)) {
+              if (
+                operation.method === "thread/goal/set" &&
+                operation.queueClaim &&
+                intent.resumeAutonomy &&
+                typeof frame.result.goalEpoch === "string" &&
+                frame.result.goalEpoch.length > 0
+              )
+                execution.goalEpoch = frame.result.goalEpoch;
               if (
                 start &&
                 object(frame.result.turn) &&

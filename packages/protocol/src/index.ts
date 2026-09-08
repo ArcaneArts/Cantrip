@@ -10,3 +10,5 @@ export * from "./worker-command-computer-use.js";
 export * from "./native-commands.js";
 export * from "./managed-native-methods.js";
 export * from "./native-command-events.js";
+
+export * from "./managed-queue.js";

@@ -61,6 +61,44 @@ function operation(
 }
 
 describe("managed native payload policy", () => {
+  it("derives goal pause and resume solely from actual explicit native status", async () => {
+    const context = await fixture();
+    expect(
+      await managedNativeCommandIntent(
+        operation("thread/goal/set", { threadId: "thread", status: "paused" }),
+        context,
+      ),
+    ).toMatchObject({ goalStatus: "paused" });
+    expect(
+      (
+        await managedNativeCommandIntent(
+          operation("thread/goal/set", {
+            threadId: "thread",
+            status: "paused",
+          }),
+          context,
+        )
+      ).resumeAutonomy,
+    ).toBeUndefined();
+    expect(
+      await managedNativeCommandIntent(
+        operation("thread/goal/set", { threadId: "thread", status: "active" }),
+        context,
+      ),
+    ).toMatchObject({ goalStatus: "active", resumeAutonomy: true });
+    expect(
+      (
+        await managedNativeCommandIntent(
+          operation("thread/goal/set", {
+            threadId: "thread",
+            tokenBudget: 100,
+          }),
+          context,
+        )
+      ).goalStatus,
+    ).toBeUndefined();
+  });
+
   it("accepts actual sparse preserving resume and rejects explicit tier clear/configuration", async () => {
     const context = await fixture();
     await expect(

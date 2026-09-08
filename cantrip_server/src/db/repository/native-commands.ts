@@ -1,8 +1,14 @@
+import { NativeLogicalCompletionRepository } from "./native-logical-completions.js";
+import {
+  settleQueueClaim,
+  cancelGoalHandoffs,
+  queueStateChanged,
+} from "./native-command-queue.js";
 import { isDeepStrictEqual } from "node:util";
 import { managedConsoleSessionContext } from "../../terminals/managed-session.js";
 import type { ServerRepository } from "../repository.js";
 import { effectivePermissionProfile } from "../../chats/execution-helpers.js";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   classifyManagedNativeMethod,
   managedNativeServerRequests,
@@ -15,7 +21,7 @@ import {
   type NativeCommandSettlement,
   type NativePendingRequest,
 } from "@cantrip/protocol";
-import { and, eq, sql } from "drizzle-orm";
+import { isNull, or, inArray, and, eq, sql } from "drizzle-orm";
 import * as schema from "../schema.js";
 import { projectChatExecutionLock } from "./chat-execution-lock.js";
 import {
@@ -31,15 +37,8 @@ import {
 } from "./database.js";
 
 type CommandRow = typeof schema.nativeCommands.$inferSelect;
-export class NativeCommandError extends Error {
-  constructor(
-    readonly code: string,
-    message = code,
-    readonly statusCode = 409,
-  ) {
-    super(message);
-  }
-}
+import { NativeCommandError } from "./native-command-errors.js";
+export { NativeCommandError } from "./native-command-errors.js";
 export interface NativeCommandAdmissionResult {
   receipt: NativeCommandReceipt;
   execution: ChatExecutionContext | null;
@@ -255,8 +254,12 @@ export class NativeCommandRepository {
     executionOptions: {
       acquiringActor?: "agent" | "user";
       purpose?: string;
+      canonicalQueueMutation?: boolean;
+      clientMessageId?: string;
+      queueClaim?: { id: string; promptRevision: number };
     } = {},
   ): Promise<NativeCommandAdmissionResult> {
+    const queueClaim = executionOptions.queueClaim ?? input.queueClaim;
     return this.database.transaction(async (tx) => {
       await this.lock(tx, ownerId, input.session.chatId);
       const [existing] = await tx
@@ -311,6 +314,7 @@ export class NativeCommandRepository {
         chatId: input.session.chatId,
         operationGeneration: randomUUID(),
         logicalOperationId: null as string | null,
+        logicalClientMessageId: executionOptions.clientMessageId ?? null,
         activationGeneration: null as string | null,
         executionLaneId: null as string | null,
         origin: input.origin,
@@ -346,12 +350,139 @@ export class NativeCommandRepository {
           ].includes(input.method)
         )
           throw new NativeCommandError("invalid-autonomy-resume");
+        let goalClaim:
+          typeof schema.managedQueueClaims.$inferSelect | undefined;
+        if (
+          input.intent.goalStatus !== undefined &&
+          input.method !== "thread/goal/set"
+        )
+          throw new NativeCommandError("invalid-goal-status");
+        if (input.goalQueueHandoff) {
+          const handoff = input.goalQueueHandoff;
+          if (input.origin !== "autonomous" || input.method !== "turn/start")
+            throw new NativeCommandError("invalid-goal-handoff");
+          [goalClaim] = await tx
+            .select()
+            .from(schema.managedQueueClaims)
+            .where(eq(schema.managedQueueClaims.id, handoff.claimId));
+          const [parent] = await tx
+            .select()
+            .from(schema.nativeCommands)
+            .where(eq(schema.nativeCommands.operationId, handoff.operationId));
+          if (
+            !goalClaim ||
+            !goalClaim.awaitingGoal ||
+            goalClaim.goalOperationId ||
+            goalClaim.chatId !== input.session.chatId ||
+            goalClaim.operationId !== handoff.operationId ||
+            goalClaim.operationGeneration !== handoff.operationGeneration ||
+            goalClaim.goalEpoch !== handoff.goalEpoch ||
+            !["dispatched", "uncertain"].includes(goalClaim.status) ||
+            !parent ||
+            parent.ownerId !== ownerId ||
+            parent.workerId !== input.workerId ||
+            parent.status !== "applied" ||
+            parent.method !== "thread/goal/set" ||
+            !isDeepStrictEqual(
+              {
+                ...(parent.identity as NativeCommandSession),
+                runtimeGeneration: null,
+                connectionId: null,
+              },
+              { ...input.session, runtimeGeneration: null, connectionId: null },
+            )
+          )
+            throw new NativeCommandError("stale-goal-handoff");
+        }
+        if (
+          input.method === "thread/goal/set" &&
+          input.intent.goalStatus !== "paused"
+        ) {
+          const [pendingGoal] = await tx
+            .select({ id: schema.managedQueueClaims.id })
+            .from(schema.managedQueueClaims)
+            .where(
+              and(
+                eq(schema.managedQueueClaims.chatId, input.session.chatId),
+                eq(schema.managedQueueClaims.awaitingGoal, true),
+                inArray(schema.managedQueueClaims.status, [
+                  "accepted",
+                  "dispatched",
+                  "uncertain",
+                ]),
+              ),
+            );
+          if (pendingGoal)
+            throw new NativeCommandError("queue-goal-handoff-pending");
+        }
         if (input.origin === "autonomous") {
           const [chat] = await tx
             .select({ stopped: schema.chats.managedAutonomyStopped })
             .from(schema.chats)
             .where(eq(schema.chats.id, input.session.chatId));
           if (chat?.stopped) throw new NativeCommandError("autonomy-stopped");
+          const [queued] = await tx
+            .select({ id: schema.queuedPrompts.id })
+            .from(schema.queuedPrompts)
+            .where(
+              and(
+                eq(schema.queuedPrompts.chatId, input.session.chatId),
+                eq(schema.queuedPrompts.state, "pending"),
+                eq(schema.queuedPrompts.frozen, false),
+                sql`NOT EXISTS (SELECT 1 FROM managed_queue_claims c WHERE c.prompt_id = ${schema.queuedPrompts.id} AND c.prompt_revision = ${schema.queuedPrompts.revision} AND c.status = 'rejected')`,
+              ),
+            )
+            .limit(1);
+          const [claimed] = await tx
+            .select({ id: schema.managedQueueClaims.id })
+            .from(schema.managedQueueClaims)
+            .where(
+              and(
+                eq(schema.managedQueueClaims.chatId, input.session.chatId),
+                inArray(schema.managedQueueClaims.status, [
+                  "claimed",
+                  "accepted",
+                  "dispatched",
+                  "uncertain",
+                ]),
+              ),
+            )
+            .limit(1);
+          if ((queued || claimed) && !goalClaim)
+            throw new NativeCommandError("canonical-queue-pending");
+        }
+        if (queueClaim) {
+          const [claim] = await tx
+            .select()
+            .from(schema.managedQueueClaims)
+            .where(eq(schema.managedQueueClaims.id, queueClaim.id));
+          if (
+            !claim ||
+            claim.chatId !== input.session.chatId ||
+            claim.promptRevision !== queueClaim.promptRevision ||
+            claim.status !== "claimed" ||
+            claim.operationId
+          )
+            throw new NativeCommandError("stale-queue-claim");
+          const [prompt] = await tx
+            .select()
+            .from(schema.queuedPrompts)
+            .where(eq(schema.queuedPrompts.id, claim.promptId));
+          const method =
+            prompt?.opaqueContent?.executionMethod ??
+            (prompt?.mode === "goal" ? "thread/goal/set" : "turn/start");
+          if (
+            !prompt ||
+            prompt.state !== "claimed" ||
+            prompt.revision !== claim.promptRevision ||
+            (input.method !== method &&
+              !(
+                input.method === "turn/steer" &&
+                prompt.mode === "default" &&
+                method === "turn/start"
+              ))
+          )
+            throw new NativeCommandError("queue-action-mismatch");
         }
         const policy = nativeCommandPolicy(input);
         initial.kind = policy.kind;
@@ -381,7 +512,9 @@ export class NativeCommandRepository {
 
         if (
           context.threadId !== input.session.threadId ||
-          (!input.session.threadId && (input.origin !== "gui" || !starts))
+          (!input.session.threadId &&
+            (input.origin !== "gui" ||
+              (!starts && !executionOptions.canonicalQueueMutation)))
         )
           throw new NativeCommandError("thread-identity-mismatch");
         if (!sameRuntimeRoute(context, input.session))
@@ -516,6 +649,29 @@ export class NativeCommandRepository {
             set: activation,
           });
       }
+      if (queueClaim && initial.status === "accepted") {
+        await tx
+          .update(schema.managedQueueClaims)
+          .set({
+            operationId: inserted.operationId,
+            operationGeneration: inserted.operationGeneration,
+            status: "accepted",
+            awaitingGoal:
+              input.method === "thread/goal/set" &&
+              input.intent.resumeAutonomy === true,
+          })
+          .where(eq(schema.managedQueueClaims.id, queueClaim.id));
+      }
+      if (input.goalQueueHandoff && initial.status === "accepted")
+        await tx
+          .update(schema.managedQueueClaims)
+          .set({
+            goalOperationId: inserted.operationId,
+            goalOperationGeneration: inserted.operationGeneration,
+          })
+          .where(
+            eq(schema.managedQueueClaims.id, input.goalQueueHandoff.claimId),
+          );
       return { receipt: receipt(inserted), execution: context };
     });
   }
@@ -736,6 +892,7 @@ export class NativeCommandRepository {
             chatId: previous.chatId,
             operationGeneration,
             logicalOperationId: root.operationId,
+            logicalClientMessageId: root.logicalClientMessageId,
             previousOperationId: previous.operationId,
             activationGeneration,
             executionLaneId: previous.executionLaneId,
@@ -779,6 +936,97 @@ export class NativeCommandRepository {
     });
   }
   /** Only the owning GUI closure finishes the head of this logical input. Native events remain exact-generation. */
+  async logicalGuiOutcomeRoot(
+    ownerId: string,
+    workerId: string,
+    input: {
+      chatId: string;
+      executionLaneId: string;
+      clientMessageId: string;
+      worktreeId: string | null;
+      nativeLogicalRoot: { operationId: string; operationGeneration: string };
+      threadId?: string;
+      turnId?: string | null;
+    },
+  ) {
+    return this.database.transaction(async (tx) => {
+      await this.lock(tx, ownerId, input.chatId);
+      const [root] = await tx
+        .select()
+        .from(schema.nativeCommands)
+        .where(
+          and(
+            eq(
+              schema.nativeCommands.operationId,
+              input.nativeLogicalRoot.operationId,
+            ),
+            eq(
+              schema.nativeCommands.operationGeneration,
+              input.nativeLogicalRoot.operationGeneration,
+            ),
+            eq(schema.nativeCommands.ownerId, ownerId),
+            eq(schema.nativeCommands.workerId, workerId),
+            eq(schema.nativeCommands.chatId, input.chatId),
+          ),
+        );
+      if (
+        !root ||
+        root.origin !== "gui" ||
+        root.kind !== "start" ||
+        root.logicalOperationId !== root.operationId ||
+        root.executionLaneId !== input.executionLaneId
+      )
+        return null;
+      const [message] = await tx
+        .select()
+        .from(schema.chatMessages)
+        .where(
+          and(
+            eq(schema.chatMessages.id, input.clientMessageId),
+            eq(schema.chatMessages.chatId, input.chatId),
+            eq(schema.chatMessages.role, "user"),
+            eq(schema.chatMessages.executionLaneId, input.executionLaneId),
+          ),
+        );
+      if (!message) return null;
+      const legacyId = `gui:${createHash("sha256")
+        .update(JSON.stringify([ownerId, input.chatId, message.idempotencyKey]))
+        .digest("hex")}`;
+      if (
+        root.logicalClientMessageId
+          ? root.logicalClientMessageId !== input.clientMessageId
+          : root.operationId !== legacyId
+      )
+        return null;
+      const [activation] = await tx
+        .select()
+        .from(schema.nativeCommandActivations)
+        .where(eq(schema.nativeCommandActivations.chatId, input.chatId));
+      if (
+        !activation ||
+        activation.workerId !== workerId ||
+        activation.executionLaneId !== input.executionLaneId
+      )
+        return null;
+      const [head] = await tx
+        .select()
+        .from(schema.nativeCommands)
+        .where(eq(schema.nativeCommands.operationId, activation.operationId));
+      const identity = head?.identity as NativeCommandSession | undefined;
+      if (
+        !head ||
+        head.logicalOperationId !== root.operationId ||
+        head.executionLaneId !== input.executionLaneId ||
+        identity?.placementId !== input.worktreeId ||
+        (input.threadId && identity.threadId !== input.threadId) ||
+        (input.turnId &&
+          activation.nativeTurnId &&
+          activation.nativeTurnId !== input.turnId)
+      )
+        return null;
+      return receipt(root);
+    });
+  }
   async finishLogicalGui(
     ownerId: string,
     workerId: string,
@@ -797,11 +1045,24 @@ export class NativeCommandRepository {
       await this.lock(tx, ownerId, root.chatId);
       if (root.origin !== "gui" || root.logicalOperationId !== root.operationId)
         throw new NativeCommandError("invalid-continuation-lineage");
+      if (root.logicalCompletedAt) {
+        await tx
+          .insert(schema.nativeLogicalCompletions)
+          .values({
+            ownerId,
+            workerId,
+            chatId: root.chatId,
+            rootOperationId,
+            rootOperationGeneration,
+          })
+          .onConflictDoNothing();
+        return false;
+      }
       const [activation] = await tx
         .select()
         .from(schema.nativeCommandActivations)
         .where(eq(schema.nativeCommandActivations.chatId, root.chatId));
-      if (!activation?.active) return false;
+      if (!activation) return false;
       const [head] = await tx
         .select()
         .from(schema.nativeCommands)
@@ -813,9 +1074,25 @@ export class NativeCommandRepository {
         !head.executionLaneId
       )
         return false;
-      const finished = await this.lanes
-        .inTransaction(tx)
-        .finishChatExecutionLane(root.chatId, head.executionLaneId, status);
+      const finished = activation.active
+        ? await this.lanes
+            .inTransaction(tx)
+            .finishChatExecutionLane(root.chatId, head.executionLaneId, status)
+        : false;
+      await tx
+        .update(schema.nativeCommands)
+        .set({ logicalCompletedAt: new Date() })
+        .where(eq(schema.nativeCommands.operationId, root.operationId));
+      await tx
+        .insert(schema.nativeLogicalCompletions)
+        .values({
+          ownerId,
+          workerId,
+          chatId: root.chatId,
+          rootOperationId,
+          rootOperationGeneration,
+        })
+        .onConflictDoNothing();
       await tx
         .update(schema.nativeCommandActivations)
         .set({ active: false })
@@ -831,8 +1108,49 @@ export class NativeCommandRepository {
               : {}),
         })
         .where(eq(schema.nativeCommands.operationId, head.operationId));
+      const [completedHead] = await tx
+        .select()
+        .from(schema.nativeCommands)
+        .where(eq(schema.nativeCommands.operationId, head.operationId));
+      await settleQueueClaim(tx, completedHead!);
       return finished;
     });
+  }
+  listPendingLogicalCompletions(
+    ...args: Parameters<
+      NativeLogicalCompletionRepository["listPendingLogicalCompletions"]
+    >
+  ) {
+    return new NativeLogicalCompletionRepository(
+      this.database,
+    ).listPendingLogicalCompletions(...args);
+  }
+  getLogicalCompletion(
+    ...args: Parameters<
+      NativeLogicalCompletionRepository["getLogicalCompletion"]
+    >
+  ) {
+    return new NativeLogicalCompletionRepository(
+      this.database,
+    ).getLogicalCompletion(...args);
+  }
+  acknowledgeLogicalCompletion(
+    ...args: Parameters<
+      NativeLogicalCompletionRepository["acknowledgeLogicalCompletion"]
+    >
+  ) {
+    return new NativeLogicalCompletionRepository(
+      this.database,
+    ).acknowledgeLogicalCompletion(...args);
+  }
+  deferLogicalCompletion(
+    ...args: Parameters<
+      NativeLogicalCompletionRepository["deferLogicalCompletion"]
+    >
+  ) {
+    return new NativeLogicalCompletionRepository(
+      this.database,
+    ).deferLogicalCompletion(...args);
   }
   /** Binds an accepted GUI preparation without dispatching its turn or issuing execution authority. */
   async bindPreparation(
@@ -999,6 +1317,11 @@ export class NativeCommandRepository {
           );
         context = await this.context(tx, ownerId, row.chatId);
       }
+      if (
+        row.method === "thread/goal/clear" ||
+        (row.method === "thread/goal/set" && intent.goalStatus === "paused")
+      )
+        await cancelGoalHandoffs(tx, row.chatId);
       if (row.method === "turn/interrupt")
         await this.stopAutonomyInTransaction(tx, row.chatId);
       else if (intent.resumeAutonomy)
@@ -1013,6 +1336,8 @@ export class NativeCommandRepository {
           .where(eq(schema.chats.id, row.chatId));
         context = await this.context(tx, ownerId, row.chatId);
       }
+      if (intent.resumeAutonomy || row.method === "turn/pause")
+        await queueStateChanged(tx, row.chatId);
       const updated = firstOrThrow(
         await tx
           .update(schema.nativeCommands)
@@ -1025,6 +1350,19 @@ export class NativeCommandRepository {
           .returning(),
         "dispatching native command",
       );
+      await tx
+        .update(schema.managedQueueClaims)
+        .set({ status: "dispatched" })
+        .where(
+          and(
+            eq(schema.managedQueueClaims.operationId, row.operationId),
+            eq(
+              schema.managedQueueClaims.operationGeneration,
+              row.operationGeneration,
+            ),
+            eq(schema.managedQueueClaims.status, "accepted"),
+          ),
+        );
       return { receipt: receipt(updated), execution: context };
     });
   }
@@ -1133,6 +1471,8 @@ export class NativeCommandRepository {
           eq(schema.nativeCommandActivations.active, true),
         ),
       );
+    await queueStateChanged(tx, chatId);
+    await cancelGoalHandoffs(tx, chatId);
     // A resume accepted before Stop cannot reopen autonomy by dispatching late.
     await tx
       .update(schema.nativeCommands)
@@ -1180,6 +1520,7 @@ export class NativeCommandRepository {
         .update(schema.chats)
         .set({ managedAutonomyStopped: false })
         .where(eq(schema.chats.id, chatId));
+      await queueStateChanged(tx, chatId);
     });
   }
   async cancelPreparing(
@@ -1234,6 +1575,18 @@ export class NativeCommandRepository {
         .update(schema.nativeCommandActivations)
         .set({ active: false })
         .where(eq(schema.nativeCommandActivations.chatId, chatId));
+      if (logicalRoot)
+        await tx
+          .update(schema.nativeCommands)
+          .set({ logicalCompletedAt: new Date() })
+          .where(
+            eq(schema.nativeCommands.operationId, logicalRoot.operationId),
+          );
+      const [cancelled] = await tx
+        .select()
+        .from(schema.nativeCommands)
+        .where(eq(schema.nativeCommands.operationId, operation.operationId));
+      await settleQueueClaim(tx, cancelled!);
       return {
         workerId: operation.workerId,
         logicalRoot: logicalRoot
@@ -1506,12 +1859,40 @@ export class NativeCommandRepository {
           .set({ nativeTurnId: input.reconciliation.nativeTurnId })
           .where(eq(schema.nativeCommandActivations.chatId, row.chatId));
       }
+      let goalEvidence = false;
+      if (
+        input.goalEpoch &&
+        input.status === "applied" &&
+        input.protectedResult &&
+        input.resultDigest &&
+        row.method === "thread/goal/set"
+      ) {
+        const [claim] = await tx
+          .select()
+          .from(schema.managedQueueClaims)
+          .where(
+            and(
+              eq(schema.managedQueueClaims.operationId, row.operationId),
+              eq(
+                schema.managedQueueClaims.operationGeneration,
+                row.operationGeneration,
+              ),
+              eq(schema.managedQueueClaims.awaitingGoal, true),
+            ),
+          );
+        goalEvidence = Boolean(
+          claim && (!claim.goalEpoch || claim.goalEpoch === input.goalEpoch),
+        );
+      }
       if (current.status === "rejected" && current.status !== input.status)
         throw new NativeCommandError("receipt-conflict");
       if (
         current.status === "uncertain" &&
         input.status !== "uncertain" &&
-        !(input.status === "applied" && input.reconciliation) &&
+        !(
+          input.status === "applied" &&
+          (input.reconciliation || goalEvidence)
+        ) &&
         !(input.status === "rejected" && input.decline)
       )
         throw new NativeCommandError("native-evidence-required");
@@ -1586,6 +1967,12 @@ export class NativeCommandRepository {
             .where(eq(schema.nativeCommandActivations.chatId, row.chatId));
         }
       }
+      await settleQueueClaim(
+        tx,
+        updated,
+        input.reconciliation?.nativeTurnId ?? null,
+        input.goalEpoch,
+      );
       return receipt(updated);
     });
   }

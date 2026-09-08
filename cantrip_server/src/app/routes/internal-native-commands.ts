@@ -1,3 +1,4 @@
+import { notifyManagedQueueReceipt } from "../runtime/managed-queue-receipts.js";
 import { applyComputerUseAgentEvent } from "../runtime/computer-use-agent-events.js";
 import { nativeCommandEventSchema } from "@cantrip/protocol";
 import type { createLiveMutationRuntime } from "../runtime/live-mutation-runtime.js";
@@ -320,19 +321,39 @@ export function installInternalNativeCommandRoutes(
               authentication.ownerId,
               settlement,
             );
-            if (settlement.executionComplete) {
+            notifyManagedQueueReceipt(receipt.chatId);
+            const wakesQueue =
+              settlement.executionComplete ||
+              (receipt.status === "applied" &&
+                ["thread/goal/clear", "thread/goal/set"].includes(
+                  receipt.method,
+                ));
+            if (wakesQueue) {
               const context = await repository.getChatExecutionContext(
                 authentication.ownerId,
                 receipt.chatId,
               );
               if (context) {
-                live.publishChatTurnBoundary(
-                  context.chatId,
-                  context.projectId,
-                  context,
-                );
+                if (settlement.executionComplete)
+                  live.publishChatTurnBoundary(
+                    context.chatId,
+                    context.projectId,
+                    context,
+                  );
                 if (context.status === "idle")
-                  await dependencies.dispatchNextQueuedPrompt(context.chatId);
+                  void Promise.resolve()
+                    .then(() =>
+                      dependencies.dispatchNextQueuedPrompt(context.chatId),
+                    )
+                    .catch(() =>
+                      app.log.warn(
+                        {
+                          chatId: context.chatId,
+                          operationId: receipt.operationId,
+                        },
+                        "Canonical queue dispatch failed after committed native receipt; durable recovery will retry eligible work",
+                      ),
+                    );
               }
             }
             return { receipt };
