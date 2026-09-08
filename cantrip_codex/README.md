@@ -190,3 +190,42 @@ is intentionally manual so no script silently selects a newer release.
 
 The imported source remains licensed by its upstream authors under Apache-2.0;
 the exact upstream `LICENSE` and `NOTICE` files are retained in the snapshot.
+
+## Managed history retention
+
+Patch `0017` adds optional `managedConfig.canonicalHistory`. Omission preserves
+an existing managed selection; explicit false disables retention for future
+turns. Retained turns record exact item IDs and lifecycle evidence alongside
+the ordinary compatibility events. Late events keep their original turn's
+selection. Sequence gaps and missing terminal evidence are reported as partial
+or unavailable, not silently reconstructed as complete.
+Coverage describes the committed prefix: a failed final append without a later
+checkpoint cannot be detected from sequence gaps alone. Durable acknowledged
+ingestion must also capture live events and must not permanently baseline a turn
+merely because its terminal checkpoint was read once.
+
+`thread/read` accepts optional `includeHistoryMetadata`. The additive `history`
+response distinguishes presentation source, retention coverage, item lifecycle,
+nullable timing, scoped token usage, warnings and errors. Current loaded-turn
+state is separate from persisted history and does not grant execution authority.
+Legacy content and metadata share one record observation. Paginated reads use
+the existing projection in a SQLite read transaction and bound evidence by its
+checkpoints and fork lineage. Migration preserves retained native IDs without
+also publishing compatibility aliases.
+
+The worker reader keeps raw native content local for subsequent encryption and
+durable ingestion; this foundation does not replace the existing sync path.
+Run its actual-runtime fixture against the rebuilt bundle with:
+
+```sh
+CANTRIP_CODEX_TEST_BINARY="$PWD/cantrip_codex/.build/darwin-arm64/bundle/codex" \
+  pnpm --dir cantrip_worker exec vitest run test/native-history-foundation.test.ts
+```
+
+The fixture uses an isolated home, a synthetic local provider, image-only input,
+reasoning, repeated commentary and a harmless command. It compares live, ordinary
+read, metadata-only read and cold-restart history for both storage modes, with
+retention enabled and disabled. An actual child finishes after its parent to
+check inherited retention, late activity, scoped usage and restart recovery.
+Validation status is recorded in
+`docs/CODEX_AUDIT.md`; a fixture's presence alone is not evidence that it passed.

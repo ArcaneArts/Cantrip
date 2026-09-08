@@ -111,6 +111,63 @@ function fixture() {
 }
 
 describe("thread session preparation", () => {
+  it("preserves canonical-history omission and applies explicit false to the same owned thread", async () => {
+    const f = fixture();
+    await f.runtime.prepareManagedThread({
+      ...managed,
+      canonicalHistory: true,
+    });
+    expect(
+      f.request.mock.calls.find(([method]) => method === "thread/resume")![1],
+    ).toMatchObject({ managedConfig: { canonicalHistory: true } });
+    f.request.mockClear();
+    await f.native.loadThread({
+      ...options,
+      mcpServers: [],
+    } as GoalRuntimeOptions);
+    expect(f.request).toHaveBeenLastCalledWith(
+      "thread/managedConfig/update",
+      expect.objectContaining({ threadId: "thread-1", canonicalHistory: true }),
+    );
+    await f.runtime.prepareManagedThread({
+      ...managed,
+      canonicalHistory: false,
+      intent: "preserve",
+    });
+    expect(f.request).toHaveBeenLastCalledWith(
+      "thread/managedConfig/update",
+      expect.objectContaining({
+        threadId: "thread-1",
+        canonicalHistory: false,
+      }),
+    );
+    f.request.mockClear();
+    await f.native.loadThread({
+      ...options,
+      mcpServers: [],
+    } as GoalRuntimeOptions);
+    expect(f.request).toHaveBeenLastCalledWith(
+      "thread/managedConfig/update",
+      expect.objectContaining({ canonicalHistory: false }),
+    );
+  });
+
+  it("reads raw native history without loading, changing configuration, or consuming sync baselines", async () => {
+    const f = fixture();
+    expect((await f.runtime.readNativeHistory("thread-1")).history).toBeNull();
+    expect(f.request.mock.calls).toEqual([
+      [
+        "thread/read",
+        {
+          threadId: "thread-1",
+          includeTurns: true,
+          includeHistoryMetadata: true,
+        },
+      ],
+    ]);
+    expect(f.native.ensureStarted).not.toHaveBeenCalled();
+  });
+
   it("retains actual managed ownership when ordinary reload inputs omit MCP and the gate", async () => {
     const f = fixture();
     await f.runtime.prepareManagedThread({

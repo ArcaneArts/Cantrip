@@ -289,7 +289,7 @@ cases also pass a fresh targeted rerun. The packaged five-case native fixture
 passes in 29.96 seconds with local synthetic provider responses and real native
 protocol/database operations, without mocked admission or execution success.
 
-**Pass 5 — one managed queue:**
+**Pass 5 (#1854) — one managed queue:**
 
 Post-merge source inspection confirms three independent queue paths: GUI rows
 in `queued_prompts`, Codex's durable `thread/queue/*` API, and the interactive
@@ -441,6 +441,103 @@ Read-only receipt recovery also permits a current authorized view to reconcile
 the original operation after its queued model route/account changes. Mutation
 admission remains fenced; thread/placement changes still require the separate
 continuation and presentation-retargeting work below.
+
+**Pass 6 — durable native history foundation:**
+
+The existing external reader still excludes whole turns containing a `cantrip:`
+user client ID and advances its in-memory terminal baseline before canonical
+storage commits. The server reconciler also consumes failed import revisions.
+Replacing those paths first requires native live/replay identity: the pinned
+legacy reducer assigns structural `item-N` IDs and omits many rich completion
+records. Matching by text would merge legitimate identical messages and cannot
+recover omitted content.
+
+Reviewed patch `0017` introduces optional `managedConfig.canonicalHistory`.
+Omission preserves the owned selection; explicit false disables future-turn
+retention. Each marked turn retains exact native item lifecycle events, scoped
+warnings/errors and terminal evidence alongside ordinary compatibility events.
+The common raw-event path covers child activity arriving after the parent ends.
+Eligibility follows the original turn, and cold restoration continues its
+sequence. A real writer failure followed by repair leaves an observable gap.
+
+Legacy presentation overlays retained native IDs while preserving ordinary
+allocation counters, rollback and model history. A late item start cannot erase
+completed content. Canonical error attribution preserves the recorded turn and
+does not fail a newer turn through its compatibility event. Migration preserves
+retained IDs without generating duplicate aliases, and rollback removes early
+companion markers with their actual turn. Both migration defects were reproduced
+before fixing them.
+
+The additive `thread/read includeHistoryMetadata` response distinguishes source,
+retention coverage, explicit item lifecycle, nullable timing, scoped response
+usage, warnings and errors. Identical usage is deduplicated; conflicting variants
+remain available with an unknown total. Copied source usage is not billed to a
+fork. Current native-turn observation remains separate from execution authority.
+Content and metadata use the same retained observation. Metadata-only reads omit
+turn bodies without loading cold threads or making provider requests.
+
+Paginated reads use ordinary materialized turn/item pages in one SQLite read
+transaction, with evidence bounded by its rollout checkpoints and inherited
+byte/ordinal boundaries. The decoder uses the same rejection semantics as
+materialization. Tests cover a JSONL file ahead of its projection, recovery,
+fork cutoffs, partial-fork interruption versus later source completion, and
+copied child-prefix exclusion. Paginated starts may insert an initial item but
+cannot replace an existing snapshot. The event kind controls this rule, so a
+completion with unknown timestamps still replaces its earlier start. A regression
+first reproduced completed content being erased by a late start, then passed
+through cold rereading after the fix.
+
+The worker-local reader preserves raw native fields, exact user vectors and
+client IDs for subsequent worker-side encryption. It does not extend plaintext
+`AgentThreadSync` or `chat.sync`. It observes the existing transport without
+loading/configuring threads, rejects responses from replaced transports, and
+only retries without the metadata parameter after an actual unknown-field RPC
+error. Managed preparation retains omitted/false history selections correctly.
+
+Validation:
+
+- The final standard release build passes in 11 minutes 35 seconds. Four actual
+  packaged-runtime cases pass for legacy/paginated storage with retention on/off.
+  They cover image-only input, exact client IDs, reasoning, repeated identical
+  commentary with distinct IDs, a harmless command, scoped usage, reads during
+  execution, ordinary/metadata-only reads and cold restart. Explicit disable
+  preserves old retained history while future turns use the selected policy.
+- The retained cases use actual V2 child spawning through a local synthetic
+  provider. The fixture holds the child until after parent completion, verifies
+  late parent activity, inherited child retention, physical-thread usage scope,
+  and identical parent/child history after another runtime restart. Child usage
+  retains the exact originating parent root-turn ID. Against the final bundle,
+  all four history cases and three existing actual remote-TUI attachment cases
+  pass together (seven tests, 3.60 seconds wall time), without desktop input or
+  account model requests. The attachment cases cover managed/unmanaged migration
+  prompts, opening, reopening and cold resume of the same configured thread.
+- Fixture development exposed provider-format assumptions: V1 namespaced tools
+  are not exposed by the custom portable Responses provider, and a copied model
+  catalog selected Responses Lite. The fixture now explicitly selects V2 with
+  the standard Responses surface and validates its actual `subAgentActivity`
+  records. Those initial failures do not establish a product enablement bug.
+- All 248 thread-store library tests pass. The strengthened late-start regression
+  also passes with a zero completion timestamp. The final history-protocol suite
+  passes 69 tests, and both Core retention tests pass. App-server and its test
+  targets passed checking before the final storage-only change.
+- Worker reader/preparation tests pass 71 cases; worker typecheck and formatting
+  pass. Source verification passes for all 6,499 pristine imported files and the
+  ordered 16-patch series. The final packaged acceptance and worker typecheck pass.
+- A broader Core integration compile remains blocked by the unchanged baseline
+  fixture using removed `Op::UserInput`; this is not a passing full-Core result.
+- The current `pnpm check` passes the large-file check, then stops at the existing
+  decomposition budgets: `chat-turn-runtime.ts` has 2,260 lines and
+  `task-routes.ts` has 2,149, above 1,999. Both files are byte-identical to this
+  pass's baseline. Later checks in that command did not run.
+
+Retention coverage describes a committed prefix. A failed post-terminal append
+with no later checkpoint cannot be inferred from sequence gaps on a cold read.
+Durable live-event capture and acknowledged ingestion must address that tail;
+this foundation must not mark a whole turn permanently consumed. Full encrypted
+ingestion, historical bindings, canonical message mapping, replay acknowledgment
+and healthy-UI repair remain subsequent work. Partial-fork outcomes must remain
+branch-local even when inherited item identities alias their source. Child
+projection must recognize both older collaboration records and V2 activity edges.
 
 **Still outstanding:** completion of authorized command admission, origin-independent
 lifecycle/CUA authority, durable all-turn projection/replay,
