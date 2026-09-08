@@ -445,29 +445,8 @@ export class CantripCuaService {
         { operation, binding: record.binding, ...fields },
         {
           signal: active,
-          ...(operation === "input.perform" &&
-          "command" in fields &&
-          ["timeline", "prepared-press"].includes(
-            (fields.command as CuaInputCommand).kind,
-          )
-            ? {
-                // A score's last atMs is a scheduling target, not a completion
-                // deadline: allocation, target preparation and presentation cost
-                // real time. Keep the bounded performance budget and live Stop.
-                timeoutMs:
-                  (fields.command as CuaInputCommand).kind === "timeline"
-                    ? 7_205_000
-                    : Math.max(
-                        15_000,
-                        (
-                          fields.command as Extract<
-                            CuaInputCommand,
-                            { kind: "prepared-press" }
-                          >
-                        ).holdMs + 5_000,
-                      ),
-              }
-            : {}),
+          // Planned input owns its duration; explicit Stop still aborts it.
+          ...(operation === "input.perform" ? { timeoutMs: 0 } : {}),
         },
       );
       const snapshotData = snapshot

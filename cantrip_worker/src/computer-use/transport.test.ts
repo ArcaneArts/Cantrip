@@ -51,7 +51,7 @@ const fixtureSource = `
       else if(kind === 'host-unknown') { host(id+1); }
       else if(kind === 'host-result-inbound') { send({kind:'hostResult',evaluationRequestId:id,callId:1,result:{status:'ok',data:null}}); }
       else if(kind === 'finish-host') { waiting.delete(message.operation.evaluationRequestId); if(message.operation.error) error(message.operation.evaluationRequestId,'invalid-request'); else ok(message.operation.evaluationRequestId,{finished:true}); ok(id,{}); }
-      else if(kind === 'wait' || kind === 'ignore') { waiting.set(id,kind); event({kind:'waiting',requestId:id}); }
+      else if(kind === 'wait' || kind === 'ignore' || message.operation.wait === true) { waiting.set(id,kind); event({kind:'waiting',requestId:id}); }
       else if(kind === 'crash') { process.stderr.write('private native stderr'); process.exit(23); }
       else if(kind === 'mismatch') { ok(id+1,{}); }
       else if(kind === 'permission') { error(id,'permission-denied'); }
@@ -103,6 +103,29 @@ describe("CUA child transport", () => {
       ),
     ).resolves.toMatchObject({ data: { id: 2 } });
   });
+
+  it.each(["javascript.evaluate", "input.perform"])(
+    "untimed %s still cooperates with explicit cancellation",
+    async (operation) => {
+      const entered = deferred<void>();
+      const transport = fixture({ onEvent: () => entered.resolve() });
+      const controller = new AbortController();
+      const result = transport.request(
+        { operation, wait: true },
+        { timeoutMs: 0, signal: controller.signal },
+      );
+      const rejected = expect(result).rejects.toMatchObject({
+        code: "cancelled",
+      });
+      await entered.promise;
+      expect(transport.closed).toBe(false);
+      controller.abort();
+      await rejected;
+      await expect(
+        transport.request({ operation: "echo" }),
+      ).resolves.toHaveProperty("data");
+    },
+  );
 
   it("awaits a host callback without blocking native requests on the same process", async () => {
     const transport = fixture();

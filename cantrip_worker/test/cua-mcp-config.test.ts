@@ -60,6 +60,11 @@ describe("managed CUA MCP configuration", () => {
     );
     expect(CUA_MCP_INSTRUCTIONS).toContain("Never automatically replay");
     expect(CUA_MCP_INSTRUCTIONS).toContain("await the entire tool call");
+    expect(CUA_MCP_INSTRUCTIONS).toContain("150-second piece");
+    expect(CUA_MCP_INSTRUCTIONS).toContain("no performance duration");
+    expect(CUA_MCP_INSTRUCTIONS).not.toContain(
+      "Failed calls already clear attachment",
+    );
     expect(CUA_MCP_INSTRUCTIONS).not.toContain(
       "through the attached window's Accessibility controls",
     );
@@ -114,7 +119,7 @@ describe("managed CUA MCP configuration", () => {
     expect(config.mcp_servers.cantrip_cua).toMatchObject({
       required: true,
       enabled_tools: ["js", "js_reset"],
-      tool_timeout_sec: 7570,
+      tool_timeout_sec: 0,
     });
     expect(config.mcp_servers.cantrip).not.toHaveProperty("tool_timeout_sec");
     expect(config.mcp_servers["user-server"]).not.toHaveProperty(

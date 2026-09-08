@@ -13,8 +13,9 @@ import {
   decodeCuaModelImageBase64,
 } from "../computer-use/model-image-contract.js";
 
+// Zero disables elapsed-time deadlines for managed performance requests.
+export const CANTRIP_CUA_MCP_OPERATION_TIMEOUT_MS = 0;
 export const CANTRIP_CUA_MCP_MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
-export const CANTRIP_CUA_MCP_OPERATION_TIMEOUT_MS = 7_560_000;
 export const CANTRIP_CUA_MCP_TOOL_NAMES = ["js", "js_reset"] as const;
 export const cuaMcpScriptSchema = z
   .string()

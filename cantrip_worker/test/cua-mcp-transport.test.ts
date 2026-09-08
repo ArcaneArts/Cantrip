@@ -98,7 +98,7 @@ describe("managed CUA MCP transport", () => {
       "js_reset",
     ]);
     expect(client.getInstructions()).toContain(
-      '"script":"await cua.targets()"',
+      '"script":"await cua.openWindow(',
     );
     const js = (await client.listTools()).tools.find(
       (tool) => tool.name === "js",

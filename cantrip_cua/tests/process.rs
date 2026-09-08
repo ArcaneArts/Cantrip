@@ -75,10 +75,13 @@ impl Process {
     }
 
     fn response(&mut self, id: u64) -> (Outcome, Vec<u8>) {
+        self.response_with_timeout(id, Duration::from_secs(5))
+    }
+    fn response_with_timeout(&mut self, id: u64, timeout: Duration) -> (Outcome, Vec<u8>) {
         loop {
             let result = self
                 .frames
-                .recv_timeout(Duration::from_secs(5))
+                .recv_timeout(timeout)
                 .expect("child must produce a bounded response")
                 .unwrap();
             if let Message::Response {
@@ -309,7 +312,7 @@ fn javascript_no_ambient_io_frozen_api_and_errors_dispose_background_jobs() {
     for source in [
         "globalThis.poison = true; Promise.resolve().then(() => globalThis.background = true); 1",
         "globalThis.poison = true; throw new Error('PRIVATE SCRIPT CONTENT')",
-        "globalThis.poison = true; new ArrayBuffer(64 * 1024 * 1024)",
+        "globalThis.poison = true; new ArrayBuffer(256 * 1024 * 1024)",
         "globalThis.poison = true; 'a'.repeat(32769)",
         "({toJSON(){ Promise.resolve().then(() => {globalThis.background = true;}); return 42;}})",
         "({toJSON(){ cua.getState(); return 42;}})",
@@ -336,9 +339,9 @@ fn javascript_host_call_and_promise_job_limits_are_enforced() {
     let mut child = Process::start(true);
     let evaluation = child.send(evaluate(
         binding(),
-        "for (let i=0; i<65; i++) { await cua.cursor(); }",
+        "for (let i=0; i<16385; i++) { await cua.cursor(); }",
     ));
-    for call in 1..=64 {
+    for call in 1..=16384 {
         assert_eq!(
             host_call(&mut child, evaluation, call),
             json!({"operation":"cursor"})
@@ -369,7 +372,7 @@ fn javascript_host_call_and_promise_job_limits_are_enforced() {
     );
     let evaluation = child.send(evaluate(binding(), "for (;;) {}"));
     assert!(
-        matches!(child.response(evaluation).0, Outcome::Error { error } if error.code == cantrip_cua::error::ErrorCode::Capacity)
+        matches!(child.response_with_timeout(evaluation, Duration::from_secs(15)).0, Outcome::Error { error } if error.code == cantrip_cua::error::ErrorCode::Capacity)
     );
     child.stop(true);
 }
@@ -455,7 +458,9 @@ fn javascript_trusted_wall_timeout_uses_camel_case_and_validates_bounds() {
     let mut operation = evaluate(binding(), "42");
     operation["wallTimeoutMs"] = json!(345_000);
     assert_eq!(child.call(operation.clone()).0, json!({"value":42}));
-    for limit in [0, 345_001, u64::MAX] {
+    operation["wallTimeoutMs"] = json!(0);
+    assert_eq!(child.call(operation.clone()).0, json!({"value":42}));
+    for limit in [7_500_001, u64::MAX] {
         operation["wallTimeoutMs"] = json!(limit);
         let id = child.send(operation.clone());
         assert!(
@@ -513,10 +518,9 @@ fn javascript_extended_approval_deadline_does_not_extend_busy_code_budget() {
     let mut operation = evaluate(binding(), "while (true) {}");
     operation["wallTimeoutMs"] = json!(345_000);
     let id = child.send(operation);
-    // The harness waits five seconds, well below the 345-second wall deadline.
-    // Only the independent two-second active execution budget can settle this.
+    // The ten-second active execution budget settles this before the wall deadline.
     assert!(
-        matches!(child.response(id).0, Outcome::Error { error } if error.code == cantrip_cua::error::ErrorCode::Capacity)
+        matches!(child.response_with_timeout(id, Duration::from_secs(15)).0, Outcome::Error { error } if error.code == cantrip_cua::error::ErrorCode::Capacity)
     );
     assert_eq!(child.call(evaluate(binding(), "42")).0, json!({"value":42}));
     child.stop(true);
@@ -531,7 +535,7 @@ fn javascript_output_and_source_boundaries_include_the_response_envelope() {
     assert!(
         matches!(child.response(id).0, Outcome::Error { error } if error.code == cantrip_cua::error::ErrorCode::Capacity)
     );
-    let source = format!("{}42", " ".repeat(32766));
+    let source = format!("{}42", " ".repeat(2 * 1024 * 1024 - 2));
     assert_eq!(
         child.call(evaluate(binding(), &source)).0,
         json!({"value":42})

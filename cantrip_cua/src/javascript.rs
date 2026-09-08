@@ -38,7 +38,7 @@ const ACTIVE_LIMIT: Duration = Duration::from_secs(10);
 const WALL_LIMIT: Duration = Duration::from_secs(45);
 const MAX_WALL_TIMEOUT_MS: u64 = 7_500_000;
 pub(crate) fn default_wall_timeout_ms() -> u64 {
-    45_000
+    0
 }
 const JOB_BATCH: usize = 16;
 const MAX_JOBS: u32 = 200_000;
@@ -170,7 +170,7 @@ for (const name of ['SharedArrayBuffer', 'Atomics', 'WeakRef', 'FinalizationRegi
   };
   Object.defineProperty(globalThis, 'cua', { value: Object.freeze({
     help: (topic) => {
-      const info = {apiVersion:17, examples:{commandK:"await cua.keyPress('k', ['Meta'])",commandChord:"await cua.keyChord(['k'], 500, ['Meta'])",combinedChord:"await cua.keyChord(['Meta', 'k'])"},receipt:"dispatched means all event-post calls completed, not that the app accepted input. windowDelivery:unverified requires a fresh screenshot to confirm the intended UI result. unknown means interrupted or uncertain dispatch; never blindly replay input. requestFocus intentionally raises the window; ordinary clicks never do so automatically.",quickStart:{script:"await cua.openWindow({application:\"Brave\",title:\"Piano\"})",notes:"Use partial application/title text for the requested existing window. openWindow searches, attaches a unique match, and returns a screenshot. No initial reset, help-plus-inventory dump, exact-title loop, click or focus request is needed. Reuse the attachment for subsequent input; snapshot again when needed."}, methods:{openWindow:"openWindow({application?,title?}) searches existing windows, attaches one unique match and captures it; returns status attached, not-found, or choose-window with candidates; does not launch/focus/click",findWindows:"findWindows({application?,title?}) scans all target pages and returns {targets,truncated}, up to 32 matches; case-insensitive substring matching, windows only; inspect candidates before attaching",targets:"targets({after?}) returns one inventory page; nextCursor continues it",attach:"attach({targetId,targetGeneration}) uses the selected target id and generation",snapshot:"snapshot() captures the attached window; a capture failure retains the attachment, so request another snapshot without replaying prior input",getState:"getState() returns {session}; focused is sampled on attach, snapshot and input, not a live poll; null means unavailable",typeText:"typeText(text): up to 8192 UTF-8 bytes, existing target keyboard responder",keyPress:"keyPress(key, modifiers=[]): letters accept lowercase or uppercase without implicitly adding Shift; Enter, Tab, Escape, arrows, letters/digits, F1-F20, Minus, Equal, BracketLeft, BracketRight, Backslash, Semicolon, Quote, Comma, Period, Slash, Backquote; Shift,Control,Alt,Meta (Meta=Command on macOS, Alt=Option)",scroll:"scroll(deltaY, deltaX=0, point?): pixel deltas, positive down/right",wait:"wait(ms): 0-10000 ms; use this instead of setTimeout (not available in QuickJS); use timeline atMs for tightly timed sequences",click:"click(point?, options={button:left,modifiers:[],holdMs:150}) rapidly moves the custom cursor before one ordinary click with automatic target-only preparation; omitted point uses the agent cursor",preparedPointerPress:"preparedPointerPress(point, holdMs=150) queues target-only AppKit activation and key-window preparation then one unmodified pointer press in the same native request; experimental, no foreground/raise request; receipt activation:true and delivery unverified",prepareWindowInput:"prepareWindowInput() requests target-only AppKit activation without requesting WindowServer foreground or raising; no mouse/modifier input; experimental, inspect receipt effects",requestFocus:"requestFocus() activates and raises the attached window; sends no click",commandClick:"commandClick(point, holdMs=150) sends a real Command-modified mouse press without requesting focus",pointerPress:"pointerPress(point, holdMs=150, modifiers=[], button=left): left/right/middle/back/forward; automatically prepares unmodified presses; explicit Shift,Control,Alt,Meta retain modified delivery; modifiers are NOT held timeline keys",inputTimeline:"inputTimeline(frames): [{atMs:0,pointerDown:{x:100,y:200}},{atMs:150,pointerUp:true}]; keyDown/keyUp are arrays; pointerUp is a boolean, not a point; pointerButton (left/right/middle/back/forward) and pointerModifiers only on pointerDown; keyModifiers only with keyDown, retained for matching keyUp and cancellation cleanup; every unmodified pointerDown automatically prepares its window immediately before dispatch; known gaps receive automatic spline cursor travel, so do not add manual cursor moves",clickDrag:"clickDrag(start,end,durationMs=200) automatically prepares the window immediately before one hold/move/release",keyChord:"keyChord(keys,holdMs=500,modifiers=[]): letters are case-insensitive; Meta/Control/Alt/Shift may be in keys or modifiers",mediaKey:"mediaKey(key,modifiers=[]): PlayPause, NextTrack, PreviousTrack, FastForward, Rewind, VolumeUp, VolumeDown, VolumeMute. Explicit SYSTEM-WIDE consumer key, not limited to attached window; only use for requested playback/volume control"}, limits:{scriptBytes:2097152,hostCalls:16384,timelineFrames:131072,timelineMs:7200000,hostActionBytes:15728640,outputBytes:32768,maxHeldKeys:16,maxSnapshots:2,maxWallMs:7500000}, notes:"Use one native timeline for a preplanned stable interface to avoid model round trips between music chunks. Ordinary unmodified clicks without future timing keep cubic ease-out travel (fast start, decelerating arrival) in up to 90 ms. For planned clicks use one inputTimeline: the cursor follows timed cubic splines across the full button-up gaps, using neighboring click positions and smoothly varying speed to arrive at each pointerDown without changing the score. An initial atMs greater than zero allows travel to the first click; zero-gap presses snap. Future branches and separate awaited calls are not predicted; do not pre-run JavaScript to discover them. Overdue cosmetic travel frames are skipped rather than delaying native input further. Native timeline requests use the full bounded performance budget, not scheduled duration plus five seconds. Stop remains immediate and releases held input. Drag follows actual native motion. No automatic foreground switch or retries after uncertain input. Command is visible to the target and may change link/selection behavior. An installed helper update requires a worker restart to replace an already running helper."};
+      const info = {apiVersion:18, examples:{commandK:"await cua.keyPress('k', ['Meta'])",commandChord:"await cua.keyChord(['k'], 500, ['Meta'])",combinedChord:"await cua.keyChord(['Meta', 'k'])"},receipt:"dispatched means all event-post calls completed, not that the app accepted input. windowDelivery:unverified requires a fresh screenshot to confirm the intended UI result. unknown means interrupted or uncertain dispatch; never blindly replay input. requestFocus intentionally raises the window; ordinary clicks never do so automatically.",quickStart:{script:"await cua.openWindow({application:\"Brave\",title:\"Piano\"})",notes:"Use partial application/title text for the requested existing window. openWindow searches, attaches a unique match, and returns a screenshot. No initial reset, help-plus-inventory dump, exact-title loop, click or focus request is needed. Reuse the attachment for subsequent input; snapshot again when needed."}, methods:{openWindow:"openWindow({application?,title?}) searches existing windows, attaches one unique match and captures it; returns status attached, not-found, or choose-window with candidates; does not launch/focus/click",findWindows:"findWindows({application?,title?}) scans all target pages and returns {targets,truncated}, up to 32 matches; case-insensitive substring matching, windows only; inspect candidates before attaching",targets:"targets({after?}) returns one inventory page; nextCursor continues it",attach:"attach({targetId,targetGeneration}) uses the selected target id and generation",snapshot:"snapshot() captures the attached window; a capture failure retains the attachment, so request another snapshot without replaying prior input",getState:"getState() returns {session}; focused is sampled on attach, snapshot and input, not a live poll; null means unavailable",typeText:"typeText(text): up to 8192 UTF-8 bytes, existing target keyboard responder",keyPress:"keyPress(key, modifiers=[]): letters accept lowercase or uppercase without implicitly adding Shift; Enter, Tab, Escape, arrows, letters/digits, F1-F20, Minus, Equal, BracketLeft, BracketRight, Backslash, Semicolon, Quote, Comma, Period, Slash, Backquote; Shift,Control,Alt,Meta (Meta=Command on macOS, Alt=Option)",scroll:"scroll(deltaY, deltaX=0, point?): pixel deltas, positive down/right",wait:"wait(ms): 0-10000 ms; use this instead of setTimeout (not available in QuickJS); use timeline atMs for tightly timed sequences",click:"click(point?, options={button:left,modifiers:[],holdMs:150}) rapidly moves the custom cursor before one ordinary click with automatic target-only preparation; omitted point uses the agent cursor",preparedPointerPress:"preparedPointerPress(point, holdMs=150) queues target-only AppKit activation and key-window preparation then one unmodified pointer press in the same native request; experimental, no foreground/raise request; receipt activation:true and delivery unverified",prepareWindowInput:"prepareWindowInput() requests target-only AppKit activation without requesting WindowServer foreground or raising; no mouse/modifier input; experimental, inspect receipt effects",requestFocus:"requestFocus() activates and raises the attached window; sends no click",commandClick:"commandClick(point, holdMs=150) sends a real Command-modified mouse press without requesting focus",pointerPress:"pointerPress(point, holdMs=150, modifiers=[], button=left): left/right/middle/back/forward; automatically prepares unmodified presses; explicit Shift,Control,Alt,Meta retain modified delivery; modifiers are NOT held timeline keys",inputTimeline:"inputTimeline(frames): [{atMs:0,pointerDown:{x:100,y:200}},{atMs:150,pointerUp:true}]; keyDown/keyUp are arrays; pointerUp is a boolean, not a point; pointerButton (left/right/middle/back/forward) and pointerModifiers only on pointerDown; keyModifiers only with keyDown, retained for matching keyUp and cancellation cleanup; every unmodified pointerDown automatically prepares its window immediately before dispatch; known gaps receive automatic spline cursor travel, so do not add manual cursor moves",clickDrag:"clickDrag(start,end,durationMs=200) automatically prepares the window immediately before one hold/move/release",keyChord:"keyChord(keys,holdMs=500,modifiers=[]): letters are case-insensitive; Meta/Control/Alt/Shift may be in keys or modifiers",mediaKey:"mediaKey(key,modifiers=[]): PlayPause, NextTrack, PreviousTrack, FastForward, Rewind, VolumeUp, VolumeDown, VolumeMute. Explicit SYSTEM-WIDE consumer key, not limited to attached window; only use for requested playback/volume control"}, limits:{scriptBytes:2097152,hostCalls:16384,timelineFrames:131072,timelineMs:null,hostActionBytes:15728640,outputBytes:32768,maxHeldKeys:16,maxSnapshots:2,maxWallMs:null}, notes:"Use one native timeline for a preplanned stable interface to avoid model round trips between music chunks. Ordinary unmodified clicks without future timing keep cubic ease-out travel (fast start, decelerating arrival) in up to 90 ms. For planned clicks use one inputTimeline: the cursor follows timed cubic splines across the full button-up gaps, using neighboring click positions and smoothly varying speed to arrive at each pointerDown without changing the score. An initial atMs greater than zero allows travel to the first click; zero-gap presses snap. Future branches and separate awaited calls are not predicted; do not pre-run JavaScript to discover them. Overdue cosmetic travel frames are skipped rather than delaying native input further. Native timelines and managed evaluations have no elapsed-time cutoff. A full 150-second piece belongs in one inputTimeline call; await completion and any outer executor continuation. Do not split a score to satisfy an invented short tool limit. Stop remains immediate and releases held input. Drag follows actual native motion. No automatic foreground switch or retries after uncertain input. Command is visible to the target and may change link/selection behavior. Helper failure recovery starts a fresh process on a new authorized observation without replaying input. Only loading newly installed executable code requires replacing the running helper; do not prescribe a worker restart for ordinary script errors."};
       if (topic === undefined) return info;
       const group = {key:['keyPress','keyChord','inputTimeline'],type:['typeText','keyPress'],mouse:['click','pointerPress','clickDrag','scroll'],focus:['requestFocus','prepareWindowInput','getState']}[topic] || [topic];
       const methods = Object.fromEntries(Object.entries(info.methods).filter(([name]) => group.includes(name)));
@@ -434,10 +434,14 @@ impl Session {
         cancellation: Cancellation,
     ) -> Result<()> {
         cancellation.check()?;
-        if source.len() > MAX_SOURCE || !(1..=MAX_WALL_TIMEOUT_MS).contains(&wall_timeout_ms) {
+        if source.len() > MAX_SOURCE || wall_timeout_ms > MAX_WALL_TIMEOUT_MS {
             return Err(capacity());
         }
-        let wall_limit = Duration::from_millis(wall_timeout_ms);
+        let wall_limit = if wall_timeout_ms == 0 {
+            Duration::MAX
+        } else {
+            Duration::from_millis(wall_timeout_ms)
+        };
         let started = Instant::now();
         let clock = Rc::new(Cell::new(ActiveClock::default()));
         let fault = {
@@ -841,7 +845,7 @@ pub(crate) fn spawn(
                     receiver.try_recv().ok()
                 } else {
                     let remaining = sessions.values().filter_map(|session| session.active.as_ref())
-                        .map(|active| active.wall_limit.saturating_sub(active.started.elapsed())).min();
+                        .filter(|active| active.wall_limit != Duration::MAX).map(|active| active.wall_limit.saturating_sub(active.started.elapsed())).min();
                     let received = match remaining {
                         Some(remaining) => receiver.recv_timeout(remaining),
                         None => receiver.recv().map_err(|_| crossbeam_channel::RecvTimeoutError::Disconnected),
@@ -1283,7 +1287,7 @@ mod tests {
         let help = session.step().unwrap().unwrap();
         assert_eq!(help["limits"]["scriptBytes"], MAX_SOURCE);
         assert_eq!(help["limits"]["hostCalls"], MAX_HOST_CALLS);
-        assert_eq!(help["limits"]["maxWallMs"], MAX_WALL_TIMEOUT_MS);
+        assert_eq!(help["limits"]["maxWallMs"], serde_json::Value::Null);
         assert!(receiver.is_empty());
         session.clear_active();
         // Generate a long score in JS, validate and serialize the actual host
@@ -1546,7 +1550,7 @@ mod tests {
             .start(
                 1,
                 "await cua.getState()".into(),
-                default_wall_timeout_ms(),
+                45_000,
                 Cancellation::default(),
             )
             .unwrap();
@@ -1574,9 +1578,38 @@ mod tests {
     }
 
     #[test]
+    fn untimed_host_playback_survives_long_wait_and_still_cancels() {
+        let (frames, _receiver) = crossbeam_channel::bounded(4);
+        let binding: SessionBinding = serde_json::from_value(
+            json!({"sessionId":"unlimited","workerId":"worker","chatId":"chat"}),
+        )
+        .unwrap();
+        let mut session = Session::new(binding, frames).unwrap();
+        let cancel = Cancellation::default();
+        session
+            .start(
+                1,
+                "await cua.getState()".into(),
+                default_wall_timeout_ms(),
+                cancel.clone(),
+            )
+            .unwrap();
+        for seconds in [150, 7201, 86400] {
+            session.active.as_mut().unwrap().started =
+                Instant::now() - Duration::from_secs(seconds);
+            assert!(session.step().is_none());
+        }
+        cancel.cancel();
+        assert_eq!(
+            session.step().unwrap().unwrap_err().code,
+            ErrorCode::Cancelled
+        );
+    }
+
+    #[test]
     fn trusted_wall_deadline_is_bounded_before_evaluation_starts() {
         let mut session = deadline_session();
-        for limit in [0, MAX_WALL_TIMEOUT_MS + 1, u64::MAX] {
+        for limit in [MAX_WALL_TIMEOUT_MS + 1, u64::MAX] {
             let error = session
                 .start(1, "42".into(), limit, Cancellation::default())
                 .unwrap_err();
@@ -1643,7 +1676,7 @@ mod tests {
             .start(
                 2,
                 "await cua.getState()".into(),
-                default_wall_timeout_ms(),
+                45_000,
                 Cancellation::default(),
             )
             .unwrap();

@@ -34,7 +34,7 @@ pub struct InputFrame {
 pub fn validate(frames: &[InputFrame]) -> Result<()> {
     let invalid = || {
         CuaError::invalid(
-            "Invalid input timeline: use 1-131072 ordered frames within 7200000 ms, supported keys, and balanced down/up events (maximum 16 held keys and one pointer).",
+            "Invalid input timeline: use 1-131072 ordered frames at nonnegative safe-integer millisecond timestamps, supported keys, and balanced down/up events (maximum 16 held keys and one pointer).",
         )
     };
     if frames.is_empty() || frames.len() > 131072 {
@@ -45,7 +45,7 @@ pub fn validate(frames: &[InputFrame]) -> Result<()> {
     let mut at = 0;
     for frame in frames {
         if frame.at_ms < at
-            || frame.at_ms > 7_200_000
+            || frame.at_ms > 9_007_199_254_740_991
             || frame.key_down.len() > 16
             || frame.key_up.len() > 16
             || (frame.pointer_button.is_some() && frame.pointer_down.is_none())
@@ -758,11 +758,19 @@ mod tests {
     fn validates_balanced_overlapping_notes() {
         let parse = |v| serde_json::from_value::<Vec<InputFrame>>(v).unwrap();
         assert!(validate(&parse(serde_json::json!([{"atMs":0,"keyDown":["C","B","M"]},{"atMs":500,"keyUp":["C","B","M"]}]))).is_ok());
+        for at_ms in [150_000u64, 7_200_001, 86_400_000, 9_007_199_254_740_991] {
+            assert!(
+                validate(&parse(
+                    serde_json::json!([{"atMs":0,"keyDown":["C"]},{"atMs":at_ms,"keyUp":["C"]}])
+                ))
+                .is_ok()
+            );
+        }
         for value in [
             serde_json::json!([{"atMs":0,"keyDown":["C"]}]),
             serde_json::json!([{"atMs":0,"keyUp":["C"]}]),
             serde_json::json!([{"atMs":0,"keyDown":["C","C"]}]),
-            serde_json::json!([{"atMs":7200001}]),
+            serde_json::json!([{"atMs":9007199254740992u64}]),
         ] {
             assert!(validate(&parse(value)).is_err());
         }

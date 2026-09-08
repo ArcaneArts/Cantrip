@@ -32,7 +32,9 @@ series from `cantrip_codex/patches/` only to the ignored build copy. The series
 preserves explicit empty `dynamicTools` semantics on resume, omits empty
 reasoning objects, removes OpenAI-only tools from compatible-provider requests,
 adds the active-turn pause boundary used by Cantrip, and normalizes whole-number
-tool arguments that providers encode as floating-point JSON values. Codex 0.153
+tool arguments that providers encode as floating-point JSON values. The managed
+CUA configuration uses `tool_timeout_sec: 0`; a narrow patch maps that explicit
+value to untimed MCP calls, while other servers retain their configured deadlines. Codex 0.153
 now natively exposes MCP namespace tools as portable function aliases for
 providers without namespace support, so the former downstream compatibility
 patch has been retired without removing that behavior. Cantrip sends the empty

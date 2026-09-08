@@ -43,7 +43,7 @@ export interface CuaTransportOptions {
 interface Pending {
   resolve: (response: { data: unknown; payload: Buffer }) => void;
   reject: (error: Error) => void;
-  timer: NodeJS.Timeout;
+  timer: NodeJS.Timeout | undefined;
   disposeSignal: () => void;
   onHostCall: CuaRequestOptions["onHostCall"];
   hostController: AbortController;
@@ -361,21 +361,30 @@ class ChildTransport implements CuaTransport {
       return Promise.reject(new CuaProcessError("closed", "not-sent"));
     if (signal?.aborted)
       return Promise.reject(new CuaProcessError("cancelled", "not-sent"));
+    const untimed =
+      timeoutMs === 0 &&
+      operation &&
+      typeof operation === "object" &&
+      "operation" in operation &&
+      ["javascript.evaluate", "input.perform"].includes(
+        String(operation.operation),
+      );
     if (
-      !Number.isSafeInteger(timeoutMs) ||
-      timeoutMs < 1 ||
-      timeoutMs >
-        (operation &&
-        typeof operation === "object" &&
-        "operation" in operation &&
-        operation.operation === "javascript.evaluate"
-          ? 7_502_000
-          : operation &&
-              typeof operation === "object" &&
-              "operation" in operation &&
-              operation.operation === "input.perform"
-            ? 7_205_000
-            : 120_000)
+      !untimed &&
+      (!Number.isSafeInteger(timeoutMs) ||
+        timeoutMs < 1 ||
+        timeoutMs >
+          (operation &&
+          typeof operation === "object" &&
+          "operation" in operation &&
+          operation.operation === "javascript.evaluate"
+            ? 7_502_000
+            : operation &&
+                typeof operation === "object" &&
+                "operation" in operation &&
+                operation.operation === "input.perform"
+              ? 7_205_000
+              : 120_000))
     )
       return Promise.reject(new CuaProcessError("invalid-request", "not-sent"));
     // Settled cancellation still consumes a native correlation until its reply
@@ -398,10 +407,9 @@ class ChildTransport implements CuaTransport {
     this.#requestId = requestId;
     return new Promise((resolve, reject) => {
       const abort = () => this.#cancel(requestId, "cancelled");
-      const timer = setTimeout(
-        () => this.#cancel(requestId, "timeout"),
-        timeoutMs,
-      );
+      const timer = untimed
+        ? undefined
+        : setTimeout(() => this.#cancel(requestId, "timeout"), timeoutMs);
       this.#pending.set(requestId, {
         resolve,
         reject,

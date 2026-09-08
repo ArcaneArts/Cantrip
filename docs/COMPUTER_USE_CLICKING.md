@@ -93,8 +93,8 @@ Native down/up events remain ordered and are never dropped by this optimization.
 API 15 uses the full known gap for a timed spline instead of concentrating travel in the final 60–90 ms. Timing remains best effort.
 
 A timeline's final `atMs` schedules input; it is not a completion deadline. The
-native request now uses the existing 2-hour-plus-5-second performance budget,
-subject to the enclosing 125-minute script budget and immediate Stop/revocation.
+native request and managed evaluation have no elapsed-time cutoff. Explicit
+Stop/revocation still cancels them immediately.
 Previously, a 23.108-second, 958-frame piano sequence was cancelled after roughly
 28.2 seconds, matching the old final-`atMs`-plus-5-second timeout. A fake-clock
 regression reproduces that cutoff without native input. The fix allows processing
@@ -303,7 +303,7 @@ Unlike repeated `keyPress` calls, the whole timeline crosses the worker and
 native boundary once. It counts as one JavaScript host call. Scheduling remains
 best effort, not sample-accurate audio.
 
-A timeline permits 1–131,072 ordered frames over at most two hours, with up to 16
+A timeline permits 1–131,072 ordered frames with no duration cap, with up to 16
 keys held at once. Downs and ups must balance. Stop/error releases only the keys
 or button whose downs were actually dispatched, including cancellation partway
 through a chord. Held state never escapes the native operation.
@@ -367,7 +367,7 @@ There is no automatic fallback or retry. `preparedPointerPress` remains availabl
 for callers using API 5. Explicit modified presses retain their previous route.
 
 The default hold is 150 ms. Ordinary `pointerPress` keeps its prior timeline
-range of 0–7200000 ms; zero still sends a down/up pair. Stop releases held input.
+range of nonnegative JavaScript-safe integer milliseconds; zero still sends a down/up pair. Stop releases held input.
 Reference-based `cua.press(reference)` remains an explicit Accessibility action.
 Keyboard timelines, drag, scrolling, and explicit low-level legacy click delivery
 are unchanged by this default-method promotion.
@@ -714,12 +714,15 @@ An installed update requires restarting the worker/dev session; `js_reset` only
 resets JavaScript and does not replace a running helper binary.
 
 Generate a whole preplanned score in one `inputTimeline` call: up to 131,072 frames
-and two hours. A managed script allows 2 MiB of UTF-8 source, 16,384 host calls,
-and 125 minutes total wall time including approvals. Generated host actions allow
+with nonnegative safe-integer millisecond timestamps. There is no performance
+duration cap or managed script wall-time cutoff. A full 150-second piece belongs
+in one call; await the outer executor continuation rather than abandoning playback.
+A managed script allows 2 MiB of UTF-8 source and 16,384 host calls. Generated host actions allow
 15 MiB; native/control envelopes allow 16 MiB. The JS heap is 128 MiB and active
 JS computation has a 10-second budget, excluding native playback waits. Output
 remains 32 KiB with two model images. Do not return the entire generated score.
-MCP, HTTP headers/body, and native input deadlines accommodate long playback.
+Managed MCP tool calls and native input have no elapsed-time deadline; capture
+and protocol handshakes still have their own request deadlines.
 These bounds do not require repeated model turns or tiny music chunks. Stop still
 cancels playback and releases held input. Real-time piano QA remains user-owned.
 
@@ -802,7 +805,7 @@ candidate. The helper allocates and addresses the tracking/down/up events first,
 then queues target-only preparation followed immediately by one unmodified press
 in the same native request. There is no model round trip, extra/primer click,
 Command flag, foreground request, window raise, or prior-app deactivation.
-The original API 5 hold range was 1–2000 ms; API 6 preserves the ordinary pointer method's existing 0–7200000 ms range. Ordinary
+The original API 5 hold range was 1–2000 ms; API 6 preserves the ordinary pointer method's existing nonnegative safe-integer millisecond range. Ordinary
 `pointerPress`, keyboard timelines, and explicit Command-click are unchanged.
 
 Preparation failure prevents the press. After preparation is dispatched, any
@@ -960,3 +963,19 @@ Manual retest: keep Discord visible but unfocused, open it with CUA, check
 then Escape. Report the input receipt and observed navigation. Avoid sending a
 message as part of this diagnostic. Repeat with Discord focused only as a
 separate comparison if needed.
+
+### API 18: playback lifetime and recovery
+
+Timeline duration is controlled by its timestamps, not a tool timeout. Managed
+CUA sets `wallTimeoutMs: 0` and `tool_timeout_sec: 0`; the bundled Codex patch
+maps the latter to the existing untimed MCP client path. Other MCP servers keep
+their configured deadlines. A diagnostic caller may still explicitly request a
+bounded native JavaScript deadline. JS computation and memory limits do not count
+native playback time and remain in place.
+
+Human mouse movement, typing, clicking and focus changes are not cancellation
+signals. A user can play alongside the agent. Explicit Stop, revocation, shutdown,
+closing the target and actual native errors still terminate affected work.
+Fresh authorized observations may replace a failed helper after it exits, without
+replaying input or requiring a worker restart. A helper failure reports its actual
+cause instead of the internal teardown cancellation.

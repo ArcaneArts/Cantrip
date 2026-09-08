@@ -40,7 +40,6 @@ import {
 } from "./client.js";
 import {
   CANTRIP_CUA_MCP_MAX_RESPONSE_BYTES,
-  CANTRIP_CUA_MCP_OPERATION_TIMEOUT_MS,
   cuaMcpBrokerRequestSchema,
   parseCuaMcpResult,
   type CuaMcpExecutor,
@@ -461,10 +460,8 @@ export class CantripMcpBroker {
         return;
       }
       stored.computerUseRequests.add(controller);
-      const signal = AbortSignal.any([
-        controller.signal,
-        AbortSignal.timeout(CANTRIP_CUA_MCP_OPERATION_TIMEOUT_MS),
-      ]);
+      // Playback is governed by the script and live execution cancellation.
+      const signal = controller.signal;
       signal.throwIfAborted();
       const result = parseCuaMcpResult(
         await this.#executeComputerUse(
