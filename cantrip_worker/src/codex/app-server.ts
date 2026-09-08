@@ -97,6 +97,10 @@ import {
 import WebSocket, { type RawData } from "ws";
 
 import type { CodexRuntime, CodexRuntimeDiagnostic } from "./runtime.js";
+import {
+  readCodexNativeHistory,
+  type CodexNativeHistorySnapshot,
+} from "./native-history.js";
 import { attachmentPromptText } from "./attachment-inputs.js";
 import {
   codexModelProviderName,
@@ -1894,6 +1898,7 @@ export type GoalRuntimeOptions = Pick<
 >;
 
 export interface PrepareManagedThreadOptions extends GoalRuntimeOptions {
+  canonicalHistory?: boolean;
   executionGate?: { runnerGeneration: string };
   executionProfile: RunAgentTurnOptions["executionProfile"];
   subagentDefaults: RuntimeSubagentDefaults | null;
@@ -2100,7 +2105,10 @@ function managedThreadConfiguration(
       RunAgentTurnOptions,
       "mcpServers" | "executionProfile" | "subagentDefaults"
     >
-  > & { executionGate?: { runnerGeneration: string } },
+  > & {
+    executionGate?: { runnerGeneration: string };
+    canonicalHistory?: boolean;
+  },
   hasGitMetadata: boolean,
 ) {
   const profile = options.executionProfile ?? "ide";
@@ -2115,6 +2123,9 @@ function managedThreadConfiguration(
     ).developerInstructions,
     multiAgentEnabled: enabled,
     ...(options.executionGate ? { executionGate: options.executionGate } : {}),
+    ...(options.canonicalHistory === undefined
+      ? {}
+      : { canonicalHistory: options.canonicalHistory }),
     subagentModel: defaults?.model.name ?? null,
     subagentReasoningEffort: defaults?.model.reasoningEffort ?? null,
   };
@@ -4173,7 +4184,11 @@ export class CodexAppServer implements CodexRuntime {
       epoch: number;
       options: Pick<
         PrepareManagedThreadOptions,
-        "mcpServers" | "executionProfile" | "subagentDefaults" | "executionGate"
+        | "mcpServers"
+        | "executionProfile"
+        | "subagentDefaults"
+        | "executionGate"
+        | "canonicalHistory"
       >;
     }
   >();
@@ -5849,6 +5864,19 @@ export class CodexAppServer implements CodexRuntime {
     return this.readExternalThread(options);
   }
 
+  async readNativeHistory(
+    threadId: string,
+  ): Promise<CodexNativeHistorySnapshot> {
+    const generation = this.#nativeTransportGeneration;
+    const snapshot = await readCodexNativeHistory(
+      (method, params) => this.request(method, params),
+      threadId,
+    );
+    if (generation !== this.#nativeTransportGeneration)
+      throw new Error("The native history transport changed during the read.");
+    return snapshot;
+  }
+
   private async readExternalThread(options: {
     cwd: string;
     threadId: string;
@@ -7007,6 +7035,7 @@ export class CodexAppServer implements CodexRuntime {
       onThreadIdentified?: PrepareManagedThreadOptions["onThreadIdentified"];
       managedConfiguration?: boolean;
       executionGate?: PrepareManagedThreadOptions["executionGate"];
+      canonicalHistory?: PrepareManagedThreadOptions["canonicalHistory"];
     },
     create = true,
     intent: "configure" | "preserve" = "configure",
@@ -7053,6 +7082,7 @@ export class CodexAppServer implements CodexRuntime {
       onThreadIdentified?: PrepareManagedThreadOptions["onThreadIdentified"];
       managedConfiguration?: boolean;
       executionGate?: PrepareManagedThreadOptions["executionGate"];
+      canonicalHistory?: PrepareManagedThreadOptions["canonicalHistory"];
     },
     create: boolean,
     intent: "configure" | "preserve",
@@ -7078,6 +7108,8 @@ export class CodexAppServer implements CodexRuntime {
             ? retained.options.subagentDefaults
             : options.subagentDefaults,
         executionGate: options.executionGate ?? retained.options.executionGate,
+        canonicalHistory:
+          options.canonicalHistory ?? retained.options.canonicalHistory,
       };
     }
     let preparingThreadId = options.threadId;
@@ -7343,6 +7375,7 @@ export class CodexAppServer implements CodexRuntime {
     threadId: string,
     options: Pick<RunAgentTurnOptions, "cwd" | "mcpServers"> & {
       executionGate?: PrepareManagedThreadOptions["executionGate"];
+      canonicalHistory?: PrepareManagedThreadOptions["canonicalHistory"];
       executionProfile?: RunAgentTurnOptions["executionProfile"];
       subagentDefaults?: RuntimeSubagentDefaults | null;
     },
@@ -7384,6 +7417,9 @@ export class CodexAppServer implements CodexRuntime {
         ...(options.executionGate
           ? { executionGate: options.executionGate }
           : {}),
+        ...(options.canonicalHistory === undefined
+          ? {}
+          : { canonicalHistory: options.canonicalHistory }),
       }),
     });
     await this.ensureManagedMcpReady(
