@@ -1,3 +1,9 @@
+import { protectChatInput } from "./protect-chat-input.js";
+import {
+  managedConsoleSessionContext,
+  prepareManagedConsoleLaunch,
+} from "../../terminals/managed-session.js";
+import { toChatAttachmentOpaqueSummary } from "../../db/repository.js";
 import { randomUUID } from "node:crypto";
 
 import {
@@ -53,7 +59,9 @@ interface TaskGoalRecoveryDependencies extends Pick<
 
 interface TaskGoalLiveMutationDependencies extends Pick<
   LiveMutationRuntime,
-  "publishChatInvalidation"
+  | "publishChatInvalidation"
+  | "appendLiveEncryptedChatMessage"
+  | "taskMessageServerStub"
 > {}
 
 interface TaskGoalModelRoutingDependencies extends Pick<
@@ -89,6 +97,8 @@ export function createTaskGoalRuntime({
   continuePendingWorktreeTransition,
   dispatchNextQueuedPrompt,
   publishChatInvalidation,
+  appendLiveEncryptedChatMessage,
+  taskMessageServerStub,
   queueTaskScheduleTick,
   repository,
   resolveModelId,
@@ -288,7 +298,10 @@ export function createTaskGoalRuntime({
     } = {},
   ) {
     if (!input.text) throw new Error("Goal mode needs a text objective.");
-    await resolvePromptAttachments(context, input.attachmentIds);
+    const attachments = await resolvePromptAttachments(
+      context,
+      input.attachmentIds,
+    );
     const modelId = await resolveModelId(context, input.modelId);
     const requestedReasoningEffort =
       input.reasoningEffort !== undefined
@@ -303,6 +316,89 @@ export function createTaskGoalRuntime({
       }),
     );
     const runtime = routePairs[0]!.root.runtime;
+    if (managedConsoleSessionContext(context)) {
+      const configuredContext = {
+        ...context,
+        reasoningEffort: requestedReasoningEffort,
+        modelConfiguration: modelConfigurationSchema.parse({
+          ...context.modelConfiguration,
+          modelId,
+          reasoningEffort: requestedReasoningEffort,
+        }),
+      };
+      const managed = await prepareManagedConsoleLaunch(
+        configuredContext,
+        runtime,
+        {
+          ownerId: applicationOwnerId(),
+          bridge,
+          repository,
+          routePairsForConfiguration,
+        },
+      );
+      const idempotencyKey = options.idempotencyKey ?? input.idempotencyKey;
+      let appended = await repository.getEncryptedMessageByIdempotencyKey(
+        applicationOwnerId(),
+        context.chatId,
+        idempotencyKey,
+      );
+      if (!appended) {
+        const protectedInput = await protectChatInput(
+          bridge,
+          context.workerId,
+          { ...input, mode: "goal", idempotencyKey },
+          attachments.map(toChatAttachmentOpaqueSummary),
+          requestedReasoningEffort,
+        );
+        appended = await appendLiveEncryptedChatMessage(
+          applicationOwnerId(),
+          context.chatId,
+          protectedInput,
+        );
+      }
+      if (!appended) throw new Error("Encrypted Chat not found.");
+      const operationId = `gui-goal:${appended.id}`;
+      const previous = await repository.nativeCommands.lookup(
+        applicationOwnerId(),
+        context.workerId,
+        operationId,
+      );
+      if (previous && previous.status !== "applied")
+        throw new Error(
+          `The native goal command is ${previous.status}; its saved operation cannot be replayed.`,
+        );
+      const result = chatGoalResponseSchema.parse(
+        await bridge.request(
+          context.workerId,
+          previous
+            ? {
+                type: "chat.goal.get",
+                chatId: context.chatId,
+                cwd: context.cwd,
+                threadId: managed.threadId!,
+                model: managed.model,
+                provider: managed.provider,
+                permissionProfileId:
+                  effectivePermissionProfile(context).effectiveId,
+              }
+            : {
+                ...managed,
+                type: "chat.goal.create",
+                operationId,
+                chatId: context.chatId,
+                cwd: context.cwd,
+                permissionProfileId:
+                  effectivePermissionProfile(context).effectiveId,
+                objective: input.text,
+                tokenBudget: options.tokenBudget ?? null,
+              },
+        ),
+      );
+      if (!result.goal) throw new Error("Codex did not create the goal.");
+      publishChatInvalidation(context.chatId, "chat-goal", null, context);
+      return { goal: result, message: taskMessageServerStub(appended) };
+    }
+
     const result = chatGoalResponseSchema.parse(
       await bridge.request(context.workerId, {
         type: "chat.goal.create",
@@ -594,6 +690,30 @@ export function createTaskGoalRuntime({
     if (context.threadId) {
       const runtime = await runtimeForContext(context);
       if (!runtime) throw new Error("Selected model was not found.");
+      if (managedConsoleSessionContext(context)) {
+        const managed = await prepareManagedConsoleLaunch(context, runtime, {
+          ownerId: applicationOwnerId(),
+          bridge,
+          repository,
+          routePairsForConfiguration,
+        });
+        const result = (await bridge.request(context.workerId, {
+          ...managed,
+          type: "chat.automation.resume",
+          chatId: context.chatId,
+          cwd: context.cwd,
+          threadId: managed.threadId!,
+          session: managed.session!,
+          subagentDefaults: managed.subagentDefaults ?? null,
+          mcpServers: managed.mcpServers ?? [],
+          planMode: managed.planMode ?? "default",
+          permissionProfileId: effectivePermissionProfile(context).effectiveId,
+        })) as { resumed?: unknown };
+        if (typeof result?.resumed !== "boolean")
+          throw new Error("The native automation resume receipt is invalid.");
+        if (!result.resumed) await dispatchNextQueuedPrompt(chatId);
+        return;
+      }
       if (context.experience === "task") {
         const task = await repository.tasks.get(
           applicationOwnerId(),

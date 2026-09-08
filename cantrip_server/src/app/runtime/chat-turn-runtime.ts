@@ -1,4 +1,10 @@
-import { randomUUID } from "node:crypto";
+import { finishManagedGui } from "./finish-managed-gui.js";
+import { protectChatInput } from "./protect-chat-input.js";
+import {
+  managedConsoleSessionContext,
+  prepareManagedConsoleLaunch,
+} from "../../terminals/managed-session.js";
+import { createHash, randomUUID } from "node:crypto";
 
 import {
   NATIVE_SUBAGENT_PROTOCOL_VERSION,
@@ -412,40 +418,13 @@ export function createChatTurnRuntime({
       !encryptedChatMessages &&
       !options.structuredResult
     ) {
-      const userMessage = chatMessageOpaqueContentSchema.parse(
-        await bridge.request(context.workerId, {
-          type: "chat.message.protect",
-          message: {
-            id: randomUUID(),
-            role: options.messageRole ?? "user",
-            mode: turnMode,
-            reasoningEffort: requestedReasoningEffort,
-            content: [
-              ...(input.text
-                ? [{ type: "text" as const, text: input.text }]
-                : []),
-              ...attachments.map((attachment) => ({
-                type: "attachment" as const,
-                attachment: {
-                  id: attachment.id,
-                  chatId: attachment.chatId,
-                  fileName: "Protected attachment",
-                  mimeType: "application/octet-stream",
-                  sizeBytes: attachment.sizeBytes,
-                  kind: "file" as const,
-                  source: "file" as const,
-                  status: attachment.status,
-                  previewText: null,
-                  createdAt: attachment.createdAt,
-                },
-              })),
-            ],
-            idempotencyKey: input.idempotencyKey,
-          },
-          attachments: attachments.map((attachment) =>
-            toChatAttachmentOpaqueSummary(attachment),
-          ),
-        }),
+      const userMessage = await protectChatInput(
+        bridge,
+        context.workerId,
+        { ...input, mode: turnMode },
+        attachments.map(toChatAttachmentOpaqueSummary),
+        requestedReasoningEffort,
+        options.messageRole ?? "user",
       );
       encryptedChatMessages = {
         userMessage,
@@ -505,21 +484,114 @@ export function createChatTurnRuntime({
         repository.taskDispatch.markRunning(options.taskDispatchLease!),
       );
     }
-    const execution = await observeTaskTurnBootstrapStage(
-      "acquire-execution-lane",
-      () =>
-        repository.startChatExecutionLane(
-          ownerId,
-          context.chatId,
-          options.acquiringActor ?? "user",
-          options.purpose ?? "Chat turn",
-        ),
-    );
-    if (!execution || !execution.executionLaneId) {
-      throw new Error("Chat execution lane could not be acquired.");
+    const protectedAdmissionInput =
+      encryptedChatMessages?.userMessage ??
+      encryptedTaskMessages?.userMessage ??
+      options.structuredResult?.taskOperation?.userMessage;
+    const managedNativeCommands =
+      managedConsoleSessionContext(context) !== undefined;
+    if (managedNativeCommands && !protectedAdmissionInput)
+      throw new Error("Chat turn content was not encrypted.");
+    const nativeAdmission = managedNativeCommands
+      ? await observeTaskTurnBootstrapStage("acquire-execution-lane", () =>
+          repository.nativeCommands.admit(
+            ownerId,
+            {
+              workerId: context.workerId,
+              operationId: `gui:${createHash("sha256")
+                .update(
+                  JSON.stringify([
+                    ownerId,
+                    context.chatId,
+                    protectedAdmissionInput!.idempotencyKey,
+                  ]),
+                )
+                .digest("hex")}`,
+              origin: "gui",
+              method: "turn/start",
+              session: {
+                chatId: context.chatId,
+                threadId: context.threadId,
+                contextKind: context.contextKind,
+                projectId: context.projectId,
+                placementId: context.worktreeId ?? context.scratchRootId,
+                modelRouteId: context.modelRouteId,
+                providerAccountId: context.providerAccountId,
+                runtimeGeneration: null,
+                connectionId: null,
+              },
+              payloadDigest: createHash("sha256")
+                .update(JSON.stringify(protectedAdmissionInput))
+                .digest("hex"),
+              protectedPayload:
+                protectedAdmissionInput!.protectedContent.envelope,
+              expectedActivationGeneration: null,
+              intent: {
+                scope: "thread",
+                settingKeys: [],
+                expectedTurnId: null,
+                permissionProfileId:
+                  effectivePermissionProfile(context).effectiveId,
+              },
+            },
+            {
+              acquiringActor: options.acquiringActor,
+              purpose: options.purpose,
+            },
+          ),
+        )
+      : null;
+    if (nativeAdmission?.replayed)
+      throw new Error(
+        "This chat input already has a native operation receipt.",
+      );
+    const execution = nativeAdmission
+      ? nativeAdmission.execution
+      : await observeTaskTurnBootstrapStage("acquire-execution-lane", () =>
+          repository.startChatExecutionLane(
+            ownerId,
+            context.chatId,
+            options.acquiringActor ?? "user",
+            options.purpose ?? "Chat turn",
+          ),
+        );
+    const nativeCommandReceipt = nativeAdmission?.receipt;
+    if (
+      (nativeCommandReceipt && nativeCommandReceipt.status !== "accepted") ||
+      !execution?.executionLaneId
+    ) {
+      throw new Error(
+        nativeCommandReceipt?.rejectionCode ??
+          "Chat execution lane could not be acquired.",
+      );
     }
     publishChatSummary(execution.chatId, execution.projectId);
     const executionLaneId = execution.executionLaneId;
+    const finishExecution = (status: "idle" | "failed") =>
+      nativeCommandReceipt
+        ? finishManagedGui({
+            repository,
+            bridge,
+            ownerId,
+            workerId: execution.workerId,
+            receipt: nativeCommandReceipt,
+            status,
+            onAcknowledgementError: () =>
+              app.log.warn(
+                {
+                  event: "native-command.logical-completion-ack-failed",
+                  chatId: execution.chatId,
+                  operationId: nativeCommandReceipt.operationId,
+                },
+                "The worker did not acknowledge logical GUI completion.",
+              ),
+          })
+        : repository.finishChatExecutionLane(
+            execution.chatId,
+            executionLaneId,
+            status,
+          );
+
     const attribution: ChatExecutionAttribution =
       execution.contextKind === "project"
         ? {
@@ -550,9 +622,26 @@ export function createChatTurnRuntime({
             "The original Codex runtime is unavailable for this message.",
           );
         }
+        const managedRollback = managedConsoleSessionContext(execution)
+          ? await prepareManagedConsoleLaunch(execution, retryRuntime, {
+              ownerId,
+              bridge,
+              repository,
+              routePairsForConfiguration,
+            })
+          : null;
         const rollback = chatTurnRollbackAcceptedSchema.parse(
           await bridge.request(execution.workerId, {
+            ...(managedRollback
+              ? {
+                  session: managedRollback.session,
+                  subagentDefaults: managedRollback.subagentDefaults,
+                  mcpServers: managedRollback.mcpServers,
+                  planMode: managedRollback.planMode,
+                }
+              : {}),
             type: "chat.turn.rollback",
+            ...(nativeCommandReceipt ? { nativeCommandReceipt } : {}),
             executionProfile:
               execution.contextKind === "standalone"
                 ? "standalone-chat"
@@ -673,11 +762,7 @@ export function createChatTurnRuntime({
         "Agent turn accepted",
       );
     } catch (error) {
-      await repository.finishChatExecutionLane(
-        execution.chatId,
-        executionLaneId,
-        "failed",
-      );
+      await finishExecution("failed");
       publishChatSummary(execution.chatId, execution.projectId);
       throw error;
     }
@@ -968,6 +1053,7 @@ export function createChatTurnRuntime({
               execution.workerId,
               {
                 type: "chat.turn",
+                nativeCommandReceipt,
                 computerUseAuthority:
                   execution.computerUseEnabled === true
                     ? {
@@ -1839,11 +1925,7 @@ export function createChatTurnRuntime({
               );
             }
             await interruptLiveAgentInteractionRequests(execution.chatId);
-            const finished = await repository.finishChatExecutionLane(
-              execution.chatId,
-              executionLaneId,
-              "idle",
-            );
+            const finished = await finishExecution("idle");
             publishChatTurnBoundary(
               execution.chatId,
               execution.projectId,
@@ -1924,6 +2006,15 @@ export function createChatTurnRuntime({
                 ? "cancelled"
                 : "failed";
             const canRetry =
+              (!nativeCommandReceipt ||
+                (
+                  await repository.nativeCommands.get(
+                    ownerId,
+                    execution.workerId,
+                    nativeCommandReceipt.operationId,
+                    nativeCommandReceipt.operationGeneration,
+                  )
+                ).status === "accepted") &&
               (terminalReasonCode === "serverOverloaded" ||
                 (!attemptActivity && canFailOverRoute(error))) &&
               index < runtimes.length - 1;
@@ -2092,9 +2183,7 @@ export function createChatTurnRuntime({
           );
         }
         await interruptLiveAgentInteractionRequests(execution.chatId);
-        const finished = await repository.finishChatExecutionLane(
-          execution.chatId,
-          executionLaneId,
+        const finished = await finishExecution(
           interrupted || execution.contextKind === "standalone"
             ? "idle"
             : "failed",

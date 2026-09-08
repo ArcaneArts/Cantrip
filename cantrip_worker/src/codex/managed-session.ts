@@ -24,6 +24,7 @@ const associationSchema = z
     identity: z.string().regex(/^[a-f0-9]{64}$/u),
     threadId: z.string().min(1),
     prepared: z.boolean().default(false),
+    replacementOf: z.string().min(1).optional(),
   })
   .strict();
 
@@ -35,6 +36,8 @@ export interface ManagedSessionPreparation {
   configuration: Omit<PrepareManagedThreadOptions, "onThreadIdentified">;
   /** The server can acknowledge its canonical association before attachment. */
   onThreadIdentified?: (threadId: string) => Promise<void>;
+  /** Completes the canonical handoff after full preparation, while this chat remains serialized. */
+  onPrepared?: (threadId: string) => Promise<void>;
 }
 
 const digest = (value: unknown) =>
@@ -53,6 +56,27 @@ export class ManagedSessionCoordinator {
   constructor(private readonly directory: string) {}
 
   prepare(input: ManagedSessionPreparation): Promise<{ threadId: string }> {
+    return this.enqueue(input);
+  }
+
+  /** Explicit recovery from a rejected native thread, without submitting model input. */
+  replace(
+    input: ManagedSessionPreparation,
+    expectedThreadId: string,
+  ): Promise<{ threadId: string }> {
+    if (!expectedThreadId)
+      return Promise.reject(
+        new Error(
+          "A replacement requires the previous native thread identity.",
+        ),
+      );
+    return this.enqueue(input, expectedThreadId);
+  }
+
+  private enqueue(
+    input: ManagedSessionPreparation,
+    replacementOf?: string,
+  ): Promise<{ threadId: string }> {
     const key = digest([
       input.identity.serverId,
       input.identity.ownerId,
@@ -60,7 +84,9 @@ export class ManagedSessionCoordinator {
       input.identity.chatId,
     ]);
     const preceding = this.preparations.get(key) ?? Promise.resolve();
-    const result = preceding.then(() => this.prepareSerialized(key, input));
+    const result = preceding.then(() =>
+      this.prepareSerialized(key, input, replacementOf),
+    );
     const settled = result.then(
       () => {},
       () => {},
@@ -75,6 +101,7 @@ export class ManagedSessionCoordinator {
   private async prepareSerialized(
     key: string,
     input: ManagedSessionPreparation,
+    replacementOf?: string,
   ): Promise<{ threadId: string }> {
     const { configuration, identity } = input;
     const { provider } = configuration;
@@ -91,15 +118,45 @@ export class ManagedSessionCoordinator {
       provider.credentialHomeKey ?? null,
     ]);
     const previous = this.identified.get(key) ?? (await this.read(key));
-    const threadId =
+    let threadId =
       configuration.threadId ??
       (previous?.identity === fingerprint ? previous.threadId : null);
+    if (replacementOf) {
+      const matches = previous?.identity === fingerprint;
+      const resumingReplacement =
+        matches && previous.replacementOf === replacementOf;
+      if (
+        (configuration.threadId &&
+          configuration.threadId !== replacementOf &&
+          !(
+            resumingReplacement && configuration.threadId === previous.threadId
+          )) ||
+        (previous &&
+          (!matches ||
+            (previous.threadId !== replacementOf && !resumingReplacement))) ||
+        (!previous && configuration.threadId !== replacementOf)
+      )
+        throw new Error(
+          "The managed thread association changed before replacement.",
+        );
+      threadId = resumingReplacement ? previous.threadId : null;
+    }
+    const retainedReplacement =
+      replacementOf ??
+      (previous?.identity === fingerprint && previous.threadId === threadId
+        ? previous.replacementOf
+        : undefined);
     const recoveringIncomplete =
       !configuration.threadId &&
       previous?.identity === fingerprint &&
       !previous.prepared;
-    const intent =
-      threadId && !recoveringIncomplete ? configuration.intent : "configure";
+    const intent = replacementOf
+      ? threadId && previous?.prepared
+        ? "preserve"
+        : "configure"
+      : threadId && !recoveringIncomplete
+        ? configuration.intent
+        : "configure";
     const result = await input.runtime.prepareManagedThread({
       ...configuration,
       threadId,
@@ -107,10 +164,17 @@ export class ManagedSessionCoordinator {
       // arrived by opening a view. Subsequent view attachment preserves it.
       intent,
       onThreadIdentified: async (identifiedThreadId) => {
+        if (replacementOf && identifiedThreadId === replacementOf)
+          throw new Error(
+            "Native replacement returned the rejected thread identity.",
+          );
         const association: Association = {
           version: 1,
           identity: fingerprint,
           threadId: identifiedThreadId,
+          ...(retainedReplacement
+            ? { replacementOf: retainedReplacement }
+            : {}),
           prepared:
             intent === "preserve" &&
             previous?.threadId === identifiedThreadId &&
@@ -128,9 +192,11 @@ export class ManagedSessionCoordinator {
       identity: fingerprint,
       threadId: result.threadId,
       prepared: true,
+      ...(retainedReplacement ? { replacementOf: retainedReplacement } : {}),
     };
     this.identified.set(key, completed);
     await this.write(key, completed);
+    await input.onPrepared?.(result.threadId);
     return result;
   }
 

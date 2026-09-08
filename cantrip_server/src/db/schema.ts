@@ -3251,6 +3251,9 @@ export const chats = pgTable(
       .notNull()
       .default(1),
     automationPaused: boolean("automation_paused").notNull().default(false),
+    managedAutonomyStopped: boolean("managed_autonomy_stopped")
+      .notNull()
+      .default(false),
     planMode: text("plan_mode").notNull().default("default"),
     githubItemKind: text("github_item_kind"),
     githubItemNumber: integer("github_item_number"),
@@ -5387,5 +5390,136 @@ export const accountBandwidthFlushes = pgTable(
       sql`${table.entryCount} >= 0`,
     ),
     check("account_bandwidth_flushes_bytes_check", sql`${table.bytes} >= 0`),
+  ],
+);
+
+/** Ciphertext-only native mutation journal. A receipt is never a replay grant. */
+export const nativeCommands = pgTable(
+  "native_commands",
+  {
+    operationId: text("operation_id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    workerId: text("worker_id")
+      .notNull()
+      .references(() => workers.id, { onDelete: "cascade" }),
+    chatId: text("chat_id")
+      .notNull()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    logicalOperationId: text("logical_operation_id"),
+    previousOperationId: text("previous_operation_id"),
+    operationGeneration: text("operation_generation").notNull().unique(),
+    activationGeneration: text("activation_generation"),
+    executionLaneId: text("execution_lane_id").references(
+      () => chatExecutionLanes.id,
+      { onDelete: "set null" },
+    ),
+    origin: text("origin").notNull(),
+    method: text("method").notNull(),
+    kind: text("kind").notNull(),
+    payloadDigest: text("payload_digest").notNull(),
+    protectedPayload: jsonb("protected_payload").notNull(),
+    identity: jsonb("identity").notNull(),
+    intent: jsonb("intent").notNull(),
+    replyIdentity: jsonb("reply_identity"),
+    status: text("status").notNull(),
+    rejectionCode: text("rejection_code"),
+    resultDigest: text("result_digest"),
+    protectedResult: jsonb("protected_result"),
+    terminalResultDigest: text("terminal_result_digest"),
+    protectedTerminalResult: jsonb("protected_terminal_result"),
+    terminalEvidence: jsonb("terminal_evidence"),
+    executionCompletedAt: timestamp("execution_completed_at", {
+      withTimezone: true,
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("native_commands_previous_operation_unique").on(
+      table.previousOperationId,
+    ),
+    foreignKey({
+      name: "native_commands_logical_operation_fk",
+      columns: [table.logicalOperationId],
+      foreignColumns: [table.operationId],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "native_commands_previous_operation_fk",
+      columns: [table.previousOperationId],
+      foreignColumns: [table.operationId],
+    }).onDelete("cascade"),
+
+    index("native_commands_chat_created").on(table.chatId, table.createdAt),
+    uniqueIndex("native_commands_resolved_reply")
+      .on(
+        table.chatId,
+        sql`(${table.identity}->>'runtimeGeneration')`,
+        sql`(${table.replyIdentity}->>'nativeRequestId')`,
+      )
+      .where(
+        sql`${table.replyIdentity} IS NOT NULL AND ${table.status} IN ('accepted','dispatched','applied','uncertain')`,
+      ),
+    check(
+      "native_commands_origin_check",
+      sql`${table.origin} IN ('gui','terminal','autonomous')`,
+    ),
+    check(
+      "native_commands_status_check",
+      sql`${table.status} IN ('accepted','dispatched','applied','rejected','uncertain')`,
+    ),
+    check(
+      "native_commands_payload_digest_check",
+      sql`${table.payloadDigest} ~ '^[a-f0-9]{64}$'`,
+    ),
+  ],
+);
+export const nativeCommandActivations = pgTable("native_command_activations", {
+  chatId: text("chat_id")
+    .primaryKey()
+    .references(() => chats.id, { onDelete: "cascade" }),
+  generation: text("generation").notNull().unique(),
+  operationId: text("operation_id")
+    .notNull()
+    .references(() => nativeCommands.operationId, { onDelete: "cascade" }),
+  executionLaneId: text("execution_lane_id")
+    .notNull()
+    .references(() => chatExecutionLanes.id, { onDelete: "cascade" }),
+  workerId: text("worker_id")
+    .notNull()
+    .references(() => workers.id, { onDelete: "cascade" }),
+  runtimeGeneration: text("runtime_generation"),
+  nativeTurnId: text("native_turn_id"),
+  logicalCancelled: boolean("logical_cancelled").notNull().default(false),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+export const nativePendingRequests = pgTable(
+  "native_pending_requests",
+  {
+    chatId: text("chat_id")
+      .notNull()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    runtimeGeneration: text("runtime_generation").notNull(),
+    nativeRequestId: text("native_request_id").notNull(),
+    activationGeneration: text("activation_generation").notNull(),
+    requestMethod: text("request_method").notNull(),
+    turnId: text("turn_id"),
+    resolutionOperationId: text("resolution_operation_id").references(
+      () => nativeCommands.operationId,
+      { onDelete: "set null" },
+    ),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.chatId, table.runtimeGeneration, table.nativeRequestId],
+    }),
   ],
 );

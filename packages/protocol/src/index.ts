@@ -7,3 +7,6 @@ export * from "./public-api-worker.js";
 export * from "./computer-use.js";
 export * from "./computer-use-preview.js";
 export * from "./worker-command-computer-use.js";
+export * from "./native-commands.js";
+export * from "./managed-native-methods.js";
+export * from "./native-command-events.js";

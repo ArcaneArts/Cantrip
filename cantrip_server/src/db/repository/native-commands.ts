@@ -1,0 +1,1592 @@
+import { isDeepStrictEqual } from "node:util";
+import { managedConsoleSessionContext } from "../../terminals/managed-session.js";
+import type { ServerRepository } from "../repository.js";
+import { effectivePermissionProfile } from "../../chats/execution-helpers.js";
+import { randomUUID } from "node:crypto";
+import {
+  classifyManagedNativeMethod,
+  managedNativeServerRequests,
+  nativeCommandReceiptSchema,
+  type NativeCommandAdmission,
+  type NativeCommandContinuation,
+  type NativeCommandDispatch,
+  type NativeCommandReceipt,
+  type NativeCommandSession,
+  type NativeCommandSettlement,
+  type NativePendingRequest,
+} from "@cantrip/protocol";
+import { and, eq, sql } from "drizzle-orm";
+import * as schema from "../schema.js";
+import { projectChatExecutionLock } from "./chat-execution-lock.js";
+import {
+  ChatExecutionLaneRepository,
+  ExecutionLaneConflictError,
+  type ChatExecutionContext,
+} from "./chat-execution-lanes.js";
+import { ChatRuntimeContextRepository } from "./chat-runtime-context.js";
+import {
+  firstOrThrow,
+  type RepositoryDatabase,
+  type RepositoryTransaction,
+} from "./database.js";
+
+type CommandRow = typeof schema.nativeCommands.$inferSelect;
+export class NativeCommandError extends Error {
+  constructor(
+    readonly code: string,
+    message = code,
+    readonly statusCode = 409,
+  ) {
+    super(message);
+  }
+}
+export interface NativeCommandAdmissionResult {
+  receipt: NativeCommandReceipt;
+  execution: ChatExecutionContext | null;
+  replayed?: boolean;
+}
+const settingKeys = new Set([
+  "model",
+  "effort",
+  "summary",
+  "reasoningEffort",
+  "reasoningSummary",
+  "cwd",
+  "multiAgentMode",
+  "serviceTier",
+  "personality",
+  "collaborationMode",
+  "approvalPolicy",
+  "approvalsReviewer",
+  "sandboxPolicy",
+  "permissions",
+  "permissionProfile",
+  "permissionProfileId",
+]);
+const defaultKeys = new Set([
+  "model",
+  "model_reasoning_effort",
+  "service_tier",
+  "personality",
+]);
+const activeMutations = new Set([
+  "mcpServer/tool/call",
+  "command/exec",
+  "command/exec/write",
+  "command/exec/terminate",
+  "command/exec/resize",
+  "process/spawn",
+  "process/writeStdin",
+  "process/kill",
+  "process/resizePty",
+  "thread/approveGuardianDeniedAction",
+]);
+const scopedMutations = new Set([
+  "thread/name/set",
+  "thread/goal/set",
+  "thread/goal/clear",
+  "thread/queue/start",
+  "thread/queue/add",
+  "thread/queue/update",
+  "thread/queue/delete",
+  "thread/queue/reorder",
+  "thread/metadata/update",
+  "thread/memoryMode/set",
+  "thread/backgroundTerminals/clean",
+  "thread/backgroundTerminals/terminate",
+  "thread/rollback",
+  "thread/revert",
+  "thread/inject_items",
+  "mcpServerStatus/list",
+  "mcpServer/resource/read",
+  "project/list",
+  "project/read",
+  "skills/list",
+  "hooks/list",
+  "fs/readFile",
+  "fs/getMetadata",
+  "fs/readDirectory",
+  "environment/info",
+  "environment/status",
+  "plugin/list",
+  "plugin/installed",
+  "plugin/read",
+  "app/list",
+  "app/installed",
+  "app/read",
+  "getConversationSummary",
+  "gitDiffToRemote",
+  "fuzzyFileSearch",
+  "fuzzyFileSearch/sessionStart",
+  "fuzzyFileSearch/sessionUpdate",
+  "fuzzyFileSearch/sessionStop",
+]);
+
+/** Server policy classifies the actual method, independently of a caller's labels. */
+export function nativeCommandPolicy(input: NativeCommandAdmission): {
+  kind: string;
+  active: boolean;
+} {
+  if (input.method === "serverRequest/reply") {
+    if (
+      !input.reply ||
+      !managedNativeServerRequests.has(input.reply.requestMethod)
+    )
+      throw new NativeCommandError("unsupported-reply");
+    return { kind: "reply", active: true };
+  }
+  if (input.reply) throw new NativeCommandError("invalid-reply-scope");
+  const kind =
+    input.method === "thread/queue/start"
+      ? "mutation"
+      : classifyManagedNativeMethod(input.method);
+  if (!kind || kind === "read")
+    throw new NativeCommandError("unsupported-mutation");
+  if (kind === "defaults") {
+    if (
+      input.intent.scope !== "account-defaults" ||
+      input.intent.configTarget !== "account-defaults" ||
+      !["config/value/write", "config/batchWrite"].includes(input.method) ||
+      input.intent.settingKeys.some((key) => !defaultKeys.has(key))
+    )
+      throw new NativeCommandError("unsupported-default-scope");
+  } else if (input.intent.scope !== "thread")
+    throw new NativeCommandError("invalid-target-scope");
+  if (
+    kind === "settings" &&
+    (input.method === "thread/managedConfig/update" ||
+      input.intent.settingKeys.some((key) => !settingKeys.has(key)))
+  )
+    throw new NativeCommandError("unsupported-settings");
+  if (
+    kind === "mutation" &&
+    !activeMutations.has(input.method) &&
+    !scopedMutations.has(input.method)
+  )
+    throw new NativeCommandError("unsupported-mutation");
+  return {
+    kind,
+    active:
+      kind === "control" ||
+      activeMutations.has(input.method) ||
+      input.method === "turn/settings/update",
+  };
+}
+function receipt(row: CommandRow): NativeCommandReceipt {
+  return nativeCommandReceiptSchema.parse({
+    chatId: row.chatId,
+    startsExecution: row.kind === "start",
+    operationId: row.operationId,
+    operationGeneration: row.operationGeneration,
+    logicalOperationId: row.logicalOperationId,
+    previousOperationId: row.previousOperationId,
+    activationGeneration: row.activationGeneration,
+    executionLaneId: row.executionLaneId,
+    status: row.status,
+    method: row.method,
+    payloadDigest: row.payloadDigest,
+    rejectionCode: row.rejectionCode,
+    threadId: (row.identity as NativeCommandSession).threadId,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  });
+}
+function samePlacement(
+  context: ChatExecutionContext | null,
+  workerId: string,
+  session: NativeCommandSession,
+): context is ChatExecutionContext {
+  return (
+    !!context &&
+    context.workerId === workerId &&
+    context.chatId === session.chatId &&
+    context.projectId === session.projectId &&
+    context.contextKind === session.contextKind &&
+    (context.worktreeId ?? context.scratchRootId) === session.placementId
+  );
+}
+
+function sameRuntimeRoute(
+  context: ChatExecutionContext,
+  session: NativeCommandSession,
+): boolean {
+  return (
+    context.modelRouteId === session.modelRouteId &&
+    context.providerAccountId === session.providerAccountId
+  );
+}
+
+export class NativeCommandRepository {
+  constructor(
+    private readonly database: RepositoryDatabase,
+    private readonly lanes: ChatExecutionLaneRepository,
+    private readonly transactionRepository: (
+      transaction: RepositoryTransaction,
+    ) => ServerRepository,
+  ) {}
+  private async lock(
+    tx: RepositoryTransaction,
+    ownerId: string,
+    chatId: string,
+  ): Promise<void> {
+    await tx.execute(projectChatExecutionLock(ownerId, chatId));
+    const rows = await tx
+      .select({ id: schema.chats.id })
+      .from(schema.chats)
+      .where(
+        and(eq(schema.chats.id, chatId), eq(schema.chats.ownerId, ownerId)),
+      )
+      .for("update")
+      .limit(1);
+    if (!rows[0])
+      throw new NativeCommandError("chat-not-found", "Chat not found.", 404);
+  }
+  private context(tx: RepositoryTransaction, ownerId: string, chatId: string) {
+    const repository = new ChatRuntimeContextRepository(tx, {
+      getChatExecutionContext: async () => {
+        throw new Error("Unexpected context recursion");
+      },
+    });
+    return repository.getChatExecutionContext(ownerId, chatId);
+  }
+  async admit(
+    ownerId: string,
+    input: NativeCommandAdmission,
+    executionOptions: {
+      acquiringActor?: "agent" | "user";
+      purpose?: string;
+    } = {},
+  ): Promise<NativeCommandAdmissionResult> {
+    return this.database.transaction(async (tx) => {
+      await this.lock(tx, ownerId, input.session.chatId);
+      const [existing] = await tx
+        .select()
+        .from(schema.nativeCommands)
+        .where(eq(schema.nativeCommands.operationId, input.operationId));
+      if (existing) {
+        if (
+          existing.ownerId !== ownerId ||
+          existing.workerId !== input.workerId ||
+          existing.chatId !== input.session.chatId ||
+          existing.payloadDigest !== input.payloadDigest ||
+          existing.method !== input.method ||
+          existing.origin !== input.origin ||
+          JSON.stringify(Object.entries(existing.intent as object).sort()) !==
+            JSON.stringify(Object.entries(input.intent).sort())
+        )
+          throw new NativeCommandError("operation-id-conflict");
+        const context = await this.context(tx, ownerId, existing.chatId);
+        const [activation] = await tx
+          .select()
+          .from(schema.nativeCommandActivations)
+          .where(eq(schema.nativeCommandActivations.chatId, existing.chatId));
+        const current =
+          samePlacement(
+            context,
+            existing.workerId,
+            existing.identity as NativeCommandSession,
+          ) &&
+          sameRuntimeRoute(
+            context,
+            existing.identity as NativeCommandSession,
+          ) &&
+          (existing.activationGeneration
+            ? activation?.active &&
+              activation.generation === existing.activationGeneration &&
+              context.executionLaneId === existing.executionLaneId
+            : !["running", "waiting-for-approval"].includes(context.status));
+        return {
+          receipt: receipt(existing),
+          replayed: true,
+          execution: current ? context : null,
+        };
+      }
+      let context = await this.context(tx, ownerId, input.session.chatId);
+      if (!samePlacement(context, input.workerId, input.session))
+        throw new NativeCommandError("stale-placement");
+      const initial = {
+        operationId: input.operationId,
+        ownerId,
+        workerId: input.workerId,
+        chatId: input.session.chatId,
+        operationGeneration: randomUUID(),
+        logicalOperationId: null as string | null,
+        activationGeneration: null as string | null,
+        executionLaneId: null as string | null,
+        origin: input.origin,
+        method: input.method,
+        kind: "unknown",
+        payloadDigest: input.payloadDigest,
+        protectedPayload: input.protectedPayload,
+        identity: input.session,
+        intent: input.intent,
+        replyIdentity: input.reply ?? null,
+        status: "accepted",
+        rejectionCode: null as string | null,
+      };
+      let starts = false;
+      let consumeReply = false;
+      try {
+        if (!managedConsoleSessionContext(context))
+          throw new NativeCommandError("managed-session-ineligible");
+        if (
+          (input.method === "turn/pause" &&
+            (typeof input.intent.paused !== "boolean" ||
+              Boolean(input.intent.resumeAutonomy) !== !input.intent.paused)) ||
+          (input.method !== "turn/pause" && input.intent.paused !== undefined)
+        )
+          throw new NativeCommandError("invalid-pause-intent");
+        if (
+          input.intent.resumeAutonomy &&
+          ![
+            "thread/queue/add",
+            "thread/queue/start",
+            "thread/goal/set",
+            "turn/pause",
+          ].includes(input.method)
+        )
+          throw new NativeCommandError("invalid-autonomy-resume");
+        if (input.origin === "autonomous") {
+          const [chat] = await tx
+            .select({ stopped: schema.chats.managedAutonomyStopped })
+            .from(schema.chats)
+            .where(eq(schema.chats.id, input.session.chatId));
+          if (chat?.stopped) throw new NativeCommandError("autonomy-stopped");
+        }
+        const policy = nativeCommandPolicy(input);
+        initial.kind = policy.kind;
+        starts = policy.kind === "start";
+        if (starts && input.origin === "gui")
+          initial.logicalOperationId = input.operationId;
+        const securityKeys = [
+          "approvalPolicy",
+          "approvalsReviewer",
+          "sandboxPolicy",
+          "permissions",
+          "permissionProfile",
+          "permissionProfileId",
+        ];
+        if (
+          input.intent.settingKeys.some((key) => securityKeys.includes(key)) &&
+          input.intent.permissionProfileId !==
+            effectivePermissionProfile(context).effectiveId
+        )
+          throw new NativeCommandError("permission-profile-mismatch");
+        if (
+          (input.method.startsWith("fs/") ||
+            input.intent.settingKeys.includes("cwd")) &&
+          input.intent.pathsWithinPlacement !== true
+        )
+          throw new NativeCommandError("path-scope-mismatch");
+
+        if (
+          context.threadId !== input.session.threadId ||
+          (!input.session.threadId && (input.origin !== "gui" || !starts))
+        )
+          throw new NativeCommandError("thread-identity-mismatch");
+        if (!sameRuntimeRoute(context, input.session))
+          throw new NativeCommandError("runtime-route-mismatch");
+        const [activation] = await tx
+          .select()
+          .from(schema.nativeCommandActivations)
+          .where(
+            eq(schema.nativeCommandActivations.chatId, input.session.chatId),
+          );
+        if (starts) {
+          if (input.expectedActivationGeneration !== null)
+            throw new NativeCommandError("stale-activation");
+          context = await this.lanes
+            .inTransaction(tx)
+            .startChatExecutionLane(
+              ownerId,
+              input.session.chatId,
+              executionOptions.acquiringActor ?? "user",
+              executionOptions.purpose ?? "Managed native command",
+            );
+          if (!context?.executionLaneId)
+            throw new NativeCommandError("execution-unavailable");
+          initial.activationGeneration = randomUUID();
+          initial.executionLaneId = context.executionLaneId;
+        } else {
+          const active =
+            context.status === "running" ||
+            context.status === "waiting-for-approval";
+          if (policy.active || active) {
+            if (
+              !activation?.active ||
+              !active ||
+              input.expectedActivationGeneration !== activation.generation ||
+              activation.workerId !== input.workerId ||
+              activation.executionLaneId !== context.executionLaneId ||
+              activation.runtimeGeneration !== input.session.runtimeGeneration
+            )
+              throw new NativeCommandError("stale-activation");
+            initial.activationGeneration = activation.generation;
+            initial.executionLaneId = activation.executionLaneId;
+            if (
+              input.intent.expectedTurnId &&
+              activation.nativeTurnId !== input.intent.expectedTurnId
+            )
+              throw new NativeCommandError("stale-native-turn");
+            if (input.reply) {
+              const [pending] = await tx
+                .select()
+                .from(schema.nativePendingRequests)
+                .where(
+                  and(
+                    eq(
+                      schema.nativePendingRequests.chatId,
+                      input.session.chatId,
+                    ),
+                    eq(
+                      schema.nativePendingRequests.runtimeGeneration,
+                      input.session.runtimeGeneration!,
+                    ),
+                    eq(
+                      schema.nativePendingRequests.nativeRequestId,
+                      input.reply.nativeRequestId,
+                    ),
+                  ),
+                );
+              if (
+                !pending ||
+                pending.resolutionOperationId ||
+                pending.activationGeneration !== activation.generation ||
+                pending.requestMethod !== input.reply.requestMethod ||
+                pending.turnId !== input.reply.turnId
+              )
+                throw new NativeCommandError("stale-native-reply");
+              consumeReply = true;
+            }
+          } else if (input.expectedActivationGeneration !== null)
+            throw new NativeCommandError("stale-activation");
+        }
+      } catch (error) {
+        if (
+          !(error instanceof NativeCommandError) &&
+          !(error instanceof ExecutionLaneConflictError)
+        )
+          throw error;
+        initial.status = "rejected";
+        initial.rejectionCode =
+          error instanceof NativeCommandError
+            ? error.code
+            : "execution-conflict";
+      }
+      const inserted = firstOrThrow(
+        await tx.insert(schema.nativeCommands).values(initial).returning(),
+        "recording native admission",
+      );
+      if (consumeReply && initial.status === "accepted") {
+        await tx
+          .update(schema.nativePendingRequests)
+          .set({ resolutionOperationId: input.operationId })
+          .where(
+            and(
+              eq(schema.nativePendingRequests.chatId, input.session.chatId),
+              eq(
+                schema.nativePendingRequests.runtimeGeneration,
+                input.session.runtimeGeneration!,
+              ),
+              eq(
+                schema.nativePendingRequests.nativeRequestId,
+                input.reply!.nativeRequestId,
+              ),
+            ),
+          );
+      }
+      if (starts && initial.status === "accepted") {
+        const activation = {
+          chatId: input.session.chatId,
+          generation: initial.activationGeneration!,
+          operationId: input.operationId,
+          executionLaneId: initial.executionLaneId!,
+          workerId: input.workerId,
+          runtimeGeneration: input.session.runtimeGeneration,
+          nativeTurnId: input.intent.expectedTurnId,
+          logicalCancelled: false,
+          active: true,
+          createdAt: new Date(),
+        };
+        await tx
+          .insert(schema.nativeCommandActivations)
+          .values(activation)
+          .onConflictDoUpdate({
+            target: schema.nativeCommandActivations.chatId,
+            set: activation,
+          });
+      }
+      return { receipt: receipt(inserted), execution: context };
+    });
+  }
+  async continueExecution(
+    ownerId: string,
+    input: NativeCommandContinuation,
+  ): Promise<NativeCommandAdmissionResult> {
+    return this.database.transaction(async (tx) => {
+      await this.lock(tx, ownerId, input.session.chatId);
+      const previous = await this.command(
+        tx,
+        ownerId,
+        input.workerId,
+        input.previousOperationId,
+        input.previousOperationGeneration,
+      );
+      const [root] = await tx
+        .select()
+        .from(schema.nativeCommands)
+        .where(
+          and(
+            eq(schema.nativeCommands.operationId, input.rootOperationId),
+            eq(schema.nativeCommands.ownerId, ownerId),
+            eq(schema.nativeCommands.workerId, input.workerId),
+          ),
+        );
+      const [existing] = await tx
+        .select()
+        .from(schema.nativeCommands)
+        .where(eq(schema.nativeCommands.operationId, input.operationId));
+      let context = await this.context(tx, ownerId, previous.chatId);
+      const [activation] = await tx
+        .select()
+        .from(schema.nativeCommandActivations)
+        .where(eq(schema.nativeCommandActivations.chatId, previous.chatId));
+      if (existing) {
+        if (
+          existing.ownerId !== ownerId ||
+          existing.workerId !== input.workerId ||
+          existing.logicalOperationId !== input.rootOperationId ||
+          existing.previousOperationId !== input.previousOperationId ||
+          existing.payloadDigest !== input.payloadDigest ||
+          !isDeepStrictEqual(existing.identity, input.session)
+        )
+          throw new NativeCommandError("operation-id-conflict");
+        const current =
+          samePlacement(context, input.workerId, input.session) &&
+          sameRuntimeRoute(context, input.session) &&
+          activation?.active &&
+          !activation.logicalCancelled &&
+          activation.generation === existing.activationGeneration;
+        return {
+          receipt: receipt(existing),
+          replayed: true,
+          execution: current ? context : null,
+        };
+      }
+      if (
+        !root ||
+        root.logicalOperationId !== root.operationId ||
+        previous.logicalOperationId !== root.operationId ||
+        root.origin !== "gui" ||
+        previous.origin !== "gui" ||
+        previous.kind !== "start" ||
+        previous.chatId !== input.session.chatId ||
+        !previous.executionLaneId ||
+        root.executionLaneId !== previous.executionLaneId
+      )
+        throw new NativeCommandError("invalid-continuation-lineage");
+      if (
+        !samePlacement(context, input.workerId, input.session) ||
+        !sameRuntimeRoute(context, input.session)
+      )
+        throw new NativeCommandError("stale-session");
+      if (
+        !activation?.active ||
+        activation.logicalCancelled ||
+        activation.operationId !== previous.operationId ||
+        activation.generation !== previous.activationGeneration ||
+        activation.executionLaneId !== context.executionLaneId ||
+        context.automationPaused ||
+        !["running", "waiting-for-approval"].includes(context.status)
+      )
+        throw new NativeCommandError("stale-continuation");
+      const previousIntent =
+        previous.intent as NativeCommandAdmission["intent"];
+      if (
+        previousIntent.permissionProfileId &&
+        previousIntent.permissionProfileId !==
+          effectivePermissionProfile(context).effectiveId
+      )
+        throw new NativeCommandError("permission-profile-mismatch");
+      const prior = previous.identity as NativeCommandSession;
+      if (
+        !input.session.threadId ||
+        !input.session.runtimeGeneration ||
+        !input.session.connectionId ||
+        prior.placementId !== input.session.placementId ||
+        prior.projectId !== input.session.projectId ||
+        prior.contextKind !== input.session.contextKind ||
+        prior.modelRouteId !== input.session.modelRouteId ||
+        prior.providerAccountId !== input.session.providerAccountId ||
+        (prior.runtimeGeneration !== null &&
+          prior.runtimeGeneration !== input.session.runtimeGeneration) ||
+        (prior.connectionId !== null &&
+          prior.connectionId !== input.session.connectionId) ||
+        input.failure.runtimeGeneration !== input.session.runtimeGeneration
+      )
+        throw new NativeCommandError("stale-session");
+      if (input.handoff) {
+        if (
+          input.reason !== "invalid-compaction" ||
+          prior.threadId !== input.handoff.expectedThreadId ||
+          context.threadId !== input.handoff.expectedThreadId ||
+          input.session.threadId !== input.handoff.replacementThreadId ||
+          input.handoff.expectedThreadId === input.handoff.replacementThreadId
+        )
+          throw new NativeCommandError("thread-identity-mismatch");
+      } else if (
+        prior.threadId !== input.session.threadId ||
+        context.threadId !== input.session.threadId
+      )
+        throw new NativeCommandError("thread-identity-mismatch");
+      if (input.failure.kind === "native-terminal") {
+        if (
+          !["dispatched", "applied", "uncertain"].includes(previous.status) ||
+          (activation.nativeTurnId !== null &&
+            activation.nativeTurnId !== input.failure.nativeTurnId)
+        )
+          throw new NativeCommandError("stale-native-evidence");
+      } else {
+        if (
+          (input.failure.method === "turn/start" &&
+            !["dispatched", "uncertain"].includes(previous.status)) ||
+          (input.failure.method === "thread/resume" &&
+            (input.reason !== "invalid-compaction" ||
+              previous.status !== "accepted")) ||
+          activation.nativeTurnId !== null
+        )
+          throw new NativeCommandError("stale-native-evidence");
+      }
+      const now = new Date();
+      await tx
+        .update(schema.nativeCommands)
+        .set({
+          status:
+            input.failure.kind === "native-terminal" ? "applied" : "rejected",
+          rejectionCode:
+            input.failure.kind === "native-terminal"
+              ? null
+              : "native-request-rejected",
+          executionCompletedAt: now,
+          terminalEvidence: { retryReason: input.reason, ...input.failure },
+          updatedAt: now,
+        })
+        .where(eq(schema.nativeCommands.operationId, previous.operationId));
+      if (input.handoff) {
+        const [lane] = await tx
+          .select()
+          .from(schema.chatExecutionLanes)
+          .where(
+            and(
+              eq(schema.chatExecutionLanes.id, previous.executionLaneId),
+              eq(schema.chatExecutionLanes.chatId, previous.chatId),
+            ),
+          )
+          .for("update");
+        if (!lane?.runtimeSessionId)
+          throw new NativeCommandError("thread-handoff-failed");
+        const changed = await tx
+          .update(schema.chatRuntimeSessions)
+          .set({
+            codexThreadId: input.handoff.replacementThreadId,
+            status: "running",
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(schema.chatRuntimeSessions.id, lane.runtimeSessionId),
+              eq(
+                schema.chatRuntimeSessions.codexThreadId,
+                input.handoff.expectedThreadId,
+              ),
+            ),
+          )
+          .returning({ id: schema.chatRuntimeSessions.id });
+        const changedLane = await tx
+          .update(schema.chatExecutionLanes)
+          .set({
+            codexThreadId: input.handoff.replacementThreadId,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(schema.chatExecutionLanes.id, lane.id),
+              eq(
+                schema.chatExecutionLanes.codexThreadId,
+                input.handoff.expectedThreadId,
+              ),
+            ),
+          )
+          .returning({ id: schema.chatExecutionLanes.id });
+        if (changed.length !== 1 || changedLane.length !== 1)
+          throw new NativeCommandError("thread-handoff-failed");
+        context = await this.context(tx, ownerId, previous.chatId);
+        if (!context || context.threadId !== input.handoff.replacementThreadId)
+          throw new NativeCommandError("thread-handoff-failed");
+      }
+      const operationGeneration = randomUUID();
+      const activationGeneration = randomUUID();
+      const inserted = firstOrThrow(
+        await tx
+          .insert(schema.nativeCommands)
+          .values({
+            operationId: input.operationId,
+            ownerId,
+            workerId: input.workerId,
+            chatId: previous.chatId,
+            operationGeneration,
+            logicalOperationId: root.operationId,
+            previousOperationId: previous.operationId,
+            activationGeneration,
+            executionLaneId: previous.executionLaneId,
+            origin: "gui",
+            method: "turn/start",
+            kind: "start",
+            payloadDigest: input.payloadDigest,
+            protectedPayload: input.protectedPayload,
+            identity: input.session,
+            intent: {
+              scope: "thread",
+              settingKeys: [],
+              expectedTurnId: null,
+              ...(previousIntent.permissionProfileId
+                ? { permissionProfileId: previousIntent.permissionProfileId }
+                : {}),
+              continuation: {
+                reason: input.reason,
+                failure: input.failure,
+                handoff: input.handoff ?? null,
+              },
+            },
+            status: "accepted",
+          })
+          .returning(),
+        "recording GUI continuation",
+      );
+      await tx
+        .update(schema.nativeCommandActivations)
+        .set({
+          generation: activationGeneration,
+          operationId: input.operationId,
+          runtimeGeneration: input.session.runtimeGeneration,
+          nativeTurnId: null,
+          logicalCancelled: false,
+          active: true,
+          createdAt: now,
+        })
+        .where(eq(schema.nativeCommandActivations.chatId, previous.chatId));
+      return { receipt: receipt(inserted), execution: context };
+    });
+  }
+  /** Only the owning GUI closure finishes the head of this logical input. Native events remain exact-generation. */
+  async finishLogicalGui(
+    ownerId: string,
+    workerId: string,
+    rootOperationId: string,
+    rootOperationGeneration: string,
+    status: "idle" | "failed",
+  ): Promise<boolean> {
+    return this.database.transaction(async (tx) => {
+      const root = await this.command(
+        tx,
+        ownerId,
+        workerId,
+        rootOperationId,
+        rootOperationGeneration,
+      );
+      await this.lock(tx, ownerId, root.chatId);
+      if (root.origin !== "gui" || root.logicalOperationId !== root.operationId)
+        throw new NativeCommandError("invalid-continuation-lineage");
+      const [activation] = await tx
+        .select()
+        .from(schema.nativeCommandActivations)
+        .where(eq(schema.nativeCommandActivations.chatId, root.chatId));
+      if (!activation?.active) return false;
+      const [head] = await tx
+        .select()
+        .from(schema.nativeCommands)
+        .where(eq(schema.nativeCommands.operationId, activation.operationId));
+      if (
+        !head ||
+        head.logicalOperationId !== root.operationId ||
+        head.executionLaneId !== root.executionLaneId ||
+        !head.executionLaneId
+      )
+        return false;
+      const finished = await this.lanes
+        .inTransaction(tx)
+        .finishChatExecutionLane(root.chatId, head.executionLaneId, status);
+      await tx
+        .update(schema.nativeCommandActivations)
+        .set({ active: false })
+        .where(eq(schema.nativeCommandActivations.chatId, root.chatId));
+      await tx
+        .update(schema.nativeCommands)
+        .set({
+          executionCompletedAt: new Date(),
+          ...(head.status === "accepted"
+            ? { status: "rejected", rejectionCode: "not-dispatched" }
+            : head.status === "dispatched"
+              ? { status: "uncertain", rejectionCode: "missing-native-receipt" }
+              : {}),
+        })
+        .where(eq(schema.nativeCommands.operationId, head.operationId));
+      return finished;
+    });
+  }
+  /** Binds an accepted GUI preparation without dispatching its turn or issuing execution authority. */
+  async bindPreparation(
+    ownerId: string,
+    input: NativeCommandDispatch,
+  ): Promise<NativeCommandReceipt> {
+    return this.database.transaction(async (tx) => {
+      await this.lock(tx, ownerId, input.session.chatId);
+      const row = await this.command(
+        tx,
+        ownerId,
+        input.workerId,
+        input.operationId,
+        input.operationGeneration,
+      );
+      const context = await this.context(tx, ownerId, row.chatId);
+      const prior = row.identity as NativeCommandSession;
+      if (
+        row.payloadDigest !== input.payloadDigest ||
+        row.chatId !== input.session.chatId
+      )
+        throw new NativeCommandError("operation-id-conflict");
+      if (
+        row.kind !== "start" ||
+        row.origin !== "gui" ||
+        row.status !== "accepted"
+      )
+        throw new NativeCommandError("preparation-no-longer-accepted");
+      if (
+        !samePlacement(context, input.workerId, input.session) ||
+        !sameRuntimeRoute(context, input.session) ||
+        !input.session.threadId ||
+        context.threadId !== input.session.threadId ||
+        prior.threadId !== input.session.threadId ||
+        prior.placementId !== input.session.placementId ||
+        prior.projectId !== input.session.projectId ||
+        prior.contextKind !== input.session.contextKind ||
+        prior.modelRouteId !== input.session.modelRouteId ||
+        prior.providerAccountId !== input.session.providerAccountId ||
+        !input.session.runtimeGeneration ||
+        !input.session.connectionId ||
+        (prior.runtimeGeneration !== null &&
+          prior.runtimeGeneration !== input.session.runtimeGeneration) ||
+        (prior.connectionId !== null &&
+          prior.connectionId !== input.session.connectionId)
+      )
+        throw new NativeCommandError("stale-session");
+      const [activation] = await tx
+        .select()
+        .from(schema.nativeCommandActivations)
+        .where(eq(schema.nativeCommandActivations.chatId, row.chatId));
+      if (
+        !activation?.active ||
+        activation.generation !== row.activationGeneration ||
+        activation.executionLaneId !== context.executionLaneId ||
+        !["running", "waiting-for-approval"].includes(context.status) ||
+        (activation.runtimeGeneration !== null &&
+          activation.runtimeGeneration !== input.session.runtimeGeneration)
+      )
+        throw new NativeCommandError("stale-activation");
+      await tx
+        .update(schema.nativeCommandActivations)
+        .set({ runtimeGeneration: input.session.runtimeGeneration })
+        .where(eq(schema.nativeCommandActivations.chatId, row.chatId));
+      const [bound] = await tx
+        .update(schema.nativeCommands)
+        .set({ identity: input.session, updatedAt: new Date() })
+        .where(eq(schema.nativeCommands.operationId, row.operationId))
+        .returning();
+      return receipt(bound!);
+    });
+  }
+  async dispatch(
+    ownerId: string,
+    input: NativeCommandDispatch,
+  ): Promise<NativeCommandAdmissionResult> {
+    return this.database.transaction(async (tx) => {
+      await this.lock(tx, ownerId, input.session.chatId);
+      const row = await this.command(
+        tx,
+        ownerId,
+        input.workerId,
+        input.operationId,
+        input.operationGeneration,
+      );
+      if (
+        row.payloadDigest !== input.payloadDigest ||
+        row.chatId !== input.session.chatId
+      )
+        throw new NativeCommandError("operation-id-conflict");
+      if (row.status === "rejected")
+        throw new NativeCommandError(row.rejectionCode ?? "operation-rejected");
+      if (row.status !== "accepted")
+        throw new NativeCommandError("operation-already-dispatched");
+      const prior = row.identity as NativeCommandSession;
+      let context = await this.context(tx, ownerId, row.chatId);
+      if (
+        !samePlacement(context, input.workerId, input.session) ||
+        prior.placementId !== input.session.placementId ||
+        prior.projectId !== input.session.projectId ||
+        prior.contextKind !== input.session.contextKind ||
+        (prior.threadId !== null &&
+          prior.threadId !== input.session.threadId) ||
+        (prior.runtimeGeneration !== null &&
+          prior.runtimeGeneration !== input.session.runtimeGeneration) ||
+        (prior.connectionId !== null &&
+          prior.connectionId !== input.session.connectionId) ||
+        !input.session.threadId ||
+        !input.session.runtimeGeneration ||
+        !input.session.connectionId
+      )
+        throw new NativeCommandError("stale-session");
+      if (
+        !sameRuntimeRoute(context, input.session) ||
+        (prior.threadId !== null &&
+          (prior.modelRouteId !== input.session.modelRouteId ||
+            prior.providerAccountId !== input.session.providerAccountId))
+      )
+        throw new NativeCommandError("runtime-route-mismatch");
+      if (context.threadId && context.threadId !== input.session.threadId)
+        throw new NativeCommandError("thread-identity-mismatch");
+      const intent = row.intent as NativeCommandAdmission["intent"];
+      if (
+        intent.permissionProfileId &&
+        intent.permissionProfileId !==
+          effectivePermissionProfile(context).effectiveId
+      )
+        throw new NativeCommandError("permission-profile-mismatch");
+
+      if (row.activationGeneration) {
+        const [activation] = await tx
+          .select()
+          .from(schema.nativeCommandActivations)
+          .where(eq(schema.nativeCommandActivations.chatId, row.chatId));
+        if (
+          !activation?.active ||
+          activation.generation !== row.activationGeneration ||
+          activation.executionLaneId !== context.executionLaneId ||
+          !["running", "waiting-for-approval"].includes(context.status) ||
+          (activation.runtimeGeneration !== null &&
+            activation.runtimeGeneration !== input.session.runtimeGeneration)
+        )
+          throw new NativeCommandError("stale-activation");
+        await tx
+          .update(schema.nativeCommandActivations)
+          .set({ runtimeGeneration: input.session.runtimeGeneration })
+          .where(eq(schema.nativeCommandActivations.chatId, row.chatId));
+      } else if (["running", "waiting-for-approval"].includes(context.status))
+        throw new NativeCommandError("stale-activation");
+      if (!context.threadId) {
+        if (
+          row.kind !== "start" ||
+          row.origin !== "gui" ||
+          !row.executionLaneId
+        )
+          throw new NativeCommandError("thread-identity-mismatch");
+        await this.lanes
+          .inTransaction(tx)
+          .updateChatExecutionLaneRuntime(
+            row.chatId,
+            row.executionLaneId,
+            input.session.threadId,
+            "running",
+          );
+        context = await this.context(tx, ownerId, row.chatId);
+      }
+      if (row.method === "turn/interrupt")
+        await this.stopAutonomyInTransaction(tx, row.chatId);
+      else if (intent.resumeAutonomy)
+        await tx
+          .update(schema.chats)
+          .set({ managedAutonomyStopped: false })
+          .where(eq(schema.chats.id, row.chatId));
+      if (row.method === "turn/pause") {
+        await tx
+          .update(schema.chats)
+          .set({ automationPaused: intent.paused! })
+          .where(eq(schema.chats.id, row.chatId));
+        context = await this.context(tx, ownerId, row.chatId);
+      }
+      const updated = firstOrThrow(
+        await tx
+          .update(schema.nativeCommands)
+          .set({
+            identity: input.session,
+            status: "dispatched",
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.nativeCommands.operationId, row.operationId))
+          .returning(),
+        "dispatching native command",
+      );
+      return { receipt: receipt(updated), execution: context };
+    });
+  }
+  private async command(
+    tx: RepositoryTransaction,
+    ownerId: string,
+    workerId: string,
+    operationId: string,
+    operationGeneration: string,
+  ) {
+    const [row] = await tx
+      .select()
+      .from(schema.nativeCommands)
+      .where(
+        and(
+          eq(schema.nativeCommands.operationId, operationId),
+          eq(schema.nativeCommands.ownerId, ownerId),
+          eq(schema.nativeCommands.workerId, workerId),
+          eq(schema.nativeCommands.operationGeneration, operationGeneration),
+        ),
+      );
+    if (!row)
+      throw new NativeCommandError(
+        "operation-not-found",
+        "Operation not found.",
+        404,
+      );
+    return row;
+  }
+  async registerPending(
+    ownerId: string,
+    input: NativePendingRequest,
+  ): Promise<void> {
+    return this.database.transaction(async (tx) => {
+      await this.lock(tx, ownerId, input.session.chatId);
+      const context = await this.context(tx, ownerId, input.session.chatId);
+      const [activation] = await tx
+        .select()
+        .from(schema.nativeCommandActivations)
+        .where(
+          eq(schema.nativeCommandActivations.chatId, input.session.chatId),
+        );
+      if (
+        !samePlacement(context, input.workerId, input.session) ||
+        context.threadId !== input.session.threadId ||
+        !sameRuntimeRoute(context, input.session) ||
+        !input.session.runtimeGeneration ||
+        !activation?.active ||
+        activation.generation !== input.activationGeneration ||
+        activation.runtimeGeneration !== input.session.runtimeGeneration ||
+        activation.executionLaneId !== context.executionLaneId ||
+        !managedNativeServerRequests.has(input.requestMethod)
+      )
+        throw new NativeCommandError("stale-native-request");
+      const values = {
+        chatId: input.session.chatId,
+        runtimeGeneration: input.session.runtimeGeneration,
+        nativeRequestId: input.nativeRequestId,
+        activationGeneration: input.activationGeneration,
+        requestMethod: input.requestMethod,
+        turnId: input.turnId,
+      };
+      const [prior] = await tx
+        .select()
+        .from(schema.nativePendingRequests)
+        .where(
+          and(
+            eq(schema.nativePendingRequests.chatId, values.chatId),
+            eq(
+              schema.nativePendingRequests.runtimeGeneration,
+              values.runtimeGeneration,
+            ),
+            eq(
+              schema.nativePendingRequests.nativeRequestId,
+              values.nativeRequestId,
+            ),
+          ),
+        );
+      if (prior) {
+        if (
+          prior.activationGeneration !== values.activationGeneration ||
+          prior.requestMethod !== values.requestMethod ||
+          prior.turnId !== values.turnId ||
+          prior.resolutionOperationId
+        )
+          throw new NativeCommandError("native-request-id-conflict");
+        return;
+      }
+      await tx.insert(schema.nativePendingRequests).values(values);
+    });
+  }
+  private async stopAutonomyInTransaction(
+    tx: RepositoryTransaction,
+    chatId: string,
+  ): Promise<void> {
+    await tx
+      .update(schema.chats)
+      .set({ managedAutonomyStopped: true })
+      .where(eq(schema.chats.id, chatId));
+    await tx
+      .update(schema.nativeCommandActivations)
+      .set({ logicalCancelled: true })
+      .where(
+        and(
+          eq(schema.nativeCommandActivations.chatId, chatId),
+          eq(schema.nativeCommandActivations.active, true),
+        ),
+      );
+    // A resume accepted before Stop cannot reopen autonomy by dispatching late.
+    await tx
+      .update(schema.nativeCommands)
+      .set({
+        status: "rejected",
+        rejectionCode: "autonomy-stopped",
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.nativeCommands.chatId, chatId),
+          eq(schema.nativeCommands.status, "accepted"),
+          sql`${schema.nativeCommands.intent}->>'resumeAutonomy' = 'true'`,
+        ),
+      );
+  }
+  async stopAutonomy(
+    ownerId: string,
+    chatId: string,
+    expectedActivation: string | null,
+  ): Promise<boolean> {
+    return this.database.transaction(async (tx) => {
+      await this.lock(tx, ownerId, chatId);
+      const context = await this.context(tx, ownerId, chatId);
+      if (!context || !managedConsoleSessionContext(context)) return false;
+      const [activation] = await tx
+        .select()
+        .from(schema.nativeCommandActivations)
+        .where(eq(schema.nativeCommandActivations.chatId, chatId));
+      if (
+        (activation?.active ? activation.generation : null) !==
+        expectedActivation
+      )
+        return false;
+      await this.stopAutonomyInTransaction(tx, chatId);
+      return true;
+    });
+  }
+  async resumeAutonomy(ownerId: string, chatId: string): Promise<void> {
+    return this.database.transaction(async (tx) => {
+      await this.lock(tx, ownerId, chatId);
+      const context = await this.context(tx, ownerId, chatId);
+      if (!context || !managedConsoleSessionContext(context)) return;
+      await tx
+        .update(schema.chats)
+        .set({ managedAutonomyStopped: false })
+        .where(eq(schema.chats.id, chatId));
+    });
+  }
+  async cancelPreparing(
+    ownerId: string,
+    chatId: string,
+    activationGeneration: string,
+  ): Promise<{
+    workerId: string;
+    logicalRoot: { operationId: string; operationGeneration: string } | null;
+  } | null> {
+    return this.database.transaction(async (tx) => {
+      await this.lock(tx, ownerId, chatId);
+      const [activation] = await tx
+        .select()
+        .from(schema.nativeCommandActivations)
+        .where(eq(schema.nativeCommandActivations.chatId, chatId));
+      if (!activation?.active || activation.generation !== activationGeneration)
+        return null;
+      const [operation] = await tx
+        .select()
+        .from(schema.nativeCommands)
+        .where(eq(schema.nativeCommands.operationId, activation.operationId));
+      if (!operation || operation.status !== "accepted") return null;
+      const [logicalRoot] = operation.logicalOperationId
+        ? await tx
+            .select()
+            .from(schema.nativeCommands)
+            .where(
+              and(
+                eq(
+                  schema.nativeCommands.operationId,
+                  operation.logicalOperationId,
+                ),
+                eq(schema.nativeCommands.ownerId, ownerId),
+                eq(schema.nativeCommands.chatId, chatId),
+              ),
+            )
+        : [];
+      await this.stopAutonomyInTransaction(tx, chatId);
+      await tx
+        .update(schema.nativeCommands)
+        .set({
+          status: "rejected",
+          rejectionCode: "cancelled-before-dispatch",
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.nativeCommands.operationId, operation.operationId));
+      await this.lanes
+        .inTransaction(tx)
+        .finishChatExecutionLane(chatId, activation.executionLaneId, "idle");
+      await tx
+        .update(schema.nativeCommandActivations)
+        .set({ active: false })
+        .where(eq(schema.nativeCommandActivations.chatId, chatId));
+      return {
+        workerId: operation.workerId,
+        logicalRoot: logicalRoot
+          ? {
+              operationId: logicalRoot.operationId,
+              operationGeneration: logicalRoot.operationGeneration,
+            }
+          : null,
+      };
+    });
+  }
+  async controlContext(
+    ownerId: string,
+    chatId: string,
+  ): Promise<{
+    context: ChatExecutionContext | null;
+    activationGeneration: string | null;
+    runtimeGeneration: string | null;
+  }> {
+    return this.database.transaction(async (tx) => {
+      const context = await this.context(tx, ownerId, chatId);
+      if (!context)
+        return {
+          context: null,
+          activationGeneration: null,
+          runtimeGeneration: null,
+        };
+      await this.lock(tx, ownerId, chatId);
+      const current = await this.context(tx, ownerId, chatId);
+      const [activation] = await tx
+        .select()
+        .from(schema.nativeCommandActivations)
+        .where(eq(schema.nativeCommandActivations.chatId, chatId));
+      const [operation] = activation?.active
+        ? await tx
+            .select()
+            .from(schema.nativeCommands)
+            .where(
+              eq(schema.nativeCommands.operationId, activation.operationId),
+            )
+        : [];
+      return {
+        context: current,
+        runtimeGeneration:
+          current &&
+          activation?.active &&
+          activation.executionLaneId === current.executionLaneId &&
+          operation
+            ? (operation.identity as NativeCommandSession).runtimeGeneration
+            : null,
+        activationGeneration:
+          current &&
+          activation?.active &&
+          activation.executionLaneId === current.executionLaneId
+            ? activation.generation
+            : null,
+      };
+    });
+  }
+  async withEventContext<T>(
+    ownerId: string,
+    workerId: string,
+    operationId: string,
+    operationGeneration: string,
+    apply: (
+      context: ChatExecutionContext,
+      repository: ServerRepository,
+    ) => Promise<T>,
+  ): Promise<T> {
+    return this.database.transaction(async (tx) => {
+      const row = await this.command(
+        tx,
+        ownerId,
+        workerId,
+        operationId,
+        operationGeneration,
+      );
+      await this.lock(tx, ownerId, row.chatId);
+      const [activation] = await tx
+        .select()
+        .from(schema.nativeCommandActivations)
+        .where(eq(schema.nativeCommandActivations.chatId, row.chatId));
+      const context = await this.context(tx, ownerId, row.chatId);
+      if (
+        !samePlacement(
+          context,
+          workerId,
+          row.identity as NativeCommandSession,
+        ) ||
+        !sameRuntimeRoute(context, row.identity as NativeCommandSession) ||
+        row.kind !== "start" ||
+        !["dispatched", "applied", "uncertain"].includes(row.status) ||
+        !activation?.active ||
+        activation.generation !== row.activationGeneration ||
+        activation.executionLaneId !== context.executionLaneId
+      )
+        throw new NativeCommandError("stale-operation-event");
+      return apply(context, this.transactionRepository(tx));
+    });
+  }
+  async finishExecution(
+    ownerId: string,
+    workerId: string,
+    operationId: string,
+    operationGeneration: string,
+    status: "idle" | "failed",
+  ): Promise<boolean> {
+    return this.database.transaction(async (tx) => {
+      const original = await this.command(
+        tx,
+        ownerId,
+        workerId,
+        operationId,
+        operationGeneration,
+      );
+      await this.lock(tx, ownerId, original.chatId);
+      const row = await this.command(
+        tx,
+        ownerId,
+        workerId,
+        operationId,
+        operationGeneration,
+      );
+      const [activation] = await tx
+        .select()
+        .from(schema.nativeCommandActivations)
+        .where(eq(schema.nativeCommandActivations.chatId, row.chatId));
+      if (
+        row.kind !== "start" ||
+        !row.executionLaneId ||
+        !activation?.active ||
+        activation.generation !== row.activationGeneration
+      )
+        return false;
+      const finished = await this.lanes
+        .inTransaction(tx)
+        .finishChatExecutionLane(row.chatId, row.executionLaneId, status);
+      await tx
+        .update(schema.nativeCommandActivations)
+        .set({ active: false })
+        .where(eq(schema.nativeCommandActivations.chatId, row.chatId));
+      if (row.status === "accepted" || row.status === "dispatched") {
+        await tx
+          .update(schema.nativeCommands)
+          .set({
+            status: row.status === "accepted" ? "rejected" : "uncertain",
+            rejectionCode:
+              row.status === "accepted"
+                ? "not-dispatched"
+                : "missing-native-receipt",
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.nativeCommands.operationId, row.operationId));
+      }
+      return finished;
+    });
+  }
+  async lookup(
+    ownerId: string,
+    workerId: string,
+    operationId: string,
+  ): Promise<NativeCommandReceipt | null> {
+    const [row] = await this.database
+      .select()
+      .from(schema.nativeCommands)
+      .where(
+        and(
+          eq(schema.nativeCommands.ownerId, ownerId),
+          eq(schema.nativeCommands.workerId, workerId),
+          eq(schema.nativeCommands.operationId, operationId),
+        ),
+      );
+    return row ? receipt(row) : null;
+  }
+  async get(
+    ownerId: string,
+    workerId: string,
+    operationId: string,
+    operationGeneration: string,
+  ): Promise<NativeCommandReceipt> {
+    return this.database.transaction(async (tx) =>
+      receipt(
+        await this.command(
+          tx,
+          ownerId,
+          workerId,
+          operationId,
+          operationGeneration,
+        ),
+      ),
+    );
+  }
+  async settle(
+    ownerId: string,
+    input: NativeCommandSettlement,
+  ): Promise<NativeCommandReceipt> {
+    return this.database.transaction(async (tx) => {
+      const row = await this.command(
+        tx,
+        ownerId,
+        input.workerId,
+        input.operationId,
+        input.operationGeneration,
+      );
+      await this.lock(tx, ownerId, row.chatId);
+      const current = await this.command(
+        tx,
+        ownerId,
+        input.workerId,
+        input.operationId,
+        input.operationGeneration,
+      );
+      if (input.terminalResult && !input.executionComplete)
+        throw new NativeCommandError("terminal-result-requires-completion");
+      const terminalEvidence = input.decline
+        ? { kind: "declined", ...input.decline }
+        : input.reconciliation
+          ? { kind: "terminal", ...input.reconciliation }
+          : null;
+      if (current.executionCompletedAt && input.executionComplete) {
+        if (
+          current.status !== input.status ||
+          (input.resultDigest && current.resultDigest !== input.resultDigest) ||
+          (input.terminalResult?.resultDigest &&
+            current.terminalResultDigest !==
+              input.terminalResult.resultDigest) ||
+          (terminalEvidence &&
+            !isDeepStrictEqual(current.terminalEvidence, terminalEvidence))
+        )
+          throw new NativeCommandError("receipt-conflict");
+        return receipt(current);
+      }
+      if (input.decline) {
+        const [activation] = await tx
+          .select()
+          .from(schema.nativeCommandActivations)
+          .where(eq(schema.nativeCommandActivations.chatId, row.chatId));
+        if (
+          input.status !== "rejected" ||
+          !input.executionComplete ||
+          input.reconciliation ||
+          row.origin !== "autonomous" ||
+          row.kind !== "start" ||
+          row.operationId !==
+            `native:${input.decline.runnerGeneration}:${input.decline.attemptId}` ||
+          !activation?.active ||
+          activation.generation !== row.activationGeneration ||
+          activation.runtimeGeneration !== input.decline.runtimeGeneration ||
+          activation.nativeTurnId !== input.decline.nativeTurnId
+        )
+          throw new NativeCommandError("stale-native-evidence");
+      }
+      if (input.reconciliation) {
+        const [activation] = await tx
+          .select()
+          .from(schema.nativeCommandActivations)
+          .where(eq(schema.nativeCommandActivations.chatId, row.chatId));
+        if (
+          row.kind !== "start" ||
+          !activation?.active ||
+          activation.generation !== row.activationGeneration ||
+          activation.runtimeGeneration !==
+            input.reconciliation.runtimeGeneration ||
+          (activation.nativeTurnId &&
+            activation.nativeTurnId !== input.reconciliation.nativeTurnId)
+        )
+          throw new NativeCommandError("stale-native-evidence");
+        await tx
+          .update(schema.nativeCommandActivations)
+          .set({ nativeTurnId: input.reconciliation.nativeTurnId })
+          .where(eq(schema.nativeCommandActivations.chatId, row.chatId));
+      }
+      if (current.status === "rejected" && current.status !== input.status)
+        throw new NativeCommandError("receipt-conflict");
+      if (
+        current.status === "uncertain" &&
+        input.status !== "uncertain" &&
+        !(input.status === "applied" && input.reconciliation) &&
+        !(input.status === "rejected" && input.decline)
+      )
+        throw new NativeCommandError("native-evidence-required");
+      if (current.status === "accepted" && input.status === "applied")
+        throw new NativeCommandError("operation-not-dispatched");
+      if (current.status === "applied" && input.status !== "applied")
+        throw new NativeCommandError("receipt-conflict");
+      if (
+        current.resultDigest &&
+        input.resultDigest &&
+        current.resultDigest !== input.resultDigest
+      )
+        throw new NativeCommandError("receipt-conflict");
+      if (
+        current.terminalResultDigest &&
+        input.terminalResult?.resultDigest &&
+        current.terminalResultDigest !== input.terminalResult.resultDigest
+      )
+        throw new NativeCommandError("receipt-conflict");
+      const updated = firstOrThrow(
+        await tx
+          .update(schema.nativeCommands)
+          .set({
+            status: input.status,
+            resultDigest: input.resultDigest ?? current.resultDigest,
+            protectedResult: current.protectedResult ?? input.protectedResult,
+            terminalResultDigest:
+              input.terminalResult?.resultDigest ??
+              current.terminalResultDigest,
+            protectedTerminalResult:
+              current.protectedTerminalResult ??
+              input.terminalResult?.protectedResult ??
+              null,
+            terminalEvidence: input.executionComplete
+              ? terminalEvidence
+              : current.terminalEvidence,
+            executionCompletedAt: input.executionComplete
+              ? new Date()
+              : current.executionCompletedAt,
+            rejectionCode: input.rejectionCode ?? current.rejectionCode,
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.nativeCommands.operationId, row.operationId))
+          .returning(),
+        "settling native command",
+      );
+      if (
+        input.executionComplete &&
+        row.kind === "start" &&
+        row.activationGeneration &&
+        row.executionLaneId
+      ) {
+        const [activation] = await tx
+          .select()
+          .from(schema.nativeCommandActivations)
+          .where(eq(schema.nativeCommandActivations.chatId, row.chatId));
+        if (
+          activation?.active &&
+          activation.generation === row.activationGeneration
+        ) {
+          await this.lanes
+            .inTransaction(tx)
+            .finishChatExecutionLane(
+              row.chatId,
+              row.executionLaneId,
+              input.executionStatus ??
+                (input.status === "applied" ? "idle" : "failed"),
+            );
+          await tx
+            .update(schema.nativeCommandActivations)
+            .set({ active: false })
+            .where(eq(schema.nativeCommandActivations.chatId, row.chatId));
+        }
+      }
+      return receipt(updated);
+    });
+  }
+}

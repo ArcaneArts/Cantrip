@@ -248,6 +248,11 @@ export class ChatExecutionLaneRepository {
     private readonly collaborators: ChatExecutionLaneRepositoryCollaborators,
   ) {}
 
+  /** Reuse the authoritative lane transition in an enclosing command transaction. */
+  inTransaction(database: RepositoryDatabase): ChatExecutionLaneRepository {
+    return new ChatExecutionLaneRepository(database, this.collaborators);
+  }
+
   async listChatExecutionLanes(
     ownerId: string,
     chatId: string,

@@ -111,6 +111,142 @@ function fixture() {
 }
 
 describe("thread session preparation", () => {
+  it("retains actual managed ownership when ordinary reload inputs omit MCP and the gate", async () => {
+    const f = fixture();
+    await f.runtime.prepareManagedThread({
+      ...managed,
+      executionGate: { runnerGeneration: "runner" },
+    });
+    f.request.mockClear();
+    await f.native.loadThread({
+      ...options,
+      permissionProfileId: ":read-only",
+    });
+    const resume = f.request.mock.calls.find(
+      ([method]) => method === "thread/resume",
+    )![1];
+    expect(resume).toMatchObject({
+      managedConfig: {
+        mcpServers: { example: expect.any(Object) },
+        executionGate: { runnerGeneration: "runner" },
+      },
+    });
+    expect(
+      f.request.mock.calls.some(([method]) => method === "thread/unsubscribe"),
+    ).toBe(false);
+    await f.native.loadThread({
+      ...options,
+      mcpServers: [],
+    } as GoalRuntimeOptions);
+    expect(f.request).toHaveBeenLastCalledWith(
+      "thread/managedConfig/update",
+      expect.objectContaining({
+        mcpServers: {},
+        executionGate: { runnerGeneration: "runner" },
+      }),
+    );
+  });
+
+  it("keeps acknowledged gate ownership after MCP readiness fails", async () => {
+    const f = fixture();
+    const internals = f.runtime as unknown as {
+      ensureManagedMcpReady(): Promise<void>;
+    };
+    vi.spyOn(internals, "ensureManagedMcpReady")
+      .mockRejectedValueOnce(new Error("catalog failed"))
+      .mockResolvedValue();
+    await expect(
+      f.runtime.prepareManagedThread({
+        ...managed,
+        executionGate: { runnerGeneration: "runner" },
+      }),
+    ).rejects.toThrow("catalog failed");
+    f.request.mockClear();
+    await f.native.loadThread(options);
+    expect(f.request).toHaveBeenCalledWith(
+      "thread/managedConfig/update",
+      expect.objectContaining({
+        mcpServers: { example: expect.any(Object) },
+        executionGate: { runnerGeneration: "runner" },
+      }),
+    );
+    expect(
+      f.request.mock.calls.some(([method]) => method === "thread/unsubscribe"),
+    ).toBe(false);
+  });
+
+  it("retains the actual rearmed gate generation for later managed configuration updates", async () => {
+    const f = fixture();
+    await f.runtime.prepareManagedThread({
+      ...managed,
+      executionGate: { runnerGeneration: "old-runner" },
+    });
+    vi.spyOn(
+      f.runtime as unknown as {
+        assertManagedExecutionTransport(generation: string): void;
+      },
+      "assertManagedExecutionTransport",
+    ).mockImplementation(() => {});
+    const request = f.request.getMockImplementation()!;
+    f.request.mockImplementation(async (method, params) =>
+      method === "thread/managedExecution/bind"
+        ? { bound: true }
+        : method === "thread/managedExecution/invalidate"
+          ? { invalidated: true }
+          : request(method, params),
+    );
+    await f.runtime.bindManagedExecution(
+      {
+        threadId: "thread-1",
+        runnerGeneration: "new-runner",
+        expectedRunnerGeneration: "old-runner",
+      },
+      "transport",
+    );
+    await f.runtime.invalidateManagedExecution(
+      { threadId: "thread-1", runnerGeneration: "new-runner" },
+      "transport",
+    );
+    await f.native.loadThread({
+      ...options,
+      mcpServers: [],
+    } as GoalRuntimeOptions);
+    expect(f.request).toHaveBeenLastCalledWith(
+      "thread/managedConfig/update",
+      expect.objectContaining({
+        mcpServers: {},
+        executionGate: { runnerGeneration: "new-runner" },
+      }),
+    );
+  });
+
+  it("drops retained ownership on an actual foreign thread closure", async () => {
+    const f = fixture();
+    await f.runtime.prepareManagedThread({
+      ...managed,
+      executionGate: { runnerGeneration: "runner" },
+    });
+    f.native.handleMessage(
+      Buffer.from(
+        JSON.stringify({
+          method: "thread/closed",
+          params: { threadId: "thread-1" },
+        }),
+      ),
+    );
+    f.request.mockClear();
+    await f.native.loadThread(options);
+    const resume = f.request.mock.calls.find(
+      ([method]) => method === "thread/resume",
+    )![1];
+    expect(resume).not.toHaveProperty("managedConfig");
+    expect(
+      f.request.mock.calls.some(
+        ([method]) => method === "thread/managedConfig/update",
+      ),
+    ).toBe(false);
+  });
+
   it.each([{ mcpServers: configured.mcpServers }, { mcpServers: [] }])(
     "supplies exact managed startup configuration before any MCP initialization: $mcpServers",
     async ({ mcpServers }) => {
@@ -181,10 +317,10 @@ describe("thread session preparation", () => {
   );
 
   it.each(["thread/unsubscribe", "thread/resume"])(
-    "accepts an owned idle-engine replacement observed during %s",
+    "accepts a legacy owned idle-engine replacement observed during %s",
     async (closingMethod) => {
       const f = fixture();
-      await f.runtime.prepareManagedThread(managed);
+      await f.native.loadThread(configured);
       const request = f.request.getMockImplementation()!;
       f.request.mockImplementation(async (method, params) => {
         if (method === closingMethod) {
@@ -200,12 +336,16 @@ describe("thread session preparation", () => {
         return request(method, params);
       });
       await expect(
-        f.runtime.prepareManagedThread({ ...managed, mcpServers: [] }),
-      ).resolves.toEqual({
+        f.native.loadThread({
+          ...configured,
+          mcpServers: [],
+        } as GoalRuntimeOptions),
+      ).resolves.toBe("thread-1");
+      expect(f.request).toHaveBeenCalledWith("thread/unsubscribe", {
         threadId: "thread-1",
       });
       expect(f.request).toHaveBeenCalledWith(
-        "thread/managedConfig/update",
+        "thread/resume",
         expect.objectContaining({ threadId: "thread-1" }),
       );
     },
@@ -1149,4 +1289,263 @@ describe("thread session preparation", () => {
       ]);
     },
   );
+});
+
+describe("managed autonomous gate installation", () => {
+  it.each(["configure", "preserve"] as const)(
+    "installs the gate in the first cold %s resume and retains it in the live overlay",
+    async (intent) => {
+      const f = fixture();
+      await f.runtime.prepareManagedThread({
+        ...managed,
+        intent,
+        executionGate: { runnerGeneration: "runner" },
+      });
+      const resume = f.request.mock.calls.find(
+        ([method]) => method === "thread/resume",
+      )!;
+      const update = f.request.mock.calls.find(
+        ([method]) => method === "thread/managedConfig/update",
+      )!;
+      expect(resume[1]).toMatchObject({
+        managedConfig: { executionGate: { runnerGeneration: "runner" } },
+      });
+      expect(update[1]).toMatchObject({
+        executionGate: { runnerGeneration: "runner" },
+      });
+      expect(
+        f.request.mock.calls.findIndex(
+          ([method]) => method === "thread/resume",
+        ),
+      ).toBeLessThan(
+        f.request.mock.calls.findIndex(
+          ([method]) => method === "thread/managedConfig/update",
+        ),
+      );
+    },
+  );
+});
+
+describe("remaining managed GUI native mutations", () => {
+  const goal = {
+    threadId: "thread-1",
+    objective: "actual goal",
+    status: "active",
+    tokenBudget: null,
+    tokensUsed: 0,
+    timeUsedSeconds: 0,
+    createdAt: 1,
+    updatedAt: 1,
+  };
+
+  it.each(["compact", "update-goal", "clear-goal"] as const)(
+    "keeps %s on its bound engine and waits for admission",
+    async (action) => {
+      const f = fixture();
+      const entered = deferred<void>();
+      const release = deferred<void>();
+      const methods: string[] = [];
+      f.request.mockImplementation(async (method) =>
+        method === "thread/goal/set"
+          ? { goal }
+          : method === "thread/goal/clear"
+            ? { cleared: true }
+            : {},
+      );
+      f.runtime.setManagedNativeCommandDispatcher(
+        "thread-1",
+        async (command) => {
+          methods.push(command.method);
+          entered.resolve();
+          await release.promise;
+          return command.dispatch();
+        },
+      );
+      const pending =
+        action === "compact"
+          ? f.runtime.compactThread({ ...options, executionProfile: "ide" })
+          : action === "update-goal"
+            ? f.runtime.updateGoal({ ...options, status: "active" })
+            : f.runtime.clearGoal(options);
+      await entered.promise;
+      expect(f.native.ensureStarted).not.toHaveBeenCalled();
+      expect(f.request).not.toHaveBeenCalled();
+      release.resolve();
+      await pending;
+      expect(f.request.mock.calls.map(([method]) => method)).toEqual(methods);
+      expect(methods).toEqual([
+        action === "compact"
+          ? "thread/compact/start"
+          : action === "update-goal"
+            ? "thread/goal/set"
+            : "thread/goal/clear",
+      ]);
+    },
+  );
+
+  it("admits both precise revert and its actual unsupported pagination fallback", async () => {
+    const f = fixture();
+    const methods: string[] = [];
+    f.runtime.setManagedNativeCommandDispatcher("thread-1", async (command) => {
+      methods.push(command.method);
+      return command.dispatch();
+    });
+    f.request.mockImplementation(async (method) => {
+      if (method === "thread/read")
+        return {
+          thread: {
+            turns: [
+              {
+                id: "native-turn",
+                items: [{ type: "userMessage", clientId: "cantrip:message" }],
+              },
+            ],
+          },
+        };
+      if (method === "thread/revert")
+        throw new Error("paginated history not supported");
+      if (method === "thread/rollback") return {};
+      throw new Error(`Unexpected ${method}`);
+    });
+    await f.runtime.rollbackLatestChatTurn({
+      ...options,
+      executionProfile: "ide",
+      clientMessageId: "message",
+    });
+    expect(methods).toEqual(["thread/revert", "thread/rollback"]);
+    expect(f.request).toHaveBeenCalledWith("thread/revert", {
+      threadId: "thread-1",
+      beforeTurnId: "native-turn",
+    });
+    expect(f.request).toHaveBeenCalledWith("thread/rollback", {
+      threadId: "thread-1",
+      numTurns: 1,
+    });
+    expect(f.native.ensureStarted).not.toHaveBeenCalled();
+  });
+
+  it("admits completed goal replacement clear and set separately while goal reads remain observational", async () => {
+    const f = fixture();
+    const methods: string[] = [];
+    const operationIds: Array<string | undefined> = [];
+    f.runtime.setManagedNativeCommandDispatcher("thread-1", async (command) => {
+      methods.push(command.method);
+      operationIds.push(command.operationId);
+      return command.dispatch();
+    });
+    f.request.mockImplementation(async (method) =>
+      method === "thread/goal/get"
+        ? { goal: { ...goal, status: "complete" } }
+        : method === "thread/goal/clear"
+          ? { cleared: true }
+          : { goal },
+    );
+    await f.runtime.getGoal(options);
+    expect(methods).toEqual([]);
+    await f.runtime.createGoal({
+      ...options,
+      objective: "next",
+      operationId: "stable-user-message",
+    });
+    expect(methods).toEqual(["thread/goal/clear", "thread/goal/set"]);
+    expect(operationIds).toEqual([
+      "stable-user-message:clear",
+      "stable-user-message",
+    ]);
+    expect(f.native.ensureStarted).not.toHaveBeenCalled();
+    expect(
+      f.request.mock.calls.some(
+        ([method]) => method === "thread/resume" || method === "thread/start",
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("resuming actual managed native automation", () => {
+  const activeGoal = {
+    threadId: "thread-1",
+    objective: "native objective",
+    status: "active",
+    tokenBudget: null,
+    tokensUsed: 0,
+    timeUsedSeconds: 0,
+    createdAt: 1,
+    updatedAt: 1,
+  };
+  it("reads the actual goal and rearms it through admitted goal/set after idle Stop", async () => {
+    const f = fixture();
+    const calls: Array<{ method: string; params: unknown }> = [];
+    f.runtime.setManagedNativeCommandDispatcher("thread-1", async (command) => {
+      calls.push({ method: command.method, params: command.params });
+      return command.dispatch();
+    });
+    await f.runtime.interruptChat("chat", "thread-1");
+    expect(f.request).not.toHaveBeenCalled();
+    f.request.mockImplementation(async (method) => {
+      if (method === "thread/goal/get" || method === "thread/goal/set")
+        return { goal: activeGoal };
+      throw new Error(`Unexpected ${method}`);
+    });
+    await expect(
+      f.runtime.resumeManagedAutomation({ threadId: "thread-1" }),
+    ).resolves.toEqual({ resumed: true });
+    expect(calls).toEqual([
+      { method: "turn/interrupt", params: { threadId: "thread-1" } },
+      {
+        method: "thread/goal/set",
+        params: { threadId: "thread-1", status: "active" },
+      },
+    ]);
+    expect(f.native.ensureStarted).not.toHaveBeenCalled();
+  });
+
+  it("starts the existing native queue when no active goal exists", async () => {
+    const f = fixture();
+    const mutations: string[] = [];
+    f.runtime.setManagedNativeCommandDispatcher("thread-1", async (command) => {
+      mutations.push(command.method);
+      return command.dispatch();
+    });
+    f.request.mockImplementation(async (method) =>
+      method === "thread/goal/get"
+        ? { goal: { ...activeGoal, status: "paused" } }
+        : method === "thread/queue/list"
+          ? { data: [{ id: "actual-queued-input" }], nextCursor: null }
+          : { turn: { id: "actual-turn" } },
+    );
+    await expect(
+      f.runtime.resumeManagedAutomation({ threadId: "thread-1" }),
+    ).resolves.toEqual({ resumed: true });
+    expect(f.request.mock.calls).toEqual([
+      ["thread/goal/get", { threadId: "thread-1" }],
+      ["thread/queue/list", { threadId: "thread-1", limit: 1 }],
+      ["thread/queue/start", { threadId: "thread-1" }],
+    ]);
+    expect(mutations).toEqual(["thread/queue/start"]);
+    expect(f.native.ensureStarted).not.toHaveBeenCalled();
+  });
+
+  it("reports no native work without creating a prompt or engine and surfaces actual read failure", async () => {
+    const f = fixture();
+    const dispatch = vi.fn(async (command) => command.dispatch());
+    f.runtime.setManagedNativeCommandDispatcher("thread-1", dispatch);
+    f.request.mockImplementation(async (method) =>
+      method === "thread/goal/get"
+        ? { goal: null }
+        : { data: [], nextCursor: null },
+    );
+    await expect(
+      f.runtime.resumeManagedAutomation({ threadId: "thread-1" }),
+    ).resolves.toEqual({ resumed: false });
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(f.native.ensureStarted).not.toHaveBeenCalled();
+    const failure = new Error("native connection lost");
+    f.request.mockRejectedValue(failure);
+    await expect(
+      f.runtime.resumeManagedAutomation({ threadId: "thread-1" }),
+    ).rejects.toBe(failure);
+    await expect(
+      f.runtime.resumeManagedAutomation({ threadId: "unbound" }),
+    ).rejects.toThrow("bound managed native session");
+  });
 });

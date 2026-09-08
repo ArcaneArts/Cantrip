@@ -1,3 +1,8 @@
+import {
+  managedConsoleSessionContext,
+  prepareManagedConsoleLaunch,
+  type ManagedConsoleRouting,
+} from "../../terminals/managed-session.js";
 import { randomUUID } from "node:crypto";
 
 import {
@@ -85,7 +90,15 @@ export interface ChatGoalRouteDependencies {
     source: TaskOpaqueSummary,
     state: TaskOpaqueSummary["state"],
   ) => Promise<void>;
-  repository: Pick<ServerRepository, "getChatExecutionContext" | "tasks">;
+  repository: Pick<
+    ServerRepository,
+    | "getChatExecutionContext"
+    | "tasks"
+    | "listEffectiveMcpServers"
+    | "setChatModel"
+    | "updateChatRuntime"
+  >;
+  routePairsForConfiguration: ManagedConsoleRouting["routePairsForConfiguration"];
   resolveModelId: (context: ChatExecutionContext) => Promise<string>;
   retainTaskGoalLease: (lease: TaskDispatchWorkerLease) => Promise<void>;
   runtimeForContext: (
@@ -120,6 +133,7 @@ export function installChatGoalRoutes(
     resolveModelId,
     retainTaskGoalLease,
     runtimeForContext,
+    routePairsForConfiguration,
     scheduledTaskGoalTurnOptions,
     startGoalTurn,
     taskContentFromSummary,
@@ -364,8 +378,24 @@ export function installChatGoalRoutes(
             }),
           );
         }
+        const managed = managedConsoleSessionContext(context)
+          ? await prepareManagedConsoleLaunch(context, runtime, {
+              ownerId: applicationOwnerId(),
+              bridge,
+              repository,
+              routePairsForConfiguration,
+            })
+          : null;
         const result = chatGoalResponseSchema.parse(
           await bridge.request(context.workerId, {
+            ...(managed
+              ? {
+                  session: managed.session,
+                  subagentDefaults: managed.subagentDefaults,
+                  mcpServers: managed.mcpServers,
+                  planMode: managed.planMode,
+                }
+              : {}),
             type: "chat.goal.update",
             chatId: context.chatId,
             cwd: context.cwd,
@@ -378,6 +408,7 @@ export function installChatGoalRoutes(
           }),
         );
         if (
+          !managed &&
           input.data.status === "active" &&
           !context.automationPaused &&
           !chatIsExecuting(context.status) &&
@@ -430,7 +461,23 @@ export function installChatGoalRoutes(
       try {
         const runtime = await runtimeForContext(context);
         if (!runtime) throw new Error("Selected model was not found.");
+        const managed = managedConsoleSessionContext(context)
+          ? await prepareManagedConsoleLaunch(context, runtime, {
+              ownerId: applicationOwnerId(),
+              bridge,
+              repository,
+              routePairsForConfiguration,
+            })
+          : null;
         const result = await bridge.request(context.workerId, {
+          ...(managed
+            ? {
+                session: managed.session,
+                subagentDefaults: managed.subagentDefaults,
+                mcpServers: managed.mcpServers,
+                planMode: managed.planMode,
+              }
+            : {}),
           type: "chat.goal.clear",
           chatId: context.chatId,
           cwd: context.cwd,

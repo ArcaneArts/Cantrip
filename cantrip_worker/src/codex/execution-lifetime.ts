@@ -38,6 +38,8 @@ export class CodexExecutionLifetime {
 
 /** Only identities observed by this runtime, not account or server claims. */
 export interface CodexComputerUseExecution {
+  /** Fresh admission generation, independent of reusable server lane IDs. */
+  operationGeneration?: string;
   chatId: string;
   threadId: string;
   turnId: string;

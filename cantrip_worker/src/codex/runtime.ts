@@ -17,6 +17,14 @@ import type {
   PlanMode,
 } from "@cantrip/protocol";
 import type {
+  ManagedNativeCommandDispatcher,
+  ManagedExecutionGateHandler,
+  ManagedExecutionResolution,
+  AdmittedNativeReply,
+  AdmittedNativeReplyIdentity,
+  AdmittedNativeReplyResponse,
+  AdmittedNativeExecution,
+  PrepareAdmittedNativeExecutionOptions,
   AgentOperationResult,
   CodexSkill,
   CompactAgentThreadOptions,
@@ -56,6 +64,7 @@ export async function interruptChatAcrossRuntimes(
 
 export interface CodexRuntime {
   readonly compatibility: CodexRuntimeReport;
+  readonly transportGeneration: string | null;
 
   resolveComputerUseExecution(input: {
     chatId: string;
@@ -63,11 +72,49 @@ export interface CodexRuntime {
     turnId: string;
   }): CodexComputerUseExecution | null;
 
+  setManagedExecutionGateHandler(
+    runnerGeneration: string,
+    handler: ManagedExecutionGateHandler | null,
+  ): AbortSignal | null;
+  resolveManagedExecution(
+    params: ManagedExecutionResolution,
+    expectedTransportGeneration: string,
+  ): Promise<{ accepted: true }>;
+  invalidateManagedExecution(
+    params: { threadId: string; runnerGeneration: string },
+    expectedTransportGeneration: string,
+  ): Promise<{ invalidated: true }>;
+  bindManagedExecution(
+    params: {
+      threadId: string;
+      runnerGeneration: string;
+      expectedRunnerGeneration: string | null;
+    },
+    expectedTransportGeneration: string,
+  ): Promise<{ bound: true }>;
+  setManagedNativeCommandDispatcher(
+    threadId: string,
+    dispatcher: ManagedNativeCommandDispatcher | null,
+  ): void;
   setChatPaused(chatId: string, paused: boolean): void;
   setActiveChatPaused(
     chatId: string,
     paused: boolean,
   ): Promise<{ threadId: string; turnId: string } | null>;
+  pendingAdmittedNativeReply(
+    input: AdmittedNativeReplyIdentity,
+  ): AdmittedNativeReply | null;
+  awaitPendingAdmittedNativeReply(
+    input: AdmittedNativeReplyIdentity,
+  ): Promise<AdmittedNativeReply>;
+  resolveAdmittedNativeReply(
+    input: AdmittedNativeReplyIdentity & {
+      response: AdmittedNativeReplyResponse;
+    },
+  ): { accepted: true };
+  prepareAdmittedNativeExecution(
+    options: PrepareAdmittedNativeExecutionOptions,
+  ): Promise<AdmittedNativeExecution>;
   runTurn(options: RunAgentTurnOptions): Promise<AgentTurnResult>;
   runAgentOperation(
     options: RunAgentOperationOptions,
@@ -183,6 +230,9 @@ export interface CodexRuntime {
     model: RunAgentTurnOptions["model"],
     provider: RunAgentTurnOptions["provider"],
   ): Promise<{ released: boolean }>;
+  resumeManagedAutomation(options: {
+    threadId: string;
+  }): Promise<{ resumed: boolean }>;
   getGoal(
     options: GoalRuntimeOptions & { threadId: string },
   ): Promise<ChatGoalResponse>;
@@ -190,6 +240,7 @@ export interface CodexRuntime {
     options: GoalRuntimeOptions & {
       objective: string;
       tokenBudget?: number | null;
+      operationId?: string;
     },
   ): Promise<ChatGoalResponse>;
   updateGoal(
