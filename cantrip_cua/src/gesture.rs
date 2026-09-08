@@ -158,7 +158,7 @@ impl InputCommand {
             Self::Focus {} | Self::WindowInput {} => true,
             Self::PreparedPress {
                 point: p, hold_ms, ..
-            } => p.is_none_or(point) && *hold_ms <= 7_200_000,
+            } => p.is_none_or(point) && *hold_ms <= 9_007_199_254_740_991,
             Self::Timeline { frames } => return crate::timeline::validate(frames),
             Self::Text { text } => {
                 !text.is_empty()
@@ -381,7 +381,14 @@ mod tests {
     }
     #[test]
     fn prepared_press_is_a_single_bounded_unmodified_action() {
-        for hold_ms in [0, 150, 1000, 2000, 7_200_000] {
+        for hold_ms in [
+            0,
+            150,
+            150_000,
+            7_200_001,
+            86_400_000,
+            9_007_199_254_740_991,
+        ] {
             let command = InputCommand::PreparedPress {
                 point: Some(Point { x: 12., y: 34. }),
                 hold_ms,
@@ -390,7 +397,7 @@ mod tests {
             command.validate().unwrap();
             assert_eq!(command.method(), "background-prepared-press");
         }
-        for hold_ms in [7_200_001, u64::MAX] {
+        for hold_ms in [9_007_199_254_740_992, u64::MAX] {
             assert!(
                 InputCommand::PreparedPress {
                     point: Some(Point { x: 0., y: 0. }),

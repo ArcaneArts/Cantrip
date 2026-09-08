@@ -210,7 +210,7 @@ describe("worker JavaScript ownership before MCP activation", () => {
     },
   );
 
-  it.each([undefined, 1, 7_500_000])(
+  it.each([undefined, 0, 1, 7_500_000])(
     "propagates trusted wall timeout %s to Rust and the host transport",
     async (wallTimeoutMs) => {
       const { service, request } = fixture();
@@ -222,16 +222,18 @@ describe("worker JavaScript ownership before MCP activation", () => {
         ([input]) =>
           (input as { operation: string }).operation === "javascript.evaluate",
       )!;
-      const expected = wallTimeoutMs ?? 45_000;
+      const expected = wallTimeoutMs ?? 0;
       expect(call[0]).toMatchObject({
         operation: "javascript.evaluate",
         wallTimeoutMs: expected,
       });
-      expect(call[1]).toMatchObject({ timeoutMs: expected + 2_000 });
+      expect(call[1]).toMatchObject({
+        timeoutMs: expected === 0 ? 0 : expected + 2_000,
+      });
     },
   );
 
-  it.each([0, -1, 7_500_001, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1])(
+  it.each([-1, 7_500_001, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1])(
     "rejects invalid trusted wall timeout %s before launching or creating authority",
     async (wallTimeoutMs) => {
       const { service, launch } = fixture();
@@ -723,7 +725,7 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
         opts,
       );
       expect(result.value).toMatchObject({
-        apiVersion: 17,
+        apiVersion: 18,
         methods: { keyPress: expect.any(String), keyChord: expect.any(String) },
         examples: { commandK: expect.any(String) },
       });

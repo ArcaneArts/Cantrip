@@ -7,7 +7,7 @@ export const CUA_MAX_CHUNKS = 64;
 export const CUA_CONTROL_BYTES = 16 * 1024 * 1024;
 export const CUA_MAX_SCRIPT_BYTES = 2 * 1024 * 1024;
 export const CUA_MAX_TIMELINE_FRAMES = 131072;
-export const CUA_MAX_TIMELINE_MS = 7_200_000;
+export const CUA_MAX_TIMELINE_MS = Number.MAX_SAFE_INTEGER;
 
 // Shared with native boundary validation. No Node globals are required by the
 // browser/client schema: these limits count UTF-8 bytes, not UTF-16 code units.
@@ -344,7 +344,7 @@ export const cuaInputCommandSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("prepared-press"),
     point: cuaPointSchema.optional(),
-    holdMs: z.number().int().min(0).max(7200000),
+    holdMs: z.number().int().min(0).max(CUA_MAX_TIMELINE_MS),
     button: cuaMouseButtonSchema.optional(),
   }),
   z.strictObject({ kind: z.literal("timeline"), frames: cuaTimelineSchema }),

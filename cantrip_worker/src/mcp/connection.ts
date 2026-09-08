@@ -112,7 +112,9 @@ async function brokerRequest(
       ...(init.body ? { "content-type": "application/json" } : {}),
     },
     signal: AbortSignal.any([
-      AbortSignal.timeout(limits.timeoutMs),
+      ...(limits.timeoutMs === 0
+        ? []
+        : [AbortSignal.timeout(limits.timeoutMs)]),
       ...(init.signal ? [init.signal] : []),
     ]),
   };

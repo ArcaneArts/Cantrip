@@ -84,21 +84,24 @@ describe("bounded native macros", () => {
     "background-key",
     "background-drag",
     "background-scroll",
-  ] as const)("never upgrades a %s receipt to verified dispatch", (method) => {
-    const receipt = {
-      method,
-      activation: false,
-      outcome: "unknown" as const,
-      windowDelivery: "unverified" as const,
-      position: { x: 2, y: 3 },
-      globalPosition: { x: 12, y: 13 },
-    };
-    expect(matchesInputReceipt(receipt, method, { x: 2, y: 3 })).toBe(true);
-    expect(
-      matchesInputReceipt({ ...receipt, outcome: "dispatched" }, method),
-    ).toBe(false);
-    expect(matchesInputReceipt(receipt, method, { x: 3, y: 4 })).toBe(false);
-  });
+  ] as const)(
+    "distinguishes %s posting from application acceptance",
+    (method) => {
+      const receipt = {
+        method,
+        activation: false,
+        outcome: "unknown" as const,
+        windowDelivery: "unverified" as const,
+        position: { x: 2, y: 3 },
+        globalPosition: { x: 12, y: 13 },
+      };
+      expect(matchesInputReceipt(receipt, method, { x: 2, y: 3 })).toBe(true);
+      expect(
+        matchesInputReceipt({ ...receipt, outcome: "dispatched" }, method),
+      ).toBe(true);
+      expect(matchesInputReceipt(receipt, method, { x: 3, y: 4 })).toBe(false);
+    },
+  );
 });
 
 describe("native chord timeline", () => {
@@ -125,7 +128,7 @@ describe("native chord timeline", () => {
       [{ atMs: 0, keyUp: ["C"] }],
       [{ atMs: 0, keyDown: ["C", "C"] }],
       [{ atMs: 100 }, { atMs: 0 }],
-      [{ atMs: 7200001 }],
+      [{ atMs: Number.MAX_SAFE_INTEGER + 1 }],
       [{ atMs: 0, pointerDown: { x: 1, y: 1 } }],
       [{ atMs: 0, pointerUp: true }],
       [{ atMs: 0, keyDown: ["Bogus"] }],
@@ -231,7 +234,7 @@ describe("focus and full performance contracts", () => {
     expect(
       cuaInputCommandSchema.safeParse({
         kind: "timeline",
-        frames: [{ atMs: 7200001 }],
+        frames: [{ atMs: Number.MAX_SAFE_INTEGER + 1 }],
       }).success,
     ).toBe(false);
   });
@@ -294,7 +297,7 @@ it("keeps prepared press unmodified, bounded and visibly uncertain", () => {
     { globalInput: true },
     { targetId: "other" },
     { holdMs: -1 },
-    { holdMs: 7200001 },
+    { holdMs: Number.MAX_SAFE_INTEGER + 1 },
   ]) {
     expect(
       cuaInputCommandSchema.safeParse({ ...command, ...extra }).success,
@@ -316,7 +319,7 @@ it("keeps prepared press unmodified, bounded and visibly uncertain", () => {
   ).toBe(false);
   expect(
     matchesInputReceipt({ ...receipt, outcome: "dispatched" }, receipt.method),
-  ).toBe(false);
+  ).toBe(true);
   expect(matchesInputReceipt(receipt, "background-timeline")).toBe(false);
   expect(matchesInputReceipt(receipt, receipt.method, { x: 13, y: 34 })).toBe(
     false,
@@ -409,7 +412,7 @@ it("exposes explicit system media keys with honest system-scoped receipts", () =
   expect(matchesInputReceipt(receipt, "system-media")).toBe(true);
   expect(
     matchesInputReceipt({ ...receipt, outcome: "dispatched" }, "system-media"),
-  ).toBe(false);
+  ).toBe(true);
   expect(
     matchesInputReceipt(
       { ...receipt, windowDelivery: "unverified" },
@@ -417,3 +420,18 @@ it("exposes explicit system media keys with honest system-scoped receipts", () =
     ),
   ).toBe(false);
 });
+
+it.each([150000, 24 * 60 * 60 * 1000, Number.MAX_SAFE_INTEGER])(
+  "accepts an entire %i ms timeline without chunking",
+  (atMs) => {
+    expect(
+      cuaInputCommandSchema.safeParse({
+        kind: "timeline",
+        frames: [
+          { atMs: 0, keyDown: ["C"] },
+          { atMs, keyUp: ["C"] },
+        ],
+      }).success,
+    ).toBe(true);
+  },
+);

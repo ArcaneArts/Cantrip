@@ -9,9 +9,13 @@ import {
 } from "./types.js";
 import type { CuaRequestOptions } from "./transport.js";
 
-it.each([false, true])(
-  "a dense 23-second score can exceed 28 seconds; Stop still interrupts (%s)",
-  async (stop) => {
+it.each(
+  [false, true].flatMap((stop) =>
+    [30_000, 150_000, 86_400_000].map((durationMs) => ({ stop, durationMs })),
+  ),
+)(
+  "planned playback runs for $durationMs ms with explicit Stop=$stop",
+  async ({ stop, durationMs }) => {
     vi.useFakeTimers();
     const scope: CuaScope = {
       serverId: "server",
@@ -87,11 +91,14 @@ it.each([false, true])(
           } else if (input.operation === "input.perform") {
             entered = true;
             await new Promise<void>((resolve, reject) => {
-              const complete = setTimeout(() => finish(), 30_000);
-              const timeout = setTimeout(
-                () => finish(new CuaProcessError("timeout")),
-                opts.timeoutMs,
-              );
+              const complete = setTimeout(() => finish(), durationMs);
+              const timeout =
+                opts.timeoutMs === 0
+                  ? undefined
+                  : setTimeout(
+                      () => finish(new CuaProcessError("timeout")),
+                      opts.timeoutMs,
+                    );
               const abort = () => finish(new CuaProcessError("cancelled"));
               function finish(error?: Error) {
                 clearTimeout(complete);
@@ -149,7 +156,7 @@ it.each([false, true])(
             return error;
           },
         );
-      await vi.advanceTimersByTimeAsync(28_200);
+      await vi.advanceTimersByTimeAsync(durationMs - 1_800);
       expect(entered).toBe(true);
       expect(settled).toBe(false);
       if (stop) controller.abort();

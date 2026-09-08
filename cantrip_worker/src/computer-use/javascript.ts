@@ -329,10 +329,10 @@ export class CuaJavascriptContexts {
       Buffer.byteLength(source) > CUA_JAVASCRIPT_MAX_SOURCE_BYTES
     )
       throw new CuaProcessError("invalid-request", "not-sent");
-    const wallTimeoutMs = options.wallTimeoutMs ?? 45_000;
+    const wallTimeoutMs = options.wallTimeoutMs ?? 0;
     if (
       !Number.isSafeInteger(wallTimeoutMs) ||
-      wallTimeoutMs < 1 ||
+      wallTimeoutMs < 0 ||
       wallTimeoutMs > 7_500_000
     )
       throw new CuaProcessError("invalid-request", "not-sent");
@@ -370,7 +370,7 @@ export class CuaJavascriptContexts {
         },
         {
           signal: active,
-          timeoutMs: wallTimeoutMs + 2_000,
+          timeoutMs: wallTimeoutMs === 0 ? 0 : wallTimeoutMs + 2_000,
           onHostCall: async (input, callSignal) => {
             const signal = AbortSignal.any([active, callSignal]);
             this.live(context, signal);

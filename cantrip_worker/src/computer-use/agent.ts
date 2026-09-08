@@ -368,7 +368,7 @@ export class CuaAgentCoordinator {
       {
         executionSignal: lifetime.signal,
         signal: active,
-        wallTimeoutMs: 7_500_000,
+        wallTimeoutMs: 0,
         onOperation: (outcome) => {
           if (outcome.input)
             inputAttempts.push({
