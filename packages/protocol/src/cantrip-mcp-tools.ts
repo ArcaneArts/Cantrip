@@ -63,6 +63,7 @@ export const cantripMcpReadResultBaseSchema = z
   .strict();
 
 export const cantripMcpContextGetInputSchema = z.object({}).strict();
+export const cantripMcpContextCompactInputSchema = z.object({}).strict();
 export const cantripMcpToolHelpInputSchema = z
   .object({ tool: cantripMcpToolNameSchema })
   .strict();
@@ -488,6 +489,20 @@ export const cantripMcpClientShowInteractionInputSchema = z
   .object({ interactionId: z.string().min(1).max(200) })
   .strict();
 
+export const cantripMcpContextWindowSchema = z
+  .object({
+    threadId: z.string().min(1).max(200),
+    turnId: z.string().min(1).max(200),
+    usedTokens: z.number().int().nonnegative().nullable(),
+    contextWindowTokens: z.number().int().positive().nullable(),
+    remainingTokens: z.number().int().nonnegative().nullable(),
+    usedPercent: z.number().min(0).max(100).nullable(),
+    remainingPercent: z.number().min(0).max(100).nullable(),
+    usageUpdatedAtMs: z.number().int().nonnegative().nullable(),
+    compactionScheduled: z.boolean(),
+  })
+  .strict();
+
 export const cantripMcpContextGetResultSchema =
   cantripMcpReadResultBaseSchema.extend({
     target: z.null().default(null),
@@ -514,6 +529,7 @@ export const cantripMcpContextGetResultSchema =
           })
           .strict(),
         binding: cantripMcpBindingReadinessSchema,
+        contextWindow: cantripMcpContextWindowSchema.nullable().default(null),
       })
       .strict(),
   });
@@ -822,6 +838,13 @@ const cantripMcpMutationResultBaseSchema = z
 const cantripMcpContinuationResultBaseSchema =
   cantripMcpMutationResultBaseSchema.extend({
     continuationScheduled: z.literal(true),
+  });
+export const cantripMcpContextCompactResultSchema =
+  cantripMcpContinuationResultBaseSchema.extend({
+    target: z.null().default(null),
+    data: cantripMcpContextWindowSchema.extend({
+      compactionScheduled: z.literal(true),
+    }),
   });
 const cantripMcpTransitionDataSchema = z
   .object({

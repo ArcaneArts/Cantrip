@@ -17,6 +17,7 @@ import {
   cantripChatThreadParams,
   agentInteractionRequestFromServerRequest,
   appendBoundedCommandOutput,
+  activeAgentContextWindow,
   boundedCommandOutput,
   changedLinesPreview,
   changedFiles,
@@ -111,6 +112,56 @@ describe("external Codex thread change coalescing", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("agent-visible context occupancy", () => {
+  it("reports exact used, remaining, and percentage values from native usage", () => {
+    expect(
+      activeAgentContextWindow(
+        {
+          threadId: "thread-1",
+          contextCompactionRequestedAtMs: 2_000,
+          contextUsageUpdatedAtMs: 1_500,
+          contextUsage: {
+            last: { totalTokens: 7_501 },
+            modelContextWindow: 10_000,
+          },
+        },
+        "turn-1",
+      ),
+    ).toEqual({
+      threadId: "thread-1",
+      turnId: "turn-1",
+      usedTokens: 7_501,
+      contextWindowTokens: 10_000,
+      remainingTokens: 2_499,
+      usedPercent: 75,
+      remainingPercent: 25,
+      usageUpdatedAtMs: 1_500,
+      compactionScheduled: true,
+    });
+  });
+
+  it("does not invent occupancy before Codex reports it", () => {
+    expect(
+      activeAgentContextWindow(
+        {
+          threadId: "thread-1",
+          contextCompactionRequestedAtMs: null,
+          contextUsageUpdatedAtMs: null,
+          contextUsage: null,
+        },
+        "turn-1",
+      ),
+    ).toMatchObject({
+      usedTokens: null,
+      contextWindowTokens: null,
+      remainingTokens: null,
+      usedPercent: null,
+      remainingPercent: null,
+      compactionScheduled: false,
+    });
   });
 });
 
@@ -1278,6 +1329,7 @@ describe("managed Cantrip MCP guidance", () => {
       "managed `cantrip` MCP server",
     );
     expect(CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS).toContain("`context_get`");
+    expect(CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS).toContain("`context_compact`");
     expect(CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS).toContain("`policy_read`");
     expect(CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS).toContain(
       "`.cantrip/run-configurations`",

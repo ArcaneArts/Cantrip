@@ -337,6 +337,12 @@ export function createAgentOperationRuntime({
           },
         });
       }
+      case "context.compact":
+        return cantripCliCommandResultSchema.parse({
+          summary: "Current-turn context compaction is authorized.",
+          worktreeId: context.worktreeId,
+          mutated: true,
+        });
       case "policy.list": {
         const effective = await repository.policies.resolveEffective(
           applicationOwnerId(),

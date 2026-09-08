@@ -18,6 +18,9 @@ import { z } from "zod";
 
 import {
   cantripAgentOperationResultSchema,
+  cantripMcpContextCompactResultSchema,
+  cantripMcpContextGetResultSchema,
+  cantripMcpContextWindowSchema,
   cantripMcpBindingSchema,
   cantripMcpBrokerOperationRequestSchema,
   cantripMcpConnectionDocumentSchema,
@@ -58,6 +61,15 @@ type McpOperationExecutor = (
   request: CantripAgentOperationRequest,
   requestId: string,
 ) => Promise<CantripAgentOperationResult>;
+
+export type CantripMcpContextWindow = z.infer<
+  typeof cantripMcpContextWindowSchema
+>;
+
+export interface CantripMcpContextControl {
+  inspect(binding: CantripMcpBinding): CantripMcpContextWindow | null;
+  scheduleCompaction(binding: CantripMcpBinding): CantripMcpContextWindow;
+}
 
 type BindingClaimsFor<Binding extends CantripMcpBinding> =
   Binding extends CantripMcpBinding
@@ -217,6 +229,7 @@ export class CantripMcpBroker {
   #encryptionService: WorkerEncryptionService | null = null;
   #webService: WorkerWebService | null = null;
   #executeComputerUse: CuaMcpExecutor | null = null;
+  #contextControl: CantripMcpContextControl | null = null;
   #endpoint: string | null = null;
   #server: Server | null = null;
   #sweepTimer: ReturnType<typeof setInterval> | null = null;
@@ -272,6 +285,10 @@ export class CantripMcpBroker {
 
   setComputerUseExecutor(execute: CuaMcpExecutor): void {
     this.#executeComputerUse = execute;
+  }
+
+  setContextControl(control: CantripMcpContextControl): void {
+    this.#contextControl = control;
   }
 
   async serverCompatibility(): Promise<CantripMcpServerCompatibility> {
@@ -645,7 +662,7 @@ export class CantripMcpBroker {
           }
           stored.activeRequests += 1;
           try {
-            const result = cantripAgentOperationResultSchema.parse(
+            let result = cantripAgentOperationResultSchema.parse(
               this.#encryptionService
                 ? await executeCantripMcpOperation({
                     binding,
@@ -663,6 +680,42 @@ export class CantripMcpBroker {
                       );
                     })(),
             );
+            if (
+              parsed.request.operation === "context.get" &&
+              this.#contextControl
+            ) {
+              const current = cantripMcpContextGetResultSchema.parse(result);
+              const contextWindow = this.#contextControl.inspect(binding);
+              const usageSummary = contextWindow
+                ? contextWindow.usedTokens !== null &&
+                  contextWindow.contextWindowTokens !== null &&
+                  contextWindow.usedPercent !== null
+                  ? ` Context is using ${contextWindow.usedTokens} of ${contextWindow.contextWindowTokens} tokens (${contextWindow.usedPercent}%).`
+                  : " Codex has not reported context occupancy for this turn yet."
+                : " Active Codex context telemetry is unavailable.";
+              result = cantripMcpContextGetResultSchema.parse({
+                ...current,
+                summary: `${current.summary.slice(0, 2_000 - usageSummary.length)}${usageSummary}`,
+                data: { ...current.data, contextWindow },
+              });
+            } else if (parsed.request.operation === "context.compact") {
+              if (!this.#contextControl) {
+                throw new Error(
+                  "Codex context control is unavailable on this worker.",
+                );
+              }
+              const contextWindow =
+                this.#contextControl.scheduleCompaction(binding);
+              result = cantripMcpContextCompactResultSchema.parse({
+                summary:
+                  "Native Codex context compaction is scheduled for the safe idle boundary after this turn. Finish this turn now.",
+                target: null,
+                worktreeId: binding.worktreeId,
+                continuationScheduled: true,
+                mutated: true,
+                data: contextWindow,
+              });
+            }
             if (result.continuationScheduled && stored.binding === binding) {
               this.revokeBinding(stored.connection.bindingId);
             }

@@ -239,6 +239,124 @@ describe("Cantrip MCP worker broker", () => {
     }
   });
 
+  it("reports native context occupancy and schedules compaction at the turn boundary", async () => {
+    const dataDirectory = await temporaryDirectory();
+    let scheduled = 0;
+    const contextWindow = {
+      threadId: "thread-one",
+      turnId: "turn-one",
+      usedTokens: 7_500,
+      contextWindowTokens: 10_000,
+      remainingTokens: 2_500,
+      usedPercent: 75,
+      remainingPercent: 25,
+      usageUpdatedAtMs: 1_786_212_000_000,
+      compactionScheduled: false,
+    };
+    const broker = new CantripMcpBroker(
+      {
+        dataDirectory,
+        serverUrl: "https://cantrip.example",
+        token: "worker-token",
+        workerId: "worker-one",
+      },
+      {
+        execute: async (binding, request) =>
+          request.operation === "context.get"
+            ? {
+                summary: "Validated Cantrip context.",
+                target: null,
+                worktreeId: binding.worktreeId,
+                continuationScheduled: false,
+                mutated: false,
+                data: {
+                  worker: {
+                    id: binding.workerId,
+                    name: "Worker one",
+                    online: true,
+                  },
+                  context: {
+                    chatId: binding.chatId,
+                    executionLaneId: binding.executionLaneId,
+                    permissionProfileId: binding.permissionProfileId,
+                    projectId: binding.projectId,
+                    rootKind: binding.rootKind,
+                    terminalId: null,
+                    workerId: binding.workerId,
+                    worktreeId: binding.worktreeId,
+                    worktreeMode: "agent-managed",
+                  },
+                  binding: {
+                    status: "ready",
+                    mutationReady: true,
+                    staleClaims: [],
+                    recoveryInstruction: null,
+                    expiresAt: binding.expiresAt,
+                  },
+                },
+              }
+            : {
+                summary: "Current-turn context compaction is authorized.",
+                target: null,
+                worktreeId: binding.worktreeId,
+                continuationScheduled: false,
+                mutated: true,
+              },
+      },
+    );
+    broker.setEncryptionService({
+      ownerId: () => "owner-one",
+    } as unknown as WorkerEncryptionService);
+    broker.setContextControl({
+      inspect: () => contextWindow,
+      scheduleCompaction: () => {
+        scheduled += 1;
+        return { ...contextWindow, compactionScheduled: true };
+      },
+    });
+    await broker.start();
+    const attachment = broker.createBinding({
+      ...bindingInput(),
+      allowedOperations: ["context.get", "context.compact"],
+    });
+    const call = (operation: "context.get" | "context.compact") =>
+      fetch(`${broker.endpoint}/v1/execute`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${attachment.connection.credential}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          bindingId: attachment.binding.bindingId,
+          request: { operation, arguments: {} },
+        }),
+      });
+    try {
+      const status = await call("context.get");
+      expect(status.status).toBe(200);
+      await expect(status.json()).resolves.toMatchObject({
+        summary: expect.stringContaining(
+          "Context is using 7500 of 10000 tokens (75%).",
+        ),
+        data: { contextWindow },
+      });
+
+      const compact = await call("context.compact");
+      expect(compact.status).toBe(200);
+      await expect(compact.json()).resolves.toMatchObject({
+        continuationScheduled: true,
+        mutated: true,
+        data: { compactionScheduled: true },
+      });
+      expect(scheduled).toBe(1);
+
+      const revoked = await call("context.get");
+      expect(revoked.status).toBe(401);
+    } finally {
+      await broker.close();
+    }
+  });
+
   it("refreshes mutable scope claims without replacing the stdio connection", async () => {
     const dataDirectory = await temporaryDirectory();
     const broker = new CantripMcpBroker({
