@@ -119,7 +119,27 @@ const nativeMessages: Record<CuaNativeErrorCode, string> = {
 export class CuaNativeError extends Error {
   readonly name = "CuaNativeError";
 
-  constructor(public readonly code: CuaNativeErrorCode) {
-    super(nativeMessages[code]);
+  constructor(
+    public readonly code: CuaNativeErrorCode,
+    diagnostic?: string,
+  ) {
+    // Native errors may contain protected window details. Expose only these
+    // complete validator templates: the variable fields are indices/times,
+    // never source text, window titles, paths or arbitrary exception messages.
+    const safeDiagnostic =
+      code === "script-action" &&
+      diagnostic !== undefined &&
+      [
+        /^clickSequence expects 1-65536 clicks \(two timeline frames per click\)\.$/,
+        /^clickSequence modifiers must be unique Shift, Control, Alt or Meta values\.$/,
+        /^clickSequence clicks\[\d{1,16}\]: atMs \+ holdMs must be a nonnegative safe-integer timestamp\.$/,
+        /^clickSequence clicks\[\d{1,16}\]: x and y must be finite nonnegative window-local coordinates\.$/,
+        /^clickSequence clicks\[\d{1,16}\] overlaps the preceding click: atMs must be at least \d{1,16}\. Shorten holdMs or move this click later; clicks are never reordered or silently shortened\.$/,
+      ].some((pattern) => pattern.test(diagnostic));
+    super(
+      safeDiagnostic
+        ? `${diagnostic} This action was not dispatched; earlier actions may have completed.`
+        : nativeMessages[code],
+    );
   }
 }

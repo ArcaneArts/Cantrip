@@ -62,6 +62,8 @@ describe("managed CUA MCP configuration", () => {
     expect(CUA_MCP_INSTRUCTIONS).toContain("await the entire tool call");
     expect(CUA_MCP_INSTRUCTIONS).toContain("150-second piece");
     expect(CUA_MCP_INSTRUCTIONS).toContain("no performance duration");
+    expect(CUA_MCP_INSTRUCTIONS).toContain("cua.clickSequence(");
+    expect(CUA_MCP_INSTRUCTIONS).toContain("input methods never do");
     expect(CUA_MCP_INSTRUCTIONS).not.toContain(
       "Failed calls already clear attachment",
     );

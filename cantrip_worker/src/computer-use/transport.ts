@@ -257,7 +257,12 @@ class ChildTransport implements CuaTransport {
       return;
     }
     if (message.result.status === "error")
-      pending.reject(new CuaNativeError(message.result.error.code));
+      pending.reject(
+        new CuaNativeError(
+          message.result.error.code,
+          message.result.error.message,
+        ),
+      );
     else pending.resolve({ data: message.result.data, payload: frame.payload });
   }
 

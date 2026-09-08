@@ -979,3 +979,43 @@ closing the target and actual native errors still terminate affected work.
 Fresh authorized observations may replace a failed helper after it exits, without
 replaying input or requiring a worker restart. A helper failure reports its actual
 cause instead of the internal teardown cancellation.
+
+### API 19: compact click sequences and useful validation errors
+
+For a preplanned interface whose coordinates are already known, agents can send
+one compact score instead of constructing every down/up frame:
+
+```js
+await cua.clickSequence([
+  { atMs: 100, x: 767, y: 530 },
+  { atMs: 200, x: 820, y: 530, holdMs: 60 },
+  { atMs: 350, x: 873, y: 530 },
+], { holdMs: 40 });
+```
+
+Coordinates above are illustrative: select them from the actual target snapshot.
+`atMs` is an absolute time in milliseconds from native playback start.
+Each entry uses its own `holdMs` or the options default (50 ms). Options also
+accept `button` (left/right/middle/back/forward) and `modifiers` (Shift, Control,
+Alt, Meta). A release may coincide with the next press; overlapping holds and
+out-of-order clicks are rejected before any input, never sorted or shortened.
+Zero-length holds are allowed but application acceptance is not guaranteed.
+
+The helper compiles up to 65536 clicks into the existing 131072-frame timeline
+budget. It has no elapsed-time limit and requests exactly one authorized host
+operation. Existing background preparation, spline motion, receipt semantics and
+Stop cleanup apply. It adds no capture, focus request, setup or inter-click delay.
+Use `inputTimeline` for mixed mouse/keyboard input or key chords. Both APIs need
+observation between actions when the next action depends on a changed UI.
+
+`cua.help("mouse")` and `cua.help("timeline")` include the compact example;
+targeted help omits unrelated keyboard examples. Within a turn, reuse the
+attachment and already prepared scores while the layout is still known.
+`openWindow` always searches, attaches and captures; input methods do none of
+that implicitly. This reduces repeated model work and tool calls, without
+promising a fixed model-generation latency or caching authority across turns.
+
+Click-sequence argument diagnostics now survive the JavaScript bridge. For example,
+an overlapping score identifies `clicks[1]` and the earliest permitted timestamp.
+Only validator-authored messages receive this treatment: script exception text
+cannot impersonate native errors. Invalid input is not partially dispatched.

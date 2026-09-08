@@ -701,6 +701,65 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
         expect(launch).toHaveBeenCalledTimes(1);
       },
     );
+    it("compiles click sequences to one authorized timeline with no setup or capture", async () => {
+      const { service } = create();
+      const opts = options();
+      await service.evaluateJavascript(
+        scope,
+        "await cua.attach({targetId:'fake-window',targetGeneration:1})",
+        opts,
+      );
+      opts.authorize.mockClear();
+      await expect(
+        service.evaluateJavascript(
+          scope,
+          "await cua.clickSequence([{atMs:100,x:10,y:20},{atMs:150000,x:30,y:40}],{holdMs:25})",
+          opts,
+        ),
+      ).rejects.toMatchObject({ code: "unsupported" }); // Fake backend cannot post input.
+      expect(opts.authorize.mock.calls.map(([action]) => action)).toMatchObject(
+        [
+          {
+            operation: "perform",
+            command: {
+              kind: "timeline",
+              frames: [
+                { atMs: 100, pointerDown: { x: 10, y: 20 } },
+                { atMs: 125, pointerUp: true },
+                { atMs: 150000, pointerDown: { x: 30, y: 40 } },
+                { atMs: 150025, pointerUp: true },
+              ],
+            },
+          },
+        ],
+      );
+      opts.authorize.mockClear();
+      await expect(
+        service.evaluateJavascript(
+          scope,
+          "await cua.clickSequence([{atMs:0,x:10,y:20},{atMs:10,x:30,y:40}])",
+          opts,
+        ),
+      ).rejects.toMatchObject({
+        code: "script-action",
+        message: expect.stringContaining("clicks[1] overlaps"),
+      });
+      expect(opts.authorize).not.toHaveBeenCalled();
+      const help = await service.evaluateJavascript(
+        scope,
+        "cua.help('mouse')",
+        opts,
+      );
+      expect(help.value).toMatchObject({
+        apiVersion: 19,
+        methods: { clickSequence: expect.any(String) },
+        examples: { clickSequence: expect.any(String) },
+      });
+      expect((help.value as { examples: object }).examples).not.toHaveProperty(
+        "commandK",
+      );
+      expect(opts.authorize).not.toHaveBeenCalled();
+    });
     it("routes the reported Command-K variants past validation and returns targeted help", async () => {
       const { service } = create();
       const opts = options();
@@ -725,7 +784,7 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
         opts,
       );
       expect(result.value).toMatchObject({
-        apiVersion: 18,
+        apiVersion: 19,
         methods: { keyPress: expect.any(String), keyChord: expect.any(String) },
         examples: { commandK: expect.any(String) },
       });
