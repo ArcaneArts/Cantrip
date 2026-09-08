@@ -251,6 +251,35 @@ function removalResult(removedPath: string) {
 }
 
 describe("Cantrip MCP mutation operation normalization", () => {
+  it("authorizes native context compaction through the current binding", async () => {
+    const calls: unknown[] = [];
+    const result = await executeCantripMcpMutationOperation({
+      binding,
+      request: { operation: "context.compact", arguments: {} },
+      requestId: "context-compact",
+      service: encryptionService(),
+      execute: async (observedBinding, request, requestId) => {
+        calls.push({ observedBinding, request, requestId });
+        return {
+          summary: "Current-turn context compaction is authorized.",
+          target: null,
+          worktreeId: binding.worktreeId,
+          continuationScheduled: false,
+          mutated: true,
+        };
+      },
+    });
+
+    expect(result.mutated).toBe(true);
+    expect(calls).toEqual([
+      {
+        observedBinding: binding,
+        request: { operation: "context.compact", arguments: {} },
+        requestId: "context-compact",
+      },
+    ]);
+  });
+
   it("creates and transitions worktrees without exposing private paths or runtime IDs", async () => {
     const service = encryptionService();
     const created = worktree("worktree-two");

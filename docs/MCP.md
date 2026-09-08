@@ -81,9 +81,12 @@ records.
 ### IDE/project profile
 
 1. Call `context_get` first and treat its project, lane, worker, root, worktree,
-   permission, and binding-readiness information as authoritative. If it reports
-   `refresh-required`, follow its recovery instruction instead of attempting a
-   mutation on the same attachment.
+   permission, binding-readiness, and latest native context-window information
+   as authoritative. If it reports `refresh-required`, follow its recovery
+   instruction instead of attempting a mutation on the same attachment. If the
+   user requests `/compact`, or the remaining window is inadequate for imminent
+   high-volume work, call `context_compact` and end the turn immediately. The
+   worker runs native compaction only after the tool-calling turn is idle.
 2. Before guessing an argument, call `tool_help` with the known MCP tool name.
    It returns JSON Schema generated from the same Zod validator used at runtime,
    plus bounded examples and terminology notes.
@@ -126,7 +129,7 @@ IDE-only.
 
 ## Tool catalog
 
-The complete IDE catalog contains 43 tools. Read-only and mutation annotations
+The complete IDE catalog contains 44 tools. Read-only and mutation annotations
 are attached per tool. Cantrip narrows Codex's enabled tool list to the current
 permission profile, so read-only bindings receive the Run configuration read
 tools but not authoring, lifecycle, or secret mutations; the broker and server
@@ -135,7 +138,8 @@ three-tool subset, and `tool_help` only advertises tools in the active profile.
 
 | Tool                            | Kind                            | Purpose                                                                                         |
 | ------------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `context_get`                   | Read                            | Return the validated project, chat lane, worker, root, worktree, and permission context.        |
+| `context_get`                   | Read                            | Return validated task scope plus exact current context occupancy when Codex has reported it.    |
+| `context_compact`               | Mutation                        | Schedule native Codex context compaction at the safe idle boundary after the current turn.      |
 | `tool_help`                     | Read                            | Return exact generated input JSON Schema, examples, and notes for one Cantrip MCP tool.         |
 | `policy_list`                   | Read                            | List bounded summaries of effective Policies in configured order.                               |
 | `policy_read`                   | Read                            | Read the current full body for a key returned by `policy_list`.                                 |
@@ -212,6 +216,14 @@ unit; older clients that omit capabilities safely receive no controls.
 - `context_get.data.binding` reports `ready`, `read-only`, or
   `refresh-required`, a bounded list of changed claims, expiry, and one recovery
   instruction. Only `ready` authorizes managed MCP mutations.
+- `context_get.data.contextWindow` reports the native thread and turn IDs,
+  tokens used, model limit, tokens and percentage remaining, measurement time,
+  and whether compaction is already scheduled. Counts remain `null` until Codex
+  emits native usage instead of being estimated from unrelated account usage.
+- `context_compact` is lane-bound and returns `continuationScheduled: true`.
+  The worker releases the active turn before calling `thread/compact/start`, so
+  the tool never sends `/compact` as text or attempts an invalid in-turn native
+  mutation.
 - `expired` or `stale-binding` means the agent must obtain a fresh attachment;
   a retry using the same connection document cannot restore authority. The
   worker latches a stale rejection so repeated calls fail locally without more

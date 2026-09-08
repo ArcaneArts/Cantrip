@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { unprobedCodexRuntimeReport } from "@cantrip/protocol";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import {
   CodexAppServer,
   codexRuntimeId,
@@ -97,6 +100,7 @@ function fixture() {
         };
       }
       if (
+        method === "thread/compact/start" ||
         method === "thread/unsubscribe" ||
         method === "thread/settings/update"
       )
@@ -1346,6 +1350,158 @@ describe("thread session preparation", () => {
       ]);
     },
   );
+});
+
+describe("agent-requested context compaction", () => {
+  it("reports native occupancy and compacts only after releasing the active turn", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "cantrip-context-compact-"));
+    try {
+      const f = fixture();
+      const dispatched: string[] = [];
+      f.runtime.setManagedNativeCommandDispatcher(
+        "thread-1",
+        async (command) => {
+          dispatched.push(command.method);
+          return command.dispatch();
+        },
+      );
+      const execution = await f.runtime.prepareAdmittedNativeExecution({
+        chatId: "chat-1",
+        cwd,
+        executionLaneId: "lane-1",
+        model: options.model,
+        provider: options.provider,
+        captureProtectedDiagnostics: false,
+        operationGeneration: "operation-1",
+        threadId: "thread-1",
+      });
+      execution.bindReceipt({ turn: { id: "turn-1" } });
+      f.native.handleMessage(
+        Buffer.from(
+          JSON.stringify({
+            method: "thread/tokenUsage/updated",
+            params: {
+              threadId: "thread-1",
+              turnId: "turn-1",
+              tokenUsage: {
+                total: {
+                  totalTokens: 8_000,
+                  inputTokens: 7_000,
+                  cachedInputTokens: 1_000,
+                  cacheWriteInputTokens: 0,
+                  outputTokens: 900,
+                  reasoningOutputTokens: 100,
+                },
+                last: {
+                  totalTokens: 8_000,
+                  inputTokens: 7_000,
+                  cachedInputTokens: 1_000,
+                  cacheWriteInputTokens: 0,
+                  outputTokens: 900,
+                  reasoningOutputTokens: 100,
+                },
+                modelContextWindow: 10_000,
+              },
+            },
+          }),
+        ),
+      );
+
+      expect(f.runtime.activeContextWindow("chat-1", "lane-1")).toMatchObject({
+        threadId: "thread-1",
+        turnId: "turn-1",
+        usedTokens: 8_000,
+        contextWindowTokens: 10_000,
+        remainingTokens: 2_000,
+        usedPercent: 80,
+        compactionScheduled: false,
+      });
+      expect(
+        f.runtime.scheduleActiveContextCompaction("chat-1", "lane-1"),
+      ).toMatchObject({ compactionScheduled: true });
+      expect(dispatched).toEqual([]);
+
+      f.native.handleMessage(
+        Buffer.from(
+          JSON.stringify({
+            method: "turn/completed",
+            params: {
+              threadId: "thread-1",
+              turn: {
+                id: "turn-1",
+                status: "completed",
+                error: null,
+                durationMs: 10,
+              },
+            },
+          }),
+        ),
+      );
+      await expect(execution.completion).resolves.toMatchObject({
+        threadId: "thread-1",
+        turnId: "turn-1",
+        status: "completed",
+      });
+      expect(dispatched).toEqual(["thread/compact/start"]);
+      expect(f.request).toHaveBeenCalledWith("thread/compact/start", {
+        threadId: "thread-1",
+      });
+    } finally {
+      await rm(cwd, { force: true, recursive: true });
+    }
+  });
+
+  it("rejects the completed execution when native compaction is refused", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "cantrip-context-compact-"));
+    try {
+      const f = fixture();
+      f.runtime.setManagedNativeCommandDispatcher(
+        "thread-1",
+        async (command) => {
+          if (command.method === "thread/compact/start") {
+            throw new Error("Native compaction refused.");
+          }
+          return command.dispatch();
+        },
+      );
+      const execution = await f.runtime.prepareAdmittedNativeExecution({
+        chatId: "chat-1",
+        cwd,
+        executionLaneId: "lane-1",
+        model: options.model,
+        provider: options.provider,
+        captureProtectedDiagnostics: false,
+        operationGeneration: "operation-1",
+        threadId: "thread-1",
+      });
+      execution.bindReceipt({ turn: { id: "turn-1" } });
+      f.runtime.scheduleActiveContextCompaction("chat-1", "lane-1");
+
+      f.native.handleMessage(
+        Buffer.from(
+          JSON.stringify({
+            method: "turn/completed",
+            params: {
+              threadId: "thread-1",
+              turn: {
+                id: "turn-1",
+                status: "completed",
+                error: null,
+                durationMs: 10,
+              },
+            },
+          }),
+        ),
+      );
+
+      await expect(execution.completion).rejects.toThrow(
+        "Native compaction refused.",
+      );
+      expect(f.runtime.activeContextWindow("chat-1", "lane-1")).toBeNull();
+    } finally {
+      await rm(cwd, { force: true, recursive: true });
+    }
+  });
 });
 
 describe("managed autonomous gate installation", () => {

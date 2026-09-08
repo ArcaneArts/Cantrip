@@ -396,6 +396,7 @@ export type {
 
 export {
   cantripMcpContextGetInputSchema,
+  cantripMcpContextCompactInputSchema,
   cantripMcpToolHelpInputSchema,
   cantripMcpBindingStaleClaimSchema,
   cantripMcpBindingReadinessSchema,
@@ -442,6 +443,8 @@ export {
   cantripMcpClientFocusSurfaceInputSchema,
   cantripMcpClientShowInteractionInputSchema,
   cantripMcpContextGetResultSchema,
+  cantripMcpContextWindowSchema,
+  cantripMcpContextCompactResultSchema,
   cantripMcpToolHelpResultSchema,
   cantripMcpPolicyListResultSchema,
   cantripMcpPolicyReadResultSchema,

@@ -6,6 +6,7 @@ import {
   cantripMcpClientFocusSurfaceInputSchema,
   cantripMcpClientNotifyInputSchema,
   cantripMcpClientShowInteractionInputSchema,
+  cantripMcpContextCompactInputSchema,
   cantripMcpContextGetInputSchema,
   cantripMcpExplorerListInputSchema,
   cantripMcpExplorerReadInputSchema,
@@ -54,6 +55,7 @@ type InputSchema = {
 
 const inputSchemas = {
   context_get: cantripMcpContextGetInputSchema,
+  context_compact: cantripMcpContextCompactInputSchema,
   tool_help: cantripMcpToolHelpInputSchema,
   policy_list: cantripMcpPolicyListInputSchema,
   policy_read: cantripMcpPolicyReadInputSchema,
@@ -100,6 +102,7 @@ const inputSchemas = {
 } satisfies Record<ToolName, InputSchema>;
 
 const examples: Partial<Record<ToolName, Array<Record<string, unknown>>>> = {
+  context_compact: [{}],
   web_search: [{ query: "portable local search runtimes", count: 10 }],
   web_read: [{ searchResultId: `wsr_${"A".repeat(32)}` }],
   web_session_open: [{ url: "https://example.com/" }],
@@ -145,6 +148,10 @@ const examples: Partial<Record<ToolName, Array<Record<string, unknown>>>> = {
 };
 
 const notes: Partial<Record<ToolName, string[]>> = {
+  context_compact: [
+    "This requests Codex's native compaction operation; it does not submit /compact as chat text.",
+    "Compaction runs after the current tool-calling turn reaches its idle boundary. End the turn immediately when continuationScheduled is true.",
+  ],
   web_search: [
     "Use the opaque result ID with web_read; do not copy a URL when preserving the bound search reference is useful.",
   ],

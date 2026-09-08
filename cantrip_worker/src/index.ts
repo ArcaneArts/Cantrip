@@ -1237,6 +1237,42 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   const serverManagedGrokClients = new Map<string, GrokSubscriptionClient>();
   const codexRuntimes = new Map<string, CodexAppServer>();
   const codexCatalogRuntimes = new Map<string, CodexAppServer>();
+  const activeContextRuntime = (binding: {
+    chatId: string;
+    executionLaneId: string;
+  }): CodexAppServer | null => {
+    let matched: CodexAppServer | null = null;
+    for (const runtime of codexRuntimes.values()) {
+      if (!runtime.activeContextWindow(binding.chatId, binding.executionLaneId))
+        continue;
+      if (matched) {
+        throw new Error(
+          "Multiple Codex runtimes matched the active Cantrip context.",
+        );
+      }
+      matched = runtime;
+    }
+    return matched;
+  };
+  mcpBroker.setContextControl({
+    inspect: (binding) =>
+      activeContextRuntime(binding)?.activeContextWindow(
+        binding.chatId,
+        binding.executionLaneId,
+      ) ?? null,
+    scheduleCompaction: (binding) => {
+      const runtime = activeContextRuntime(binding);
+      if (!runtime) {
+        throw new Error(
+          "The active Codex context is no longer available for compaction.",
+        );
+      }
+      return runtime.scheduleActiveContextCompaction(
+        binding.chatId,
+        binding.executionLaneId,
+      );
+    },
+  });
   const pausedChats = new Set<string>();
   const projectShares = new ProjectShareManager();
   const tunnelTcpDestination = new TunnelTcpDestinationAdapter();
@@ -2331,6 +2367,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           options: {
             chatId: session.chatId,
             cwd: options.cwd,
+            executionLaneId: grant.receipt.executionLaneId ?? undefined,
             model: options.model,
             provider: options.provider,
             captureProtectedDiagnostics: true,
@@ -6263,6 +6300,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               captureProtectedDiagnostics: encryptedChat || encryptedTask,
               clientMessageId: command.clientMessageId,
               cwd: command.cwd,
+              executionLaneId: command.executionLaneId,
               executionProfile: command.executionProfile,
               isPrimary: command.isPrimary,
               mcpServers: resolvedMcpServers,

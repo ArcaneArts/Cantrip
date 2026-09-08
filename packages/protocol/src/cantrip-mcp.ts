@@ -11,6 +11,7 @@ export const cantripCliArgumentsSchema = z
 
 export const cantripAgentOperationNameSchema = z.enum([
   "context.get",
+  "context.compact",
   "tool.help",
   "policy.list",
   "policy.read",
@@ -103,6 +104,7 @@ export const CANTRIP_MCP_READ_TOOL_NAMES = [
 ] as const;
 
 export const CANTRIP_MCP_WORKER_MUTATION_OPERATIONS = [
+  "context.compact",
   "run-configuration.create",
   "run-configuration.update",
   "run-configuration.delete",
@@ -137,6 +139,7 @@ export const CANTRIP_MCP_MUTATION_OPERATIONS = [
 ] as const;
 
 export const CANTRIP_MCP_MUTATION_TOOL_NAMES = [
+  "context_compact",
   "run_configuration_create",
   "run_configuration_update",
   "run_configuration_delete",

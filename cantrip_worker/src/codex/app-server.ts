@@ -199,6 +199,9 @@ interface ActiveTurn {
   baseline: WorkspaceSnapshot;
   chatId: string | null;
   collaborationMode: NativeCollaborationMode | null;
+  contextCompactionRequestedAtMs: number | null;
+  contextUsage: ThreadTokenUsageUpdatedParams["tokenUsage"] | null;
+  contextUsageUpdatedAtMs: number | null;
   captureProtectedDiagnostics: boolean;
   commandTelemetry: Map<string, ActiveCommandTelemetry>;
   completedCommandIds: Set<string>;
@@ -207,6 +210,7 @@ interface ActiveTurn {
   diffChanges: FileActivityChange[];
   durationMs: number | null;
   executionKind: "chat" | "operation";
+  executionLaneId: string | null;
   fileStartedAtMs: Map<string, number>;
   finalText: string | null;
   interactionMode: "interactive" | "preauthorized";
@@ -1540,6 +1544,59 @@ interface ThreadTokenUsageUpdatedParams {
   };
 }
 
+export interface ActiveAgentContextWindow {
+  threadId: string;
+  turnId: string;
+  usedTokens: number | null;
+  contextWindowTokens: number | null;
+  remainingTokens: number | null;
+  usedPercent: number | null;
+  remainingPercent: number | null;
+  usageUpdatedAtMs: number | null;
+  compactionScheduled: boolean;
+}
+
+export interface ActiveAgentContextWindowSource {
+  contextCompactionRequestedAtMs: number | null;
+  contextUsage: {
+    last: { totalTokens: number };
+    modelContextWindow: number | null;
+  } | null;
+  contextUsageUpdatedAtMs: number | null;
+  threadId: string;
+}
+
+export function activeAgentContextWindow(
+  active: ActiveAgentContextWindowSource,
+  turnId: string,
+): ActiveAgentContextWindow {
+  const usedTokens = active.contextUsage?.last.totalTokens ?? null;
+  const contextWindowTokens = active.contextUsage?.modelContextWindow ?? null;
+  const remainingTokens =
+    usedTokens !== null && contextWindowTokens !== null
+      ? Math.max(0, contextWindowTokens - usedTokens)
+      : null;
+  const usedPercent =
+    usedTokens !== null && contextWindowTokens !== null
+      ? Math.round(
+          Math.min(100, Math.max(0, usedTokens / contextWindowTokens) * 100) *
+            10,
+        ) / 10
+      : null;
+  return {
+    threadId: active.threadId,
+    turnId,
+    usedTokens,
+    contextWindowTokens,
+    remainingTokens,
+    usedPercent,
+    remainingPercent:
+      usedPercent === null ? null : Math.round((100 - usedPercent) * 10) / 10,
+    usageUpdatedAtMs: active.contextUsageUpdatedAtMs,
+    compactionScheduled: active.contextCompactionRequestedAtMs !== null,
+  };
+}
+
 interface RateLimitWindow {
   usedPercent: number;
   windowDurationMins: number | null;
@@ -1688,6 +1745,7 @@ export interface RunAgentTurnOptions {
   clientMessageId: string;
   cwd: string;
   executionProfile: "ide" | "standalone-chat";
+  executionLaneId?: string;
   isPrimary: Extract<WorkerCommand, { type: "chat.turn" }>["isPrimary"];
   model: Extract<WorkerCommand, { type: "chat.turn" }>["model"];
   mcpServers?: McpServerConfiguration[];
@@ -1733,6 +1791,7 @@ export type PrepareAdmittedNativeExecutionOptions = Pick<
   RunAgentTurnOptions,
   | "chatId"
   | "cwd"
+  | "executionLaneId"
   | "model"
   | "provider"
   | "captureProtectedDiagnostics"
@@ -2045,7 +2104,7 @@ export function goalShouldContinue(
 }
 
 export const CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS =
-  "The managed `cantrip` MCP server is the preferred interface for Cantrip-owned state and surfaces. Start with `context_get`, list targets instead of guessing identifiers, and call `tool_help` for the live exact schema before guessing tool arguments. Use `policy_list` plus `policy_read` whenever an effective policy summary requires its current full body. Use `run_configuration_detect` for typed project discovery, then `run_configuration_create`, `run_configuration_get`, and revision-checked `run_configuration_update` to author shared definitions under `.cantrip/run-configurations`. Always use stable configuration IDs and exact worktree IDs, never display names. Run lifecycle intent is explicit through `run_configuration_start`, `run_configuration_restart`, `run_configuration_stop`, `run_configuration_status`, and `run_configuration_read_output`; omitting the worktree selects Primary. Use `run_configuration_secret_set` for write-only encrypted values. If the managed MCP server or a required tool is unavailable, use the worker-authenticated `cantrip` CLI as a fallback and run `cantrip -h` for concise help. When a Cantrip tool or command reports that continuation was scheduled, finish the current turn so Cantrip can checkpoint and continue safely.";
+  "The managed `cantrip` MCP server is the preferred interface for Cantrip-owned state and surfaces. Start with `context_get`; use its exact context-window occupancy to judge whether imminent high-volume work fits. Call `context_compact` when the user requests `/compact` or the remaining context is inadequate, then finish the current turn so native compaction can run at the idle boundary. List targets instead of guessing identifiers, and call `tool_help` for the live exact schema before guessing tool arguments. Use `policy_list` plus `policy_read` whenever an effective policy summary requires its current full body. Use `run_configuration_detect` for typed project discovery, then `run_configuration_create`, `run_configuration_get`, and revision-checked `run_configuration_update` to author shared definitions under `.cantrip/run-configurations`. Always use stable configuration IDs and exact worktree IDs, never display names. Run lifecycle intent is explicit through `run_configuration_start`, `run_configuration_restart`, `run_configuration_stop`, `run_configuration_status`, and `run_configuration_read_output`; omitting the worktree selects Primary. Use `run_configuration_secret_set` for write-only encrypted values. If the managed MCP server or a required tool is unavailable, use the worker-authenticated `cantrip` CLI as a fallback and run `cantrip -h` for concise help. When a Cantrip tool or command reports that continuation was scheduled, finish the current turn so Cantrip can checkpoint and continue safely.";
 
 export const NON_GIT_WORKSPACE_DEVELOPER_INSTRUCTIONS =
   "The current project path has no local `.git` metadata in it or any parent directory, so treat this project as a non-Git folder. Do not run Git or GitHub commands, inspect branches, remotes, or worktrees, or attempt commits or pull requests. Work directly with its files. Do not initialize Git unless the user explicitly asks.";
@@ -4567,6 +4626,29 @@ export class CodexAppServer implements CodexRuntime {
     }
   }
 
+  activeContextWindow(
+    chatId: string,
+    executionLaneId: string,
+  ): ActiveAgentContextWindow | null {
+    const active = findActiveChatTurn(this.#activeTurns, chatId, null);
+    if (!active || active[1].executionLaneId !== executionLaneId) return null;
+    return activeAgentContextWindow(active[1], active[0]);
+  }
+
+  scheduleActiveContextCompaction(
+    chatId: string,
+    executionLaneId: string,
+  ): ActiveAgentContextWindow {
+    const active = findActiveChatTurn(this.#activeTurns, chatId, null);
+    if (!active || active[1].executionLaneId !== executionLaneId) {
+      throw new Error(
+        "The Codex context compaction request does not match the active Cantrip turn.",
+      );
+    }
+    active[1].contextCompactionRequestedAtMs ??= Date.now();
+    return activeAgentContextWindow(active[1], active[0]);
+  }
+
   async setActiveChatPaused(
     chatId: string,
     paused: boolean,
@@ -5033,6 +5115,9 @@ export class CodexAppServer implements CodexRuntime {
           captureProtectedDiagnostics: options.captureProtectedDiagnostics,
           chatId: options.chatId,
           collaborationMode,
+          contextCompactionRequestedAtMs: null,
+          contextUsage: null,
+          contextUsageUpdatedAtMs: null,
           commandTelemetry: new Map(),
           completedCommandIds: new Set(),
           cwd: options.cwd,
@@ -5040,6 +5125,7 @@ export class CodexAppServer implements CodexRuntime {
           diffChanges: [],
           durationMs: null,
           executionKind: "chat",
+          executionLaneId: options.executionLaneId ?? null,
           fileStartedAtMs: new Map(),
           finalText: null,
           interactionMode: "interactive",
@@ -5360,6 +5446,9 @@ export class CodexAppServer implements CodexRuntime {
           captureProtectedDiagnostics: false,
           chatId: null,
           collaborationMode: null,
+          contextCompactionRequestedAtMs: null,
+          contextUsage: null,
+          contextUsageUpdatedAtMs: null,
           commandTelemetry: new Map(),
           completedCommandIds: new Set(),
           cwd: options.cwd,
@@ -5367,6 +5456,7 @@ export class CodexAppServer implements CodexRuntime {
           diffChanges: [],
           durationMs: null,
           executionKind: "operation",
+          executionLaneId: null,
           fileStartedAtMs: new Map(),
           finalText: null,
           interactionMode: "preauthorized",
@@ -9726,12 +9816,14 @@ export class CodexAppServer implements CodexRuntime {
 
     if (message.method === "thread/tokenUsage/updated") {
       const params = message.params as ThreadTokenUsageUpdatedParams;
-      const state = this.notificationTarget(
-        params.threadId,
-        params.turnId,
-      )?.state;
-      if (state) {
+      const target = this.notificationTarget(params.threadId, params.turnId);
+      if (target) {
+        const { active, state } = target;
         state.latestUsage = params.tokenUsage.last;
+        if (target.isRoot) {
+          active.contextUsage = params.tokenUsage;
+          active.contextUsageUpdatedAtMs = Date.now();
+        }
         emitTurnActivity(
           state,
           normalizeTokenUsageActivity(
@@ -10114,6 +10206,7 @@ export class CodexAppServer implements CodexRuntime {
   ): Promise<void> {
     const isCurrent = this.turnFinalizationCurrent(active, turnId);
     if (!isCurrent()) return;
+    let released = false;
     try {
       this.clearInteractionsForTurn(
         active,
@@ -10151,11 +10244,14 @@ export class CodexAppServer implements CodexRuntime {
         if (!isCurrent()) return;
       }
       clearTurnInspectionTelemetry(active);
+      const contextCompactionRequestedAtMs =
+        active.contextCompactionRequestedAtMs;
       // Managed autonomous runners obtain a fresh admission for every actual
       // turn. Retain the legacy continuous goal behavior only outside that path.
       if (
         active.executionKind === "chat" &&
         !active.admission &&
+        contextCompactionRequestedAtMs === null &&
         this.#goals.has(active.threadId)
       ) {
         const response = await this.refreshGoal(active.threadId, isCurrent);
@@ -10196,6 +10292,28 @@ export class CodexAppServer implements CodexRuntime {
         }
       }
       if (!this.releaseActiveTurn(active, turnId)) return;
+      released = true;
+      if (contextCompactionRequestedAtMs !== null) {
+        const startedAtMs = Date.now();
+        await this.requestGuiThreadMutation("thread/compact/start", {
+          threadId: active.threadId,
+        });
+        workerLogger.event(
+          "info",
+          "Scheduled Codex context compaction accepted",
+          {
+            event: "codex.thread.compact",
+            subsystem: "codex",
+            operation: "compact-thread-after-turn",
+            status: "accepted",
+            chatId: active.chatId ?? undefined,
+            threadId: active.threadId,
+            turnId,
+            requestedAtMs: contextCompactionRequestedAtMs,
+            durationMs: Date.now() - startedAtMs,
+          },
+        );
+      }
       workerLogger.event("info", "Codex turn completed", {
         event: "codex.turn.lifecycle",
         subsystem: "codex",
@@ -10250,8 +10368,10 @@ export class CodexAppServer implements CodexRuntime {
             }),
       );
     } catch (error) {
-      if (!isCurrent()) return;
-      if (!this.releaseActiveTurn(active, turnId)) return;
+      if (!released) {
+        if (!isCurrent()) return;
+        if (!this.releaseActiveTurn(active, turnId)) return;
+      }
       clearTurnInspectionTelemetry(active);
       workerLogger.event("error", "Codex turn completion failed", {
         event: "codex.turn.lifecycle",

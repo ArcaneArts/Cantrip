@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   browserWireSummarySchema,
+  cantripMcpContextCompactInputSchema,
   cantripMcpBrowserNavigateInputSchema,
   cantripMcpBrowserNavigateResultSchema,
   cantripMcpExplorerWriteInputSchema,
@@ -438,6 +439,13 @@ export async function executeCantripMcpMutationOperation(
     throw new Error("Worker encryption belongs to a different MCP owner.");
   }
   switch (options.request.operation) {
+    case "context.compact":
+      cantripMcpContextCompactInputSchema.parse(options.request.arguments);
+      return options.execute(
+        options.binding,
+        options.request,
+        options.requestId,
+      );
     case "worktree.create":
     case "worktree.switch":
     case "worktree.release":

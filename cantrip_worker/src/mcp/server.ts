@@ -21,6 +21,8 @@ import {
   cantripMcpClientNotifyResultSchema,
   cantripMcpClientShowInteractionInputSchema,
   cantripMcpClientShowInteractionResultSchema,
+  cantripMcpContextCompactInputSchema,
+  cantripMcpContextCompactResultSchema,
   cantripMcpContextGetInputSchema,
   cantripMcpContextGetResultSchema,
   cantripMcpExplorerListInputSchema,
@@ -253,6 +255,28 @@ export function createCantripMcpServer(
         return operationResult(
           cantripMcpContextGetResultSchema.parse(
             await gateway({ operation: "context.get", arguments: {} }),
+          ),
+        );
+      } catch (error) {
+        return operationError(error);
+      }
+    },
+  );
+  registerTool(
+    "context_compact",
+    {
+      title: "Compact the current Codex context",
+      description:
+        "Schedule native Codex context compaction at the safe idle boundary immediately after this turn. Use when the user requests /compact or the reported remaining context is inadequate for imminent work. End the turn immediately after a successful call.",
+      inputSchema: cantripMcpContextCompactInputSchema,
+      outputSchema: cantripMcpContextCompactResultSchema,
+      annotations: mutationAnnotations,
+    },
+    async (_arguments) => {
+      try {
+        return operationResult(
+          cantripMcpContextCompactResultSchema.parse(
+            await gateway({ operation: "context.compact", arguments: {} }),
           ),
         );
       } catch (error) {
