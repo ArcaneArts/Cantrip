@@ -83,7 +83,7 @@ import {
   encryptedChatPromptSubmitResultSchema,
   encryptedChatTurnCreateSchema,
   encryptedStandaloneChatCreateSchema,
-  encryptedQueuedPromptListSchema,
+  encryptedQueuedPromptQueueSchema,
   encryptedQueuedPromptSchema,
   chatReasoningStateSchema,
   chatReasoningUpdateSchema,
@@ -704,6 +704,7 @@ import {
   protectCustomizationRequest,
 } from "@/lib/customization-content-encryption";
 import { ShortLivedRequestCache } from "@/lib/short-lived-request-cache";
+import { requestQueueMutation } from "@/lib/queue-mutation-recovery";
 import { TunnelWorkerReadinessRequestCache } from "@/lib/tunnel-worker-readiness-cache";
 import {
   createTunnelDataProtection,
@@ -8418,15 +8419,32 @@ export async function saveChatComposerDraft(
   return openChatComposerDraft(chatId, wire);
 }
 
-export async function getQueuedPrompts(chatId: string) {
-  const prompts = encryptedQueuedPromptListSchema.parse(
+export async function getQueuedPromptState(chatId: string) {
+  const result = encryptedQueuedPromptQueueSchema.parse(
     await request(`/api/chats/${encodeURIComponent(chatId)}/queue`),
   );
-  return queuedPromptListSchema.parse(
+  const prompts = Array.isArray(result) ? result : result.items;
+  const items = queuedPromptListSchema.parse(
     await Promise.all(
       prompts.map((prompt) => openQueuedPromptOpaqueSummary(prompt)),
     ),
   );
+  const pendingImports = await Promise.all(
+    (Array.isArray(result) ? [] : result.pendingImports).map(async (entry) => ({
+      ...entry,
+      prompt: await openQueuedPromptOpaqueSummary(entry.prompt),
+    })),
+  );
+  return {
+    revision: Array.isArray(result) ? null : result.revision,
+    items,
+    pendingImports,
+    claims: Array.isArray(result) ? [] : result.claims,
+  };
+}
+
+export async function getQueuedPrompts(chatId: string) {
+  return (await getQueuedPromptState(chatId)).items;
 }
 
 export async function updateQueuedPrompt(
@@ -8438,11 +8456,19 @@ export async function updateQueuedPrompt(
     mode?: ChatTurnMode;
     reasoningEffort?: ReasoningEffort | null;
     frozen?: boolean;
+    expectedItemRevision?: number;
+    operationId?: string;
   },
 ) {
-  const current = encryptedQueuedPromptListSchema
-    .parse(await request(`/api/chats/${encodeURIComponent(chatId)}/queue`))
-    .find((prompt) => prompt.id === promptId);
+  const identity = getClientSessionIdentitySnapshot();
+  const result = encryptedQueuedPromptQueueSchema.parse(
+    await request(`/api/chats/${encodeURIComponent(chatId)}/queue`, undefined, {
+      expectedIdentity: identity ?? undefined,
+    }),
+  );
+  const current = (Array.isArray(result) ? result : result.items).find(
+    (prompt) => prompt.id === promptId,
+  );
   if (!current) throw new Error("Queued prompt not found.");
   const opened = await openQueuedPromptOpaqueSummary(current);
   const replacement = await replaceEncryptedQueuedPrompt(current, {
@@ -8455,11 +8481,24 @@ export async function updateQueuedPrompt(
         : opened.reasoningEffort,
     frozen: input.frozen ?? opened.frozen,
   });
+  const operationId = input.operationId ?? crypto.randomUUID();
   return openQueuedPromptOpaqueSummary(
     encryptedQueuedPromptSchema.parse(
-      await request(`/api/queued-prompts/${encodeURIComponent(promptId)}`, {
-        method: "PATCH",
-        body: JSON.stringify({ prompt: replacement }),
+      await requestQueueMutation({
+        identity,
+        chatId,
+        operationId,
+        nativeMethod: "thread/queue/update",
+        promptId,
+        path: `/api/queued-prompts/${encodeURIComponent(promptId)}`,
+        init: {
+          method: "PATCH",
+          body: JSON.stringify({
+            prompt: replacement,
+            expectedItemRevision: input.expectedItemRevision,
+            operationId,
+          }),
+        },
       }),
     ),
   );
@@ -8541,22 +8580,60 @@ export async function loadChatAttachmentContent(
   }
 }
 
-export async function deleteQueuedPrompt(promptId: string) {
-  await request(`/api/queued-prompts/${encodeURIComponent(promptId)}`, {
-    method: "DELETE",
+export async function deleteQueuedPrompt(
+  promptId: string,
+  expectedItemRevision?: number,
+  chatId?: string,
+) {
+  const operationId = crypto.randomUUID();
+  const query = new URLSearchParams({ operationId });
+  if (expectedItemRevision !== undefined)
+    query.set("expectedItemRevision", String(expectedItemRevision));
+  const path = `/api/queued-prompts/${encodeURIComponent(promptId)}?${query}`;
+  const init = { method: "DELETE" };
+  if (chatId)
+    await requestQueueMutation({
+      chatId,
+      operationId,
+      nativeMethod: "thread/queue/delete",
+      promptId,
+      path,
+      init,
+    });
+  else await request(path, init);
+}
+
+export async function reorderQueuedPrompts(
+  chatId: string,
+  ids: string[],
+  expectedRevision?: number | null,
+) {
+  const operationId = crypto.randomUUID();
+  await requestQueueMutation({
+    chatId,
+    operationId,
+    nativeMethod: "thread/queue/reorder",
+    path: `/api/chats/${encodeURIComponent(chatId)}/queue/order`,
+    init: {
+      method: "PATCH",
+      body: JSON.stringify({
+        ids,
+        expectedRevision: expectedRevision ?? undefined,
+        operationId,
+      }),
+    },
   });
 }
 
-export async function reorderQueuedPrompts(chatId: string, ids: string[]) {
-  await request(`/api/chats/${encodeURIComponent(chatId)}/queue/order`, {
-    method: "PATCH",
-    body: JSON.stringify({ ids }),
-  });
-}
-
-export async function steerQueuedPrompt(promptId: string) {
+export async function steerQueuedPrompt(
+  promptId: string,
+  expectedItemRevision?: number,
+) {
   const result = encryptedChatPromptSteerResultSchema.parse(
-    await post(`/api/queued-prompts/${encodeURIComponent(promptId)}/steer`, {}),
+    await post(`/api/queued-prompts/${encodeURIComponent(promptId)}/steer`, {
+      expectedItemRevision,
+      operationId: crypto.randomUUID(),
+    }),
   );
   return chatPromptSteerResultSchema.parse({
     steered: true,

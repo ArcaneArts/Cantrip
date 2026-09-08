@@ -84,6 +84,48 @@ describe("managed execution runner", () => {
     expect(nativeStop).toHaveBeenCalledOnce();
   });
 
+  it.each(["thread/goal/clear", "thread/goal/set"])(
+    "invalidates a pending first-goal attempt before %s and rearms only on explicit resume",
+    async (method) => {
+      const f = fixture();
+      const previous = f.runner.configuration.runnerGeneration;
+      let signal: AbortSignal | undefined;
+      f.handler.requested.mockImplementation(async (_attempt, value) => {
+        signal = value;
+      });
+      await f.handlers.get(previous)!.requested(
+        {
+          threadId: "thread-1",
+          runnerGeneration: previous,
+          attemptId: "attempt",
+          turnId: "turn",
+          trigger: "goal",
+          goalEpoch: "goal:1",
+          input: {},
+        },
+        new AbortController().signal,
+      );
+      await f.runner.beforeNativeDispatch(
+        method,
+        "thread-1",
+        "runtime-1",
+        false,
+        true,
+      );
+      expect(signal?.aborted).toBe(true);
+      expect(f.runtime.invalidateManagedExecution).toHaveBeenCalledOnce();
+      expect(f.runtime.bindManagedExecution).not.toHaveBeenCalled();
+      await f.runner.beforeNativeDispatch(
+        "thread/goal/set",
+        "thread-1",
+        "runtime-1",
+        true,
+      );
+      expect(f.runner.configuration.runnerGeneration).not.toBe(previous);
+      expect(f.runtime.bindManagedExecution).toHaveBeenCalledOnce();
+    },
+  );
+
   it("only rearms on an explicit autonomous start and keeps late decline delivery", async () => {
     const f = fixture();
     const previous = f.runner.configuration.runnerGeneration;

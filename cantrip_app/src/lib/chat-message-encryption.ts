@@ -213,6 +213,7 @@ export async function openQueuedPromptOpaqueSummary(
       subagentReasoningEffort: prompt.subagentReasoningEffort,
       worktreeId: prompt.worktreeId,
       position: prompt.position,
+      revision: prompt.revision,
       frozen: prompt.frozen,
       createdAt: prompt.createdAt,
       updatedAt: prompt.updatedAt,
@@ -251,6 +252,12 @@ export async function replaceEncryptedQueuedPrompt(
   );
   return queuedPromptOpaqueContentSchema.parse({
     ...replacement.queuedPrompt,
+    // Native input retains media and mention metadata. The worker reconciles
+    // changed display text when opening it; freezing alone preserves it exactly.
+    protectedNativeInput: current.protectedNativeInput,
+    nativeClientUserMessageId: current.nativeClientUserMessageId,
+    nativeAction: current.nativeAction,
+    executionMethod: current.executionMethod,
     frozen: input.frozen,
     worktreeId: current.worktreeId,
   });

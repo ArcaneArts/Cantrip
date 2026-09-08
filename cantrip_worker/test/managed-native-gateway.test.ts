@@ -10,6 +10,15 @@ import {
   type ManagedNativeOperation,
 } from "../src/codex/managed-native-gateway.js";
 
+import { CantripServerRequestError } from "../src/cli-client.js";
+import { ManagedNativeQueueUncertainError } from "../src/managed-native-queue-client.js";
+import { ManagedNativeQueueScope } from "../src/codex/managed-native-queue-scope.js";
+import {
+  managedNativeQueueMethods,
+  type ManagedNativeQueueGateway,
+  type ManagedNativeQueueChange,
+} from "../src/codex/managed-native-queue.js";
+
 const identity: ManagedNativeGatewayIdentity = {
   serverId: "server",
   ownerId: "owner",
@@ -36,6 +45,8 @@ const deferred = () => {
 };
 async function fixture(
   admit: (operation: ManagedNativeOperation) => Promise<ManagedNativeAdmission>,
+  queue?: ManagedNativeQueueGateway,
+  scopeCurrent: () => boolean = () => true,
 ) {
   const native = new WebSocketServer({ host: "127.0.0.1", port: 0 });
   await once(native, "listening");
@@ -65,9 +76,10 @@ async function fixture(
   let active = true;
   const gateway = await createManagedNativeGateway({
     identity,
+    queue,
     upstreamUrl: `ws://127.0.0.1:${(native.address() as any).port}`,
     admit,
-    isCurrent: () => active,
+    isCurrent: () => active && scopeCurrent(),
     resolveReply: async (_operation, frame) => {
       messages.push(frame);
     },
@@ -366,6 +378,189 @@ describe("managed native gateway", () => {
     expect(
       f.messages.some((frame) => frame.method === "thread/settings/update"),
     ).toBe(false);
+  });
+
+  it("serves all six canonical queue methods locally after exact thread scoping", async () => {
+    const execute = vi.fn(async ({ method }) => ({ canonical: method }));
+    const admission = vi.fn(async () => admitted());
+    const f = await fixture(admission, { execute, subscribe: () => () => {} });
+    expect(f.received[0].result.cantripManagedGateway.queue).toEqual({
+      version: 1,
+    });
+    for (const method of managedNativeQueueMethods) {
+      expect(
+        (await f.request(method, { threadId: identity.threadId })).result,
+      ).toEqual({ canonical: method });
+    }
+    expect(execute).toHaveBeenCalledTimes(6);
+    expect(admission).not.toHaveBeenCalled();
+    expect(
+      f.messages.filter((frame) => frame.method?.startsWith("thread/queue/")),
+    ).toEqual([]);
+    expect((await f.request("thread/queue/list", {})).error).toBeDefined();
+    expect(
+      (await f.request("thread/queue/add", { threadId: "foreign" })).error,
+    ).toBeDefined();
+    expect(execute).toHaveBeenCalledTimes(6);
+  });
+
+  it("invalidates a route-bound gateway capability while the shared admission adapter remains intact", async () => {
+    const scope = new ManagedNativeQueueScope(identity);
+    const admission = vi.fn(async () => admitted());
+    const f = await fixture(admission, undefined, scope.capture());
+    await f.request("turn/interrupt", { threadId: identity.threadId });
+    expect(admission).toHaveBeenCalledOnce();
+    scope.refresh({ ...identity, modelRouteId: "replacement-route" });
+    expect(
+      (await f.request("turn/interrupt", { threadId: identity.threadId }))
+        .error,
+    ).toBeDefined();
+    expect(admission).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    [
+      new ManagedNativeQueueUncertainError("ACK lost"),
+      "queue-operation-uncertain",
+    ],
+    [
+      new CantripServerRequestError("pending", 409, "queue-receipt-pending"),
+      "queue-receipt-pending",
+    ],
+    [
+      new CantripServerRequestError("conflict", 409, "queue-revision-conflict"),
+      "queue-revision-conflict",
+    ],
+  ] as const)(
+    "preserves queue error disposition for native retry: %s",
+    async (error, code) => {
+      const f = await fixture(async () => admitted(), {
+        execute: async () => {
+          throw error;
+        },
+        subscribe: () => () => {},
+      });
+      const result = await f.request("thread/queue/start", {
+        threadId: identity.threadId,
+      });
+      expect(result.error.data.code).toBe(code);
+      expect(
+        f.messages.some((frame) => frame.method === "thread/queue/start"),
+      ).toBe(false);
+    },
+  );
+
+  it("keeps Stop independent of a canonical start awaiting its actual Turn acknowledgment", async () => {
+    const ack = deferred();
+    const execute = vi.fn(async () => {
+      await ack.promise;
+      return { turn: { id: "actual-turn", status: "inProgress", items: [] } };
+    });
+    const f = await fixture(async () => admitted(), {
+      execute,
+      subscribe: () => () => {},
+    });
+    let finished = false;
+    const start = f
+      .request("thread/queue/start", { threadId: identity.threadId })
+      .then((value) => {
+        finished = true;
+        return value;
+      });
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledOnce());
+    expect(
+      (await f.request("turn/interrupt", { threadId: identity.threadId }))
+        .result,
+    ).toEqual({ accepted: "turn/interrupt" });
+    expect(finished).toBe(false);
+    ack.resolve();
+    expect((await start).result.turn.id).toBe("actual-turn");
+  });
+
+  it("fans out canonical revisions to initialized views and suppresses native queue changes", async () => {
+    const listeners = new Set<(change: ManagedNativeQueueChange) => void>();
+    const f = await fixture(async () => admitted(), {
+      execute: async () => ({ data: [], nextCursor: null }),
+      subscribe(listener) {
+        listeners.add(listener);
+        return () => {
+          listeners.delete(listener);
+        };
+      },
+    });
+    const second = new WebSocket(f.gateway.url);
+    const received: any[] = [];
+    second.on("message", (raw) => received.push(JSON.parse(raw.toString())));
+    await once(second, "open");
+    second.send(
+      JSON.stringify({ id: "init", method: "initialize", params: {} }),
+    );
+    await vi.waitFor(() =>
+      expect(received.some((frame) => frame.id === "init")).toBe(true),
+    );
+    for (const listener of listeners)
+      listener({ threadId: identity.threadId, revision: "2" });
+    const change = {
+      method: "thread/queue/changed",
+      params: {
+        threadId: identity.threadId,
+        managedQueue: { revision: "2" },
+      },
+    };
+    await vi.waitFor(() => {
+      expect(f.received).toContainEqual(change);
+      expect(received).toContainEqual(change);
+    });
+    for (const listener of listeners)
+      listener({ threadId: "foreign", revision: "3" });
+    f.peers[0]!.send(
+      JSON.stringify({
+        method: "thread/queue/changed",
+        params: { threadId: identity.threadId },
+      }),
+    );
+    // A later ordered native response proves the native notification was processed.
+    await f.request("model/list");
+    expect(
+      f.received.filter((frame) => frame.method === "thread/queue/changed"),
+    ).toEqual([change]);
+    second.close();
+    await once(second, "close");
+    await vi.waitFor(() => expect(listeners.size).toBe(1));
+  });
+
+  it("aborts a disconnected queue wait without dispatching or replaying native input", async () => {
+    let signal: AbortSignal | undefined;
+    const execute = vi.fn(async (request) => {
+      signal = request.signal;
+      await new Promise<void>((_resolve, reject) =>
+        request.signal.addEventListener(
+          "abort",
+          () => reject(request.signal.reason),
+          { once: true },
+        ),
+      );
+      return {};
+    });
+    const f = await fixture(async () => admitted(), {
+      execute,
+      subscribe: () => () => {},
+    });
+    f.client.send(
+      JSON.stringify({
+        id: "start",
+        method: "thread/queue/start",
+        params: { threadId: identity.threadId },
+      }),
+    );
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledOnce());
+    f.client.close();
+    await once(f.client, "close");
+    await vi.waitFor(() => expect(signal?.aborted).toBe(true));
+    expect(
+      f.messages.some((frame) => frame.method === "thread/queue/start"),
+    ).toBe(false);
+    expect(execute).toHaveBeenCalledOnce();
   });
 
   it("requires the dedicated capability URL", async () => {

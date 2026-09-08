@@ -9,6 +9,7 @@ import type {
   ChatTurnMode,
   InferenceProgressSnapshot,
   ModelConfiguration,
+  QueuedPrompt,
   ReasoningEffort,
   SettingsBundle,
   SkillSummary,
@@ -138,7 +139,7 @@ import {
   getGithubIssues,
   getGithubPullRequests,
   getAgentInteractionRequests,
-  getQueuedPrompts,
+  getQueuedPromptState,
   getSkills,
   getTask,
   getWorkers,
@@ -284,6 +285,7 @@ export function useChatTranscriptController({
   const [editingPrompt, setEditingPrompt] = useState<{
     id: string;
     frozen: boolean;
+    revision?: number;
   } | null>(null);
   const [editingSentMessage, setEditingSentMessage] =
     useState<EditingSentMessage | null>(null);
@@ -636,11 +638,15 @@ export function useChatTranscriptController({
     refetchInterval: chatRefreshInterval,
     retry: false,
   });
-  const queuedPrompts = useQuery({
-    queryFn: () => getQueuedPrompts(chat.id),
+  const queuedPromptState = useQuery({
+    queryFn: () => getQueuedPromptState(chat.id),
     queryKey: ["prompt-queue", chat.id],
     refetchInterval: chatRefreshInterval,
   });
+  const queuedPrompts = {
+    ...queuedPromptState,
+    data: queuedPromptState.data?.items,
+  };
   const goalState = useQuery({
     enabled: capabilities.modes === "agent-modes",
     queryFn: () => getChatGoal(chat.id),
@@ -1224,9 +1230,15 @@ export function useChatTranscriptController({
         mode?: ChatTurnMode;
         reasoningEffort?: ReasoningEffort | null;
         frozen?: boolean;
+        expectedItemRevision?: number;
       };
     }) => updateQueuedPrompt(chat.id, id, input),
-    onSuccess: async () => {
+    onSuccess: async (updated) => {
+      setEditingPrompt((current) =>
+        current?.id === updated.id
+          ? { ...current, revision: updated.revision }
+          : current,
+      );
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["prompt-queue", chat.id] }),
         queryClient.invalidateQueries({ queryKey: projectChatQueryKey }),
@@ -1234,12 +1246,14 @@ export function useChatTranscriptController({
     },
   });
   const removePrompt = useMutation({
-    mutationFn: (id: string) => deleteQueuedPrompt(id),
+    mutationFn: (prompt: QueuedPrompt) =>
+      deleteQueuedPrompt(prompt.id, prompt.revision, chat.id),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ["prompt-queue", chat.id] }),
   });
   const steerPrompt = useMutation({
-    mutationFn: (id: string) => steerQueuedPrompt(id),
+    mutationFn: (prompt: QueuedPrompt) =>
+      steerQueuedPrompt(prompt.id, prompt.revision),
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["prompt-queue", chat.id] }),
@@ -1249,7 +1263,10 @@ export function useChatTranscriptController({
     },
   });
   const reorderPrompts = useMutation({
-    mutationFn: (ids: string[]) => reorderQueuedPrompts(chat.id, ids),
+    mutationFn: (ids: string[]) =>
+      reorderQueuedPrompts(chat.id, ids, queuedPromptState.data?.revision),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["prompt-queue", chat.id] }),
     onError: () =>
       queryClient.invalidateQueries({ queryKey: ["prompt-queue", chat.id] }),
   });
@@ -1585,6 +1602,7 @@ export function useChatTranscriptController({
             reasoningEffort: composerReasoningEffort,
             attachments: readyAttachments.map(({ attachment }) => attachment),
             frozen: editingPrompt.frozen,
+            expectedItemRevision: editingPrompt.revision,
           },
         },
         {
@@ -1858,6 +1876,8 @@ export function useChatTranscriptController({
     planState,
     queryClient,
     queuedPrompts,
+    pendingQueueImports: queuedPromptState.data?.pendingImports ?? [],
+    queueClaims: queuedPromptState.data?.claims ?? [],
     reasoningState,
     relocationActive,
     relocationJob,

@@ -191,6 +191,97 @@ const result = {
 } as AgentTurnResult;
 
 describe("managed native command session", () => {
+  it("orders clear after the prior native setter response without waiting for its server receipt or model work", async () => {
+    const f = fixture(false);
+    const setter = await f.adapter.admit({
+      ...f.operation,
+      kind: "mutation",
+      method: "thread/goal/set",
+      queueClaim: { id: "claim", promptRevision: 1 },
+      frame: {
+        method: "thread/goal/set",
+        params: { threadId: "thread", objective: "earlier" },
+      },
+    });
+    await setter.beforeForward();
+    const clear = await f.adapter.admit({
+      ...f.operation,
+      operationId: "clear",
+      kind: "mutation",
+      method: "thread/goal/clear",
+      frame: { method: "thread/goal/clear", params: { threadId: "thread" } },
+    });
+    const forwarded = vi.fn();
+    const clearing = clear.beforeForward().then(forwarded);
+    await vi.waitFor(() => expect(f.client.dispatch).toHaveBeenCalledTimes(2));
+    expect(forwarded).not.toHaveBeenCalled();
+    const serverReceipt = deferred<void>();
+    f.client.settle.mockImplementation(async () => serverReceipt.promise);
+    const setting = setter.settle({
+      result: { goal: {}, goalEpoch: "goal:1" },
+    });
+    await clearing;
+    expect(forwarded).toHaveBeenCalledOnce();
+    expect(f.runtime.prepareAdmittedNativeExecution).not.toHaveBeenCalled();
+    serverReceipt.resolve();
+    await setting;
+    await clear.settle({ result: {} });
+  });
+
+  it("holds a queued goal handoff until its actual epoch receipt is durably settled, while cancellation remains immediate", async () => {
+    const f = fixture(false);
+    const admission = await f.adapter.admit({
+      ...f.operation,
+      kind: "mutation",
+      method: "thread/goal/set",
+      queueClaim: { id: "claim", promptRevision: 1 },
+      frame: {
+        method: "thread/goal/set",
+        params: { threadId: "thread", objective: "first goal" },
+      },
+    });
+    await admission.beforeForward();
+    const settled = deferred<void>();
+    f.client.settle.mockImplementation(async () => settled.promise);
+    const waiter = vi.fn();
+    const waiting = f.adapter
+      .awaitGoalMutationSettled(new AbortController().signal)
+      .then(waiter);
+    const cancelled = new AbortController();
+    const stopped = f.adapter.awaitGoalMutationSettled(cancelled.signal);
+    cancelled.abort(new Error("Stop"));
+    await expect(stopped).rejects.toThrow("Stop");
+    const acknowledgment = admission.settle({
+      result: { goal: { objective: "first goal" }, goalEpoch: "goal-id:4" },
+    });
+    await vi.waitFor(() => expect(f.client.settle).toHaveBeenCalled());
+    expect(f.client.settle).toHaveBeenCalledWith(
+      expect.objectContaining({ goalEpoch: "goal-id:4", status: "applied" }),
+    );
+    expect(waiter).not.toHaveBeenCalled();
+    settled.resolve();
+    await Promise.all([acknowledgment, waiting]);
+    expect(waiter).toHaveBeenCalledOnce();
+  });
+
+  it("binds a queued command claim to the exact GUI mutation admission", async () => {
+    const f = fixture(false);
+    const dispatch = vi.fn(async () => ({}));
+    await f.adapter.executeGuiCommand(session, {
+      operationId: "queued-effect",
+      queueClaim: { id: "claim", promptRevision: 7 },
+      method: "thread/settings/update",
+      params: { threadId: "thread", model: "model" },
+      dispatch,
+    });
+    expect(f.client.admit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operationId: "queued-effect",
+        queueClaim: { id: "claim", promptRevision: 7 },
+      }),
+    );
+    expect(dispatch).toHaveBeenCalledOnce();
+  });
   it("binds accepted GUI preparation identity before mediated rollback without creating execution authority", async () => {
     const f = fixture(false);
     const preparedSession = {
@@ -296,6 +387,7 @@ describe("managed native command session", () => {
       attemptId: "attempt",
       turnId: "turn",
       trigger: "goal" as const,
+      goalEpoch: "goal-id:4",
       input: {
         input: { ResponseItem: { actual: "native continuation" } },
         threadSettings: {},
@@ -306,6 +398,12 @@ describe("managed native command session", () => {
       attempt,
       session,
       new AbortController().signal,
+      {
+        claimId: "claim",
+        operationId: "parent-goal",
+        operationGeneration: "parent-generation",
+        goalEpoch: "goal-id:4",
+      },
     );
     await Promise.resolve();
     expect(f.client.admit).not.toHaveBeenCalled();
@@ -319,6 +417,12 @@ describe("managed native command session", () => {
       expect.objectContaining({
         origin: "autonomous",
         method: "turn/start",
+        goalQueueHandoff: {
+          claimId: "claim",
+          operationId: "parent-goal",
+          operationGeneration: "parent-generation",
+          goalEpoch: "goal-id:4",
+        },
         intent: expect.objectContaining({ expectedTurnId: "turn" }),
       }),
     );

@@ -1,4 +1,3 @@
-import type { QueuedPrompt } from "@cantrip/protocol";
 import {
   ArrowDown,
   FilePlus2,
@@ -44,6 +43,7 @@ import {
   filesFromDataTransfer,
 } from "@/components/chat/file-drop";
 import { PromptQueue } from "@/components/chat/prompt-queue";
+import { PendingQueueImports } from "@/components/chat/pending-queue-imports";
 import { errorMessage as errorText } from "@/lib/error-message";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -135,6 +135,8 @@ export function ChatTranscriptView({
     planState,
     queryClient,
     queuedPrompts,
+    pendingQueueImports,
+    queueClaims,
     reasoningState,
     relocationActive,
     relocationJob,
@@ -620,8 +622,10 @@ export function ChatTranscriptView({
               onRevise={revisePlan}
             />
           ) : null}
+          <PendingQueueImports imports={pendingQueueImports} />
           <PromptQueue
             prompts={queuedPrompts.data ?? []}
+            claims={queueClaims}
             editingPromptId={editingPrompt?.id ?? null}
             executing={
               chat.status === "running" ||
@@ -634,9 +638,13 @@ export function ChatTranscriptView({
               steerPrompt.isPending ||
               reorderPrompts.isPending
             }
-            onDelete={(prompt) => removePrompt.mutate(prompt.id)}
+            onDelete={(prompt) => removePrompt.mutate(prompt)}
             onEdit={(prompt) => {
-              setEditingPrompt({ id: prompt.id, frozen: prompt.frozen });
+              setEditingPrompt({
+                id: prompt.id,
+                frozen: prompt.frozen,
+                revision: prompt.revision,
+              });
               setDraft(prompt.text);
               setSelectedGithubReferences([]);
               setComposerMode(prompt.mode);
@@ -653,30 +661,20 @@ export function ChatTranscriptView({
               );
               updatePrompt.mutate({
                 id: prompt.id,
-                input: { frozen: true },
+                input: { frozen: true, expectedItemRevision: prompt.revision },
               });
             }}
             onFreeze={(prompt) =>
               updatePrompt.mutate({
                 id: prompt.id,
-                input: { frozen: !prompt.frozen },
+                input: {
+                  frozen: !prompt.frozen,
+                  expectedItemRevision: prompt.revision,
+                },
               })
             }
-            onSteer={(prompt) => steerPrompt.mutate(prompt.id)}
-            onReorder={(ids) => {
-              const current = queuedPrompts.data ?? [];
-              const byId = new Map(
-                current.map((prompt) => [prompt.id, prompt]),
-              );
-              queryClient.setQueryData<QueuedPrompt[]>(
-                ["prompt-queue", chat.id],
-                ids.flatMap((id, position) => {
-                  const prompt = byId.get(id);
-                  return prompt ? [{ ...prompt, position }] : [];
-                }),
-              );
-              reorderPrompts.mutate(ids);
-            }}
+            onSteer={(prompt) => steerPrompt.mutate(prompt)}
+            onReorder={(ids) => reorderPrompts.mutate(ids)}
           />
           <div className="chat-composer-surface relative flex items-end gap-2 rounded-2xl border p-2 shadow-xl shadow-background/20 focus-within:ring-2 focus-within:ring-ring">
             <div className="min-w-0 flex-1">

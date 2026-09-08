@@ -87,12 +87,14 @@ export class ManagedExecutionRunner {
     threadId: string,
     transport: string,
     resumeAutonomy = false,
+    cancelGoalAttempt = false,
   ): Promise<void> {
     if (
       method !== "turn/interrupt" &&
       method !== "thread/queue/add" &&
       method !== "thread/queue/start" &&
       method !== "thread/goal/set" &&
+      method !== "thread/goal/clear" &&
       method !== "turn/pause"
     )
       return Promise.resolve();
@@ -102,7 +104,7 @@ export class ManagedExecutionRunner {
         throw new Error(
           "The native command belongs to a replaced runner transport.",
         );
-      if (method === "turn/interrupt") {
+      if (method === "turn/interrupt" || cancelGoalAttempt) {
         this.controller.abort(
           new Error("The managed runner was explicitly stopped."),
         );

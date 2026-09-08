@@ -11,6 +11,7 @@ import type { ServerConfig } from "../src/config.js";
 import { connectDatabase } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 import { createApplicationOwnerContext } from "../src/app/http/owner-context.js";
+import { installInternalNativeQueueRoutes } from "../src/app/routes/internal-native-queue.js";
 import { installInternalNativeCommandRoutes } from "../src/app/routes/internal-native-commands.js";
 import {
   protectedChatFields,
@@ -23,6 +24,8 @@ export async function createNativeCommandWorkerFixture(options: {
   cwd: string;
   modelBaseUrl: string;
   modelName?: string;
+  dispatchNextQueuedPrompt?: (chatId: string) => Promise<void>;
+  publishChatInvalidation?: (chatId: string, resource: "chat-queue") => void;
 }) {
   const dataDirectory = await mkdtemp(
     path.join(tmpdir(), "cantrip-native-worker-authority-"),
@@ -143,7 +146,8 @@ export async function createNativeCommandWorkerFixture(options: {
       serverId,
       repository,
       runAsOwner: ownerContext.runAsOwner,
-      dispatchNextQueuedPrompt: async () => {},
+      dispatchNextQueuedPrompt:
+        options.dispatchNextQueuedPrompt ?? (async () => {}),
       live: {
         publishEncryptedChatMessage: () => {},
         publishTaskMessage: () => {},
@@ -151,6 +155,14 @@ export async function createNativeCommandWorkerFixture(options: {
         publishChatTurnBoundary: () => {},
         publishChatInvalidation: () => {},
       },
+    });
+    installInternalNativeQueueRoutes(app, {
+      config,
+      repository,
+      runAsOwner: ownerContext.runAsOwner,
+      dispatchNextQueuedPrompt:
+        options.dispatchNextQueuedPrompt ?? (async () => {}),
+      publishChatInvalidation: options.publishChatInvalidation ?? (() => {}),
     });
     await app.ready();
     const phases: Array<{

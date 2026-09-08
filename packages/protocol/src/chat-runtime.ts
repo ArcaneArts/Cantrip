@@ -87,6 +87,10 @@ export const chatMessageWirePageSchema = z.discriminatedUnion("kind", [
 
 export const encryptedQueuedPromptSchema = queuedPromptOpaqueContentSchema
   .extend({
+    revision: z.number().int().nonnegative().default(0),
+    state: z
+      .enum(["pending", "claimed", "consumed", "removed", "importing"])
+      .default("pending"),
     chatId: z.string().min(1).max(200),
     attachments: chatAttachmentOpaqueListSchema.default([]),
     position: z.number().int().nonnegative(),
@@ -147,7 +151,11 @@ export const projectAutomationProtectedDispatchResultSchema = z
   });
 
 export const encryptedQueuedPromptUpdateSchema = z
-  .object({ prompt: queuedPromptOpaqueContentSchema })
+  .object({
+    prompt: queuedPromptOpaqueContentSchema,
+    expectedItemRevision: z.number().int().nonnegative().optional(),
+    operationId: z.string().min(1).max(255).optional(),
+  })
   .strict();
 
 export const encryptedChatPromptSubmitResultSchema = z.discriminatedUnion(
@@ -186,6 +194,19 @@ export const chatTurnCreateSchema = z
   });
 
 export const queuedPromptSchema = z.object({
+  revision: z.number().int().nonnegative().optional(),
+  nativeAction: z
+    .enum(["plain", "literal", "parseSlash", "runShell"])
+    .optional(),
+  executionMethod: z
+    .enum([
+      "turn/start",
+      "thread/goal/set",
+      "thread/goal/clear",
+      "thread/settings/update",
+      "thread/shellCommand",
+    ])
+    .optional(),
   id: z.string().min(1),
   chatId: z.string().min(1),
   text: z.string().trim().max(100_000),
@@ -229,6 +250,8 @@ export const queuedPromptUpdateSchema = z
   );
 
 export const queuedPromptOrderSchema = z.object({
+  expectedRevision: z.number().int().nonnegative().optional(),
+  operationId: z.string().min(1).max(255).optional(),
   ids: z.array(z.string().min(1)).max(1_000),
 });
 

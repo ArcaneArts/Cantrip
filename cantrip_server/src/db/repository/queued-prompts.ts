@@ -13,7 +13,7 @@ import type {
   QueuedPromptUpdate,
 } from "@cantrip/protocol";
 import type { ChatAttachmentOpaqueSummary } from "@cantrip/protocol/attachment-content";
-import { and, asc, desc, eq, exists, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, exists, isNull, sql } from "drizzle-orm";
 
 import * as schema from "../schema.js";
 import {
@@ -51,7 +51,7 @@ function toQueuedPrompt(
   };
 }
 
-function toEncryptedQueuedPrompt(
+export function toEncryptedQueuedPrompt(
   prompt: typeof schema.queuedPrompts.$inferSelect,
 ): EncryptedQueuedPrompt {
   if (!prompt.opaqueContent || prompt.text !== null) {
@@ -59,6 +59,8 @@ function toEncryptedQueuedPrompt(
   }
   return encryptedQueuedPromptSchema.parse({
     ...prompt.opaqueContent,
+    revision: prompt.revision,
+    state: prompt.state,
     chatId: prompt.chatId,
     attachments: prompt.attachments,
     position: prompt.position,
@@ -104,6 +106,7 @@ export class QueuedPromptRepository {
       .where(
         and(
           eq(schema.queuedPrompts.chatId, chatId),
+          sql`${schema.queuedPrompts.state} IN ('pending','claimed')`,
           eq(schema.chats.ownerId, ownerId),
         ),
       )

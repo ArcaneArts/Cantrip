@@ -3,11 +3,18 @@ import { createServer } from "node:http";
 import { once } from "node:events";
 import WebSocket, { WebSocketServer } from "ws";
 
+import { CantripServerRequestError } from "../cli-client.js";
+import { ManagedNativeQueueUncertainError } from "../managed-native-queue-client.js";
 import type { ManagedSessionIdentity } from "./managed-session.js";
+import {
+  isManagedNativeQueueMethod,
+  type ManagedNativeQueueGateway,
+} from "./managed-native-queue.js";
 import {
   managedNativeMethods,
   managedNativeServerRequests,
   type ManagedNativeMethodKind,
+  type NativeCommandAdmission,
 } from "@cantrip/protocol";
 
 export type NativeRpcId = string | number;
@@ -21,6 +28,8 @@ export interface ManagedNativeGatewayIdentity extends ManagedSessionIdentity {
 export interface ManagedNativeOperation {
   operationId: string;
   expectedTurnId?: string;
+  queueClaim?: { id: string; promptRevision: number };
+  goalQueueHandoff?: NativeCommandAdmission["goalQueueHandoff"];
   origin: "terminal" | "gui" | "autonomous";
   identity: Readonly<ManagedNativeGatewayIdentity>;
   connectionId: string | null;
@@ -46,6 +55,8 @@ export interface ManagedNativeAdmission {
 export interface ManagedNativeGatewayOptions {
   identity: ManagedNativeGatewayIdentity;
   upstreamUrl: string;
+  /** Canonical managed queue; its mutations settle atomically with their server command. */
+  queue?: ManagedNativeQueueGateway;
   isCurrent(): boolean;
   admit(operation: ManagedNativeOperation): Promise<ManagedNativeAdmission>;
   /** Dispatches through the runtime's single GUI/TUI pending resolver, never a second native socket. */
@@ -151,6 +162,8 @@ export async function createManagedNativeGateway(
     const pending = new Map<string, PendingRequest>();
     let disconnected = false;
     let initialized = false;
+    const lifetime = new AbortController();
+    let unsubscribeQueue: (() => void) | undefined;
     const send = (socket: WebSocket, frame: NativeRpcFrame) => {
       if (socket.readyState !== WebSocket.OPEN)
         throw new Error("Native connection is unavailable.");
@@ -158,15 +171,23 @@ export async function createManagedNativeGateway(
     };
     const fail = (id: unknown, error: unknown) => {
       if (client.readyState === WebSocket.OPEN) {
-        send(
-          client,
-          fault(
-            id,
-            error instanceof Error
-              ? error.message
-              : "Native operation rejected.",
-          ),
+        const frame = fault(
+          id,
+          error instanceof Error ? error.message : "Native operation rejected.",
         );
+        if (
+          error instanceof CantripServerRequestError ||
+          error instanceof ManagedNativeQueueUncertainError
+        )
+          Object.assign(frame.error, {
+            data: {
+              code: error.code,
+              ...(error instanceof CantripServerRequestError
+                ? { status: error.status }
+                : {}),
+            },
+          });
+        send(client, frame);
       }
     };
     const upstreamReady = new Promise<void>((resolve, reject) => {
@@ -181,6 +202,8 @@ export async function createManagedNativeGateway(
     const close = () => {
       if (disconnected) return;
       disconnected = true;
+      lifetime.abort(new Error("Managed native view disconnected."));
+      unsubscribeQueue?.();
       views.delete(view);
       for (const entry of pending.values()) {
         if (entry.forwarded && entry.admission)
@@ -200,6 +223,21 @@ export async function createManagedNativeGateway(
     client.on("error", close);
     upstream.on("close", close);
     upstream.on("error", close);
+    unsubscribeQueue = options.queue?.subscribe((change) => {
+      if (!initialized || !active()) return;
+      if (change.threadId !== identity.threadId) return;
+      try {
+        send(client, {
+          method: "thread/queue/changed",
+          params: {
+            threadId: identity.threadId,
+            managedQueue: { revision: change.revision },
+          },
+        });
+      } catch {
+        close();
+      }
+    });
 
     const forwardRequest = async (frame: NativeRpcFrame) => {
       if (!rpcId(frame.id) || typeof frame.method !== "string")
@@ -220,6 +258,31 @@ export async function createManagedNativeGateway(
       const entry: PendingRequest = { forwarded: false, method: frame.method };
       pending.set(id, entry);
       try {
+        if (options.queue && isManagedNativeQueueMethod(frame.method)) {
+          if (
+            !object(frame.params) ||
+            frame.params.threadId !== identity.threadId
+          )
+            throw new Error(
+              "Managed queue requests require their exact bound thread ID.",
+            );
+          const result = await options.queue.execute({
+            method: frame.method,
+            params: frame.params,
+            identity,
+            connectionId,
+            signal: lifetime.signal,
+            assertCurrent() {
+              if (!active())
+                throw new Error(
+                  "Managed queue session expired before dispatch.",
+                );
+            },
+          });
+          pending.delete(id);
+          if (active()) send(client, { id: frame.id, result });
+          return;
+        }
         let forwarded = frame;
         if (kind !== "read") {
           const admission = await options.admit({
@@ -448,6 +511,7 @@ export async function createManagedNativeGateway(
                 version: 1,
                 replyMethod: "cantrip/managed/reply",
                 threadId: identity.threadId,
+                ...(options.queue ? { queue: { version: 1 } } : {}),
               },
             };
           }
@@ -477,6 +541,9 @@ export async function createManagedNativeGateway(
         ) {
           replies.delete(key(frame.params.requestId));
         }
+        // A managed view has one queue owner; native scheduler invalidations
+        // must not be mistaken for canonical queue changes.
+        if (options.queue && frame.method === "thread/queue/changed") return;
         options.onNativeMessage?.(frame, connectionId);
         send(client, frame);
       })().catch((error) => {

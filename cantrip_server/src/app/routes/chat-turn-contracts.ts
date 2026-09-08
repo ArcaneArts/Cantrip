@@ -20,6 +20,10 @@ export type ChatTurnStarter = (
     subagentReasoningEffort?: ReasoningEffort | null;
   },
   options?: {
+    managedQueueClaim?: { id: string; promptRevision: number };
+    protectedNativeInput?: import("@cantrip/protocol").EncryptedPayloadEnvelope;
+    queuedPromptId?: string;
+    nativeClientUserMessageId?: string;
     encryptedChatMessages?: {
       userMessage: ChatMessageOpaqueContent;
       response: { id: string; idempotencyKey: string };

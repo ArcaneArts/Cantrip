@@ -1,6 +1,7 @@
 import type { NativeCommandReceipt } from "@cantrip/protocol";
 import type { ServerRepository } from "../../db/repository.js";
 import type { WorkerCommandBus } from "../../workers/bridge.js";
+import { deliverNativeLogicalCompletion } from "./native-logical-completion-delivery.js";
 
 /** Release native successors only after the logical GUI lane has durably finished. */
 export async function finishManagedGui(input: {
@@ -20,18 +21,26 @@ export async function finishManagedGui(input: {
     input.status,
   );
   try {
-    await input.bridge.request(
-      input.workerId,
-      {
-        type: "chat.native-logical.complete",
-        chatId: input.receipt.chatId,
-        rootOperationId: input.receipt.operationId,
-        rootOperationGeneration: input.receipt.operationGeneration,
-      },
-      { timeoutMs: 30_000 },
-    );
+    const completion =
+      await input.repository.nativeCommands.getLogicalCompletion(
+        input.ownerId,
+        input.workerId,
+        input.receipt.chatId,
+        input.receipt.operationId,
+        input.receipt.operationGeneration,
+      );
+    if (completion) {
+      await deliverNativeLogicalCompletion(completion, input.bridge);
+      await input.repository.nativeCommands.acknowledgeLogicalCompletion(
+        completion.ownerId,
+        completion.workerId,
+        completion.chatId,
+        completion.rootOperationId,
+        completion.rootOperationGeneration,
+      );
+    }
   } catch (error) {
-    // The database result remains authoritative if the worker transport ended.
+    // The completion stays in the durable outbox for independent redelivery.
     input.onAcknowledgementError(error);
   }
   return finished;

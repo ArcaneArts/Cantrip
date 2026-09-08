@@ -263,6 +263,20 @@ export const queuedPromptProtectedContentSchema = z
 
 export const queuedPromptOpaqueContentSchema = z
   .object({
+    nativeAction: z
+      .enum(["plain", "literal", "parseSlash", "runShell"])
+      .optional(),
+    executionMethod: z
+      .enum([
+        "turn/start",
+        "thread/goal/set",
+        "thread/goal/clear",
+        "thread/settings/update",
+        "thread/shellCommand",
+      ])
+      .optional(),
+    protectedNativeInput: encryptedPayloadEnvelopeSchema.optional(),
+    nativeClientUserMessageId: z.string().min(1).max(255).optional(),
     id: z.string().uuid(),
     classification: queuedPromptProtectedClassificationSchema,
     protectedContent: encryptedQueuedPromptProtectedContentSchema,

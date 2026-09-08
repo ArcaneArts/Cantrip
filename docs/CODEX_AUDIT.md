@@ -200,7 +200,7 @@ that view attachment, chat settings changes and cold recovery do not make furthe
 account configuration writes. This does not establish command/default-write
 mediation, which remains a later milestone. No desktop input is performed.
 
-**Pass 4 — shared native command admission:**
+**Pass 4 (#1853) — shared native command admission:**
 
 The isolated implementation adds durable admission, dispatch, settlement and
 pending-reply records. Worker-protected request/result content is bound to its
@@ -289,8 +289,161 @@ cases also pass a fresh targeted rerun. The packaged five-case native fixture
 passes in 29.96 seconds with local synthetic provider responses and real native
 protocol/database operations, without mocked admission or execution success.
 
+**Pass 5 — one managed queue:**
+
+Post-merge source inspection confirms three independent queue paths: GUI rows
+in `queued_prompts`, Codex's durable `thread/queue/*` API, and the interactive
+TUI's local `VecDeque`. The TUI drains its local queue into direct turn submits
+and ignores `ThreadQueueChanged`; forwarding GUI calls to the native durable
+API alone would not produce a shared queue. Native durable queue items contain
+only ID, input and client message ID. They do not represent frozen items,
+per-item mode/model/effort/custom-child/worktree selection, and enqueue assigns
+a fresh ID without deduplicating the client message ID.
+
+The selected owner for managed sessions is therefore **Cantrip's canonical
+queue**, retaining those existing product semantics. The worker gateway
+serves native-shaped queue reads and mutations from protected canonical data;
+managed queue mutations do not also enter Codex's independent scheduler. The
+reviewed managed-TUI patch replaces local queue draining with this shared
+queue and consumes its revisioned notifications. Ordinary unmanaged CLI behavior
+and excluded standalone/Task behavior remain separate.
+
+Implementation requires durable item revisions and dispatch claims tied to the
+logical native operation, atomic queue mutation/command settlement, and stable
+identities for retry and consumption. An uncertain dispatch retains its claim
+for reconciliation rather than replaying the input. Worker-side protection must
+preserve the complete native input vector alongside GUI display data. Existing
+native queue entries need a fenced, idempotent import before acknowledged
+removal; missing entries alone do not prove nonexecution.
+
+This pass also needs recovery for a lost logical-completion acknowledgment.
+Physical cleanup is insufficient to release a successor, but a committed exact
+logical completion must remain observable and retryable after a notification
+failure. Recovery must not depend on another user message or resubmit the turn.
+Implementation now includes the canonical revision/claim protocol, gateway
+virtualization, protected queue projection, GUI revision-aware edits, and a
+durable exact-root logical-completion outbox. Native command receipts distinguish
+an actual model turn from acknowledgment of a shell/settings/goal command. The
+worker normalizes encrypted GUI edits before admission, so editing a slash
+command cannot retain the previous command's execution classification.
+
+The worker seals the complete native input vector under an owner/server/chat/item
+encryption domain. Local image/audio bytes are captured before queue acceptance
+and projected through the existing attachment store with encrypted metadata for
+GUI display. Attachment mappings preserve surviving media IDs across native edits,
+remove media deleted in the GUI, and avoid appending the same attachment twice.
+Changed bytes cannot overwrite an accepted attachment merely by reusing a command
+ID. Failed upload attempts can be abandoned without deleting the completed file
+or requiring a worker restart. Remote URLs retain native fetch semantics; these
+are not automatically downloaded by queue projection.
+
+GUI edits, removal and reordering now recover a lost response through a read-only
+operation-receipt lookup. The original accepted item remains available after
+consumption or later edits, so recovery does not reconstruct or resend the
+mutation. Missing, mismatched or unavailable receipts leave the action
+unconfirmed. The client pins its authentication lifetime before preparing an
+edit and rejects a replacement login even for the same account.
+
+Legacy queue transfer preserves uncertain and conflicting records separately
+from executable items. The GUI decrypts and displays their saved prompt and
+attachment names in a read-only transfer list; a missing native row alone does
+not authorize execution. Changes in transfer status advance the canonical queue
+revision so connected views can refresh without another input.
+
+The GUI also projects actual start claims for each item revision. Preparing,
+starting, unconfirmed and rejected attempts no longer all look like ordinary
+waiting prompts. Unresolved claims disable row mutations; rejected attempts
+offer an explicit retry. A stale claim cannot label or disable a newer edit.
+An explicit queued retry receives a new native root identity through its new
+claim, while repeated delivery of the same claim remains idempotent.
+
+Recovered GUI outcomes now carry the original root operation and generation
+from the worker command. Server recovery validates that root against its
+canonical client message, worker, lane and current lineage before finishing the
+logical input and creating its completion outbox entry. Native turn identifiers,
+when supplied, are checked too. This closes the surviving-worker/server-reconnect
+path; the existing worker transport buffer is memory-only, so this is not proof
+of complete worker-restart outcome recovery.
+
+Focused validation currently passes 22 worker input/encryption/attachment tests
+and 15 app encryption/API/rendering tests, including observed-revision preservation,
+lost-response recovery, authentication replacement, and separate projection of
+all three pending transfer states and revision-scoped start controls. App
+typecheck passes. The worker transport suite passes 23 tests, including actual
+WebSocket reconnect with exact logical roots on successful and failed managed
+outcomes, and unchanged legacy outcomes.
+The independent completion delivery helper passes seven tests for lost
+acknowledgments, restart, persistence failure, shutdown and retry without a UI
+reconnect. Worker and real-database integration tests cover goal handoff and
+queue transfer; actual native acceptance results are recorded separately below.
+
+The final standard packaged build with reviewed patch `0016` succeeds. Its
+actual remote PTY fixture passes canonical idle-Tab addition, stable item IDs,
+reorder, edit, deletion with a deliberately dropped committed acknowledgment,
+automatic native reconnect, and exact original mutation-envelope recovery. It
+records zero model requests and no local queue execution. Initial fixture
+failures identified the missing managed idle-Tab path, then two test-input
+issues: bracketed paste must be distinct from Enter, and reconnect editing must
+wait for the actual TUI reconnect notification.
+
+The actual goal RPC fixture exposed managed cold resume retaining its serialized
+thread request handler while waiting for autonomous admission, blocking a
+subsequent goal read. Managed cold resume and active goal creation now schedule
+their continuation outside that request slot. Native regression coverage proves
+first and cold goal reads remain responsive during admission, with durable goal
+epochs, Stop and clear, and zero provider requests in those gate-only cases.
+
+All four canonical execution cases pass against the final packaged runtime:
+GUI queue input, native queue input, queued goal followed by its successor, and
+clearing a goal before its first admission. They use the production queue
+dispatcher, GUI HTTP route/native gateway, real Fastify/PGlite admission and actual
+native model requests. Plain-input cases obtain the actual start acknowledgment
+before model completion and recover original add/start receipts after consumption
+without replay. Goal handoff correlates the first turn's exact epoch and keeps
+the successor queued until its release. Clear-before-start admits zero goal model
+requests, leaves no goal or scheduled wake, and permits exactly one successor.
+
+These fixtures found a reply decoder expecting an RPC envelope where the GUI
+adapter stores a direct `TurnStartResponse`; it now accepts both actual producer
+shapes while retaining turn/claim correlation. A cleanup timeout was reproduced
+when the test immediately raced runtime shutdown's SIGINT with SIGTERM. The
+fixture now waits for actual exit before escalation and fails if forced killing
+is required. All four final cases terminate successfully; the initial timeout
+is not counted as a pass.
+
+The final native source passes all 16 queue RPC tests, 119 terminal queue
+compatibility tests, six focused terminal tests, all 64 resume tests, and 190
+state tests. The ordered series verifies all 6,499 imported files and 15 patches.
+The standard release build completed in 14 minutes 58 seconds, the final remote
+PTY case passed, and the four canonical execution cases passed in 21.87 seconds.
+These queue tests do not establish the entire integration acceptance matrix.
+
+Local validation also covers 52 real database/recovery cases and 215 focused
+worker cases before final acceptance extensions. Server typecheck and repository
+decomposition checks pass after extracting the new queue settlement and outbox
+helpers without changing their transactions. Completion-delivery wiring remains
+under the application bootstrap budget, with all seven focused delivery tests
+passing. The large-file check passes. The application decomposition check still
+reports `chat-turn-runtime.ts` (baseline 2,248 lines; current 2,260) and unchanged
+`task-routes.ts` (2,149), both above its 1,999-line budget. These are recorded
+failures; this pass does not claim the full repository check is green.
+
+An independent review reproduced an accepted split-text `/plan` command failing
+at dispatch. Classification and execution now share text-prefix handling across
+native vector boundaries, preserving intervening rich inputs and later byte
+spans. All 25 codec/command tests and worker typecheck pass after this fix.
+
+Committed terminal and goal-control receipts now schedule successor dispatch
+without awaiting it. Real authenticated HTTP tests hold that dispatcher open
+and still receive the receipt, then verify a detached dispatch rejection is
+observed. The durable dispatcher remains the recovery path after a lost wakeup.
+Read-only receipt recovery also permits a current authorized view to reconcile
+the original operation after its queued model route/account changes. Mutation
+admission remains fenced; thread/placement changes still require the separate
+continuation and presentation-retargeting work below.
+
 **Still outstanding:** completion of authorized command admission, origin-independent
-lifecycle/CUA authority, one shared queue owner, durable all-turn projection/replay,
+lifecycle/CUA authority, durable all-turn projection/replay,
 complete settings parity, eager GUI-first session startup and the full acceptance
 matrix. Native-thread replacement also needs complete presentation retargeting
 and queue/history continuity; canonical GUI retry handoff alone does not prove

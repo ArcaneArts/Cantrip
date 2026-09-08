@@ -834,6 +834,13 @@ export class WorkerConnection {
         contextKind: command.contextKind,
         worktreeId: command.worktreeId,
         scratchRootId: command.scratchRootId,
+        nativeLogicalRoot: command.nativeCommandReceipt
+          ? {
+              operationId: command.nativeCommandReceipt.operationId,
+              operationGeneration:
+                command.nativeCommandReceipt.operationGeneration,
+            }
+          : undefined,
         taskDispatchFence: command.taskDispatchLease
           ? {
               cycleId: command.taskDispatchLease.cycleId,

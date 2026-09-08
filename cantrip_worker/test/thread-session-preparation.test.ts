@@ -1499,6 +1499,98 @@ describe("resuming actual managed native automation", () => {
     expect(f.native.ensureStarted).not.toHaveBeenCalled();
   });
 
+  it("gives the canonical queue priority and never consults native queue storage after cutover", async () => {
+    const f = fixture();
+    f.runtime.setManagedNativeCommandDispatcher("thread-1", async (command) =>
+      command.dispatch(),
+    );
+    const resume = vi.fn(async () => ({ resumed: true }));
+    f.runtime.setManagedQueueResume("thread-1", resume);
+    expect(
+      await f.runtime.resumeManagedAutomation({ threadId: "thread-1" }),
+    ).toEqual({ resumed: true });
+    expect(resume).toHaveBeenCalledOnce();
+    expect(f.request).not.toHaveBeenCalled();
+    resume.mockResolvedValue({ resumed: false });
+    f.request.mockResolvedValue({ goal: null });
+    expect(
+      await f.runtime.resumeManagedAutomation({ threadId: "thread-1" }),
+    ).toEqual({ resumed: false });
+    expect(f.request.mock.calls).toEqual([
+      ["thread/goal/get", { threadId: "thread-1" }],
+    ]);
+  });
+
+  it("resumes an active goal only after the canonical queue reports no eligible input", async () => {
+    const f = fixture();
+    const order: string[] = [];
+    f.runtime.setManagedNativeCommandDispatcher("thread-1", async (command) =>
+      command.dispatch(),
+    );
+    f.runtime.setManagedQueueResume("thread-1", async () => {
+      order.push("canonical");
+      return { resumed: false };
+    });
+    f.request.mockImplementation(async (method) => {
+      order.push(method);
+      return { goal: activeGoal };
+    });
+    expect(
+      await f.runtime.resumeManagedAutomation({ threadId: "thread-1" }),
+    ).toEqual({ resumed: true });
+    expect(order).toEqual(["canonical", "thread/goal/get", "thread/goal/set"]);
+  });
+
+  it("keeps old queue cleanup from removing a replacement handler and rejects an in-flight replacement", async () => {
+    const f = fixture();
+    f.runtime.setManagedNativeCommandDispatcher("thread-1", async (command) =>
+      command.dispatch(),
+    );
+    const removeOld = f.runtime.setManagedQueueResume("thread-1", async () => ({
+      resumed: false,
+    }));
+    const pending = deferred<{ resumed: boolean }>();
+    const current = vi.fn(() => pending.promise);
+    f.runtime.setManagedQueueResume("thread-1", current);
+    removeOld();
+    const result = f.runtime.resumeManagedAutomation({ threadId: "thread-1" });
+    expect(current).toHaveBeenCalledOnce();
+    f.runtime.setManagedQueueResume("thread-1", async () => ({
+      resumed: false,
+    }));
+    pending.resolve({ resumed: true });
+    await expect(result).rejects.toThrow("replaced during resume");
+    expect(f.request).not.toHaveBeenCalled();
+  });
+
+  it("forwards only the exact owner wake RPC and preserves the native stopped result", async () => {
+    const f = fixture();
+    const generation = vi
+      .spyOn(f.runtime, "transportGeneration", "get")
+      .mockReturnValue("transport");
+    f.request.mockResolvedValue({ scheduled: false });
+    expect(
+      await f.runtime.wakeManagedExecution(
+        { threadId: "thread-1", runnerGeneration: "runner" },
+        "transport",
+      ),
+    ).toEqual({ scheduled: false });
+    expect(f.request.mock.calls).toEqual([
+      [
+        "thread/managedExecution/wake",
+        { threadId: "thread-1", runnerGeneration: "runner" },
+      ],
+    ]);
+    generation.mockReturnValue("replacement");
+    await expect(
+      f.runtime.wakeManagedExecution(
+        { threadId: "thread-1", runnerGeneration: "runner" },
+        "transport",
+      ),
+    ).rejects.toThrow("replaced native transport");
+    expect(f.request).toHaveBeenCalledOnce();
+  });
+
   it("starts the existing native queue when no active goal exists", async () => {
     const f = fixture();
     const mutations: string[] = [];

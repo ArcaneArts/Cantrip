@@ -1,3 +1,5 @@
+import { queuedPromptOpaqueContentSchema } from "./communication-content.js";
+import { encryptedPayloadEnvelopeSchema } from "./encryption.js";
 import { nativeCommandReceiptSchema } from "./native-commands.js";
 import { z } from "zod";
 import {
@@ -106,6 +108,9 @@ export const workerChatCommandSchemas = [
     .object({
       type: z.literal("chat.turn"),
       nativeCommandReceipt: nativeCommandReceiptSchema.optional(),
+      protectedNativeInput: encryptedPayloadEnvelopeSchema.optional(),
+      nativeClientUserMessageId: z.string().min(1).max(255).optional(),
+      queuedPromptId: z.string().min(1).optional(),
       computerUseAuthority: cuaAgentAuthoritySchema.optional(),
       executionProfile: z.enum(["ide", "standalone-chat"]).default("ide"),
       contextKind: chatContextKindSchema.default("project"),
@@ -252,6 +257,17 @@ export const workerChatCommandSchemas = [
   z
     .object({
       type: z.literal("chat.native-control"),
+      operationId: z.string().min(1).max(255).optional(),
+      queueClaim: z
+        .object({
+          id: z.string().min(1),
+          promptRevision: z.number().int().nonnegative(),
+        })
+        .strict()
+        .optional(),
+      protectedNativeInput: encryptedPayloadEnvelopeSchema.optional(),
+      queuedPromptId: z.string().min(1).optional(),
+      nativeClientUserMessageId: z.string().min(1).max(255).optional(),
       chatId: z.string().min(1),
       threadId: z.string().min(1).nullable(),
       nativeActivationGeneration: z.string().min(1).nullable(),
@@ -339,6 +355,57 @@ export const workerChatCommandSchemas = [
     provider: workerRuntimeProviderSchema,
     permissionProfileId: permissionProfileIdSchema,
   }),
+  z
+    .object({
+      type: z.literal("chat.queue.changed"),
+      chatId: z.string().min(1),
+      revision: z.number().int().nonnegative(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("chat.queue.prepare"),
+      chatId: z.string().min(1),
+      prompt: queuedPromptOpaqueContentSchema,
+      attachments: z.array(workerChatAttachmentSchema).max(20),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("chat.queue.execute"),
+      attachments: z.array(workerChatAttachmentSchema).max(20).default([]),
+      session: managedSessionContextSchema,
+      subagentDefaults: managedSessionSubagentDefaultsSchema.nullable(),
+      mcpServers: z.array(mcpServerOpaqueRuntimeSchema).max(200),
+      planMode: planModeSchema,
+      executionProfile: z.literal("ide").default("ide"),
+      chatId: z.string().min(1),
+      cwd: z.string().min(1),
+      threadId: z.string().min(1),
+      model: workerRuntimeModelSchema,
+      provider: workerRuntimeProviderSchema,
+      permissionProfileId: permissionProfileIdSchema,
+      queueClaim: z
+        .object({
+          id: z.string().min(1),
+          promptRevision: z.number().int().nonnegative(),
+        })
+        .strict(),
+      queuedPromptId: z.string().min(1),
+      protectedNativeInput: encryptedPayloadEnvelopeSchema.optional(),
+      nativeClientUserMessageId: z.string().min(1).max(255).optional(),
+      protectedPrompt: chatMessageOpaqueContentSchema,
+      nativeAction: z
+        .enum(["plain", "literal", "parseSlash", "runShell"])
+        .optional(),
+      executionMethod: z.enum([
+        "thread/goal/set",
+        "thread/goal/clear",
+        "thread/settings/update",
+        "thread/shellCommand",
+      ]),
+    })
+    .strict(),
   z.object({
     type: z.literal("chat.automation.resume"),
     session: managedSessionContextSchema,

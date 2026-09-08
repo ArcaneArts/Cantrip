@@ -26,6 +26,7 @@ export const nativeCommandIntentSchema = z
     scope: z.enum(["thread", "account-defaults"]),
     resumeAutonomy: z.boolean().optional(),
     paused: z.boolean().optional(),
+    goalStatus: z.enum(["active", "paused"]).optional(),
     settingKeys: z.array(z.string().min(1).max(120)).max(64).default([]),
     expectedTurnId: id.nullable().default(null),
     permissionProfileId: id.optional(),
@@ -37,6 +38,19 @@ export const nativeCommandAdmissionSchema = z
   .object({
     workerId: id,
     operationId: id,
+    goalQueueHandoff: z
+      .object({
+        claimId: id,
+        operationId: id,
+        operationGeneration: id,
+        goalEpoch: id,
+      })
+      .strict()
+      .optional(),
+    queueClaim: z
+      .object({ id, promptRevision: z.number().int().nonnegative() })
+      .strict()
+      .optional(),
     origin: z.enum(["gui", "terminal", "autonomous"]),
     session: nativeCommandSessionSchema,
     method: z.string().min(1).max(120),
@@ -153,6 +167,7 @@ export const nativeCommandSettlementSchema = z
     status: z.enum(["applied", "rejected", "uncertain"]),
     resultDigest: digest.nullable(),
     protectedResult: encryptedPayloadEnvelopeSchema.nullable(),
+    goalEpoch: id.optional(),
     terminalResult: z
       .object({
         resultDigest: digest.nullable(),

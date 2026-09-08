@@ -326,6 +326,13 @@ export const workerNotificationSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("chat.turn.outcome"),
+      nativeLogicalRoot: z
+        .object({
+          operationId: z.string().min(1),
+          operationGeneration: z.string().min(1),
+        })
+        .strict()
+        .optional(),
       chatId: z.string().min(1),
       clientMessageId: z.string().min(1),
       executionLaneId: z.string().min(1),

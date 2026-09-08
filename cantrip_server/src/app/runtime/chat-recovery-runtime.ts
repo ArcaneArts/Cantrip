@@ -1,3 +1,9 @@
+import { finishManagedGui } from "./finish-managed-gui.js";
+import {
+  managedConsoleSessionContext,
+  prepareManagedConsoleLaunch,
+} from "../../terminals/managed-session.js";
+import { effectivePermissionProfile } from "../../chats/execution-helpers.js";
 import { randomUUID } from "node:crypto";
 
 import {
@@ -48,7 +54,7 @@ interface ChatRecoveryMutationDependencies extends Pick<
 
 interface ChatRecoveryModelDependencies extends Pick<
   ModelRoutingRuntime,
-  "availableModelRuntimes" | "resolveModelId"
+  "availableModelRuntimes" | "resolveModelId" | "routePairsForConfiguration"
 > {}
 
 export interface ChatRecoveryRuntimeDependencies
@@ -93,6 +99,7 @@ export function createChatRecoveryRuntime({
   queueTaskScheduleTick,
   repository,
   resolveModelId,
+  routePairsForConfiguration,
   runAsOwner,
   upsertLiveChatMessage,
 }: ChatRecoveryRuntimeDependencies) {
@@ -360,6 +367,8 @@ export function createChatRecoveryRuntime({
       return;
     }
     dispatchingChats.add(chatId);
+    let managedClaim: import("@cantrip/protocol").ManagedQueueClaim | null =
+      null;
     try {
       let context = await repository.getChatExecutionContext(
         applicationOwnerId(),
@@ -371,12 +380,22 @@ export function createChatRecoveryRuntime({
         chatIsExecuting(context.status)
       )
         return;
-      const prompt = (
-        await repository.listEncryptedQueuedPrompts(
-          applicationOwnerId(),
-          chatId,
-        )
-      ).find((candidate) => !candidate.frozen);
+      const managed = managedConsoleSessionContext(context) !== undefined;
+      managedClaim = managed
+        ? await repository.managedQueue.claimNext(applicationOwnerId(), chatId)
+        : null;
+      if (managed && !managedClaim) return;
+      const prompt = managedClaim
+        ? await repository.getEncryptedQueuedPrompt(
+            applicationOwnerId(),
+            managedClaim.promptId,
+          )
+        : (
+            await repository.listEncryptedQueuedPrompts(
+              applicationOwnerId(),
+              chatId,
+            )
+          ).find((candidate) => !candidate.frozen);
       if (!prompt) return;
       app.log.info(
         {
@@ -404,6 +423,69 @@ export function createChatRecoveryRuntime({
         );
         if (!context) return;
       }
+      const executionMethod =
+        prompt.executionMethod ??
+        (prompt.classification.mode === "goal"
+          ? "thread/goal/set"
+          : "turn/start");
+      if (managedClaim && executionMethod !== "turn/start") {
+        const configuration = {
+          modelId: prompt.modelId,
+          reasoningEffort: prompt.reasoningEffort,
+          customSubagentModel: prompt.customSubagentModel,
+          subagentModelId: prompt.subagentModelId,
+          subagentReasoningEffort: prompt.subagentReasoningEffort,
+        };
+        await repository.setChatModelConfiguration(
+          applicationOwnerId(),
+          chatId,
+          configuration,
+        );
+        context = (await repository.getChatExecutionContext(
+          applicationOwnerId(),
+          chatId,
+        ))!;
+        const [runtime] = await availableModelRuntimes(context, prompt.modelId);
+        if (!runtime)
+          throw new Error("The queued action model is unavailable.");
+        const launch = await prepareManagedConsoleLaunch(context, runtime, {
+          ownerId: applicationOwnerId(),
+          repository,
+          bridge,
+          routePairsForConfiguration,
+        });
+        await appendLiveEncryptedChatMessage(
+          applicationOwnerId(),
+          chatId,
+          prompt.pendingMessage,
+        );
+        await bridge.request(context.workerId, {
+          type: "chat.queue.execute",
+          attachments: prompt.attachments,
+          session: launch.session!,
+          subagentDefaults: launch.subagentDefaults ?? null,
+          mcpServers: launch.mcpServers ?? [],
+          planMode: launch.planMode ?? "default",
+          executionProfile: "ide",
+          chatId,
+          cwd: context.cwd,
+          threadId: launch.threadId!,
+          model: launch.model,
+          provider: launch.provider,
+          permissionProfileId: effectivePermissionProfile(context).effectiveId,
+          queueClaim: {
+            id: managedClaim.id,
+            promptRevision: managedClaim.promptRevision,
+          },
+          queuedPromptId: prompt.id,
+          protectedNativeInput: prompt.protectedNativeInput,
+          nativeClientUserMessageId: prompt.nativeClientUserMessageId,
+          protectedPrompt: prompt.pendingMessage,
+          nativeAction: prompt.nativeAction,
+          executionMethod,
+        });
+        return;
+      }
       await beginTurn(
         context,
         {
@@ -418,6 +500,17 @@ export function createChatRecoveryRuntime({
           idempotencyKey: prompt.pendingMessage.idempotencyKey,
         },
         {
+          ...(managedClaim
+            ? {
+                managedQueueClaim: {
+                  id: managedClaim.id,
+                  promptRevision: managedClaim.promptRevision,
+                },
+                protectedNativeInput: prompt.protectedNativeInput,
+                nativeClientUserMessageId: prompt.nativeClientUserMessageId,
+                queuedPromptId: prompt.id,
+              }
+            : {}),
           encryptedChatMessages: {
             userMessage: prompt.pendingMessage,
             response: {
@@ -427,8 +520,15 @@ export function createChatRecoveryRuntime({
           },
         },
       );
-      await deleteLiveQueuedPrompt(applicationOwnerId(), prompt.id);
+      if (!managedClaim)
+        await deleteLiveQueuedPrompt(applicationOwnerId(), prompt.id);
     } catch (error) {
+      if (managedClaim)
+        await repository.managedQueue.releaseUnadmitted(
+          applicationOwnerId(),
+          chatId,
+          managedClaim.id,
+        );
       app.log.error(
         {
           event: "chat.queue.dispatch-failed",
@@ -459,17 +559,39 @@ export function createChatRecoveryRuntime({
       notification.chatId,
       notification.executionLaneId,
     );
+    const logicalRoot =
+      notification.nativeLogicalRoot && notification.contextKind === "project"
+        ? await repository.nativeCommands.logicalGuiOutcomeRoot(
+            ownerId,
+            workerId,
+            {
+              chatId: notification.chatId,
+              executionLaneId: notification.executionLaneId,
+              clientMessageId: notification.clientMessageId,
+              worktreeId: notification.worktreeId,
+              nativeLogicalRoot: notification.nativeLogicalRoot,
+              ...(notification.outcome.ok
+                ? {
+                    threadId: notification.outcome.result.threadId,
+                    turnId: notification.outcome.result.turnId,
+                  }
+                : {}),
+            },
+          )
+        : null;
     if (
       !laneContext ||
-      !shouldRecoverChatTurnOutcome(
-        {
-          ...laneContext.lane,
-          scratchRootId: laneContext.lane.scratchRootId ?? null,
-        },
-        workerId,
-        notification.worktreeId,
-        notification.scratchRootId,
-      )
+      (notification.nativeLogicalRoot && !logicalRoot) ||
+      (!logicalRoot &&
+        !shouldRecoverChatTurnOutcome(
+          {
+            ...laneContext.lane,
+            scratchRootId: laneContext.lane.scratchRootId ?? null,
+          },
+          workerId,
+          notification.worktreeId,
+          notification.scratchRootId,
+        ))
     ) {
       app.log.warn(
         {
@@ -753,13 +875,27 @@ export function createChatRecoveryRuntime({
     }
 
     await interruptLiveAgentInteractionRequests(notification.chatId);
-    const finished = await repository.finishChatExecutionLane(
-      notification.chatId,
-      notification.executionLaneId,
-      recoveredOutcomeOk ? "idle" : "failed",
-    );
+    const finished = logicalRoot
+      ? await finishManagedGui({
+          repository,
+          bridge,
+          ownerId,
+          workerId,
+          receipt: logicalRoot,
+          status: recoveredOutcomeOk ? "idle" : "failed",
+          onAcknowledgementError: (error) =>
+            app.log.warn(
+              { err: error, chatId: notification.chatId },
+              "Recovered logical completion remains queued for acknowledgment",
+            ),
+        })
+      : await repository.finishChatExecutionLane(
+          notification.chatId,
+          notification.executionLaneId,
+          recoveredOutcomeOk ? "idle" : "failed",
+        );
     let recoveredFailedStatus = false;
-    if (!finished && notification.outcome.ok) {
+    if (!logicalRoot && !finished && notification.outcome.ok) {
       const current = await repository.getChatExecutionContext(
         ownerId,
         notification.chatId,

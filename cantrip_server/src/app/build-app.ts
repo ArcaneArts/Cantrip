@@ -1,3 +1,4 @@
+import { installInternalNativeQueueRoutes } from "./routes/internal-native-queue.js";
 import { installInternalNativeCommandRoutes } from "./routes/internal-native-commands.js";
 import { randomBytes, randomUUID } from "node:crypto";
 import {
@@ -112,6 +113,8 @@ import { createBackgroundJobRuntime } from "./runtime/background-job-runtime.js"
 import { createChatRecoveryRuntime } from "./runtime/chat-recovery-runtime.js";
 import { createChatThreadSyncRuntime } from "./runtime/chat-thread-sync-runtime.js";
 import { createChatTurnRuntime } from "./runtime/chat-turn-runtime.js";
+import { createManagedQueueDelivery } from "./runtime/managed-queue-delivery.js";
+import { installNativeLogicalCompletionDelivery } from "./runtime/native-logical-completion-delivery.js";
 import { createCliOperationRuntime } from "./runtime/cli-operation-runtime.js";
 import { createDirectAttachmentRuntime } from "./runtime/direct-attachment-runtime.js";
 import { createLiveInfrastructureRuntime } from "./runtime/live-infrastructure-runtime.js";
@@ -211,6 +214,12 @@ export async function buildApp({
     repository,
   });
   const { directAttachments } = directAttachmentRuntime;
+  const nativeLogicalCompletionDelivery =
+    installNativeLogicalCompletionDelivery({
+      app,
+      repository: repository.nativeCommands,
+      bridge,
+    });
   const revokedWorkerCredentialIds = new Set<string>();
   const codeTunnel = providedCodeTunnel ?? new CodeTunnelBroker(bridge);
   const projectShareTunnel =
@@ -785,6 +794,7 @@ export async function buildApp({
     queueTaskScheduleTick: () => queueTaskScheduleTick(),
     repository,
     resolveModelId,
+    routePairsForConfiguration,
     runAsOwner,
     upsertLiveChatMessage,
   });
@@ -1282,6 +1292,7 @@ export async function buildApp({
   installChatTurnSubmissionRoutes(app, {
     applicationOwnerId,
     beginTurn,
+    dispatchNextQueuedPrompt,
     bridge,
     repository,
     resolveModelId,
@@ -1320,6 +1331,25 @@ export async function buildApp({
     serverId,
     repository,
     runAsOwner,
+  });
+  const managedQueueDelivery = createManagedQueueDelivery({
+    repository: repository.managedQueue,
+    bridge,
+    dispatch: (ownerId, chatId) =>
+      runAsOwner(ownerId, () => dispatchNextQueuedPrompt(chatId)),
+    publish: (ownerId, chatId) =>
+      runAsOwner(ownerId, () => publishChatInvalidation(chatId, "chat-queue")),
+    onError: (error) =>
+      app.log.warn({ err: error }, "Managed queue notification will retry"),
+  });
+  app.addHook("onReady", async () => managedQueueDelivery.start());
+  app.addHook("onClose", async () => managedQueueDelivery.stop());
+  installInternalNativeQueueRoutes(app, {
+    config,
+    repository,
+    runAsOwner,
+    dispatchNextQueuedPrompt,
+    publishChatInvalidation,
   });
   installInternalNativeCommandRoutes(app, {
     config,
@@ -1399,6 +1429,7 @@ export async function buildApp({
   installPolicyRoutes(app, { applicationOwnerId, repository });
 
   app.addHook("onClose", async () => {
+    nativeLogicalCompletionDelivery.stop();
     stopComputerUseAuthoritySubscription();
     liveInfrastructureRuntime.stopPublishing();
     sessionSocketRuntime.stopValidation();

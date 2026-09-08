@@ -239,6 +239,20 @@ export class AttachmentStore {
     });
   }
 
+  /** Abandon only this upload attempt; retain any previously completed file. */
+  async abort(
+    chatId: string,
+    attachmentId: string,
+    operationId: string,
+  ): Promise<boolean> {
+    const key = this.uploadKey(chatId, attachmentId);
+    const upload = this.#uploads.get(key);
+    if (!upload || upload.operationId !== operationId) return false;
+    await rm(upload.partPath, { force: true });
+    this.#uploads.delete(key);
+    return true;
+  }
+
   resolve(chatId: string, attachmentId: string, fileName: string): string {
     return this.attachmentPath(chatId, attachmentId, fileName);
   }

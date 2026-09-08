@@ -1,3 +1,4 @@
+import { ManagedQueueRepository } from "./repository/managed-queue.js";
 import { NativeCommandRepository } from "./repository/native-commands.js";
 import type {
   AgentInteractionRequest,
@@ -302,6 +303,7 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
   readonly chatAttachments: ChatAttachmentRepository;
   readonly messageQueries: MessageQueryRepository;
   readonly queuedPrompts: QueuedPromptRepository;
+  readonly managedQueue: ManagedQueueRepository;
   readonly messageWrites: MessageWriteRepository;
   readonly settings: SettingsRepository;
   readonly terminals: TerminalRepository;
@@ -472,6 +474,10 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
     });
     this.messageQueries = new MessageQueryRepository(database);
     this.queuedPrompts = new QueuedPromptRepository(database);
+    this.managedQueue = new ManagedQueueRepository(
+      database,
+      (transaction) => new ServerRepository(transaction, secretVault),
+    );
     this.messageWrites = new MessageWriteRepository(database, {
       appendMessage: (ownerId, chatId, input, attribution) =>
         this.appendMessage(ownerId, chatId, input, attribution),
