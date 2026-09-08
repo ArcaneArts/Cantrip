@@ -1097,7 +1097,7 @@ export async function buildApp({
     repository,
     requireProjectWorktrees,
     resolveAppRunContext,
-    resolveModelId,
+    routePairsForConfiguration,
     runtimeCanResumeContext,
     runtimeForContext,
     sendRunApiFailure,

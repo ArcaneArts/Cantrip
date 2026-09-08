@@ -594,6 +594,106 @@ describe("TerminalManager", () => {
   );
 
   it.skipIf(process.platform === "win32")(
+    "attaches managed views without overriding thread settings or leaking the opt-in",
+    async () => {
+      const directory = await mkdtemp(
+        path.join(tmpdir(), "cantrip-managed-tui-"),
+      );
+      directories.push(directory);
+      const fakeCodex = path.join(directory, "fake-codex");
+      await writeFile(
+        fakeCodex,
+        [
+          "#!/bin/sh",
+          "printf 'ARGS:%s\\n' \"$*\"",
+          "printf 'BOUND:%s\\n' \"$CANTRIP_CODEX_ATTACH_THREAD_ID\"",
+          "printf 'KEY:%s\\n' \"$CANTRIP_PROVIDER_API_KEY\"",
+        ].join("\n"),
+      );
+      await chmod(fakeCodex, 0o755);
+      const manager = new TerminalManager({
+        environment: {
+          CANTRIP_CODEX_ATTACH_THREAD_ID: "inherited-wrong-thread",
+        },
+      });
+      const launch = {
+        type: "codex" as const,
+        binary: fakeCodex,
+        codexHome: directory,
+        remoteUrl: "ws://127.0.0.1:4500",
+        threadId: "019fdc2c-e848-7552-b2ea-6fc7ef09e9f2",
+        model: {
+          id: "m",
+          name: "conflicting-model",
+          reasoningEffort: "high" as const,
+        },
+        provider: {
+          id: "p",
+          name: "fixture",
+          kind: "openai-compatible" as const,
+          baseUrl: "https://example.invalid/v1",
+          apiKey: "provider-bootstrap-key",
+        },
+      };
+      const session = {
+        chatId: "chat",
+        contextKind: "project" as const,
+        projectId: "project",
+        worktreeId: "worktree",
+        rootKind: "git-worktree" as const,
+        scratchRootId: null,
+        computerUseEnabled: false,
+      };
+      try {
+        for (const managed of [true, false]) {
+          let output = "";
+          await expect(
+            manager.open(
+              `terminal-${managed}`,
+              `attachment-${managed}`,
+              directory,
+              120,
+              40,
+              { ...launch, ...(managed ? { session } : {}) },
+              (event) => {
+                if (event.type === "terminal.output") output += event.data;
+              },
+            ),
+          ).resolves.toMatchObject({ status: "exited", exitCode: 0 });
+          if (managed) {
+            expect(output).toContain(`ARGS:--remote ${launch.remoteUrl}`);
+            expect(output).toContain(`resume ${launch.threadId}`);
+            expect(output).toContain(`BOUND:${launch.threadId}`);
+            expect(output).not.toContain("conflicting-model");
+            expect(output).toContain("KEY:provider-bootstrap-key");
+            expect(output).not.toContain("-C ");
+            expect(output).not.toContain("-a never");
+            expect(output).not.toContain("-s workspace-write");
+          } else {
+            expect(output).toContain("conflicting-model");
+            expect(output).toContain("-a never -s workspace-write");
+            expect(output).toContain("BOUND:\r\n");
+          }
+          expect(output).not.toContain("inherited-wrong-thread");
+        }
+        expect(() =>
+          manager.open(
+            "unbound",
+            "attachment",
+            directory,
+            120,
+            40,
+            { ...launch, session, threadId: null },
+            () => {},
+          ),
+        ).toThrow("Managed Codex attachment requires a bound native thread");
+      } finally {
+        manager.closeAll();
+      }
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
     "launches Ollama consoles through Codex's built-in local provider",
     async () => {
       const directory = await mkdtemp(path.join(tmpdir(), "cantrip-ollama-"));

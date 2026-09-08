@@ -74,6 +74,102 @@ account or submit model/computer input. The remote fixture uses independent
 WebSocket clients on the same actual app-server; it does not claim to validate
 Cantrip's complete GUI/TUI mirroring or command authorization.
 
+## Managed TUI attachment
+
+Reviewed patch `0011` gives the worker an explicit attachment contract:
+`CANTRIP_CODEX_ATTACH_THREAD_ID` opts the TUI's initial remote resume into native
+`PreserveExistingThread` only when the selected thread has that exact ID.
+Embedded sessions, unrelated remote threads, ordinary CLI launches and later
+explicit settings changes retain their existing behavior. Native reconnect
+already uses the preserving resume path. The same exact managed selector skips
+the startup model-migration prompt, which otherwise blocks resume and can enqueue
+account-default writes; ordinary CLI launches retain that prompt.
+
+Managed terminal launches require the coordinator's bound thread ID. They keep
+the provider's local authentication bootstrap but omit model, effort, permission
+and `-C` overrides. The PTY still starts in its workspace. Omitting `-C` avoids
+turning attachment into a remote project-trust configuration flow; native resume
+supplies the thread's existing cwd and settings. The worker clears inherited
+attachment markers before launching unrelated Codex consoles.
+
+The opt-in actual TUI regression can be run against the packaged executable:
+
+```sh
+CANTRIP_CODEX_TEST_BINARY="$PWD/cantrip_codex/.build/darwin-arm64/bundle/codex" \
+  pnpm --dir cantrip_worker exec vitest run test/native-managed-tui-attach.test.ts
+```
+
+It starts the real TUI in isolated PTYs through `TerminalManager`, records its
+WebSocket requests with a transparent proxy, and checks live, reopened and cold
+attachment. The app-server supplies every response. A local rejecting provider
+and harmless MCP fixture detect unintended inference or tool calls. The test
+checks the resume payload, native settings and identity, MCP availability, empty
+history and unchanged account configuration. Its cold comparison uses an
+independent native minimal restore as the baseline; it does not establish that
+native storage persists a complete managed profile across unload or restart.
+It also does not exercise turn commands or claim complete GUI/TUI mirroring.
+An additional native catalog fixture offers a model upgrade and verifies that
+ordinary CLI startup still presents it while managed attachment proceeds without
+the prompt or configuration writes.
+
+## Managed thread configuration
+
+Reviewed patch `0012` adds `thread/managedConfig/update` for complete replacement
+of a loaded thread's managed MCP servers, developer instructions and child-agent
+defaults. It preserves the current root model, permissions, service tier and
+collaboration mode. All managed fields are required; an empty server map or a
+nullable field explicitly removes that configuration. Validation happens before
+publishing the replacement, and the response acknowledges application rather
+than claiming MCP initialization or tool success.
+
+Managed `thread/start` and `thread/resume` accept an optional strict `managedConfig` object
+with the same five replacement fields, excluding `threadId`. It applies the
+replacement before creating a new or cold-resumed session, so excluded
+account/project MCP servers cannot initialize first. A loaded shared resume
+preserves the live engine; the update RPC then applies changes. Ordinary calls
+omit this object and retain their native configuration behavior. The worker also invokes the update operation during
+managed preparation and checks the actual MCP catalog after application. Idle eligibility
+still carries no active-turn authority. Replaced broker connections use new
+binding-specific paths; old hosts cannot silently replay calls on a new binding.
+
+The native remote fixture in `native-empty-thread-attach.test.ts` exercises this
+operation with two subscribed clients and a separate sibling thread. It tests
+catalog replacement/removal and harmless synthetic credential-generation calls,
+invalid requests, unchanged root settings, peer continuity and sibling isolation.
+The implementation and fixture require a rebuilt bundle containing the patch;
+their final packaged-runtime acceptance is recorded in `docs/CODEX_AUDIT.md`.
+
+## Cold root settings recovery
+
+Reviewed patch `0013` records a thread-owned settings snapshot on empty-thread
+creation without a prompt or model turn. Cold app-server resume restores the
+latest snapshot owned by that root thread, including collaboration mode, explicit
+service-tier clearing and canonical permission roots. Caller overrides remain
+independent, and current managed permission requirements still apply. Foreign,
+fork-inherited and ownerless snapshots cannot configure a different root. Legacy
+histories retain fallback recovery for fields they actually recorded.
+
+The selected service tier is recovered independently from feature and model
+eligibility for an actual request. Omission preserves the recorded selection;
+explicit null clears it. An exact root-thread ownership marker carries this
+selection through startup filtering without changing request-time tier rules or
+leaking the selection into a child, fork or unrelated thread.
+
+Per-thread managed MCP credentials are rehydrated from the current worker; they
+are not persisted in the settings snapshot or written to account defaults.
+The production-worker fixture combines the real coordinator, worker runtime,
+native discovery, MCP hosts and two remote views, including a complete runtime
+restart. Run it against the rebuilt bundle:
+
+```sh
+CANTRIP_CODEX_TEST_BINARY="$PWD/cantrip_codex/.build/darwin-arm64/bundle/codex" \
+  pnpm --dir cantrip_worker exec vitest run test/native-managed-worker-session.test.ts
+```
+
+This fixture uses isolated synthetic credentials and a rejecting provider;
+it sends no model turn or desktop input. Final validation evidence and remaining
+integration work are tracked in `docs/CODEX_AUDIT.md`.
+
 ## Manual upstream update
 
 Codex never updates itself inside a released worker. To advance it:

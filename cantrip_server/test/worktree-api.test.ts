@@ -2128,6 +2128,140 @@ afterAll(async () => {
 });
 
 describe.sequential("server worktree control plane", () => {
+  it("prepares and canonically binds an encrypted managed console before creating its view", async () => {
+    const fields = protectedChatFields();
+    const create = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/chats`,
+      payload: { ...fields, worktreeId: primaryId, worktreeMode: "pinned" },
+    });
+    expect(create.statusCode, create.body).toBe(201);
+    const context = await database.repository.getChatExecutionContext(
+      LOCAL_USER_ID,
+      fields.id,
+    );
+    expect(context?.threadId).toBeNull();
+
+    const requests = vi.spyOn(workerBridge, "request");
+    const createConsole = database.repository.getOrCreateChatConsole.bind(
+      database.repository,
+    );
+    const consoleCreation = vi
+      .spyOn(database.repository, "getOrCreateChatConsole")
+      .mockImplementation(async (ownerId, chatId, input) => {
+        const bound = await database.repository.getChatExecutionContext(
+          ownerId,
+          chatId,
+        );
+        expect(bound?.threadId).toBe(`thread-${context!.cwd}`);
+        expect(bound?.workerId).toBe(context!.workerId);
+        expect(bound?.worktreeId).toBe(primaryId);
+        return createConsole(ownerId, chatId, input);
+      });
+    try {
+      const terminalFields = protectedTerminalFields();
+      const response = await app.inject({
+        method: "POST",
+        url: `/api/chats/${fields.id}/console`,
+        payload: terminalFields,
+      });
+      expect(response.statusCode, response.body).toBe(201);
+      const terminal = terminalWireSummarySchema.parse(response.json());
+      expect(terminal).toMatchObject({
+        id: terminalFields.id,
+        linkedChatId: fields.id,
+        worktreeId: primaryId,
+        kind: "chat-console",
+        titleProtection: terminalFields.titleProtection,
+        stateProtection: terminalFields.stateProtection,
+      });
+      expect(requests.mock.calls.map(([, command]) => command)).toEqual([
+        expect.objectContaining({
+          type: "chat.thread.ensure",
+          threadId: null,
+          cwd: context!.cwd,
+          model: expect.objectContaining({ id: context!.modelId }),
+          provider: expect.any(Object),
+          mcpServers: [],
+          planMode: context!.planMode,
+          session: {
+            chatId: fields.id,
+            computerUseEnabled: false,
+            contextKind: "project",
+            projectId,
+            worktreeId: primaryId,
+            rootKind: context!.rootKind,
+            scratchRootId: null,
+          },
+        }),
+      ]);
+
+      const reopen = await app.inject({
+        method: "POST",
+        url: `/api/chats/${fields.id}/console`,
+        payload: protectedTerminalFields(),
+      });
+      expect(reopen.statusCode, reopen.body).toBe(201);
+      expect(terminalWireSummarySchema.parse(reopen.json()).id).toBe(
+        terminal.id,
+      );
+      expect(requests).toHaveBeenCalledTimes(1);
+      expect(consoleCreation).toHaveBeenCalledTimes(2);
+    } finally {
+      requests.mockRestore();
+      consoleCreation.mockRestore();
+    }
+  });
+
+  it("keeps a failed managed-console binding retryable without creating a view", async () => {
+    const fields = protectedChatFields();
+    const create = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/chats`,
+      payload: { ...fields, worktreeId: primaryId, worktreeMode: "pinned" },
+    });
+    expect(create.statusCode, create.body).toBe(201);
+    const binding = vi
+      .spyOn(database.repository, "updateChatRuntime")
+      .mockRejectedValueOnce(new Error("canonical binding unavailable"));
+    const consoleCreation = vi.spyOn(
+      database.repository,
+      "getOrCreateChatConsole",
+    );
+    const terminalFields = protectedTerminalFields();
+    const request = {
+      method: "POST" as const,
+      url: `/api/chats/${fields.id}/console`,
+      payload: terminalFields,
+    };
+    try {
+      const failed = await app.inject(request);
+      expect(failed.statusCode, failed.body).toBe(409);
+      expect(failed.json()).toEqual({ error: "canonical binding unavailable" });
+      expect(consoleCreation).not.toHaveBeenCalled();
+      expect(
+        (
+          await database.repository.getChatExecutionContext(
+            LOCAL_USER_ID,
+            fields.id,
+          )
+        )?.threadId,
+      ).toBeNull();
+
+      const retried = await app.inject(request);
+      expect(retried.statusCode, retried.body).toBe(201);
+      expect(terminalWireSummarySchema.parse(retried.json())).toMatchObject({
+        id: terminalFields.id,
+        linkedChatId: fields.id,
+      });
+      expect(consoleCreation).toHaveBeenCalledTimes(1);
+      expect(binding).toHaveBeenCalledTimes(2);
+    } finally {
+      binding.mockRestore();
+      consoleCreation.mockRestore();
+    }
+  });
+
   it("runs standalone Chats through a scratch-root-only runtime profile", async () => {
     const create = await app.inject({
       method: "POST",

@@ -1,0 +1,102 @@
+--- a/codex-rs/tui/src/app/startup.rs
++++ b/codex-rs/tui/src/app/startup.rs
+@@ -8,6 +8,31 @@
+ use crate::session_start::cancel_session_start;
+ use crate::session_start::complete_session_start;
+ use crate::unarchive_prompt::run_unarchive_prompt;
++
++// Process-local opt-in from the managed worker, restricted to the exact native ID.
++// An inherited marker cannot change embedded or unrelated remote CLI behavior.
++fn cantrip_managed_attachment(remote: bool, thread_id: ThreadId, bound_id: Option<&str>) -> bool {
++    remote && bound_id == Some(thread_id.to_string().as_str())
++}
++
++#[cfg(test)]
++#[test]
++fn cantrip_managed_attachment_requires_remote_and_exact_identity() {
++    let thread_id = ThreadId::new();
++    let bound_id = thread_id.to_string();
++    assert!(cantrip_managed_attachment(true, thread_id, Some(&bound_id)));
++    assert!(!cantrip_managed_attachment(
++        false,
++        thread_id,
++        Some(&bound_id)
++    ));
++    assert!(!cantrip_managed_attachment(true, thread_id, None));
++    assert!(!cantrip_managed_attachment(
++        true,
++        ThreadId::new(),
++        Some(&bound_id)
++    ));
++}
+ 
+ async fn resolve_runtime_model_provider_base_url(provider: &ModelProviderInfo) -> Option<String> {
+     let provider = create_model_provider(provider.clone(), /*auth_manager*/ None);
+@@ -123,6 +148,17 @@
+             Ok(())
+         }
+ 
++        let managed_attachment = match &session_selection {
++            SessionSelection::Resume(target) => cantrip_managed_attachment(
++                app_server.uses_remote_workspace(),
++                target.thread_id,
++                std::env::var("CANTRIP_CODEX_ATTACH_THREAD_ID")
++                    .ok()
++                    .as_deref(),
++            ),
++            _ => false,
++        };
++
+         let startup_started_at = Instant::now();
+         let (app_event_tx, mut app_event_rx) = unbounded_channel();
+         let app_event_tx = AppEventSender::new(app_event_tx);
+@@ -168,14 +204,20 @@
+         if let Err(err) = startup_draft.flush_pending_events(tui).await {
+             return shutdown_on_startup_error(app_server, err).await;
+         }
+-        let exit_info = handle_model_migration_prompt_if_needed(
+-            tui,
+-            &mut config,
+-            model.as_str(),
+-            &app_event_tx,
+-            &available_models,
+-        )
+-        .await?;
++        // Opening a managed view must not migrate the local default model or
++        // ask the user to write account-wide defaults before attaching.
++        let exit_info = if managed_attachment {
++            None
++        } else {
++            handle_model_migration_prompt_if_needed(
++                tui,
++                &mut config,
++                model.as_str(),
++                &app_event_tx,
++                &available_models,
++            )
++            .await?
++        };
+         if let Some(exit_info) = exit_info {
+             app_server
+                 .shutdown()
+@@ -331,10 +373,16 @@
+                 if let Some(history_mode) = target_session.history_mode {
+                     app_server.remember_thread_history_mode(target_session.thread_id, history_mode);
+                 }
+-                let model_settings = config_persistence::resume_model_settings_for_overrides(
+-                    &config,
+-                    &harness_overrides,
+-                );
++                // Cantrip explicitly binds this view to one preconfigured remote thread.
++                // Keep ordinary CLI resumes and later explicit settings changes unchanged.
++                let model_settings = if managed_attachment {
++                    crate::app_server_session::ResumeModelSettings::PreserveExistingThread
++                } else {
++                    config_persistence::resume_model_settings_for_overrides(
++                        &config,
++                        &harness_overrides,
++                    )
++                };
+                 let resumed = match startup_draft
+                     .run_until(
+                         tui,

@@ -12,7 +12,10 @@ import type { FastifyInstance } from "fastify";
 
 import { STREAMING_WORKER_COMMAND_TIMEOUT_MS } from "../shared/constants.js";
 import { authenticatedPrincipal } from "../../auth/principal.js";
-import { effectivePermissionProfile } from "../../chats/execution-helpers.js";
+import {
+  prepareManagedConsoleLaunch,
+  type ManagedConsoleRouting,
+} from "../../terminals/managed-session.js";
 import type {
   ChatExecutionContext,
   ModelRuntime,
@@ -27,13 +30,15 @@ import {
   type WorkerCommandBus,
 } from "../../workers/bridge.js";
 
-export interface WorkerLinkTerminalGrantRouteDependencies {
+export interface WorkerLinkTerminalGrantRouteDependencies extends ManagedConsoleRouting {
   bridge: Pick<WorkerCommandBus, "isConnected" | "request">;
   repository: Pick<
     ServerRepository,
     | "getChatExecutionContext"
     | "getTerminalExecutionContext"
     | "listEffectiveMcpServers"
+    | "setChatModel"
+    | "updateChatRuntime"
   >;
   runtimeForContext: (
     context: ChatExecutionContext,
@@ -56,6 +61,7 @@ export function installWorkerLinkTerminalGrantRoute(
     bridge,
     repository,
     runtimeForContext,
+    routePairsForConfiguration,
     serverId,
     updateTerminalStatus,
     workerLinks,
@@ -123,18 +129,12 @@ export function installWorkerLinkTerminalGrantRoute(
                 "Choose a model for this chat before opening its Codex console.",
             });
           }
-          launch = {
-            type: "codex",
-            threadId: chat.threadId,
-            model: runtime.model,
-            provider: runtime.provider,
-            permissionProfileId: effectivePermissionProfile(chat).effectiveId,
-            mcpServers: await repository.listEffectiveMcpServers(
-              principal.user.id,
-              chat.projectId,
-              context.workerId,
-            ),
-          };
+          launch = await prepareManagedConsoleLaunch(chat, runtime, {
+            ownerId: principal.user.id,
+            bridge,
+            repository,
+            routePairsForConfiguration,
+          });
         }
         let markReady: (() => void) | null = null;
         let markFailed: ((error: Error) => void) | null = null;

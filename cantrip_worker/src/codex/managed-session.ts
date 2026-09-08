@@ -1,0 +1,166 @@
+import { createHash, randomUUID } from "node:crypto";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import path from "node:path";
+
+import { z } from "zod";
+
+import type { PrepareManagedThreadOptions } from "./app-server.js";
+import type { CodexRuntime } from "./runtime.js";
+
+/** Authenticated routing identity, independent of a view or active turn. */
+export interface ManagedSessionIdentity {
+  serverId: string;
+  ownerId: string;
+  workerId: string;
+  chatId: string;
+  placementId: string;
+  projectId: string | null;
+  contextKind: "project" | "standalone";
+}
+
+const associationSchema = z
+  .object({
+    version: z.literal(1),
+    identity: z.string().regex(/^[a-f0-9]{64}$/u),
+    threadId: z.string().min(1),
+    prepared: z.boolean().default(false),
+  })
+  .strict();
+
+type Association = z.infer<typeof associationSchema>;
+
+export interface ManagedSessionPreparation {
+  identity: ManagedSessionIdentity;
+  runtime: Pick<CodexRuntime, "prepareManagedThread">;
+  configuration: Omit<PrepareManagedThreadOptions, "onThreadIdentified">;
+  /** The server can acknowledge its canonical association before attachment. */
+  onThreadIdentified?: (threadId: string) => Promise<void>;
+}
+
+const digest = (value: unknown) =>
+  createHash("sha256").update(JSON.stringify(value)).digest("hex");
+
+/**
+ * Serializes preparation, never model execution. The worker journal retains an
+ * identified thread if later MCP/configuration or server persistence fails. It
+ * is a recovery aid, not a replacement for the server's canonical chat routing.
+ * No credentials, prompts, or full configuration are written to this journal.
+ */
+export class ManagedSessionCoordinator {
+  private readonly preparations = new Map<string, Promise<void>>();
+  private readonly identified = new Map<string, Association>();
+
+  constructor(private readonly directory: string) {}
+
+  prepare(input: ManagedSessionPreparation): Promise<{ threadId: string }> {
+    const key = digest([
+      input.identity.serverId,
+      input.identity.ownerId,
+      input.identity.workerId,
+      input.identity.chatId,
+    ]);
+    const preceding = this.preparations.get(key) ?? Promise.resolve();
+    const result = preceding.then(() => this.prepareSerialized(key, input));
+    const settled = result.then(
+      () => {},
+      () => {},
+    );
+    this.preparations.set(key, settled);
+    void settled.then(() => {
+      if (this.preparations.get(key) === settled) this.preparations.delete(key);
+    });
+    return result;
+  }
+
+  private async prepareSerialized(
+    key: string,
+    input: ManagedSessionPreparation,
+  ): Promise<{ threadId: string }> {
+    const { configuration, identity } = input;
+    const { provider } = configuration;
+    const fingerprint = digest([
+      identity.placementId,
+      identity.projectId,
+      identity.contextKind,
+      configuration.cwd,
+      configuration.executionProfile,
+      configuration.model.routeId,
+      provider.id,
+      provider.kind,
+      provider.accountId ?? null,
+      provider.credentialHomeKey ?? null,
+    ]);
+    const previous = this.identified.get(key) ?? (await this.read(key));
+    const threadId =
+      configuration.threadId ??
+      (previous?.identity === fingerprint ? previous.threadId : null);
+    const recoveringIncomplete =
+      !configuration.threadId &&
+      previous?.identity === fingerprint &&
+      !previous.prepared;
+    const intent =
+      threadId && !recoveringIncomplete ? configuration.intent : "configure";
+    const result = await input.runtime.prepareManagedThread({
+      ...configuration,
+      threadId,
+      // An unbound session needs complete configuration even when the caller
+      // arrived by opening a view. Subsequent view attachment preserves it.
+      intent,
+      onThreadIdentified: async (identifiedThreadId) => {
+        const association: Association = {
+          version: 1,
+          identity: fingerprint,
+          threadId: identifiedThreadId,
+          prepared:
+            intent === "preserve" &&
+            previous?.threadId === identifiedThreadId &&
+            previous.prepared,
+        };
+        // Retain the actual identity even when the durable write itself fails;
+        // a retry in this process must not create another native conversation.
+        this.identified.set(key, association);
+        await this.write(key, association);
+        await input.onThreadIdentified?.(identifiedThreadId);
+      },
+    });
+    const completed: Association = {
+      version: 1,
+      identity: fingerprint,
+      threadId: result.threadId,
+      prepared: true,
+    };
+    this.identified.set(key, completed);
+    await this.write(key, completed);
+    return result;
+  }
+
+  private async read(key: string): Promise<Association | null> {
+    let content: string;
+    try {
+      content = await readFile(
+        path.join(this.directory, `${key}.json`),
+        "utf8",
+      );
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error;
+    }
+    return associationSchema.parse(JSON.parse(content));
+  }
+
+  private async write(key: string, association: Association): Promise<void> {
+    await mkdir(this.directory, { recursive: true, mode: 0o700 });
+    const destination = path.join(this.directory, `${key}.json`);
+    const temporary = `${destination}.${randomUUID()}.tmp`;
+    try {
+      await writeFile(temporary, JSON.stringify(association), {
+        mode: 0o600,
+        flag: "wx",
+        flush: true,
+      });
+      await rename(temporary, destination);
+    } finally {
+      await rm(temporary, { force: true });
+    }
+  }
+}

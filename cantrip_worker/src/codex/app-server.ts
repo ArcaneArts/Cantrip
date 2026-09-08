@@ -1738,6 +1738,15 @@ export type GoalRuntimeOptions = Pick<
   | "threadId"
 >;
 
+export interface PrepareManagedThreadOptions extends GoalRuntimeOptions {
+  executionProfile: RunAgentTurnOptions["executionProfile"];
+  subagentDefaults: RuntimeSubagentDefaults | null;
+  planMode: PlanMode;
+  intent: "configure" | "preserve";
+  /** Bind identity before later initialization can fail or a view can attach. */
+  onThreadIdentified?: (threadId: string) => void | Promise<void>;
+}
+
 export interface HydrateChatRelocationOptions extends GoalRuntimeOptions {
   payload: ChatRelocationContextPayload;
   planMode: PlanMode;
@@ -1927,6 +1936,31 @@ export function cantripChatThreadParams(
       : `${cuaInstructions}${CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS}\n\n${NON_GIT_WORKSPACE_DEVELOPER_INSTRUCTIONS}`,
     ...CANTRIP_DYNAMIC_TOOLS_OVERRIDE,
   } as const;
+}
+
+function managedThreadConfiguration(
+  options: Partial<
+    Pick<
+      RunAgentTurnOptions,
+      "mcpServers" | "executionProfile" | "subagentDefaults"
+    >
+  >,
+  hasGitMetadata: boolean,
+) {
+  const profile = options.executionProfile ?? "ide";
+  const enabled = profile === "ide";
+  const defaults = enabled ? options.subagentDefaults : null;
+  return {
+    mcpServers: codexMcpConfigOverride(options.mcpServers ?? []).mcp_servers,
+    developerInstructions: cantripChatThreadParams(
+      hasGitMetadata,
+      profile,
+      options.mcpServers,
+    ).developerInstructions,
+    multiAgentEnabled: enabled,
+    subagentModel: defaults?.model.name ?? null,
+    subagentReasoningEffort: defaults?.model.reasoningEffort ?? null,
+  };
 }
 
 export function codexWorktreeTurnPolicy(
@@ -3952,8 +3986,13 @@ export class CodexAppServer implements CodexRuntime {
   readonly #goals = new Map<string, ThreadGoal>();
   readonly #imageSupport = new Map<string, boolean>();
   readonly #loadedThreads = new Set<string>();
+  readonly #threadPreparationVersions = new Map<string, number>();
   readonly #mcpOauthStatuses = new Map<string, CodexMcpOauthStatus>();
   readonly #mcpConfigFingerprintsByThread = new Map<string, string>();
+  readonly #managedConfigApplications = new Map<
+    string,
+    { epoch: number; fingerprint: string }
+  >();
   readonly #readyMcpConfigFingerprintsByThread = new Map<string, string>();
   readonly #permissionProfilesByThread = new Map<string, string>();
   readonly #pending = new Map<number, PendingRpcRequest>();
@@ -5064,8 +5103,17 @@ export class CodexAppServer implements CodexRuntime {
   async remoteEndpoint(
     model: RunAgentTurnOptions["model"],
     provider: RunAgentTurnOptions["provider"],
+    profile?: Pick<
+      RunAgentTurnOptions,
+      "subagentDefaults" | "executionProfile"
+    >,
   ): Promise<string> {
-    await this.ensureStarted(model, provider);
+    await this.ensureStarted(
+      model,
+      provider,
+      profile?.subagentDefaults,
+      profile?.executionProfile,
+    );
     if (!this.#remoteUrl) {
       throw new Error("Codex app-server did not announce a remote endpoint.");
     }
@@ -5076,14 +5124,29 @@ export class CodexAppServer implements CodexRuntime {
     options: Pick<
       RunAgentTurnOptions,
       "cwd" | "executionProfile" | "model" | "provider" | "threadId"
-    > & { threadId: string },
+    > & { threadId: string; subagentDefaults?: RuntimeSubagentDefaults | null },
   ): Promise<AgentThreadSync> {
     await this.ensureStarted(
       options.model,
       options.provider,
-      null,
+      options.subagentDefaults,
       options.executionProfile,
     );
+    return this.readExternalThread(options);
+  }
+
+  async observeThread(options: {
+    cwd: string;
+    threadId: string;
+  }): Promise<AgentThreadSync | null> {
+    if (this.#socket?.readyState !== WebSocket.OPEN) return null;
+    return this.readExternalThread(options);
+  }
+
+  private async readExternalThread(options: {
+    cwd: string;
+    threadId: string;
+  }): Promise<AgentThreadSync> {
     const response = (await this.request("thread/read", {
       threadId: options.threadId,
       includeTurns: true,
@@ -5119,12 +5182,12 @@ export class CodexAppServer implements CodexRuntime {
       | "permissionProfileId"
       | "provider"
       | "threadId"
-    > & { threadId: string },
+    > & { threadId: string; subagentDefaults?: RuntimeSubagentDefaults | null },
   ): Promise<void> {
     await this.ensureStarted(
       options.model,
       options.provider,
-      null,
+      options.subagentDefaults,
       options.executionProfile,
     );
     // Older servers do not send console MCP materialization fields. Preserve
@@ -5336,14 +5399,15 @@ export class CodexAppServer implements CodexRuntime {
   async getPlanMode(
     options: GoalRuntimeOptions & { fallbackMode: PlanMode },
   ): Promise<{ mode: PlanMode; threadId: string | null }> {
-    await this.ensureStarted(options.model, options.provider);
-    const threadId = await this.loadThread(options, false, "preserve");
+    const threadId = options.threadId;
     if (!threadId) {
       return { mode: options.fallbackMode, threadId: null };
     }
     const knownMode = this.#collaborationModes.get(threadId);
     if (knownMode) return { mode: knownMode, threadId };
-    // A missing native sample is not permission to apply the display fallback.
+    // There is no native unloaded settings read. Resuming here would initialize
+    // inherited account MCP before managed preparation, without yielding a mode
+    // sample. Keep the fallback observational until a live notification arrives.
     return { mode: options.fallbackMode, threadId };
   }
 
@@ -5360,6 +5424,49 @@ export class CodexAppServer implements CodexRuntime {
       options.planMode,
       options.model,
     );
+    return { threadId };
+  }
+
+  async prepareManagedThread(
+    options: PrepareManagedThreadOptions,
+  ): Promise<{ threadId: string }> {
+    await this.ensureStarted(
+      options.model,
+      options.provider,
+      options.subagentDefaults,
+      options.executionProfile,
+    );
+    const epoch = this.#preparationEpoch;
+    const threadId = await this.loadThread(
+      { ...options, managedConfiguration: true },
+      options.intent === "configure",
+      options.intent,
+    );
+    if (!threadId) {
+      throw new Error("Could not initialize the managed Codex thread.");
+    }
+    const threadVersion = this.#threadPreparationVersions.get(threadId) ?? 0;
+    const assertCurrent = () => {
+      this.assertPreparationEpoch(epoch);
+      if (
+        (this.#threadPreparationVersions.get(threadId) ?? 0) !== threadVersion
+      ) {
+        throw new Error("Codex thread closed or changed during preparation.");
+      }
+    };
+    assertCurrent();
+    if (
+      options.intent === "configure" &&
+      this.#collaborationModes.get(threadId) !== options.planMode
+    ) {
+      await this.updatePlanModeOnThread(
+        threadId,
+        options.planMode,
+        options.model,
+        assertCurrent,
+      );
+      assertCurrent();
+    }
     return { threadId };
   }
 
@@ -5627,6 +5734,7 @@ export class CodexAppServer implements CodexRuntime {
     this.#orphanAgentThreads.clear();
     this.#knownAgentThreads.clear();
     this.#mcpConfigFingerprintsByThread.clear();
+    this.#managedConfigApplications.clear();
     this.#readyMcpConfigFingerprintsByThread.clear();
     this.#permissionProfilesByThread.clear();
     this.#externalImportStatuses.clear();
@@ -5831,6 +5939,7 @@ export class CodexAppServer implements CodexRuntime {
   private stopFailedStart(): void {
     this.#preparationEpoch += 1;
     this.#threadPreparations.clear();
+    this.#threadPreparationVersions.clear();
     const socket = this.#socket;
     const child = this.#child;
     this.#socket = null;
@@ -5843,6 +5952,7 @@ export class CodexAppServer implements CodexRuntime {
     this.#runtimeIsZai = false;
     this.#loadedThreads.clear();
     this.#mcpConfigFingerprintsByThread.clear();
+    this.#managedConfigApplications.clear();
     this.#readyMcpConfigFingerprintsByThread.clear();
     this.#permissionProfilesByThread.clear();
     this.#collaborationModes.clear();
@@ -5958,6 +6068,8 @@ export class CodexAppServer implements CodexRuntime {
       executionProfile?: RunAgentTurnOptions["executionProfile"];
       resultMode?: RunAgentTurnOptions["resultMode"];
       subagentDefaults?: RuntimeSubagentDefaults | null;
+      onThreadIdentified?: PrepareManagedThreadOptions["onThreadIdentified"];
+      managedConfiguration?: boolean;
     },
     create = true,
     intent: "configure" | "preserve" = "configure",
@@ -6001,28 +6113,84 @@ export class CodexAppServer implements CodexRuntime {
       executionProfile?: RunAgentTurnOptions["executionProfile"];
       resultMode?: RunAgentTurnOptions["resultMode"];
       subagentDefaults?: RuntimeSubagentDefaults | null;
+      onThreadIdentified?: PrepareManagedThreadOptions["onThreadIdentified"];
+      managedConfiguration?: boolean;
     },
     create: boolean,
     intent: "configure" | "preserve",
     epoch: number,
   ): Promise<string | null> {
-    const assertCurrent = () => this.assertPreparationEpoch(epoch);
+    let preparingThreadId = options.threadId;
+    let threadVersion = preparingThreadId
+      ? (this.#threadPreparationVersions.get(preparingThreadId) ?? 0)
+      : 0;
+    const assertCurrent = () => {
+      this.assertPreparationEpoch(epoch);
+      if (
+        preparingThreadId &&
+        (this.#threadPreparationVersions.get(preparingThreadId) ?? 0) !==
+          threadVersion
+      ) {
+        throw new Error("Codex thread closed or changed during preparation.");
+      }
+    };
     assertCurrent();
+    const identify = async (threadId: string) => {
+      if (typeof threadId !== "string" || !threadId.trim())
+        throw new Error("Codex returned an invalid thread identity.");
+      if (!preparingThreadId) {
+        preparingThreadId = threadId;
+        // A newly created ID cannot predate a close observed by this runtime.
+        threadVersion = 0;
+      }
+      await options.onThreadIdentified?.(threadId);
+      assertCurrent();
+    };
+    if (options.threadId) await identify(options.threadId);
+    let replacingUnsubscribedThread = false;
     const request = async (method: string, params: unknown) => {
       assertCurrent();
       const result = await this.request(method, params);
+      this.assertPreparationEpoch(epoch);
+      // Only our own unsubscribe/resume sequence can retire an idle engine as
+      // part of reconfiguration. A cold resume has no such expected retirement:
+      // an unrelated close must invalidate its reply just like any other phase.
+      if (
+        replacingUnsubscribedThread &&
+        (method === "thread/unsubscribe" || method === "thread/resume") &&
+        preparingThreadId
+      ) {
+        threadVersion =
+          this.#threadPreparationVersions.get(preparingThreadId) ?? 0;
+        if (method === "thread/resume") replacingUnsubscribedThread = false;
+      }
       assertCurrent();
       return result;
     };
     if (intent === "preserve" && options.threadId) {
       if (!this.#loadedThreads.has(options.threadId)) {
+        const managedConfig =
+          options.managedConfiguration && options.mcpServers !== undefined
+            ? managedThreadConfiguration(
+                options,
+                await workspaceHasGitMetadata(options.cwd),
+              )
+            : undefined;
         const resumed = (await request("thread/resume", {
           threadId: options.threadId,
+          ...(managedConfig ? { managedConfig } : {}),
         })) as ThreadResponse;
         if (resumed.thread.id !== options.threadId)
           throw new Error("Codex resumed a different thread than requested.");
         this.#loadedThreads.add(options.threadId);
         // A preserving load does not establish an applied Cantrip configuration.
+      }
+      if (options.managedConfiguration) {
+        await this.applyManagedThreadConfiguration(
+          options.threadId,
+          options,
+          assertCurrent,
+        );
       }
       return options.threadId;
     }
@@ -6043,6 +6211,13 @@ export class CodexAppServer implements CodexRuntime {
       ...(mcpConfig ?? {}),
     };
     const threadConfigFingerprint = JSON.stringify(threadConfig);
+    if (
+      options.threadId &&
+      this.#mcpConfigFingerprintsByThread.get(options.threadId) !==
+        threadConfigFingerprint
+    ) {
+      this.#managedConfigApplications.delete(options.threadId);
+    }
     const mcpConfigFingerprint = mcpConfig ? JSON.stringify(mcpConfig) : null;
     const hasGitMetadata = await workspaceHasGitMetadata(options.cwd);
     assertCurrent();
@@ -6075,12 +6250,22 @@ export class CodexAppServer implements CodexRuntime {
           assertCurrent();
           this.#loadedThreads.delete(threadId);
           this.#mcpConfigFingerprintsByThread.delete(threadId);
+          this.#managedConfigApplications.delete(threadId);
           this.#readyMcpConfigFingerprintsByThread.delete(threadId);
           this.#permissionProfilesByThread.delete(threadId);
+          replacingUnsubscribedThread = true;
           await request("thread/unsubscribe", { threadId });
         }
         const resumed = (await request("thread/resume", {
           threadId,
+          ...(options.managedConfiguration && options.mcpServers !== undefined
+            ? {
+                managedConfig: managedThreadConfiguration(
+                  options,
+                  hasGitMetadata,
+                ),
+              }
+            : {}),
           model: options.model.name,
           ...codexReasoningEffortParams(options.model),
           modelProvider,
@@ -6098,6 +6283,8 @@ export class CodexAppServer implements CodexRuntime {
           config: threadConfig,
         })) as ThreadResponse;
         threadId = resumed.thread.id;
+        if (threadId !== requestedThreadId)
+          throw new Error("Codex resumed a different thread than requested.");
         this.#loadedThreads.add(threadId);
         this.#permissionProfilesByThread.set(threadId, permissionKey);
         this.#mcpConfigFingerprintsByThread.set(
@@ -6131,6 +6318,14 @@ export class CodexAppServer implements CodexRuntime {
     if (!threadId && create) {
       const startedAtMs = Date.now();
       const started = (await request("thread/start", {
+        ...(options.managedConfiguration && options.mcpServers !== undefined
+          ? {
+              managedConfig: managedThreadConfiguration(
+                options,
+                hasGitMetadata,
+              ),
+            }
+          : {}),
         model: options.model.name,
         ...codexReasoningEffortParams(options.model),
         modelProvider,
@@ -6148,6 +6343,7 @@ export class CodexAppServer implements CodexRuntime {
         config: threadConfig,
       })) as ThreadResponse;
       threadId = started.thread.id;
+      await identify(threadId);
       this.#loadedThreads.add(threadId);
       this.#permissionProfilesByThread.set(threadId, permissionKey);
       this.#mcpConfigFingerprintsByThread.set(
@@ -6164,6 +6360,13 @@ export class CodexAppServer implements CodexRuntime {
         ...codexProviderLogContext(options.provider),
       });
     }
+    if (threadId && options.managedConfiguration) {
+      await this.applyManagedThreadConfiguration(
+        threadId,
+        options,
+        assertCurrent,
+      );
+    }
     if (threadId && mcpConfigFingerprint !== null && options.mcpServers) {
       await this.ensureManagedMcpReady(
         threadId,
@@ -6173,6 +6376,54 @@ export class CodexAppServer implements CodexRuntime {
       );
     }
     return threadId;
+  }
+
+  private async applyManagedThreadConfiguration(
+    threadId: string,
+    options: Pick<RunAgentTurnOptions, "cwd" | "mcpServers"> & {
+      executionProfile?: RunAgentTurnOptions["executionProfile"];
+      subagentDefaults?: RuntimeSubagentDefaults | null;
+    },
+    assertCurrent: () => void,
+  ): Promise<void> {
+    // Omitted material is observational, not an instruction to disable tools.
+    if (options.mcpServers === undefined) return;
+    const hasGitMetadata = await workspaceHasGitMetadata(options.cwd);
+    assertCurrent();
+    const config = managedThreadConfiguration(options, hasGitMetadata);
+    const fingerprint = JSON.stringify(config);
+    const previous = this.#managedConfigApplications.get(threadId);
+    if (
+      previous?.epoch === this.#preparationEpoch &&
+      previous.fingerprint === fingerprint
+    )
+      return;
+    this.#managedConfigApplications.delete(threadId);
+    this.#readyMcpConfigFingerprintsByThread.delete(threadId);
+    // Start/cold resume apply this overlay before native MCP initialization.
+    // The same update path also replaces configuration on a shared live engine;
+    // catalog observation below establishes readiness before caching success.
+    const response = (await this.request("thread/managedConfig/update", {
+      threadId,
+      ...config,
+    })) as { threadId: string; applied: boolean };
+    assertCurrent();
+    if (response.threadId !== threadId || response.applied !== true) {
+      throw new Error(
+        "Codex did not acknowledge the managed configuration for the requested thread.",
+      );
+    }
+    await this.ensureManagedMcpReady(
+      threadId,
+      options.mcpServers,
+      JSON.stringify(codexMcpConfigOverride(options.mcpServers)),
+      assertCurrent,
+    );
+    assertCurrent();
+    this.#managedConfigApplications.set(threadId, {
+      epoch: this.#preparationEpoch,
+      fingerprint,
+    });
   }
 
   private async loadAgentOperationThread(
@@ -7085,8 +7336,13 @@ export class CodexAppServer implements CodexRuntime {
   }
 
   private forgetThread(threadId: string): void {
+    this.#threadPreparationVersions.set(
+      threadId,
+      (this.#threadPreparationVersions.get(threadId) ?? 0) + 1,
+    );
     this.#loadedThreads.delete(threadId);
     this.#mcpConfigFingerprintsByThread.delete(threadId);
+    this.#managedConfigApplications.delete(threadId);
     this.#readyMcpConfigFingerprintsByThread.delete(threadId);
     this.#permissionProfilesByThread.delete(threadId);
     this.#collaborationModes.delete(threadId);
@@ -7149,13 +7405,17 @@ export class CodexAppServer implements CodexRuntime {
     threadId: string,
     mode: PlanMode,
     model: RunAgentTurnOptions["model"],
+    assertCurrent: () => void = () => {},
   ): Promise<NativeCollaborationMode> {
+    assertCurrent();
     const collaborationMode = await this.collaborationMode(mode, model);
+    assertCurrent();
     if (this.#collaborationModes.get(threadId) !== mode) {
       await this.request("thread/settings/update", {
         threadId,
         collaborationMode,
       });
+      assertCurrent();
       this.#collaborationModes.set(threadId, mode);
     }
     return collaborationMode;
@@ -7365,6 +7625,7 @@ export class CodexAppServer implements CodexRuntime {
       this.#starting = null;
       this.#loadedThreads.clear();
       this.#mcpConfigFingerprintsByThread.clear();
+      this.#managedConfigApplications.clear();
       this.#readyMcpConfigFingerprintsByThread.clear();
       this.#permissionProfilesByThread.clear();
       this.#collaborationModes.clear();
@@ -7418,6 +7679,7 @@ export class CodexAppServer implements CodexRuntime {
       this.#starting = null;
       this.#loadedThreads.clear();
       this.#mcpConfigFingerprintsByThread.clear();
+      this.#managedConfigApplications.clear();
       this.#readyMcpConfigFingerprintsByThread.clear();
       this.#permissionProfilesByThread.clear();
       this.#externalImportStatuses.clear();
@@ -7730,12 +7992,15 @@ export class CodexAppServer implements CodexRuntime {
 
     if (message.method === "thread/closed") {
       const params = message.params as { threadId: string };
+      this.forgetThread(params.threadId);
       this.abortComputerUseThread(params.threadId);
       return;
     }
 
     if (message.method === "thread/status/changed") {
       const params = message.params as ThreadStatusChangedParams;
+      if (params.status.type === "notLoaded")
+        this.forgetThread(params.threadId);
       // These native events describe the thread itself (no turnId). Ordinary
       // idle/active status and historical item status do not revoke authority.
       if (
@@ -9377,6 +9642,7 @@ export class CodexAppServer implements CodexRuntime {
   private handleExit(error: Error): void {
     this.#preparationEpoch += 1;
     this.#threadPreparations.clear();
+    this.#threadPreparationVersions.clear();
     for (const execution of this.#rootExecutionsByActive.values())
       this.abortComputerUseExecution(execution);
     for (const pending of this.#pending.values()) {

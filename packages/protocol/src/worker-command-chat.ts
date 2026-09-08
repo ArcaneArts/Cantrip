@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  managedSessionContextSchema,
+  managedSessionSubagentDefaultsSchema,
+} from "./managed-session.js";
 import { cuaAgentAuthoritySchema } from "./computer-use-agent.js";
 import {
   chatPlanOpaqueStateSchema,
@@ -308,6 +312,10 @@ export const workerChatCommandSchemas = [
   }),
   z.object({
     type: z.literal("chat.thread.ensure"),
+    session: managedSessionContextSchema.optional(),
+    subagentDefaults: managedSessionSubagentDefaultsSchema
+      .nullable()
+      .optional(),
     cwd: z.string().min(1),
     threadId: z.string().min(1).nullable(),
     planMode: planModeSchema,

@@ -43,6 +43,7 @@ export function managedCantripMcpServer(
   connectionPath: string,
   managedToolNames: readonly (typeof CANTRIP_MCP_TOOL_NAMES)[number][] = CANTRIP_MCP_TOOL_NAMES,
   profile: CantripMcpProfile = "ide",
+  connectionGeneration?: string,
 ): McpServerConfiguration & {
   managedToolNames: Array<(typeof CANTRIP_MCP_TOOL_NAMES)[number]>;
 } {
@@ -56,7 +57,12 @@ export function managedCantripMcpServer(
       "--connection",
       path.resolve(connectionPath),
     ],
-    environment: { CANTRIP_MCP_PROFILE: profile },
+    environment: {
+      CANTRIP_MCP_PROFILE: profile,
+      ...(connectionGeneration
+        ? { CANTRIP_MCP_CONNECTION_GENERATION: connectionGeneration }
+        : {}),
+    },
     managedToolNames: [...managedToolNames],
   };
 }
@@ -87,6 +93,7 @@ export function cuaMcpHostInvocation(
 export function managedCuaMcpServer(
   invocation: CantripMcpHostInvocation,
   connectionPath: string,
+  connectionGeneration?: string,
 ): McpServerConfiguration & { managedToolNames: string[] } {
   return {
     name: MANAGED_CUA_MCP_NAME,
@@ -98,7 +105,9 @@ export function managedCuaMcpServer(
       "--connection",
       path.resolve(connectionPath),
     ],
-    environment: {},
+    environment: connectionGeneration
+      ? { CANTRIP_MCP_CONNECTION_GENERATION: connectionGeneration }
+      : {},
     managedToolNames: ["js", "js_reset"],
   };
 }

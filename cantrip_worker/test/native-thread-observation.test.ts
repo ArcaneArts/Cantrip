@@ -1,11 +1,25 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  appendFile,
+  mkdtemp,
+  mkdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import { describe, expect, it } from "vitest";
+
+import {
+  CodexAppServer,
+  type CodexProcessLauncher,
+} from "../src/codex/app-server.js";
+import { discoverCodexRuntime } from "../src/codex/discovery.js";
+import { ThreadObservationRegistry } from "../src/codex/thread-observation.js";
 
 import { CodexRpcClient } from "../src/codex/rpc-client.js";
 
@@ -51,7 +65,7 @@ function effectiveSettings(response: JsonObject): JsonObject {
 }
 
 describe.skipIf(!binary)("pinned native thread observation", () => {
-  it("preserves a loaded thread's settings and MCP while reading metadata and minimally resuming", async () => {
+  it("preserves loaded settings and keeps cold metadata observations unloaded", async () => {
     const root = await mkdtemp(
       path.join(tmpdir(), "cantrip-thread-observation-"),
     );
@@ -69,6 +83,16 @@ describe.skipIf(!binary)("pinned native thread observation", () => {
     let child: ChildProcessWithoutNullStreams | undefined;
     let client: CodexRpcClient | undefined;
     let closed: Promise<void> | undefined;
+    const closeOwnedChild = async (requestClose: () => void) => {
+      const owned = child;
+      const force = setTimeout(() => owned?.kill("SIGKILL"), 2_000);
+      try {
+        requestClose();
+        await closed;
+      } finally {
+        clearTimeout(force);
+      }
+    };
     try {
       await Promise.all([
         mkdir(home),
@@ -89,6 +113,7 @@ describe.skipIf(!binary)("pinned native thread observation", () => {
           'sandbox_mode = "read-only"',
           "[features]",
           "goals = true",
+          "plugins = false",
           "[model_providers.observation]",
           'name = "Observation fixture"',
           `base_url = "http://127.0.0.1:${address.port}/v1"`,
@@ -239,8 +264,7 @@ describe.skipIf(!binary)("pinned native thread observation", () => {
       ).toEqual([]);
       expect(providerRequests).toEqual([]);
       expect(await readFile(mcpLog, "utf8")).not.toContain('"tools/call"');
-      client.close();
-      await closed;
+      await closeOwnedChild(() => client!.close());
       lines.close();
 
       // A worker restart leaves this named thread durable but not loaded.
@@ -273,15 +297,120 @@ describe.skipIf(!binary)("pinned native thread observation", () => {
       });
       expect(await readFile(mcpLog, "utf8")).toBe(mcpBeforeRestart);
       expect(providerRequests).toEqual([]);
-      client.close();
-      await closed;
+      await closeOwnedChild(() => client!.close());
       child = undefined;
       client = undefined;
+
+      // A Plan GET through the real worker must stay observational even when
+      // cold resume would initialize an inherited account MCP server. Native
+      // Plan Mode is persisted as plan above; this is only a display fallback.
+      await appendFile(
+        path.join(home, "config.toml"),
+        [
+          "[mcp_servers.inherited_observation]",
+          `command = ${JSON.stringify(process.execPath)}`,
+          `args = ${JSON.stringify([fixture, mcpLog])}`,
+          "required = true",
+          "",
+        ].join("\n"),
+      );
+      const compatibility = await discoverCodexRuntime(binary!, home);
+      const launch: CodexProcessLauncher = (executable, args, options) => {
+        child = spawn(executable, args, {
+          cwd: workspace,
+          env: { ...options.env, HOME: home, CODEX_HOME: home },
+          stdio: "pipe",
+        });
+        closed = new Promise<void>((resolve) =>
+          child!.once("close", () => resolve()),
+        );
+        return child;
+      };
+      const worker = new CodexAppServer(
+        binary!,
+        path.join(root, "worker"),
+        home,
+        compatibility,
+        undefined,
+        undefined,
+        undefined,
+        launch,
+      );
+      const model = {
+        id: "model",
+        routeId: "route",
+        name: "gpt-5",
+        reasoningEffort: null,
+      };
+      const runtimeProvider = {
+        id: "provider",
+        name: "Local observation fixture",
+        kind: "openai" as const,
+        baseUrl: `http://127.0.0.1:${address.port}/v1`,
+        apiKey: "fixture-not-a-real-key",
+      };
+      const inheritedLogBefore = await readFile(mcpLog, "utf8");
+      // After a worker restart there is no live runtime binding. A real root
+      // reader must find the durable thread in its home without loading its
+      // session, reconstructing a child profile, or starting inherited MCP.
+      const observations = new ThreadObservationRegistry();
+      expect(
+        await observations.sync(
+          {
+            serverId: "server",
+            ownerId: "owner",
+            workerId: "worker",
+            chatId: "chat",
+            threadId,
+            cwd: workspace,
+            modelRouteId: model.routeId,
+            providerId: runtimeProvider.id,
+            providerKind: runtimeProvider.kind,
+            providerAccountId: null,
+            credentialHomeKey: null,
+          },
+          () =>
+            worker.syncThread({
+              cwd: workspace,
+              model,
+              provider: runtimeProvider,
+              threadId,
+              executionProfile: "ide",
+            }),
+        ),
+      ).toMatchObject({ threadId, status: "idle", turns: [] });
+      // Exercise the real native transport only to inspect loaded identities.
+      const native = worker as unknown as {
+        request(method: string, params: JsonObject): Promise<JsonObject>;
+      };
+      expect(await native.request("thread/loaded/list", {})).toEqual({
+        data: [],
+        nextCursor: null,
+      });
+      expect(
+        await worker.getPlanMode({
+          cwd: workspace,
+          model,
+          provider: runtimeProvider,
+          permissionProfileId: ":workspace",
+          threadId,
+          fallbackMode: "default",
+        }),
+      ).toEqual({ mode: "default", threadId });
+      expect(await native.request("thread/loaded/list", {})).toEqual({
+        data: [],
+        nextCursor: null,
+      });
+      expect(await readFile(mcpLog, "utf8")).toBe(inheritedLogBefore);
+      expect(providerRequests).toEqual([]);
+      await closeOwnedChild(() => worker.close());
+      child = undefined;
     } finally {
       if (child && child.exitCode === null && child.signalCode === null) {
-        client?.close();
-        child.kill("SIGTERM");
-        await closed;
+        await closeOwnedChild(() => {
+          client?.close();
+          child!.kill("SIGTERM");
+        });
       }
       provider.closeAllConnections();
       await new Promise<void>((resolve) => provider.close(() => resolve()));

@@ -4,6 +4,7 @@ import {
   mkdtemp,
   mkdir,
   readFile,
+  rename,
   rm,
   stat,
   writeFile,
@@ -76,22 +77,33 @@ class RemoteClient {
   async disconnect(): Promise<void> {
     if (this.socket.readyState === WebSocket.CLOSED) return;
     const closed = once(this.socket, "close");
-    this.socket.close();
-    await closed;
+    const force = setTimeout(() => this.socket.terminate(), 1_000);
+    try {
+      this.socket.close();
+      await closed;
+    } finally {
+      clearTimeout(force);
+    }
   }
 }
 
 const mcpFixture = String.raw`
 const readline = require('node:readline');
 const fs = require('node:fs');
+const tool = process.env.CANTRIP_TEST_TOOL_NAME || 'observe_only';
+const generation = process.env.CANTRIP_TEST_GENERATION || 'catalog-only';
 readline.createInterface({input:process.stdin}).on('line', line => {
   const request=JSON.parse(line);
-  fs.appendFileSync(process.argv[2], JSON.stringify({method:request.method})+'\n');
+  fs.appendFileSync(process.argv[2], JSON.stringify({method:request.method,generation,pid:process.pid})+'\n');
   if(request.id===undefined)return;
   const result=request.method==='initialize'
     ? {protocolVersion:'2024-11-05',capabilities:{tools:{}},serverInfo:{name:'empty-thread-fixture',version:'1'}}
     : request.method==='tools/list'
-      ? {tools:[{name:'observe_only',description:'Never invoked.',inputSchema:{type:'object',properties:{}}}]}
+      ? {tools:[{name:tool,description:'Returns only this isolated fixture generation.',inputSchema:{type:'object',properties:{}}}]}
+      : request.method==='tools/call'
+        ? request.params.name===tool && process.env.CANTRIP_TEST_CREDENTIAL==='fixture-credential-'+generation
+          ? {content:[{type:'text',text:generation}],isError:false}
+          : {content:[{type:'text',text:'Invalid fixture generation credential.'}],isError:true}
       : {};
   process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:request.id,result})+'\n');
 });
@@ -133,15 +145,36 @@ async function fixture() {
   let closed: Promise<void> | undefined;
   const readers: readline.Interface[] = [];
   const cleanup = async () => {
-    for (const client of clients) await client.disconnect();
-    if (child && child.exitCode === null && child.signalCode === null) {
-      child.kill("SIGTERM");
-      await closed;
-    }
-    for (const reader of readers) reader.close();
-    provider.closeAllConnections();
-    await new Promise<void>((resolve) => provider.close(() => resolve()));
-    await rm(root, { recursive: true, force: true });
+    const errors: unknown[] = [];
+    const clean = async (task: () => unknown | Promise<unknown>) => {
+      try {
+        await task();
+      } catch (error) {
+        errors.push(error);
+      }
+    };
+    await Promise.all(
+      clients.map((client) => clean(() => client.disconnect())),
+    );
+    await clean(async () => {
+      if (child && child.exitCode === null && child.signalCode === null) {
+        const force = setTimeout(() => child?.kill("SIGKILL"), 2_000);
+        try {
+          child.kill("SIGTERM");
+          await closed;
+        } finally {
+          clearTimeout(force);
+        }
+      }
+    });
+    for (const reader of readers) await clean(() => reader.close());
+    await clean(async () => {
+      provider.closeAllConnections();
+      await new Promise<void>((resolve) => provider.close(() => resolve()));
+    });
+    await clean(() => rm(root, { recursive: true, force: true }));
+    if (errors.length)
+      throw new AggregateError(errors, "Native fixture cleanup failed");
   };
   try {
     await Promise.all([
@@ -158,6 +191,8 @@ async function fixture() {
       path.join(home, "config.toml"),
       [
         'model = "gpt-5"',
+        // Keep the native fixture independent of external marketplace clones.
+        "features.plugins = false",
         'model_provider = "empty_fixture"',
         'approval_policy = "never"',
         'sandbox_mode = "read-only"',
@@ -235,6 +270,465 @@ async function fixture() {
 }
 
 describe.skipIf(!binary)("pinned native empty-thread remote attach", () => {
+  it("applies managed configuration to the bound engine while peers and sibling sessions stay intact", async () => {
+    const f = await fixture();
+    try {
+      const creator = await f.connect();
+      const peer = await f.connect();
+      const mcpConfig = (generation: string, tool: string) => ({
+        command: process.execPath,
+        args: [f.mcp, f.mcpLog],
+        required: true,
+        env: {
+          CANTRIP_TEST_GENERATION: generation,
+          CANTRIP_TEST_TOOL_NAME: tool,
+          CANTRIP_TEST_CREDENTIAL: `fixture-credential-${generation}`,
+        },
+      });
+      const invalidStartupProfiles = () => {
+        const complete: JsonObject = {
+          mcpServers: {
+            must_not_start: mcpConfig("rejected", "rejected_tool"),
+          },
+          developerInstructions: "Must not publish rejected instructions.",
+          multiAgentEnabled: true,
+          subagentModel: "rejected-child",
+          subagentReasoningEffort: "medium",
+        };
+        const missingNullable = { ...complete };
+        delete missingNullable.developerInstructions;
+        return [
+          {
+            ...complete,
+            mcpServers: {
+              ...complete.mcpServers,
+              invalid: { command: 42 },
+            },
+          },
+          { ...complete, unexpected: true },
+          missingNullable,
+        ];
+      };
+      const mcpLog = () =>
+        readFile(f.mcpLog, "utf8").catch((error: NodeJS.ErrnoException) => {
+          if (error.code === "ENOENT") return "";
+          throw error;
+        });
+      const rejectBeforeStartup = async (
+        method: "thread/start" | "thread/resume",
+        params: JsonObject,
+      ) => {
+        const loadedBefore = await creator.request("thread/loaded/list", {});
+        const listedIds = async () =>
+          (await creator.request("thread/list", {})).data
+            .map((thread: JsonObject) => thread.id)
+            .sort();
+        const idsBefore = await listedIds();
+        const logBefore = await mcpLog();
+        const configBefore = await readFile(
+          path.join(f.home, "config.toml"),
+          "utf8",
+        );
+        const notificationsBefore = peer.messages.length;
+        for (const managedConfig of invalidStartupProfiles()) {
+          const rejected = await creator.raw(method, {
+            ...params,
+            managedConfig,
+          });
+          expect(rejected.error).toBeDefined();
+          expect(rejected.result).toBeUndefined();
+          expect(await creator.request("thread/loaded/list", {})).toEqual(
+            loadedBefore,
+          );
+          expect(await listedIds()).toEqual(idsBefore);
+          expect(await mcpLog()).toBe(logBefore);
+          expect(await readFile(path.join(f.home, "config.toml"), "utf8")).toBe(
+            configBefore,
+          );
+          expect(
+            peer.messages
+              .slice(notificationsBefore)
+              .filter((message) =>
+                ["thread/started", "turn/started"].includes(message.method),
+              ),
+          ).toEqual([]);
+        }
+      };
+      await rejectBeforeStartup("thread/start", {
+        cwd: f.workspace,
+        model: "gpt-5",
+        modelProvider: "empty_fixture",
+      });
+      const started = await creator.request("thread/start", {
+        cwd: f.workspace,
+        model: "gpt-5",
+        modelProvider: "empty_fixture",
+        approvalPolicy: "on-request",
+        sandbox: "read-only",
+        developerInstructions: "Initial managed fixture instructions.",
+        config: {
+          model_reasoning_effort: "high",
+          "features.fast_mode": true,
+          "mcp_servers.managed_old": mcpConfig("initial", "initial_tool"),
+        },
+      });
+      const threadId = started.thread.id as string;
+      await peer.request("thread/resume", { threadId });
+      const sibling = await creator.request("thread/start", {
+        cwd: f.workspace,
+        model: "gpt-5",
+        modelProvider: "empty_fixture",
+        approvalPolicy: "never",
+        sandbox: "read-only",
+        config: { "mcp_servers.sibling": mcpConfig("sibling", "sibling_tool") },
+      });
+      const siblingId = sibling.thread.id as string;
+      await peer.request("thread/resume", { threadId: siblingId });
+      const configBefore = await readFile(
+        path.join(f.home, "config.toml"),
+        "utf8",
+      );
+      const collaborationMode = {
+        mode: "plan",
+        settings: {
+          model: "gpt-5",
+          reasoning_effort: "high",
+          developer_instructions: "Keep the selected plan mode instructions.",
+        },
+      };
+      await creator.request("thread/settings/update", {
+        threadId,
+        collaborationMode,
+        personality: "pragmatic",
+        serviceTier: "flex",
+      });
+      await vi.waitFor(
+        () => {
+          expect(
+            peer.messages.some(
+              (message) =>
+                message.method === "thread/settings/updated" &&
+                message.params.threadId === threadId,
+            ),
+          ).toBe(true);
+        },
+        { timeout: 5_000 },
+      );
+      const baselineSettings = [...peer.messages]
+        .reverse()
+        .find(
+          (message) =>
+            message.method === "thread/settings/updated" &&
+            message.params.threadId === threadId,
+        )!.params.threadSettings;
+      expect(baselineSettings.collaborationMode).toEqual(collaborationMode);
+      expect(baselineSettings.serviceTier).toBe("flex");
+      const originalRootSettings = settings(
+        await creator.request("thread/resume", { threadId }),
+      );
+      const siblingSettings = settings(
+        await creator.request("thread/resume", { threadId: siblingId }),
+      );
+      let siblingCatalogRequests = 0;
+      const catalog = (id: string) => {
+        if (id === siblingId) siblingCatalogRequests++;
+        return creator.request("mcpServerStatus/list", { threadId: id });
+      };
+      const siblingCatalog = await catalog(siblingId);
+      const call = async (
+        id: string,
+        server: string,
+        tool: string,
+        generation: string,
+      ) => {
+        expect(
+          await creator.request("mcpServer/tool/call", {
+            threadId: id,
+            server,
+            tool,
+            arguments: {},
+          }),
+        ).toMatchObject({
+          content: [{ type: "text", text: generation }],
+          isError: false,
+        });
+      };
+      expect(JSON.stringify(await catalog(threadId))).toContain("initial_tool");
+      await call(threadId, "managed_old", "initial_tool", "initial");
+      await call(siblingId, "sibling", "sibling_tool", "sibling");
+      const initialLog = (await readFile(f.mcpLog, "utf8"))
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line));
+      const siblingLogBefore = initialLog.filter(
+        (entry) =>
+          entry.generation === "sibling" && entry.method === "initialize",
+      );
+      expect(siblingLogBefore.length).toBeGreaterThan(0);
+      const siblingCallPids = new Set(
+        initialLog
+          .filter(
+            (entry) =>
+              entry.generation === "sibling" && entry.method === "tools/call",
+          )
+          .map((entry) => entry.pid),
+      );
+      expect(siblingCallPids.size).toBe(1);
+      const siblingCatalogRequestsBefore = siblingCatalogRequests;
+      const notificationStart = peer.messages.length;
+      let personality = "pragmatic";
+      const assertPreserved = async () => {
+        const joined = await creator.request("thread/resume", { threadId });
+        expect(joined.thread).toMatchObject({
+          id: threadId,
+          sessionId: started.thread.sessionId,
+          turns: [],
+        });
+        expect(settings(joined)).toEqual(originalRootSettings);
+        // Native has no read-settings RPC. Change only this test's personality
+        // to request a fresh complete settings notification without restoring
+        // model, collaboration, permissions or any managed configuration.
+        personality = personality === "pragmatic" ? "friendly" : "pragmatic";
+        const before = peer.messages.length;
+        await creator.request("thread/settings/update", {
+          threadId,
+          personality,
+        });
+        await vi.waitFor(
+          () => {
+            const observed = peer.messages
+              .slice(before)
+              .find(
+                (message) =>
+                  message.method === "thread/settings/updated" &&
+                  message.params.threadId === threadId,
+              );
+            expect(observed).toBeDefined();
+            expect(observed!.params.threadSettings).toEqual({
+              ...baselineSettings,
+              personality,
+            });
+          },
+          { timeout: 5_000 },
+        );
+        const siblingJoined = await creator.request("thread/resume", {
+          threadId: siblingId,
+        });
+        expect(siblingJoined.thread.sessionId).toBe(sibling.thread.sessionId);
+        expect(settings(siblingJoined)).toEqual(siblingSettings);
+        expect(await catalog(siblingId)).toEqual(siblingCatalog);
+        await call(siblingId, "sibling", "sibling_tool", "sibling");
+        expect(await readFile(path.join(f.home, "config.toml"), "utf8")).toBe(
+          configBefore,
+        );
+      };
+      const managedPayload = (mcpServers: JsonObject) => ({
+        threadId,
+        mcpServers,
+        developerInstructions: "Updated managed fixture instructions.",
+        multiAgentEnabled: true,
+        subagentModel: "fixture-child-model",
+        subagentReasoningEffort: "medium",
+      });
+      const replace = async (mcpServers: JsonObject) => {
+        expect(
+          await creator.request(
+            "thread/managedConfig/update",
+            managedPayload(mcpServers),
+          ),
+        ).toEqual({ threadId, applied: true });
+      };
+      await replace({
+        managed_new: mcpConfig("generation-one", "replacement_tool"),
+      });
+      expect(JSON.stringify(await catalog(threadId))).toContain(
+        "replacement_tool",
+      );
+      expect(JSON.stringify(await catalog(threadId))).not.toContain(
+        "initial_tool",
+      );
+      await call(threadId, "managed_new", "replacement_tool", "generation-one");
+      await assertPreserved();
+      // Same server/tool name, different synthetic credential and env. A
+      // cached old client cannot produce the new harmless generation result.
+      await replace({
+        managed_new: mcpConfig("generation-two", "replacement_tool"),
+      });
+      await catalog(threadId);
+      await call(threadId, "managed_new", "replacement_tool", "generation-two");
+      await assertPreserved();
+      const catalogBeforeInvalid = await catalog(threadId);
+      const omittedNullable: JsonObject = managedPayload({});
+      delete omittedNullable.developerInstructions;
+      for (const invalid of [
+        { ...managedPayload({ managed_new: { command: 42 } }) },
+        { ...managedPayload({}), multiAgentEnabled: "false" },
+        // Native permits nonempty model-defined efforts; an empty value is invalid.
+        { ...managedPayload({}), subagentReasoningEffort: "" },
+        { ...managedPayload({}), unexpected: true },
+        omittedNullable,
+      ]) {
+        const rejected = await creator.raw(
+          "thread/managedConfig/update",
+          invalid,
+        );
+        expect(rejected.error, JSON.stringify(invalid)).toBeDefined();
+        expect(rejected.result, JSON.stringify(invalid)).toBeUndefined();
+        expect(await catalog(threadId)).toEqual(catalogBeforeInvalid);
+        await call(
+          threadId,
+          "managed_new",
+          "replacement_tool",
+          "generation-two",
+        );
+        await assertPreserved();
+      }
+      expect(
+        await creator.request("thread/managedConfig/update", {
+          ...managedPayload({}),
+          developerInstructions: null,
+          multiAgentEnabled: false,
+          subagentModel: null,
+          subagentReasoningEffort: null,
+        }),
+      ).toEqual({ threadId, applied: true });
+      expect((await catalog(threadId)).data).toEqual([]);
+      const removedCall = await creator.raw("mcpServer/tool/call", {
+        threadId,
+        server: "managed_new",
+        tool: "replacement_tool",
+        arguments: {},
+      });
+      expect(removedCall.error).toBeDefined();
+      await assertPreserved();
+      expect(
+        peer.messages
+          .slice(notificationStart)
+          .filter(
+            (message) =>
+              ["thread/closed", "thread/started", "turn/started"].includes(
+                message.method,
+              ) && message.params?.threadId === threadId,
+          ),
+      ).toEqual([]);
+      expect(await peer.request("thread/unsubscribe", { threadId })).toEqual({
+        status: "unsubscribed",
+      });
+      // Exercise the cold branch: unsubscribe alone retains a loaded engine.
+      await creator.request("thread/archive", { threadId });
+      await creator.request("thread/unarchive", { threadId });
+      await vi.waitFor(
+        async () =>
+          expect(
+            (await creator.request("thread/loaded/list", {})).data,
+          ).toEqual([siblingId]),
+        { timeout: 5_000 },
+      );
+      await rejectBeforeStartup("thread/resume", { threadId });
+      expect(
+        (await creator.request("thread/read", { threadId, includeTurns: true }))
+          .thread.turns,
+      ).toEqual([]);
+      expect(await readFile(path.join(f.home, "config.toml"), "utf8")).toBe(
+        configBefore,
+      );
+      const log = (await readFile(f.mcpLog, "utf8"))
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line));
+      const siblingInitializations = log.filter(
+        (entry) =>
+          entry.generation === "sibling" && entry.method === "initialize",
+      );
+      // Native catalog discovery creates a separate eager connection set per
+      // request. Account for those explicit probes while requiring every real
+      // invocation to retain the original sibling host and native session.
+      expect(siblingInitializations).toHaveLength(
+        siblingLogBefore.length +
+          siblingCatalogRequests -
+          siblingCatalogRequestsBefore,
+      );
+      expect(
+        new Set(
+          log
+            .filter(
+              (entry) =>
+                entry.generation === "sibling" && entry.method === "tools/call",
+            )
+            .map((entry) => entry.pid),
+        ),
+      ).toEqual(siblingCallPids);
+      expect(
+        log.filter(
+          (entry) =>
+            entry.generation === "generation-two" &&
+            entry.method === "tools/call",
+        ).length,
+      ).toBeGreaterThan(0);
+      expect(f.providerRequests).toEqual([]);
+      expect(
+        f.clients
+          .flatMap((client) => client.messages)
+          .filter((message) => message.method === "turn/started"),
+      ).toEqual([]);
+    } finally {
+      await f.cleanup();
+    }
+  }, 60_000);
+
+  it("keeps MCP configuration when another view remains subscribed during rejoin", async () => {
+    const f = await fixture();
+    try {
+      const creator = await f.connect();
+      const mcpConfig = {
+        command: process.execPath,
+        args: [f.mcp, f.mcpLog],
+        required: true,
+      };
+      const started = await creator.request("thread/start", {
+        cwd: f.workspace,
+        approvalPolicy: "on-request",
+        config: { "mcp_servers.empty_fixture": mcpConfig },
+      });
+      const threadId = started.thread.id as string;
+      const peer = await f.connect();
+      await peer.request("thread/resume", { threadId });
+      const catalog = await creator.request("mcpServerStatus/list", {
+        threadId,
+      });
+      expect(JSON.stringify(catalog)).toContain("observe_only");
+
+      await creator.request("thread/unsubscribe", { threadId });
+      expect((await creator.request("thread/loaded/list", {})).data).toContain(
+        threadId,
+      );
+      const resumed = await creator.request("thread/resume", {
+        threadId,
+        approvalPolicy: "never",
+        config: {
+          "mcp_servers.empty_fixture": { ...mcpConfig, enabled: false },
+        },
+      });
+
+      // Native resume is a view join while another client is subscribed. Worker
+      // configuration changes need a real mutation operation; clearing a local
+      // loaded-thread cache and resuming cannot establish that they were applied.
+      expect(resumed.thread.sessionId).toBe(started.thread.sessionId);
+      expect(resumed.approvalPolicy).toBe("on-request");
+      expect(
+        await creator.request("mcpServerStatus/list", { threadId }),
+      ).toEqual(catalog);
+      const mcpAfter = await readFile(f.mcpLog, "utf8");
+      expect(mcpAfter).not.toContain('"tools/call"');
+      expect(f.providerRequests).toEqual([]);
+      expect(
+        creator.messages.filter((message) => message.method === "turn/started"),
+      ).toEqual([]);
+    } finally {
+      await f.cleanup();
+    }
+  }, 45_000);
+
   it.each(["legacy", "paginated"])(
     "joins an unnamed empty %s thread from two clients without inference",
     async (historyMode) => {
@@ -432,10 +926,34 @@ describe.skipIf(!binary)("pinned native empty-thread remote attach", () => {
       expect((await stat(databasePath)).isFile()).toBe(true);
       const database = new DatabaseSync(databasePath);
       try {
+        const metadataModel = () =>
+          database
+            .prepare("SELECT model FROM threads WHERE id = ?")
+            .get(started.thread.id)?.model;
+        expect(metadataModel()).toBe(started.model);
         database.exec(`
           CREATE TRIGGER test_reject_thread_metadata BEFORE INSERT ON threads
           BEGIN SELECT RAISE(FAIL, 'test metadata write obstruction'); END;
         `);
+        // Startup now persists an owned settings snapshot and its initial row.
+        // Make a later non-turn snapshot produce pending metadata under a real
+        // SQLite fault, then require attachment to retry that failed projection.
+        const updatedModel = "fixture-storage-model";
+        await creator.request("thread/settings/update", {
+          threadId: started.thread.id,
+          model: updatedModel,
+        });
+        await vi.waitFor(
+          () =>
+            expect(
+              creator.messages.some(
+                (message) =>
+                  message.method === "thread/settings/updated" &&
+                  message.params.threadSettings.model === updatedModel,
+              ),
+            ).toBe(true),
+          { timeout: 5_000 },
+        );
         const failed = await peer.raw("thread/resume", {
           threadId: started.thread.id,
         });
@@ -446,14 +964,13 @@ describe.skipIf(!binary)("pinned native empty-thread remote attach", () => {
         expect(failed.error.message).toContain(
           "test metadata write obstruction",
         );
-        // The file was committed before metadata failed: this is the successful
-        // read branch on retry, not another missing-rollout fallback.
+        // The file remains visible while SQLite still contains the old model:
+        // this exercises the successful-read attachment barrier on retry.
         expect((await stat(started.thread.path)).isFile()).toBe(true);
-        expect(
-          database
-            .prepare("SELECT id FROM threads WHERE id = ?")
-            .all(started.thread.id),
-        ).toEqual([]);
+        expect(await readFile(started.thread.path, "utf8")).toContain(
+          updatedModel,
+        );
+        expect(metadataModel()).toBe(started.model);
         database.exec("DROP TRIGGER test_reject_thread_metadata");
         const recovered = await peer.request("thread/resume", {
           threadId: started.thread.id,
@@ -465,12 +982,16 @@ describe.skipIf(!binary)("pinned native empty-thread remote attach", () => {
           turns: [],
           historyMode: "paginated",
         });
-        expect(settings(recovered)).toEqual(settings(started));
+        expect(settings(recovered)).toEqual({
+          ...settings(started),
+          model: updatedModel,
+        });
         expect(
           database
             .prepare("SELECT id FROM threads WHERE id = ?")
             .all(started.thread.id),
         ).toHaveLength(1);
+        expect(metadataModel()).toBe(updatedModel);
         expect(await peer.request("thread/loaded/list", {})).toMatchObject({
           data: [started.thread.id],
         });
@@ -501,12 +1022,12 @@ describe.skipIf(!binary)("pinned native empty-thread remote attach", () => {
         });
         const rolloutPath = started.thread.path;
         expect(typeof rolloutPath).toBe("string");
-        // Use only the path returned by this disposable native thread. The empty
-        // recorder has not written it; a directory there forces actual storage
-        // I/O to fail. That error must not be treated as a missing rollout.
-        await expect(stat(rolloutPath)).rejects.toMatchObject({
-          code: "ENOENT",
-        });
+        // Startup materializes the owned settings snapshot. Preserve that exact
+        // file while obstructing its returned path with a directory, forcing a
+        // real storage read error instead of a missing-rollout fallback.
+        expect((await stat(rolloutPath)).isFile()).toBe(true);
+        const preservedRollout = `${rolloutPath}.fixture-preserved`;
+        await rename(rolloutPath, preservedRollout);
         await mkdir(rolloutPath, { recursive: true });
         const resumed = await peer.raw("thread/resume", {
           threadId: started.thread.id,
@@ -520,6 +1041,7 @@ describe.skipIf(!binary)("pinned native empty-thread remote attach", () => {
         // Repair the fixture's storage obstruction and retry the same live thread;
         // failure must not require a replacement process or a synthetic turn.
         await rm(rolloutPath, { recursive: true });
+        await rename(preservedRollout, rolloutPath);
         const recovered = await peer.request("thread/resume", {
           threadId: started.thread.id,
         });

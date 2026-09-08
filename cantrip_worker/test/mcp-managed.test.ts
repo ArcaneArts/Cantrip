@@ -9,6 +9,23 @@ import {
 import { CANTRIP_MCP_STANDALONE_TOOL_NAMES } from "../src/mcp/profile.js";
 
 describe("managed worker MCP servers", () => {
+  it("marks the managed host with its non-secret connection generation", () => {
+    expect(
+      managedCantripMcpServer(
+        { command: "node", arguments: ["stdio.js"] },
+        "/stable/connection.json",
+        CANTRIP_MCP_TOOL_NAMES,
+        "ide",
+        "renewed-binding",
+      ),
+    ).toMatchObject({
+      environment: {
+        CANTRIP_MCP_PROFILE: "ide",
+        CANTRIP_MCP_CONNECTION_GENERATION: "renewed-binding",
+      },
+    });
+  });
+
   it("materializes the packaged worker-owned stdio host", () => {
     const invocation = cantripMcpHostInvocation({
       execPath: "/worker/runtime/node",
