@@ -53,6 +53,11 @@ struct TargetReference {
 #[derive(Deserialize)]
 #[serde(tag = "operation", rename_all = "camelCase", deny_unknown_fields)]
 enum HostAction {
+    ClickSequence {
+        clicks: Vec<crate::click_sequence::Click>,
+        #[serde(default)]
+        options: crate::click_sequence::Options,
+    },
     Perform {
         command: crate::gesture::InputCommand,
     },
@@ -103,6 +108,11 @@ fn validate_action(source: &str) -> Result<Value> {
     let action: HostAction = serde_json::from_str(source)
         .map_err(|_| CuaError::new(ErrorCode::ScriptAction, "Invalid CUA method arguments."))?;
     match action {
+        HostAction::ClickSequence { clicks, options } => {
+            // Reuse the ordinary timeline validation/authorization path. No
+            // host request (including capture/setup) happens during compilation.
+            return validate_action(&crate::click_sequence::compile(clicks, options)?.to_string());
+        }
         HostAction::Perform { command } => command.validate()?,
         HostAction::Wait { ms } if ms > 10000 => {
             return Err(CuaError::new(
@@ -170,11 +180,11 @@ for (const name of ['SharedArrayBuffer', 'Atomics', 'WeakRef', 'FinalizationRegi
   };
   Object.defineProperty(globalThis, 'cua', { value: Object.freeze({
     help: (topic) => {
-      const info = {apiVersion:18, examples:{commandK:"await cua.keyPress('k', ['Meta'])",commandChord:"await cua.keyChord(['k'], 500, ['Meta'])",combinedChord:"await cua.keyChord(['Meta', 'k'])"},receipt:"dispatched means all event-post calls completed, not that the app accepted input. windowDelivery:unverified requires a fresh screenshot to confirm the intended UI result. unknown means interrupted or uncertain dispatch; never blindly replay input. requestFocus intentionally raises the window; ordinary clicks never do so automatically.",quickStart:{script:"await cua.openWindow({application:\"Brave\",title:\"Piano\"})",notes:"Use partial application/title text for the requested existing window. openWindow searches, attaches a unique match, and returns a screenshot. No initial reset, help-plus-inventory dump, exact-title loop, click or focus request is needed. Reuse the attachment for subsequent input; snapshot again when needed."}, methods:{openWindow:"openWindow({application?,title?}) searches existing windows, attaches one unique match and captures it; returns status attached, not-found, or choose-window with candidates; does not launch/focus/click",findWindows:"findWindows({application?,title?}) scans all target pages and returns {targets,truncated}, up to 32 matches; case-insensitive substring matching, windows only; inspect candidates before attaching",targets:"targets({after?}) returns one inventory page; nextCursor continues it",attach:"attach({targetId,targetGeneration}) uses the selected target id and generation",snapshot:"snapshot() captures the attached window; a capture failure retains the attachment, so request another snapshot without replaying prior input",getState:"getState() returns {session}; focused is sampled on attach, snapshot and input, not a live poll; null means unavailable",typeText:"typeText(text): up to 8192 UTF-8 bytes, existing target keyboard responder",keyPress:"keyPress(key, modifiers=[]): letters accept lowercase or uppercase without implicitly adding Shift; Enter, Tab, Escape, arrows, letters/digits, F1-F20, Minus, Equal, BracketLeft, BracketRight, Backslash, Semicolon, Quote, Comma, Period, Slash, Backquote; Shift,Control,Alt,Meta (Meta=Command on macOS, Alt=Option)",scroll:"scroll(deltaY, deltaX=0, point?): pixel deltas, positive down/right",wait:"wait(ms): 0-10000 ms; use this instead of setTimeout (not available in QuickJS); use timeline atMs for tightly timed sequences",click:"click(point?, options={button:left,modifiers:[],holdMs:150}) rapidly moves the custom cursor before one ordinary click with automatic target-only preparation; omitted point uses the agent cursor",preparedPointerPress:"preparedPointerPress(point, holdMs=150) queues target-only AppKit activation and key-window preparation then one unmodified pointer press in the same native request; experimental, no foreground/raise request; receipt activation:true and delivery unverified",prepareWindowInput:"prepareWindowInput() requests target-only AppKit activation without requesting WindowServer foreground or raising; no mouse/modifier input; experimental, inspect receipt effects",requestFocus:"requestFocus() activates and raises the attached window; sends no click",commandClick:"commandClick(point, holdMs=150) sends a real Command-modified mouse press without requesting focus",pointerPress:"pointerPress(point, holdMs=150, modifiers=[], button=left): left/right/middle/back/forward; automatically prepares unmodified presses; explicit Shift,Control,Alt,Meta retain modified delivery; modifiers are NOT held timeline keys",inputTimeline:"inputTimeline(frames): [{atMs:0,pointerDown:{x:100,y:200}},{atMs:150,pointerUp:true}]; keyDown/keyUp are arrays; pointerUp is a boolean, not a point; pointerButton (left/right/middle/back/forward) and pointerModifiers only on pointerDown; keyModifiers only with keyDown, retained for matching keyUp and cancellation cleanup; every unmodified pointerDown automatically prepares its window immediately before dispatch; known gaps receive automatic spline cursor travel, so do not add manual cursor moves",clickDrag:"clickDrag(start,end,durationMs=200) automatically prepares the window immediately before one hold/move/release",keyChord:"keyChord(keys,holdMs=500,modifiers=[]): letters are case-insensitive; Meta/Control/Alt/Shift may be in keys or modifiers",mediaKey:"mediaKey(key,modifiers=[]): PlayPause, NextTrack, PreviousTrack, FastForward, Rewind, VolumeUp, VolumeDown, VolumeMute. Explicit SYSTEM-WIDE consumer key, not limited to attached window; only use for requested playback/volume control"}, limits:{scriptBytes:2097152,hostCalls:16384,timelineFrames:131072,timelineMs:null,hostActionBytes:15728640,outputBytes:32768,maxHeldKeys:16,maxSnapshots:2,maxWallMs:null}, notes:"Use one native timeline for a preplanned stable interface to avoid model round trips between music chunks. Ordinary unmodified clicks without future timing keep cubic ease-out travel (fast start, decelerating arrival) in up to 90 ms. For planned clicks use one inputTimeline: the cursor follows timed cubic splines across the full button-up gaps, using neighboring click positions and smoothly varying speed to arrive at each pointerDown without changing the score. An initial atMs greater than zero allows travel to the first click; zero-gap presses snap. Future branches and separate awaited calls are not predicted; do not pre-run JavaScript to discover them. Overdue cosmetic travel frames are skipped rather than delaying native input further. Native timelines and managed evaluations have no elapsed-time cutoff. A full 150-second piece belongs in one inputTimeline call; await completion and any outer executor continuation. Do not split a score to satisfy an invented short tool limit. Stop remains immediate and releases held input. Drag follows actual native motion. No automatic foreground switch or retries after uncertain input. Command is visible to the target and may change link/selection behavior. Helper failure recovery starts a fresh process on a new authorized observation without replaying input. Only loading newly installed executable code requires replacing the running helper; do not prescribe a worker restart for ordinary script errors."};
+      const info = {apiVersion:19, examples:{commandK:"await cua.keyPress('k', ['Meta'])",commandChord:"await cua.keyChord(['k'], 500, ['Meta'])",combinedChord:"await cua.keyChord(['Meta', 'k'])",clickSequence:"await cua.clickSequence([{atMs:100,x:100,y:200},{atMs:200,x:150,y:200}], {holdMs:40})"},receipt:"dispatched means all event-post calls completed, not that the app accepted input. windowDelivery:unverified requires a fresh screenshot to confirm the intended UI result. unknown means interrupted or uncertain dispatch; never blindly replay input. requestFocus intentionally raises the window; ordinary clicks never do so automatically.",quickStart:{script:"await cua.openWindow({application:\"Brave\",title:\"Piano\"})",notes:"Use partial application/title text for the requested existing window. openWindow searches, attaches a unique match, and returns a screenshot. No initial reset, help-plus-inventory dump, exact-title loop, click or focus request is needed. Reuse the attachment for subsequent input; snapshot again when needed. openWindow always searches and captures; clickSequence, click and inputTimeline do neither. Within a turn, do not reopen the same window before each script or regenerate a prepared score when the layout remains known."}, methods:{openWindow:"openWindow({application?,title?}) searches existing windows, attaches one unique match and captures it; returns status attached, not-found, or choose-window with candidates; does not launch/focus/click",findWindows:"findWindows({application?,title?}) scans all target pages and returns {targets,truncated}, up to 32 matches; case-insensitive substring matching, windows only; inspect candidates before attaching",targets:"targets({after?}) returns one inventory page; nextCursor continues it",attach:"attach({targetId,targetGeneration}) uses the selected target id and generation",snapshot:"snapshot() captures the attached window; a capture failure retains the attachment, so request another snapshot without replaying prior input",getState:"getState() returns {session}; focused is sampled on attach, snapshot and input, not a live poll; null means unavailable",typeText:"typeText(text): up to 8192 UTF-8 bytes, existing target keyboard responder",keyPress:"keyPress(key, modifiers=[]): letters accept lowercase or uppercase without implicitly adding Shift; Enter, Tab, Escape, arrows, letters/digits, F1-F20, Minus, Equal, BracketLeft, BracketRight, Backslash, Semicolon, Quote, Comma, Period, Slash, Backquote; Shift,Control,Alt,Meta (Meta=Command on macOS, Alt=Option)",scroll:"scroll(deltaY, deltaX=0, point?): pixel deltas, positive down/right",wait:"wait(ms): 0-10000 ms; use this instead of setTimeout (not available in QuickJS); use timeline atMs for tightly timed sequences",click:"click(point?, options={button:left,modifiers:[],holdMs:150}) rapidly moves the custom cursor before one ordinary click with automatic target-only preparation; omitted point uses the agent cursor",preparedPointerPress:"preparedPointerPress(point, holdMs=150) queues target-only AppKit activation and key-window preparation then one unmodified pointer press in the same native request; experimental, no foreground/raise request; receipt activation:true and delivery unverified",prepareWindowInput:"prepareWindowInput() requests target-only AppKit activation without requesting WindowServer foreground or raising; no mouse/modifier input; experimental, inspect receipt effects",requestFocus:"requestFocus() activates and raises the attached window; sends no click",commandClick:"commandClick(point, holdMs=150) sends a real Command-modified mouse press without requesting focus",pointerPress:"pointerPress(point, holdMs=150, modifiers=[], button=left): left/right/middle/back/forward; automatically prepares unmodified presses; explicit Shift,Control,Alt,Meta retain modified delivery; modifiers are NOT held timeline keys",clickSequence:"clickSequence(clicks, options={}): clicks are [{atMs,x,y,holdMs?}]; options {holdMs:50,button:left,modifiers:[]}. Absolute millisecond times from playback start, ordered with no overlap. Each click holds for its own holdMs or the default. Compiles all clicks into one balanced native timeline before input; no setup or screenshot. Up to 65536 clicks, no elapsed-time limit. Invalid schedules fail before any input; shorten holdMs for rapid notes. Returns the ordinary timeline receipt.",inputTimeline:"inputTimeline(frames): [{atMs:0,pointerDown:{x:100,y:200}},{atMs:150,pointerUp:true}]; keyDown/keyUp are arrays; pointerUp is a boolean, not a point; pointerButton (left/right/middle/back/forward) and pointerModifiers only on pointerDown; keyModifiers only with keyDown, retained for matching keyUp and cancellation cleanup; every unmodified pointerDown automatically prepares its window immediately before dispatch; known gaps receive automatic spline cursor travel, so do not add manual cursor moves",clickDrag:"clickDrag(start,end,durationMs=200) automatically prepares the window immediately before one hold/move/release",keyChord:"keyChord(keys,holdMs=500,modifiers=[]): letters are case-insensitive; Meta/Control/Alt/Shift may be in keys or modifiers",mediaKey:"mediaKey(key,modifiers=[]): PlayPause, NextTrack, PreviousTrack, FastForward, Rewind, VolumeUp, VolumeDown, VolumeMute. Explicit SYSTEM-WIDE consumer key, not limited to attached window; only use for requested playback/volume control"}, limits:{scriptBytes:2097152,hostCalls:16384,timelineFrames:131072,timelineMs:null,hostActionBytes:15728640,outputBytes:32768,maxHeldKeys:16,maxSnapshots:2,maxWallMs:null}, notes:"Use one native timeline for a preplanned stable interface to avoid model round trips between music chunks. Ordinary unmodified clicks without future timing keep cubic ease-out travel (fast start, decelerating arrival) in up to 90 ms. For planned clicks use one inputTimeline: the cursor follows timed cubic splines across the full button-up gaps, using neighboring click positions and smoothly varying speed to arrive at each pointerDown without changing the score. An initial atMs greater than zero allows travel to the first click; zero-gap presses snap. Future branches and separate awaited calls are not predicted; do not pre-run JavaScript to discover them. Overdue cosmetic travel frames are skipped rather than delaying native input further. Native timelines and managed evaluations have no elapsed-time cutoff. A full 150-second piece belongs in one inputTimeline call; await completion and any outer executor continuation. Do not split a score to satisfy an invented short tool limit. Stop remains immediate and releases held input. Drag follows actual native motion. No automatic foreground switch or retries after uncertain input. Command is visible to the target and may change link/selection behavior. Helper failure recovery starts a fresh process on a new authorized observation without replaying input. Only loading newly installed executable code requires replacing the running helper; do not prescribe a worker restart for ordinary script errors."};
       if (topic === undefined) return info;
-      const group = {key:['keyPress','keyChord','inputTimeline'],type:['typeText','keyPress'],mouse:['click','pointerPress','clickDrag','scroll'],focus:['requestFocus','prepareWindowInput','getState']}[topic] || [topic];
+      const group = {key:['keyPress','keyChord','inputTimeline'],type:['typeText','keyPress'],mouse:['click','clickSequence','pointerPress','clickDrag','scroll'],timeline:['clickSequence','inputTimeline','keyChord'],focus:['requestFocus','prepareWindowInput','getState']}[topic] || [topic];
       const methods = Object.fromEntries(Object.entries(info.methods).filter(([name]) => group.includes(name)));
-      return Object.keys(methods).length ? {apiVersion:info.apiVersion,methods,examples:info.examples,receipt:info.receipt} : info;
+      return Object.keys(methods).length ? {apiVersion:info.apiVersion,methods,examples:Object.fromEntries(Object.entries(info.examples).filter(([name]) => group.includes(name) || (group.some(name => ['keyPress','keyChord'].includes(name)) && ['commandK','commandChord','combinedChord'].includes(name)))),receipt:info.receipt} : info;
     },
     preparedPointerPress: (point, holdMs = 150) => call({operation:'perform',command:{kind:'prepared-press',point,holdMs}}),
     prepareWindowInput: () => call({operation:'perform',command:{kind:'window-input'}}),
@@ -190,6 +200,7 @@ for (const name of ['SharedArrayBuffer', 'Atomics', 'WeakRef', 'FinalizationRegi
     },
     mediaKey: (key, modifiers = []) => call({operation:'perform',command:{kind:'media',key,modifiers}}),
     inputTimeline: frames => call({operation:'perform',command:{kind:'timeline',frames}}),
+    clickSequence: (clicks, options = {}) => call({operation:'clickSequence',clicks,options}),
     pointerPress,
     typeText: text => call({operation:'perform', command:{kind:'text',text}}),
     keyPress: (key, modifiers = []) => call({operation:'perform', command:{kind:'key',key,modifiers}}),
@@ -267,6 +278,8 @@ struct Bridge {
     calls: u64,
     pending: Option<HostPending>,
     rejections: Vec<(Persistent<rquickjs::Value<'static>>, CuaError)>,
+    // Preserve only validator-authored diagnostics, never script exceptions.
+    validation_error: Option<CuaError>,
     fault: Rc<Cell<Option<ErrorCode>>>,
 }
 #[derive(Clone, Copy, Default)]
@@ -330,6 +343,7 @@ impl Session {
             calls: 0,
             pending: None,
             rejections: Vec::new(),
+            validation_error: None,
             fault: Rc::new(Cell::new(None)),
         }));
         let weak = Rc::downgrade(&bridge);
@@ -345,14 +359,13 @@ impl Session {
                         };
                         let action = match validate_action(&source) {
                             Ok(action) => action,
-                            Err(error) => {
-                                bridge.borrow().fault.set(Some(
-                                    if error.code == ErrorCode::InvalidRequest {
-                                        ErrorCode::ScriptAction
-                                    } else {
-                                        error.code
-                                    },
-                                ));
+                            Err(mut error) => {
+                                if error.code == ErrorCode::InvalidRequest {
+                                    error.code = ErrorCode::ScriptAction;
+                                }
+                                let mut state = bridge.borrow_mut();
+                                state.fault.set(Some(error.code));
+                                state.validation_error = Some(error);
                                 return Err(Exception::throw_type(&ctx, "Invalid CUA action."));
                             }
                         };
@@ -450,6 +463,7 @@ impl Session {
             bridge.calls = 0;
             bridge.rejections.clear();
             bridge.fault.set(None);
+            bridge.validation_error = None;
             bridge.fault.clone()
         };
         let interrupt_clock = clock.clone();
@@ -518,10 +532,14 @@ impl Session {
         if started.elapsed() >= wall_limit || clock.get().elapsed() >= ACTIVE_LIMIT {
             return Err(capacity());
         }
-        match self.bridge.borrow().fault.get() {
+        let bridge = self.bridge.borrow();
+        match bridge.fault.get() {
             Some(ErrorCode::Cancelled) => Err(cancelled()),
             Some(ErrorCode::Capacity) => Err(capacity()),
-            Some(code) => Err(CuaError::new(code, "Invalid CUA method arguments.")),
+            Some(code) => Err(bridge
+                .validation_error
+                .clone()
+                .unwrap_or_else(|| CuaError::new(code, "Invalid CUA method arguments."))),
             None => Ok(()),
         }
     }
@@ -1149,6 +1167,118 @@ mod tests {
             assert_eq!(error.code, ErrorCode::ScriptAction);
             assert!(receiver.is_empty());
         }
+    }
+
+    #[test]
+    fn click_sequences_compile_once_without_setup_and_report_overlaps() {
+        let (frames, receiver) = crossbeam_channel::bounded(4);
+        let binding = serde_json::from_value(
+            json!({"sessionId":"click-score","workerId":"worker","chatId":"chat"}),
+        )
+        .unwrap();
+        let mut session = Session::new(binding, frames).unwrap();
+        session.start(1, "await cua.clickSequence([{atMs:100,x:12,y:34,holdMs:0},{atMs:100,x:56,y:78},{atMs:150000,x:90,y:12,holdMs:200}],{holdMs:25,button:'middle',modifiers:['Meta']})".into(), default_wall_timeout_ms(), Cancellation::default()).unwrap();
+        assert!(session.step().is_none());
+        let Message::HostCall { action, .. } = receiver.try_recv().unwrap().header.message else {
+            panic!("expected timeline")
+        };
+        assert_eq!(
+            action,
+            json!({"operation":"perform","command":{"kind":"timeline","frames":[
+                {"atMs":100,"pointerDown":{"x":12.0,"y":34.0},"pointerButton":"middle","pointerModifiers":["Meta"]},
+                {"atMs":100,"pointerUp":true},
+                {"atMs":100,"pointerDown":{"x":56.0,"y":78.0},"pointerButton":"middle","pointerModifiers":["Meta"]},
+                {"atMs":125,"pointerUp":true},
+                {"atMs":150000,"pointerDown":{"x":90.0,"y":12.0},"pointerButton":"middle","pointerModifiers":["Meta"]},
+                {"atMs":150200,"pointerUp":true}
+            ]}})
+        );
+        assert!(receiver.is_empty());
+    }
+
+    #[test]
+    fn click_sequence_rejects_whole_invalid_score_before_host_input() {
+        for (score, options, message) in [
+            (
+                "[{atMs:0,x:1,y:2},{atMs:49,x:3,y:4}]",
+                "{}",
+                Some("clicks[1] overlaps"),
+            ),
+            (
+                "[{atMs:100,x:1,y:2},{atMs:0,x:3,y:4}]",
+                "{}",
+                Some("clicks[1] overlaps"),
+            ),
+            (
+                "[{atMs:0,x:1,y:2},{atMs:50,x:-1,y:4}]",
+                "{}",
+                Some("clicks[1]: x and y"),
+            ),
+            (
+                "[{atMs:9007199254740991,x:1,y:2}]",
+                "{}",
+                Some("safe-integer"),
+            ),
+            ("[]", "{}", Some("1-65536")),
+            (
+                "[{atMs:0,x:1,y:2}]",
+                "{modifiers:['Meta','Meta']}",
+                Some("unique"),
+            ),
+            ("[{atMs:0.5,x:1,y:2}]", "{}", None),
+            ("[{atMs:0,x:1,y:2,holdMs:-1}]", "{}", None),
+            ("[{atMs:0,x:1,y:2,typo:50}]", "{}", None),
+            ("[{atMs:0,x:1,y:2}]", "{hold:10}", None),
+            ("[{atMs:0,x:1,y:2}]", "{button:'invalid'}", None),
+        ] {
+            let (frames, receiver) = crossbeam_channel::bounded(4);
+            let binding = serde_json::from_value(
+                json!({"sessionId":"invalid-score","workerId":"worker","chatId":"chat"}),
+            )
+            .unwrap();
+            let mut session = Session::new(binding, frames).unwrap();
+            let result = session.start(
+                1,
+                format!("await cua.clickSequence({score},{options})"),
+                default_wall_timeout_ms(),
+                Cancellation::default(),
+            );
+            let error = match result {
+                Err(error) => error,
+                Ok(()) => session.step().unwrap().unwrap_err(),
+            };
+            assert_eq!(error.code, ErrorCode::ScriptAction, "{score}");
+            if let Some(message) = message {
+                assert!(error.message.contains(message), "{}", error.message);
+            }
+            assert!(
+                receiver.is_empty(),
+                "Invalid scores must not request input, setup or capture"
+            );
+        }
+    }
+
+    #[test]
+    fn compact_score_supports_full_frame_budget_and_default_holds() {
+        let (frames, receiver) = crossbeam_channel::bounded(4);
+        let binding = serde_json::from_value(
+            json!({"sessionId":"large-click-score","workerId":"worker","chatId":"chat"}),
+        )
+        .unwrap();
+        let mut session = Session::new(binding, frames).unwrap();
+        session.start(1, "await cua.clickSequence(Array.from({length:65536},(_,i)=>({atMs:i*50,x:i%100,y:20})))".into(), default_wall_timeout_ms(), Cancellation::default()).unwrap();
+        assert!(session.step().is_none());
+        let Message::HostCall { action, .. } = receiver.try_recv().unwrap().header.message else {
+            panic!("expected timeline")
+        };
+        let score = action["command"]["frames"].as_array().unwrap();
+        assert_eq!(score.len(), 131072);
+        assert_eq!(
+            score.last().unwrap(),
+            &json!({"atMs":3276800,"pointerUp":true})
+        );
+        assert_eq!(score[0], json!({"atMs":0,"pointerDown":{"x":0.0,"y":20.0}}));
+        assert!(receiver.is_empty());
     }
 
     #[test]

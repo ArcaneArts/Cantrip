@@ -1,5 +1,6 @@
 pub mod backend;
 pub mod cancellation;
+mod click_sequence;
 pub mod cursor;
 mod cursor_motion;
 pub mod effects;

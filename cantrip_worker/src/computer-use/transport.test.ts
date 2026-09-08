@@ -8,6 +8,27 @@ import {
 } from "./transport.js";
 
 const transports: CuaTransport[] = [];
+it("exposes only complete numeric click-sequence diagnostics", () => {
+  const diagnostic =
+    "clickSequence clicks[1] overlaps the preceding click: atMs must be at least 50. Shorten holdMs or move this click later; clicks are never reordered or silently shortened.";
+  expect(new CuaNativeError("script-action", diagnostic).message).toContain(
+    diagnostic,
+  );
+  for (const unsafe of [
+    "private window title",
+    `${diagnostic} private window title`,
+    diagnostic.replace("[1]", "[private]"),
+    diagnostic.replace("least 50", "least private"),
+    diagnostic.replace("[1]", "[12345678901234567]"),
+  ]) {
+    expect(new CuaNativeError("script-action", unsafe).message).toBe(
+      new CuaNativeError("script-action").message,
+    );
+  }
+  expect(new CuaNativeError("permission-denied", diagnostic).message).toBe(
+    new CuaNativeError("permission-denied").message,
+  );
+});
 afterEach(async () => {
   await Promise.all(transports.splice(0).map((transport) => transport.close()));
 });
