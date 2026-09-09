@@ -1,5 +1,9 @@
 import { z } from "zod";
 import {
+  describeAgentCommunication,
+  type InterAgentCommunicationItem,
+} from "./agent-communication.js";
+import {
   CUA_DISCOVERY_GUIDANCE,
   CUA_START_GUIDANCE,
 } from "../mcp/cua-guidance.js";
@@ -1518,6 +1522,7 @@ type CodexThreadItem =
   | DynamicToolCallItem
   | CollabAgentToolCallItem
   | SubAgentActivityItem
+  | InterAgentCommunicationItem
   | WebSearchItem
   | ImageViewItem
   | ReviewModeItem
@@ -3576,6 +3581,30 @@ export function normalizeCodexThreadItem(
         raw: createThreadItemRawCapture(item, telemetry.commandOutput),
       }
     : {};
+  if (item.type === "interAgentCommunication") {
+    const description = describeAgentCommunication(item);
+    if (!description) return null;
+    return agentActivitySchema.parse({
+      type: "nativeItem",
+      kind: item.type,
+      id: item.id,
+      title: description.title,
+      details:
+        description.details ??
+        (description.unavailable === "encrypted-agent-communication"
+          ? "Encrypted agent message; text unavailable."
+          : "Agent message text unavailable."),
+      status: lifecycle === "started" ? "running" : "completed",
+      durationMs:
+        telemetry.startedAtMs !== undefined &&
+        telemetry.completedAtMs != null &&
+        telemetry.completedAtMs >= telemetry.startedAtMs
+          ? telemetry.completedAtMs - telemetry.startedAtMs
+          : null,
+      ...timestamps,
+      correlation,
+    });
+  }
   if (item.type === "commandExecution") {
     const output =
       telemetry.commandOutput ?? boundedCommandOutput(item.aggregatedOutput);

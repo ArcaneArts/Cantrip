@@ -7,6 +7,7 @@ import type {
   NativeHistoryRenderedItem,
 } from "./native-history-render.js";
 import type { NativeHistoryStateItem } from "./native-history-state.js";
+import { describeAgentCommunication } from "./codex/agent-communication.js";
 
 /** Additional pinned-native display items. The source is retained separately;
  * output text is activity detail, never an assistant answer or a user prompt. */
@@ -22,6 +23,7 @@ export function renderNativeDisplayItem(
   if (
     item.lifecycle === "unknown" ||
     (kind !== "hookPrompt" &&
+      kind !== "interAgentCommunication" &&
       kind !== "functionCallOutput" &&
       kind !== "sleep" &&
       kind !== "imageGeneration")
@@ -82,7 +84,12 @@ export function renderNativeDisplayItem(
       }),
     });
   };
-  if (kind === "hookPrompt") {
+  if (kind === "interAgentCommunication") {
+    const description = describeAgentCommunication(body);
+    if (!description) return null;
+    activity(description.title, description.details);
+    if (description.unavailable) missing(description.unavailable, 0);
+  } else if (kind === "hookPrompt") {
     if (
       !Array.isArray(body.fragments) ||
       !body.fragments.every(

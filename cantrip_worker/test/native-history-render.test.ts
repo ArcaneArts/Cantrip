@@ -35,6 +35,52 @@ const render = (
 ) => renderNativeHistoryItem(item(body, lifecycle), context)[0]!;
 
 describe("native history item presentation", () => {
+  it("renders exact agent communication separately from answers and never displays encrypted payloads", () => {
+    const body = {
+      type: "interAgentCommunication",
+      author: "/root",
+      recipient: "/root/worker",
+      otherRecipients: ["/root/reviewer"],
+      triggerTurn: true,
+      text: "  exact child request\n",
+      encryptedContent: null,
+    };
+    const visible = render(body);
+    expect(visible.identity.component).toBe("activity");
+    expect(visible.message.role).toBe("assistant");
+    expect(visible.message.content).toMatchObject([
+      {
+        type: "activity",
+        activity: {
+          type: "nativeItem",
+          kind: "interAgentCommunication",
+          title: "Agent task · /root → /root/worker, /root/reviewer",
+          details: "  exact child request\n",
+        },
+      },
+    ]);
+    expect(visible.unresolved).toEqual([]);
+    const opaque = render({
+      ...body,
+      text: "must-not-display",
+      encryptedContent: "ciphertext-only",
+    });
+    expect(opaque.message.content).toMatchObject([
+      { type: "activity", activity: { details: null } },
+      { type: "activity", activity: { type: "notice" } },
+    ]);
+    expect(opaque.unresolved).toEqual([
+      { kind: "encrypted-agent-communication", index: 0 },
+    ]);
+    expect(JSON.stringify(opaque.message.content)).not.toContain(
+      "ciphertext-only",
+    );
+    expect(JSON.stringify(opaque.message.content)).not.toContain(
+      "must-not-display",
+    );
+    expect(opaque.source.body.encryptedContent).toBe("ciphertext-only");
+  });
+
   it("renders hook fragments as labeled activity, preserving text, boundaries and run IDs", () => {
     const draft = render({
       type: "hookPrompt",

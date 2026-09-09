@@ -1829,13 +1829,47 @@ it now explicitly supplies V2 model metadata and standard Responses format.
 This is not proof of a production model-catalog enablement defect or of complete
 model/configuration parity.
 
-Remaining child fidelity work: native V2 spawn delivers its initial request as
-agent communication, which the current native history response does not expose
-as a retained item. This pass does not invent a userMessage for that missing
-source. Native communication retention, forked/inherited child histories,
+At the end of pass 10, native V2 spawn delivered its initial request as agent
+communication without a retained display item. Pass 11 below addresses newly
+consumed communications without inventing userMessage records. Forked/inherited child histories,
 goal/legacy associations and complete main-worker GUI/TUI child acceptance still
 need coverage. Other remaining history inventory, presentation upgrades, bounded
 replay and settings/eager-startup requirements remain open.
+
+**Pass 11 — retained native agent communications:**
+
+Native patch 0020 assigns a communication identity before both model-context
+and display persistence, emits item lifecycle events, and retains a dedicated
+`interAgentCommunication` item in legacy and paginated history. Author, recipient,
+additional recipients and whether the message triggered a turn remain attached
+to the original child turn. This does not submit a new user prompt or duplicate
+the communication in model context. TUI live/replay and transcript views render
+the item as agent activity rather than an assistant final answer. Worker live,
+legacy snapshot and canonical history renderers recognize the same item and
+share presentation parsing.
+
+Native encrypted content stays opaque in retained source records; only native
+plaintext becomes readable activity detail. A simultaneous plaintext field does
+not override an encrypted payload. Canonical history explicitly marks unavailable
+text, and opaque payloads are excluded from user-facing raw previews.
+
+Validation: all 197 worker history tests across 21 files pass against the
+new native runtime, including active-child communication visibility, encrypted
+HTTP/database publication, legacy/paginated retention and cold restart. The 106
+renderer/app-server tests, worker/server/app typechecks and 20 GUI activity tests
+also pass. Native protocol conversion and core disk/resume tests pass for exact
+plaintext, encrypted payloads and shared identity. The final native release build
+and TUI renderer test pass, including additional recipients, task/message labels
+and hiding a plaintext field when an encrypted payload is also present. All five
+actual-runtime cases across the foundation and managed-history fixtures pass
+again against that final bundle. These checks establish this communication path;
+they do not establish the full GUI/TUI acceptance matrix.
+The standard repository check still encounters the two unchanged server
+decomposition budgets recorded above. No CI or user application launch is used.
+
+This pass covers communications consumed by the native session. Older raw-only
+records and messages still waiting in a mailbox require separate reconstruction
+and retention coverage; it does not claim full child-history or lifecycle parity.
 
 **Still outstanding:** completion of authorized command admission, origin-independent
 lifecycle/CUA authority, durable all-turn projection/replay,

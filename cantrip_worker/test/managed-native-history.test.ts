@@ -396,6 +396,17 @@ describe.skipIf(!binary)(
         // Let automatic discovery settle while the child is still generating.
         // A completed parent must not retire the child's observation lifetime.
         await history.flush();
+        const runningChild = await runtime.readNativeHistory(childThreadId!);
+        expect(runningChild.thread.turns.at(-1)?.items).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              type: "interAgentCommunication",
+              author: "/root",
+              recipient: "/root/shared_history_child",
+              triggerTurn: true,
+            }),
+          ]),
+        );
         releaseChild();
         await vi.waitFor(
           async () => {
@@ -490,9 +501,25 @@ describe.skipIf(!binary)(
             depth: 1,
           },
         });
-        // Native V2 spawn delivers its initial request as agent communication,
-        // not a retained userMessage item. This fixture verifies every exposed
-        // child item; communication retention is a separate native fidelity gap.
+        const communication = opened
+          .flatMap((message) => message.content)
+          .find(
+            (part) =>
+              part.type === "activity" &&
+              part.activity.type === "nativeItem" &&
+              part.activity.kind === "interAgentCommunication",
+          );
+        expect(communication).toMatchObject({
+          type: "activity",
+          activity: {
+            title: "Agent task · /root → /root/shared_history_child",
+            agentScope: {
+              agentThreadId: childThreadId,
+              rootTurnId: parentTurn.turn.id,
+              isRoot: false,
+            },
+          },
+        });
         const toolMessage = opened.find((message) =>
           message.content.some(
             (part) =>
