@@ -1,3 +1,4 @@
+import { installInternalNativeModelInventoryRoutes } from "./routes/internal-native-model-inventory.js";
 import { installInternalNativeQueueRoutes } from "./routes/internal-native-queue.js";
 import { installInternalNativeCommandRoutes } from "./routes/internal-native-commands.js";
 import { installNativeHistoryRuntime } from "./runtime/native-history-runtime.js";
@@ -1351,6 +1352,11 @@ export async function buildApp({
     runAsOwner,
     dispatchNextQueuedPrompt,
     publishChatInvalidation,
+  });
+  installInternalNativeModelInventoryRoutes(app, {
+    config,
+    repository,
+    runAsOwner,
   });
   installInternalNativeCommandRoutes(app, {
     config,

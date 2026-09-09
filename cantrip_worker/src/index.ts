@@ -136,6 +136,7 @@ import {
 } from "./codex/managed-native-gateway.js";
 import { ManagedNativeCommandSession } from "./codex/managed-native-command-session.js";
 import { ManagedExecutionRunner } from "./codex/managed-execution-runner.js";
+import { NativeModelInventoryClient } from "./native-model-inventory-client.js";
 import { NativeSettingsDelivery } from "./native-settings-delivery.js";
 import { NativeCommandClient } from "./native-command-client.js";
 import { NativeHistoryClient } from "./native-history-client.js";
@@ -1806,6 +1807,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     }
   };
 
+  const nativeModelInventoryClient = new NativeModelInventoryClient({
+    serverUrl: config.serverUrl,
+    workerId: config.workerId,
+    token: () => config.token,
+  });
   const accountBackedProvider = (kind: string) =>
     kind === "chatgpt" || kind === "grok";
 
@@ -1868,6 +1874,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             ? [command.standaloneSkillRoot]
             : []
           : globalCodexSkillRoots,
+      );
+      runtime.setManagedModelInventoryLoader((provider) =>
+        nativeModelInventoryClient.read(provider),
       );
       runtime.setExternalThreadChangeObserver((change) => {
         if (change.changes.includes("queue") && runtime) {

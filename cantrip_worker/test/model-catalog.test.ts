@@ -84,6 +84,59 @@ describe("managed Codex model catalogs", () => {
     });
   });
 
+  it("includes all scoped inventory models while preserving active and custom-child entries", async () => {
+    const directory = await mkdtemp(
+      path.join(os.tmpdir(), "cantrip-full-model-inventory-"),
+    );
+    const extra = {
+      ...model,
+      id: "extra",
+      routeId: "extra-route",
+      name: "extra-native",
+      catalog: null,
+    };
+    const child = {
+      ...model,
+      id: "child",
+      routeId: "child-route",
+      name: "child-native",
+    };
+    try {
+      const filename = await writeManagedCodexModelCatalog(
+        directory,
+        model,
+        provider("ollama"),
+        child,
+        [extra, model],
+      );
+      const catalog = JSON.parse(await readFile(filename!, "utf8"));
+      expect(
+        catalog.models.map((entry: { slug: string }) => entry.slug),
+      ).toEqual([model.name, child.name, extra.name]);
+      expect(catalog.models[2]).toMatchObject({
+        display_name: "extra-native",
+        context_window: null,
+        supported_reasoning_levels: [],
+        input_modalities: ["text"],
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("uses discovered capabilities for a metadata-free active alias without duplicating its native name", () => {
+    const catalog = codexCatalogForRuntimeModels(
+      [{ ...model, catalog: null }, model],
+      "ollama",
+    );
+    expect(catalog!.models).toHaveLength(1);
+    expect(catalog!.models[0]).toMatchObject({
+      slug: model.name,
+      context_window: model.catalog!.contextWindow,
+      input_modalities: ["text", "image"],
+    });
+  });
+
   it("writes custom-provider catalogs but leaves ChatGPT native", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "cantrip-model-"));
     try {
