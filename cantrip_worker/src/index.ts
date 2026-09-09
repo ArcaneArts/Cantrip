@@ -1,3 +1,4 @@
+import { protectedNativeAccountDefaults } from "./native-account-defaults.js";
 import { updateProtectedNativeSettings } from "./native-settings-update.js";
 import { updateNativePermissions } from "./native-permission-update.js";
 import { NativeSettingsPublisher } from "./native-settings-publisher.js";
@@ -7746,6 +7747,12 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "chat.settings.update":
         return updateProtectedNativeSettings({
           request: command,
+          service: workerEncryption,
+          resolve: () => managedSettingsTarget(command.binding),
+        });
+      case "chat.account-defaults":
+        return protectedNativeAccountDefaults({
+          command,
           service: workerEncryption,
           resolve: () => managedSettingsTarget(command.binding),
         });

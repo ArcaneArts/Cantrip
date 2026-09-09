@@ -1,0 +1,563 @@
+diff --git a/codex-rs/tui/src/app.rs b/codex-rs/tui/src/app.rs
+index b0d97eb..3cdae4d 100644
+--- a/codex-rs/tui/src/app.rs
++++ b/codex-rs/tui/src/app.rs
+@@ -209,6 +209,7 @@ mod agents_overview;
+ mod agents_overview_threads;
+ mod agents_overview_view;
+ pub(crate) use agents_overview::AGENTS_OVERVIEW_VIEW_ID;
++mod account_defaults;
+ mod app_server_event_targets;
+ mod app_server_events;
+ pub(crate) mod app_server_requests;
+@@ -223,9 +224,9 @@ mod history_pagination;
+ mod history_ui;
+ mod input;
+ mod loaded_threads;
++mod managed_permission_changes;
+ mod pending_interactive_replay;
+ mod permission_shortcuts;
+-mod managed_permission_changes;
+ mod pets;
+ mod platform_actions;
+ mod plugin_mentions;
+@@ -549,7 +550,9 @@ pub(crate) struct App {
+     cloud_config_bundle: CloudConfigBundleLoader,
+     runtime_approval_policy_override: Option<RuntimeApprovalPolicyOverride>,
+     runtime_permission_profile_override: Option<RuntimePermissionProfileOverride>,
+-    pending_permission_changes: HashMap<String, managed_permission_changes::PendingPermissionChange>,
++    pending_permission_changes:
++        HashMap<String, managed_permission_changes::PendingPermissionChange>,
++    native_account_defaults: Option<account_defaults::Pending>,
+     observed_native_settings: HashMap<ThreadId, codex_app_server_protocol::ThreadSettings>,
+ 
+     pub(crate) file_search: FileSearchManager,
+diff --git a/codex-rs/tui/src/app/account_defaults.rs b/codex-rs/tui/src/app/account_defaults.rs
+new file mode 100644
+index 0000000..50d2d98
+--- /dev/null
++++ b/codex-rs/tui/src/app/account_defaults.rs
+@@ -0,0 +1,148 @@
++use super::*;
++use crate::native_account_defaults::Snapshot;
++use codex_app_server_protocol::ConfigEdit;
++use uuid::Uuid;
++
++pub(super) struct Pending {
++    id: Uuid,
++    source: Uuid,
++    thread: Option<ThreadId>,
++    phase: Phase,
++    edits: Vec<ConfigEdit>,
++    selection: String,
++}
++enum Phase {
++    Reading,
++    Preview(Snapshot),
++    Writing,
++}
++impl Pending {
++    fn current(&self, id: Uuid, app_server: &AppServerSession, thread: Option<ThreadId>) -> bool {
++        self.id == id && self.source == app_server.configuration_scope() && self.thread == thread
++    }
++}
++
++impl App {
++    pub(super) fn open_account_defaults(&mut self, app_server: &AppServerSession) {
++        let thread = self.chat_widget.thread_id();
++        if app_server.has_managed_gateway() && !app_server.is_managed_gateway_thread(thread) {
++            self.chat_widget
++                .add_error_message("Open the managed root thread to edit account defaults.".into());
++            return;
++        }
++        if self
++            .native_account_defaults
++            .as_ref()
++            .is_some_and(|pending| {
++                pending.current(pending.id, app_server, thread)
++                    && matches!(pending.phase, Phase::Reading | Phase::Writing)
++            })
++        {
++            self.chat_widget
++                .add_info_message("Account defaults request is still running.".into(), None);
++            return;
++        }
++        let id = Uuid::new_v4();
++        let model = self.chat_widget.current_model();
++        let effort = self.chat_widget.current_reasoning_effort();
++        let tier = self.config.service_tier.as_deref();
++        let mut edits = crate::config_update::build_model_selection_edits(model, effort.clone());
++        edits.extend(crate::config_update::build_service_tier_selection_edits(
++            tier,
++        ));
++        self.native_account_defaults = Some(Pending {
++            id,
++            source: app_server.configuration_scope(),
++            thread,
++            phase: Phase::Reading,
++            edits,
++            selection: format!(
++                "{model} · {} reasoning · {} tier",
++                effort
++                    .map(|value| value.to_string())
++                    .unwrap_or("inherited".into()),
++                tier.unwrap_or("inherited")
++            ),
++        });
++        let tx = self.app_event_tx.clone();
++        let handle = app_server.request_handle();
++        tokio::spawn(async move {
++            let result = crate::native_account_defaults::read(handle).await;
++            tx.send(AppEvent::AccountDefaultsRead { id, result });
++        });
++    }
++
++    pub(super) fn account_defaults_read(
++        &mut self,
++        app_server: &AppServerSession,
++        id: Uuid,
++        result: Result<Snapshot, String>,
++    ) {
++        let Some(pending) = self.native_account_defaults.as_mut().filter(|pending| {
++            pending.current(id, app_server, self.chat_widget.thread_id())
++                && matches!(pending.phase, Phase::Reading)
++        }) else {
++            return;
++        };
++        match result {
++            Ok(snapshot) => {
++                let summary = format!(
++                    "Saved: {}. Selection: {}. Existing chats and Cantrip’s new-chat model choice stay separate.",
++                    snapshot.summary, pending.selection
++                );
++                pending.phase = Phase::Preview(snapshot);
++                self.chat_widget
++                    .open_account_defaults_confirmation(id, summary);
++            }
++            Err(error) => {
++                self.native_account_defaults = None;
++                self.chat_widget.add_error_message(error);
++            }
++        }
++    }
++
++    pub(super) fn save_account_defaults(&mut self, app_server: &AppServerSession, id: Uuid) {
++        let Some(pending) = self
++            .native_account_defaults
++            .as_mut()
++            .filter(|pending| pending.current(id, app_server, self.chat_widget.thread_id()))
++        else {
++            self.chat_widget.add_error_message(
++                "The account defaults source changed. Open /defaults again.".into(),
++            );
++            return;
++        };
++        let Phase::Preview(snapshot) = &pending.phase else {
++            return;
++        };
++        let version = snapshot.version.clone();
++        let edits = pending.edits.clone();
++        pending.phase = Phase::Writing;
++        let tx = self.app_event_tx.clone();
++        let handle = app_server.request_handle();
++        tokio::spawn(async move {
++            let message = crate::native_account_defaults::write(handle, id, version, edits).await;
++            tx.send(AppEvent::AccountDefaultsWritten { id, message });
++        });
++    }
++
++    pub(super) fn account_defaults_written(
++        &mut self,
++        app_server: &AppServerSession,
++        id: Uuid,
++        message: String,
++    ) {
++        if !self
++            .native_account_defaults
++            .as_ref()
++            .is_some_and(|pending| {
++                pending.current(id, app_server, self.chat_widget.thread_id())
++                    && matches!(pending.phase, Phase::Writing)
++            })
++        {
++            return;
++        }
++        self.native_account_defaults = None;
++        self.chat_widget.add_info_message(message, None);
++    }
++}
+diff --git a/codex-rs/tui/src/app/event_dispatch.rs b/codex-rs/tui/src/app/event_dispatch.rs
+index 57f5e5c..422871f 100644
+--- a/codex-rs/tui/src/app/event_dispatch.rs
++++ b/codex-rs/tui/src/app/event_dispatch.rs
+@@ -2810,6 +2810,10 @@ impl App {
+                     self.chat_widget.add_error_message(err);
+                 }
+             }
++            AppEvent::OpenAccountDefaults => self.open_account_defaults(app_server),
++            AppEvent::AccountDefaultsRead { id, result } => self.account_defaults_read(app_server, id, result),
++            AppEvent::SaveAccountDefaults(id) => self.save_account_defaults(app_server, id),
++            AppEvent::AccountDefaultsWritten { id, message } => self.account_defaults_written(app_server, id, message),
+             AppEvent::OpenPermissionsPopup => {
+                 self.chat_widget.open_permissions_popup();
+             }
+diff --git a/codex-rs/tui/src/app/startup.rs b/codex-rs/tui/src/app/startup.rs
+index ee3eefc..073d9d1 100644
+--- a/codex-rs/tui/src/app/startup.rs
++++ b/codex-rs/tui/src/app/startup.rs
+@@ -544,8 +544,9 @@ See the Codex keymap documentation for supported actions and examples."
+             cloud_config_bundle,
+             runtime_approval_policy_override: None,
+             runtime_permission_profile_override: None,
+-        pending_permission_changes: HashMap::new(),
+-        observed_native_settings: HashMap::new(),
++            pending_permission_changes: HashMap::new(),
++            native_account_defaults: None,
++            observed_native_settings: HashMap::new(),
+             file_search,
+             enhanced_keys_supported,
+             keymap: runtime_keymap,
+diff --git a/codex-rs/tui/src/app/test_support.rs b/codex-rs/tui/src/app/test_support.rs
+index 4aba244..b01ad1e 100644
+--- a/codex-rs/tui/src/app/test_support.rs
++++ b/codex-rs/tui/src/app/test_support.rs
+@@ -33,6 +33,7 @@ pub(super) async fn make_test_app() -> App {
+         runtime_approval_policy_override: None,
+         runtime_permission_profile_override: None,
+         pending_permission_changes: HashMap::new(),
++        native_account_defaults: None,
+         observed_native_settings: HashMap::new(),
+         file_search,
+         transcript_cells: Vec::new(),
+diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
+index 5fb507d..0d10daf 100644
+--- a/codex-rs/tui/src/app/tests.rs
++++ b/codex-rs/tui/src/app/tests.rs
+@@ -18,6 +18,8 @@ mod connector_policy;
+ mod disconnect;
+ #[path = "tests/key_chords.rs"]
+ mod key_chords;
++#[path = "tests/managed_permissions.rs"]
++mod managed_permissions;
+ #[path = "tests/mcp_startup.rs"]
+ mod mcp_startup;
+ mod model_catalog;
+@@ -25,8 +27,6 @@ mod model_catalog;
+ mod patch_approval_tests;
+ #[path = "tests/permission_shortcuts_tests.rs"]
+ mod permission_shortcuts_tests;
+-#[path = "tests/managed_permissions.rs"]
+-mod managed_permissions;
+ mod plugin_catalog;
+ mod rate_limits;
+ #[path = "tests/recap_generation_tests.rs"]
+@@ -5443,6 +5443,7 @@ async fn make_test_app() -> App {
+         runtime_approval_policy_override: None,
+         runtime_permission_profile_override: None,
+         pending_permission_changes: HashMap::new(),
++        native_account_defaults: None,
+         observed_native_settings: HashMap::new(),
+         file_search,
+         transcript_cells: Vec::new(),
+@@ -5528,6 +5529,7 @@ async fn make_test_app_with_channels() -> (
+             runtime_approval_policy_override: None,
+             runtime_permission_profile_override: None,
+             pending_permission_changes: HashMap::new(),
++            native_account_defaults: None,
+             observed_native_settings: HashMap::new(),
+             file_search,
+             transcript_cells: Vec::new(),
+diff --git a/codex-rs/tui/src/app_event.rs b/codex-rs/tui/src/app_event.rs
+index f6a0210..e4ad934 100644
+--- a/codex-rs/tui/src/app_event.rs
++++ b/codex-rs/tui/src/app_event.rs
+@@ -1230,6 +1230,16 @@ pub(crate) enum AppEvent {
+ 
+     /// Re-open the permissions presets popup.
+     OpenPermissionsPopup,
++    OpenAccountDefaults,
++    AccountDefaultsRead {
++        id: uuid::Uuid,
++        result: Result<crate::native_account_defaults::Snapshot, String>,
++    },
++    SaveAccountDefaults(uuid::Uuid),
++    AccountDefaultsWritten {
++        id: uuid::Uuid,
++        message: String,
++    },
+ 
+     /// Open the branch picker option from the review popup.
+     OpenReviewBranchPicker(PathBuf),
+diff --git a/codex-rs/tui/src/app_server_session.rs b/codex-rs/tui/src/app_server_session.rs
+index 1a8d126..5d89b9f 100644
+--- a/codex-rs/tui/src/app_server_session.rs
++++ b/codex-rs/tui/src/app_server_session.rs
+@@ -294,6 +294,7 @@ pub(crate) struct AppServerBootstrap {
+ pub(crate) struct AppServerSession {
+     client: AppServerClient,
+     next_request_id: i64,
++    configuration_scope: uuid::Uuid,
+     history_pagination: HashMap<ThreadId, history::ThreadHistoryPagination>,
+     task_tool_threads: HashSet<ThreadId>,
+     task_tool_capabilities_dir: Option<AbsolutePathBuf>,
+@@ -382,6 +383,7 @@ impl AppServerSession {
+         Self {
+             client,
+             next_request_id: 1,
++            configuration_scope: uuid::Uuid::new_v4(),
+             history_pagination: HashMap::new(),
+             task_tool_threads: HashSet::new(),
+             task_tool_capabilities_dir: None,
+@@ -1609,6 +1611,10 @@ impl AppServerSession {
+         self.client.shutdown().await
+     }
+ 
++    pub(crate) fn configuration_scope(&self) -> uuid::Uuid {
++        self.configuration_scope
++    }
++
+     pub(crate) fn request_handle(&self) -> AppServerRequestHandle {
+         self.client.request_handle()
+     }
+diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
+index 5e5c73f..563f6e2 100644
+--- a/codex-rs/tui/src/chatwidget.rs
++++ b/codex-rs/tui/src/chatwidget.rs
+@@ -1090,6 +1090,33 @@ impl ChatWidget {
+         });
+     }
+ 
++    pub(crate) fn open_account_defaults_confirmation(&mut self, id: uuid::Uuid, summary: String) {
++        self.bottom_pane.show_selection_view(SelectionViewParams {
++            title: Some("Native account defaults".into()),
++            subtitle: Some(summary),
++            footer_hint: Some(standard_popup_hint_line()),
++            items: vec![
++                SelectionItem {
++                    name: "Save selection as account defaults".into(),
++                    description: Some(
++                        "Save model, reasoning and service tier on this account’s worker.".into(),
++                    ),
++                    actions: vec![Box::new(move |tx| {
++                        tx.send(AppEvent::SaveAccountDefaults(id));
++                    })],
++                    dismiss_on_select: true,
++                    ..Default::default()
++                },
++                SelectionItem {
++                    name: "Close".into(),
++                    dismiss_on_select: true,
++                    ..Default::default()
++                },
++            ],
++            ..Default::default()
++        });
++    }
++
+     pub(crate) fn open_memories_popup(&mut self) {
+         if !self.config.features.enabled(Feature::MemoryTool) {
+             self.open_memories_enable_prompt();
+diff --git a/codex-rs/tui/src/chatwidget/slash_dispatch.rs b/codex-rs/tui/src/chatwidget/slash_dispatch.rs
+index 7f2028f..f8a81d1 100644
+--- a/codex-rs/tui/src/chatwidget/slash_dispatch.rs
++++ b/codex-rs/tui/src/chatwidget/slash_dispatch.rs
+@@ -293,6 +293,9 @@ impl ChatWidget {
+                     .counter("codex.thread.rename", /*inc*/ 1, &[]);
+                 self.show_rename_prompt();
+             }
++            SlashCommand::Defaults => {
++                self.app_event_tx.send(AppEvent::OpenAccountDefaults);
++            }
+             SlashCommand::Model => {
+                 self.open_model_popup();
+                 self.defer_input_until_settings_applied();
+@@ -1169,6 +1172,7 @@ impl ChatWidget {
+             | SlashCommand::Compact
+             | SlashCommand::Review
+             | SlashCommand::Model
++            | SlashCommand::Defaults
+             | SlashCommand::Personality
+             | SlashCommand::Plan
+             | SlashCommand::Goal
+diff --git a/codex-rs/tui/src/lib.rs b/codex-rs/tui/src/lib.rs
+index 7e496d9..6e654f5 100644
+--- a/codex-rs/tui/src/lib.rs
++++ b/codex-rs/tui/src/lib.rs
+@@ -118,6 +118,7 @@ mod collaboration_modes;
+ mod color;
+ mod config_update;
+ pub(crate) mod custom_terminal;
++mod native_account_defaults;
+ mod pets;
+ pub use custom_terminal::Terminal;
+ mod auto_review_denials;
+diff --git a/codex-rs/tui/src/native_account_defaults.rs b/codex-rs/tui/src/native_account_defaults.rs
+new file mode 100644
+index 0000000..46d9dd1
+--- /dev/null
++++ b/codex-rs/tui/src/native_account_defaults.rs
+@@ -0,0 +1,136 @@
++//! Explicit native account defaults. These calls never update a live thread.
++use codex_app_server_client::AppServerRequestHandle;
++use codex_app_server_protocol as api;
++use serde_json::Value;
++use uuid::Uuid;
++
++#[derive(Debug, Clone)]
++pub(crate) struct Snapshot {
++    pub version: String,
++    pub summary: String,
++}
++
++pub(crate) fn snapshot(response: api::ConfigReadResponse) -> Result<Snapshot, String> {
++    let layers = response
++        .layers
++        .ok_or("Native config read omitted its layers.")?;
++    let user = layers.into_iter().find(|layer| {
++        matches!(
++            &layer.name,
++            api::ConfigLayerSource::User { profile: None, .. }
++        )
++    });
++    let (version, stored) = match user {
++        Some(layer) => (layer.version, layer.config),
++        None => (
++            codex_config::version_for_toml(&toml::Value::Table(Default::default())),
++            Value::Object(Default::default()),
++        ),
++    };
++    let label = |key: &str| {
++        stored
++            .get(key)
++            .and_then(Value::as_str)
++            .unwrap_or("inherited")
++    };
++    Ok(Snapshot {
++        version,
++        summary: format!(
++            "{} · {} reasoning · {} tier",
++            label("model"),
++            label("model_reasoning_effort"),
++            label("service_tier")
++        ),
++    })
++}
++
++pub(crate) async fn read(handle: AppServerRequestHandle) -> Result<Snapshot, String> {
++    let response = handle
++        .request_typed(api::ClientRequest::ConfigRead {
++            request_id: api::RequestId::String(format!("tui-defaults-read-{}", Uuid::new_v4())),
++            params: api::ConfigReadParams {
++                include_layers: true,
++                cwd: None,
++            },
++        })
++        .await
++        .map_err(|_| "Could not read native account defaults. Try /defaults again.".to_string())?;
++    snapshot(response)
++}
++
++pub(crate) fn write_request(
++    operation_id: Uuid,
++    version: String,
++    edits: Vec<api::ConfigEdit>,
++) -> api::ClientRequest {
++    api::ClientRequest::ConfigBatchWrite {
++        request_id: api::RequestId::String(format!("tui-defaults-write-{operation_id}")),
++        params: api::ConfigBatchWriteParams {
++            edits,
++            file_path: None,
++            expected_version: Some(version),
++            reload_user_config: false,
++        },
++    }
++}
++
++pub(crate) async fn write(
++    handle: AppServerRequestHandle,
++    operation_id: Uuid,
++    version: String,
++    edits: Vec<api::ConfigEdit>,
++) -> String {
++    let result: Result<api::ConfigWriteResponse, _> = handle
++        .request_typed(write_request(operation_id, version, edits))
++        .await;
++    let written = match result {
++        Ok(result) => result,
++        Err(codex_app_server_client::TypedRequestError::Server { .. }) => return "Native configuration rejected the change. Read /defaults before trying again.".into(),
++        Err(_) => return "Account default write was not confirmed. Read /defaults before making another change; it was not retried.".into(),
++    };
++    let message = match read(handle).await {
++        Ok(snapshot) if snapshot.version == written.version => {
++            "Account defaults saved and verified. Existing chats keep their settings."
++        }
++        Ok(_) => {
++            "Account defaults saved; another edit changed the configuration before readback. Read /defaults to review it."
++        }
++        Err(_) => "Account defaults saved, but readback failed. Read /defaults to verify them.",
++    };
++    if written.status == api::WriteStatus::OkOverridden {
++        format!("{message} Another configuration layer overrides one or more defaults.")
++    } else {
++        message.into()
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    #[test]
++    fn explicit_defaults_use_versioned_non_reloading_native_write() {
++        let edits = vec![crate::config_update::clear_config_value("service_tier")];
++        let request =
++            serde_json::to_value(write_request(Uuid::nil(), "native-v1".into(), edits)).unwrap();
++        assert_eq!(request["method"], "config/batchWrite");
++        assert_eq!(request["params"]["expectedVersion"], "native-v1");
++        let decoded: api::ConfigBatchWriteParams =
++            serde_json::from_value(request["params"].clone()).unwrap();
++        assert!(!decoded.reload_user_config);
++        assert_eq!(request["params"]["edits"][0]["value"], Value::Null);
++        assert!(request["params"]["filePath"].is_null());
++    }
++    #[test]
++    fn preview_uses_user_layer_not_runtime_overrides_or_private_config() {
++        let response = serde_json::from_value(serde_json::json!({
++            "config": {}, "origins": {}, "layers": [
++                { "name": { "type": "sessionFlags" }, "version": "flags", "config": { "model": "wrong" }, "disabledReason": null },
++                { "name": { "type": "user", "file": "/private/config.toml", "profile": null }, "version": "v1",
++                  "config": { "model": "saved", "model_reasoning_effort": "high", "secret": "private" }, "disabledReason": null }
++            ]
++        })).unwrap();
++        let result = snapshot(response).unwrap();
++        assert_eq!(result.version, "v1");
++        assert_eq!(result.summary, "saved · high reasoning · inherited tier");
++    }
++}
+diff --git a/codex-rs/tui/src/slash_command.rs b/codex-rs/tui/src/slash_command.rs
+index aab133f..95a4a9b 100644
+--- a/codex-rs/tui/src/slash_command.rs
++++ b/codex-rs/tui/src/slash_command.rs
+@@ -13,6 +13,7 @@ pub enum SlashCommand {
+     // DO NOT ALPHA-SORT! Enum order is presentation order in the popup, so
+     // more frequently used commands should be listed first.
+     Model,
++    Defaults,
+     Ide,
+     Permissions,
+     Keymap,
+@@ -122,6 +123,7 @@ impl SlashCommand {
+             SlashCommand::Stop => "stop all background terminals",
+             SlashCommand::MemoryDrop => "DO NOT USE",
+             SlashCommand::MemoryUpdate => "DO NOT USE",
++            SlashCommand::Defaults => "read and explicitly save native account defaults",
+             SlashCommand::Model => "choose what model and reasoning effort to use",
+             SlashCommand::Ide => {
+                 "include current selection, open files, and other context from your IDE"
+@@ -231,6 +233,7 @@ impl SlashCommand {
+             SlashCommand::Diff
+             | SlashCommand::Resume
+             | SlashCommand::Model
++            | SlashCommand::Defaults
+             | SlashCommand::Personality
+             | SlashCommand::Permissions
+             | SlashCommand::Copy

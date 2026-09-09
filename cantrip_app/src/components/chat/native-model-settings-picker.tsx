@@ -1,3 +1,4 @@
+import { NativeAccountDefaultsEditor } from "./native-account-defaults-editor";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -411,6 +412,18 @@ export function NativeModelSettingsPicker({
           >
             Retry settings read
           </Button>
+        ) : null}
+        {open && editable && binding && draft && observed.identity ? (
+          <NativeAccountDefaultsEditor
+            key={binding.bindingId}
+            binding={binding}
+            identity={observed.identity}
+            values={{
+              model: draft.model,
+              model_reasoning_effort: draft.effort,
+              service_tier: draft.serviceTier ?? null,
+            }}
+          />
         ) : null}
         <DialogFooter>
           <Button variant="outline" onClick={() => changeOpen(false)}>

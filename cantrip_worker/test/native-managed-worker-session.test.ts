@@ -1,3 +1,8 @@
+import {
+  readNativeAccountDefaults,
+  writeNativeAccountDefaults,
+  nativeAccountDefaultsParams,
+} from "../src/codex/native-account-defaults.js";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { once } from "node:events";
 import {
@@ -755,6 +760,90 @@ describe.skipIf(!binary)(
           diagnostics.filter((entry) => entry.method === "turn/started"),
         ).toEqual([]);
         expect(inheritedInitializations(await readMcpLog())).toEqual([]);
+        // Actual pinned config API: explicit defaults persist independently of
+        // both attached views. No synthetic prompt or personal account is used.
+        const nativeConfig = (
+          method: string,
+          params: Record<string, unknown>,
+        ) => first.request(method, params);
+        const defaultsBefore = await readNativeAccountDefaults(nativeConfig);
+        const threadBeforeDefaults = (
+          await runtime.readNativeThreadSettings(threadId)
+        ).confirmed!.settings;
+        const savedDefaults = await writeNativeAccountDefaults(
+          nativeConfig,
+          nativeAccountDefaultsParams({
+            expectedVersion: defaultsBefore.version,
+            values: {
+              model: "gpt-5",
+              model_reasoning_effort: "low",
+              service_tier: "fast",
+            },
+          }),
+          () => {},
+        );
+        expect(savedDefaults.verification).toBe("confirmed");
+        expect(savedDefaults.snapshot?.stored).toMatchObject({
+          model: "gpt-5",
+          model_reasoning_effort: "low",
+          service_tier: "fast",
+        });
+        expect(
+          (await runtime.readNativeThreadSettings(threadId)).confirmed!
+            .settings,
+        ).toEqual(threadBeforeDefaults);
+        expect(
+          (
+            await readNativeAccountDefaults((method, params) =>
+              second.request(method, params),
+            )
+          ).version,
+        ).toBe(savedDefaults.write!.version);
+        await expect(
+          writeNativeAccountDefaults(
+            nativeConfig,
+            nativeAccountDefaultsParams({
+              expectedVersion: defaultsBefore.version,
+              values: { model: "stale-overwrite" },
+            }),
+            () => {},
+          ),
+        ).rejects.toThrow(/modified|version|conflict/i);
+        const clearedTier = await writeNativeAccountDefaults(
+          nativeConfig,
+          nativeAccountDefaultsParams({
+            expectedVersion: savedDefaults.write!.version,
+            values: { service_tier: null },
+          }),
+          () => {},
+        );
+        expect(clearedTier.verification).toBe("confirmed");
+        expect(clearedTier.snapshot!.stored).not.toHaveProperty("service_tier");
+        const competingDefaults = await Promise.allSettled(
+          [first, second].map((client, index) =>
+            writeNativeAccountDefaults(
+              (method, params) => client.request(method, params),
+              nativeAccountDefaultsParams({
+                expectedVersion: clearedTier.write!.version,
+                values: {
+                  model_reasoning_effort: index === 0 ? "high" : "medium",
+                },
+              }),
+              () => {},
+            ),
+          ),
+        );
+        expect(
+          competingDefaults.filter((result) => result.status === "fulfilled"),
+        ).toHaveLength(1);
+        expect(
+          competingDefaults.filter((result) => result.status === "rejected"),
+        ).toHaveLength(1);
+        expect(
+          (await runtime.readNativeThreadSettings(threadId)).confirmed!
+            .settings,
+        ).toEqual(threadBeforeDefaults);
+        expect(providerRequests).toEqual([]);
       } catch (error) {
         bodyFailures.push(error);
         throw error;

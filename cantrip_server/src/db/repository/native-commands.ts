@@ -150,8 +150,12 @@ export function nativeCommandPolicy(input: NativeCommandAdmission): {
 } {
   if (
     input.intent.settingsBindingId &&
-    (input.method !== "thread/settings/update" ||
-      !input.intent.nativeSettingsOperationId)
+    !(
+      (input.method === "thread/settings/update" &&
+        input.intent.nativeSettingsOperationId) ||
+      input.method === "config/value/write" ||
+      input.method === "config/batchWrite"
+    )
   )
     throw new NativeCommandError("invalid-settings-binding-scope");
   if (

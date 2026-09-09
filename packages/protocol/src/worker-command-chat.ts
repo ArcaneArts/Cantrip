@@ -55,6 +55,7 @@ import {
 } from "./worker-runtime-support.js";
 
 export const workerChatCommandSchemas = [
+  nativeAccountDefaultsCommandSchema,
   nativeSettingsUpdateCommandSchema,
   nativePermissionUpdateCommandSchema,
   z
@@ -622,3 +623,4 @@ export const workerChatCommandSchemas = [
     provider: workerRuntimeProviderSchema,
   }),
 ] as const;
+import { nativeAccountDefaultsCommandSchema } from "./native-account-defaults.js";
