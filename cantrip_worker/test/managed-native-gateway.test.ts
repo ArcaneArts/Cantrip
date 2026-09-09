@@ -1,3 +1,4 @@
+import { NativePermissionRetentionError } from "../src/codex/native-permission-deferred.js";
 import { once } from "node:events";
 import { readFile } from "node:fs/promises";
 import WebSocket, { WebSocketServer } from "ws";
@@ -49,6 +50,7 @@ async function fixture(
   queue?: ManagedNativeQueueGateway,
   scopeCurrent: () => boolean = () => true,
   prepareModelCatalogRequest?: ManagedNativeGatewayOptions["prepareModelCatalogRequest"],
+  nativeResponse?: (frame: any) => Record<string, unknown> | undefined,
 ) {
   const native = new WebSocketServer({ host: "127.0.0.1", port: 0 });
   await once(native, "listening");
@@ -61,13 +63,15 @@ async function fixture(
       messages.push(frame);
       if (frame.method && frame.id !== undefined)
         socket.send(
-          JSON.stringify({
-            id: frame.id,
-            result:
-              frame.method === "initialize"
-                ? { userAgent: "fixture" }
-                : { accepted: frame.method },
-          }),
+          JSON.stringify(
+            nativeResponse?.(frame) ?? {
+              id: frame.id,
+              result:
+                frame.method === "initialize"
+                  ? { userAgent: "fixture" }
+                  : { accepted: frame.method },
+            },
+          ),
         );
     });
   });
@@ -122,6 +126,55 @@ const admitted = (settle = vi.fn(async () => {})): ManagedNativeAdmission => ({
 });
 
 describe("managed native gateway", () => {
+  it.each(["notRetained", "uncertain"] as const)(
+    "preserves correlated pending input evidence when retention is %s",
+    async (queueRetention) => {
+      const f = await fixture(
+        async () =>
+          admitted(
+            vi.fn(async () => {
+              throw new NativePermissionRetentionError(
+                queueRetention,
+                "native-user-id",
+                new Error("write failed"),
+              );
+            }),
+          ),
+        undefined,
+        undefined,
+        undefined,
+        (frame) =>
+          frame.method === "turn/start"
+            ? {
+                id: frame.id,
+                error: {
+                  code: -32001,
+                  message: "pending settings",
+                  data: {
+                    reason: "pendingSettings",
+                    inputConsumed: false,
+                  },
+                },
+              }
+            : undefined,
+      );
+      const response = await f.request("turn/start", {
+        threadId: identity.threadId,
+        input: [{ type: "text", text: "retained input" }],
+      });
+      expect(response.error.data).toEqual({
+        reason: "pendingSettings",
+        inputConsumed: false,
+        queueRetention,
+        clientUserMessageId: "native-user-id",
+        ...(queueRetention === "notRetained" ? { queueRetained: false } : {}),
+      });
+      expect(
+        f.messages.filter((frame) => frame.method === "turn/start"),
+      ).toHaveLength(1);
+      expect(f.client.readyState).toBe(WebSocket.OPEN);
+    },
+  );
   it("refreshes a picker read without holding Stop behind inventory discovery", async () => {
     const loading = deferred();
     const prepare = vi.fn(async (method: string) => {

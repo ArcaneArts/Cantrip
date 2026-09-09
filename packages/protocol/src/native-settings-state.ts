@@ -1,3 +1,7 @@
+import {
+  permissionTransitionSchema,
+  permissionProfileIdSchema,
+} from "./permission-profiles.js";
 import { z } from "zod";
 import { encryptedPayloadEnvelopeSchema } from "./encryption.js";
 
@@ -84,6 +88,7 @@ export const nativeSettingsIntentSchema = z
         runtimeGeneration: id.nullable(),
       })
       .strict(),
+    permissionTransition: permissionTransitionSchema.optional(),
     // Full desired selection/patch is encrypted before publication, as with admission.
     protectedContent: encryptedPayloadEnvelopeSchema,
     payloadDigest: z.string().regex(/^[a-f0-9]{64}$/u),
@@ -104,6 +109,31 @@ export type NativeSettingsPending = z.infer<typeof nativeSettingsPendingSchema>;
 
 /** Server revision orders canonical publication; native versions order application.
  * Neither a request nor its queue acknowledgment is an effective selection. */
+export const nativePermissionPolicyClaimSchema = z
+  .object({
+    effectiveId: permissionProfileIdSchema,
+    settingsVersion: nativeSettingsVersionSchema,
+  })
+  .strict();
+export type NativePermissionPolicyClaim = z.infer<
+  typeof nativePermissionPolicyClaimSchema
+>;
+export const nativePermissionPolicySchema = permissionTransitionSchema
+  .omit({ expectedRevision: true })
+  .extend({
+    revision: serverRevision,
+    operationId: id,
+    operationGeneration: id,
+    source: nativeSettingsReadScopeSchema
+      .omit({ chatId: true })
+      .extend({ runtimeGeneration: id }),
+    settingsVersion: nativeSettingsVersionSchema,
+  })
+  .strict();
+export type NativePermissionPolicy = z.infer<
+  typeof nativePermissionPolicySchema
+>;
+
 export const nativeSettingsStateSchema = z
   .object({
     chatId: id,
@@ -116,6 +146,7 @@ export const nativeSettingsStateSchema = z
     pending: z.array(nativeSettingsPendingSchema),
     binding: nativeSettingsBindingSchema.nullable(),
     effective: protectedNativeSettingsSnapshotSchema.nullable(),
+    permissionPolicy: nativePermissionPolicySchema.nullable().default(null),
   })
   .strict();
 export type NativeSettingsState = z.infer<typeof nativeSettingsStateSchema>;

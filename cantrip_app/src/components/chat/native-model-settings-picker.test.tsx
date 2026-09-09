@@ -11,6 +11,7 @@ const runtime = vi.hoisted(() => ({
   read: vi.fn(),
   prepare: vi.fn(),
   send: vi.fn(),
+  sendPermission: vi.fn(),
   matches: vi.fn(() => true),
 }));
 vi.mock("./use-native-settings-state", () => ({
@@ -26,6 +27,11 @@ vi.mock("@/lib/native-model-inventory", () => ({
 vi.mock("@/lib/native-settings-update", () => ({
   prepareNativeSettingsUpdate: runtime.prepare,
   sendNativeSettingsUpdate: runtime.send,
+}));
+vi.mock("@/lib/native-permission-update", () => ({
+  sendNativePermissionUpdate: runtime.sendPermission,
+  nativePermissionUpdateRejected: (error: unknown) =>
+    error instanceof Error && error.message === "permission-transition-pending",
 }));
 vi.mock("@/lib/client-session", () => ({
   clientSessionIdentityMatches: runtime.matches,
@@ -105,6 +111,7 @@ function observed() {
       data: {
         chatId: "chat",
         revision: "1",
+        permissionPolicy: null,
         desiredRevision: "0",
         desired: null,
         desiredStatus: null,
@@ -184,6 +191,13 @@ beforeEach(() => {
       bindingId: source.bindingId,
       protectedPatch: { ciphertext: "opaque" },
     }));
+  runtime.sendPermission
+    .mockReset()
+    .mockImplementation(async ({ request }) => ({
+      operationId: request.operationId,
+      submissionId: "permission-submission",
+      status: "queued",
+    }));
   runtime.send.mockReset().mockImplementation(async ({ request }) => ({
     operationId: request.operationId,
     submissionId: "submission",
@@ -194,6 +208,74 @@ afterEach(async () => {
   await act(async () => cleanups.splice(0).forEach((cleanup) => cleanup()));
 });
 describe("bound GUI native model picker", () => {
+  it("shares one source-owned submission lane across permissions and model/mode controls", async () => {
+    const mounted = await mount();
+    let release!: (value: unknown) => void;
+    runtime.sendPermission.mockImplementation(
+      ({ request }) =>
+        new Promise((resolve) => {
+          release = () =>
+            resolve({
+              operationId: request.operationId,
+              submissionId: "permission",
+              status: "queued",
+            });
+        }),
+    );
+    let submitted!: Promise<unknown>;
+    await act(async () => {
+      submitted = mounted
+        .controller()
+        .session.submitPermission(null, "7", "binding");
+    });
+    expect(runtime.sendPermission.mock.calls[0]![0]).toMatchObject({
+      chatId: "chat",
+      identity,
+      request: { id: null, expectedRevision: "7", bindingId: "binding" },
+    });
+    await expect(mounted.controller().updateMode("plan")).rejects.toThrow(
+      "already being submitted",
+    );
+    expect(runtime.prepare).not.toHaveBeenCalled();
+    await act(async () => {
+      release({});
+      await submitted;
+    });
+    expect(mounted.controller().session.localPermission).toMatchObject({
+      permissionSelection: { id: null, expectedRevision: "7" },
+      status: "queued",
+    });
+    expect(mounted.controller().observed.confirmed?.model).toBe("native-one");
+    await act(async () => {
+      await mounted.controller().updateMode("plan");
+    });
+    expect(runtime.prepare.mock.calls[0]![0].patch).toEqual({
+      collaborationModeKind: "plan",
+    });
+  });
+  it.each([
+    ["permission-transition-pending", "rejected"],
+    ["connection lost", "uncertain"],
+  ])(
+    "retains %s as %s without repeating native permission input",
+    async (message, status) => {
+      const mounted = await mount();
+      runtime.sendPermission.mockRejectedValue(new Error(message));
+      await act(async () => {
+        await expect(
+          mounted
+            .controller()
+            .session.submitPermission(":yolo", "0", "binding"),
+        ).rejects.toThrow(message);
+      });
+      expect(mounted.controller().session.localPermission?.status).toBe(status);
+      expect(runtime.sendPermission).toHaveBeenCalledTimes(1);
+      expect(mounted.controller().session.observed.confirmed?.model).toBe(
+        "native-one",
+      );
+    },
+  );
+
   it.each([
     ["No service tier override", { unsetServiceTier: true }, null],
     ["Standard service", { serviceTier: "default" }, "default"],

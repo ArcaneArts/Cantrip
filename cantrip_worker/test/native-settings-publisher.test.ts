@@ -28,7 +28,11 @@ const publishers: NativeSettingsPublisher[] = [];
 afterEach(() => {
   for (const publisher of publishers.splice(0)) publisher.close();
 });
-function fixture() {
+function fixture(
+  onBinding?: ConstructorParameters<
+    typeof NativeSettingsPublisher
+  >[0]["onBinding"],
+) {
   const observations = new NativeHistoryObservations();
   observations.replace("runtime");
   let settings = nativeThreadSettings({
@@ -97,6 +101,7 @@ function fixture() {
     isCurrent: () => current,
     retryDelayMs: 5,
     onError: (error) => errors.push(error),
+    onBinding,
   });
   publishers.push(publisher);
   return {
@@ -124,6 +129,31 @@ type NativeSettingsPublisherConstructorClient = ConstructorParameters<
 >[0]["client"];
 
 describe("automatic native settings publication", () => {
+  it("retries failed binding recovery before publishing later settings", async () => {
+    const recover = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("journal unavailable"))
+      .mockResolvedValue(undefined);
+    const f = fixture(recover);
+    f.publisher.start();
+    await vi.waitFor(() => expect(recover).toHaveBeenCalledTimes(2));
+    expect(f.errors).toHaveLength(1);
+    expect(f.client.refreshSettings).toHaveBeenCalledTimes(2);
+    expect(recover.mock.calls[0]![0]).toEqual(
+      expect.objectContaining({
+        bindingId: "binding-1",
+        runtimeGeneration: "runtime",
+      }),
+    );
+    expect(recover.mock.calls[1]![0]).toEqual(
+      expect.objectContaining({ bindingId: "binding-2" }),
+    );
+    f.emit("1");
+    await vi.waitFor(() =>
+      expect(f.client.observeSettings).toHaveBeenCalledTimes(1),
+    );
+  });
+
   it("abandons an old read-only request on reconnect and immediately establishes a fresh baseline", async () => {
     const f = fixture();
     let oldSignal: AbortSignal | undefined;

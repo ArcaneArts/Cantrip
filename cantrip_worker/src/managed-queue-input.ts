@@ -1,3 +1,5 @@
+import type { ManagedNativeOperation } from "./codex/managed-native-gateway.js";
+import type { ChatAttachmentOpaqueSummary } from "@cantrip/protocol/attachment-content";
 import {
   managedQueueText,
   managedQueuePlanPrefix,
@@ -23,6 +25,7 @@ import type {
 import {
   queuedPromptOpaqueContentSchema,
   type QueuedPromptOpaqueContent,
+  type ChatMessageOpaqueContent,
 } from "@cantrip/protocol/communication-content";
 import {
   encryptionAssociatedDataSchema,
@@ -95,6 +98,9 @@ const envelopeContent = z
     displayText: z.string(),
     action: actionSchema,
     executionMethod: methodSchema,
+    retainedGui: z.boolean().optional(),
+    retainedTurnStart: z.boolean().optional(),
+    representedAttachmentIds: z.array(z.string()).optional(),
     attachmentMap: z
       .array(
         z
@@ -334,6 +340,31 @@ export function createManagedQueueInputCodec(
         );
         const textChanged =
           input.text !== undefined && input.text !== opened.displayText;
+        if (
+          opened.retainedGui &&
+          (textChanged ||
+            (input.attachmentIds !== undefined &&
+              JSON.stringify(input.attachmentIds) !==
+                JSON.stringify(opened.representedAttachmentIds ?? [])))
+        ) {
+          // The exact rejected vector can include attachment metadata folded into
+          // text. After an edit, rebuild from the canonical user text and let the
+          // existing attachment projection add only the current selection.
+          return {
+            ...opened,
+            retainedGui: false,
+            representedAttachmentIds: [],
+            attachmentMap: [],
+            displayText: input.text ?? opened.displayText,
+            input: [
+              {
+                type: "text",
+                text: input.text ?? opened.displayText,
+                text_elements: [],
+              },
+            ],
+          };
+        }
         const keptIds = input.attachmentIds && new Set(input.attachmentIds);
         const byIndex = new Map(
           opened.attachmentMap.map((entry) => [entry.index, entry]),
@@ -417,7 +448,10 @@ export function createManagedQueueInputCodec(
       });
       input = opened.input;
       action = opened.action;
-      representedAttachments = opened.attachmentMap.map((entry) => entry.id);
+      representedAttachments = [
+        ...(opened.representedAttachmentIds ?? []),
+        ...opened.attachmentMap.map((entry) => entry.id),
+      ];
     } else {
       input = [{ type: "text", text: display.text, text_elements: [] }];
       action = prompt.nativeAction ?? "literal";
@@ -547,11 +581,14 @@ export function createManagedQueueInputCodec(
       text: display.text,
       attachmentIds: prompt.classification.attachmentIds,
     });
-    const classification = classify(
-      opened.action,
-      opened.input,
-      prompt.classification.mode,
-    );
+    const classification =
+      opened.retainedGui || opened.retainedTurnStart
+        ? {
+            action: opened.action,
+            mode: prompt.classification.mode,
+            executionMethod: opened.executionMethod,
+          }
+        : classify(opened.action, opened.input, prompt.classification.mode);
     const normalized =
       classification.mode === prompt.classification.mode
         ? prompt
@@ -567,8 +604,114 @@ export function createManagedQueueInputCodec(
       }),
     });
   }
+  async function retainGuiPrompt(input: {
+    pendingMessage: ChatMessageOpaqueContent;
+    attachments: ChatAttachmentOpaqueSummary[];
+    input: unknown[];
+    clientUserMessageId?: string;
+  }): Promise<ManagedNativeQueuePreparedPrompt> {
+    const message = input.pendingMessage;
+    if (
+      message.classification.role !== "user" ||
+      (input.clientUserMessageId !== undefined &&
+        input.clientUserMessageId !== message.id &&
+        input.clientUserMessageId !== `cantrip:${message.id}`) ||
+      JSON.stringify(message.classification.attachmentIds) !==
+        JSON.stringify(input.attachments.map((item) => item.id)) ||
+      input.attachments.some((item) => item.chatId !== options.chatId)
+    )
+      throw new Error(
+        "The retained GUI input does not match its original message and attachments.",
+      );
+    const previous = options.encryption.componentKey(
+      "chat-content",
+      message.protectedContent.keyRevision,
+    );
+    let opened;
+    try {
+      opened = await decryptChatMessageProtectedContent({
+        ownerId: options.encryption.ownerId(),
+        messageId: message.id,
+        componentKey: previous.key,
+        keyRevision: previous.keyRevision,
+        encrypted: message.protectedContent,
+        publicClassification: message.classification,
+      });
+    } finally {
+      clearSensitiveBytes(previous.key);
+    }
+    const text = opened.content
+      .flatMap((item) =>
+        item &&
+        typeof item === "object" &&
+        !Array.isArray(item) &&
+        item.type === "text" &&
+        typeof item.text === "string"
+          ? [item.text]
+          : [],
+      )
+      .join("\n");
+    const id = stableId(
+      "cantrip:deferred-gui",
+      options.encryption.serverIdentity(),
+      options.chatId,
+      message.id,
+    );
+    const classification = {
+      mode: message.classification.mode,
+      attachmentIds: message.classification.attachmentIds,
+    };
+    const nativeInput = await portableInput(
+      z.array(nativeQueueUserInputSchema).min(1).parse(input.input),
+    );
+    const protectedNativeInput = await protectNativeInput(id, {
+      version: 1,
+      input: nativeInput,
+      displayText: text,
+      action: "literal",
+      executionMethod: "turn/start",
+      attachmentMap: [],
+      retainedGui: true,
+      representedAttachmentIds: classification.attachmentIds,
+    });
+    const component = options.encryption.componentKey("chat-content");
+    try {
+      const defaults = options.defaults();
+      const protectedContent = await encryptQueuedPromptProtectedContent({
+        ownerId: options.encryption.ownerId(),
+        promptId: id,
+        componentKey: component.key,
+        keyRevision: component.keyRevision,
+        content: { version: 1, classification, text },
+      });
+      return {
+        prompt: queuedPromptOpaqueContentSchema.parse({
+          id,
+          classification,
+          protectedContent,
+          pendingMessage: message,
+          modelId: defaults.modelId,
+          reasoningEffort: message.reasoningEffort,
+          customSubagentModel: defaults.customSubagentModel,
+          subagentModelId: defaults.subagentModelId,
+          subagentReasoningEffort: defaults.subagentReasoningEffort,
+          worktreeId: defaults.worktreeId ?? null,
+          frozen: false,
+          idempotencyKey: `deferred-gui:${message.id}`,
+          protectedNativeInput,
+          nativeAction: "literal",
+          executionMethod: "turn/start",
+          nativeClientUserMessageId: `cantrip:${message.id}`,
+        }),
+        attachments: input.attachments,
+      };
+    } finally {
+      clearSensitiveBytes(component.key);
+    }
+  }
   async function preparePrompt(
     input: ManagedNativeQueuePromptInput,
+    retainedTurnStart = false,
   ): Promise<ManagedNativeQueuePreparedPrompt> {
     const { request, existing, id } = input;
     if (existing && (existing.id !== id || existing.chatId !== options.chatId))
@@ -591,6 +734,7 @@ export function createManagedQueueInputCodec(
       nativeInput,
       existing?.classification.mode ?? defaults.mode,
     );
+    if (retainedTurnStart) classification.executionMethod = "turn/start";
     const retainedAttachments: EncryptedQueuedPrompt["attachments"] = [];
     const retainedMap: ManagedQueueNativeInput["attachmentMap"] = [];
     const representedIndices = new Set<number>();
@@ -713,6 +857,7 @@ export function createManagedQueueInputCodec(
       action: classification.action,
       executionMethod: classification.executionMethod,
       attachmentMap,
+      ...(retainedTurnStart ? { retainedTurnStart: true } : {}),
     });
     return {
       prompt: queuedPromptOpaqueContentSchema.parse({
@@ -729,5 +874,74 @@ export function createManagedQueueInputCodec(
       attachments: [...retainedAttachments, ...media.attachments],
     };
   }
-  return { preparePrompt, openPrompt, openNativeInput, normalizePrompt };
+  async function retainTerminalPrompt(
+    operation: ManagedNativeOperation,
+  ): Promise<{
+    retainedPrompt: QueuedPromptOpaqueContent;
+    attachments: ChatAttachmentOpaqueSummary[];
+  }> {
+    const params = operation.frame.params;
+    if (
+      operation.origin !== "terminal" ||
+      operation.method !== "turn/start" ||
+      operation.kind !== "start" ||
+      operation.queueClaim ||
+      !params ||
+      typeof params !== "object" ||
+      Array.isArray(params)
+    )
+      throw new Error(
+        "Terminal retention requires an unconsumed direct native turn/start.",
+      );
+    const nativeParams = params as Record<string, unknown>;
+    const assertOwner = () => {
+      if (
+        operation.identity.serverId !== options.encryption.serverIdentity() ||
+        operation.identity.ownerId !== options.encryption.ownerId() ||
+        operation.identity.chatId !== options.chatId ||
+        (nativeParams.threadId !== undefined &&
+          nativeParams.threadId !== operation.identity.threadId)
+      )
+        throw new Error(
+          "The retained terminal input belongs to another source.",
+        );
+    };
+    assertOwner();
+    const id = stableId(
+      "cantrip:deferred-terminal",
+      options.encryption.serverIdentity(),
+      options.chatId,
+      operation.operationId,
+    );
+    const prepared = await preparePrompt(
+      {
+        id,
+        request: {
+          method: "thread/queue/add",
+          params: {
+            ...nativeParams,
+            managed: { action: "literal", operationId: operation.operationId },
+          },
+          identity: operation.identity,
+          connectionId: operation.connectionId ?? operation.operationId,
+          signal: new AbortController().signal,
+          assertCurrent: assertOwner,
+        },
+      },
+      true,
+    );
+    assertOwner();
+    return {
+      retainedPrompt: prepared.prompt,
+      attachments: prepared.attachments,
+    };
+  }
+  return {
+    retainTerminalPrompt,
+    preparePrompt,
+    retainGuiPrompt,
+    openPrompt,
+    openNativeInput,
+    normalizePrompt,
+  };
 }

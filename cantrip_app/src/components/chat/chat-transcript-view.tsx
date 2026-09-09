@@ -137,6 +137,7 @@ export function ChatTranscriptView({
     onOpenFile,
     onOpenRelocation,
     permissionProfiles,
+    nativePermissions,
     planImplementationDisabled,
     planState,
     queryClient,
@@ -1021,10 +1022,13 @@ export function ChatTranscriptView({
                     )
                   }
                   pending={
-                    permissionProfiles.isLoading ||
-                    selectPermissionProfile.isPending
+                    selectPermissionProfile.isPending ||
+                    (nativePermissions !== undefined
+                      ? nativeModelSettings.session.isPending
+                      : permissionProfiles.isLoading)
                   }
                   state={permissionProfiles.data}
+                  native={nativePermissions}
                   onChange={(id) => selectPermissionProfile.mutate(id)}
                 />
                 {capabilities.modes === "agent-modes" ? (

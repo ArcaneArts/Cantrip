@@ -26,6 +26,7 @@ export const managedQueueClaimSchema = z
       "accepted",
       "dispatched",
       "consumed",
+      "deferred",
       "rejected",
       "uncertain",
     ]),

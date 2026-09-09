@@ -1,0 +1,1836 @@
+diff --git a/codex-rs/tui/src/app.rs b/codex-rs/tui/src/app.rs
+index bb6201e..b0d97eb 100644
+--- a/codex-rs/tui/src/app.rs
++++ b/codex-rs/tui/src/app.rs
+@@ -225,6 +225,7 @@ mod input;
+ mod loaded_threads;
+ mod pending_interactive_replay;
+ mod permission_shortcuts;
++mod managed_permission_changes;
+ mod pets;
+ mod platform_actions;
+ mod plugin_mentions;
+@@ -548,6 +549,8 @@ pub(crate) struct App {
+     cloud_config_bundle: CloudConfigBundleLoader,
+     runtime_approval_policy_override: Option<RuntimeApprovalPolicyOverride>,
+     runtime_permission_profile_override: Option<RuntimePermissionProfileOverride>,
++    pending_permission_changes: HashMap<String, managed_permission_changes::PendingPermissionChange>,
++    observed_native_settings: HashMap<ThreadId, codex_app_server_protocol::ThreadSettings>,
+ 
+     pub(crate) file_search: FileSearchManager,
+ 
+diff --git a/codex-rs/tui/src/app/app_server_event_targets.rs b/codex-rs/tui/src/app/app_server_event_targets.rs
+index c3546b4..435ad3a 100644
+--- a/codex-rs/tui/src/app/app_server_event_targets.rs
++++ b/codex-rs/tui/src/app/app_server_event_targets.rs
+@@ -249,6 +249,7 @@ mod tests {
+ 
+     fn test_thread_settings() -> ThreadSettings {
+         ThreadSettings {
++            permission_profile: None,
+             multi_agent_enabled: false,
+             subagent_model: None,
+             subagent_reasoning_effort: None,
+@@ -354,6 +355,7 @@ mod tests {
+         let thread_id = ThreadId::new();
+         let notification =
+             ServerNotification::ThreadSettingsUpdated(ThreadSettingsUpdatedNotification {
++                resolved_security: None,
+                 operation_id: None,
+                 submission_id: None,
+                 thread_id: thread_id.to_string(),
+diff --git a/codex-rs/tui/src/app/app_server_events.rs b/codex-rs/tui/src/app/app_server_events.rs
+index beb1eec..2493529 100644
+--- a/codex-rs/tui/src/app/app_server_events.rs
++++ b/codex-rs/tui/src/app/app_server_events.rs
+@@ -67,6 +67,7 @@ impl App {
+                 );
+                 self.refresh_mcp_startup_expected_servers_from_config();
+                 self.chat_widget.finish_mcp_startup_after_lag();
++                self.reconcile_managed_permission_changes(app_server_client).await;
+                 self.refresh_agents_overview_threads(app_server_client);
+             }
+             AppServerEvent::ServerNotification(notification) => {
+@@ -97,6 +98,24 @@ impl App {
+         app_server_client: &AppServerSession,
+         notification: ServerNotification,
+     ) {
++        if let ServerNotification::ThreadSettingsUpdated(update) = &notification
++            && let Ok(thread_id) = ThreadId::from_string(&update.thread_id)
++            && app_server_client.is_managed_gateway_thread(Some(thread_id))
++            && !self.accept_native_settings_version(thread_id, &update.thread_settings, false)
++        {
++            // A native engine can be replaced without replacing its app-server
++            // connection. Only a current read can establish that new epoch.
++            if update.thread_settings.settings_version.as_ref().zip(
++                self.observed_native_settings.get(&thread_id).and_then(|settings| settings.settings_version.as_ref()),
++            ).is_some_and(|(incoming, current)| incoming.epoch != current.epoch) {
++                self.refresh_current_managed_settings(app_server_client, thread_id).await;
++            }
++            // An older applied notification may still settle our pending intent.
++            // Recover its receipt without replacing the newer confirmed settings.
++            self.reconcile_managed_permission_changes(app_server_client).await;
++            return;
++        }
++        self.observe_managed_permission_notification(app_server_client, &notification).await;
+         if let ServerNotification::ThreadStatusChanged(status) = &notification {
+             let _ = self.dynamic_tool_status_updates.send(status.clone());
+         }
+diff --git a/codex-rs/tui/src/app/event_dispatch.rs b/codex-rs/tui/src/app/event_dispatch.rs
+index e9fb52d..57f5e5c 100644
+--- a/codex-rs/tui/src/app/event_dispatch.rs
++++ b/codex-rs/tui/src/app/event_dispatch.rs
+@@ -767,6 +767,12 @@ impl App {
+                     {
+                         return Ok(AppRunControl::Continue);
+                     }
++                    if is_user_turn
++                        && let Some(retained) = err.downcast_ref::<TypedRequestError>().and_then(Self::pending_settings_input_disposition)
++                        && self.chat_widget.handle_pending_settings_turn(retained)
++                    {
++                        return Ok(AppRunControl::Continue);
++                    }
+                     let unsupported_permissions = err
+                         .downcast_ref::<UnsupportedLegacyPermissionProfile>()
+                         .is_some();
+@@ -1589,7 +1595,9 @@ impl App {
+                 self.app_event_tx.send(AppEvent::SettingsSelectionSettled);
+             }
+             AppEvent::SettingsSelectionSettled => {
+-                if self.chat_widget.no_modal_or_popup_active() {
++                if self.chat_widget.no_modal_or_popup_active()
++                    && !self.has_pending_permission_change_for_visible_thread()
++                {
+                     let config = self.chat_widget.config_ref();
+                     let permissions_override = Self::turn_permissions_override_from_config(
+                         config,
+@@ -2420,7 +2428,13 @@ impl App {
+                 }
+             }
+             AppEvent::SelectPermissionProfile(selection) => {
+-                if self.apply_permission_profile_selection(selection).await {
++                if app_server.has_managed_gateway() && !app_server.is_managed_gateway_thread(self.chat_widget.thread_id()) {
++                    self.chat_widget.add_error_message(managed_permission_changes::MANAGED_PERMISSION_ROOT_ONLY.into());
++                } else if app_server.is_managed_gateway_thread(self.chat_widget.thread_id()) {
++                    if let Some(thread_id) = self.chat_widget.thread_id() {
++                        self.submit_managed_permission_change(app_server, thread_id, selection).await;
++                    }
++                } else if self.apply_permission_profile_selection(selection).await {
+                     self.chat_widget.submit_initial_user_message_if_pending();
+                 }
+             }
+diff --git a/codex-rs/tui/src/app/managed_permission_changes.rs b/codex-rs/tui/src/app/managed_permission_changes.rs
+new file mode 100644
+index 0000000..7600236
+--- /dev/null
++++ b/codex-rs/tui/src/app/managed_permission_changes.rs
+@@ -0,0 +1,529 @@
++//! Managed permission choices are native operations, not optimistic config edits.
++
++use super::*;
++use codex_app_server_protocol as api;
++use codex_protocol::protocol::ThreadSettingsOperationPhase;
++
++pub(super) const MANAGED_PERMISSION_ROOT_ONLY: &str = "Permission changes in this managed session are available only on its root thread. Return to the root thread to choose permissions.";
++
++#[derive(Clone, Debug)]
++pub(super) struct PendingPermissionChange {
++    thread_id: ThreadId,
++    operation_id: String,
++    submission_id: Option<String>,
++    display_label: String,
++}
++
++impl PendingPermissionChange {
++    fn matches(&self, thread_id: &str, operation_id: &str, submission_id: &str) -> bool {
++        self.thread_id.to_string() == thread_id
++            && self.operation_id == operation_id
++            && self
++                .submission_id
++                .as_deref()
++                .is_none_or(|id| id == submission_id)
++    }
++}
++
++fn security_matches(
++    settings: &api::ThreadSettings,
++    security: &api::ThreadSettingsResolvedSecurity,
++) -> bool {
++    settings.permission_profile.as_ref() == Some(&security.permission_profile)
++        && settings.approval_policy == security.approval_policy
++        && settings.approvals_reviewer == security.approvals_reviewer
++        && settings.sandbox_policy == security.sandbox_policy
++        && settings.active_permission_profile == security.active_permission_profile
++}
++
++impl App {
++    pub(super) fn pending_settings_input_disposition(
++        error: &codex_app_server_client::TypedRequestError,
++    ) -> Option<crate::managed_queue::PendingSettingsInputDisposition> {
++        use crate::managed_queue::PendingSettingsInputDisposition;
++        let codex_app_server_client::TypedRequestError::Server { method, source } = error else {
++            return None;
++        };
++        let data = source.data.as_ref()?;
++        if method != "turn/start"
++            || data.get("reason").and_then(serde_json::Value::as_str) != Some("pendingSettings")
++            || data
++                .get("inputConsumed")
++                .and_then(serde_json::Value::as_bool)
++                != Some(false)
++        {
++            return None;
++        }
++        if data
++            .get("queueRetention")
++            .and_then(serde_json::Value::as_str)
++            == Some("uncertain")
++        {
++            return Some(PendingSettingsInputDisposition::Uncertain {
++                client_user_message_id: data
++                    .get("clientUserMessageId")
++                    .and_then(serde_json::Value::as_str)
++                    .filter(|id| !id.is_empty())
++                    .map(str::to_string),
++            });
++        }
++        Some(
++            if data
++                .get("queueRetained")
++                .and_then(serde_json::Value::as_bool)
++                == Some(true)
++            {
++                PendingSettingsInputDisposition::Retained
++            } else {
++                PendingSettingsInputDisposition::NotRetained
++            },
++        )
++    }
++
++    pub(super) fn has_pending_permission_change_for_visible_thread(&self) -> bool {
++        self.pending_permission_changes
++            .values()
++            .any(|pending| self.chat_widget.thread_id() == Some(pending.thread_id))
++    }
++
++    fn permission_selection_settled(&self, thread_id: ThreadId) {
++        if self.chat_widget.thread_id() == Some(thread_id) {
++            self.app_event_tx.send(AppEvent::SettingsSelectionSettled);
++        }
++    }
++
++    pub(super) async fn submit_managed_permission_change(
++        &mut self,
++        app_server: &AppServerSession,
++        thread_id: ThreadId,
++        selection: PermissionProfileSelection,
++    ) {
++        let operation_id = uuid::Uuid::new_v4().to_string();
++        self.pending_permission_changes.insert(
++            operation_id.clone(),
++            PendingPermissionChange {
++                thread_id,
++                operation_id: operation_id.clone(),
++                submission_id: None,
++                display_label: selection.display_label.clone(),
++            },
++        );
++        let result = app_server
++            .request_handle()
++            .request_typed::<api::ThreadSettingsUpdateResponse>(
++                api::ClientRequest::ThreadSettingsUpdate {
++                    request_id: api::RequestId::String(uuid::Uuid::new_v4().to_string()),
++                    params: api::ThreadSettingsUpdateParams {
++                        thread_id: thread_id.to_string(),
++                        operation_id: Some(operation_id.clone()),
++                        apply_at: Some(api::ThreadSettingsApplyAt::Quiescent),
++                        permissions: Some(selection.profile_id),
++                        approval_policy: selection.approval_policy,
++                        approvals_reviewer: selection.approvals_reviewer.map(Into::into),
++                        ..Default::default()
++                    },
++                },
++            )
++            .await;
++        match result {
++            Ok(receipt)
++                if receipt.operation_id.as_deref() == Some(operation_id.as_str())
++                    && receipt.admission == Some(api::ThreadSettingsAdmission::Queued)
++                    && receipt.submission_id.is_some() =>
++            {
++                // The operation may already have settled through an early notification.
++                // Admission can correlate a pending record, never recreate an applied one.
++                if let Some(pending) = self.pending_permission_changes.get_mut(&operation_id) {
++                    pending.submission_id = receipt.submission_id;
++                    self.chat_widget.add_info_message(format!(
++                        "Permissions pending: {}. They apply when this thread and its agents are idle.",
++                        selection.display_label,
++                    ), None);
++                }
++            }
++            Err(error) if permission_admission_rejected(&error) => {
++                self.pending_permission_changes.remove(&operation_id);
++                self.permission_selection_settled(thread_id);
++                self.chat_widget.add_error_message(format!("Permission change rejected: {error}. Current permissions were not changed by this request."));
++            }
++            result => {
++                let detail = match result {
++                    Err(error) => error.to_string(),
++                    Ok(_) => "the response did not identify queued admission".to_string(),
++                };
++                self.chat_widget.add_error_message(format!(
++                    "Permission change is unconfirmed: {detail}. No input was resent; displayed permissions remain at the last confirmed state."
++                ));
++                // A lost reply is not a rejection. The stable ID can recover application
++                // without issuing another settings update.
++                self.reconcile_managed_permission_change(app_server, &operation_id)
++                    .await;
++            }
++        }
++    }
++
++    pub(super) async fn observe_managed_permission_notification(
++        &mut self,
++        app_server: &AppServerSession,
++        notification: &api::ServerNotification,
++    ) {
++        match notification {
++            api::ServerNotification::ThreadSettingsUpdated(update) => {
++                // GUI/native peers share the same confirmed runtime state, even when
++                // this TUI did not originate the permission operation.
++                if let Ok(thread_id) = ThreadId::from_string(&update.thread_id)
++                    && app_server.is_managed_gateway_thread(Some(thread_id))
++                    && !update
++                        .operation_id
++                        .as_ref()
++                        .is_some_and(|id| self.pending_permission_changes.contains_key(id))
++                    && let Some(security) = &update.resolved_security
++                    && security_matches(&update.thread_settings, security)
++                    && self.accept_native_settings_version(
++                        thread_id,
++                        &update.thread_settings,
++                        false,
++                    )
++                {
++                    self.apply_confirmed_managed_permissions(
++                        thread_id,
++                        &update.thread_settings,
++                        Some(security),
++                    )
++                    .await;
++                }
++                let Some(operation_id) = update.operation_id.as_deref() else {
++                    return;
++                };
++                let Some(pending) = self.pending_permission_changes.get(operation_id) else {
++                    return;
++                };
++                if pending.thread_id.to_string() != update.thread_id {
++                    return;
++                }
++                if let (Some(submission_id), Some(security)) =
++                    (&update.submission_id, &update.resolved_security)
++                    && pending.matches(&update.thread_id, operation_id, submission_id)
++                    && security_matches(&update.thread_settings, security)
++                {
++                    if !self.accept_native_settings_version(
++                        pending.thread_id,
++                        &update.thread_settings,
++                        false,
++                    ) {
++                        return;
++                    }
++                    let pending = self
++                        .pending_permission_changes
++                        .remove(operation_id)
++                        .expect("pending permission operation");
++                    self.apply_confirmed_managed_permissions(
++                        pending.thread_id,
++                        &update.thread_settings,
++                        Some(security),
++                    )
++                    .await;
++                    self.permission_change_applied(&pending);
++                } else {
++                    // Older/mixed notifications are not application evidence for this intent.
++                    self.reconcile_managed_permission_change(app_server, operation_id)
++                        .await;
++                }
++            }
++            api::ServerNotification::Error(error) if !error.will_retry => {
++                if let Some(api::CodexErrorInfo::ThreadSettingsUpdateFailed {
++                    operation_id: Some(operation_id),
++                }) = &error.error.codex_error_info
++                    && self
++                        .pending_permission_changes
++                        .get(operation_id)
++                        .is_some_and(|pending| pending.thread_id.to_string() == error.thread_id)
++                {
++                    if let Some(pending) = self.pending_permission_changes.remove(operation_id) {
++                        self.permission_selection_settled(pending.thread_id);
++                    }
++                    // The normal error notification renders the rejection. Actual state stays.
++                }
++            }
++            _ => {}
++        }
++    }
++
++    pub(super) async fn reconcile_managed_permission_changes(
++        &mut self,
++        app_server: &AppServerSession,
++    ) {
++        let operation_ids: Vec<String> = self.pending_permission_changes.keys().cloned().collect();
++        for operation_id in operation_ids {
++            self.reconcile_managed_permission_change(app_server, &operation_id)
++                .await;
++        }
++    }
++
++    async fn reconcile_managed_permission_change(
++        &mut self,
++        app_server: &AppServerSession,
++        operation_id: &str,
++    ) {
++        let Some(pending) = self.pending_permission_changes.get(operation_id).cloned() else {
++            return;
++        };
++        let result = app_server
++            .request_handle()
++            .request_typed::<api::ThreadSettingsOperationReadResponse>(
++                api::ClientRequest::ThreadSettingsOperationRead {
++                    request_id: api::RequestId::String(uuid::Uuid::new_v4().to_string()),
++                    params: api::ThreadSettingsOperationReadParams {
++                        thread_id: pending.thread_id.to_string(),
++                        operation_id: operation_id.to_string(),
++                    },
++                },
++            )
++            .await;
++        let receipt = match result {
++            Ok(receipt)
++                if pending.matches(
++                    &receipt.thread_id,
++                    &receipt.operation_id,
++                    &receipt.submission_id,
++                ) =>
++            {
++                receipt
++            }
++            Ok(_) => {
++                tracing::warn!(
++                    operation_id,
++                    "permission operation read returned a different identity"
++                );
++                return;
++            }
++            Err(error) => {
++                tracing::warn!(operation_id, %error, "permission operation remains unconfirmed");
++                return;
++            }
++        };
++        match receipt.phase {
++            ThreadSettingsOperationPhase::Pending => {
++                if let Some(pending) = self.pending_permission_changes.get_mut(operation_id) {
++                    pending.submission_id = Some(receipt.submission_id);
++                }
++            }
++            ThreadSettingsOperationPhase::Rejected => {
++                self.pending_permission_changes.remove(operation_id);
++                self.permission_selection_settled(pending.thread_id);
++                if self.chat_widget.thread_id() == Some(pending.thread_id) {
++                    self.chat_widget.add_error_message(format!(
++                        "Permission change rejected: {}",
++                        receipt
++                            .rejection
++                            .unwrap_or_else(|| "native settings update was rejected".into())
++                    ));
++                }
++            }
++            ThreadSettingsOperationPhase::Applied => {
++                let Some(applied) = receipt.thread_settings.as_ref() else {
++                    return;
++                };
++                if !security_matches(applied, &receipt.resolved_security) {
++                    return;
++                }
++                // The operation journal contains its historical application snapshot. Read
++                // current state so reconnect never restores an older model or permission tuple.
++                let current = app_server
++                    .request_handle()
++                    .request_typed::<api::ThreadSettingsReadResponse>(
++                        api::ClientRequest::ThreadSettingsRead {
++                            request_id: api::RequestId::String(uuid::Uuid::new_v4().to_string()),
++                            params: api::ThreadSettingsReadParams {
++                                thread_id: pending.thread_id.to_string(),
++                            },
++                        },
++                    )
++                    .await;
++                let Ok(current) = current else { return };
++                if current.thread_id != pending.thread_id.to_string() {
++                    return;
++                }
++                if !self.accept_native_settings_version(
++                    pending.thread_id,
++                    &current.thread_settings,
++                    true,
++                ) {
++                    return;
++                }
++                self.pending_permission_changes.remove(operation_id);
++                let security =
++                    security_matches(&current.thread_settings, &receipt.resolved_security)
++                        .then_some(&receipt.resolved_security);
++                self.apply_confirmed_managed_permissions(
++                    pending.thread_id,
++                    &current.thread_settings,
++                    security,
++                )
++                .await;
++                self.permission_change_applied(&pending);
++            }
++        }
++    }
++
++    async fn apply_confirmed_managed_permissions(
++        &mut self,
++        thread_id: ThreadId,
++        settings: &api::ThreadSettings,
++        security: Option<&api::ThreadSettingsResolvedSecurity>,
++    ) {
++        self.apply_thread_settings_to_cached_session(thread_id, settings)
++            .await;
++        if self.chat_widget.thread_id() != Some(thread_id) {
++            return;
++        }
++        self.chat_widget.apply_thread_settings(settings.clone());
++        if let Some(security) = security {
++            if let Err(error) = self.chat_widget.set_permission_profile_with_active_profile(
++                security.permission_profile.clone(),
++                security.active_permission_profile.clone().map(Into::into),
++            ) {
++                tracing::warn!(%error, "failed to apply resolved native permission profile");
++            }
++        }
++        let config = self.chat_widget.config_ref().clone();
++        self.config.permissions = config.permissions.clone();
++        self.set_approvals_reviewer_in_app_and_widget(config.approvals_reviewer);
++        self.runtime_approval_policy_override = Some(RuntimeApprovalPolicyOverride::Restored(
++            AskForApproval::from(config.permissions.approval_policy.value()),
++        ));
++        self.runtime_permission_profile_override =
++            Some(RuntimePermissionProfileOverride::from_config(&config));
++    }
++
++    fn permission_change_applied(&mut self, pending: &PendingPermissionChange) {
++        self.permission_selection_settled(pending.thread_id);
++        if self.chat_widget.thread_id() == Some(pending.thread_id) {
++            let profile = self
++                .chat_widget
++                .config_ref()
++                .permissions
++                .active_permission_profile()
++                .map(|profile| profile.id)
++                .unwrap_or_else(|| "custom".into());
++            self.chat_widget.add_info_message(format!("Permission request applied: {}. Current native profile: {profile}. /permissions shows its details.", pending.display_label), None);
++        }
++    }
++}
++
++impl App {
++    /// Only actual current-state reads can establish a replacement native epoch.
++    /// Replayed notifications can advance their current epoch, never resurrect an old one.
++    pub(super) fn accept_native_settings_version(
++        &mut self,
++        thread_id: ThreadId,
++        incoming: &api::ThreadSettings,
++        current_read: bool,
++    ) -> bool {
++        if incoming.settings_version.as_ref().is_some_and(|version| {
++            version.epoch.is_empty() || version.revision.parse::<u64>().is_err()
++        }) {
++            self.chat_widget.add_error_message(
++                "Native settings returned an invalid version; keeping the last confirmed settings."
++                    .into(),
++            );
++            return false;
++        }
++        if let Some(previous) = self.observed_native_settings.get(&thread_id) {
++            let decision = settings_version_decision(previous, incoming, current_read);
++            if decision != VersionDecision::Accept {
++                if decision == VersionDecision::Conflict {
++                    self.chat_widget.add_error_message("Native settings contained conflicting values at the same version; keeping the last confirmed settings.".into());
++                }
++                return false;
++            }
++        }
++        if incoming.settings_version.is_some() {
++            self.observed_native_settings
++                .insert(thread_id, incoming.clone());
++        }
++        true
++    }
++
++    pub(super) async fn refresh_current_managed_settings(
++        &mut self,
++        app_server: &AppServerSession,
++        thread_id: ThreadId,
++    ) {
++        let current = app_server
++            .request_handle()
++            .request_typed::<api::ThreadSettingsReadResponse>(
++                api::ClientRequest::ThreadSettingsRead {
++                    request_id: api::RequestId::String(uuid::Uuid::new_v4().to_string()),
++                    params: api::ThreadSettingsReadParams {
++                        thread_id: thread_id.to_string(),
++                    },
++                },
++            )
++            .await;
++        if let Ok(current) = current
++            && current.thread_id == thread_id.to_string()
++            && self.accept_native_settings_version(thread_id, &current.thread_settings, true)
++        {
++            self.apply_confirmed_managed_permissions(thread_id, &current.thread_settings, None)
++                .await;
++        }
++    }
++}
++
++#[derive(PartialEq, Debug)]
++enum VersionDecision {
++    Accept,
++    Stale,
++    Conflict,
++}
++
++fn settings_version_decision(
++    previous: &api::ThreadSettings,
++    incoming: &api::ThreadSettings,
++    current_read: bool,
++) -> VersionDecision {
++    let Some(prior) = &previous.settings_version else {
++        return VersionDecision::Accept;
++    };
++    let Some(next) = &incoming.settings_version else {
++        return VersionDecision::Stale;
++    };
++    if prior.epoch != next.epoch {
++        return if current_read {
++            VersionDecision::Accept
++        } else {
++            VersionDecision::Stale
++        };
++    }
++    let (Ok(prior_revision), Ok(next_revision)) =
++        (prior.revision.parse::<u64>(), next.revision.parse::<u64>())
++    else {
++        return VersionDecision::Conflict;
++    };
++    match next_revision.cmp(&prior_revision) {
++        std::cmp::Ordering::Less => VersionDecision::Stale,
++        std::cmp::Ordering::Equal if previous != incoming => VersionDecision::Conflict,
++        _ => VersionDecision::Accept,
++    }
++}
++
++fn permission_admission_rejected(error: &codex_app_server_client::TypedRequestError) -> bool {
++    let codex_app_server_client::TypedRequestError::Server { source, .. } = error else {
++        return false;
++    };
++    matches!(
++        source
++            .data
++            .as_ref()
++            .and_then(|data| data.get("code"))
++            .and_then(serde_json::Value::as_str),
++        Some(
++            "permission-transition-pending"
++                | "permission-revision-conflict"
++                | "permission-policy-replaced"
++                | "invalid-permission-transition"
++                | "settings-binding-replaced"
++        )
++    )
++}
+diff --git a/codex-rs/tui/src/app/permission_shortcuts.rs b/codex-rs/tui/src/app/permission_shortcuts.rs
+index 4b1526d..fa9126c 100644
+--- a/codex-rs/tui/src/app/permission_shortcuts.rs
++++ b/codex-rs/tui/src/app/permission_shortcuts.rs
+@@ -17,6 +17,16 @@ impl App {
+             self.chat_widget.complete_permission_shortcut(thread_id);
+             return;
+         }
++        if app_server.has_managed_gateway() && !app_server.is_managed_gateway_thread(Some(thread_id)) {
++            self.chat_widget.add_error_message(managed_permission_changes::MANAGED_PERMISSION_ROOT_ONLY.into());
++            self.chat_widget.complete_permission_shortcut(thread_id);
++            return;
++        }
++        if app_server.is_managed_gateway_thread(Some(thread_id)) {
++            self.submit_managed_permission_change(app_server, thread_id, selection).await;
++            self.chat_widget.complete_permission_shortcut(thread_id);
++            return;
++        }
+         let result: Result<()> = async {
+             let active_profile = ActivePermissionProfile::new(selection.profile_id.clone());
+             let profile = builtin_permission_profile_for_active_permission_profile(&active_profile)
+diff --git a/codex-rs/tui/src/app/reconnect.rs b/codex-rs/tui/src/app/reconnect.rs
+index 7437581..49cf48c 100644
+--- a/codex-rs/tui/src/app/reconnect.rs
++++ b/codex-rs/tui/src/app/reconnect.rs
+@@ -379,6 +379,12 @@ impl App {
+             matches!(bootstrap.auth_mode, Some(TelemetryAuthMode::Chatgpt)),
+         );
+         self.feedback_audience = bootstrap.feedback_audience;
++        if app_server.is_managed_gateway_thread(self.chat_widget.thread_id())
++            && let Some(thread_id) = self.chat_widget.thread_id()
++        {
++            self.refresh_current_managed_settings(app_server, thread_id).await;
++        }
++        self.reconcile_managed_permission_changes(app_server).await;
+         self.chat_widget.add_info_message(
+             "Reconnected. No input was resent. Review uncertain submissions before retrying; recovered queues remain paused.".into(), /*hint*/ None,
+         );
+diff --git a/codex-rs/tui/src/app/startup.rs b/codex-rs/tui/src/app/startup.rs
+index 4a9881f..ee3eefc 100644
+--- a/codex-rs/tui/src/app/startup.rs
++++ b/codex-rs/tui/src/app/startup.rs
+@@ -544,6 +544,8 @@ See the Codex keymap documentation for supported actions and examples."
+             cloud_config_bundle,
+             runtime_approval_policy_override: None,
+             runtime_permission_profile_override: None,
++        pending_permission_changes: HashMap::new(),
++        observed_native_settings: HashMap::new(),
+             file_search,
+             enhanced_keys_supported,
+             keymap: runtime_keymap,
+diff --git a/codex-rs/tui/src/app/test_support.rs b/codex-rs/tui/src/app/test_support.rs
+index 9ef42b7..4aba244 100644
+--- a/codex-rs/tui/src/app/test_support.rs
++++ b/codex-rs/tui/src/app/test_support.rs
+@@ -32,6 +32,8 @@ pub(super) async fn make_test_app() -> App {
+         cloud_config_bundle: CloudConfigBundleLoader::default(),
+         runtime_approval_policy_override: None,
+         runtime_permission_profile_override: None,
++        pending_permission_changes: HashMap::new(),
++        observed_native_settings: HashMap::new(),
+         file_search,
+         transcript_cells: Vec::new(),
+         last_rendered_history_tail: None,
+diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
+index a9be596..5fb507d 100644
+--- a/codex-rs/tui/src/app/tests.rs
++++ b/codex-rs/tui/src/app/tests.rs
+@@ -25,6 +25,8 @@ mod model_catalog;
+ mod patch_approval_tests;
+ #[path = "tests/permission_shortcuts_tests.rs"]
+ mod permission_shortcuts_tests;
++#[path = "tests/managed_permissions.rs"]
++mod managed_permissions;
+ mod plugin_catalog;
+ mod rate_limits;
+ #[path = "tests/recap_generation_tests.rs"]
+@@ -5440,6 +5442,8 @@ async fn make_test_app() -> App {
+         cloud_config_bundle: CloudConfigBundleLoader::default(),
+         runtime_approval_policy_override: None,
+         runtime_permission_profile_override: None,
++        pending_permission_changes: HashMap::new(),
++        observed_native_settings: HashMap::new(),
+         file_search,
+         transcript_cells: Vec::new(),
+         last_rendered_history_tail: None,
+@@ -5523,6 +5527,8 @@ async fn make_test_app_with_channels() -> (
+             cloud_config_bundle: CloudConfigBundleLoader::default(),
+             runtime_approval_policy_override: None,
+             runtime_permission_profile_override: None,
++            pending_permission_changes: HashMap::new(),
++            observed_native_settings: HashMap::new(),
+             file_search,
+             transcript_cells: Vec::new(),
+             last_rendered_history_tail: None,
+@@ -8439,10 +8445,12 @@ async fn inactive_thread_settings_notification_updates_cached_collaboration_mode
+     );
+ 
+     let notification = ThreadSettingsUpdatedNotification {
++        resolved_security: None,
+         operation_id: None,
+         submission_id: None,
+         thread_id: inactive_thread_id.to_string(),
+         thread_settings: ThreadSettings {
++            permission_profile: None,
+             multi_agent_enabled: false,
+             subagent_model: None,
+             subagent_reasoning_effort: None,
+diff --git a/codex-rs/tui/src/app/tests/managed_permissions.rs b/codex-rs/tui/src/app/tests/managed_permissions.rs
+new file mode 100644
+index 0000000..8f17c42
+--- /dev/null
++++ b/codex-rs/tui/src/app/tests/managed_permissions.rs
+@@ -0,0 +1,718 @@
++use super::*;
++use crate::app_server_session::ThreadParamsMode;
++use codex_app_server_client::{
++    AppServerClient, RemoteAppServerClient, RemoteAppServerConnectArgs, RemoteAppServerEndpoint,
++};
++use codex_app_server_protocol as api;
++use futures::{SinkExt, StreamExt};
++use pretty_assertions::assert_eq;
++use serde_json::{Value, json};
++use tokio_tungstenite::tungstenite::Message;
++
++struct Fixture {
++    requests: Arc<std::sync::Mutex<Vec<Value>>>,
++    phase: Arc<std::sync::Mutex<String>>,
++    rejection_code: Arc<std::sync::Mutex<Option<String>>>,
++    pending_turn: Arc<std::sync::Mutex<Option<Value>>>,
++    task: tokio::task::JoinHandle<()>,
++    settings: api::ThreadSettings,
++    security: api::ThreadSettingsResolvedSecurity,
++}
++
++async fn managed_permissions_fixture(
++    app: &App,
++    thread_id: ThreadId,
++    fail_ack: bool,
++) -> Result<(AppServerSession, Fixture)> {
++    let mut collaboration = app.chat_widget.effective_collaboration_mode();
++    collaboration.settings.model = "applied-model".into();
++    let settings = api::ThreadSettings {
++        permission_profile: Some(PermissionProfile::read_only()),
++        multi_agent_enabled: false,
++        subagent_model: None,
++        subagent_reasoning_effort: None,
++        settings_version: Some(codex_protocol::protocol::ThreadSettingsVersion {
++            epoch: "fixture-epoch".into(),
++            revision: "1".into(),
++        }),
++        cwd: app.config.cwd.clone(),
++        approval_policy: api::AskForApproval::OnRequest,
++        approvals_reviewer: api::ApprovalsReviewer::User,
++        sandbox_policy: api::SandboxPolicy::ReadOnly {
++            network_access: false,
++        },
++        active_permission_profile: Some(api::ActivePermissionProfile::read_only()),
++        model: "applied-model".into(),
++        model_provider: "openai".into(),
++        service_tier: None,
++        effort: collaboration.settings.reasoning_effort.clone(),
++        summary: None,
++        collaboration_mode: collaboration,
++        multi_agent_mode: Default::default(),
++        personality: None,
++    };
++    let security = api::ThreadSettingsResolvedSecurity {
++        approval_policy: settings.approval_policy.clone(),
++        approvals_reviewer: settings.approvals_reviewer,
++        sandbox_policy: settings.sandbox_policy.clone(),
++        permission_profile: PermissionProfile::read_only(),
++        active_permission_profile: settings.active_permission_profile.clone(),
++    };
++    let requests = Arc::new(std::sync::Mutex::new(Vec::<Value>::new()));
++    let observed = requests.clone();
++    let phase = Arc::new(std::sync::Mutex::new("pending".to_string()));
++    let server_phase = phase.clone();
++    let rejection_code = Arc::new(std::sync::Mutex::new(None::<String>));
++    let server_rejection = rejection_code.clone();
++    let pending_turn = Arc::new(std::sync::Mutex::new(None::<Value>));
++    let server_pending_turn = pending_turn.clone();
++    let applied = settings.clone();
++    let resolved = security.clone();
++    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
++    let address = listener.local_addr()?;
++    let task = tokio::spawn(async move {
++        let (socket, _) = listener.accept().await.unwrap();
++        let mut socket = tokio_tungstenite::accept_async(socket).await.unwrap();
++        while let Some(Ok(Message::Text(text))) = socket.next().await {
++            let request: Value = serde_json::from_str(&text).unwrap();
++            let Some(id) = request.get("id").cloned() else {
++                continue;
++            };
++            let method = request["method"].as_str().unwrap();
++            let result = match method {
++                "initialize" => {
++                    json!({"userAgent":"codex/0.153.4", "cantripManagedGateway":{"version":1,"threadId":thread_id.to_string(),"replyMethod":"cantrip/managed/reply"}})
++                }
++                "thread/settings/update" => {
++                    json!({"operationId":request["params"]["operationId"],"submissionId":"permission-submission","admission":"queued","resolvedSecurity":resolved})
++                }
++                "thread/settings/operation/read" => {
++                    let phase = server_phase.lock().unwrap().clone();
++                    json!({"threadId":thread_id.to_string(),"operationId":request["params"]["operationId"],"submissionId":"permission-submission","phase":phase,"resolvedSecurity":resolved,"threadSettings":if phase == "applied" { Some(&applied) } else { None },"rejection":if phase == "rejected" { Some("forced policy changed") } else { None }})
++                }
++                "thread/settings/read" => {
++                    let mut current = applied.clone();
++                    current.model = "newer-current-model".into();
++                    current.settings_version.as_mut().unwrap().revision = "2".into();
++                    current.collaboration_mode.settings.model = current.model.clone();
++                    json!({"threadId":thread_id.to_string(),"threadSettings":current})
++                }
++                _ => json!({}),
++            };
++            let rejection = server_rejection.lock().unwrap().clone();
++            let pending_turn = server_pending_turn.lock().unwrap().clone();
++            let response = if method == "turn/start" && pending_turn.is_some() {
++                json!({"id":id,"error":{"code":-32001,"message":"PendingSettings: input not consumed","data":pending_turn}})
++            } else if method == "thread/settings/update" && rejection.is_some() {
++                json!({"id":id,"error":{"code":-32001,"message":"permission admission rejected","data":{"code":rejection,"status":409}}})
++            } else if fail_ack && method == "thread/settings/update" {
++                json!({"id":id,"error":{"code":-32603,"message":"reply lost after admission"}})
++            } else {
++                json!({"id":id,"result":result})
++            };
++            observed.lock().unwrap().push(request);
++            socket
++                .send(Message::Text(response.to_string().into()))
++                .await
++                .unwrap();
++        }
++    });
++    let remote = RemoteAppServerClient::connect(RemoteAppServerConnectArgs {
++        endpoint: RemoteAppServerEndpoint::WebSocket {
++            websocket_url: format!("ws://{address}"),
++            auth_token: None,
++        },
++        client_name: "managed-permission-test".into(),
++        client_version: "1".into(),
++        experimental_api: true,
++        mcp_server_openai_form_elicitation: false,
++        opt_out_notification_methods: vec![],
++        channel_capacity: 16,
++    })
++    .await?;
++    Ok((
++        AppServerSession::new(AppServerClient::Remote(remote), ThreadParamsMode::Remote),
++        Fixture {
++            requests,
++            phase,
++            rejection_code,
++            pending_turn,
++            task,
++            settings,
++            security,
++        },
++    ))
++}
++
++fn selection() -> PermissionProfileSelection {
++    PermissionProfileSelection {
++        profile_id: ":read-only".into(),
++        approval_policy: Some(AskForApproval::OnRequest),
++        approvals_reviewer: Some(ApprovalsReviewer::User),
++        display_label: "Read Only".into(),
++    }
++}
++
++async fn attached_app() -> (App, ThreadId) {
++    let mut app = make_test_app().await;
++    let thread_id = ThreadId::new();
++    app.active_thread_id = Some(thread_id);
++    app.primary_thread_id = Some(thread_id);
++    app.chat_widget
++        .handle_thread_session_quiet(test_thread_session(thread_id, app.config.cwd.to_path_buf()));
++    (app, thread_id)
++}
++
++fn operation_id(fixture: &Fixture) -> String {
++    fixture
++        .requests
++        .lock()
++        .unwrap()
++        .iter()
++        .find(|r| r["method"] == "thread/settings/update")
++        .unwrap()["params"]["operationId"]
++        .as_str()
++        .unwrap()
++        .into()
++}
++
++#[tokio::test]
++async fn managed_permissions_queued_shortcut_and_picker_wait_for_correlated_application()
++-> Result<()> {
++    for shortcut in [true, false] {
++        let (mut app, thread_id) = attached_app().await;
++        let original = RuntimePermissionProfileOverride::from_config(app.chat_widget.config_ref());
++        let (mut server, fixture) = managed_permissions_fixture(&app, thread_id, false).await?;
++        let mut tui = crate::tui::test_support::make_test_tui()?;
++        if shortcut {
++            app.apply_permission_shortcut(&mut server, &mut tui, thread_id, selection())
++                .await;
++        } else {
++            app.handle_event(
++                &mut tui,
++                &mut server,
++                AppEvent::SelectPermissionProfile(selection()),
++            )
++            .await?;
++        }
++        assert_eq!(app.pending_permission_changes.len(), 1);
++        assert_eq!(
++            RuntimePermissionProfileOverride::from_config(app.chat_widget.config_ref()),
++            original
++        );
++        assert!(app.runtime_permission_profile_override.is_none());
++        let id = operation_id(&fixture);
++        let requests = fixture.requests.lock().unwrap().clone();
++        let writes: Vec<_> = requests
++            .iter()
++            .filter(|r| r["method"] != "initialize")
++            .collect();
++        assert_eq!(
++            writes.len(),
++            1,
++            "queued admission must not trigger config writes or a second native override"
++        );
++        assert_eq!(writes[0]["params"]["applyAt"], "quiescent");
++        assert_eq!(writes[0]["params"]["permissions"], ":read-only");
++        assert!(!id.is_empty());
++        let mut update = api::ThreadSettingsUpdatedNotification {
++            operation_id: Some(id.clone()),
++            submission_id: Some("wrong-submission".into()),
++            resolved_security: Some(fixture.security.clone()),
++            thread_id: thread_id.to_string(),
++            thread_settings: fixture.settings.clone(),
++        };
++        app.observe_managed_permission_notification(
++            &server,
++            &api::ServerNotification::ThreadSettingsUpdated(update.clone()),
++        )
++        .await;
++        assert_eq!(
++            RuntimePermissionProfileOverride::from_config(app.chat_widget.config_ref()),
++            original
++        );
++        assert_eq!(app.pending_permission_changes.len(), 1);
++        update.submission_id = Some("permission-submission".into());
++        app.observe_managed_permission_notification(
++            &server,
++            &api::ServerNotification::ThreadSettingsUpdated(update.clone()),
++        )
++        .await;
++        assert!(app.pending_permission_changes.is_empty());
++        assert_eq!(
++            app.chat_widget
++                .config_ref()
++                .permissions
++                .active_permission_profile(),
++            Some(ActivePermissionProfile::new(":read-only"))
++        );
++        assert!(app.runtime_permission_profile_override.is_some());
++        // A duplicate applied notification is not another pending intent or write.
++        app.observe_managed_permission_notification(
++            &server,
++            &api::ServerNotification::ThreadSettingsUpdated(update),
++        )
++        .await;
++        assert!(app.pending_permission_changes.is_empty());
++        assert_eq!(
++            fixture
++                .requests
++                .lock()
++                .unwrap()
++                .iter()
++                .filter(|r| r["method"] == "thread/settings/update")
++                .count(),
++            1
++        );
++        server.shutdown().await?;
++        fixture.task.await?;
++    }
++    Ok(())
++}
++
++#[tokio::test]
++async fn managed_permissions_lost_ack_reconciles_without_resend_or_historical_model_restore()
++-> Result<()> {
++    let (mut app, thread_id) = attached_app().await;
++    let original = RuntimePermissionProfileOverride::from_config(app.chat_widget.config_ref());
++    let (server, fixture) = managed_permissions_fixture(&app, thread_id, true).await?;
++    app.submit_managed_permission_change(&server, thread_id, selection())
++        .await;
++    assert_eq!(app.pending_permission_changes.len(), 1);
++    assert_eq!(
++        RuntimePermissionProfileOverride::from_config(app.chat_widget.config_ref()),
++        original
++    );
++    *fixture.phase.lock().unwrap() = "applied".into();
++    app.reconcile_managed_permission_changes(&server).await;
++    assert!(app.pending_permission_changes.is_empty());
++    assert_eq!(
++        app.chat_widget
++            .effective_collaboration_mode()
++            .settings
++            .model,
++        "newer-current-model"
++    );
++    assert_eq!(
++        fixture
++            .requests
++            .lock()
++            .unwrap()
++            .iter()
++            .filter(|r| r["method"] == "thread/settings/update")
++            .count(),
++        1
++    );
++    server.shutdown().await?;
++    fixture.task.await?;
++    Ok(())
++}
++
++#[tokio::test]
++async fn managed_permissions_rejected_operation_does_not_promote_requested_state() -> Result<()> {
++    let (mut app, thread_id) = attached_app().await;
++    let original = RuntimePermissionProfileOverride::from_config(app.chat_widget.config_ref());
++    let (server, fixture) = managed_permissions_fixture(&app, thread_id, false).await?;
++    app.submit_managed_permission_change(&server, thread_id, selection())
++        .await;
++    *fixture.phase.lock().unwrap() = "rejected".into();
++    app.reconcile_managed_permission_changes(&server).await;
++    assert!(app.pending_permission_changes.is_empty());
++    assert_eq!(
++        RuntimePermissionProfileOverride::from_config(app.chat_widget.config_ref()),
++        original
++    );
++    assert!(app.runtime_permission_profile_override.is_none());
++    server.shutdown().await?;
++    fixture.task.await?;
++    Ok(())
++}
++
++#[tokio::test]
++async fn managed_permissions_version_fence_rejects_old_conflicting_and_retired_epoch_events()
++-> Result<()> {
++    let (mut app, thread_id) = attached_app().await;
++    let (server, fixture) = managed_permissions_fixture(&app, thread_id, false).await?;
++    let mut current = fixture.settings.clone();
++    current.settings_version = Some(codex_protocol::protocol::ThreadSettingsVersion {
++        epoch: "epoch-one".into(),
++        revision: "10".into(),
++    });
++    assert!(app.accept_native_settings_version(thread_id, &current, true));
++    let mut stale = current.clone();
++    stale.settings_version.as_mut().unwrap().revision = "9".into();
++    stale.model = "old-model".into();
++    assert!(!app.accept_native_settings_version(thread_id, &stale, false));
++    let mut conflict = current.clone();
++    conflict.model = "different-model-at-same-version".into();
++    assert!(!app.accept_native_settings_version(thread_id, &conflict, false));
++    assert!(app.accept_native_settings_version(thread_id, &current, false));
++    let mut replacement = current.clone();
++    replacement.settings_version.as_mut().unwrap().epoch = "epoch-two".into();
++    replacement.settings_version.as_mut().unwrap().revision = "1".into();
++    assert!(!app.accept_native_settings_version(thread_id, &replacement, false));
++    assert!(app.accept_native_settings_version(thread_id, &replacement, true));
++    assert!(!app.accept_native_settings_version(thread_id, &current, false));
++    let mut legacy = fixture.settings.clone();
++    legacy.settings_version = None;
++    assert!(!app.accept_native_settings_version(thread_id, &legacy, false));
++    assert_eq!(app.observed_native_settings[&thread_id], replacement);
++    server.shutdown().await?;
++    fixture.task.await?;
++    Ok(())
++}
++
++#[tokio::test]
++async fn managed_permissions_native_rejection_notification_clears_only_its_own_intent() -> Result<()>
++{
++    let (mut app, thread_id) = attached_app().await;
++    let original = RuntimePermissionProfileOverride::from_config(app.chat_widget.config_ref());
++    let (server, fixture) = managed_permissions_fixture(&app, thread_id, false).await?;
++    app.submit_managed_permission_change(&server, thread_id, selection())
++        .await;
++    let id = operation_id(&fixture);
++    let mut error = api::ErrorNotification {
++        error: api::TurnError {
++            misalignment: None,
++            message: "profile rejected".into(),
++            additional_details: None,
++            codex_error_info: Some(api::CodexErrorInfo::ThreadSettingsUpdateFailed {
++                operation_id: Some(id),
++            }),
++        },
++        will_retry: false,
++        thread_id: ThreadId::new().to_string(),
++        turn_id: String::new(),
++    };
++    app.observe_managed_permission_notification(
++        &server,
++        &api::ServerNotification::Error(error.clone()),
++    )
++    .await;
++    assert_eq!(app.pending_permission_changes.len(), 1);
++    error.thread_id = thread_id.to_string();
++    app.observe_managed_permission_notification(&server, &api::ServerNotification::Error(error))
++        .await;
++    assert!(app.pending_permission_changes.is_empty());
++    assert_eq!(
++        RuntimePermissionProfileOverride::from_config(app.chat_widget.config_ref()),
++        original
++    );
++    server.shutdown().await?;
++    fixture.task.await?;
++    Ok(())
++}
++
++#[tokio::test]
++async fn managed_permissions_late_applied_notification_settles_without_regressing_newer_settings()
++-> Result<()> {
++    let (mut app, thread_id) = attached_app().await;
++    let (server, fixture) = managed_permissions_fixture(&app, thread_id, false).await?;
++    app.submit_managed_permission_change(&server, thread_id, selection())
++        .await;
++    let mut newer = fixture.settings.clone();
++    newer.settings_version.as_mut().unwrap().revision = "2".into();
++    newer.model = "newer-current-model".into();
++    newer.collaboration_mode.settings.model = newer.model.clone();
++    assert!(app.accept_native_settings_version(thread_id, &newer, true));
++    app.chat_widget.apply_thread_settings(newer.clone());
++    *fixture.phase.lock().unwrap() = "applied".into();
++    let update = api::ThreadSettingsUpdatedNotification {
++        operation_id: Some(operation_id(&fixture)),
++        submission_id: Some("permission-submission".into()),
++        resolved_security: Some(fixture.security.clone()),
++        thread_id: thread_id.to_string(),
++        thread_settings: fixture.settings.clone(),
++    };
++    app.handle_app_server_event(
++        &server,
++        codex_app_server_client::AppServerEvent::ServerNotification(Box::new(
++            api::ServerNotification::ThreadSettingsUpdated(update),
++        )),
++    )
++    .await;
++    assert!(app.pending_permission_changes.is_empty());
++    assert_eq!(
++        app.chat_widget
++            .effective_collaboration_mode()
++            .settings
++            .model,
++        "newer-current-model"
++    );
++    assert_eq!(app.observed_native_settings[&thread_id], newer);
++    assert_eq!(
++        fixture
++            .requests
++            .lock()
++            .unwrap()
++            .iter()
++            .filter(|r| r["method"] == "thread/settings/update")
++            .count(),
++        1
++    );
++    server.shutdown().await?;
++    fixture.task.await?;
++    Ok(())
++}
++
++#[tokio::test]
++async fn managed_permissions_deterministic_gateway_rejection_does_not_leave_an_uncertain_intent()
++-> Result<()> {
++    for code in [
++        "permission-transition-pending",
++        "permission-revision-conflict",
++        "permission-policy-replaced",
++        "invalid-permission-transition",
++        "settings-binding-replaced",
++    ] {
++        let (mut app, thread_id) = attached_app().await;
++        let original = RuntimePermissionProfileOverride::from_config(app.chat_widget.config_ref());
++        let (server, fixture) = managed_permissions_fixture(&app, thread_id, false).await?;
++        *fixture.rejection_code.lock().unwrap() = Some(code.into());
++        app.submit_managed_permission_change(&server, thread_id, selection())
++            .await;
++        assert!(app.pending_permission_changes.is_empty());
++        assert_eq!(
++            RuntimePermissionProfileOverride::from_config(app.chat_widget.config_ref()),
++            original
++        );
++        assert!(
++            !fixture
++                .requests
++                .lock()
++                .unwrap()
++                .iter()
++                .any(|r| r["method"] == "thread/settings/operation/read")
++        );
++        server.shutdown().await?;
++        fixture.task.await?;
++    }
++    Ok(())
++}
++
++#[tokio::test]
++async fn managed_permissions_replacement_epoch_is_established_by_current_read_without_pending_intent()
++-> Result<()> {
++    let (mut app, thread_id) = attached_app().await;
++    let (server, fixture) = managed_permissions_fixture(&app, thread_id, false).await?;
++    let mut previous = fixture.settings.clone();
++    previous.settings_version.as_mut().unwrap().epoch = "retired-epoch".into();
++    previous.settings_version.as_mut().unwrap().revision = "99".into();
++    assert!(app.accept_native_settings_version(thread_id, &previous, true));
++    let update = api::ThreadSettingsUpdatedNotification {
++        operation_id: None,
++        submission_id: None,
++        resolved_security: Some(fixture.security.clone()),
++        thread_id: thread_id.to_string(),
++        thread_settings: fixture.settings.clone(),
++    };
++    app.handle_app_server_event(
++        &server,
++        codex_app_server_client::AppServerEvent::ServerNotification(Box::new(
++            api::ServerNotification::ThreadSettingsUpdated(update),
++        )),
++    )
++    .await;
++    assert!(app.pending_permission_changes.is_empty());
++    assert_eq!(
++        app.observed_native_settings[&thread_id]
++            .settings_version
++            .as_ref()
++            .unwrap()
++            .epoch,
++        "fixture-epoch"
++    );
++    assert_eq!(
++        app.chat_widget
++            .effective_collaboration_mode()
++            .settings
++            .model,
++        "newer-current-model"
++    );
++    assert_eq!(
++        fixture
++            .requests
++            .lock()
++            .unwrap()
++            .iter()
++            .filter(|r| r["method"] == "thread/settings/read")
++            .count(),
++        1
++    );
++    assert!(!app.accept_native_settings_version(thread_id, &previous, false));
++    server.shutdown().await?;
++    fixture.task.await?;
++    Ok(())
++}
++
++#[tokio::test]
++async fn managed_permissions_child_view_never_falls_back_to_legacy_profile_updates() -> Result<()> {
++    let (mut app, root_id) = attached_app().await;
++    let (mut server, fixture) = managed_permissions_fixture(&app, root_id, false).await?;
++    let root_permissions = RuntimePermissionProfileOverride::from_config(&app.config);
++    let child_id = ThreadId::new();
++    app.active_thread_id = Some(child_id);
++    app.chat_widget
++        .handle_thread_session_quiet(test_thread_session(child_id, app.config.cwd.to_path_buf()));
++    let child_permissions =
++        RuntimePermissionProfileOverride::from_config(app.chat_widget.config_ref());
++    let mut tui = crate::tui::test_support::make_test_tui()?;
++    app.handle_event(
++        &mut tui,
++        &mut server,
++        AppEvent::SelectPermissionProfile(selection()),
++    )
++    .await?;
++    app.apply_permission_shortcut(&mut server, &mut tui, child_id, selection())
++        .await;
++    assert!(app.pending_permission_changes.is_empty());
++    assert_eq!(
++        RuntimePermissionProfileOverride::from_config(&app.config),
++        root_permissions
++    );
++    assert_eq!(
++        RuntimePermissionProfileOverride::from_config(app.chat_widget.config_ref()),
++        child_permissions
++    );
++    assert!(
++        !fixture
++            .requests
++            .lock()
++            .unwrap()
++            .iter()
++            .any(|r| r["method"] != "initialize")
++    );
++    server.shutdown().await?;
++    fixture.task.await?;
++    Ok(())
++}
++
++#[tokio::test]
++async fn managed_permissions_popup_queue_waits_for_application_before_autosend() -> Result<()> {
++    let (mut app, mut events, mut operations) = make_test_app_with_channels().await;
++    let thread_id = ThreadId::new();
++    app.active_thread_id = Some(thread_id);
++    app.primary_thread_id = Some(thread_id);
++    app.chat_widget
++        .handle_thread_session_quiet(test_thread_session(thread_id, app.config.cwd.to_path_buf()));
++    let (mut server, fixture) = managed_permissions_fixture(&app, thread_id, false).await?;
++    let mut tui = crate::tui::test_support::make_test_tui()?;
++    while operations.try_recv().is_ok() {}
++    app.chat_widget.set_queue_autosend_suppressed(true);
++    app.chat_widget
++        .apply_external_edit("continue after permission selection".into());
++    app.chat_widget
++        .handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
++    assert_eq!(
++        app.chat_widget.queued_user_message_texts(),
++        vec!["continue after permission selection"]
++    );
++    app.submit_managed_permission_change(&server, thread_id, selection())
++        .await;
++    app.handle_event(&mut tui, &mut server, AppEvent::SettingsSelectionSettled)
++        .await?;
++    assert_eq!(
++        app.chat_widget.queued_user_message_texts(),
++        vec!["continue after permission selection"]
++    );
++    assert!(operations.try_recv().is_err());
++    while events.try_recv().is_ok() {}
++    app.observe_managed_permission_notification(
++        &server,
++        &api::ServerNotification::ThreadSettingsUpdated(api::ThreadSettingsUpdatedNotification {
++            operation_id: Some(operation_id(&fixture)),
++            submission_id: Some("permission-submission".into()),
++            resolved_security: Some(fixture.security.clone()),
++            thread_id: thread_id.to_string(),
++            thread_settings: fixture.settings.clone(),
++        }),
++    )
++    .await;
++    let settled = std::iter::from_fn(|| events.try_recv().ok())
++        .find(|event| matches!(event, AppEvent::SettingsSelectionSettled))
++        .expect("matching application must wake the waiting selection queue");
++    app.handle_event(&mut tui, &mut server, settled).await?;
++    assert!(app.chat_widget.queued_user_message_texts().is_empty());
++    assert!(matches!(operations.try_recv(), Ok(Op::UserTurn { .. })));
++    assert!(
++        operations.try_recv().is_err(),
++        "retained input is submitted only once"
++    );
++    fixture.task.abort();
++    Ok(())
++}
++
++#[tokio::test]
++async fn managed_permissions_pending_turn_keeps_one_input_owner_and_never_replays() -> Result<()> {
++    for disposition in ["retained", "notRetained", "uncertain"] {
++        let queue_retained = disposition == "retained";
++        let (mut app, mut events, mut operations) = make_test_app_with_channels().await;
++        let thread_id = ThreadId::new();
++        app.active_thread_id = Some(thread_id);
++        app.primary_thread_id = Some(thread_id);
++        app.chat_widget
++            .handle_thread_session_quiet(test_thread_session(
++                thread_id,
++                app.config.cwd.to_path_buf(),
++            ));
++        let (mut server, fixture) = managed_permissions_fixture(&app, thread_id, false).await?;
++        *fixture.pending_turn.lock().unwrap() = Some(
++            json!({"reason":"pendingSettings","inputConsumed":false,"queueRetained":queue_retained,"queueRetention":disposition,"clientUserMessageId":"native-pending-input"}),
++        );
++        let mut tui = crate::tui::test_support::make_test_tui()?;
++        while operations.try_recv().is_ok() {}
++        app.chat_widget
++            .restore_user_message_to_composer(crate::chatwidget::UserMessage {
++                remote_image_urls: vec!["https://example.invalid/deferred-image.png".into()],
++                ..crate::chatwidget::UserMessage::from("original pending input")
++            });
++        app.chat_widget
++            .handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
++        let submitted = next_user_turn_op(&mut operations);
++        app.chat_widget
++            .apply_external_edit("queued followup".into());
++        app.chat_widget
++            .handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
++        app.chat_widget
++            .apply_external_edit("concurrent draft".into());
++        while events.try_recv().is_ok() {}
++        let result = app
++            .handle_event(&mut tui, &mut server, AppEvent::CodexOp(submitted))
++            .await?;
++        assert!(matches!(result, AppRunControl::Continue));
++        assert!(!app.chat_widget.is_user_turn_pending_or_running());
++        assert_eq!(
++            app.chat_widget.queued_user_message_texts(),
++            vec!["queued followup"]
++        );
++        let draft = app.chat_widget.composer_text_with_pending();
++        assert!(draft.contains("concurrent draft"));
++        assert_eq!(
++            draft.contains("original pending input"),
++            disposition == "notRetained"
++        );
++        if disposition == "notRetained" {
++            assert_eq!(
++                app.chat_widget.remote_image_urls(),
++                vec!["https://example.invalid/deferred-image.png"]
++            );
++            assert!(!app.chat_widget.maybe_send_next_queued_input());
++        }
++        assert!(
++            operations.try_recv().is_err(),
++            "no automatic local retry or next-input drain"
++        );
++        assert_eq!(
++            fixture
++                .requests
++                .lock()
++                .unwrap()
++                .iter()
++                .filter(|request| request["method"] == "turn/start")
++                .count(),
++            1
++        );
++        fixture.task.abort();
++    }
++    Ok(())
++}
+diff --git a/codex-rs/tui/src/app/thread_routing.rs b/codex-rs/tui/src/app/thread_routing.rs
+index c0b15fe..52aff4b 100644
+--- a/codex-rs/tui/src/app/thread_routing.rs
++++ b/codex-rs/tui/src/app/thread_routing.rs
+@@ -1006,6 +1006,11 @@ impl App {
+             return Ok(());
+         }
+         if let ServerNotification::ThreadSettingsUpdated(notification) = &notification {
++            if self.observed_native_settings.contains_key(&thread_id)
++                && !self.accept_native_settings_version(thread_id, &notification.thread_settings, false)
++            {
++                return Ok(());
++            }
+             self.apply_thread_settings_to_cached_session(thread_id, &notification.thread_settings)
+                 .await;
+         }
+diff --git a/codex-rs/tui/src/app_server_session.rs b/codex-rs/tui/src/app_server_session.rs
+index 538f256..1a8d126 100644
+--- a/codex-rs/tui/src/app_server_session.rs
++++ b/codex-rs/tui/src/app_server_session.rs
+@@ -502,6 +502,10 @@ impl AppServerSession {
+         }
+     }
+ 
++    pub(crate) fn has_managed_gateway(&self) -> bool {
++        self.client.managed_gateway_thread_id().is_some()
++    }
++
+     pub(crate) fn is_managed_gateway_thread(&self, thread_id: Option<ThreadId>) -> bool {
+         thread_id.is_some_and(|thread_id| {
+             self.client.managed_gateway_thread_id() == Some(thread_id.to_string().as_str())
+@@ -1251,7 +1255,7 @@ impl AppServerSession {
+                 params: TurnStartParams {
+                     thread_id: thread_id.to_string(),
+                     turn_trigger: None,
+-                    client_user_message_id: None,
++                    client_user_message_id: Some(uuid::Uuid::new_v4().to_string()),
+                     input: items,
+                     tool_output: None,
+                     responsesapi_client_metadata: None,
+diff --git a/codex-rs/tui/src/chatwidget/managed_queue.rs b/codex-rs/tui/src/chatwidget/managed_queue.rs
+index 407f364..fba99c0 100644
+--- a/codex-rs/tui/src/chatwidget/managed_queue.rs
++++ b/codex-rs/tui/src/chatwidget/managed_queue.rs
+@@ -244,6 +244,14 @@ impl ChatWidget {
+                 ..Default::default()
+             });
+         }
++        for backup in self.input_queue.managed.uncertain_turn_inputs.iter().filter(|backup| backup.thread_id == thread_id) {
++            items.push(SelectionItem {
++                name: "[Unconfirmed retention] Input preserved locally".into(),
++                description: Some(backup.input.text.clone()),
++                is_disabled: true,
++                ..Default::default()
++            });
++        }
+         for request in self
+             .input_queue
+             .managed
+diff --git a/codex-rs/tui/src/chatwidget/permission_popups.rs b/codex-rs/tui/src/chatwidget/permission_popups.rs
+index 93e85db..3c6e596 100644
+--- a/codex-rs/tui/src/chatwidget/permission_popups.rs
++++ b/codex-rs/tui/src/chatwidget/permission_popups.rs
+@@ -15,6 +15,10 @@ impl ChatWidget {
+ 
+     /// Open a popup to choose the permissions mode.
+     pub(crate) fn open_permissions_popup(&mut self) {
++        if self.blocks_direct_input {
++            self.add_error_message(PARENT_OWNED_INPUT_MESSAGE.to_string());
++            return;
++        }
+         if self.config.explicit_permission_profile_mode {
+             self.open_permission_profiles_popup();
+             return;
+@@ -296,6 +300,16 @@ impl ChatWidget {
+         profile_selection: Option<PermissionProfileSelection>,
+         return_to_permissions: bool,
+     ) -> Vec<SelectionAction> {
++        // A managed picker submits one named intent; it must not emit the legacy
++        // optimistic cache updates or the success message before native application.
++        let profile_selection = profile_selection.or_else(|| {
++            self.input_queue.managed.thread_id.map(|_| PermissionProfileSelection {
++                profile_id: preset.active_permission_profile.id.clone(),
++                approval_policy: Some(AskForApproval::from(preset.approval)),
++                approvals_reviewer: Some(approvals_reviewer),
++                display_label: label.clone(),
++            })
++        });
+         let apply_actions = || {
+             profile_selection.clone().map_or_else(
+                 || {
+@@ -411,6 +425,14 @@ impl ChatWidget {
+     ) {
+         let selected_name = preset.label.to_string();
+         let approval = AskForApproval::from(preset.approval);
++        let profile_selection = profile_selection.or_else(|| {
++            self.input_queue.managed.thread_id.map(|_| PermissionProfileSelection {
++                profile_id: preset.active_permission_profile.id.clone(),
++                approval_policy: Some(approval),
++                approvals_reviewer: Some(ApprovalsReviewer::User),
++                display_label: selected_name.clone(),
++            })
++        });
+         let is_cyber_model = self.model_catalog.try_list_models().is_ok_and(|models| {
+             models.iter().any(|model| {
+                 model.model == self.current_model()
+diff --git a/codex-rs/tui/src/chatwidget/settings.rs b/codex-rs/tui/src/chatwidget/settings.rs
+index 74d3e7f..f60ef3b 100644
+--- a/codex-rs/tui/src/chatwidget/settings.rs
++++ b/codex-rs/tui/src/chatwidget/settings.rs
+@@ -454,7 +454,7 @@ impl ChatWidget {
+         self.refresh_status_line();
+     }
+ 
+-    fn apply_thread_settings(&mut self, mut settings: ThreadSettings) {
++    pub(crate) fn apply_thread_settings(&mut self, mut settings: ThreadSettings) {
+         let cwd_changed = self.config.cwd != settings.cwd;
+         self.apply_thread_settings_cwd(settings.cwd.clone());
+         self.config.model_provider_id = settings.model_provider.clone();
+@@ -463,10 +463,11 @@ impl ChatWidget {
+         self.set_approvals_reviewer(settings.approvals_reviewer.to_core());
+         self.config.personality = settings.personality;
+ 
+-        let permission_profile = PermissionProfile::from_legacy_sandbox_policy_for_cwd(
+-            &settings.sandbox_policy.to_core(),
+-            settings.cwd.as_path(),
+-        );
++        let permission_profile = settings.permission_profile.take().unwrap_or_else(|| {
++            PermissionProfile::from_legacy_sandbox_policy_for_cwd(
++                &settings.sandbox_policy.to_core(), settings.cwd.as_path(),
++            )
++        });
+         let permission_snapshot = PermissionProfileSnapshot::from_session_snapshot(
+             permission_profile,
+             settings.active_permission_profile.take().map(Into::into),
+diff --git a/codex-rs/tui/src/chatwidget/tests/app_server.rs b/codex-rs/tui/src/chatwidget/tests/app_server.rs
+index 5e83f98..e62ab53 100644
+--- a/codex-rs/tui/src/chatwidget/tests/app_server.rs
++++ b/codex-rs/tui/src/chatwidget/tests/app_server.rs
+@@ -12,10 +12,12 @@ fn thread_settings_for_test(
+     thread_id: ThreadId,
+ ) -> codex_app_server_protocol::ThreadSettingsUpdatedNotification {
+     codex_app_server_protocol::ThreadSettingsUpdatedNotification {
++        resolved_security: None,
+         operation_id: None,
+         submission_id: None,
+         thread_id: thread_id.to_string(),
+         thread_settings: codex_app_server_protocol::ThreadSettings {
++            permission_profile: None,
+             multi_agent_enabled: false,
+             subagent_model: None,
+             subagent_reasoning_effort: None,
+diff --git a/codex-rs/tui/src/chatwidget/tests/managed_queue.rs b/codex-rs/tui/src/chatwidget/tests/managed_queue.rs
+index 7a37bf6..f02b157 100644
+--- a/codex-rs/tui/src/chatwidget/tests/managed_queue.rs
++++ b/codex-rs/tui/src/chatwidget/tests/managed_queue.rs
+@@ -209,3 +209,50 @@ async fn managed_queue_pending_imports_are_visible_but_never_executable() {
+     assert!(op_rx.try_recv().is_err());
+     assert!(!chat.maybe_send_next_queued_input());
+ }
++
++#[tokio::test]
++async fn managed_permissions_uncertain_input_requires_positive_same_thread_queue_identity() {
++    use crate::managed_queue::PendingSettingsInputDisposition;
++    let (mut chat, mut events, mut operations) = make_chatwidget_manual(None).await;
++    let thread_id = ThreadId::new();
++    chat.thread_id = Some(thread_id);
++    chat.set_managed_queue_thread(Some(thread_id));
++    let input = UserMessage {
++        remote_image_urls: vec!["https://example.invalid/preserved.png".into()],
++        ..UserMessage::from("unconfirmed original")
++    };
++    chat.safety_buffering_prompt = Some(input.clone());
++    chat.input_queue.user_turn_pending_start = true;
++    while events.try_recv().is_ok() {}
++    while operations.try_recv().is_ok() {}
++    assert!(chat.handle_pending_settings_turn(PendingSettingsInputDisposition::Uncertain {
++        client_user_message_id: Some("native-client-id".into()),
++    }));
++    assert_eq!(chat.input_queue.managed.uncertain_turn_inputs[0].input, input);
++    assert!(chat.composer_text_with_pending().is_empty());
++    assert!(operations.try_recv().is_err());
++    let snapshot = |revision: &str, id: Option<&str>| serde_json::from_value::<crate::managed_queue::Snapshot>(json!({
++        "data": id.map(|id| vec![json!({"id":"queue-item","clientUserMessageId":id,"input":[],"managed":{"frozen":false}})]).unwrap_or_default(),
++        "nextCursor":null,"managedQueue":{"revision":revision,"paused":false}
++    })).unwrap();
++    chat.input_queue.managed.apply(snapshot("1", None)).unwrap();
++    assert_eq!(chat.input_queue.managed.uncertain_turn_inputs.len(), 1, "absence cannot establish non-retention");
++    chat.input_queue.managed.apply(snapshot("2", Some("another-input"))).unwrap();
++    assert_eq!(chat.input_queue.managed.uncertain_turn_inputs.len(), 1);
++    chat.set_managed_queue_thread(Some(ThreadId::new()));
++    chat.input_queue.managed.apply(snapshot("3", Some("native-client-id"))).unwrap();
++    assert_eq!(chat.input_queue.managed.uncertain_turn_inputs.len(), 1, "another thread cannot acknowledge input");
++    chat.set_managed_queue_thread(Some(thread_id));
++    chat.input_queue.managed.apply(snapshot("4", Some("native-client-id"))).unwrap();
++    assert!(chat.input_queue.managed.uncertain_turn_inputs.is_empty());
++    chat.safety_buffering_prompt = Some(input.clone());
++    chat.input_queue.user_turn_pending_start = true;
++    assert!(chat.handle_pending_settings_turn(PendingSettingsInputDisposition::Uncertain {
++        client_user_message_id: None,
++    }));
++    chat.input_queue.managed.apply(snapshot("5", Some("native-client-id"))).unwrap();
++    assert_eq!(chat.input_queue.managed.uncertain_turn_inputs.len(), 1, "missing identity cannot be guessed from content or another input");
++    assert_eq!(chat.input_queue.managed.uncertain_turn_inputs[0].input, input);
++    assert!(chat.composer_text_with_pending().is_empty());
++    assert!(operations.try_recv().is_err());
++}
+diff --git a/codex-rs/tui/src/chatwidget/tests/permission_shortcuts_tests.rs b/codex-rs/tui/src/chatwidget/tests/permission_shortcuts_tests.rs
+index 76b7eb5..caa05e2 100644
+--- a/codex-rs/tui/src/chatwidget/tests/permission_shortcuts_tests.rs
++++ b/codex-rs/tui/src/chatwidget/tests/permission_shortcuts_tests.rs
+@@ -131,3 +131,40 @@ async fn permission_shortcuts_respect_managed_mode_requirements() {
+         assert!(rx.try_recv().is_err(), "must not submit a forbidden mode");
+     }
+ }
++
++#[tokio::test]
++async fn managed_permissions_popup_emits_one_named_intent_without_optimistic_events() {
++    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(None).await;
++    let thread_id = ThreadId::new();
++    chat.thread_id = Some(thread_id);
++    chat.set_managed_queue_thread(Some(thread_id));
++    while rx.try_recv().is_ok() {}
++    let presets = builtin_approval_presets();
++    let read_only = presets.iter().find(|preset| preset.id == "read-only").unwrap();
++    let original = chat.config.permissions.active_permission_profile();
++    let actions = chat.permission_mode_actions(read_only, "Read Only".into(), User, None, true);
++    for action in actions {
++        action(&chat.app_event_tx);
++    }
++    let AppEvent::SelectPermissionProfile(selection) = rx.try_recv().expect("named native intent") else {
++        panic!("managed permission menus must submit one explicit named selection")
++    };
++    assert_eq!(selection.profile_id, ":read-only");
++    assert_eq!(chat.config.permissions.active_permission_profile(), original);
++    assert!(rx.try_recv().is_err(), "no optimistic profile, approval, config write, or success events");
++}
++
++
++#[tokio::test]
++async fn managed_permissions_parent_owned_child_cannot_open_the_legacy_permissions_menu() {
++    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(None).await;
++    chat.thread_id = Some(ThreadId::new());
++    chat.blocks_direct_input = true;
++    let original = chat.config.permissions.active_permission_profile();
++    chat.open_permissions_popup();
++    assert!(chat.bottom_pane.no_modal_or_popup_active());
++    assert_eq!(chat.config.permissions.active_permission_profile(), original);
++    let AppEvent::InsertHistoryCell(cell) = rx.try_recv().expect("parent-owned input explanation") else { panic!("must explain why this child cannot change permissions") };
++    assert!(lines_to_single_string(&cell.display_lines(2000)).contains(PARENT_OWNED_INPUT_MESSAGE));
++    assert!(rx.try_recv().is_err());
++}
+diff --git a/codex-rs/tui/src/chatwidget/turn_runtime.rs b/codex-rs/tui/src/chatwidget/turn_runtime.rs
+index 84043e9..add71dd 100644
+--- a/codex-rs/tui/src/chatwidget/turn_runtime.rs
++++ b/codex-rs/tui/src/chatwidget/turn_runtime.rs
+@@ -374,6 +374,39 @@ impl ChatWidget {
+         self.maybe_send_next_queued_input();
+     }
+ 
++    /// Only explicit native no-consumption evidence permits input recovery.
++    pub(crate) fn handle_pending_settings_turn(&mut self, disposition: crate::managed_queue::PendingSettingsInputDisposition) -> bool {
++        use crate::managed_queue::PendingSettingsInputDisposition;
++        if !self.input_queue.user_turn_pending_start { return false; }
++        let prompt = self.safety_buffering_prompt.take();
++        self.input_queue.submit_pending_steers_after_interrupt = false;
++        self.finalize_turn();
++        match disposition {
++            PendingSettingsInputDisposition::Retained => {
++                self.add_info_message("Input is queued until the pending permissions settle.".into(), None);
++                self.refresh_managed_queue(false);
++            }
++            PendingSettingsInputDisposition::NotRetained => {
++                // Preserve followups while allowing an explicit manual send of the draft.
++                self.input_queue.recovered_queue = self.input_queue.has_queued_follow_up_messages();
++                if let Some(prompt) = prompt { self.restore_user_message_to_composer(prompt); }
++                self.add_info_message("Pending permissions prevented this turn from starting. Your input is restored for editing; send it again after permissions settle.".into(), None);
++            }
++            PendingSettingsInputDisposition::Uncertain { client_user_message_id } => {
++                self.input_queue.recovered_queue = self.input_queue.has_queued_follow_up_messages();
++                if let (Some(thread_id), Some(input)) = (self.thread_id(), prompt) {
++                    self.input_queue.managed.uncertain_turn_inputs.push(crate::managed_queue::UncertainTurnInput {
++                        thread_id, client_user_message_id, input,
++                    });
++                }
++                self.add_info_message("Queue retention is unconfirmed. Your full input is preserved locally without resending it. Refresh the shared queue to reconcile; an empty queue does not prove it was never submitted.".into(), None);
++                self.refresh_managed_queue(false);
++            }
++        }
++        self.request_redraw();
++        true
++    }
++
+     pub(crate) fn handle_turn_start_rejection(&mut self, message: String) -> bool {
+         if !self.input_queue.user_turn_pending_start {
+             return false;
+diff --git a/codex-rs/tui/src/managed_queue.rs b/codex-rs/tui/src/managed_queue.rs
+index e9683fa..fc74b53 100644
+--- a/codex-rs/tui/src/managed_queue.rs
++++ b/codex-rs/tui/src/managed_queue.rs
+@@ -125,6 +125,22 @@ pub(crate) struct Request {
+     pub params: Value,
+     pub draft: Option<crate::chatwidget::UserMessage>,
+ }
++#[derive(Clone, Debug, PartialEq)]
++pub(crate) enum PendingSettingsInputDisposition {
++    Retained,
++    NotRetained,
++    Uncertain {
++        client_user_message_id: Option<String>,
++    },
++}
++
++#[derive(Clone, Debug, PartialEq)]
++pub(crate) struct UncertainTurnInput {
++    pub thread_id: ThreadId,
++    pub client_user_message_id: Option<String>,
++    pub input: crate::chatwidget::UserMessage,
++}
++
+ #[derive(Clone, Debug, Default, PartialEq)]
+ pub(crate) struct State {
+     pub thread_id: Option<ThreadId>,
+@@ -136,6 +152,8 @@ pub(crate) struct State {
+     pub refresh_dirty: bool,
+     pub show_on_refresh: bool,
+     pub pending: BTreeMap<Uuid, Request>,
++    /// Full local backups awaiting positive canonical queue evidence; never retryable actions.
++    pub uncertain_turn_inputs: Vec<UncertainTurnInput>,
+     pub preparing_input: Option<InputAction>,
+ }
+ impl State {
+@@ -166,6 +184,15 @@ impl State {
+             }) {
+                 return Err("Invalid managed queue transfer identity".into());
+             }
++            self.uncertain_turn_inputs.retain(|backup| {
++                self.thread_id != Some(backup.thread_id)
++                    || !backup.client_user_message_id.as_deref().is_some_and(|id| {
++                        snapshot
++                            .data
++                            .iter()
++                            .any(|item| item.client_user_message_id == id)
++                    })
++            });
+             self.pending_imports = snapshot.managed_queue.pending_imports;
+             self.revision = Some(revision);
+             self.items = snapshot.data;

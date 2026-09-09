@@ -34,6 +34,7 @@ function receipt(event: Omit<NativeSettingsEvidence, "workerId">) {
     operationId: event.operationId,
     operationGeneration: event.operationGeneration,
     eventId: event.eventId,
+    permissionPolicyPublished: true,
     application: {
       nativeOperationId: event.nativeOperationId,
       status: "applied" as const,
@@ -70,6 +71,42 @@ function delivery(
 }
 
 describe("durable native settings delivery", () => {
+  it("publishes policy locally only after the server confirms its applied evidence", async () => {
+    const root = await fixture();
+    let allow = false;
+    const send = vi.fn(
+      async (event: Omit<NativeSettingsEvidence, "workerId">) => {
+        if (!allow) throw new Error("publication unavailable");
+        return receipt(event);
+      },
+    );
+    const { instance } = delivery(root, send);
+    const published = vi.fn();
+    instance.subscribePublished(published);
+    const permissionPolicy = {
+      effectiveId: ":workspace",
+      settingsVersion: { epoch: "epoch", revision: "1" },
+    };
+    await instance.track(scope);
+    await instance.record(
+      scope,
+      "applied",
+      "submission",
+      { privateSecurity: "sensitive" },
+      permissionPolicy,
+    );
+    await expect.poll(() => send.mock.calls.length).toBeGreaterThan(0);
+    expect(published).not.toHaveBeenCalled();
+    const original = send.mock.calls[0]![0];
+    expect(original.permissionPolicy).toEqual(permissionPolicy);
+    expect(JSON.stringify(original)).not.toContain("sensitive");
+    allow = true;
+    await expect.poll(() => published.mock.calls.length).toBe(1);
+    expect(published).toHaveBeenCalledWith(original);
+    expect(
+      send.mock.calls.every(([event]) => event.eventId === original.eventId),
+    ).toBe(true);
+  });
   it("encrypts the full native result and binds it to its exact evidence event", async () => {
     const root = await fixture();
     const { instance, send } = delivery(root);

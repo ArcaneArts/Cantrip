@@ -56,10 +56,15 @@ export class ChatRuntimeContextRepository {
         lane: schema.chatExecutionLanes,
         project: schema.projects,
         settings: schema.userSettings,
+        nativeSettings: schema.nativeSettingsStates,
         worktree: schema.projectWorktrees,
         runtime: schema.chatRuntimeSessions,
       })
       .from(schema.chats)
+      .leftJoin(
+        schema.nativeSettingsStates,
+        eq(schema.nativeSettingsStates.chatId, schema.chats.id),
+      )
       .innerJoin(
         schema.projects,
         and(
@@ -120,6 +125,15 @@ export class ChatRuntimeContextRepository {
       modelRouteId: row.runtime?.modelRouteId ?? null,
       providerAccountId: row.runtime?.providerAccountId ?? null,
       permissionProfileId: row.chat.permissionProfileId,
+      ...nativePermissionProjection(row.nativeSettings?.state, {
+        threadId: row.runtime?.codexThreadId ?? null,
+        workerId: row.worktree.workerId,
+        placementId: row.worktree.id,
+        contextKind: "project",
+        projectId,
+        modelRouteId: row.runtime?.modelRouteId ?? null,
+        providerAccountId: row.runtime?.providerAccountId ?? null,
+      }),
       planMode: row.chat.planMode as PlanMode,
       projectId,
       rootKind: row.worktree.rootKind,
@@ -144,8 +158,13 @@ export class ChatRuntimeContextRepository {
         root: schema.standaloneChatRoots,
         runtime: schema.chatRuntimeSessions,
         settings: schema.userSettings,
+        nativeSettings: schema.nativeSettingsStates,
       })
       .from(schema.chats)
+      .leftJoin(
+        schema.nativeSettingsStates,
+        eq(schema.nativeSettingsStates.chatId, schema.chats.id),
+      )
       .innerJoin(
         schema.standaloneChatRoots,
         and(
@@ -217,6 +236,15 @@ export class ChatRuntimeContextRepository {
       modelRouteId: row.runtime?.modelRouteId ?? null,
       providerAccountId: row.runtime?.providerAccountId ?? null,
       permissionProfileId: row.chat.permissionProfileId,
+      ...nativePermissionProjection(row.nativeSettings?.state, {
+        threadId: row.runtime?.codexThreadId ?? null,
+        workerId: row.root.workerId,
+        placementId: row.root.id,
+        contextKind: "standalone",
+        projectId: null,
+        modelRouteId: row.runtime?.modelRouteId ?? null,
+        providerAccountId: row.runtime?.providerAccountId ?? null,
+      }),
       planMode: "default",
       projectId: null,
       rootKind: null,
@@ -368,4 +396,38 @@ export class ChatRuntimeContextRepository {
       .returning();
     return rows[0] ? toContextualChatWireSummary(rows[0]) : null;
   }
+}
+
+/** A confirmed profile can follow only the exact native thread/account/placement
+ * that produced its evidence. Account-default edits do not relabel that evidence. */
+function nativePermissionProjection(
+  state: import("@cantrip/protocol").NativeSettingsState | undefined,
+  source: {
+    threadId: string | null;
+    workerId: string;
+    placementId: string;
+    modelRouteId: string | null;
+    providerAccountId: string | null;
+    contextKind: "project" | "standalone";
+    projectId: string | null;
+  },
+) {
+  const policy = state?.permissionPolicy;
+  const retained =
+    policy &&
+    source.threadId !== null &&
+    Object.entries(source).every(
+      ([key, value]) => policy.source[key as keyof typeof source] === value,
+    )
+      ? policy
+      : null;
+  return {
+    nativePermissionPolicy: retained,
+    nativePermissionPolicyConfirmed: Boolean(
+      retained &&
+      state?.binding &&
+      retained.source.runtimeGeneration === state.binding.runtimeGeneration &&
+      retained.settingsVersion.epoch === state.binding.nativeEpoch,
+    ),
+  };
 }

@@ -124,6 +124,7 @@ async function state(
   return {
     chatId: "chat",
     revision: "1",
+    permissionPolicy: null,
     desiredRevision: "1",
     binding,
     effective: null,
@@ -168,6 +169,20 @@ describe("mounted native settings intent decryption", () => {
     });
   });
 
+  it("opens native TUI permission patches with exact approval and sandbox values", async () => {
+    const security = {
+      permissions: ":danger-full-access",
+      approvalPolicy: "never",
+      sandboxPolicy: null,
+      approvalsReviewer: "user",
+    };
+    const opened = await openNativeSettingsIntents({
+      chatId: "chat",
+      state: await state(security),
+      options: fixture().options,
+    });
+    expect(opened[0]!.patch).toMatchObject(security);
+  });
   it("decrypts exact unset intent and rejects conflicting tier intent", async () => {
     const options = fixture().options;
     const opened = await openNativeSettingsIntents({

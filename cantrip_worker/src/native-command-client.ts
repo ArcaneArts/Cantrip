@@ -1,5 +1,8 @@
 import {
   nativeCommandAdmissionSchema,
+  nativePermissionTransitionResolveSchema,
+  nativePermissionTransitionResolutionSchema,
+  type NativeCommandSession,
   nativeSettingsStateSchema,
   nativeSettingsRefreshRequestSchema,
   nativeSettingsObservationRequestSchema,
@@ -94,6 +97,21 @@ export class NativeCommandClient {
     );
   }
 
+  resolvePermissionTransition(
+    session: NativeCommandSession,
+    selectedId: string | null,
+  ) {
+    return this.post(
+      "permission-transition",
+      nativePermissionTransitionResolveSchema.parse({
+        workerId: this.options.workerId,
+        session,
+        selectedId,
+      }),
+      nativePermissionTransitionResolutionSchema,
+    );
+  }
+
   async observeSettings(
     input: Omit<NativeSettingsObservationRequest, "workerId">,
     signal?: AbortSignal,
@@ -175,7 +193,10 @@ export class NativeCommandClient {
     return result;
   }
 
-  async settle(input: Omit<NativeCommandSettlement, "workerId">) {
+  async settle(
+    input: Omit<NativeCommandSettlement, "workerId">,
+    signal?: AbortSignal,
+  ) {
     const result = await this.post(
       "receipt",
       nativeCommandSettlementSchema.parse({
@@ -183,6 +204,7 @@ export class NativeCommandClient {
         workerId: this.options.workerId,
       }),
       nativeCommandSettlementResultSchema,
+      signal,
     );
     this.correlate(result.receipt, input);
     return result;

@@ -5521,6 +5521,11 @@ export const nativeSettingsEvidence = pgTable(
     submissionId: text("submission_id"),
     resultDigest: text("result_digest").notNull(),
     protectedResult: jsonb("protected_result").notNull(),
+    recoveryBindingId: text("recovery_binding_id"),
+    permissionPolicy:
+      jsonb("permission_policy").$type<
+        import("@cantrip/protocol").NativePermissionPolicyClaim
+      >(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

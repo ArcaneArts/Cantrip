@@ -65,6 +65,9 @@ interface ChatExecutionContextBase {
   modelRouteId: string | null;
   providerAccountId: string | null;
   permissionProfileId: string | null;
+  nativePermissionPolicyConfirmed?: boolean;
+  nativePermissionPolicy?:
+    import("@cantrip/protocol").NativePermissionPolicy | null;
   planMode: PlanMode;
   threadId: string | null;
   workerId: string;

@@ -1,3 +1,4 @@
+import { nativePermissionPolicyClaimSchema } from "./native-settings-state.js";
 import { z } from "zod";
 import { encryptedPayloadEnvelopeSchema } from "./encryption.js";
 
@@ -35,9 +36,24 @@ export const nativeSettingsEvidenceSchema = z
     ]),
     resultDigest: z.string().regex(/^[a-f0-9]{64}$/u),
     protectedResult: encryptedPayloadEnvelopeSchema,
+    permissionPolicy: nativePermissionPolicyClaimSchema.optional(),
+    recoveryBindingId: id.optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
+    if (
+      value.recoveryBindingId &&
+      (value.kind !== "applied" || !value.permissionPolicy)
+    )
+      ctx.addIssue({
+        code: "custom",
+        message: "Recovery binding requires applied permission evidence.",
+      });
+    if (value.permissionPolicy && value.kind !== "applied")
+      ctx.addIssue({
+        code: "custom",
+        message: "Permission policy requires applied native evidence.",
+      });
     if (
       (value.kind === "queued" || value.kind === "applied") &&
       !value.submissionId
@@ -57,6 +73,7 @@ export const nativeSettingsEvidenceResultSchema = z
     operationGeneration: id,
     eventId: z.string().uuid(),
     application: nativeSettingsApplicationSchema,
+    permissionPolicyPublished: z.boolean().optional(),
   })
   .strict();
 export type NativeSettingsEvidenceResult = z.infer<

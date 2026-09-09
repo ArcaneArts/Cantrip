@@ -1,3 +1,7 @@
+import { queuedPromptOpaqueContentSchema } from "./communication-content.js";
+import { chatAttachmentOpaqueSummarySchema } from "./attachment-content.js";
+import { nativePermissionPolicySchema } from "./native-settings-state.js";
+import { permissionTransitionSchema } from "./permission-profiles.js";
 import { nativeSettingsApplicationSchema } from "./native-settings-evidence.js";
 import { modelConfigurationSchema } from "./model-configuration.js";
 import { planModeSchema } from "./chat-runtime.js";
@@ -26,6 +30,7 @@ export const nativeCommandIntentSchema = z
   .object({
     scope: z.enum(["thread", "account-defaults"]),
     nativeSettingsOperationId: id.optional(),
+    nativeClientUserMessageId: id.optional(),
     /** Controller-selected source identity; never forwarded as a native setting. */
     settingsBindingId: id.optional(),
     resumeAutonomy: z.boolean().optional(),
@@ -34,6 +39,7 @@ export const nativeCommandIntentSchema = z
     settingKeys: z.array(z.string().min(1).max(120)).max(64).default([]),
     expectedTurnId: id.nullable().default(null),
     permissionProfileId: id.optional(),
+    permissionTransition: permissionTransitionSchema.optional(),
     configTarget: z.literal("account-defaults").optional(),
     pathsWithinPlacement: z.boolean().optional(),
   })
@@ -94,6 +100,7 @@ export const nativeCommandAdmissionSchema = z
   });
 export const nativeCommandReceiptSchema = z
   .object({
+    resumeQueue: z.boolean().optional(),
     operationId: id,
     operationGeneration: id,
     logicalOperationId: id.nullable().optional(),
@@ -180,6 +187,23 @@ export const nativeCommandSettlementSchema = z
       })
       .strict()
       .optional(),
+    deferred: z
+      .object({
+        reason: z.literal("pendingSettings"),
+        inputConsumed: z.literal(false),
+        threadId: id,
+        runtimeGeneration: id,
+        retainedPrompt: queuedPromptOpaqueContentSchema.optional(),
+        attachments: z.array(chatAttachmentOpaqueSummarySchema).optional(),
+      })
+      .strict()
+      .refine(
+        (value) => Boolean(value.retainedPrompt) === Boolean(value.attachments),
+        {
+          message: "Retained prompt and attachments must be supplied together.",
+        },
+      )
+      .optional(),
     decline: z
       .object({
         nativeTurnId: id,
@@ -247,6 +271,8 @@ export const nativeCommandExecutionSchema = z
     modelRouteId: id.nullable(),
     providerAccountId: id.nullable(),
     permissionProfileId: id.nullable(),
+    nativePermissionPolicy: nativePermissionPolicySchema.nullable().optional(),
+    nativePermissionPolicyConfirmed: z.boolean().optional(),
     defaultPermissionProfileId: z.string().optional(),
     modelConfiguration: modelConfigurationSchema,
     planMode: planModeSchema,
@@ -267,4 +293,24 @@ export const nativeCommandSettlementResultSchema = z
   .strict();
 export type NativeCommandAdmissionResult = z.infer<
   typeof nativeCommandAdmissionResultSchema
+>;
+
+export const nativePermissionTransitionResolveSchema = z
+  .object({
+    workerId: id,
+    session: nativeCommandSessionSchema,
+    selectedId: z.string().min(1).max(200).nullable(),
+  })
+  .strict();
+export type NativePermissionTransitionResolve = z.infer<
+  typeof nativePermissionTransitionResolveSchema
+>;
+export const nativePermissionTransitionResolutionSchema = z
+  .object({
+    permissionTransition: permissionTransitionSchema,
+    bindingId: id.nullable(),
+  })
+  .strict();
+export type NativePermissionTransitionResolution = z.infer<
+  typeof nativePermissionTransitionResolutionSchema
 >;

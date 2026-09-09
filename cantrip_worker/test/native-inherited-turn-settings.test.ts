@@ -10,6 +10,10 @@ import {
   type RunAgentTurnOptions,
 } from "../src/codex/app-server.js";
 import { discoverCodexRuntime } from "../src/codex/discovery.js";
+import {
+  confirmedNativePermissionClaim,
+  nativePermissionPatch,
+} from "../src/codex/managed-native-permissions.js";
 
 const binary = process.env.CANTRIP_CODEX_TEST_BINARY?.trim();
 
@@ -267,6 +271,88 @@ describe.skipIf(!binary)("native inherited GUI turn settings", () => {
           expect.objectContaining({ model: additional.name }),
         ]),
       );
+      // Cross the real native/worker boundary for security too. Mock snapshots
+      // cannot establish that the wire includes the canonical permission profile.
+      const transition = {
+        selectedId: ":read-only",
+        resolvedSelectedId: ":read-only",
+        effectiveId: ":read-only",
+        expectedRevision: "0",
+      };
+      const securityBefore = (
+        await runtime.readNativeThreadSettings(prepared.threadId)
+      ).confirmed!.settings;
+      await runtime.updateNativeThreadSettings({
+        threadId: prepared.threadId,
+        operationId: "fixture-security-selection",
+        settingsBindingId: "fixture-security-binding",
+        nativeEpoch: securityBefore.settingsVersion!.epoch,
+        patch: {
+          ...nativePermissionPatch(transition.effectiveId),
+          applyAt: "quiescent",
+        },
+        permissionTransition: transition,
+      });
+      await expect
+        .poll(
+          () =>
+            runtime!
+              .getNativeThreadSettings(prepared.threadId)
+              .requests.find(
+                (request) =>
+                  request.operationId === "fixture-security-selection",
+              )?.status,
+        )
+        .toBe("applied");
+      const journal = (await runtime.readNativePermissionOperation(
+        prepared.threadId,
+        "fixture-security-selection",
+      )) as {
+        phase: string;
+        resolvedSecurity: unknown;
+      };
+      expect(journal.phase).toBe("applied");
+      const securityAfter = (
+        await runtime.readNativeThreadSettings(prepared.threadId)
+      ).confirmed!.settings;
+      expect(
+        confirmedNativePermissionClaim({
+          transition,
+          settings: securityAfter,
+          resolvedSecurity: journal.resolvedSecurity,
+        }),
+      ).toEqual({
+        effectiveId: ":read-only",
+        settingsVersion: securityAfter.settingsVersion,
+      });
+      expect(securityAfter).toMatchObject({
+        model: chosen.name,
+        effort: "low",
+        collaborationMode: { mode: "plan" },
+      });
+      await runtime.prepareManagedThread({
+        cwd,
+        threadId: prepared.threadId,
+        model,
+        provider: nativeProvider,
+        executionProfile: "ide",
+        intent: "preserve",
+        permissionProfileId: ":workspace",
+        mcpServers: [],
+        subagentDefaults: null,
+        planMode: "default",
+      });
+      const securityPreserved = (
+        await runtime.readNativeThreadSettings(prepared.threadId)
+      ).confirmed!.settings;
+      expect(
+        confirmedNativePermissionClaim({
+          transition,
+          settings: securityPreserved,
+          resolvedSecurity: journal.resolvedSecurity,
+        }).effectiveId,
+      ).toBe(":read-only");
+      expect(requests).toHaveLength(1); // The settings work never creates a model turn.
     } finally {
       runtime?.close();
       for (const child of children) {

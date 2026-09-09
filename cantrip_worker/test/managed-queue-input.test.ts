@@ -559,3 +559,213 @@ describe("canonical managed queue input protection", () => {
     ]);
   });
 });
+describe("deferred GUI input retention", () => {
+  it("authenticates the original message, retains exact native input and IDs, and seals queue fields separately", async () => {
+    const subject = codec();
+    const original = await subject.preparePrompt({
+      id,
+      request: request([
+        { type: "text", text: "original private user prompt" },
+      ]),
+    });
+    const nativeInput = [
+      {
+        type: "text" as const,
+        text: "transformed retry context plus original private user prompt",
+        text_elements: [],
+      },
+    ];
+    const retained = await subject.retainGuiPrompt({
+      pendingMessage: original.prompt.pendingMessage,
+      attachments: [],
+      input: nativeInput,
+    });
+    const again = await subject.retainGuiPrompt({
+      pendingMessage: original.prompt.pendingMessage,
+      attachments: [],
+      input: nativeInput,
+      clientUserMessageId: `cantrip:${original.prompt.pendingMessage.id}`,
+    });
+    expect(retained.prompt.id).toBe(again.prompt.id);
+    expect(retained.prompt.pendingMessage).toEqual(
+      original.prompt.pendingMessage,
+    );
+    expect(retained.prompt.nativeClientUserMessageId).toBe(
+      `cantrip:${original.prompt.pendingMessage.id}`,
+    );
+    expect(retained.prompt.protectedContent).not.toEqual(
+      original.prompt.pendingMessage.protectedContent,
+    );
+    expect(JSON.stringify(retained)).not.toContain("private");
+    expect((await subject.openPrompt(stored(retained.prompt))).input).toEqual(
+      nativeInput,
+    );
+    await expect(
+      subject.openNativeInput({
+        promptId: retained.prompt.id,
+        payload: retained.prompt.pendingMessage.protectedContent.envelope,
+      }),
+    ).rejects.toThrow();
+    await expect(
+      subject.retainGuiPrompt({
+        pendingMessage: {
+          ...original.prompt.pendingMessage,
+          classification: {
+            ...original.prompt.pendingMessage.classification,
+            mode: "plan",
+          },
+        },
+        attachments: [],
+        input: nativeInput,
+      }),
+    ).rejects.toThrow();
+    await expect(
+      subject.retainGuiPrompt({
+        pendingMessage: original.prompt.pendingMessage,
+        attachments: [],
+        input: nativeInput,
+        clientUserMessageId: "another-message",
+      }),
+    ).rejects.toThrow();
+  });
+  it("does not duplicate embedded attachments, but rebuilds edited text and removed selections", async () => {
+    const original = await codec().preparePrompt({
+      id,
+      request: request([
+        { type: "text", text: "user text" },
+        { type: "image", url: "data:image/png;base64,cGljdHVyZQ==" },
+      ]),
+    });
+    const projection = vi.fn(async () => [
+      { type: "text" as const, text: "current attachment projection" },
+    ]);
+    const subject = createManagedQueueInputCodec({
+      encryption: encryption(),
+      chatId: "chat",
+      attachmentStore,
+      defaults: () => ({
+        mode: "default",
+        modelId: "model",
+        reasoningEffort: "high",
+      }),
+      openAttachments: projection,
+    });
+    const exact = [
+      {
+        type: "text" as const,
+        text: "user text with embedded attachment metadata",
+      },
+      { type: "image" as const, url: "data:image/png;base64,cGljdHVyZQ==" },
+    ];
+    const retained = await subject.retainGuiPrompt({
+      pendingMessage: original.prompt.pendingMessage,
+      attachments: original.attachments,
+      input: exact,
+    });
+    const queued = {
+      ...stored(retained.prompt),
+      attachments: original.attachments,
+    };
+    expect((await subject.openPrompt(queued)).input).toEqual(exact);
+    expect(projection).not.toHaveBeenCalled();
+    const editedContent = await encryptQueuedPromptProtectedContent({
+      ownerId: "owner",
+      promptId: retained.prompt.id,
+      componentKey: key,
+      keyRevision: 3,
+      content: {
+        version: 1,
+        classification: queued.classification,
+        text: "edited user text",
+      },
+    });
+    expect(
+      (await subject.openPrompt({ ...queued, protectedContent: editedContent }))
+        .input,
+    ).toEqual([
+      { type: "text", text: "edited user text", text_elements: [] },
+      { type: "text", text: "current attachment projection" },
+    ]);
+    expect(projection).toHaveBeenCalledTimes(1);
+    const classification = { ...queued.classification, attachmentIds: [] };
+    const removedContent = await encryptQueuedPromptProtectedContent({
+      ownerId: "owner",
+      promptId: retained.prompt.id,
+      componentKey: key,
+      keyRevision: 3,
+      content: { version: 1, classification, text: "user text" },
+    });
+    expect(
+      (
+        await subject.openPrompt({
+          ...queued,
+          classification,
+          attachments: [],
+          protectedContent: removedContent,
+        })
+      ).input,
+    ).toEqual([{ type: "text", text: "user text", text_elements: [] }]);
+    expect(projection).toHaveBeenCalledTimes(1);
+  });
+});
+describe("direct terminal no-input retention", () => {
+  it("keeps slash-looking turn input literal with stable operation/message identities", async () => {
+    const subject = codec();
+    const operation = {
+      operationId: "terminal-operation",
+      origin: "terminal" as const,
+      identity,
+      connectionId: "view",
+      kind: "start" as const,
+      method: "turn/start",
+      frame: {
+        params: {
+          threadId: identity.threadId,
+          clientUserMessageId: "terminal-original-message",
+          input: [{ type: "text", text: "/goal this is literal native input" }],
+        },
+      },
+    };
+    const first = await subject.retainTerminalPrompt(operation);
+    const second = await subject.retainTerminalPrompt(operation);
+    expect(first.retainedPrompt.id).toBe(second.retainedPrompt.id);
+    expect(first.retainedPrompt.pendingMessage.id).toBe(
+      second.retainedPrompt.pendingMessage.id,
+    );
+    expect(first.retainedPrompt).toMatchObject({
+      nativeClientUserMessageId: "terminal-original-message",
+      nativeAction: "literal",
+      executionMethod: "turn/start",
+    });
+    const normalized = await subject.normalizePrompt(first.retainedPrompt);
+    expect(normalized.executionMethod).toBe("turn/start");
+    expect(
+      (
+        await subject.openPrompt({
+          ...stored(normalized),
+          attachments: first.attachments,
+        })
+      ).input,
+    ).toEqual(operation.frame.params.input);
+    expect(
+      (
+        await subject.retainTerminalPrompt({
+          ...operation,
+          operationId: "different-operation",
+        })
+      ).retainedPrompt.id,
+    ).not.toBe(first.retainedPrompt.id);
+    await expect(
+      subject.retainTerminalPrompt({
+        ...operation,
+        identity: { ...identity, chatId: "other-chat" },
+      }),
+    ).rejects.toThrow("another source");
+    await expect(
+      subject.retainTerminalPrompt({
+        ...operation,
+        queueClaim: { id: "existing-claim", promptRevision: 1 },
+      }),
+    ).rejects.toThrow("direct native");
+  });
+});

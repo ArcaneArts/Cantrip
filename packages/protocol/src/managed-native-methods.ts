@@ -22,6 +22,7 @@ const groups: Record<ManagedNativeMethodKind, readonly string[]> = {
     "thread/loaded/list",
     "thread/read",
     "thread/settings/read",
+    "thread/settings/operation/read",
     "thread/turns/list",
     "thread/items/list",
     "thread/search",

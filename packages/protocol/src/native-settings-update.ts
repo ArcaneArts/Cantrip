@@ -1,3 +1,4 @@
+import { permissionTransitionSchema } from "./permission-profiles.js";
 import { z } from "zod";
 import { encryptedPayloadEnvelopeSchema } from "./encryption.js";
 import { nativeSettingsBindingSchema } from "./native-settings-state.js";
@@ -103,4 +104,16 @@ export const nativeSettingsUpdateReceiptSchema = z
   .strict();
 export type NativeSettingsUpdateReceipt = z.infer<
   typeof nativeSettingsUpdateReceiptSchema
+>;
+
+export const nativePermissionUpdateCommandSchema = z
+  .object({
+    type: z.literal("chat.permissions.update"),
+    operationId: id,
+    binding: nativeSettingsBindingSchema,
+    permissionTransition: permissionTransitionSchema,
+  })
+  .strict();
+export type NativePermissionUpdateCommand = z.infer<
+  typeof nativePermissionUpdateCommandSchema
 >;

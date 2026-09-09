@@ -1,3 +1,4 @@
+import { ChatRuntimeContextRepository } from "./chat-runtime-context.js";
 import { and, eq } from "drizzle-orm";
 import { isDeepStrictEqual } from "node:util";
 import type {
@@ -13,7 +14,11 @@ import {
 import type { RepositoryDatabase } from "./database.js";
 import * as schema from "../schema.js";
 import { lockNativeCommandChat } from "./native-command-lock.js";
-import { settleNativeSettingsState } from "./native-settings-persistence.js";
+import {
+  settleNativeSettingsState,
+  changeNativeSettingsState,
+  NativeSettingsStateRepository,
+} from "./native-settings-persistence.js";
 import { NativeCommandError } from "./native-command-errors.js";
 
 /** Facts can arrive before the RPC acknowledgment or after runtime replacement.
@@ -72,6 +77,7 @@ export class NativeSettingsEvidenceRepository {
       const identity = command.identity as NativeCommandSession;
       const intent = nativeCommandIntentSchema.parse(command.intent);
       if (
+        (input.recoveryBindingId && !intent.permissionTransition) ||
         command.method !== "thread/settings/update" ||
         intent.nativeSettingsOperationId !== input.nativeOperationId ||
         identity.threadId !== input.threadId ||
@@ -91,6 +97,8 @@ export class NativeSettingsEvidenceRepository {
         submissionId: input.submissionId,
         resultDigest: input.resultDigest,
         protectedResult: input.protectedResult,
+        permissionPolicy: input.permissionPolicy ?? null,
+        recoveryBindingId: input.recoveryBindingId ?? null,
       };
       const inserted = await tx
         .insert(schema.nativeSettingsEvidence)
@@ -118,6 +126,8 @@ export class NativeSettingsEvidenceRepository {
         .select({
           kind: schema.nativeSettingsEvidence.kind,
           submissionId: schema.nativeSettingsEvidence.submissionId,
+          permissionPolicy: schema.nativeSettingsEvidence.permissionPolicy,
+          recoveryBindingId: schema.nativeSettingsEvidence.recoveryBindingId,
         })
         .from(schema.nativeSettingsEvidence)
         .where(
@@ -128,7 +138,30 @@ export class NativeSettingsEvidenceRepository {
       );
       const applied = facts.some((fact) => fact.kind === "applied");
       const rejected = facts.some((fact) => fact.kind === "rejected");
+      const claims = facts.flatMap((fact) =>
+        fact.permissionPolicy ? [fact.permissionPolicy] : [],
+      );
+      // Recovery proves current application after a real native read. Its epoch
+      // can differ from the original event; it does not rewrite that event.
+      const originalClaims = facts.flatMap((fact) =>
+        !fact.recoveryBindingId && fact.permissionPolicy
+          ? [fact.permissionPolicy]
+          : [],
+      );
+      const permissionConflict = Boolean(
+        intent.permissionTransition &&
+        applied &&
+        (!claims.length ||
+          claims.some(
+            (claim) =>
+              claim.effectiveId !== intent.permissionTransition!.effectiveId,
+          ) ||
+          originalClaims.some(
+            (claim) => !isDeepStrictEqual(claim, originalClaims[0]),
+          )),
+      );
       const conflict =
+        permissionConflict ||
         submissions.size > 1 ||
         (applied && rejected) ||
         facts.some((fact) => fact.kind === "correlation-conflict");
@@ -155,11 +188,134 @@ export class NativeSettingsEvidenceRepository {
         command,
         application.status === "pending" ? "dispatched" : application.status,
       );
+      let permissionPolicyPublished = false;
+      if (
+        application.status === "applied" &&
+        intent.permissionTransition &&
+        (input.recoveryBindingId ? input.permissionPolicy : originalClaims[0])
+      ) {
+        const context = await new ChatRuntimeContextRepository(tx, {
+          getChatExecutionContext: async () => {
+            throw new Error("Unexpected permission context recursion");
+          },
+        }).getChatExecutionContext(ownerId, command.chatId);
+        const current = await new NativeSettingsStateRepository(tx).get(
+          ownerId,
+          command.chatId,
+        );
+        const transition = intent.permissionTransition;
+        const previous = current?.permissionPolicy;
+        const binding = current?.binding;
+        const recovery = Boolean(input.recoveryBindingId);
+        const claim = recovery ? input.permissionPolicy : originalClaims[0];
+        if (
+          recovery &&
+          (!binding ||
+            input.recoveryBindingId !== binding.bindingId ||
+            !claim ||
+            binding.nativeEpoch !== claim.settingsVersion.epoch ||
+            binding.workerId !== command.workerId ||
+            binding.threadId !== identity.threadId ||
+            binding.contextKind !== identity.contextKind ||
+            binding.projectId !== identity.projectId ||
+            binding.placementId !== identity.placementId ||
+            binding.modelRouteId !== identity.modelRouteId ||
+            binding.providerAccountId !== identity.providerAccountId)
+        )
+          throw new NativeCommandError(
+            "native-permission-recovery-binding",
+            "Permission recovery does not match the current native source.",
+          );
+        const effectiveRuntime = recovery
+          ? binding!.runtimeGeneration
+          : identity.runtimeGeneration;
+        // Historical evidence remains durable, but never changes another runtime,
+        // account, placement or newer confirmed permission choice.
+        const currentSource =
+          context &&
+          context.workerId === command.workerId &&
+          context.threadId === identity.threadId &&
+          context.projectId === identity.projectId &&
+          context.contextKind === identity.contextKind &&
+          (context.worktreeId ?? context.scratchRootId) ===
+            identity.placementId &&
+          context.modelRouteId === identity.modelRouteId &&
+          context.providerAccountId === identity.providerAccountId &&
+          binding &&
+          binding.threadId === identity.threadId &&
+          binding.runtimeGeneration === effectiveRuntime &&
+          claim &&
+          binding.nativeEpoch === claim.settingsVersion.epoch;
+        const currentPolicy =
+          transition.expectedRevision === (previous?.revision ?? "0");
+        const sameOperation =
+          previous?.operationId === command.operationId &&
+          previous.operationGeneration === command.operationGeneration;
+        const newerNative =
+          !previous ||
+          previous.settingsVersion.epoch !== claim!.settingsVersion.epoch ||
+          BigInt(claim!.settingsVersion.revision) >=
+            BigInt(previous.settingsVersion.revision);
+        const permitted =
+          !(
+            context?.isPrimary &&
+            context.worktreePolicy === "required-for-writes"
+          ) || transition.effectiveId === ":read-only";
+        permissionPolicyPublished = Boolean(
+          currentSource &&
+          sameOperation &&
+          previous &&
+          previous.source.runtimeGeneration === effectiveRuntime &&
+          isDeepStrictEqual(previous.settingsVersion, claim!.settingsVersion),
+        );
+        if (
+          currentSource &&
+          (currentPolicy || sameOperation) &&
+          !permissionPolicyPublished &&
+          newerNative &&
+          permitted
+        ) {
+          await changeNativeSettingsState(tx, command.chatId, (state) => ({
+            ...state,
+            revision: (BigInt(state.revision) + 1n).toString(),
+            permissionPolicy: {
+              selectedId: transition.selectedId,
+              resolvedSelectedId: transition.resolvedSelectedId,
+              effectiveId: transition.effectiveId,
+              revision: sameOperation
+                ? previous!.revision
+                : (BigInt(previous?.revision ?? "0") + 1n).toString(),
+              operationId: command.operationId,
+              operationGeneration: command.operationGeneration,
+              source: {
+                workerId: command.workerId,
+                threadId: identity.threadId!,
+                runtimeGeneration: effectiveRuntime!,
+                contextKind: identity.contextKind,
+                projectId: identity.projectId,
+                placementId: identity.placementId,
+                modelRouteId: identity.modelRouteId,
+                providerAccountId: identity.providerAccountId,
+              },
+              settingsVersion: claim!.settingsVersion,
+            },
+          }));
+          permissionPolicyPublished = true;
+          await tx
+            .update(schema.chats)
+            .set({
+              permissionProfileId: transition.selectedId,
+              updatedAt: new Date(),
+            })
+            .where(eq(schema.chats.id, command.chatId));
+        }
+      }
       return {
         operationId: input.operationId,
         operationGeneration: input.operationGeneration,
         eventId: input.eventId,
         application,
+        permissionPolicyPublished,
       };
     });
   }

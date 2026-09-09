@@ -44,6 +44,11 @@ export class NativeSettingsPublisher {
       isCurrent(): boolean;
       service: Parameters<typeof protectNativeSettingsSnapshot>[0]["service"];
       client: Pick<NativeCommandClient, "refreshSettings" | "observeSettings">;
+      /** Actual server binding from a fresh native settings read, before publication resumes. */
+      onBinding?(
+        binding: NativeSettingsBinding,
+        signal: AbortSignal,
+      ): Promise<void>;
       onError(error: unknown): void;
       retryDelayMs?: number;
     },
@@ -196,6 +201,9 @@ export class NativeSettingsPublisher {
           this.close(); // A different managed source now owns this chat.
           return;
         }
+        await this.options.onBinding?.(binding, signal);
+        if (signal.aborted || !this.current()) return;
+        if (refreshGeneration !== this.refreshGeneration) continue;
         this.binding = binding;
         if (
           this.latest?.settings.settingsVersion?.epoch !== binding.nativeEpoch

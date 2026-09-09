@@ -25,6 +25,10 @@ export interface OpenedNativeSettingsIntent {
   pending: boolean;
   patch: Pick<
     NativeSettingsPatch,
+    | "permissions"
+    | "approvalPolicy"
+    | "approvalsReviewer"
+    | "sandboxPolicy"
     | "model"
     | "effort"
     | "serviceTier"
@@ -133,6 +137,19 @@ export async function openNativeSettingsIntents(input: {
         );
       const params = frame.params;
       const patch: OpenedNativeSettingsIntent["patch"] = {};
+      for (const field of [
+        "permissions",
+        "approvalPolicy",
+        "approvalsReviewer",
+        "sandboxPolicy",
+      ] as const) {
+        if (params[field] === undefined) continue;
+        const value = nativeSettingsPatchSchema.shape[field].parse(
+          params[field],
+        );
+        Object.assign(patch, { [field]: value });
+      }
+
       if (typeof params.model === "string") patch.model = params.model;
       if (typeof params.effort === "string" || params.effort === null)
         patch.effort = params.effort;
