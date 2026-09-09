@@ -1035,6 +1035,88 @@ async function existingOutput(
 }
 
 describe("existing encrypted native output aliases", () => {
+  it("adopts child output only through its bound ancestry and exact observed root command turn", async () => {
+    const command = await guiInput();
+    await command.observe();
+    const child = await f.repository.nativeHistoryBindings.open(f.ownerId, {
+      workerId: f.workerId,
+      chatId: f.chatId,
+      threadId: randomUUID(),
+      provenance: { kind: "child", parentBindingId: binding.id },
+    });
+    const itemId = randomUUID();
+    const childTurnId = randomUUID();
+    const service = {
+      ownerId: () => f.ownerId,
+      componentKey: () => ({
+        key: new Uint8Array(32).fill(17),
+        keyRevision: 1,
+      }),
+    } as unknown as WorkerEncryptionService;
+    const sealer = new EncryptedChatEventSealer(service, f.chatId, {
+      explanation: null,
+      steps: [],
+      question: null,
+    });
+    const event = await sealer.message({
+      id: itemId,
+      text: "private child answer",
+      phase: "final_answer",
+      correlation: {
+        sourceMethod: "item/completed",
+        diagnosticId: null,
+        threadId: child.threadId,
+        turnId: childTurnId,
+        itemId,
+      },
+      agentScope: {
+        agentThreadId: child.threadId,
+        rootThreadId: binding.threadId,
+        parentThreadId: binding.threadId,
+        rootTurnId: command.turnId,
+        agentPath: ["root", "child"],
+        nickname: null,
+        role: null,
+        depth: 1,
+        isRoot: false,
+      },
+    });
+    await f.repository.appendEncryptedMessage(
+      f.ownerId,
+      f.chatId,
+      event.message,
+    );
+    const childIdentity = {
+      threadId: child.threadId,
+      turnId: childTurnId,
+      itemId,
+      component: "assistant",
+      identityKind: "canonical" as const,
+    };
+    const childRequest = (rootTurnId?: string) => ({
+      ...request([]),
+      bindingId: child.id,
+      items: [
+        {
+          identity: childIdentity,
+          association: {
+            kind: "output" as const,
+            ...(rootTurnId ? { rootTurnId } : {}),
+          },
+        },
+      ],
+    });
+    await expect(
+      f.repository.nativeHistoryItems.resolve(f.ownerId, childRequest()),
+    ).rejects.toMatchObject({ code: "child-output-root-turn-missing" });
+    const [mapping] = await f.repository.nativeHistoryItems.resolve(
+      f.ownerId,
+      childRequest(command.turnId),
+    );
+    expect(mapping?.messageId).toBe(event.message.id);
+    expect(mapping?.idempotencyKey).toBe(event.message.idempotencyKey);
+  });
+
   it("keeps the legacy writer active when the canonical transaction rolls back", async () => {
     const output = await existingOutput("assistant", false);
     const [mapping] = await f.repository.nativeHistoryItems.resolve(

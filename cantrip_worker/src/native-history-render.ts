@@ -148,6 +148,33 @@ export function renderNativeHistoryItem(
           "The input identity and source record are retained.",
         ),
       );
+    if (context.agentScope && !context.agentScope.isRoot) {
+      // Child input is not a new root-user prompt. Scope text and an attachment-
+      // only header so root continuation/turn grouping can keep it with the child.
+      for (const part of content)
+        if (part.type === "text") {
+          part.agentScope = context.agentScope;
+          part.correlation = correlation;
+        }
+      if (
+        !content.some(
+          (part) => part.type === "text" || part.type === "activity",
+        )
+      )
+        content.unshift({
+          type: "activity",
+          activity: agentActivitySchema.parse({
+            type: "subAgent",
+            id: `${item.id}:input`,
+            status: "completed",
+            kind: "interacted",
+            agentThreadId: context.threadId,
+            agentPath: context.agentScope.agentPath.join("/"),
+            agentScope: context.agentScope,
+            correlation,
+          }),
+        });
+    }
     return [rendered("user", "user", content, unresolved)];
   }
   if (body.type === "agentMessage") {

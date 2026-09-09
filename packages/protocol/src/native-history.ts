@@ -21,6 +21,10 @@ export const nativeHistoryBindingOpenSchema = z
         })
         .strict(),
       z.object({ kind: z.literal("binding"), bindingId: id }).strict(),
+      // The authenticated worker verified this native child's parent by reading
+      // the actual native thread. Server ownership derives from that parent's
+      // existing historical binding, never from current chat selection.
+      z.object({ kind: z.literal("child"), parentBindingId: id }).strict(),
     ]),
   })
   .strict();
@@ -36,6 +40,8 @@ export const nativeHistoryBindingSchema = z
     modelRouteId: id.nullable(),
     providerAccountId: id.nullable(),
     createdFromOperationId: id.nullable(),
+    // Root-first immutable ancestry; omitted on old/root bindings.
+    ancestorThreadIds: z.array(id).min(1).max(31).optional(),
     createdAt: z.string().datetime({ offset: true }),
   })
   .strict();
@@ -154,9 +160,14 @@ export const nativeHistoryResolveSchema = z
               // Recover an already published root output using server-owned
               // command/turn evidence. Missing outputs do not create new rows.
               z.object({ kind: z.literal("observed-output") }).strict(),
-              // Both bound writers resolve before encrypting a canonical root
+              // Both bound writers resolve before encrypting canonical native
               // output. Adopt an existing proven alias, or reserve a fresh ID.
-              z.object({ kind: z.literal("output") }).strict(),
+              z
+                .object({
+                  kind: z.literal("output"),
+                  rootTurnId: id.optional(),
+                })
+                .strict(),
               z.object({ kind: z.literal("native") }).strict(),
               z
                 .object({

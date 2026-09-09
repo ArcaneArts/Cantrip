@@ -1,6 +1,7 @@
 import {
   nativeHistoryItemIdentitySchema,
   nativeHistoryItemMappingSchema,
+  type AgentScope,
   type NativeHistoryBinding,
   type NativeHistoryItemIdentity,
   type NativeHistoryBindingOpen,
@@ -38,7 +39,25 @@ export function createNativeHistoryOutputIdentityResolver(options: {
         const mappings = await options.client.resolve({
           chatId: options.binding.chatId,
           bindingId: options.binding.id,
-          items: [{ identity, association: { kind: "output" } }],
+          items: [
+            {
+              identity,
+              association: {
+                kind: "output",
+                ...((output.kind === "message"
+                  ? output.message
+                  : output.activity
+                ).agentScope?.isRoot === false
+                  ? {
+                      rootTurnId: (output.kind === "message"
+                        ? output.message
+                        : output.activity
+                      ).agentScope!.rootTurnId,
+                    }
+                  : {}),
+              },
+            },
+          ],
         });
         if (mappings.length !== 1)
           throw new Error(
@@ -69,7 +88,13 @@ export function createNativeHistoryOutputIdentityResolver(options: {
  * canonical here. This resolver owns no input or active-turn authority. */
 export function createManagedNativeOutputIdentityResolver(options: {
   client: Pick<NativeHistoryClient, "open" | "resolve">;
-  scope(threadId: string): Omit<NativeHistoryBindingOpen, "workerId"> | null;
+  scope(
+    threadId: string,
+    agentScope?: AgentScope,
+  ):
+    | Omit<NativeHistoryBindingOpen, "workerId">
+    | null
+    | Promise<Omit<NativeHistoryBindingOpen, "workerId"> | null>;
   signal?: AbortSignal;
 }): EncryptedChatOutputIdentityResolver {
   const bindings = new Map<
@@ -90,8 +115,7 @@ export function createManagedNativeOutputIdentityResolver(options: {
       !correlation.threadId ||
       !correlation.turnId ||
       !correlation.itemId ||
-      item.id !== correlation.itemId ||
-      item.agentScope?.isRoot === false
+      item.id !== correlation.itemId
     )
       return null;
     return {
@@ -105,7 +129,10 @@ export function createManagedNativeOutputIdentityResolver(options: {
   return async (output) => {
     const selected = identity(output);
     if (!selected) return null;
-    const scope = options.scope(selected.threadId);
+    const scope = await options.scope(
+      selected.threadId,
+      (output.kind === "message" ? output.message : output.activity).agentScope,
+    );
     if (!scope)
       throw new Error(
         "Live native output is missing its dispatched history scope.",

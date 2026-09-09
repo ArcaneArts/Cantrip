@@ -1,4 +1,5 @@
 import path from "node:path";
+import { NativeHistoryDescendants } from "./native-history-descendants.js";
 import type { AttachmentStore } from "./attachment-store.js";
 import type { NativeHistoryClient } from "./native-history-client.js";
 import type { WorkerEncryptionService } from "./worker-encryption.js";
@@ -36,6 +37,11 @@ interface Options {
  * Native input never awaits projection. Saved source wakes delivery, and existing
  * journals recover at startup without another native turn or UI connection. */
 export class ManagedNativeHistory {
+  private readonly roots = new Map<
+    string,
+    Parameters<ManagedNativeHistorySources["bind"]>[0]
+  >();
+  private readonly descendants: NativeHistoryDescendants;
   private readonly sources: ManagedNativeHistorySources;
   private readonly projection: ManagedNativeHistoryProjection;
   private stopping?: Promise<ReturnType<ManagedNativeHistorySources["stop"]>>;
@@ -79,21 +85,45 @@ export class ManagedNativeHistory {
       onRecoveryError: (error, journalKey) =>
         options.onError?.(error, { phase: "recover", journalKey }),
     });
+    this.descendants = new NativeHistoryDescendants({
+      client: options.client,
+      bind: (input) => this.bind(input),
+      retryDelayMs: options.retryDelayMs,
+      onError: (error, scope) =>
+        options.onError?.(error, { ...scope, phase: "discover-children" }),
+    });
     this.sources = new ManagedNativeHistorySources({
       ...common,
       directory: sourceDirectory,
       snapshotDelayMs: options.snapshotDelayMs,
-      onPersisted: (journal, scope) => this.projection.wake(journal, scope),
+      onPersisted: (journal, scope, runtime) => {
+        this.projection.wake(journal, scope);
+        this.descendants.wake(journal, scope, runtime);
+      },
       onError: (error, context) => options.onError?.(error, context),
     } satisfies SourceOptions);
   }
 
   bind(input: Parameters<ManagedNativeHistorySources["bind"]>[0]) {
-    return this.sources.bind(input);
+    const capture = this.sources.bind(input);
+    this.roots.set(JSON.stringify([input.chatId, input.threadId]), input);
+    return capture;
+  }
+
+  outputScope(chatId: string, rootThreadId: string, threadId: string) {
+    const root = this.roots.get(JSON.stringify([chatId, rootThreadId]));
+    if (!root)
+      throw new Error("Child native output has no managed history root.");
+    return this.descendants.resolve(root, threadId);
   }
 
   async flush(): Promise<void> {
-    await this.sources.flush();
+    let revision: number;
+    do {
+      revision = this.descendants.revision;
+      await this.sources.flush();
+      await this.descendants.flush();
+    } while (revision !== this.descendants.revision);
     await this.projection.flush();
   }
 
@@ -104,6 +134,7 @@ export class ManagedNativeHistory {
       this.stopping = Promise.all([
         this.sources.stopAndWait(),
         this.projection.stop(),
+        this.descendants.stop(),
       ]).then(([pending]) => pending);
     }
     return this.stopping;

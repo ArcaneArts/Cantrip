@@ -2377,15 +2377,25 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           session.contextKind === "project"
             ? createManagedNativeOutputIdentityResolver({
                 client: nativeHistoryClient,
-                scope: () => ({
-                  chatId: session.chatId,
-                  threadId: options.threadId,
-                  provenance: {
-                    kind: "command",
-                    operationId: grant.receipt.operationId,
-                    operationGeneration: grant.receipt.operationGeneration,
-                  },
-                }),
+                scope: (threadId, agentScope) =>
+                  threadId !== options.threadId
+                    ? agentScope?.rootThreadId === options.threadId
+                      ? managedHistory.outputScope(
+                          session.chatId,
+                          options.threadId,
+                          threadId,
+                        )
+                      : null
+                    : {
+                        chatId: session.chatId,
+                        threadId: options.threadId,
+                        provenance: {
+                          kind: "command",
+                          operationId: grant.receipt.operationId,
+                          operationGeneration:
+                            grant.receipt.operationGeneration,
+                        },
+                      },
               })
             : undefined,
         );
@@ -6132,8 +6142,18 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               command.contextKind === "project" && command.nativeCommandReceipt
                 ? createManagedNativeOutputIdentityResolver({
                     client: nativeHistoryClient,
-                    scope: (threadId) =>
-                      encryptedChatHistoryScopes.get(threadId) ?? null,
+                    scope: (threadId, agentScope) => {
+                      const root = encryptedChatHistoryScopes.get(threadId);
+                      if (root) return root;
+                      return agentScope &&
+                        encryptedChatHistoryScopes.has(agentScope.rootThreadId)
+                        ? managedHistory.outputScope(
+                            command.chatId,
+                            agentScope.rootThreadId,
+                            threadId,
+                          )
+                        : null;
+                    },
                     signal: managedGuiBridgeLifetime.signal,
                   })
                 : undefined,

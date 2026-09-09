@@ -1,6 +1,13 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -31,22 +38,63 @@ describe.skipIf(!binary)(
       const data = path.join(directory, "data");
       const children: ChildProcessWithoutNullStreams[] = [];
       const requests: unknown[] = [];
+      let spawnIssued = false;
+      let releaseChild!: () => void;
+      const childRelease = new Promise<void>((resolve) => {
+        releaseChild = resolve;
+      });
       const provider = createServer(async (request, response) => {
         let body = "";
         for await (const chunk of request) body += chunk;
-        requests.push(JSON.parse(body));
+        const payload = JSON.parse(body);
+        requests.push(payload);
         const n = requests.length;
+        const isChild =
+          JSON.stringify(payload.input).includes("SHARED_HISTORY_CHILD") &&
+          !JSON.stringify(payload.input).includes("SHARED_HISTORY_PARENT");
+        if (isChild) await childRelease;
+        const spawnTool =
+          !spawnIssued &&
+          JSON.stringify(payload.input).includes("SHARED_HISTORY_PARENT")
+            ? payload.tools?.find((tool: any) =>
+                tool.name?.endsWith("spawn_agent"),
+              )
+            : null;
+        if (spawnTool) spawnIssued = true;
+        const fields = spawnTool?.parameters?.properties ?? {};
         response.writeHead(200, { "content-type": "text/event-stream" });
         for (const event of [
           { type: "response.created", response: { id: `response-${n}` } },
           {
             type: "response.output_item.done",
-            item: {
-              type: "message",
-              role: "assistant",
-              id: `answer-${n}`,
-              content: [{ type: "output_text", text: `native answer ${n}` }],
-            },
+            item: spawnTool
+              ? {
+                  type: "function_call",
+                  id: "spawn-history-child",
+                  call_id: "history-child-call",
+                  name: spawnTool.name,
+                  arguments: JSON.stringify({
+                    message: "SHARED_HISTORY_CHILD: answer briefly.",
+                    ...(fields.task_name
+                      ? { task_name: "shared_history_child" }
+                      : {}),
+                    ...(fields.fork_turns ? { fork_turns: "none" } : {}),
+                    ...(fields.fork_context ? { fork_context: false } : {}),
+                  }),
+                }
+              : {
+                  type: "message",
+                  role: "assistant",
+                  id: `answer-${n}`,
+                  content: [
+                    {
+                      type: "output_text",
+                      text: isChild
+                        ? "native child answer"
+                        : `native answer ${n}`,
+                    },
+                  ],
+                },
           },
           {
             type: "response.completed",
@@ -70,9 +118,35 @@ describe.skipIf(!binary)(
       const errors: unknown[] = [];
       try {
         await Promise.all([mkdir(cwd), mkdir(home), mkdir(data)]);
+        const catalog = JSON.parse(
+          await readFile(
+            new URL(
+              "../../cantrip_codex/upstream/codex-rs/models-manager/models.json",
+              import.meta.url,
+            ),
+            "utf8",
+          ),
+        );
+        const modelCatalog = path.join(home, "history-models.json");
+        await writeFile(
+          modelCatalog,
+          JSON.stringify({
+            models: [
+              {
+                ...catalog.models[0],
+                slug: "gpt-5",
+                multi_agent_version: "v2",
+                tool_mode: null,
+                use_responses_lite: false,
+                supports_search_tool: false,
+                upgrade: null,
+              },
+            ],
+          }),
+        );
         await writeFile(
           path.join(home, "config.toml"),
-          "features.plugins=false\n",
+          `features.plugins=false\nmodel_catalog_json=${JSON.stringify(modelCatalog)}\n`,
         );
         provider.listen(0, "127.0.0.1");
         await once(provider, "listening");
@@ -279,7 +353,81 @@ describe.skipIf(!binary)(
           },
           { timeout: 15_000 },
         );
+        // Exercise history with explicit native V2 model metadata and session
+        // configuration. This does not establish model-catalog/default parity.
+        await call("thread/managedConfig/update", {
+          threadId,
+          mcpServers: {},
+          developerInstructions: null,
+          multiAgentEnabled: true,
+          subagentModel: null,
+          subagentReasoningEffort: null,
+          canonicalHistory: true,
+        });
+        const parentTurn = await call("turn/start", {
+          threadId,
+          input: [
+            {
+              type: "text",
+              text: "SHARED_HISTORY_PARENT: spawn the child.",
+              text_elements: [],
+            },
+          ],
+        });
+        let childThreadId: string | undefined;
+        await vi.waitFor(
+          async () => {
+            const result = await call("thread/read", {
+              threadId,
+              includeTurns: true,
+            });
+            const parent = result.thread.turns.find(
+              (turn: any) => turn.id === parentTurn.turn.id,
+            );
+            expect(parent?.status).toBe("completed");
+            childThreadId = parent?.items.find(
+              (item: any) =>
+                item.type === "subAgentActivity" && item.kind === "started",
+            )?.agentThreadId;
+            expect(childThreadId).toBeTruthy();
+          },
+          { timeout: 15_000 },
+        );
+        // Let automatic discovery settle while the child is still generating.
+        // A completed parent must not retire the child's observation lifetime.
         await history.flush();
+        releaseChild();
+        await vi.waitFor(
+          async () => {
+            const result = await call("thread/read", {
+              threadId: childThreadId,
+              includeTurns: true,
+            });
+            expect(result.thread.turns.at(-1)?.status).toBe("completed");
+            const parent = await call("thread/read", {
+              threadId,
+              includeTurns: true,
+            });
+            expect(
+              parent.thread.turns
+                .find((turn: any) => turn.id === parentTurn.turn.id)
+                ?.items.some(
+                  (item: any) =>
+                    item.type === "subAgentActivity" &&
+                    item.kind === "completed" &&
+                    item.agentThreadId === childThreadId,
+                ),
+            ).toBe(true);
+          },
+          { timeout: 15_000 },
+        );
+        await history.flush();
+        const childBinding = await client.open({
+          chatId: f.chatId,
+          threadId: childThreadId!,
+          provenance: { kind: "current" },
+        });
+        expect(childBinding.ancestorThreadIds).toEqual([threadId]);
         const serverBinding = await client.open({
           chatId: f.chatId,
           threadId,
@@ -326,6 +474,25 @@ describe.skipIf(!binary)(
             }),
           ),
         );
+        const childMessage = opened
+          .flatMap((message) => message.content)
+          .find(
+            (part) =>
+              part.type === "text" && part.text === "native child answer",
+          );
+        expect(childMessage).toMatchObject({
+          agentScope: {
+            agentThreadId: childThreadId,
+            parentThreadId: threadId,
+            rootThreadId: threadId,
+            rootTurnId: parentTurn.turn.id,
+            isRoot: false,
+            depth: 1,
+          },
+        });
+        // Native V2 spawn delivers its initial request as agent communication,
+        // not a retained userMessage item. This fixture verifies every exposed
+        // child item; communication retention is a separate native fidelity gap.
         const toolMessage = opened.find((message) =>
           message.content.some(
             (part) =>
@@ -366,7 +533,7 @@ describe.skipIf(!binary)(
             "native answer 2",
           ]),
         );
-        expect(requests).toHaveLength(3);
+        expect(requests).toHaveLength(6);
         expect(new Set(messages.map((message) => message.id)).size).toBe(
           messages.length,
         );
@@ -409,7 +576,7 @@ describe.skipIf(!binary)(
         expect((await rows()).map((message) => message.id).sort()).toEqual(
           messages.map((message) => message.id).sort(),
         );
-        expect(requests).toHaveLength(3);
+        expect(requests).toHaveLength(6);
         // Live item delivery may beat the durable native turn-context row. That
         // specific deferral is retried; the canonical output/recovery assertions
         // above prove eventual publication rather than accepting a dropped page.
@@ -426,6 +593,7 @@ describe.skipIf(!binary)(
           expect.objectContaining({ message: "fixture lost committed reply" }),
         ]);
       } finally {
+        releaseChild();
         socket?.terminate();
         await history?.stop();
         runtime?.close();

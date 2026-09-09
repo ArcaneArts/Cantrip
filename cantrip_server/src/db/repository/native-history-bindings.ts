@@ -28,9 +28,10 @@ export class NativeHistoryError extends Error {
 
 type BindingRow = typeof schema.nativeHistoryBindings.$inferSelect;
 function binding(row: BindingRow): NativeHistoryBinding {
-  const { ownerId: _owner, createdAt, ...fields } = row;
+  const { ownerId: _owner, createdAt, ancestorThreadIds, ...fields } = row;
   return nativeHistoryBindingSchema.parse({
     ...fields,
+    ...(ancestorThreadIds.length ? { ancestorThreadIds } : {}),
     createdAt: createdAt.toISOString(),
   });
 }
@@ -101,6 +102,34 @@ export class NativeHistoryBindingRepository {
           throw new NativeHistoryError("binding-not-found", 404);
         return binding(existing);
       }
+      let parent: BindingRow | undefined;
+      if (input.provenance.kind === "child") {
+        [parent] = await tx
+          .select()
+          .from(schema.nativeHistoryBindings)
+          .where(
+            and(
+              eq(
+                schema.nativeHistoryBindings.id,
+                input.provenance.parentBindingId,
+              ),
+              eq(schema.nativeHistoryBindings.ownerId, ownerId),
+              eq(schema.nativeHistoryBindings.workerId, input.workerId),
+              eq(schema.nativeHistoryBindings.chatId, input.chatId),
+            ),
+          );
+        if (!parent)
+          throw new NativeHistoryError("parent-binding-not-found", 404);
+        const ancestors = [...parent.ancestorThreadIds, parent.threadId];
+        if (ancestors.includes(input.threadId) || ancestors.length > 31)
+          throw new NativeHistoryError("invalid-child-ancestry");
+        if (
+          existing &&
+          JSON.stringify(existing.ancestorThreadIds) !==
+            JSON.stringify(ancestors)
+        )
+          throw new NativeHistoryError("child-parent-mismatch");
+      }
       // Once persisted, exact history ownership does not expire with an active
       // turn or the currently selected route. This is a read/import association.
       if (existing) return binding(existing);
@@ -113,7 +142,17 @@ export class NativeHistoryBindingRepository {
         | "providerAccountId"
         | "createdFromOperationId"
       >;
-      if (input.provenance.kind === "current") {
+      let ancestorThreadIds: string[] = [];
+      if (input.provenance.kind === "child") {
+        source = {
+          projectId: parent!.projectId,
+          worktreeId: parent!.worktreeId,
+          modelRouteId: parent!.modelRouteId,
+          providerAccountId: parent!.providerAccountId,
+          createdFromOperationId: parent!.createdFromOperationId,
+        };
+        ancestorThreadIds = [...parent!.ancestorThreadIds, parent!.threadId];
+      } else if (input.provenance.kind === "current") {
         const context = await new ChatRuntimeContextRepository(tx, {
           getChatExecutionContext: async () => {
             throw new Error("Unexpected history context recursion");
@@ -191,6 +230,7 @@ export class NativeHistoryBindingRepository {
           workerId: input.workerId,
           chatId: input.chatId,
           threadId: input.threadId,
+          ancestorThreadIds,
           ...source,
         })
         .returning();

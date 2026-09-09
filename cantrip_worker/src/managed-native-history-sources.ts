@@ -6,14 +6,15 @@ import type { NativeHistoryClient } from "./native-history-client.js";
 import type { NativeHistoryEncryptionService } from "./native-history-content.js";
 import { NativeHistorySourceJournal } from "./native-history-source-journal.js";
 
-type Runtime = Pick<
+export type NativeHistoryRuntime = Pick<
   CodexRuntime,
   "observeNativeHistory" | "transportGeneration"
->;
+> &
+  Partial<Pick<CodexRuntime, "readNativeHistory">>;
 type Provenance = NativeHistoryBindingOpen["provenance"];
 type Scope = { chatId: string; threadId: string };
 type Entry = Scope & {
-  runtime: Runtime;
+  runtime: NativeHistoryRuntime;
   capture: NativeHistoryCapture;
   provenance: Provenance;
   lifetime: AbortController;
@@ -35,6 +36,7 @@ interface Options {
   onPersisted?: (
     journal: NativeHistorySourceJournal,
     scope: Scope & { bindingId: string },
+    runtime: NativeHistoryRuntime,
   ) => void | Promise<void>;
   retryDelayMs?: number;
   maxRetryDelayMs?: number;
@@ -64,7 +66,9 @@ export class ManagedNativeHistorySources {
       throw new Error("Invalid native history binding request timeout.");
   }
 
-  bind(input: Scope & { runtime: Runtime; provenance?: Provenance }) {
+  bind(
+    input: Scope & { runtime: NativeHistoryRuntime; provenance?: Provenance },
+  ) {
     if (this.stopped)
       throw new Error("Managed history capture has been stopped.");
     const key = JSON.stringify([
@@ -128,10 +132,14 @@ export class ManagedNativeHistorySources {
       },
       onPersisted: this.options.onPersisted
         ? () =>
-            this.options.onPersisted!(journal!, {
-              ...scope,
-              bindingId: bindingId!,
-            })
+            this.options.onPersisted!(
+              journal!,
+              {
+                ...scope,
+                bindingId: bindingId!,
+              },
+              input.runtime,
+            )
         : undefined,
       onError: (error, phase) =>
         this.options.onError?.(error, {

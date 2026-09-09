@@ -281,6 +281,64 @@ describe("native history item presentation", () => {
     ).toBe("user");
   });
 
+  it("keeps child text and attachment-only prompts scoped to their parent turn", () => {
+    const agentScope = {
+      rootThreadId: "root",
+      parentThreadId: "root",
+      agentThreadId: "thread",
+      rootTurnId: "parent-turn",
+      agentPath: ["root", "child"],
+      depth: 1,
+      nickname: null,
+      role: null,
+      isRoot: false,
+    };
+    const [text] = renderNativeHistoryItem(
+      item({
+        type: "userMessage",
+        content: [{ type: "text", text: "child request" }],
+      }),
+      { ...context, agentScope },
+    );
+    expect(text!.message.content).toMatchObject([
+      {
+        type: "text",
+        text: "child request",
+        agentScope,
+        correlation: { threadId: "thread", turnId: "turn", itemId: "native" },
+      },
+    ]);
+    const attachment = {
+      type: "attachment" as const,
+      attachment: {
+        id: "child-image",
+        chatId: "chat",
+        fileName: "image.png",
+        mimeType: "image/png",
+        sizeBytes: 1,
+        kind: "image" as const,
+        source: "file" as const,
+        status: "ready" as const,
+        previewText: null,
+        createdAt: "2026-09-09T00:00:00Z",
+      },
+    };
+    const [image] = renderNativeHistoryItem(
+      item({
+        type: "userMessage",
+        content: [{ type: "image", url: "fixture" }],
+      }),
+      { ...context, agentScope, inputParts: new Map([[0, [attachment]]]) },
+    );
+    expect(image!.message.content).toMatchObject([
+      {
+        type: "activity",
+        activity: { type: "subAgent", kind: "interacted", agentScope },
+      },
+      attachment,
+    ]);
+  });
+
   it("uses supplied authorized materialization at its exact input position without reading a native path", () => {
     const [draft] = renderNativeHistoryItem(
       item({
