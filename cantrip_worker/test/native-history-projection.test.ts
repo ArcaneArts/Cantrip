@@ -184,6 +184,105 @@ afterEach(async () => {
 });
 
 describe("durable native history projection transactions", () => {
+  it("projects retained native response usage through encrypted delivery and replay without a live usage callback", async () => {
+    const usage = {
+      inputTokens: 2,
+      outputTokens: 3,
+      totalTokens: 5,
+      cachedInputTokens: 0,
+      cacheWriteInputTokens: 0,
+      reasoningOutputTokens: 0,
+    };
+    const snapshot = parseCodexNativeHistory(
+      {
+        thread: {
+          id: threadId,
+          status: { type: "idle" },
+          turns: [
+            {
+              id: "turn",
+              status: "completed",
+              startedAt: 1,
+              completedAt: 4,
+              items: [],
+            },
+          ],
+        },
+        history: {
+          version: 1,
+          currentTurnId: null,
+          currentTurnState: "notLoaded",
+          turns: [
+            {
+              turnId: "turn",
+              source: "canonical",
+              retention: "complete",
+              items: [],
+              usage: {
+                responses: ["one", "two"].map((responseId) => ({
+                  responseId,
+                  threadId,
+                  sessionId: threadId,
+                  rootTurnId: "turn",
+                  usage,
+                })),
+                total: {
+                  ...usage,
+                  inputTokens: 4,
+                  outputTokens: 6,
+                  totalTokens: 10,
+                },
+                conflictingResponseIds: [],
+              },
+              warnings: [],
+              errors: [],
+            },
+          ],
+        },
+      },
+      threadId,
+    );
+    const append = () =>
+      source.append({
+        kind: "snapshot",
+        generation: "runtime",
+        threadId,
+        receivedAtMs: Date.now(),
+        id: randomUUID(),
+        readBarrierSequence: 0,
+        completedSequence: 0,
+        snapshot,
+      });
+    await append();
+    await projection.drain();
+    const inspect = () =>
+      f.repository.nativeHistoryBindings.withBinding(
+        f.ownerId,
+        f.workerId,
+        f.chatId,
+        options.bindingId,
+        (tx) => tx.select().from(schema.tokenUsageRecords),
+      );
+    expect(await inspect()).toHaveLength(1);
+    expect((await inspect())[0]).toMatchObject({
+      inputTokens: 4,
+      outputTokens: 6,
+      modelId: null,
+      usageSemantics: "native-responses-complete-v1",
+    });
+    const reopened = await reopen();
+    await append();
+    await reopened.drain();
+    expect(await inspect()).toHaveLength(1);
+    const archived = await client.archiveTurns({
+      chatId: f.chatId,
+      bindingId: options.bindingId,
+    });
+    expect(archived.turns[0]!.turn.usage).toMatchObject({
+      complete: true,
+      responses: [{ responseId: "one" }, { responseId: "two" }],
+    });
+  });
   it("preserves an accepted stage prefix across repeated rebases and recovers a lost final reply without recomputing any plan", async () => {
     const binding = await client.open({
       chatId: f.chatId,

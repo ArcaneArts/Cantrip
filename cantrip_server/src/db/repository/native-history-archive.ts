@@ -214,6 +214,7 @@ export class NativeHistoryArchiveRepository {
               startedAtMs: source.startedAtMs,
               completedAtMs: source.completedAtMs,
               metadata: source.metadata,
+              ...(source.usage == null ? {} : { usage: source.usage }),
             },
           })),
           nextCursor:

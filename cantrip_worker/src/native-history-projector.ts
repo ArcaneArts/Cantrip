@@ -24,6 +24,7 @@ import {
 } from "./native-history-render.js";
 import { prepareNativeHistoryRenderedItem } from "./native-history-prepare-item.js";
 import { protectNativeHistoryTurnMetadata } from "./native-history-turn-content.js";
+import { nativeHistoryUsageForTurn } from "./native-history-usage.js";
 
 const publication = z.object({
   revision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
@@ -370,8 +371,16 @@ export function createNativeHistoryProjector(options: Options): Project {
         );
       });
       const content = { version: 2, reducedTurn, evidence };
+      const usage = nativeHistoryUsageForTurn(
+        binding.threadId,
+        turn.id,
+        reducedTurn.metadata,
+      );
       const digest = fingerprint({
         ...content,
+        // Upgrade an already acknowledged projection when analytics becomes
+        // available, even if the encrypted native source itself is unchanged.
+        usage,
         reducedTurn: { ...reducedTurn, origin: undefined },
         // Repeated identical reads retain all record IDs locally; they do not
         // change the aggregate's semantic evidence or require reencryption.
@@ -396,6 +405,7 @@ export function createNativeHistoryProjector(options: Options): Project {
           status: status.data,
           startedAtMs: millis(turn.body.startedAt),
           completedAtMs: millis(turn.body.completedAt),
+          ...(usage === undefined ? {} : { usage }),
         },
       });
       if (batch.turns.length >= limit) flush();

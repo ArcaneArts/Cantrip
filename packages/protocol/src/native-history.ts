@@ -2,6 +2,7 @@ import { z } from "zod";
 import { chatMessageOpaqueContentSchema } from "./communication-content.js";
 import { chatAttachmentOpaqueSummarySchema } from "./attachment-content.js";
 import { encryptedPayloadEnvelopeSchema } from "./encryption.js";
+import { nativeHistoryUsageSchema } from "./native-history-usage.js";
 
 const id = z.string().min(1).max(255);
 
@@ -242,8 +243,9 @@ export const nativeHistoryTurnSchema = z
     status: z.enum(["inProgress", "completed", "failed", "interrupted"]),
     startedAtMs: z.number().nullable(),
     completedAtMs: z.number().nullable(),
-    // Worker-protected timing/usage/warnings/lineage evidence. The server only
-    // stores opaque content, not unconstrained plaintext transcript fields.
+    usage: nativeHistoryUsageSchema.optional(),
+    // Full timing/usage/warnings/lineage remain worker-protected. Only the typed
+    // analytics projection above is public; raw transcript fields stay opaque.
     metadata: encryptedPayloadEnvelopeSchema,
   })
   .strict();

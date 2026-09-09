@@ -7,10 +7,12 @@ import * as schema from "../schema.js";
 import type { RepositoryTransaction } from "./database.js";
 import { NativeHistoryError } from "./native-history-bindings.js";
 import { nativeHistoryPayloadDigest } from "./native-history-digest.js";
+import { persistNativeHistoryUsage } from "./native-history-usage.js";
 
 /** Called only inside the binding-locked canonical ingestion transaction. */
 export async function persistNativeHistoryTurns(
   tx: RepositoryTransaction,
+  ownerId: string,
   binding: NativeHistoryBinding,
   turns: NativeHistoryTurn[],
 ): Promise<void> {
@@ -37,8 +39,18 @@ export async function persistNativeHistoryTurns(
       // resurrect that turn, even if journaled later. Do not advance the saved
       // content revision for rejected state: later terminal enrichment remains
       // eligible. The batch receipt still acknowledges the observed stale input.
-      if (existing.status !== "inProgress" && turn.status === "inProgress")
+      if (existing.status !== "inProgress" && turn.status === "inProgress") {
+        // Header state and measured responses have independent freshness.
+        // A stale active header may still contain newly retained usage; merge
+        // that evidence without reopening the turn or rewriting its envelope.
+        await persistNativeHistoryUsage(tx, ownerId, binding, {
+          ...turn,
+          status: existing.status,
+          startedAtMs: existing.startedAtMs,
+          completedAtMs: existing.completedAtMs,
+        });
         continue;
+      }
     }
     const saved = {
       bindingId: binding.id,
@@ -51,10 +63,12 @@ export async function persistNativeHistoryTurns(
       startedAtMs: turn.startedAtMs,
       completedAtMs: turn.completedAtMs,
       metadata: turn.metadata,
+      usage: turn.usage ?? null,
       payloadDigest,
     };
     if (existing)
       await tx.update(schema.nativeHistoryTurns).set(saved).where(key);
     else await tx.insert(schema.nativeHistoryTurns).values(saved);
+    await persistNativeHistoryUsage(tx, ownerId, binding, turn);
   }
 }

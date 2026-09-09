@@ -73,6 +73,7 @@ export async function readChatNativeHistoryTurns(
           startedAtMs: turn.startedAtMs,
           completedAtMs: turn.completedAtMs,
           metadata: turn.metadata,
+          ...(turn.usage == null ? {} : { usage: turn.usage }),
         },
       })),
     });

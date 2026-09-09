@@ -14,6 +14,7 @@ import {
 } from "@cantrip/protocol";
 import type { NativeHistoryEncryptionService } from "./native-history-content.js";
 import type { CodexNativeHistorySnapshot } from "./codex/native-history.js";
+import { nativeHistoryUsageForTurn } from "./native-history-usage.js";
 
 type Binding = Pick<
   NativeHistoryBinding,
@@ -53,6 +54,9 @@ function material(
             turn.status,
             turn.startedAtMs,
             turn.completedAtMs,
+            // Omission keeps the exact legacy AAD; new analytics cannot be
+            // removed, inserted or modified without invalidating the envelope.
+            ...(turn.usage === undefined ? [] : [turn.usage]),
           ]),
         )
         .digest("hex"),
@@ -116,6 +120,11 @@ export async function prepareNativeHistoryTurn(input: {
     startedAtMs: source.startedAt == null ? null : source.startedAt * 1_000,
     completedAtMs:
       source.completedAt == null ? null : source.completedAt * 1_000,
+    usage: nativeHistoryUsageForTurn(
+      input.binding.threadId,
+      input.turnId,
+      evidence,
+    ),
   });
   return protectNativeHistoryTurnMetadata({
     service: input.service,
