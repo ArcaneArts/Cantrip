@@ -1,4 +1,7 @@
-import { NativeThreadSettingsState } from "./native-thread-settings.js";
+import {
+  NativeThreadSettingsState,
+  type NativeSettingsRequest,
+} from "./native-thread-settings.js";
 import { z } from "zod";
 import { publishPendingInteraction } from "./pending-interaction-publication.js";
 import {
@@ -1870,6 +1873,8 @@ export interface ManagedExecutionGateHandler {
 
 export interface ManagedNativeGuiCommand {
   operationId?: string;
+  /** Server-issued settings source; metadata, never a native API parameter. */
+  settingsBindingId?: string;
   queueClaim?: { id: string; promptRevision: number };
   method: string;
   params: Record<string, unknown>;
@@ -6402,6 +6407,97 @@ export class CodexAppServer implements CodexRuntime {
     return this.#threadSettings.read(threadId);
   }
 
+  /** Explicit controller mutation. Never starts/resumes a runtime or infers settings
+   * from a turn's bootstrap model. Admission and application remain separate. */
+  async updateNativeThreadSettings(options: {
+    threadId: string;
+    operationId: string;
+    settingsBindingId: string;
+    nativeEpoch: string;
+    patch: Record<string, unknown>;
+  }): Promise<NativeSettingsRequest> {
+    const dispatcher = this.#managedNativeCommandDispatchers.get(
+      options.threadId,
+    );
+    if (!dispatcher)
+      throw new Error(
+        "Native settings changes require the managed command controller.",
+      );
+    return this.applyNativeThreadSettings(
+      options.threadId,
+      options.operationId,
+      options.patch,
+      () => {
+        if (
+          this.#managedNativeCommandDispatchers.get(options.threadId) !==
+          dispatcher
+        )
+          throw new Error("The managed settings controller was replaced.");
+        const observedEpoch = this.#threadSettings.read(options.threadId)
+          .confirmed?.settings.settingsVersion?.epoch;
+        if (observedEpoch && observedEpoch !== options.nativeEpoch)
+          throw new Error("The native settings Core was replaced.");
+      },
+      options.settingsBindingId,
+    );
+  }
+
+  private async applyNativeThreadSettings(
+    threadId: string,
+    operationId: string,
+    patch: Record<string, unknown>,
+    assertOwner: () => void = () => {},
+    settingsBindingId?: string,
+  ): Promise<NativeSettingsRequest> {
+    // Identity fields must never be supplied inside the settings patch.
+    if (Object.hasOwn(patch, "threadId") || Object.hasOwn(patch, "operationId"))
+      throw new Error(
+        "Native settings identity must be separate from its patch.",
+      );
+    const generation = this.transportGeneration;
+    const preparationVersion =
+      this.#threadPreparationVersions.get(threadId) ?? 0;
+    const assertCurrent = () => {
+      assertOwner();
+      if (
+        this.transportGeneration !== generation ||
+        (this.#threadPreparationVersions.get(threadId) ?? 0) !==
+          preparationVersion
+      )
+        throw new Error(
+          "Native settings update belongs to a replaced thread or transport.",
+        );
+    };
+    assertCurrent();
+    const pending = this.#threadSettings.begin(threadId, operationId, patch);
+    const params = { ...structuredClone(patch), threadId, operationId };
+    try {
+      const acknowledgment = await this.dispatchGuiNativeCommand(threadId, {
+        operationId,
+        ...(settingsBindingId === undefined ? {} : { settingsBindingId }),
+        method: "thread/settings/update",
+        params,
+        dispatch: (forward) => {
+          assertCurrent();
+          return this.request(
+            forward?.method ?? "thread/settings/update",
+            forward?.params ?? params,
+          );
+        },
+      });
+      assertCurrent();
+      this.#threadSettings.acknowledge(threadId, pending, acknowledgment);
+      return structuredClone(pending);
+    } catch (error) {
+      this.#threadSettings.failed(
+        threadId,
+        pending,
+        error instanceof CodexNativeRpcError,
+      );
+      throw error;
+    }
+  }
+
   /** Read Core's atomic settings/version snapshot, without loading or configuring it. */
   async readNativeThreadSettings(
     threadId: string,
@@ -8679,29 +8775,12 @@ export class CodexAppServer implements CodexRuntime {
     assertCurrent();
     if (this.#threadSettings.selectedPlanMode(threadId) !== mode) {
       const operationId = randomUUID();
-      const pending = this.#threadSettings.begin(threadId, operationId, {
-        collaborationMode,
-      });
-      try {
-        const acknowledgment = await this.requestGuiThreadMutation(
-          "thread/settings/update",
-          {
-            threadId,
-            operationId,
-            collaborationMode,
-          },
-          operationId,
-        );
-        assertCurrent();
-        this.#threadSettings.acknowledge(threadId, pending, acknowledgment);
-      } catch (error) {
-        this.#threadSettings.failed(
-          threadId,
-          pending,
-          error instanceof CodexNativeRpcError,
-        );
-        throw error;
-      }
+      await this.applyNativeThreadSettings(
+        threadId,
+        operationId,
+        { collaborationMode },
+        assertCurrent,
+      );
     }
     return collaborationMode;
   }

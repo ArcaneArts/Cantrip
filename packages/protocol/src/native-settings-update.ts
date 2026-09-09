@@ -1,0 +1,91 @@
+import { z } from "zod";
+import { encryptedPayloadEnvelopeSchema } from "./encryption.js";
+import { nativeSettingsBindingSchema } from "./native-settings-state.js";
+
+const id = z.string().min(1).max(255);
+
+/** Explicit fields only. Native validation and managed permission policy remain
+ * authoritative; omitted fields are never filled from a stale GUI selection. */
+export const nativeSettingsPatchSchema = z
+  .object({
+    cwd: z.string().nullable().optional(),
+    approvalPolicy: z
+      .union([z.string(), z.record(z.string(), z.json())])
+      .nullable()
+      .optional(),
+    approvalsReviewer: z.string().nullable().optional(),
+    sandboxPolicy: z.record(z.string(), z.json()).nullable().optional(),
+    permissions: z.string().nullable().optional(),
+    model: z.string().nullable().optional(),
+    effort: z.string().nullable().optional(),
+    summary: z.string().nullable().optional(),
+    // Null clears; omission preserves. Do not normalize these to one value.
+    serviceTier: z.string().nullable().optional(),
+    collaborationMode: z
+      .object({
+        mode: z.enum(["default", "plan"]),
+        settings: z
+          .object({
+            model: z.string(),
+            reasoning_effort: z.string().nullable(),
+            developer_instructions: z.string().nullable(),
+          })
+          .strict(),
+      })
+      .strict()
+      .nullable()
+      .optional(),
+    multiAgentMode: z.string().nullable().optional(),
+    personality: z.string().nullable().optional(),
+  })
+  .strict();
+export type NativeSettingsPatch = z.infer<typeof nativeSettingsPatchSchema>;
+
+/** One stable operation identity and one bound source travel with the encrypted
+ * patch. Retrying transport does not authorize replaying native effects. */
+export const nativeSettingsUpdateRequestSchema = z
+  .object({
+    operationId: id,
+    bindingId: id,
+    protectedPatch: encryptedPayloadEnvelopeSchema,
+  })
+  .strict();
+export type NativeSettingsUpdateRequest = z.infer<
+  typeof nativeSettingsUpdateRequestSchema
+>;
+
+export const nativeSettingsUpdateContextSchema = z
+  .object({
+    chatId: id,
+    operationId: id,
+    bindingId: id,
+  })
+  .strict();
+export type NativeSettingsUpdateContext = z.infer<
+  typeof nativeSettingsUpdateContextSchema
+>;
+
+export const nativeSettingsUpdateCommandSchema =
+  nativeSettingsUpdateRequestSchema
+    .extend({
+      type: z.literal("chat.settings.update"),
+      binding: nativeSettingsBindingSchema,
+    })
+    .strict();
+
+export const nativeSettingsUpdateReceiptSchema = z
+  .object({
+    operationId: id,
+    submissionId: id.nullable(),
+    status: z.enum([
+      "requesting",
+      "queued",
+      "applied",
+      "rejected",
+      "uncertain",
+    ]),
+  })
+  .strict();
+export type NativeSettingsUpdateReceipt = z.infer<
+  typeof nativeSettingsUpdateReceiptSchema
+>;

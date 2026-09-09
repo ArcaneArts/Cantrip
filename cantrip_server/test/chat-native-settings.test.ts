@@ -105,32 +105,45 @@ describe("shared settings native read and publication", () => {
     }
   });
 
-  it("rejects a late read after another read has already replaced its binding", async () => {
-    let release!: (snapshot: ProtectedNativeSettingsSnapshot) => void;
-    let scope!: NativeSettingsReadScope;
-    const older = fixture.commands.refreshSettingsState(
-      LOCAL_USER_ID,
-      fixture.chatId,
-      (input) => {
-        scope = input;
-        return new Promise((resolve) => {
-          release = resolve;
+  it.each(["same", "replaced"])(
+    "orders a late read against a %s native source",
+    async (source) => {
+      let release!: (snapshot: ProtectedNativeSettingsSnapshot) => void;
+      let scope!: NativeSettingsReadScope;
+      const older = fixture.commands.refreshSettingsState(
+        LOCAL_USER_ID,
+        fixture.chatId,
+        (input) => {
+          scope = input;
+          return new Promise((resolve) => {
+            release = resolve;
+          });
+        },
+      );
+      const outcome = older.then(
+        (value) => ({ value }),
+        (error) => ({ error }),
+      );
+      await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+      const newer = await fixture.commands.refreshSettingsState(
+        LOCAL_USER_ID,
+        fixture.chatId,
+        (input) =>
+          response(
+            input,
+            "9",
+            source === "same" ? "runtime-one" : "runtime-replaced",
+          ),
+      );
+      release(await response(scope, "2"));
+      if (source === "replaced")
+        expect(await outcome).toMatchObject({
+          error: { code: "settings-read-replaced" },
         });
-      },
-    );
-    const rejected = expect(older).rejects.toMatchObject({
-      code: "settings-read-replaced",
-    });
-    await vi.waitFor(() => expect(release).toBeTypeOf("function"));
-    const newer = await fixture.commands.refreshSettingsState(
-      LOCAL_USER_ID,
-      fixture.chatId,
-      (input) => response(input, "9"),
-    );
-    release(await response(scope, "2"));
-    await rejected;
-    expect(await current()).toEqual(newer);
-  });
+      else expect(await outcome).toEqual({ value: newer });
+      expect(await current()).toEqual(newer);
+    },
+  );
 
   it("does not hold command admission behind a pending native read", async () => {
     let release!: (snapshot: ProtectedNativeSettingsSnapshot) => void;

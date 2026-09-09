@@ -1,3 +1,4 @@
+import { updateProtectedNativeSettings } from "./native-settings-update.js";
 import { NativeSettingsPublisher } from "./native-settings-publisher.js";
 import { readProtectedNativeSettings } from "./native-settings-read.js";
 import { createHash, randomUUID } from "node:crypto";
@@ -2846,6 +2847,34 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     return entry?.generation === runtime.transportGeneration
       ? runtime
       : undefined;
+  };
+
+  const managedSettingsTarget = (scope: {
+    chatId: string;
+    threadId: string;
+  }) => {
+    const { chatId, threadId } = scope;
+    const runtime = currentManagedRuntime(chatId, threadId);
+    if (!runtime) return undefined;
+    const entry = managedCommandSessions
+      .get(runtime)
+      ?.get(`${chatId}:${threadId}`);
+    if (!entry) return undefined;
+    const session = entry.queueSession();
+    return {
+      runtime,
+      generation: entry.generation,
+      scope: {
+        chatId,
+        threadId,
+        workerId: config.workerId,
+        contextKind: session.contextKind,
+        projectId: session.projectId,
+        placementId: session.placementId,
+        modelRouteId: session.modelRouteId,
+        providerAccountId: session.providerAccountId,
+      },
+    };
   };
 
   const prepareManagedMutation = async (
@@ -7541,34 +7570,17 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           threadId: prepared?.threadId ?? command.threadId,
         });
       }
+      case "chat.settings.update":
+        return updateProtectedNativeSettings({
+          request: command,
+          service: workerEncryption,
+          resolve: () => managedSettingsTarget(command.binding),
+        });
       case "chat.settings.read":
         return readProtectedNativeSettings({
           scope: command.scope,
           service: workerEncryption,
-          resolve: () => {
-            const { chatId, threadId } = command.scope;
-            const runtime = currentManagedRuntime(chatId, threadId);
-            if (!runtime) return undefined;
-            const entry = managedCommandSessions
-              .get(runtime)
-              ?.get(`${chatId}:${threadId}`);
-            if (!entry) return undefined;
-            const session = entry.queueSession();
-            return {
-              runtime,
-              generation: entry.generation,
-              scope: {
-                chatId,
-                threadId,
-                workerId: config.workerId,
-                contextKind: session.contextKind,
-                projectId: session.projectId,
-                placementId: session.placementId,
-                modelRouteId: session.modelRouteId,
-                providerAccountId: session.providerAccountId,
-              },
-            };
-          },
+          resolve: () => managedSettingsTarget(command.scope),
         });
       case "chat.thread.ensure":
         if (command.session) {

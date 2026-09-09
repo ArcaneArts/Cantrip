@@ -26,6 +26,7 @@ export interface ManagedNativeGatewayIdentity extends ManagedSessionIdentity {
   providerAccountId: string | null;
 }
 export interface ManagedNativeOperation {
+  settingsBindingId?: string;
   operationId: string;
   expectedTurnId?: string;
   queueClaim?: { id: string; promptRevision: number };

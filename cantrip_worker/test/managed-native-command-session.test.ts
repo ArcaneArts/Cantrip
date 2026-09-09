@@ -946,6 +946,52 @@ describe("managed native command session", () => {
     expect(dispatch).toHaveBeenCalledTimes(1);
   });
 
+  it("binds explicit GUI settings in admission metadata without adding native parameters", async () => {
+    const f = fixture(false);
+    const params = {
+      threadId: "thread",
+      operationId: "operation",
+      effort: "high",
+      serviceTier: null,
+    };
+    const dispatch = vi.fn(async () => ({
+      operationId: "operation",
+      submissionId: "submission",
+    }));
+    await f.adapter.executeGuiCommand(session, {
+      operationId: "operation",
+      settingsBindingId: "settings-source",
+      method: "thread/settings/update",
+      params,
+      dispatch,
+    });
+    const input = f.client.admit.mock.calls[0]![0];
+    expect(input.intent).toMatchObject({
+      settingsBindingId: "settings-source",
+      nativeSettingsOperationId: "operation",
+      settingKeys: ["effort", "serviceTier"],
+    });
+    expect(
+      await openNativeCommandContent({
+        service: {
+          ownerId: () => "owner",
+          serverIdentity: () => "server",
+          componentKey: () => ({
+            keyRevision: 1,
+            key: new Uint8Array(32).fill(7),
+          }),
+        },
+        context: {
+          chatId: "chat",
+          operationId: "operation",
+          direction: "request",
+        },
+        envelope: input.protectedPayload,
+      }),
+    ).toEqual({ id: "operation", method: "thread/settings/update", params });
+    expect(dispatch).toHaveBeenCalledTimes(1);
+  });
+
   it("admits GUI controls with the actual identity and persists native acceptance", async () => {
     const f = fixture(false);
     const dispatch = vi.fn(async () => {

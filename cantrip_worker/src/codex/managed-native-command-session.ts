@@ -594,6 +594,9 @@ export class ManagedNativeCommandSession {
     const operationId = command.operationId ?? randomUUID();
     const operation: ManagedNativeOperation = {
       operationId,
+      ...(command.settingsBindingId === undefined
+        ? {}
+        : { settingsBindingId: command.settingsBindingId }),
       ...(command.queueClaim ? { queueClaim: command.queueClaim } : {}),
       origin: "gui",
       identity: {
@@ -680,6 +683,8 @@ export class ManagedNativeCommandSession {
     );
     if (operation.expectedTurnId)
       intent.expectedTurnId = operation.expectedTurnId;
+    if (operation.settingsBindingId !== undefined)
+      intent.settingsBindingId = operation.settingsBindingId;
     const protectedContent = await protectNativeCommandContent({
       service: this.options.encryption,
       context: {

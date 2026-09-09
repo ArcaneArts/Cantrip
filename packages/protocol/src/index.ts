@@ -17,3 +17,5 @@ export * from "./native-command-events.js";
 export * from "./managed-queue.js";
 export * from "./native-history.js";
 export * from "./native-thread-settings.js";
+
+export * from "./native-settings-update.js";
