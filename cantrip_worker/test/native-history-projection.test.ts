@@ -17,6 +17,7 @@ import { persistNativeHistoryAttachments } from "../../cantrip_server/src/db/rep
 import { NativeHistoryClient } from "../src/native-history-client.js";
 import { readNativeHistoryRecovery } from "../src/native-history-recovery.js";
 import { restoreNativeHistoryProjectorState } from "../src/native-history-projector-bootstrap.js";
+import { reduceNativeHistory } from "../src/native-history-reducer.js";
 import { NativeHistorySourceJournal } from "../src/native-history-source-journal.js";
 import { NativeHistoryOutbox } from "../src/native-history-outbox.js";
 import { NativeHistoryProjection } from "../src/native-history-projection.js";
@@ -1247,6 +1248,7 @@ describe("durable native history projection transactions", () => {
         version: 2,
         reducedTurn: {
           body: { status: "completed", durationMs: 1750 },
+          terminalNotification: "completed",
           metadata: { initialSettings },
         },
         evidence: expect.arrayContaining([
@@ -1269,6 +1271,67 @@ describe("durable native history projection transactions", () => {
     expect(state.source.turns[0]!.metadata?.initialSettings).toEqual(
       initialSettings,
     );
+    const recovery = await readNativeHistoryRecovery({
+      binding: recoveredTurns.binding,
+      service,
+      client,
+    });
+    // Another binding's larger revision does not outweigh an actual completion.
+    const older = structuredClone(recovery.turns[0]!);
+    older.bindingId = randomUUID();
+    older.turn.revision += 100;
+    older.turn.status = "interrupted";
+    older.turn.completedAtMs = null;
+    const olderSource = older.source as {
+      reducedTurn: {
+        terminalNotification?: string;
+        body: Record<string, unknown>;
+      };
+    };
+    delete olderSource.reducedTurn.terminalNotification;
+    olderSource.reducedTurn.body.status = "interrupted";
+    olderSource.reducedTurn.body.completedAt = null;
+    olderSource.reducedTurn.body.durationMs = 99999;
+    olderSource.reducedTurn.body.error = { message: "stale snapshot failure" };
+    const bootstrapped = restoreNativeHistoryProjectorState({
+      ...recovery,
+      turns: [older, ...recovery.turns],
+    });
+    expect(bootstrapped.source.turns[0]).toMatchObject({
+      body: { status: "completed", durationMs: 1750, completedAt: 1788000002 },
+      terminalNotification: "completed",
+    });
+    expect(bootstrapped.source.turns[0]!.body.error).toBeUndefined();
+    olderSource.reducedTurn.terminalNotification = "interrupted";
+    const disputed = restoreNativeHistoryProjectorState({
+      ...recovery,
+      turns: [older, ...recovery.turns],
+    });
+    expect(disputed.source.turns[0]!.body.status).toBeUndefined();
+    expect(disputed.source.turns[0]!.terminalNotification).toBeUndefined();
+    const lateStop = reduceNativeHistory(
+      bootstrapped.source,
+      [
+        {
+          recordId: randomUUID(),
+          sequence: 1,
+          frame: {
+            kind: "notification",
+            generation: "replacement",
+            sequence: 1,
+            receivedAtMs: Date.now(),
+            threadId,
+            method: "turn/completed",
+            params: {
+              threadId,
+              turn: { id: "turn", status: "interrupted", items: [] },
+            },
+          },
+        },
+      ],
+      threadId,
+    );
+    expect(lateStop.turns[0]!.body.status).toBe("completed");
     const afterReconnect = await reopen();
     await afterReconnect.drain();
     expect(
