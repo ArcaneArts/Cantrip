@@ -4229,6 +4229,62 @@ export function completedCodexThreadTurnFromRead(
 }
 
 export class CodexAppServer implements CodexRuntime {
+  #managedModelInventory:
+    import("@cantrip/protocol").NativeModelInventory | null = null;
+  #managedModelInventoryLoader:
+    | ((
+        provider: RunAgentTurnOptions["provider"],
+      ) => Promise<import("@cantrip/protocol").NativeModelInventory>)
+    | null = null;
+
+  setManagedModelInventoryLoader(
+    loader: (
+      provider: RunAgentTurnOptions["provider"],
+    ) => Promise<import("@cantrip/protocol").NativeModelInventory>,
+  ): void {
+    this.#managedModelInventoryLoader = loader;
+  }
+
+  getManagedModelInventory():
+    import("@cantrip/protocol").NativeModelInventory | null {
+    return structuredClone(this.#managedModelInventory);
+  }
+
+  private async loadManagedModelInventory(
+    provider: RunAgentTurnOptions["provider"],
+  ) {
+    this.#managedModelInventory = null;
+    if (!this.#managedModelInventoryLoader) return null;
+    try {
+      const inventory = await this.#managedModelInventoryLoader(provider);
+      if (
+        inventory.providerId !== provider.id ||
+        inventory.providerKind !== provider.kind ||
+        inventory.providerAccountId !== (provider.accountId ?? null)
+      )
+        throw new Error(
+          "Native model inventory belongs to another provider/account.",
+        );
+      this.#managedModelInventory = inventory;
+      return inventory;
+    } catch {
+      // A catalog read is not an execution prerequisite: keep the explicitly
+      // configured models available if this independent discovery request fails.
+      workerLogger.event(
+        "warn",
+        "Managed model inventory could not be refreshed",
+        {
+          event: "codex.models.inventory-unavailable",
+          subsystem: "codex",
+          operation: "read-model-inventory",
+          providerId: provider.id,
+          status: "degraded",
+        },
+      );
+      return null;
+    }
+  }
+
   readonly #historyObservations = new NativeHistoryObservations();
   readonly #threadPreparations = new Map<string, Promise<void>>();
   #preparationEpoch = 0;
@@ -8635,9 +8691,10 @@ export class CodexAppServer implements CodexRuntime {
     const startedAtMs = Date.now();
     this.#appServerSessionId = randomUUID();
     await mkdir(this.codexHome, { recursive: true });
-    const runtimeProvider = this.resolveProvider
-      ? await this.resolveProvider(provider)
-      : provider;
+    const [runtimeProvider, managedInventory] = await Promise.all([
+      this.resolveProvider ? this.resolveProvider(provider) : provider,
+      this.loadManagedModelInventory(provider),
+    ]);
     this.#runtimeIsZai = isZaiRuntimeProvider(runtimeProvider);
     if (runtimeProvider.apiKey) {
       this.#diagnosticSecrets.add(runtimeProvider.apiKey);
@@ -8651,6 +8708,7 @@ export class CodexAppServer implements CodexRuntime {
           model,
           runtimeProvider,
           subagentDefaults?.model ?? null,
+          managedInventory?.models ?? [],
         )
       : null;
     const child = this.launchCodex(

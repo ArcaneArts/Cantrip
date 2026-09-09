@@ -44,8 +44,18 @@ function codexCatalogEntryForRuntimeModel(
   providerKind: RuntimeProvider["kind"],
   priority: number,
 ) {
-  const catalog = model.catalog;
-  if (!catalog) return null;
+  const catalog = model.catalog ?? {
+    displayName: model.name,
+    description: null,
+    metadataSource: "unknown",
+    contextWindow: null,
+    inputModalities: ["text"],
+    supportsTools: null,
+    supportsParallelTools: null,
+    supportsReasoning: null,
+    supportedReasoningEfforts: [],
+    defaultReasoningEffort: null,
+  };
   const supportsTools = catalog.supportsTools;
   const isZai =
     providerKind === "openai-compatible" && catalog.metadataSource === "zai";
@@ -140,7 +150,10 @@ export function codexCatalogForRuntimeModels(
 ) {
   const unique = new Map<string, RuntimeModel>();
   for (const model of models) {
-    if (!unique.has(model.name)) unique.set(model.name, model);
+    const existing = unique.get(model.name);
+    if (!existing) unique.set(model.name, model);
+    else if (!existing.catalog && model.catalog)
+      unique.set(model.name, { ...existing, catalog: model.catalog });
   }
   const entries = [...unique.values()].flatMap((model, priority) => {
     const entry = codexCatalogEntryForRuntimeModel(
@@ -165,10 +178,11 @@ export async function writeManagedCodexModelCatalog(
   model: RuntimeModel,
   provider: RuntimeProvider,
   subagentModel: RuntimeModel | null = null,
+  inventoryModels: readonly RuntimeModel[] = [],
 ): Promise<string | null> {
   if (provider.kind === "chatgpt") return null;
   const catalog = codexCatalogForRuntimeModels(
-    [model, ...(subagentModel ? [subagentModel] : [])],
+    [model, ...(subagentModel ? [subagentModel] : []), ...inventoryModels],
     provider.kind,
   );
   if (!catalog) return null;

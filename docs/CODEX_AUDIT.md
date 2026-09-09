@@ -2123,6 +2123,47 @@ both views, account defaults, child inheritance and active-turn selection policy
 remain outstanding. The evidence count is not a settings revision, and an RPC
 receipt's generic applied status alone is not proof that settings were applied.
 
+**Pass 18 — managed provider/account model inventory:**
+
+Managed runtimes now read the enabled Cantrip model routes for their selected
+provider/account before generating the native catalog. The authenticated worker
+endpoint uses owned provider and worker records, explicit account records, and
+batched catalog availability. Discovered account models use the exact account
+and applicable worker/global scope; global observations retain canonical routing
+precedence. Ollama discovery remains worker-specific. Explicit custom IDs remain
+eligible without invented catalog metadata. The response includes public model
+metadata and route identities, never credentials or other account records.
+
+Non-ChatGPT native catalogs now include eligible inventory alongside the active
+root and custom child models. Native-name duplicates produce one picker entry;
+a separate identity resolver preserves an exact selected route, resolves a unique
+name, or reports ambiguity/unmapped state without guessing a provider/account.
+ChatGPT keeps its own native catalog. This inventory read is not execution
+authority: an actual retrieval failure leaves the configured root/child catalog
+available and does not reject startup. The inventory client correlates the full
+worker/provider/account/kind response and uses the current worker credential.
+Its HTTP timeout does not limit turns or CUA timelines.
+
+Validation: 96 focused worker tests and 18 server/catalog tests pass, including
+real PGlite repository reads and the production worker client against the
+new authenticated HTTP route. Cases cover enabled/disabled routes and accounts,
+other owners/providers/accounts/workers, global precedence, custom IDs, alias
+ambiguity, native-name deduplication, response correlation, and credential
+exclusion. The real packaged native worker fixture accepts the full generated
+`model/list`, including a model without metadata, and recovers the same durable
+thread with the configured root/child catalog when the inventory read fails.
+It performs zero model requests or personal desktop input. Server/worker
+TypeScript checks, repository decomposition and diff checks pass. The broad
+check still stops at the unchanged chat-turn-runtime.ts/task-routes.ts line
+budgets; later broad checks were not reached. No native patch, CI job or user
+app/worker restart was needed.
+
+This pass supplies startup inventory and exact identity mapping, not completed
+settings synchronization. Refreshing an already-running native picker, applying
+the mapping to canonical desired/pending/effective revisions, full service-tier
+metadata, explicit provider/account migration, and the complete cross-view
+acceptance matrix remain outstanding.
+
 **Still outstanding:** completion of authorized command admission, origin-independent
 lifecycle/CUA authority, durable all-turn projection/replay,
 complete settings parity, eager GUI-first session startup and the full acceptance

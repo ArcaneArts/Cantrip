@@ -312,6 +312,7 @@ export class ModelRepository {
     modelId?: string,
     routeId?: string,
     includeDisabled = false,
+    providerId?: string,
   ): Promise<ModelRuntime[]> {
     const rows = await this.database
       .select({
@@ -353,6 +354,7 @@ export class ModelRepository {
           eq(schema.modelProfiles.ownerId, ownerId),
           ...(!includeDisabled ? [eq(schema.modelRoutes.enabled, true)] : []),
           ...(modelId ? [eq(schema.modelProfiles.id, modelId)] : []),
+          ...(providerId ? [eq(schema.modelProviders.id, providerId)] : []),
           ...(routeId ? [eq(schema.modelRoutes.id, routeId)] : []),
         ),
       )

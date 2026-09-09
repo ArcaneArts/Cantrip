@@ -17,6 +17,7 @@ import {
   CANTRIP_MCP_TOOL_NAMES,
   MANAGED_CUA_MCP_NAME,
   type McpServerConfiguration,
+  type NativeModelInventory,
 } from "@cantrip/protocol";
 import {
   CodexAppServer,
@@ -170,6 +171,13 @@ describe.skipIf(!binary)(
       const clients: RemoteClient[] = [];
       const diagnostics: CodexRuntimeDiagnostic[] = [];
       let runtime: CodexAppServer | undefined;
+      let inventory: NativeModelInventory | null = null;
+      let inventoryUnavailable = false;
+      const loadInventory = vi.fn(async () => {
+        if (inventoryUnavailable || !inventory)
+          throw new Error("Fixture inventory unavailable");
+        return inventory;
+      });
       const stopRuntime = async () => {
         const child = children.at(-1);
         const exited =
@@ -254,8 +262,8 @@ describe.skipIf(!binary)(
           children.push(child);
           return child;
         };
-        const createRuntime = () =>
-          new CodexAppServer(
+        const createRuntime = () => {
+          const instance = new CodexAppServer(
             binary!,
             data,
             home,
@@ -265,6 +273,9 @@ describe.skipIf(!binary)(
             undefined,
             launch,
           );
+          instance.setManagedModelInventoryLoader(loadInventory);
+          return instance;
+        };
         runtime = createRuntime();
         const invocation = {
           command: process.execPath,
@@ -330,6 +341,22 @@ describe.skipIf(!binary)(
           apiKey: "synthetic-provider-key",
           accountId: "fixture-account",
           credentialHomeKey: "fixture-home",
+        };
+        inventory = {
+          workerId: "worker",
+          providerId: runtimeProvider.id,
+          providerKind: runtimeProvider.kind,
+          providerAccountId: runtimeProvider.accountId,
+          models: [
+            {
+              ...model,
+              id: "inventory-custom",
+              routeId: "custom-route",
+              name: "fixture-custom",
+              reasoningEffort: null,
+            },
+            { ...model, id: "inventory-alias", routeId: "alias-route" },
+          ],
         };
         const configuration: PrepareManagedThreadOptions = {
           cwd: workspace,
@@ -424,6 +451,14 @@ describe.skipIf(!binary)(
         };
         let first = await connect();
         let second = await connect();
+        const picker = await first.request("model/list", {});
+        expect(picker.data.map((entry: JsonObject) => entry.model)).toEqual([
+          "gpt-5",
+          "fixture-child",
+          "fixture-custom",
+        ]);
+        expect(loadInventory).toHaveBeenCalledTimes(1);
+        expect(runtime.getManagedModelInventory()).toEqual(inventory);
         const firstJoined = await first.request("thread/resume", { threadId });
         const secondJoined = await second.request("thread/resume", {
           threadId,
@@ -629,6 +664,7 @@ describe.skipIf(!binary)(
         await first.disconnect();
         await second.disconnect();
         await stopRuntime();
+        inventoryUnavailable = true;
         runtime = createRuntime();
         const restartedEndpoint = await runtime.remoteEndpoint(
           model,
@@ -636,6 +672,13 @@ describe.skipIf(!binary)(
           configuration,
         );
         first = await connect(restartedEndpoint);
+        expect(
+          (await first.request("model/list", {})).data.map(
+            (entry: JsonObject) => entry.model,
+          ),
+        ).toEqual(["gpt-5", "fixture-child"]);
+        expect(loadInventory).toHaveBeenCalledTimes(2);
+        expect(runtime.getManagedModelInventory()).toBeNull();
         expect((await first.request("thread/loaded/list", {})).data).toEqual(
           [],
         );

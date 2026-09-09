@@ -683,12 +683,14 @@ export abstract class IdentityModelRepositoryFacade {
     modelId?: string,
     routeId?: string,
     includeDisabled = false,
+    providerId?: string,
   ): Promise<ModelRuntime[]> {
     return this.models.getModelRuntimes(
       ownerId,
       modelId,
       routeId,
       includeDisabled,
+      providerId,
     );
   }
 
