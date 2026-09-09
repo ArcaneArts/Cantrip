@@ -148,11 +148,17 @@ describe("native settings observation boundaries", () => {
       const published = await state();
       expect(published?.effective?.context.settingsVersion.revision).toBe("2");
       expect(errors).toHaveLength(1);
+      const reads = runtime.readNativeThreadSettings.mock.calls.length;
+      const publications = publish.mock.calls.length;
       publisher.wake();
-      await vi.waitFor(async () =>
-        expect((await state())?.binding?.bindingId).not.toBe(
-          published?.binding?.bindingId,
-        ),
+      await vi.waitFor(() =>
+        expect(publish.mock.calls.length).toBeGreaterThan(publications),
+      );
+      expect(
+        runtime.readNativeThreadSettings.mock.calls.length,
+      ).toBeGreaterThan(reads);
+      expect((await state())?.binding?.bindingId).toBe(
+        published?.binding?.bindingId,
       );
       expect((await state())?.effective?.context.settingsVersion.revision).toBe(
         "2",

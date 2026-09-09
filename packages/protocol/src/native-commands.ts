@@ -26,6 +26,8 @@ export const nativeCommandIntentSchema = z
   .object({
     scope: z.enum(["thread", "account-defaults"]),
     nativeSettingsOperationId: id.optional(),
+    /** Controller-selected source identity; never forwarded as a native setting. */
+    settingsBindingId: id.optional(),
     resumeAutonomy: z.boolean().optional(),
     paused: z.boolean().optional(),
     goalStatus: z.enum(["active", "paused"]).optional(),

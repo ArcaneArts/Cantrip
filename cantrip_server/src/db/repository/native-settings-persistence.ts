@@ -13,6 +13,8 @@ import {
   type NativeSettingsObservationReceipt,
   nativeSettingsObservationRequestSchema,
   type NativeSettingsState,
+  type NativeSettingsBinding,
+  type NativeCommandSession,
 } from "@cantrip/protocol";
 import * as schema from "../schema.js";
 import type { RepositoryDatabase, RepositoryTransaction } from "./database.js";
@@ -32,6 +34,24 @@ type CommandRow = typeof schema.nativeCommands.$inferSelect;
 
 export class NativeSettingsStateRepository {
   constructor(private readonly database: RepositoryDatabase) {}
+
+  /** Resolve the stored source against canonical routing, without reading native
+   * settings or granting input authority. Admission and dispatch recheck it. */
+  async resolveWriteBinding(
+    ownerId: string,
+    chatId: string,
+    expectedBindingId: string,
+  ): Promise<NativeSettingsBinding> {
+    return this.database.transaction(async (tx) => {
+      await lockNativeCommandChat(tx, ownerId, chatId);
+      return assertNativeSettingsWriteBinding(
+        tx,
+        ownerId,
+        chatId,
+        expectedBindingId,
+      );
+    });
+  }
 
   /** The server invokes an actual worker read outside the DB transaction. A late
    * read cannot replace a newer binding or cross a changed placement/account. */
@@ -89,15 +109,26 @@ export class NativeSettingsStateRepository {
             "settings-read-replaced",
             "A newer settings read has already been published.",
           );
+        const source = {
+          ...before.scope,
+          runtimeGeneration: snapshot.context.runtimeGeneration,
+          nativeEpoch: snapshot.context.settingsVersion.epoch,
+        };
+        const { bindingId: existingId, ...existingSource } =
+          state.binding ?? {};
+        // Reading the same source must not revoke a concurrently prepared
+        // settings write. Native revisions already order snapshots within it.
+        const bindingId =
+          existingId &&
+          isDeepStrictEqual(existingSource, source) &&
+          state.effective?.protectedContent.keyRevision ===
+            snapshot.protectedContent.keyRevision
+            ? existingId
+            : randomUUID();
         return bindNativeSettingsRead(
           state,
           before.bindingId,
-          {
-            bindingId: randomUUID(),
-            ...before.scope,
-            runtimeGeneration: snapshot.context.runtimeGeneration,
-            nativeEpoch: snapshot.context.settingsVersion.epoch,
-          },
+          { bindingId, ...source },
           snapshot,
         );
       });
@@ -191,6 +222,61 @@ export class NativeSettingsStateRepository {
       );
     return row ? parseState(chatId, row.state) : null;
   }
+}
+
+/** Caller holds the canonical project/chat lock. The binding is an exact source
+ * fence, not a cached runtime-readiness test or a native execution grant. */
+export async function assertNativeSettingsWriteBinding(
+  tx: RepositoryTransaction,
+  ownerId: string,
+  chatId: string,
+  expectedBindingId: string,
+  source?: { workerId: string; session: NativeCommandSession },
+): Promise<NativeSettingsBinding> {
+  const currentScope = await readScope(tx, ownerId, chatId);
+  const state = await new NativeSettingsStateRepository(tx).get(
+    ownerId,
+    chatId,
+  );
+  const binding = state?.binding;
+  if (!binding || binding.bindingId !== expectedBindingId)
+    throw new NativeCommandError(
+      "settings-binding-replaced",
+      "The selected native settings source is no longer current.",
+    );
+  const {
+    bindingId: _id,
+    runtimeGeneration,
+    nativeEpoch: _epoch,
+    ...scope
+  } = binding;
+  const [activation] = await tx
+    .select()
+    .from(schema.nativeCommandActivations)
+    .where(eq(schema.nativeCommandActivations.chatId, chatId));
+  if (
+    !isDeepStrictEqual(scope, currentScope) ||
+    (activation?.active &&
+      activation.runtimeGeneration &&
+      activation.runtimeGeneration !== runtimeGeneration) ||
+    (source &&
+      (!isDeepStrictEqual(scope, {
+        chatId: source.session.chatId,
+        workerId: source.workerId,
+        threadId: source.session.threadId,
+        contextKind: source.session.contextKind,
+        projectId: source.session.projectId,
+        placementId: source.session.placementId,
+        modelRouteId: source.session.modelRouteId,
+        providerAccountId: source.session.providerAccountId,
+      }) ||
+        source.session.runtimeGeneration !== runtimeGeneration))
+  )
+    throw new NativeCommandError(
+      "settings-binding-replaced",
+      "The native settings source has changed.",
+    );
+  return binding;
 }
 
 async function readScope(

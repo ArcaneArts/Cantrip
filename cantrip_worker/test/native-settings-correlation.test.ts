@@ -1,3 +1,7 @@
+import { encryptNativeSettingsPatch } from "@cantrip/crypto";
+import { updateProtectedNativeSettings } from "../src/native-settings-update.js";
+import { CodexAppServer } from "../src/codex/app-server.js";
+import { unprobedCodexRuntimeReport } from "@cantrip/protocol";
 import { readProtectedNativeSettings } from "../src/native-settings-read.js";
 import { openNativeSettingsSnapshot } from "../src/native-settings-content.js";
 import { NativeThreadSettingsState } from "../src/codex/native-thread-settings.js";
@@ -181,12 +185,32 @@ describe.skipIf(!binary)("native settings acknowledgments", () => {
         closed = once(child, "close");
         child.stderr.resume();
         const notifications: Json[] = [];
+        // Production controller/read methods dispatch to the actual isolated CLI.
+        // The durable server admission path is covered separately; this adapter
+        // records the exact native frame without substituting native responses.
+        const controller = new CodexAppServer(
+          "/unused",
+          root,
+          home,
+          unprobedCodexRuntimeReport,
+        );
+        const controllerTransport = controller as unknown as {
+          request(method: string, params: Json): Promise<Json>;
+          handleMessage(data: Buffer): void;
+        };
+        Object.defineProperty(controller, "transportGeneration", {
+          get: () => "fixture-runtime",
+        });
         lines = readline.createInterface({ input: child.stdout });
         lines.on("line", (line) => {
           const message = JSON.parse(line) as Json;
           if (message.method) {
             notifications.push(message);
             observations.notification(message.method, message.params);
+            if (message.method === "thread/settings/updated")
+              controllerTransport.handleMessage(
+                Buffer.from(JSON.stringify(message)),
+              );
           }
         });
         client = new CodexRpcClient(child, 15_000);
@@ -196,6 +220,7 @@ describe.skipIf(!binary)("native settings acknowledgments", () => {
             throw new Error(`${method}: ${JSON.stringify(response.error)}`);
           return response.result as Json;
         };
+        controllerTransport.request = request;
         await request("initialize", {
           clientInfo: {
             name: "cantrip_settings_correlation_test",
@@ -261,6 +286,32 @@ describe.skipIf(!binary)("native settings acknowledgments", () => {
             patch: { effort: "fixture-custom-effort" },
           },
         ];
+        const settingsScope = {
+          chatId: "fixture-chat",
+          workerId: "fixture-worker",
+          threadId,
+          contextKind: "project" as const,
+          projectId: "fixture-project",
+          placementId: "fixture-placement",
+          modelRouteId: "fixture-route",
+          providerAccountId: null,
+        };
+        const binding = {
+          ...settingsScope,
+          bindingId: "fixture-binding",
+          runtimeGeneration: "fixture-runtime",
+          nativeEpoch: baseline.threadSettings.settingsVersion.epoch,
+        };
+        const dispatched: Json[] = [];
+        controller.setManagedNativeCommandDispatcher(
+          threadId,
+          async (command) => {
+            expect(command.settingsBindingId).toBe(binding.bindingId);
+            expect(command.params).not.toHaveProperty("settingsBindingId");
+            dispatched.push(command.params);
+            return command.dispatch();
+          },
+        );
         // Await only queue acknowledgments, never an applied event between calls.
         const receipts: Json[] = [];
         for (const operation of operations) {
@@ -272,16 +323,49 @@ describe.skipIf(!binary)("native settings acknowledgments", () => {
             runtimeGeneration: "fixture-runtime",
             nativeOperationId: operation.operationId,
           });
-          const acknowledgment = await request("thread/settings/update", {
-            threadId,
-            operationId: operation.operationId,
-            ...operation.patch,
+          const protectedPatch = await encryptNativeSettingsPatch({
+            ownerId: encryption.ownerId(),
+            serverId: encryption.serverIdentity(),
+            componentKey: new Uint8Array(32).fill(7),
+            keyRevision: 1,
+            context: {
+              chatId: settingsScope.chatId,
+              operationId: operation.operationId,
+              bindingId: binding.bindingId,
+            },
+            patch: operation.patch,
           });
+          const receipt = await updateProtectedNativeSettings({
+            request: {
+              operationId: operation.operationId,
+              bindingId: binding.bindingId,
+              protectedPatch,
+              binding,
+            },
+            service: encryption,
+            resolve: () => ({
+              scope: settingsScope,
+              runtime: controller,
+              generation: "fixture-runtime",
+            }),
+          });
+          expect(["queued", "applied"]).toContain(receipt.status);
+          const acknowledgment = {
+            operationId: receipt.operationId,
+            submissionId: receipt.submissionId,
+          };
           receipts.push(acknowledgment);
           await tracker.acknowledge(operation.operationId, {
             result: acknowledgment,
           });
         }
+        expect(dispatched).toEqual(
+          operations.map(({ operationId, patch }) => ({
+            threadId,
+            operationId,
+            ...patch,
+          })),
+        );
         expect(receipts).toEqual(
           operations.map(({ operationId }) => ({
             operationId,

@@ -2309,6 +2309,64 @@ are required follow-on work under the original goal; this milestone's tests do
 not prove complete desired/pending/effective GUI/TUI control. The isolated
 publication/read milestone is tracked in PR #1870; the full goal remains active.
 
+**Pass 21 — explicit shared settings mutation transport:**
+
+The app can prepare one encrypted native settings patch with a caller-supplied
+operation ID and submit it to the server's native-settings update endpoint. The
+patch preserves omission versus explicit null (including service tier); no stale
+composer/default values are filled in. Its encryption binds owner, server, chat,
+operation and settings binding in a domain separate from snapshots. Browser
+preparation checks authentication and encryption lifetime around WebCrypto and
+clears its owned component-key copy. Sending retains the operation ID and opaque
+payload, does not retry automatically, and does not store plaintext in query caches.
+
+The server resolves the source against canonical placement, route/account, thread
+and runtime without performing a native read or starting a worker. The worker
+opens the encrypted patch against that source and uses the same managed native
+command admission and dispatch path as TUI settings. The binding identifier is
+admission metadata, never a native API parameter; admission and dispatch each
+check it under the existing database lock. Historical command replay does not
+renew permission to dispatch or restore an old desired state. Full native
+permission policy remains enforced; this endpoint does not authorize arbitrary
+profile changes or provider/account migrations.
+
+The runtime's explicit update method never starts/resumes a session or writes
+bootstrap settings. It tracks pending requests before dispatch, handles native
+application arriving before its queue acknowledgment, and rejects a replaced
+controller, transport, thread or observed Core. Lost acknowledgments retain
+actual application evidence and do not replay input. Existing plan mutations use
+the same correlation implementation. Public worker failures use fixed messages;
+private native error details remain in the existing encrypted settlement path.
+
+Refreshing the same settings source now retains its binding instead of invalidating
+concurrent writes. Native revision ordering handles a late snapshot of that source;
+a changed source still rejects an older read. Encryption-key rotation establishes
+a fresh binding even at the same native revision. Tests distinguish these cases
+rather than treating every successful read as a new native session.
+
+Validation includes the production worker decrypt/update/controller path against
+the actual packaged CLI for both legacy and paginated history, with no provider
+inference or desktop input. Consecutive updates verify native submission IDs,
+application notifications, custom effort strings, no-op updates, and service-tier
+set/omit/clear behavior. Focused app/crypto/worker/server tests exercise ownership,
+identity changes during encryption/admission, encrypted errors, stable operation
+identities, source replacement and key rotation. Validation passed: 93 worker
+tests across six files (including the three actual packaged CLI tests), 73 focused
+server tests, all 77 crypto tests, 20 app client/encryption tests, protocol/crypto
+builds and app/worker/server typechecks. The full repository check still stops at
+the existing chat-turn-runtime.ts and task-routes.ts line budgets; no CI was launched.
+
+This pass supplies the explicit control transport and browser client, not complete
+picker/controller parity. The next required chain is to route actual GUI selections
+through it and preserve native settings on ordinary GUI continuation: current
+preparation/loading and turn/start can still restore the server's old model,
+reasoning and collaboration values, while managed overlay preparation can reset
+custom child settings. Mutable model selection also still participates in runtime
+identity and association recovery. Those must be corrected together with effective
+model attribution, route mapping, permissions, defaults, service-tier UI and
+controlled migration. Full TUI/fake-provider acceptance and eager startup remain
+required; this pass's native mutation tests do not prove them.
+
 **Still outstanding:** completion of authorized command admission, origin-independent
 lifecycle/CUA authority, durable all-turn projection/replay,
 complete settings parity, eager GUI-first session startup and the full acceptance

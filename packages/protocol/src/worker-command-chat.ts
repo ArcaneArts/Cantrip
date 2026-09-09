@@ -1,3 +1,4 @@
+import { nativeSettingsUpdateCommandSchema } from "./native-settings-update.js";
 import { nativeSettingsReadScopeSchema } from "./native-settings-state.js";
 import { queuedPromptOpaqueContentSchema } from "./communication-content.js";
 import { encryptedPayloadEnvelopeSchema } from "./encryption.js";
@@ -51,6 +52,7 @@ import {
 } from "./worker-runtime-support.js";
 
 export const workerChatCommandSchemas = [
+  nativeSettingsUpdateCommandSchema,
   z
     .object({
       type: z.literal("chat.settings.read"),

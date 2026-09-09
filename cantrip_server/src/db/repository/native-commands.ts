@@ -29,6 +29,7 @@ import * as schema from "../schema.js";
 import { lockNativeCommandChat } from "./native-command-lock.js";
 import {
   admitNativeSettingsState,
+  assertNativeSettingsWriteBinding,
   settleNativeSettingsState,
   settleNativeSettingsTransport,
   NativeSettingsStateRepository,
@@ -136,6 +137,12 @@ export function nativeCommandPolicy(input: NativeCommandAdmission): {
   active: boolean;
 } {
   if (
+    input.intent.settingsBindingId &&
+    (input.method !== "thread/settings/update" ||
+      !input.intent.nativeSettingsOperationId)
+  )
+    throw new NativeCommandError("invalid-settings-binding-scope");
+  if (
     input.intent.nativeSettingsOperationId &&
     input.method !== "thread/settings/update"
   )
@@ -242,6 +249,17 @@ export class NativeCommandRepository {
     return new NativeSettingsStateRepository(this.database).get(
       ownerId,
       chatId,
+    );
+  }
+  resolveSettingsWriteBinding(
+    ownerId: string,
+    chatId: string,
+    expectedBindingId: string,
+  ) {
+    return new NativeSettingsStateRepository(this.database).resolveWriteBinding(
+      ownerId,
+      chatId,
+      expectedBindingId,
     );
   }
   recordSettingsEvidence(ownerId: string, input: NativeSettingsEvidence) {
@@ -502,6 +520,14 @@ export class NativeCommandRepository {
             throw new NativeCommandError("queue-action-mismatch");
         }
         const policy = nativeCommandPolicy(input);
+        if (input.intent.settingsBindingId)
+          await assertNativeSettingsWriteBinding(
+            tx,
+            ownerId,
+            input.session.chatId,
+            input.intent.settingsBindingId,
+            input,
+          );
         initial.kind = policy.kind;
         starts = policy.kind === "start";
         if (starts && input.origin === "gui")
@@ -1293,6 +1319,14 @@ export class NativeCommandRepository {
       if (context.threadId && context.threadId !== input.session.threadId)
         throw new NativeCommandError("thread-identity-mismatch");
       const intent = row.intent as NativeCommandAdmission["intent"];
+      if (intent.settingsBindingId)
+        await assertNativeSettingsWriteBinding(
+          tx,
+          ownerId,
+          row.chatId,
+          intent.settingsBindingId,
+          input,
+        );
       if (
         intent.permissionProfileId &&
         intent.permissionProfileId !==
