@@ -5673,6 +5673,10 @@ export const nativeHistoryBindings = pgTable(
       .notNull()
       .references(() => chats.id, { onDelete: "cascade" }),
     threadId: text("thread_id").notNull(),
+    ancestorThreadIds: jsonb("ancestor_thread_ids")
+      .$type<string[]>()
+      .notNull()
+      .default([]),
     projectId: text("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),

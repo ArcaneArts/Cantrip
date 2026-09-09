@@ -1,3 +1,4 @@
+import { childThreadMetadataFromNotification } from "./codex/app-server.js";
 import { isDeepStrictEqual } from "node:util";
 import path from "node:path";
 import { z } from "zod";
@@ -22,6 +23,10 @@ function distinct(contexts: Context[]): Context[] {
  * A finite head captured per projection pass avoids chasing a live journal. */
 export class NativeHistoryTurnContextIndex {
   private through = 0;
+  private readonly children = new Map<
+    string,
+    NonNullable<ReturnType<typeof childThreadMetadataFromNotification>>
+  >();
   private readonly contexts = new Map<string, Context[]>();
   private updates: Promise<void> = Promise.resolve();
 
@@ -56,6 +61,13 @@ export class NativeHistoryTurnContextIndex {
         if (frame.threadId !== this.source.scope.threadId)
           throw new Error("Native history context belongs to another thread.");
         if (frame.kind === "snapshot") {
+          const child = childThreadMetadataFromNotification({
+            thread: frame.snapshot.thread,
+          });
+          if (child) {
+            this.children.delete(JSON.stringify(child));
+            this.children.set(JSON.stringify(child), child);
+          }
           for (const turn of frame.snapshot.history?.turns ?? []) {
             if (!turn.contexts?.length) continue;
             this.contexts.set(
@@ -79,6 +91,26 @@ export class NativeHistoryTurnContextIndex {
     const running = this.updates.then(() => this.update());
     this.updates = running.catch(() => {});
     return running;
+  }
+
+  childMetadata(
+    parentThreadId: string,
+  ): NonNullable<ReturnType<typeof childThreadMetadataFromNotification>> {
+    const entries = [...this.children.values()];
+    if (
+      !entries.length ||
+      entries.some(
+        (entry) =>
+          entry.parentThreadId !== parentThreadId ||
+          entry.threadId !== this.source.scope.threadId,
+      )
+    )
+      throw new Error(
+        "Retained native child metadata does not match its bound parent.",
+      );
+    // Labels may change; parent identity must not. Latest observed labels do not
+    // establish ownership and are used only for presentation.
+    return structuredClone(entries.at(-1)!);
   }
 
   read(turn: Turn): Context[] {

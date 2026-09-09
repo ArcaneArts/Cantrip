@@ -10,6 +10,25 @@ import type { RepositoryTransaction } from "./database.js";
 import { NativeHistoryError } from "./native-history-bindings.js";
 import { findObservedNativeCommandTurn } from "./native-command-turns.js";
 
+function outputRoot(
+  binding: NativeHistoryBinding,
+  item: NativeHistoryResolve["items"][number],
+) {
+  const ancestors = binding.ancestorThreadIds ?? [];
+  const rootTurnId =
+    item.association.kind === "output"
+      ? item.association.rootTurnId
+      : undefined;
+  if (ancestors.length && !rootTurnId)
+    throw new NativeHistoryError("child-output-root-turn-missing");
+  if (!ancestors.length && rootTurnId && rootTurnId !== item.identity.turnId)
+    throw new NativeHistoryError("root-output-turn-mismatch");
+  return {
+    threadId: ancestors[0] ?? binding.threadId,
+    turnId: rootTurnId ?? item.identity.turnId,
+  };
+}
+
 /** Recover exact historical root ownership, including pre-index terminal
  * receipts. The reading worker need not be the original executing worker. */
 async function observedOutputCommand(
@@ -18,6 +37,7 @@ async function observedOutputCommand(
   binding: NativeHistoryBinding,
   item: NativeHistoryResolve["items"][number],
 ) {
+  const root = outputRoot(binding, item);
   if (item.identity.identityKind !== "canonical")
     throw new NativeHistoryError("observed-output-identity-mismatch");
   const candidates = await tx
@@ -35,12 +55,12 @@ async function observedOutputCommand(
         eq(schema.nativeCommands.ownerId, ownerId),
         eq(schema.nativeCommands.chatId, binding.chatId),
         eq(schema.nativeCommands.kind, "start"),
-        sql`${schema.nativeCommands.identity} ->> 'threadId' = ${binding.threadId}`,
+        sql`${schema.nativeCommands.identity} ->> 'threadId' = ${root.threadId}`,
         or(
-          eq(schema.nativeCommandTurns.turnId, item.identity.turnId),
+          eq(schema.nativeCommandTurns.turnId, root.turnId),
           and(
             isNull(schema.nativeCommandTurns.operationId),
-            sql`${schema.nativeCommands.terminalEvidence} ->> 'nativeTurnId' = ${item.identity.turnId}`,
+            sql`${schema.nativeCommands.terminalEvidence} ->> 'nativeTurnId' = ${root.turnId}`,
           ),
         ),
       ),
@@ -53,8 +73,8 @@ async function observedOutputCommand(
     });
     if (
       turn?.chatId === binding.chatId &&
-      turn.threadId === binding.threadId &&
-      turn.turnId === item.identity.turnId &&
+      turn.threadId === root.threadId &&
+      turn.turnId === root.turnId &&
       turn.runtimeGeneration === session.runtimeGeneration
     )
       matches.push(command);
@@ -109,7 +129,11 @@ export async function findNativeHistoryOutputAlias(
     item.identity.identityKind !== "canonical"
   )
     throw new NativeHistoryError("observed-output-identity-mismatch");
-  const keys = ["root", `${item.identity.turnId}:${binding.threadId}`].map(
+  const root = outputRoot(binding, item);
+  const scopes = binding.ancestorThreadIds?.length
+    ? [`${root.turnId}:${binding.threadId}`]
+    : ["root", `${item.identity.turnId}:${binding.threadId}`];
+  const keys = scopes.map(
     (scope) =>
       `${prefix}:${scope}:${item.identity.turnId}:${item.identity.itemId}`,
   );
@@ -152,12 +176,12 @@ export async function findNativeHistoryOutputAlias(
   const session = nativeCommandSessionSchema.parse(command.identity);
   const turn = await findObservedNativeCommandTurn(tx, command);
   if (
-    session.threadId !== binding.threadId ||
+    session.threadId !== root.threadId ||
     session.chatId !== binding.chatId ||
     !turn ||
     turn.chatId !== binding.chatId ||
-    turn.threadId !== binding.threadId ||
-    turn.turnId !== item.identity.turnId ||
+    turn.threadId !== root.threadId ||
+    turn.turnId !== root.turnId ||
     turn.runtimeGeneration !== session.runtimeGeneration
   )
     throw new NativeHistoryError("output-command-turn-mismatch");

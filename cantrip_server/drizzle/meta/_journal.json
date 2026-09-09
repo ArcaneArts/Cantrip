@@ -1443,6 +1443,13 @@
       "when": 1788876930839,
       "tag": "0205_native_history_ingestion",
       "breakpoints": true
+    },
+    {
+      "idx": 206,
+      "version": "7",
+      "when": 1788921565285,
+      "tag": "0206_native_child_history",
+      "breakpoints": true
     }
   ]
 }

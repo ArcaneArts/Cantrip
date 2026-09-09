@@ -1,3 +1,4 @@
+import { agentPathSegments } from "./codex/app-server.js";
 import {
   agentScopeSchema,
   type AgentScope,
@@ -57,17 +58,39 @@ export function createNativeHistoryProjectorAdapters(options: {
     service,
     attachments: options.attachments,
   });
+  const ancestors = binding.ancestorThreadIds ?? [];
+  const boundChildScope = (turnId: string, rootTurnId: string): AgentScope => {
+    if (!ancestors.length || rootTurnId === turnId)
+      throw new Error("Native child history has no retained root turn.");
+    const child = contexts.childMetadata(ancestors.at(-1)!);
+    const nativePath = agentPathSegments(child.agentPath);
+    return agentScopeSchema.parse({
+      rootThreadId: ancestors[0],
+      parentThreadId: ancestors.at(-1),
+      agentThreadId: binding.threadId,
+      rootTurnId,
+      agentPath: nativePath.length
+        ? nativePath
+        : ["root", ...ancestors.slice(1), binding.threadId],
+      depth: ancestors.length,
+      nickname: child.nickname,
+      role: child.role,
+      isRoot: false,
+    });
+  };
   return {
     prepare: () => contexts.refresh(),
     async context(_item, turn) {
       const { rootTurnId, ...presentation } = resolveNativeHistoryTurnContext(
         contexts.read(turn),
       );
+      if (ancestors.length && (!rootTurnId || rootTurnId === turn.id))
+        throw new Error("Native child history has no retained root turn.");
       if (!rootTurnId || rootTurnId === turn.id) return presentation;
-      if (!options.childScope)
+      if (!options.childScope && !ancestors.length)
         throw new Error("Native child history requires verified parent scope.");
       const agentScope = agentScopeSchema.parse(
-        await options.childScope(turn.id, rootTurnId),
+        await (options.childScope ?? boundChildScope)(turn.id, rootTurnId),
       );
       if (
         agentScope.agentThreadId !== binding.threadId ||
@@ -92,11 +115,14 @@ export function createNativeHistoryProjectorAdapters(options: {
         contexts.read(turn),
       );
       if (rootTurnId && rootTurnId !== turn.id) {
-        if (!options.childAssociation)
-          throw new Error(
-            "Native child history requires verified output identity.",
-          );
-        return options.childAssociation(item, turn);
+        if (options.childAssociation)
+          return options.childAssociation(item, turn);
+        boundChildScope(turn.id, rootTurnId);
+        return item.identity.identityKind === "canonical" &&
+          (item.identity.component === "assistant" ||
+            item.identity.component === "activity")
+          ? { kind: "output", rootTurnId }
+          : { kind: "native" };
       }
       // Existing canonical root output is adopted only through server-owned
       // command provenance. Other components keep their native identity.

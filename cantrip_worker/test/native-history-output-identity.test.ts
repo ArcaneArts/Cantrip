@@ -63,6 +63,53 @@ function fixture() {
 }
 
 describe("native output identity selection before encryption", () => {
+  it("uses the verified async child binding and original root turn for shared output identity", async () => {
+    const f = fixture();
+    const agentScope = {
+      agentThreadId: f.binding.threadId,
+      rootThreadId: "root-thread",
+      parentThreadId: "root-thread",
+      rootTurnId: "root-turn",
+      agentPath: ["root", "child"],
+      nickname: null,
+      role: null,
+      depth: 1,
+      isRoot: false,
+    };
+    const scope = vi.fn(async () => ({
+      chatId: f.binding.chatId,
+      threadId: f.binding.threadId,
+      provenance: { kind: "binding" as const, bindingId: f.binding.id },
+    }));
+    const open = vi
+      .fn<NativeHistoryClient["open"]>()
+      .mockResolvedValue({ ...f.binding, ancestorThreadIds: ["root-thread"] });
+    const resolver = createManagedNativeOutputIdentityResolver({
+      client: { open, resolve: f.resolve },
+      scope,
+    });
+    const result = await resolver({
+      kind: "message",
+      message: {
+        ...f.message,
+        agentScope,
+        correlation: {
+          sourceMethod: "item/completed",
+          diagnosticId: null,
+          threadId: f.binding.threadId,
+          turnId: "turn",
+          itemId: "answer",
+        },
+      },
+    });
+    expect(result?.id).toBe(f.mapping.messageId);
+    expect(scope).toHaveBeenCalledWith(f.binding.threadId, agentScope);
+    expect(f.resolve.mock.calls[0]![0].items[0]?.association).toEqual({
+      kind: "output",
+      rootTurnId: "root-turn",
+    });
+  });
+
   it("binds live output lazily, retries an actual binding failure, and retains each dispatched thread scope", async () => {
     const f = fixture();
     const secondThread = randomUUID();

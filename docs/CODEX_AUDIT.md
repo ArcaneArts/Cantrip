@@ -1784,6 +1784,59 @@ explicit presentation-version upgrade is also needed to re-render already
 canonicalized unchanged sources when recovery has only their source fingerprint.
 This pass does not enable eager startup or establish full GUI/TUI acceptance.
 
+**Pass 10 — automatic descendant history and shared output identity:**
+
+Durable parent activity now discovers child threads independently of an active
+parent execution. Before importing a child, the worker reads its actual native
+header and verifies the parent chain back to the bound thread. Server bindings
+retain immutable root-first ancestry under the same owner, worker and chat;
+children inherit the parent's historical project/route provenance. A label or
+agentScope alone cannot establish ownership. Foreign parents, reparenting and
+cycles are rejected. Actual read/storage failures retry; a native header that
+disproves a candidate's ancestry skips only that candidate. Replacement and stop
+discard late reads without installing a stale binding.
+
+Child capture remains alive after parent completion. Retained child headers and
+original turn context reconstruct depth, parent, root and original root-turn
+scope during projection and recovery. When native history exposes child user
+input, its text and attachment-only presentation retain child scope rather than
+becoming root-user prompts. Live child output and canonical projection now use
+one message-identity reservation before encryption. Compatibility child messages
+are adopted only with their exact observed root-command turn evidence; unrelated
+root keys cannot alias child output.
+
+The actual managed-runtime fixture now starts a real V2 child through its local
+provider, holds the child's response until the parent finishes, and verifies
+automatic encrypted HTTP/database publication with the original root-turn scope.
+Restarting the history lifecycle and deleting only attachment manifests preserves
+all root/child message identities and existing attachment ciphertext without a
+new native turn. Deterministic coverage includes nested descendants, unrelated
+parents, actual-read retries, generation replacement, pending-read shutdown,
+shared live output identity and child text/attachment-only input scoping.
+
+Validation: all 196 worker history tests across 21 files pass, including the
+managed-runtime fixture and the pinned native history foundation cases. All 17
+binding tests and 53 item/alias tests pass against the migrated database. Worker,
+server and app typechecks pass. The standard repository check still stops at the
+two unchanged server decomposition budgets recorded above; later broad checks
+were not reached. No native patch, CI job, user application launch or personal
+desktop interaction was needed.
+
+Fixture investigation reproduced the previously documented portable-provider
+V1/V2 difference: setting multi-agent eligibility alone did not expose the V1
+spawn tool on this fixture's Responses provider. Like the foundation fixture,
+it now explicitly supplies V2 model metadata and standard Responses format.
+This is not proof of a production model-catalog enablement defect or of complete
+model/configuration parity.
+
+Remaining child fidelity work: native V2 spawn delivers its initial request as
+agent communication, which the current native history response does not expose
+as a retained item. This pass does not invent a userMessage for that missing
+source. Native communication retention, forked/inherited child histories,
+goal/legacy associations and complete main-worker GUI/TUI child acceptance still
+need coverage. Other remaining history inventory, presentation upgrades, bounded
+replay and settings/eager-startup requirements remain open.
+
 **Still outstanding:** completion of authorized command admission, origin-independent
 lifecycle/CUA authority, durable all-turn projection/replay,
 complete settings parity, eager GUI-first session startup and the full acceptance

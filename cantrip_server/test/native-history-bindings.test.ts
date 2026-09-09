@@ -144,6 +144,91 @@ async function fixture() {
 }
 
 describe("durable native history ownership", () => {
+  it("derives immutable child ancestry from an owned historical parent after the root session retires", async () => {
+    const f = await fixture();
+    const parent = await database.repository.nativeHistoryBindings.open(
+      LOCAL_USER_ID,
+      f.request,
+    );
+    const childRequest = {
+      ...f.request,
+      threadId: randomUUID(),
+      provenance: { kind: "child" as const, parentBindingId: parent.id },
+    };
+    const child = await database.repository.nativeHistoryBindings.open(
+      LOCAL_USER_ID,
+      childRequest,
+    );
+    expect(child.ancestorThreadIds).toEqual([parent.threadId]);
+    expect(child.worktreeId).toBe(parent.worktreeId);
+    const grandchild = await database.repository.nativeHistoryBindings.open(
+      LOCAL_USER_ID,
+      {
+        ...childRequest,
+        threadId: randomUUID(),
+        provenance: { kind: "child", parentBindingId: child.id },
+      },
+    );
+    expect(grandchild.ancestorThreadIds).toEqual([
+      parent.threadId,
+      child.threadId,
+    ]);
+    expect(
+      await database.repository.nativeHistoryBindings.open(
+        LOCAL_USER_ID,
+        childRequest,
+      ),
+    ).toEqual(child);
+    await expect(
+      database.repository.nativeHistoryBindings.open(LOCAL_USER_ID, {
+        ...childRequest,
+        provenance: { kind: "child", parentBindingId: grandchild.id },
+      }),
+    ).rejects.toMatchObject({ code: "invalid-child-ancestry" });
+    await expect(
+      database.repository.nativeHistoryBindings.open(LOCAL_USER_ID, {
+        ...childRequest,
+        threadId: grandchild.threadId,
+      }),
+    ).rejects.toMatchObject({ code: "child-parent-mismatch" });
+    expect(
+      await database.repository.nativeHistoryBindings.open(LOCAL_USER_ID, {
+        ...childRequest,
+        provenance: { kind: "binding", bindingId: child.id },
+      }),
+    ).toEqual(child);
+    expect(
+      (
+        await database.repository.getChatExecutionContext(
+          LOCAL_USER_ID,
+          f.chatId,
+        )
+      )?.threadId,
+    ).toBe(parent.threadId);
+  });
+
+  it("refuses unrelated parent bindings and root-to-child relabeling", async () => {
+    const a = await fixture();
+    const b = await fixture();
+    const parent = await database.repository.nativeHistoryBindings.open(
+      LOCAL_USER_ID,
+      a.request,
+    );
+    await expect(
+      database.repository.nativeHistoryBindings.open(LOCAL_USER_ID, {
+        ...b.request,
+        threadId: randomUUID(),
+        provenance: { kind: "child", parentBindingId: parent.id },
+      }),
+    ).rejects.toMatchObject({ code: "parent-binding-not-found" });
+    await expect(
+      database.repository.nativeHistoryBindings.open(LOCAL_USER_ID, {
+        ...a.request,
+        provenance: { kind: "child", parentBindingId: parent.id },
+      }),
+    ).rejects.toMatchObject({ code: "invalid-child-ancestry" });
+  });
+
   it("binds an idle native session once without activating it or changing configuration", async () => {
     const f = await fixture();
     const before = await database.repository.getChatExecutionContext(

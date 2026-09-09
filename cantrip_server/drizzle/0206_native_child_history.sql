@@ -1,0 +1,1 @@
+ALTER TABLE "native_history_bindings" ADD COLUMN "ancestor_thread_ids" jsonb DEFAULT '[]'::jsonb NOT NULL;
