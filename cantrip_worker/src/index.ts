@@ -1830,6 +1830,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       command.provider,
       command.subagentDefaults ?? null,
       command.executionProfile ?? "ide",
+      command.executionProfile === "standalone-chat"
+        ? command.standaloneSkillRoot
+          ? [command.standaloneSkillRoot]
+          : []
+        : globalCodexSkillRoots,
     );
     let runtime = codexRuntimes.get(runtimeId);
     if (!runtime) {
@@ -5746,6 +5751,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                   providerAccountId: provider().accountId ?? null,
                 },
                 upstreamUrl,
+                prepareModelCatalogRequest: (method, params) =>
+                  runtime.prepareManagedModelCatalogRequest(method, params),
                 queue: {
                   execute: async (request) => {
                     await managed.synchronizeQueue();
@@ -6985,6 +6992,15 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                     {
                       identity: managedSessionIdentity(session),
                       runtime,
+                      captureReplacementSettings: async () => {
+                        retry.signal.throwIfAborted();
+                        const settings =
+                          await runtime.captureNativeReplacementSettings(
+                            retry.threadId!,
+                          );
+                        retry.signal.throwIfAborted();
+                        return settings;
+                      },
                       configuration: {
                         cwd: command.cwd,
                         threadId: retry.threadId,
@@ -6997,6 +7013,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                         planMode: command.planMode,
                         intent: "configure",
                         executionGate: runner.configuration,
+                        signal: retry.signal,
                       },
                       onPrepared: async (replacementThreadId) => {
                         runner.prepared(replacementThreadId);
@@ -7062,7 +7079,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                     subagentDefaults,
                     mcpServers: resolvedMcpServers,
                     planMode: command.planMode,
-                    intent: "configure",
+                    intent: "preserve",
                     ...(runner ? { executionGate: runner.configuration } : {}),
                   },
                 });
@@ -7098,7 +7115,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                   ),
                   runtime,
                 );
-                return { threadId: prepared.threadId };
+                return {
+                  threadId: prepared.threadId,
+                  inheritThreadSettings: true,
+                };
               };
             }
             return await finalizeCuaAgentTurn(

@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
+import { nativeInitialTurnSettingsSchema } from "@cantrip/protocol";
 import type { NativeHistorySourceJournal } from "./native-history-source-journal.js";
 import {
   nativeHistoryStateSchema,
@@ -69,6 +70,40 @@ function ensureTurn(
     state.turns.push(turn);
   }
   return turn;
+}
+
+/** Initial settings belong to this exact turn, not the current thread selection.
+ * Omission by an older snapshot cannot erase evidence. Conflicting immutable
+ * captures remain explicit and cannot become a last-writer/default selection. */
+function retainInitialSettings(turn: NativeHistoryStateTurn, input: unknown) {
+  const parsed = nativeInitialTurnSettingsSchema.safeParse(input);
+  if (!parsed.success) return;
+  const next = parsed.data;
+  const previous = turn.metadata?.initialSettings;
+  const conflict = turn.conflicts.some(
+    (entry) =>
+      Object.hasOwn(entry, "initialSettings") ||
+      entry.initialSettingsConflict === true,
+  );
+  if (conflict || (previous && !isDeepStrictEqual(previous, next))) {
+    for (const value of [previous, next]) {
+      if (!value) continue;
+      const candidate = { initialSettings: value } as NativeHistoryObject;
+      if (
+        !turn.conflicts.some((entry) => isDeepStrictEqual(entry, candidate))
+      ) {
+        turn.conflicts.push(candidate);
+        turn.revision++;
+      }
+    }
+    if (turn.metadata && Object.hasOwn(turn.metadata, "initialSettings")) {
+      delete turn.metadata.initialSettings;
+      turn.revision++;
+    }
+  } else if (!previous) {
+    turn.metadata = { ...turn.metadata, initialSettings: next };
+    turn.revision++;
+  }
 }
 
 function applyItem(
@@ -246,6 +281,20 @@ function snapshot(
     applyTurn(turn, rawTurn as NativeHistoryObject, origin);
     const metadata =
       value.history?.turns.find((entry) => entry.turnId === rawTurn.id) ?? null;
+    if (metadata?.initialSettingsConflict) {
+      if (
+        !turn.conflicts.some((entry) => entry.initialSettingsConflict === true)
+      ) {
+        turn.conflicts.push({ initialSettingsConflict: true });
+        turn.revision++;
+      }
+      if (turn.metadata?.initialSettings) {
+        turn.conflicts.push({ initialSettings: turn.metadata.initialSettings });
+        delete turn.metadata.initialSettings;
+        turn.revision++;
+      }
+    }
+    retainInitialSettings(turn, metadata?.initialSettings);
     if (metadata && !concurrent(turn.origin, origin)) {
       // Retention can shrink or an older runtime can omit context. Neither
       // erases exact settings already observed for this native turn. Keep
@@ -256,7 +305,15 @@ function snapshot(
       for (const context of metadata.contexts ?? [])
         if (!contexts.some((previous) => isDeepStrictEqual(previous, context)))
           contexts.push(context as NativeHistoryObject);
-      const retained = contexts.length ? { ...metadata, contexts } : metadata;
+      const { initialSettings: _observedInitialSettings, ...observedMetadata } =
+        metadata;
+      const retained = {
+        ...observedMetadata,
+        ...(contexts.length ? { contexts } : {}),
+        ...(turn.metadata?.initialSettings
+          ? { initialSettings: turn.metadata.initialSettings }
+          : {}),
+      };
       if (!isDeepStrictEqual(turn.metadata, retained)) {
         turn.metadata = retained as NativeHistoryObject;
         turn.revision++;
@@ -535,6 +592,8 @@ export function reduceNativeHistory(
       ["turn/started", "turn/completed"].includes(frame.method)
     ) {
       applyTurn(turn, rawTurn, origin);
+      if (frame.method === "turn/started")
+        retainInitialSettings(turn, params.initialSettings);
       for (const candidate of Array.isArray(rawTurn.items)
         ? rawTurn.items
         : []) {

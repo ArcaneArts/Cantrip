@@ -9,6 +9,7 @@ import {
   codexRuntimeId,
   type GoalRuntimeOptions,
   type PrepareManagedThreadOptions,
+  type RunAgentTurnOptions,
 } from "../src/codex/app-server.js";
 import { managedCuaMcpServer } from "../src/mcp/managed.js";
 
@@ -138,6 +139,106 @@ function fixture() {
 }
 
 describe("thread session preparation", () => {
+  it("inherits native model, effort and collaboration selection on an ordinary managed GUI turn", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "cantrip-inherited-turn-"));
+    const f = fixture();
+    try {
+      await f.runtime.prepareManagedThread({ ...managed, cwd, mcpServers: [] });
+      f.native.handleMessage(
+        Buffer.from(
+          JSON.stringify({
+            method: "thread/settings/updated",
+            params: {
+              threadId: "thread-1",
+              threadSettings: nativeThreadSettings({
+                model: "native-selected-model",
+                effort: "low",
+                serviceTier: "fast",
+                collaborationMode: {
+                  mode: "plan",
+                  settings: {
+                    model: "native-selected-model",
+                    reasoning_effort: "low",
+                    developer_instructions: null,
+                  },
+                },
+              }),
+            },
+          }),
+        ),
+      );
+      f.request.mockClear();
+      const request = f.request.getMockImplementation()!;
+      f.request.mockImplementation(async (method, params) => {
+        if (method === "turn/start")
+          throw new Error("fixture dispatch reached");
+        return request(method, params);
+      });
+      const turn: RunAgentTurnOptions = {
+        ...options,
+        cwd,
+        inheritThreadSettings: true,
+        chatId: "chat",
+        clientMessageId: "message",
+        captureProtectedDiagnostics: false,
+        executionProfile: "ide",
+        isPrimary: true,
+        automationPaused: false,
+        planMode: "default",
+        policyContext: null,
+        prompt: "Synthetic input",
+        rootKind: "git-worktree",
+        skillNames: [],
+        subagentDefaults: null,
+        subagentProtocolVersion: undefined,
+        worktreeMode: "agent-managed",
+        worktreePolicy: "required-for-writes",
+      };
+      const native = f.runtime as unknown as {
+        runTurnAttempt(input: RunAgentTurnOptions): Promise<unknown>;
+      };
+      await expect(native.runTurnAttempt(turn)).rejects.toThrow(
+        "fixture dispatch reached",
+      );
+      const input = f.request.mock.calls.find(
+        ([method]) => method === "turn/start",
+      )![1] as Record<string, unknown>;
+      for (const field of [
+        "model",
+        "effort",
+        "collaborationMode",
+        "serviceTier",
+      ])
+        expect(input).not.toHaveProperty(field);
+      expect(input).toMatchObject({
+        threadId: "thread-1",
+        clientUserMessageId: "cantrip:message",
+        input: [{ type: "text", text: "Synthetic input", text_elements: [] }],
+      });
+      expect(
+        f.request.mock.calls.some(([method]) =>
+          [
+            "thread/resume",
+            "thread/settings/update",
+            "collaborationMode/list",
+            "thread/settings/read",
+          ].includes(method),
+        ),
+      ).toBe(false);
+      expect(
+        f.runtime.getNativeThreadSettings("thread-1").confirmed?.settings,
+      ).toMatchObject({
+        model: "native-selected-model",
+        effort: "low",
+        serviceTier: "fast",
+        collaborationMode: { mode: "plan" },
+      });
+    } finally {
+      f.runtime.close();
+      await rm(cwd, { force: true, recursive: true });
+    }
+  });
+
   it("does not confirm Plan Mode from the settings queue acknowledgment", async () => {
     const f = fixture();
     const request = f.request.getMockImplementation()!;

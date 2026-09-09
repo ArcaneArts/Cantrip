@@ -425,6 +425,7 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
     this.nativeHistoryBindings = new NativeHistoryBindingRepository(database);
     this.nativeHistoryArchive = new NativeHistoryArchiveRepository(
       this.nativeHistoryBindings,
+      database,
     );
     this.nativeHistoryItems = new NativeHistoryItemRepository(
       this.nativeHistoryBindings,

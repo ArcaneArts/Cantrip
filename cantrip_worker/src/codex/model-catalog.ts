@@ -182,7 +182,10 @@ export async function writeManagedCodexModelCatalog(
 ): Promise<string | null> {
   if (provider.kind === "chatgpt") return null;
   const catalog = codexCatalogForRuntimeModels(
-    [model, ...(subagentModel ? [subagentModel] : []), ...inventoryModels],
+    managedCatalogModels(
+      [model, ...(subagentModel ? [subagentModel] : [])],
+      inventoryModels,
+    ),
     provider.kind,
   );
   if (!catalog) return null;
@@ -193,4 +196,30 @@ export async function writeManagedCodexModelCatalog(
     mode: 0o600,
   });
   return catalogPath;
+}
+
+/** Fresh account discovery wins over bootstrap metadata for the same slug. */
+export function managedCatalogModels(
+  explicit: readonly RuntimeModel[],
+  inventory: readonly RuntimeModel[],
+): RuntimeModel[] {
+  const groups: Map<string, RuntimeModel>[] = [];
+  for (const group of [inventory, explicit]) {
+    const unique = new Map<string, RuntimeModel>();
+    for (const model of group) {
+      const previous = unique.get(model.name);
+      if (!previous) unique.set(model.name, model);
+      else if (!previous.catalog && model.catalog) {
+        unique.set(model.name, { ...previous, catalog: model.catalog });
+      }
+    }
+    groups.push(unique);
+  }
+  const [discovered, configured] = groups as [
+    Map<string, RuntimeModel>,
+    Map<string, RuntimeModel>,
+  ];
+  return [...new Set([...configured.keys(), ...discovered.keys()])].map(
+    (name) => discovered.get(name) ?? configured.get(name)!,
+  );
 }

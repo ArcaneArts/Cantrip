@@ -34,6 +34,7 @@ import { ChatTurnPromptOverlay } from "@/components/chat/chat-turn-prompt-overla
 import { ChatRunStatus } from "@/components/chat/chat-run-status";
 import { ModelReasoningPicker } from "@/components/chat/model-reasoning-picker";
 import { NativeSettingsStatus } from "@/components/chat/native-settings-status";
+import { NativeModelSettingsPicker } from "./native-model-settings-picker";
 import { PermissionProfileControl } from "@/components/chat/permission-profile-control";
 import { ChatRelocationStatus } from "@/components/chat/chat-relocation-dialog";
 import { PlanPanel } from "@/components/chat/plan-panel";
@@ -90,6 +91,7 @@ export function ChatTranscriptView({
     copiedMessageId,
     copyResponse,
     currentModelConfiguration,
+    nativeModelSettings,
     desktopRuntime,
     draft,
     draftAttachments,
@@ -168,6 +170,7 @@ export function ChatTranscriptView({
     setComposerCaret,
     setComposerDraftHydrated,
     setComposerMode,
+    changeComposerMode,
     setComposerReasoningEffort,
     setComposerScrollTop,
     setDraft,
@@ -961,38 +964,51 @@ export function ChatTranscriptView({
                   <Plus className="size-4" />
                   <span className="sr-only">Attach files</span>
                 </Button>
-                <ModelReasoningPicker
-                  open={settingsPicker === "model"}
-                  onOpenChange={(open) =>
-                    setSettingsPicker((current) =>
-                      open ? "model" : current === "model" ? null : current,
-                    )
-                  }
-                  configuration={currentModelConfiguration}
-                  disabled={relocationActive}
-                  loadReasoningState={loadModelReasoningState}
-                  models={settings?.models ?? []}
-                  pending={selectModelConfiguration.isPending}
-                  readOnly={
-                    chat.status === "running" ||
-                    chat.status === "waiting-for-approval"
-                  }
-                  reasoningState={reasoningState.data}
-                  selectionStatus={
-                    capabilities.linkedConsole ? (
-                      <NativeSettingsStatus chatId={chat.id} />
-                    ) : undefined
-                  }
-                  subagentCapability={
-                    capabilities.subagents
-                      ? activeChatWorker?.codexRuntime.nativeSubagents
-                      : undefined
-                  }
-                  subagents={capabilities.subagents}
-                  onSave={(configuration) =>
-                    selectModelConfiguration.mutateAsync(configuration)
-                  }
-                />
+                {nativeModelSettings.pickerMode === "native" ? (
+                  <NativeModelSettingsPicker
+                    controller={nativeModelSettings}
+                    open={settingsPicker === "model"}
+                    onOpenChange={(open) =>
+                      setSettingsPicker((current) =>
+                        open ? "model" : current === "model" ? null : current,
+                      )
+                    }
+                    disabled={relocationActive}
+                  />
+                ) : (
+                  <ModelReasoningPicker
+                    open={settingsPicker === "model"}
+                    onOpenChange={(open) =>
+                      setSettingsPicker((current) =>
+                        open ? "model" : current === "model" ? null : current,
+                      )
+                    }
+                    configuration={currentModelConfiguration}
+                    disabled={relocationActive}
+                    loadReasoningState={loadModelReasoningState}
+                    models={settings?.models ?? []}
+                    pending={selectModelConfiguration.isPending}
+                    readOnly={
+                      chat.status === "running" ||
+                      chat.status === "waiting-for-approval"
+                    }
+                    reasoningState={reasoningState.data}
+                    selectionStatus={
+                      capabilities.linkedConsole ? (
+                        <NativeSettingsStatus chatId={chat.id} />
+                      ) : undefined
+                    }
+                    subagentCapability={
+                      capabilities.subagents
+                        ? activeChatWorker?.codexRuntime.nativeSubagents
+                        : undefined
+                    }
+                    subagents={capabilities.subagents}
+                    onSave={(configuration) =>
+                      selectModelConfiguration.mutateAsync(configuration)
+                    }
+                  />
+                )}
                 <PermissionProfileControl
                   open={settingsPicker === "permissions"}
                   onOpenChange={(open) =>
@@ -1015,7 +1031,7 @@ export function ChatTranscriptView({
                   <ChatModeControl
                     mode={composerMode}
                     disabled={relocationActive}
-                    onChange={setComposerMode}
+                    onChange={changeComposerMode}
                   />
                 ) : null}
                 <ContextUsageRing

@@ -67,6 +67,46 @@ function fixture() {
 }
 
 describe("native RPC rejection evidence", () => {
+  it("keeps exact native initial settings on running and terminal summaries", async () => {
+    const f = fixture();
+    const activities: unknown[] = [];
+    const execution = await f.runtime.prepareAdmittedNativeExecution({
+      ...options,
+      onActivity: (activity) => activities.push(activity),
+    });
+    const initialSettings = {
+      model: "native-selected",
+      modelProvider: "native-provider",
+      reasoningEffort: null,
+      effectiveReasoningEffort: "low",
+      serviceTier: "default",
+      effectiveServiceTier: null,
+      collaborationMode: "plan",
+    };
+    f.notify("turn/started", {
+      threadId: "root",
+      turn: { id: "turn-a", startedAt: 1 },
+      initialSettings,
+    });
+    execution.bindReceipt({ turn: { id: "turn-a" } });
+    f.end();
+    await execution.completion;
+    expect(activities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "turnSummary",
+          status: "running",
+          initialSettings,
+        }),
+        expect.objectContaining({
+          type: "turnSummary",
+          status: "completed",
+          initialSettings,
+        }),
+      ]),
+    );
+  });
+
   it("correlates the actual pending method when rejection responses arrive out of order", async () => {
     const f = fixture();
     f.request.mockRestore();

@@ -35,6 +35,11 @@ export const nativeSettingsPatchSchema = z
       .strict()
       .nullable()
       .optional(),
+    // Mode-only update preserves current model/effort at native application.
+    collaborationModeKind: z.enum(["default", "plan"]).optional(),
+    multiAgentEnabled: z.boolean().optional(),
+    subagentModel: z.string().nullable().optional(),
+    subagentReasoningEffort: z.string().nullable().optional(),
     multiAgentMode: z.string().nullable().optional(),
     personality: z.string().nullable().optional(),
   })

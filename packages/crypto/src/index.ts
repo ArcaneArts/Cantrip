@@ -21,3 +21,5 @@ export * from "./task-operation.js";
 export * from "./wrappers.js";
 export * from "./native-settings.js";
 export * from "./native-settings-update.js";
+export * from "./native-command-request.js";
+export * from "./native-history-turn.js";

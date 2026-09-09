@@ -1,3 +1,5 @@
+import { readChatNativeHistoryTurns } from "./native-history-turn-read.js";
+import type { NativeHistoryTurnReadRequest } from "@cantrip/protocol";
 import { readNativeHistoryAttachmentReferences } from "./native-history-attachment-references.js";
 import { and, asc, eq, gt, inArray, or, sql } from "drizzle-orm";
 import {
@@ -14,7 +16,7 @@ import {
   type NativeHistoryArchivePage,
 } from "@cantrip/protocol";
 import * as schema from "../schema.js";
-import type { RepositoryTransaction } from "./database.js";
+import type { RepositoryDatabase, RepositoryTransaction } from "./database.js";
 import {
   NativeHistoryError,
   type NativeHistoryBindingRepository,
@@ -66,7 +68,18 @@ function assertSnapshot(
 /** Read committed opaque archives under the same ownership/transaction boundary
  * as ingestion. Pagination never acquires execution authority or consumes history. */
 export class NativeHistoryArchiveRepository {
-  constructor(private readonly bindings: NativeHistoryBindingRepository) {}
+  constructor(
+    private readonly bindings: NativeHistoryBindingRepository,
+    private readonly database: RepositoryDatabase,
+  ) {}
+
+  readForChat(
+    ownerId: string,
+    chatId: string,
+    input: NativeHistoryTurnReadRequest,
+  ) {
+    return readChatNativeHistoryTurns(this.database, ownerId, chatId, input);
+  }
 
   read(
     ownerId: string,

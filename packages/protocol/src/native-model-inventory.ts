@@ -24,6 +24,19 @@ export type NativeModelInventoryRequest = z.infer<
   typeof nativeModelInventoryRequestSchema
 >;
 
+/** The public picker inventory belongs to one canonical native source. */
+export const nativeChatModelInventoryQuerySchema = z
+  .object({ bindingId: id })
+  .strict();
+export const nativeChatModelInventorySchema = nativeModelInventorySchema.extend(
+  {
+    bindingId: id,
+  },
+);
+export type NativeChatModelInventory = z.infer<
+  typeof nativeChatModelInventorySchema
+>;
+
 /** Native names do not identify a different provider/account or resolve aliases.
  * Retain an exact current route when possible; otherwise report ambiguity. */
 export function resolveNativeModelSelection(

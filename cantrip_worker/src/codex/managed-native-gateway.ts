@@ -68,6 +68,8 @@ export interface ManagedNativeGatewayOptions {
   ): Promise<void>;
   /** Optional additional observer; omit when the runtime already observes this subscription. */
   onNativeMessage?(message: NativeRpcFrame, connectionId: string): void;
+  /** Refreshes the account catalog for picker reads or admitted model changes. */
+  prepareModelCatalogRequest?(method: string, params: unknown): Promise<void>;
 }
 export interface ManagedNativeGateway {
   /** Capability URL for this exact runtime incarnation; never the native endpoint. */
@@ -311,6 +313,10 @@ export async function createManagedNativeGateway(
         } else {
           await upstreamReady;
         }
+        await options.prepareModelCatalogRequest?.(
+          forwarded.method as string,
+          forwarded.params,
+        );
         if (!active())
           throw new Error("Managed native session expired before dispatch.");
         entry.forwarded = true;

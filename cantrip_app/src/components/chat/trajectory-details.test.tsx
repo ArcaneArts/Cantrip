@@ -63,6 +63,54 @@ function event(): TrajectoryEvent {
 }
 
 describe("TrajectoryDetails", () => {
+  it("renders initial native settings without substituting GUI model aliases", () => {
+    const source = event();
+    source.activity = {
+      type: "turnSummary",
+      id: "summary",
+      status: "completed",
+      durationMs: 250,
+      startedAt: 1000,
+      completedAt: 1250,
+      initialSettings: {
+        model: "exact-native-model",
+        modelProvider: "native-provider",
+        reasoningEffort: null,
+        effectiveReasoningEffort: "high",
+        serviceTier: null,
+        effectiveServiceTier: "fast",
+        collaborationMode: "plan",
+      },
+    };
+    const markup = renderToStaticMarkup(
+      <TrajectoryDetails event={source} onBack={() => undefined} />,
+    );
+    for (const text of [
+      "Initial settings",
+      "exact-native-model",
+      "native-provider",
+      "Selected reasoning",
+      "Effective reasoning",
+      "high",
+      "fast",
+      "plan",
+    ])
+      expect(markup).toContain(text);
+    source.activity.initialSettingsConflict = true;
+    const conflict = renderToStaticMarkup(
+      <TrajectoryDetails event={source} onBack={() => undefined} />,
+    );
+    expect(conflict).toContain("conflicting native captures");
+    expect(conflict).not.toContain("exact-native-model");
+    source.activity.initialSettingsConflict = false;
+    source.activity.initialSettings = undefined;
+    expect(
+      renderToStaticMarkup(
+        <TrajectoryDetails event={source} onBack={() => undefined} />,
+      ),
+    ).not.toContain("Initial settings");
+  });
+
   it("shows full native output in the preview and its native kind in the summary", () => {
     const source = event();
     source.activity = {

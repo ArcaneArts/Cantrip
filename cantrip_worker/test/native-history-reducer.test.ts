@@ -737,3 +737,116 @@ it("retains original contexts across restart, changed settings and missing older
   );
   expect(missing.turns[0]!.metadata!.contexts).toEqual([original, later]);
 });
+
+describe("immutable initial turn settings", () => {
+  const reduceTurnHistory = (
+    threadId: string,
+    previous: unknown,
+    records: SourceRecord[],
+  ) => reduceNativeHistory(previous, records, threadId);
+  const initialSettings = {
+    model: "captured-model",
+    modelProvider: "captured-provider",
+    reasoningEffort: null,
+    effectiveReasoningEffort: "high",
+    serviceTier: "default",
+    effectiveServiceTier: null,
+    collaborationMode: "plan",
+  };
+  it("retains an exact live capture through completion, old snapshots and runtime replacement", () => {
+    let state = reduceTurnHistory("thread", null, [
+      event(1, "turn/started", {
+        turn: turn([], "turn", "inProgress"),
+        initialSettings,
+      }),
+    ]);
+    expect(state.turns[0]!.metadata?.initialSettings).toEqual(initialSettings);
+    state = reduceTurnHistory("thread", state, [
+      event(2, "thread/settings/updated", {
+        threadSettings: { ...initialSettings, model: "later-model" },
+      }),
+      event(3, "turn/completed", { turn: turn([]) }),
+      snap(
+        4,
+        [turn([]), turn([], "unrelated")],
+        [meta([]), meta([], "completed", { turnId: "unrelated" })],
+        4,
+        "replacement",
+      ),
+    ]);
+    expect(state.turns[0]!.metadata?.initialSettings).toEqual(initialSettings);
+    expect(state.turns[1]!.metadata).not.toHaveProperty("initialSettings");
+  });
+  it("learns retained snapshots and never chooses between conflicting immutable captures", () => {
+    const different = { ...initialSettings, model: "different-model" };
+    let state = reduceTurnHistory("thread", null, [
+      snap(1, [turn([])], [meta([], "completed", { initialSettings })]),
+    ]);
+    expect(state.turns[0]!.metadata?.initialSettings).toEqual(initialSettings);
+    state = reduceTurnHistory("thread", state, [
+      event(2, "turn/started", { turn: turn([]), initialSettings: different }),
+    ]);
+    expect(state.turns[0]!.metadata).not.toHaveProperty("initialSettings");
+    expect(state.turns[0]!.conflicts).toContainEqual({ initialSettings });
+    expect(state.turns[0]!.conflicts).toContainEqual({
+      initialSettings: different,
+    });
+    state = reduceTurnHistory("thread", JSON.parse(JSON.stringify(state)), [
+      snap(
+        3,
+        [turn([])],
+        [meta([], "completed", { initialSettings })],
+        3,
+        "replacement",
+      ),
+    ]);
+    expect(state.turns[0]!.metadata).not.toHaveProperty("initialSettings");
+    expect(state.turns[0]!.conflicts).toHaveLength(2);
+  });
+  it("clears live attribution when native retention reports conflicting starts and never revives it from omission", () => {
+    let state = reduceTurnHistory("thread", null, [
+      event(1, "turn/started", {
+        turn: turn([], "turn", "inProgress"),
+        initialSettings,
+      }),
+    ]);
+    state = reduceTurnHistory("thread", state, [
+      snap(
+        2,
+        [turn([])],
+        [meta([], "completed", { initialSettingsConflict: true })],
+      ),
+    ]);
+    expect(state.turns[0]!.metadata).not.toHaveProperty("initialSettings");
+    expect(state.turns[0]!.conflicts).toContainEqual({
+      initialSettingsConflict: true,
+    });
+    state = reduceTurnHistory("thread", JSON.parse(JSON.stringify(state)), [
+      snap(3, [turn([])], [meta([])], 3, "replacement"),
+      event(
+        4,
+        "turn/started",
+        { turn: turn([]), initialSettings },
+        "replacement",
+      ),
+    ]);
+    expect(state.turns[0]!.metadata).not.toHaveProperty("initialSettings");
+    expect(state.turns[0]!.conflicts).toContainEqual({ initialSettings });
+  });
+  it("does not invent settings for malformed live input or schema-accept invalid retained captures", () => {
+    const state = reduceTurnHistory("thread", null, [
+      event(1, "turn/started", {
+        turn: turn([]),
+        initialSettings: { model: "incomplete" },
+      }),
+    ]);
+    expect(state.turns[0]!.metadata).toBeNull();
+    expect(() =>
+      snap(
+        2,
+        [turn([])],
+        [meta([], "completed", { initialSettings: { model: "incomplete" } })],
+      ),
+    ).toThrow();
+  });
+});
