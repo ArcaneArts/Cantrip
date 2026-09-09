@@ -1,3 +1,7 @@
+import {
+  nativeTurnModelAttributionSchema,
+  type NativeTurnModelAttribution,
+} from "@cantrip/protocol";
 import { randomUUID } from "node:crypto";
 
 import type {
@@ -36,6 +40,7 @@ export interface TokenUsageRecordInput {
   projectId: string | null;
   chatId: string | null;
   modelRouteId: string;
+  nativeModelAttribution?: NativeTurnModelAttribution;
   providerAccountId?: string | null;
   workerId?: string | null;
   turnId?: string | null;
@@ -227,6 +232,21 @@ export class TelemetryRepository {
     ownerId: string,
     input: TokenUsageRecordInput,
   ): Promise<void> {
+    const capture =
+      input.nativeModelAttribution === undefined
+        ? undefined
+        : nativeTurnModelAttributionSchema.parse(input.nativeModelAttribution);
+    if (capture && capture.turnId !== input.turnId)
+      throw new Error("Native usage attribution belongs to another turn.");
+    const selection = capture?.selection;
+    if (
+      selection?.status === "resolved" &&
+      (selection.workerId !== input.workerId ||
+        selection.providerAccountId !== (input.providerAccountId ?? null))
+    )
+      throw new Error(
+        "Native usage attribution belongs to another worker/account.",
+      );
     const routeRows = await this.database
       .select({
         modelId: schema.modelProfiles.id,
@@ -250,7 +270,51 @@ export class TelemetryRepository {
       )
       .where(eq(schema.modelRoutes.id, input.modelRouteId))
       .limit(1);
-    const route = routeRows[0];
+    const anchor = routeRows[0];
+    let route = anchor;
+    if (capture) {
+      route = undefined;
+      if (selection?.status === "resolved") {
+        const [selected] = await this.database
+          .select({
+            modelId: schema.modelProfiles.id,
+            modelRouteId: schema.modelRoutes.id,
+            providerId: schema.modelProviders.id,
+          })
+          .from(schema.modelRoutes)
+          .innerJoin(
+            schema.modelProfiles,
+            and(
+              eq(schema.modelProfiles.id, schema.modelRoutes.modelId),
+              eq(schema.modelProfiles.ownerId, ownerId),
+            ),
+          )
+          .innerJoin(
+            schema.modelProviders,
+            and(
+              eq(schema.modelProviders.id, schema.modelRoutes.providerId),
+              eq(schema.modelProviders.ownerId, ownerId),
+            ),
+          )
+          .where(eq(schema.modelRoutes.id, selection.routeId))
+          .limit(1);
+        if (
+          !anchor ||
+          !selected ||
+          selected.modelId !== selection.modelId ||
+          selected.providerId !== selection.providerId ||
+          anchor.providerId !== selection.providerId
+        )
+          throw new Error(
+            "Native usage attribution does not match an owned route in the session provider.",
+          );
+        route = selected;
+      }
+    }
+    // Bootstrap and terminal status updates must not overwrite native-start evidence.
+    const retain = <T>(column: T, incoming: unknown) =>
+      sql`CASE WHEN ${schema.tokenUsageRecords.nativeModelAttribution} IS NOT NULL THEN ${column} ELSE ${incoming} END`;
+    const nativeCapture = capture ? JSON.stringify(capture) : null;
     const exactCount = (value: number | undefined): number =>
       Math.max(0, Math.round(value ?? 0));
     const usage = input.usage;
@@ -270,7 +334,7 @@ export class TelemetryRepository {
       input.completedAt ?? (attemptStatus === "running" ? null : updatedAt);
     const finalizedAt =
       input.finalizedAt ?? (attemptStatus === "running" ? null : updatedAt);
-    await this.database
+    const written = await this.database
       .insert(schema.tokenUsageRecords)
       .values({
         id: randomUUID(),
@@ -278,6 +342,7 @@ export class TelemetryRepository {
         projectId: input.projectId,
         chatId: input.chatId,
         sourceKey: input.sourceKey,
+        nativeModelAttribution: capture ?? null,
         modelId: route?.modelId ?? null,
         modelRouteId: route?.modelRouteId ?? null,
         providerId: route?.providerId ?? null,
@@ -287,7 +352,9 @@ export class TelemetryRepository {
         executionAttemptId: input.executionAttemptId ?? null,
         attemptKind: input.attemptKind ?? "turn",
         attemptStatus,
-        reasoningEffort: input.reasoningEffort ?? null,
+        reasoningEffort: capture
+          ? capture.reasoningEffort
+          : (input.reasoningEffort ?? null),
         workerVersion: input.workerVersion ?? null,
         serverVersion: input.serverVersion ?? null,
         codexVersion: input.codexVersion ?? null,
@@ -309,19 +376,44 @@ export class TelemetryRepository {
           schema.tokenUsageRecords.ownerId,
           schema.tokenUsageRecords.sourceKey,
         ],
+        setWhere: sql`${schema.tokenUsageRecords.nativeModelAttribution} IS NULL OR (
+          (${nativeCapture}::jsonb IS NULL OR ${schema.tokenUsageRecords.nativeModelAttribution} = ${nativeCapture}::jsonb)
+          AND ${schema.tokenUsageRecords.chatId} IS NOT DISTINCT FROM ${input.chatId}
+          AND (${input.workerId ?? null}::text IS NULL OR ${schema.tokenUsageRecords.workerId} IS NOT DISTINCT FROM ${input.workerId ?? null})
+          AND (${input.turnId ?? null}::text IS NULL OR ${schema.tokenUsageRecords.turnId} IS NOT DISTINCT FROM ${input.turnId ?? null})
+        )`,
         set: {
+          nativeModelAttribution: sql`COALESCE(${schema.tokenUsageRecords.nativeModelAttribution}, ${nativeCapture}::jsonb)`,
           projectId: input.projectId,
           chatId: input.chatId,
-          modelId: route?.modelId ?? null,
-          modelRouteId: route?.modelRouteId ?? null,
-          providerId: route?.providerId ?? null,
-          providerAccountId: input.providerAccountId ?? null,
-          workerId: input.workerId ?? null,
-          turnId: input.turnId ?? null,
+          modelId: retain(
+            schema.tokenUsageRecords.modelId,
+            route?.modelId ?? null,
+          ),
+          modelRouteId: retain(
+            schema.tokenUsageRecords.modelRouteId,
+            route?.modelRouteId ?? null,
+          ),
+          providerId: retain(
+            schema.tokenUsageRecords.providerId,
+            route?.providerId ?? null,
+          ),
+          providerAccountId: retain(
+            schema.tokenUsageRecords.providerAccountId,
+            input.providerAccountId ?? null,
+          ),
+          workerId: retain(
+            schema.tokenUsageRecords.workerId,
+            input.workerId ?? null,
+          ),
+          turnId: retain(schema.tokenUsageRecords.turnId, input.turnId ?? null),
           executionAttemptId: input.executionAttemptId ?? null,
           attemptKind: input.attemptKind ?? "turn",
-          attemptStatus,
-          reasoningEffort: input.reasoningEffort ?? null,
+          attemptStatus: sql`CASE WHEN ${schema.tokenUsageRecords.attemptStatus} <> 'running' AND ${attemptStatus} = 'running' THEN ${schema.tokenUsageRecords.attemptStatus} ELSE ${attemptStatus} END`,
+          reasoningEffort: retain(
+            schema.tokenUsageRecords.reasoningEffort,
+            capture ? capture.reasoningEffort : (input.reasoningEffort ?? null),
+          ),
           workerVersion: input.workerVersion ?? null,
           serverVersion: input.serverVersion ?? null,
           codexVersion: input.codexVersion ?? null,
@@ -345,7 +437,12 @@ export class TelemetryRepository {
             : {}),
           updatedAt,
         },
-      });
+      })
+      .returning({ id: schema.tokenUsageRecords.id });
+    if (!written.length)
+      throw new Error(
+        "Native turn model attribution conflicts with the retained usage record.",
+      );
   }
 
   async recordModelBehaviorObservation(

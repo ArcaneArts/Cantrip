@@ -1,3 +1,4 @@
+import { nativeTurnModelAttributionSchema } from "./native-turn-model-attribution.js";
 import { z } from "zod";
 import { computerUseChunkEventSchema } from "./computer-use.js";
 import {
@@ -63,6 +64,7 @@ const protectedAgentEventTelemetrySchema = z.discriminatedUnion("kind", [
   }),
   z.object({
     kind: z.literal("activity"),
+    nativeModelAttribution: nativeTurnModelAttributionSchema.optional(),
     activityType: z.string().min(1).max(100),
     reasonCode: z.string().min(1).max(100).nullable().optional(),
     turnId: z.string().min(1).nullable(),
@@ -80,6 +82,7 @@ const protectedAgentEventTelemetrySchema = z.discriminatedUnion("kind", [
   }),
   z.object({
     kind: z.literal("usage"),
+    nativeModelAttribution: nativeTurnModelAttributionSchema.optional(),
     usage: agentTokenUsageSchema,
     modelContextWindow: z.number().int().positive().nullable(),
     contextUsedPercent: z.number().min(0).nullable(),

@@ -1,3 +1,4 @@
+import { nativeTurnModelAttributionSchema } from "./native-turn-model-attribution.js";
 import { z } from "zod";
 import { nativeInitialTurnSettingsSchema } from "./native-initial-turn-settings.js";
 import {
@@ -392,6 +393,7 @@ export const agentActivitySchema = z.discriminatedUnion("type", [
   z.object({
     ...agentActivityBaseShape,
     type: z.literal("usage"),
+    nativeModelAttribution: nativeTurnModelAttributionSchema.optional(),
     total: agentTokenUsageSchema,
     last: agentTokenUsageSchema,
     modelContextWindow: z.number().int().positive().nullable(),
@@ -410,6 +412,7 @@ export const agentActivitySchema = z.discriminatedUnion("type", [
   z.object({
     ...agentActivityBaseShape,
     type: z.literal("turnSummary"),
+    nativeModelAttribution: nativeTurnModelAttributionSchema.optional(),
     initialSettings: nativeInitialTurnSettingsSchema.optional(),
     initialSettingsConflict: z.boolean().optional(),
     durationMs: z.number().int().nonnegative().nullable(),

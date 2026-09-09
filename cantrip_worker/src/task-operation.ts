@@ -110,6 +110,7 @@ export class EncryptedTaskEventSealer {
           ? {
               kind: "usage" as const,
               usage: activity.last,
+              nativeModelAttribution: activity.nativeModelAttribution,
               modelContextWindow: activity.modelContextWindow,
               contextUsedPercent: activity.contextUsedPercent,
               turnId,
@@ -117,6 +118,10 @@ export class EncryptedTaskEventSealer {
           : {
               kind: "activity" as const,
               activityType: activity.type,
+              ...(activity.type === "turnSummary" &&
+              activity.nativeModelAttribution
+                ? { nativeModelAttribution: activity.nativeModelAttribution }
+                : {}),
               ...(activity.type === "notice"
                 ? { reasonCode: activity.reasonCode ?? null }
                 : {}),

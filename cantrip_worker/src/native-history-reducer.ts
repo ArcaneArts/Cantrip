@@ -1,3 +1,4 @@
+import { nativeTurnModelAttributionSchema } from "@cantrip/protocol";
 import { isDeepStrictEqual } from "node:util";
 import { nativeInitialTurnSettingsSchema } from "@cantrip/protocol";
 import type { NativeHistorySourceJournal } from "./native-history-source-journal.js";
@@ -309,6 +310,9 @@ function snapshot(
         metadata;
       const retained = {
         ...observedMetadata,
+        ...(turn.metadata?.cantripModelAttribution
+          ? { cantripModelAttribution: turn.metadata.cantripModelAttribution }
+          : {}),
         ...(contexts.length ? { contexts } : {}),
         ...(turn.metadata?.initialSettings
           ? { initialSettings: turn.metadata.initialSettings }
@@ -592,8 +596,36 @@ export function reduceNativeHistory(
       ["turn/started", "turn/completed"].includes(frame.method)
     ) {
       applyTurn(turn, rawTurn, origin);
-      if (frame.method === "turn/started")
+      if (frame.method === "turn/started") {
         retainInitialSettings(turn, params.initialSettings);
+        const attribution = nativeTurnModelAttributionSchema.safeParse(
+          params.cantripModelAttribution,
+        );
+        if (
+          attribution.success &&
+          attribution.data.threadId === state.threadId &&
+          attribution.data.turnId === turn.id
+        ) {
+          const prior = turn.metadata?.cantripModelAttribution;
+          if (!prior) {
+            turn.metadata = {
+              ...turn.metadata,
+              cantripModelAttribution: attribution.data,
+            };
+            turn.revision++;
+          } else if (!isDeepStrictEqual(prior, attribution.data)) {
+            const conflict = { cantripModelAttribution: attribution.data };
+            if (
+              !turn.conflicts.some((value) =>
+                isDeepStrictEqual(value, conflict),
+              )
+            ) {
+              turn.conflicts.push(conflict);
+              turn.revision++;
+            }
+          }
+        }
+      }
       for (const candidate of Array.isArray(rawTurn.items)
         ? rawTurn.items
         : []) {

@@ -26,12 +26,17 @@ describe.skipIf(!binary)("native replacement GUI turn settings", () => {
     const cwd = path.join(root, "workspace");
     const requests: Record<string, unknown>[] = [];
     const activities: unknown[] = [];
+    let releaseResponse!: () => void;
+    const responseReady = new Promise<void>((resolve) => {
+      releaseResponse = resolve;
+    });
     const children: ChildProcessWithoutNullStreams[] = [];
     let runtime: CodexAppServer | undefined;
     const provider = createServer(async (request, response) => {
       const chunks: Buffer[] = [];
       for await (const chunk of request) chunks.push(Buffer.from(chunk));
       requests.push(JSON.parse(Buffer.concat(chunks).toString()));
+      await responseReady;
       response.writeHead(200, { "content-type": "text/event-stream" });
       const item = {
         type: "message",
@@ -279,7 +284,49 @@ describe.skipIf(!binary)("native replacement GUI turn settings", () => {
         worktreeMode: "agent-managed",
         worktreePolicy: "required-for-writes",
       };
-      const result = await runtime.runTurn(turn);
+      const historyEvents: Array<{
+        method: string;
+        params: Record<string, unknown>;
+      }> = [];
+      const historyErrors: unknown[] = [];
+      const observation = runtime.observeNativeHistory(replacement.threadId, {
+        capture: (event) => historyEvents.push(event),
+        onError: (error) => historyErrors.push(error),
+      });
+      const running = runtime.runTurn(turn);
+      await vi.waitFor(() => expect(requests).toHaveLength(1), {
+        timeout: 10000,
+      });
+      await restoration.request("thread/settings/update", {
+        threadId: replacement.threadId,
+        model: model.name,
+      });
+      releaseResponse();
+      const result = await running;
+      const capture = expect.objectContaining({
+        threadId: replacement.threadId,
+        turnId: result.turnId,
+        isRoot: true,
+        reasoningEffort: "low",
+        selection: expect.objectContaining({
+          status: "resolved",
+          routeId: chosen.routeId,
+          modelId: chosen.id,
+        }),
+      });
+      expect(activities).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "usage",
+            nativeModelAttribution: capture,
+          }),
+          expect.objectContaining({
+            type: "turnSummary",
+            status: "completed",
+            nativeModelAttribution: capture,
+          }),
+        ]),
+      );
       expect(activities).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
@@ -295,6 +342,19 @@ describe.skipIf(!binary)("native replacement GUI turn settings", () => {
           }),
         ]),
       );
+      expect(historyErrors).toEqual([]);
+      expect(historyEvents).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            method: "turn/started",
+            params: expect.objectContaining({
+              cantripModelAttribution: capture,
+              initialSettings: expect.objectContaining({ model: chosen.name }),
+            }),
+          }),
+        ]),
+      );
+      observation.close();
       expect(result.status).toBe("completed");
       expect(result.threadId).toBe(replacement.threadId);
       expect(requests).toHaveLength(1);
@@ -306,7 +366,7 @@ describe.skipIf(!binary)("native replacement GUI turn settings", () => {
         (await runtime.readNativeThreadSettings(replacement.threadId)).confirmed
           ?.settings,
       ).toMatchObject({
-        model: chosen.name,
+        model: model.name,
         effort: "low",
         collaborationMode: { mode: "plan" },
         multiAgentEnabled: true,
@@ -316,6 +376,7 @@ describe.skipIf(!binary)("native replacement GUI turn settings", () => {
       expect(runtime.transportGeneration).toBe(generation);
       expect(children).toHaveLength(1);
     } finally {
+      releaseResponse();
       runtime?.close();
       for (const child of children) {
         if (child.exitCode !== null || child.signalCode !== null) continue;

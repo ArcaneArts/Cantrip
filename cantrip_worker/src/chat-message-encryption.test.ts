@@ -121,12 +121,20 @@ describe("worker chat message encryption", () => {
       steps: [],
       question: null,
     });
+    const nativeModelAttribution = {
+      threadId: "thread-usage",
+      turnId: "turn-usage",
+      isRoot: true,
+      reasoningEffort: "low",
+      selection: { status: "unavailable" as const },
+    };
     const event = await sealer.activity({
       type: "usage",
       id: "turn:turn-usage:usage",
       status: "completed",
       total: usage,
       last: usage,
+      nativeModelAttribution,
       modelContextWindow: 128_000,
       contextUsedPercent: 12.5,
       correlation: {
@@ -138,8 +146,30 @@ describe("worker chat message encryption", () => {
       },
     });
 
+    const started = await sealer.activity({
+      type: "turnSummary",
+      id: "turn:turn-usage:summary",
+      status: "running",
+      startedAt: 1,
+      completedAt: null,
+      durationMs: null,
+      nativeModelAttribution,
+      correlation: {
+        sourceMethod: "turn/started",
+        diagnosticId: null,
+        threadId: "thread-usage",
+        turnId: "turn-usage",
+        itemId: null,
+      },
+    });
+    expect(started.telemetry).toMatchObject({
+      kind: "activity",
+      activityType: "turnSummary",
+      nativeModelAttribution,
+    });
     expect(event.telemetry).toEqual({
       kind: "usage",
+      nativeModelAttribution,
       usage,
       modelContextWindow: 128_000,
       contextUsedPercent: 12.5,
@@ -155,7 +185,12 @@ describe("worker chat message encryption", () => {
         publicClassification: event.message.classification,
       }),
     ).resolves.toMatchObject({
-      content: [{ type: "activity", activity: { type: "usage", last: usage } }],
+      content: [
+        {
+          type: "activity",
+          activity: { type: "usage", last: usage, nativeModelAttribution },
+        },
+      ],
     });
 
     const commandEvent = await sealer.activity({

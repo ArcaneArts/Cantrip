@@ -227,6 +227,7 @@ interface PendingRpcRequest {
 }
 
 interface ActiveTurn {
+  nativeModelAttribution?: import("@cantrip/protocol").NativeTurnModelAttribution;
   initialSettings?: NativeInitialTurnSettings;
   inheritThreadSettings?: boolean;
   admission?: {
@@ -295,6 +296,7 @@ type AgentEventState = Pick<
   ActiveTurn,
   | "agentScope"
   | "initialSettings"
+  | "nativeModelAttribution"
   | "captureProtectedDiagnostics"
   | "commandTelemetry"
   | "completedCommandIds"
@@ -472,7 +474,16 @@ function emitTurnActivity(
   state: AgentEventState,
   activity: AgentActivity,
 ): void {
-  const scoped = scopedAgentActivity(state, activity);
+  const capture = state.nativeModelAttribution;
+  const scoped = scopedAgentActivity(
+    state,
+    capture &&
+      (activity.type === "usage" || activity.type === "turnSummary") &&
+      capture.threadId === activity.correlation?.threadId &&
+      capture.turnId === activity.correlation?.turnId
+      ? { ...activity, nativeModelAttribution: capture }
+      : activity,
+  );
   rememberObservedActivity(state, scoped);
   const itemId = scoped.correlation?.itemId;
   if (itemId) {
@@ -9931,10 +9942,60 @@ export class CodexAppServer implements CodexRuntime {
       return;
     }
 
+    let historyParams = message.params;
+    let startedTarget: ReturnType<typeof this.notificationTarget> = null;
+    if (message.method === "turn/started") {
+      const params = message.params as TurnStartedParams;
+      this.observeComputerUseTurnStart(params.threadId, params.turn.id);
+      startedTarget = this.notificationTarget(
+        params.threadId,
+        params.turn.id,
+        true,
+      );
+      const target = startedTarget;
+      const initial = nativeInitialTurnSettingsSchema.safeParse(
+        params.initialSettings,
+      );
+      const inventory = this.#managedModelInventory;
+      if (target) {
+        const child = this.#managedThreadOverlays.get(target.active.threadId)
+          ?.options.subagentDefaults?.model;
+        const anchor = target.isRoot
+          ? target.active.model
+          : (child ?? target.active.model);
+        const selection =
+          initial.success &&
+          inventory &&
+          this.#managedModelInventoryProvider &&
+          initial.data.modelProvider ===
+            codexModelProviderName(this.#managedModelInventoryProvider)
+            ? this.getManagedModelAttribution(initial.data.model, {
+                workerId: inventory.workerId,
+                providerAccountId: inventory.providerAccountId,
+                modelRouteId: anchor.routeId,
+              })
+            : { status: "unavailable" as const };
+        if (target.state.nativeModelAttribution?.turnId !== params.turn.id)
+          target.state.nativeModelAttribution = {
+            threadId: params.threadId,
+            turnId: params.turn.id,
+            isRoot: target.isRoot,
+            selection,
+            reasoningEffort: initial.success
+              ? (initial.data.effectiveReasoningEffort ??
+                initial.data.reasoningEffort)
+              : null,
+          };
+        historyParams = {
+          ...params,
+          cantripModelAttribution: target.state.nativeModelAttribution,
+        };
+      }
+    }
     if (typeof message.method === "string")
       this.#historyObservations.notification(
         message.method,
-        message.params,
+        historyParams,
         message.historyCursor,
       );
 
@@ -10022,14 +10083,8 @@ export class CodexAppServer implements CodexRuntime {
 
     if (message.method === "turn/started") {
       const params = message.params as TurnStartedParams;
-      this.observeComputerUseTurnStart(params.threadId, params.turn.id);
-      // A genuine start supersedes the prior child turn even if its completion
-      // is delayed. Ordinary telemetry cannot perform that transition.
-      const target = this.notificationTarget(
-        params.threadId,
-        params.turn.id,
-        true,
-      );
+
+      const target = startedTarget;
       if (target) {
         const initial = nativeInitialTurnSettingsSchema.safeParse(
           params.initialSettings,
