@@ -142,7 +142,9 @@ export function NativeModelSettingsPicker({
           >
             Confirmed: {observed.confirmed.model} ·{" "}
             {observed.confirmed.effort ?? "Default reasoning"} ·{" "}
-            {observed.confirmed.serviceTier ?? "Default service tier"}
+            {observed.confirmed.serviceTier === "default"
+              ? "Standard service"
+              : (observed.confirmed.serviceTier ?? "No service tier override")}
           </p>
         ) : (
           <p role="status">
@@ -238,7 +240,7 @@ export function NativeModelSettingsPicker({
           <input
             aria-label="Session service tier"
             className="w-full rounded border bg-background p-2"
-            placeholder="Default"
+            placeholder="No service tier override"
             value={draft?.serviceTier ?? ""}
             disabled={!editable || update.isPending}
             onChange={(event) => {
@@ -250,6 +252,38 @@ export function NativeModelSettingsPicker({
               setDirty((current) => ({ ...current, serviceTier: true }));
             }}
           />
+          <span className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!editable || update.isPending}
+              onClick={() => {
+                setDraft((current) =>
+                  current ? { ...current, serviceTier: null } : current,
+                );
+                setDirty((current) => ({ ...current, serviceTier: true }));
+              }}
+            >
+              No service tier override
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!editable || update.isPending}
+              onClick={() => {
+                setDraft((current) =>
+                  current ? { ...current, serviceTier: "default" } : current,
+                );
+                setDirty((current) => ({ ...current, serviceTier: true }));
+              }}
+            >
+              Standard service
+            </Button>
+          </span>
+          <span className="block text-xs text-muted-foreground">
+            Empty leaves the service tier unspecified. Standard service selects
+            the standard tier explicitly.
+          </span>
         </label>
         {draft?.multiAgentEnabled !== undefined ? (
           <label className="flex items-center gap-2 text-sm">

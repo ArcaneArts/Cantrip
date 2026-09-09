@@ -6723,21 +6723,12 @@ export class CodexAppServer implements CodexRuntime {
         "Native source settings changed during thread replacement.",
       );
     const settings = captured.settings;
-    if (settings.serviceTier === null) {
-      const target = await this.readNativeThreadSettings(threadId);
-      assertCurrent();
-      if (target.confirmed?.settings.serviceTier !== null)
-        throw new Error(
-          "Native replacement cannot restore an inherited service tier over an explicit selection.",
-        );
-    }
     const patch = {
       model: settings.model,
       effort: settings.effort,
-      // Native null updates mean an explicit "default" selection. Preserve
-      // actual absence by omitting the field when the new Core is also unset.
+      // Raw absence differs from an explicit standard-service selection.
       ...(settings.serviceTier === null
-        ? {}
+        ? { unsetServiceTier: true }
         : { serviceTier: settings.serviceTier }),
       collaborationMode: structuredClone(settings.collaborationMode),
       ...(settings.multiAgentEnabled === undefined
@@ -6775,7 +6766,9 @@ export class CodexAppServer implements CodexRuntime {
             actual?.modelProvider !== settings.modelProvider ||
             actual?.serviceTier !== settings.serviceTier ||
             !Object.entries(patch).every(([key, value]) =>
-              isDeepStrictEqual(actual?.[key], value),
+              key === "unsetServiceTier"
+                ? actual?.serviceTier === null
+                : isDeepStrictEqual(actual?.[key], value),
             )
           )
             reject(new Error("Native replacement applied different settings."));

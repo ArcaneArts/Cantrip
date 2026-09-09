@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   CodexAppServer,
   type RunAgentTurnOptions,
+  type NativeReplacementSettings,
 } from "../src/codex/app-server.js";
 import { discoverCodexRuntime } from "../src/codex/discovery.js";
 import { ManagedSessionCoordinator } from "../src/codex/managed-session.js";
@@ -180,6 +181,41 @@ describe.skipIf(!binary)("native replacement GUI turn settings", () => {
       });
       const replacementSettings =
         await runtime.captureNativeReplacementSettings(prepared.threadId);
+      // Seed a real replacement Core with a different selected tier before the
+      // production restoration method runs, reproducing the former parity gap.
+      const restoration = runtime as unknown as {
+        restoreNativeReplacementSettings(
+          threadId: string,
+          settings: NativeReplacementSettings,
+          assertTarget: () => void,
+          signal?: AbortSignal,
+        ): Promise<void>;
+        request(
+          method: string,
+          params: Record<string, unknown>,
+        ): Promise<unknown>;
+      };
+      const restore =
+        restoration.restoreNativeReplacementSettings.bind(runtime);
+      vi.spyOn(
+        restoration,
+        "restoreNativeReplacementSettings",
+      ).mockImplementationOnce(
+        async (threadId, settings, assertTarget, signal) => {
+          await restoration.request("thread/settings/update", {
+            threadId,
+            operationId: "fixture-target-priority",
+            serviceTier: "priority",
+          });
+          await vi.waitFor(async () =>
+            expect(
+              (await runtime!.readNativeThreadSettings(threadId)).confirmed
+                ?.settings.serviceTier,
+            ).toBe("priority"),
+          );
+          await restore(threadId, settings, assertTarget, signal);
+        },
+      );
       let handedOff = false;
       const replacement = await coordinator.replace(
         {

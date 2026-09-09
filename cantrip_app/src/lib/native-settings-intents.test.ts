@@ -168,6 +168,23 @@ describe("mounted native settings intent decryption", () => {
     });
   });
 
+  it("decrypts exact unset intent and rejects conflicting tier intent", async () => {
+    const options = fixture().options;
+    const opened = await openNativeSettingsIntents({
+      chatId: "chat",
+      state: await state({ unsetServiceTier: true, serviceTier: undefined }),
+      options,
+    });
+    expect(opened[0]!.patch.unsetServiceTier).toBe(true);
+    await expect(
+      openNativeSettingsIntents({
+        chatId: "chat",
+        state: await state({ unsetServiceTier: true, serviceTier: null }),
+        options,
+      }),
+    ).rejects.toThrow("conflicting choices");
+  });
+
   it("opens the admitted frame, preserves null choices, and clears owned key copies", async () => {
     const source = fixture();
     expect(

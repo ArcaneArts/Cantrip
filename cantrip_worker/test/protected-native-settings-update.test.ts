@@ -143,6 +143,8 @@ describe("protected explicit native settings updates", () => {
     { model: "private-model" },
     { serviceTier: null, effort: "high" },
     { serviceTier: "fast" },
+    { unsetServiceTier: true },
+    { unsetServiceTier: false, serviceTier: null },
   ])(
     "passes exactly the authenticated patch and returns only a public receipt: %j",
     async (patch) => {

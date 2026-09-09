@@ -1,4 +1,8 @@
 import {
+  nativeTurnSettingsForMessages,
+  type NativeTurnSettingsEvidence,
+} from "@/lib/native-turn-settings-evidence";
+import {
   computerUseActivitySummary,
   isPreviewActivity,
   splitPreviewMessages,
@@ -70,7 +74,13 @@ export interface TrajectoryEvent {
   updatedAtMs: number;
 }
 
+export type TrajectoryNativeTurnSettings = NativeTurnSettingsEvidence & {
+  agentKey: string;
+  agentLabel: string;
+};
+
 export interface TrajectoryTurn {
+  nativeTurnSettings?: TrajectoryNativeTurnSettings[];
   agents: TrajectoryAgent[];
   completed: boolean;
   completedAtMs: number | null;
@@ -917,6 +927,7 @@ function inferenceProgressEvents(input: {
 }
 
 export function projectTrajectory(input: {
+  nativeTurnSettings?: readonly NativeTurnSettingsEvidence[];
   active: boolean;
   agentProjection?: AgentTurnProjection;
   inferenceProgress?: InferenceProgressSnapshot | null;
@@ -1032,6 +1043,37 @@ export function projectTrajectory(input: {
         failed: terminalActivityStatus === "failed",
         messages: selected.messages,
         selectedKey: selected.key,
+      });
+  const nativeTurnSettings = selected.preview
+    ? []
+    : nativeTurnSettingsForMessages(
+        selected.messages,
+        input.nativeTurnSettings ?? [],
+      ).map((evidence) => {
+        const item = selected.messages
+          .flatMap((message) => message.content)
+          .find((content) => {
+            const source =
+              content.type === "activity"
+                ? content.activity
+                : content.type === "text"
+                  ? content
+                  : null;
+            return (
+              source?.correlation?.threadId === evidence.threadId &&
+              source.correlation.turnId === evidence.turnId &&
+              (!source.agentScope ||
+                source.agentScope.agentThreadId === evidence.threadId)
+            );
+          });
+        const scope =
+          item?.type === "activity"
+            ? item.activity.agentScope
+            : item?.type === "text"
+              ? item.agentScope
+              : null;
+        const agent = eventAgent(scope ?? null, evidence.threadId, agents);
+        return { ...evidence, agentKey: agent.key, agentLabel: agent.label };
       });
   const progressEvents = inferenceProgressEvents({
     agents,
@@ -1203,6 +1245,7 @@ export function projectTrajectory(input: {
   );
   return {
     agents,
+    nativeTurnSettings,
     completed,
     completedAtMs,
     elapsedMs: Math.max(0, endMs - startedAtMs),

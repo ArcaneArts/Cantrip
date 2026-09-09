@@ -398,3 +398,49 @@ describe("AgentTrajectory", () => {
     expect(markup).toContain("fill-[#ff168f]");
   });
 });
+
+it("renders grouped archive settings for a native response without a turn summary", () => {
+  const messages = [
+    message("native-response", 1, "assistant", 1000, [
+      {
+        type: "text",
+        text: "Response",
+        correlation: {
+          sourceMethod: "native-history",
+          diagnosticId: null,
+          threadId: "native-thread",
+          turnId: "native-turn",
+          itemId: "response",
+        },
+      },
+    ]),
+  ];
+  const html = renderToStaticMarkup(
+    <AgentTrajectory
+      active={false}
+      messages={messages}
+      visible
+      nativeTurnSettings={[
+        {
+          threadId: "native-thread",
+          turnId: "native-turn",
+          status: "available",
+          initialSettings: {
+            model: "captured-native-model",
+            modelProvider: "provider",
+            reasoningEffort: null,
+            effectiveReasoningEffort: "high",
+            serviceTier: null,
+            effectiveServiceTier: "fast",
+            collaborationMode: "plan",
+          },
+        },
+      ]}
+    />,
+  );
+  expect(html).toContain('data-slot="native-turn-settings"');
+  expect(html).toContain("captured-native-model");
+  expect(html).toContain("native-turn");
+  expect(messages[0]!.content).toHaveLength(1);
+  expect(messages[0]!.content[0]!.type).toBe("text");
+});

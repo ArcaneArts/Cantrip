@@ -5,6 +5,8 @@ import {
   encryptPayload,
 } from "@cantrip/crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ChatMessage } from "@cantrip/protocol";
+import { projectTrajectory } from "@/components/chat/trajectory-model";
 import { getMessagePage } from "./api";
 import { clientEncryption } from "./client-encryption";
 import { clearClientSession, setClientSession } from "./client-session";
@@ -46,7 +48,7 @@ afterEach(() => {
   clearClientSession();
   vi.unstubAllGlobals();
 });
-async function fixture() {
+async function fixture(content?: ChatMessage["content"]) {
   const componentKey = clientEncryption.componentKey({
     component: "chat-content",
     identity: { ownerId, serverId },
@@ -66,7 +68,7 @@ async function fixture() {
       content: {
         version: 1,
         classification,
-        content: [
+        content: content ?? [
           {
             type: "activity",
             activity: {
@@ -192,6 +194,53 @@ async function fixture() {
   }
 }
 describe("canonical GUI history native settings recovery", () => {
+  it("recovers a projected native turn with no summary on reload without manufacturing messages or lifecycle", async () => {
+    const content: ChatMessage["content"] = [
+      {
+        type: "text",
+        text: "Native response",
+        correlation: {
+          sourceMethod: "native-history",
+          diagnosticId: null,
+          threadId: "thread",
+          turnId: "turn",
+          itemId: "native-item",
+        },
+      },
+    ];
+    const data = await fixture(content);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request) =>
+        Response.json(
+          String(url).includes("native-history") ? data.archive : data.page,
+        ),
+      ),
+    );
+    for (let reconnect = 0; reconnect < 2; reconnect++) {
+      const result = await getMessagePage(chatId);
+      expect(result.messages).toHaveLength(1);
+      expect(result.messages[0]!.content).toEqual(content);
+      expect(result.messages[0]!.id).toBe(messageId);
+      const input = { messages: result.messages, active: false, nowMs: 2000 };
+      const withoutEvidence = projectTrajectory(input)!;
+      const recovered = projectTrajectory({
+        ...input,
+        nativeTurnSettings: result.nativeTurnSettings,
+      })!;
+      expect(recovered.events).toEqual(withoutEvidence.events);
+      expect(recovered.completedAtMs).toEqual(withoutEvidence.completedAtMs);
+      expect(recovered.nativeTurnSettings).toEqual([
+        expect.objectContaining({
+          threadId: "thread",
+          turnId: "turn",
+          status: "available",
+          initialSettings: initial,
+        }),
+      ]);
+    }
+  });
+
   it("decrypts the stored page then joins exact encrypted turn evidence without new message identities", async () => {
     const data = await fixture();
     const fetch = vi.fn(async (url: string | URL | Request) =>

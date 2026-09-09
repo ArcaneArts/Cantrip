@@ -194,6 +194,43 @@ afterEach(async () => {
   await act(async () => cleanups.splice(0).forEach((cleanup) => cleanup()));
 });
 describe("bound GUI native model picker", () => {
+  it.each([
+    ["No service tier override", { unsetServiceTier: true }, null],
+    ["Standard service", { serviceTier: "default" }, "default"],
+  ] as const)(
+    "submits %s independently and shows actual confirmed state after reconnect",
+    async (buttonLabel, patch, tier) => {
+      const mounted = await mount();
+      await mounted.open();
+      await act(async () => {
+        mounted.view.root
+          .findAllByType("button")
+          .find((button) => button.children.includes(buttonLabel))!
+          .props.onClick();
+      });
+      await act(async () => {
+        mounted.view.root
+          .findAllByType("button")
+          .find((button) => button.children.includes("Save settings"))!
+          .props.onClick();
+      });
+      await flush();
+      expect(runtime.prepare.mock.calls[0]![0].patch).toEqual(patch);
+      expect(mounted.controller().selected?.serviceTier).toBe(tier);
+      const current = observed();
+      runtime.observed = {
+        ...current,
+        identity: { ...identity, generation: 2 },
+        confirmed: { ...current.confirmed, serviceTier: tier },
+      };
+      await mounted.rerender();
+      await flush();
+      expect(mounted.controller().selected?.serviceTier).toBe(tier);
+      expect(mounted.controller().observed.confirmed?.serviceTier).toBe(tier);
+      expect(runtime.send).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it("lets a replacement source submit while a retired request waits without releasing its successor", async () => {
     const mounted = await mount();
     const finishes: ((value: unknown) => void)[] = [];

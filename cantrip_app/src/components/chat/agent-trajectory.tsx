@@ -1,3 +1,4 @@
+import type { NativeTurnSettingsEvidence } from "@/lib/native-history-turn-settings";
 import { isPreviewActivity } from "./computer-use-activity";
 import type { ChatMessage, InferenceProgressSnapshot } from "@cantrip/protocol";
 import {
@@ -41,7 +42,10 @@ import {
   type TrajectoryEvent,
   type TrajectoryLane,
 } from "./trajectory-model";
-import { TrajectoryDetails } from "./trajectory-details";
+import {
+  NativeTurnSettingsDetails,
+  TrajectoryDetails,
+} from "./trajectory-details";
 import type { TrajectoryTimingQuality } from "./trajectory-timing";
 import {
   TrajectoryTimeline,
@@ -218,6 +222,7 @@ function TrajectoryEventRow({
 }
 
 interface AgentTrajectoryProps {
+  nativeTurnSettings?: readonly NativeTurnSettingsEvidence[];
   active: boolean;
   agentProjection?: AgentTurnProjection;
   inferenceProgress?: InferenceProgressSnapshot | null;
@@ -305,6 +310,7 @@ export function AgentTrajectory(props: AgentTrajectoryProps) {
 }
 
 function AgentTrajectoryVisible({
+  nativeTurnSettings,
   active,
   agentProjection,
   followingLive,
@@ -337,8 +343,8 @@ function AgentTrajectoryVisible({
 }: AgentTrajectoryVisibleProps) {
   const [clockMs, setClockMs] = useState(() => Date.now());
   const projectionInput = useMemo(
-    () => ({ agentProjection, messages }),
-    [agentProjection, messages],
+    () => ({ agentProjection, messages, nativeTurnSettings }),
+    [agentProjection, messages, nativeTurnSettings],
   );
   const deferredInput = useDeferredValue(projectionInput);
   const deferredMessages = deferredInput.messages;
@@ -362,6 +368,7 @@ function AgentTrajectoryVisible({
         inferenceProgress,
         inferenceProgressHistory,
         messages: deferredMessages,
+        nativeTurnSettings: deferredInput.nativeTurnSettings,
         nowMs,
         targetTurnKey,
       }),
@@ -369,6 +376,7 @@ function AgentTrajectoryVisible({
       active,
       projectedAgents,
       deferredMessages,
+      deferredInput.nativeTurnSettings,
       inferenceProgress,
       inferenceProgressHistory,
       nowMs,
@@ -662,6 +670,8 @@ function AgentTrajectoryVisible({
           ))}
         </div>
       </header>
+
+      <NativeTurnSettingsDetails entries={turn.nativeTurnSettings ?? []} />
 
       <div className="shrink-0 border-b bg-muted/10">
         <TrajectoryTimeline

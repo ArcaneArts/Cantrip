@@ -28,6 +28,7 @@ export interface OpenedNativeSettingsIntent {
     | "model"
     | "effort"
     | "serviceTier"
+    | "unsetServiceTier"
     | "collaborationMode"
     | "collaborationModeKind"
     | "multiAgentEnabled"
@@ -137,6 +138,14 @@ export async function openNativeSettingsIntents(input: {
         patch.effort = params.effort;
       if (typeof params.serviceTier === "string" || params.serviceTier === null)
         patch.serviceTier = params.serviceTier;
+      if (typeof params.unsetServiceTier === "boolean")
+        patch.unsetServiceTier = params.unsetServiceTier;
+      // Reject contradictory encrypted intent instead of showing an invented
+      // pending selection. Native dispatch independently validates this too.
+      if (patch.unsetServiceTier === true && patch.serviceTier !== undefined)
+        throw new Error(
+          "Native service tier intent contains conflicting choices.",
+        );
       if (
         params.collaborationModeKind === "default" ||
         params.collaborationModeKind === "plan"

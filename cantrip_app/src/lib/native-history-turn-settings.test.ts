@@ -30,7 +30,8 @@ vi.mock("./client-session", () => ({
 import type { ClientEncryptionService } from "./client-encryption";
 import {
   enrichNativeTurnSummaries,
-  nativeSummaryTurnIdentities,
+  nativeTurnSettingsForMessages,
+  nativeCorrelatedTurnIdentities,
   openNativeTurnSettings,
   readNativeTurnSettings,
 } from "./native-history-turn-settings";
@@ -275,7 +276,7 @@ describe("historical native turn settings adapter", () => {
       )[0],
     ).toBe(live);
     expect(
-      nativeSummaryTurnIdentities([original, original, messages[1]!]),
+      nativeCorrelatedTurnIdentities([original, original, messages[1]!]),
     ).toEqual([{ threadId: "thread", turnId: "turn" }]);
   });
   it("rejects another chat, relabeled binding or source turn and lock during decryption", async () => {
@@ -379,4 +380,74 @@ describe("historical native turn settings adapter", () => {
       }),
     ).rejects.toThrow("unrequested");
   });
+});
+
+it("merges overlapping page evidence and never revives a conflict from a legacy omission", () => {
+  const message = {
+    id: "projected",
+    content: [
+      {
+        type: "text",
+        text: "output",
+        correlation: { threadId: "thread", turnId: "turn" },
+      },
+    ],
+  } as ChatMessage;
+  const available = {
+    threadId: "thread",
+    turnId: "turn",
+    status: "available" as const,
+    initialSettings: initial,
+  };
+  const unavailable = {
+    threadId: "thread",
+    turnId: "turn",
+    status: "unavailable" as const,
+  };
+  expect(
+    nativeTurnSettingsForMessages(
+      [message],
+      [unavailable, available, unavailable],
+    ),
+  ).toEqual([available]);
+  expect(
+    nativeTurnSettingsForMessages(
+      [message],
+      [
+        available,
+        { ...available, initialSettings: { ...initial, model: "other" } },
+        unavailable,
+        available,
+      ],
+    ),
+  ).toEqual([{ threadId: "thread", turnId: "turn", status: "conflict" }]);
+  expect(nativeTurnSettingsForMessages([], [available])).toEqual([]);
+});
+
+it("does not read or display an archive using a mismatched child scope", () => {
+  const message = {
+    id: "wrong-scope",
+    content: [
+      {
+        type: "text",
+        text: "output",
+        correlation: { threadId: "root", turnId: "turn" },
+        agentScope: { agentThreadId: "child" },
+      },
+    ],
+  } as ChatMessage;
+  expect(nativeCorrelatedTurnIdentities([message])).toEqual([]);
+  expect(
+    nativeTurnSettingsForMessages(
+      [message],
+      [
+        {
+          threadId: "root",
+          turnId: "turn",
+          status: "available",
+          initialSettings: initial,
+        },
+      ],
+    ),
+  ).toEqual([]);
 });

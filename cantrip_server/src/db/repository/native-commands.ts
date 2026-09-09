@@ -63,6 +63,7 @@ const settingKeys = new Set([
   "cwd",
   "multiAgentMode",
   "serviceTier",
+  "unsetServiceTier",
   "personality",
   "collaborationMode",
   "collaborationModeKind",

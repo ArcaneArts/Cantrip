@@ -269,6 +269,16 @@ describe.skipIf(!binary)("native settings acknowledgments", () => {
           });
           expect(rejected.error).toMatchObject({ code: -32600 });
         }
+        for (const serviceTier of [null, "priority"]) {
+          const conflict = await client.request("thread/settings/update", {
+            threadId,
+            operationId: "conflicting-tier",
+            unsetServiceTier: true,
+            serviceTier,
+          });
+          expect(conflict.error).toBeDefined();
+          expect(conflict.error.message).toContain("unsetServiceTier");
+        }
         const operations = [
           { operationId: "settings-no-op", patch: {} },
           { operationId: "settings-low", patch: { effort: "low" } },
@@ -284,6 +294,22 @@ describe.skipIf(!binary)("native settings acknowledgments", () => {
           {
             operationId: "settings-custom-effort",
             patch: { effort: "fixture-custom-effort" },
+          },
+          {
+            operationId: "settings-tier-unset",
+            patch: { unsetServiceTier: true },
+          },
+          {
+            operationId: "settings-tier-unset-false",
+            patch: { unsetServiceTier: false },
+          },
+          {
+            operationId: "settings-tier-standard",
+            patch: { serviceTier: "default" },
+          },
+          {
+            operationId: "settings-tier-unset-again",
+            patch: { unsetServiceTier: true },
           },
         ];
         const settingsScope = {
@@ -405,6 +431,10 @@ describe.skipIf(!binary)("native settings acknowledgments", () => {
               "high",
               "high",
               "fixture-custom-effort",
+              "fixture-custom-effort",
+              "fixture-custom-effort",
+              "fixture-custom-effort",
+              "fixture-custom-effort",
             ][index],
             serviceTier: [
               null,
@@ -417,6 +447,10 @@ describe.skipIf(!binary)("native settings acknowledgments", () => {
               // Core normalizes an explicit clear to its default-tier marker.
               "default",
               "default",
+              null,
+              null,
+              "default",
+              null,
             ][index],
           })),
         );
@@ -432,7 +466,7 @@ describe.skipIf(!binary)("native settings acknowledgments", () => {
             (version) =>
               BigInt(version.revision) - BigInt(initialVersion.revision),
           ),
-        ).toEqual([0n, 1n, 2n, 3n, 3n, 4n, 4n, 5n, 6n]);
+        ).toEqual([0n, 1n, 2n, 3n, 3n, 4n, 4n, 5n, 6n, 7n, 7n, 8n, 9n]);
         const settled = await request("thread/settings/read", { threadId });
         expect(settled.threadSettings).toEqual(
           applied().at(-1)!.params.threadSettings,
