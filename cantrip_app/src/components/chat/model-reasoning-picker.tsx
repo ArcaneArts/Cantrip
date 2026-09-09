@@ -9,7 +9,7 @@ import {
   type UserSettingsUpdate,
 } from "@cantrip/protocol";
 import { Check, ChevronRight, Loader2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { ModelCombobox } from "@/components/chat/model-combobox";
 import { Button } from "@/components/ui/button";
@@ -60,6 +60,7 @@ export interface ModelReasoningPickerProps {
   pending?: boolean;
   readOnly?: boolean;
   reasoningState?: ChatReasoningState;
+  selectionStatus?: ReactNode;
   loadReasoningState?: (modelId: string) => Promise<ChatReasoningState>;
   subagentCapability?: NativeSubagentRuntimeCapability;
   subagents?: boolean;
@@ -355,6 +356,7 @@ export function ModelReasoningPicker({
   pending = false,
   readOnly = false,
   reasoningState,
+  selectionStatus,
   subagentCapability,
   subagents = true,
 }: ModelReasoningPickerProps) {
@@ -568,6 +570,7 @@ export function ModelReasoningPicker({
         </DialogHeader>
 
         <div className="space-y-4 py-1">
+          {selectionStatus}
           {readOnly ? (
             <p className="rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs text-muted-foreground">
               This configuration is read-only while the agent turn is active or

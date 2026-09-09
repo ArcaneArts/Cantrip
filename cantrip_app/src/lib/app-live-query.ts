@@ -229,6 +229,7 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
               ["standalone-chats"],
               ["messages", event.scope.chatId],
               ["chat-runtime-selection", event.scope.chatId],
+              ["native-settings", event.scope.chatId],
               ["task-dashboard", event.scope.chatId],
             ]
           : event.scope.kind === "current-user"
@@ -472,6 +473,8 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
       return [
         ["standalone-chats"],
         ["chat-sync", scope.chatId],
+        ["chat-runtime-selection", scope.chatId],
+        ["native-settings", scope.chatId],
         ["chat-relocation-jobs", scope.chatId],
         ["messages", scope.chatId],
         ["task", scope.chatId],

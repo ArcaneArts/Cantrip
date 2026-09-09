@@ -1,3 +1,5 @@
+import { NativeSettingsPublisher } from "./native-settings-publisher.js";
+import { readProtectedNativeSettings } from "./native-settings-read.js";
 import { createHash, randomUUID } from "node:crypto";
 import { lstat, mkdtemp, realpath, rm, readFile } from "node:fs/promises";
 import os from "node:os";
@@ -2093,6 +2095,85 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     providerAccountId: options.provider.accountId,
     credentialHomeKey: options.provider.credentialHomeKey,
   });
+  const settingsPublishers = new Map<
+    string,
+    {
+      runtime: CodexAppServer;
+      generation: string;
+      threadId: string;
+      scopeKey: string;
+      publisher: NativeSettingsPublisher;
+    }
+  >();
+  const observeManagedSettings = (
+    chatId: string,
+    runtime: CodexAppServer,
+    threadId: string,
+  ) => {
+    const entry = managedCommandSessions
+      .get(runtime)
+      ?.get(`${chatId}:${threadId}`);
+    if (!entry || managedCurrentRuntimes.get(chatId) !== runtime) return;
+    const selected = entry.queueSession();
+    const scope = {
+      chatId,
+      threadId,
+      workerId: config.workerId,
+      contextKind: selected.contextKind,
+      projectId: selected.projectId,
+      placementId: selected.placementId,
+      modelRouteId: selected.modelRouteId,
+      providerAccountId: selected.providerAccountId,
+    };
+    const scopeKey = JSON.stringify(scope);
+    const previous = settingsPublishers.get(chatId);
+    if (
+      previous?.runtime === runtime &&
+      previous.generation === entry.generation &&
+      previous.scopeKey === scopeKey &&
+      !previous.publisher.closed
+    )
+      return;
+    previous?.publisher.close();
+    const publisher = new NativeSettingsPublisher({
+      scope,
+      generation: entry.generation,
+      runtime,
+      service: workerEncryption,
+      client: nativeCommands,
+      isCurrent: () =>
+        managedCurrentRuntimes.get(chatId) === runtime &&
+        runtime.transportGeneration === entry.generation &&
+        settingsPublishers.get(chatId)?.publisher === publisher,
+      onError: () =>
+        workerLogger.event(
+          "warn",
+          "Native settings observation remains pending",
+          {
+            event: "codex.settings.observation-pending",
+            subsystem: "codex",
+            operation: "publish-settings-state",
+            chatId,
+          },
+        ),
+    });
+    settingsPublishers.set(chatId, {
+      runtime,
+      generation: entry.generation,
+      threadId,
+      scopeKey,
+      publisher,
+    });
+    publisher.start();
+  };
+  const selectManagedRuntime = (
+    chatId: string,
+    runtime: CodexAppServer,
+    threadId: string,
+  ) => {
+    managedCurrentRuntimes.set(chatId, runtime);
+    observeManagedSettings(chatId, runtime, threadId);
+  };
   const managedSessionIdentity = (session: ManagedSessionContext) => ({
     serverId: workerEncryption.serverIdentity(),
     ownerId: workerEncryption.ownerId(),
@@ -2274,7 +2355,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             session.contextKind === "project" ? session.worktreeId : null,
         },
       });
-      managedCurrentRuntimes.set(session.chatId, runtime);
+      selectManagedRuntime(session.chatId, runtime, result.threadId);
     }
     threadObservations.bind(
       observationScope(session.chatId, result.threadId, options),
@@ -2730,6 +2811,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           ),
           approvalsReviewer: "user",
         };
+        if (
+          settingsPublishers.get(session.chatId)?.threadId === options.threadId
+        )
+          observeManagedSettings(session.chatId, runtime, options.threadId);
       },
     };
     runtime.setManagedNativeCommandDispatcher(options.threadId, (command) =>
@@ -6895,7 +6980,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                   Object.assign(managedRunnerConfigurations.get(runner)!, {
                     threadId,
                   });
-                  managedCurrentRuntimes.set(session.chatId, runtime);
+                  selectManagedRuntime(session.chatId, runtime, threadId);
                   threadObservations.bind(
                     observationScope(command.chatId, threadId, turnOptions),
                     runtime,
@@ -6969,7 +7054,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                     provider: provider(),
                     permissionProfileId: command.permissionProfileId,
                   });
-                  managedCurrentRuntimes.set(session.chatId, runtime);
+                  selectManagedRuntime(
+                    session.chatId,
+                    runtime,
+                    prepared.threadId,
+                  );
                 }
 
                 threadObservations.bind(
@@ -7452,6 +7541,35 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           threadId: prepared?.threadId ?? command.threadId,
         });
       }
+      case "chat.settings.read":
+        return readProtectedNativeSettings({
+          scope: command.scope,
+          service: workerEncryption,
+          resolve: () => {
+            const { chatId, threadId } = command.scope;
+            const runtime = currentManagedRuntime(chatId, threadId);
+            if (!runtime) return undefined;
+            const entry = managedCommandSessions
+              .get(runtime)
+              ?.get(`${chatId}:${threadId}`);
+            if (!entry) return undefined;
+            const session = entry.queueSession();
+            return {
+              runtime,
+              generation: entry.generation,
+              scope: {
+                chatId,
+                threadId,
+                workerId: config.workerId,
+                contextKind: session.contextKind,
+                projectId: session.projectId,
+                placementId: session.placementId,
+                modelRouteId: session.modelRouteId,
+                providerAccountId: session.providerAccountId,
+              },
+            };
+          },
+        });
       case "chat.thread.ensure":
         if (command.session) {
           const { threadId } = await prepareManagedSession(
@@ -7717,6 +7835,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         );
       } else {
         codeDirectEndpoints.invalidateControlPlaneGeneration();
+      }
+      for (const [chatId, entry] of settingsPublishers) {
+        if (entry.publisher.closed)
+          observeManagedSettings(chatId, entry.runtime, entry.threadId);
+        else entry.publisher.wake();
       }
       codeDirectEndpoints.reconnect();
       computerUse.reconnect();
@@ -7987,6 +8110,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           counts: { pendingRecords: pending.pendingRecords },
         },
       );
+    for (const { publisher } of settingsPublishers.values()) publisher.close();
+    settingsPublishers.clear();
     await nativeSettingsDelivery.stop().catch(() =>
       workerLogger.event(
         "warn",

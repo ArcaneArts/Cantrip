@@ -1,47 +1,16 @@
 import { z } from "zod";
 import { isDeepStrictEqual } from "node:util";
 
-export const nativeSettingsVersionSchema = z
-  .object({
-    epoch: z.string().min(1),
-    revision: z
-      .string()
-      .regex(/^(0|[1-9][0-9]{0,19})$/u)
-      .refine(
-        (value) =>
-          /^(0|[1-9][0-9]{0,19})$/u.test(value) &&
-          BigInt(value) <= 18_446_744_073_709_551_615n,
-      ),
-  })
-  .strict();
+import {
+  nativeThreadSettingsSchema,
+  type NativeThreadSettings,
+} from "@cantrip/protocol";
+export {
+  nativeSettingsVersionSchema,
+  nativeThreadSettingsSchema,
+  type NativeThreadSettings,
+} from "@cantrip/protocol";
 
-// Preserve native security/profile material and future fields verbatim. Mapping
-// these values to authorized Cantrip profiles belongs to the managed controller.
-export const nativeThreadSettingsSchema = z
-  .object({
-    settingsVersion: nativeSettingsVersionSchema.optional(),
-    cwd: z.string(),
-    approvalPolicy: z.union([z.string(), z.record(z.string(), z.json())]),
-    approvalsReviewer: z.string(),
-    sandboxPolicy: z.record(z.string(), z.json()),
-    activePermissionProfile: z.json(),
-    model: z.string(),
-    modelProvider: z.string(),
-    effort: z.string().nullable(),
-    serviceTier: z.string().nullable(),
-    summary: z.string().nullable(),
-    collaborationMode: z
-      .object({
-        mode: z.enum(["default", "plan"]),
-        settings: z.record(z.string(), z.json()),
-      })
-      .catchall(z.json()),
-    multiAgentMode: z.string().optional(),
-    personality: z.string().nullable(),
-  })
-  .catchall(z.json());
-
-export type NativeThreadSettings = z.infer<typeof nativeThreadSettingsSchema>;
 export interface NativeSettingsObservation {
   /** Local observation order only; never a durable settings revision. */
   sequence: number;

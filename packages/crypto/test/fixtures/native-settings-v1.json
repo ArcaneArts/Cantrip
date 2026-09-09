@@ -1,0 +1,67 @@
+{
+  "ownerId": "fixture-owner",
+  "serverId": "fixture-server",
+  "componentKeyByte": 37,
+  "context": {
+    "chatId": "fixture-chat",
+    "workerId": "fixture-worker",
+    "threadId": "fixture-thread",
+    "runtimeGeneration": "fixture-runtime",
+    "settingsVersion": {
+      "epoch": "fixture-core",
+      "revision": "9007199254740993"
+    }
+  },
+  "settings": {
+    "cwd": "/unused/cantrip-thread-session-test",
+    "model": "gpt-5.6-sol",
+    "modelProvider": "openai",
+    "effort": "high",
+    "serviceTier": "priority",
+    "summary": null,
+    "approvalPolicy": "never",
+    "approvalsReviewer": "user",
+    "sandboxPolicy": {
+      "type": "readOnly"
+    },
+    "activePermissionProfile": null,
+    "collaborationMode": {
+      "mode": "default",
+      "settings": {
+        "model": "gpt-5.6-sol",
+        "reasoning_effort": "high",
+        "developer_instructions": null
+      }
+    },
+    "multiAgentMode": "explicitRequestOnly",
+    "personality": null,
+    "settingsVersion": {
+      "epoch": "fixture-core",
+      "revision": "9007199254740993"
+    },
+    "future": {
+      "z": [null, true, "fixture"],
+      "a": 3
+    }
+  },
+  "snapshot": {
+    "context": {
+      "chatId": "fixture-chat",
+      "workerId": "fixture-worker",
+      "threadId": "fixture-thread",
+      "runtimeGeneration": "fixture-runtime",
+      "settingsVersion": {
+        "epoch": "fixture-core",
+        "revision": "9007199254740993"
+      }
+    },
+    "contentFingerprint": "6dad888311dfc5adc87ab7660586707579135a42ad86aa1d57f29142302321c6",
+    "protectedContent": {
+      "version": 1,
+      "algorithm": "AES-256-GCM",
+      "keyRevision": 1,
+      "nonce": "AtESYAa5ztTlbXQF",
+      "ciphertext": "vSrF7Kuua26EFyVHcLeNR9VYrjkB-VchO_vW-zHf872mbA860KeawqideTlY904fziX62WlTG3ZB34wObZBhBPhFxhccZYV7IRpukWced8dEjTA2T_AEUQCfojXM431uRqXPTL7RFzyBQP4ZdRc3uZxfhJvypbKyzbl23rOpEDgIi9CqvwL94zOhDRx18ev0cneuyiz7GREZjiRqQk4pk22mTe6H4C6XCoABpArmBio_36Dqf-FZNIEtsk_pKpHuCdpHzEGD58PGiCTgWBF78g77yzs5CZSnHUjm4Dx31szJlPS3vcmoN5kXsChp5xp1kDt_8Ujgtm-LNQiFkXILI8wrZB8Vqn9tsYZg11U9CDbwNnmTbOtu0CLoWK5y5a0E55d5ofKVBMfxHYB6csBiqF2zOGflzexH9v2a8P1eY1-Y8EEUWyPLamwUnKD5CSizYLBRlFctX-T_PqUNCJ1mob3DaKRTu0JgMxDSl1Dqp81Sg4fbLFus2Dl3MaJgXqVSz07-5SleKQHAm8quPMWZB-gm3zwWgjBOkY8WRUZqc2byE4oLoElUWHl8d8igjxI6kxGCg5xNqxsa5MbItextf8MS5tXfZkZTLjvf-ERzLsKeH4b6m6_OPOeDMxE1UfaLZYxCStCrslpd2DmtKZsTC7z_kmLaZ1IWULlBazqof58qQpwvkVmh0GZO_9GJ_8fE7Khq0NtwxAaTIJK_0DpwmyaQ0Rm9-JVy5UuO8o_H5kF66JgLNkgSvowEoElkbIxWRIwMLaZZPbwpIFc"
+    }
+  }
+}

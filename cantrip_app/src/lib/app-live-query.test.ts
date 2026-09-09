@@ -640,6 +640,7 @@ describe("application live query bridge", () => {
       ["standalone-chats"],
       ["messages", "chat-one"],
       ["chat-runtime-selection", "chat-one"],
+      ["native-settings", "chat-one"],
       ["task-dashboard", "chat-one"],
     ]);
     expect(
@@ -711,6 +712,12 @@ describe("application live query bridge", () => {
     expect(
       appLiveScopeQueryKeys({ kind: "chat", chatId: "chat-one" }),
     ).toContainEqual(["chat-sync", "chat-one"]);
+    expect(
+      appLiveScopeQueryKeys({ kind: "chat", chatId: "chat-one" }),
+    ).toContainEqual(["native-settings", "chat-one"]);
+    expect(
+      appLiveScopeQueryKeys({ kind: "chat", chatId: "chat-one" }),
+    ).toContainEqual(["chat-runtime-selection", "chat-one"]);
     expect(
       appLiveScopeQueryKeys({ kind: "chat", chatId: "chat-one" }),
     ).toContainEqual(["standalone-chats"]);

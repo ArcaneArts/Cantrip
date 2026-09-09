@@ -12,6 +12,8 @@ import {
 } from "@cantrip/protocol";
 import type { RepositoryDatabase } from "./database.js";
 import * as schema from "../schema.js";
+import { lockNativeCommandChat } from "./native-command-lock.js";
+import { settleNativeSettingsState } from "./native-settings-persistence.js";
 import { NativeCommandError } from "./native-command-errors.js";
 
 /** Facts can arrive before the RPC acknowledgment or after runtime replacement.
@@ -25,6 +27,27 @@ export class NativeSettingsEvidenceRepository {
   ): Promise<NativeSettingsEvidenceResult> {
     const input = nativeSettingsEvidenceSchema.parse(value);
     return this.database.transaction(async (tx) => {
+      const [located] = await tx
+        .select()
+        .from(schema.nativeCommands)
+        .where(
+          and(
+            eq(schema.nativeCommands.operationId, input.operationId),
+            eq(
+              schema.nativeCommands.operationGeneration,
+              input.operationGeneration,
+            ),
+            eq(schema.nativeCommands.ownerId, ownerId),
+            eq(schema.nativeCommands.workerId, input.workerId),
+          ),
+        );
+      if (!located)
+        throw new NativeCommandError(
+          "operation-not-found",
+          "Operation not found.",
+          404,
+        );
+      await lockNativeCommandChat(tx, ownerId, located.chatId);
       const [command] = await tx
         .select()
         .from(schema.nativeCommands)
@@ -127,6 +150,11 @@ export class NativeSettingsEvidenceRepository {
         .update(schema.nativeCommands)
         .set({ settingsApplication: application, updatedAt: new Date() })
         .where(eq(schema.nativeCommands.operationId, input.operationId));
+      await settleNativeSettingsState(
+        tx,
+        command,
+        application.status === "pending" ? "dispatched" : application.status,
+      );
       return {
         operationId: input.operationId,
         operationGeneration: input.operationGeneration,
