@@ -6,6 +6,7 @@ import {
   type ChatMessageContent,
   type NativeHistoryPreparedBatch,
 } from "@cantrip/protocol";
+import { renderNativeDisplayItem } from "./native-history-display-items.js";
 import { normalizeCodexThreadItem } from "./codex/app-server.js";
 import type { NativeHistoryStateItem } from "./native-history-state.js";
 
@@ -183,6 +184,11 @@ export function renderNativeHistoryItem(
       ),
     ];
   }
+  const display = renderNativeDisplayItem(item, context);
+  if (display)
+    return [
+      rendered("activity", "assistant", display.content, display.unresolved),
+    ];
   const timestamps = {
     ...(item.startedAtMs === null ? {} : { startedAtMs: item.startedAtMs }),
     completedAtMs: item.completedAtMs,

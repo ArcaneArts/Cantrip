@@ -175,6 +175,14 @@ function RichActivityIcon({ activity }: { activity: AgentActivity }) {
       ) : (
         <Network className={className} />
       );
+    case "nativeItem":
+      return activity.kind === "imageGeneration" ? (
+        <Image className={className} />
+      ) : activity.kind === "sleep" ? (
+        <Clock3 className={className} />
+      ) : (
+        <Combine className={className} />
+      );
     case "dynamicToolCall":
       return <Combine className={className} />;
     case "collabToolCall":
@@ -207,6 +215,8 @@ function RichActivityIcon({ activity }: { activity: AgentActivity }) {
 
 export function activityLabel(activity: AgentActivity): string {
   switch (activity.type) {
+    case "nativeItem":
+      return activity.title;
     case "computerUse":
       return `Computer use · ${activity.source === "user-preview" ? "Preview operator · " : ""}${computerUseOperationLabel(activity.operation)} · ${activity.outcome}`;
     case "instructionContext":
@@ -298,6 +308,10 @@ export function latestActivityLabel(activity: AgentActivity): string {
 
 function RichActivityDetails({ activity }: { activity: AgentActivity }) {
   switch (activity.type) {
+    case "nativeItem":
+      return activity.details !== null ? (
+        <p className="whitespace-pre-wrap break-words">{activity.details}</p>
+      ) : null;
     case "computerUse":
       return (
         <p className="break-words">{computerUseActivitySummary(activity)}</p>

@@ -1739,6 +1739,51 @@ all rendering inventory, partial-journal/competing-stream recovery, bounded
 replay, settings parity, eager startup or the full acceptance matrix. No user
 application or desktop interaction was used for these tests.
 
+**Pass 9 — native display items and inline output media:**
+
+Canonical history now presents pinned-native `hookPrompt`, `functionCallOutput`,
+`sleep` and `imageGeneration` items using a structured `nativeItem` activity.
+Hook fragments retain their run IDs and separate exact text. Tool result strings,
+including empty strings and long output, remain activity details rather than
+assistant replies. Multimodal output preserves text/image/audio order; encrypted
+or unknown parts keep an explicit unavailable entry and the original source.
+The chat activity view and Trajectory show/search these labeled details.
+Trajectory preserves each part identity instead of collapsing neighboring output
+segments that share a native item correlation.
+
+Sleep records distinguish requested wait time from elapsed time established by
+item timestamps; completion does not assert the full requested wait occurred.
+Image generation shows status, revised prompt, failure information and saved-path
+hints, with base64 PNG results materialized as encrypted attachments. Output
+paths and remote URLs do not trigger file reads or network fetches. Only native
+user inputs retain the existing local-file import behavior. Inline output media
+uses the ordinary attachment byte budget and stable activity-component identity,
+separate from user attachment identities. Published descriptors are reused after
+local manifest loss, preserving their existing ciphertext.
+
+The pinned native fixture now includes a third, actual tool-origin `turn/start` carrying
+text/image/text output, followed through live capture, real HTTP/database
+publication and message decryption. Both user and tool attachment descriptors
+are checked after deleting only local materialization manifests.
+
+Validation: 189 worker history tests across 20 files pass across the focused
+regression run and corrected native-fixture rerun. The expanded fixture permits
+only the known temporary missing-original-context deferral (item delivery can
+precede native context persistence); its publication and recovery assertions
+still require the complete canonical result. All 90 server history tests, two
+continuation tests and 38 GUI activity/Trajectory tests pass. Protocol/dependency
+builds, worker/server/app typechecks, changed-file formatting and diff checks
+pass. `pnpm check` still stops at the same two unchanged server decomposition
+budgets; later broad checks were not reached. No native patches, CI jobs, user
+application launches or desktop interactions were needed.
+
+Remaining history fidelity work includes MCP/dynamic tool result artifacts not
+represented by standalone function outputs, assistant memory-citation/question
+metadata, complete child/legacy associations and usage/timing coverage. An
+explicit presentation-version upgrade is also needed to re-render already
+canonicalized unchanged sources when recovery has only their source fingerprint.
+This pass does not enable eager startup or establish full GUI/TUI acceptance.
+
 **Still outstanding:** completion of authorized command admission, origin-independent
 lifecycle/CUA authority, durable all-turn projection/replay,
 complete settings parity, eager GUI-first session startup and the full acceptance

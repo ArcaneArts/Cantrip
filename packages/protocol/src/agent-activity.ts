@@ -339,6 +339,21 @@ export const agentActivitySchema = z.discriminatedUnion("type", [
     query: z.string(),
     action: z.string().nullable(),
   }),
+  // Native display items that have no equivalent execution activity. Keep exact
+  // display text separately from bounded raw previews and assistant prose.
+  z.object({
+    ...agentActivityBaseShape,
+    type: z.literal("nativeItem"),
+    kind: z.enum([
+      "hookPrompt",
+      "functionCallOutput",
+      "sleep",
+      "imageGeneration",
+    ]),
+    title: z.string().min(1),
+    details: z.string().nullable(),
+    durationMs: z.number().int().nonnegative().safe().nullable(),
+  }),
   z.object({
     ...agentActivityBaseShape,
     type: z.literal("imageView"),

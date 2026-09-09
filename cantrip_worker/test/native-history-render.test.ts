@@ -35,6 +35,135 @@ const render = (
 ) => renderNativeHistoryItem(item(body, lifecycle), context)[0]!;
 
 describe("native history item presentation", () => {
+  it("renders hook fragments as labeled activity, preserving text, boundaries and run IDs", () => {
+    const draft = render({
+      type: "hookPrompt",
+      fragments: [
+        { hookRunId: "hook-one", text: "  first\nfragment  " },
+        { hookRunId: "hook-two", text: "second" },
+      ],
+    });
+    expect(draft.identity.component).toBe("activity");
+    expect(draft.unresolved).toEqual([]);
+    expect(draft.message.content).toMatchObject([
+      {
+        type: "activity",
+        activity: {
+          type: "nativeItem",
+          title: "Hook prompt · hook-one",
+          details: "  first\nfragment  ",
+        },
+      },
+      {
+        type: "activity",
+        activity: {
+          type: "nativeItem",
+          title: "Hook prompt · hook-two",
+          details: "second",
+        },
+      },
+    ]);
+  });
+
+  it("retains long and empty tool output as activity details rather than assistant text", () => {
+    for (const output of ["", "exact output\n".repeat(30_000)]) {
+      const draft = render({
+        type: "functionCallOutput",
+        namespace: "fixture",
+        name: "result",
+        output,
+      });
+      expect(draft.unresolved).toEqual([]);
+      expect(draft.message.content).toMatchObject([
+        {
+          type: "activity",
+          activity: {
+            type: "nativeItem",
+            title: "Tool output · fixture/result",
+            details: output,
+          },
+        },
+      ]);
+    }
+  });
+
+  it("distinguishes requested sleep from measured duration and preserves lifecycle identity", () => {
+    const body = { type: "sleep", durationMs: 150_000 };
+    const started = render(body, "started");
+    const ended = renderNativeHistoryItem(
+      { ...item(body), startedAtMs: 100, completedAtMs: 300 },
+      context,
+    )[0]!;
+    expect(started.identity).toEqual(ended.identity);
+    expect(started.message.content[0]).toMatchObject({
+      activity: { status: "running", durationMs: null },
+    });
+    expect(ended.message.content[0]).toMatchObject({
+      activity: {
+        status: "completed",
+        durationMs: 200,
+        details: "Requested wait: 150000 ms",
+      },
+    });
+  });
+
+  it("shows image-generation failure information without inventing an image or exposing base64", () => {
+    const failed = render({
+      type: "imageGeneration",
+      status: "failed",
+      result: "",
+      failure: {
+        type: "usageLimitExceeded",
+        limitId: "fixture",
+        resetsAt: 100,
+      },
+    });
+    expect(failed.unresolved).toEqual([]);
+    expect(failed.message.content[0]).toMatchObject({
+      activity: { type: "nativeItem", status: "failed" },
+    });
+    expect(JSON.stringify(failed.message.content)).toContain(
+      "usageLimitExceeded",
+    );
+    const ready = render({
+      type: "imageGeneration",
+      status: "completed",
+      result: "private-base64",
+    });
+    expect(ready.unresolved).toEqual([{ kind: "generated-image", index: 0 }]);
+    expect(JSON.stringify(ready.message.content)).not.toContain(
+      "private-base64",
+    );
+    expect(render({ type: "sleep", durationMs: -1 }).unresolved).toHaveLength(
+      1,
+    );
+    expect(
+      render({ type: "hookPrompt", fragments: [null] }).unresolved,
+    ).toHaveLength(1);
+  });
+
+  it("keeps unsupported encrypted tool parts explicit without losing neighboring outputs", () => {
+    const draft = render({
+      type: "functionCallOutput",
+      name: "mixed",
+      namespace: null,
+      output: [
+        { type: "input_text", text: "before" },
+        { type: "encrypted_content", encrypted_content: "private-encrypted" },
+        { type: "input_text", text: "after" },
+      ],
+    });
+    expect(draft.unresolved).toEqual([{ kind: "encrypted_content", index: 1 }]);
+    expect(
+      draft.message.content.map((part) =>
+        part.type === "activity" ? part.activity.type : part.type,
+      ),
+    ).toEqual(["nativeItem", "nativeItem", "notice", "nativeItem"]);
+    expect(JSON.stringify(draft.message.content)).not.toContain(
+      "private-encrypted",
+    );
+  });
+
   it("exposes conflicting versions and isolates returned source evidence from later caller mutation", () => {
     const source = item({ type: "agentMessage", text: "first" });
     source.conflicts.push({

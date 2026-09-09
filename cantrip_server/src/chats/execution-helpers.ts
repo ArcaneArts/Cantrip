@@ -70,6 +70,8 @@ function activityContinuationSummary(activity: AgentActivity): string {
       return `[subagent communication: ${activity.kind}]`;
     case "webSearch":
       return `[web search: ${activity.query}]`;
+    case "nativeItem":
+      return `[native ${activity.kind}: ${activity.title} ${activity.status}]`;
     case "imageView":
       return `[viewed image: ${activity.path}]`;
     case "reviewMode":
