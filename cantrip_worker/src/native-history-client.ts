@@ -268,6 +268,9 @@ export class NativeHistoryClient {
           item.identity.itemId !== expected.itemId ||
           item.identity.component !== expected.component ||
           item.identity.identityKind !== expected.identityKind ||
+          item.attachments?.some(
+            (attachment) => attachment.chatId !== request.chatId,
+          ) ||
           (item.preservedInput !== null &&
             (item.preservedInput.id !== item.messageId ||
               item.preservedInput.idempotencyKey !== item.idempotencyKey))

@@ -1,3 +1,4 @@
+import { readNativeHistoryAttachmentReferences } from "./native-history-attachment-references.js";
 import { and, asc, eq, gt, inArray, or, sql } from "drizzle-orm";
 import {
   nativeHistoryBatchArchiveReadSchema,
@@ -7,7 +8,6 @@ import {
   nativeHistoryArchivePageSchema,
   nativeHistoryTurnArchiveReadSchema,
   nativeHistoryTurnArchivePageSchema,
-  chatAttachmentOpaqueSummarySchema,
   type NativeHistoryBinding,
   type NativeHistoryTurnArchiveRead,
   type NativeHistoryArchiveRead,
@@ -97,63 +97,16 @@ export class NativeHistoryArchiveRepository {
           .orderBy(asc(schema.nativeHistoryItems.key))
           .limit(input.limit + 1);
         const page = rows.slice(0, input.limit);
-        const messages = page.length
-          ? await tx
-              .select({
-                id: schema.chatMessages.id,
-                attachmentIds: schema.chatMessages.attachmentIds,
-              })
-              .from(schema.chatMessages)
-              .where(
-                and(
-                  eq(schema.chatMessages.chatId, binding.chatId),
-                  inArray(
-                    schema.chatMessages.id,
-                    page.map((row) => row.messageId),
-                  ),
-                ),
-              )
-          : [];
-        const messageAttachments = new Map(
-          messages.map((message) => [message.id, message.attachmentIds]),
-        );
-        const attachmentIds = [
-          ...new Set(messages.flatMap((message) => message.attachmentIds)),
-        ];
-        const attachments = attachmentIds.length
-          ? await tx
-              .select()
-              .from(schema.chatAttachments)
-              .where(
-                and(
-                  eq(schema.chatAttachments.chatId, binding.chatId),
-                  inArray(schema.chatAttachments.id, attachmentIds),
-                ),
-              )
-          : [];
-        const descriptors = new Map(
-          attachments.map((attachment) => [
-            attachment.id,
-            chatAttachmentOpaqueSummarySchema.parse({
-              id: attachment.id,
-              chatId: attachment.chatId,
-              sizeBytes: attachment.sizeBytes,
-              status: attachment.status,
-              protectedMetadata: attachment.protectedMetadata,
-              createdAt: attachment.createdAt.toISOString(),
-            }),
-          ]),
+        const attachments = await readNativeHistoryAttachmentReferences(
+          tx,
+          binding.chatId,
+          page.map((row) => row.messageId),
         );
         const references = (messageId: string) => {
-          const ids = messageAttachments.get(messageId);
-          if (!ids)
+          const result = attachments.get(messageId);
+          if (!result)
             throw new NativeHistoryError("archived-message-unavailable");
-          return ids.map((id) => {
-            const descriptor = descriptors.get(id);
-            if (!descriptor)
-              throw new NativeHistoryError("referenced-attachment-unavailable");
-            return descriptor;
-          });
+          return result;
         };
         return nativeHistoryArchivePageSchema.parse({
           binding,

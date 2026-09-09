@@ -51,6 +51,7 @@ export class ManagedNativeHistorySources {
   private readonly current = new Map<string, Entry>();
   private readonly entries = new Set<Entry>();
   private stopped = false;
+  private stopping: Promise<void> = Promise.resolve();
   private readonly bindingTimeoutMs: number;
 
   constructor(private readonly options: Options) {
@@ -187,6 +188,33 @@ export class ManagedNativeHistorySources {
     await Promise.all([...this.entries].map((entry) => this.retire(entry)));
   }
 
+  /** Await callbacks already in flight after stop before releasing encryption. */
+  whenStopped(): Promise<void> {
+    if (!this.stopped)
+      return Promise.reject(
+        new Error("Managed native history has not stopped."),
+      );
+    return this.stopping;
+  }
+
+  /** Report what remains after the last in-flight append has settled. */
+  async stopAndWait() {
+    const entries = [...this.entries];
+    this.stop();
+    await this.whenStopped();
+    return entries.flatMap((entry) =>
+      entry.capture.pendingRecords
+        ? [
+            {
+              chatId: entry.chatId,
+              threadId: entry.threadId,
+              pendingRecords: entry.capture.pendingRecords,
+            },
+          ]
+        : [],
+    );
+  }
+
   /** Final worker teardown only. Return unsaved counts, not a fictitious ACK. */
   stop() {
     this.stopped = true;
@@ -201,12 +229,17 @@ export class ManagedNativeHistorySources {
           ]
         : [],
     );
-    for (const entry of this.entries) {
+    const entries = [...this.entries];
+    for (const entry of entries) {
       entry.capture.stop();
       entry.lifetime.abort();
     }
     this.current.clear();
     this.entries.clear();
+    this.stopping = Promise.all([
+      this.stopping,
+      ...entries.map((entry) => entry.capture.whenStopped()),
+    ]).then(() => {});
     return pending;
   }
 }

@@ -92,6 +92,7 @@ interface Options {
       NativeHistoryRenderContext,
       "threadId" | "turnId" | "inputParts"
     >,
+    publishedAttachments?: PreparedItem["attachments"],
   ): Promise<Materialization>;
   /** Resolve provenance from admitted commands/queue claims. Native item strings
    * or matching text alone are not authority to alias existing GUI messages. */
@@ -220,6 +221,7 @@ export function createNativeHistoryProjector(options: Options): Project {
               structuredClone(entry.item),
               structuredClone(entry.turn),
               structuredClone(entry.context),
+              mapping.attachments,
             );
         const draft = mapping.preservedInput
           ? entry.draft

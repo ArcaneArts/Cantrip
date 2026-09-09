@@ -1,3 +1,4 @@
+import { readNativeHistoryAttachmentReferences } from "./native-history-attachment-references.js";
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import {
@@ -263,7 +264,17 @@ export class NativeHistoryItemRepository {
           await tx.insert(schema.nativeHistoryItems).values(saved);
           result.push(mapped(saved));
         }
-        return result;
+        const attachments = await readNativeHistoryAttachmentReferences(
+          tx,
+          binding.chatId,
+          result.map((item) => item.messageId),
+        );
+        return result.map((item) => {
+          const references = attachments.get(item.messageId);
+          return references?.length
+            ? { ...item, attachments: references }
+            : item;
+        });
       },
     );
   }

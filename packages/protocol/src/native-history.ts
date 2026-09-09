@@ -209,6 +209,8 @@ export const nativeHistoryItemMappingSchema = z
     // An admitted GUI input keeps its original protected body/attachments. Native
     // replay may contain a transformed prompt, which must not replace that body.
     preservedInput: chatMessageOpaqueContentSchema.nullable(),
+    // Existing opaque descriptors for exact media recovery; not a new revision basis.
+    attachments: z.array(chatAttachmentOpaqueSummarySchema).optional(),
   })
   .strict();
 

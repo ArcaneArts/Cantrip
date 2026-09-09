@@ -138,7 +138,7 @@ import { ManagedNativeCommandSession } from "./codex/managed-native-command-sess
 import { ManagedExecutionRunner } from "./codex/managed-execution-runner.js";
 import { NativeCommandClient } from "./native-command-client.js";
 import { NativeHistoryClient } from "./native-history-client.js";
-import { ManagedNativeHistorySources } from "./managed-native-history-sources.js";
+import { ManagedNativeHistory } from "./managed-native-history.js";
 import { createManagedNativeOutputIdentityResolver } from "./native-history-output-identity.js";
 import { ManagedNativeQueueClient } from "./managed-native-queue-client.js";
 import {
@@ -1914,17 +1914,18 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     workerId: config.workerId,
     token: () => config.token,
   });
-  const managedHistorySources = new ManagedNativeHistorySources({
-    directory: path.join(config.dataDirectory, "native-history-sources"),
+  const managedHistory = new ManagedNativeHistory({
+    directory: config.dataDirectory,
+    attachments,
     workerId: config.workerId,
     service: workerEncryption,
     client: nativeHistoryClient,
     onError: (error, context) =>
       workerLogger.event(
         "warn",
-        "Native history source recovery remains pending",
+        "Native history synchronization remains pending",
         {
-          event: "codex.history.source-pending",
+          event: "codex.history.synchronization-pending",
           subsystem: "codex",
           operation: context.phase,
           chatId: context.chatId,
@@ -1935,10 +1936,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       ),
   });
   const captureManagedHistory = (
-    input: Parameters<ManagedNativeHistorySources["bind"]>[0],
+    input: Parameters<ManagedNativeHistory["bind"]>[0],
   ) => {
     try {
-      managedHistorySources.bind(input);
+      managedHistory.bind(input);
     } catch (error) {
       workerLogger.event(
         "warn",
@@ -7929,7 +7930,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       codeSettingsSynchronizer ?? openingCodeSettingsSynchronizer
     )?.close();
     await computerUseClosed;
-    for (const pending of managedHistorySources.stop())
+    for (const pending of await managedHistory.stop())
       workerLogger.event(
         "warn",
         "Worker shutdown left native history source capture pending",
