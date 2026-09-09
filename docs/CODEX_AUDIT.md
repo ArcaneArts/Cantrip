@@ -1871,6 +1871,41 @@ This pass covers communications consumed by the native session. Older raw-only
 records and messages still waiting in a mailbox require separate reconstruction
 and retention coverage; it does not claim full child-history or lifecycle parity.
 
+**Pass 12 — pending interaction publication and resolution:**
+
+Two deterministic regressions exposed a native resolution notification clearing
+numeric request ID `71` when the native response actually resolved string ID
+`"71"`, and an asynchronous pending-registration failure receiving no recovery.
+Resolution now retains the native ID's type. Pending-request publication explicitly
+accepts asynchronous callbacks, catches synchronous/asynchronous failures and
+retries the same idempotent metadata while that exact request remains pending.
+Resolution, expiry and shutdown cancel delivery; a held transport does not hold
+Stop, reply dispatch or turn completion. Native input and replies never enter
+this metadata retry loop.
+
+The real pinned runtime/worker/gateway/adapter and Fastify/PGlite fixture now opens
+a native user-input question. One case loses the committed registration response,
+recovers the identical request, and answers through the GUI command adapter. The
+other holds the registration response open, answers through the terminal gateway,
+finishes the turn and accepts GUI Stop on the next turn before releasing the old
+transport. Worker reply state and the terminal stream converge after native resolution; duplicate replies are rejected,
+and exactly one canonical reply operation is admitted. Subsequent turns obtain
+fresh authority. These are actual native protocol/database cases, not mocked
+approval or model-execution success.
+
+Validation: both regressions failed before the fix; all 163 focused worker tests
+across five files pass afterward. All seven native lifecycle cases pass, with the
+two question cases passing again after the held-response extension. Worker
+typecheck and diff/format checks pass. The broad repository check still stops at
+the same two server decomposition budgets recorded above. No additional native
+patch, CI job, user application restart or personal desktop interaction was used.
+
+Pending metadata retries are scoped to a surviving runtime request. Full
+worker-restart reconstruction of pending interactions, other approval/elicitation
+types, automatic presentation retargeting and the remaining whole-product
+acceptance matrix still need verification. This pass does not establish those
+paths or enable eager startup.
+
 **Still outstanding:** completion of authorized command admission, origin-independent
 lifecycle/CUA authority, durable all-turn projection/replay,
 complete settings parity, eager GUI-first session startup and the full acceptance

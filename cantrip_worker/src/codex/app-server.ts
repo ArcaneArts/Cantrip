@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { publishPendingInteraction } from "./pending-interaction-publication.js";
 import {
   describeAgentCommunication,
   type InterAgentCommunicationItem,
@@ -237,7 +238,9 @@ interface ActiveTurn {
   onInteractionCleared?: (requestKey: string) => void;
   onInteractionExpired?: (requestKey: string) => void;
   onInteractionRequest?: (request: AgentInteractionRuntimeRequest) => void;
-  onNativeInteractionRequest?: (request: AdmittedNativeReply) => void;
+  onNativeInteractionRequest?: (
+    request: AdmittedNativeReply,
+  ) => void | Promise<void>;
   onCheckpoint?: (checkpoint: { text: string; turnId: string }) => void;
   onPlan?: (plan: {
     explanation: string | null;
@@ -1714,6 +1717,7 @@ interface NativePendingPlanQuestion {
 }
 
 interface NativePendingAgentInteraction {
+  stopPublication?: () => void;
   requestMethod: string;
   active: ActiveTurn;
   request: AgentInteractionRuntimeRequest;
@@ -1749,7 +1753,9 @@ export interface RunAgentTurnOptions {
   ) => Promise<Partial<RunAgentTurnOptions>>;
   onBeforeNativeDispatch?: (threadId: string) => Promise<void>;
   onNativeReceipt?: (receipt: { turn: { id: string } }) => Promise<void>;
-  onNativeInteractionRequest?: (request: AdmittedNativeReply) => void;
+  onNativeInteractionRequest?: (
+    request: AdmittedNativeReply,
+  ) => void | Promise<void>;
   attachments?: RuntimeChatAttachment[];
   chatId: string;
   captureProtectedDiagnostics: boolean;
@@ -9295,7 +9301,7 @@ export class CodexAppServer implements CodexRuntime {
       const pending = [...this.#pendingAgentInteractions.values()].find(
         (candidate) =>
           candidate.request.threadId === params.threadId &&
-          String(candidate.rpcId) === String(params.requestId),
+          candidate.rpcId === params.requestId,
       );
       if (pending) {
         this.releaseAgentInteraction(pending);
@@ -10896,7 +10902,30 @@ export class CodexAppServer implements CodexRuntime {
           rootThreadId: active.threadId,
           requestId: rpcId,
         });
-        if (metadata) active.onNativeInteractionRequest?.(metadata);
+        const publish = active.onNativeInteractionRequest;
+        if (metadata && publish) {
+          pending.stopPublication = publishPendingInteraction({
+            publish: () => publish(metadata),
+            isCurrent: () =>
+              this.#pendingAgentInteractions.get(request.requestKey) ===
+                pending && !active.admission?.controller.signal.aborted,
+            failed: (error, attempt) =>
+              workerLogger.event(
+                "warn",
+                "Native interaction publication will retry",
+                {
+                  event: "codex.interaction.publication",
+                  subsystem: "codex",
+                  operation: "publish-pending-interaction",
+                  status: "retrying",
+                  threadId: request.threadId,
+                  turnId: request.turnId ?? undefined,
+                  counts: { attempt },
+                  error: workerLogError(error),
+                },
+              ),
+          });
+        }
       }
       active.onInteractionRequest?.(request);
     } catch (error) {
@@ -10930,6 +10959,7 @@ export class CodexAppServer implements CodexRuntime {
     pending: NativePendingAgentInteraction,
   ): void {
     clearTimeout(pending.timeout);
+    pending.stopPublication?.();
     if (
       this.#pendingAgentInteractions.get(pending.request.requestKey) !== pending
     )

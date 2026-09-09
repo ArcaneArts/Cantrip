@@ -48,13 +48,15 @@ class Peer {
             `${method} transport failed: ${JSON.stringify(fault?.error ?? this.socket.readyState)}`,
           );
         expect(
-          this.messages.some((frame) => frame.id === id),
+          this.messages.some((frame) => frame.id === id && !frame.method),
           `${method} response`,
         ).toBe(true);
       },
       { timeout: 15000 },
     );
-    const response = this.messages.find((frame) => frame.id === id)!;
+    const response = this.messages.find(
+      (frame) => frame.id === id && !frame.method,
+    )!;
     if (response.error)
       throw new Error(`${method}: ${JSON.stringify(response.error)}`);
     return response.result;
@@ -67,6 +69,8 @@ describe.skipIf(!binary)(
   () => {
     it.each([
       "terminal",
+      "terminal-question-gui",
+      "terminal-question-cli",
       "queue",
       "gui",
       "gui-capacity",
@@ -75,6 +79,15 @@ describe.skipIf(!binary)(
       "tracks %s turns, accepts GUI Stop, and gives the next turn fresh authority",
       async (origin) => {
         const guiOrigin = origin.startsWith("gui");
+        const terminalOrigin = origin.startsWith("terminal");
+        const questionCase = origin.startsWith("terminal-question");
+        const pendingBodies: unknown[] = [];
+        let publishedRequest: {
+          requestId: string | number;
+          requestKey: string;
+        } | null = null;
+        let publicationRecovered = false;
+        let releasePendingAcknowledgment: (() => void) | undefined;
         const capacityRetry = origin === "gui-capacity";
         const compactionRetry = origin === "gui-compaction";
         const retried = capacityRetry || compactionRetry;
@@ -87,14 +100,78 @@ describe.skipIf(!binary)(
         const data = path.join(directory, "runtime");
         const modelRequests: ServerResponse[] = [];
         const modelServer = createServer(async (request, response) => {
-          for await (const _chunk of request) {
-            /* Consume the actual model request. */
-          }
+          let inputText = "";
+          for await (const chunk of request) inputText += chunk.toString();
           if (!request.url?.startsWith("/v1/")) {
             response.writeHead(404).end();
             return;
           }
           modelAttempts += 1;
+          if (questionCase && modelAttempts === 1) {
+            const input = JSON.parse(inputText);
+            const tool = input.tools?.find((entry: Frame) =>
+              entry.name?.endsWith("request_user_input"),
+            );
+            if (!tool) {
+              response
+                .writeHead(500)
+                .end(
+                  `No user-input tool in actual inventory: ${JSON.stringify(input.tools?.map((entry: Frame) => entry.name ?? entry.type))}`,
+                );
+              return;
+            }
+            response.writeHead(200, { "content-type": "text/event-stream" });
+            const events = [
+              {
+                type: "response.created",
+                response: { id: "question-response" },
+              },
+              {
+                type: "response.output_item.done",
+                item: {
+                  id: "question-item",
+                  type: "function_call",
+                  call_id: "question-call",
+                  name: tool.name,
+                  arguments: JSON.stringify({
+                    questions: [
+                      {
+                        id: "choice",
+                        header: "Choice",
+                        question: "Choose a fixture option.",
+                        options: [
+                          {
+                            label: "First",
+                            description: "First fixture option.",
+                          },
+                          {
+                            label: "Second",
+                            description: "Second fixture option.",
+                          },
+                        ],
+                      },
+                    ],
+                  }),
+                },
+              },
+              {
+                type: "response.completed",
+                response: {
+                  id: "question-response",
+                  usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 },
+                },
+              },
+            ];
+            response.end(
+              events
+                .map(
+                  (event) =>
+                    `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`,
+                )
+                .join(""),
+            );
+            return;
+          }
           if (compactionRetry && modelAttempts === 1) {
             response.writeHead(400, { "content-type": "application/json" });
             response.end(
@@ -225,7 +302,7 @@ describe.skipIf(!binary)(
                 ).declineAutonomousAttempt(event),
               failed: (error) => errors.push(error),
             });
-          let runner = origin !== "terminal" ? makeRunner() : null;
+          let runner = !terminalOrigin ? makeRunner() : null;
           const coordinator = new ManagedSessionCoordinator(
             path.join(data, "managed-sessions"),
           );
@@ -238,7 +315,7 @@ describe.skipIf(!binary)(
               provider,
               threadId: null,
               permissionProfileId: ":workspace",
-              planMode: "default",
+              planMode: questionCase ? "plan" : "default",
               executionProfile: "ide",
               mcpServers: [],
               intent: "configure",
@@ -254,7 +331,26 @@ describe.skipIf(!binary)(
             serverUrl: authority.serverUrl,
             workerId,
             token: () => authority!.token,
-            fetch: authority.fetch,
+            fetch: async (url, init) => {
+              const pending =
+                questionCase &&
+                String(url).endsWith("/native-commands/pending");
+              if (pending) pendingBodies.push(JSON.parse(String(init?.body)));
+              const pendingAttempt = pendingBodies.length;
+              const response = await authority!.fetch(url, init);
+              if (pending && pendingAttempt === 1 && response.ok) {
+                if (origin === "terminal-question-cli") {
+                  await new Promise<void>((resolve) => {
+                    releasePendingAcknowledgment = resolve;
+                  });
+                } else {
+                  throw new Error(
+                    "fixture lost committed pending-registration acknowledgment",
+                  );
+                }
+              }
+              return response;
+            },
           });
           const encryption: Parameters<
             typeof protectNativeCommandContent
@@ -292,7 +388,7 @@ describe.skipIf(!binary)(
                     intent?.resumeAutonomy === true,
                   );
               },
-              beginExecution: async () => ({
+              beginExecution: async (grant, session) => ({
                 options: {
                   cwd,
                   model,
@@ -300,6 +396,24 @@ describe.skipIf(!binary)(
                   chatId,
                   captureProtectedDiagnostics: false,
                   onMessage: (message) => messages.push(message.text),
+                  ...(questionCase
+                    ? {
+                        onNativeInteractionRequest: async (
+                          request: import("../src/codex/app-server.js").AdmittedNativeReply,
+                        ) => {
+                          publishedRequest = request;
+                          await client.pending({
+                            session,
+                            activationGeneration:
+                              grant.receipt.activationGeneration!,
+                            nativeRequestId: `${typeof request.requestId}:${request.requestId}`,
+                            requestMethod: request.requestMethod,
+                            turnId: request.turnId,
+                          });
+                          publicationRecovered = true;
+                        },
+                      }
+                    : {}),
                 },
                 complete: async (result) => {
                   completed.push(result.turnId!);
@@ -597,7 +711,7 @@ describe.skipIf(!binary)(
                 (frame) => frame.method === "turn/started",
               ))
                 consumedTurns.add(frame.params.turn.id);
-            } else if (origin !== "terminal") {
+            } else if (!terminalOrigin) {
               const previousTurns = consumedTurns;
               const queued =
                 guiOrigin && index === 2
@@ -649,6 +763,74 @@ describe.skipIf(!binary)(
               turnId = result.turn.id;
             }
             consumedTurns.add(turnId);
+            if (questionCase && index === 1) {
+              if (origin === "terminal-question-cli") {
+                await vi.waitFor(
+                  () =>
+                    expect(releasePendingAcknowledgment).toBeTypeOf("function"),
+                  { timeout: 15000 },
+                );
+                expect(publicationRecovered).toBe(false);
+                expect(pendingBodies).toHaveLength(1);
+              } else {
+                await vi.waitFor(
+                  () => expect(publicationRecovered).toBe(true),
+                  { timeout: 15000 },
+                );
+                expect(pendingBodies).toHaveLength(2);
+                expect(pendingBodies[1]).toEqual(pendingBodies[0]);
+              }
+              expect(modelRequests).toHaveLength(0);
+              await vi.waitFor(
+                () =>
+                  expect(
+                    peer.messages.some(
+                      (frame) => frame.method === "item/tool/requestUserInput",
+                    ),
+                  ).toBe(true),
+                { timeout: 15000 },
+              );
+              const nativeQuestion = peer.messages.find(
+                (frame) => frame.method === "item/tool/requestUserInput",
+              )!;
+              expect(nativeQuestion.id).toBe(publishedRequest!.requestId);
+              const answers = { choice: { answers: ["First"] } };
+              if (origin === "terminal-question-gui") {
+                await runtime.answerAgentInteraction(
+                  publishedRequest!.requestKey,
+                  { kind: "userInput", answers },
+                );
+              } else {
+                expect(
+                  await peer.request("cantrip/managed/reply", {
+                    requestId: nativeQuestion.id,
+                    result: { answers },
+                  }),
+                ).toMatchObject({ delivered: true });
+              }
+              await vi.waitFor(
+                () =>
+                  expect(
+                    peer.messages.some(
+                      (frame) =>
+                        frame.method === "serverRequest/resolved" &&
+                        frame.params.requestId === nativeQuestion.id,
+                    ),
+                  ).toBe(true),
+                { timeout: 15000 },
+              );
+              await expect(
+                runtime.answerAgentInteraction(publishedRequest!.requestKey, {
+                  kind: "userInput",
+                  answers,
+                }),
+              ).rejects.toThrow("no longer pending");
+              expect(
+                [...authority.receipts.values()].filter(
+                  (receipt) => receipt.method === "serverRequest/reply",
+                ),
+              ).toHaveLength(1);
+            }
             await vi.waitFor(() => expect(modelRequests.length).toBe(index), {
               timeout: 15000,
             });
@@ -679,6 +861,13 @@ describe.skipIf(!binary)(
               expect(
                 await runtime.interruptChat(chatId, threadId),
               ).toMatchObject({ interrupted: true });
+              if (origin === "terminal-question-cli") {
+                // The old metadata transport is still held. Reply dispatch,
+                // completion, the next turn and GUI Stop all progressed anyway.
+                expect(publicationRecovered).toBe(false);
+                releasePendingAcknowledgment!();
+                await vi.waitFor(() => expect(publicationRecovered).toBe(true));
+              }
             } else {
               const events = [
                 {
@@ -816,7 +1005,7 @@ describe.skipIf(!binary)(
             (receipt) => receipt.startsExecution,
           );
           expect(executionReceipts).toHaveLength(retried ? 4 : 3);
-          expect(modelAttempts).toBe(retried ? 4 : 3);
+          expect(modelAttempts).toBe(retried || questionCase ? 4 : 3);
           if (retried)
             expect(
               phases.filter((entry) => entry.phase === "continue"),
@@ -829,7 +1018,7 @@ describe.skipIf(!binary)(
               executionReceipts.map((receipt) => receipt.activationGeneration),
             ).size,
           ).toBe(retried ? 4 : 3);
-          if (origin !== "terminal") {
+          if (!terminalOrigin) {
             const starts = phases.filter(
               (entry) =>
                 entry.phase === "admit" &&
@@ -892,6 +1081,7 @@ describe.skipIf(!binary)(
             { cause: error },
           );
         } finally {
+          releasePendingAcknowledgment?.();
           socket?.terminate();
           await gateway?.close();
           for (const response of modelRequests) response.destroy();
