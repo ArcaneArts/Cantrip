@@ -24,8 +24,6 @@ export async function withNativeUsageIdentity(
       : nativeTurnModelAttributionSchema.parse(input.nativeModelAttribution);
   if (capture && capture.turnId !== input.turnId)
     throw new Error("Native usage attribution belongs to another turn.");
-  if (capture && !input.chatId)
-    throw new Error("Native usage requires its exact chat identity.");
   return database.transaction(async (tx) => {
     if (input.chatId) {
       // Same project -> chat order as history ingestion. Never hold this across
@@ -57,7 +55,9 @@ export async function withNativeUsageIdentity(
           ),
         ),
       );
-    if (!capture) {
+    // Non-chat telemetry retains its existing source identity. A chat-scoped
+    // alias must not become an eligibility requirement for other usage writers.
+    if (!capture || !input.chatId) {
       const matching = input.turnId
         ? sourceRows.filter(
             (row) =>

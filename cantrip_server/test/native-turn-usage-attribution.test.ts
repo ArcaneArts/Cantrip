@@ -79,6 +79,21 @@ const read = async (sourceKey: string) =>
       )
   )[0]!;
 describe("native turn model usage attribution", () => {
+  it("preserves captured non-chat usage without requiring a managed chat", async () => {
+    await write("task", {
+      chatId: null,
+      nativeModelAttribution: capture,
+      usage,
+    });
+    await write("task", { chatId: null, attemptStatus: "completed" });
+    expect(await read("task")).toMatchObject({
+      sourceKey: "task",
+      chatId: null,
+      nativeModelAttribution: capture,
+      outputTokens: 3,
+      attemptStatus: "completed",
+    });
+  });
   it("finds pre-migration captured usage when recovery has never seen its live source name", async () => {
     await write("old-gui", { nativeModelAttribution: capture, usage });
     const retained = await read("old-gui");

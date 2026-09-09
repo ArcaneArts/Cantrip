@@ -2803,9 +2803,10 @@ row, and failed immutable-capture validation rolls back alias changes. A pending
 zero-count row can join an already captured native turn. Separately measured,
 uncorrelated legacy rows and duplicate legacy captures remain explicit conflicts;
 the migration does not guess which counts should be discarded. Cross-chat source
-collisions cannot relabel an existing usage record.
+collisions cannot relabel an existing usage record. Non-chat usage retains its
+existing source identity and does not require a managed-chat binding.
 
-Validation: 29 tests in four server files cover migrated PGlite persistence,
+Validation: 30 tests in four server files cover migrated PGlite persistence,
 restart, concurrent origins, old-source adoption, multi-turn attempts, late
 finalization, rollback, ownership, existing usage migration and telemetry
 analytics. The repository analytics query confirms one ten-second turn contributes
