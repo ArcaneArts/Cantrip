@@ -1,3 +1,4 @@
+import { nativeTurnModelAttributionSchema } from "./native-turn-model-attribution.js";
 import { z } from "zod";
 import { chatMessageOpaqueContentSchema } from "./communication-content.js";
 import { chatAttachmentOpaqueSummarySchema } from "./attachment-content.js";
@@ -244,6 +245,7 @@ export const nativeHistoryTurnSchema = z
     startedAtMs: z.number().nullable(),
     completedAtMs: z.number().nullable(),
     usage: nativeHistoryUsageSchema.optional(),
+    modelAttribution: nativeTurnModelAttributionSchema.optional(),
     // Full timing/usage/warnings/lineage remain worker-protected. Only the typed
     // analytics projection above is public; raw transcript fields stay opaque.
     metadata: encryptedPayloadEnvelopeSchema,

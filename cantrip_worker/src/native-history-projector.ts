@@ -1,3 +1,4 @@
+import { nativeHistoryModelAttributionForTurn } from "./native-history-model-attribution.js";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import {
@@ -371,6 +372,11 @@ export function createNativeHistoryProjector(options: Options): Project {
         );
       });
       const content = { version: 2, reducedTurn, evidence };
+      const modelAttribution = nativeHistoryModelAttributionForTurn(
+        binding.threadId,
+        turn.id,
+        reducedTurn.metadata,
+      );
       const usage = nativeHistoryUsageForTurn(
         binding.threadId,
         turn.id,
@@ -381,6 +387,7 @@ export function createNativeHistoryProjector(options: Options): Project {
         // Upgrade an already acknowledged projection when analytics becomes
         // available, even if the encrypted native source itself is unchanged.
         usage,
+        modelAttribution,
         reducedTurn: { ...reducedTurn, origin: undefined },
         // Repeated identical reads retain all record IDs locally; they do not
         // change the aggregate's semantic evidence or require reencryption.
@@ -406,6 +413,7 @@ export function createNativeHistoryProjector(options: Options): Project {
           startedAtMs: millis(turn.body.startedAt),
           completedAtMs: millis(turn.body.completedAt),
           ...(usage === undefined ? {} : { usage }),
+          ...(modelAttribution === undefined ? {} : { modelAttribution }),
         },
       });
       if (batch.turns.length >= limit) flush();

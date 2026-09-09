@@ -42,6 +42,9 @@ export async function decryptNativeHistoryTurn(input: {
             turn.startedAtMs,
             turn.completedAtMs,
             ...(turn.usage === undefined ? [] : [turn.usage]),
+            ...(turn.modelAttribution === undefined
+              ? []
+              : [{ modelAttribution: turn.modelAttribution }]),
           ]),
         ),
       ),

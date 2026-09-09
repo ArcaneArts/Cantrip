@@ -4366,6 +4366,9 @@ export const chatMessages = pgTable(
       .$type<string[]>()
       .notNull()
       .default([]),
+    nativeModelAttribution: jsonb("native_model_attribution").$type<
+      import("@cantrip/protocol").NativeTurnModelAttribution
+    >(),
     modelId: text("model_id").references(() => modelProfiles.id, {
       onDelete: "set null",
     }),
@@ -5868,6 +5871,11 @@ export const nativeHistoryTurns = pgTable(
     startedAtMs: doublePrecision("started_at_ms"),
     completedAtMs: doublePrecision("completed_at_ms"),
     usage: jsonb("usage").$type<NativeHistoryTurn["usage"]>(),
+    modelAttribution:
+      jsonb("model_attribution").$type<NativeHistoryTurn["modelAttribution"]>(),
+    capturedModelAttribution: jsonb("captured_model_attribution").$type<
+      NativeHistoryTurn["modelAttribution"]
+    >(),
     metadata: jsonb("metadata")
       .$type<NativeHistoryTurn["metadata"]>()
       .notNull(),

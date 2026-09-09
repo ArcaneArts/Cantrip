@@ -19,6 +19,12 @@ export async function persistNativeHistoryTurns(
   for (const turn of turns) {
     if (turn.threadId !== binding.threadId)
       throw new NativeHistoryError("turn-thread-mismatch");
+    const capture = turn.modelAttribution ?? turn.usage?.modelAttribution;
+    if (
+      capture &&
+      (capture.threadId !== turn.threadId || capture.turnId !== turn.turnId)
+    )
+      throw new NativeHistoryError("turn-thread-mismatch");
     const key = and(
       eq(schema.nativeHistoryTurns.bindingId, binding.id),
       eq(schema.nativeHistoryTurns.turnId, turn.turnId),
@@ -40,6 +46,11 @@ export async function persistNativeHistoryTurns(
       // content revision for rejected state: later terminal enrichment remains
       // eligible. The batch receipt still acknowledges the observed stale input.
       if (existing.status !== "inProgress" && turn.status === "inProgress") {
+        if (!existing.capturedModelAttribution && capture)
+          await tx
+            .update(schema.nativeHistoryTurns)
+            .set({ capturedModelAttribution: capture })
+            .where(key);
         // Header state and measured responses have independent freshness.
         // A stale active header may still contain newly retained usage; merge
         // that evidence without reopening the turn or rewriting its envelope.
@@ -64,6 +75,9 @@ export async function persistNativeHistoryTurns(
       completedAtMs: turn.completedAtMs,
       metadata: turn.metadata,
       usage: turn.usage ?? null,
+      modelAttribution: turn.modelAttribution ?? null,
+      capturedModelAttribution:
+        existing?.capturedModelAttribution ?? capture ?? null,
       payloadDigest,
     };
     if (existing)

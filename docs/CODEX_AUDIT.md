@@ -2876,6 +2876,55 @@ remaining actual native lifecycle/CUA acceptance and eager GUI-first preparation
 Historical evidence without a resolvable model remains explicitly unattributed;
 this pass does not claim the remaining attribution or full mirror work is done.
 
+### Pass 31 — immutable native message attribution
+
+Native turn headers now carry the captured turn-start model selection independently
+of usage. Worker and browser encryption authenticate this optional header field;
+its omission preserves legacy envelopes. The producer uses the exact physical
+thread/turn capture, never current thread settings, and changes its publication
+fingerprint so retained history can publish attribution after an upgrade.
+
+Canonical ingestion applies owned model/route/provider labels and effective
+reasoning to messages mapped to that exact turn. It handles either ordering of
+items and turn headers, including zero-usage turns. The captured attribution is
+retained separately from the current encrypted header: later snapshots cannot
+relabel already attributed messages or new items in that turn. Late active
+metadata may contribute the missing capture without reopening a terminal turn.
+Preserved GUI input content, desired effort and timestamps remain intact while
+its effective execution labels are filled from the native turn. A conditional
+SQL update prevents concurrent or late GUI bootstrap labeling from replacing
+native attribution. Unknown or unusable model selection remains unknown; catalog
+loss does not block history ingestion. Existing labels are retained when a route
+is removed. These changes do not modify CUA authority, execution, startup or focus.
+
+Migration 0215 adds three nullable columns: the public authenticated header
+selection, separately retained turn capture, and the message capture. It also
+retains capture from existing usage headers. Encrypted archives return their
+original header fields, not the independently retained capture, preserving AAD.
+The existing durable publication invalidates chat messages for turn-only batches
+as well as item batches, so late attribution can refresh connected clients.
+
+Validation: 65 server tests passed across message attribution, usage recovery and
+canonical item ingestion. Eight final focused message tests passed, including
+real migrated PGlite persistence/restart, browser archive decryption, no usage,
+both delivery orders, cross-turn isolation, unknown/foreign-worker attribution,
+concurrent GUI labeling, late active metadata, route deletion and actual database
+constraint failure/rollback/retry. Worker turn crypto and projection passed 31
+cases in the initial selection; the new projector case initially used a fixture
+route from the wrong provider and correctly remained unattributed. After fixing
+the fixture to use its actual bound runtime, that case passed through production
+source journal, encrypted HTTP ingestion, database persistence and replay. Six
+native/usage cases passed, including the actual pinned native replacement/settings
+fixture. Workspace typechecks passed. These are focused results, not proof of the
+full acceptance matrix. The migration snapshot differs only in the three intended
+columns. `pnpm check` still stops at the unchanged file budgets recorded in pass
+27. No CI, live desktop input, user worker restart or native binary change ran.
+
+Remaining: immutable model-behavior observations, controlled provider/account
+migration, replacement TUI/queue/history continuity, remaining all-origin native
+lifecycle/CUA acceptance, then eager eligible preparation with GUI-default
+presentation and the necessary final user demo. The full goal is still active.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal

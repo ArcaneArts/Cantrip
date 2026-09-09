@@ -1,3 +1,4 @@
+import { persistNativeHistoryMessageAttribution } from "./native-history-message-attribution.js";
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import {
@@ -142,6 +143,15 @@ export class NativeHistoryIngestionRepository {
               ownerId,
               binding,
               input.batch.turns,
+            );
+            await persistNativeHistoryMessageAttribution(
+              attempt,
+              ownerId,
+              binding,
+              [
+                ...input.batch.turns.map((turn) => turn.turnId),
+                ...input.batch.items.map((item) => item.identity.turnId),
+              ],
             );
           });
         } catch (error) {

@@ -1,7 +1,7 @@
+import { nativeHistoryModelAttributionForTurn } from "./native-history-model-attribution.js";
 import { z } from "zod";
 import {
   nativeResponseUsageCountsSchema,
-  nativeTurnModelAttributionSchema,
   reconcileNativeHistoryUsage,
   type NativeHistoryUsage,
 } from "@cantrip/protocol";
@@ -34,8 +34,10 @@ export function nativeHistoryUsageForTurn(
   if (!parsed.success) return undefined;
   const source = parsed.data;
   if (!source.usage && source.retention !== "complete") return undefined;
-  const capture = nativeTurnModelAttributionSchema.safeParse(
-    source.cantripModelAttribution,
+  const capture = nativeHistoryModelAttributionForTurn(
+    threadId,
+    turnId,
+    source,
   );
   const responses = (source.usage?.responses ?? [])
     .filter((response) => response.threadId === threadId)
@@ -46,11 +48,7 @@ export function nativeHistoryUsageForTurn(
   const responseIds = new Set(responses.map((response) => response.responseId));
   return reconcileNativeHistoryUsage(undefined, {
     version: 1,
-    ...(capture.success &&
-    capture.data.threadId === threadId &&
-    capture.data.turnId === turnId
-      ? { modelAttribution: capture.data }
-      : {}),
+    ...(capture ? { modelAttribution: capture } : {}),
     responses,
     complete: source.retention === "complete",
     conflictingResponseIds: (source.usage?.conflictingResponseIds ?? []).filter(

@@ -184,6 +184,65 @@ afterEach(async () => {
 });
 
 describe("durable native history projection transactions", () => {
+  it("projects turn-start labels without usage and recovers them through encrypted replay", async () => {
+    const runtime = f.modelRuntime;
+    const capture = {
+      threadId,
+      turnId: "turn",
+      isRoot: true,
+      reasoningEffort: "low",
+      selection: {
+        status: "resolved",
+        workerId: f.workerId,
+        providerAccountId: runtime!.provider.accountId,
+        providerId: runtime!.provider.id,
+        modelId: runtime!.model.id,
+        routeId: runtime!.routeId,
+      },
+    };
+    await source.append({
+      kind: "notification",
+      generation: "runtime",
+      sequence: ++sequence,
+      threadId,
+      receivedAtMs: Date.now(),
+      method: "turn/started",
+      params: {
+        threadId,
+        turn: { id: "turn", status: "inProgress" },
+        cantripModelAttribution: capture,
+      },
+    });
+    await event("answer");
+    await source.append({
+      kind: "notification",
+      generation: "runtime",
+      sequence: ++sequence,
+      threadId,
+      receivedAtMs: Date.now(),
+      method: "turn/completed",
+      params: { threadId, turn: { id: "turn", status: "completed" } },
+    });
+    await projection.drain();
+    expect((await canonical()).messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          modelId: runtime!.model.id,
+          appliedReasoningEffort: "low",
+          nativeModelAttribution: capture,
+        }),
+      ]),
+    );
+    const reopened = await reopen();
+    await reopened.drain();
+    const archived = await client.archiveTurns({
+      chatId: f.chatId,
+      bindingId: options.bindingId,
+    });
+    expect(archived.turns[0]!.turn.modelAttribution).toEqual(capture);
+    expect(archived.turns[0]!.turn.usage).toBeUndefined();
+    expect((await canonical()).messages).toHaveLength(1);
+  });
   it("projects retained native response usage through encrypted delivery and replay without a live usage callback", async () => {
     const usage = {
       inputTokens: 2,
