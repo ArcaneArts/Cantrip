@@ -193,6 +193,7 @@ describe.skipIf(!binary)("pinned native thread observation", () => {
       });
       expect(await request("thread/goal/get", { threadId })).toEqual({
         goal: null,
+        goalEpoch: null,
       });
       // A second view can join an empty durable thread before naming or input.
       const emptyResume = await request("thread/resume", { threadId });
@@ -290,6 +291,7 @@ describe.skipIf(!binary)("pinned native thread observation", () => {
       });
       expect(await request("thread/goal/get", { threadId })).toEqual({
         goal: null,
+        goalEpoch: null,
       });
       expect(await request("thread/loaded/list", {})).toEqual({
         data: [],

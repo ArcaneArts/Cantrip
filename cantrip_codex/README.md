@@ -251,3 +251,33 @@ Recovering communication display items from older raw-only histories and showing
 mailbox messages before consumption require separate reconciliation work.
 Validation status and the remaining acceptance matrix are in
 `docs/CODEX_AUDIT.md`.
+
+## Correlated settings snapshots
+
+Reviewed patch `0021` adds optional `operationId` to `thread/settings/update`.
+With that field, the response contains the supplied operation ID and the actual
+native `submissionId`. This acknowledges queuing, not successful application.
+The subsequent `thread/settings/updated` notification carries those same IDs
+and the immutable settings snapshot produced by that commit. A correlated no-op
+also emits a result, including an empty override or a repeated selection.
+Uncorrelated callers retain their existing response and deduplication behavior.
+
+Operation IDs are correlation metadata, not idempotency keys or permission
+grants. The managed command owner must still admit mutations before dispatch,
+retain uncertain outcomes and avoid replaying input after a lost acknowledgment.
+Native asynchronous errors retain their existing submission-ID error path.
+The successful event stores its operation ID in native history; older events
+without it remain readable. Notifications convert the event's own snapshot
+instead of reading a newer live configuration after another change.
+
+The opt-in `native-settings-correlation.test.ts` fixture exercises real native
+queue acknowledgments and applied snapshots in both history formats, including
+malformed-value rejection, custom effort values, repeated/no-op changes and
+service-tier set, omission and clearing. It also invokes the packaged CLI's
+schema export to check the implemented settings and managed API surface.
+The requested tri-state must remain
+separate: Core intentionally reports an explicit `null` clear as the `"default"`
+tier marker. Full Cantrip desired/pending/effective settings synchronization
+remains a separate integration requirement; the native
+fields alone do not implement that product state. Current validation evidence is
+recorded in `docs/CODEX_AUDIT.md`.
