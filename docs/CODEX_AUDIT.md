@@ -2600,6 +2600,49 @@ original GUI-first launch trigger remains until its prerequisites are
 implemented. No user app/worker restart, personal desktop interaction or CI job
 has been used.
 
+### Pass 25 — explicit native account defaults
+
+The GUI model picker now has a separate read/preview/save action for native
+account defaults on the selected worker. It does not change existing chat
+selections or Cantrip's new-chat model preference. The worker invokes the actual
+native config API, publishes only the four allowed default fields, and encrypts
+both the explicit intent and its narrowed readback. Native config files,
+instructions, credentials and unrelated settings never become public payloads.
+
+Writes carry the version from the preview, explicit edits and
+`reloadUserConfig: false`. They use the existing durable command-admission path
+with account scope; GUI source bindings are checked at routing, admission and
+dispatch. Account commands do not enter the chat desired/pending/effective
+settings journal. Readback distinguishes a verified save, another intervening
+edit, a confirmed write whose read failed, an explicit rejection and an
+unconfirmed transport result. Uncertain writes are never automatically repeated.
+
+Reviewed native patch 30 adds `/defaults`: read the account layer, preview the
+selection, then explicitly save. Requests run outside the TUI event loop so
+controls remain available during I/O. The preview and late results are bound to
+the native connection instance and visible thread. Ordinary `/model` choices
+continue to affect only the managed chat.
+
+Validation: 55 focused worker tests, 21 server tests and 21 app tests passed,
+as did workspace type checks. The final rebuilt pinned native binary passed
+both actual native acceptance fixtures: `/defaults` preview without writes,
+explicit authorized save, encrypted GUI defaults on the same managed account,
+unchanged chat settings, version conflicts, competing writes, null removal,
+and the existing canonical queue/reconnect behavior. The isolated fake provider
+received no inference request during defaults operations. Imported upstream
+remains pristine; the established build produced all three packaged artifacts.
+Both native account-defaults unit tests passed. Delivery uses this pass’s
+isolated PR with squash auto-merge; merge observation remains the final step.
+
+`pnpm check` stops at existing decomposition budgets in untouched
+`chat-turn-runtime.ts` (2275 lines) and `task-routes.ts` (2149 lines), both over 1999. The focused tests and type checks do not imply that the full repository
+check passed. No personal application or worker was launched and no CI jobs ran.
+
+Remaining goal work includes canonical model-to-route attribution, controlled
+provider/account migration, full replacement presentation/queue/history
+continuity, the remaining all-origin lifecycle and CUA acceptance matrix, and
+eager eligible session preparation with GUI-first presentation.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal

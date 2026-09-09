@@ -1,4 +1,13 @@
 import {
+  readNativeAccountDefaults,
+  writeNativeAccountDefaults,
+  nativeAccountDefaultsParams,
+} from "./native-account-defaults.js";
+import type {
+  NativeAccountDefaultsWrite,
+  NativeAccountDefaultsResult,
+} from "@cantrip/protocol";
+import {
   isNativePermissionDeferred,
   NativePermissionDeferredError,
 } from "./native-permission-deferred.js";
@@ -6649,6 +6658,61 @@ export class CodexAppServer implements CodexRuntime {
       true,
       options.permissionTransition,
     );
+  }
+
+  /** Read/write defaults through the existing managed account, independently of
+   * thread selections. Never start a runtime merely to observe its defaults. */
+  async nativeAccountDefaults(options: {
+    threadId: string;
+    operationId: string;
+    settingsBindingId: string;
+    write?: NativeAccountDefaultsWrite;
+  }): Promise<NativeAccountDefaultsResult> {
+    const dispatcher = this.#managedNativeCommandDispatchers.get(
+      options.threadId,
+    );
+    if (!dispatcher)
+      throw new Error(
+        "Account defaults require the managed command controller.",
+      );
+    const generation = this.transportGeneration;
+    const preparationVersion =
+      this.#threadPreparationVersions.get(options.threadId) ?? 0;
+    const assertCurrent = () => {
+      if (
+        this.#managedNativeCommandDispatchers.get(options.threadId) !==
+          dispatcher ||
+        this.transportGeneration !== generation ||
+        (this.#threadPreparationVersions.get(options.threadId) ?? 0) !==
+          preparationVersion
+      )
+        throw new Error("The account defaults source was replaced.");
+    };
+    const request = async (method: string, params: Record<string, unknown>) => {
+      assertCurrent();
+      const result = await this.request(method, params);
+      assertCurrent();
+      return result;
+    };
+    if (!options.write) {
+      const snapshot = await readNativeAccountDefaults(request);
+      return { snapshot, write: null, verification: "read" };
+    }
+    const params = nativeAccountDefaultsParams(options.write);
+    // Unlike a thread settings mutation, this records an account-defaults
+    // command without entering the thread desired/pending/effective journal.
+    return (await dispatcher({
+      operationId: options.operationId,
+      settingsBindingId: options.settingsBindingId,
+      method: "config/batchWrite",
+      params,
+      dispatch: (forward) =>
+        writeNativeAccountDefaults(
+          (method, params) => this.request(method, params),
+          forward?.params ?? params,
+          assertCurrent,
+        ),
+    })) as NativeAccountDefaultsResult;
   }
 
   private async applyNativeThreadSettings(

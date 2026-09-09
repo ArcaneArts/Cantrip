@@ -1,3 +1,4 @@
+import { installChatNativeAccountDefaultsRoutes } from "./chat-native-account-defaults.js";
 import type { FastifyInstance } from "fastify";
 import type { ServerRepository } from "../../db/repository.js";
 import type { WorkerCommandBus } from "../../workers/bridge.js";
@@ -17,6 +18,7 @@ export function installChatNativeSettingsRoutes(
   },
 ) {
   const { applicationOwnerId, repository, bridge } = dependencies;
+  installChatNativeAccountDefaultsRoutes(app, dependencies);
   app.get<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/native-settings",
     async (request, reply) => {

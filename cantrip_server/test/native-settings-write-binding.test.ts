@@ -1,3 +1,4 @@
+import { installChatNativeAccountDefaultsRoutes } from "../src/app/routes/chat-native-account-defaults.js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import Fastify from "fastify";
 import { eq } from "drizzle-orm";
@@ -62,6 +63,114 @@ const dispatch = (
     payloadDigest: input.payloadDigest,
     session: input.session,
   });
+
+describe("explicit native account defaults", () => {
+  it("admits and settles a bound account write without changing thread selection state", async () => {
+    const binding = await bind();
+    const before = await state();
+    const input = await fixture.input("gui");
+    input.method = "config/batchWrite";
+    input.intent = {
+      scope: "account-defaults",
+      configTarget: "account-defaults",
+      settingKeys: ["model", "model_reasoning_effort"],
+      settingsBindingId: binding.bindingId,
+      expectedTurnId: null,
+    };
+    const admitted = await fixture.commands.admit(LOCAL_USER_ID, input);
+    expect(admitted.receipt.status).toBe("accepted");
+    expect(admitted.receipt.startsExecution).toBe(false);
+    await dispatch(input, admitted.receipt);
+    await fixture.commands.settle(LOCAL_USER_ID, {
+      workerId: fixture.workerId,
+      operationId: input.operationId,
+      operationGeneration: admitted.receipt.operationGeneration,
+      status: "applied",
+      resultDigest: "b".repeat(64),
+      protectedResult: settingsEnvelope,
+      rejectionCode: null,
+      executionComplete: false,
+    });
+    expect(await state()).toEqual(before);
+  });
+
+  it("routes protected defaults and rejects replaced bindings before another worker call", async () => {
+    const binding = await bind();
+    const operation = {
+      action: "read",
+      operationId: "read-defaults",
+      bindingId: binding.bindingId,
+    };
+    const response = {
+      operationId: operation.operationId,
+      bindingId: binding.bindingId,
+      protectedResult: settingsEnvelope,
+    };
+    const request = vi.fn(async () => response);
+    const app = Fastify();
+    installChatNativeAccountDefaultsRoutes(app, {
+      applicationOwnerId: () => LOCAL_USER_ID,
+      repository: { nativeCommands: fixture.commands },
+      bridge: { request },
+    });
+    try {
+      const result = await app.inject({
+        method: "POST",
+        url: `/api/chats/${fixture.chatId}/native-account-defaults`,
+        payload: operation,
+      });
+      expect(result.statusCode).toBe(200);
+      expect(result.json()).toEqual(response);
+      expect(request).toHaveBeenCalledExactlyOnceWith(binding.workerId, {
+        type: "chat.account-defaults",
+        binding,
+        request: operation,
+      });
+      await bind();
+      const stale = await app.inject({
+        method: "POST",
+        url: `/api/chats/${fixture.chatId}/native-account-defaults`,
+        payload: operation,
+      });
+      expect(stale.statusCode).toBe(409);
+      expect(request).toHaveBeenCalledOnce();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("rechecks binding after readback before exposing an old account as current", async () => {
+    const binding = await bind();
+    const request = vi.fn(async () => {
+      await bind();
+      return {
+        operationId: "read-defaults",
+        bindingId: binding.bindingId,
+        protectedResult: settingsEnvelope,
+      };
+    });
+    const app = Fastify();
+    installChatNativeAccountDefaultsRoutes(app, {
+      applicationOwnerId: () => LOCAL_USER_ID,
+      repository: { nativeCommands: fixture.commands },
+      bridge: { request },
+    });
+    try {
+      const result = await app.inject({
+        method: "POST",
+        url: `/api/chats/${fixture.chatId}/native-account-defaults`,
+        payload: {
+          action: "read",
+          operationId: "read-defaults",
+          bindingId: binding.bindingId,
+        },
+      });
+      expect(result.statusCode).toBe(409);
+    } finally {
+      await app.close();
+    }
+  });
+});
 
 describe("native settings controller source binding", () => {
   it("routes the encrypted patch once without reading settings and retains queued status", async () => {

@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -24,6 +24,12 @@ import { NativeCommandClient } from "../src/native-command-client.js";
 import { createManagedQueueInputCodec } from "../src/managed-queue-input.js";
 import type { WorkerEncryptionService } from "../src/worker-encryption.js";
 import { TerminalManager } from "../src/terminal-manager.js";
+import { readProtectedNativeSettings } from "../src/native-settings-read.js";
+import { protectedNativeAccountDefaults } from "../src/native-account-defaults.js";
+import {
+  encryptNativeAccountDefaults,
+  decryptNativeAccountDefaults,
+} from "@cantrip/crypto";
 
 const binary = process.env.CANTRIP_CODEX_TEST_BINARY?.trim();
 type Frame = Record<string, any>;
@@ -119,6 +125,7 @@ describe.skipIf(!binary || process.platform === "win32")(
       }> = [];
       const errors: unknown[] = [];
       const nativeFrames: Frame[] = [];
+      const defaultWrites: Frame[] = [];
       try {
         await Promise.all([mkdir(home), mkdir(cwd), mkdir(data)]);
         await writeFile(
@@ -245,7 +252,11 @@ describe.skipIf(!binary || process.platform === "win32")(
           onNativeMessage: (frame) => nativeFrames.push(frame),
           isCurrent: () =>
             runtime!.transportGeneration === identity.runtimeGeneration,
-          admit: (operation) => adapter.admit(operation),
+          admit: (operation) => {
+            if (operation.method === "config/batchWrite")
+              defaultWrites.push(operation.frame);
+            return adapter.admit(operation);
+          },
           resolveReply: (operation, frame) =>
             adapter.resolveReply(operation, frame),
           queue: {
@@ -342,6 +353,173 @@ describe.skipIf(!binary || process.platform === "win32")(
             diagnostic(),
           ).toBe(true),
         );
+        // Real managed TUI -> authorization -> pinned native config API. Opening
+        // the explicit defaults preview is read-only and saves never mutate chat settings.
+        const defaultsFileBefore = await readFile(
+          path.join(home, "config.toml"),
+          "utf8",
+        );
+        const defaultWritesBefore = defaultWrites.length;
+        const settingsBeforeDefaults = (
+          await runtime.readNativeThreadSettings(nativeThreadId)
+        ).confirmed!.settings;
+        keys("/defaults");
+        await waitFor(() =>
+          expect(stripVTControlCharacters(output), diagnostic()).toContain(
+            "/defaults",
+          ),
+        );
+        const defaultsOffset = output.length;
+        keys("\r");
+        await waitFor(() =>
+          expect(
+            stripVTControlCharacters(output.slice(defaultsOffset)),
+            diagnostic(),
+          ).toContain("Save selection as account defaults"),
+        );
+        expect(defaultWrites).toHaveLength(defaultWritesBefore);
+        expect(await readFile(path.join(home, "config.toml"), "utf8")).toEqual(
+          defaultsFileBefore,
+        );
+        keys("\r");
+        await waitFor(() =>
+          expect(
+            stripVTControlCharacters(output.slice(defaultsOffset)),
+            diagnostic(),
+          ).toContain("Account defaults saved and verified"),
+        );
+        expect(defaultWrites).toHaveLength(defaultWritesBefore + 1);
+        expect(defaultWrites[defaultWritesBefore]!.params).toMatchObject({
+          expectedVersion: expect.any(String),
+          edits: expect.arrayContaining([
+            { keyPath: "model", value: model.name, mergeStrategy: "replace" },
+          ]),
+        });
+        // The pinned Rust serializer omits false; native defaults it to false.
+        expect(
+          defaultWrites[defaultWritesBefore]!.params.reloadUserConfig ?? false,
+        ).toBe(false);
+        expect(
+          (await runtime.readNativeThreadSettings(nativeThreadId)).confirmed!
+            .settings,
+        ).toEqual(settingsBeforeDefaults);
+        expect(
+          await readFile(path.join(home, "config.toml"), "utf8"),
+        ).toContain(`model = "${model.name}"`);
+        // The GUI worker path uses the same account and canonical command
+        // admission. Its protected default write must not become a chat intent.
+        const nativeSettings =
+          await authority.repository.nativeCommands.refreshSettingsState(
+            authority.ownerId,
+            authority.chatId,
+            (scope) =>
+              readProtectedNativeSettings({
+                scope,
+                service: encryption,
+                resolve: () => ({
+                  scope,
+                  generation: identity.runtimeGeneration,
+                  runtime: runtime!,
+                }),
+              }),
+          );
+        const binding = nativeSettings.binding!;
+        const {
+          bindingId: _bindingId,
+          nativeEpoch: _epoch,
+          runtimeGeneration: _runtime,
+          ...scope
+        } = binding;
+        runtime.setManagedNativeCommandDispatcher(nativeThreadId, (command) =>
+          adapter.executeGuiCommand(
+            {
+              chatId: identity.chatId,
+              threadId: nativeThreadId,
+              contextKind: identity.contextKind,
+              projectId: identity.projectId,
+              placementId: identity.placementId,
+              runtimeGeneration: identity.runtimeGeneration,
+              modelRouteId: identity.modelRouteId,
+              providerAccountId: identity.providerAccountId,
+              connectionId: "gui-defaults-test",
+            },
+            command,
+          ),
+        );
+        const resolveDefaults = () => ({
+          scope,
+          generation: identity.runtimeGeneration,
+          runtime: runtime!,
+        });
+        const context = {
+          chatId: identity.chatId,
+          bindingId: binding.bindingId,
+          operationId: "gui-read-defaults",
+        };
+        const key = {
+          ownerId: authority.ownerId,
+          serverId: authority.serverId,
+          componentKey: new Uint8Array(32).fill(73),
+          keyRevision: 1,
+        };
+        const readResponse = await protectedNativeAccountDefaults({
+          command: {
+            type: "chat.account-defaults",
+            binding,
+            request: {
+              action: "read",
+              bindingId: binding.bindingId,
+              operationId: context.operationId,
+            },
+          },
+          service: encryption,
+          resolve: resolveDefaults,
+        });
+        const guiRead = await decryptNativeAccountDefaults({
+          ...key,
+          context: { ...context, direction: "response" },
+          envelope: readResponse.protectedResult,
+        });
+        expect(guiRead.snapshot!.stored.model).toBe(model.name);
+        const writeContext = { ...context, operationId: "gui-write-defaults" };
+        const writeResponse = await protectedNativeAccountDefaults({
+          command: {
+            type: "chat.account-defaults",
+            binding,
+            request: {
+              action: "write",
+              bindingId: binding.bindingId,
+              operationId: writeContext.operationId,
+              protectedWrite: await encryptNativeAccountDefaults({
+                ...key,
+                context: { ...writeContext, direction: "request" },
+                value: {
+                  expectedVersion: guiRead.snapshot!.version,
+                  values: { model_reasoning_effort: "low" },
+                },
+              }),
+            },
+          },
+          service: encryption,
+          resolve: resolveDefaults,
+        });
+        const guiSaved = await decryptNativeAccountDefaults({
+          ...key,
+          context: { ...writeContext, direction: "response" },
+          envelope: writeResponse.protectedResult,
+        });
+        expect(guiSaved.verification).toBe("confirmed");
+        expect(guiSaved.snapshot!.stored.model_reasoning_effort).toBe("low");
+        expect(
+          await authority.repository.nativeCommands.settingsState(
+            authority.ownerId,
+            authority.chatId,
+          ),
+        ).toEqual(nativeSettings);
+        expect(
+          (await runtime.readNativeThreadSettings(nativeThreadId)).confirmed!
+            .settings,
+        ).toEqual(settingsBeforeDefaults);
         for (const [index, text] of [
           "first canonical draft",
           "second canonical draft",

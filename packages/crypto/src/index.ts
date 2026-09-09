@@ -23,3 +23,4 @@ export * from "./native-settings.js";
 export * from "./native-settings-update.js";
 export * from "./native-command-request.js";
 export * from "./native-history-turn.js";
+export * from "./native-account-defaults.js";
