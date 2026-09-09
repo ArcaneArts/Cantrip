@@ -585,6 +585,74 @@ describe("one admitted native reply ledger for GUI and console", () => {
     requestId: 71,
   };
 
+  it("applies native resolution notifications to the exact typed request ID", async () => {
+    const f = fixture();
+    const send = vi
+      .spyOn(f.native as unknown as { send(frame: unknown): void }, "send")
+      .mockImplementation(() => {});
+    const cleared = vi.fn();
+    const handle = await f.runtime.prepareAdmittedNativeExecution({
+      ...options,
+      onInteractionCleared: cleared,
+    });
+    try {
+      f.start();
+      interaction(f, 71);
+      interaction(f, "71");
+      const numeric = f.runtime.pendingAdmittedNativeReply(identity)!;
+      const textual = f.runtime.pendingAdmittedNativeReply({
+        ...identity,
+        requestId: "71",
+      })!;
+      f.notify("serverRequest/resolved", { threadId: "root", requestId: "71" });
+      expect(f.runtime.pendingAdmittedNativeReply(identity)).toEqual(numeric);
+      expect(
+        f.runtime.pendingAdmittedNativeReply({ ...identity, requestId: "71" }),
+      ).toBeNull();
+      expect(cleared).toHaveBeenCalledExactlyOnceWith(textual.requestKey);
+      expect(send).not.toHaveBeenCalled();
+    } finally {
+      handle.fail(new Error("test done"));
+      await expect(handle.completion).rejects.toThrow("test done");
+    }
+  });
+
+  it("recovers failed native interaction publication without resending or ending the request", async () => {
+    const f = fixture();
+    const send = vi
+      .spyOn(f.native as unknown as { send(frame: unknown): void }, "send")
+      .mockImplementation(() => {});
+    const failedPublication = Promise.reject(
+      new Error("fixture registration unavailable"),
+    );
+    // Observe the fixture promise so the regression is a missing retry, not an
+    // unrelated unhandled-rejection crash in the test runner.
+    void failedPublication.catch(() => {});
+    const publish = vi
+      .fn()
+      .mockReturnValueOnce(failedPublication)
+      .mockResolvedValue(undefined);
+    const handle = await f.runtime.prepareAdmittedNativeExecution({
+      ...options,
+      onNativeInteractionRequest: publish,
+    });
+    try {
+      f.start();
+      interaction(f);
+      const pending = f.runtime.pendingAdmittedNativeReply(identity)!;
+      await vi.waitFor(() => expect(publish).toHaveBeenCalledTimes(2), {
+        timeout: 2500,
+      });
+      expect(publish.mock.calls[1]).toEqual(publish.mock.calls[0]);
+      expect(f.runtime.pendingAdmittedNativeReply(identity)).toEqual(pending);
+      expect(f.resolve()).not.toBeNull();
+      expect(send).not.toHaveBeenCalled();
+    } finally {
+      handle.fail(new Error("test done"));
+      await expect(handle.completion).rejects.toThrow("test done");
+    }
+  });
+
   it("waits for the actual native request and preserves it without a GUI callback", async () => {
     const f = fixture();
     const send = vi
