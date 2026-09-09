@@ -1,6 +1,8 @@
 import { withNativeUsageIdentity } from "./native-usage-identity.js";
 import {
   nativeTurnModelAttributionSchema,
+  reconcileNativeHistoryUsage,
+  type NativeHistoryUsage,
   type NativeTurnModelAttribution,
 } from "@cantrip/protocol";
 import { randomUUID } from "node:crypto";
@@ -42,6 +44,8 @@ export interface TokenUsageRecordInput {
   chatId: string | null;
   modelRouteId: string;
   nativeModelAttribution?: NativeTurnModelAttribution;
+  nativeTurn?: { threadId: string; turnId: string };
+  nativeUsage?: NativeHistoryUsage;
   providerAccountId?: string | null;
   workerId?: string | null;
   turnId?: string | null;
@@ -58,7 +62,7 @@ export interface TokenUsageRecordInput {
   workerVersion?: string | null;
   serverVersion?: string | null;
   codexVersion?: string | null;
-  startedAt?: Date;
+  startedAt?: Date | null;
   completedAt?: Date | null;
   finalizedAt?: Date | null;
   usage?: {
@@ -246,6 +250,21 @@ export class TelemetryRepository {
     ownerId: string,
     input: TokenUsageRecordInput,
   ): Promise<void> {
+    const [retained] = await this.database
+      .select()
+      .from(schema.tokenUsageRecords)
+      .where(
+        and(
+          eq(schema.tokenUsageRecords.ownerId, ownerId),
+          eq(schema.tokenUsageRecords.sourceKey, input.sourceKey),
+        ),
+      );
+    const nativeUsage = input.nativeUsage
+      ? reconcileNativeHistoryUsage(
+          retained?.nativeUsage ?? undefined,
+          input.nativeUsage,
+        )
+      : undefined;
     const capture =
       input.nativeModelAttribution === undefined
         ? undefined
@@ -327,11 +346,15 @@ export class TelemetryRepository {
     }
     // Bootstrap and terminal status updates must not overwrite native-start evidence.
     const retain = <T>(column: T, incoming: unknown) =>
-      sql`CASE WHEN ${schema.tokenUsageRecords.nativeModelAttribution} IS NOT NULL THEN ${column} ELSE ${incoming} END`;
+      sql`CASE WHEN ${schema.tokenUsageRecords.nativeModelAttribution} IS NOT NULL OR (${schema.tokenUsageRecords.nativeUsage} IS NOT NULL AND ${capture === undefined}) THEN ${column} ELSE ${incoming} END`;
     const nativeCapture = capture ? JSON.stringify(capture) : null;
     const exactCount = (value: number | undefined): number =>
       Math.max(0, Math.round(value ?? 0));
-    const usage = input.usage;
+    // Once response identities exist, a later GUI finalizer's latest-response
+    // counter cannot replace the deduplicated native turn subtotal.
+    const usage: TokenUsageRecordInput["usage"] =
+      nativeUsage?.totals ??
+      (retained?.nativeUsage || input.nativeUsage ? undefined : input.usage);
     const inputTokens = exactCount(usage?.inputTokens);
     const outputTokens = exactCount(usage?.outputTokens);
     const cachedInputTokens = exactCount(usage?.cachedInputTokens);
@@ -341,13 +364,31 @@ export class TelemetryRepository {
       typeof usage?.visibleOutputTokens === "number"
         ? exactCount(usage.visibleOutputTokens)
         : null;
-    const reportedTotalTokens = usage ? exactCount(usage.totalTokens) : null;
+    const reportedTotalTokens =
+      nativeUsage && !nativeUsage.evidence.complete
+        ? null
+        : usage
+          ? exactCount(usage.totalTokens)
+          : null;
+    const usageSemantics = nativeUsage
+      ? nativeUsage.evidence.complete
+        ? "native-responses-complete-v1"
+        : "native-responses-partial-v1"
+      : "provider-reported-v2";
     const updatedAt = new Date();
     const attemptStatus = input.attemptStatus ?? "completed";
     const completedAt =
-      input.completedAt ?? (attemptStatus === "running" ? null : updatedAt);
+      input.completedAt === undefined
+        ? attemptStatus === "running"
+          ? null
+          : updatedAt
+        : input.completedAt;
     const finalizedAt =
-      input.finalizedAt ?? (attemptStatus === "running" ? null : updatedAt);
+      input.finalizedAt === undefined
+        ? attemptStatus === "running"
+          ? null
+          : updatedAt
+        : input.finalizedAt;
     const written = await this.database
       .insert(schema.tokenUsageRecords)
       .values({
@@ -357,6 +398,7 @@ export class TelemetryRepository {
         chatId: input.chatId,
         sourceKey: input.sourceKey,
         nativeModelAttribution: capture ?? null,
+        nativeUsage: nativeUsage?.evidence ?? null,
         modelId: route?.modelId ?? null,
         modelRouteId: route?.modelRouteId ?? null,
         providerId: route?.providerId ?? null,
@@ -379,8 +421,8 @@ export class TelemetryRepository {
         cacheWriteInputTokens,
         visibleOutputTokens,
         reportedTotalTokens,
-        usageSemantics: "provider-reported-v2",
-        startedAt: input.startedAt ?? updatedAt,
+        usageSemantics,
+        startedAt: input.startedAt === undefined ? updatedAt : input.startedAt,
         completedAt,
         finalizedAt,
         updatedAt,
@@ -393,11 +435,23 @@ export class TelemetryRepository {
         setWhere: sql`${schema.tokenUsageRecords.nativeModelAttribution} IS NULL OR (
           (${nativeCapture}::jsonb IS NULL OR ${schema.tokenUsageRecords.nativeModelAttribution} = ${nativeCapture}::jsonb)
           AND ${schema.tokenUsageRecords.chatId} IS NOT DISTINCT FROM ${input.chatId}
-          AND (${input.workerId ?? null}::text IS NULL OR ${schema.tokenUsageRecords.workerId} IS NOT DISTINCT FROM ${input.workerId ?? null})
+          AND (${input.nativeUsage !== undefined} OR ${input.workerId ?? null}::text IS NULL OR ${schema.tokenUsageRecords.workerId} IS NOT DISTINCT FROM ${input.workerId ?? null})
           AND (${input.turnId ?? null}::text IS NULL OR ${schema.tokenUsageRecords.turnId} IS NOT DISTINCT FROM ${input.turnId ?? null})
         )`,
         set: {
           nativeModelAttribution: sql`COALESCE(${schema.tokenUsageRecords.nativeModelAttribution}, ${nativeCapture}::jsonb)`,
+          ...(nativeUsage
+            ? {
+                nativeUsage: nativeUsage.evidence,
+                usageSemantics,
+                reportedTotalTokens,
+              }
+            : {}),
+          ...(input.startedAt !== undefined && input.startedAt !== null
+            ? {
+                startedAt: sql`CASE WHEN ${schema.tokenUsageRecords.nativeUsage} IS NOT NULL THEN COALESCE(${schema.tokenUsageRecords.startedAt}, ${input.startedAt}) ELSE ${input.startedAt} END`,
+              }
+            : {}),
           projectId: input.projectId,
           chatId: input.chatId,
           modelId: retain(
@@ -420,17 +474,30 @@ export class TelemetryRepository {
             schema.tokenUsageRecords.workerId,
             input.workerId ?? null,
           ),
-          turnId: retain(schema.tokenUsageRecords.turnId, input.turnId ?? null),
-          executionAttemptId: input.executionAttemptId ?? null,
-          attemptKind: input.attemptKind ?? "turn",
-          attemptStatus: sql`CASE WHEN ${schema.tokenUsageRecords.attemptStatus} <> 'running' AND ${attemptStatus} = 'running' THEN ${schema.tokenUsageRecords.attemptStatus} ELSE ${attemptStatus} END`,
+          turnId:
+            input.turnId == null
+              ? schema.tokenUsageRecords.turnId
+              : retain(schema.tokenUsageRecords.turnId, input.turnId),
+          ...(input.executionAttemptId !== undefined
+            ? { executionAttemptId: input.executionAttemptId }
+            : {}),
+          ...(input.attemptKind !== undefined
+            ? { attemptKind: input.attemptKind }
+            : {}),
+          attemptStatus: sql`CASE WHEN ${schema.tokenUsageRecords.attemptStatus} <> 'running' AND (${attemptStatus} = 'running' OR (${schema.tokenUsageRecords.nativeUsage} IS NOT NULL AND ${input.nativeUsage === undefined})) THEN ${schema.tokenUsageRecords.attemptStatus} ELSE ${attemptStatus} END`,
           reasoningEffort: retain(
             schema.tokenUsageRecords.reasoningEffort,
             capture ? capture.reasoningEffort : (input.reasoningEffort ?? null),
           ),
-          workerVersion: input.workerVersion ?? null,
-          serverVersion: input.serverVersion ?? null,
-          codexVersion: input.codexVersion ?? null,
+          ...(input.workerVersion !== undefined
+            ? { workerVersion: input.workerVersion }
+            : {}),
+          ...(input.serverVersion !== undefined
+            ? { serverVersion: input.serverVersion }
+            : {}),
+          ...(input.codexVersion !== undefined
+            ? { codexVersion: input.codexVersion }
+            : {}),
           ...(usage
             ? {
                 inputTokens,
@@ -440,14 +507,22 @@ export class TelemetryRepository {
                 cacheWriteInputTokens,
                 visibleOutputTokens,
                 reportedTotalTokens,
-                usageSemantics: "provider-reported-v2",
+                usageSemantics,
               }
             : {}),
           ...(input.completedAt !== undefined
-            ? { completedAt: input.completedAt }
+            ? {
+                completedAt: input.nativeUsage
+                  ? sql`COALESCE(${schema.tokenUsageRecords.completedAt}, ${input.completedAt})`
+                  : input.completedAt,
+              }
             : {}),
           ...(input.finalizedAt !== undefined
-            ? { finalizedAt: input.finalizedAt }
+            ? {
+                finalizedAt: input.nativeUsage
+                  ? sql`COALESCE(${schema.tokenUsageRecords.finalizedAt}, ${input.finalizedAt})`
+                  : input.finalizedAt,
+              }
             : {}),
           updatedAt,
         },
@@ -1160,6 +1235,7 @@ export class TelemetryRepository {
 
     const dailyTokens = new Map<string, typeof tokenRows>();
     for (const row of tokenRows) {
+      if (!row.startedAt) continue; // Unknown native start has no calendar bucket.
       const date = row.startedAt.toISOString().slice(0, 10);
       dailyTokens.set(date, [...(dailyTokens.get(date) ?? []), row]);
     }
@@ -1399,7 +1475,8 @@ export class TelemetryRepository {
         visibleOutputTokens: row.visibleOutputTokens,
         reportedTotalTokens: row.reportedTotalTokens,
         usageSemantics: row.usageSemantics,
-        startedAt: row.startedAt.toISOString(),
+        ...(row.nativeUsage === null ? {} : { nativeUsage: row.nativeUsage }),
+        startedAt: row.startedAt?.toISOString() ?? null,
         completedAt: row.completedAt?.toISOString() ?? null,
         finalizedAt: row.finalizedAt?.toISOString() ?? null,
         workerVersion: row.workerVersion,

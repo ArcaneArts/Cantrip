@@ -4428,6 +4428,10 @@ export const tokenUsageRecords = pgTable(
       .$type<string[]>()
       .notNull()
       .default([]),
+    nativeUsage:
+      jsonb("native_usage").$type<
+        import("@cantrip/protocol").NativeHistoryUsage
+      >(),
     nativeModelAttribution: jsonb("native_model_attribution").$type<
       import("@cantrip/protocol").NativeTurnModelAttribution
     >(),
@@ -4474,9 +4478,7 @@ export const tokenUsageRecords = pgTable(
     usageSemantics: text("usage_semantics")
       .notNull()
       .default("provider-reported-v2"),
-    startedAt: timestamp("started_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    startedAt: timestamp("started_at", { withTimezone: true }).defaultNow(),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     finalizedAt: timestamp("finalized_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -5865,6 +5867,7 @@ export const nativeHistoryTurns = pgTable(
     status: text("status").$type<NativeHistoryTurn["status"]>().notNull(),
     startedAtMs: doublePrecision("started_at_ms"),
     completedAtMs: doublePrecision("completed_at_ms"),
+    usage: jsonb("usage").$type<NativeHistoryTurn["usage"]>(),
     metadata: jsonb("metadata")
       .$type<NativeHistoryTurn["metadata"]>()
       .notNull(),

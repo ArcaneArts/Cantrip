@@ -2823,6 +2823,59 @@ through it. Immutable message/model-behavior attribution, controlled provider/ac
 migration, replacement presentation/queue/history continuity, remaining native
 lifecycle/CUA acceptance and eager GUI-first preparation remain required.
 
+### Pass 30 — native-history usage recovery
+
+The worker projects retained per-response counters into a typed analytics header
+alongside encrypted turn evidence. These are distinct provider responses for the
+physical native thread, not the thread's cumulative counter or the live API's
+latest response. Duplicate observations are deduplicated by response ID; copied
+ancestor responses do not create new usage/time rows. Partial retention, disputed
+response IDs and unsafe aggregate overflow remain explicit. Known subtotals are
+available without claiming a complete provider total. Unknown model selection is
+not replaced by today's default, and missing native start timestamps remain null.
+
+Both worker and browser decoders authenticate the analytics header with the
+encrypted metadata. Omission preserves the legacy associated-data format. Archive
+reads return the header unchanged, and the projector's fingerprint includes the
+new projection so retained source evidence can be republished after upgrade.
+Migration 0214 adds response evidence to history/usage records and permits an
+unknown token-record start time. Calendar/time analytics omit unknown timestamps
+rather than fabricating execution at recovery time; raw exports retain nulls and
+the partial/complete usage evidence.
+
+Canonical ingestion writes usage in the same transaction as encrypted history.
+Failed analytics persistence does not acknowledge the source batch; an exact
+retry commits once. Live and recovered writers share the prior pass's native-turn
+identity. Retained response sets accumulate without regression from older subsets,
+and latest-response GUI finalization cannot replace their totals or a recorded
+native terminal outcome. Late response evidence can enrich a terminal turn even
+when its accompanying header is still active. Missing current catalog routes
+discard unusable new attribution without blocking history or erasing already
+captured attribution. Non-native usage retains its existing writer behavior.
+
+Validation: 76 server tests passed across canonical history/HTTP/archive,
+attribution, time, dashboard and migration suites. Subsequent targeted coverage
+passes all seven usage-recovery cases, including a real database constraint failure
+and retry, encrypted archive read after restart, concurrent live/ingestion writes,
+late evidence, conflicting counters, absent timing and a removed model route.
+The worker projection/render/context selection passed 47 tests; an additional
+production source-journal/projector/encrypted HTTP/database case proves recovery
+and replay without a live usage callback. The usage/encryption/actual pinned
+native selection passed 18 tests, and browser archive crypto passed 12 tests.
+These selections overlap and are not a full acceptance-matrix count. The native
+fixture's initial post-completion read retained the expected response counters
+while still declaring partial retention; no complete checkpoint was inferred.
+Workspace typechecks pass. The migration snapshot differs only in the three
+intended schema changes. `pnpm check` still stops at the unchanged decomposition
+budgets documented in pass 27. Imported native sources and binaries are unchanged;
+only isolated synthetic fixtures ran, with no CI or personal desktop input.
+
+Remaining full-goal work includes immutable message/model-behavior attribution,
+controlled provider/account migration, replacement TUI/queue/history continuity,
+remaining actual native lifecycle/CUA acceptance and eager GUI-first preparation.
+Historical evidence without a resolvable model remains explicitly unattributed;
+this pass does not claim the remaining attribution or full mirror work is done.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal

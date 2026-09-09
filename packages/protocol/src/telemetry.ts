@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { nativeHistoryUsageSchema } from "./native-history-usage.js";
 import {
   detailedTokenUsageTotalsSchema,
   agentTimeSummarySchema,
@@ -330,7 +331,8 @@ const telemetryExportTokenUsageSchema = z.object({
   visibleOutputTokens: z.number().int().nonnegative().nullable(),
   reportedTotalTokens: z.number().int().nonnegative().nullable(),
   usageSemantics: z.string().min(1),
-  startedAt: z.string().datetime(),
+  nativeUsage: nativeHistoryUsageSchema.optional(),
+  startedAt: z.string().datetime().nullable(),
   completedAt: z.string().datetime().nullable(),
   finalizedAt: z.string().datetime().nullable(),
   workerVersion: z.string().nullable(),

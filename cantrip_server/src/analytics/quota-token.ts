@@ -22,7 +22,7 @@ export interface QuotaAnalyticsTokenAttempt {
   modelName: string;
   reasoningEffort: string | null;
   projectId: string | null;
-  startedAt: Date;
+  startedAt: Date | null;
   completedAt: Date | null;
   finalizedAt: Date | null;
   attemptStatus: string;
@@ -231,10 +231,12 @@ function resetWindow(reading: QuotaAnalyticsReading): string {
 
 function attemptTime(attempt: QuotaAnalyticsTokenAttempt): number {
   return (
-    attempt.finalizedAt ??
-    attempt.completedAt ??
-    attempt.startedAt
-  ).getTime();
+    (
+      attempt.finalizedAt ??
+      attempt.completedAt ??
+      attempt.startedAt
+    )?.getTime() ?? Number.NaN
+  );
 }
 
 function attemptsBetween(

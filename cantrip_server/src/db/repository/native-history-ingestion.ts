@@ -139,6 +139,7 @@ export class NativeHistoryIngestionRepository {
             await apply(attempt, binding, input.batch);
             await persistNativeHistoryTurns(
               attempt,
+              ownerId,
               binding,
               input.batch.turns,
             );

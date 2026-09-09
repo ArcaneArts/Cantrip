@@ -5,7 +5,7 @@ const MAX_OPEN_INTERVAL_MS = 24 * 60 * 60 * 1_000;
 export interface AgentTimeInterval {
   attemptStatus: string;
   completedAt: Date | null;
-  startedAt: Date;
+  startedAt: Date | null;
 }
 
 interface NormalizedInterval {
@@ -18,6 +18,7 @@ function normalizedInterval(
   interval: AgentTimeInterval,
   nowMs: number,
 ): NormalizedInterval | null {
+  if (!interval.startedAt) return null;
   const startMs = interval.startedAt.getTime();
   if (!Number.isFinite(startMs) || startMs > nowMs) return null;
   const open =

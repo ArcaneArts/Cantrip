@@ -12,6 +12,8 @@ import {
 } from "../src/codex/app-server.js";
 import { discoverCodexRuntime } from "../src/codex/discovery.js";
 import { ManagedSessionCoordinator } from "../src/codex/managed-session.js";
+import { nativeHistoryUsageForTurn } from "../src/native-history-usage.js";
+import { reconcileNativeHistoryUsage } from "@cantrip/protocol";
 
 const binary = process.env.CANTRIP_CODEX_TEST_BINARY?.trim();
 
@@ -356,6 +358,25 @@ describe.skipIf(!binary)("native replacement GUI turn settings", () => {
       );
       observation.close();
       expect(result.status).toBe("completed");
+      const retained = await runtime.readNativeHistory(replacement.threadId);
+      const retainedTurn = retained.history?.turns.find(
+        (entry) => entry.turnId === result.turnId,
+      );
+      const recoveredUsage = nativeHistoryUsageForTurn(
+        replacement.threadId,
+        result.turnId!,
+        retainedTurn,
+      );
+      // The first post-completion read can still have partial durable retention.
+      // Counts are retained evidence even before a complete checkpoint appears.
+      expect(recoveredUsage).toMatchObject({
+        responses: [{ responseId: "response" }],
+      });
+      if (retainedTurn?.retention !== "complete")
+        expect(recoveredUsage!.complete).toBe(false);
+      expect(
+        reconcileNativeHistoryUsage(undefined, recoveredUsage!).totals,
+      ).toMatchObject({ inputTokens: 1, outputTokens: 1, totalTokens: 2 });
       expect(result.threadId).toBe(replacement.threadId);
       expect(requests).toHaveLength(1);
       expect(requests[0]).toMatchObject({

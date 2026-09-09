@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   openNativeHistoryTurn,
   prepareNativeHistoryTurn,
+  protectNativeHistoryTurnMetadata,
 } from "../src/native-history-turn-content.js";
 import { parseCodexNativeHistory } from "../src/codex/native-history.js";
+import { decryptNativeHistoryTurn } from "@cantrip/crypto";
 
 const binding = {
   id: "binding",
@@ -129,6 +131,39 @@ async function prepare() {
 }
 
 describe("worker-protected native turn aggregates", () => {
+  it("authenticates public usage in worker and browser decoders while retaining legacy envelopes", async () => {
+    const turn = await prepare();
+    const browser = (candidate: typeof turn) =>
+      decryptNativeHistoryTurn({
+        ownerId: "owner",
+        serverId: "server",
+        componentKey: key.map((byte) => byte + 1),
+        chatId: binding.chatId,
+        bindingId: binding.id,
+        workerId: binding.workerId,
+        turn: candidate,
+      });
+    expect(await browser(turn)).toEqual(
+      await openNativeHistoryTurn({ service: service(), binding, turn }),
+    );
+    const changed = structuredClone(turn);
+    changed.usage!.responses[0]!.usage.outputTokens++;
+    await expect(browser(changed)).rejects.toThrow();
+    await expect(
+      openNativeHistoryTurn({ service: service(), binding, turn: changed }),
+    ).rejects.toThrow();
+    const { usage: _usage, ...removed } = turn;
+    await expect(browser(removed)).rejects.toThrow();
+    const { metadata: _metadata, ...header } = removed;
+    const legacy = await protectNativeHistoryTurnMetadata({
+      service: service(),
+      binding,
+      header,
+      content: { version: 1, legacy: true },
+    });
+    expect(await browser(legacy)).toEqual({ version: 1, legacy: true });
+    await expect(browser({ ...legacy, usage: turn.usage })).rejects.toThrow();
+  });
   it("preserves usage, scope, errors, unknown native fields and original duration without plaintext publication", async () => {
     const turn = await prepare();
     expect(turn).toMatchObject({
@@ -137,7 +172,10 @@ describe("worker-protected native turn aggregates", () => {
       completedAtMs: 1_788_000_002_000,
     });
     expect(JSON.stringify(turn)).not.toContain("private");
-    expect(turn).not.toHaveProperty("usage");
+    expect(turn.usage).toMatchObject({
+      responses: [{ responseId: "response", usage }],
+      complete: false,
+    });
     expect(turn).not.toHaveProperty("initialSettings");
     const opened = await openNativeHistoryTurn({
       service: service(),

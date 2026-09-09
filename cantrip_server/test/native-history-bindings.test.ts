@@ -1165,9 +1165,14 @@ describe("durable historical turn projection", () => {
           const {
             bindingId: _bindingId,
             payloadDigest: _digest,
+            usage,
             ...row
           } = rows[0]!;
-          return { ...row, threadId: binding.threadId };
+          return {
+            ...row,
+            threadId: binding.threadId,
+            ...(usage == null ? {} : { usage }),
+          };
         },
       );
     expect(restored).toEqual(prepared);

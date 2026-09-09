@@ -22,6 +22,16 @@ export async function withNativeUsageIdentity(
     input.nativeModelAttribution === undefined
       ? undefined
       : nativeTurnModelAttributionSchema.parse(input.nativeModelAttribution);
+  const identity = capture ?? input.nativeTurn;
+  if (identity && identity.turnId !== input.turnId)
+    throw new Error("Native usage identity belongs to another turn.");
+  if (
+    capture &&
+    input.nativeTurn &&
+    (input.nativeTurn.threadId !== capture.threadId ||
+      input.nativeTurn.turnId !== capture.turnId)
+  )
+    throw new Error("Native usage identity conflicts with its model capture.");
   if (capture && capture.turnId !== input.turnId)
     throw new Error("Native usage attribution belongs to another turn.");
   return database.transaction(async (tx) => {
@@ -57,7 +67,7 @@ export async function withNativeUsageIdentity(
       );
     // Non-chat telemetry retains its existing source identity. A chat-scoped
     // alias must not become an eligibility requirement for other usage writers.
-    if (!capture || !input.chatId) {
+    if (!identity || !input.chatId) {
       const matching = input.turnId
         ? sourceRows.filter(
             (row) =>
@@ -89,7 +99,7 @@ export async function withNativeUsageIdentity(
         sourceKey: matching[0]?.sourceKey ?? input.sourceKey,
       });
     }
-    const canonical = `native-turn:${JSON.stringify([input.chatId, capture.threadId, capture.turnId])}`;
+    const canonical = `native-turn:${JSON.stringify([input.chatId, identity.threadId, identity.turnId])}`;
     if (
       input.sourceKey.startsWith("native-turn:") &&
       input.sourceKey !== canonical
@@ -114,8 +124,8 @@ export async function withNativeUsageIdentity(
         and(
           eq(schema.tokenUsageRecords.ownerId, ownerId),
           eq(schema.tokenUsageRecords.chatId, input.chatId!),
-          eq(schema.tokenUsageRecords.turnId, capture.turnId),
-          sql`${schema.tokenUsageRecords.nativeModelAttribution}->>'threadId' = ${capture.threadId}`,
+          eq(schema.tokenUsageRecords.turnId, identity.turnId),
+          sql`${schema.tokenUsageRecords.nativeModelAttribution}->>'threadId' = ${identity.threadId}`,
         ),
       );
     if (
@@ -128,7 +138,7 @@ export async function withNativeUsageIdentity(
     const bootstrap = sourceRows.find(
       (row) =>
         row.nativeModelAttribution === null &&
-        (row.turnId === null || row.turnId === capture.turnId),
+        (row.turnId === null || row.turnId === identity.turnId),
     );
     const adopted = existing ?? sameTurn[0] ?? bootstrap;
     if (existing && bootstrap && existing.id !== bootstrap.id) {

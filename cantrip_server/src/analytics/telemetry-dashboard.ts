@@ -11,7 +11,7 @@ export interface TelemetryTokenRow {
   cacheWriteInputTokens: number;
   outputTokens: number;
   reasoningOutputTokens: number;
-  startedAt: Date;
+  startedAt: Date | null;
 }
 
 export interface TelemetryBehaviorRow {

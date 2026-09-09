@@ -41,6 +41,7 @@ export async function decryptNativeHistoryTurn(input: {
             turn.status,
             turn.startedAtMs,
             turn.completedAtMs,
+            ...(turn.usage === undefined ? [] : [turn.usage]),
           ]),
         ),
       ),
