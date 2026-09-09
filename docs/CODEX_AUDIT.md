@@ -2209,6 +2209,106 @@ modified in this pass. Canonical settings publication and the complete GUI/TUI
 acceptance matrix remain outstanding; versioned reads alone do not establish
 that integration.
 
+**Pass 20 — shared settings publication and confirmed-state UI ([PR #1870](https://github.com/ArcaneArts/Cantrip/pull/1870)):**
+
+The isolated pass adds a shared native version/snapshot protocol, worker-side
+snapshot encryption and keyed content fingerprints, and server state transitions
+that distinguish requested intent, unresolved application and observed native
+state. Snapshot encryption binds owner/server/chat/worker/thread/runtime/native
+version, preserves complete native settings, and does not publish private
+instructions. Equal read/notification objects can be compared despite property
+order and randomized encryption. Fingerprints are comparable only under the
+same encryption key revision; key rotation requires a fresh authorized read
+binding and can still decrypt historical ciphertext with its recorded key.
+
+Transition tests cover late observations, exact large revisions, replacement
+bindings, old-runtime uncertainty, independent operation settlement and conflicts.
+Refreshing a read binding for the same Core retains a newer notification instead
+of rolling it back. Observation bindings are not input authority. Publication
+errors must not poison or cancel native execution.
+
+The pass now includes migration 0208 and database persistence. Accepted thread
+settings commands record encrypted desired intent in the same transaction as
+admission; immutable command identity handles replay even after a request leaves
+the pending list. Dispatch, transport failure and correlated application facts
+update their own request without treating RPC success as settings application.
+Evidence writers use the same project/chat/command lock order as admission.
+A failed state write rolls back the corresponding admission/evidence transaction.
+The requested native source is retained, so an old request cannot acquire the
+observation binding of a different runtime.
+
+Owner-scoped GET `/api/chats/:chatId/native-settings` returns durable state, and
+POST `/api/chats/:chatId/native-settings/refresh` invokes a real worker
+`chat.settings.read` against the currently bound runtime. It neither launches nor
+reconfigures the runtime. The read runs outside the database lock. Publication
+rechecks placement, account/route, thread, known active runtime and prior binding;
+a delayed read cannot replace a newer binding. The worker encrypts the full
+versioned result and rejects runtime/association replacement during reading.
+
+Managed runtime selection now starts an independent settings observer. It subscribes
+before asking the authenticated server to establish an actual native-read
+baseline, then coalesces and encrypts versioned native settings notifications.
+The binding includes placement, provider/account, route, thread, runtime and
+native epoch. The authenticated observation endpoint rechecks the current source
+before writing; ordinary notifications cannot establish a new epoch or reuse a
+retired binding. Lost acknowledgments retry the same ciphertext, and failed writes
+are not acknowledged. Fresh native reads recover the latest effective selection;
+historical command outcomes retain their separate durable evidence journal.
+
+Observer retry, close and reconnect signals are independent of execution/CUA.
+Reconnect aborts only an in-flight observation request, then requests a fresh read.
+Runtime/association/account retirement closes the observer. Publication errors
+remain background diagnostics and do not trigger input replay or worker restart.
+HTTP publication emits chat invalidation for the UI consumer. Worker
+selection/reconnect/shutdown hooks are wired; the full native TUI acceptance matrix
+has not yet been executed for these hooks.
+
+The shared crypto package now owns the browser-compatible snapshot encryption
+format. A frozen ciphertext/fingerprint fixture captured from the original
+Node implementation verifies compatibility. The browser adapter checks the
+caller chat and server-issued source binding, supports historical key revisions,
+clears owned key copies, and rejects decryption completed after locking or
+changing the authenticated identity.
+
+The GUI query cache stores ciphertext only. A mounted settings view decrypts the
+last confirmed snapshot and immediately hides it when its source, account or
+encryption lifetime changes. Canonical server revisions prevent delayed reads
+from rolling the view back, including revisions beyond JavaScript number precision.
+Chat live invalidation and reconnect both refresh this query. Native admission,
+dispatch, receipt and application evidence now invalidate settings after commit;
+rejected changes do not depend on a new successful native snapshot to become
+visible. A database-trigger failure verifies that failed writes publish no state.
+Explicit GUI native refresh also notifies the other views after publication.
+
+The agent model dialog consumes this state in a separate last-confirmed section
+with model, reasoning, service tier, collaboration mode and pending/rejected/
+uncertain status. Opening the dialog performs only a canonical GET. Its explicit
+refresh reads the existing session and never starts or reconfigures it. This
+display deliberately does not reinterpret an old snapshot as the current route
+or overwrite an editable request with the last applied selection.
+
+Validation so far: 71 server tests (actual PGlite migrations, restart, concurrent
+commands/evidence, injected persistence failures, authenticated HTTP publication,
+source fencing, committed notifications and lost acknowledgment recovery), 52
+worker tests, 68 crypto tests, 59 focused GUI tests, protocol/crypto builds,
+production app build, and app/worker/server typechecks passed. Three actual
+packaged CLI tests of protected native reads were rerun after the crypto move
+and passed. The full `pnpm check`
+still stops at existing chat-turn-runtime.ts (2260/1999) and task-routes.ts
+(2149/1999) line budgets. Grouping related native route installation removed the
+build-app.ts overage. An earlier broad app-test invocation also encountered an
+unbuilt glitch package and failing dock-rail fixtures; the dependency was built,
+and the production app build/focused tests passed, but that full app suite was
+not reverified. No CI jobs were launched.
+
+This publication/read milestone is not complete settings synchronization.
+GUI/native mutation controllers, decoding/mapping the requested selection,
+controlled provider/account migration, complete service-tier/default/custom-child
+and permission parity, and the full actual-TUI acceptance matrix remain. Those
+are required follow-on work under the original goal; this milestone's tests do
+not prove complete desired/pending/effective GUI/TUI control. The isolated
+publication/read milestone is tracked in PR #1870; the full goal remains active.
+
 **Still outstanding:** completion of authorized command admission, origin-independent
 lifecycle/CUA authority, durable all-turn projection/replay,
 complete settings parity, eager GUI-first session startup and the full acceptance

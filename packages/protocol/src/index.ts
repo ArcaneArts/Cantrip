@@ -1,3 +1,4 @@
+export * from "./native-settings-state.js";
 export * from "./computer-use-effects.js";
 export * from "./managed-session.js";
 export * from "./public-api-foundation.js";
@@ -15,3 +16,4 @@ export * from "./native-command-events.js";
 
 export * from "./managed-queue.js";
 export * from "./native-history.js";
+export * from "./native-thread-settings.js";

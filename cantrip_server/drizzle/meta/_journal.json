@@ -1457,6 +1457,13 @@
       "when": 1788934744387,
       "tag": "0207_native_settings_evidence",
       "breakpoints": true
+    },
+    {
+      "idx": 208,
+      "version": "7",
+      "when": 1788941889518,
+      "tag": "0208_native_settings_state",
+      "breakpoints": true
     }
   ]
 }

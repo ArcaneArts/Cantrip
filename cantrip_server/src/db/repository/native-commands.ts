@@ -26,7 +26,13 @@ import {
 } from "@cantrip/protocol";
 import { isNull, or, inArray, and, eq, sql } from "drizzle-orm";
 import * as schema from "../schema.js";
-import { projectChatExecutionLock } from "./chat-execution-lock.js";
+import { lockNativeCommandChat } from "./native-command-lock.js";
+import {
+  admitNativeSettingsState,
+  settleNativeSettingsState,
+  settleNativeSettingsTransport,
+  NativeSettingsStateRepository,
+} from "./native-settings-persistence.js";
 import {
   ChatExecutionLaneRepository,
   ExecutionLaneConflictError,
@@ -212,6 +218,32 @@ export class NativeCommandRepository {
       transaction: RepositoryTransaction,
     ) => ServerRepository,
   ) {}
+  refreshSettingsState(
+    ownerId: string,
+    chatId: string,
+    read: Parameters<NativeSettingsStateRepository["refresh"]>[2],
+  ) {
+    return new NativeSettingsStateRepository(this.database).refresh(
+      ownerId,
+      chatId,
+      read,
+    );
+  }
+  observeSettingsState(
+    ownerId: string,
+    input: Parameters<NativeSettingsStateRepository["observe"]>[1],
+  ) {
+    return new NativeSettingsStateRepository(this.database).observe(
+      ownerId,
+      input,
+    );
+  }
+  settingsState(ownerId: string, chatId: string) {
+    return new NativeSettingsStateRepository(this.database).get(
+      ownerId,
+      chatId,
+    );
+  }
   recordSettingsEvidence(ownerId: string, input: NativeSettingsEvidence) {
     return new NativeSettingsEvidenceRepository(this.database).record(
       ownerId,
@@ -223,17 +255,7 @@ export class NativeCommandRepository {
     ownerId: string,
     chatId: string,
   ): Promise<void> {
-    await tx.execute(projectChatExecutionLock(ownerId, chatId));
-    const rows = await tx
-      .select({ id: schema.chats.id })
-      .from(schema.chats)
-      .where(
-        and(eq(schema.chats.id, chatId), eq(schema.chats.ownerId, ownerId)),
-      )
-      .for("update")
-      .limit(1);
-    if (!rows[0])
-      throw new NativeCommandError("chat-not-found", "Chat not found.", 404);
+    await lockNativeCommandChat(tx, ownerId, chatId);
   }
   private context(tx: RepositoryTransaction, ownerId: string, chatId: string) {
     const repository = new ChatRuntimeContextRepository(tx, {
@@ -605,6 +627,7 @@ export class NativeCommandRepository {
         await tx.insert(schema.nativeCommands).values(initial).returning(),
         "recording native admission",
       );
+      await admitNativeSettingsState(tx, inserted);
       if (consumeReply && initial.status === "accepted") {
         await tx
           .update(schema.nativePendingRequests)
@@ -1358,6 +1381,7 @@ export class NativeCommandRepository {
           .returning(),
         "dispatching native command",
       );
+      await settleNativeSettingsState(tx, updated, "dispatched");
       await tx
         .update(schema.managedQueueClaims)
         .set({ status: "dispatched" })
@@ -1949,6 +1973,7 @@ export class NativeCommandRepository {
           .returning(),
         "settling native command",
       );
+      await settleNativeSettingsTransport(tx, updated);
       if (
         input.executionComplete &&
         row.kind === "start" &&

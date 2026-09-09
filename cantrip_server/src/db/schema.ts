@@ -5495,6 +5495,19 @@ export const nativeCommands = pgTable(
     ),
   ],
 );
+/** Canonical opaque selection state, serialized with the owning chat's commands. */
+export const nativeSettingsStates = pgTable("native_settings_states", {
+  chatId: text("chat_id")
+    .primaryKey()
+    .references(() => chats.id, { onDelete: "cascade" }),
+  state: jsonb("state")
+    .$type<import("@cantrip/protocol").NativeSettingsState>()
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 /** Immutable encrypted evidence; delivery order never defines application order. */
 export const nativeSettingsEvidence = pgTable(
   "native_settings_evidence",

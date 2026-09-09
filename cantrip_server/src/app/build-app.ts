@@ -1,6 +1,5 @@
-import { installInternalNativeModelInventoryRoutes } from "./routes/internal-native-model-inventory.js";
 import { installInternalNativeQueueRoutes } from "./routes/internal-native-queue.js";
-import { installInternalNativeCommandRoutes } from "./routes/internal-native-commands.js";
+import { installManagedNativeRoutes } from "./routes/internal-native.js";
 import { installNativeHistoryRuntime } from "./runtime/native-history-runtime.js";
 import { randomBytes, randomUUID } from "node:crypto";
 import {
@@ -88,7 +87,7 @@ import {
   installChatSyncAndMessageReadRoutes,
 } from "./routes/chat-messages-and-sync.js";
 import { installChatAttachmentRoutes } from "./routes/chat-attachments.js";
-import { installChatRuntimeConfigurationRoutes } from "./routes/chat-runtime-configuration.js";
+import { installChatSettingsRoutes } from "./routes/chat-settings.js";
 import { installChatQueueRoutes } from "./routes/chat-queue.js";
 import { installChatTurnSubmissionRoutes } from "./routes/chat-turn-submission.js";
 import { installChatImportRoutes } from "./routes/chat-imports.js";
@@ -1264,8 +1263,9 @@ export async function buildApp({
     uploadLimitBytes,
   });
 
-  installChatRuntimeConfigurationRoutes(app, {
+  installChatSettingsRoutes(app, {
     applicationOwnerId,
+    publishChatInvalidation,
     availableModelRuntimes,
     bridge,
     reasoningStateForContext,
@@ -1353,12 +1353,8 @@ export async function buildApp({
     dispatchNextQueuedPrompt,
     publishChatInvalidation,
   });
-  installInternalNativeModelInventoryRoutes(app, {
-    config,
-    repository,
-    runAsOwner,
-  });
-  installInternalNativeCommandRoutes(app, {
+  installManagedNativeRoutes(app, {
+    bridge,
     config,
     serverId,
     repository,

@@ -1,3 +1,6 @@
+import { readProtectedNativeSettings } from "../src/native-settings-read.js";
+import { openNativeSettingsSnapshot } from "../src/native-settings-content.js";
+import { NativeThreadSettingsState } from "../src/codex/native-thread-settings.js";
 import {
   execFile,
   spawn,
@@ -353,6 +356,45 @@ describe.skipIf(!binary)("native settings acknowledgments", () => {
         expect(await request("thread/settings/read", { threadId })).toEqual(
           settled,
         );
+        const readState = new NativeThreadSettingsState();
+        const nativeReader = {
+          transportGeneration: "fixture-runtime",
+          readNativeThreadSettings: async (selectedThreadId: string) => {
+            readState.observe(
+              await request("thread/settings/read", {
+                threadId: selectedThreadId,
+              }),
+            );
+            return readState.read(selectedThreadId);
+          },
+        };
+        const readScope = {
+          chatId: "fixture-chat",
+          workerId: "fixture-worker",
+          threadId,
+          contextKind: "project" as const,
+          projectId: "fixture-project",
+          placementId: "fixture-placement",
+          modelRouteId: "fixture-route",
+          providerAccountId: null,
+        };
+        const protectedRead = await readProtectedNativeSettings({
+          scope: readScope,
+          service: encryption,
+          resolve: () => ({
+            scope: readScope,
+            runtime: nativeReader,
+            generation: "fixture-runtime",
+          }),
+        });
+        expect(
+          await openNativeSettingsSnapshot({
+            service: encryption,
+            context: protectedRead.context,
+            snapshot: protectedRead,
+          }),
+        ).toEqual(settled.threadSettings);
+        expect(JSON.stringify(protectedRead)).not.toContain(workspace);
         for (const { params } of applied()) {
           expect(params.threadSettings).toMatchObject({
             model: "gpt-5",

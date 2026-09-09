@@ -285,11 +285,24 @@ export function installInternalNativeCommandRoutes(
           return reply.code(404).send({ code: "worker-not-found" });
         return runAsOwner(authentication.ownerId, async () => {
           try {
-            if (phase === "settings-evidence")
-              return repository.nativeCommands.recordSettingsEvidence(
+            if (phase === "settings-evidence") {
+              const evidence = nativeSettingsEvidenceSchema.parse(parsed.data);
+              const result =
+                await repository.nativeCommands.recordSettingsEvidence(
+                  authentication.ownerId,
+                  evidence,
+                );
+              // The operation already committed and authenticated its exact
+              // source. Resolve its immutable chat for live invalidation; a
+              // rejection need not produce a new native settings snapshot.
+              const receipt = await repository.nativeCommands.lookup(
                 authentication.ownerId,
-                nativeSettingsEvidenceSchema.parse(parsed.data),
+                evidence.workerId,
+                evidence.operationId,
               );
+              if (receipt) live.publishChatInvalidation(receipt.chatId, "chat");
+              return result;
+            }
             if (phase === "continue")
               return authority(
                 authentication.ownerId,
@@ -308,6 +321,8 @@ export function installInternalNativeCommandRoutes(
                   result.execution.chatId,
                   result.execution.projectId,
                 );
+              if (result.receipt.method === "thread/settings/update")
+                live.publishChatInvalidation(result.receipt.chatId, "chat");
               return authority(authentication.ownerId, result);
             }
             if (phase === "bind-preparation")
@@ -317,19 +332,22 @@ export function installInternalNativeCommandRoutes(
                   nativeCommandDispatchSchema.parse(parsed.data),
                 ),
               };
-            if (phase === "dispatch")
-              return authority(
+            if (phase === "dispatch") {
+              const result = await repository.nativeCommands.dispatch(
                 authentication.ownerId,
-                await repository.nativeCommands.dispatch(
-                  authentication.ownerId,
-                  nativeCommandDispatchSchema.parse(parsed.data),
-                ),
+                nativeCommandDispatchSchema.parse(parsed.data),
               );
+              if (result.receipt.method === "thread/settings/update")
+                live.publishChatInvalidation(result.receipt.chatId, "chat");
+              return authority(authentication.ownerId, result);
+            }
             const settlement = nativeCommandSettlementSchema.parse(parsed.data);
             const receipt = await repository.nativeCommands.settle(
               authentication.ownerId,
               settlement,
             );
+            if (receipt.method === "thread/settings/update")
+              live.publishChatInvalidation(receipt.chatId, "chat");
             notifyManagedQueueReceipt(receipt.chatId);
             const wakesQueue =
               settlement.executionComplete ||

@@ -33,6 +33,7 @@ import { ChatHistoryRail } from "@/components/chat/chat-history-rail";
 import { ChatTurnPromptOverlay } from "@/components/chat/chat-turn-prompt-overlay";
 import { ChatRunStatus } from "@/components/chat/chat-run-status";
 import { ModelReasoningPicker } from "@/components/chat/model-reasoning-picker";
+import { NativeSettingsStatus } from "@/components/chat/native-settings-status";
 import { PermissionProfileControl } from "@/components/chat/permission-profile-control";
 import { ChatRelocationStatus } from "@/components/chat/chat-relocation-dialog";
 import { PlanPanel } from "@/components/chat/plan-panel";
@@ -977,6 +978,11 @@ export function ChatTranscriptView({
                     chat.status === "waiting-for-approval"
                   }
                   reasoningState={reasoningState.data}
+                  selectionStatus={
+                    capabilities.linkedConsole ? (
+                      <NativeSettingsStatus chatId={chat.id} />
+                    ) : undefined
+                  }
                   subagentCapability={
                     capabilities.subagents
                       ? activeChatWorker?.codexRuntime.nativeSubagents

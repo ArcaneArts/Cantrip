@@ -1,5 +1,10 @@
 import {
   nativeCommandAdmissionSchema,
+  nativeSettingsStateSchema,
+  nativeSettingsRefreshRequestSchema,
+  nativeSettingsObservationRequestSchema,
+  nativeSettingsObservationReceiptSchema,
+  type NativeSettingsObservationRequest,
   nativeSettingsEvidenceSchema,
   nativeSettingsEvidenceResultSchema,
   type NativeSettingsEvidence,
@@ -75,6 +80,38 @@ export class NativeCommandClient {
       );
     }
     return schema.parse(payload);
+  }
+
+  async refreshSettings(chatId: string, signal?: AbortSignal) {
+    return this.post(
+      "settings-refresh",
+      nativeSettingsRefreshRequestSchema.parse({
+        chatId,
+        workerId: this.options.workerId,
+      }),
+      nativeSettingsStateSchema,
+      signal,
+    );
+  }
+
+  async observeSettings(
+    input: Omit<NativeSettingsObservationRequest, "workerId">,
+    signal?: AbortSignal,
+  ) {
+    const result = await this.post(
+      "settings-observation",
+      nativeSettingsObservationRequestSchema.parse({
+        ...input,
+        workerId: this.options.workerId,
+      }),
+      nativeSettingsObservationReceiptSchema,
+      signal,
+    );
+    if (result.bindingId !== input.bindingId)
+      throw new Error(
+        "The settings receipt belongs to another observation binding.",
+      );
+    return result;
   }
 
   async admit(input: Omit<NativeCommandAdmission, "workerId">) {
