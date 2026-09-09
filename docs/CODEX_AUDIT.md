@@ -2515,6 +2515,81 @@ managed picker choices from silently changing account defaults; the dedicated
 explicit-default action and remaining default persistence/readback acceptance
 still need completion.
 
+### Pass 24 — coordinated native permission transitions
+
+The app now uses one source-owned
+settings controller for model, collaboration mode and permissions. Bound profile
+changes carry their binding, operation identity and expected permission revision;
+bootstrap-only selection remains separate. The server resolves nullable default
+preferences to explicit selected/effective profiles, records pending transitions,
+and only advances confirmed policy from correlated versioned native evidence.
+Retained same-thread/account/placement selection stays separate from proof of
+application in the current native runtime.
+
+Worker changes normalize GUI/TUI transitions before encrypting their exact native
+frames, preserve unsupported custom-security rejection, and validate native
+resolved security against the complete applied tuple. Local policy refresh follows
+durable server publication, not an enqueue response. Migration 0210 keeps account
+default changes from revoking retained native policy and emits per-chat authority
+notifications only for affected chats. Actual applied policy transitions still
+advance the authority generation, including changes with a null default-following
+preference. Twelve database behavior tests passed for pinning, stale provenance,
+pending/application separation and rollback. The expanded worker selection passed 136 tests across nine files
+with typecheck, including explicit unconsumed-input deferral and publication
+ordering; app selections passed 51 with typecheck. These results
+are partial validation, not the final pass or acceptance matrix.
+
+GUI no-consumption retention now persists the original protected message identity
+and exact native input before ending its physical attempt. Existing queue claims
+retain the original prompt revision. Retained attachment metadata is not appended
+twice; editing the draft rebuilds input from the selected attachments. A late
+settlement wakes permission recovery, and a new queue revision gives a fresh
+physical start its own operation identity. Transport loss and failures before
+native dispatch do not establish permission to replay input.
+
+Existing managed-thread preparation now inherits native security instead of
+replaying a captured bootstrap profile. Semantic ownership survives an intentional
+idle unsubscribe without retaining a stale security value. Four regressions cover
+a concurrent confirmed change, loaded-thread preparation, unsubscribe followed by
+a second load, and unchanged new-thread bootstrap behavior.
+
+The combined GUI deferral, adapter, inheritance, publisher and app-server selection
+passed 129 tests in five files, with worker typecheck. The separate retained-input
+codec selection passed 20 tests. Server recovery/queue selections passed 24 tests
+and seven focused regressions. Counts overlap earlier selections and must not be
+summed as independent coverage.
+
+Native root/child boundary, active-turn and hard-restart app-server fixtures passed.
+The final native TUI patch passed 14 managed fixtures, including pending popup
+queues and retained/unretained/uncertain input ownership. Seven shortcut and seven
+queue regressions also passed; these selections overlap. The packaged release
+build initially exposed an exhaustive MCP event match missing the new settings
+notification. Patch 28 now forwards that event through the existing notification
+path, and the established full build passed. The built binary passed the real
+worker/fake-provider fixture: native model and effort selection survives GUI turns,
+permission application exposes the complete canonical security tuple, and stale
+bootstrap preparation preserves the applied policy.
+
+Exact encrypted deferred settlements are durably captured before HTTP delivery.
+A worker-owned pump retries only the captured receipt, with owner/server/worker
+isolation, immutable acknowledgment records, and bounded network cancellation.
+It never resubmits input. Retired attempts accept captured no-consumption evidence
+only when no conflicting result or native turn was recorded. Recovery neither
+finishes a replacement lane nor re-enables stopped autonomy. Native views keep
+uncertain full-input backups nonsendable until positive canonical queue evidence.
+The recovery tests cover lost acknowledgments, restart before first persistence,
+retired GUI attempts, replacement work, observed-turn rejection and Stop.
+
+Final local validation: full workspace `pnpm typecheck` passed; 245 worker tests
+in 14 files, 28 server permission/recovery tests, and 54 native command admission
+regressions passed against the rebuilt protocol package. The final strengthened
+settlement acknowledgment checks passed their six-test selection. App selections
+passed 39 tests. These counts overlap earlier selections and are not a total
+acceptance-matrix count. `pnpm check` stopped at existing decomposition budgets:
+chat-turn-runtime.ts is now 2275 lines (base 2260), and task-routes.ts is 2149
+(both limit 1999). The full standard check did not pass. No CI jobs ran.
+No eager startup change is enabled by this pass.
+
 **Still outstanding:** completion of authorized command admission, origin-independent
 lifecycle/CUA authority, durable all-turn projection/replay,
 complete settings parity, eager GUI-first session startup and the full acceptance
@@ -2979,7 +3054,7 @@ Cantrip route migrations rather than pretending native model strings encode them
 | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Root model                      | Map Cantrip model ID to native model plus provider/account/route. Reverse mapping must be unambiguous; duplicate slugs cannot select an arbitrary account.                                                                                                             |
 | Reasoning effort                | Use the selected model's supported values; preserve explicit/default semantics. Do not carry an invalid previous-model effort silently.                                                                                                                                |
-| Service tier                    | Add an explicit durable/product policy if supported. Preserve native omission (unchanged), null (explicit standard), and value (set); use an explicit unset action for raw inherited selection. Confirmed and effective tier values remain distinct.                                                                             |
+| Service tier                    | Add an explicit durable/product policy if supported. Preserve native omission (unchanged), null (explicit standard), and value (set); use an explicit unset action for raw inherited selection. Confirmed and effective tier values remain distinct.                   |
 | Permissions                     | Translate authoritative permission profile to native settings. A CLI change must receive the same policy validation; hardcoded terminal launch flags cannot become an escape hatch. Unrepresentable native settings need an explicit custom-state policy or rejection. |
 | Plan/collaboration mode         | Retain existing projection but reconcile it in the same complete settings snapshot.                                                                                                                                                                                    |
 | Subagent settings               | Cantrip root/custom-child configuration has no one-to-one `/model` equivalent. Preserve explicit custom child settings; root changes affect inherited settings only under the documented inheritance rule.                                                             |

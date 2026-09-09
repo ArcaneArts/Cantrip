@@ -4,6 +4,7 @@ import { nativeCommandEventSchema } from "@cantrip/protocol";
 import type { createLiveMutationRuntime } from "../runtime/live-mutation-runtime.js";
 import {
   nativeCommandAdmissionSchema,
+  nativePermissionTransitionResolveSchema,
   nativeSettingsEvidenceSchema,
   nativeCommandContinuationSchema,
   nativeCommandDispatchSchema,
@@ -66,6 +67,40 @@ export function installInternalNativeCommandRoutes(
           }
         : null,
   });
+  app.post(
+    "/api/internal/native-commands/permission-transition",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const parsed = nativePermissionTransitionResolveSchema.safeParse(
+        request.body,
+      );
+      if (!parsed.success)
+        return reply.code(400).send({ code: "invalid-permission-transition" });
+      const authentication = await authenticateWorkerRequest(
+        repository,
+        config,
+        request,
+        parsed.data.workerId,
+        "worker:agent-tools",
+      );
+      if (!authentication)
+        return reply.code(401).send({ code: "unauthorized" });
+      return runAsOwner(authentication.ownerId, async () => {
+        try {
+          return await repository.nativeCommands.resolvePermissionTransition(
+            authentication.ownerId,
+            parsed.data,
+          );
+        } catch (error) {
+          if (error instanceof NativeCommandError)
+            return reply
+              .code(error.statusCode)
+              .send({ code: error.code, error: error.message });
+          throw error;
+        }
+      });
+    },
+  );
   app.post(
     "/api/internal/native-commands/events",
     { logLevel: "warn" },
@@ -300,7 +335,9 @@ export function installInternalNativeCommandRoutes(
                 evidence.workerId,
                 evidence.operationId,
               );
-              if (receipt) live.publishChatInvalidation(receipt.chatId, "chat");
+              if (receipt) {
+                live.publishChatInvalidation(receipt.chatId, "chat");
+              }
               return result;
             }
             if (phase === "continue")
@@ -350,7 +387,7 @@ export function installInternalNativeCommandRoutes(
               live.publishChatInvalidation(receipt.chatId, "chat");
             notifyManagedQueueReceipt(receipt.chatId);
             const wakesQueue =
-              settlement.executionComplete ||
+              (settlement.executionComplete && !settlement.deferred) ||
               (receipt.status === "applied" &&
                 ["thread/goal/clear", "thread/goal/set"].includes(
                   receipt.method,

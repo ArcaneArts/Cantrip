@@ -31,7 +31,8 @@ export async function settleQueueClaim(
         ),
       ),
     );
-  if (!claim || ["consumed", "rejected"].includes(claim.status)) return;
+  if (!claim || ["consumed", "rejected", "deferred"].includes(claim.status))
+    return;
   if (goalEpoch) {
     if (
       row.method !== "thread/goal/set" ||
@@ -52,21 +53,30 @@ export async function settleQueueClaim(
     !parentGoal &&
     row.status === "applied" &&
     Boolean(row.protectedResult && row.resultDigest);
-  const rejected = row.status === "rejected";
+  const deferred =
+    row.status === "rejected" &&
+    row.rejectionCode === "native-settings-pending" &&
+    row.terminalEvidence !== null &&
+    typeof row.terminalEvidence === "object" &&
+    "kind" in row.terminalEvidence &&
+    row.terminalEvidence.kind === "deferred";
+  const rejected = row.status === "rejected" && !deferred;
   await tx
     .update(schema.managedQueueClaims)
     .set({
-      status: consumed
-        ? "consumed"
-        : rejected
-          ? "rejected"
-          : row.status === "uncertain"
-            ? "uncertain"
-            : claim.status,
+      status: deferred
+        ? "deferred"
+        : consumed
+          ? "consumed"
+          : rejected
+            ? "rejected"
+            : row.status === "uncertain"
+              ? "uncertain"
+              : claim.status,
       ...(nativeTurnId ? { nativeTurnId } : {}),
     })
     .where(eq(schema.managedQueueClaims.id, claim.id));
-  if (consumed || rejected) {
+  if (consumed || rejected || deferred) {
     await tx
       .update(schema.queuedPrompts)
       .set({

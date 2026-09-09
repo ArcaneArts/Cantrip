@@ -513,6 +513,7 @@ export type {
 
 export {
   permissionProfileIdSchema,
+  permissionTransitionSchema,
   YOLO_PERMISSION_PROFILE_ID,
   permissionProfileSummarySchema,
   permissionProfileCapabilitySchema,
@@ -521,6 +522,7 @@ export {
 } from "./permission-profiles.js";
 
 export type {
+  PermissionTransition,
   PermissionProfileSummary,
   PermissionProfileCapability,
   ChatPermissionProfileState,

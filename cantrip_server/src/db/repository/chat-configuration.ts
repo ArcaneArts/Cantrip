@@ -1,3 +1,6 @@
+import { lockNativeCommandChat } from "./native-command-lock.js";
+import { NativeCommandError } from "./native-command-errors.js";
+import { ChatRuntimeContextRepository } from "./chat-runtime-context.js";
 import {
   chatPlanOpaqueStateSchema,
   encryptedChatPlanWireStateSchema,
@@ -233,20 +236,31 @@ export class ChatConfigurationRepository {
     chatId: string,
     permissionProfileId: string | null,
   ): Promise<ContextualChatWireSummary | null> {
-    const chats = await this.database
-      .select({ chat: schema.chats })
-      .from(schema.chats)
-      .where(
-        and(eq(schema.chats.id, chatId), eq(schema.chats.ownerId, ownerId)),
+    return this.database.transaction(async (tx) => {
+      await lockNativeCommandChat(tx, ownerId, chatId);
+      const context = await new ChatRuntimeContextRepository(tx, {
+        getChatExecutionContext: async () => {
+          throw new Error("Unexpected permission context recursion");
+        },
+      }).getChatExecutionContext(ownerId, chatId);
+      if (!context) return null;
+      if (
+        context.threadId ||
+        ["running", "waiting-for-approval"].includes(context.status)
       )
-      .limit(1);
-    if (!chats[0]) return null;
-    const result = await this.database
-      .update(schema.chats)
-      .set({ permissionProfileId, updatedAt: new Date() })
-      .where(eq(schema.chats.id, chatId))
-      .returning();
-    return result[0] ? toContextualChatWireSummary(result[0]) : null;
+        throw new NativeCommandError(
+          "permission-source-required",
+          "The chat now has a native execution. Select permissions through its bound settings controller.",
+        );
+      const result = await tx
+        .update(schema.chats)
+        .set({ permissionProfileId, updatedAt: new Date() })
+        .where(
+          and(eq(schema.chats.id, chatId), eq(schema.chats.ownerId, ownerId)),
+        )
+        .returning();
+      return result[0] ? toContextualChatWireSummary(result[0]) : null;
+    });
   }
 
   async getEncryptedChatPlanState(

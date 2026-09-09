@@ -1,4 +1,8 @@
 import {
+  isNativePermissionDeferred,
+  NativePermissionDeferredError,
+} from "./native-permission-deferred.js";
+import {
   NativeThreadSettingsState,
   type NativeSettingsRequest,
   type NativeThreadSettings,
@@ -82,6 +86,7 @@ import {
   type NormalizedAgentMessage,
   type PendingPlanQuestion,
   type PermissionProfileCapability,
+  type PermissionTransition,
   type PlanMode,
   type PlanStep,
   type McpServerConfiguration,
@@ -1767,6 +1772,12 @@ export interface RunAgentTurnOptions {
   ) => Promise<Partial<RunAgentTurnOptions>>;
   onBeforeNativeDispatch?: (threadId: string) => Promise<void>;
   onNativeReceipt?: (receipt: { turn: { id: string } }) => Promise<void>;
+  /** Persist an explicitly unconsumed input before ending this GUI attempt. */
+  onNativeDeferred?: (input: {
+    threadId: string;
+    nativeInput: ReadonlyArray<Record<string, unknown>>;
+    frame: { error: { code: number; message: string; data?: unknown } };
+  }) => Promise<void>;
   onNativeInteractionRequest?: (
     request: AdmittedNativeReply,
   ) => void | Promise<void>;
@@ -1887,6 +1898,7 @@ export interface ManagedExecutionGateHandler {
 }
 
 export interface ManagedNativeGuiCommand {
+  permissionTransition?: PermissionTransition;
   operationId?: string;
   /** Server-issued settings source; metadata, never a native API parameter. */
   settingsBindingId?: string;
@@ -4483,6 +4495,13 @@ export class CodexAppServer implements CodexRuntime {
   >();
   readonly #readyMcpConfigFingerprintsByThread = new Map<string, string>();
   readonly #permissionProfilesByThread = new Map<string, string>();
+  // Semantic ownership survives an idle unsubscribe of the same durable thread;
+  // unlike an applied profile cache it never supplies a security value.
+  readonly #managedSecurityOwners = new Set<string>();
+  readonly #confirmedManagedPermissions = new Map<
+    string,
+    { generation: string; profileId: string }
+  >();
   readonly #pending = new Map<number, PendingRpcRequest>();
   readonly #pendingAgentInteractions = new Map<
     string,
@@ -5563,6 +5582,7 @@ export class CodexAppServer implements CodexRuntime {
     this.#activeTurnsByThread.set(threadId, activeTurn);
     this.registerRootExecution(activeTurn);
     let response: TurnStartResponse;
+    let dispatchedInput: ReadonlyArray<Record<string, unknown>> | undefined;
     try {
       const params = {
         threadId,
@@ -5613,12 +5633,29 @@ export class CodexAppServer implements CodexRuntime {
       options.preparationSignal?.throwIfAborted();
       await options.onBeforeNativeDispatch?.(threadId);
       options.preparationSignal?.throwIfAborted();
+      dispatchedInput = params.input;
       response = (await this.request(
         "turn/start",
         params,
       )) as TurnStartResponse;
     } catch (error) {
+      const deferred =
+        dispatchedInput &&
+        error instanceof CodexNativeRpcError &&
+        error.requestMethod === "turn/start" &&
+        isNativePermissionDeferred("turn/start", {
+          error: error.nativeError,
+        }) &&
+        ![...this.#activeTurns.values()].includes(activeTurn);
       this.releaseActiveTurn(activeTurn);
+      if (deferred && options.onNativeDeferred) {
+        await options.onNativeDeferred({
+          threadId,
+          nativeInput: dispatchedInput!,
+          frame: { error: error.nativeError },
+        });
+        throw new NativePermissionDeferredError();
+      }
       throw error;
     }
     this.bindTurnStartResponse(response.turn.id, activeTurn);
@@ -6554,6 +6591,28 @@ export class CodexAppServer implements CodexRuntime {
     return this.#threadSettings.read(threadId);
   }
 
+  /** Called after correlated native application and durable server policy publication. */
+  confirmManagedPermissionProfile(
+    threadId: string,
+    generation: string,
+    profileId: string,
+  ): void {
+    if (this.transportGeneration !== generation)
+      throw new Error(
+        "The applied permission profile belongs to a replaced runtime.",
+      );
+    this.#managedSecurityOwners.add(threadId);
+    this.#confirmedManagedPermissions.set(threadId, { generation, profileId });
+    this.#permissionProfilesByThread.set(threadId, profileId);
+  }
+
+  confirmedManagedPermissionProfile(threadId: string): string | undefined {
+    const applied = this.#confirmedManagedPermissions.get(threadId);
+    return applied?.generation === this.transportGeneration
+      ? applied.profileId
+      : undefined;
+  }
+
   /** Explicit controller mutation. Never starts/resumes a runtime or infers settings
    * from a turn's bootstrap model. Admission and application remain separate. */
   async updateNativeThreadSettings(options: {
@@ -6562,6 +6621,7 @@ export class CodexAppServer implements CodexRuntime {
     settingsBindingId: string;
     nativeEpoch: string;
     patch: Record<string, unknown>;
+    permissionTransition?: PermissionTransition;
   }): Promise<NativeSettingsRequest> {
     const dispatcher = this.#managedNativeCommandDispatchers.get(
       options.threadId,
@@ -6587,6 +6647,7 @@ export class CodexAppServer implements CodexRuntime {
       },
       options.settingsBindingId,
       true,
+      options.permissionTransition,
     );
   }
 
@@ -6597,6 +6658,7 @@ export class CodexAppServer implements CodexRuntime {
     assertOwner: () => void = () => {},
     settingsBindingId?: string,
     refreshModelCatalog = false,
+    permissionTransition?: PermissionTransition,
   ): Promise<NativeSettingsRequest> {
     // Identity fields must never be supplied inside the settings patch.
     if (Object.hasOwn(patch, "threadId") || Object.hasOwn(patch, "operationId"))
@@ -6624,6 +6686,7 @@ export class CodexAppServer implements CodexRuntime {
       const acknowledgment = await this.dispatchGuiNativeCommand(threadId, {
         operationId,
         ...(settingsBindingId === undefined ? {} : { settingsBindingId }),
+        ...(permissionTransition ? { permissionTransition } : {}),
         method: "thread/settings/update",
         params,
         dispatch: async (forward) => {
@@ -6651,6 +6714,29 @@ export class CodexAppServer implements CodexRuntime {
       );
       throw error;
     }
+  }
+
+  /** Read the durable permission journal without starting or replaying input. */
+  async readNativePermissionOperation(
+    threadId: string,
+    operationId: string,
+  ): Promise<unknown> {
+    const generation = this.transportGeneration;
+    const preparationVersion =
+      this.#threadPreparationVersions.get(threadId) ?? 0;
+    const value = await this.request("thread/settings/operation/read", {
+      threadId,
+      operationId,
+    });
+    if (
+      this.transportGeneration !== generation ||
+      (this.#threadPreparationVersions.get(threadId) ?? 0) !==
+        preparationVersion
+    )
+      throw new Error(
+        "Native permission journal read belongs to a replaced thread or transport.",
+      );
+    return value;
   }
 
   /** Read Core's atomic settings/version snapshot, without loading or configuring it. */
@@ -7357,6 +7443,8 @@ export class CodexAppServer implements CodexRuntime {
     this.#managedThreadOverlays.clear();
     this.#readyMcpConfigFingerprintsByThread.clear();
     this.#permissionProfilesByThread.clear();
+    this.#confirmedManagedPermissions.clear();
+    this.#managedSecurityOwners.clear();
     this.#externalImportStatuses.clear();
     this.#externalTurnBaselines.clear();
     this.#externalThreadChanges.clear();
@@ -7594,6 +7682,8 @@ export class CodexAppServer implements CodexRuntime {
     this.#managedThreadOverlays.clear();
     this.#readyMcpConfigFingerprintsByThread.clear();
     this.#permissionProfilesByThread.clear();
+    this.#confirmedManagedPermissions.clear();
+    this.#managedSecurityOwners.clear();
     this.#threadSettings.clear();
     this.#externalImportStatuses.clear();
     this.#externalTurnBaselines.clear();
@@ -7765,6 +7855,11 @@ export class CodexAppServer implements CodexRuntime {
   ): Promise<string | null> {
     // Resolve omission against this transport's actual acknowledged ownership,
     // before an owned unsubscribe can emit thread/closed and clear its caches.
+    const confirmedPermission = options.threadId
+      ? this.confirmedManagedPermissionProfile(options.threadId)
+      : undefined;
+    if (confirmedPermission)
+      options = { ...options, permissionProfileId: confirmedPermission };
     const retained = options.threadId
       ? this.#managedThreadOverlays.get(options.threadId)
       : undefined;
@@ -7787,6 +7882,16 @@ export class CodexAppServer implements CodexRuntime {
           options.canonicalHistory ?? retained.options.canonicalHistory,
       };
     }
+    // Existing managed threads own their native security selection. Preparation
+    // must inherit it even before an applied event reaches durable publication.
+    // A cached profile read cannot close that window; only omission does.
+    const inheritManagedSecurity = Boolean(
+      options.resultMode?.kind !== "structured" &&
+      options.threadId &&
+      (options.managedConfiguration ||
+        confirmedPermission ||
+        this.#managedSecurityOwners.has(options.threadId)),
+    );
     let preparingThreadId = options.threadId;
     let threadVersion = preparingThreadId
       ? (this.#threadPreparationVersions.get(preparingThreadId) ?? 0)
@@ -7894,7 +7999,8 @@ export class CodexAppServer implements CodexRuntime {
     if (
       threadId &&
       (!this.#loadedThreads.has(threadId) ||
-        this.#permissionProfilesByThread.get(threadId) !== permissionKey ||
+        (!inheritManagedSecurity &&
+          this.#permissionProfilesByThread.get(threadId) !== permissionKey) ||
         this.#mcpConfigFingerprintsByThread.get(threadId) !==
           threadConfigFingerprint)
     ) {
@@ -7923,6 +8029,7 @@ export class CodexAppServer implements CodexRuntime {
           this.#managedConfigApplications.delete(threadId);
           this.#readyMcpConfigFingerprintsByThread.delete(threadId);
           this.#permissionProfilesByThread.delete(threadId);
+          this.#confirmedManagedPermissions.delete(threadId);
           replacingUnsubscribedThread = true;
           await request("thread/unsubscribe", { threadId });
         }
@@ -7940,11 +8047,13 @@ export class CodexAppServer implements CodexRuntime {
           ...codexReasoningEffortParams(options.model),
           modelProvider,
           ...codexWorkspaceContext(options.cwd),
-          ...codexChatThreadSecurityParams(
-            options.permissionProfileId,
-            this.permissionProfilesSupported(),
-            structuredReadOnly,
-          ),
+          ...(inheritManagedSecurity
+            ? {}
+            : codexChatThreadSecurityParams(
+                options.permissionProfileId,
+                this.permissionProfilesSupported(),
+                structuredReadOnly,
+              )),
           ...cantripChatThreadParams(
             hasGitMetadata,
             options.executionProfile ?? "ide",
@@ -7956,7 +8065,8 @@ export class CodexAppServer implements CodexRuntime {
         if (threadId !== requestedThreadId)
           throw new Error("Codex resumed a different thread than requested.");
         this.#loadedThreads.add(threadId);
-        this.#permissionProfilesByThread.set(threadId, permissionKey);
+        if (!inheritManagedSecurity)
+          this.#permissionProfilesByThread.set(threadId, permissionKey);
         this.#mcpConfigFingerprintsByThread.set(
           threadId,
           threadConfigFingerprint,
@@ -8090,6 +8200,7 @@ export class CodexAppServer implements CodexRuntime {
         "Codex did not acknowledge the managed configuration for the requested thread.",
       );
     }
+    this.#managedSecurityOwners.add(threadId);
     this.#managedThreadOverlays.set(threadId, {
       epoch: this.#preparationEpoch,
       options: structuredClone({
@@ -9067,6 +9178,7 @@ export class CodexAppServer implements CodexRuntime {
     this.#managedThreadOverlays.delete(threadId);
     this.#readyMcpConfigFingerprintsByThread.delete(threadId);
     this.#permissionProfilesByThread.delete(threadId);
+    this.#confirmedManagedPermissions.delete(threadId);
     this.#threadSettings.forget(threadId);
     this.#goals.delete(threadId);
   }
@@ -9367,6 +9479,8 @@ export class CodexAppServer implements CodexRuntime {
       this.#managedThreadOverlays.clear();
       this.#readyMcpConfigFingerprintsByThread.clear();
       this.#permissionProfilesByThread.clear();
+      this.#confirmedManagedPermissions.clear();
+      this.#managedSecurityOwners.clear();
       this.#threadSettings.clear();
       this.#externalImportStatuses.clear();
       this.#externalTurnBaselines.clear();
@@ -9422,6 +9536,8 @@ export class CodexAppServer implements CodexRuntime {
       this.#managedThreadOverlays.clear();
       this.#readyMcpConfigFingerprintsByThread.clear();
       this.#permissionProfilesByThread.clear();
+      this.#confirmedManagedPermissions.clear();
+      this.#managedSecurityOwners.clear();
       this.#externalImportStatuses.clear();
       this.#externalTurnBaselines.clear();
       this.#externalThreadChanges.clear();

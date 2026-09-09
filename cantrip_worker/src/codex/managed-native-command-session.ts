@@ -1,4 +1,15 @@
 import { ManagedNativeSettings } from "./managed-native-settings.js";
+import {
+  isNativePermissionDeferred,
+  NativePermissionDeferredError,
+  NativePermissionRetentionError,
+} from "./native-permission-deferred.js";
+import {
+  applyNativePermissionTransition,
+  hasNativePermissionUpdate,
+  requestedNativePermissionProfile,
+  nativePermissionPatch,
+} from "./managed-native-permissions.js";
 import type { NativeSettingsDelivery } from "../native-settings-delivery.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
@@ -17,10 +28,14 @@ import type {
   NativeCommandAdmission,
   NativeCommandReceipt,
   NativeCommandSession,
+  NativeCommandSettlement,
+  PermissionTransition,
+  NativeThreadSettings,
 } from "@cantrip/protocol";
 import type { WorkerEncryptionService } from "../worker-encryption.js";
 import { NativeCommandClient } from "../native-command-client.js";
 import { protectNativeCommandContent } from "../native-command-content.js";
+import { CantripServerRequestError } from "../cli-client.js";
 import type {
   AdmittedNativeExecution,
   PrepareAdmittedNativeExecutionOptions,
@@ -42,6 +57,11 @@ interface Execution {
   session: NativeCommandSession;
   handle?: AdmittedNativeExecution;
   nativeTurnId?: string;
+  nativeDeferred?: boolean;
+  retainedDeferred?: Pick<
+    NonNullable<NativeCommandSettlement["deferred"]>,
+    "retainedPrompt" | "attachments"
+  >;
   goalEpoch?: string;
   nativeDecline?: ManagedExecutionDeclined;
   expectedTurnId?: string;
@@ -77,7 +97,27 @@ export interface ManagedNativeCommandSessionOptions {
     | "observeNativeHistory"
   >;
   client: NativeCommandClient;
-  settingsDelivery?: Pick<NativeSettingsDelivery, "track" | "record">;
+  settingsDelivery?: Pick<NativeSettingsDelivery, "track" | "record"> &
+    Partial<
+      Pick<
+        NativeSettingsDelivery,
+        "subscribePublished" | "permissionRegistrations"
+      >
+    >;
+  onPermissionApplied?(
+    transition: PermissionTransition,
+    settings: NativeThreadSettings,
+  ): Promise<void> | void;
+  onPermissionRejected?(): Promise<void> | void;
+  /** Canonical late settlement made deferred input eligible; refresh native
+   * permission evidence before the existing publication callback wakes it. */
+  onDeferredReady?(): void;
+  /** Capture and deliver the exact encrypted deferral independently of runtime lifetime. */
+  settleDeferred?: NativeCommandClient["settle"];
+  /** Encrypt the exact unconsumed direct terminal input for the canonical queue. */
+  retainDeferredInput?(
+    operation: ManagedNativeOperation,
+  ): Promise<NonNullable<Execution["retainedDeferred"]>>;
   encryption: Pick<
     WorkerEncryptionService,
     "ownerId" | "serverIdentity" | "componentKey"
@@ -133,8 +173,31 @@ export class ManagedNativeCommandSession {
           runtime: options.runtime,
           delivery: options.settingsDelivery,
           onError: options.onError,
+          onPermissionApplied: async (scope, transition, settings) => {
+            if (options.runtime.transportGeneration !== scope.runtimeGeneration)
+              return;
+            options.policy.permissionProfileId = transition.effectiveId;
+            options.policy.security = {
+              ...nativePermissionPatch(transition.effectiveId),
+              sandboxPolicy: settings.sandboxPolicy,
+            };
+            await options.onPermissionApplied?.(transition, settings);
+          },
+          onPermissionRejected: async (scope) => {
+            if (options.runtime.transportGeneration !== scope.runtimeGeneration)
+              return;
+            await options.onPermissionRejected?.();
+          },
         })
       : null;
+  }
+
+  async recoverPermissions(
+    input: Parameters<ManagedNativeSettings["recoverPermissions"]>[0],
+  ): Promise<void> {
+    if (!this.settings)
+      throw new Error("Managed permission recovery is unavailable.");
+    await this.settings.recoverPermissions(input);
   }
 
   private createExecution(
@@ -258,7 +321,7 @@ export class ManagedNativeCommandSession {
             terminal ? "terminal-result" : "result",
             execution.session.chatId,
           );
-    await this.options.client.settle({
+    const settlementInput: Omit<NativeCommandSettlement, "workerId"> = {
       operationId: execution.receipt.operationId,
       operationGeneration: execution.receipt.operationGeneration,
       status,
@@ -272,12 +335,28 @@ export class ManagedNativeCommandSession {
             },
           }
         : {}),
-      rejectionCode: status === "rejected" ? "native-request-rejected" : null,
+      rejectionCode:
+        status === "rejected"
+          ? execution.nativeDeferred
+            ? "native-settings-pending"
+            : "native-request-rejected"
+          : null,
       executionComplete: complete,
       ...(!terminal && execution.goalEpoch
         ? { goalEpoch: execution.goalEpoch }
         : {}),
       ...(complete ? { executionStatus } : {}),
+      ...(execution.nativeDeferred && complete && !terminal
+        ? {
+            deferred: {
+              reason: "pendingSettings" as const,
+              inputConsumed: false as const,
+              threadId: execution.session.threadId!,
+              runtimeGeneration: execution.session.runtimeGeneration!,
+              ...execution.retainedDeferred,
+            },
+          }
+        : {}),
       ...(terminal &&
       execution.nativeDecline &&
       execution.session.runtimeGeneration
@@ -299,7 +378,22 @@ export class ManagedNativeCommandSession {
               },
             }
           : {}),
-    });
+    };
+    const settlement = await (settlementInput.deferred &&
+    this.options.settleDeferred
+      ? this.options.settleDeferred(settlementInput)
+      : this.options.client.settle(settlementInput));
+    if (
+      execution.nativeDeferred &&
+      complete &&
+      settlement?.receipt?.resumeQueue
+    ) {
+      try {
+        this.options.onDeferredReady?.();
+      } catch (error) {
+        this.options.onError(error, execution.receipt.operationId);
+      }
+    }
   }
 
   /** Joins an accepted GUI parent for mediated preparation without dispatching a model turn. */
@@ -484,6 +578,38 @@ export class ManagedNativeCommandSession {
     await this.persistResult(execution, result, "applied");
   }
 
+  /** A rejected physical attempt can retain the logical GUI message only when
+   * native explicitly proves that no input was consumed. Never infer from a
+   * timeout, a status label, or the absence of a turn-start notification. */
+  async guiDeferred(
+    receipt: NativeCommandReceipt,
+    session: NativeCommandSession,
+    frame: unknown,
+    retained: Pick<
+      NonNullable<NativeCommandSettlement["deferred"]>,
+      "retainedPrompt" | "attachments"
+    >,
+  ): Promise<void> {
+    const execution = this.active;
+    if (
+      !execution ||
+      execution.receipt.operationId !== receipt.operationId ||
+      execution.receipt.operationGeneration !== receipt.operationGeneration ||
+      execution.session.threadId !== session.threadId ||
+      execution.session.runtimeGeneration !== session.runtimeGeneration ||
+      execution.nativeTurnId ||
+      !session.threadId ||
+      !session.runtimeGeneration ||
+      !isNativePermissionDeferred(receipt.method, frame)
+    )
+      throw new Error(
+        "The GUI input has no matching native deferral evidence.",
+      );
+    execution.nativeDeferred = true;
+    execution.retainedDeferred = retained;
+    await this.persistResult(execution, frame, "rejected", true, "idle");
+  }
+
   releaseGui(operationGeneration: string) {
     if (this.active?.receipt.operationGeneration === operationGeneration)
       this.clearExecution(this.active);
@@ -597,6 +723,9 @@ export class ManagedNativeCommandSession {
       ...(command.settingsBindingId === undefined
         ? {}
         : { settingsBindingId: command.settingsBindingId }),
+      ...(command.permissionTransition
+        ? { permissionTransition: command.permissionTransition }
+        : {}),
       ...(command.queueClaim ? { queueClaim: command.queueClaim } : {}),
       origin: "gui",
       identity: {
@@ -677,6 +806,51 @@ export class ManagedNativeCommandSession {
       connectionId: operation.connectionId,
     };
     this.assertTransport(session);
+    if (
+      operation.method === "thread/settings/update" &&
+      object(operation.frame.params) &&
+      hasNativePermissionUpdate(operation.frame.params)
+    ) {
+      if (!operation.permissionTransition) {
+        const selectedId = requestedNativePermissionProfile(
+          operation.frame.params,
+          this.options.policy.security,
+        );
+        const resolved = await this.options.client
+          .resolvePermissionTransition(session, selectedId)
+          .catch(async (error) => {
+            if (
+              !(error instanceof CantripServerRequestError) ||
+              error.code !== "permission-binding-required"
+            )
+              throw error;
+            // Establish the missing source from an actual native settings read.
+            // No request has been admitted or dispatched, so keep its identity.
+            await this.options.client.refreshSettings(session.chatId);
+            this.assertTransport(session);
+            return this.options.client.resolvePermissionTransition(
+              session,
+              selectedId,
+            );
+          });
+        this.assertTransport(session);
+        operation = {
+          ...operation,
+          permissionTransition: resolved.permissionTransition,
+          ...(resolved.bindingId
+            ? { settingsBindingId: resolved.bindingId }
+            : {}),
+        };
+      }
+      forward = {
+        method: operation.method,
+        params: applyNativePermissionTransition(
+          operation.frame.params as Record<string, unknown>,
+          operation.permissionTransition!,
+        ),
+      };
+      operation = { ...operation, frame: { ...operation.frame, ...forward } };
+    }
     const intent = await managedNativeCommandIntent(
       operation,
       this.options.policy,
@@ -774,6 +948,9 @@ export class ManagedNativeCommandSession {
       try {
         await receiptObserved;
         await acceptance;
+        // The exact rejected RPC already settled this unconsumed attempt idle.
+        // Releasing its local handle is not a failed model turn or user message.
+        if (execution.nativeDeferred) return;
         if (result) {
           execution.nativeTurnId ??= result.turnId;
           await publication?.complete(result);
@@ -898,14 +1075,30 @@ export class ManagedNativeCommandSession {
           this.assertTransport(session);
           execution.handle?.assertCurrent();
           if (intent.nativeSettingsOperationId && this.settings) {
-            await this.settings.track({
-              chatId: session.chatId,
-              operationId: operation.operationId,
-              operationGeneration: grant.receipt.operationGeneration,
-              threadId: session.threadId!,
-              runtimeGeneration: session.runtimeGeneration!,
-              nativeOperationId: intent.nativeSettingsOperationId,
-            });
+            await this.settings.track(
+              {
+                chatId: session.chatId,
+                operationId: operation.operationId,
+                operationGeneration: grant.receipt.operationGeneration,
+                threadId: session.threadId!,
+                runtimeGeneration: session.runtimeGeneration!,
+                nativeOperationId: intent.nativeSettingsOperationId,
+              },
+              intent.permissionTransition,
+              intent.permissionTransition
+                ? {
+                    chatId: session.chatId,
+                    workerId: this.options.identity.workerId,
+                    threadId: session.threadId!,
+                    contextKind: session.contextKind,
+                    projectId: session.projectId,
+                    placementId: session.placementId,
+                    modelRouteId: session.modelRouteId,
+                    providerAccountId: session.providerAccountId,
+                    runtimeGeneration: session.runtimeGeneration!,
+                  }
+                : undefined,
+            );
             assertRootCurrent();
             this.assertTransport(session);
             execution.handle?.assertCurrent();
@@ -933,6 +1126,11 @@ export class ManagedNativeCommandSession {
             }
           }
           const rejected = frame !== null && "error" in frame;
+          const deferred =
+            start &&
+            !execution.nativeTurnId &&
+            isNativePermissionDeferred(operation.method, frame);
+          if (deferred) execution.nativeDeferred = true;
           nativeAcceptance = rejected
             ? "rejected"
             : frame === null || operation.origin === "autonomous"
@@ -940,7 +1138,11 @@ export class ManagedNativeCommandSession {
               : "applied";
           try {
             if (rejected)
-              execution.handle?.fail(new Error("Native request was rejected."));
+              execution.handle?.fail(
+                deferred
+                  ? new NativePermissionDeferredError()
+                  : new Error("Native request was rejected."),
+              );
             if (frame && !rejected && object(frame.result)) {
               if (
                 operation.method === "thread/goal/set" &&
@@ -957,14 +1159,61 @@ export class ManagedNativeCommandSession {
               )
                 execution.nativeTurnId = frame.result.turn.id;
             }
+            if (deferred) {
+              await releasePublication();
+              if (!operation.queueClaim && operation.origin === "terminal") {
+                if (!this.options.retainDeferredInput)
+                  throw new NativePermissionRetentionError(
+                    "notRetained",
+                    intent.nativeClientUserMessageId,
+                    new Error(
+                      "Deferred native input retention is unavailable.",
+                    ),
+                  );
+                try {
+                  execution.retainedDeferred =
+                    await this.options.retainDeferredInput(operation);
+                } catch (error) {
+                  throw new NativePermissionRetentionError(
+                    "notRetained",
+                    intent.nativeClientUserMessageId,
+                    error,
+                  );
+                }
+              }
+            }
             acceptance = this.persistResult(
               execution,
               frame,
               nativeAcceptance,
-              start && !execution.handle,
-              rejected ? "failed" : "idle",
+              deferred || (start && !execution.handle),
+              rejected && !deferred ? "failed" : "idle",
             );
-            await acceptance;
+            try {
+              await acceptance;
+            } catch (error) {
+              if (deferred)
+                throw new NativePermissionRetentionError(
+                  "uncertain",
+                  intent.nativeClientUserMessageId ??
+                    execution.retainedDeferred?.retainedPrompt
+                      ?.nativeClientUserMessageId ??
+                    undefined,
+                  error,
+                );
+              throw error;
+            }
+            // This flag describes durable canonical ownership, not merely a
+            // native no-consumption receipt. Never expose it before settlement.
+            if (
+              deferred &&
+              frame &&
+              object(frame.error) &&
+              object(frame.error.data) &&
+              (operation.queueClaim ||
+                execution.retainedDeferred?.retainedPrompt)
+            )
+              frame.error.data = { ...frame.error.data, queueRetained: true };
             if (
               frame &&
               !rejected &&

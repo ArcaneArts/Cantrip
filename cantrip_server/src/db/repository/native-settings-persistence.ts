@@ -362,6 +362,13 @@ export async function admitNativeSettingsState(
         operationId: command.operationId,
         operationGeneration: command.operationGeneration,
         origin: command.origin,
+        ...(nativeCommandIntentSchema.parse(command.intent).permissionTransition
+          ? {
+              permissionTransition: nativeCommandIntentSchema.parse(
+                command.intent,
+              ).permissionTransition,
+            }
+          : {}),
         source: {
           workerId: command.workerId,
           threadId: source.threadId,

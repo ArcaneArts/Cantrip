@@ -1,5 +1,8 @@
+import { NativeCommandError } from "../../db/repository/native-command-errors.js";
+import { resolvePermissionTransition } from "../../db/repository/native-permission-transitions.js";
 import {
   chatModelUpdateSchema,
+  nativeSettingsUpdateReceiptSchema,
   chatPermissionProfileStateSchema,
   chatPermissionProfileUpdateSchema,
   chatReasoningStateSchema,
@@ -45,6 +48,7 @@ export interface ChatRuntimeConfigurationRouteDependencies {
     | "getModelReasoningDefault"
     | "setChatModelConfiguration"
     | "setChatPermissionProfile"
+    | "nativeCommands"
   >;
   resolveModelId: (
     context: ChatExecutionContext,
@@ -79,7 +83,33 @@ export function installChatRuntimeConfigurationRoutes(
   }: ChatRuntimeConfigurationRouteDependencies,
 ): void {
   const permissionProfileState = async (context: ChatExecutionContext) => {
-    const selection = effectivePermissionProfile(context);
+    const nativeState = await repository.nativeCommands.settingsState(
+      applicationOwnerId(),
+      context.chatId,
+    );
+    const pendingPermission = nativeState?.pending
+      .filter((entry) => entry.intent.permissionTransition)
+      .pop();
+    const desired = nativeState?.desired?.permissionTransition
+      ? nativeState.desired
+      : pendingPermission?.intent;
+    const permissionStatus =
+      desired === nativeState?.desired
+        ? nativeState?.desiredStatus
+        : pendingPermission?.status;
+    const selection = {
+      ...effectivePermissionProfile(context),
+      policyRevision: nativeState?.permissionPolicy?.revision ?? "0",
+      confirmed: context.nativePermissionPolicyConfirmed === true,
+      transition:
+        desired?.permissionTransition && permissionStatus
+          ? {
+              ...desired.permissionTransition,
+              operationId: desired.operationId,
+              status: permissionStatus,
+            }
+          : null,
+    };
     if (!bridge.isConnected(context.workerId)) {
       return chatPermissionProfileStateSchema.parse({
         ...selection,
@@ -327,6 +357,58 @@ export function installChatRuntimeConfigurationRoutes(
       if (!context) {
         return reply.code(404).send({ error: "Chat source not found." });
       }
+      if (context.threadId) {
+        if (
+          !input.data.bindingId ||
+          !input.data.operationId ||
+          input.data.expectedRevision === undefined
+        )
+          return reply.code(400).send({
+            code: "permission-source-required",
+            error:
+              "A bound permission change requires its source, operation identity and policy revision.",
+          });
+        try {
+          const binding =
+            await repository.nativeCommands.resolveSettingsWriteBinding(
+              applicationOwnerId(),
+              context.chatId,
+              input.data.bindingId,
+            );
+          const receipt = nativeSettingsUpdateReceiptSchema.parse(
+            await bridge.request(binding.workerId, {
+              type: "chat.permissions.update",
+              operationId: input.data.operationId,
+              binding,
+              permissionTransition: resolvePermissionTransition(
+                context,
+                input.data.id,
+                input.data.expectedRevision,
+              ),
+            }),
+          );
+          if (receipt.operationId !== input.data.operationId)
+            throw new Error(
+              "Permission response belongs to another operation.",
+            );
+          return reply.send(receipt);
+        } catch (error) {
+          if (error instanceof NativeCommandError)
+            return reply
+              .code(error.statusCode)
+              .send({ code: error.code, error: error.message });
+          throw error;
+        }
+      }
+      if (
+        input.data.bindingId ||
+        input.data.operationId ||
+        input.data.expectedRevision !== undefined
+      )
+        return reply.code(409).send({
+          code: "settings-binding-replaced",
+          error: "The selected native thread is no longer bound.",
+        });
       const capability = await permissionProfileState(context);
       const requestedId =
         input.data.id ??
@@ -349,11 +431,20 @@ export function installChatRuntimeConfigurationRoutes(
           .code(409)
           .send({ error: "That permission profile is not allowed here." });
       }
-      const updated = await repository.setChatPermissionProfile(
-        applicationOwnerId(),
-        context.chatId,
-        input.data.id,
-      );
+      let updated;
+      try {
+        updated = await repository.setChatPermissionProfile(
+          applicationOwnerId(),
+          context.chatId,
+          input.data.id,
+        );
+      } catch (error) {
+        if (error instanceof NativeCommandError)
+          return reply
+            .code(error.statusCode)
+            .send({ code: error.code, error: error.message });
+        throw error;
+      }
       if (!updated) {
         return reply.code(404).send({ error: "Chat source not found." });
       }

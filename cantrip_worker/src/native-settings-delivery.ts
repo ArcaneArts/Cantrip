@@ -4,7 +4,11 @@ import path from "node:path";
 import { z } from "zod";
 import {
   nativeSettingsEvidenceSchema,
+  nativeSettingsBindingSchema,
+  permissionTransitionSchema,
+  type NativeSettingsBinding,
   type NativeSettingsEvidence,
+  type NativePermissionPolicyClaim,
 } from "@cantrip/protocol";
 import { NativeCommandClient } from "./native-command-client.js";
 import { protectNativeCommandContent } from "./native-command-content.js";
@@ -27,8 +31,26 @@ const scopeSchema = z
     nativeOperationId: id,
   })
   .strict();
+export const nativePermissionRegistrationSourceSchema =
+  nativeSettingsBindingSchema.omit({ bindingId: true, nativeEpoch: true });
+export type NativePermissionRegistrationSource = z.infer<
+  typeof nativePermissionRegistrationSourceSchema
+>;
+const permissionRegistrationSchema = z
+  .object({
+    transition: permissionTransitionSchema,
+    source: nativePermissionRegistrationSourceSchema,
+  })
+  .strict();
+export type NativePermissionRegistration = {
+  scope: NativeSettingsEvidenceScope;
+} & z.infer<typeof permissionRegistrationSchema>;
 const registrationSchema = z
-  .object({ scope: scopeSchema, recovery: nativeSettingsEvidenceSchema })
+  .object({
+    scope: scopeSchema,
+    recovery: nativeSettingsEvidenceSchema,
+    permission: permissionRegistrationSchema.optional(),
+  })
   .strict();
 export type NativeSettingsEvidenceScope = z.infer<typeof scopeSchema>;
 type Service = Pick<
@@ -52,6 +74,16 @@ export class NativeSettingsDelivery {
   >();
   private readonly writes = new Set<Promise<unknown>>();
   private readonly abort = new AbortController();
+  private readonly published = new Set<
+    (event: NativeSettingsEvidence) => Promise<void> | void
+  >();
+
+  subscribePublished(
+    listener: (event: NativeSettingsEvidence) => Promise<void> | void,
+  ): () => void {
+    this.published.add(listener);
+    return () => this.published.delete(listener);
+  }
 
   constructor(
     private readonly options: {
@@ -83,8 +115,23 @@ export class NativeSettingsDelivery {
   }
 
   /** Register before dispatch. An interrupted worker can report uncertainty on recovery. */
-  async track(value: NativeSettingsEvidenceScope): Promise<void> {
+  async track(
+    value: NativeSettingsEvidenceScope,
+    permission?: z.infer<typeof permissionRegistrationSchema>,
+  ): Promise<void> {
     const scope = scopeSchema.parse(value);
+    if (permission) {
+      permission = permissionRegistrationSchema.parse(permission);
+      if (
+        permission.source.workerId !== this.options.workerId ||
+        permission.source.chatId !== scope.chatId ||
+        permission.source.threadId !== scope.threadId ||
+        permission.source.runtimeGeneration !== scope.runtimeGeneration
+      )
+        throw new Error(
+          "Permission registration source differs from its admitted operation.",
+        );
+    }
     const marker = this.marker(scope);
     this.live.add(marker);
     try {
@@ -97,21 +144,69 @@ export class NativeSettingsDelivery {
       await ensureHistoryDirectory(directory);
       const created = await writeImmutableHistoryFile(
         path.join(directory, marker),
-        JSON.stringify({ scope, recovery }),
+        JSON.stringify({
+          scope,
+          recovery,
+          ...(permission ? { permission } : {}),
+        }),
       );
-      if (
-        !created &&
-        JSON.stringify(
-          registrationSchema.parse(
-            await readHistoryJson(path.join(directory, marker)),
-          ).scope,
-        ) !== JSON.stringify(scope)
-      )
-        throw new Error("Native settings registration identity was reused.");
+      if (!created) {
+        const existing = registrationSchema.parse(
+          await readHistoryJson(path.join(directory, marker)),
+        );
+        if (
+          JSON.stringify({
+            scope: existing.scope,
+            permission: existing.permission,
+          }) !== JSON.stringify({ scope, permission })
+        )
+          throw new Error("Native settings registration identity was reused.");
+      }
     } catch (error) {
       this.live.delete(marker);
       throw error;
     }
+  }
+
+  async permissionRegistrations(
+    binding: NativeSettingsBinding,
+  ): Promise<NativePermissionRegistration[]> {
+    const directory = this.directory();
+    await ensureHistoryDirectory(directory);
+    const found: NativePermissionRegistration[] = [];
+    for (const name of await readdir(directory)) {
+      if (!/^[a-f0-9]{64}\.pending\.json$/u.test(name)) continue;
+      const registration = registrationSchema.parse(
+        await readHistoryJson(path.join(directory, name)),
+      );
+      if (this.marker(registration.scope) !== name)
+        throw new Error("Permission registration identity mismatch.");
+      const permission = registration.permission;
+      if (!permission) continue;
+      if (permission.source.workerId !== this.options.workerId)
+        throw new Error("Permission registration worker mismatch.");
+      if (binding.workerId !== this.options.workerId) continue;
+      if (
+        [
+          "chatId",
+          "threadId",
+          "contextKind",
+          "projectId",
+          "placementId",
+          "modelRouteId",
+          "providerAccountId",
+        ].every(
+          (key) =>
+            permission.source[
+              key as keyof NativePermissionRegistrationSource
+            ] === binding[key as keyof NativeSettingsBinding],
+        )
+      )
+        found.push({ scope: registration.scope, ...permission });
+    }
+    if (this.directory() !== directory)
+      throw new Error("Permission recovery ownership changed during read.");
+    return found;
   }
 
   record(
@@ -119,8 +214,17 @@ export class NativeSettingsDelivery {
     kind: Kind,
     submissionId: string | null,
     content: unknown,
+    permissionPolicy?: NativePermissionPolicyClaim,
+    recoveryBindingId?: string,
   ): Promise<void> {
-    const write = this.capture(scope, kind, submissionId, content);
+    const write = this.capture(
+      scope,
+      kind,
+      submissionId,
+      content,
+      permissionPolicy,
+      recoveryBindingId,
+    );
     this.writes.add(write);
     void write.finally(() => this.writes.delete(write)).catch(() => {});
     return write;
@@ -131,12 +235,16 @@ export class NativeSettingsDelivery {
     kind: Kind,
     submissionId: string | null,
     content: unknown,
+    permissionPolicy?: NativePermissionPolicyClaim,
+    recoveryBindingId?: string,
   ): Promise<void> {
     const { directory, event } = await this.prepare(
       scope,
       kind,
       submissionId,
       content,
+      permissionPolicy,
+      recoveryBindingId,
     );
     const eventId = event.eventId;
     // Keep the exact ciphertext/event identity if local publication fails.
@@ -144,8 +252,26 @@ export class NativeSettingsDelivery {
     try {
       await this.persist(event, directory);
       if (kind === "applied" || kind === "rejected") {
-        await rm(path.join(directory, this.marker(scope)), { force: true });
-        await flushHistoryDirectory(directory);
+        const filename = path.join(directory, this.marker(scope));
+        let retainedPermission = false;
+        try {
+          retainedPermission = Boolean(
+            registrationSchema.parse(await readHistoryJson(filename))
+              .permission,
+          );
+        } catch (error) {
+          if (!(
+            error &&
+            typeof error === "object" &&
+            "code" in error &&
+            error.code === "ENOENT"
+          ))
+            throw error;
+        }
+        if (!retainedPermission) {
+          await rm(filename, { force: true });
+          await flushHistoryDirectory(directory);
+        }
       }
     } finally {
       this.wake();
@@ -157,6 +283,8 @@ export class NativeSettingsDelivery {
     kind: Kind,
     submissionId: string | null,
     content: unknown,
+    permissionPolicy?: NativePermissionPolicyClaim,
+    recoveryBindingId?: string,
   ) {
     const directory = this.directory();
     const eventId = randomUUID();
@@ -168,7 +296,14 @@ export class NativeSettingsDelivery {
         direction: "settings-evidence",
         eventId,
       },
-      content: { scope, kind, submissionId, content },
+      content: {
+        scope,
+        kind,
+        submissionId,
+        content,
+        ...(permissionPolicy ? { permissionPolicy } : {}),
+        ...(recoveryBindingId ? { recoveryBindingId } : {}),
+      },
     });
     if (this.directory() !== directory)
       throw new Error(
@@ -183,6 +318,8 @@ export class NativeSettingsDelivery {
       workerId: this.options.workerId,
       resultDigest: protectedContent.digest,
       protectedResult: protectedContent.envelope,
+      ...(permissionPolicy ? { permissionPolicy } : {}),
+      ...(recoveryBindingId ? { recoveryBindingId } : {}),
     });
     return { directory, event };
   }
@@ -251,7 +388,7 @@ export class NativeSettingsDelivery {
       if (this.stopped) return false;
       if (/^[a-f0-9]{64}\.pending\.json$/u.test(name) && !this.live.has(name)) {
         try {
-          const { scope, recovery } = registrationSchema.parse(
+          const { scope, recovery, permission } = registrationSchema.parse(
             await readHistoryJson(path.join(directory, name)),
           );
           if (
@@ -265,6 +402,9 @@ export class NativeSettingsDelivery {
             recovery.kind !== "transport-lost"
           )
             throw new Error("Native settings registration scope mismatch.");
+          // Native permission operations have a durable native journal. Reconnect
+          // reads that journal; absence of a transport result is not a rejection.
+          if (permission) continue;
           // Reuse the presealed event even if recovery committed before a crash
           // or deleting the marker failed. A retry never mints another result.
           await this.persist(recovery, directory);
@@ -289,7 +429,19 @@ export class NativeSettingsDelivery {
           event.workerId !== this.options.workerId
         )
           throw new Error("Native settings event filename/scope mismatch.");
-        await this.options.client.settingsEvidence(event, this.abort.signal);
+        const result = await this.options.client.settingsEvidence(
+          event,
+          this.abort.signal,
+        );
+        if (
+          (event.kind === "applied" &&
+            event.permissionPolicy &&
+            result.application.status === "applied" &&
+            result.permissionPolicyPublished === true) ||
+          (event.kind === "rejected" &&
+            result.application.status === "rejected")
+        )
+          for (const listener of this.published) await listener(event);
         if (this.stopped) return false;
         await rm(path.join(directory, name));
         await flushHistoryDirectory(directory);

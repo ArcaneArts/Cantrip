@@ -1,3 +1,9 @@
+import { QueuedPromptRepository } from "./queued-prompts.js";
+import type { NativePermissionTransitionResolve } from "@cantrip/protocol";
+import {
+  assertPermissionTransition,
+  resolvePermissionTransition,
+} from "./native-permission-transitions.js";
 import { nativeCommandReceipt as receipt } from "./native-command-receipt.js";
 import { NativeSettingsEvidenceRepository } from "./native-settings-evidence.js";
 import type { NativeSettingsEvidence } from "@cantrip/protocol";
@@ -55,6 +61,7 @@ export interface NativeCommandAdmissionResult {
   replayed?: boolean;
 }
 const settingKeys = new Set([
+  "applyAt",
   "model",
   "effort",
   "summary",
@@ -266,6 +273,65 @@ export class NativeCommandRepository {
       chatId,
       expectedBindingId,
     );
+  }
+  async resolvePermissionTransition(
+    ownerId: string,
+    input: NativePermissionTransitionResolve,
+  ) {
+    return this.database.transaction(async (tx) => {
+      await this.lock(tx, ownerId, input.session.chatId);
+      const context = await this.context(tx, ownerId, input.session.chatId);
+      if (
+        !samePlacement(context, input.workerId, input.session) ||
+        !sameRuntimeRoute(context, input.session) ||
+        !input.session.threadId ||
+        context.threadId !== input.session.threadId ||
+        !input.session.runtimeGeneration
+      )
+        throw new NativeCommandError("stale-session");
+      const state = await new NativeSettingsStateRepository(tx).get(
+        ownerId,
+        input.session.chatId,
+      );
+      if (!state) throw new NativeCommandError("chat-not-found");
+      if (!state.binding)
+        throw new NativeCommandError(
+          "permission-binding-required",
+          "Read and publish the current native settings source before changing permissions.",
+        );
+      if (
+        state.binding &&
+        (state.binding.threadId !== input.session.threadId ||
+          state.binding.runtimeGeneration !== input.session.runtimeGeneration)
+      )
+        throw new NativeCommandError("settings-binding-replaced");
+      await assertNativeSettingsWriteBinding(
+        tx,
+        ownerId,
+        input.session.chatId,
+        state.binding.bindingId,
+        { workerId: input.workerId, session: input.session },
+      );
+      const [activation] = await tx
+        .select()
+        .from(schema.nativeCommandActivations)
+        .where(
+          eq(schema.nativeCommandActivations.chatId, input.session.chatId),
+        );
+      if (
+        activation?.active &&
+        activation.runtimeGeneration !== input.session.runtimeGeneration
+      )
+        throw new NativeCommandError("stale-activation");
+      return {
+        permissionTransition: resolvePermissionTransition(
+          context,
+          input.selectedId,
+          state.permissionPolicy?.revision ?? "0",
+        ),
+        bindingId: state.binding?.bindingId ?? null,
+      };
+    });
   }
   recordSettingsEvidence(ownerId: string, input: NativeSettingsEvidence) {
     return new NativeSettingsEvidenceRepository(this.database).record(
@@ -546,11 +612,20 @@ export class NativeCommandRepository {
           "permissionProfileId",
         ];
         if (
+          !input.intent.permissionTransition &&
           input.intent.settingKeys.some((key) => securityKeys.includes(key)) &&
           input.intent.permissionProfileId !==
             effectivePermissionProfile(context).effectiveId
         )
           throw new NativeCommandError("permission-profile-mismatch");
+        if (input.intent.permissionTransition) {
+          const state = await new NativeSettingsStateRepository(tx).get(
+            ownerId,
+            context.chatId,
+          );
+          if (!state) throw new NativeCommandError("chat-not-found");
+          assertPermissionTransition(context, state, input);
+        }
         if (
           (input.method.startsWith("fs/") ||
             input.intent.settingKeys.includes("cwd")) &&
@@ -1333,11 +1408,25 @@ export class NativeCommandRepository {
           input,
         );
       if (
+        !intent.permissionTransition &&
         intent.permissionProfileId &&
         intent.permissionProfileId !==
           effectivePermissionProfile(context).effectiveId
       )
         throw new NativeCommandError("permission-profile-mismatch");
+
+      if (intent.permissionTransition) {
+        const state = await new NativeSettingsStateRepository(tx).get(
+          ownerId,
+          row.chatId,
+        );
+        if (!state) throw new NativeCommandError("chat-not-found");
+        assertPermissionTransition(context, state, {
+          method: row.method,
+          operationId: row.operationId,
+          intent,
+        });
+      }
 
       if (row.activationGeneration) {
         const [activation] = await tx
@@ -1850,6 +1939,58 @@ export class NativeCommandRepository {
       ),
     );
   }
+  async hasDeferredLogicalGui(
+    ownerId: string,
+    workerId: string,
+    operationId: string,
+    operationGeneration: string,
+  ): Promise<boolean> {
+    return this.database.transaction(async (tx) => {
+      const root = await this.command(
+        tx,
+        ownerId,
+        workerId,
+        operationId,
+        operationGeneration,
+      );
+      if (root.origin !== "gui" || root.logicalOperationId !== root.operationId)
+        return false;
+      const [deferred] = await tx
+        .select({ id: schema.nativeCommands.operationId })
+        .from(schema.nativeCommands)
+        .where(
+          and(
+            eq(schema.nativeCommands.ownerId, ownerId),
+            eq(schema.nativeCommands.workerId, workerId),
+            eq(schema.nativeCommands.logicalOperationId, root.operationId),
+            eq(schema.nativeCommands.status, "rejected"),
+            eq(schema.nativeCommands.rejectionCode, "native-settings-pending"),
+            sql`${schema.nativeCommands.terminalEvidence}->>'kind' = 'deferred'`,
+            sql`${schema.nativeCommands.executionCompletedAt} IS NOT NULL`,
+          ),
+        )
+        .limit(1);
+      return Boolean(deferred);
+    });
+  }
+  private async deferredQueueReady(
+    tx: RepositoryTransaction,
+    ownerId: string,
+    chatId: string,
+  ) {
+    const state = await new NativeSettingsStateRepository(tx).get(
+      ownerId,
+      chatId,
+    );
+    return Boolean(
+      state &&
+      !state.pending.some((entry) => entry.intent.permissionTransition) &&
+      !(
+        state.desired?.permissionTransition &&
+        state.desiredStatus === "uncertain"
+      ),
+    );
+  }
   async settle(
     ownerId: string,
     input: NativeCommandSettlement,
@@ -1872,12 +2013,34 @@ export class NativeCommandRepository {
       );
       if (input.terminalResult && !input.executionComplete)
         throw new NativeCommandError("terminal-result-requires-completion");
-      const terminalEvidence = input.decline
-        ? { kind: "declined", ...input.decline }
-        : input.reconciliation
-          ? { kind: "terminal", ...input.reconciliation }
-          : null;
-      if (current.executionCompletedAt && input.executionComplete) {
+      const terminalEvidence = input.deferred
+        ? {
+            kind: "deferred",
+            reason: input.deferred.reason,
+            inputConsumed: false,
+            threadId: input.deferred.threadId,
+            runtimeGeneration: input.deferred.runtimeGeneration,
+          }
+        : input.decline
+          ? { kind: "declined", ...input.decline }
+          : input.reconciliation
+            ? { kind: "terminal", ...input.reconciliation }
+            : null;
+      // Retirement is administrative, not evidence that native consumed input.
+      // An exact captured no-input result may arrive after its worker restarted.
+      const missingNativeReceipt =
+        current.status === "uncertain" &&
+        current.rejectionCode === "missing-native-receipt" &&
+        !current.resultDigest &&
+        !current.protectedResult &&
+        !current.terminalResultDigest &&
+        !current.protectedTerminalResult &&
+        !current.terminalEvidence;
+      if (
+        current.executionCompletedAt &&
+        input.executionComplete &&
+        !(input.deferred && missingNativeReceipt)
+      ) {
         if (
           current.status !== input.status ||
           (input.resultDigest && current.resultDigest !== input.resultDigest) ||
@@ -1888,7 +2051,154 @@ export class NativeCommandRepository {
             !isDeepStrictEqual(current.terminalEvidence, terminalEvidence))
         )
           throw new NativeCommandError("receipt-conflict");
-        return receipt(current);
+        return {
+          ...receipt(current),
+          ...(input.deferred
+            ? {
+                resumeQueue: await this.deferredQueueReady(
+                  tx,
+                  ownerId,
+                  row.chatId,
+                ),
+              }
+            : {}),
+        };
+      }
+      if (input.deferred) {
+        const [activation] = await tx
+          .select()
+          .from(schema.nativeCommandActivations)
+          .where(eq(schema.nativeCommandActivations.chatId, row.chatId));
+        const identity = row.identity as NativeCommandSession;
+        if (
+          input.status !== "rejected" ||
+          !input.executionComplete ||
+          input.decline ||
+          input.reconciliation ||
+          input.terminalResult ||
+          (current.status !== "dispatched" && !missingNativeReceipt) ||
+          current.resultDigest ||
+          current.protectedResult ||
+          current.terminalResultDigest ||
+          current.protectedTerminalResult ||
+          current.terminalEvidence ||
+          !input.protectedResult ||
+          !input.resultDigest ||
+          row.method !== "turn/start" ||
+          row.kind !== "start" ||
+          (activation?.generation === row.activationGeneration &&
+            (activation.nativeTurnId ||
+              activation.runtimeGeneration !==
+                input.deferred.runtimeGeneration)) ||
+          identity.threadId !== input.deferred.threadId ||
+          identity.runtimeGeneration !== input.deferred.runtimeGeneration
+        )
+          throw new NativeCommandError("stale-native-deferral");
+        const [observedTurn] = await tx
+          .select({ operationId: schema.nativeCommandTurns.operationId })
+          .from(schema.nativeCommandTurns)
+          .where(eq(schema.nativeCommandTurns.operationId, row.operationId));
+        if (observedTurn) throw new NativeCommandError("stale-native-deferral");
+        const [claim] = await tx
+          .select()
+          .from(schema.managedQueueClaims)
+          .where(
+            and(
+              eq(schema.managedQueueClaims.operationId, row.operationId),
+              eq(
+                schema.managedQueueClaims.operationGeneration,
+                row.operationGeneration,
+              ),
+            ),
+          );
+        if (claim && (claim.status === "consumed" || claim.nativeTurnId))
+          throw new NativeCommandError("stale-native-deferral");
+        if (input.deferred.retainedPrompt) {
+          const prompt = input.deferred.retainedPrompt;
+          const [root] = await tx
+            .select()
+            .from(schema.nativeCommands)
+            .where(
+              and(
+                eq(
+                  schema.nativeCommands.operationId,
+                  row.logicalOperationId ?? row.operationId,
+                ),
+                eq(schema.nativeCommands.ownerId, ownerId),
+                eq(schema.nativeCommands.chatId, row.chatId),
+              ),
+            );
+          const originalIntent = row.intent as NativeCommandAdmission["intent"];
+          const guiIdentityMatches =
+            row.origin === "gui" &&
+            Boolean(root?.logicalClientMessageId) &&
+            prompt.pendingMessage.id === root!.logicalClientMessageId &&
+            (prompt.nativeClientUserMessageId ===
+              root!.logicalClientMessageId ||
+              prompt.nativeClientUserMessageId ===
+                `cantrip:${root!.logicalClientMessageId}`) &&
+            isDeepStrictEqual(
+              prompt.pendingMessage.protectedContent.envelope,
+              root!.protectedPayload,
+            );
+          const terminalIdentityMatches =
+            row.origin === "terminal" &&
+            Boolean(prompt.nativeClientUserMessageId) &&
+            (!originalIntent.nativeClientUserMessageId ||
+              prompt.nativeClientUserMessageId ===
+                originalIntent.nativeClientUserMessageId);
+          if (
+            claim ||
+            (!guiIdentityMatches && !terminalIdentityMatches) ||
+            prompt.pendingMessage.classification.role !== "user" ||
+            prompt.executionMethod !== "turn/start" ||
+            prompt.nativeAction !== "literal" ||
+            !prompt.protectedNativeInput ||
+            input.deferred.attachments!.some(
+              (item) => item.chatId !== row.chatId,
+            ) ||
+            !isDeepStrictEqual(
+              prompt.classification.attachmentIds,
+              input.deferred.attachments!.map((item) => item.id),
+            )
+          )
+            throw new NativeCommandError("invalid-deferred-prompt");
+          const retained = await new QueuedPromptRepository(
+            tx,
+          ).createEncryptedQueuedPrompt(
+            ownerId,
+            row.chatId,
+            prompt,
+            input.deferred.attachments!,
+          );
+          if (
+            !retained ||
+            retained.id !== prompt.id ||
+            !isDeepStrictEqual(
+              retained.pendingMessage,
+              prompt.pendingMessage,
+            ) ||
+            !isDeepStrictEqual(
+              retained.protectedContent,
+              prompt.protectedContent,
+            ) ||
+            !isDeepStrictEqual(
+              retained.protectedNativeInput,
+              prompt.protectedNativeInput,
+            )
+          )
+            throw new NativeCommandError("deferred-prompt-conflict");
+          await tx
+            .insert(schema.managedQueueStates)
+            .values({ chatId: row.chatId })
+            .onConflictDoNothing();
+          await queueStateChanged(tx, row.chatId);
+        } else if (
+          (row.origin === "gui" || row.origin === "terminal") &&
+          !claim
+        ) {
+          throw new NativeCommandError("deferred-prompt-required");
+        }
       }
       if (input.decline) {
         const [activation] = await tx
@@ -1964,7 +2274,7 @@ export class NativeCommandRepository {
           input.status === "applied" &&
           (input.reconciliation || goalEvidence)
         ) &&
-        !(input.status === "rejected" && input.decline)
+        !(input.status === "rejected" && (input.decline || input.deferred))
       )
         throw new NativeCommandError("native-evidence-required");
       if (current.status === "accepted" && input.status === "applied")
@@ -2005,7 +2315,9 @@ export class NativeCommandRepository {
             executionCompletedAt: input.executionComplete
               ? new Date()
               : current.executionCompletedAt,
-            rejectionCode: input.rejectionCode ?? current.rejectionCode,
+            rejectionCode: input.deferred
+              ? "native-settings-pending"
+              : (input.rejectionCode ?? current.rejectionCode),
             updatedAt: new Date(),
           })
           .where(eq(schema.nativeCommands.operationId, row.operationId))
@@ -2032,13 +2344,32 @@ export class NativeCommandRepository {
             .finishChatExecutionLane(
               row.chatId,
               row.executionLaneId,
-              input.executionStatus ??
-                (input.status === "applied" ? "idle" : "failed"),
+              input.deferred
+                ? "idle"
+                : (input.executionStatus ??
+                    (input.status === "applied" ? "idle" : "failed")),
             );
           await tx
             .update(schema.nativeCommandActivations)
             .set({ active: false })
             .where(eq(schema.nativeCommandActivations.chatId, row.chatId));
+        } else if (
+          input.deferred &&
+          activation?.generation === row.activationGeneration
+        ) {
+          // Administrative retirement can mark this attempt failed before its
+          // captured no-consumption receipt arrives. Correct only that idle
+          // attempt; never finish or relabel a replacement execution lane.
+          await tx
+            .update(schema.chats)
+            .set({ status: "idle", updatedAt: new Date() })
+            .where(
+              and(
+                eq(schema.chats.id, row.chatId),
+                eq(schema.chats.status, "failed"),
+                sql`NOT EXISTS (SELECT 1 FROM chat_execution_lanes l WHERE l.chat_id = ${row.chatId} AND l.state = 'active')`,
+              ),
+            );
         }
       }
       await settleQueueClaim(
@@ -2047,7 +2378,18 @@ export class NativeCommandRepository {
         input.reconciliation?.nativeTurnId ?? null,
         input.goalEpoch,
       );
-      return receipt(updated);
+      return {
+        ...receipt(updated),
+        ...(input.deferred
+          ? {
+              resumeQueue: await this.deferredQueueReady(
+                tx,
+                ownerId,
+                row.chatId,
+              ),
+            }
+          : {}),
+      };
     });
   }
 }

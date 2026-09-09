@@ -41,6 +41,7 @@ const claimLabels = {
   dispatched: "Awaiting confirmation",
   uncertain: "Start unconfirmed",
   rejected: "Start failed",
+  deferred: "Waiting for settings",
   consumed: "Started",
 };
 
@@ -117,11 +118,13 @@ function PromptRow({
         <span
           className="shrink-0 text-xs text-muted-foreground"
           title={
-            claim.status === "rejected"
-              ? "The previous start attempt was rejected. Review the prompt before retrying."
-              : claim.status === "uncertain"
-                ? "The start result is unconfirmed. The prompt is retained while its status is reconciled."
-                : "This prompt has an active start request."
+            claim.status === "deferred"
+              ? "The prompt was not submitted and is waiting for the settings change to finish."
+              : claim.status === "rejected"
+                ? "The previous start attempt was rejected. Review the prompt before retrying."
+                : claim.status === "uncertain"
+                  ? "The start result is unconfirmed. The prompt is retained while its status is reconciled."
+                  : "This prompt has an active start request."
           }
         >
           {claimLabels[claim.status]}

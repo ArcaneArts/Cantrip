@@ -3,6 +3,7 @@ import { lstat, readlink, realpath } from "node:fs/promises";
 import { isDeepStrictEqual } from "node:util";
 import type { NativeCommandAdmission } from "@cantrip/protocol";
 import type { ManagedNativeOperation } from "./managed-native-gateway.js";
+import { nativePermissionPatch } from "./managed-native-permissions.js";
 
 const object = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
@@ -66,6 +67,11 @@ export async function managedNativeCommandIntent(
           : null,
     permissionProfileId: context.permissionProfileId,
   };
+  if (
+    operation.method === "turn/start" &&
+    typeof params.clientUserMessageId === "string"
+  )
+    intent.nativeClientUserMessageId = params.clientUserMessageId;
   if (
     operation.method === "thread/goal/set" &&
     (params.status === "active" || params.status === "paused")
@@ -159,6 +165,27 @@ export async function managedNativeCommandIntent(
       context.security.permissionProfile ?? context.security.permissions,
     permissionProfileId: context.permissionProfileId,
   };
+  if (operation.permissionTransition) {
+    if (
+      operation.method !== "thread/settings/update" ||
+      params.applyAt !== "quiescent"
+    )
+      throw new Error(
+        "Managed permission transitions require a quiescent settings update.",
+      );
+    const selected = nativePermissionPatch(
+      operation.permissionTransition.effectiveId,
+    );
+    for (const [key, value] of Object.entries(selected)) {
+      if (!isDeepStrictEqual(params[key], value))
+        throw new Error(
+          "Native security does not match the resolved permission transition.",
+        );
+      security[key] = value;
+    }
+    // The server rechecks the canonical profile/revision before dispatch.
+    intent.permissionTransition = operation.permissionTransition;
+  }
   for (const key of [
     "approvalPolicy",
     "approvalsReviewer",
@@ -280,7 +307,8 @@ export async function managedNativeCommandIntent(
         key !== "threadId" &&
         key !== "turnId" &&
         !(
-          operation.method === "thread/settings/update" && key === "operationId"
+          operation.method === "thread/settings/update" &&
+          (key === "operationId" || key === "applyAt")
         ),
     );
   }

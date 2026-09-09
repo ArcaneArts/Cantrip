@@ -1,4 +1,5 @@
 import { updateProtectedNativeSettings } from "./native-settings-update.js";
+import { updateNativePermissions } from "./native-permission-update.js";
 import { NativeSettingsPublisher } from "./native-settings-publisher.js";
 import { readProtectedNativeSettings } from "./native-settings-read.js";
 import { createHash, randomUUID } from "node:crypto";
@@ -140,6 +141,7 @@ import {
 import { ManagedNativeCommandSession } from "./codex/managed-native-command-session.js";
 import { ManagedExecutionRunner } from "./codex/managed-execution-runner.js";
 import { NativeModelInventoryClient } from "./native-model-inventory-client.js";
+import { NativeDeferredSettlementDelivery } from "./native-deferred-settlement-delivery.js";
 import { NativeSettingsDelivery } from "./native-settings-delivery.js";
 import { NativeCommandClient } from "./native-command-client.js";
 import { NativeHistoryClient } from "./native-history-client.js";
@@ -2111,6 +2113,26 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       publisher: NativeSettingsPublisher;
     }
   >();
+  const nativeDeferredSettlements = new NativeDeferredSettlementDelivery({
+    directory: config.dataDirectory,
+    workerId: config.workerId,
+    service: workerEncryption,
+    client: nativeCommands,
+    onPublished: (result) => {
+      settingsPublishers.get(result.receipt.chatId)?.publisher.wake();
+    },
+    onError: () =>
+      workerLogger.event(
+        "warn",
+        "Deferred native input receipt remains pending",
+        {
+          event: "codex.input.deferred-settlement-pending",
+          subsystem: "codex",
+          operation: "persist-deferred-input",
+        },
+      ),
+  });
+  nativeDeferredSettlements.wake();
   const observeManagedSettings = (
     chatId: string,
     runtime: CodexAppServer,
@@ -2147,6 +2169,33 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       runtime,
       service: workerEncryption,
       client: nativeCommands,
+      onBinding: async (binding, signal) => {
+        await entry.adapter.recoverPermissions({
+          binding,
+          readOperation: (operationId) =>
+            runtime.readNativePermissionOperation(threadId, operationId),
+          readSettings: async () => {
+            const settings = (await runtime.readNativeThreadSettings(threadId))
+              .confirmed?.settings;
+            if (!settings)
+              throw new Error(
+                "Native permission recovery has no current settings snapshot.",
+              );
+            return settings;
+          },
+          assertCurrent: () => {
+            signal.throwIfAborted();
+            if (
+              managedCurrentRuntimes.get(chatId) !== runtime ||
+              runtime.transportGeneration !== entry.generation ||
+              settingsPublishers.get(chatId)?.publisher !== publisher
+            )
+              throw new Error(
+                "Native permission recovery belongs to a replaced managed session.",
+              );
+          },
+        });
+      },
       isCurrent: () =>
         managedCurrentRuntimes.get(chatId) === runtime &&
         runtime.transportGeneration === entry.generation &&
@@ -2426,6 +2475,56 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       runtime,
       client: nativeCommands,
       settingsDelivery: nativeSettingsDelivery,
+      settleDeferred: (input) => nativeDeferredSettlements.settle(input),
+      retainDeferredInput: (operation) => codec.retainTerminalPrompt(operation),
+      onDeferredReady: () =>
+        settingsPublishers.get(session.chatId)?.publisher.wake(),
+      onPermissionApplied: (transition) => {
+        if (runtime.transportGeneration !== generation)
+          throw new Error(
+            "The permission transition belongs to a replaced runtime.",
+          );
+        runtime.confirmManagedPermissionProfile(
+          options.threadId,
+          generation,
+          transition.effectiveId,
+        );
+        options.permissionProfileId = transition.effectiveId;
+        const runner = managedExecutionRunners
+          .get(runtime)
+          ?.get(session.chatId);
+        const configuration = runner
+          ? managedRunnerConfigurations.get(runner)
+          : undefined;
+        if (configuration)
+          configuration.permissionProfileId = transition.effectiveId;
+        void entry.resumeQueue().catch((error) =>
+          workerLogger.event(
+            "warn",
+            "Permission change applied; queued input remains pending",
+            {
+              event: "codex.permissions.queue-resume-pending",
+              subsystem: "codex",
+              chatId: session.chatId,
+              error: workerLogError(error),
+            },
+          ),
+        );
+      },
+      onPermissionRejected: () => {
+        void entry.resumeQueue().catch((error) =>
+          workerLogger.event(
+            "warn",
+            "Permission change rejected; queued input remains pending",
+            {
+              event: "codex.permissions.queue-resume-pending",
+              subsystem: "codex",
+              chatId: session.chatId,
+              error: workerLogError(error),
+            },
+          ),
+        );
+      },
       encryption: workerEncryption,
       beforeNativeDispatch: async (method, commandSession, intent) => {
         const runner = managedExecutionRunners
@@ -2724,7 +2823,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           queuedSubmissionId: eligible.id,
           expectedRevision: snapshot.revision,
           managed: {
-            operationId: `queue-resume:${session.chatId}:${eligible.id}:${eligible.revision}`,
+            // A native no-consumption settlement changes the canonical queue
+            // revision without editing the user's prompt. A fresh start must not
+            // resolve back to the previous physical attempt's immutable receipt.
+            operationId: `queue-resume:${session.chatId}:${eligible.id}:${eligible.revision}:${snapshot.revision}`,
           },
         },
         identity: { ...queueScope.identity },
@@ -2784,6 +2886,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       model: options.model,
       provider: options.provider,
       refresh(next) {
+        const confirmedPermission = runtime.confirmedManagedPermissionProfile(
+          options.threadId,
+        );
+        if (confirmedPermission)
+          next = { ...next, permissionProfileId: confirmedPermission };
         if (
           queueScope.refresh({
             ...queueScope.identity,
@@ -6141,6 +6248,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               executionMethod: command.executionMethod,
               displayText,
               attachmentMap: [],
+              representedAttachmentIds: [] as string[],
             };
         if (
           opened.executionMethod !== command.executionMethod ||
@@ -6152,6 +6260,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         if (opened.executionMethod === "thread/goal/set") {
           const extra = command.attachments.filter(
             (attachment) =>
+              !opened.representedAttachmentIds?.includes(attachment.id) &&
               !opened.attachmentMap.some(
                 (mapping) => mapping.id === attachment.id,
               ),
@@ -6541,6 +6650,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               attachments: openedAttachments
                 .filter(
                   (attachment) =>
+                    !queuedNativeInput?.representedAttachmentIds?.includes(
+                      attachment.id,
+                    ) &&
                     !queuedNativeInput?.attachmentMap.some(
                       (mapping) => mapping.id === attachment.id,
                     ),
@@ -6651,6 +6763,44 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                       nativeCommandState.dispatch,
                       command.nativeCommandReceipt!,
                       guiBridgeSignal,
+                    );
+                  }
+                : undefined,
+              onNativeDeferred: command.nativeCommandReceipt
+                ? async ({ threadId, nativeInput, frame }) => {
+                    const entry = nativeCommandState.entry;
+                    const dispatch = nativeCommandState.dispatch;
+                    if (!entry || !dispatch || dispatch.threadId !== threadId)
+                      throw new Error(
+                        "The deferred GUI input has no matching dispatch identity.",
+                      );
+                    // Existing queue claims retain their original revision server-side.
+                    // First GUI submissions need independently encrypted queue content,
+                    // while retaining the already-admitted message envelope unchanged.
+                    const retained = command.queuedPromptId
+                      ? undefined
+                      : await entry.codec.retainGuiPrompt({
+                          pendingMessage:
+                            command.protectedPrompt ??
+                            (() => {
+                              throw new Error(
+                                "The deferred GUI message lacks its protected original input.",
+                              );
+                            })(),
+                          attachments: command.attachments,
+                          input: [...nativeInput],
+                          clientUserMessageId: command.clientMessageId,
+                        });
+                    await entry.adapter.guiDeferred(
+                      nativeCommandState.receipt!,
+                      dispatch,
+                      frame,
+                      retained
+                        ? {
+                            retainedPrompt: retained.prompt,
+                            attachments: retained.attachments,
+                          }
+                        : {},
                     );
                   }
                 : undefined,
@@ -7319,6 +7469,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               opened
                 .filter(
                   (attachment) =>
+                    !queued?.representedAttachmentIds?.includes(
+                      attachment.id,
+                    ) &&
                     !queued?.attachmentMap.some(
                       (mapping) => mapping.id === attachment.id,
                     ),
@@ -7594,6 +7747,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return updateProtectedNativeSettings({
           request: command,
           service: workerEncryption,
+          resolve: () => managedSettingsTarget(command.binding),
+        });
+      case "chat.permissions.update":
+        return updateNativePermissions({
+          request: command,
           resolve: () => managedSettingsTarget(command.binding),
         });
       case "chat.settings.read":
@@ -8152,6 +8310,17 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           event: "codex.settings.shutdown-pending",
           subsystem: "codex",
           operation: "stop-settings-capture",
+        },
+      ),
+    );
+    await nativeDeferredSettlements.stop().catch(() =>
+      workerLogger.event(
+        "warn",
+        "Deferred native input capture did not finish during shutdown",
+        {
+          event: "codex.input.deferred-settlement-shutdown-pending",
+          subsystem: "codex",
+          operation: "stop-deferred-input-capture",
         },
       ),
     );

@@ -17,14 +17,20 @@ export function chatIsExecuting(status: ChatWireSummary["status"]): boolean {
 export function effectivePermissionProfile(context: ChatExecutionContext) {
   const defaultId =
     context.defaultPermissionProfileId ?? DEFAULT_PERMISSION_PROFILE_ID;
-  const selectedId = context.permissionProfileId ?? defaultId;
+  const confirmed = context.nativePermissionPolicy;
+  const selectedId =
+    confirmed?.resolvedSelectedId ?? context.permissionProfileId ?? defaultId;
   const forcedByWorktreePolicy =
     context.isPrimary && context.worktreePolicy === "required-for-writes";
   return {
     selectedId,
-    effectiveId: forcedByWorktreePolicy ? ":read-only" : selectedId,
+    effectiveId: forcedByWorktreePolicy
+      ? ":read-only"
+      : (confirmed?.effectiveId ?? selectedId),
     defaultId,
-    usesDefault: context.permissionProfileId === null,
+    usesDefault: confirmed
+      ? confirmed.selectedId === null
+      : context.permissionProfileId === null,
     forcedByWorktreePolicy,
   };
 }

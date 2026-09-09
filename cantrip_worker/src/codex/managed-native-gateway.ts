@@ -1,3 +1,7 @@
+import {
+  isNativePermissionDeferred,
+  NativePermissionRetentionError,
+} from "./native-permission-deferred.js";
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
 import { once } from "node:events";
@@ -15,6 +19,7 @@ import {
   managedNativeServerRequests,
   type ManagedNativeMethodKind,
   type NativeCommandAdmission,
+  type PermissionTransition,
 } from "@cantrip/protocol";
 
 export type NativeRpcId = string | number;
@@ -26,6 +31,7 @@ export interface ManagedNativeGatewayIdentity extends ManagedSessionIdentity {
   providerAccountId: string | null;
 }
 export interface ManagedNativeOperation {
+  permissionTransition?: PermissionTransition;
   settingsBindingId?: string;
   operationId: string;
   expectedTurnId?: string;
@@ -509,8 +515,34 @@ export async function createManagedNativeGateway(
           const entry = pending.get(key(frame.id));
           if (!entry) throw new Error("Uncorrelated native response.");
           pending.delete(key(frame.id));
-          if (entry.admission) await entry.admission.settle(frame);
-          else if (entry.method === "initialize" && object(frame.result)) {
+          if (entry.admission) {
+            try {
+              await entry.admission.settle(frame);
+            } catch (error) {
+              if (
+                error instanceof NativePermissionRetentionError &&
+                isNativePermissionDeferred(entry.method, frame) &&
+                object(frame.error) &&
+                object(frame.error.data)
+              ) {
+                // Preserve correlated no-consumption evidence. A lost write
+                // acknowledgment must never become permission to resend input.
+                frame.error.data = {
+                  ...frame.error.data,
+                  queueRetention: error.queueRetention,
+                  ...(error.queueRetention === "notRetained"
+                    ? { queueRetained: false }
+                    : {}),
+                  ...(error.clientUserMessageId
+                    ? { clientUserMessageId: error.clientUserMessageId }
+                    : {}),
+                };
+                send(client, frame);
+                return;
+              }
+              throw error;
+            }
+          } else if (entry.method === "initialize" && object(frame.result)) {
             initialized = true;
             frame.result = {
               ...frame.result,

@@ -2010,6 +2010,21 @@ export function createChatTurnRuntime({
             );
             return;
           } catch (error) {
+            // Only the durable, source-correlated no-input receipt may retain this
+            // submission. Transport errors and ordinary native rejections still fail.
+            if (
+              nativeCommandReceipt &&
+              (await repository.nativeCommands.hasDeferredLogicalGui(
+                ownerId,
+                execution.workerId,
+                nativeCommandReceipt.operationId,
+                nativeCommandReceipt.operationGeneration,
+              ))
+            ) {
+              await finishExecution("idle");
+              publishChatSummary(execution.chatId, execution.projectId);
+              return;
+            }
             const failedAt = new Date();
             const failureText = errorMessage(error).toLowerCase();
             const attemptStatus = failureText.includes("interrupt")

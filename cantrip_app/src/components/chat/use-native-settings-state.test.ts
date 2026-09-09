@@ -61,6 +61,7 @@ function state(revision = "1"): NativeSettingsState {
   return {
     chatId: "chat",
     revision,
+    permissionPolicy: null,
     desiredRevision: "0",
     desired: null,
     desiredStatus: null,

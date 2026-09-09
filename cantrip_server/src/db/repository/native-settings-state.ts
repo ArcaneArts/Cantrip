@@ -57,6 +57,10 @@ export function requestNativeSettings(
       existing.operationGeneration !== intent.operationGeneration ||
       existing.origin !== intent.origin ||
       existing.payloadDigest !== intent.payloadDigest ||
+      !isDeepStrictEqual(
+        existing.permissionTransition,
+        intent.permissionTransition,
+      ) ||
       !isDeepStrictEqual(existing.source, intent.source)
     )
       throw new Error(

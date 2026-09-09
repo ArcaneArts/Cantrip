@@ -37,18 +37,31 @@ function isUnrestrictedProfile(id: string): boolean {
   return id === ":danger-full-access" || id === ":yolo";
 }
 
+export interface NativePermissionControlState {
+  confirmed:
+    import("./native-permission-settings").NativePermissionSelection | null;
+  confirmedPresetId: string | null;
+  requestedLabel?: string | null;
+  status?:
+    "requesting" | "queued" | "applied" | "rejected" | "uncertain" | null;
+  error?: string | null;
+  disabled?: boolean;
+}
+
 export function PermissionProfileControl({
   open,
   onOpenChange,
   onChange,
   pending,
   state,
+  native,
 }: {
   open?: boolean;
   onOpenChange?(open: boolean): void;
   onChange(id: string | null): void;
   pending: boolean;
   state: ChatPermissionProfileState | undefined;
+  native?: NativePermissionControlState;
 }) {
   const available = state?.available === true;
   const allowed =
@@ -58,16 +71,25 @@ export function PermissionProfileControl({
       allowed: true,
     }));
   const defaultId = state?.defaultId ?? ":workspace";
-  const selectedLabel = state?.usesDefault
-    ? `Default (${permissionProfileLabel(defaultId)})`
-    : state
-      ? permissionProfileLabel(state.selectedId)
-      : "Permissions";
-  const title = !available
-    ? (state?.reason ?? "Loading Codex permission profiles…")
-    : state?.forcedByWorktreePolicy
-      ? `${selectedLabel}; project policy forces ${permissionProfileLabel(state.effectiveId)} on Primary.`
-      : selectedLabel;
+  const selectedLabel = native
+    ? native.confirmed
+      ? native.confirmedPresetId
+        ? permissionProfileLabel(native.confirmedPresetId)
+        : "Custom native permissions"
+      : "Native permissions unconfirmed"
+    : state?.usesDefault
+      ? `Default (${permissionProfileLabel(defaultId)})`
+      : state
+        ? permissionProfileLabel(state.selectedId)
+        : "Permissions";
+  const actualId = native ? native.confirmedPresetId : state?.effectiveId;
+  const title = native
+    ? `${selectedLabel}${native.requestedLabel ? `; requested ${native.requestedLabel}` : ""}${state?.forcedByWorktreePolicy ? `; Primary policy requires ${permissionProfileLabel(state.effectiveId)}` : ""}`
+    : !available
+      ? (state?.reason ?? "Loading Codex permission profiles…")
+      : state?.forcedByWorktreePolicy
+        ? `${selectedLabel}; project policy forces ${permissionProfileLabel(state.effectiveId)} on Primary.`
+        : selectedLabel;
 
   return (
     <DropdownMenu.Root open={open} onOpenChange={onOpenChange}>
@@ -78,10 +100,10 @@ export function PermissionProfileControl({
           variant="ghost"
           className={cn(
             "size-7 shrink-0 text-foreground/80",
-            state &&
-              isUnrestrictedProfile(state.effectiveId) &&
+            actualId &&
+              isUnrestrictedProfile(actualId) &&
               "text-amber-600 dark:text-amber-400",
-            state?.effectiveId === ":yolo" && "text-destructive",
+            actualId === ":yolo" && "text-destructive",
           )}
           aria-label={`Agent permissions: ${selectedLabel}`}
           title={title}
@@ -105,16 +127,19 @@ export function PermissionProfileControl({
           </DropdownMenu.Label>
           <StyledDropdownMenuItem
             className="items-start"
+            disabled={native?.disabled || (native && pending)}
             onSelect={() => onChange(null)}
           >
             <Lock className="mt-0.5 size-4 shrink-0" />
             <span className="min-w-0 flex-1">
               <span className="block font-medium">Default</span>
               <span className="block text-xs text-muted-foreground">
-                Follow the account default: {permissionProfileLabel(defaultId)}.
+                {native && !state
+                  ? "Use the account’s current default permission profile."
+                  : `Follow the account default: ${permissionProfileLabel(defaultId)}.`}
               </span>
             </span>
-            {state?.usesDefault ? (
+            {!native && state?.usesDefault ? (
               <Check className="mt-0.5 size-3.5 shrink-0" />
             ) : null}
           </StyledDropdownMenuItem>
@@ -129,6 +154,7 @@ export function PermissionProfileControl({
                   "items-start",
                   yolo && "text-destructive focus:text-destructive",
                 )}
+                disabled={native?.disabled || (native && pending)}
                 onSelect={() => onChange(profile.id)}
               >
                 {unrestricted ? (
@@ -146,12 +172,64 @@ export function PermissionProfileControl({
                       : profile.description}
                   </span>
                 </span>
-                {!state?.usesDefault && state?.selectedId === profile.id ? (
+                {(
+                  native
+                    ? native.confirmedPresetId === profile.id
+                    : !state?.usesDefault && state?.selectedId === profile.id
+                ) ? (
                   <Check className="mt-0.5 size-3.5 shrink-0" />
                 ) : null}
               </StyledDropdownMenuItem>
             );
           })}
+          {native ? (
+            <div
+              className="space-y-1 border-t px-2 py-2 text-xs"
+              data-slot="native-permission-state"
+            >
+              <p>Last confirmed: {selectedLabel}</p>
+              {native.confirmed ? (
+                <>
+                  <p>
+                    Approval policy:{" "}
+                    {typeof native.confirmed.approvalPolicy === "string"
+                      ? native.confirmed.approvalPolicy
+                      : JSON.stringify(native.confirmed.approvalPolicy)}
+                  </p>
+                  <p>Reviewer: {native.confirmed.approvalsReviewer}</p>
+                  <p>
+                    Sandbox:{" "}
+                    {typeof native.confirmed.sandboxPolicy?.type === "string"
+                      ? native.confirmed.sandboxPolicy.type
+                      : "Custom policy"}
+                  </p>
+                </>
+              ) : (
+                <p>Waiting for confirmed native permissions.</p>
+              )}
+              {native.requestedLabel ? (
+                <p>Requested: {native.requestedLabel}</p>
+              ) : null}
+              {native.status === "requesting" || native.status === "queued" ? (
+                <p role="status">
+                  Permission change is awaiting native confirmation.
+                </p>
+              ) : null}
+              {native.status === "rejected" ? (
+                <p role="status">
+                  Permission change was rejected. The last confirmed permissions
+                  remain shown.
+                </p>
+              ) : null}
+              {native.status === "uncertain" ? (
+                <p role="status">
+                  The permission change has an unconfirmed outcome. It has not
+                  been sent again.
+                </p>
+              ) : null}
+              {native.error ? <p role="alert">{native.error}</p> : null}
+            </div>
+          ) : null}
           {state?.forcedByWorktreePolicy ? (
             <>
               <DropdownMenu.Separator className="my-1 h-px bg-border" />
@@ -161,7 +239,7 @@ export function PermissionProfileControl({
               </p>
             </>
           ) : null}
-          {!available ? (
+          {!native && !available ? (
             <>
               <DropdownMenu.Separator className="my-1 h-px bg-border" />
               <p className="px-2 py-1 text-xs text-muted-foreground">

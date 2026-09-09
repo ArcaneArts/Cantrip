@@ -34,6 +34,12 @@ const methods: Record<ManagedQueueMutation["kind"], string> = {
   reorder: "thread/queue/reorder",
   start: "thread/queue/start",
 };
+function noPendingPermission(chatId: typeof schema.chats.id | string) {
+  return sql`NOT EXISTS (SELECT 1 FROM native_settings_states s WHERE s.chat_id = ${chatId} AND (
+    EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(s.state->'pending','[]'::jsonb)) p WHERE p->'intent'->'permissionTransition' IS NOT NULL)
+    OR (s.state->>'desiredStatus' = 'uncertain' AND s.state->'desired'->'permissionTransition' IS NOT NULL)
+  ))`;
+}
 /** Canonical executable queue. Native requests mutate this state; they never enqueue a second native copy. */
 export class ManagedQueueRepository {
   constructor(
@@ -56,6 +62,7 @@ export class ManagedQueueRepository {
           eq(schema.chats.contextKind, "project"),
           eq(schema.chats.automationPaused, false),
           eq(schema.chats.managedAutonomyStopped, false),
+          noPendingPermission(schema.chats.id),
           sql`((${schema.queuedPrompts.state} = 'pending' AND ${schema.queuedPrompts.frozen} = false AND NOT EXISTS (SELECT 1 FROM managed_queue_claims c WHERE c.prompt_id = ${schema.queuedPrompts.id} AND c.prompt_revision = ${schema.queuedPrompts.revision} AND c.status = 'rejected')) OR (${schema.queuedPrompts.state} = 'claimed' AND EXISTS (SELECT 1 FROM managed_queue_claims c WHERE c.prompt_id = ${schema.queuedPrompts.id} AND c.status = 'claimed' AND c.operation_id IS NULL)))`,
         ),
       );
@@ -651,6 +658,11 @@ export class ManagedQueueRepository {
     return this.database.transaction(async (tx) => {
       const chat = await this.lock(tx, ownerId, chatId);
       if (chat.automationPaused || chat.managedAutonomyStopped) return null;
+      const [eligible] = await tx
+        .select({ id: schema.chats.id })
+        .from(schema.chats)
+        .where(and(eq(schema.chats.id, chatId), noPendingPermission(chatId)));
+      if (!eligible) return null;
       const [existing] = await tx
         .select()
         .from(schema.managedQueueClaims)

@@ -73,6 +73,16 @@ function fixture(start = true) {
     fail: vi.fn((error) => done.reject(error)),
   };
   const client = {
+    resolvePermissionTransition: vi.fn(async () => ({
+      bindingId: "binding",
+      permissionTransition: {
+        selectedId: ":yolo",
+        resolvedSelectedId: ":yolo",
+        effectiveId: ":read-only",
+        expectedRevision: "4",
+      },
+    })),
+    refreshSettings: vi.fn(async () => ({})),
     admit: vi.fn(async () => ({
       receipt: { ...receipt, startsExecution: start },
       execution: null,
@@ -83,6 +93,7 @@ function fixture(start = true) {
     }),
     settle: vi.fn(async (input: Omit<NativeCommandSettlement, "workerId">) => {
       order.push(input.executionComplete ? "finish" : "receipt");
+      return { receipt };
     }),
     pending: vi.fn(async () => {}),
     bindPreparation: vi.fn(async () => {
@@ -146,11 +157,19 @@ function fixture(start = true) {
     }),
   };
   const onError = vi.fn();
+  const onDeferredReady = vi.fn();
+  const retained = {
+    retainedPrompt: { id: "retained-prompt" },
+    attachments: [],
+  };
+  const retainDeferredInput = vi.fn(async () => retained as never);
   const adapter = new ManagedNativeCommandSession({
     identity,
     runtime: runtime as never,
     client: client as unknown as NativeCommandClient,
     settingsDelivery,
+    onDeferredReady,
+    retainDeferredInput,
     encryption: {
       ownerId: () => "owner",
       serverIdentity: () => "server",
@@ -198,7 +217,10 @@ function fixture(start = true) {
     done,
     order,
     onError,
+    onDeferredReady,
     operation,
+    retained,
+    retainDeferredInput,
   };
 }
 const result = {
@@ -208,6 +230,244 @@ const result = {
 } as AgentTurnResult;
 
 describe("managed native command session", () => {
+  it("settles explicitly unconsumed pending-permission input idle without publishing a failed turn", async () => {
+    const f = fixture();
+    const admission = await f.adapter.admit(f.operation);
+    await admission.beforeForward();
+    await admission.settle({
+      error: {
+        code: -32001,
+        message: "input not consumed",
+        data: { reason: "pendingSettings", inputConsumed: false },
+      },
+    });
+    await expect.poll(() => f.publication.release.mock.calls.length).toBe(1);
+    expect(f.publication.failed).not.toHaveBeenCalled();
+    expect(f.client.settle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "rejected",
+        executionComplete: true,
+        executionStatus: "idle",
+        rejectionCode: "native-settings-pending",
+        deferred: {
+          reason: "pendingSettings",
+          inputConsumed: false,
+          threadId: "thread",
+          runtimeGeneration: "transport",
+          ...f.retained,
+        },
+      }),
+    );
+    expect(f.retainDeferredInput).toHaveBeenCalledWith(f.operation);
+    expect(f.client.settle).toHaveBeenCalledTimes(1);
+  });
+  it("reports canonical queue ownership only after durable settlement", async () => {
+    const f = fixture();
+    const write = deferred<void>();
+    f.client.settle.mockImplementationOnce(async () => {
+      await write.promise;
+      return { receipt };
+    });
+    const admission = await f.adapter.admit(f.operation);
+    await admission.beforeForward();
+    const frame = {
+      error: {
+        code: -32001,
+        message: "pending",
+        data: {
+          reason: "pendingSettings",
+          inputConsumed: false,
+        } as Record<string, unknown>,
+      },
+    };
+    const settling = admission.settle(frame);
+    await expect.poll(() => f.client.settle.mock.calls.length).toBe(1);
+    expect(frame.error.data.queueRetained).toBeUndefined();
+    write.resolve();
+    await settling;
+    expect(frame.error.data.queueRetained).toBe(true);
+  });
+  it("never claims queue retention when durable settlement fails", async () => {
+    const f = fixture();
+    f.client.settle.mockRejectedValueOnce(new Error("persistence unavailable"));
+    const admission = await f.adapter.admit(f.operation);
+    await admission.beforeForward();
+    const frame = {
+      error: {
+        code: -32001,
+        message: "pending",
+        data: {
+          reason: "pendingSettings",
+          inputConsumed: false,
+        } as Record<string, unknown>,
+      },
+    };
+    await expect(admission.settle(frame)).rejects.toMatchObject({
+      queueRetention: "uncertain",
+      cause: { message: "persistence unavailable" },
+    });
+    expect(frame.error.data.queueRetained).toBeUndefined();
+  });
+  it("keeps an existing deferred queue claim without creating another prompt", async () => {
+    const f = fixture();
+    const admission = await f.adapter.admit({
+      ...f.operation,
+      queueClaim: { id: "claim", promptRevision: 1 },
+    });
+    await admission.beforeForward();
+    const frame = {
+      error: {
+        code: -32001,
+        message: "pending",
+        data: {
+          reason: "pendingSettings",
+          inputConsumed: false,
+        } as Record<string, unknown>,
+      },
+    };
+    await admission.settle(frame);
+    expect(f.retainDeferredInput).not.toHaveBeenCalled();
+    expect(frame.error.data.queueRetained).toBe(true);
+  });
+  it("wakes recovery when canonical settlement makes a late deferral eligible", async () => {
+    const f = fixture();
+    f.client.settle.mockResolvedValueOnce({
+      receipt: { ...receipt, resumeQueue: true },
+    });
+    await f.adapter.dispatchGui(receipt, session);
+    await f.adapter.guiDeferred(
+      receipt,
+      session,
+      {
+        error: {
+          code: -32001,
+          message: "pending",
+          data: { reason: "pendingSettings", inputConsumed: false },
+        },
+      },
+      {},
+    );
+    expect(f.onDeferredReady).toHaveBeenCalledTimes(1);
+    expect(f.client.settle).toHaveBeenCalledTimes(1);
+  });
+
+  it("persists GUI no-consumption evidence without ending a newer or started turn", async () => {
+    const f = fixture();
+    const frame = {
+      error: {
+        code: -32001,
+        message: "pending",
+        data: { reason: "pendingSettings", inputConsumed: false },
+      },
+    };
+    await f.adapter.dispatchGui(receipt, session);
+    await expect(
+      f.adapter.guiDeferred(
+        receipt,
+        { ...session, runtimeGeneration: "replacement" },
+        frame,
+        {},
+      ),
+    ).rejects.toThrow("matching native deferral");
+    expect(f.client.settle).not.toHaveBeenCalled();
+    await f.adapter.guiDeferred(receipt, session, frame, {});
+    expect(f.client.settle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "rejected",
+        executionComplete: true,
+        executionStatus: "idle",
+        deferred: {
+          reason: "pendingSettings",
+          inputConsumed: false,
+          threadId: "thread",
+          runtimeGeneration: "transport",
+        },
+      }),
+    );
+    expect(f.publication.failed).not.toHaveBeenCalled();
+    const started = fixture();
+    await started.adapter.dispatchGui(receipt, session);
+    await started.adapter.guiReceipt(receipt, session, {
+      turn: { id: "actual-turn" },
+    });
+    await expect(
+      started.adapter.guiDeferred(receipt, session, frame, {}),
+    ).rejects.toThrow("matching native deferral");
+    expect(started.client.settle).toHaveBeenCalledTimes(1);
+  });
+
+  it("resolves TUI permissions before encrypting the exact forced-policy frame", async () => {
+    const f = fixture(false);
+    const admitted = await f.adapter.admit({
+      ...f.operation,
+      kind: "settings",
+      method: "thread/settings/update",
+      frame: {
+        id: 1,
+        method: "thread/settings/update",
+        params: {
+          threadId: "thread",
+          permissions: ":danger-full-access",
+          approvalPolicy: "never",
+          model: "fixture",
+        },
+      },
+    });
+    expect(f.client.resolvePermissionTransition).toHaveBeenCalledWith(
+      session,
+      ":yolo",
+    );
+    expect(f.client.refreshSettings).not.toHaveBeenCalled();
+    expect(admitted.forward).toEqual({
+      method: "thread/settings/update",
+      params: {
+        threadId: "thread",
+        operationId: "operation",
+        permissions: ":read-only",
+        approvalPolicy: "on-request",
+        approvalsReviewer: "user",
+        model: "fixture",
+        applyAt: "quiescent",
+      },
+    });
+    expect(f.client.admit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        intent: expect.objectContaining({
+          settingsBindingId: "binding",
+          permissionTransition: {
+            selectedId: ":yolo",
+            resolvedSelectedId: ":yolo",
+            effectiveId: ":read-only",
+            expectedRevision: "4",
+          },
+        }),
+      }),
+    );
+    expect(f.settingsDelivery.track).not.toHaveBeenCalled();
+    await admitted.beforeForward();
+    expect(f.settingsDelivery.track).toHaveBeenCalledWith(
+      expect.objectContaining({ nativeOperationId: "operation" }),
+      {
+        transition: {
+          selectedId: ":yolo",
+          resolvedSelectedId: ":yolo",
+          effectiveId: ":read-only",
+          expectedRevision: "4",
+        },
+        source: {
+          chatId: "chat",
+          workerId: "worker",
+          threadId: "thread",
+          contextKind: "project",
+          projectId: "project",
+          placementId: "placement",
+          modelRouteId: "route",
+          providerAccountId: null,
+          runtimeGeneration: "transport",
+        },
+      },
+    );
+  });
   it("admits the exact normalized TUI settings frame and registers evidence before forwarding", async () => {
     const f = fixture(false);
     const command = await f.adapter.admit({

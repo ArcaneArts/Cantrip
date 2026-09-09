@@ -21,6 +21,9 @@ describe("permissionProfileLabel", () => {
         pending: false,
         state: {
           available: true,
+          policyRevision: "0",
+          confirmed: false,
+          transition: null,
           profiles: [
             {
               id: ":workspace",
@@ -59,5 +62,28 @@ describe("permissionProfileLabel", () => {
 
     expect(markup).toContain("Agent permissions: Permissions");
     expect(markup).not.toContain(' disabled=""');
+  });
+  it("uses actual native confirmation for its trigger instead of stale preference effectiveId", () => {
+    const markup = renderToStaticMarkup(
+      createElement(PermissionProfileControl, {
+        pending: false,
+        state: undefined,
+        onChange: () => undefined,
+        native: {
+          confirmed: {
+            profileId: ":workspace",
+            approvalPolicy: "on-request",
+            approvalsReviewer: "user",
+            sandboxPolicy: { type: "workspaceWrite" },
+          },
+          confirmedPresetId: ":workspace",
+          requestedLabel: "YOLO mode",
+          status: "queued",
+        },
+      }),
+    );
+    expect(markup).toContain("Agent permissions: Workspace");
+    expect(markup).toContain("requested YOLO mode");
+    expect(markup).not.toContain("Agent permissions: YOLO mode");
   });
 });

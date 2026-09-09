@@ -1,3 +1,4 @@
+import { nativePermissionControlState } from "./native-permission-control-state";
 import type {
   AgentInteractionResponse,
   ChatAttachmentSummary,
@@ -712,12 +713,23 @@ export function useChatTranscriptController({
     [chat.id],
   );
   const permissionProfiles = useQuery({
-    enabled: Boolean(selectedModelId),
+    enabled: Boolean(nativeModelSettings.binding || selectedModelId),
     queryFn: () => getChatPermissionProfiles(chat.id),
-    queryKey: ["permission-profiles", chat.id, selectedModelId],
+    queryKey: [
+      "permission-profiles",
+      chat.id,
+      nativeModelSettings.binding?.bindingId ?? "bootstrap",
+      nativeModelSettings.observed.identity,
+      selectedModelId,
+    ],
     retry: false,
     staleTime: 30_000,
   });
+  useEffect(() => {
+    void queryClient.invalidateQueries({
+      queryKey: ["permission-profiles", chat.id],
+    });
+  }, [chat.id, queryClient, nativeModelSettings.observed.state.data?.revision]);
   useEffect(() => {
     if (composerDraftHydrated || !composerDraftState.isSuccess) return;
     const restored = composerDraftState.data;
@@ -1325,17 +1337,38 @@ export function useChatTranscriptController({
     },
   });
   const selectPermissionProfile = useMutation({
-    mutationFn: (id: string | null) => updateChatPermissionProfile(chat.id, id),
-    onSuccess: async (state) => {
-      queryClient.setQueryData(
-        ["permission-profiles", chat.id, selectedModelId],
-        state,
-      );
-      await queryClient.invalidateQueries({
-        queryKey: projectChatQueryKey,
-      });
+    mutationFn: async (id: string | null) => {
+      if (nativeModelSettings.pickerMode === "native") {
+        const binding = nativeModelSettings.session.binding;
+        if (!binding)
+          throw new Error(
+            "The native session binding is not available. Read session settings before changing permissions.",
+          );
+        return nativeModelSettings.session.submitPermission(
+          id,
+          permissionProfiles.data?.policyRevision ?? "0",
+          binding.bindingId,
+        );
+      }
+      return updateChatPermissionProfile(chat.id, id);
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["permission-profiles", chat.id],
+        }),
+        queryClient.invalidateQueries({ queryKey: projectChatQueryKey }),
+      ]);
     },
   });
+  const nativePermissions =
+    nativeModelSettings.pickerMode === "native"
+      ? nativePermissionControlState(
+          nativeModelSettings.session,
+          permissionProfiles.data,
+          selectPermissionProfile.error,
+        )
+      : undefined;
   const fork = useMutation({
     mutationFn: (messageId?: string) =>
       forkChat(chat.id, chat.title, messageId),
@@ -1940,6 +1973,7 @@ export function useChatTranscriptController({
     onOpenFile,
     onOpenRelocation,
     permissionProfiles,
+    nativePermissions,
     planImplementationDisabled,
     planState,
     queryClient,
