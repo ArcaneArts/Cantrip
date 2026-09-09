@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { nativeInitialTurnSettingsSchema } from "./native-initial-turn-settings.js";
 import {
   computerUseOperationSchema,
   cuaBindingSchema,
@@ -409,6 +410,8 @@ export const agentActivitySchema = z.discriminatedUnion("type", [
   z.object({
     ...agentActivityBaseShape,
     type: z.literal("turnSummary"),
+    initialSettings: nativeInitialTurnSettingsSchema.optional(),
+    initialSettingsConflict: z.boolean().optional(),
     durationMs: z.number().int().nonnegative().nullable(),
     startedAt: z.number().int().nonnegative().nullable(),
     completedAt: z.number().int().nonnegative().nullable(),

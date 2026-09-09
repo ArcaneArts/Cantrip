@@ -23,6 +23,10 @@ export const nativeThreadSettingsSchema = z
       })
       .catchall(z.json()),
     multiAgentMode: z.string().optional(),
+    // Absent on older workers means unavailable, not disabled/inherited.
+    multiAgentEnabled: z.boolean().optional(),
+    subagentModel: z.string().nullable().optional(),
+    subagentReasoningEffort: z.string().nullable().optional(),
     personality: z.string().nullable(),
   })
   .catchall(z.json());

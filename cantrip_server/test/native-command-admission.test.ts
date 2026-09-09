@@ -3734,6 +3734,37 @@ describe("canonical managed queue and completion outbox", () => {
 });
 
 describe("native settings application evidence", () => {
+  it.each([
+    "collaborationModeKind",
+    "multiAgentEnabled",
+    "subagentModel",
+    "subagentReasoningEffort",
+  ])(
+    "admits the explicit %s settings field through the shared command path",
+    async (key) => {
+      const context = await database.repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        chatId,
+      );
+      const input = admission(context, {
+        method: "thread/settings/update",
+        intent: {
+          scope: "thread",
+          settingKeys: [key],
+          nativeSettingsOperationId: randomUUID(),
+          expectedTurnId: null,
+        },
+      });
+      const grant = await database.repository.nativeCommands.admit(
+        LOCAL_USER_ID,
+        input,
+      );
+      expect(grant.receipt.status).toBe("accepted");
+      await dispatch(input, grant.receipt);
+      await finish(input, grant.receipt);
+    },
+  );
+
   async function settingsCommand() {
     const context = await database.repository.getChatExecutionContext(
       LOCAL_USER_ID,

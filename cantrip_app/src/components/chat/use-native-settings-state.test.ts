@@ -26,10 +26,14 @@ const runtime = vi.hoisted(() => ({
   encryptionListeners: new Set<() => void>(),
   request: vi.fn(),
   open: vi.fn(),
+  intents: vi.fn(),
 }));
 vi.mock("@/lib/api-client", () => ({ request: runtime.request }));
 vi.mock("@/lib/native-settings-encryption", () => ({
   openNativeSettingsState: runtime.open,
+}));
+vi.mock("@/lib/native-settings-intents", () => ({
+  openNativeSettingsIntents: runtime.intents,
 }));
 vi.mock("@/lib/app-live-react", () => ({ useAppLiveScope: () => undefined }));
 vi.mock("@/lib/client-encryption", () => ({
@@ -107,6 +111,7 @@ beforeEach(() => {
   ).IS_REACT_ACT_ENVIRONMENT = true;
   runtime.request.mockReset().mockResolvedValue(state());
   runtime.open.mockReset().mockResolvedValue(selection("private-model"));
+  runtime.intents.mockReset().mockResolvedValue([]);
   runtime.identity = { ...runtime.identity, generation: 1 };
   runtime.encryption = { ...runtime.encryption, status: "ready" };
 });
@@ -117,6 +122,16 @@ afterEach(async () => {
 });
 
 describe("native settings view subscription", () => {
+  it("preserves readable confirmed state when a desired request cannot be decrypted", async () => {
+    runtime.intents.mockRejectedValue(new Error("Bad desired envelope"));
+    const view = await mount();
+    expect(view.current().confirmed?.model).toBe("private-model");
+    expect(view.current().intents).toEqual([]);
+    expect(view.current().decryptionError?.message).toContain(
+      "requested native settings",
+    );
+  });
+
   it("keeps plaintext out of the query cache and removes it on lock", async () => {
     const view = await mount();
     expect(view.current().confirmed?.model).toBe("private-model");

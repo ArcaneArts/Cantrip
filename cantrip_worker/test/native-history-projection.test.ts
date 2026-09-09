@@ -1145,6 +1145,15 @@ describe("durable native history projection transactions", () => {
   });
 
   it("projects live items and terminal aggregates independently, retaining unresolved evidence across reopen", async () => {
+    const initialSettings = {
+      model: "private-captured-model",
+      modelProvider: "private-captured-provider",
+      reasoningEffort: null,
+      effectiveReasoningEffort: "high",
+      serviceTier: "default",
+      effectiveServiceTier: null,
+      collaborationMode: "plan",
+    };
     const append = (method: string, params: Record<string, unknown>) =>
       source.append({
         kind: "notification",
@@ -1156,6 +1165,7 @@ describe("durable native history projection transactions", () => {
         params: { threadId, turnId: "turn", ...params },
       });
     await append("turn/started", {
+      initialSettings,
       turn: {
         id: "turn",
         status: "inProgress",
@@ -1182,9 +1192,20 @@ describe("durable native history projection transactions", () => {
     });
     await projection.drain();
     const initial = await canonical();
+    expect(
+      JSON.stringify(
+        await client.archiveTurns({
+          chatId: f.chatId,
+          bindingId: options.bindingId,
+        }),
+      ),
+    ).not.toContain("private-captured");
     expect(initial.items).toHaveLength(2);
     expect(initial.items.every((item) => item.state === "started")).toBe(true);
     const reopened = await reopen();
+    await append("thread/settings/updated", {
+      threadSettings: { ...initialSettings, model: "later-unrelated-default" },
+    });
     await append("item/agentMessage/delta", {
       itemId: "answer",
       delta: "answer",
@@ -1224,15 +1245,18 @@ describe("durable native history projection transactions", () => {
       },
       source: {
         version: 2,
-        reducedTurn: { body: { status: "completed", durationMs: 1750 } },
-        evidence: [
+        reducedTurn: {
+          body: { status: "completed", durationMs: 1750 },
+          metadata: { initialSettings },
+        },
+        evidence: expect.arrayContaining([
           expect.objectContaining({
             method: "future/scopedEvidence",
             params: expect.objectContaining({
               privateWarning: "unknown native detail",
             }),
           }),
-        ],
+        ]),
       },
     });
     const state = nativeHistoryProjectorStateSchema.parse(
@@ -1242,6 +1266,24 @@ describe("durable native history projection transactions", () => {
       state.source.turns[0]!.items.find((item) => item.id === "answer")!.body
         .text,
     ).toBe("retained answer");
+    expect(state.source.turns[0]!.metadata?.initialSettings).toEqual(
+      initialSettings,
+    );
+    const afterReconnect = await reopen();
+    await afterReconnect.drain();
+    expect(
+      nativeHistoryProjectorStateSchema.parse(
+        (await afterReconnect.checkpoint()).state,
+      ).source.turns[0]!.metadata?.initialSettings,
+    ).toEqual(initialSettings);
+    expect(
+      JSON.stringify(
+        await client.archiveTurns({
+          chatId: f.chatId,
+          bindingId: options.bindingId,
+        }),
+      ),
+    ).not.toContain("private-captured");
     expect(stored.messages).toHaveLength(2);
     expect(f.phases).toHaveLength(0);
   });

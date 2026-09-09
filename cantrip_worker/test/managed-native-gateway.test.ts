@@ -8,6 +8,7 @@ import {
   type ManagedNativeAdmission,
   type ManagedNativeGatewayIdentity,
   type ManagedNativeOperation,
+  type ManagedNativeGatewayOptions,
 } from "../src/codex/managed-native-gateway.js";
 
 import { CantripServerRequestError } from "../src/cli-client.js";
@@ -47,6 +48,7 @@ async function fixture(
   admit: (operation: ManagedNativeOperation) => Promise<ManagedNativeAdmission>,
   queue?: ManagedNativeQueueGateway,
   scopeCurrent: () => boolean = () => true,
+  prepareModelCatalogRequest?: ManagedNativeGatewayOptions["prepareModelCatalogRequest"],
 ) {
   const native = new WebSocketServer({ host: "127.0.0.1", port: 0 });
   await once(native, "listening");
@@ -79,6 +81,7 @@ async function fixture(
     queue,
     upstreamUrl: `ws://127.0.0.1:${(native.address() as any).port}`,
     admit,
+    prepareModelCatalogRequest,
     isCurrent: () => active && scopeCurrent(),
     resolveReply: async (_operation, frame) => {
       messages.push(frame);
@@ -119,6 +122,38 @@ const admitted = (settle = vi.fn(async () => {})): ManagedNativeAdmission => ({
 });
 
 describe("managed native gateway", () => {
+  it("refreshes a picker read without holding Stop behind inventory discovery", async () => {
+    const loading = deferred();
+    const prepare = vi.fn(async (method: string) => {
+      if (method === "model/list") await loading.promise;
+    });
+    const f = await fixture(
+      async () => admitted(),
+      undefined,
+      undefined,
+      prepare,
+    );
+    const picker = f.request("model/list", { includeHidden: true });
+    await vi.waitFor(() =>
+      expect(prepare).toHaveBeenCalledWith("model/list", {
+        includeHidden: true,
+      }),
+    );
+    expect(f.messages.some((frame) => frame.method === "model/list")).toBe(
+      false,
+    );
+    expect(
+      (
+        await f.request("turn/interrupt", {
+          threadId: identity.threadId,
+          turnId: "active-turn",
+        })
+      ).result,
+    ).toEqual({ accepted: "turn/interrupt" });
+    loading.resolve();
+    expect((await picker).result).toEqual({ accepted: "model/list" });
+  });
+
   it("classifies every pinned request explicitly, including reviewed patch additions", async () => {
     const source = await readFile(
       new URL(

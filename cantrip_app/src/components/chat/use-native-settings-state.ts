@@ -21,6 +21,10 @@ import {
   retainLatestNativeSettings,
 } from "@/lib/native-settings-api";
 import { openNativeSettingsState } from "@/lib/native-settings-encryption";
+import {
+  openNativeSettingsIntents,
+  type OpenedNativeSettingsIntent,
+} from "@/lib/native-settings-intents";
 
 // The session accessor returns a fresh object. React requires a stable snapshot
 // between notifications; serializing this small identity also scopes the cache.
@@ -33,6 +37,7 @@ type Opened = {
   identityKey: string;
   encryption: ClientEncryptionSnapshot;
   value: NativeThreadSettings | null;
+  intents: OpenedNativeSettingsIntent[];
   error: Error | null;
 };
 
@@ -92,22 +97,23 @@ export function useNativeSettingsState(chatId: string, enabled: boolean) {
       return;
     }
     const scope = { source, identityKey, encryption };
-    void openNativeSettingsState({ chatId, state: source }).then(
-      (value) => {
-        if (!cancelled) setOpened({ ...scope, value, error: null });
-      },
-      (error) => {
-        if (!cancelled)
-          setOpened({
-            ...scope,
-            value: null,
-            error:
-              error instanceof Error
-                ? error
-                : new Error("Could not open native settings."),
-          });
-      },
-    );
+    void Promise.allSettled([
+      openNativeSettingsState({ chatId, state: source }),
+      openNativeSettingsIntents({ chatId, state: source }),
+    ]).then(([value, intents]) => {
+      if (!cancelled)
+        setOpened({
+          ...scope,
+          value: value.status === "fulfilled" ? value.value : null,
+          intents: intents.status === "fulfilled" ? intents.value : [],
+          error:
+            value.status === "rejected"
+              ? new Error("Could not open confirmed native settings.")
+              : intents.status === "rejected"
+                ? new Error("Could not open requested native settings.")
+                : null,
+        });
+    });
     return () => {
       cancelled = true;
     };
@@ -122,11 +128,14 @@ export function useNativeSettingsState(chatId: string, enabled: boolean) {
       ? opened
       : null;
   return {
+    identity,
+    encryption,
     state,
     refresh,
     // This is the last confirmed native selection, not an optimistic request or
     // proof that its runtime is still connected. Controllers must compare scope.
     confirmed: current?.value ?? null,
+    intents: current?.intents ?? [],
     decryptionError: current?.error ?? null,
   };
 }

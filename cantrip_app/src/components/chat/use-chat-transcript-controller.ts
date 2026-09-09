@@ -74,6 +74,7 @@ import {
   resolveImageInputCapability,
 } from "@/components/chat/image-input-capability";
 import { chatModelConfiguration } from "@/components/chat/model-reasoning-picker";
+import { useNativeModelSettings } from "./use-native-model-settings";
 import { isChatRelocationActive } from "@/components/chat/chat-relocation-dialog";
 import {
   filterCommandPalette,
@@ -268,6 +269,13 @@ export function useChatTranscriptController({
       ? "default"
       : (initialComposerDraft.draft?.mode ?? "default"),
   );
+  const [nativeModeIntent, setNativeModeIntent] = useState<
+    "default" | "plan" | null
+  >(null);
+  const changeComposerMode = (mode: ChatTurnMode) => {
+    setComposerMode(mode);
+    setNativeModeIntent(mode === "default" || mode === "plan" ? mode : null);
+  };
   const [composerReasoningEffort, setComposerReasoningEffort] =
     useState<ReasoningEffort | null>(
       initialComposerDraft.draft?.reasoningEffort ?? chat.reasoningEffort,
@@ -429,6 +437,20 @@ export function useChatTranscriptController({
     chat,
     fallbackModelId,
   );
+  const nativeModelSettings = useNativeModelSettings({
+    chatId: chat.id,
+    enabled: capabilities.linkedConsole,
+    workerId: chat.activeWorkerId,
+    projectId: chat.projectId,
+    placementId: chat.activeWorktreeId ?? chat.activeScratchRootId,
+    contextKind: chat.contextKind ?? "project",
+  });
+  const effectiveComposerMode =
+    nativeModelSettings.binding && !editingPrompt && composerMode !== "goal"
+      ? (nativeModeIntent ??
+        nativeModelSettings.selected?.collaborationModeKind ??
+        composerMode)
+      : composerMode;
   const activeChatWorker = workers.data?.find(
     ({ workerId }) => workerId === chat.activeWorkerId,
   );
@@ -733,7 +755,9 @@ export function useChatTranscriptController({
       ? {
           text: draft,
           mode:
-            capabilities.modes === "default-only" ? "default" : composerMode,
+            capabilities.modes === "default-only"
+              ? "default"
+              : effectiveComposerMode,
           reasoningEffort: composerReasoningEffort,
         }
       : null;
@@ -741,7 +765,7 @@ export function useChatTranscriptController({
   }, [
     composerDraftHydrated,
     capabilities.modes,
-    composerMode,
+    effectiveComposerMode,
     composerReasoningEffort,
     draft,
     editingPrompt,
@@ -1071,11 +1095,13 @@ export function useChatTranscriptController({
       attachments,
       mode,
       reasoningEffort,
+      nativeModeChange,
       text,
     }: {
       attachments: ChatAttachmentSummary[];
       mode: ChatTurnMode;
       reasoningEffort: ReasoningEffort | null;
+      nativeModeChange?: "default" | "plan";
       text: string;
     }) => {
       const startedAt = performance.now();
@@ -1093,6 +1119,15 @@ export function useChatTranscriptController({
           ({ workerId }) => workerId === chat.activeWorkerId,
         ),
       });
+      if (
+        nativeModelSettings.observed.state.data?.binding &&
+        nativeModeChange
+      ) {
+        await nativeModelSettings.updateMode(nativeModeChange);
+        setNativeModeIntent((current) =>
+          current === nativeModeChange ? null : current,
+        );
+      }
       return startTurn(
         chat.id,
         text,
@@ -1417,12 +1452,13 @@ export function useChatTranscriptController({
     send.mutate({
       attachments: [],
       mode: "default",
+      nativeModeChange: "default",
       reasoningEffort: composerReasoningEffort,
       text: "Implement the plan.",
     });
   };
   const revisePlan = () => {
-    setComposerMode("plan");
+    changeComposerMode("plan");
     setCommandNotice("Continue refining the plan in the message box.");
     window.requestAnimationFrame(() => composerRef.current?.focus());
   };
@@ -1581,7 +1617,9 @@ export function useChatTranscriptController({
     draft,
     enabled: capabilities.projectCommands,
     relocationActive,
-    modelPending: selectModelConfiguration.isPending,
+    modelPending:
+      selectModelConfiguration.isPending ||
+      nativeModelSettings.update.isPending,
     consumeDraft: () => {
       setDraft("");
       setSelectedGithubReferences([]);
@@ -1597,7 +1635,7 @@ export function useChatTranscriptController({
       ? expandGithubReferences(draft.trim(), selectedGithubReferences)
       : draft.trim();
     const submitMode =
-      capabilities.modes === "default-only" ? "default" : composerMode;
+      capabilities.modes === "default-only" ? "default" : effectiveComposerMode;
     const readyAttachments = draftAttachments.filter(
       ({ error, uploading }) => !error && !uploading,
     );
@@ -1643,6 +1681,7 @@ export function useChatTranscriptController({
     send.mutate({
       text,
       mode: submitMode,
+      nativeModeChange: nativeModeIntent ?? undefined,
       reasoningEffort: composerReasoningEffort,
       attachments: readyAttachments.map(({ attachment }) => attachment),
     });
@@ -1661,10 +1700,10 @@ export function useChatTranscriptController({
     if (name === "compact") {
       compact.mutate();
     } else if (name === "goal" && capabilities.modes === "agent-modes") {
-      setComposerMode("goal");
+      changeComposerMode("goal");
       setCommandNotice("Goal mode selected for the next message.");
     } else if (name === "plan" && capabilities.modes === "agent-modes") {
-      setComposerMode("plan");
+      changeComposerMode("plan");
       setCommandNotice("Plan mode selected for the next message.");
     } else if (name === "pause") {
       setAutomationPaused.mutate(!chat.automationPaused);
@@ -1709,7 +1748,10 @@ export function useChatTranscriptController({
           text: prompt,
           attachments: [],
           mode:
-            capabilities.modes === "default-only" ? "default" : composerMode,
+            capabilities.modes === "default-only"
+              ? "default"
+              : effectiveComposerMode,
+          nativeModeChange: nativeModeIntent ?? undefined,
           reasoningEffort: composerReasoningEffort,
         });
       }
@@ -1844,7 +1886,7 @@ export function useChatTranscriptController({
     commandListRef,
     composerDraftEditedRef,
     composerDraftHydrated,
-    composerMode,
+    composerMode: effectiveComposerMode,
     composerNotice,
     composerReasoningEffort,
     composerRef,
@@ -1852,6 +1894,7 @@ export function useChatTranscriptController({
     copiedMessageId,
     copyResponse,
     currentModelConfiguration,
+    nativeModelSettings,
     desktopRuntime,
     draft,
     draftAttachments,
@@ -1930,6 +1973,7 @@ export function useChatTranscriptController({
     setComposerCaret,
     setComposerDraftHydrated,
     setComposerMode,
+    changeComposerMode,
     setComposerReasoningEffort,
     setComposerScrollTop,
     setDraft,

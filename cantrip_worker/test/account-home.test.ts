@@ -64,7 +64,7 @@ describe("ChatGPT account homes", () => {
     );
   });
 
-  it("keys managed catalogs by child model but not child reasoning effort", () => {
+  it("reuses the account writer across root and custom child selections", () => {
     const provider = {
       id: "chatgpt-provider",
       name: "ChatGPT",
@@ -92,14 +92,34 @@ describe("ChatGPT account homes", () => {
       provider,
     });
 
-    expect(custom).not.toBe(inherited);
+    expect(
+      codexRuntimeId(
+        { ...root, routeId: "other-root-route", name: "other-root" },
+        provider,
+      ),
+    ).toBe(inherited);
+    expect(
+      codexRuntimeId(root, provider, null, "standalone-chat", ["/skills/one"]),
+    ).not.toBe(
+      codexRuntimeId(root, provider, null, "standalone-chat", ["/skills/two"]),
+    );
+    expect(
+      codexRuntimeId(root, {
+        ...provider,
+        baseUrl: "https://different.invalid",
+      }),
+    ).not.toBe(inherited);
+    expect(
+      codexRuntimeId(root, { ...provider, apiKey: "rotated-secret" }),
+    ).not.toBe(inherited);
+    expect(custom).toBe(inherited);
     expect(custom).toBe(
       codexRuntimeId(root, provider, {
         model: { ...child, reasoningEffort: "high" },
         provider,
       }),
     );
-    expect(custom).not.toBe(
+    expect(custom).toBe(
       codexRuntimeId(root, provider, {
         model: { ...child, name: "gpt-child-next" },
         provider,
@@ -107,7 +127,7 @@ describe("ChatGPT account homes", () => {
     );
   });
 
-  it("restarts a custom-provider runtime when managed metadata changes", () => {
+  it("keeps the custom-provider writer when managed metadata changes", () => {
     const provider = {
       id: "ollama-provider",
       name: "Ollama",
@@ -124,7 +144,7 @@ describe("ChatGPT account homes", () => {
       reasoningEffort: null,
       catalog: null,
     };
-    expect(codexRuntimeId(model, provider)).not.toBe(
+    expect(codexRuntimeId(model, provider)).toBe(
       codexRuntimeId(
         {
           ...model,

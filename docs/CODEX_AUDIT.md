@@ -2367,6 +2367,94 @@ model attribution, route mapping, permissions, defaults, service-tier UI and
 controlled migration. Full TUI/fake-provider acceptance and eager startup remain
 required; this pass's native mutation tests do not prove them.
 
+**Pass 22 — shared model controller and native continuation:**
+
+The current isolated pass connects the composer and `/model` to one native
+settings controller. Bound chats show desired/pending/confirmed selections,
+decode admitted native TUI settings intents, and submit only explicit changes.
+Pending or failed binding reads retain the native loading/error presentation
+instead of silently falling back to the bootstrap picker. Component lifetime
+tokens prevent a retired submission from blocking or unlocking a newer source.
+The inventory endpoint resolves the actual bound worker/provider/account; it
+does not accept caller-selected account credentials or infer migration from a
+native model string.
+
+Managed GUI continuations now request preservation during preparation and omit
+model, effort and collaboration overrides from `turn/start`. Mutable root/child
+model choices no longer change the owning process identity; account, provider
+configuration, execution profile and skill scope still do. Versioned local
+session associations retain same-account thread ownership across route changes,
+with exact legacy-scope migration rather than accepting arbitrary old bindings.
+Inherited image inputs reach native validation instead of being suppressed by
+the stale bootstrap model's capability metadata.
+
+Invalid-compaction replacement captures the actual native choices and waits for
+the new thread's correlated application before marking it prepared or handing
+it over. Actual source reads bracket restoration; concurrent source changes,
+native rejection, closure and cancellation prevent a stale handoff. Recovery of
+an already prepared replacement preserves that replacement's own selections and
+does not require the retired Core. Incomplete preparation reuses its identified
+replacement thread and captures current source choices again. Native settings
+contents are not copied into the local association journal.
+
+Reviewed native patches in this pass add a revisioned live managed model catalog,
+immutable initial-turn settings evidence, and sparse child/effort/mode updates
+with cold-resume child preservation. Catalog refresh occurs at explicit picker
+or model-selection boundaries and is shared by concurrent callers; ordinary
+turns do not poll inventory. Failed discovery leaves the actual native request
+free to run against its existing catalog. The gateway does not serialize Stop
+behind model discovery. Initial settings are attributed to the turn's initial
+context, not claimed as the settings of every later inference step. Conflicting
+captures clear attribution and remain conflicting through encrypted recovery.
+
+Successful discovery replaces the discovered catalog, including removals.
+Explicitly configured and currently selected models retain usable metadata;
+retired selections are pruned at the next refresh. Fresh discovery takes
+precedence over old bootstrap metadata, including when a selected model is later
+removed from discovery. The native TUI issues a new model-list request when its
+picker opens, so the worker's refresh hook covers subsequent picker openings.
+
+The GUI now has an owner-authorized bulk read for existing encrypted turn
+archives. Browser-side authenticated decryption enriches matching existing turn
+summaries with immutable initial settings without creating messages or changing
+their lifecycle. All binding-local candidates contribute to conflict detection;
+older omissions never erase valid live evidence. Reads process the complete
+requested history in batches of 32; abort prevents later batches. Full archived
+turn aggregates remain larger than a dedicated encrypted initial-settings
+projection would be, and historical turns without an existing summary still
+need grouping-level presentation.
+
+Validation: consolidated checks passed 245 worker tests, 71 server tests,
+41 app tests and 17 crypto tests. A further 41 focused recovery/catalog cases
+and 13 replacement unit/native cases cover subsequent fixes; these groups
+overlap and are not a unique-test total. Worker, server and app typechecks,
+protocol/crypto builds and changed-TypeScript formatting pass. The final native
+release bundle built successfully against the reviewed patch series. Six tests
+across four suites using that packaged CLI and synthetic local provider passed:
+inherited GUI settings and immediate enqueue, dynamic catalog replacement and
+outage behavior, replacement restoration, managed MCP cold resume, and immutable
+turn-settings correlation. Two actual native TUI fixtures passed for model-only
+effort omission, explicit reasoning clears and fallback settings behavior.
+No CI or user desktop interaction was used.
+
+`pnpm check` stops at the unchanged chat-turn-runtime.ts (2260/1999) and
+task-routes.ts (2149/1999) decomposition budgets; the complete repository check
+has not passed.
+
+Native service-tier selection still has one exact-preservation gap. An omitted
+selection and explicit standard routing are distinct: the existing native null
+update selects standard routing rather than clearing the selection. Replacement
+preserves omission when the actual replacement also has no selection, but stops
+before handoff if clearing an explicit replacement selection would be required.
+A native clear-selection operation and its acceptance tests remain required; this
+pass does not claim complete omitted/null/value parity.
+
+Historical turns lacking summaries,
+permissions/defaults, canonical route attribution, controlled provider/account
+migration, full replacement continuity, eager startup and the complete acceptance
+matrix remain required. Existing summaries now display authenticated archived
+initial settings; that does not cover native turns with no summary to enrich.
+
 **Still outstanding:** completion of authorized command admission, origin-independent
 lifecycle/CUA authority, durable all-turn projection/replay,
 complete settings parity, eager GUI-first session startup and the full acceptance

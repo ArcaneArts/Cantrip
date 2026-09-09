@@ -4,7 +4,10 @@ import path from "node:path";
 
 import { z } from "zod";
 
-import type { PrepareManagedThreadOptions } from "./app-server.js";
+import type {
+  NativeReplacementSettings,
+  PrepareManagedThreadOptions,
+} from "./app-server.js";
 import type { CodexRuntime } from "./runtime.js";
 
 /** Authenticated routing identity, independent of a view or active turn. */
@@ -20,7 +23,7 @@ export interface ManagedSessionIdentity {
 
 const associationSchema = z
   .object({
-    version: z.literal(1),
+    version: z.union([z.literal(1), z.literal(2)]),
     identity: z.string().regex(/^[a-f0-9]{64}$/u),
     threadId: z.string().min(1),
     prepared: z.boolean().default(false),
@@ -34,6 +37,8 @@ export interface ManagedSessionPreparation {
   identity: ManagedSessionIdentity;
   runtime: Pick<CodexRuntime, "prepareManagedThread">;
   configuration: Omit<PrepareManagedThreadOptions, "onThreadIdentified">;
+  /** Read the actual source only when a replacement still needs configuration. */
+  captureReplacementSettings?: () => Promise<NativeReplacementSettings>;
   /** The server can acknowledge its canonical association before attachment. */
   onThreadIdentified?: (threadId: string) => Promise<void>;
   /** Completes the canonical handoff after full preparation, while this chat remains serialized. */
@@ -105,24 +110,36 @@ export class ManagedSessionCoordinator {
   ): Promise<{ threadId: string }> {
     const { configuration, identity } = input;
     const { provider } = configuration;
-    const fingerprint = digest([
+    const associationScope = [
       identity.placementId,
       identity.projectId,
       identity.contextKind,
       configuration.cwd,
       configuration.executionProfile,
-      configuration.model.routeId,
+    ];
+    const providerScope = [
       provider.id,
       provider.kind,
       provider.accountId ?? null,
       provider.credentialHomeKey ?? null,
-    ]);
+    ];
+    const fingerprint = digest([...associationScope, ...providerScope]);
     const previous = this.identified.get(key) ?? (await this.read(key));
+    // Migrate an old journal only when its complete old route/account scope is
+    // known. A canonical server thread remains authoritative on either version.
+    const matchesPrevious =
+      previous?.identity ===
+      (previous?.version === 1
+        ? digest([
+            ...associationScope,
+            configuration.model.routeId,
+            ...providerScope,
+          ])
+        : fingerprint);
     let threadId =
-      configuration.threadId ??
-      (previous?.identity === fingerprint ? previous.threadId : null);
+      configuration.threadId ?? (matchesPrevious ? previous.threadId : null);
     if (replacementOf) {
-      const matches = previous?.identity === fingerprint;
+      const matches = matchesPrevious;
       const resumingReplacement =
         matches && previous.replacementOf === replacementOf;
       if (
@@ -143,13 +160,11 @@ export class ManagedSessionCoordinator {
     }
     const retainedReplacement =
       replacementOf ??
-      (previous?.identity === fingerprint && previous.threadId === threadId
+      (matchesPrevious && previous.threadId === threadId
         ? previous.replacementOf
         : undefined);
     const recoveringIncomplete =
-      !configuration.threadId &&
-      previous?.identity === fingerprint &&
-      !previous.prepared;
+      !configuration.threadId && matchesPrevious && !previous.prepared;
     const intent = replacementOf
       ? threadId && previous?.prepared
         ? "preserve"
@@ -157,8 +172,18 @@ export class ManagedSessionCoordinator {
       : threadId && !recoveringIncomplete
         ? configuration.intent
         : "configure";
+    // A prepared replacement may already have console-selected settings of its
+    // own. Retrying only its handoff must neither read the old Core nor restore
+    // an older capture. An incomplete replacement captures the live source anew.
+    const replacementSettings =
+      replacementOf && intent === "configure"
+        ? input.captureReplacementSettings
+          ? await input.captureReplacementSettings()
+          : configuration.replacementSettings
+        : undefined;
     const result = await input.runtime.prepareManagedThread({
       ...configuration,
+      ...(replacementOf ? { replacementSettings } : {}),
       threadId,
       // An unbound session needs complete configuration even when the caller
       // arrived by opening a view. Subsequent view attachment preserves it.
@@ -169,7 +194,7 @@ export class ManagedSessionCoordinator {
             "Native replacement returned the rejected thread identity.",
           );
         const association: Association = {
-          version: 1,
+          version: 2,
           identity: fingerprint,
           threadId: identifiedThreadId,
           ...(retainedReplacement
@@ -188,7 +213,7 @@ export class ManagedSessionCoordinator {
       },
     });
     const completed: Association = {
-      version: 1,
+      version: 2,
       identity: fingerprint,
       threadId: result.threadId,
       prepared: true,

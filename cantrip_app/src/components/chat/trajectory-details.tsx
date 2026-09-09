@@ -226,6 +226,51 @@ function activitySummaryFields(
               ? "Unavailable"
               : formatDuration(activity.durationMs),
         },
+        ...(activity.initialSettingsConflict
+          ? [
+              {
+                label: "Initial settings",
+                value:
+                  "Unavailable: conflicting native captures were retained.",
+              },
+            ]
+          : []),
+        ...(activity.initialSettings && !activity.initialSettingsConflict
+          ? [
+              {
+                label: "Initial settings",
+                value: "Native settings captured when this turn started.",
+              },
+              { label: "Initial model", value: activity.initialSettings.model },
+              {
+                label: "Model provider",
+                value: activity.initialSettings.modelProvider,
+              },
+              {
+                label: "Selected reasoning",
+                value: activity.initialSettings.reasoningEffort ?? "Default",
+              },
+              {
+                label: "Effective reasoning",
+                value:
+                  activity.initialSettings.effectiveReasoningEffort ??
+                  "Default",
+              },
+              {
+                label: "Selected service tier",
+                value: activity.initialSettings.serviceTier ?? "Default",
+              },
+              {
+                label: "Effective service tier",
+                value:
+                  activity.initialSettings.effectiveServiceTier ?? "Default",
+              },
+              {
+                label: "Initial mode",
+                value: activity.initialSettings.collaborationMode,
+              },
+            ]
+          : []),
       ];
     case "contextCompaction":
       return [{ label: "Context", value: "Compacted" }];

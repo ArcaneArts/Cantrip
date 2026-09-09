@@ -1,6 +1,7 @@
 import {
   NativeThreadSettingsState,
   type NativeSettingsRequest,
+  type NativeThreadSettings,
 } from "./native-thread-settings.js";
 import { z } from "zod";
 import { publishPendingInteraction } from "./pending-interaction-publication.js";
@@ -21,10 +22,16 @@ import {
 import { lstat, mkdir } from "node:fs/promises";
 import path from "node:path";
 import readline from "node:readline";
-import { promisify, stripVTControlCharacters } from "node:util";
+import {
+  isDeepStrictEqual,
+  promisify,
+  stripVTControlCharacters,
+} from "node:util";
 
 import {
   agentActivitySchema,
+  nativeInitialTurnSettingsSchema,
+  type NativeInitialTurnSettings,
   agentCommandOutputLimitBytes,
   agentFilePreviewLimitCharacters,
   CANTRIP_MCP_TOOL_NAMES,
@@ -129,6 +136,7 @@ import {
   runtimeModelSupportsImages,
   writeManagedCodexModelCatalog,
 } from "./model-catalog.js";
+import { LiveManagedModelCatalog } from "./live-managed-model-catalog.js";
 import {
   customizationInventory,
   parseExternalImportStatus,
@@ -204,6 +212,8 @@ interface PendingRpcRequest {
 }
 
 interface ActiveTurn {
+  initialSettings?: NativeInitialTurnSettings;
+  inheritThreadSettings?: boolean;
   admission?: {
     operationGeneration: string;
     controller: AbortController;
@@ -269,6 +279,7 @@ interface ActiveTurn {
 type AgentEventState = Pick<
   ActiveTurn,
   | "agentScope"
+  | "initialSettings"
   | "captureProtectedDiagnostics"
   | "commandTelemetry"
   | "completedCommandIds"
@@ -1245,6 +1256,7 @@ interface TurnStartResponse {
 
 interface TurnStartedParams {
   threadId: string;
+  initialSettings?: NativeInitialTurnSettings;
   turn: {
     id: string;
     startedAt?: number | null;
@@ -1736,6 +1748,9 @@ export interface RunAgentTurnRetry {
 }
 
 export interface RunAgentTurnOptions {
+  /** Shared managed preparation owns configuration; this input inherits the native
+   * thread selection instead of replaying a possibly stale GUI bootstrap model. */
+  inheritThreadSettings?: boolean;
   /** Already protected, complete native queue vector. Never flatten or append inferred skills. */
   nativeInput?: ReadonlyArray<Record<string, unknown>>;
   nativeClientUserMessageId?: string;
@@ -1977,7 +1992,17 @@ export type GoalRuntimeOptions = Pick<
   | "threadId"
 >;
 
+export interface NativeReplacementSettings {
+  sourceThreadId: string;
+  transportGeneration: string | null;
+  sourcePreparationVersion: number;
+  settings: NativeThreadSettings;
+}
+
 export interface PrepareManagedThreadOptions extends GoalRuntimeOptions {
+  /** Actual source Core settings, restored before replacement handoff. */
+  replacementSettings?: NativeReplacementSettings;
+  signal?: AbortSignal;
   canonicalHistory?: boolean;
   executionGate?: { runnerGeneration: string };
   executionProfile: RunAgentTurnOptions["executionProfile"];
@@ -2190,6 +2215,7 @@ function managedThreadConfiguration(
     canonicalHistory?: boolean;
   },
   hasGitMetadata: boolean,
+  preserveSubagentSettings = false,
 ) {
   const profile = options.executionProfile ?? "ide";
   const enabled = profile === "ide";
@@ -2202,6 +2228,7 @@ function managedThreadConfiguration(
       options.mcpServers,
     ).developerInstructions,
     multiAgentEnabled: enabled,
+    ...(preserveSubagentSettings ? { preserveSubagentSettings: true } : {}),
     ...(options.executionGate ? { executionGate: options.executionGate } : {}),
     ...(options.canonicalHistory === undefined
       ? {}
@@ -2320,6 +2347,20 @@ function assembledInstructionContextActivity(input: {
   turnId: string;
   turnPolicy: ReturnType<typeof codexWorktreeTurnPolicy>;
 }): AgentActivity {
+  const initial = input.active.initialSettings;
+  const model =
+    initial?.model ??
+    (input.options.inheritThreadSettings ? null : input.options.model.name);
+  const reasoningEffort = initial
+    ? initial.reasoningEffort
+    : input.options.inheritThreadSettings
+      ? null
+      : input.options.model.reasoningEffort;
+  const collaborationMode =
+    initial?.collaborationMode ??
+    (input.options.inheritThreadSettings
+      ? null
+      : (input.active.collaborationMode?.mode ?? input.options.planMode));
   const developerInstructions = cantripChatThreadParams(
     input.hasGitMetadata,
     input.options.executionProfile,
@@ -2351,12 +2392,11 @@ function assembledInstructionContextActivity(input: {
     request: instructionText,
     metadata: {
       approvalProfile: input.options.permissionProfileId,
-      collaborationMode:
-        input.active.collaborationMode?.mode ?? input.options.planMode,
-      model: input.options.model.name,
+      collaborationMode,
+      model,
       providerId: input.options.provider.id,
       providerKind: input.options.provider.kind,
-      reasoningEffort: input.options.model.reasoningEffort,
+      reasoningEffort,
       runtimeVersion: input.runtimeVersion,
       sandboxPolicy:
         "sandboxPolicy" in input.turnPolicy
@@ -2372,11 +2412,10 @@ function assembledInstructionContextActivity(input: {
     provenance: "assembled",
     text: raw.request?.text ?? null,
     sources,
-    model: input.options.model.name,
+    model,
     provider: input.options.provider.id,
-    reasoningEffort: input.options.model.reasoningEffort,
-    collaborationMode:
-      input.active.collaborationMode?.mode ?? input.options.planMode,
+    reasoningEffort,
+    collaborationMode,
     permissionProfile: input.options.permissionProfileId,
     runtimeVersion: input.runtimeVersion,
     startedAtMs: input.active.startedAtMs,
@@ -2742,43 +2781,34 @@ export function measureCodexProfileFootprint(
 }
 
 export function codexRuntimeId(
-  model: RunAgentTurnOptions["model"],
+  _model: RunAgentTurnOptions["model"],
   provider: RunAgentTurnOptions["provider"],
-  subagentDefaults: RuntimeSubagentDefaults | null = null,
+  _subagentDefaults: RuntimeSubagentDefaults | null = null,
   executionProfile: RunAgentTurnOptions["executionProfile"] = "ide",
+  globalSkillRoots: readonly string[] = [],
 ): string {
-  // Reasoning effort is a thread/turn override. Including it here would spawn
-  // another app-server against the same Codex home, so resuming the thread
-  // after an effort change would contend with its existing writer.
+  // Root/child models, effort and catalog metadata belong to threads or the live
+  // catalog. They must not create a second writer for an existing native thread.
+  // Keep process-owned credentials, provider bootstrap and skill scope isolated.
   const configuration = createHash("sha256")
     .update(
       JSON.stringify({
-        modelName: model.name,
-        modelCatalog: model.catalog ?? null,
+        providerId: provider.id,
         providerName: provider.name,
         providerKind: provider.kind,
-        providerAccountId: provider.accountId,
-        credentialHomeKey: provider.credentialHomeKey,
+        providerAccountId: provider.accountId ?? null,
+        credentialHomeKey: provider.credentialHomeKey ?? null,
         baseUrl: provider.baseUrl,
         apiKey: provider.apiKey,
         executionProfile,
-        subagentModel: subagentDefaults
-          ? {
-              name: subagentDefaults.model.name,
-              routeId: subagentDefaults.model.routeId,
-              catalog: subagentDefaults.model.catalog ?? null,
-              providerId: subagentDefaults.provider.id,
-              providerKind: subagentDefaults.provider.kind,
-              providerAccountId: subagentDefaults.provider.accountId,
-              credentialHomeKey: subagentDefaults.provider.credentialHomeKey,
-              baseUrl: subagentDefaults.provider.baseUrl,
-            }
-          : null,
+        globalSkillRoots: [
+          ...new Set(globalSkillRoots.map((root) => path.resolve(root))),
+        ].sort(),
       }),
     )
     .digest("hex")
     .slice(0, 16);
-  return `${provider.credentialHomeKey ?? provider.id}:${model.routeId}:${configuration}`;
+  return `${provider.credentialHomeKey ?? provider.id}:${configuration}`;
 }
 
 function safeProviderOrigin(provider: RuntimeProvider): string | null {
@@ -4044,6 +4074,7 @@ function turnSummaryActivity(
     "completedAt" | "durationMs" | "id" | "startedAt" | "status"
   >,
   correlation: CodexEventCorrelation,
+  initialSettings?: NativeInitialTurnSettings,
 ): AgentActivity {
   return agentActivitySchema.parse({
     type: "turnSummary",
@@ -4058,6 +4089,7 @@ function turnSummaryActivity(
     startedAt: turn.startedAt,
     completedAt: turn.completedAt,
     correlation,
+    ...(initialSettings ? { initialSettings } : {}),
   });
 }
 
@@ -4234,6 +4266,12 @@ export function completedCodexThreadTurnFromRead(
 }
 
 export class CodexAppServer implements CodexRuntime {
+  readonly #liveManagedModelCatalog = new LiveManagedModelCatalog();
+  #managedModelInventoryProvider: RunAgentTurnOptions["provider"] | null = null;
+  #managedModelInventoryRefresh: {
+    generation: string;
+    promise: Promise<void>;
+  } | null = null;
   #managedModelInventory:
     import("@cantrip/protocol").NativeModelInventory | null = null;
   #managedModelInventoryLoader:
@@ -4258,7 +4296,6 @@ export class CodexAppServer implements CodexRuntime {
   private async loadManagedModelInventory(
     provider: RunAgentTurnOptions["provider"],
   ) {
-    this.#managedModelInventory = null;
     if (!this.#managedModelInventoryLoader) return null;
     try {
       const inventory = await this.#managedModelInventoryLoader(provider);
@@ -4270,7 +4307,6 @@ export class CodexAppServer implements CodexRuntime {
         throw new Error(
           "Native model inventory belongs to another provider/account.",
         );
-      this.#managedModelInventory = inventory;
       return inventory;
     } catch {
       // A catalog read is not an execution prerequisite: keep the explicitly
@@ -4287,6 +4323,94 @@ export class CodexAppServer implements CodexRuntime {
         },
       );
       return null;
+    }
+  }
+
+  /** Refresh discovery at an explicit picker/selection boundary, never per turn.
+   * Discovery failure leaves the real native request free to succeed or fail. */
+  async prepareManagedModelCatalogRequest(
+    method: string,
+    params: unknown,
+  ): Promise<void> {
+    const values =
+      params && typeof params === "object"
+        ? (params as Record<string, unknown>)
+        : {};
+    const selectsModel =
+      method === "thread/settings/update" &&
+      (typeof values.model === "string" ||
+        typeof values.subagentModel === "string" ||
+        (values.collaborationMode != null &&
+          typeof values.collaborationMode === "object"));
+    if (!(method === "model/list" && values.cursor == null) && !selectsModel)
+      return;
+    const generation = this.#nativeTransportGeneration;
+    const provider = this.#managedModelInventoryProvider;
+    if (!generation || !provider || provider.kind === "chatgpt") return;
+    const existing = this.#managedModelInventoryRefresh;
+    if (existing?.generation === generation) return existing.promise;
+    const promise = (async () => {
+      const inventory = await this.loadManagedModelInventory(provider);
+      if (!inventory || this.#nativeTransportGeneration !== generation) return;
+      try {
+        const retainedModelNames = new Set<string>();
+        for (const threadId of this.#managedNativeCommandDispatchers.keys()) {
+          const state = this.#threadSettings.read(threadId);
+          if (state.confirmed) {
+            retainedModelNames.add(state.confirmed.settings.model);
+            if (state.confirmed.settings.subagentModel)
+              retainedModelNames.add(state.confirmed.settings.subagentModel);
+          }
+          for (const request of state.requests) {
+            if (request.status === "rejected" || request.status === "applied")
+              continue;
+            for (const value of [
+              request.patch.model,
+              request.patch.subagentModel,
+            ]) {
+              if (typeof value === "string") retainedModelNames.add(value);
+            }
+            const mode = request.patch.collaborationMode as
+              { settings?: { model?: unknown } } | undefined;
+            if (typeof mode?.settings?.model === "string")
+              retainedModelNames.add(mode.settings.model);
+          }
+        }
+        await this.#liveManagedModelCatalog.synchronize({
+          generation,
+          providerKind: provider.kind,
+          models: [],
+          inventory: inventory.models,
+          retainedModelNames: [...retainedModelNames],
+          currentGeneration: () => this.#nativeTransportGeneration,
+          dispatch: (update) =>
+            this.request("model/managedCatalog/update", update),
+        });
+        if (this.#nativeTransportGeneration === generation) {
+          this.#managedModelInventory = inventory;
+          this.#imageSupport.clear();
+        }
+      } catch {
+        workerLogger.event(
+          "warn",
+          "Native model catalog refresh was not acknowledged",
+          {
+            event: "codex.models.catalog-unavailable",
+            subsystem: "codex",
+            operation: "update-model-catalog",
+            providerId: provider.id,
+            status: "degraded",
+          },
+        );
+      }
+    })();
+    const refresh = { generation, promise };
+    this.#managedModelInventoryRefresh = refresh;
+    try {
+      await promise;
+    } finally {
+      if (this.#managedModelInventoryRefresh === refresh)
+        this.#managedModelInventoryRefresh = null;
     }
   }
 
@@ -4634,7 +4758,10 @@ export class CodexAppServer implements CodexRuntime {
       queueClaim: command.queueClaim,
       method: command.method,
       params,
-      dispatch: () => this.request(command.method, params),
+      dispatch: async () => {
+        await this.prepareManagedModelCatalogRequest(command.method, params);
+        return this.request(command.method, params);
+      },
     });
   }
 
@@ -5213,6 +5340,8 @@ export class CodexAppServer implements CodexRuntime {
                 },
               }
             : {}),
+          inheritThreadSettings:
+            "prompt" in options ? options.inheritThreadSettings === true : true,
           agentScope: null,
           baseline,
           captureProtectedDiagnostics: options.captureProtectedDiagnostics,
@@ -5370,7 +5499,11 @@ export class CodexAppServer implements CodexRuntime {
       options.executionProfile,
     );
     const baseline = await workspaceSnapshot(options.cwd);
-    const threadId = await this.loadThread(options);
+    const threadId = await this.loadThread(
+      options,
+      !options.inheritThreadSettings,
+      options.inheritThreadSettings ? "preserve" : "configure",
+    );
     options.preparationSignal?.throwIfAborted();
     if (!threadId) {
       throw new Error("Could not start a Codex thread.");
@@ -5379,14 +5512,20 @@ export class CodexAppServer implements CodexRuntime {
     if (this.methodAvailable("thread/goal/get")) {
       await this.refreshGoal(threadId);
     }
-    const collaborationMode = this.methodAvailable("collaborationMode/list")
-      ? await this.updatePlanModeOnThread(
-          threadId,
-          options.planMode,
-          options.model,
-        )
-      : null;
-    if (options.planMode === "plan" && !collaborationMode) {
+    const collaborationMode =
+      !options.inheritThreadSettings &&
+      this.methodAvailable("collaborationMode/list")
+        ? await this.updatePlanModeOnThread(
+            threadId,
+            options.planMode,
+            options.model,
+          )
+        : null;
+    if (
+      !options.inheritThreadSettings &&
+      options.planMode === "plan" &&
+      !collaborationMode
+    ) {
       throw new Error(
         "Plan Mode is unavailable in the installed Codex runtime.",
       );
@@ -5441,6 +5580,7 @@ export class CodexAppServer implements CodexRuntime {
                     options.attachments,
                     options.model,
                     options.provider,
+                    options.inheritThreadSettings,
                   )
                 : []),
             ]
@@ -5450,6 +5590,7 @@ export class CodexAppServer implements CodexRuntime {
                 options.attachments ?? [],
                 options.model,
                 options.provider,
+                options.inheritThreadSettings,
               )),
               ...options.skillNames.flatMap((name) => {
                 const skill = selectedSkills.get(name);
@@ -5458,9 +5599,13 @@ export class CodexAppServer implements CodexRuntime {
                   : [];
               }),
             ],
-        model: options.model.name,
-        ...codexReasoningEffortParams(options.model),
-        ...(collaborationMode ? { collaborationMode } : {}),
+        ...(options.inheritThreadSettings
+          ? {}
+          : {
+              model: options.model.name,
+              ...codexReasoningEffortParams(options.model),
+              ...(collaborationMode ? { collaborationMode } : {}),
+            }),
         ...(resultMode.kind === "structured"
           ? { outputSchema: resultMode.outputSchema }
           : {}),
@@ -5501,7 +5646,9 @@ export class CodexAppServer implements CodexRuntime {
       turnId: response.turn.id,
       providerId: options.provider.id,
       providerKind: options.provider.kind,
-      model: options.model.name,
+      model:
+        activeTurn.initialSettings?.model ??
+        (options.inheritThreadSettings ? null : options.model.name),
       counts: {
         attachments: options.attachments?.length ?? 0,
         skills: options.skillNames.length,
@@ -6439,6 +6586,7 @@ export class CodexAppServer implements CodexRuntime {
           throw new Error("The native settings Core was replaced.");
       },
       options.settingsBindingId,
+      true,
     );
   }
 
@@ -6448,6 +6596,7 @@ export class CodexAppServer implements CodexRuntime {
     patch: Record<string, unknown>,
     assertOwner: () => void = () => {},
     settingsBindingId?: string,
+    refreshModelCatalog = false,
   ): Promise<NativeSettingsRequest> {
     // Identity fields must never be supplied inside the settings patch.
     if (Object.hasOwn(patch, "threadId") || Object.hasOwn(patch, "operationId"))
@@ -6477,7 +6626,13 @@ export class CodexAppServer implements CodexRuntime {
         ...(settingsBindingId === undefined ? {} : { settingsBindingId }),
         method: "thread/settings/update",
         params,
-        dispatch: (forward) => {
+        dispatch: async (forward) => {
+          if (refreshModelCatalog) {
+            await this.prepareManagedModelCatalogRequest(
+              forward?.method ?? "thread/settings/update",
+              forward?.params ?? params,
+            );
+          }
           assertCurrent();
           return this.request(
             forward?.method ?? "thread/settings/update",
@@ -6520,6 +6675,174 @@ export class CodexAppServer implements CodexRuntime {
       throw new Error("Native settings read returned another thread.");
     this.#threadSettings.observe(value);
     return this.#threadSettings.read(threadId);
+  }
+
+  /** Capture Core's current choices for an authorized invalid-compaction retry. */
+  async captureNativeReplacementSettings(
+    sourceThreadId: string,
+  ): Promise<NativeReplacementSettings> {
+    const transportGeneration = this.transportGeneration;
+    const sourcePreparationVersion =
+      this.#threadPreparationVersions.get(sourceThreadId) ?? 0;
+    const { confirmed } = await this.readNativeThreadSettings(sourceThreadId);
+    if (!confirmed)
+      throw new Error("Native replacement settings were not returned by Core.");
+    return {
+      sourceThreadId,
+      transportGeneration,
+      sourcePreparationVersion,
+      settings: confirmed.settings,
+    };
+  }
+
+  private async restoreNativeReplacementSettings(
+    threadId: string,
+    captured: NativeReplacementSettings,
+    assertTarget: () => void,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    const assertCurrent = () => {
+      signal?.throwIfAborted();
+      assertTarget();
+      if (
+        this.transportGeneration !== captured.transportGeneration ||
+        (this.#threadPreparationVersions.get(captured.sourceThreadId) ?? 0) !==
+          captured.sourcePreparationVersion
+      )
+        throw new Error("Native replacement settings source was replaced.");
+    };
+    assertCurrent();
+    // A console can update the source while replacement initialization runs.
+    // Fence the actual source version/content, never a cached bootstrap choice.
+    const current = await this.readNativeThreadSettings(
+      captured.sourceThreadId,
+    );
+    assertCurrent();
+    if (!isDeepStrictEqual(current.confirmed?.settings, captured.settings))
+      throw new Error(
+        "Native source settings changed during thread replacement.",
+      );
+    const settings = captured.settings;
+    if (settings.serviceTier === null) {
+      const target = await this.readNativeThreadSettings(threadId);
+      assertCurrent();
+      if (target.confirmed?.settings.serviceTier !== null)
+        throw new Error(
+          "Native replacement cannot restore an inherited service tier over an explicit selection.",
+        );
+    }
+    const patch = {
+      model: settings.model,
+      effort: settings.effort,
+      // Native null updates mean an explicit "default" selection. Preserve
+      // actual absence by omitting the field when the new Core is also unset.
+      ...(settings.serviceTier === null
+        ? {}
+        : { serviceTier: settings.serviceTier }),
+      collaborationMode: structuredClone(settings.collaborationMode),
+      ...(settings.multiAgentEnabled === undefined
+        ? {}
+        : { multiAgentEnabled: settings.multiAgentEnabled }),
+      ...(settings.subagentModel === undefined
+        ? {}
+        : { subagentModel: settings.subagentModel }),
+      ...(settings.subagentReasoningEffort === undefined
+        ? {}
+        : { subagentReasoningEffort: settings.subagentReasoningEffort }),
+      ...(settings.multiAgentMode === undefined
+        ? {}
+        : { multiAgentMode: settings.multiAgentMode }),
+    };
+    const operationId = randomUUID();
+    let resolve!: () => void;
+    let reject!: (error: unknown) => void;
+    const applied = new Promise<void>((yes, no) => {
+      resolve = yes;
+      reject = no;
+    });
+    // Native failure/exit may precede the RPC reply; retain that failure without
+    // producing an unhandled rejection while the acknowledgment is in flight.
+    void applied.catch(() => {});
+    const check = () => {
+      try {
+        assertCurrent();
+        const request = this.#threadSettings
+          .read(threadId)
+          .requests.find((candidate) => candidate.operationId === operationId);
+        if (request?.status === "applied") {
+          const actual = request.applied?.settings;
+          if (
+            actual?.modelProvider !== settings.modelProvider ||
+            actual?.serviceTier !== settings.serviceTier ||
+            !Object.entries(patch).every(([key, value]) =>
+              isDeepStrictEqual(actual?.[key], value),
+            )
+          )
+            reject(new Error("Native replacement applied different settings."));
+          else resolve();
+        } else if (
+          request?.status === "rejected" ||
+          request?.status === "uncertain"
+        )
+          reject(
+            new Error(
+              typeof request.error?.message === "string"
+                ? request.error.message
+                : "Native replacement settings application was not confirmed.",
+            ),
+          );
+      } catch (error) {
+        reject(error);
+      }
+    };
+    const subscription = this.observeNativeHistory(threadId, {
+      capture: (event) => {
+        if (event.method === "thread/closed")
+          reject(
+            new Error(
+              "Native replacement thread closed before settings applied.",
+            ),
+          );
+        // The raw history observer runs before the settings state reducer.
+        queueMicrotask(check);
+      },
+      onError: reject,
+    });
+    const abort = () => reject(signal?.reason ?? subscription.signal.reason);
+    subscription.signal.addEventListener("abort", abort, { once: true });
+    signal?.addEventListener("abort", abort, { once: true });
+    try {
+      assertCurrent();
+      // A rejected/aborted observation must also stop preparation while the
+      // enqueue acknowledgment is still pending. Success still waits for both.
+      const failure = applied.then(() => new Promise<never>(() => {}));
+      await Promise.race([
+        this.applyNativeThreadSettings(
+          threadId,
+          operationId,
+          patch,
+          assertCurrent,
+        ),
+        failure,
+      ]);
+      check();
+      await applied;
+      assertCurrent();
+      const finalSource = await this.readNativeThreadSettings(
+        captured.sourceThreadId,
+      );
+      assertCurrent();
+      if (
+        !isDeepStrictEqual(finalSource.confirmed?.settings, captured.settings)
+      )
+        throw new Error(
+          "Native source settings changed during thread replacement.",
+        );
+    } finally {
+      signal?.removeEventListener("abort", abort);
+      subscription.signal.removeEventListener("abort", abort);
+      subscription.close();
+    }
   }
 
   async getPlanMode(
@@ -6590,6 +6913,15 @@ export class CodexAppServer implements CodexRuntime {
         options.planMode,
         options.model,
         assertCurrent,
+      );
+      assertCurrent();
+    }
+    if (options.replacementSettings) {
+      await this.restoreNativeReplacementSettings(
+        threadId,
+        options.replacementSettings,
+        assertCurrent,
+        options.signal,
       );
       assertCurrent();
     }
@@ -6939,6 +7271,8 @@ export class CodexAppServer implements CodexRuntime {
       throw new Error("The Codex thread does not have an active turn.");
     }
     const activeThreadId = active[1].threadId;
+    const inheritThreadSettings =
+      this.#managedNativeCommandDispatchers.has(activeThreadId);
     const params = {
       threadId: activeThreadId,
       ...(queued?.clientUserMessageId
@@ -6953,10 +7287,17 @@ export class CodexAppServer implements CodexRuntime {
                   attachments,
                   model,
                   provider,
+                  inheritThreadSettings,
                 )
               : []),
           ]
-        : await this.turnAttachmentInputs(prompt, attachments, model, provider),
+        : await this.turnAttachmentInputs(
+            prompt,
+            attachments,
+            model,
+            provider,
+            inheritThreadSettings,
+          ),
       expectedTurnId: active[0],
     };
     const result = (await this.dispatchGuiNativeCommand(activeThreadId, {
@@ -7037,11 +7378,13 @@ export class CodexAppServer implements CodexRuntime {
     attachments: RuntimeChatAttachment[],
     model?: RunAgentTurnOptions["model"],
     provider?: RunAgentTurnOptions["provider"],
+    inheritThreadSettings = false,
   ): Promise<Array<Record<string, unknown>>> {
     const imageSupport =
-      model && provider && attachments.some(({ kind }) => kind === "image")
+      inheritThreadSettings ||
+      (model && provider && attachments.some(({ kind }) => kind === "image")
         ? await this.modelSupportsImages(model, provider)
-        : false;
+        : false);
     const text = attachmentPromptText(prompt, attachments, imageSupport);
     return [
       { type: "text", text, text_elements: [] },
@@ -7114,6 +7457,7 @@ export class CodexAppServer implements CodexRuntime {
       provider,
       subagentDefaults,
       executionProfile,
+      this.globalSkillRoots,
     );
     if (this.#starting) {
       await this.#starting;
@@ -7123,6 +7467,20 @@ export class CodexAppServer implements CodexRuntime {
         throw new Error(
           "A Codex runtime received a turn for a different model profile.",
         );
+      }
+      const generation = this.#nativeTransportGeneration;
+      if (generation) {
+        await this.#liveManagedModelCatalog.synchronize({
+          generation,
+          providerKind: provider.kind,
+          models: [
+            model,
+            ...(subagentDefaults ? [subagentDefaults.model] : []),
+          ],
+          currentGeneration: () => this.#nativeTransportGeneration,
+          dispatch: (params) =>
+            this.request("model/managedCatalog/update", params),
+        });
       }
       return;
     }
@@ -7490,6 +7848,7 @@ export class CodexAppServer implements CodexRuntime {
             ? managedThreadConfiguration(
                 options,
                 await workspaceHasGitMetadata(options.cwd),
+                true,
               )
             : undefined;
         const resumed = (await request("thread/resume", {
@@ -7506,6 +7865,7 @@ export class CodexAppServer implements CodexRuntime {
           options.threadId,
           options,
           assertCurrent,
+          true,
         );
       }
       return options.threadId;
@@ -7704,12 +8064,17 @@ export class CodexAppServer implements CodexRuntime {
       subagentDefaults?: RuntimeSubagentDefaults | null;
     },
     assertCurrent: () => void,
+    preserveSubagentSettings = false,
   ): Promise<void> {
     // Omitted material is observational, not an instruction to disable tools.
     if (options.mcpServers === undefined) return;
     const hasGitMetadata = await workspaceHasGitMetadata(options.cwd);
     assertCurrent();
-    const config = managedThreadConfiguration(options, hasGitMetadata);
+    const config = managedThreadConfiguration(
+      options,
+      hasGitMetadata,
+      preserveSubagentSettings,
+    );
     const fingerprint = JSON.stringify(config);
     const previous = this.#managedConfigApplications.get(threadId);
     if (
@@ -8547,6 +8912,7 @@ export class CodexAppServer implements CodexRuntime {
               durationMs: Math.max(0, observedAtMs - state.startedAtMs),
             },
             correlation,
+            state.initialSettings,
           ),
         );
       }
@@ -8953,6 +9319,17 @@ export class CodexAppServer implements CodexRuntime {
     });
     this.#socket = socket;
     this.#nativeTransportGeneration = randomUUID();
+    this.#managedModelInventoryProvider = provider;
+    this.#managedModelInventory = managedInventory;
+    this.#liveManagedModelCatalog.replace(
+      this.#nativeTransportGeneration,
+      [
+        ...(model ? [model] : []),
+        ...(subagentDefaults ? [subagentDefaults.model] : []),
+      ],
+      provider.kind,
+      managedInventory?.models ?? [],
+    );
     this.#historyObservations.replace(this.#nativeTransportGeneration);
     workerLogger.event("debug", "Codex app-server transport connected", {
       event: "codex.runtime.transport",
@@ -9428,6 +9805,12 @@ export class CodexAppServer implements CodexRuntime {
         true,
       );
       if (target) {
+        const initial = nativeInitialTurnSettingsSchema.safeParse(
+          params.initialSettings,
+        );
+        target.state.initialSettings = initial.success
+          ? initial.data
+          : undefined;
         emitTurnActivity(
           target.state,
           turnSummaryActivity(
@@ -9445,6 +9828,7 @@ export class CodexAppServer implements CodexRuntime {
               params.turn.id,
               null,
             ),
+            target.state.initialSettings,
           ),
         );
       } else {
@@ -10355,6 +10739,7 @@ export class CodexAppServer implements CodexRuntime {
             durationMs: params.turn.durationMs ?? null,
           },
           correlation,
+          state.initialSettings,
         ),
       );
       if (!target.isRoot) {
@@ -10582,7 +10967,9 @@ export class CodexAppServer implements CodexRuntime {
         turnId,
         providerId: active.providerId,
         providerKind: active.providerKind,
-        model: active.model.name,
+        model:
+          active.initialSettings?.model ??
+          (active.inheritThreadSettings ? null : active.model.name),
         durationMs: active.durationMs ?? Date.now() - active.startedAtMs,
         counts: {
           changedFiles: active.diffChanges.length,
@@ -11206,6 +11593,10 @@ export class CodexAppServer implements CodexRuntime {
   private handleExit(error: Error): void {
     this.clearManagedExecutionGateHandlers();
     this.#nativeTransportGeneration = null;
+    this.#liveManagedModelCatalog.clear();
+    this.#managedModelInventoryProvider = null;
+    this.#managedModelInventoryRefresh = null;
+    this.#managedModelInventory = null;
     this.#historyObservations.replace(null);
     this.#preparationEpoch += 1;
     this.#threadPreparations.clear();

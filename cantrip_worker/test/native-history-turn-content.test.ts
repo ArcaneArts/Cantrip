@@ -68,6 +68,15 @@ function snapshot() {
             turnId: "turn",
             source: "canonical",
             retention: "partial",
+            initialSettings: {
+              model: "private-initial-model",
+              modelProvider: "private-initial-provider",
+              reasoningEffort: null,
+              effectiveReasoningEffort: "high",
+              serviceTier: "default",
+              effectiveServiceTier: null,
+              collaborationMode: "plan",
+            },
             contexts: [
               {
                 cwd: "/private-original-workspace",
@@ -129,6 +138,7 @@ describe("worker-protected native turn aggregates", () => {
     });
     expect(JSON.stringify(turn)).not.toContain("private");
     expect(turn).not.toHaveProperty("usage");
+    expect(turn).not.toHaveProperty("initialSettings");
     const opened = await openNativeHistoryTurn({
       service: service(),
       binding,

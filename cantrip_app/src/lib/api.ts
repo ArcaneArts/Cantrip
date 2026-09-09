@@ -1,4 +1,10 @@
 import {
+  nativeSummaryTurnIdentities,
+  readNativeTurnSettings,
+  enrichNativeTurnSummaries,
+} from "./native-history-turn-settings";
+import { clientLogger } from "./client-log-relay";
+import {
   clearSensitiveBytes,
   computeBlindLookupTag,
   deriveLookupKey,
@@ -7857,6 +7863,8 @@ export async function getMessagePage(
     signal?: AbortSignal;
   } = {},
 ): Promise<ChatMessagePage> {
+  const readIdentity = getClientSessionIdentitySnapshot();
+  const encryptionLifetime = clientEncryption.getSnapshot();
   const response = chatMessageWirePageSchema.parse(
     await request(
       withQuery(`/api/chats/${encodeURIComponent(chatId)}/messages`, {
@@ -7878,10 +7886,44 @@ export async function getMessagePage(
           CHAT_MESSAGE_DECRYPT_CONCURRENCY,
           (message) => openChatMessageOpaqueSummary(message),
         );
-  return {
-    messages: chatMessageListSchema.parse(messages),
-    page: response.page,
-  };
+  let openedMessages = chatMessageListSchema.parse(messages);
+  if (response.kind !== "task-encrypted" && readIdentity) {
+    const turns = nativeSummaryTurnIdentities(openedMessages);
+    if (turns.length) {
+      try {
+        const evidence = await readNativeTurnSettings({
+          chatId,
+          turns,
+          identity: readIdentity,
+          signal: options.signal,
+        });
+        if (
+          !clientSessionIdentityMatches(readIdentity) ||
+          clientEncryption.getSnapshot() !== encryptionLifetime
+        )
+          throw new Error(
+            "The encryption session changed while reading native history.",
+          );
+        openedMessages = enrichNativeTurnSummaries(openedMessages, evidence);
+      } catch (error) {
+        options.signal?.throwIfAborted();
+        if (
+          !clientSessionIdentityMatches(readIdentity) ||
+          clientEncryption.getSnapshot() !== encryptionLifetime
+        )
+          throw error;
+        // Supplemental archive availability must not hide the canonical chat
+        // transcript. Missing evidence never overwrites a valid live capture.
+        clientLogger.warn("Native turn settings archive could not be read", {
+          subsystem: "chat",
+          event: "chat.native-history.settings.unavailable",
+          chatId,
+          counts: { turns: turns.length },
+        });
+      }
+    }
+  }
+  return { messages: openedMessages, page: response.page };
 }
 
 async function readProtectedChatCustomization<T>(input: {

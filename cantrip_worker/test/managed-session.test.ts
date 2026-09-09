@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   mkdtemp,
   readFile,
@@ -15,6 +16,8 @@ import {
   ManagedSessionCoordinator,
   type ManagedSessionPreparation,
 } from "../src/codex/managed-session.js";
+
+import { nativeThreadSettings } from "./fixtures/native-thread-settings.js";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -133,6 +136,113 @@ describe("managed chat session preparation", () => {
       replacementOf: "native-thread",
       prepared: true,
     });
+  });
+
+  it("retries a prepared replacement handoff without reading or restoring the old Core", async () => {
+    const f = await fixture();
+    await f.coordinator.prepare(f.input);
+    const source = {
+      sourceThreadId: "native-thread",
+      transportGeneration: "transport",
+      sourcePreparationVersion: 0,
+      settings: nativeThreadSettings({ model: "source-choice" }),
+    };
+    const captureReplacementSettings = vi.fn(async () => source);
+    f.prepareManagedThread.mockImplementationOnce(async (options) => {
+      expect(options.replacementSettings).toEqual(source);
+      await options.onThreadIdentified?.("replacement");
+      return { threadId: "replacement" };
+    });
+    await expect(
+      f.coordinator.replace(
+        {
+          ...f.input,
+          captureReplacementSettings,
+          onPrepared: async () => {
+            throw new Error("handoff unavailable");
+          },
+        },
+        "native-thread",
+      ),
+    ).rejects.toThrow("handoff unavailable");
+    // The old Core can now be gone and the replacement can have newer choices.
+    captureReplacementSettings.mockRejectedValue(new Error("old Core closed"));
+    f.prepareManagedThread.mockImplementationOnce(async (options) => {
+      expect(options).toMatchObject({
+        threadId: "replacement",
+        intent: "preserve",
+      });
+      expect(options.replacementSettings).toBeUndefined();
+      await options.onThreadIdentified?.("replacement");
+      return { threadId: "replacement" };
+    });
+    await expect(
+      new ManagedSessionCoordinator(f.directory).replace(
+        {
+          ...f.input,
+          captureReplacementSettings,
+          configuration: {
+            ...f.input.configuration,
+            replacementSettings: source,
+          },
+        },
+        "native-thread",
+      ),
+    ).resolves.toEqual({ threadId: "replacement" });
+    expect(captureReplacementSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("captures the source again before retrying an incompletely configured replacement", async () => {
+    const f = await fixture();
+    await f.coordinator.prepare(f.input);
+    const captureReplacementSettings = vi.fn(async () => ({
+      sourceThreadId: "native-thread",
+      transportGeneration: "transport",
+      sourcePreparationVersion: 0,
+      settings: nativeThreadSettings({ model: "first-selection" }),
+    }));
+    f.prepareManagedThread.mockImplementationOnce(async (options) => {
+      expect(options.replacementSettings?.settings.model).toBe(
+        "first-selection",
+      );
+      await options.onThreadIdentified?.("replacement");
+      throw new Error("settings application failed");
+    });
+    const onPrepared = vi.fn(async () => {});
+    await expect(
+      f.coordinator.replace(
+        { ...f.input, captureReplacementSettings, onPrepared },
+        "native-thread",
+      ),
+    ).rejects.toThrow("settings application failed");
+    expect(onPrepared).not.toHaveBeenCalled();
+    captureReplacementSettings.mockImplementationOnce(async () => ({
+      sourceThreadId: "native-thread",
+      transportGeneration: "new-transport",
+      sourcePreparationVersion: 0,
+      settings: nativeThreadSettings({ model: "latest-selection" }),
+    }));
+    f.prepareManagedThread.mockImplementationOnce(async (options) => {
+      expect(options).toMatchObject({
+        threadId: "replacement",
+        intent: "configure",
+        replacementSettings: { settings: { model: "latest-selection" } },
+      });
+      await options.onThreadIdentified?.("replacement");
+      return { threadId: "replacement" };
+    });
+    await new ManagedSessionCoordinator(f.directory).replace(
+      { ...f.input, captureReplacementSettings, onPrepared },
+      "native-thread",
+    );
+    expect(captureReplacementSettings).toHaveBeenCalledTimes(2);
+    expect(onPrepared).toHaveBeenCalledTimes(1);
+    const journal = await readFile(
+      path.join(f.directory, (await readdir(f.directory))[0]!),
+      "utf8",
+    );
+    expect(journal).not.toContain("selection");
+    expect(journal).not.toContain("replacementSettings");
   });
 
   it("retains an identified replacement across journal failure in the current process", async () => {
@@ -386,7 +496,87 @@ describe("managed chat session preparation", () => {
     expect(prepareManagedThread.mock.calls[1]![0].threadId).toBeNull();
   });
 
-  it("keeps account and route migrations separate from a previous unbound preparation", async () => {
+  it("upgrades a matching legacy route journal before later same-account route changes", async () => {
+    const f = await fixture();
+    await f.coordinator.prepare(f.input);
+    const [name] = await readdir(f.directory);
+    const filename = path.join(f.directory, name!);
+    const i = f.input.identity;
+    const c = f.input.configuration;
+    const legacy = createHash("sha256")
+      .update(
+        JSON.stringify([
+          i.placementId,
+          i.projectId,
+          i.contextKind,
+          c.cwd,
+          c.executionProfile,
+          c.model.routeId,
+          c.provider.id,
+          c.provider.kind,
+          c.provider.accountId ?? null,
+          c.provider.credentialHomeKey ?? null,
+        ]),
+      )
+      .digest("hex");
+    await writeFile(
+      filename,
+      JSON.stringify({
+        version: 1,
+        identity: legacy,
+        threadId: "legacy-native",
+        prepared: true,
+      }),
+    );
+    await new ManagedSessionCoordinator(f.directory).prepare({
+      ...f.input,
+      configuration: { ...c, intent: "preserve" },
+    });
+    expect(f.prepareManagedThread.mock.calls[1]![0]).toMatchObject({
+      threadId: "legacy-native",
+      intent: "preserve",
+    });
+    expect(JSON.parse(await readFile(filename, "utf8"))).toMatchObject({
+      version: 2,
+      threadId: "legacy-native",
+    });
+    await new ManagedSessionCoordinator(f.directory).prepare({
+      ...f.input,
+      configuration: {
+        ...c,
+        intent: "preserve",
+        model: { ...c.model, routeId: "next-route" },
+      },
+    });
+    expect(f.prepareManagedThread.mock.calls[2]![0]).toMatchObject({
+      threadId: "legacy-native",
+      intent: "preserve",
+    });
+  });
+
+  it("recovers the same session after a root route changes within its account", async () => {
+    const f = await fixture();
+    await f.coordinator.prepare(f.input);
+    const coordinator = new ManagedSessionCoordinator(f.directory);
+    await coordinator.prepare({
+      ...f.input,
+      configuration: {
+        ...f.input.configuration,
+        intent: "preserve",
+        model: {
+          ...f.input.configuration.model,
+          routeId: "other-route",
+          name: "other-model",
+        },
+      },
+    });
+    expect(f.prepareManagedThread.mock.calls[1]![0]).toMatchObject({
+      threadId: "native-thread",
+      intent: "preserve",
+    });
+  });
+
+  it("keeps account migrations separate from a previous unbound preparation", async () => {
     const { coordinator, input, prepareManagedThread } = await fixture();
     await coordinator.prepare(input);
     await coordinator.prepare({
@@ -435,7 +625,7 @@ describe("managed chat session preparation", () => {
     const filename = path.join(directory, files[0]!);
     const content = await readFile(filename, "utf8");
     expect(JSON.parse(content)).toEqual({
-      version: 1,
+      version: 2,
       identity: expect.stringMatching(/^[a-f0-9]{64}$/u),
       threadId: "native-thread",
       prepared: true,

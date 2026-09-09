@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { nativeInitialTurnSettingsSchema } from "@cantrip/protocol";
 
 const nativeSequence = z
   .string()
@@ -121,6 +122,8 @@ const historyMetadataSchema = z
           retention: z.enum(["complete", "partial", "unavailable"]),
           // Older bundles omit this. Preserve that distinction from retained evidence.
           contexts: z.array(nativeHistoryTurnContextSchema).optional(),
+          initialSettings: nativeInitialTurnSettingsSchema.optional(),
+          initialSettingsConflict: z.boolean().optional(),
           items: z.array(
             z
               .object({
