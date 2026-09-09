@@ -159,68 +159,66 @@ describe("native settings on invalid-compaction replacement", () => {
     ).toHaveLength(3);
   });
 
-  it("preserves actual absence of a tier without sending native's explicit reset", async () => {
-    const f = fixture();
-    f.request.mockImplementation(async (method, params) => {
-      if (method === "thread/settings/read")
+  it.each([null, "priority", "default"])(
+    "restores raw tier absence over target %s without a read gate",
+    async (targetTier) => {
+      const f = fixture();
+      f.native.loadThread = vi.fn(async (options) => {
+        await options.onThreadIdentified?.("new");
+        f.notify("thread/settings/updated", {
+          threadId: "new",
+          threadSettings: nativeThreadSettings({ serviceTier: targetTier }),
+        });
+        return "new";
+      });
+      f.request.mockImplementation(async (method, params) => {
+        if (method === "thread/settings/read") {
+          expect(params.threadId).toBe("old");
+          return {
+            threadId: "old",
+            threadSettings: { ...f.source, serviceTier: null },
+          };
+        }
         return {
-          threadId: params.threadId,
-          threadSettings: { ...f.source, serviceTier: null },
+          operationId: params.operationId,
+          submissionId: "native-submission",
         };
-      return {
-        operationId: params.operationId,
+      });
+      const replacementSettings =
+        await f.runtime.captureNativeReplacementSettings("old");
+      const result = f.runtime.prepareManagedThread({
+        ...f.options,
+        replacementSettings,
+      });
+      await vi.waitFor(() =>
+        expect(
+          f.request.mock.calls.some(
+            ([method]) => method === "thread/settings/update",
+          ),
+        ).toBe(true),
+      );
+      const patch = f.request.mock.calls.find(
+        ([method]) => method === "thread/settings/update",
+      )![1];
+      expect(patch).not.toHaveProperty("serviceTier");
+      expect(patch.unsetServiceTier).toBe(true);
+      f.notify("thread/settings/updated", {
+        threadId: "new",
+        operationId: patch.operationId,
         submissionId: "native-submission",
-      };
-    });
-    const replacementSettings =
-      await f.runtime.captureNativeReplacementSettings("old");
-    const result = f.runtime.prepareManagedThread({
-      ...f.options,
-      replacementSettings,
-    });
-    await vi.waitFor(() =>
+        threadSettings: {
+          ...f.source,
+          serviceTier: null,
+          settingsVersion: { epoch: "new-core", revision: "1" },
+        },
+      });
+      await expect(result).resolves.toEqual({ threadId: "new" });
       expect(
-        f.request.mock.calls.some(
-          ([method]) => method === "thread/settings/update",
-        ),
-      ).toBe(true),
-    );
-    const patch = f.request.mock.calls.find(
-      ([method]) => method === "thread/settings/update",
-    )![1];
-    expect(patch).not.toHaveProperty("serviceTier");
-    f.notify("thread/settings/updated", {
-      threadId: "new",
-      operationId: patch.operationId,
-      submissionId: "native-submission",
-      threadSettings: {
-        ...f.source,
-        serviceTier: null,
-        settingsVersion: { epoch: "source-core", revision: "9" },
-      },
-    });
-    await expect(result).resolves.toEqual({ threadId: "new" });
-    expect(
-      f.runtime.getNativeThreadSettings("new").confirmed?.settings.serviceTier,
-    ).toBeNull();
-  });
-
-  it("does not turn an inherited tier into an explicit default when the target differs", async () => {
-    const f = fixture();
-    f.request.mockImplementation(async (_method, params) => ({
-      threadId: params.threadId,
-      threadSettings: {
-        ...f.source,
-        serviceTier: params.threadId === "old" ? null : "priority",
-      },
-    }));
-    const replacementSettings =
-      await f.runtime.captureNativeReplacementSettings("old");
-    await expect(
-      f.runtime.prepareManagedThread({ ...f.options, replacementSettings }),
-    ).rejects.toThrow("cannot restore an inherited service tier");
-    expect(f.dispatched()).toBeNull();
-  });
+        f.runtime.getNativeThreadSettings("new").confirmed?.settings
+          .serviceTier,
+      ).toBeNull();
+    },
+  );
 
   it("surfaces the actual source read error instead of falling back to bootstrap", async () => {
     const f = fixture();

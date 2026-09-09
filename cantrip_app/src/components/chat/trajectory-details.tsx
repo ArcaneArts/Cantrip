@@ -14,6 +14,7 @@ import {
   trajectoryKindLabel,
   trajectoryLaneLabel,
   type TrajectoryEvent,
+  type TrajectoryNativeTurnSettings,
 } from "./trajectory-model";
 
 type TrajectoryDetailTab = "summary" | "preview" | "raw";
@@ -27,6 +28,11 @@ const detailTabs = [
 function formatDuration(durationMs: number): string {
   if (durationMs < 1_000) return `${durationMs} ms`;
   return `${(durationMs / 1_000).toFixed(2)} s`;
+}
+
+function selectedServiceTierLabel(value: string | null): string {
+  if (value === null) return "No service tier override";
+  return value === "default" ? "Standard service" : value;
 }
 
 function DetailField({ label, value }: { label: string; value: string }) {
@@ -258,12 +264,15 @@ function activitySummaryFields(
               },
               {
                 label: "Selected service tier",
-                value: activity.initialSettings.serviceTier ?? "Default",
+                value: selectedServiceTierLabel(
+                  activity.initialSettings.serviceTier,
+                ),
               },
               {
                 label: "Effective service tier",
                 value:
-                  activity.initialSettings.effectiveServiceTier ?? "Default",
+                  activity.initialSettings.effectiveServiceTier ??
+                  "Unspecified",
               },
               {
                 label: "Initial mode",
@@ -566,5 +575,91 @@ export function TrajectoryDetails({
         )}
       </div>
     </div>
+  );
+}
+
+/** Turn-level evidence, independent of the presence of lifecycle summaries. */
+export function NativeTurnSettingsDetails({
+  entries,
+}: {
+  entries: readonly TrajectoryNativeTurnSettings[];
+}) {
+  if (!entries.length) return null;
+  return (
+    <details
+      className="shrink-0 border-b px-3 py-2 text-xs"
+      data-slot="native-turn-settings"
+    >
+      <summary className="cursor-pointer">
+        Initial settings · {entries.length} native{" "}
+        {entries.length === 1 ? "turn" : "turns"}
+      </summary>
+      <p className="py-2 text-muted-foreground">
+        Captured when each turn started. Later steps may use different settings.
+      </p>
+      <div className="max-h-64 overflow-auto">
+        {entries.map((entry) => (
+          <section
+            className="pb-3"
+            key={JSON.stringify([entry.threadId, entry.turnId])}
+          >
+            <p className="font-medium">{entry.agentLabel}</p>
+            <dl>
+              <DetailField label="Native thread" value={entry.threadId} />
+              <DetailField label="Native turn" value={entry.turnId} />
+              {entry.status === "available" ? (
+                <>
+                  <DetailField
+                    label="Initial model"
+                    value={entry.initialSettings.model}
+                  />
+                  <DetailField
+                    label="Model provider"
+                    value={entry.initialSettings.modelProvider}
+                  />
+                  <DetailField
+                    label="Selected reasoning"
+                    value={entry.initialSettings.reasoningEffort ?? "Default"}
+                  />
+                  <DetailField
+                    label="Effective reasoning"
+                    value={
+                      entry.initialSettings.effectiveReasoningEffort ??
+                      "Default"
+                    }
+                  />
+                  <DetailField
+                    label="Selected service tier"
+                    value={selectedServiceTierLabel(
+                      entry.initialSettings.serviceTier,
+                    )}
+                  />
+                  <DetailField
+                    label="Effective service tier"
+                    value={
+                      entry.initialSettings.effectiveServiceTier ??
+                      "Unspecified"
+                    }
+                  />
+                  <DetailField
+                    label="Initial mode"
+                    value={entry.initialSettings.collaborationMode}
+                  />
+                </>
+              ) : (
+                <DetailField
+                  label="Initial settings"
+                  value={
+                    entry.status === "conflict"
+                      ? "Unavailable: conflicting native captures were retained."
+                      : "Unavailable in this native turn archive."
+                  }
+                />
+              )}
+            </dl>
+          </section>
+        ))}
+      </div>
+    </details>
   );
 }

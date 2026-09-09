@@ -1,3 +1,4 @@
+import type { NativeTurnSettingsEvidence } from "./native-history-turn-settings";
 import type { ChatMessage, ChatMessagePageInfo } from "@cantrip/protocol";
 
 export const CHAT_MESSAGE_DECRYPT_CONCURRENCY = 6;
@@ -7,6 +8,8 @@ export const CHAT_MESSAGE_CACHE_GC_MS = 30 * 60 * 1_000;
 export interface ChatMessagePage {
   messages: ChatMessage[];
   page: ChatMessagePageInfo;
+  /** Client-decrypted archive evidence; never a canonical chat message. */
+  nativeTurnSettings?: NativeTurnSettingsEvidence[];
 }
 
 export interface ChatMessageLiveOverlay {

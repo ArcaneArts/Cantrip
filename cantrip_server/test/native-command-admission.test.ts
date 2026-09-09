@@ -3735,6 +3735,7 @@ describe("canonical managed queue and completion outbox", () => {
 
 describe("native settings application evidence", () => {
   it.each([
+    "unsetServiceTier",
     "collaborationModeKind",
     "multiAgentEnabled",
     "subagentModel",

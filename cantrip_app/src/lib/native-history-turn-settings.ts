@@ -1,3 +1,10 @@
+import { type NativeTurnSettingsEvidence } from "./native-turn-settings-evidence";
+export {
+  nativeCorrelatedTurnIdentities,
+  nativeTurnSettingsForMessages,
+  mergeNativeTurnSettingsEvidence,
+  type NativeTurnSettingsEvidence,
+} from "./native-turn-settings-evidence";
 import { clearSensitiveBytes, decryptNativeHistoryTurn } from "@cantrip/crypto";
 import {
   nativeHistoryTurnReadResponseSchema,
@@ -17,39 +24,10 @@ import {
 } from "./client-session";
 import { request } from "./api-client";
 
-export type NativeTurnSettingsEvidence = {
-  threadId: string;
-  turnId: string;
-} & (
-  | { status: "available"; initialSettings: NativeInitialTurnSettings }
-  | { status: "conflict" | "unavailable" }
-);
 const object = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 const key = (value: { threadId: string; turnId: string }) =>
   JSON.stringify([value.threadId, value.turnId]);
-
-export function nativeSummaryTurnIdentities(messages: ChatMessage[]) {
-  const ids = new Map<string, { threadId: string; turnId: string }>();
-  for (const message of messages)
-    for (const item of message.content) {
-      if (item.type !== "activity" || item.activity.type !== "turnSummary")
-        continue;
-      const { correlation, agentScope } = item.activity;
-      if (
-        !correlation?.threadId ||
-        !correlation.turnId ||
-        (agentScope && agentScope.agentThreadId !== correlation.threadId)
-      )
-        continue;
-      const identity = {
-        threadId: correlation.threadId,
-        turnId: correlation.turnId,
-      };
-      ids.set(key(identity), identity);
-    }
-  return [...ids.values()];
-}
 
 function initialEvidence(
   source: unknown,

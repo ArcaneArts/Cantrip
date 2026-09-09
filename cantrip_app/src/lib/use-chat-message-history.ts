@@ -1,3 +1,4 @@
+import { nativeTurnSettingsForMessages } from "./native-turn-settings-evidence";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
@@ -90,6 +91,14 @@ export function useChatMessageHistory({
       ),
     [live.data, maxCachedMessages, pages, provisional.data],
   );
+  const nativeTurnSettings = useMemo(
+    () =>
+      nativeTurnSettingsForMessages(
+        data,
+        pages.flatMap((page) => page.nativeTurnSettings ?? []),
+      ),
+    [data, pages],
+  );
   const hasOlder =
     historyCursor !== null &&
     (older.data === undefined || older.hasNextPage === true);
@@ -125,6 +134,7 @@ export function useChatMessageHistory({
 
   return {
     data,
+    nativeTurnSettings,
     fetchOlder,
     hasOlder,
     isFetching: head.isFetching || older.isFetching,

@@ -1,7 +1,8 @@
 import {
-  nativeSummaryTurnIdentities,
+  nativeCorrelatedTurnIdentities,
   readNativeTurnSettings,
   enrichNativeTurnSummaries,
+  type NativeTurnSettingsEvidence,
 } from "./native-history-turn-settings";
 import { clientLogger } from "./client-log-relay";
 import {
@@ -7887,8 +7888,9 @@ export async function getMessagePage(
           (message) => openChatMessageOpaqueSummary(message),
         );
   let openedMessages = chatMessageListSchema.parse(messages);
+  let nativeTurnSettings: NativeTurnSettingsEvidence[] = [];
   if (response.kind !== "task-encrypted" && readIdentity) {
-    const turns = nativeSummaryTurnIdentities(openedMessages);
+    const turns = nativeCorrelatedTurnIdentities(openedMessages);
     if (turns.length) {
       try {
         const evidence = await readNativeTurnSettings({
@@ -7905,6 +7907,7 @@ export async function getMessagePage(
             "The encryption session changed while reading native history.",
           );
         openedMessages = enrichNativeTurnSummaries(openedMessages, evidence);
+        nativeTurnSettings = evidence;
       } catch (error) {
         options.signal?.throwIfAborted();
         if (
@@ -7923,7 +7926,7 @@ export async function getMessagePage(
       }
     }
   }
-  return { messages: openedMessages, page: response.page };
+  return { messages: openedMessages, page: response.page, nativeTurnSettings };
 }
 
 async function readProtectedChatCustomization<T>(input: {

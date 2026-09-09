@@ -19,8 +19,10 @@ export const nativeSettingsPatchSchema = z
     model: z.string().nullable().optional(),
     effort: z.string().nullable().optional(),
     summary: z.string().nullable().optional(),
-    // Null clears; omission preserves. Do not normalize these to one value.
+    // Null explicitly selects standard service; omission preserves the selection.
     serviceTier: z.string().nullable().optional(),
+    // True removes the selected override, leaving the tier unspecified.
+    unsetServiceTier: z.boolean().optional(),
     collaborationMode: z
       .object({
         mode: z.enum(["default", "plan"]),
@@ -43,7 +45,15 @@ export const nativeSettingsPatchSchema = z
     multiAgentMode: z.string().nullable().optional(),
     personality: z.string().nullable().optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((patch, context) => {
+    if (patch.unsetServiceTier === true && patch.serviceTier !== undefined)
+      context.addIssue({
+        code: "custom",
+        path: ["unsetServiceTier"],
+        message: "unsetServiceTier cannot be combined with serviceTier.",
+      });
+  });
 export type NativeSettingsPatch = z.infer<typeof nativeSettingsPatchSchema>;
 
 /** One stable operation identity and one bound source travel with the encrypted

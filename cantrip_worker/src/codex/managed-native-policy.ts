@@ -96,7 +96,8 @@ export async function managedNativeCommandIntent(
     ]);
     for (const [key, value] of Object.entries(params)) {
       // Ordinary Option fields serialized as null do not override anything.
-      // serviceTier is deliberately double-optional: null would clear it.
+      // serviceTier is deliberately double-optional: null changes selection
+      // to explicit standard routing, so attachment must not forward it.
       if (!observation.has(key) && (value !== null || key === "serviceTier")) {
         throw new Error(
           `Managed attachment cannot override ${key}; use an explicit settings command.`,

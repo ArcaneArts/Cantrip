@@ -1,7 +1,10 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { TrajectoryDetails } from "./trajectory-details";
+import {
+  NativeTurnSettingsDetails,
+  TrajectoryDetails,
+} from "./trajectory-details";
 import type { TrajectoryEvent } from "./trajectory-model";
 
 function event(): TrajectoryEvent {
@@ -94,6 +97,7 @@ describe("TrajectoryDetails", () => {
       "high",
       "fast",
       "plan",
+      "No service tier override",
     ])
       expect(markup).toContain(text);
     source.activity.initialSettingsConflict = true;
@@ -227,4 +231,58 @@ describe("TrajectoryDetails", () => {
     expect(markup).toContain("Protected capture");
     expect(markup).toContain("pnpm test");
   });
+});
+
+it("shows archived native settings outside summary events and hides conflicting values", () => {
+  const initial = {
+    model: "native-child-model",
+    modelProvider: "native-account-provider",
+    reasoningEffort: null,
+    effectiveReasoningEffort: "high",
+    serviceTier: null,
+    effectiveServiceTier: "fast",
+    collaborationMode: "plan" as const,
+  };
+  const entries = [
+    {
+      agentKey: "child",
+      agentLabel: "Scout",
+      threadId: "child-thread",
+      turnId: "child-turn",
+      status: "available" as const,
+      initialSettings: initial,
+    },
+  ];
+  const html = renderToStaticMarkup(
+    <NativeTurnSettingsDetails entries={entries} />,
+  );
+  expect(html).toContain("native-child-model");
+  expect(html).toContain("child-thread");
+  expect(html).toContain("Scout");
+  expect(html).toContain("Later steps may use different settings.");
+  expect(html).toContain("No service tier override");
+  const standard = renderToStaticMarkup(
+    <NativeTurnSettingsDetails
+      entries={[
+        {
+          ...entries[0]!,
+          initialSettings: {
+            ...initial,
+            serviceTier: "default",
+            effectiveServiceTier: null,
+          },
+        },
+      ]}
+    />,
+  );
+  expect(standard).toContain("Standard service");
+  expect(standard).toContain("Unspecified");
+  expect(standard).not.toContain("No service tier override");
+  const conflict = renderToStaticMarkup(
+    <NativeTurnSettingsDetails
+      entries={[{ ...entries[0]!, status: "conflict" }]}
+    />,
+  );
+  expect(conflict).toContain("conflicting native captures");
+  expect(conflict).not.toContain("native-child-model");
 });

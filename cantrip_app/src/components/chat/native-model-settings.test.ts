@@ -166,7 +166,7 @@ describe("shared native model settings intent", () => {
         draft,
         dirty: { serviceTier: true },
       }),
-    ).toEqual({ serviceTier: null });
+    ).toEqual({ unsetServiceTier: true });
     expect(
       nativeModelSettingsPatch({
         binding,
@@ -176,6 +176,34 @@ describe("shared native model settings intent", () => {
       }),
     ).toEqual({ effort: null, serviceTier: "fast" });
   });
+  it.each([
+    [{}, "priority"],
+    [{ unsetServiceTier: false }, "priority"],
+    [{ unsetServiceTier: true }, null],
+    [{ serviceTier: null }, "default"],
+    [{ serviceTier: "default" }, "default"],
+    [{ serviceTier: "flex" }, "flex"],
+  ])(
+    "projects explicit tier semantics for pending patch %j",
+    (patch, expected) => {
+      const confirmed = {
+        model: "before",
+        effort: null,
+        serviceTier: "priority",
+      } as NativeThreadSettings;
+      expect(
+        requestedNativeModelSelection(confirmed, [
+          { operationId: "tier", status: "dispatched", pending: true, patch },
+        ]).serviceTier,
+      ).toBe(expected);
+      expect(
+        requestedNativeModelSelection(confirmed, [
+          { operationId: "tier", status: "rejected", pending: true, patch },
+        ]).serviceTier,
+      ).toBe("priority");
+    },
+  );
+
   it("does not substitute a provider/account or ambiguous native alias", () => {
     for (const changed of [
       { bindingId: "replaced" },
@@ -251,7 +279,7 @@ describe("shared native model settings intent", () => {
     expect(selected).toEqual({
       model: "native-two",
       effort: "native-new-effort",
-      serviceTier: null,
+      serviceTier: "default",
     });
     expect(confirmed.model).toBe("native-one");
   });

@@ -62,7 +62,6 @@ export function applyNativeModelPatch(
   if (typeof patch.model === "string") selected.model = patch.model;
   for (const field of [
     "effort",
-    "serviceTier",
     "collaborationModeKind",
     "multiAgentEnabled",
     "subagentModel",
@@ -71,6 +70,9 @@ export function applyNativeModelPatch(
     if (patch[field] !== undefined)
       Object.assign(selected, { [field]: patch[field] });
   }
+  if (patch.unsetServiceTier === true) selected.serviceTier = null;
+  else if (patch.serviceTier !== undefined)
+    selected.serviceTier = patch.serviceTier ?? "default";
   // Native StepSettings::apply gives a full collaboration mode precedence
   // over separate model/effort fields in the same admitted update.
   if (patch.collaborationMode) {
@@ -119,7 +121,10 @@ export function nativeModelSettingsPatch(input: {
     patch.model = route.name;
   }
   if (dirty.effort) patch.effort = draft.effort;
-  if (dirty.serviceTier) patch.serviceTier = draft.serviceTier;
+  if (dirty.serviceTier) {
+    if (draft.serviceTier === null) patch.unsetServiceTier = true;
+    else patch.serviceTier = draft.serviceTier;
+  }
   if (dirty.multiAgentEnabled && draft.multiAgentEnabled !== undefined)
     patch.multiAgentEnabled = draft.multiAgentEnabled;
   if (dirty.subagentModel && draft.subagentModel !== undefined) {

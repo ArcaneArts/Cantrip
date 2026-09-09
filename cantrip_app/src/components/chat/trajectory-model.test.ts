@@ -894,3 +894,134 @@ describe("trajectory projection", () => {
     });
   });
 });
+
+describe("native turn settings grouping", () => {
+  const initial = {
+    model: "root-native",
+    modelProvider: "provider",
+    reasoningEffort: null,
+    effectiveReasoningEffort: "high",
+    serviceTier: null,
+    effectiveServiceTier: "fast",
+    collaborationMode: "plan" as const,
+  };
+  const root: AgentScope = {
+    agentThreadId: "root-thread",
+    rootThreadId: "root-thread",
+    parentThreadId: null,
+    rootTurnId: "root-turn",
+    agentPath: ["root"],
+    nickname: null,
+    role: null,
+    depth: 0,
+    isRoot: true,
+  };
+  const child: AgentScope = {
+    ...root,
+    agentThreadId: "child-thread",
+    parentThreadId: "root-thread",
+    agentPath: ["root", "Scout"],
+    nickname: "Scout",
+    depth: 1,
+    isRoot: false,
+  };
+  const nativeMessage = (
+    id: string,
+    scope: AgentScope,
+    turnId: string,
+    sequence: number,
+  ) =>
+    message(id, sequence, "assistant", sequence * 1000, [
+      {
+        type: "text",
+        text: id,
+        agentScope: scope,
+        correlation: {
+          sourceMethod: "native-history",
+          diagnosticId: null,
+          threadId: scope.agentThreadId,
+          turnId,
+          itemId: id,
+        },
+      },
+    ]);
+  const evidence = [
+    {
+      threadId: "root-thread",
+      turnId: "root-turn",
+      status: "available" as const,
+      initialSettings: initial,
+    },
+    {
+      threadId: "child-thread",
+      turnId: "child-turn",
+      status: "available" as const,
+      initialSettings: { ...initial, model: "child-native" },
+    },
+    {
+      threadId: "child-thread",
+      turnId: "root-turn",
+      status: "available" as const,
+      initialSettings: { ...initial, model: "wrong-root-correlation" },
+    },
+  ];
+  it("joins root and child evidence using exact native identity without inventing summary events", () => {
+    const messages = [
+      nativeMessage("root-response", root, "root-turn", 1),
+      nativeMessage("child-response", child, "child-turn", 2),
+    ];
+    const input = { messages, active: false, nowMs: 3000 };
+    const before = projectTrajectory(input)!;
+    const after = projectTrajectory({
+      ...input,
+      nativeTurnSettings: evidence,
+    })!;
+    expect(after.events).toEqual(before.events);
+    expect(after.nativeTurnSettings).toHaveLength(2);
+    expect(after.nativeTurnSettings![0]).toMatchObject({
+      threadId: "root-thread",
+      turnId: "root-turn",
+      initialSettings: { model: "root-native" },
+    });
+    expect(after.nativeTurnSettings![1]).toMatchObject({
+      threadId: "child-thread",
+      turnId: "child-turn",
+      agentLabel: "Scout",
+      initialSettings: { model: "child-native" },
+    });
+    expect(after.nativeTurnSettings![1]!.agentKey).not.toBe(
+      after.nativeTurnSettings![0]!.agentKey,
+    );
+  });
+  it("retains exact child attribution on a partial page and filters absent root turns", () => {
+    const turn = projectTrajectory({
+      messages: [nativeMessage("child-only", child, "child-turn", 2)],
+      nativeTurnSettings: evidence,
+      active: false,
+      nowMs: 3000,
+    })!;
+    expect(turn.nativeTurnSettings).toHaveLength(1);
+    expect(turn.nativeTurnSettings![0]).toMatchObject({
+      threadId: "child-thread",
+      turnId: "child-turn",
+      initialSettings: { model: "child-native" },
+    });
+  });
+  it("keeps archive conflicts visible without changing timeline lifecycle", () => {
+    const messages = [nativeMessage("root-response", root, "root-turn", 1)];
+    const turn = projectTrajectory({
+      messages,
+      nativeTurnSettings: [
+        ...evidence,
+        { threadId: "root-thread", turnId: "root-turn", status: "conflict" },
+      ],
+      active: true,
+      nowMs: 3000,
+    })!;
+    expect(turn.completed).toBe(false);
+    expect(turn.nativeTurnSettings).toEqual([
+      expect.objectContaining({ status: "conflict", threadId: "root-thread" }),
+    ]);
+    expect(turn.nativeTurnSettings![0]).not.toHaveProperty("initialSettings");
+  });
+});

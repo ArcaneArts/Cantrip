@@ -1,3 +1,4 @@
+import type { NativeTurnSettingsEvidence } from "@/lib/native-history-turn-settings";
 import type {
   ChatMessage,
   ChatSummary,
@@ -409,6 +410,7 @@ export function AgentInspectStateContent({
 }
 
 export function AgentInspectContent({
+  nativeTurnSettings,
   active,
   agentProjection,
   inferenceProgress,
@@ -423,6 +425,7 @@ export function AgentInspectContent({
   trajectoryTargetKey,
   visible,
 }: {
+  nativeTurnSettings?: readonly NativeTurnSettingsEvidence[];
   active: boolean;
   agentProjection?: AgentTurnProjection;
   inferenceProgress?: InferenceProgressSnapshot | null;
@@ -468,6 +471,7 @@ export function AgentInspectContent({
       >
         {activeTab === "trajectory" ? (
           <AgentTrajectory
+            nativeTurnSettings={nativeTurnSettings}
             active={active}
             agentProjection={agentProjection}
             inferenceProgress={inferenceProgress}

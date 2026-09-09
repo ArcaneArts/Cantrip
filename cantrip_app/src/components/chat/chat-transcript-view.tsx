@@ -1145,6 +1145,7 @@ export function ChatTranscriptView({
             />
           ) : (
             <AgentInspectContent
+              nativeTurnSettings={messages.nativeTurnSettings}
               active={inspectActive}
               agentProjection={agentProjection}
               inferenceProgress={inferenceProgress.data}

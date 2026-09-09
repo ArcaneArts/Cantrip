@@ -2367,7 +2367,7 @@ model attribution, route mapping, permissions, defaults, service-tier UI and
 controlled migration. Full TUI/fake-provider acceptance and eager startup remain
 required; this pass's native mutation tests do not prove them.
 
-**Pass 22 — shared model controller and native continuation:**
+**Pass 22 — shared model controller and native continuation ([PR #1872](https://github.com/ArcaneArts/Cantrip/pull/1872), merged):**
 
 The current isolated pass connects the composer and `/model` to one native
 settings controller. Bound chats show desired/pending/confirmed selections,
@@ -2449,11 +2449,71 @@ before handoff if clearing an explicit replacement selection would be required.
 A native clear-selection operation and its acceptance tests remain required; this
 pass does not claim complete omitted/null/value parity.
 
-Historical turns lacking summaries,
-permissions/defaults, canonical route attribution, controlled provider/account
-migration, full replacement continuity, eager startup and the complete acceptance
-matrix remain required. Existing summaries now display authenticated archived
-initial settings; that does not cover native turns with no summary to enrich.
+At the end of pass 22, historical turns lacking summaries, permissions/defaults,
+canonical route attribution, controlled provider/account migration, full
+replacement continuity, eager startup and the complete acceptance matrix
+remained required. Existing summaries displayed authenticated archived initial
+settings, but native turns without summaries still needed the pass-23 grouping
+path below.
+
+**Pass 23 — exact tier selection and historical turn attribution:**
+
+This follow-up closes the specific missing settings cases from pass 22 rather
+than enabling eager startup before its prerequisites. The native extension is
+`thread/settings/update {unsetServiceTier:true}` for exact
+absence of a selected override. A supplied `serviceTier`, including null, is
+mutually exclusive with that action. Ordinary omission preserves selection;
+`serviceTier:null` selects explicit standard routing, as the pinned runtime
+actually implements. Native restoration must preserve these distinctions too.
+The GUI history path consumes authenticated archive evidence for correlated
+native items even when no turn-summary message exists. A client-only evidence
+sidecar flows through page loading into root/child trajectory details without
+creating a message or lifecycle event. Overlapping pages and live summaries
+share exact thread/turn identity; conflicting initial settings remain suppressed.
+The tier picker now distinguishes no override from explicit standard routing,
+including pending encrypted intents, and changes only fields the user edited.
+The unspecified-tier label does not claim the native runtime applies a model
+catalog default: this pinned runtime deliberately ignores that catalog value.
+
+Baseline validation against the preserved pass-22 native TUI test executable
+passed eight exact managed attachment, defaults-isolation, permission-preservation
+and queue fixtures. A broader filter found three snapshot-loading failures
+because that executable embeds the removed worktree's source path; those are
+not counted as passing validation or diagnosed as product failures. The new native app-server fixture also passed: it distinguishes raw absence
+from explicit standard routing, rejects conflicting changes without mutation,
+resumes the selection in a fresh process, and omits the outbound service-tier
+field afterward. The Core restoration fixture also passed for replacing a priority-configured
+runtime with exact absence, no-op version preservation and conflict rejection.
+Focused checks passed 63 historical app tests, 11 tier protocol tests, 33 tier
+worker tests, 27 tier app tests, five server admission cases and 59 additional
+worker policy/gateway/settings cases (overlapping groups). Worker/server/app
+typechecks, changed-TypeScript formatting and diff checks pass. The final native release bundle built successfully in 8m37s. Six packaged-CLI
+integration tests across four suites passed, including exact unset/null/false
+settings correlation, clearing an explicitly selected replacement tier, inherited
+GUI choices and managed MCP recovery. Seventeen rendering checks also passed
+after aligning history labels with the exact tier semantics. The complete
+`pnpm check` still stops
+at the unchanged server decomposition budgets recorded in pass 22.
+
+Next permission/default work requires an actual coordinated mutation path.
+`chat-runtime-configuration.ts` currently changes the GUI permission selection
+through `setChatPermissionProfile`, which writes the chat row without applying
+native settings. `managed-native-policy.ts` permits security fields only when
+they match the already-authorized profile, so a native picker cannot itself
+transition canonical policy. Worker policy is refreshed on managed preparation,
+not by the existing GUI route. CUA authorization rereads the chat preference,
+so writing desired permissions can revoke an existing turn before native
+settings change. Native TUI permission shortcuts also print success after the
+RPC enqueue acknowledgment; that acknowledgment can precede a later rejection.
+Complete parity must admit the same explicit profile transition from either
+origin, update desired and applied state without claiming enqueue is application,
+and maintain exact active-turn/CUA authority. Managed TUI permission shortcuts
+and popup selections need pending/applied reconciliation as well as the GUI.
+Do not merely relax the worker security comparison or echo observed native
+settings into authorization after side effects. Native patch 14 already prevents
+managed picker choices from silently changing account defaults; the dedicated
+explicit-default action and remaining default persistence/readback acceptance
+still need completion.
 
 **Still outstanding:** completion of authorized command admission, origin-independent
 lifecycle/CUA authority, durable all-turn projection/replay,
@@ -2919,7 +2979,7 @@ Cantrip route migrations rather than pretending native model strings encode them
 | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Root model                      | Map Cantrip model ID to native model plus provider/account/route. Reverse mapping must be unambiguous; duplicate slugs cannot select an arbitrary account.                                                                                                             |
 | Reasoning effort                | Use the selected model's supported values; preserve explicit/default semantics. Do not carry an invalid previous-model effort silently.                                                                                                                                |
-| Service tier                    | Add an explicit durable/product policy if supported. Native update distinguishes omitted (preserve), null (clear), and value (set). It is absent from current Cantrip model configuration.                                                                             |
+| Service tier                    | Add an explicit durable/product policy if supported. Preserve native omission (unchanged), null (explicit standard), and value (set); use an explicit unset action for raw inherited selection. Confirmed and effective tier values remain distinct.                                                                             |
 | Permissions                     | Translate authoritative permission profile to native settings. A CLI change must receive the same policy validation; hardcoded terminal launch flags cannot become an escape hatch. Unrepresentable native settings need an explicit custom-state policy or rejection. |
 | Plan/collaboration mode         | Retain existing projection but reconcile it in the same complete settings snapshot.                                                                                                                                                                                    |
 | Subagent settings               | Cantrip root/custom-child configuration has no one-to-one `/model` equivalent. Preserve explicit custom child settings; root changes affect inherited settings only under the documented inheritance rule.                                                             |
