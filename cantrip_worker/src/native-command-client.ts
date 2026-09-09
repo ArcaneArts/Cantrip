@@ -1,5 +1,8 @@
 import {
   nativeCommandAdmissionSchema,
+  nativeSettingsEvidenceSchema,
+  nativeSettingsEvidenceResultSchema,
+  type NativeSettingsEvidence,
   nativeCommandAdmissionResultSchema,
   nativeCommandDispatchSchema,
   nativeCommandContinuationSchema,
@@ -32,6 +35,7 @@ export class NativeCommandClient {
     action: string,
     body: unknown,
     schema: { parse(value: unknown): T },
+    signal?: AbortSignal,
   ): Promise<T> {
     // A transport failure can follow a committed admission/dispatch. Leave its
     // identity intact for reconciliation; never mint a new ID or replay input.
@@ -43,6 +47,7 @@ export class NativeCommandClient {
       {
         method: "POST",
         redirect: "error",
+        ...(signal ? { signal } : {}),
         headers: {
           authorization: `Bearer ${this.options.token()}`,
           "content-type": "application/json",
@@ -143,6 +148,33 @@ export class NativeCommandClient {
       nativeCommandSettlementResultSchema,
     );
     this.correlate(result.receipt, input);
+    return result;
+  }
+
+  async settingsEvidence(
+    input: Omit<NativeSettingsEvidence, "workerId">,
+    signal?: AbortSignal,
+  ) {
+    const result = await this.post(
+      "settings-evidence",
+      nativeSettingsEvidenceSchema.parse({
+        ...input,
+        workerId: this.options.workerId,
+      }),
+      nativeSettingsEvidenceResultSchema,
+      signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(15_000)])
+        : AbortSignal.timeout(15_000),
+    );
+    if (
+      result.operationId !== input.operationId ||
+      result.operationGeneration !== input.operationGeneration ||
+      result.eventId !== input.eventId ||
+      result.application.nativeOperationId !== input.nativeOperationId
+    )
+      throw new Error(
+        "Native settings returned uncorrelated evidence acknowledgment.",
+      );
     return result;
   }
 

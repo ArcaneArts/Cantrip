@@ -1,3 +1,4 @@
+import { nativeSettingsApplicationSchema } from "./native-settings-evidence.js";
 import { modelConfigurationSchema } from "./model-configuration.js";
 import { planModeSchema } from "./chat-runtime.js";
 import { worktreePolicySchema } from "./worktrees.js";
@@ -24,6 +25,7 @@ export const nativeCommandSessionSchema = z
 export const nativeCommandIntentSchema = z
   .object({
     scope: z.enum(["thread", "account-defaults"]),
+    nativeSettingsOperationId: id.optional(),
     resumeAutonomy: z.boolean().optional(),
     paused: z.boolean().optional(),
     goalStatus: z.enum(["active", "paused"]).optional(),
@@ -97,6 +99,7 @@ export const nativeCommandReceiptSchema = z
     activationGeneration: id.nullable(),
     chatId: id,
     startsExecution: z.boolean(),
+    settingsApplication: nativeSettingsApplicationSchema.nullable().optional(),
     executionLaneId: id.nullable(),
     status: z.enum([
       "accepted",

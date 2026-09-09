@@ -5440,6 +5440,9 @@ export const nativeCommands = pgTable(
     rejectionCode: text("rejection_code"),
     resultDigest: text("result_digest"),
     protectedResult: jsonb("protected_result"),
+    settingsApplication: jsonb("settings_application").$type<
+      import("@cantrip/protocol").NativeSettingsApplication
+    >(),
     terminalResultDigest: text("terminal_result_digest"),
     protectedTerminalResult: jsonb("protected_terminal_result"),
     terminalEvidence: jsonb("terminal_evidence"),
@@ -5489,6 +5492,39 @@ export const nativeCommands = pgTable(
     check(
       "native_commands_payload_digest_check",
       sql`${table.payloadDigest} ~ '^[a-f0-9]{64}$'`,
+    ),
+  ],
+);
+/** Immutable encrypted evidence; delivery order never defines application order. */
+export const nativeSettingsEvidence = pgTable(
+  "native_settings_evidence",
+  {
+    eventId: text("event_id").primaryKey(),
+    operationId: text("operation_id")
+      .notNull()
+      .references(() => nativeCommands.operationId, { onDelete: "cascade" }),
+    operationGeneration: text("operation_generation").notNull(),
+    kind: text("kind").notNull(),
+    submissionId: text("submission_id"),
+    resultDigest: text("result_digest").notNull(),
+    protectedResult: jsonb("protected_result").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("native_settings_evidence_operation").on(table.operationId),
+    check(
+      "native_settings_evidence_kind_check",
+      sql`${table.kind} IN ('queued','applied','rejected','transport-lost','correlation-conflict')`,
+    ),
+    check(
+      "native_settings_evidence_digest_check",
+      sql`${table.resultDigest} ~ '^[a-f0-9]{64}$'`,
+    ),
+    check(
+      "native_settings_evidence_submission_check",
+      sql`${table.kind} NOT IN ('queued','applied') OR ${table.submissionId} IS NOT NULL`,
     ),
   ],
 );

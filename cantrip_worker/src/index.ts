@@ -136,6 +136,7 @@ import {
 } from "./codex/managed-native-gateway.js";
 import { ManagedNativeCommandSession } from "./codex/managed-native-command-session.js";
 import { ManagedExecutionRunner } from "./codex/managed-execution-runner.js";
+import { NativeSettingsDelivery } from "./native-settings-delivery.js";
 import { NativeCommandClient } from "./native-command-client.js";
 import { NativeHistoryClient } from "./native-history-client.js";
 import { ManagedNativeHistory } from "./managed-native-history.js";
@@ -1909,6 +1910,19 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     workerId: config.workerId,
     token: () => config.token,
   });
+  const nativeSettingsDelivery = new NativeSettingsDelivery({
+    directory: config.dataDirectory,
+    workerId: config.workerId,
+    service: workerEncryption,
+    client: nativeCommands,
+    onError: () =>
+      workerLogger.event("warn", "Native settings evidence remains pending", {
+        event: "codex.settings.delivery-pending",
+        subsystem: "codex",
+        operation: "persist-settings-evidence",
+      }),
+  });
+  nativeSettingsDelivery.wake();
   const nativeHistoryClient = new NativeHistoryClient({
     serverUrl: config.serverUrl,
     workerId: config.workerId,
@@ -2315,6 +2329,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       identity,
       runtime,
       client: nativeCommands,
+      settingsDelivery: nativeSettingsDelivery,
       encryption: workerEncryption,
       beforeNativeDispatch: async (method, commandSession, intent) => {
         const runner = managedExecutionRunners
@@ -7963,6 +7978,17 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           counts: { pendingRecords: pending.pendingRecords },
         },
       );
+    await nativeSettingsDelivery.stop().catch(() =>
+      workerLogger.event(
+        "warn",
+        "Native settings capture did not finish during shutdown",
+        {
+          event: "codex.settings.shutdown-pending",
+          subsystem: "codex",
+          operation: "stop-settings-capture",
+        },
+      ),
+    );
     workerEncryption.lock();
     automationScheduler.close();
     codegraphProjects?.close();

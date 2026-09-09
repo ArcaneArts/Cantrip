@@ -12,6 +12,11 @@ import readline from "node:readline";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
+import { NativeSettingsDelivery } from "../src/native-settings-delivery.js";
+import { ManagedNativeSettings } from "../src/codex/managed-native-settings.js";
+import { NativeHistoryObservations } from "../src/codex/native-history-observation.js";
+import { openNativeCommandContent } from "../src/native-command-content.js";
+import type { NativeSettingsEvidence } from "@cantrip/protocol";
 import { CodexRpcClient } from "../src/codex/rpc-client.js";
 
 const binary = process.env.CANTRIP_CODEX_TEST_BINARY?.trim();
@@ -84,6 +89,52 @@ describe.skipIf(!binary)("native settings acknowledgments", () => {
       let closed: Promise<unknown> | undefined;
       let client: CodexRpcClient | undefined;
       let lines: readline.Interface | undefined;
+      let delivery: NativeSettingsDelivery | undefined;
+      const observations = new NativeHistoryObservations();
+      observations.replace("fixture-runtime");
+      const evidence: Omit<NativeSettingsEvidence, "workerId">[] = [];
+      const evidenceErrors: unknown[] = [];
+      const encryption = {
+        ownerId: () => "fixture-owner",
+        serverIdentity: () => "fixture-server",
+        componentKey: () => ({
+          keyRevision: 1,
+          key: new Uint8Array(32).fill(7),
+        }),
+      };
+      delivery = new NativeSettingsDelivery({
+        directory: root,
+        workerId: "fixture-worker",
+        service: encryption,
+        retryDelayMs: 10,
+        client: {
+          settingsEvidence: async (event) => {
+            evidence.push(event);
+            return {
+              operationId: event.operationId,
+              operationGeneration: event.operationGeneration,
+              eventId: event.eventId,
+              application: {
+                nativeOperationId: event.nativeOperationId,
+                submissionId: event.submissionId,
+                evidenceCount: 1,
+                status: "applied",
+              },
+            };
+          },
+        },
+        onError: (error) => evidenceErrors.push(error),
+      });
+      const tracker = new ManagedNativeSettings({
+        delivery,
+        runtime: {
+          observeNativeHistory: (threadId, observer) =>
+            observations.subscribe(threadId, observer, async () => {
+              throw new Error("Settings do not need history snapshots");
+            }),
+        },
+        onError: (error) => evidenceErrors.push(error),
+      });
       try {
         await Promise.all([mkdir(home), mkdir(workspace)]);
         provider.listen(0, "127.0.0.1");
@@ -121,7 +172,10 @@ describe.skipIf(!binary)("native settings acknowledgments", () => {
         lines = readline.createInterface({ input: child.stdout });
         lines.on("line", (line) => {
           const message = JSON.parse(line) as Json;
-          if (message.method) notifications.push(message);
+          if (message.method) {
+            notifications.push(message);
+            observations.notification(message.method, message.params);
+          }
         });
         client = new CodexRpcClient(child, 15_000);
         const request = async (method: string, params: Json): Promise<Json> => {
@@ -181,13 +235,23 @@ describe.skipIf(!binary)("native settings acknowledgments", () => {
         // Await only queue acknowledgments, never an applied event between calls.
         const receipts: Json[] = [];
         for (const operation of operations) {
-          receipts.push(
-            await request("thread/settings/update", {
-              threadId,
-              operationId: operation.operationId,
-              ...operation.patch,
-            }),
-          );
+          await tracker.track({
+            chatId: "fixture-chat",
+            operationId: operation.operationId,
+            operationGeneration: `grant:${operation.operationId}`,
+            threadId,
+            runtimeGeneration: "fixture-runtime",
+            nativeOperationId: operation.operationId,
+          });
+          const acknowledgment = await request("thread/settings/update", {
+            threadId,
+            operationId: operation.operationId,
+            ...operation.patch,
+          });
+          receipts.push(acknowledgment);
+          await tracker.acknowledge(operation.operationId, {
+            result: acknowledgment,
+          });
         }
         expect(receipts).toEqual(
           operations.map(({ operationId }) => ({
@@ -264,8 +328,41 @@ describe.skipIf(!binary)("native settings acknowledgments", () => {
           (await request("thread/read", { threadId, includeTurns: true }))
             .thread.turns,
         ).toEqual([]);
+        await expect
+          .poll(
+            () => evidence.filter((event) => event.kind === "applied").length,
+            { timeout: 5000 },
+          )
+          .toBe(operations.length);
+        await expect
+          .poll(
+            () => evidence.filter((event) => event.kind === "queued").length,
+            { timeout: 5000 },
+          )
+          .toBe(operations.length);
+        for (const event of evidence.filter(
+          (event) => event.kind === "applied",
+        )) {
+          const original = applied().find(
+            (message) => message.params.operationId === event.nativeOperationId,
+          )!;
+          expect(
+            await openNativeCommandContent({
+              service: encryption,
+              context: {
+                chatId: "fixture-chat",
+                operationId: event.operationId,
+                direction: "settings-evidence",
+                eventId: event.eventId,
+              },
+              envelope: event.protectedResult,
+            }),
+          ).toMatchObject({ kind: "applied", content: original.params });
+        }
+        expect(evidenceErrors).toEqual([]);
         expect(requests).toBe(0);
       } finally {
+        await delivery?.stop();
         client?.close();
         lines?.close();
         if (child && closed) {

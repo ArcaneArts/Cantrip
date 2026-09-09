@@ -8,6 +8,7 @@ export * from "./computer-use.js";
 export * from "./computer-use-preview.js";
 export * from "./worker-command-computer-use.js";
 export * from "./native-commands.js";
+export * from "./native-settings-evidence.js";
 export * from "./managed-native-methods.js";
 export * from "./native-command-events.js";
 

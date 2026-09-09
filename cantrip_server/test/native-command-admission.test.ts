@@ -3732,3 +3732,276 @@ describe("canonical managed queue and completion outbox", () => {
     await finish(next, newer.receipt, "rejected");
   });
 });
+
+describe("native settings application evidence", () => {
+  async function settingsCommand() {
+    const context = await database.repository.getChatExecutionContext(
+      LOCAL_USER_ID,
+      chatId,
+    );
+    const nativeOperationId = randomUUID();
+    const input = admission(context, {
+      method: "thread/settings/update",
+      intent: {
+        scope: "thread",
+        settingKeys: ["model"],
+        nativeSettingsOperationId: nativeOperationId,
+        expectedTurnId: null,
+      },
+    });
+    const grant = await database.repository.nativeCommands.admit(
+      LOCAL_USER_ID,
+      input,
+    );
+    expect(grant.receipt.status).toBe("accepted");
+    const event = (
+      kind:
+        | "queued"
+        | "applied"
+        | "rejected"
+        | "transport-lost"
+        | "correlation-conflict",
+      submissionId: string | null = "settings-submission",
+    ) => ({
+      workerId,
+      operationId: input.operationId,
+      operationGeneration: grant.receipt.operationGeneration,
+      nativeOperationId,
+      eventId: randomUUID(),
+      threadId: input.session.threadId!,
+      runtimeGeneration: input.session.runtimeGeneration!,
+      kind,
+      submissionId,
+      resultDigest: "b".repeat(64),
+      protectedResult: opaqueMessage("assistant").protectedContent.envelope,
+    });
+    return {
+      input,
+      grant,
+      event,
+      record: (value: ReturnType<typeof event>) =>
+        database.repository.nativeCommands.recordSettingsEvidence(
+          LOCAL_USER_ID,
+          value,
+        ),
+    };
+  }
+
+  it("recovers a lost HTTP acknowledgment through the production worker delivery and authenticated route", async () => {
+    const { NativeSettingsDelivery } =
+      await import("../../cantrip_worker/src/native-settings-delivery.js");
+    const { NativeCommandClient } =
+      await import("../../cantrip_worker/src/native-command-client.js");
+    const { input, grant } = await settingsCommand();
+    await dispatch(input, grant.receipt);
+    const app = Fastify();
+    installInternalNativeCommandRoutes(app, {
+      config,
+      serverId: "fixture-server",
+      repository: database.repository,
+      dispatchNextQueuedPrompt: async () => {},
+      runAsOwner: async (_owner, operation) => operation(),
+      live: {
+        publishEncryptedChatMessage() {},
+        publishTaskMessage() {},
+        publishChatSummary() {},
+        publishChatTurnBoundary() {},
+        publishChatInvalidation() {},
+      },
+    });
+    const bodies: string[] = [];
+    const responses: Array<Record<string, any>> = [];
+    const client = new NativeCommandClient({
+      serverUrl: "http://fixture",
+      workerId,
+      token: () => config.workerToken,
+      fetch: async (url, options) => {
+        bodies.push(String(options?.body));
+        const response = await app.inject({
+          method: "POST",
+          url: new URL(String(url)).pathname,
+          headers: options?.headers as Record<string, string>,
+          payload: String(options?.body),
+        });
+        responses.push(response.json());
+        if (bodies.length === 1) throw new Error("Lost response after commit");
+        return new Response(response.body, {
+          status: response.statusCode,
+          headers: { "content-type": "application/json" },
+        });
+      },
+    });
+    const errors: unknown[] = [];
+    const delivery = new NativeSettingsDelivery({
+      directory: path.join(dataDirectory, "settings-delivery"),
+      workerId,
+      client,
+      retryDelayMs: 10,
+      service: {
+        ownerId: () => LOCAL_USER_ID,
+        serverIdentity: () => "fixture-server",
+        componentKey: () => ({
+          keyRevision: 1,
+          key: new Uint8Array(32).fill(7),
+        }),
+      },
+      onError: (error) => errors.push(error),
+    });
+    try {
+      const scope = {
+        chatId,
+        operationId: input.operationId,
+        operationGeneration: grant.receipt.operationGeneration,
+        nativeOperationId: input.intent.nativeSettingsOperationId!,
+        threadId: input.session.threadId!,
+        runtimeGeneration: input.session.runtimeGeneration!,
+      };
+      await delivery.track(scope);
+      await delivery.record(scope, "applied", "native-submission", {
+        developer_instructions: "private-native-settings",
+      });
+      await expect.poll(() => responses.length).toBe(2);
+      expect(bodies[0]).toBe(bodies[1]);
+      expect(bodies[0]).not.toContain("private-native-settings");
+      expect(responses[0]).toEqual(responses[1]);
+      expect(responses[1]!.application).toMatchObject({
+        status: "applied",
+        evidenceCount: 1,
+      });
+      expect(errors).toHaveLength(1);
+    } finally {
+      await delivery.stop();
+      await app.close();
+    }
+  });
+
+  it("records actual application before the RPC acknowledgment without regressing on a late queue receipt", async () => {
+    const { input, grant, event, record } = await settingsCommand();
+    const applied = event("applied");
+    await expect(record(applied)).rejects.toMatchObject({
+      code: "native-settings-evidence-scope",
+    });
+    await dispatch(input, grant.receipt);
+    expect((await record(applied)).application.status).toBe("applied");
+    expect((await record(event("queued"))).application).toMatchObject({
+      status: "applied",
+      evidenceCount: 2,
+    });
+    const receipt = await database.repository.nativeCommands.settle(
+      LOCAL_USER_ID,
+      {
+        workerId,
+        operationId: input.operationId,
+        operationGeneration: grant.receipt.operationGeneration,
+        status: "applied",
+        resultDigest: null,
+        protectedResult: null,
+        rejectionCode: null,
+        executionComplete: false,
+      },
+    );
+    expect(receipt.settingsApplication?.status).toBe("applied");
+    expect((await record(applied)).application.evidenceCount).toBe(2);
+    await expect(
+      record({ ...applied, resultDigest: "c".repeat(64) }),
+    ).rejects.toMatchObject({ code: "native-settings-evidence-conflict" });
+  });
+
+  it("does not confuse accepted RPCs with successful settings and retains contradictory facts", async () => {
+    const { input, grant, event, record } = await settingsCommand();
+    await dispatch(input, grant.receipt);
+    expect((await record(event("queued"))).application.status).toBe("pending");
+    expect((await record(event("rejected"))).application.status).toBe(
+      "rejected",
+    );
+    const receipt = await database.repository.nativeCommands.settle(
+      LOCAL_USER_ID,
+      {
+        workerId,
+        operationId: input.operationId,
+        operationGeneration: grant.receipt.operationGeneration,
+        status: "applied",
+        resultDigest: null,
+        protectedResult: null,
+        rejectionCode: null,
+        executionComplete: false,
+      },
+    );
+    expect(receipt.status).toBe("applied");
+    expect(receipt.settingsApplication?.status).toBe("rejected");
+    expect((await record(event("applied"))).application.status).toBe(
+      "uncertain",
+    );
+    expect((await record(event("queued"))).application.status).toBe(
+      "uncertain",
+    );
+  });
+
+  it("recovers from transport loss using evidence without granting mutation replay", async () => {
+    const { input, grant, event, record } = await settingsCommand();
+    await dispatch(input, grant.receipt);
+    expect(
+      (await record(event("transport-lost", null))).application.status,
+    ).toBe("uncertain");
+    expect((await record(event("applied"))).application.status).toBe("applied");
+    const replay = await database.repository.nativeCommands.admit(
+      LOCAL_USER_ID,
+      input,
+    );
+    expect(replay.replayed).toBe(true);
+    expect(replay.receipt.settingsApplication?.status).toBe("applied");
+    expect(
+      (await record(event("queued", "other-submission"))).application.status,
+    ).toBe("uncertain");
+  });
+
+  it("rejects wrong owner, worker, operation generation, native thread and transport", async () => {
+    const { input, grant, event, record } = await settingsCommand();
+    await dispatch(input, grant.receipt);
+    const evidence = event("applied");
+    await expect(
+      database.repository.nativeCommands.recordSettingsEvidence(
+        "other-owner",
+        evidence,
+      ),
+    ).rejects.toMatchObject({ code: "operation-not-found" });
+    for (const override of [
+      { workerId: "other-worker" },
+      { operationGeneration: "other-operation" },
+    ])
+      await expect(record({ ...evidence, ...override })).rejects.toMatchObject({
+        code: "operation-not-found",
+      });
+    for (const override of [
+      { threadId: "child-thread" },
+      { runtimeGeneration: "other-runtime" },
+      { nativeOperationId: "other-native-operation" },
+    ])
+      await expect(record({ ...evidence, ...override })).rejects.toMatchObject({
+        code: "native-settings-evidence-scope",
+      });
+    expect((await record(evidence)).application.evidenceCount).toBe(1);
+  });
+
+  it("serializes concurrent delivery and prevents shared event IDs from crossing commands", async () => {
+    const a = await settingsCommand();
+    const b = await settingsCommand();
+    await dispatch(a.input, a.grant.receipt);
+    await dispatch(b.input, b.grant.receipt);
+    const applied = a.event("applied");
+    const results = await Promise.all([
+      a.record(applied),
+      a.record(applied),
+      a.record(a.event("queued")),
+    ]);
+    expect(
+      results.every((result) => result.application.status === "applied"),
+    ).toBe(true);
+    await expect(
+      b.record({ ...b.event("applied"), eventId: applied.eventId }),
+    ).rejects.toMatchObject({ code: "native-settings-evidence-conflict" });
+    expect(
+      (await b.record(b.event("rejected"))).application.evidenceCount,
+    ).toBe(1);
+  });
+});

@@ -4,6 +4,7 @@ import { nativeCommandEventSchema } from "@cantrip/protocol";
 import type { createLiveMutationRuntime } from "../runtime/live-mutation-runtime.js";
 import {
   nativeCommandAdmissionSchema,
+  nativeSettingsEvidenceSchema,
   nativeCommandContinuationSchema,
   nativeCommandDispatchSchema,
   nativeCommandSettlementSchema,
@@ -247,19 +248,22 @@ export function installInternalNativeCommandRoutes(
     "dispatch",
     "bind-preparation",
     "receipt",
+    "settings-evidence",
   ] as const) {
     app.post(
       `/api/internal/native-commands/${phase}`,
       { logLevel: "warn" },
       async (request, reply) => {
         const parsed = (
-          phase === "continue"
-            ? nativeCommandContinuationSchema
-            : phase === "admit"
-              ? nativeCommandAdmissionSchema
-              : phase === "dispatch" || phase === "bind-preparation"
-                ? nativeCommandDispatchSchema
-                : nativeCommandSettlementSchema
+          phase === "settings-evidence"
+            ? nativeSettingsEvidenceSchema
+            : phase === "continue"
+              ? nativeCommandContinuationSchema
+              : phase === "admit"
+                ? nativeCommandAdmissionSchema
+                : phase === "dispatch" || phase === "bind-preparation"
+                  ? nativeCommandDispatchSchema
+                  : nativeCommandSettlementSchema
         ).safeParse(request.body);
         if (!parsed.success)
           return reply.code(400).send({ code: "invalid-native-command" });
@@ -281,6 +285,11 @@ export function installInternalNativeCommandRoutes(
           return reply.code(404).send({ code: "worker-not-found" });
         return runAsOwner(authentication.ownerId, async () => {
           try {
+            if (phase === "settings-evidence")
+              return repository.nativeCommands.recordSettingsEvidence(
+                authentication.ownerId,
+                nativeSettingsEvidenceSchema.parse(parsed.data),
+              );
             if (phase === "continue")
               return authority(
                 authentication.ownerId,

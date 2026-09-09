@@ -1879,7 +1879,10 @@ export interface ManagedNativeGuiCommand {
     turnId: string | null;
   };
   /** Executes the exact already resolved native mutation once admission succeeds. */
-  dispatch(): Promise<unknown>;
+  dispatch(forward?: {
+    method: string;
+    params: Record<string, unknown>;
+  }): Promise<unknown>;
 }
 export type ManagedNativeCommandDispatcher = (
   command: ManagedNativeGuiCommand,
@@ -4641,7 +4644,8 @@ export class CodexAppServer implements CodexRuntime {
       operationId,
       method,
       params,
-      dispatch: () => this.request(method, params),
+      dispatch: (forward) =>
+        this.request(forward?.method ?? method, forward?.params ?? params),
     });
   }
 
@@ -8599,11 +8603,15 @@ export class CodexAppServer implements CodexRuntime {
         collaborationMode,
       });
       try {
-        const acknowledgment = await this.request("thread/settings/update", {
-          threadId,
+        const acknowledgment = await this.requestGuiThreadMutation(
+          "thread/settings/update",
+          {
+            threadId,
+            operationId,
+            collaborationMode,
+          },
           operationId,
-          collaborationMode,
-        });
+        );
         assertCurrent();
         this.#threadSettings.acknowledge(threadId, pending, acknowledgment);
       } catch (error) {
