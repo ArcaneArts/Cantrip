@@ -40,15 +40,24 @@ async function fixture() {
   };
   native.ensureStarted = vi.fn().mockResolvedValue(undefined);
   native.methodAvailable = () => true;
-  const request = vi.fn(async (method: string): Promise<unknown> => {
-    if (method === "thread/start" || method === "thread/resume")
-      return { thread: { id: "native-thread" } };
-    if (method === "thread/managedConfig/update")
-      return { threadId: "native-thread", applied: true };
-    if (method === "collaborationMode/list")
-      return { data: [{ mode: "default" }] };
-    return {};
-  });
+  const request = vi.fn(
+    async (method: string, params?: unknown): Promise<unknown> => {
+      if (method === "thread/start" || method === "thread/resume")
+        return { thread: { id: "native-thread" } };
+      if (method === "thread/managedConfig/update")
+        return { threadId: "native-thread", applied: true };
+      if (method === "collaborationMode/list")
+        return { data: [{ mode: "default" }] };
+      if (method === "thread/settings/update") {
+        const input = params as { operationId: string };
+        return {
+          operationId: input.operationId,
+          submissionId: `submission:${input.operationId}`,
+        };
+      }
+      return {};
+    },
+  );
   native.request = request;
   const resolve = vi.fn(
     async (

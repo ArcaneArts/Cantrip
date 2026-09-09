@@ -1,3 +1,4 @@
+import { nativeThreadSettings } from "./fixtures/native-thread-settings.js";
 import { describe, expect, it, vi } from "vitest";
 import { unprobedCodexRuntimeReport } from "@cantrip/protocol";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -99,11 +100,33 @@ function fixture() {
           thread: { id: "thread-1", turns: [], status: { type: "idle" } },
         };
       }
-      if (
-        method === "thread/compact/start" ||
-        method === "thread/unsubscribe" ||
-        method === "thread/settings/update"
-      )
+      if (method === "thread/settings/update") {
+        const input = params as {
+          threadId: string;
+          operationId: string;
+          collaborationMode: ReturnType<
+            typeof nativeThreadSettings
+          >["collaborationMode"];
+        };
+        const submissionId = `submission:${input.operationId}`;
+        native.handleMessage(
+          Buffer.from(
+            JSON.stringify({
+              method: "thread/settings/updated",
+              params: {
+                threadId: input.threadId,
+                operationId: input.operationId,
+                submissionId,
+                threadSettings: nativeThreadSettings({
+                  collaborationMode: input.collaborationMode,
+                }),
+              },
+            }),
+          ),
+        );
+        return { operationId: input.operationId, submissionId };
+      }
+      if (method === "thread/compact/start" || method === "thread/unsubscribe")
         return {};
       throw new Error(
         `Unexpected test RPC: ${method} ${JSON.stringify(params)}`,
@@ -115,6 +138,56 @@ function fixture() {
 }
 
 describe("thread session preparation", () => {
+  it("does not confirm Plan Mode from the settings queue acknowledgment", async () => {
+    const f = fixture();
+    const request = f.request.getMockImplementation()!;
+    let settingsRequest: { threadId: string; operationId: string } | undefined;
+    f.request.mockImplementation(async (method, params) => {
+      if (method === "thread/settings/update") {
+        settingsRequest = params as typeof settingsRequest;
+        return {
+          operationId: settingsRequest!.operationId,
+          submissionId: "pending-plan",
+        };
+      }
+      return request(method, params);
+    });
+    await f.runtime.prepareManagedThread(managed);
+    expect(
+      f.runtime.getNativeThreadSettings("thread-1").requests[0]?.status,
+    ).toBe("queued");
+    expect(f.runtime.getNativeThreadSettings("thread-1").confirmed).toBeNull();
+    await expect(
+      f.runtime.getPlanMode({ ...options, fallbackMode: "plan" }),
+    ).resolves.toEqual({ threadId: "thread-1", mode: "plan" });
+    f.request.mockClear();
+    await f.runtime.prepareManagedThread(managed);
+    expect(f.request).not.toHaveBeenCalled();
+    f.native.handleMessage(
+      Buffer.from(
+        JSON.stringify({
+          method: "thread/settings/updated",
+          params: {
+            ...settingsRequest,
+            submissionId: "pending-plan",
+            threadSettings: nativeThreadSettings(),
+          },
+        }),
+      ),
+    );
+    await expect(
+      f.runtime.getPlanMode({ ...options, fallbackMode: "plan" }),
+    ).resolves.toEqual({ threadId: "thread-1", mode: "default" });
+    expect(
+      f.runtime.getNativeThreadSettings("thread-1").requests[0]?.status,
+    ).toBe("applied");
+    f.runtime.close();
+    expect(f.runtime.getNativeThreadSettings("thread-1")).toEqual({
+      confirmed: null,
+      requests: [],
+    });
+  });
+
   it("preserves canonical-history omission and applies explicit false to the same owned thread", async () => {
     const f = fixture();
     await f.runtime.prepareManagedThread({
@@ -1137,7 +1210,12 @@ describe("thread session preparation", () => {
           method: "thread/settings/updated",
           params: {
             threadId: "thread-1",
-            threadSettings: { collaborationMode: { mode: "plan" } },
+            threadSettings: nativeThreadSettings({
+              collaborationMode: {
+                ...nativeThreadSettings().collaborationMode,
+                mode: "plan",
+              },
+            }),
           },
         }),
       ),
