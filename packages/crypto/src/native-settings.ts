@@ -7,6 +7,8 @@ import { decryptPayload, encryptPayload } from "./payload.js";
 import {
   encryptionAssociatedDataSchema,
   nativeSettingsSnapshotContextSchema,
+  nativeModelAttributionSchema,
+  type NativeModelAttribution,
   protectedNativeSettingsSnapshotSchema,
   type NativeSettingsSnapshotContext,
   type ProtectedNativeSettingsSnapshot,
@@ -79,6 +81,19 @@ function fingerprint(
   );
 }
 
+function modelAttributionFingerprint(
+  key: Uint8Array,
+  associatedData: unknown,
+  contentFingerprint: string,
+  selection: NativeModelAttribution,
+): string {
+  return fingerprint(
+    key,
+    { domain: "native-model-attribution", associatedData },
+    encoder.encode(canonical({ contentFingerprint, selection })),
+  );
+}
+
 function settingsForContext(
   context: NativeSettingsSnapshotContext,
   value: unknown,
@@ -101,6 +116,7 @@ export async function encryptNativeSettingsSnapshot(
   input: SnapshotKey & {
     context: NativeSettingsSnapshotContext;
     settings: unknown;
+    modelAttribution?: NativeModelAttribution;
   },
 ): Promise<ProtectedNativeSettingsSnapshot> {
   const context = nativeSettingsSnapshotContextSchema.parse(input.context);
@@ -108,9 +124,27 @@ export async function encryptNativeSettingsSnapshot(
   const { key, associatedData } = material(input, context);
   const plaintext = new TextEncoder().encode(canonical(settings));
   try {
+    const contentFingerprint = fingerprint(key, associatedData, plaintext);
+    const selection =
+      input.modelAttribution === undefined
+        ? undefined
+        : nativeModelAttributionSchema.parse(input.modelAttribution);
     return protectedNativeSettingsSnapshotSchema.parse({
       context,
-      contentFingerprint: fingerprint(key, associatedData, plaintext),
+      contentFingerprint,
+      ...(selection
+        ? {
+            modelAttribution: {
+              selection,
+              fingerprint: modelAttributionFingerprint(
+                key,
+                associatedData,
+                contentFingerprint,
+                selection,
+              ),
+            },
+          }
+        : {}),
       protectedContent: await encryptPayload({
         key,
         plaintext,
@@ -147,6 +181,21 @@ export async function decryptNativeSettingsSnapshot(
       const expected = hexToBytes(snapshot.contentFingerprint);
       if (!bytesEqual(actual, expected))
         throw new Error("Native settings content fingerprint does not match.");
+      if (
+        snapshot.modelAttribution &&
+        !bytesEqual(
+          hexToBytes(snapshot.modelAttribution.fingerprint),
+          hexToBytes(
+            modelAttributionFingerprint(
+              key,
+              associatedData,
+              snapshot.contentFingerprint,
+              snapshot.modelAttribution.selection,
+            ),
+          ),
+        )
+      )
+        throw new Error("Native model attribution fingerprint does not match.");
       return settingsForContext(
         context,
         JSON.parse(new TextDecoder().decode(plaintext)),

@@ -9,7 +9,8 @@ import { protectNativeSettingsSnapshot } from "./native-settings-content.js";
 type Runtime = Pick<
   CodexAppServer,
   "readNativeThreadSettings" | "transportGeneration"
->;
+> &
+  Partial<Pick<CodexAppServer, "getManagedModelAttribution">>;
 export interface NativeSettingsReadTarget {
   scope: NativeSettingsReadScope;
   runtime: Runtime;
@@ -55,6 +56,10 @@ export async function readProtectedNativeSettings(input: {
       settingsVersion: settings.settingsVersion,
     },
     settings,
+    modelAttribution: target!.runtime.getManagedModelAttribution?.(
+      settings.model,
+      scope,
+    ) ?? { status: "unavailable" },
   });
   assertCurrent();
   return snapshot;

@@ -199,3 +199,61 @@ describe("protected native settings state", () => {
     ).rejects.toThrow("declared version");
   });
 });
+
+describe("authenticated native model attribution", () => {
+  const modelAttribution = {
+    status: "resolved" as const,
+    workerId: "worker",
+    providerId: "provider",
+    providerAccountId: "account",
+    modelId: "model",
+    routeId: "route",
+  };
+  it("authenticates route IDs separately without changing the native settings fingerprint", async () => {
+    const plain = await seal();
+    const mapped = await protectNativeSettingsSnapshot({
+      service: service(),
+      context,
+      settings: selection(),
+      modelAttribution,
+    });
+    expect(mapped.contentFingerprint).toBe(plain.contentFingerprint);
+    expect(mapped.modelAttribution!.selection).toEqual(modelAttribution);
+    expect(
+      await openNativeSettingsSnapshot({
+        service: service(),
+        context,
+        snapshot: mapped,
+      }),
+    ).toEqual(selection());
+    await expect(
+      openNativeSettingsSnapshot({
+        service: service(),
+        context,
+        snapshot: {
+          ...mapped,
+          modelAttribution: {
+            ...mapped.modelAttribution!,
+            selection: { ...modelAttribution, routeId: "forged" },
+          },
+        },
+      }),
+    ).rejects.toThrow("model attribution fingerprint");
+  });
+  it("rejects a valid attribution tag transplanted to different native content", async () => {
+    const mapped = await protectNativeSettingsSnapshot({
+      service: service(),
+      context,
+      settings: selection(),
+      modelAttribution,
+    });
+    const other = await seal({ ...selection(), model: "another-native-model" });
+    await expect(
+      openNativeSettingsSnapshot({
+        service: service(),
+        context,
+        snapshot: { ...other, modelAttribution: mapped.modelAttribution },
+      }),
+    ).rejects.toThrow("model attribution fingerprint");
+  });
+});

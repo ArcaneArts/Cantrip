@@ -6,6 +6,7 @@ import {
 import type {
   NativeSettingsSnapshotContext,
   ProtectedNativeSettingsSnapshot,
+  NativeModelAttribution,
 } from "@cantrip/protocol";
 import type { WorkerEncryptionService } from "./worker-encryption.js";
 
@@ -18,6 +19,7 @@ export async function protectNativeSettingsSnapshot(input: {
   service: Service;
   context: NativeSettingsSnapshotContext;
   settings: unknown;
+  modelAttribution?: NativeModelAttribution;
 }): Promise<ProtectedNativeSettingsSnapshot> {
   const component = input.service.componentKey("chat-content");
   try {
@@ -28,6 +30,7 @@ export async function protectNativeSettingsSnapshot(input: {
       keyRevision: component.keyRevision,
       context: input.context,
       settings: input.settings,
+      modelAttribution: input.modelAttribution,
     });
   } finally {
     clearSensitiveBytes(component.key);

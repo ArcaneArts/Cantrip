@@ -1,3 +1,5 @@
+import { readProtectedNativeSettings } from "../src/native-settings-read.js";
+import { openNativeSettingsSnapshot } from "../src/native-settings-content.js";
 import {
   readNativeAccountDefaults,
   writeNativeAccountDefaults,
@@ -469,6 +471,37 @@ describe.skipIf(!binary)(
             ?.settings,
         ).toEqual(initialSettingsRead.confirmed!.settings);
 
+        const attributionScope = {
+          workerId: "worker",
+          modelRouteId: model.routeId,
+          providerAccountId: runtimeProvider.accountId,
+        };
+        expect(
+          runtime.getManagedModelAttribution(
+            initialSettingsRead.confirmed!.settings.model,
+            attributionScope,
+          ),
+        ).toMatchObject({
+          status: "resolved",
+          modelId: model.id,
+          routeId: model.routeId,
+        });
+        expect(
+          runtime.getManagedModelAttribution(
+            "fixture-custom",
+            attributionScope,
+          ),
+        ).toMatchObject({
+          status: "resolved",
+          modelId: "inventory-custom",
+          routeId: "custom-route",
+        });
+        expect(
+          runtime.getManagedModelAttribution("gpt-5", {
+            ...attributionScope,
+            providerAccountId: "different-account",
+          }),
+        ).toEqual({ status: "unavailable" });
         const picker = await first.request("model/list", {});
         expect(picker.data.map((entry: JsonObject) => entry.model)).toEqual([
           "gpt-5",
@@ -481,6 +514,65 @@ describe.skipIf(!binary)(
         const secondJoined = await second.request("thread/resume", {
           threadId,
         });
+        const modelScope = {
+          ...attributionScope,
+          chatId: "fixture-chat",
+          threadId,
+          contextKind: "project" as const,
+          projectId: "project",
+          placementId: "placement",
+        };
+        const modelService = {
+          ownerId: () => "owner",
+          serverIdentity: () => "server",
+          componentKey: () => ({ keyRevision: 1, key: Buffer.alloc(32, 33) }),
+        };
+        for (const [name, routeId] of [
+          ["fixture-custom", "custom-route"],
+          [model.name, model.routeId],
+        ]) {
+          const offset = second.messages.length;
+          await first.request("thread/settings/update", {
+            threadId,
+            model: name,
+          });
+          await vi.waitFor(
+            () =>
+              expect(
+                second.messages
+                  .slice(offset)
+                  .some(
+                    (entry) =>
+                      entry.method === "thread/settings/updated" &&
+                      entry.params.threadSettings.model === name,
+                  ),
+              ).toBe(true),
+            { timeout: 5000 },
+          );
+          const snapshot = await readProtectedNativeSettings({
+            scope: modelScope,
+            service: modelService,
+            resolve: () => ({
+              scope: modelScope,
+              runtime: runtime!,
+              generation: runtime!.transportGeneration!,
+            }),
+          });
+          expect(snapshot.modelAttribution!.selection).toMatchObject({
+            status: "resolved",
+            routeId,
+          });
+          expect(
+            (
+              await openNativeSettingsSnapshot({
+                service: modelService,
+                context: snapshot.context,
+                snapshot,
+              })
+            ).model,
+          ).toBe(name);
+          expect(modelScope.modelRouteId).toBe(model.routeId);
+        }
         let engineSessionId = firstJoined.thread.sessionId;
         expect(typeof engineSessionId).toBe("string");
         expect(secondJoined.thread.sessionId).toBe(engineSessionId);

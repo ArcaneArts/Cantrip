@@ -284,3 +284,30 @@ describe("shared native model settings intent", () => {
     expect(confirmed.model).toBe("native-one");
   });
 });
+
+it("uses confirmed selected-route identity rather than the physical session route for aliases", () => {
+  const aliases = {
+    ...inventory,
+    models: [
+      ...inventory.models,
+      { ...inventory.models[1]!, id: "alias", routeId: "alias-two" },
+    ],
+  };
+  expect(() =>
+    nativeModelSettingsPatch({
+      binding,
+      inventory: aliases,
+      draft,
+      dirty: { model: true },
+    }),
+  ).toThrow("multiple routes");
+  expect(
+    nativeModelSettingsPatch({
+      binding,
+      inventory: aliases,
+      draft,
+      dirty: { model: true },
+      currentRouteId: "route-two",
+    }),
+  ).toEqual({ model: "native-two" });
+});

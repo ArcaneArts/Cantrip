@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { NativeSettingsState } from "@cantrip/protocol";
+import type {
+  NativeModelAttribution,
+  NativeSettingsState,
+} from "@cantrip/protocol";
 import { NativeSettingsPublisher } from "../src/native-settings-publisher.js";
 import { NativeHistoryObservations } from "../src/codex/native-history-observation.js";
 import { nativeThreadSettings } from "./fixtures/native-thread-settings.js";
@@ -32,6 +35,10 @@ function fixture(
   onBinding?: ConstructorParameters<
     typeof NativeSettingsPublisher
   >[0]["onBinding"],
+  getManagedModelAttribution?: (
+    nativeName: string,
+    inputScope: typeof scope,
+  ) => NativeModelAttribution,
 ) {
   const observations = new NativeHistoryObservations();
   observations.replace("runtime");
@@ -93,6 +100,7 @@ function fixture(
     service,
     client,
     runtime: {
+      getManagedModelAttribution,
       observeNativeHistory: (threadId, observer) =>
         observations.subscribe(threadId, observer, async () => {
           throw new Error("No history read is needed");
@@ -203,6 +211,39 @@ describe("automatic native settings publication", () => {
         })
       ).privateInstructions,
     ).toBe("private-1");
+    expect(f.client.refreshSettings).toHaveBeenCalledOnce();
+    expect(f.errors).toEqual([]);
+  });
+
+  it("authenticates model attribution from automatic native notifications", async () => {
+    const selection: NativeModelAttribution = {
+      status: "resolved",
+      workerId: "worker",
+      providerId: "provider",
+      providerAccountId: null,
+      modelId: "selected-model",
+      routeId: "selected-route",
+    };
+    const resolve = vi.fn(() => selection);
+    const f = fixture(undefined, resolve);
+    f.publisher.start();
+    await vi.waitFor(() =>
+      expect(f.client.refreshSettings).toHaveBeenCalledOnce(),
+    );
+    f.emit("1");
+    await vi.waitFor(() =>
+      expect(f.client.observeSettings).toHaveBeenCalledOnce(),
+    );
+    const snapshot = f.client.observeSettings.mock.calls[0]![0].snapshot;
+    const content = await openNativeSettingsSnapshot({
+      service,
+      context: snapshot.context,
+      snapshot,
+    });
+    expect(resolve).toHaveBeenCalledWith(content.model, scope);
+    expect(snapshot.modelAttribution?.selection).toEqual(selection);
+    expect(snapshot.context.settingsVersion.revision).toBe("1");
+    expect(scope.modelRouteId).toBe("route");
     expect(f.client.refreshSettings).toHaveBeenCalledOnce();
     expect(f.errors).toEqual([]);
   });

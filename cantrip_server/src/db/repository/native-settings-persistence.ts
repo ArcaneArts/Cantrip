@@ -1,3 +1,4 @@
+import { scopedNativeModelAttribution } from "./native-model-attribution.js";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { and, eq } from "drizzle-orm";
@@ -103,6 +104,12 @@ export class NativeSettingsStateRepository {
           "settings-read-replaced",
           "A different native runtime owns the current turn.",
         );
+      const scopedSnapshot = await scopedNativeModelAttribution(
+        tx,
+        ownerId,
+        before.scope,
+        snapshot,
+      );
       return changeNativeSettingsState(tx, chatId, (state) => {
         if ((state.binding?.bindingId ?? null) !== before.bindingId)
           throw new NativeCommandError(
@@ -129,7 +136,7 @@ export class NativeSettingsStateRepository {
           state,
           before.bindingId,
           { bindingId, ...source },
-          snapshot,
+          scopedSnapshot,
         );
       });
     });
@@ -148,6 +155,12 @@ export class NativeSettingsStateRepository {
         .select()
         .from(schema.nativeCommandActivations)
         .where(eq(schema.nativeCommandActivations.chatId, chatId));
+      const scopedSnapshot = await scopedNativeModelAttribution(
+        tx,
+        ownerId,
+        currentScope,
+        input.snapshot,
+      );
       const next = await changeNativeSettingsState(tx, chatId, (state) => {
         if (
           !state.binding ||
@@ -196,7 +209,7 @@ export class NativeSettingsStateRepository {
             "settings-binding-replaced",
             "Key rotation requires a fresh native settings read.",
           );
-        return observeNativeSettings(state, input.bindingId, input.snapshot);
+        return observeNativeSettings(state, input.bindingId, scopedSnapshot);
       });
       return {
         bindingId: input.bindingId,

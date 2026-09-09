@@ -1,3 +1,4 @@
+import { authenticatedNativeModelAttributionSchema } from "./native-model-attribution.js";
 import {
   permissionTransitionSchema,
   permissionProfileIdSchema,
@@ -42,6 +43,7 @@ export const protectedNativeSettingsSnapshotSchema = z
   .object({
     context: nativeSettingsSnapshotContextSchema,
     contentFingerprint: z.string().regex(/^[a-f0-9]{64}$/u),
+    modelAttribution: authenticatedNativeModelAttributionSchema.optional(),
     protectedContent: encryptedPayloadEnvelopeSchema,
   })
   .strict();

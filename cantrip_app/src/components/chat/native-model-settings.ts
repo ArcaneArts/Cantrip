@@ -91,6 +91,7 @@ export function nativeModelSettingsPatch(input: {
   inventory: NativeChatModelInventory;
   draft: NativeModelDraft;
   dirty: NativeModelDirty;
+  currentRouteId?: string | null;
 }): NativeSettingsPatch {
   const { binding, inventory, draft, dirty } = input;
   if (
@@ -109,7 +110,7 @@ export function nativeModelSettingsPatch(input: {
     const resolved = resolveNativeModelSelection(
       inventory,
       route.name,
-      binding.modelRouteId,
+      input.currentRouteId ?? binding.modelRouteId,
     );
     if (
       resolved.status !== "resolved" ||
