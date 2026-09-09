@@ -63,6 +63,33 @@ function event(): TrajectoryEvent {
 }
 
 describe("TrajectoryDetails", () => {
+  it("shows full native output in the preview and its native kind in the summary", () => {
+    const source = event();
+    source.activity = {
+      type: "nativeItem",
+      kind: "hookPrompt",
+      id: "hook",
+      title: "Hook prompt · fixture",
+      details: "Exact hook text",
+      durationMs: null,
+      status: "completed",
+    };
+    expect(
+      renderToStaticMarkup(
+        <TrajectoryDetails event={source} onBack={() => undefined} />,
+      ),
+    ).toContain("hookPrompt");
+    expect(
+      renderToStaticMarkup(
+        <TrajectoryDetails
+          event={source}
+          initialTab="preview"
+          onBack={() => undefined}
+        />,
+      ),
+    ).toContain("Exact hook text");
+  });
+
   it("shows correlated summary details by default", () => {
     const markup = renderToStaticMarkup(
       <TrajectoryDetails event={event()} onBack={() => undefined} />,

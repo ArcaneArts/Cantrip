@@ -157,6 +157,8 @@ function activitySummaryFields(
         { label: "Server", value: activity.server },
         { label: "Tool", value: activity.tool },
       ];
+    case "nativeItem":
+      return [{ label: "Native item", value: activity.kind }];
     case "dynamicToolCall":
       return [
         {
@@ -284,6 +286,8 @@ function previewText(event: TrajectoryEvent): string | null {
   const activity = event.activity;
   if (!activity) return event.preview;
   switch (activity.type) {
+    case "nativeItem":
+      return activity.details ?? activity.title;
     case "computerUse":
       return `${computerUseActivitySummary(activity)}. Protected operation metadata is retained in Trajectory; image pixels are not stored here.`;
     case "instructionContext":

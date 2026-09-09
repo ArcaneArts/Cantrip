@@ -11,6 +11,7 @@ import {
 import { AttachmentStore, MAX_ATTACHMENT_BYTES } from "./attachment-store.js";
 import { openWorkerAttachment } from "./attachment-encryption.js";
 import { NativeHistoryAttachmentStore } from "./native-history-attachment-store.js";
+import { nativeHistoryMediaParts } from "./native-history-media-parts.js";
 import {
   readHistoryJson,
   ensureHistoryDirectory,
@@ -110,9 +111,9 @@ function inlineMedia(url: string, kind: "image" | "audio") {
   return { bytes, mimeType: match[1]! };
 }
 
-/** Use only for a bound native user item after canonical identity resolution.
- * GUI aliases are skipped by the projector. No assistant/tool paths are read,
- * and external URLs remain references rather than causing background requests. */
+/** Use only after canonical identity resolution. GUI aliases are skipped. Native
+ * outputs can supply inline bytes; only user inputs authorize local file reads.
+ * External URLs never cause background requests. */
 export function createNativeHistoryInputMaterializer(options: {
   directory: string;
   binding: NativeHistoryBinding;
@@ -131,17 +132,17 @@ export function createNativeHistoryInputMaterializer(options: {
   ) => {
     const inputParts = new Map<number, ChatMessageContent>();
     const attachments: ChatAttachmentOpaqueSummary[] = [];
-    if (item.body.type !== "userMessage" || !Array.isArray(item.body.content))
-      return { inputParts, attachments };
+    const parts = nativeHistoryMediaParts(item.body);
+    if (!parts.length) return { inputParts, attachments };
     const identity: NativeHistoryItemIdentity = {
       threadId: options.binding.threadId,
       turnId: turn.id,
       itemId: item.id,
       identityKind: item.identityKind,
-      component: "user",
+      component: item.body.type === "userMessage" ? "user" : "activity",
     };
     let published = canonicalAttachments;
-    for (const [index, value] of item.body.content.entries()) {
+    for (const [index, value] of parts.entries()) {
       if (!value || typeof value !== "object" || Array.isArray(value)) continue;
       if (
         (value.type === "skill" || value.type === "mention") &&

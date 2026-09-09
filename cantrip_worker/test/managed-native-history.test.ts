@@ -243,6 +243,42 @@ describe.skipIf(!binary)(
           },
           { timeout: 15_000 },
         );
+        // A real native tool-origin turn emits FunctionCallOutput via the pinned
+        // app-server, then follows the same capture/encryption/HTTP ingestion path.
+        const toolTurn = await call("turn/start", {
+          threadId,
+          input: [],
+          toolOutput: {
+            name: "display_fixture",
+            namespace: "history_test",
+            output: [
+              {
+                type: "input_text",
+                text: "  exact tool output\n".repeat(2_000),
+              },
+              {
+                type: "input_image",
+                image_url:
+                  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a6X8AAAAASUVORK5CYII=",
+              },
+              { type: "input_text", text: "after image" },
+            ],
+          },
+        });
+        await vi.waitFor(
+          async () => {
+            const result = await call("thread/read", {
+              threadId,
+              includeTurns: true,
+            });
+            expect(
+              result.thread.turns.find(
+                (turn: any) => turn.id === toolTurn.turn.id,
+              )?.status,
+            ).toBe("completed");
+          },
+          { timeout: 15_000 },
+        );
         await history.flush();
         const serverBinding = await client.open({
           chatId: f.chatId,
@@ -290,6 +326,33 @@ describe.skipIf(!binary)(
             }),
           ),
         );
+        const toolMessage = opened.find((message) =>
+          message.content.some(
+            (part) =>
+              part.type === "activity" &&
+              part.activity.type === "nativeItem" &&
+              part.activity.kind === "functionCallOutput",
+          ),
+        );
+        expect(toolMessage?.content.map((part) => part.type)).toEqual([
+          "activity",
+          "activity",
+          "attachment",
+          "activity",
+        ]);
+        expect(toolMessage?.content[1]).toMatchObject({
+          activity: { details: "  exact tool output\n".repeat(2_000) },
+        });
+        expect(toolMessage?.content[3]).toMatchObject({
+          activity: { details: "after image" },
+        });
+        expect(
+          initialArchive.items.some(
+            (entry) =>
+              entry.identity.component === "activity" &&
+              entry.attachments.length === 1,
+          ),
+        ).toBe(true);
         const texts = opened.flatMap((message) =>
           message.content.flatMap((part) =>
             part.type === "text" ? [part.text] : [],
@@ -303,7 +366,7 @@ describe.skipIf(!binary)(
             "native answer 2",
           ]),
         );
-        expect(requests).toHaveLength(2);
+        expect(requests).toHaveLength(3);
         expect(new Set(messages.map((message) => message.id)).size).toBe(
           messages.length,
         );
@@ -328,20 +391,38 @@ describe.skipIf(!binary)(
               "input-parts",
             ),
           ),
-        ).toHaveLength(1);
+        ).toHaveLength(2);
         expect(
           (
             await client.archive({
               chatId: f.chatId,
               bindingId: serverBinding.id,
             })
-          ).items.find((item) => item.key === imageItem.key)!.attachments,
-        ).toEqual(imageItem.attachments);
+          ).items
+            .filter((item) => item.attachments.length)
+            .map((item) => ({ key: item.key, attachments: item.attachments })),
+        ).toEqual(
+          initialArchive.items
+            .filter((item) => item.attachments.length)
+            .map((item) => ({ key: item.key, attachments: item.attachments })),
+        );
         expect((await rows()).map((message) => message.id).sort()).toEqual(
           messages.map((message) => message.id).sort(),
         );
-        expect(requests).toHaveLength(2);
-        expect(errors).toEqual([
+        expect(requests).toHaveLength(3);
+        // Live item delivery may beat the durable native turn-context row. That
+        // specific deferral is retried; the canonical output/recovery assertions
+        // above prove eventual publication rather than accepting a dropped page.
+        expect(
+          errors.filter(
+            (error) =>
+              !(
+                error instanceof Error &&
+                error.message ===
+                  "Original native turn context is not yet retained."
+              ),
+          ),
+        ).toEqual([
           expect.objectContaining({ message: "fixture lost committed reply" }),
         ]);
       } finally {

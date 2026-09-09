@@ -16,6 +16,53 @@ const { buildAgentTurnProjectionSpy } = vi.hoisted(() => ({
   buildAgentTurnProjectionSpy: vi.fn(),
 }));
 
+it("retains each native tool output part in Trajectory rather than collapsing by native item ID", () => {
+  const result = projectTrajectory({
+    active: false,
+    nowMs: 2_000,
+    messages: [
+      message("user", 1, "user", 1_000, [
+        { type: "text", text: "Read result" },
+      ]),
+      message(
+        "result",
+        2,
+        "assistant",
+        1_200,
+        ["", ":output:0", ":output:2"].map((suffix, index) => ({
+          type: "activity" as const,
+          activity: {
+            type: "nativeItem" as const,
+            kind: "functionCallOutput" as const,
+            id: `native${suffix}`,
+            title: "Tool output · fixture",
+            details: [null, "before image", "after image"][index]!,
+            durationMs: null,
+            status: "completed" as const,
+            correlation: {
+              sourceMethod: "native-history",
+              diagnosticId: null,
+              threadId: "thread",
+              turnId: "turn",
+              itemId: "native",
+            },
+          },
+        })),
+      ),
+    ],
+  });
+  const events =
+    result?.events.filter((event) => event.activity?.type === "nativeItem") ??
+    [];
+  expect(events).toHaveLength(3);
+  expect(new Set(events.map((event) => event.id)).size).toBe(3);
+  expect(
+    events.map((event) =>
+      event.activity?.type === "nativeItem" ? event.activity.details : null,
+    ),
+  ).toEqual([null, "before image", "after image"]);
+});
+
 vi.mock("./agent-turn-projection", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("./agent-turn-projection")>();

@@ -14,6 +14,23 @@ import {
 } from "./activity";
 
 describe("rich Codex activity", () => {
+  it("renders native outputs as labeled details with escaped exact text", () => {
+    const activity: AgentActivity = {
+      type: "nativeItem",
+      kind: "functionCallOutput",
+      id: "native-result",
+      title: "Tool output · fixture/result",
+      details: "  before\n<script>after</script>  ",
+      status: "completed",
+      durationMs: null,
+    };
+    const markup = renderToStaticMarkup(<Activity activity={activity} />);
+    expect(activityLabel(activity)).toBe("Tool output · fixture/result");
+    expect(markup).toContain("Tool output · fixture/result");
+    expect(markup).toContain("  before\n&lt;script&gt;after&lt;/script&gt;  ");
+    expect(markup).not.toContain("<script>");
+  });
+
   it("shows the command inside a login-shell wrapper", () => {
     const command = '/bin/zsh -lc "printf \\"hello\\""';
     const activity: AgentActivity = {

@@ -308,6 +308,9 @@ function activityPreview(activity: AgentActivity): string | null {
     case "mcpToolCall":
       preview = activity.error ?? activity.query ?? activity.resultText ?? "";
       break;
+    case "nativeItem":
+      preview = activity.details ?? activity.title;
+      break;
     case "dynamicToolCall":
       preview =
         activity.success === null
@@ -382,8 +385,15 @@ function lifecycleKey(activity: AgentActivity): string {
     ? `${activity.agentScope.rootTurnId}:${activity.agentScope.agentThreadId}`
     : (activity.correlation?.threadId ?? "root");
   const itemId = activity.correlation?.itemId;
+  // One native item can contain ordered text/media parts and limitation notices.
+  // Keep each display part while retaining the native item for correlation.
+  const part =
+    activity.correlation?.sourceMethod === "native-history" &&
+    activity.id !== itemId
+      ? `:part:${activity.id}`
+      : "";
   return itemId
-    ? `${owner}:item:${activity.correlation?.turnId ?? "turn"}:${itemId}`
+    ? `${owner}:item:${activity.correlation?.turnId ?? "turn"}:${itemId}${part}`
     : `${owner}:activity:${activity.type}:${activity.id}`;
 }
 
