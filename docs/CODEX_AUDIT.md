@@ -2786,6 +2786,42 @@ message/model-behavior attribution, controlled provider/account migration,
 replacement TUI/queue/history continuity, remaining native lifecycle/CUA
 acceptance, and then eager GUI-first session preparation.
 
+### Pass 29 — shared native usage identity
+
+Captured native usage now resolves to one owner/chat/thread/turn record, regardless
+of the live or recovered observation's source name. Migration 0213 retains old
+attempt source names as aliases. The existing live writer uses the same resolver;
+late finalization can still address its original attempt name. Exact native-turn
+lookup also adopts pre-migration captured rows when a recovery writer has never
+seen the original live source name. Multiple native turns within one logical
+attempt retain separate records; ambiguous turnless updates cannot overwrite an
+arbitrary member of that attempt.
+
+Identity resolution, alias adoption and count/status updates share one transaction
+with the existing project-to-chat lock order. Concurrent sources converge on one
+row, and failed immutable-capture validation rolls back alias changes. A pending
+zero-count row can join an already captured native turn. Separately measured,
+uncorrelated legacy rows and duplicate legacy captures remain explicit conflicts;
+the migration does not guess which counts should be discarded. Cross-chat source
+collisions cannot relabel an existing usage record.
+
+Validation: 29 tests in four server files cover migrated PGlite persistence,
+restart, concurrent origins, old-source adoption, multi-turn attempts, late
+finalization, rollback, ownership, existing usage migration and telemetry
+analytics. The repository analytics query confirms one ten-second turn contributes
+ten seconds rather than duplicate time. Full workspace typechecks passed before
+the final old-source lookup change, followed by a final server typecheck.
+The generated migration snapshot changes only the intended aliases column.
+`pnpm check` still stops at the unchanged decomposition budgets documented in
+pass 27. No native sources, personal application, worker process or CI job were
+changed or launched by this pass.
+
+This is the shared identity foundation, not completed archived-history analytics
+recovery: durable native-history ingestion still needs to publish reconciled usage
+through it. Immutable message/model-behavior attribution, controlled provider/account
+migration, replacement presentation/queue/history continuity, remaining native
+lifecycle/CUA acceptance and eager GUI-first preparation remain required.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal

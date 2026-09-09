@@ -4424,6 +4424,10 @@ export const tokenUsageRecords = pgTable(
       onDelete: "set null",
     }),
     sourceKey: text("source_key").notNull(),
+    sourceAliases: jsonb("source_aliases")
+      .$type<string[]>()
+      .notNull()
+      .default([]),
     nativeModelAttribution: jsonb("native_model_attribution").$type<
       import("@cantrip/protocol").NativeTurnModelAttribution
     >(),
