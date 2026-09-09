@@ -2644,7 +2644,7 @@ provider/account migration, full replacement presentation/queue/history
 continuity, the remaining all-origin lifecycle and CUA acceptance matrix, and
 eager eligible session preparation with GUI-first presentation.
 
-### Pass 26 — authenticated selected-model route attribution
+### Pass 26 (#1876, merged) — authenticated selected-model route attribution
 
 Native settings reads and automatic notifications now publish the selected
 Cantrip model/route IDs beside the encrypted native snapshot. A separate MAC
@@ -2685,6 +2685,63 @@ The full goal remains incomplete: turn/usage routing and attribution, controlled
 provider/account migration, replacement TUI/queue/history continuity, remaining
 all-origin lifecycle/CUA acceptance, and eager GUI-first session preparation
 still require implementation and verification.
+
+### Pass 27 — native turn attribution and usage finalization
+
+The worker now captures selected model/route IDs and effective reasoning at the
+actual native turn-start event. The capture has its own thread/turn identity,
+separate from both mutable thread settings and the physical session route. Live
+usage and turn summaries carry that exact capture; encrypted chat/task wrappers
+retain it. The durable native source observation also records it separately from
+raw native `initialSettings`, and reducer reconciliation retains it through older
+snapshots and runtime replacement. Repeated observations cannot select a new
+model merely because the catalog or next-turn settings changed. Missing inventory
+remains unavailable attribution and does not prevent native input.
+
+Usage persistence validates worker/account/turn identity and owned routes in the
+session provider. Migration 0212 adds the captured evidence to token usage
+records. Native evidence supersedes bootstrap attribution, and subsequent usage
+or status-only completion updates retain it atomically. Unknown native selection
+stays unknown instead of reverting to launch defaults. Conflicting captures and
+updates for another retained turn do not overwrite counts. Child usage joins the same source key as child-time finalization, separate from
+root usage. Turn summaries preserve attribution even when no tokens were used,
+and delayed start/usage observations cannot reopen a finalized usage attempt.
+
+Validation: the actual pinned native replacement fixture holds the synthetic
+provider response while changing the thread's selected model. The provider
+request, live usage, completed summary and retained source event all identify the
+original running model, while the final thread settings reflect the next-turn
+choice. The actual managed-queue native fixture and chat/task encryption tests
+passed together (16 tests in four files). The reducer/native selection passed
+22 tests; the broader app-server, encryption contract, projection and model
+mapping selection passed 99 tests. Server validation passed 15 tests including
+real migrated PGlite persistence, restart, finalization, stale-turn rejection,
+invalid ownership/scope and separate root/child analytics. These selections
+overlap and are not a total acceptance count. Full workspace typechecks passed; seven existing agent-time, usage migration
+and telemetry dashboard regressions also passed. The generated migration snapshot differs only by the intended nullable column.
+
+Final native replacement/model and CUA child-ownership fixtures pass. Repeated
+managed-queue validation exposed an intermittent existing history failure: a
+snapshot marks the next goal turn interrupted before its start notification;
+the reducer then retains that status despite actual completed notification and
+snapshot evidence. The identical test/assertion also fails on unchanged pass 26
+(`08d1bbad3`) in a separate checkout. The later failing selection is not counted
+as a pass; the source diagnostic and baseline establish a separate required
+reconciliation fix, not a model-attribution regression.
+
+`pnpm check` still stops at decomposition budgets: `chat-turn-runtime.ts` is 2319
+lines (2275 at this pass's baseline), and untouched `task-routes.ts` is 2149;
+both exceed 1999. The focused server repository decomposition check also fails
+on unchanged `native-commands.ts` (2399 versus 2000). No CI, personal desktop input
+or user-worker restart ran.
+
+This pass does not establish analytics recovery solely from an archived native
+snapshot when no captured live usage reached the server. Native capture remains
+in protected durable history for recovery; completing the all-origin analytics
+projection and immutable message/model-behavior attribution remains required.
+Controlled provider/account migration, replacement TUI/queue/history continuity,
+remaining lifecycle/CUA acceptance and eager GUI-first preparation also remain
+part of the full goal.
 
 ### What “perfect mirror” must mean
 

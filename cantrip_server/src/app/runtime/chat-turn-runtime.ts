@@ -874,6 +874,7 @@ export function createChatTurnRuntime({
               | null
               | undefined,
             childTurnId: string | null,
+            nativeModelAttribution?: import("@cantrip/protocol").NativeTurnModelAttribution,
           ) => {
             if (!telemetry || telemetry.isRoot || !childTurnId) return;
             const childExecutionAttemptId = `${executionAttemptId}:subagent:${telemetry.agentThreadId}:${childTurnId}`;
@@ -891,17 +892,41 @@ export function createChatTurnRuntime({
               `chat-subagent:${childExecutionAttemptId}`,
               execution.projectId,
               execution.chatId,
-              subagentRuntime ?? runtime,
+              nativeModelAttribution ? runtime : (subagentRuntime ?? runtime),
               undefined,
               {
                 workerId: execution.workerId,
                 turnId: childTurnId,
                 executionAttemptId: childExecutionAttemptId,
                 attemptKind: "subagent-turn",
+                nativeModelAttribution,
                 attemptStatus: telemetry.status,
                 startedAt,
                 completedAt,
                 finalizedAt: completedAt,
+                codexVersion: attributedWorker?.codexVersion ?? null,
+              },
+            );
+          };
+          const recordNativeRootModel = async (
+            capture:
+              | import("@cantrip/protocol").NativeTurnModelAttribution
+              | undefined,
+          ) => {
+            if (!capture?.isRoot) return;
+            await recordRuntimeTokenUsage(
+              tokenUsageSourceKey,
+              execution.projectId,
+              execution.chatId,
+              runtime,
+              undefined,
+              {
+                workerId: execution.workerId,
+                turnId: capture.turnId,
+                executionAttemptId,
+                nativeModelAttribution: capture,
+                attemptKind: "chat-turn",
+                attemptStatus: "running",
                 codexVersion: attributedWorker?.codexVersion ?? null,
               },
             );
@@ -1374,6 +1399,10 @@ export function createChatTurnRuntime({
                         await recordChildAgentTime(
                           event.telemetry.agentRuntime,
                           event.telemetry.turnId,
+                          event.telemetry.nativeModelAttribution,
+                        );
+                        await recordNativeRootModel(
+                          event.telemetry.nativeModelAttribution,
                         );
                       }
                       if (event.telemetry.kind === "message") {
@@ -1417,6 +1446,8 @@ export function createChatTurnRuntime({
                           event.telemetry.usage,
                           {
                             workerId: execution.workerId,
+                            nativeModelAttribution:
+                              event.telemetry.nativeModelAttribution,
                             turnId:
                               event.telemetry.turnId ??
                               behaviorTurnId ??
@@ -1449,6 +1480,10 @@ export function createChatTurnRuntime({
                         await recordChildAgentTime(
                           event.telemetry.agentRuntime,
                           event.telemetry.turnId,
+                          event.telemetry.nativeModelAttribution,
+                        );
+                        await recordNativeRootModel(
+                          event.telemetry.nativeModelAttribution,
                         );
                       }
                       if (event.telemetry.kind === "message") {
@@ -1492,6 +1527,8 @@ export function createChatTurnRuntime({
                           event.telemetry.usage,
                           {
                             workerId: execution.workerId,
+                            nativeModelAttribution:
+                              event.telemetry.nativeModelAttribution,
                             turnId:
                               event.telemetry.turnId ??
                               behaviorTurnId ??
@@ -1622,6 +1659,10 @@ export function createChatTurnRuntime({
                     if (event.type !== "agent.activity") return;
                     behaviorTurnId =
                       event.activity.correlation?.turnId ?? behaviorTurnId;
+                    if (event.activity.type === "turnSummary")
+                      await recordNativeRootModel(
+                        event.activity.nativeModelAttribution,
+                      );
                     if (
                       event.activity.type === "turnSummary" &&
                       event.activity.agentScope
@@ -1647,6 +1688,7 @@ export function createChatTurnRuntime({
                                 : "failed",
                         },
                         event.activity.correlation?.turnId ?? null,
+                        event.activity.nativeModelAttribution,
                       );
                     }
                     behaviorTracker.observeActivity(event.activity, observedAt);
@@ -1661,6 +1703,8 @@ export function createChatTurnRuntime({
                         event.activity.last,
                         {
                           workerId: execution.workerId,
+                          nativeModelAttribution:
+                            event.activity.nativeModelAttribution,
                           turnId: usageTurnId,
                           executionAttemptId,
                           attemptKind: "chat-turn",

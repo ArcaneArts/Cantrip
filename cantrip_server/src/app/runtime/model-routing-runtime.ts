@@ -380,6 +380,7 @@ export function createModelRoutingRuntime({
       | undefined,
     attribution: {
       workerId?: string | null;
+      nativeModelAttribution?: import("@cantrip/protocol").NativeTurnModelAttribution;
       turnId?: string | null;
       executionAttemptId?: string | null;
       attemptKind?: string;
@@ -398,16 +399,31 @@ export function createModelRoutingRuntime({
   ): Promise<void> => {
     try {
       const ownerId = applicationOwnerId();
+      const childCapture =
+        attribution.nativeModelAttribution?.isRoot === false
+          ? attribution.nativeModelAttribution
+          : null;
+      const childAttemptId =
+        childCapture &&
+        attribution.executionAttemptId &&
+        attribution.attemptKind !== "subagent-turn"
+          ? `${attribution.executionAttemptId}:subagent:${childCapture.threadId}:${childCapture.turnId}`
+          : attribution.executionAttemptId;
       await repository.recordTokenUsage(ownerId, {
-        sourceKey,
+        sourceKey: childCapture
+          ? childAttemptId
+            ? `chat-subagent:${childAttemptId}`
+            : `${sourceKey}:native-child:${JSON.stringify([childCapture.threadId, childCapture.turnId])}`
+          : sourceKey,
         projectId,
         chatId,
         modelRouteId: runtime.routeId,
+        nativeModelAttribution: attribution.nativeModelAttribution,
         providerAccountId: runtime.provider.accountId,
         workerId: attribution.workerId,
         turnId: attribution.turnId,
-        executionAttemptId: attribution.executionAttemptId,
-        attemptKind: attribution.attemptKind,
+        executionAttemptId: childAttemptId,
+        attemptKind: childCapture ? "subagent-turn" : attribution.attemptKind,
         attemptStatus: attribution.attemptStatus,
         reasoningEffort: runtime.model.reasoningEffort,
         workerVersion: null,

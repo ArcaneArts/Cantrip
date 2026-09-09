@@ -1,0 +1,1 @@
+ALTER TABLE "token_usage_records" ADD COLUMN "native_model_attribution" jsonb;

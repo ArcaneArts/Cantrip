@@ -754,10 +754,18 @@ describe("immutable initial turn settings", () => {
     collaborationMode: "plan",
   };
   it("retains an exact live capture through completion, old snapshots and runtime replacement", () => {
+    const captured = {
+      threadId: "thread",
+      turnId: "turn",
+      isRoot: true,
+      reasoningEffort: "high",
+      selection: { status: "unavailable" },
+    };
     let state = reduceTurnHistory("thread", null, [
       event(1, "turn/started", {
         turn: turn([], "turn", "inProgress"),
         initialSettings,
+        cantripModelAttribution: captured,
       }),
     ]);
     expect(state.turns[0]!.metadata?.initialSettings).toEqual(initialSettings);
@@ -776,6 +784,10 @@ describe("immutable initial turn settings", () => {
     ]);
     expect(state.turns[0]!.metadata?.initialSettings).toEqual(initialSettings);
     expect(state.turns[1]!.metadata).not.toHaveProperty("initialSettings");
+    expect(state.turns[0]!.metadata?.cantripModelAttribution).toEqual(captured);
+    expect(state.turns[1]!.metadata).not.toHaveProperty(
+      "cantripModelAttribution",
+    );
   });
   it("learns retained snapshots and never chooses between conflicting immutable captures", () => {
     const different = { ...initialSettings, model: "different-model" };
