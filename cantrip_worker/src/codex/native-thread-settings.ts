@@ -56,6 +56,7 @@ const acknowledgmentSchema = z.object({
 /** Transport-local evidence. The server still owns durable revisions/admission. */
 export class NativeThreadSettingsState {
   private sequence = 0;
+  private readonly inFlight = new WeakSet<NativeSettingsRequest>();
   private readonly confirmed = new Map<string, NativeSettingsObservation>();
   private readonly requests = new Map<
     string,
@@ -113,7 +114,10 @@ export class NativeThreadSettingsState {
     // Terminal results are available until the next request. Do not retain an
     // unbounded lifetime log or remove unresolved requests while acks are pending.
     for (const [id, request] of requests) {
-      if (request.status === "applied" || request.status === "rejected")
+      if (
+        !this.inFlight.has(request) &&
+        (request.status === "applied" || request.status === "rejected")
+      )
         requests.delete(id);
     }
     const request: NativeSettingsRequest = {
@@ -125,6 +129,7 @@ export class NativeThreadSettingsState {
       error: null,
     };
     requests.set(operationId, request);
+    this.inFlight.add(request);
     return request;
   }
 
@@ -134,10 +139,13 @@ export class NativeThreadSettingsState {
     value: unknown,
   ): void {
     this.assertCurrent(threadId, request);
+    this.inFlight.delete(request);
     const parsed = acknowledgmentSchema.safeParse(value);
     if (
       !parsed.success ||
       parsed.data.operationId !== request.operationId ||
+      (request.submissionId &&
+        request.submissionId !== parsed.data.submissionId) ||
       (request.applied &&
         request.applied.submissionId !== parsed.data.submissionId)
     ) {
@@ -147,13 +155,16 @@ export class NativeThreadSettingsState {
       );
     }
     request.submissionId = parsed.data.submissionId;
-    request.error =
+    request.error ??=
       this.earlyErrors.get(threadId)?.get(request.submissionId) ?? null;
-    request.status = request.applied
-      ? "applied"
-      : request.error
-        ? "rejected"
-        : "queued";
+    request.status =
+      request.applied && request.error
+        ? "uncertain"
+        : request.applied
+          ? "applied"
+          : request.error
+            ? "rejected"
+            : "queued";
     if (
       ![...(this.requests.get(threadId)?.values() ?? [])].some(
         (pending) => pending.status === "requesting",
@@ -167,10 +178,11 @@ export class NativeThreadSettingsState {
     request: NativeSettingsRequest,
     rejected: boolean,
   ): void {
+    this.inFlight.delete(request);
     if (this.requests.get(threadId)?.get(request.operationId) !== request)
       return;
     // A lost RPC response cannot erase actual applied evidence.
-    if (request.status === "uncertain") return;
+    if (request.status === "uncertain" || request.status === "rejected") return;
     request.status = request.applied
       ? "applied"
       : rejected
@@ -202,7 +214,8 @@ export class NativeThreadSettingsState {
       } else {
         request.applied = observation;
         // Keep the request registered until its RPC response is checked too.
-        if (request.submissionId) request.status = "applied";
+        if (request.error) request.status = "uncertain";
+        else if (request.submissionId) request.status = "applied";
       }
     }
     return structuredClone({ threadId: params.threadId, observation });
@@ -221,17 +234,36 @@ export class NativeThreadSettingsState {
     if (!parsed.success || parsed.data.willRetry) return false;
     const { threadId, turnId, error } = parsed.data;
     const pending = [...(this.requests.get(threadId)?.values() ?? [])];
-    const request = pending.find(
-      (candidate) => candidate.submissionId === turnId,
-    );
+    const scoped = z
+      .object({
+        threadSettingsUpdateFailed: z.object({
+          operationId: z.string().nullable(),
+        }),
+      })
+      .safeParse(error.codexErrorInfo);
+    const operationId = scoped.success
+      ? scoped.data.threadSettingsUpdateFailed.operationId
+      : null;
+    const request =
+      operationId !== null
+        ? pending.find((candidate) => candidate.operationId === operationId)
+        : pending.find((candidate) => candidate.submissionId === turnId);
     if (request) {
+      if (request.submissionId && request.submissionId !== turnId) {
+        request.status = "uncertain";
+        return false;
+      }
+      request.submissionId = turnId;
       request.error = structuredClone(error);
       request.status = request.applied ? "uncertain" : "rejected";
       return true;
     }
     // An error can precede its queue acknowledgment. Do not attribute it to any
     // request until the native submission ID arrives, or consume a turn error.
-    if (pending.some((candidate) => candidate.status === "requesting")) {
+    if (
+      operationId === null &&
+      pending.some((candidate) => candidate.status === "requesting")
+    ) {
       let errors = this.earlyErrors.get(threadId);
       if (!errors) this.earlyErrors.set(threadId, (errors = new Map()));
       errors.set(turnId, structuredClone(error));

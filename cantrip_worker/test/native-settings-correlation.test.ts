@@ -45,6 +45,12 @@ describe.skipIf(!binary)("native settings acknowledgments", () => {
         if (name !== "ThreadSettingsUpdateParams")
           expect(source).toContain("submissionId");
       }
+      const errors = await readFile(
+        path.join(output, "v2", "CodexErrorInfo.ts"),
+        "utf8",
+      );
+      expect(errors).toContain("threadSettingsUpdateFailed");
+      expect(errors).toContain("operationId: string | null");
       const requests = await readFile(
         path.join(output, "ClientRequest.ts"),
         "utf8",
