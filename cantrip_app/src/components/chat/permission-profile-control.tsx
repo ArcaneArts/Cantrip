@@ -38,10 +38,14 @@ function isUnrestrictedProfile(id: string): boolean {
 }
 
 export function PermissionProfileControl({
+  open,
+  onOpenChange,
   onChange,
   pending,
   state,
 }: {
+  open?: boolean;
+  onOpenChange?(open: boolean): void;
   onChange(id: string | null): void;
   pending: boolean;
   state: ChatPermissionProfileState | undefined;
@@ -66,7 +70,7 @@ export function PermissionProfileControl({
       : selectedLabel;
 
   return (
-    <DropdownMenu.Root>
+    <DropdownMenu.Root open={open} onOpenChange={onOpenChange}>
       <DropdownMenu.Trigger asChild>
         <Button
           type="button"

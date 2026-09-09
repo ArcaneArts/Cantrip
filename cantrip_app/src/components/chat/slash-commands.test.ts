@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   filterSlashCommands,
+  settingsSlashCommand,
   slashCommandQuery,
   SLASH_COMMANDS,
 } from "./slash-commands";
@@ -26,6 +27,8 @@ describe("slash commands", () => {
     expect(commands).toEqual(
       expect.arrayContaining([
         "/compact",
+        "/model",
+        "/permissions",
         "/fork",
         "/goal",
         "/new",
@@ -35,5 +38,31 @@ describe("slash commands", () => {
       ]),
     );
     expect(SLASH_COMMANDS.length).toBeGreaterThanOrEqual(10);
+  });
+});
+
+describe("settings command parsing", () => {
+  it.each(["model", "permissions"])(
+    "recognizes /%s with whitespace and case variants",
+    (name) => {
+      expect(settingsSlashCommand(` /${name.toUpperCase()} \n`)).toEqual({
+        name,
+        arguments: "",
+      });
+      expect(settingsSlashCommand(`/${name} choice\nmore`)).toEqual({
+        name,
+        arguments: "choice\nmore",
+      });
+    },
+  );
+
+  it.each([
+    "/models",
+    "/permissions-extra",
+    "explain /model",
+    "/model/other",
+    "/review",
+  ])("leaves %s to normal command/prompt handling", (draft) => {
+    expect(settingsSlashCommand(draft)).toBeNull();
   });
 });

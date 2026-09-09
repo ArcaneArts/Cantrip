@@ -99,6 +99,9 @@ export function ChatTranscriptView({
     editingSentMessage,
     effectiveInspectOnly,
     executeCommandPalette,
+    settingsCommand,
+    settingsPicker,
+    setSettingsPicker,
     fileInputRef,
     filesOpen,
     filesRequestedPath,
@@ -958,6 +961,12 @@ export function ChatTranscriptView({
                   <span className="sr-only">Attach files</span>
                 </Button>
                 <ModelReasoningPicker
+                  open={settingsPicker === "model"}
+                  onOpenChange={(open) =>
+                    setSettingsPicker((current) =>
+                      open ? "model" : current === "model" ? null : current,
+                    )
+                  }
                   configuration={currentModelConfiguration}
                   disabled={relocationActive}
                   loadReasoningState={loadModelReasoningState}
@@ -979,6 +988,16 @@ export function ChatTranscriptView({
                   }
                 />
                 <PermissionProfileControl
+                  open={settingsPicker === "permissions"}
+                  onOpenChange={(open) =>
+                    setSettingsPicker((current) =>
+                      open
+                        ? "permissions"
+                        : current === "permissions"
+                          ? null
+                          : current,
+                    )
+                  }
                   pending={
                     permissionProfiles.isLoading ||
                     selectPermissionProfile.isPending
@@ -1019,19 +1038,23 @@ export function ChatTranscriptView({
               stopDisabled={relocationActive || interrupt.isPending}
               sendPending={send.isPending}
               sendDisabled={
-                relocationActive ||
-                (!draft.trim() &&
-                  !draftAttachments.some(
-                    ({ error, uploading }) => !error && !uploading,
-                  )) ||
-                draftAttachments.some(
-                  ({ error, uploading }) => Boolean(error) || uploading,
-                ) ||
-                !selectedModelId ||
-                send.isPending ||
-                selectModelConfiguration.isPending ||
-                selectPermissionProfile.isPending ||
-                updatePrompt.isPending
+                settingsCommand
+                  ? relocationActive ||
+                    (settingsCommand.name === "model" &&
+                      selectModelConfiguration.isPending)
+                  : relocationActive ||
+                    (!draft.trim() &&
+                      !draftAttachments.some(
+                        ({ error, uploading }) => !error && !uploading,
+                      )) ||
+                    draftAttachments.some(
+                      ({ error, uploading }) => Boolean(error) || uploading,
+                    ) ||
+                    !selectedModelId ||
+                    send.isPending ||
+                    selectModelConfiguration.isPending ||
+                    selectPermissionProfile.isPending ||
+                    updatePrompt.isPending
               }
               onPauseChange={(paused) => setAutomationPaused.mutate(paused)}
               onStop={() => interrupt.mutate()}

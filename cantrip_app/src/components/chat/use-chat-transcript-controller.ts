@@ -100,6 +100,7 @@ import {
   slashCommandQuery,
   type SlashCommandSuggestion,
 } from "@/components/chat/slash-commands";
+import { useSettingsSlashCommands } from "@/components/chat/use-settings-slash-commands";
 import { type ChatSurfaceCapabilities } from "@/components/chat/chat-surface-capabilities";
 import { taskChatIsInspectOnly } from "@/components/tasks/task-chat-access";
 import { providerSupportsCatalog } from "@/components/settings/provider-catalog-display";
@@ -1570,8 +1571,28 @@ export function useChatTranscriptController({
     [fork.mutate],
   );
 
+  const {
+    settingsCommand,
+    settingsPicker,
+    setSettingsPicker,
+    runSettingsCommand,
+  } = useSettingsSlashCommands({
+    chatId: chat.id,
+    draft,
+    enabled: capabilities.projectCommands,
+    relocationActive,
+    modelPending: selectModelConfiguration.isPending,
+    consumeDraft: () => {
+      setDraft("");
+      setSelectedGithubReferences([]);
+    },
+    dismissMenu: () => setSlashMenuDismissed(true),
+    notice: setCommandNotice,
+  });
+
   const submit = (event?: FormEvent) => {
     event?.preventDefault();
+    if (runSettingsCommand(draft)) return;
     const text = capabilities.projectReferences
       ? expandGithubReferences(draft.trim(), selectedGithubReferences)
       : draft.trim();
@@ -1630,6 +1651,7 @@ export function useChatTranscriptController({
   const executeSlashCommand = async ({ command }: SlashCommandSuggestion) => {
     if (!capabilities.projectCommands && !capabilities.skillPicker) return;
     const name = command.name;
+    if (runSettingsCommand(`/${name}`)) return;
     setDraft("");
     setSelectedGithubReferences([]);
     setSlashMenuDismissed(true);
@@ -1840,6 +1862,9 @@ export function useChatTranscriptController({
     editingSentMessage,
     effectiveInspectOnly,
     executeCommandPalette,
+    settingsCommand,
+    settingsPicker,
+    setSettingsPicker,
     fileInputRef,
     filesOpen,
     filesRequestedPath,

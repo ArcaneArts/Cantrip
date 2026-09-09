@@ -10,9 +10,14 @@ export interface SlashCommandSuggestion {
 }
 
 // Cantrip exposes the Codex commands that are useful inside a project agent.
-// TUI configuration commands and actions already represented by Cantrip UI
-// (such as /model, /theme, and /permissions) intentionally stay out of here.
+// Settings commands open the same controls as the composer. Terminal-only
+// presentation commands such as /theme stay outside the agent command list.
 export const SLASH_COMMANDS: readonly SlashCommand[] = [
+  {
+    name: "model",
+    description: "Choose the agent model and reasoning settings",
+  },
+  { name: "permissions", description: "Choose the agent permission profile" },
   {
     name: "clear",
     description: "Start a fresh agent and clear the current view",
@@ -34,6 +39,22 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
   { name: "review", description: "Ask Codex to review the working tree" },
   { name: "status", description: "Inspect the current Codex session" },
 ] as const;
+
+export type SettingsPicker = "model" | "permissions";
+
+/** Consume recognized settings commands even with unsupported arguments: they
+ * must not accidentally become model prompts when the suggestion menu closes. */
+export function settingsSlashCommand(draft: string): {
+  name: SettingsPicker;
+  arguments: string;
+} | null {
+  const match = /^\/(model|permissions)(?:\s+([\s\S]*))?$/i.exec(draft.trim());
+  if (!match) return null;
+  return {
+    name: match[1]!.toLowerCase() as SettingsPicker,
+    arguments: match[2]?.trim() ?? "",
+  };
+}
 
 export function slashCommandQuery(draft: string): string | null {
   const match = /^\/([^\s]*)$/.exec(draft);

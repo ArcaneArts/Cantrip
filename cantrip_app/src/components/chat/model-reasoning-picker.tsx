@@ -51,6 +51,8 @@ function reasoningEffortRank(effort: ReasoningEffort): number {
 }
 
 export interface ModelReasoningPickerProps {
+  open?: boolean;
+  onOpenChange?(open: boolean): void;
   configuration: ModelConfiguration;
   disabled?: boolean;
   models: ModelProfileSummary[];
@@ -342,6 +344,8 @@ function ReasoningSlider({
 }
 
 export function ModelReasoningPicker({
+  open: controlledOpen,
+  onOpenChange,
   configuration,
   disabled = false,
   loadReasoningState,
@@ -354,7 +358,12 @@ export function ModelReasoningPicker({
   subagentCapability,
   subagents = true,
 }: ModelReasoningPickerProps) {
-  const [open, setOpen] = useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = controlledOpen ?? uncontrolledOpen;
+  const setOpen = (nextOpen: boolean) => {
+    if (controlledOpen === undefined) setUncontrolledOpen(nextOpen);
+    onOpenChange?.(nextOpen);
+  };
   const [draft, setDraft] = useState(configuration);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -414,7 +423,10 @@ export function ModelReasoningPicker({
   const subagentsAvailable = subagentCapability?.available ?? true;
 
   useEffect(() => {
-    if (!open) setDraft(configuration);
+    if (!open) {
+      setDraft(configuration);
+      setSaveError(null);
+    }
   }, [configuration, open]);
 
   useEffect(() => {
