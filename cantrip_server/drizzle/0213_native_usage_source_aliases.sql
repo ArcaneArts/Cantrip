@@ -1,0 +1,1 @@
+ALTER TABLE "token_usage_records" ADD COLUMN "source_aliases" jsonb DEFAULT '[]'::jsonb NOT NULL;

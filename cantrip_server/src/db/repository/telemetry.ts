@@ -1,3 +1,4 @@
+import { withNativeUsageIdentity } from "./native-usage-identity.js";
 import {
   nativeTurnModelAttributionSchema,
   type NativeTurnModelAttribution,
@@ -229,6 +230,19 @@ export class TelemetryRepository {
   }
 
   async recordTokenUsage(
+    ownerId: string,
+    input: TokenUsageRecordInput,
+  ): Promise<void> {
+    return withNativeUsageIdentity(
+      this.database,
+      ownerId,
+      input,
+      (tx, resolved) =>
+        new TelemetryRepository(tx).persistTokenUsage(ownerId, resolved),
+    );
+  }
+
+  private async persistTokenUsage(
     ownerId: string,
     input: TokenUsageRecordInput,
   ): Promise<void> {
