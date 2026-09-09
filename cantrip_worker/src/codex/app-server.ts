@@ -101,6 +101,11 @@ import {
   readCodexNativeHistory,
   type CodexNativeHistorySnapshot,
 } from "./native-history.js";
+import {
+  NativeHistoryObservations,
+  type NativeHistoryObserver,
+  type NativeHistorySubscription,
+} from "./native-history-observation.js";
 import { attachmentPromptText } from "./attachment-inputs.js";
 import {
   codexModelProviderName,
@@ -173,6 +178,7 @@ export interface RpcError {
 }
 
 export interface RpcMessage {
+  historyCursor?: unknown;
   error?: RpcError;
   id?: number | string;
   method?: string;
@@ -4189,6 +4195,7 @@ export function completedCodexThreadTurnFromRead(
 }
 
 export class CodexAppServer implements CodexRuntime {
+  readonly #historyObservations = new NativeHistoryObservations();
   readonly #threadPreparations = new Map<string, Promise<void>>();
   #preparationEpoch = 0;
   readonly #activeTurns = new Map<string, ActiveTurn>();
@@ -5965,6 +5972,15 @@ export class CodexAppServer implements CodexRuntime {
     if (generation !== this.#nativeTransportGeneration)
       throw new Error("The native history transport changed during the read.");
     return snapshot;
+  }
+
+  observeNativeHistory(
+    threadId: string,
+    observer: NativeHistoryObserver,
+  ): NativeHistorySubscription {
+    return this.#historyObservations.subscribe(threadId, observer, () =>
+      this.readNativeHistory(threadId),
+    );
   }
 
   private async readExternalThread(options: {
@@ -8716,6 +8732,7 @@ export class CodexAppServer implements CodexRuntime {
     });
     this.#socket = socket;
     this.#nativeTransportGeneration = randomUUID();
+    this.#historyObservations.replace(this.#nativeTransportGeneration);
     workerLogger.event("debug", "Codex app-server transport connected", {
       event: "codex.runtime.transport",
       subsystem: "codex",
@@ -9089,6 +9106,13 @@ export class CodexAppServer implements CodexRuntime {
       });
       return;
     }
+
+    if (typeof message.method === "string")
+      this.#historyObservations.notification(
+        message.method,
+        message.params,
+        message.historyCursor,
+      );
 
     if (message.method === "thread/settings/updated") {
       const params = message.params as ThreadSettingsUpdatedParams;
@@ -10927,6 +10951,7 @@ export class CodexAppServer implements CodexRuntime {
   private handleExit(error: Error): void {
     this.clearManagedExecutionGateHandlers();
     this.#nativeTransportGeneration = null;
+    this.#historyObservations.replace(null);
     this.#preparationEpoch += 1;
     this.#threadPreparations.clear();
     this.#threadPreparationVersions.clear();

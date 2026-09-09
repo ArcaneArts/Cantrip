@@ -1,5 +1,24 @@
 import { z } from "zod";
 
+const nativeSequence = z
+  .string()
+  .max(20)
+  .regex(/^(0|[1-9][0-9]*)$/u)
+  .refine(
+    (value) =>
+      /^[0-9]{1,20}$/u.test(value) &&
+      BigInt(value) <= 18_446_744_073_709_551_615n,
+    "Native history sequence exceeds u64.",
+  );
+export const nativeHistoryCursorSchema = z
+  .object({
+    epoch: z.string().min(1),
+    sequence: nativeSequence,
+    previousSequence: nativeSequence.nullable(),
+  })
+  .strict();
+export type NativeHistoryCursor = z.infer<typeof nativeHistoryCursorSchema>;
+
 // This is worker-local source material for future protected ingestion. Do not
 // add it to AgentThreadSync or return it through the existing chat.sync route.
 const nativeItemSchema = z
@@ -43,17 +62,65 @@ const nativeTurnErrorSchema = z
   })
   .passthrough();
 
+/** Exact retained native turn settings, never synthesized from current chat defaults.
+ * Multiple entries preserve context changes during compaction; no entry is a claim
+ * that the entire turn used the thread's latest cwd/mode. */
+export const nativeHistoryTurnContextSchema = z
+  .object({
+    cwd: z.string().min(1),
+    model: z.string().min(1),
+    collaborationMode: z.string().min(1).nullable(),
+    reasoningEffort: z.string().min(1).nullable(),
+    rootTurnId: z.string().min(1).nullable(),
+  })
+  .passthrough();
+
 const historyMetadataSchema = z
   .object({
     version: z.literal(1),
     currentTurnId: z.string().min(1).nullable(),
     currentTurnState: z.enum(["live", "notLoaded"]),
+    live: z
+      .object({
+        epoch: z.string().min(1),
+        throughSequence: nativeSequence,
+        items: z.array(
+          z
+            .object({
+              turnId: z.string().min(1),
+              item: nativeItemSchema,
+              state: z.enum(["started", "completed"]),
+              cursor: nativeHistoryCursorSchema,
+              startedAtMs: z.number().nullable(),
+              completedAtMs: z.number().nullable(),
+            })
+            .strict(),
+        ),
+      })
+      .strict()
+      .superRefine((live, context) => {
+        for (const item of live.items)
+          if (
+            item.cursor.epoch !== live.epoch ||
+            (nativeSequence.safeParse(item.cursor.sequence).success &&
+              nativeSequence.safeParse(live.throughSequence).success &&
+              BigInt(item.cursor.sequence) > BigInt(live.throughSequence))
+          )
+            context.addIssue({
+              code: "custom",
+              message:
+                "Live history item is outside its native snapshot boundary.",
+            });
+      })
+      .optional(),
     turns: z.array(
       z
         .object({
           turnId: z.string().min(1),
           source: z.enum(["canonical", "legacy"]),
           retention: z.enum(["complete", "partial", "unavailable"]),
+          // Older bundles omit this. Preserve that distinction from retained evidence.
+          contexts: z.array(nativeHistoryTurnContextSchema).optional(),
           items: z.array(
             z
               .object({

@@ -37,6 +37,10 @@ import type {
 } from "./app-server.js";
 import type { CodexComputerUseExecution } from "./execution-lifetime.js";
 import type { CodexNativeHistorySnapshot } from "./native-history.js";
+import type {
+  NativeHistoryObserver,
+  NativeHistorySubscription,
+} from "./native-history-observation.js";
 
 export interface CodexRuntimeDiagnostic {
   id: string;
@@ -195,6 +199,10 @@ export interface CodexRuntime {
     threadId: string;
   }): Promise<AgentThreadSync | null>;
   readNativeHistory(threadId: string): Promise<CodexNativeHistorySnapshot>;
+  observeNativeHistory(
+    threadId: string,
+    observer: NativeHistoryObserver,
+  ): NativeHistorySubscription;
   prepareExternalSync(
     options: Pick<
       RunAgentTurnOptions,

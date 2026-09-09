@@ -1,0 +1,162 @@
+diff --git a/codex-rs/app-server-protocol/src/protocol/thread_history_metadata.rs b/codex-rs/app-server-protocol/src/protocol/thread_history_metadata.rs
+index db01ef1..2ea196b 100644
+--- a/codex-rs/app-server-protocol/src/protocol/thread_history_metadata.rs
++++ b/codex-rs/app-server-protocol/src/protocol/thread_history_metadata.rs
+@@ -12,6 +12,7 @@ struct TurnEvidence<'a> {
+     canonical: BTreeMap<u64, &'a EventMsg>,
+     ordinary_items: Vec<&'a EventMsg>,
+     usage: Vec<&'a TokenUsageRecord>,
++    contexts: Vec<ThreadHistoryTurnContext>,
+ }
+ 
+ pub fn build_history_metadata(
+@@ -62,6 +63,24 @@ pub fn build_history_metadata(
+                     .ordinary_items
+                     .push(event);
+             }
++            RolloutItem::TurnContext(context) => {
++                // Legacy unscoped baselines are not evidence for whichever turn
++                // happens to be adjacent in the presentation history.
++                let Some(turn_id) = context.turn_id.as_deref().filter(|id| !id.is_empty()) else {
++                    continue;
++                };
++                let retained = ThreadHistoryTurnContext {
++                    cwd: context.cwd.clone(),
++                    model: context.model.clone(),
++                    collaboration_mode: context.collaboration_mode.as_ref().map(|mode| mode.mode),
++                    reasoning_effort: context.effort.clone(),
++                    root_turn_id: context.root_turn_id.clone(),
++                };
++                let contexts = &mut evidence.entry(turn_id).or_default().contexts;
++                if !contexts.contains(&retained) {
++                    contexts.push(retained);
++                }
++            }
+             RolloutItem::TokenUsageRecord(usage) => {
+                 evidence
+                     .entry(&usage.turn_id)
+@@ -195,6 +214,7 @@ fn metadata_for_turn(
+         }
+         .into(),
+         retention: retention.into(),
++        contexts: evidence.contexts,
+         items: turn
+             .items
+             .iter()
+@@ -360,6 +380,82 @@ mod tests {
+         })
+     }
+ 
++    fn context(turn: Option<&str>, cwd: &str, mode: &str) -> RolloutItem {
++        RolloutItem::TurnContext(
++            serde_json::from_value(json!({
++                "turn_id": turn, "cwd": cwd, "model": "fixture-model",
++                "approval_policy": "never", "sandbox_policy": {"type": "read-only"},
++                "collaboration_mode": {"mode": mode, "settings": {
++                    "model": "fixture-model", "reasoning_effort": "high",
++                    "developer_instructions": "private instructions must not be projected"
++                }},
++                "effort": "high", "summary": "auto"
++            }))
++            .unwrap(),
++        )
++    }
++
++    #[test]
++    fn retained_turn_context_is_exact_deduplicated_and_does_not_use_current_defaults() {
++        let history = build_history_metadata(
++            &thread(&["old", "new", "missing"]),
++            &[
++                context(None, "/unscoped", "default"),
++                context(Some("old"), "/original", "plan"),
++                context(Some("new"), "/later", "default"),
++                context(Some("old"), "/original", "plan"),
++                context(Some(""), "/unscoped-empty", "default"),
++            ],
++            None,
++            false,
++        );
++        assert_eq!(history.turns[0].contexts.len(), 1);
++        let old = serde_json::to_value(&history.turns[0].contexts[0]).unwrap();
++        assert_eq!(
++            old,
++            json!({"cwd": "/original", "model": "fixture-model",
++            "collaborationMode": "plan", "reasoningEffort": "high", "rootTurnId": null})
++        );
++        assert_eq!(
++            history.turns[1].contexts[0].cwd.as_path(),
++            std::path::Path::new("/later")
++        );
++        assert!(history.turns[2].contexts.is_empty());
++    }
++
++    #[test]
++    fn changed_compaction_context_and_child_attribution_are_retained() {
++        let mut child = context(Some("child"), "/child", "default");
++        if let RolloutItem::TurnContext(context) = &mut child {
++            context.root_turn_id = Some("root".into());
++            context.collaboration_mode = None;
++            context.effort = None;
++        }
++        let history = build_history_metadata(
++            &thread(&["old", "child"]),
++            &[
++                context(Some("old"), "/before-compaction", "plan"),
++                context(Some("old"), "/after-compaction", "default"),
++                child,
++            ],
++            None,
++            true,
++        );
++        assert_eq!(history.turns[0].contexts.len(), 2);
++        assert_eq!(
++            history.turns[0].contexts[0].cwd.as_path(),
++            std::path::Path::new("/before-compaction")
++        );
++        assert_eq!(
++            history.turns[0].contexts[1].cwd.as_path(),
++            std::path::Path::new("/after-compaction")
++        );
++        let child = &history.turns[1].contexts[0];
++        assert_eq!(child.root_turn_id.as_deref(), Some("root"));
++        assert!(child.collaboration_mode.is_none());
++        assert!(child.reasoning_effort.is_none());
++    }
++
+     #[test]
+     fn canonical_identity_does_not_claim_unavailable_retention() {
+         let mut thread = thread(&["old"]);
+diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
+index e8a70b2..510cd0f 100644
+--- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
++++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
+@@ -2213,6 +2213,11 @@ pub struct ThreadHistoryTurnMetadata {
+     /// `partial` has a retained canonical prefix or gap; `unavailable` predates retention.
+     /// This is independent of item identity and the turn's execution status.
+     pub retention: String,
++    /// Distinct retained contexts for this exact turn, in rollout order. An empty
++    /// list means unavailable, never the thread's current defaults. Compaction can
++    /// retain several contexts; callers must not silently pick a conflicting cwd.
++    #[serde(default)]
++    pub contexts: Vec<ThreadHistoryTurnContext>,
+     pub items: Vec<ThreadHistoryItemMetadata>,
+     pub usage: Option<ThreadHistoryUsage>,
+     /// Null means retention is unavailable or gapped. An empty list on a contiguous
+@@ -2223,6 +2228,17 @@ pub struct ThreadHistoryTurnMetadata {
+ #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+ #[serde(rename_all = "camelCase")]
+ #[ts(export_to = "v2/")]
++pub struct ThreadHistoryTurnContext {
++    pub cwd: AbsolutePathBuf,
++    pub model: String,
++    /// Effective mode only; model instructions are deliberately not projected.
++    pub collaboration_mode: Option<codex_protocol::config_types::ModeKind>,
++    pub reasoning_effort: Option<ReasoningEffort>,
++    pub root_turn_id: Option<String>,
++}
++#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
++#[serde(rename_all = "camelCase")]
++#[ts(export_to = "v2/")]
+ pub struct ThreadHistoryItemMetadata {
+     pub item_id: String,
+     /// `started`, `completed`, or `unknown`, independently of timestamp availability.

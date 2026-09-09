@@ -33,6 +33,15 @@ import { NativeCommandClient } from "../src/native-command-client.js";
 import { createManagedQueueInputCodec } from "../src/managed-queue-input.js";
 import { protectNativeCommandContent } from "../src/native-command-content.js";
 import type { WorkerEncryptionService } from "../src/worker-encryption.js";
+import { nativeHistoryUserMessage } from "../src/codex/native-history.js";
+import { openEncryptedChatTurn } from "../src/chat-message-encryption.js";
+import { NativeHistoryClient } from "../src/native-history-client.js";
+import { NativeHistoryOutbox } from "../src/native-history-outbox.js";
+import { NativeHistorySourceJournal } from "../src/native-history-source-journal.js";
+import { ManagedNativeHistorySources } from "../src/managed-native-history-sources.js";
+import { reduceNativeHistory } from "../src/native-history-reducer.js";
+import type { NativeHistoryPreparedBatch } from "@cantrip/protocol";
+import type { NativeHistoryNotification } from "../src/codex/native-history-observation.js";
 
 // Resolve the server fixture's dependency without adding Fastify to production worker dependencies.
 const Fastify = createRequire(
@@ -59,6 +68,7 @@ describe.skipIf(!binary)("native canonical queue execution", () => {
       }[] = [];
       const goalFailures: unknown[] = [];
       let delivery: ReturnType<typeof createManagedQueueDelivery> | undefined;
+      let drainHistorySource: (() => Promise<void>) | undefined;
       const directory = await mkdtemp(
         path.join(tmpdir(), "cantrip-native-canonical-queue-"),
       );
@@ -270,6 +280,150 @@ describe.skipIf(!binary)("native canonical queue execution", () => {
         };
         const client = new NativeCommandClient(clientOptions);
         const queueClient = new ManagedNativeQueueClient(clientOptions);
+        const historyClient = new NativeHistoryClient({
+          ...clientOptions,
+          serverUrl: await authority.app.listen({ port: 0, host: "127.0.0.1" }),
+          fetch: globalThis.fetch,
+        });
+        const sourceBinding = await historyClient.open({
+          chatId,
+          threadId,
+          provenance: { kind: "current" },
+        });
+        const sourceOptions = {
+          directory: path.join(data, "source-history"),
+          workerId,
+          chatId,
+          threadId,
+          bindingId: sourceBinding.id,
+          service: encryption,
+        };
+        const sourceJournal =
+          await NativeHistorySourceJournal.open(sourceOptions);
+        const historyEvents: NativeHistoryNotification[] = [];
+        const historyErrors: unknown[] = [];
+        const historyObservation = runtime.observeNativeHistory(threadId, {
+          capture: (event) => {
+            historyEvents.push(event);
+          },
+          onError: (error) => {
+            historyErrors.push(error);
+          },
+        });
+        let sourceFaultPath: string | undefined;
+        const sourceWriteFailures: unknown[] = [];
+        const managedSources = new ManagedNativeHistorySources({
+          directory: sourceOptions.directory,
+          workerId,
+          service: encryption,
+          client: historyClient,
+          onError: (error, context) => {
+            if (sourceFaultPath && context.phase === "append")
+              sourceWriteFailures.push(error);
+            else historyErrors.push(error);
+          },
+        });
+        const sourceCapture = managedSources.bind({
+          runtime,
+          chatId,
+          threadId,
+        });
+        expect(managedSources.bind({ runtime, chatId, threadId })).toBe(
+          sourceCapture,
+        );
+        drainHistorySource = async () => {
+          historyObservation.close();
+          if (sourceFaultPath)
+            await rm(sourceFaultPath, { recursive: true, force: true });
+          await managedSources.close();
+          expect(historyErrors).toEqual([]);
+        };
+        if (origin === "native") {
+          await sourceCapture.flush();
+          const existingSource = await sourceJournal.read(0, 512);
+          sourceFaultPath = path.join(
+            sourceJournal.directory,
+            `${String((existingSource.at(-1)?.sequence ?? 0) + 1).padStart(16, "0")}.source.json`,
+          );
+          await mkdir(sourceFaultPath);
+        }
+        const readHistorySnapshot = async () => {
+          const { observation: observed, record: saved } =
+            await sourceCapture.snapshot();
+          const reopened = await NativeHistorySourceJournal.open(sourceOptions);
+          const events: NativeHistoryNotification[] = [];
+          const sourceRecords: Awaited<
+            ReturnType<NativeHistorySourceJournal["read"]>
+          > = [];
+          let after = 0;
+          while (after < saved.sequence) {
+            const page = await reopened.read(after, 16);
+            expect(page.length).toBeGreaterThan(0);
+            for (const entry of page) {
+              if (entry.sequence <= saved.sequence) sourceRecords.push(entry);
+              if (
+                entry.frame.kind === "notification" &&
+                entry.frame.sequence <= observed.completedSequence
+              )
+                events.push(entry.frame);
+              if (entry.sequence === saved.sequence)
+                expect(entry.frame).toEqual(observed);
+            }
+            after = page.at(-1)!.sequence;
+          }
+          expect(events).toEqual(
+            historyEvents.filter(
+              (event) => event.sequence <= observed.completedSequence,
+            ),
+          );
+          expect(historyErrors).toEqual([]);
+          const reduced = reduceNativeHistory(null, sourceRecords, threadId);
+          for (const nativeTurn of observed.snapshot.thread.turns) {
+            const turn = reduced.turns.find(
+              (entry) => entry.id === nativeTurn.id,
+            )!;
+            expect(turn).toBeDefined();
+            expect(turn.body.status).toBe(nativeTurn.status);
+            const identityKind =
+              observed.snapshot.history?.turns.find(
+                (entry) => entry.turnId === nativeTurn.id,
+              )?.source ?? "legacy";
+            for (const nativeItem of nativeTurn.items) {
+              const item = turn.items.find(
+                (entry) =>
+                  entry.id === nativeItem.id &&
+                  entry.identityKind === identityKind,
+              )!;
+              expect(item).toBeDefined();
+              expect(item.body).toMatchObject(nativeItem);
+            }
+          }
+          return observed;
+        };
+        const commitHistory = async (
+          bindingId: string,
+          batch: NativeHistoryPreparedBatch,
+        ) => {
+          const scope = { chatId, bindingId };
+          const outbox = await NativeHistoryOutbox.open({
+            directory: path.join(data, "history"),
+            workerId,
+            ...scope,
+            service: encryption,
+          });
+          const record = await outbox.append(
+            randomUUID(),
+            JSON.stringify(batch),
+          );
+          const body = await outbox.openBody(record);
+          const receipt = await historyClient.deliver(scope, record, body);
+          expect(await historyClient.deliver(scope, record, body)).toEqual(
+            receipt,
+          );
+          await outbox.acknowledgeCommitted(receipt);
+          expect(await outbox.pending()).toEqual([]);
+          return receipt;
+        };
         const policy = {
           cwd,
           codexHome: home,
@@ -593,6 +747,18 @@ describe.skipIf(!binary)("native canonical queue execution", () => {
         await vi.waitFor(() => expect(modelRequests).toHaveLength(1), {
           timeout: 20_000,
         });
+        if (sourceFaultPath) {
+          await vi.waitFor(() =>
+            expect(sourceWriteFailures.length).toBeGreaterThan(0),
+          );
+          // Native admission and turn/start ACK already succeeded while the
+          // source journal was unwritable and the real model response is held.
+          expect(first.turn.id).toBeTruthy();
+          await rm(sourceFaultPath, { recursive: true });
+          await sourceCapture.flush();
+          sourceFaultPath = undefined;
+          expect(modelRequests).toHaveLength(1);
+        }
         const queuedText = goalCase
           ? `/goal First queued goal from ${origin}.`
           : `Exact queued input from ${origin}.`;
@@ -786,6 +952,99 @@ describe.skipIf(!binary)("native canonical queue execution", () => {
               ),
             ).toBe(true);
           } else expect(goalFailures).toEqual([]);
+          if (!clearBeforeStart) {
+            const observed = await readHistorySnapshot();
+            const history = observed.snapshot;
+            expect(historyErrors).toEqual([]);
+            expect(
+              historyEvents.some(
+                (event) =>
+                  event.method === "turn/completed" &&
+                  (event.params.turn as Frame)?.id === goalAttempts[0]!.turnId,
+              ),
+            ).toBe(true);
+            expect(observed.generation).toBe(runtime.transportGeneration);
+            const goalTurn = history.thread.turns.find(
+              (turn) => turn.id === goalAttempts[0]!.turnId,
+            )!;
+            // A native autonomous goal turn has no user-message item. Preserve
+            // the original queued goal as an explicit claim-backed request.
+            expect(
+              goalTurn.items.filter((item) => nativeHistoryUserMessage(item)),
+            ).toEqual([]);
+            const binding = await historyClient.open({
+              chatId,
+              threadId,
+              provenance: {
+                kind: "command",
+                operationId: goalClaim.goalOperationId!,
+                operationGeneration: goalClaim.goalOperationGeneration!,
+              },
+            });
+            const [mapping] = await historyClient.resolve({
+              chatId,
+              bindingId: binding.id,
+              items: [
+                {
+                  identity: {
+                    threadId,
+                    turnId: goalTurn.id,
+                    itemId: claimId,
+                    component: "goal-request",
+                    identityKind: "canonical",
+                  },
+                  association: {
+                    kind: "queue-goal",
+                    claimId,
+                    promptRevision: goalClaim.promptRevision,
+                    operationId: goalClaim.goalOperationId!,
+                    operationGeneration: goalClaim.goalOperationGeneration!,
+                  },
+                },
+              ],
+            });
+            expect(mapping?.preservedInput).not.toBeNull();
+            const batch = {
+              turns: [],
+              items: [
+                {
+                  identity: mapping!.identity,
+                  revision: 1,
+                  state: "completed" as const,
+                  order: {
+                    turn: history.thread.turns.indexOf(goalTurn),
+                    item: 0,
+                    component: 0,
+                  },
+                  message: mapping!.preservedInput!,
+                  attachments: [],
+                },
+              ],
+            };
+            await commitHistory(binding.id, batch);
+            const saved = (await repository.getEncryptedMessageByIdempotencyKey(
+              ownerId,
+              chatId,
+              mapping!.idempotencyKey,
+            ))!;
+            expect(saved.id).toBe(mapping!.messageId);
+            expect(
+              await openEncryptedChatTurn({
+                service: encryption,
+                threadId,
+                history: [],
+                prompt: {
+                  ...mapping!.preservedInput!,
+                  protectedContent: saved.protectedContent,
+                  classification: {
+                    role: saved.role,
+                    mode: saved.mode,
+                    attachmentIds: saved.attachmentIds,
+                  },
+                },
+              }),
+            ).toBe(queuedText);
+          }
           expect(errors.map(String)).toEqual([]);
           return;
         }
@@ -832,6 +1091,136 @@ describe.skipIf(!binary)("native canonical queue execution", () => {
           status: "consumed",
           nativeTurnId: ack.turn.id,
         });
+        const observed = await readHistorySnapshot();
+        const history = observed.snapshot;
+        expect(historyErrors).toEqual([]);
+        expect(
+          historyEvents.some(
+            (event) =>
+              event.method === "turn/completed" &&
+              (event.params.turn as Frame)?.id === ack.turn.id,
+          ),
+        ).toBe(true);
+        expect(
+          historyEvents.every(
+            (event, index) =>
+              event.sequence > (historyEvents[index - 1]?.sequence ?? 0) &&
+              event.generation === observed.generation &&
+              event.threadId === threadId,
+          ),
+        ).toBe(true);
+        expect(observed.readBarrierSequence).toBeLessThanOrEqual(
+          observed.completedSequence,
+        );
+        const turnIndex = history.thread.turns.findIndex(
+          (turn) => turn.id === ack.turn.id,
+        );
+        const nativeTurn = history.thread.turns[turnIndex]!;
+        const itemIndex = nativeTurn.items.findIndex(
+          (item) =>
+            nativeHistoryUserMessage(item)?.clientId === `client-${origin}`,
+        );
+        expect(
+          itemIndex,
+          "Actual native history must retain the queued client ID",
+        ).toBeGreaterThanOrEqual(0);
+        const nativeInputItem = nativeHistoryUserMessage(
+          nativeTurn.items[itemIndex]!,
+        )!;
+        expect(
+          historyEvents.some(
+            (event) =>
+              event.method === "item/completed" &&
+              (event.params.item as Frame)?.id === nativeInputItem.id &&
+              (event.params.item as Frame)?.clientId ===
+                nativeInputItem.clientId,
+          ),
+        ).toBe(true);
+        const evidence = history.history?.turns.find(
+          (turn) => turn.turnId === ack.turn.id,
+        );
+        const historyBinding = await historyClient.open({
+          chatId,
+          threadId,
+          provenance: {
+            kind: "command",
+            operationId: consumed.receipt.operationId,
+            operationGeneration: consumed.receipt.operationGeneration,
+          },
+        });
+        const [mapping] = await historyClient.resolve({
+          chatId,
+          bindingId: historyBinding.id,
+          items: [
+            {
+              identity: {
+                threadId,
+                turnId: nativeTurn.id,
+                itemId: nativeInputItem.id,
+                component: "user",
+                identityKind: evidence?.source ?? "legacy",
+              },
+              association: {
+                kind: "queue-input",
+                claimId,
+                promptRevision: consumed.claim.promptRevision,
+                operationId: consumed.receipt.operationId,
+                operationGeneration: consumed.receipt.operationGeneration,
+                clientUserMessageId: nativeInputItem.clientId!,
+              },
+            },
+          ],
+        });
+        expect(mapping?.preservedInput).not.toBeNull();
+        const batch = {
+          turns: [],
+          items: [
+            {
+              identity: mapping!.identity,
+              revision: 1,
+              state:
+                evidence?.items.find(
+                  (item) => item.itemId === nativeInputItem.id,
+                )?.state ?? ("unknown" as const),
+              order: { turn: turnIndex, item: itemIndex, component: 0 },
+              message: mapping!.preservedInput!,
+              attachments: [],
+            },
+          ],
+        };
+        const beforeMessages = await repository.listEncryptedMessages(
+          ownerId,
+          chatId,
+        );
+        await commitHistory(historyBinding.id, batch);
+        const saved = (await repository.getEncryptedMessageByIdempotencyKey(
+          ownerId,
+          chatId,
+          mapping!.idempotencyKey,
+        ))!;
+        expect(saved.id).toBe(mapping!.messageId);
+        expect(
+          await repository.listEncryptedMessages(ownerId, chatId),
+        ).toHaveLength(
+          beforeMessages.length +
+            (beforeMessages.some((message) => message.id === saved.id) ? 0 : 1),
+        );
+        expect(
+          await openEncryptedChatTurn({
+            service: encryption,
+            threadId,
+            history: [],
+            prompt: {
+              ...mapping!.preservedInput!,
+              protectedContent: saved.protectedContent,
+              classification: {
+                role: saved.role,
+                mode: saved.mode,
+                attachmentIds: saved.attachmentIds,
+              },
+            },
+          }),
+        ).toBe(queuedText);
         expect(
           await repository.getEncryptedQueuedPrompt(ownerId, promptId),
         ).toMatchObject({ state: "consumed" });
@@ -872,6 +1261,12 @@ describe.skipIf(!binary)("native canonical queue execution", () => {
         socket?.terminate();
         await gateway?.close();
         runtime?.close();
+        let historyDrainError: unknown;
+        try {
+          await drainHistorySource?.();
+        } catch (error) {
+          historyDrainError = error;
+        }
         let forcedShutdown = false;
         for (const child of children) {
           if (child.exitCode === null && child.signalCode === null) {
@@ -912,6 +1307,7 @@ describe.skipIf(!binary)("native canonical queue execution", () => {
         await publicApp.close();
         await authority?.close();
         await rm(directory, { recursive: true, force: true });
+        if (historyDrainError) throw historyDrainError;
         expect(
           forcedShutdown,
           "Native process did not exit after SIGINT and SIGTERM",

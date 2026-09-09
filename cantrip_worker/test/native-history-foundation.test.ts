@@ -5,9 +5,18 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import readline from "node:readline";
+import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { CodexRpcClient } from "../src/codex/rpc-client.js";
 import { CodexNativeRpcError } from "../src/codex/app-server.js";
+import { NativeHistoryObservations } from "../src/codex/native-history-observation.js";
+import { reduceNativeHistory } from "../src/native-history-reducer.js";
+import { renderNativeHistoryItem } from "../src/native-history-render.js";
+import { createNativeHistoryProjectorAdapters } from "../src/native-history-projector-adapters.js";
+import { AttachmentStore } from "../src/attachment-store.js";
+import type { NativeHistoryBinding } from "@cantrip/protocol";
+import type { WorkerEncryptionService } from "../src/worker-encryption.js";
+import { NativeHistorySourceJournal } from "../src/native-history-source-journal.js";
 import {
   nativeHistoryUserMessage,
   readCodexNativeHistory,
@@ -15,6 +24,11 @@ import {
 
 const binary = process.env.CANTRIP_CODEX_TEST_BINARY?.trim();
 type ObjectValue = Record<string, any>;
+const durableMetadata = (history: ObjectValue | null | undefined) => {
+  if (!history) return null;
+  const { live: _live, ...durable } = history;
+  return durable;
+};
 const image =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a6X8AAAAASUVORK5CYII=";
 
@@ -35,6 +49,17 @@ describe.skipIf(!binary)("pinned native history foundation", () => {
       const requests: ObjectValue[] = [];
       const notifications: ObjectValue[] = [];
       const providerErrors: unknown[] = [];
+      const observations = new NativeHistoryObservations();
+      const source: Awaited<ReturnType<NativeHistorySourceJournal["read"]>> =
+        [];
+      let releaseFinal!: () => void;
+      const finalRelease = new Promise<void>((resolve) => {
+        releaseFinal = resolve;
+      });
+      let releaseStreamEnd!: () => void;
+      const streamEnd = new Promise<void>((resolve) => {
+        releaseStreamEnd = resolve;
+      });
       let releaseRich!: () => void;
       let arriveRich!: () => void;
       const richRelease = new Promise<void>((resolve) => {
@@ -120,8 +145,48 @@ describe.skipIf(!binary)("pinned native history foundation", () => {
               },
             });
           } else if (index === 2) {
+            const streamingItem = {
+              id: "streaming-commentary",
+              type: "message",
+              role: "assistant",
+              phase: "commentary",
+              content: [],
+            };
+            emit({
+              type: "response.output_item.added",
+              output_index: 0,
+              item: streamingItem,
+            });
+            emit({
+              type: "response.output_text.delta",
+              item_id: streamingItem.id,
+              output_index: 0,
+              content_index: 0,
+              delta: "Streaming prefix.",
+            });
             arriveRich();
             await richRelease;
+            emit({
+              type: "response.output_text.delta",
+              item_id: streamingItem.id,
+              output_index: 0,
+              content_index: 0,
+              delta: " tail.",
+            });
+            await streamEnd;
+            emit({
+              type: "response.output_text.delta",
+              item_id: streamingItem.id,
+              output_index: 0,
+              content_index: 0,
+              delta: " again.",
+            });
+            await finalRelease;
+            message(
+              streamingItem.id,
+              "Streaming prefix. tail. again.",
+              "commentary",
+            );
             emit({
               type: "response.output_item.done",
               item: {
@@ -214,6 +279,7 @@ describe.skipIf(!binary)("pinned native history foundation", () => {
         expect(forced, "Native history fixture failed to close").toBe(false);
       };
       const start = async () => {
+        observations.replace(randomUUID());
         child = spawn(binary!, ["app-server"], {
           cwd,
           env: { PATH: process.env.PATH, HOME: home, CODEX_HOME: home },
@@ -223,7 +289,14 @@ describe.skipIf(!binary)("pinned native history foundation", () => {
         readline.createInterface({ input: child.stdout }).on("line", (line) => {
           try {
             const frame = JSON.parse(line);
-            if (frame.method) notifications.push(frame);
+            if (frame.method) {
+              notifications.push(frame);
+              observations.notification(
+                frame.method,
+                frame.params,
+                frame.historyCursor,
+              );
+            }
           } catch {
             /* non-protocol stderr is handled by CodexRpcClient */
           }
@@ -259,11 +332,13 @@ describe.skipIf(!binary)("pinned native history foundation", () => {
         clientUserMessageId: string,
         input: ObjectValue[],
         onStarted?: (turnId: string) => Promise<void>,
+        settings: ObjectValue = {},
       ) => {
         const ack = await rpc("turn/start", {
           threadId,
           clientUserMessageId,
           input,
+          ...settings,
         });
         await onStarted?.(ack.turn.id);
         const ended = await client!.waitForNotification(
@@ -346,6 +421,18 @@ describe.skipIf(!binary)("pinned native history foundation", () => {
           { type: "text", text: "Existing legacy input." },
         ]);
         const before = await readCodexNativeHistory(rpc, threadId);
+        if (process.env.REQUIRE_NATIVE_TURN_CONTEXT === "1")
+          expect(
+            before.history!.turns.find((turn) => turn.turnId === oldTurnId)!
+              .contexts,
+          ).toMatchObject([
+            {
+              cwd,
+              model: "gpt-5",
+              collaborationMode: "default",
+              rootTurnId: oldTurnId,
+            },
+          ]);
         const oldItems = before.thread.turns.find(
           (value) => value.id === oldTurnId,
         )!.items;
@@ -376,6 +463,24 @@ describe.skipIf(!binary)("pinned native history foundation", () => {
           ...(canonicalHistory ? { canonicalHistory: true } : {}),
         });
         const canonicalInput = [{ type: "image", url: image, detail: null }];
+        const subscribe = () =>
+          observations.subscribe(
+            threadId,
+            {
+              capture(frame) {
+                source.push({
+                  sequence: source.length + 1,
+                  recordId: randomUUID(),
+                  frame,
+                });
+              },
+              onError(error) {
+                providerErrors.push(error);
+              },
+            },
+            () => readCodexNativeHistory(rpc, threadId),
+          );
+        let observation = subscribe();
         const canonicalTurnId = await turn(
           threadId,
           "cantrip:canonical-input",
@@ -383,7 +488,19 @@ describe.skipIf(!binary)("pinned native history foundation", () => {
           async (turnId) => {
             try {
               await richArrived;
-              const running = await readCodexNativeHistory(rpc, threadId);
+              await client!.waitForNotification(
+                "item/agentMessage/delta",
+                (params) =>
+                  (params as ObjectValue).threadId === threadId &&
+                  (params as ObjectValue).delta === "Streaming prefix.",
+              );
+              const observed = await observation.readSnapshot();
+              const running = observed.snapshot;
+              source.push({
+                sequence: source.length + 1,
+                recordId: randomUUID(),
+                frame: observed,
+              });
               expect(running.thread.status.type).toBe("active");
               expect(
                 running.thread.turns.find((value) => value.id === turnId)
@@ -394,11 +511,125 @@ describe.skipIf(!binary)("pinned native history foundation", () => {
                   currentTurnId: turnId,
                   currentTurnState: "live",
                 });
+              if (canonicalHistory) {
+                const snapshotItem = running.thread.turns
+                  .find((value) => value.id === turnId)!
+                  .items.find((value) => value.id === "streaming-commentary")!;
+                // The pinned snapshot retains the start payload, even after the native
+                // delta has been received. A completed read is not a content watermark.
+                expect(snapshotItem.text).toBe("");
+                const reduced = reduceNativeHistory(null, source, threadId);
+                const projected = () =>
+                  reduced.turns
+                    .find((value) => value.id === turnId)!
+                    .items.find(
+                      (value) => value.id === "streaming-commentary",
+                    )!;
+                expect(projected().body.text).toBe("Streaming prefix.");
+                if (process.env.CANTRIP_REQUIRE_NATIVE_LIVE_HISTORY === "1")
+                  expect(running.history?.live).toBeDefined();
+                if (running.history?.live) {
+                  const prefixCursor = running.history.live.items.find(
+                    (entry) => entry.item.id === "streaming-commentary",
+                  )!.cursor;
+                  await rpc("thread/unsubscribe", { threadId });
+                  releaseRich();
+                  // No presentation is subscribed while the provider sends this delta.
+                  // Read-only history must retain it without reconnecting or executing input.
+                  await expect
+                    .poll(
+                      async () => {
+                        const missed = await readCodexNativeHistory(
+                          rpc,
+                          threadId,
+                        );
+                        return missed.history?.live?.items.find(
+                          (entry) => entry.item.id === "streaming-commentary",
+                        )?.item.text;
+                      },
+                      { timeout: 10_000, interval: 20 },
+                    )
+                    .toBe("Streaming prefix. tail.");
+                  expect(
+                    notifications.some(
+                      (frame) =>
+                        frame.method === "item/agentMessage/delta" &&
+                        frame.params.delta === " tail.",
+                    ),
+                  ).toBe(false);
+                  observations.replace(randomUUID());
+                  source.length = 0; // Reconnect with no previous worker-local item state.
+                  observation = subscribe();
+                  await rpc("thread/resume", { threadId });
+                  const restored = await observation.readSnapshot();
+                  source.push({
+                    sequence: source.length + 1,
+                    recordId: randomUUID(),
+                    frame: restored,
+                  });
+                  const recovered = reduceNativeHistory(null, source, threadId);
+                  const recoveredItem = recovered.turns
+                    .find((value) => value.id === turnId)!
+                    .items.find(
+                      (value) => value.id === "streaming-commentary",
+                    )!;
+                  expect(recoveredItem.body.text).toBe(
+                    "Streaming prefix. tail.",
+                  );
+                  expect(recoveredItem.origin.nativeCursor?.epoch).toBe(
+                    prefixCursor.epoch,
+                  );
+                  const through = source.length;
+                  releaseStreamEnd();
+                  await client!.waitForNotification(
+                    "item/agentMessage/delta",
+                    (params) =>
+                      (params as ObjectValue).threadId === threadId &&
+                      (params as ObjectValue).delta === " again.",
+                  );
+                  const continued = reduceNativeHistory(
+                    recovered,
+                    source.slice(through),
+                    threadId,
+                  );
+                  expect(
+                    continued.turns
+                      .find((value) => value.id === turnId)!
+                      .items.find(
+                        (value) => value.id === "streaming-commentary",
+                      )!.body.text,
+                  ).toBe("Streaming prefix. tail. again.");
+                } else {
+                  const through = source.length;
+                  releaseRich();
+                  await client!.waitForNotification(
+                    "item/agentMessage/delta",
+                    (params) =>
+                      (params as ObjectValue).threadId === threadId &&
+                      (params as ObjectValue).delta === " tail.",
+                  );
+                  const continued = reduceNativeHistory(
+                    reduced,
+                    source.slice(through),
+                    threadId,
+                  );
+                  expect(
+                    continued.turns
+                      .find((value) => value.id === turnId)!
+                      .items.find(
+                        (value) => value.id === "streaming-commentary",
+                      )!.body.text,
+                  ).toBe("Streaming prefix. tail.");
+                }
+              }
             } finally {
               releaseRich();
+              releaseStreamEnd();
+              releaseFinal();
             }
           },
         );
+        observation.close();
         const liveItems = notifications
           .filter(
             (frame) =>
@@ -419,7 +650,9 @@ describe.skipIf(!binary)("pinned native history foundation", () => {
           includeHistoryMetadata: true,
         });
         expect(metadataOnly.thread.turns).toEqual([]);
-        expect(metadataOnly.history ?? null).toEqual(rich.history);
+        expect(metadataOnly.history ?? null).toEqual(
+          durableMetadata(rich.history),
+        );
         expect(providerErrors).toEqual([]);
         expect(requests).toHaveLength(3);
         expect(
@@ -428,6 +661,108 @@ describe.skipIf(!binary)("pinned native history foundation", () => {
         const canonical = rich.thread.turns.find(
           (value) => value.id === canonicalTurnId,
         )!;
+        if (canonicalHistory) {
+          const finalState = reduceNativeHistory(null, source, threadId);
+          const streamed = finalState.turns
+            .find((value) => value.id === canonicalTurnId)!
+            .items.find((value) => value.id === "streaming-commentary")!;
+          expect(streamed.lifecycle).toBe("completed");
+          expect(streamed.body).toEqual(
+            canonical.items.find((value) => value.id === streamed.id),
+          );
+          const reducedTurn = finalState.turns.find(
+            (value) => value.id === canonicalTurnId,
+          )!;
+          const attachmentBinding: NativeHistoryBinding = {
+            id: randomUUID(),
+            chatId: randomUUID(),
+            workerId: randomUUID(),
+            threadId,
+            projectId: randomUUID(),
+            worktreeId: randomUUID(),
+            modelRouteId: null,
+            providerAccountId: null,
+            createdFromOperationId: null,
+            createdAt: new Date().toISOString(),
+          };
+          const encryption = {
+            ownerId: () => "native-fixture-owner",
+            serverIdentity: () => "native-fixture-server",
+            componentKey: () => ({
+              key: new Uint8Array(32).fill(76),
+              keyRevision: 1,
+            }),
+          } as unknown as WorkerEncryptionService;
+          const files = new AttachmentStore(directory);
+          const savedSource = await NativeHistorySourceJournal.open({
+            directory: path.join(directory, "actual-native-source"),
+            workerId: attachmentBinding.workerId,
+            chatId: attachmentBinding.chatId,
+            bindingId: attachmentBinding.id,
+            threadId,
+            service: encryption,
+          });
+          for (const record of source) await savedSource.append(record.frame);
+          const adapters = () =>
+            createNativeHistoryProjectorAdapters({
+              directory: path.join(directory, "native-adapters"),
+              binding: attachmentBinding,
+              source: savedSource,
+              service: encryption,
+              attachments: files,
+            });
+          const adapter = adapters();
+          await adapter.prepare!();
+          for (const item of reducedTurn.items) {
+            const presentation = await adapter.context(item, reducedTurn);
+            expect(presentation).toEqual({ cwd, mode: "default" });
+            const material = await adapter.materialize(
+              item,
+              reducedTurn,
+              presentation,
+            );
+            if (item.body.type === "userMessage") {
+              expect(material.attachments).toHaveLength(1);
+              const content = material.inputParts!.get(0)![0]!;
+              if (content.type !== "attachment")
+                throw new Error("Native image was not materialized.");
+              const file = files.resolve(
+                attachmentBinding.chatId,
+                content.attachment.id,
+                content.attachment.fileName,
+              );
+              expect(await readFile(file)).toEqual(
+                Buffer.from(image.split(",")[1]!, "base64"),
+              );
+              await rm(file);
+              const reopened = adapters();
+              await reopened.prepare!();
+              expect(
+                await reopened.materialize(
+                  item,
+                  reducedTurn,
+                  await reopened.context(item, reducedTurn),
+                ),
+              ).toEqual(material);
+              expect(await readFile(file)).toEqual(
+                Buffer.from(image.split(",")[1]!, "base64"),
+              );
+            }
+            const drafts = renderNativeHistoryItem(item, {
+              inputParts: material.inputParts,
+              threadId,
+              turnId: canonicalTurnId,
+              ...presentation,
+            });
+            expect(drafts.length).toBeGreaterThan(0);
+            expect(drafts[0]!.source).toEqual(item);
+            expect(drafts[0]!.identity.itemId).toBe(item.id);
+            expect(
+              drafts.flatMap((draft) => draft.unresolved),
+              String(item.body.type),
+            ).toEqual([]);
+          }
+        }
         if (canonicalHistory || historyMode === "paginated")
           expect(canonical.items).toEqual(liveItems);
         const user = nativeHistoryUserMessage(
@@ -511,7 +846,7 @@ describe.skipIf(!binary)("pinned native history foundation", () => {
           rich.history === null
             ? null
             : {
-                ...rich.history,
+                ...durableMetadata(rich.history),
                 currentTurnId: null,
                 currentTurnState: "notLoaded",
               },
@@ -528,10 +863,48 @@ describe.skipIf(!binary)("pinned native history foundation", () => {
           managedConfig: { ...config, canonicalHistory: false },
         });
         expect(resumed.thread.turns).toEqual(cold.thread.turns);
-        const disabledTurnId = await turn(threadId, "disabled-client", [
-          { type: "text", text: "Future legacy input." },
-        ]);
+        const changedCwd = path.join(directory, "later-workspace");
+        await mkdir(changedCwd);
+        const disabledTurnId = await turn(
+          threadId,
+          "disabled-client",
+          [{ type: "text", text: "Future legacy input." }],
+          undefined,
+          {
+            cwd: changedCwd,
+            collaborationMode: {
+              mode: "plan",
+              settings: {
+                model: "gpt-5",
+                reasoning_effort: "high",
+                developer_instructions: null,
+              },
+            },
+          },
+        );
         const disabled = await readCodexNativeHistory(rpc, threadId);
+        if (process.env.REQUIRE_NATIVE_TURN_CONTEXT === "1") {
+          expect(
+            disabled.history!.turns.find((turn) => turn.turnId === oldTurnId)!
+              .contexts,
+          ).toEqual(
+            before.history!.turns.find((turn) => turn.turnId === oldTurnId)!
+              .contexts,
+          );
+          expect(
+            disabled.history!.turns.find(
+              (turn) => turn.turnId === disabledTurnId,
+            )!.contexts,
+          ).toEqual([
+            {
+              cwd: changedCwd,
+              model: "gpt-5",
+              collaborationMode: "plan",
+              reasoningEffort: "high",
+              rootTurnId: disabledTurnId,
+            },
+          ]);
+        }
         expect(
           disabled.history!.turns.find(
             (value) => value.turnId === disabledTurnId,
@@ -551,12 +924,28 @@ describe.skipIf(!binary)("pinned native history foundation", () => {
           multiAgentEnabled: true,
         });
         exerciseChild = true;
-        const parentTurnId = await turn(threadId, "parent-client", [
+        const parentTurnId = await turn(
+          threadId,
+          "parent-client",
+          [
+            {
+              type: "text",
+              text: "HISTORY_PARENT_FIXTURE: spawn the controlled child.",
+            },
+          ],
+          undefined,
           {
-            type: "text",
-            text: "HISTORY_PARENT_FIXTURE: spawn the controlled child.",
+            cwd,
+            collaborationMode: {
+              mode: "default",
+              settings: {
+                model: "gpt-5",
+                reasoning_effort: "high",
+                developer_instructions: null,
+              },
+            },
           },
-        ]);
+        );
         const parent = await readCodexNativeHistory(rpc, threadId);
         const spawnItem = parent.thread.turns
           .find((value) => value.id === parentTurnId)!
@@ -606,6 +995,14 @@ describe.skipIf(!binary)("pinned native history foundation", () => {
           source: "canonical",
           retention: "complete",
         });
+        if (process.env.REQUIRE_NATIVE_TURN_CONTEXT === "1") {
+          expect(childMetadata.contexts?.length).toBeGreaterThan(0);
+          expect(
+            childMetadata.contexts?.every(
+              (context) => context.rootTurnId === parentTurnId,
+            ),
+          ).toBe(true);
+        }
         expect(childMetadata.items.map((item) => item.itemId)).toEqual(
           childTurn.items.map((item) => item.id),
         );
@@ -627,19 +1024,21 @@ describe.skipIf(!binary)("pinned native history foundation", () => {
         expect(coldChild.thread.status.type).toBe("notLoaded");
         expect(coldChild.thread.turns).toEqual(childHistory.thread.turns);
         expect(coldChild.history).toEqual({
-          ...childHistory.history,
+          ...durableMetadata(childHistory.history),
           currentTurnId: null,
           currentTurnState: "notLoaded",
         });
         const coldParent = await readCodexNativeHistory(rpc, threadId);
         expect(coldParent.thread.turns).toEqual(parentAfterChild.thread.turns);
         expect(coldParent.history).toEqual({
-          ...parentAfterChild.history,
+          ...durableMetadata(parentAfterChild.history),
           currentTurnId: null,
           currentTurnState: "notLoaded",
         });
       } finally {
         releaseRich();
+        releaseStreamEnd();
+        releaseFinal();
         releaseChild();
         await stop();
         provider.closeAllConnections();

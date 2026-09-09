@@ -13,6 +13,7 @@ import { LOCAL_USER_ID } from "../src/db/repository.js";
 import { createApplicationOwnerContext } from "../src/app/http/owner-context.js";
 import { installInternalNativeQueueRoutes } from "../src/app/routes/internal-native-queue.js";
 import { installInternalNativeCommandRoutes } from "../src/app/routes/internal-native-commands.js";
+import { installInternalNativeHistoryRoutes } from "../src/app/routes/internal-native-history.js";
 import {
   protectedChatFields,
   protectedProjectFields,
@@ -163,6 +164,11 @@ export async function createNativeCommandWorkerFixture(options: {
       dispatchNextQueuedPrompt:
         options.dispatchNextQueuedPrompt ?? (async () => {}),
       publishChatInvalidation: options.publishChatInvalidation ?? (() => {}),
+    });
+    installInternalNativeHistoryRoutes(app, {
+      config,
+      repository,
+      runAsOwner: ownerContext.runAsOwner,
     });
     await app.ready();
     const phases: Array<{

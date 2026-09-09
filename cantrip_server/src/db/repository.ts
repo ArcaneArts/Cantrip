@@ -1,5 +1,10 @@
 import { ManagedQueueRepository } from "./repository/managed-queue.js";
 import { NativeCommandRepository } from "./repository/native-commands.js";
+import { NativeHistoryBindingRepository } from "./repository/native-history-bindings.js";
+import { NativeHistoryArchiveRepository } from "./repository/native-history-archive.js";
+import { NativeHistoryItemRepository } from "./repository/native-history-items.js";
+import { NativeHistoryIngestionRepository } from "./repository/native-history-ingestion.js";
+import { NativeHistoryPublicationRepository } from "./repository/native-history-publications.js";
 import type {
   AgentInteractionRequest,
   AgentInteractionRequestCreate,
@@ -293,6 +298,11 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
   readonly worktreeLifecycle: WorktreeLifecycleRepository;
   readonly chatExecutionLanes: ChatExecutionLaneRepository;
   readonly nativeCommands: NativeCommandRepository;
+  readonly nativeHistoryBindings: NativeHistoryBindingRepository;
+  readonly nativeHistoryArchive: NativeHistoryArchiveRepository;
+  readonly nativeHistoryItems: NativeHistoryItemRepository;
+  readonly nativeHistoryIngestion: NativeHistoryIngestionRepository;
+  readonly nativeHistoryPublications: NativeHistoryPublicationRepository;
   readonly chatCatalog: ChatCatalogRepository;
   readonly chatState: ChatStateRepository;
   readonly chatArchiveLifecycle: ChatArchiveLifecycleRepository;
@@ -412,6 +422,19 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
       getProjectWorktreeContext: (ownerId, projectId, worktreeId) =>
         this.getProjectWorktreeContext(ownerId, projectId, worktreeId),
     });
+    this.nativeHistoryBindings = new NativeHistoryBindingRepository(database);
+    this.nativeHistoryArchive = new NativeHistoryArchiveRepository(
+      this.nativeHistoryBindings,
+    );
+    this.nativeHistoryItems = new NativeHistoryItemRepository(
+      this.nativeHistoryBindings,
+    );
+    this.nativeHistoryPublications = new NativeHistoryPublicationRepository(
+      database,
+    );
+    this.nativeHistoryIngestion = new NativeHistoryIngestionRepository(
+      this.nativeHistoryBindings,
+    );
     this.nativeCommands = new NativeCommandRepository(
       database,
       this.chatExecutionLanes,

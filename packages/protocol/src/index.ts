@@ -12,3 +12,4 @@ export * from "./managed-native-methods.js";
 export * from "./native-command-events.js";
 
 export * from "./managed-queue.js";
+export * from "./native-history.js";
