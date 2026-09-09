@@ -1,4 +1,5 @@
 import { NativeLogicalCompletionRepository } from "./native-logical-completions.js";
+import { rememberNativeCommandTurn } from "./native-command-turns.js";
 import {
   settleQueueClaim,
   cancelGoalHandoffs,
@@ -814,6 +815,8 @@ export class NativeCommandRepository {
           throw new NativeCommandError("stale-native-evidence");
       }
       const now = new Date();
+      if (input.failure.kind === "native-terminal")
+        await rememberNativeCommandTurn(tx, previous, input.failure);
       await tx
         .update(schema.nativeCommands)
         .set({
@@ -1912,6 +1915,8 @@ export class NativeCommandRepository {
         current.terminalResultDigest !== input.terminalResult.resultDigest
       )
         throw new NativeCommandError("receipt-conflict");
+      if (input.reconciliation)
+        await rememberNativeCommandTurn(tx, current, input.reconciliation);
       const updated = firstOrThrow(
         await tx
           .update(schema.nativeCommands)

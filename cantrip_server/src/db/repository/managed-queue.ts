@@ -1,4 +1,5 @@
 import { toEncryptedQueuedPrompt } from "./queued-prompts.js";
+import { retainManagedQueueInput } from "./managed-queue-input-snapshot.js";
 import { createHash, randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
@@ -546,6 +547,7 @@ export class ManagedQueueRepository {
               })
               .returning();
             claim = claimValue(created!);
+            await retainManagedQueueInput(tx, created!.id, prompt);
             await tx
               .update(schema.queuedPrompts)
               .set({ state: "claimed", updatedAt: new Date() })
@@ -636,6 +638,7 @@ export class ManagedQueueRepository {
         .insert(schema.managedQueueClaims)
         .values({ id: claimId, chatId, promptId, promptRevision })
         .returning();
+      await retainManagedQueueInput(tx, claimId, prompt);
       await tx
         .update(schema.queuedPrompts)
         .set({ state: "claimed" })
@@ -692,6 +695,7 @@ export class ManagedQueueRepository {
           promptRevision: prompt.revision,
         })
         .returning();
+      await retainManagedQueueInput(tx, claim!.id, prompt);
       await tx
         .update(schema.queuedPrompts)
         .set({ state: "claimed" })

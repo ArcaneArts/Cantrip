@@ -539,6 +539,1162 @@ and healthy-UI repair remain subsequent work. Partial-fork outcomes must remain
 branch-local even when inherited item identities alias their source. Child
 projection must recognize both older collaboration records and V2 activity edges.
 
+**Pass 7 — durable encrypted history foundation:**
+
+This milestone installs authenticated server ingestion and managed-root source
+capture, and provides the tested canonical projector/recovery pipeline. It does
+not yet connect the automatic projector in `index.ts`; that activation and the
+remaining fidelity/recovery work below belong to the next integration pass.
+The detailed entries below retain the sequence of implementation evidence, so
+an earlier “not yet” statement may be superseded by a later entry.
+
+Final local regression runs pass 184 worker tests across 20 files and 90 server
+history tests across three files. The worker run includes all eight actual
+pinned-native history/queue cases against isolated fake providers, with native
+live cursors and retained turn contexts required. Upstream verification passes
+for all 6,499 files and 18 patches. All 94 changed formattable files and
+`git diff --check` pass. Worker typechecking passes.
+
+The broad protocol run has 674 passing cases and six failures: three assertions
+run from both source and built output. A separate run using the pre-change root
+exports reproduces the same three failing assertions (export inventory,
+worker-discriminator inventory, and the existing CUA ciphertext-boundary case).
+This milestone adds 19 intended runtime exports; it does not repair those older
+assertions. The standard repository check still stops at the unchanged
+`chat-turn-runtime.ts` and `task-routes.ts` line budgets. These failures are not
+reported as a green full-repository check. No CI jobs or user applications were
+launched for validation.
+
+After rebasing onto the context-compaction change (#1856), protocol build and
+both worker/server typechecks pass. All 164 targeted app-server, session
+preparation, history observation/identity and pinned-native history/queue cases
+pass across six files. Formatting of the overlapping files and the final diff
+check pass. This confirms the combined changes without treating the previously
+recorded broad-check failures as resolved.
+
+The new worker-local outbox preserves exact prepared batch bytes under the
+worker's chat-content encryption domain. Its identity includes authenticated
+server/owner, worker, chat and the future server-owned history binding; runtime
+incarnation does not remint the stream. Immutable batch and commit-receipt files
+retain sequence and digest correlation. A missing, mismatched, noncontiguous or
+failed acknowledgment cannot consume pending work. Failed disk operations remain
+errors, and reopening cannot reinterpret a damaged journal as an empty baseline.
+
+A separate delivery pump retries actual read/decrypt/transport/acknowledgment
+failures without another UI event. It sends the same prepared bytes after a lost
+response. Stopping delivery aborts its request and retains unacknowledged work
+for the next pump; it neither owns nor changes native execution/CUA authority.
+
+Initial local validation passes 18 outbox/encryption tests and five delivery
+tests. They cover ownership substitution, key rotation, real disk obstructions,
+separate handles, an isolated process killed after durable append and recovery in
+another process, plus an actual loopback HTTP connection dropped after a fixture
+saved its receipt. The HTTP fixture is an in-memory receipt store, **not** proof
+of atomic canonical database ingestion. Fourteen existing native reader/command
+encryption tests also pass alongside the new outbox coverage.
+
+The server now persists immutable historical bindings from exact current-thread
+ownership or an admitted command/session/lane association. Authenticated opening
+and recovery can retain an old thread after replacement without acquiring a lane,
+granting CUA, or rewriting the current chat status/settings. The binding API is
+installed; production managed-root source capture now calls it independently of
+native input. Automatic canonical message projection is not connected yet.
+
+An internal ingestion transaction now checks contiguous stream/record/digest
+identity and a server-computed digest of the actual opaque payload. It commits
+canonical-writer callbacks, turn metadata, the checkpoint, immutable receipt and
+pending publication together. Replaying an already committed batch returns the
+original receipt without invoking the writer. The worker and server now share
+the same receipt schema, including the server commit UUID. The production
+repository entry point now invokes an opaque canonical message writer; callers
+cannot replace that writer with a no-op. Authenticated open, resolve and ingest
+HTTP endpoints and the worker transport client are now connected to this writer;
+automatic production live projection is not connected yet. Internal callback transaction tests
+remain distinct from the canonical writer's database tests.
+
+Canonical item reservations persist stable message IDs before encryption. An
+exact admitted command and observed native turn can alias its original GUI user
+message, preserving the original encrypted prompt, attachment references and
+attribution. A client-message prefix alone cannot claim that alias. Newly
+acknowledged native turns retain their command association after activation
+replacement. Older completed commands can recover that index from their actual
+stored terminal receipt; declined, incomplete, malformed and wrong-runtime
+evidence cannot establish it. This recovery does not alter execution state.
+
+Direct GUI steering input now uses the same historical root-turn lookup as queued
+steering. It requires the steering command's applied result before aliasing the
+original message; a proposed turn ID or an unacknowledged dispatch is insufficient.
+The original activation, thread, runtime generation and native client ID remain
+checked after a newer activation replaces it. Recovering that input neither
+creates another root-turn owner nor alters the replacement execution state.
+
+The resolver also supports an `existing` association for an already reserved
+historical identity. It returns the original message mapping and encrypted GUI
+input under authenticated chat/binding ownership without reconstructing a retired
+worker's command provenance. It cannot reserve a missing identity, change an
+association, or grant execution authority. The projector uses this path for
+changed items present in its committed publication checkpoint; first reservations
+use the observed-input path below when canonical client correlation is available,
+and otherwise still require explicit provenance selection.
+
+The final alias/HTTP selection passes 42 tests, including direct steering before
+and after acknowledgment, historical activation replacement, wrong turn/client/
+runtime rejection, reserved GUI alias retrieval from another authorized historical
+worker binding, missing identities and foreign-owner rejection. All eight real
+projector transaction tests pass, including changed-item recovery through the
+existing mapping. Protocol build, server/worker typechecks and format/diff checks
+pass. The standard repository check again stops at the same two unchanged
+decomposition failures; this is not a full-suite success.
+
+First-time canonical user-item mapping now accepts an `observed-input`
+association. The server uses the native client ID to locate direct command or
+retained queue-input candidates, then verifies the exact observed historical
+thread/turn/runtime relationship. A queue-backed command uses its retained claim
+revision rather than reserving the same GUI input through both paths. Wrong or
+unobserved turns, ambiguous candidates, missing managed provenance and unavailable
+queue revisions have explicit errors. An unmanaged native client ID with no
+Cantrip input record retains native identity; a missing managed queue revision
+must not take that fallback.
+
+Historical input aliases are authenticated by owner, chat and exact native
+thread/turn evidence, without requiring the reading worker to be the original
+command worker. Original command worker identity remains intact. This permits a
+new authorized historical binding to recover a first-time alias after migration,
+not merely to read an already reserved one. No execution rights or current
+activation are changed. Existing observed-item reservations are reused directly,
+including after a lost reply and later disappearance of old queue sources.
+
+The actual projector now selects this path from canonical `userMessage.clientId`,
+the field retained by the pinned native protocol. A real HTTP/database projection
+test receives the native user item before the command's turn acknowledgment,
+leaves its source cursor unconsumed, then recovers after acknowledgment with the
+original GUI ciphertext and one message. The final selections pass 46 server
+tests and nine projector transaction tests; protocol build and server/worker
+typechecks pass. Tests cover direct start/steer, custom queued client IDs, missing
+queue revisions, replacement activations and first-time historical-worker
+recovery. These are synthetic native observations with real canonical persistence;
+the complete native mixed-origin acceptance matrix remains outstanding.
+
+Existing encrypted root assistant and activity messages can also retain their
+canonical IDs. The resolver recognizes both historical `root` keys and scoped
+root keys only after verifying the admitted command, observed native turn and
+the original worker sealer's deterministic message ID. Another identity cannot
+claim an already mapped output. Conflicting historical scope aliases are
+reported explicitly instead of choosing an arbitrary row. Child, fallback and
+plaintext legacy outputs are not yet covered by this resolver.
+
+The `observed-output` recovery association now finds an existing root output's
+command from exact historical thread/turn evidence without requiring the worker
+to supply an operation ID. It supports first-time recovery by another authorized
+historical worker binding. Candidate selection reads retained terminal receipts
+without backfilling until ownership is unambiguous; conflicting pre-index
+receipts produce a provenance error rather than attempting competing inserts.
+Missing commands or output messages leave the source unconsumed and reserve no
+new identity. This is an existing-output recovery operation, not the fresh-output
+publication policy or a replacement for the pending old-writer cutover.
+
+An actual HTTP/database projector test now waits on an unavailable old output,
+then adopts the worker sealer's original message and updates that same encrypted
+message after reopening. All ten projector transaction tests and 53 server
+item/HTTP tests pass. Protocol build, server/worker typechecks and formatting/diff
+checks pass. The standard repository check still stops at the two unchanged
+application decomposition budgets described below. The complete mixed-origin production integration,
+child/fallback aliases and legacy-writer races remain outstanding.
+
+Encrypted append/upsert now shares the project/chat transaction lock with
+canonical ingestion. Once an item has a committed canonical revision, late
+legacy writes return that current opaque message rather than overwriting its
+content or publishing stale ciphertext. For proven root outputs, both historical
+key formats resolve to that same committed row, preventing a late alternate-key
+write from creating another message. Alternate IDs still require the worker
+sealer's deterministic identity. An uncommitted reservation does not suppress
+legacy progress, and failed canonical transactions cannot take ownership.
+
+Local validation passes 59 history/HTTP/retry tests, ten actual HTTP/database
+projector tests, the existing authenticated native-event transaction test, and a
+separate trigger-induced canonical rollback test. The latter confirms both
+message and revision rollback before an ordinary legacy update succeeds. Tests
+exercise both concurrent scheduling orders, late root/scoped assistant/activity
+writes, forged alternate IDs and foreign-owner rejection. Server typecheck and
+format/diff checks pass; the standard check still stops at the unchanged two
+decomposition budgets. These use isolated PGlite transactions, not a production
+PostgreSQL contention benchmark or full native mixed-origin acceptance run.
+Fresh-output handoff before the first canonical commit, already duplicated
+historical scope rows and full production projector activation remain unfinished.
+
+The new `output` reservation association lets cooperating bound writers choose
+one canonical root-output ID before either encrypts a fresh message. Existing
+root/scoped messages are adopted only through the same verified command/turn
+provenance as recovery; genuinely new output can reserve native identity without
+inventing a GUI command. The sealer accepts an optional output-identity resolver,
+and `createNativeHistoryOutputIdentityResolver` joins concurrent lookups and
+retains successful mappings for that sealer's lifetime. Failed or unrelated
+lookups propagate before encryption and are retryable, never falling back to
+another message ID. The native adapter must explicitly identify canonical output;
+auxiliary output can deliberately retain its existing sealer identity.
+
+Two actual HTTP/database/encryption projector cases exercise live-writer-first
+and projector-first publication and retain one final encrypted message in both
+orders. The selection passes 62 server item/HTTP tests, 15 projector/encryption
+tests and three focused resolver contract tests. Testing also exposed and fixed
+serialization of an undefined optional message correlation field: absent
+correlation is now omitted before encryption. The production live-output adapter
+wiring below now installs this resolver. Old nonparticipating writers,
+child/legacy identity selection, source durability at handoff and full projector
+activation still need integration. This does not claim that the full production
+handoff is complete.
+
+Both managed CLI-origin execution and GUI project-chat encrypted output now use
+the shared resolver from `index.ts`. It lazily opens the historical binding from
+the actual admitted command and native thread before encrypting a live root item.
+Only direct native `item/` notifications whose normalized ID equals the native
+item ID use this path; synthetic aggregates, snapshot/legacy observations and
+child aliases retain their existing handling pending their separate provenance
+work. GUI publication records scopes by dispatched thread, so delayed output
+from an earlier thread does not borrow the replacement thread's binding. The
+binding and resolution HTTP requests each have a transport deadline; this does
+not impose a native turn or CUA duration limit. Construction makes no requests,
+and failed binding/identity requests can retry on subsequent publication.
+
+Local verification uses the actual managed adapter in both fresh-output
+HTTP/database projector cases, retaining one final message in both writer orders.
+The projector/encryption/resolver selection passes 18 tests; a subsequent focused
+resolver run passes five tests including lazy initialization, failed binding
+recovery, retained old/new thread scopes and explicit auxiliary handling. Worker
+typecheck and format/diff checks pass. The standard check still stops at the two
+unchanged decomposition budgets. These fixtures feed normalized synthetic native
+notifications; the actual pinned-runtime mixed-origin acceptance run and complete
+canonical projector/source-recovery activation remain outstanding.
+
+`NativeHistoryAttachmentStore` now materializes already authorized input bytes
+into the ordinary worker attachment store. Its stable UUID includes source item,
+input position, metadata and byte digest, and remains compatible with attachment
+transfer endpoints. It verifies actual retained bytes, restores missing or
+damaged copies from the supplied source, flushes file/directory state, and only
+then returns ready opaque metadata. An immutable encrypted descriptor preserves
+the exact metadata ciphertext and creation time across reopened handles and
+repeated projection. Invalid committed descriptors remain errors, not empty
+state; caller-owned bytes are copied and internal buffers are cleared.
+
+An actual HTTP/database projector fixture now commits the resulting attachment
+reference and ready replica, removes the local file, reobserves the same input,
+and recovers the bytes without duplicating the message/attachment or advancing
+its semantic revision. Focused store fixtures cover concurrent handles, reopen,
+damaged bytes/descriptors, distinct input positions/content versions, zero-byte
+and multichunk files. This is worker file/metadata materialization, not automatic
+authorization or import of native paths/URLs. Production input-part selection,
+remote checkpoint recovery and the overall projector connection remain outstanding.
+The final store/projector selection passes 16 tests, worker typecheck and
+format/diff checks pass, and the standard repository check still stops at the
+same two unchanged decomposition budgets. No native-runtime attachment acceptance
+or complete production materialization is claimed by these fixture results.
+
+The projector now resolves canonical identity before reading/materializing native
+attachment bytes. A separate context callback supplies verified presentation and
+child scope without file I/O. An admitted GUI input retains its exact protected
+message and existing attachment references; transformed native files are not
+imported and no new local replica is claimed. Its transformed source remains
+encrypted evidence. Unchanged plain/reference-only items still skip reservation
+and reencryption, while actual materialized files continue byte verification and
+repair on repeated observations.
+
+The HTTP/database replay cases cover both text-only and attached GUI inputs,
+unobserved command provenance followed by actual turn acknowledgment, reopen,
+identical ciphertext/attachment metadata, no duplicate rows and no invented
+replicas. All 19 projector/preparation/attachment tests and worker typecheck pass.
+The standard check still stops at the same two unchanged decomposition budgets;
+this does not claim the later checks or full native attachment acceptance passed.
+
+Committed item archive pages now include their canonical attachment descriptors,
+read with the owning chat/message under the binding transaction. Missing messages
+or referenced descriptors produce explicit recovery errors. The worker rejects
+descriptors from another chat. Given an authenticated published descriptor,
+`NativeHistoryAttachmentStore` verifies its decrypted metadata against the actual
+source bytes and stable identity, then durably reuses its exact ciphertext and
+creation time. A separate immutable published descriptor takes precedence over a
+local precommit candidate, including on reopen and file repair. Conflicting
+published descriptors remain errors.
+
+The fixture migrates an existing history binding to a second worker, retrieves
+the descriptor through the authenticated archive route, restores real local bytes,
+and exercises the production attachment transaction to retain one descriptor and
+two ready replicas. Five store cases cover recovery with/without a local candidate,
+reopen, byte repair and rejection of conflicting source/published metadata. The
+19 projector/store tests, ten HTTP archive tests and final focused migration case
+pass; server and worker typechecks pass. This establishes descriptor recovery,
+not automatic production migration or remote projector checkpoint bootstrap.
+Simultaneous first publication by workers without a committed descriptor still
+needs descriptor arbitration; a metadata conflict must not be silently overwritten.
+
+`createNativeHistoryInputMaterializer` now implements native user-input media
+selection using the pinned app-server `UserInput` forms. Inline image/audio
+base64 becomes owned attachments; local image/audio references are read from the
+actual source using the original working directory for relative paths. Reads use
+an opened regular file and the existing attachment byte budget. It never follows
+assistant/tool paths or downloads external media URLs. Skill and mention inputs
+retain their name/path as display text; unsupported inputs keep the renderer’s
+explicit notice and full protected source.
+
+Each source part durably records its first materialized attachment. Reobservation
+uses those retained bytes even if the original path changes, and can restore a
+missing retained file only when the supplied original bytes still match. Changed
+source bytes produce an explicit error instead of silently changing history.
+Source-part keys ignore object property order. Concurrent immutable publication
+must agree on the retained identity. Optional committed descriptors use the
+existing cross-worker recovery path. The projector passes verified context to
+this adapter only after identity resolution, continuing to skip original GUI
+inputs.
+
+The final 27-test selection passes: input/store/projector fixtures and all four
+pinned native history foundation cases. The actual native canonical-image cases
+now materialize the image returned by native history, render it without an
+unavailable-content notice, delete its local copy and restore the same bytes and
+identity. The HTTP/database projector test performs the same replay through
+encrypted canonical persistence. Worker typecheck passes. The standard check
+continues to stop at the unchanged two decomposition budgets. These checks do not
+establish automatic live-worker projector activation, remote checkpoint bootstrap,
+child lineage resolution or the complete mixed-origin acceptance matrix.
+
+`ManagedNativeHistoryProjection` now owns the canonical retry loop independently
+of native turns and transports. Source-persistence notifications synchronously
+wake one projector per exact durable binding; reopened handles coalesce, while a
+different source journal under the same binding requires explicit recovery.
+Binding/adapter creation failures retry without another native event. The pump
+opens the real encrypted outbox and projection, preserves staged ciphertext after
+failed acknowledgment, and keeps running after source observation retires. A
+graceful close drains; forced worker shutdown aborts its transport and waits for
+in-flight I/O before encryption may be locked. It never grants or dispatches
+native input.
+
+The seven managed-source tests pass, including two HTTP/database cases connecting
+`ManagedNativeHistorySources.onPersisted` to the new pump. They cover failed
+adapter creation, lost commit acknowledgment, coalesced reopened handles, source
+identity mismatch, source retirement, forced worker shutdown and durable-stage
+replay in a replacement pump without a native runtime. Worker typecheck passes;
+the standard check stops at the unchanged two decomposition budgets. Main-worker
+activation remains outstanding: the adapter factory must use original turn
+context, and startup must recover unopened sources/checkpoints before the old
+history writers are retired. This test wiring is not claimed as production
+`index.ts` activation or full mixed-origin native acceptance.
+
+Reviewed native patch `0019` adds exact retained turn contexts to history metadata:
+working directory, model, collaboration mode, reasoning effort and frozen child
+root-turn attribution. Both legacy and paginated reads use their retained rollout
+evidence. Unscoped older baselines are not assigned to adjacent turns. Repeated
+contexts deduplicate; changed compaction contexts remain distinct candidates, and
+an empty list means unavailable. Only the effective mode is projected, without
+copying its developer instructions. Worker parsing preserves this additive field,
+and the reducer keeps previously observed contexts when later snapshots omit
+them. Original context is protected with the existing encrypted turn metadata.
+This supplies evidence for the production adapter; it does not yet select among
+conflicting contexts, resolve historical child ownership, or activate the pump.
+
+Context validation passes: 37 worker reader/reducer/encryption tests, all 12
+native history-metadata tests, and all four actual pinned CLI history fixtures
+with required context assertions. These cover legacy/paginated retention,
+changed cwd and collaboration mode between turns, cold restart, compaction
+context variants, missing older-runtime metadata and child attribution. The
+actual native producer records a root turn's own root-turn ID; child turns retain
+the parent's attribution. The fixture now checks those exact IDs rather than
+assuming root attribution is null. The standard native release build passes after
+correcting the initial ownership error. Worker typecheck passes; the standard
+repository check still stops at the unchanged two decomposition budgets. The
+production adapter/pump integration and complete mixed-origin acceptance remain
+outstanding.
+
+The projector now has a once-per-page evidence preparation hook, and the managed
+pump passes the exact source journal to its adapter factory.
+`NativeHistoryTurnContextIndex` reads to a verified finite journal head and
+indexes retained snapshots beyond the currently replayed page. This avoids a
+permanent first-page retry when item events precede the snapshot containing their
+context. The index reads incrementally, retries actual I/O failures, does not
+chase newly appended records indefinitely, and never advances the projection's
+acknowledged cursor. Multiple items reuse the prepared context without a journal
+scan per item.
+
+`createNativeHistoryProjectorAdapters` connects this evidence to relative input
+materialization, encrypted attachment retention and server-owned canonical root
+output resolution. It accepts no current chat cwd/model/mode. Missing or
+conflicting original presentation context remains an explicit projection error;
+this adapter does not control native input. Child context and output identities
+require separately verified lineage callbacks instead of root alias assumptions.
+
+The 17 context/source/managed-pump tests pass. A real HTTP/database case places the
+context snapshot at journal record 129, behind the first replay page, imports a
+relative image from the original directory while the current directory contains
+different bytes, preserves plan mode and two canonical messages, then recovers
+after the original file is deleted. All four actual pinned CLI history fixtures
+also pass; their canonical-image cases now use the adapter factory instead of
+fixture-supplied cwd/mode during materialization and restoration. The final
+36-test selection across five worker files passes, including the projection
+transaction regressions. Worker typecheck and formatting pass; the standard
+check still stops at the same two unchanged decomposition budgets.
+
+Main-worker pump activation remains outstanding. Recovery must bootstrap
+canonical revisions and unopened sources, resolve historical child/legacy output
+aliases, and preserve Cantrip goal-mode attribution from admitted commands
+(native collaboration mode alone distinguishes only default and plan). The
+adapter tests do not establish those remaining ownership and migration paths.
+
+Local startup recovery is now implemented in the managed projection pump. Its
+optional source directory is scanned without attaching/loading a native session.
+The journal recovery iterator loads only existing identities for the exact
+owner/server/worker, verifies directory scope and retained record chains, and
+reports damaged journals independently. It never invents a missing manifest or
+creates a missing recovery directory. Journals already owned by the pump are
+recognized from their actual manifest identities without rebuilding their record
+indexes on every retry.
+
+Startup scanning retries storage failures independently of input and healthy
+journals. Flush/graceful close includes the pending scan; forced shutdown aborts
+recovery and awaits its in-flight I/O before returning. The 18 journal/pump tests
+pass, covering foreign owner/worker isolation, missing identity preservation,
+repair and retry, automatic adapter-based restart without manual wake, a damaged
+sibling that does not prevent healthy canonical publication, deduplication, and
+shutdown during a held scan. Worker typecheck passes. This is ready for the
+main-worker pump constructor to use; that constructor remains uninstalled while
+canonical revision and alias recovery are incomplete.
+
+Canonical revision handling still requires correction before concurrent worker
+migration is safe: revisions are compared globally. Bootstrap now restores counter
+floors for a fresh local projector, but races after that read can still produce
+equal revisions with different prepared bytes. Those conflict; lower revisions
+are skipped for canonical presentation. Accepted batches
+now retain their complete opaque prepared content and predecessor digest in the
+receipt transaction, including older item/turn evidence not selected for the UI.
+Exact duplicate delivery returns the same receipt without changing that archive.
+Receipts created without retained batches remain explicitly source-unavailable;
+recovery never substitutes the current UI content for missing history.
+
+The authenticated `archive-batches` endpoint exposes these immutable candidates
+across authorized historical bindings for the same chat/thread. Stream/sequence
+pagination is pinned to the same committed stream heads as item/turn archives.
+The worker validates scope, cursor order and the stored JSONB-stable content
+digest, then opens evidence under its original worker/binding encryption context.
+It does not compare different workers' revision numbers to choose a winner or
+replace a local projector checkpoint. Page sizing bounds transport responses,
+not computer-use duration.
+
+The 12 HTTP/PGlite archive/transport tests pass, including decryption of accepted
+older evidence without regressing presentation, exact duplicate retry, atomic
+rollback of canonical writes and retained batches, changed snapshot rejection,
+cross-worker archive recovery, authentication, altered response rejection and
+explicit missing historical source. The 67 binding/item regression tests also
+pass. Server and worker typechecks pass. The full
+repository check still stops at the unchanged `chat-turn-runtime.ts` and
+`task-routes.ts` decomposition budgets. Remote bootstrap, equal-revision conflicts
+and canonical selection across concurrent historical writers remain outstanding;
+retaining accepted candidates alone does not establish complete recovery.
+
+`readNativeHistoryRecovery` now collects canonical item pages, all bound turn
+candidates and accepted batch pages under one committed-head snapshot. An actual
+`archive-snapshot-changed` HTTP 409 discards the partial result and restarts the
+read, with a cancellable delay; authentication, missing binding and crypto errors
+propagate instead of being treated as restart instructions. Decryption begins
+only after the related opaque pages agree. Missing/stale item evidence and missing
+batch source stay explicit in the returned data, and foreign binding revision
+numbers are not treated as comparable canonical versions.
+
+The archive-reader HTTP/PGlite run passed 15 tests. New cases commit through the actual
+server between paginated resource reads and verify that every resource is reread
+before returning current evidence. They also cover an empty archive, cancellation
+after an actual conflict, non-retryable authentication/binding/key failures, and
+stopping after the first item/turn decrypt in each archive opener and the combined
+reader. Worker typechecking passes; the standard check still stops at the same
+two unchanged decomposition budgets. This reader does not yet reconstruct a
+projector checkpoint, reconcile canonical races, or install the production pump.
+A continuously changing archive may require repeated reads; immutable snapshot
+recovery and incremental bounds remain part of the remaining integration work.
+
+The managed projection pump now bootstraps its first local stage through the
+recovery reader and `restoreNativeHistoryProjectorState`. It reconstructs selected
+canonical item sources, retained turn metadata/evidence and publication counter
+floors. Counter maxima prevent reuse; they never select a different body or decide
+which binding has a newer turn outcome. Disagreeing terminal states stay absent
+from the aggregate, with both candidates retained, until a fresh native event
+resolves them. Version-one and reduced version-two turn payloads are supported;
+unknown formats and missing/stale item sources remain explicit evidence.
+
+Restored unchanged items retain their existing published messages and attachment
+references without context/file materialization or reencryption. A source marker
+is used only for restored publications; normal local attachment verification still
+runs on reobservation. Changed sources follow ordinary identity resolution and
+increment above the recovered floor. Initial bootstrap does not advance a source
+cursor: the existing durable stage, outbox delivery and receipt-backed checkpoint
+still own that transition. A saved local stage is replayed without bootstrapping
+or altering its prepared bytes.
+
+The latest 16 HTTP/database tests and 42 managed-pump/projector/reducer tests pass.
+The migration case uses actual HTTP, encrypted journals and the real projector
+with fixture native frames/presentation context. A new worker preserves the exact
+ciphertext of canonical revision seven despite an accepted but unselected started
+candidate at revision forty. A later native cursor produces revision forty-one
+under the original message ID. Reopening the resulting reduced turn archive
+preserves unique evidence; conflicting completed/failed candidates remain explicit
+until a fresh turn event resolves them. Worker typechecking passes. These tests
+do not establish actual native process migration or the full acceptance matrix.
+The production `index.ts` pump constructor remains uninstalled. Concurrent
+canonical write/rebase semantics, ordering gaps, aliases and bounded replay still
+need completion before activation.
+
+A completely missing local outbox can now recover its original binding's committed
+stream through the authenticated archive. The stream manifest stores the retained
+receipt prefix and payload digests in a separate encrypted `outbox-baseline`
+domain. It never manufactures original batch envelopes or nonces. New records
+continue after that prefix with the original predecessor digest; ordinary pending
+records and acknowledgments retain their existing checks. Restored receipts can
+verify surviving projection-stage bodies against the server's stable content
+digest before allowing a checkpoint to advance.
+
+The projection now checks for a verified committed receipt before appending a
+stage batch. Thus a lost response followed by complete outbox deletion can recover
+the accepted prefix of a multi-batch stage, deliver only the remaining batches,
+and preserve the original encrypted stage and message ciphertext. Existing local
+stream identities are not replaced; partial/corrupt journals and concurrent stream
+advances still require explicit reconciliation. Identity changes during recovery
+are rejected before writing a new stream. The managed pump supplies this recovery
+callback only to outbox initialization; the history path remains independent of
+native input authority.
+
+Validation passed 48 outbox/projection/pump/delivery regression cases, a separate
+new partial-stage/outbox-loss case, and 18 HTTP/archive cases across the full run
+and a corrected focused rerun. The only initial failure was an overly specific
+expected error string for an incomplete prefix; the prefix was correctly rejected.
+Coverage includes exact stream/head reuse, append/ACK/reopen, protected baseline
+scope tampering, wrong batch bodies, incomplete/unrelated recovery, encryption
+identity changes and zero replay of the accepted stage prefix. Worker typechecking
+and formatting pass; the standard check still stops at the two unchanged runtime
+file budgets. This is not recovery of partially missing journals or a concurrent
+writer rebase, and it does not establish the full native acceptance matrix.
+
+Fresh outbox initialization and projector bootstrap now share one coherent archive
+read within the managed pump. The snapshot is released as soon as projector state
+is reconstructed, or when initialization finishes without projecting (an empty
+source or an existing durable stage). A failed initialization or unstaged
+projection does not retain its snapshot for retry. Ordinary later pages and a
+restart with intact local stages use their durable state without another archive
+read. This removes a duplicate download/decrypt pass; no CUA startup latency claim
+is established by these history tests. A narrower receipt read, bounded baseline
+storage and concurrent writer reconciliation remain follow-ups.
+
+The combined managed-pump/projection suite passes all 29 cases, including the
+new shared-read, failed-read/presentation retry and empty-source cases. Worker
+typechecking and targeted formatting pass. These checks use actual HTTP/database
+and encrypted journals with fixture native observations; production pump
+activation and the full native acceptance matrix remain outstanding.
+
+Concurrent publication recovery now has a durable nonacceptance decision. An
+actual item/turn revision conflict rolls back the complete canonical attempt to
+a database savepoint, then stores a binding-scoped rejection outside that
+savepoint. The decision binds the original stream, sequence, record, envelope
+digest, predecessor and prepared-content digest. It consumes no stream sequence,
+publishes no history and is returned again for the same record even after the
+canonical revision changes. An altered request cannot reuse that rejection.
+Ordinary validation, authentication or transport failures do not create one.
+
+The authenticated ingest response carries this decision separately from a commit
+receipt. The worker validates its exact scope and payload digest before exposing
+`NativeHistoryBatchRejectedError`; unrelated responses and ordinary errors never
+become permission to replace a batch. The owning unmerged migration contains the
+rejection table. The three existing server history suites pass 87 cases, including
+lost rejection replies, rollback of earlier message writes before a later item or
+turn conflict, canonical advancement, changed requests and altered response
+identities. An additional focused case passes for a new historical worker whose
+first batch conflicts: the rejection survives, the failed stream insertion is
+rolled back, and a corrected record can subsequently commit at sequence one.
+Protocol build and worker/server typechecking pass. The standard check
+still stops at the same two unchanged runtime decomposition budgets.
+
+This does not yet rebase a worker stage. The next step must retain the original
+stage and rejected outbox bytes, use only the matched durable decision to create
+a replacement record, preserve any already accepted stage prefix, and rebuild
+against current canonical history without new native input. No source checkpoint
+may treat a rejection as a commit. Partial local journal recovery, simultaneous
+outbox writers and lower-revision candidate reconciliation also remain required.
+
+The outbox can now replace a durably rejected pending record without overwriting
+its original bytes. New appends and replacements share an encrypted, append-only
+mutation log, so a cross-process append and repair compete for the same immutable
+slot. Existing batch files are supported as a fixed legacy prefix. Mutation
+headers authenticate that prefix, the owning scope and the predecessor chain.
+Later legacy writes are reported as a conflicting prefix, not silently merged.
+
+`replaceRejected` validates the exact server decision against the first
+unacknowledged record, retains all original encrypted records and installs a new
+identity at the same stream sequence. Every dependent pending record keeps its
+exact body but receives a new identity and predecessor chain. Committed records
+cannot be replaced, and rejected identities cannot be appended again or counted
+as committed. Repeating a successful replacement after reopening returns its
+original replacement bytes. `replacement` exposes the immediate successor and
+its rejection evidence; multiple replacements remain a retained chain.
+
+The 22 HTTP/archive cases and 39 outbox/delivery/managed-pump cases pass, as does
+worker typechecking. Coverage includes real server rejection, committed-prefix
+preservation, dependent-tail delivery, lost replacement acknowledgment, repeat
+replacement, legacy journals, tampered proof fields and a deterministic race
+against an actual second process. An initial idempotency test exposed property
+ordering in rejection comparison; normalization through the protocol schema
+corrected it. The earlier 34 outbox/projection regression cases also passed.
+
+Automatic projection-stage supersession is still outstanding: the caller in the
+new HTTP test prepares the corrected candidate explicitly. The production pump
+must freeze a replacement stage before changing the outbox, recover that plan
+after crashes, retain accepted stage prefixes, and advance source checkpoints
+only after matching commits. Mutation replay currently reads/decrypts the retained
+log; bounded replay and compaction remain part of the integration work. This is
+not yet an end-to-end fix for an agent encountering a publication conflict.
+
+The managed projection class now performs automatic revision-conflict recovery.
+After a verified permanent rejection, it freezes an encrypted rebase plan before
+replacing any outbox record. The plan binds the original stage digest, fixed
+source range, accepted prefix receipts, rejection and replacement state/batches.
+Attempts form an immutable chain; a final stage commit names the active plan
+digest. Inspection verifies every retained accepted prefix and matching outbox
+replacement. Missing plans, changed ranges, reused batch identities and mismatched
+receipts fail without advancing the source checkpoint.
+
+Managed rebase reads current canonical publication floors and replays the retained
+local source journal through the failed page's fixed endpoint in bounded reads.
+It performs pure reduction first and prepares/encrypts once afterward. This keeps
+earlier unmaterialized warnings and unsupported evidence that may not yet have a
+canonical item. It does not chase newly arriving source records, issue native
+input, require a new agent turn, or impose an execution time limit. Retries after
+plan publication reuse that plan and its ciphertext rather than preparing again.
+
+All 31 managed-pump/projection tests pass, along with worker typechecking. New
+cases use actual HTTP/database conflicts from another historical binding and
+encrypted journals. They cover automatic retry after failures immediately before
+and after outbox replacement, retention of earlier unmaterialized evidence, two
+successive conflicts after an accepted stage prefix, a lost final commit reply,
+reopening without recomputing plans, and rejection of a missing plan. The original
+accepted prefix is delivered once; the source checkpoint remains unchanged until
+the replacement receipt is recovered.
+
+These are fixture-native observations in the managed class, not production worker
+activation or a completed native acceptance matrix. The `index.ts` projection
+pump constructor remains absent. Recovery from partial journal loss, competing
+stream heads, accepted lower-revision candidates, ordering/alias gaps and bounded
+archive/mutation compaction still need completion. The standard check continues
+to stop at the two unchanged runtime decomposition budgets.
+
+Current projector writes now carry the exact canonical revision used during
+preparation. That basis is separate from the highest archived producer counter;
+late item resolution cannot silently refresh it. The server compares it under
+the canonical write lock before applying the batch. A changed basis, obsolete
+proposal or attempt to regress a completed item produces the same durable
+revision rejection used by automatic stage recovery. Older producers without the
+new optional field retain their previous archive behavior.
+
+Recovery records the selected canonical revision and lifecycle independently of
+counter floors. A retained completed item is not replaced by an older started
+observation; the original source remains in the encrypted journal/checkpoint.
+New transport coverage commits revision seven, archives an unselected counter
+forty, then commits revision eight after preparation. Both a stale proposal forty
+one and an obsolete proposal one are rejected without consuming a stream receipt;
+a corrected proposal against eight commits. Managed-pump tests also cover a
+competing revision five against a prepared revision one, both completed and
+started source events, with failures before and after outbox replacement.
+
+The focused transport case and both managed conflict variants pass. The earlier
+full runs passed 23 HTTP tests and 31 managed/projection tests; the added started
+variant has separate focused coverage. Worker and server typechecking passed
+before that test-only extension. These changes still do not activate the main
+worker projection pump or establish the complete native acceptance matrix.
+
+All three canonical queue-claim paths now retain the exact encrypted prompt
+revision in the claim transaction. A later queue draft cannot replace that
+historical snapshot. Queued input aliases validate the consumed claim, exact
+operation/generation, custom native client-message ID and observed turn before
+preserving the original pending message. A queued steer is correlated through
+its recorded root activation and observed native turn, including after a later
+activation replaces it; it does not create a second root-turn owner. A queued
+goal uses the acknowledged execution attempt rather than the earlier goal
+configuration command. Actual pinned-native read-back shows that a goal's
+execution turn has no user-message item. Its original queued request is therefore
+represented by an explicit canonical `goal-request` component keyed by the claim,
+with a separate `queue-goal` association. It cannot masquerade as a native user
+item. Pre-upgrade claims can recover snapshots only when the original revision
+remains available. Live projector integration is still outstanding.
+
+Message writes, attachment metadata/replica records, native ordering coordinates,
+item revisions and the stream receipt commit in one database transaction. Lost
+ACKs return the original receipt. Late started items cannot replace completed
+content, and conflicting payloads at the same revision reject. These ordering
+coordinates are not yet wired into transcript queries or pagination, and stored
+attachment replica metadata alone does not prove protected file bytes exist.
+
+The latest focused server run passes 86 tests across native command admission,
+history bindings and history items; server typechecking passes. Twelve item
+cases include a real trigger-induced failure on the second message in a batch,
+rollback of the first message and attachment, successful exact retry, unchanged
+original GUI input, terminal revision protection and historical receipt recovery.
+An initial test syntax error and an undeclared validator dependency were fixed
+before that successful run. No actual native mixed-origin acceptance test has
+run for this new writer yet. Seven additional output-alias cases bring the item
+file to 19 tests, including real worker message/activity sealing through database
+ingestion, decryption of the stored assistant answer and explicit conflicting
+scope detection. Nine queue-history cases bring the file to 28 tests: all three
+claim paths, retained input after a draft edit, old-claim recovery, rejection of
+wrong client/revision/turn evidence, queued steering after root replacement,
+goal-attempt provenance and real DB-trigger failure rolling back claim creation.
+Worker and server typechecks pass.
+
+The actual pinned-native canonical queue fixture now passes four cases (GUI,
+native, goal and goal-clear) against the new schema. For GUI/native queued input,
+it reads the actual native user item and retained client ID, resolves the owned
+claim to its original encrypted message, ingests it, retries the committed batch,
+checks message counts and decrypts the stored canonical row. The goal case
+verifies the absence of a native user item and commits/decrypts the separate
+claim-backed goal request. This uses an isolated native app-server and local fake
+provider; the fixture now explicitly projects through the worker HTTP client and
+encrypted file outbox, with real loopback requests to the authenticated history
+routes. Stable message resolution precedes encryption, and the canonical receipt
+is checked before the outbox acknowledgment. All four cases pass in 11.51 seconds.
+This does not yet prove automatic live projector delivery, full transcript
+ordering, attachments or restart recovery through the complete production path.
+
+Four additional real HTTP/database cases cover failed canonical persistence,
+outbox reopening, a lost committed response and autonomous retry, denied worker
+authentication, malformed/cross-binding requests, changed payloads behind an
+existing receipt, and mismatched response identities. A real database trigger
+rejects the second message and rolls back the first, stream checkpoint and
+publication. After repair, the delivery pump sends identical bytes on retry,
+decrypts the stored canonical answers and leaves native execution state unchanged.
+Malformed responses cannot consume the durable batch. All 19 HTTP and historical
+binding tests pass together; worker and server typechecks pass. These fixtures
+use local synthetic encrypted content and do not perform desktop input.
+
+The worker runtime now exposes thread-scoped raw history observations before
+GUI normalization and origin-based filtering. It captures unknown scoped methods
+and late item events, assigns a sequence within the actual transport generation,
+and returns both the start and completion boundaries of a snapshot read. A failed
+read leaves the observation usable. Runtime replacement closes old subscriptions
+and rejects their pending reads. Consumer failures and slow asynchronous writes
+do not block native replies or control dispatch; their errors go to the owning
+capture consumer instead of being mislabeled malformed native messages.
+
+A separate encrypted source journal retains those raw notifications and snapshot
+boundaries before message projection. Its encryption domain cannot be opened as
+a prepared server batch. Immutable files preserve the captured identity on retry,
+and a missing identity, record or ahead-of-journal checkpoint remains an error.
+Replay decrypts bounded pages; an in-memory header index refreshes newly appended
+files without retaining all plaintext payloads. The directory/header inventory
+still grows with retained history, and checkpoint-based pruning is not implemented.
+Source persistence is not a canonical acknowledgment and has no consume method.
+
+Local checks pass 14 observation/reader tests and 29 source/outbox/delivery tests,
+including source reopen/key rotation, distinct encryption domains, actual disk
+obstruction/repair, duplicate retries and immutable caller data. The final four
+pinned-native queue cases pass in 21.92 seconds with live notifications written
+automatically through the observation callback, a persisted snapshot boundary,
+reopened bounded source replay, and the existing canonical HTTP/outbox assertions.
+Fixture teardown closes capture and drains prior writes before deleting files.
+Worker and server typechecks pass. These initial checks proved fixture-connected
+source capture; subsequent recovery and bootstrap work is described below.
+
+The source capture coordinator now retries exact failed writes in order and
+reconciles failed snapshots even with no further activity or UI reconnect. Reads,
+writes and projector wakeups have independent retry queues; a failed wakeup does
+not append the source again. An explicit snapshot request waits for a read begun
+for that request and its durable append. Runtime retirement stops observation
+but drains already captured frames. Final teardown rejects incomplete drains
+rather than treating pending memory as saved.
+
+Production managed project-session attachment now installs one capture for the
+actual chat/thread/transport. Reopening a view reuses it. Capture subscribes
+synchronously; the authenticated historical binding request and encrypted source
+journal open happen in the background. An actual unbound response retries after
+canonical binding succeeds, and an admitted native start can supply exact command
+provenance. Binding requests have a per-attempt transport deadline, separate from
+native turn or CUA duration. Neither a storage failure nor server disconnection
+revokes computer use through this path. Worker teardown stops capture before
+locking encryption keys and reports unsaved frame counts without claiming a
+canonical acknowledgment. Late records already captured by a replaced transport
+retain their original generation while draining into the shared durable journal.
+
+The final focused run passes 27 tests across managed source ownership, capture,
+observation and source journaling. Five use real authenticated loopback HTTP and
+migrated PGlite to cover delayed canonical binding, view deduplication, disk
+obstruction during transport replacement, historical thread recovery, request
+timeout and interrupted shutdown. An initial test-only database-accessor mistake
+was corrected before the passing run. The four pinned-native queue cases also
+pass with the production lifecycle manager, source replay and canonical
+HTTP/outbox assertions. The native-origin case obstructs a real source file,
+obtains the actual start acknowledgment while storage remains unavailable, then
+repairs storage and drains capture with exactly one provider request. Worker
+typechecking passes.
+
+This is automatic managed-root source capture, not complete canonical transcript
+projection. Item reduction and revision assignment, snapshot/live merge, child
+capture and discovery of unopened historical journals remain unfinished.
+Transactional source checkpoint recovery is now implemented separately below.
+Source events that fail to reach disk before worker loss still require
+recovery evidence; these checks do not establish a full worker-crash/live-tail
+acceptance result. Production shutdown currently reports unsaved memory rather
+than guaranteeing that a failed storage path can drain during process exit.
+
+A new encrypted projection transaction freezes the reducer's next state and
+all prepared wire batches before any delivery. Its manifest binds the actual
+source and outbox identities to the same owner/server/worker/chat/history binding.
+A stage records exact source boundaries and stable batch UUIDs. Recovery reads
+that stage rather than rerunning reduction, incrementing revisions or generating
+new ciphertext. Only actual, correlated, durable canonical receipts for every
+batch permit the source checkpoint and next state to commit. A partially
+delivered multi-batch stage cannot advance the cursor; an already acknowledged
+batch is not sent again. Even a reduction producing no messages obtains an empty
+canonical commit before consuming source evidence.
+
+The transaction has a distinct encryption domain for local state. Source and
+outbox scopes are checked from their actual manifests, and a replaced journal or
+missing projection identity produces a recovery error rather than resetting the
+cursor. Separate handles serialize local staging and immutable publication
+rejects a competing writer. An owning capture callback can retry projection
+failures independently of UI activity. The production source registry does not
+yet install the complete item reducer or this delivery callback.
+
+Five real HTTP/PGlite projection tests cover a lost committed response with exact
+ciphertext replay, partial multi-batch delivery, an actual local checkpoint-file
+obstruction after canonical commit, recovery of reducer state for the next item
+revision, concurrent handles, empty reductions, ownership/journal substitution,
+missing identity, and capture-driven automatic retry while the source is idle.
+Stored message ciphertext decrypts to the fixture answer; an initial accidental
+spread of local manifest fields into the strict wire request was fixed before
+the passing run. The combined projection/source/outbox/delivery run passes all
+34 cases in 10.25 seconds, and worker typechecking passes. These use a small
+fixture reducer, not the complete native item inventory or an actual native
+mixed-origin projection. Transaction recovery is validated through fresh journal
+handles; process-kill acceptance for this new projection state remains pending.
+
+The transaction ledger currently retains full encrypted state snapshots and
+revalidates prior commits. Bounded indexing, checkpoint compaction and a complete
+native reducer with concurrent snapshot/live reconciliation are required before
+enabling automatic canonical projection in production. This work does not remove
+the old origin exclusions or claim complete transcript recovery.
+
+A typed worker-local source reducer now retains native turn/item identities,
+per-item lifecycle, raw bodies, nullable measurements, ordering and revisions.
+It keeps attachment-only user vectors and their client IDs, separate identical
+assistant messages, complete command output, sparse indexed reasoning summaries,
+file patches and late child/tool item updates. A completed parent turn does not
+automatically complete every item. Scoped usage/warning/settings/unknown payloads
+and snapshot thread/lineage headers remain protected state evidence rather than
+being silently dropped or sent into ordinary logs. Runtime notification sequence
+deduplicates transport replay; it is not part of historical item identity.
+
+Snapshot start boundaries prevent an overlapping read from replacing newer live
+items. Missing measurements and summary-only bodies cannot erase fuller captured
+state. Historical prefixes/gaps acquire their observed positions while live-only
+items remain present. A later item start or delta cannot reopen a completed item.
+When completed payloads differ across generations without sufficient ordering
+evidence, both versions remain available as an explicit conflict instead of
+selecting one by string length or runtime UUID. Canonical and legacy snapshot IDs
+remain distinct until their alias provenance is established.
+
+Ten focused reducer cases and five existing projection transaction cases pass.
+The four pinned-native queue cases now also reduce reopened captured source pages
+and verify every final native snapshot turn status and item payload is represented
+under its actual identity kind. The combined run passes 19 tests in 13.69 seconds;
+worker typechecking passes. This validates native source reduction, not canonical
+rendering of the entire native inventory or the complete mirroring matrix.
+
+There is still a protocol ordering gap: a snapshot response does not establish
+whether every subsequently delivered text delta is already included in its body.
+For an uncertain snapshot base, the reducer preserves the raw delta for later
+reconciliation rather than appending potentially duplicated text. Likewise,
+ambiguous cross-generation completions are retained, not fully resolved. The full
+goal still requires sufficient native version/cutoff evidence for uninterrupted
+mid-turn live projection, explicit rollback/fork semantics, complete canonical
+message/activity conversion and alias resolution, and production delivery wiring.
+The reducer is currently exercised by fixtures; these limitations are not a claim
+that the finished live mirror is implemented. Protected state/evidence growth
+also requires the checkpoint/indexing work described above.
+
+A subsequent actual-native streaming fixture reproduced a narrower loss inside
+the same transport: after an agent-text delta arrives, a retained history read
+still contains the item's empty start payload. Applying that later read erased
+the accumulated text and changed its base to an uncertain snapshot, suppressing
+subsequent live deltas. Both legacy and paginated retained-history cases failed
+the new assertion before the worker reducer fix.
+
+Started snapshots now preserve existing same-transport live fields and their
+notification provenance, while allowing previously absent snapshot fields to
+enrich the item. This uses lifecycle and source evidence, not string length or
+an assumed snapshot completion watermark. An actual completed payload still
+settles the item. Four focused cases cover text, command output, reasoning
+summaries and file changes. The packaged-native fixture holds its local provider
+stream across the snapshot, then verifies continued text before allowing item
+completion and compares the final reduced body with the native retained item.
+
+The combined reducer, native foundation, projection transaction and native queue
+run passes all 27 cases in 19.38 seconds; worker typechecking passes. The native
+foundation still covers both storage modes, retention disabled/enabled, rich
+items and cold restart. This closes the reproduced same-transport regression,
+not the remaining mid-stream reconnect/cross-generation ordering gap. No native
+patch, personal desktop input, worker restart or CI job was needed for this fix.
+
+The next ordering contract is now drafted as reviewed native patch `0018`,
+with worker decoding and reduction in the same unmerged lane. For turns whose
+actual native start opts into canonical retention, the native sender materializes
+public item notifications even with no subscribed presentation. Notifications
+carry a transient native epoch, item sequence and predecessor sequence; decimal
+strings preserve the complete unsigned 64-bit range. Full history reads can
+return those materialized items and their exact cursors. Metadata-only reads
+omit the live bodies. The draft resets its cache on actual rollback/listener
+teardown and preserves item creation order independently of later item updates.
+
+The worker preserves the cursor through raw capture, encrypted source records
+and reducer state. A matching snapshot prefix suppresses already-included deltas;
+the exact next predecessor permits streaming after transport replacement. A
+missing predecessor remains raw evidence for reconciliation. These cursors are
+not durable message identities, commit acknowledgments or execution authority.
+Snapshot headers retain cursor evidence without duplicating every live item body
+in the reducer's unclassified evidence array.
+
+Initial focused worker validation passed 36 reader/observer/source/reducer cases;
+33 compatibility cases also passed against the previously packaged native runtime.
+The first native build then exercised reconnect successfully, but both retained
+cases failed the metadata-only assertion because that initial patch included live
+bodies in metadata-only reads. The final patch corrects that omission and includes
+creation-order, cache-reset and absent-timestamp refinements.
+
+The final standard packaged release builds successfully in 10 minutes 28 seconds.
+All eight actual-native history and queue cases pass against that bundle in 21.10
+seconds, with the new live-history contract required rather than silently skipped.
+The retained legacy and paginated cases unsubscribe while the local provider is
+held, emit text with no subscribed presentation, recover the full prefix into
+empty worker state, resubscribe and verify subsequent streaming before permitting
+completion. Metadata-only reads omit live bodies; retained rich items, cold
+restart and disabled-retention behavior remain covered. The four canonical queue
+cases also use the packaged runtime and actual worker/server/database paths.
+The three native live-history unit tests pass, covering exact cursors, Unicode,
+late starts/deltas after completion, sparse reasoning indices, creation ordering,
+zero timestamps and cache reset. These establish native source recovery, not the
+unfinished automatic canonical transcript renderer.
+
+Capture now detects missing same-item predecessor cursors and requests a fresh
+native snapshot without blocking input. Contiguous cursors, duplicate events and
+sequence gaps belonging only to other items do not trigger extra reads. An added
+regression first demonstrated that a successful but stale read stopped repair
+prematurely. Capture now retains the unresolved item cursor and retries with
+backoff until an item snapshot or completed notification covers that update.
+A thread-wide sequence alone cannot prove item recovery. An overlapping read from
+an older epoch cannot clear a newer gap; a read begun after a gap can establish
+cache replacement and stop futile old-epoch polling without consuming its source
+evidence or claiming that old content was recovered.
+
+The final focused worker run passes 61 tests across eight files, including actual
+encrypted source journaling, failed reads followed by stale reads and repair with
+no new event, later contiguous streaming, and cursor epoch/arrival-order cases.
+Worker typechecking passes. The seven owned, unmerged history schema steps were
+consolidated into migration `0205`, retaining their ordered SQL and final schema
+snapshot; no existing user database or baseline migration was changed. All 47
+history binding, HTTP and item tests pass against the consolidated migration.
+
+Complete rollback/fork projection, native cache retention bounds, protected
+canonical item conversion, automatic delivery and the rest of the acceptance
+matrix remain outstanding. This work is still unmerged and does not establish
+the full live mirror.
+
+A worker-local item presentation layer now converts reduced identities into
+message drafts independently of input origin and containing-turn completion.
+It preserves exact assistant text/whitespace and phase, empty item identities,
+input-vector order, full command output and nullable timing. Native user parts
+without an authorized materialization get an explicit unavailable-content notice;
+rendering never reads a path or fetches a URL supplied by the native item.
+The caller can supply previously materialized attachments/references by exact
+input-part index. Child scope must match the observed physical thread.
+
+Existing supported activity rendering is reused with each item's own lifecycle.
+Reasoning summaries retain all nonempty text without allocating sparse indices;
+overflow beyond the display's 100 paragraphs is packed into the final paragraph
+while original part boundaries remain in the retained source. One stable activity
+identity survives authoritative completion replacing or shortening streamed
+summaries. Conflicting versions have an explicit notice and retain all original
+candidates. Every draft includes an independent copy of its source item, so the
+future durable renderer can preserve data beyond bounded display/raw previews.
+This presentation helper does not reserve IDs, encrypt or acknowledge history.
+
+Twenty presentation tests pass, including real assistant message encryption and
+decryption, attachment-only input, exact ordering, large command output, sparse
+and overflowing summaries, distinct identical messages, child attribution,
+unknown/malformed items and conflict evidence. An initial missing notice field and
+incorrect test decrypt arguments were corrected before the passing run. The final
+combined run passes 45 tests across presentation, reducer, projection transactions
+and all four packaged-native history cases. Those actual native retained cases
+now render their reduced rich items and check native identities and source bodies.
+The projection transaction cases still use their fixture renderer; this does not
+claim automatic end-to-end canonical rendering or protected attachment delivery.
+
+Additional pinned item variants (`hookPrompt`, `functionCallOutput`, `sleep` and
+`imageGeneration`) currently get explicit unsupported-presentation notices with
+retained source bodies. Their full presentation and artifact materialization, archival read-back,
+mapping/alias resolution and the production projector callback remain to be
+implemented before this layer can replace the old transcript writers. The
+subsequent archival write implementation is described below.
+
+Prepared native items can now include complete worker-encrypted source evidence,
+separate from the bounded message/activity preview. The authenticated encryption
+context binds owner, server, worker, chat, historical binding, physical native
+thread, turn, item, identity kind, component and projected revision. The source
+contains original native fields, ordering/lifecycle observations and conflicting
+candidates. Its own reducer revision remains distinct from the projected message
+revision; runtime incarnation is evidence rather than a durable identity key.
+
+The server stores this opaque evidence in the same item/message/receipt transaction.
+A failed write rolls it back; an exact replay reuses the saved receipt. An older
+producer that omits evidence cannot clear existing archival content or relabel its
+revision as current. Prepared evidence with a revision different from its item is
+rejected by the shared wire schema. This additive column was generated through
+Drizzle and absorbed into the owned, unmerged `0205` migration and final snapshot.
+No baseline migration or user database was changed.
+
+The new draft-preparation adapter uses a resolved canonical message mapping,
+protects the rendered message and full source evidence, and returns a batch item
+for durable staging. An aliased GUI input retains its exact original ciphertext;
+the transformed native input is archived separately. Unrelated item mappings or
+preserved-message identities reject. This helper performs no delivery or source
+acknowledgment. The projection transaction fixture now uses the real item renderer
+and preparation adapter with authenticated HTTP/PGlite ingestion, and verifies
+archival ciphertext survives a lost committed response and fresh journal handles
+without rerendering, reencryption or another canonical write.
+
+The final worker selection passes 41 cases across evidence encryption, draft
+preparation, presentation and projection transactions; worker/server typechecks
+pass. Evidence tests include complete content exceeding raw-preview limits, key
+rotation, unknown fields/conflicts, ownership/identity/revision substitution and
+original GUI ciphertext preservation. A real second-message database trigger
+proves the first item's message, evidence and receipt roll back together; repaired
+retry stores evidence that decrypts to the complete source. The two focused server
+cases pass after correcting a test that incorrectly invented a second ingestion
+stream instead of continuing the existing one. The preceding server/item HTTP run
+passed the other 31 distinct cases. An earlier test run used a stale built protocol
+package; rebuilding that dependency exposed the new wire schema and resolved those
+missing-export/unknown-field failures. They are not passing initial results.
+
+Authenticated archive reads now retrieve committed item evidence and protected
+turn aggregates through the worker API. Both resources use one snapshot token
+derived from committed streams across every historical binding for the same
+owner/chat/thread. A commit between pages, including a commit from a different
+worker, rejects the stale cursor rather than silently assembling mixed versions.
+Callers can pin item and turn reads to the same token. Reads neither acknowledge
+source consumption nor acquire execution authority.
+
+Item evidence retains its originating worker and binding, allowing decryption
+after migration without relabeling that evidence as produced by the reader.
+Ingestion rejects mismatched source attribution before canonical writes. Worker
+decoding explicitly distinguishes missing, older and current item evidence.
+Turn reads preserve candidates from all historical bindings: revisions from two
+different workers cannot establish which native observation is newer. Turn
+pagination uses explicit database C collation and matching UTF-8 byte ordering
+in the client, including non-ASCII IDs, rather than locale-dependent ordering.
+
+The final authenticated HTTP archive selection passes all ten cases using actual
+Fastify/PGlite persistence and worker encryption. It covers fresh-client reads,
+stable item/turn pagination, migration candidates, stale snapshot rejection,
+missing/older evidence, failed attribution without acknowledgment, unauthorized
+requests and malformed response correlation. The preceding combined HTTP/item
+run passed 38 cases; the final additional case tests Unicode pagination. All 32
+worker evidence/turn/preparation/projection tests pass, as do final worker/server
+typechecks and diff checks. The repository check still stops at the two unchanged
+baseline decomposition failures documented below; later checks did not run.
+
+Canonical archival writes and read/decryption APIs are implemented, but full
+checkpoint hydration/reconciliation, artifact file bytes, large-payload transport,
+complete item presentation and production projector integration remain
+outstanding. These fixtures do not establish full worker-loss recovery or an
+automatically mirrored production transcript.
+
+The source-to-canonical projector now uses the actual history reducer instead of
+the transaction fixture's per-item counter. Its encrypted checkpoint retains the
+reduced source and separate item/turn publication revisions and fingerprints.
+Changed items pass through the renderer, batched canonical ID resolution and
+worker encryption before the transaction freezes the prepared bytes. Identical
+re-observations advance source ordering without reserving new IDs or resealing
+unchanged content. Materialization and alias selection are explicit callbacks;
+the projector does not infer attachment authority or GUI aliases from text.
+
+Reconciled turn metadata can be protected directly without manufacturing a native
+snapshot. Version-2 aggregate content retains the reduced turn and scoped evidence,
+including unresolved native fields; version-1 snapshot aggregates remain readable.
+An item-only observation does not fabricate a containing turn status, and terminal
+turn evidence does not complete individually live items. Source records and
+publication revisions become consumed only through the existing staged commit
+transaction, after every batch has a verified canonical receipt.
+
+All eight projection transaction cases now use the real projector except the
+explicit empty-reduction storage test. Actual Fastify/PGlite cases cover lost
+reservation replies, batched resolution, lost committed responses, partial batch
+delivery, local checkpoint obstruction and reopening, independent idle retry,
+unchanged evidence and live items surviving turn completion. The final combined
+run passes 55 tests across projection, turn encryption, reducer and presentation;
+worker typecheck and formatting/diff checks pass. These use synthetic native
+observations and real canonical persistence, not the final native mixed-origin
+acceptance matrix. Production bootstrap still needs the complete alias and
+attachment callbacks, journal discovery and checkpoint hydration before this
+projector can replace the old writers.
+
+Publication now has its own durable due/attempt records and a bootstrap retry
+pump. It waits for actual external live fanout before consuming its row; the
+existing best-effort publication wrapper would have swallowed that failure.
+The pump retries independently of new native activity and UI reconnects. Local
+refresh notifications can repeat after a remote fanout failure; input and
+canonical writes are not replayed by this delivery path.
+
+Historical turn records persist encrypted timing/usage/warning/lineage metadata
+with per-turn revisions. Conflicting payloads at the same revision reject the
+transaction; older revisions and late in-progress observations cannot replace
+saved terminal state. Newer coherent terminal metadata can enrich it. Outcomes
+remain scoped to the observed thread, so an interrupted copied turn in a
+replacement cannot rewrite the source thread's completion. This does not yet
+establish exact fork item aliases or current execution-state reconciliation.
+
+The worker prepares and opens actual AES-GCM turn metadata, authenticating its
+owner/server/worker/chat/binding/thread/turn, revision, order, status and timestamps.
+It preserves native duration, nullable/unavailable evidence, item-view coverage,
+response-level usage scopes and unknown native metadata fields. Pinned native
+turn timestamps are seconds and are explicitly converted to milliseconds; item
+metadata already uses milliseconds. Preparing a source aggregate does not by
+itself implement durable revision assignment or snapshot/live merging.
+
+Local server validation passes 30 tests with one existing optional live-fanout
+benchmark skipped. Fifteen of those are real migrated PGlite history cases,
+including database close/reopen, actual trigger-induced binding/turn insertion
+failure, canonical write rollback, lost-ACK recovery, concurrent delivery and
+failed external publication followed by independent retry after restart. One
+case prepares metadata through the production worker encryption helper, commits
+it, restarts the database, opens it through the worker helper, and recovers the
+original receipt without repeating the write. These are isolated synthetic
+fixtures, not an actual native mixed-origin conversation or a full UI test.
+An actual Fastify readiness/shutdown fixture holds external publication open,
+closes the database through the application lifecycle, then resumes delivery
+after reopening. It verifies startup without a new input, nonblocking shutdown,
+and preservation of the pending row when shutdown wins the acknowledgment race.
+Worker component validation passes 48 tests across five files, including eleven
+turn encryption/metadata cases; worker and server typechecks pass. An initial
+worker return-type annotation failed typecheck and was corrected before the
+successful rerun.
+
+The final repository check passes the large-file check and still stops at the
+unchanged baseline decomposition failures in `chat-turn-runtime.ts` (2,260 lines)
+and `task-routes.ts` (2,149). An initially introduced `build-app.ts` budget failure
+was fixed by extracting history route/delivery lifecycle installation; bootstrap
+is now 1,497 lines, within its 1,500-line budget. Later repository checks did not
+run through that command, and no full-suite success is claimed.
+
+This pass still requires remaining fallback/legacy and child/fork aliases,
+input provenance without canonical client IDs and queued goal-request projection,
+resolution of conflicting historical output scopes, protected
+attachment-file integration, native transcript
+ordering queries, usage accounting, child live-event capture
+and snapshot/live reconciliation, automatic worker projection/delivery integration,
+source-generation/journal-loss recovery, and removal of the old memory baselines
+and whole-turn exclusions. The initial
+file ledger retains acknowledged records and rereads the ledger; bounded replay
+and compaction/indexing remain necessary before production integration. POSIX
+directory entries are flushed; Windows file contents are flushed but directory
+entry power-loss durability is not established. No full mirroring acceptance or
+production history-recovery fix is claimed by these component tests.
+
 **Still outstanding:** completion of authorized command admission, origin-independent
 lifecycle/CUA authority, durable all-turn projection/replay,
 complete settings parity, eager GUI-first session startup and the full acceptance

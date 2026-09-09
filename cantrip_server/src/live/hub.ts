@@ -401,6 +401,15 @@ export class AppLiveHub {
     return event;
   }
 
+  /** Durable outboxes must observe external fanout failure before consuming their row. */
+  async publishConfirmed(
+    publication: AppLivePublication,
+  ): Promise<AppLiveEvent> {
+    const event = this.#publish(publication);
+    await this.#publishExternal?.(publication);
+    return event;
+  }
+
   receiveExternal(publication: unknown): AppLiveEvent | null {
     if (
       typeof publication !== "object" ||

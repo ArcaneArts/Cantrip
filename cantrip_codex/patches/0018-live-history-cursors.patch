@@ -1,0 +1,710 @@
+diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
+index e1cf336..b7a2f76 100644
+--- a/codex-rs/app-server-protocol/src/protocol/common.rs
++++ b/codex-rs/app-server-protocol/src/protocol/common.rs
+@@ -2006,6 +2006,10 @@ server_notification_definitions! {
+ #[derive(Serialize, Deserialize, Debug, Clone, TS)]
+ #[serde(rename_all = "camelCase")]
+ pub struct ServerNotificationEnvelope {
++    /// Per-item live-history ordering, independent of transport reconnects.
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    #[ts(optional)]
++    pub history_cursor: Option<crate::LiveHistoryCursor>,
+     #[serde(flatten)]
+     pub notification: ServerNotification,
+     /// Unix timestamp (in milliseconds) when app-server emitted this notification.
+diff --git a/codex-rs/app-server-protocol/src/protocol/thread_history_metadata.rs b/codex-rs/app-server-protocol/src/protocol/thread_history_metadata.rs
+index de9a2ee..db01ef1 100644
+--- a/codex-rs/app-server-protocol/src/protocol/thread_history_metadata.rs
++++ b/codex-rs/app-server-protocol/src/protocol/thread_history_metadata.rs
+@@ -81,6 +81,7 @@ pub fn build_history_metadata(
+         })
+         .collect();
+     ThreadHistoryMetadata {
++        live: None,
+         version: 1,
+         current_turn_id,
+         current_turn_state: if live { "live" } else { "notLoaded" }.into(),
+diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
+index edcf656..e8a70b2 100644
+--- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
++++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
+@@ -2193,6 +2193,9 @@ mod managed_config_tests {
+ #[serde(rename_all = "camelCase")]
+ #[ts(export_to = "v2/")]
+ pub struct ThreadHistoryMetadata {
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    #[ts(optional)]
++    pub live: Option<LiveHistorySnapshot>,
+     pub version: u32,
+     pub current_turn_id: Option<String>,
+     /// `live` observes the engine; `notLoaded` has no live execution authority.
+@@ -2248,3 +2251,34 @@ pub struct ThreadHistoryResponseUsage {
+     pub root_turn_id: String,
+     pub usage: TokenUsageBreakdown,
+ }
++
++/// Transient native materialization order. Decimal strings preserve the entire u64 range.
++#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
++#[serde(rename_all = "camelCase")]
++#[ts(export_to = "v2/")]
++pub struct LiveHistoryCursor {
++    pub epoch: String,
++    pub sequence: String,
++    pub previous_sequence: Option<String>,
++}
++#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
++#[serde(rename_all = "camelCase")]
++#[ts(export_to = "v2/")]
++pub struct LiveHistoryItem {
++    pub turn_id: String,
++    pub item: serde_json::Value,
++    pub state: String,
++    pub cursor: LiveHistoryCursor,
++    #[ts(type = "number | null")]
++    pub started_at_ms: Option<i64>,
++    #[ts(type = "number | null")]
++    pub completed_at_ms: Option<i64>,
++}
++#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
++#[serde(rename_all = "camelCase")]
++#[ts(export_to = "v2/")]
++pub struct LiveHistorySnapshot {
++    pub epoch: String,
++    pub through_sequence: String,
++    pub items: Vec<LiveHistoryItem>,
++}
+diff --git a/codex-rs/app-server-transport/src/transport/mod.rs b/codex-rs/app-server-transport/src/transport/mod.rs
+index c8b0e57..7c0d642 100644
+--- a/codex-rs/app-server-transport/src/transport/mod.rs
++++ b/codex-rs/app-server-transport/src/transport/mod.rs
+@@ -315,6 +315,7 @@ mod tests {
+     #[test]
+     fn serialize_outgoing_message_preserves_wire_shape() {
+         let message = OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
++            history_cursor: None,
+             notification: ServerNotification::ConfigWarning(ConfigWarningNotification {
+                 summary: "summary".to_string(),
+                 details: None,
+@@ -542,6 +543,7 @@ mod tests {
+         writer_tx
+             .send(QueuedOutgoingMessage::new(
+                 OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
++                    history_cursor: None,
+                     notification: ServerNotification::ConfigWarning(ConfigWarningNotification {
+                         summary: "queued".to_string(),
+                         details: None,
+diff --git a/codex-rs/app-server-transport/src/transport/remote_control/client_tracker.rs b/codex-rs/app-server-transport/src/transport/remote_control/client_tracker.rs
+index 891a7f7..9508c5e 100644
+--- a/codex-rs/app-server-transport/src/transport/remote_control/client_tracker.rs
++++ b/codex-rs/app-server-transport/src/transport/remote_control/client_tracker.rs
+@@ -590,6 +590,7 @@ mod tests {
+         writer
+             .send(QueuedOutgoingMessage::new(
+                 OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
++                    history_cursor: None,
+                     notification: ServerNotification::ConfigWarning(ConfigWarningNotification {
+                         summary: "test".to_string(),
+                         details: None,
+diff --git a/codex-rs/app-server-transport/src/transport/remote_control/segment_tests.rs b/codex-rs/app-server-transport/src/transport/remote_control/segment_tests.rs
+index 3b2406b..62f0721 100644
+--- a/codex-rs/app-server-transport/src/transport/remote_control/segment_tests.rs
++++ b/codex-rs/app-server-transport/src/transport/remote_control/segment_tests.rs
+@@ -88,6 +88,7 @@ fn splits_large_server_messages_into_wire_chunks() {
+         event: ServerEvent::ServerMessage {
+             message: Box::new(OutgoingMessage::AppServerNotification(
+                 ServerNotificationEnvelope {
++                    history_cursor: None,
+                     notification: ServerNotification::ConfigWarning(ConfigWarningNotification {
+                         summary: "x".repeat(REMOTE_CONTROL_SEGMENT_MAX_BYTES),
+                         details: None,
+diff --git a/codex-rs/app-server-transport/src/transport/remote_control/tests.rs b/codex-rs/app-server-transport/src/transport/remote_control/tests.rs
+index 0114a0b..aea1f9a 100644
+--- a/codex-rs/app-server-transport/src/transport/remote_control/tests.rs
++++ b/codex-rs/app-server-transport/src/transport/remote_control/tests.rs
+@@ -743,6 +743,7 @@ async fn remote_control_transport_manages_virtual_clients_and_routes_messages()
+     writer
+         .send(QueuedOutgoingMessage::new(
+             OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
++                history_cursor: None,
+                 notification: ServerNotification::ConfigWarning(ConfigWarningNotification {
+                     summary: "test".to_string(),
+                     details: None,
+@@ -1353,6 +1354,7 @@ async fn remote_control_transport_clears_outgoing_buffer_when_backend_acks() {
+     writer
+         .send(QueuedOutgoingMessage::new(
+             OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
++                history_cursor: None,
+                 notification: ServerNotification::ConfigWarning(ConfigWarningNotification {
+                     summary: "stale".to_string(),
+                     details: None,
+@@ -1655,6 +1657,7 @@ async fn remote_control_http_mode_enrolls_before_connecting() {
+     writer
+         .send(QueuedOutgoingMessage::new(
+             OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
++                history_cursor: None,
+                 notification: ServerNotification::ConfigWarning(ConfigWarningNotification {
+                     summary: "backend".to_string(),
+                     details: None,
+diff --git a/codex-rs/app-server-transport/src/transport/remote_control/websocket.rs b/codex-rs/app-server-transport/src/transport/remote_control/websocket.rs
+index 6803b99..4d1a246 100644
+--- a/codex-rs/app-server-transport/src/transport/remote_control/websocket.rs
++++ b/codex-rs/app-server-transport/src/transport/remote_control/websocket.rs
+@@ -3379,6 +3379,7 @@ mod tests {
+             event: ServerEvent::ServerMessage {
+                 message: Box::new(OutgoingMessage::AppServerNotification(
+                     ServerNotificationEnvelope {
++                        history_cursor: None,
+                         notification: ServerNotification::ConfigWarning(
+                             ConfigWarningNotification {
+                                 summary: summary.to_string(),
+diff --git a/codex-rs/app-server/src/lib.rs b/codex-rs/app-server/src/lib.rs
+index 0b4fe17..8f11f58 100644
+--- a/codex-rs/app-server/src/lib.rs
++++ b/codex-rs/app-server/src/lib.rs
+@@ -116,6 +116,7 @@ mod fs_watch;
+ mod fuzzy_file_search;
+ mod image_url;
+ pub mod in_process;
++mod live_history;
+ mod mcp_refresh;
+ mod message_processor;
+ mod models;
+diff --git a/codex-rs/app-server/src/live_history.rs b/codex-rs/app-server/src/live_history.rs
+new file mode 100644
+index 0000000..6b25969
+--- /dev/null
++++ b/codex-rs/app-server/src/live_history.rs
+@@ -0,0 +1,323 @@
++//! Materialized public item notifications, independent of connected presentations.
++//! The epoch and item predecessor cursor describe transient ordering, never item identity
++//! or durable delivery. Only turns that actually opt into canonical history are retained.
++use codex_app_server_protocol::{
++    LiveHistoryCursor, LiveHistoryItem, LiveHistorySnapshot, ServerNotification,
++};
++use serde_json::{Map, Value, json};
++use std::collections::{BTreeMap, HashMap, HashSet};
++
++#[derive(Default)]
++pub(crate) struct LiveHistory {
++    threads: HashMap<String, ThreadHistory>,
++}
++struct ThreadHistory {
++    epoch: String,
++    sequence: u64,
++    turns: HashSet<String>,
++    items: BTreeMap<(String, String), LiveHistoryItem>,
++    order: Vec<(String, String)>,
++}
++impl LiveHistory {
++    pub(crate) fn reset(&mut self, thread_id: &str) {
++        self.threads.remove(thread_id);
++    }
++    pub(crate) fn start_turn(&mut self, thread_id: &str, turn_id: &str) {
++        self.threads
++            .entry(thread_id.into())
++            .or_insert_with(|| ThreadHistory {
++                epoch: uuid::Uuid::now_v7().to_string(),
++                sequence: 0,
++                turns: HashSet::new(),
++                items: BTreeMap::new(),
++                order: Vec::new(),
++            })
++            .turns
++            .insert(turn_id.into());
++    }
++    pub(crate) fn snapshot(&self, thread_id: &str) -> Option<LiveHistorySnapshot> {
++        let thread = self.threads.get(thread_id)?;
++        Some(LiveHistorySnapshot {
++            epoch: thread.epoch.clone(),
++            through_sequence: thread.sequence.to_string(),
++            items: thread
++                .order
++                .iter()
++                .filter_map(|key| thread.items.get(key).cloned())
++                .collect(),
++        })
++    }
++    pub(crate) fn observe(
++        &mut self,
++        notification: &ServerNotification,
++    ) -> Option<LiveHistoryCursor> {
++        let value = serde_json::to_value(notification).ok()?;
++        self.observe_value(&value)
++    }
++    fn observe_value(&mut self, value: &Value) -> Option<LiveHistoryCursor> {
++        let method = value.get("method")?.as_str()?;
++        if !matches!(
++            method,
++            "item/started"
++                | "item/completed"
++                | "item/agentMessage/delta"
++                | "item/commandExecution/outputDelta"
++                | "item/reasoning/summaryTextDelta"
++                | "item/reasoning/summaryPartAdded"
++                | "item/fileChange/patchUpdated"
++        ) {
++            return None;
++        }
++        let params = value.get("params")?;
++        let thread_id = params.get("threadId")?.as_str()?;
++        let turn_id = params.get("turnId")?.as_str()?;
++        let thread = self.threads.get_mut(thread_id)?;
++        if !thread.turns.contains(turn_id) {
++            return None;
++        }
++        let lifecycle = matches!(method, "item/started" | "item/completed");
++        let item_id = if lifecycle {
++            params.get("item")?.get("id")?
++        } else {
++            params.get("itemId")?
++        }
++        .as_str()?;
++        let key = (turn_id.to_owned(), item_id.to_owned());
++        let old = thread.items.get(&key);
++        // A missing start is not a complete stream base. Do not invent its prefix.
++        if !lifecycle && old.is_none() {
++            return None;
++        }
++        let sequence = thread.sequence.checked_add(1)?;
++        let cursor = LiveHistoryCursor {
++            epoch: thread.epoch.clone(),
++            sequence: sequence.to_string(),
++            previous_sequence: old.map(|item| item.cursor.sequence.clone()),
++        };
++        // Validate the actual delta shape before modifying the accumulated body.
++        if !lifecycle {
++            match method {
++                "item/fileChange/patchUpdated" => {
++                    params.get("changes")?.as_array()?;
++                }
++                "item/reasoning/summaryPartAdded" => {
++                    params.get("summaryIndex")?.as_u64()?;
++                }
++                "item/reasoning/summaryTextDelta" => {
++                    params.get("summaryIndex")?.as_u64()?;
++                    params.get("delta")?.as_str()?;
++                }
++                _ => {
++                    params.get("delta")?.as_str()?;
++                }
++            }
++        }
++        if old.is_none() {
++            thread.order.push(key.clone());
++        }
++        let next = thread.items.entry(key).or_insert_with(|| LiveHistoryItem {
++            turn_id: turn_id.into(),
++            item: params["item"].clone(),
++            state: "started".into(),
++            cursor: cursor.clone(),
++            started_at_ms: None,
++            completed_at_ms: None,
++        });
++        if lifecycle {
++            if method == "item/completed" {
++                next.item = params.get("item")?.clone();
++                next.state = "completed".into();
++            }
++            if next.started_at_ms.is_none() {
++                next.started_at_ms = params
++                    .get("startedAtMs")
++                    .and_then(Value::as_i64)
++                    .filter(|time| *time != 0);
++            }
++            if method == "item/completed" {
++                next.completed_at_ms = params
++                    .get("completedAtMs")
++                    .and_then(Value::as_i64)
++                    .filter(|time| *time != 0)
++                    .or(next.completed_at_ms);
++            }
++        } else if next.state != "completed" {
++            let body = next.item.as_object_mut()?;
++            match method {
++                "item/agentMessage/delta" => append(body, "text", params.get("delta")?.as_str()?),
++                "item/commandExecution/outputDelta" => {
++                    append(body, "aggregatedOutput", params.get("delta")?.as_str()?)
++                }
++                "item/fileChange/patchUpdated" => {
++                    let changes = params.get("changes")?.as_array()?;
++                    body.insert("changes".into(), Value::Array(changes.clone()));
++                }
++                _ => {
++                    let index = params.get("summaryIndex")?.as_u64()?.to_string();
++                    if !body.contains_key("summaryParts") {
++                        let parts: Map<String, Value> = body
++                            .get("summary")
++                            .and_then(Value::as_array)
++                            .into_iter()
++                            .flatten()
++                            .enumerate()
++                            .map(|(index, text)| (index.to_string(), text.clone()))
++                            .collect();
++                        body.insert("summaryParts".into(), Value::Object(parts));
++                    }
++                    let parts = body.get_mut("summaryParts")?.as_object_mut()?;
++                    if method == "item/reasoning/summaryTextDelta" {
++                        append(parts, &index, params.get("delta")?.as_str()?);
++                    } else {
++                        parts.entry(index).or_insert(json!(""));
++                    }
++                }
++            }
++        }
++        next.cursor = cursor.clone();
++        thread.sequence = sequence;
++        Some(cursor)
++    }
++}
++fn append(body: &mut Map<String, Value>, field: &str, delta: &str) {
++    let entry = body.entry(field.to_owned()).or_insert(json!(""));
++    if let Value::String(text) = entry {
++        text.push_str(delta);
++    } else {
++        *entry = json!(delta);
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    fn input(method: &str, extra: Value) -> Value {
++        let mut params = json!({"threadId":"thread", "turnId":"turn"});
++        params
++            .as_object_mut()
++            .unwrap()
++            .extend(extra.as_object().unwrap().clone());
++        json!({"method": method, "params": params})
++    }
++    #[test]
++    fn reconnect_snapshot_has_exact_prefix_and_predecessor_without_retaining_delta_frames() {
++        let mut history = LiveHistory::default();
++        let start = input(
++            "item/started",
++            json!({"item":{"id":"answer","type":"agentMessage","text":""}}),
++        );
++        assert!(history.observe_value(&start).is_none());
++        history.start_turn("thread", "turn");
++        let first = history.observe_value(&start).unwrap();
++        let delta = input(
++            "item/agentMessage/delta",
++            json!({"itemId":"answer", "delta":"α🎹"}),
++        );
++        let second = history.observe_value(&delta).unwrap();
++        assert_eq!(second.previous_sequence.as_ref(), Some(&first.sequence));
++        let snapshot = history.snapshot("thread").unwrap();
++        assert_eq!(snapshot.items.len(), 1);
++        assert_eq!(snapshot.items[0].item["text"], "α🎹");
++        assert_eq!(snapshot.items[0].cursor, second);
++        let third = history.observe_value(&delta).unwrap();
++        assert_eq!(third.previous_sequence.as_ref(), Some(&second.sequence));
++        assert_eq!(snapshot.items[0].item["text"], "α🎹");
++        assert_eq!(
++            history.snapshot("thread").unwrap().items[0].item["text"],
++            "α🎹α🎹"
++        );
++        assert!(history.snapshot("other").is_none());
++    }
++    #[test]
++    fn creation_order_and_reset_follow_native_observation_not_item_names_or_late_updates() {
++        let mut history = LiveHistory::default();
++        history.start_turn("thread", "turn");
++        for id in ["z-first", "a-second"] {
++            history
++                .observe_value(&input(
++                    "item/started",
++                    json!({"item":{"id":id,"type":"agentMessage","text":""},"startedAtMs":0}),
++                ))
++                .unwrap();
++        }
++        history
++            .observe_value(&input(
++                "item/agentMessage/delta",
++                json!({"itemId":"z-first","delta":"later"}),
++            ))
++            .unwrap();
++        let snapshot = history.snapshot("thread").unwrap();
++        assert_eq!(
++            snapshot
++                .items
++                .iter()
++                .map(|item| item.item["id"].as_str().unwrap())
++                .collect::<Vec<_>>(),
++            vec!["z-first", "a-second"]
++        );
++        assert_eq!(snapshot.items[0].item["text"], "later");
++        assert_eq!(snapshot.items[0].started_at_ms, None);
++        history.reset("thread");
++        assert!(history.snapshot("thread").is_none());
++        assert!(
++            history
++                .observe_value(&input(
++                    "item/agentMessage/delta",
++                    json!({"itemId":"z-first","delta":"old"})
++                ))
++                .is_none()
++        );
++        history.start_turn("thread", "replacement");
++        let replacement = history.snapshot("thread").unwrap();
++        assert_ne!(snapshot.epoch, replacement.epoch);
++        assert!(replacement.items.is_empty());
++    }
++    #[test]
++    fn completion_survives_late_start_and_delta_and_sparse_summary_does_not_allocate_a_vector() {
++        let mut history = LiveHistory::default();
++        history.start_turn("thread", "turn");
++        history
++            .observe_value(&input(
++                "item/started",
++                json!({"item":{"id":"reason", "type":"reasoning", "summary":[]}}),
++            ))
++            .unwrap();
++        history
++            .observe_value(&input(
++                "item/reasoning/summaryTextDelta",
++                json!({"itemId":"reason", "summaryIndex":1000000000u64, "delta":"summary"}),
++            ))
++            .unwrap();
++        assert_eq!(
++            history.snapshot("thread").unwrap().items[0].item["summaryParts"]["1000000000"],
++            "summary"
++        );
++        let completed = json!({"id":"reason", "type":"reasoning", "summary":["done"]});
++        history
++            .observe_value(&input("item/completed", json!({"item":completed})))
++            .unwrap();
++        history
++            .observe_value(&input(
++                "item/started",
++                json!({"item":{"id":"reason","type":"reasoning","summary":[]}}),
++            ))
++            .unwrap();
++        history
++            .observe_value(&input(
++                "item/reasoning/summaryTextDelta",
++                json!({"itemId":"reason", "summaryIndex":0, "delta":"late"}),
++            ))
++            .unwrap();
++        let snapshot = history.snapshot("thread").unwrap();
++        assert_eq!(snapshot.items[0].item, completed);
++        assert_eq!(snapshot.items[0].state, "completed");
++        assert!(
++            history
++                .observe_value(&input(
++                    "item/agentMessage/delta",
++                    json!({"itemId":"missing","delta":"tail"})
++                ))
++                .is_none()
++        );
++    }
++}
+diff --git a/codex-rs/app-server/src/outgoing_message.rs b/codex-rs/app-server/src/outgoing_message.rs
+index ecb758f..0e47acb 100644
+--- a/codex-rs/app-server/src/outgoing_message.rs
++++ b/codex-rs/app-server/src/outgoing_message.rs
+@@ -112,6 +112,7 @@ pub(crate) struct OutgoingMessageSender {
+         >,
+     >,
+     next_server_request_id: AtomicI64,
++    live_history: Mutex<crate::live_history::LiveHistory>,
+     sender: mpsc::Sender<OutgoingEnvelope>,
+     request_id_to_callback: Mutex<HashMap<RequestId, PendingCallbackEntry>>,
+     /// Incoming requests that are still waiting on a final response or error.
+@@ -180,6 +181,11 @@ impl ThreadScopedOutgoingMessageSender {
+             .analytics_events_client
+             .track_notification(&notification);
+         if self.connection_ids.is_empty() {
++            self.outgoing
++                .live_history
++                .lock()
++                .await
++                .observe(&notification);
+             return;
+         }
+         self.outgoing
+@@ -225,6 +231,22 @@ impl ThreadScopedOutgoingMessageSender {
+ }
+ 
+ impl OutgoingMessageSender {
++    pub(crate) async fn reset_live_history(&self, thread_id: &str) {
++        self.live_history.lock().await.reset(thread_id);
++    }
++    pub(crate) async fn start_live_history_turn(&self, thread_id: &str, turn_id: &str) {
++        self.live_history
++            .lock()
++            .await
++            .start_turn(thread_id, turn_id);
++    }
++    pub(crate) async fn live_history_snapshot(
++        &self,
++        thread_id: &str,
++    ) -> Option<codex_app_server_protocol::LiveHistorySnapshot> {
++        self.live_history.lock().await.snapshot(thread_id)
++    }
++
+     pub(crate) fn new(
+         sender: mpsc::Sender<OutgoingEnvelope>,
+         analytics_events_client: AnalyticsEventsClient,
+@@ -232,6 +254,7 @@ impl OutgoingMessageSender {
+         Self {
+             managed_execution_gates: std::sync::Mutex::new(HashMap::new()),
+             next_server_request_id: AtomicI64::new(0),
++            live_history: Mutex::new(Default::default()),
+             sender,
+             request_id_to_callback: Mutex::new(HashMap::new()),
+             request_contexts: Mutex::new(HashMap::new()),
+@@ -643,7 +666,11 @@ impl OutgoingMessageSender {
+             targeted_connections = connection_ids.len(),
+             "app-server event: {notification}"
+         );
+-        let outgoing_message = timestamped_server_notification(notification);
++        let cursor = self.live_history.lock().await.observe(&notification);
++        let mut outgoing_message = timestamped_server_notification(notification);
++        if let OutgoingMessage::AppServerNotification(envelope) = &mut outgoing_message {
++            envelope.history_cursor = cursor;
++        }
+         if connection_ids.is_empty() {
+             if let Err(err) = self
+                 .sender
+@@ -677,7 +704,11 @@ impl OutgoingMessageSender {
+         notification: ServerNotification,
+     ) -> bool {
+         tracing::trace!("app-server event: {notification}");
+-        let outgoing_message = timestamped_server_notification(notification);
++        let cursor = self.live_history.lock().await.observe(&notification);
++        let mut outgoing_message = timestamped_server_notification(notification);
++        if let OutgoingMessage::AppServerNotification(envelope) = &mut outgoing_message {
++            envelope.history_cursor = cursor;
++        }
+         let (write_complete_tx, write_complete_rx) = oneshot::channel();
+         if let Err(err) = self
+             .sender
+@@ -773,6 +804,7 @@ fn now_unix_timestamp_ms() -> u64 {
+ 
+ fn timestamped_server_notification(notification: ServerNotification) -> OutgoingMessage {
+     OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
++        history_cursor: None,
+         notification,
+         emitted_at_ms: Some(now_unix_timestamp_ms().try_into().unwrap_or_default()),
+     })
+@@ -823,6 +855,7 @@ mod tests {
+ 
+         let jsonrpc_notification =
+             OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
++                history_cursor: None,
+                 notification,
+                 emitted_at_ms: Some(1_234),
+             });
+diff --git a/codex-rs/app-server/src/request_processors/thread_lifecycle.rs b/codex-rs/app-server/src/request_processors/thread_lifecycle.rs
+index 8354a4e..75baf45 100644
+--- a/codex-rs/app-server/src/request_processors/thread_lifecycle.rs
++++ b/codex-rs/app-server/src/request_processors/thread_lifecycle.rs
+@@ -322,6 +322,14 @@ pub(super) async fn ensure_listener_task_running(
+                         );
+                     }
+ 
++                    if let EventMsg::TurnStarted(started) = &event.msg
++                        && started.canonical_items
++                    {
++                        outgoing_for_task.start_live_history_turn(&conversation_id.to_string(), &started.turn_id).await;
++                    }
++                    if matches!(&event.msg, EventMsg::ThreadRolledBack(_)) {
++                        outgoing_for_task.reset_live_history(&conversation_id.to_string()).await;
++                    }
+                     // Track the event before emitting any typed translations
+                     // so thread-local state such as raw event opt-in stays
+                     // synchronized with the conversation.
+@@ -406,6 +414,9 @@ pub(super) async fn ensure_listener_task_running(
+         let mut thread_state = thread_state.lock().await;
+         if thread_state.listener_generation == listener_generation {
+             thread_state_manager.unregister_listener_command_tx(conversation_id);
++            outgoing_for_task
++                .reset_live_history(&conversation_id.to_string())
++                .await;
+             thread_state.clear_listener();
+         }
+     });
+diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
+index 5e69683..a4808c3 100644
+--- a/codex-rs/app-server/src/request_processors/thread_processor.rs
++++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
+@@ -2905,12 +2905,16 @@ impl ThreadRequestProcessor {
+             } else {
+                 None
+             };
+-            Some(codex_app_server_protocol::build_history_metadata(
++            let mut history = codex_app_server_protocol::build_history_metadata(
+                 &thread,
+                 &records,
+                 current_turn_id,
+                 loaded.is_some(),
+-            ))
++            );
++            if include_turns {
++                history.live = self.outgoing.live_history_snapshot(&thread.id).await;
++            }
++            Some(history)
+         } else {
+             None
+         };
+diff --git a/codex-rs/app-server/src/transport_tests.rs b/codex-rs/app-server/src/transport_tests.rs
+index 5b98f9b..338cf8f 100644
+--- a/codex-rs/app-server/src/transport_tests.rs
++++ b/codex-rs/app-server/src/transport_tests.rs
+@@ -26,6 +26,7 @@ fn thread_realtime_started_notification() -> ServerNotification {
+ 
+ fn app_server_notification(notification: ServerNotification) -> OutgoingMessage {
+     OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
++        history_cursor: None,
+         notification,
+         emitted_at_ms: Some(1_234),
+     })
+@@ -155,6 +156,7 @@ async fn to_connection_notifications_are_preserved_for_non_opted_out_clients() {
+     assert!(matches!(
+         message.message,
+         OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
++            history_cursor: None,
+             notification: ServerNotification::ConfigWarning(ConfigWarningNotification { summary, .. }),
+             ..
+         }) if summary == "task_started"
+@@ -265,6 +267,7 @@ async fn experimental_notifications_are_preserved_with_capability() {
+     assert!(matches!(
+         message.message,
+         OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
++            history_cursor: None,
+             notification: ServerNotification::ThreadRealtimeStarted(_),
+             ..
+         })
+@@ -487,6 +490,7 @@ async fn broadcast_does_not_block_on_slow_connection() {
+     assert!(matches!(
+         fast_message.message,
+         OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
++            history_cursor: None,
+             notification: ServerNotification::ConfigWarning(ConfigWarningNotification { summary, .. }),
+             ..
+         }) if summary == "test"
+@@ -498,6 +502,7 @@ async fn broadcast_does_not_block_on_slow_connection() {
+     assert!(matches!(
+         slow_message.message,
+         OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
++            history_cursor: None,
+             notification: ServerNotification::ConfigWarning(ConfigWarningNotification { summary, .. }),
+             ..
+         }) if summary == "already-buffered"
+@@ -563,6 +568,7 @@ async fn to_connection_stdio_waits_instead_of_disconnecting_when_writer_queue_is
+     assert!(matches!(
+         first.message,
+         OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
++            history_cursor: None,
+             notification: ServerNotification::ConfigWarning(ConfigWarningNotification { summary, .. }),
+             ..
+         }) if summary == "queued"
+@@ -573,6 +579,7 @@ async fn to_connection_stdio_waits_instead_of_disconnecting_when_writer_queue_is
+     assert!(matches!(
+         second.message,
+         OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
++            history_cursor: None,
+             notification: ServerNotification::ConfigWarning(ConfigWarningNotification { summary, .. }),
+             ..
+         }) if summary == "second"

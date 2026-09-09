@@ -318,6 +318,13 @@ export async function protectChatTurn(input: {
   }
 }
 
+export type EncryptedChatOutput =
+  | { kind: "message"; message: NormalizedAgentMessage }
+  | { kind: "activity"; activity: AgentActivity };
+export type EncryptedChatOutputIdentityResolver = (
+  output: EncryptedChatOutput,
+) => Promise<{ id: string; idempotencyKey: string } | null>;
+
 export class EncryptedChatEventSealer {
   readonly #chatId: string;
   readonly #ids = new Map<string, string>();
@@ -328,6 +335,7 @@ export class EncryptedChatEventSealer {
     service: WorkerEncryptionService,
     chatId: string,
     plan: PrivateChatPlanState,
+    private readonly resolveOutput?: EncryptedChatOutputIdentityResolver,
   ) {
     this.#service = service;
     this.#chatId = chatId;
@@ -389,16 +397,35 @@ export class EncryptedChatEventSealer {
     return created;
   }
 
+  async #outputIdentity(output: EncryptedChatOutput, legacyKey: string) {
+    // The bound native adapter decides which outputs have canonical identities.
+    // A failed resolver must propagate; it must not silently mint a second ID.
+    const resolved = await this.resolveOutput?.(structuredClone(output));
+    return resolved
+      ? {
+          id: chatMessageOpaqueContentSchema.shape.id.parse(resolved.id),
+          idempotencyKey:
+            chatMessageOpaqueContentSchema.shape.idempotencyKey.parse(
+              resolved.idempotencyKey,
+            ),
+        }
+      : { id: this.#id(legacyKey), idempotencyKey: legacyKey };
+  }
+
   async message(message: NormalizedAgentMessage) {
     const turnId = message.correlation?.turnId ?? null;
     const agentKey = message.agentScope
       ? `${message.agentScope.rootTurnId}:${message.agentScope.agentThreadId}`
       : "root";
     const key = `agent-message:${agentKey}:${turnId ?? "turn"}:${message.id}`;
+    const identity = await this.#outputIdentity(
+      { kind: "message", message },
+      key,
+    );
     return {
       type: "agent.protected-message" as const,
       message: await protectChatMessage({
-        id: this.#id(key),
+        id: identity.id,
         message: {
           role: "assistant",
           content: chatMessageContentSchema.parse([
@@ -407,11 +434,13 @@ export class EncryptedChatEventSealer {
               text: message.text,
               phase: message.phase,
               ...(message.streaming ? { streaming: true } : {}),
-              correlation: message.correlation,
+              ...(message.correlation
+                ? { correlation: message.correlation }
+                : {}),
               ...(message.agentScope ? { agentScope: message.agentScope } : {}),
             },
           ]),
-          idempotencyKey: key,
+          idempotencyKey: identity.idempotencyKey,
         },
         service: this.#service,
       }),
@@ -434,16 +463,20 @@ export class EncryptedChatEventSealer {
       activity.type === "worktree"
         ? activity.id
         : `activity:${agentKey}:${turnId ?? "turn"}:${activity.id}`;
+    const identity = await this.#outputIdentity(
+      { kind: "activity", activity },
+      key,
+    );
     return {
       type: "agent.protected-message" as const,
       message: await protectChatMessage({
-        id: this.#id(key),
+        id: identity.id,
         message: {
           role: "assistant",
           content: chatMessageContentSchema.parse([
             { type: "activity", activity },
           ]),
-          idempotencyKey: key,
+          idempotencyKey: identity.idempotencyKey,
         },
         service: this.#service,
       }),

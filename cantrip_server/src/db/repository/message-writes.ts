@@ -17,6 +17,8 @@ import { and, eq, exists, isNotNull, isNull } from "drizzle-orm";
 
 import * as schema from "../schema.js";
 import { requiredProjectChatWorktreeId } from "./chat-execution-lanes.js";
+import { projectChatExecutionLock } from "./chat-execution-lock.js";
+import { committedNativeHistoryMessage } from "./native-history-writer-ownership.js";
 import { firstOrThrow, type RepositoryDatabase } from "./database.js";
 import type { ModelRuntime } from "./model-runtime.js";
 import {
@@ -80,6 +82,32 @@ export class MessageWriteRepository {
     private readonly database: RepositoryDatabase,
     private readonly collaborators: MessageWriteRepositoryCollaborators,
   ) {}
+
+  private async encryptedWriteTransaction(
+    ownerId: string,
+    chatId: string,
+    apply: (
+      writer: MessageWriteRepository,
+    ) => Promise<ChatMessageOpaqueSummary | null>,
+  ): Promise<ChatMessageOpaqueSummary | null> {
+    return this.database.transaction(async (tx) => {
+      await tx.execute(projectChatExecutionLock(ownerId, chatId));
+      // Standalone chats have no project lock, but still serialize their writes.
+      const [chat] = await tx
+        .select({ id: schema.chats.id })
+        .from(schema.chats)
+        .where(
+          and(
+            eq(schema.chats.id, chatId),
+            eq(schema.chats.ownerId, ownerId),
+            eq(schema.chats.experience, "agent"),
+          ),
+        )
+        .for("update");
+      if (!chat) return null;
+      return apply(new MessageWriteRepository(tx, this.collaborators));
+    });
+  }
 
   async appendMessage(
     ownerId: string,
@@ -186,7 +214,29 @@ export class MessageWriteRepository {
     input: ChatMessageOpaqueContent,
     attribution?: ChatExecutionAttribution,
   ): Promise<ChatMessageOpaqueSummary | null> {
+    return this.encryptedWriteTransaction(ownerId, chatId, (writer) =>
+      writer.appendEncryptedMessageInTransaction(
+        ownerId,
+        chatId,
+        input,
+        attribution,
+      ),
+    );
+  }
+
+  private async appendEncryptedMessageInTransaction(
+    ownerId: string,
+    chatId: string,
+    input: ChatMessageOpaqueContent,
+    attribution?: ChatExecutionAttribution,
+  ): Promise<ChatMessageOpaqueSummary | null> {
     const message = chatMessageOpaqueContentSchema.parse(input);
+    const canonical = await committedNativeHistoryMessage(
+      this.database,
+      chatId,
+      message,
+    );
+    if (canonical) return canonical;
     const chat = await this.database
       .select({
         contextKind: schema.chats.contextKind,
@@ -305,15 +355,36 @@ export class MessageWriteRepository {
     input: ChatMessageOpaqueContent,
     attribution?: ChatExecutionAttribution,
   ): Promise<ChatMessageOpaqueSummary | null> {
-    const message = chatMessageOpaqueContentSchema.parse(input);
-    const existing =
-      await this.collaborators.getEncryptedMessageByIdempotencyKey(
+    return this.encryptedWriteTransaction(ownerId, chatId, (writer) =>
+      writer.upsertEncryptedMessageInTransaction(
         ownerId,
         chatId,
-        message.idempotencyKey,
-      );
+        input,
+        attribution,
+      ),
+    );
+  }
+
+  private async upsertEncryptedMessageInTransaction(
+    ownerId: string,
+    chatId: string,
+    input: ChatMessageOpaqueContent,
+    attribution?: ChatExecutionAttribution,
+  ): Promise<ChatMessageOpaqueSummary | null> {
+    const message = chatMessageOpaqueContentSchema.parse(input);
+    const canonical = await committedNativeHistoryMessage(
+      this.database,
+      chatId,
+      message,
+    );
+    if (canonical) return canonical;
+    const existing = await this.getEncryptedMessageByIdempotencyKey(
+      ownerId,
+      chatId,
+      message.idempotencyKey,
+    );
     if (!existing) {
-      return this.collaborators.appendEncryptedMessage(
+      return this.appendEncryptedMessageInTransaction(
         ownerId,
         chatId,
         message,

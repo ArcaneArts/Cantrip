@@ -25,6 +25,10 @@ import type {
   ManagedWebRuntimeCapabilities,
   MobileProjectTabConfigurations,
   ModelReasoningEffortOption,
+  NativeHistoryTurn,
+  NativeHistoryPreparedBatch,
+  NativeHistoryItemEvidence,
+  ChatMessageOpaqueContent,
   PrivateDisplayLabelOpaque,
   ProjectBuiltInSurfaceDefinitionId,
   ProjectDockPresentationMode,
@@ -5607,6 +5611,21 @@ export const managedQueueClaims = pgTable(
       ),
   ],
 );
+/** Immutable encrypted input revision retained with a queue claim for history replay. */
+export const managedQueueInputSnapshots = pgTable(
+  "managed_queue_input_snapshots",
+  {
+    claimId: text("claim_id")
+      .primaryKey()
+      .references(() => managedQueueClaims.id, { onDelete: "cascade" }),
+    promptId: text("prompt_id").notNull(),
+    promptRevision: integer("prompt_revision").notNull(),
+    protectedInput: jsonb("protected_input")
+      .$type<QueuedPromptOpaqueContent>()
+      .notNull(),
+  },
+);
+
 /** A native queue snapshot cannot execute until its exact native removal is acknowledged. */
 export const managedQueueImports = pgTable(
   "managed_queue_imports",
@@ -5636,6 +5655,270 @@ export const managedQueueImports = pgTable(
     uniqueIndex("managed_queue_imports_source_unique").on(
       table.sourceKey,
       table.sourceDigest,
+    ),
+  ],
+);
+/** Historical observation ownership survives execution completion and native replacement. */
+export const nativeHistoryBindings = pgTable(
+  "native_history_bindings",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    workerId: text("worker_id")
+      .notNull()
+      .references(() => workers.id, { onDelete: "cascade" }),
+    chatId: text("chat_id")
+      .notNull()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    threadId: text("thread_id").notNull(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    worktreeId: text("worktree_id")
+      .notNull()
+      .references(() => projectWorktrees.id, { onDelete: "restrict" }),
+    modelRouteId: text("model_route_id"),
+    providerAccountId: text("provider_account_id"),
+    createdFromOperationId: text("created_from_operation_id"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("native_history_bindings_owned_thread").on(
+      table.ownerId,
+      table.workerId,
+      table.chatId,
+      table.threadId,
+    ),
+    index("native_history_bindings_worker_chat").on(
+      table.workerId,
+      table.chatId,
+    ),
+  ],
+);
+export const nativeHistoryStreams = pgTable("native_history_streams", {
+  id: text("id").primaryKey(),
+  bindingId: text("binding_id")
+    .notNull()
+    .unique()
+    .references(() => nativeHistoryBindings.id, { onDelete: "cascade" }),
+  acknowledgedSequence: bigint("acknowledged_sequence", { mode: "number" })
+    .notNull()
+    .default(0),
+  acknowledgedDigest: text("acknowledged_digest"),
+});
+
+/** Permanent nonacceptance decisions survive canonical changes and lost replies. */
+export const nativeHistoryRejections = pgTable(
+  "native_history_rejections",
+  {
+    id: text("id").primaryKey(),
+    bindingId: text("binding_id")
+      .notNull()
+      .references(() => nativeHistoryBindings.id, { onDelete: "cascade" }),
+    recordId: text("record_id").notNull(),
+    decision: jsonb("decision")
+      .$type<import("@cantrip/protocol").NativeHistoryBatchRejection>()
+      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("native_history_rejections_record").on(
+      table.bindingId,
+      table.recordId,
+    ),
+  ],
+);
+
+export const nativeHistoryReceipts = pgTable(
+  "native_history_receipts",
+  {
+    commitId: text("commit_id").primaryKey(),
+    streamId: text("stream_id")
+      .notNull()
+      .references(() => nativeHistoryStreams.id, { onDelete: "cascade" }),
+    sequence: bigint("sequence", { mode: "number" }).notNull(),
+    recordId: text("record_id").notNull(),
+    digest: text("digest").notNull(),
+    payloadDigest: text("payload_digest").notNull(),
+    previousDigest: text("previous_digest"),
+    // Retain every accepted batch, including observations not selected for UI.
+    protectedBatch:
+      jsonb("protected_batch").$type<NativeHistoryPreparedBatch>(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("native_history_receipts_sequence").on(
+      table.streamId,
+      table.sequence,
+    ),
+    uniqueIndex("native_history_receipts_record").on(
+      table.streamId,
+      table.recordId,
+    ),
+  ],
+);
+
+/** Delivery may fail after commit; the original receipt and dirty publication survive. */
+export const nativeHistoryPublications = pgTable(
+  "native_history_publications",
+  {
+    commitId: text("commit_id")
+      .primaryKey()
+      .references(() => nativeHistoryReceipts.commitId, {
+        onDelete: "cascade",
+      }),
+    bindingId: text("binding_id")
+      .notNull()
+      .references(() => nativeHistoryBindings.id, { onDelete: "cascade" }),
+    attempts: integer("attempts").notNull().default(0),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [index("native_history_publications_due").on(table.nextAttemptAt)],
+);
+
+// Historical outcomes are scoped to their observed thread, including copied
+// fork turns. They never change an active lane or grant execution authority.
+export const nativeHistoryTurns = pgTable(
+  "native_history_turns",
+  {
+    bindingId: text("binding_id")
+      .notNull()
+      .references(() => nativeHistoryBindings.id, { onDelete: "cascade" }),
+    turnId: text("turn_id").notNull(),
+    revision: bigint("revision", { mode: "number" }).notNull(),
+    ordinal: bigint("ordinal", { mode: "number" }).notNull(),
+    status: text("status").$type<NativeHistoryTurn["status"]>().notNull(),
+    startedAtMs: doublePrecision("started_at_ms"),
+    completedAtMs: doublePrecision("completed_at_ms"),
+    metadata: jsonb("metadata")
+      .$type<NativeHistoryTurn["metadata"]>()
+      .notNull(),
+    payloadDigest: text("payload_digest").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.bindingId, table.turnId] }),
+    index("native_history_turns_order").on(
+      table.bindingId,
+      table.ordinal,
+      table.turnId,
+    ),
+    check(
+      "native_history_turns_revision_check",
+      sql`${table.revision} > 0 AND ${table.revision} <= 9007199254740991`,
+    ),
+    check(
+      "native_history_turns_ordinal_check",
+      sql`${table.ordinal} >= 0 AND ${table.ordinal} <= 9007199254740991`,
+    ),
+    check(
+      "native_history_turns_status_check",
+      sql`${table.status} IN ('inProgress','completed','failed','interrupted')`,
+    ),
+    check(
+      "native_history_turns_digest_check",
+      sql`${table.payloadDigest} ~ '^[a-f0-9]{64}$'`,
+    ),
+  ],
+);
+
+/** Durable observed execution identity; unlike the current activation, not replaced
+ * by the next turn. A proposed runner turn ID alone does not create this record. */
+export const nativeCommandTurns = pgTable(
+  "native_command_turns",
+  {
+    operationId: text("operation_id")
+      .primaryKey()
+      .references(() => nativeCommands.operationId, { onDelete: "cascade" }),
+    chatId: text("chat_id")
+      .notNull()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    threadId: text("thread_id").notNull(),
+    turnId: text("turn_id").notNull(),
+    runtimeGeneration: text("runtime_generation").notNull(),
+  },
+  (table) => [
+    uniqueIndex("native_command_turns_native_identity").on(
+      table.chatId,
+      table.threadId,
+      table.turnId,
+    ),
+  ],
+);
+
+/** Stable canonical row reservations across source-runtime restarts. Message rows
+ * are written only by ingestion, so a reservation cannot acknowledge content. */
+export const nativeHistoryItems = pgTable(
+  "native_history_items",
+  {
+    key: text("key").primaryKey(),
+    chatId: text("chat_id")
+      .notNull()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    threadId: text("thread_id").notNull(),
+    turnId: text("turn_id").notNull(),
+    itemId: text("item_id").notNull(),
+    component: text("component").notNull(),
+    identityKind: text("identity_kind").notNull(),
+    messageId: text("message_id").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    aliasOperationId: text("alias_operation_id").references(
+      () => nativeCommands.operationId,
+      { onDelete: "cascade" },
+    ),
+    preservedInput: jsonb("preserved_input").$type<ChatMessageOpaqueContent>(),
+    outputOperationId: text("output_operation_id").references(
+      () => nativeCommands.operationId,
+      { onDelete: "cascade" },
+    ),
+    aliasClaimId: text("alias_claim_id").references(
+      () => managedQueueClaims.id,
+      { onDelete: "cascade" },
+    ),
+    revision: bigint("revision", { mode: "number" }).notNull().default(0),
+    state: text("state")
+      .$type<"started" | "completed" | "unknown">()
+      .notNull()
+      .default("unknown"),
+    payloadDigest: text("payload_digest"),
+    protectedEvidence:
+      jsonb("protected_evidence").$type<NativeHistoryItemEvidence>(),
+    turnOrdinal: bigint("turn_ordinal", { mode: "number" }),
+    itemOrdinal: bigint("item_ordinal", { mode: "number" }),
+    componentOrdinal: bigint("component_ordinal", { mode: "number" }),
+  },
+  (table) => [
+    uniqueIndex("native_history_items_input_alias").on(table.aliasOperationId),
+    uniqueIndex("native_history_items_queue_alias").on(table.aliasClaimId),
+    index("native_history_items_message").on(table.chatId, table.messageId),
+    check(
+      "native_history_items_kind_check",
+      sql`${table.identityKind} IN ('canonical','legacy')`,
+    ),
+    check(
+      "native_history_items_alias_check",
+      sql`((${table.aliasOperationId} IS NULL) = (${table.preservedInput} IS NULL)) AND (${table.aliasOperationId} IS NULL OR ${table.outputOperationId} IS NULL) AND (${table.aliasClaimId} IS NULL OR ${table.aliasOperationId} IS NOT NULL)`,
+    ),
+    check(
+      "native_history_items_revision_check",
+      sql`${table.revision} >= 0 AND ${table.revision} <= 9007199254740991`,
+    ),
+    check(
+      "native_history_items_state_check",
+      sql`${table.state} IN ('started','completed','unknown')`,
+    ),
+    check(
+      "native_history_items_content_check",
+      sql`(${table.revision} = 0 AND ${table.payloadDigest} IS NULL AND ${table.turnOrdinal} IS NULL AND ${table.itemOrdinal} IS NULL AND ${table.componentOrdinal} IS NULL) OR (${table.revision} > 0 AND ${table.payloadDigest} IS NOT NULL AND ${table.turnOrdinal} IS NOT NULL AND ${table.itemOrdinal} IS NOT NULL AND ${table.componentOrdinal} IS NOT NULL)`,
     ),
   ],
 );

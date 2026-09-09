@@ -137,6 +137,9 @@ import {
 import { ManagedNativeCommandSession } from "./codex/managed-native-command-session.js";
 import { ManagedExecutionRunner } from "./codex/managed-execution-runner.js";
 import { NativeCommandClient } from "./native-command-client.js";
+import { NativeHistoryClient } from "./native-history-client.js";
+import { ManagedNativeHistorySources } from "./managed-native-history-sources.js";
+import { createManagedNativeOutputIdentityResolver } from "./native-history-output-identity.js";
 import { ManagedNativeQueueClient } from "./managed-native-queue-client.js";
 import {
   ManagedNativeQueue,
@@ -1906,6 +1909,51 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     workerId: config.workerId,
     token: () => config.token,
   });
+  const nativeHistoryClient = new NativeHistoryClient({
+    serverUrl: config.serverUrl,
+    workerId: config.workerId,
+    token: () => config.token,
+  });
+  const managedHistorySources = new ManagedNativeHistorySources({
+    directory: path.join(config.dataDirectory, "native-history-sources"),
+    workerId: config.workerId,
+    service: workerEncryption,
+    client: nativeHistoryClient,
+    onError: (error, context) =>
+      workerLogger.event(
+        "warn",
+        "Native history source recovery remains pending",
+        {
+          event: "codex.history.source-pending",
+          subsystem: "codex",
+          operation: context.phase,
+          chatId: context.chatId,
+          threadId: context.threadId,
+          runtimeGeneration: context.generation,
+          error: workerLogError(error),
+        },
+      ),
+  });
+  const captureManagedHistory = (
+    input: Parameters<ManagedNativeHistorySources["bind"]>[0],
+  ) => {
+    try {
+      managedHistorySources.bind(input);
+    } catch (error) {
+      workerLogger.event(
+        "warn",
+        "Native history observation could not attach",
+        {
+          event: "codex.history.observe-failed",
+          subsystem: "codex",
+          operation: "observe-native-history",
+          chatId: input.chatId,
+          threadId: input.threadId,
+          error: workerLogError(error),
+        },
+      );
+    }
+  };
   const nativeQueueClient = new ManagedNativeQueueClient({
     serverUrl: config.serverUrl,
     workerId: config.workerId,
@@ -2219,6 +2267,12 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     const generation = runtime.transportGeneration;
     if (!generation)
       throw new Error("The managed native transport is not connected.");
+    if (session.contextKind === "project")
+      captureManagedHistory({
+        runtime,
+        chatId: session.chatId,
+        threadId: options.threadId,
+      });
     let entries = managedCommandSessions.get(runtime);
     if (!entries) {
       entries = new Map();
@@ -2304,10 +2358,35 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             "The admitted execution requires its current managed runtime configuration.",
           );
         }
+        if (session.contextKind === "project")
+          captureManagedHistory({
+            runtime,
+            chatId: session.chatId,
+            threadId: options.threadId,
+            provenance: {
+              kind: "command",
+              operationId: grant.receipt.operationId,
+              operationGeneration: grant.receipt.operationGeneration,
+            },
+          });
         const sealer = new EncryptedChatEventSealer(
           workerEncryption,
           session.chatId,
           { explanation: null, steps: [], question: null },
+          session.contextKind === "project"
+            ? createManagedNativeOutputIdentityResolver({
+                client: nativeHistoryClient,
+                scope: () => ({
+                  chatId: session.chatId,
+                  threadId: options.threadId,
+                  provenance: {
+                    kind: "command",
+                    operationId: grant.receipt.operationId,
+                    operationGeneration: grant.receipt.operationGeneration,
+                  },
+                }),
+              })
+            : undefined,
         );
         let publication: Promise<void> = Promise.resolve();
         let publicationFailure: unknown;
@@ -6036,6 +6115,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           command.resultMode.operation.classification.kind === "direct";
         const encryptedChat =
           command.resultMode.kind === "chat-message-encrypted";
+        const encryptedChatHistoryScopes = new Map<
+          string,
+          Parameters<NativeHistoryClient["open"]>[0]
+        >();
         const encryptedChatSealer = encryptedChat
           ? new EncryptedChatEventSealer(
               workerEncryption,
@@ -6045,6 +6128,14 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                 protectedState: command.protectedPlan,
                 service: workerEncryption,
               }),
+              command.contextKind === "project" && command.nativeCommandReceipt
+                ? createManagedNativeOutputIdentityResolver({
+                    client: nativeHistoryClient,
+                    scope: (threadId) =>
+                      encryptedChatHistoryScopes.get(threadId) ?? null,
+                    signal: managedGuiBridgeLifetime.signal,
+                  })
+                : undefined,
             )
           : null;
         const queuedNativeInput = command.protectedNativeInput
@@ -6377,6 +6468,17 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                       modelRouteId: command.model.routeId,
                       providerAccountId: provider().accountId ?? null,
                     };
+                    if (command.contextKind === "project")
+                      encryptedChatHistoryScopes.set(threadId, {
+                        chatId: command.chatId,
+                        threadId,
+                        provenance: {
+                          kind: "command",
+                          operationId: nativeCommandState.receipt!.operationId,
+                          operationGeneration:
+                            nativeCommandState.receipt!.operationGeneration,
+                        },
+                      });
                     guiAdapters.add(nativeCommandState.entry.adapter);
                     await nativeCommandState.entry.adapter.dispatchGui(
                       nativeCommandState.receipt!,
@@ -7827,6 +7929,19 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       codeSettingsSynchronizer ?? openingCodeSettingsSynchronizer
     )?.close();
     await computerUseClosed;
+    for (const pending of managedHistorySources.stop())
+      workerLogger.event(
+        "warn",
+        "Worker shutdown left native history source capture pending",
+        {
+          event: "codex.history.shutdown-pending",
+          subsystem: "codex",
+          operation: "stop-source-capture",
+          chatId: pending.chatId,
+          threadId: pending.threadId,
+          counts: { pendingRecords: pending.pendingRecords },
+        },
+      );
     workerEncryption.lock();
     automationScheduler.close();
     codegraphProjects?.close();

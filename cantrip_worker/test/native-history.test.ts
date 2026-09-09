@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   nativeHistoryUserMessage,
+  nativeHistoryCursorSchema,
   parseCodexNativeHistory,
   readCodexNativeHistory,
 } from "../src/codex/native-history.js";
@@ -25,6 +26,26 @@ const usage = {
   outputTokens: 3,
   reasoningOutputTokens: 1,
 };
+
+it("validates native cursor strings without rounding or throwing outside schema errors", () => {
+  const cursor = {
+    epoch: "native",
+    sequence: "18446744073709551615",
+    previousSequence: "9007199254740993",
+  };
+  expect(nativeHistoryCursorSchema.parse(cursor)).toEqual(cursor);
+  for (const sequence of [
+    "18446744073709551616",
+    "-1",
+    "1.5",
+    "abc",
+    "01",
+    "9".repeat(1000),
+  ])
+    expect(
+      nativeHistoryCursorSchema.safeParse({ ...cursor, sequence }).success,
+    ).toBe(false);
+});
 const response = () => ({
   thread: {
     id: "root",
@@ -121,6 +142,46 @@ const response = () => ({
 });
 
 describe("worker-local native history", () => {
+  it("retains exact turn contexts without replacing them with current thread settings", () => {
+    const value = response();
+    const contexts = [
+      {
+        cwd: "/old",
+        model: "old-model",
+        collaborationMode: "plan",
+        reasoningEffort: "high",
+        rootTurnId: "original-root",
+      },
+      {
+        cwd: "/compacted",
+        model: "new-model",
+        collaborationMode: null,
+        reasoningEffort: null,
+        rootTurnId: "original-root",
+      },
+    ];
+    const extended = {
+      ...value,
+      thread: { ...value.thread, cwd: "/current", model: "current-model" },
+      history: {
+        ...value.history,
+        turns: [{ ...value.history.turns[0], contexts }],
+      },
+    };
+    expect(
+      parseCodexNativeHistory(extended, "root").history!.turns[0]!.contexts,
+    ).toEqual(contexts);
+    expect(
+      parseCodexNativeHistory(value, "root").history!.turns[0]!.contexts,
+    ).toBeUndefined();
+    extended.history.turns[0]!.contexts = [];
+    expect(
+      parseCodexNativeHistory(extended, "root").history!.turns[0]!.contexts,
+    ).toEqual([]);
+    extended.history.turns[0]!.contexts = [{ ...contexts[0]!, cwd: "" }];
+    expect(() => parseCodexNativeHistory(extended, "root")).toThrow();
+  });
+
   it("keeps incomplete retention and conflicting measured usage distinct from unavailable data", () => {
     const raw = response();
     const turn = raw.history.turns[0]!;

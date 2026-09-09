@@ -1,5 +1,6 @@
 import { installInternalNativeQueueRoutes } from "./routes/internal-native-queue.js";
 import { installInternalNativeCommandRoutes } from "./routes/internal-native-commands.js";
+import { installNativeHistoryRuntime } from "./runtime/native-history-runtime.js";
 import { randomBytes, randomUUID } from "node:crypto";
 import {
   encryptedBrowserUpdateSchema,
@@ -1365,6 +1366,7 @@ export async function buildApp({
       publishChatInvalidation,
     },
   });
+  installNativeHistoryRuntime(app, liveHub, { config, repository, runAsOwner });
   installInternalAgentToolRoutes(app, {
     appendAudit,
     cliCommandIsMutation,
