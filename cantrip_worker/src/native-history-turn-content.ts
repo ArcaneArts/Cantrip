@@ -1,3 +1,4 @@
+import { nativeHistoryModelAttributionForTurn } from "./native-history-model-attribution.js";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import {
@@ -57,6 +58,9 @@ function material(
             // Omission keeps the exact legacy AAD; new analytics cannot be
             // removed, inserted or modified without invalidating the envelope.
             ...(turn.usage === undefined ? [] : [turn.usage]),
+            ...(turn.modelAttribution === undefined
+              ? []
+              : [{ modelAttribution: turn.modelAttribution }]),
           ]),
         )
         .digest("hex"),
@@ -120,6 +124,11 @@ export async function prepareNativeHistoryTurn(input: {
     startedAtMs: source.startedAt == null ? null : source.startedAt * 1_000,
     completedAtMs:
       source.completedAt == null ? null : source.completedAt * 1_000,
+    modelAttribution: nativeHistoryModelAttributionForTurn(
+      input.binding.threadId,
+      input.turnId,
+      evidence,
+    ),
     usage: nativeHistoryUsageForTurn(
       input.binding.threadId,
       input.turnId,

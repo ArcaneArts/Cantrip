@@ -13,7 +13,7 @@ import type {
   TaskMessageOpaqueContent,
   TaskMessageOpaqueSummary,
 } from "@cantrip/protocol";
-import { and, eq, exists, isNotNull, isNull } from "drizzle-orm";
+import { and, eq, exists, isNotNull, isNull, sql } from "drizzle-orm";
 
 import * as schema from "../schema.js";
 import { requiredProjectChatWorktreeId } from "./chat-execution-lanes.js";
@@ -453,13 +453,13 @@ export class MessageWriteRepository {
     const rows = await this.database
       .update(schema.chatMessages)
       .set({
-        modelId,
-        modelRouteId: runtime.routeId,
-        providerId: runtime.provider.id,
-        providerName: runtime.provider.name,
-        providerModelName: runtime.model.name,
-        appliedReasoningEffort: reasoning.appliedReasoningEffort,
-        reasoningAdjusted: reasoning.reasoningAdjusted,
+        modelId: sql`CASE WHEN ${schema.chatMessages.nativeModelAttribution} IS NULL THEN ${modelId} ELSE ${schema.chatMessages.modelId} END`,
+        modelRouteId: sql`CASE WHEN ${schema.chatMessages.nativeModelAttribution} IS NULL THEN ${runtime.routeId} ELSE ${schema.chatMessages.modelRouteId} END`,
+        providerId: sql`CASE WHEN ${schema.chatMessages.nativeModelAttribution} IS NULL THEN ${runtime.provider.id} ELSE ${schema.chatMessages.providerId} END`,
+        providerName: sql`CASE WHEN ${schema.chatMessages.nativeModelAttribution} IS NULL THEN ${runtime.provider.name} ELSE ${schema.chatMessages.providerName} END`,
+        providerModelName: sql`CASE WHEN ${schema.chatMessages.nativeModelAttribution} IS NULL THEN ${runtime.model.name} ELSE ${schema.chatMessages.providerModelName} END`,
+        appliedReasoningEffort: sql`CASE WHEN ${schema.chatMessages.nativeModelAttribution} IS NULL THEN ${reasoning.appliedReasoningEffort} ELSE ${schema.chatMessages.appliedReasoningEffort} END`,
+        reasoningAdjusted: sql`CASE WHEN ${schema.chatMessages.nativeModelAttribution} IS NULL THEN ${reasoning.reasoningAdjusted} ELSE ${schema.chatMessages.reasoningAdjusted} END`,
       })
       .where(
         and(

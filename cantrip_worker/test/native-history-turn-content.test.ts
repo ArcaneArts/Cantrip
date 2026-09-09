@@ -131,6 +131,50 @@ async function prepare() {
 }
 
 describe("worker-protected native turn aggregates", () => {
+  it("authenticates independent turn attribution without token usage", async () => {
+    const original = await prepare();
+    const { metadata: _metadata, usage: _usage, ...base } = original;
+    const modelAttribution = {
+      threadId: "thread",
+      turnId: "turn",
+      isRoot: true,
+      reasoningEffort: "low",
+      selection: { status: "unavailable" as const },
+    };
+    const turn = await protectNativeHistoryTurnMetadata({
+      service: service(),
+      binding,
+      header: { ...base, modelAttribution },
+      content: { captured: modelAttribution },
+    });
+    const browser = (candidate: typeof turn) =>
+      decryptNativeHistoryTurn({
+        ownerId: "owner",
+        serverId: "server",
+        componentKey: key.map((byte) => byte + 1),
+        chatId: binding.chatId,
+        bindingId: binding.id,
+        workerId: binding.workerId,
+        turn: candidate,
+      });
+    expect(await browser(turn)).toEqual({ captured: modelAttribution });
+    expect(
+      await openNativeHistoryTurn({ service: service(), binding, turn }),
+    ).toEqual({ captured: modelAttribution });
+    const { modelAttribution: _capture, ...removed } = turn;
+    for (const candidate of [
+      removed,
+      {
+        ...turn,
+        modelAttribution: { ...modelAttribution, reasoningEffort: "high" },
+      },
+    ]) {
+      await expect(browser(candidate)).rejects.toThrow();
+      await expect(
+        openNativeHistoryTurn({ service: service(), binding, turn: candidate }),
+      ).rejects.toThrow();
+    }
+  });
   it("authenticates public usage in worker and browser decoders while retaining legacy envelopes", async () => {
     const turn = await prepare();
     const browser = (candidate: typeof turn) =>
