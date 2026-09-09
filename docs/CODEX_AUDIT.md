@@ -2686,7 +2686,7 @@ provider/account migration, replacement TUI/queue/history continuity, remaining
 all-origin lifecycle/CUA acceptance, and eager GUI-first session preparation
 still require implementation and verification.
 
-### Pass 27 — native turn attribution and usage finalization
+### Pass 27 (#1877, merged) — native turn attribution and usage finalization
 
 The worker now captures selected model/route IDs and effective reasoning at the
 actual native turn-start event. The capture has its own thread/turn identity,
@@ -2742,6 +2742,49 @@ projection and immutable message/model-behavior attribution remains required.
 Controlled provider/account migration, replacement TUI/queue/history continuity,
 remaining lifecycle/CUA acceptance and eager GUI-first preparation also remain
 part of the full goal.
+
+### Pass 28 — native history terminal reconciliation
+
+Repeated actual native goal-queue tests exposed a snapshot with `interrupted`,
+no completion timestamp, and the same exact live `currentTurnId`, before the
+corresponding start notification. The core accessor reads the current engine
+turn under its lock; the native history path separately infers interruption
+from a lagging status. The prior reducer made that inference permanently win
+against the later actual completed notification and retained final snapshot.
+The same failure was reproduced on unchanged pass 26, independent of model
+attribution.
+
+The worker now retains the contradictory snapshot as evidence and projects its
+exact live current turn as in progress. An explicit `turn/completed` supplies
+separate durable terminal evidence; it can correct snapshot-only outcomes and
+clear superseded error/timing fields. A retained completion timestamp can also
+resolve an earlier incomplete snapshot outcome. Real terminal notifications are
+not reopened by starts or relabeled by later snapshots. Conflicting actual
+terminal notifications remain explicit. Old/unloaded snapshots without live
+identity proof retain their existing terminal interpretation.
+
+The evidence survives encrypted projection checkpoints and archived recovery.
+Recovery preserves an unambiguous actual completion over a conflicting candidate
+from another binding, independent of its revision counter. Conflicting actual
+completions stay unresolved rather than selecting whichever binding is listed
+last. This changes history interpretation, not execution ownership or Stop/CUA
+cancellation; imported native sources and the packaged binary are unchanged.
+
+Validation: five deterministic cases failed before the fix. The final reducer,
+terminal and encrypted projection selection passes 47 tests; a separate existing
+projection/render/content/context selection passed 58 tests (overlapping counts).
+The actual pinned native queue suite passes all four cases, and the formerly
+intermittent two-case goal selection passes three additional repetitions.
+The encrypted PGlite archive fixture exercises completion evidence, conflicting
+snapshot candidates and recovery without a local checkpoint. Full workspace
+and final worker typechecks pass. Changed TypeScript format and diff checks pass.
+`pnpm check` still stops at the unchanged decomposition failures documented in
+pass 27. No CI, desktop input or worker restart was performed.
+
+The remaining full goal still includes all-origin analytics recovery,
+message/model-behavior attribution, controlled provider/account migration,
+replacement TUI/queue/history continuity, remaining native lifecycle/CUA
+acceptance, and then eager GUI-first session preparation.
 
 ### What “perfect mirror” must mean
 

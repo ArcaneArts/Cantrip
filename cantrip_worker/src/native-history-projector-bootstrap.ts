@@ -113,6 +113,7 @@ export function restoreNativeHistoryProjectorState(
       body: NativeHistoryObject;
       metadata: NativeHistoryObject | null;
       conflicts: NativeHistoryObject[];
+      terminalNotification?: NativeHistoryStateTurn["terminalNotification"];
     }>
   >();
   const origin = {
@@ -177,13 +178,15 @@ export function restoreNativeHistoryProjectorState(
     let body: NativeHistoryObject;
     let metadata: NativeHistoryObject | null;
     let conflicts: NativeHistoryObject[] = [];
+    let terminalNotification: NativeHistoryStateTurn["terminalNotification"];
     if (raw.version === 2) {
       const content = turnContent.parse(raw);
       if (content.reducedTurn.id !== entry.turn.turnId)
         throw new Error(
           "Recovered native turn content has a different identity.",
         );
-      ({ body, metadata, conflicts } = content.reducedTurn);
+      ({ body, metadata, conflicts, terminalNotification } =
+        content.reducedTurn);
       for (const record of content.evidence) evidence(record);
     } else {
       body =
@@ -231,12 +234,31 @@ export function restoreNativeHistoryProjectorState(
         "Recovered native turn fields disagree with their protected header.",
       );
     const list = candidates.get(entry.turn.turnId) ?? [];
-    list.push({ body, metadata, conflicts });
+    list.push({ body, metadata, conflicts, terminalNotification });
     candidates.set(entry.turn.turnId, list);
   }
   for (const [id, list] of candidates) {
     const turn = turns.get(id)!;
     turn.body = consensus(list.map((value) => value.body));
+    const completions = list.flatMap((value) =>
+      value.terminalNotification !== undefined &&
+      value.terminalNotification === value.body.status
+        ? [value]
+        : [],
+    );
+    if (
+      completions.length &&
+      completions.every(
+        (value) =>
+          value.terminalNotification === completions[0]!.terminalNotification,
+      )
+    ) {
+      const completed = consensus(completions.map((value) => value.body));
+      for (const key of ["status", "completedAt", "durationMs", "error"])
+        if (Object.hasOwn(completed, key)) turn.body[key] = completed[key]!;
+        else delete turn.body[key];
+      turn.terminalNotification = completions[0]!.terminalNotification;
+    }
     const metadata = list.flatMap((value) =>
       value.metadata ? [value.metadata] : [],
     );

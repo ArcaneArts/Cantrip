@@ -218,25 +218,50 @@ function applyTurn(
   turn: NativeHistoryStateTurn,
   raw: NativeHistoryObject,
   origin: NativeHistoryOrigin,
+  completion = false,
 ) {
   if (concurrent(turn.origin, origin)) return;
   const { items: _items, ...body } = raw;
   const before = structuredClone({
     body: turn.body,
     conflicts: turn.conflicts,
+    terminalNotification: turn.terminalNotification,
   });
+  const confirmed =
+    turn.terminalNotification === turn.body.status &&
+    turn.terminalNotification !== undefined;
+  const actualCompletion = completion && terminal(body.status);
+  let replace = true;
+  let terminalCorrection = false;
   if (
     terminal(turn.body.status) &&
     terminal(body.status) &&
     turn.body.status !== body.status
   ) {
-    if (!turn.conflicts.some((entry) => isDeepStrictEqual(entry, body)))
-      turn.conflicts.push(body);
-  } else {
+    // Native reads may synthesize interruption while core/listener state is
+    // transitioning. A real completion, or a retained completion timestamp,
+    // resolves that snapshot-only outcome. Conflicting actual completions stay
+    // explicit; neither a late start nor a snapshot can undo a real Stop.
+    replace =
+      !confirmed &&
+      (actualCompletion ||
+        (time(body.completedAt) !== null &&
+          time(turn.body.completedAt) === null));
+    terminalCorrection = replace;
+    const conflict = replace ? structuredClone(turn.body) : body;
+    if (!turn.conflicts.some((entry) => isDeepStrictEqual(entry, conflict)))
+      turn.conflicts.push(conflict);
+  }
+  if (replace) {
     if (terminal(turn.body.status) && !terminal(body.status))
       delete body.status;
     for (const [key, value] of Object.entries(body)) {
-      if (value !== null || !Object.hasOwn(turn.body, key))
+      if (
+        value !== null ||
+        !Object.hasOwn(turn.body, key) ||
+        ((actualCompletion || terminalCorrection) &&
+          ["error", "completedAt", "durationMs"].includes(key))
+      )
         Object.defineProperty(turn.body, key, {
           value,
           enumerable: true,
@@ -244,10 +269,18 @@ function applyTurn(
           writable: true,
         });
     }
+    if (actualCompletion)
+      turn.terminalNotification = body.status as NonNullable<
+        NativeHistoryStateTurn["terminalNotification"]
+      >;
     turn.origin = origin;
   }
   if (
-    !isDeepStrictEqual(before, { body: turn.body, conflicts: turn.conflicts })
+    !isDeepStrictEqual(before, {
+      body: turn.body,
+      conflicts: turn.conflicts,
+      terminalNotification: turn.terminalNotification,
+    })
   )
     turn.revision++;
 }
@@ -279,7 +312,31 @@ function snapshot(
   const oldTurnIds = new Set(state.turns.map((turn) => turn.id));
   for (const rawTurn of value.thread.turns) {
     const turn = ensureTurn(state, rawTurn.id, origin);
-    applyTurn(turn, rawTurn as NativeHistoryObject, origin);
+    // The pinned runtime can read an in-progress record before its Running
+    // status notification and infer interruption. Its exact live current ID
+    // disproves that inference; a retained terminal timestamp still wins.
+    const provisional =
+      rawTurn.status === "interrupted" &&
+      time(rawTurn.completedAt) === null &&
+      value.history?.currentTurnState === "live" &&
+      value.history.currentTurnId === rawTurn.id;
+    if (provisional) {
+      const { items: _items, ...observed } = rawTurn;
+      const conflict = {
+        inferredInterruption: observed,
+      } as NativeHistoryObject;
+      if (!turn.conflicts.some((entry) => isDeepStrictEqual(entry, conflict))) {
+        turn.conflicts.push(conflict);
+        turn.revision++;
+      }
+    }
+    applyTurn(
+      turn,
+      provisional
+        ? ({ ...rawTurn, status: "inProgress" } as NativeHistoryObject)
+        : (rawTurn as NativeHistoryObject),
+      origin,
+    );
     const metadata =
       value.history?.turns.find((entry) => entry.turnId === rawTurn.id) ?? null;
     if (metadata?.initialSettingsConflict) {
@@ -595,7 +652,7 @@ export function reduceNativeHistory(
       rawTurn &&
       ["turn/started", "turn/completed"].includes(frame.method)
     ) {
-      applyTurn(turn, rawTurn, origin);
+      applyTurn(turn, rawTurn, origin, frame.method === "turn/completed");
       if (frame.method === "turn/started") {
         retainInitialSettings(turn, params.initialSettings);
         const attribution = nativeTurnModelAttributionSchema.safeParse(

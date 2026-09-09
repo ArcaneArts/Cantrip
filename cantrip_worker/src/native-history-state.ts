@@ -36,6 +36,11 @@ export const nativeHistoryStateTurnSchema = z
     revision: ordinal.positive(),
     body: jsonObject,
     metadata: jsonObject.nullable(),
+    // Exact turn/completed evidence outranks inferred snapshot interruption.
+    // Optional for previously persisted projection states.
+    terminalNotification: z
+      .enum(["completed", "failed", "interrupted"])
+      .optional(),
     origin: historyOriginSchema,
     items: z.array(nativeHistoryStateItemSchema),
     conflicts: z.array(jsonObject),
