@@ -58,6 +58,7 @@ export class NativeHistoryCapture {
   private notifyTimer: ReturnType<typeof setTimeout> | null = null;
   private writeTimer: ReturnType<typeof setTimeout> | null = null;
   private readTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly stoppedWaiters = new Set<() => void>();
   private readonly flushWaiters = new Set<{
     resolve(): void;
     reject(error: unknown): void;
@@ -311,6 +312,10 @@ export class NativeHistoryCapture {
     return result;
   }
   private checkFlushed() {
+    if (this.stopped && !this.writing && !this.notifying) {
+      for (const resolve of this.stoppedWaiters) resolve();
+      this.stoppedWaiters.clear();
+    }
     if (
       this.pendingRecords ||
       this.writing ||
@@ -331,6 +336,17 @@ export class NativeHistoryCapture {
     return this.flush();
   }
 
+  /** After stop, wait for callbacks that can still use encryption or disk.
+   * A detached native read cannot enqueue further work and need not hold keys. */
+  whenStopped(): Promise<void> {
+    if (!this.stopped)
+      return Promise.reject(
+        new Error("Native history capture has not stopped."),
+      );
+    if (!this.writing && !this.notifying) return Promise.resolve();
+    return new Promise((resolve) => this.stoppedWaiters.add(resolve));
+  }
+
   /** Final teardown only. Pending memory is NOT declared durable or consumed.
    * Normal retirement/close should drain; a forced shutdown needs reconciliation. */
   stop(): void {
@@ -347,5 +363,6 @@ export class NativeHistoryCapture {
     this.notifyTimer = null;
     for (const waiter of this.flushWaiters) waiter.reject(error);
     this.flushWaiters.clear();
+    this.checkFlushed();
   }
 }

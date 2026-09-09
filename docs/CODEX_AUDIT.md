@@ -1695,6 +1695,50 @@ directory entries are flushed; Windows file contents are flushed but directory
 entry power-loss durability is not established. No full mirroring acceptance or
 production history-recovery fix is claimed by these component tests.
 
+**Pass 8 — automatic managed-root history projection:**
+
+The main worker now constructs one `ManagedNativeHistory` lifecycle containing
+source capture, the canonical projector and startup journal recovery. Each
+persisted source wake reaches the projector; existing journals replay without a
+new model turn or UI connection. Both managed GUI and native session bindings
+use this owner. Historical publication remains separate from live execution,
+configuration and CUA authority. Native input does not wait for projection.
+
+Shutdown detaches capture and aborts delivery immediately, then awaits callbacks
+that may still use encryption or disk before locking the worker keys. Remaining
+unsaved source counts are measured after in-flight appends settle. A detached
+native read cannot enqueue more encrypted work and does not hold shutdown open.
+
+Identity resolution now returns existing opaque attachment descriptors with the
+same authorized message mapping. A shared scoped reader serves both resolution
+and archive pages. The projector passes these descriptors into materialization,
+allowing reconstruction of local manifests without replacing canonical
+attachment metadata or adding a separate full-archive lookup for every image.
+Old mapping responses without attachments remain supported.
+
+The new pinned-native fixture exercises the real GUI runtime entry and a second
+remote app-server client on one thread, the installed lifecycle class, actual
+HTTP/database ingestion and encrypted messages. It verifies both prompts and
+answers, exact retry bytes after a lost commit reply, startup recovery with no
+additional model request, and recovery after deleting materialization manifests
+while preserving the original published image descriptor. The GUI-entry fixture
+uses an independent native input ID; complete admitted GUI-alias/mixed-origin
+acceptance remains covered separately and is not inferred from this fixture.
+A separate capture test holds a real append across Stop and proves that the
+storage barrier waits for it without declaring unpersisted input consumed.
+
+All 186 worker history tests across 21 files pass, including the existing eight
+pinned-native history/queue cases and the new shared-lifecycle case. All 90
+server history tests pass. Protocol build, worker/server typechecks, formatting
+of all 14 changed files and the diff check pass. The standard repository check
+still stops at the same unchanged `chat-turn-runtime.ts` and `task-routes.ts`
+decomposition budgets; later broad checks were not reached.
+
+This activates the root pipeline; it does not complete child/legacy association,
+all rendering inventory, partial-journal/competing-stream recovery, bounded
+replay, settings parity, eager startup or the full acceptance matrix. No user
+application or desktop interaction was used for these tests.
+
 **Still outstanding:** completion of authorized command admission, origin-independent
 lifecycle/CUA authority, durable all-turn projection/replay,
 complete settings parity, eager GUI-first session startup and the full acceptance

@@ -85,6 +85,36 @@ async function fixture() {
 }
 
 describe("native history capture recovery", () => {
+  it("waits for a stopped in-flight append before encryption can be released", async () => {
+    const f = await fixture();
+    let release!: () => void;
+    const hold = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const actual = f.append.getMockImplementation()!;
+    f.append.mockImplementationOnce(async (...args) => {
+      await hold;
+      return actual(...args);
+    });
+    f.event("late-item");
+    await vi.waitFor(() => expect(f.append).toHaveBeenCalledTimes(2));
+    f.capture.stop();
+    let settled = false;
+    const stopped = f.capture.whenStopped().then(() => {
+      settled = true;
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(settled).toBe(false);
+    release();
+    await stopped;
+    expect(f.capture.pendingRecords).toBe(0);
+    expect((await f.journal.read(0, 10)).at(-1)?.frame).toMatchObject({
+      method: "item/completed",
+      params: { item: { id: "late-item" } },
+    });
+    expect(f.published).toHaveBeenCalledTimes(1);
+  });
+
   it("repairs a missing native predecessor across failed and stale reads without another event or UI reconnect", async () => {
     const f = await fixture();
     const cursor = (sequence: string, previousSequence: string | null) => ({

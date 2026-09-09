@@ -127,6 +127,7 @@ export function createNativeHistoryInputMaterializer(options: {
     item: NativeHistoryStateItem,
     turn: Omit<NativeHistoryStateTurn, "items">,
     context: { cwd: string },
+    canonicalAttachments?: ChatAttachmentOpaqueSummary[],
   ) => {
     const inputParts = new Map<number, ChatMessageContent>();
     const attachments: ChatAttachmentOpaqueSummary[] = [];
@@ -139,7 +140,7 @@ export function createNativeHistoryInputMaterializer(options: {
       identityKind: item.identityKind,
       component: "user",
     };
-    let published: ChatAttachmentOpaqueSummary[] | undefined;
+    let published = canonicalAttachments;
     for (const [index, value] of item.body.content.entries()) {
       if (!value || typeof value !== "object" || Array.isArray(value)) continue;
       if (
@@ -267,8 +268,8 @@ export function createNativeHistoryInputMaterializer(options: {
           let materialized = await options.store.materialize(input);
           if (retained && materialized.attachment.id !== retained.id)
             throw new Error("Retained native media identity changed.");
-          if (options.publishedAttachments) {
-            published ??= await options.publishedAttachments(identity);
+          if (published || options.publishedAttachments) {
+            published ??= await options.publishedAttachments!(identity);
             const descriptor = published.find(
               (entry) => entry.id === materialized.attachment.id,
             );
