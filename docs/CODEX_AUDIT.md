@@ -2071,6 +2071,58 @@ the ordered 21-patch series. Worker typecheck, TypeScript formatting and diff
 checks pass. The broad check still stops at the unchanged server decomposition
 budgets; later broad checks were not reached. No personal desktop input or CI ran.
 
+**Pass 17 — durable native settings application evidence:**
+
+Managed thread-settings commands now keep native RPC acceptance separate from
+actual application. The worker normalizes missing settings operation IDs before
+admission, encrypts the exact forwarded request, and excludes that correlation
+metadata from the list of changed settings. GUI plan changes use the managed
+mutation dispatcher when it is bound. Before native dispatch, the worker records
+an exact operation/thread/transport registration and subscribes to raw native
+notifications without reading history or taking a screenshot.
+
+Queued acknowledgments, immutable applied snapshots, typed asynchronous errors,
+transport loss and correlation conflicts are distinct encrypted evidence events.
+The server stores them under the admitted owner, worker, operation generation,
+thread and transport. Its application summary is independent of the original RPC
+receipt: a late queue acknowledgment cannot replace applied/rejected evidence;
+contradictory outcomes or submission IDs remain uncertain. Evidence publication
+neither grants native replay nor completes an active model turn. These historical
+facts can be delivered after a runtime replacement without changing the current
+runtime's settings selection.
+
+The worker flushes ciphertext before network delivery, retains the exact event
+and envelope through a lost response, and retries persistence independently of
+native commands. Pending registrations include a presealed recovery event so a
+worker restart reports uncertainty using the same identity rather than replaying
+the native mutation. Owner/server/worker partitions remain separate. An empty
+outbox does not poll; retries use backoff. The HTTP persistence timeout applies
+only to evidence delivery, never to model work or computer-use timelines. Generic
+command receipts retain their prior shape unless this settings evidence applies.
+
+Validation: 180 focused worker tests and 49 real PGlite/server tests pass. The
+latter include the production worker delivery pump and HTTP client against the
+authenticated route with a deliberately lost postcommit response; the retry
+retains one encrypted event. Worker tests cover early application and rejection,
+late/lost acknowledgments, metadata normalization, exact GUI/TUI forwarding,
+transport replacement, restart recovery, owner isolation and ciphertext binding.
+The existing packaged native runtime passes all three settings fixtures; both
+history modes now send actual native notifications through the production
+settings observer and encrypted delivery, preserving full snapshots, explicit
+service-tier clearing and no-op updates without model inference or snapshots.
+Server/worker typechecks and the server repository decomposition check pass.
+The broad check still stops at the unchanged
+chat-turn-runtime.ts/task-routes.ts decomposition budgets; later broad checks
+were not reached. No new native patch, user app/worker restart, desktop input or
+CI job is used by this pass.
+
+This is the durable operation-evidence prerequisite, not complete settings
+parity. Server-owned desired/pending/effective selection revisions, baseline
+settings recovery, model/provider/account mapping, canonical publication into
+both views, account defaults, child inheritance and active-turn selection policy
+remain outstanding. The evidence count is not a settings revision, and an RPC
+receipt's generic applied status alone is not proof that settings were applied.
+
 **Still outstanding:** completion of authorized command admission, origin-independent
 lifecycle/CUA authority, durable all-turn projection/replay,
 complete settings parity, eager GUI-first session startup and the full acceptance

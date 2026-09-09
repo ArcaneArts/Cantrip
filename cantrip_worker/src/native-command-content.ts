@@ -14,7 +14,8 @@ import type { WorkerEncryptionService } from "./worker-encryption.js";
 export interface NativeCommandContentContext {
   chatId: string;
   operationId: string;
-  direction: "request" | "result" | "terminal-result";
+  direction: "request" | "result" | "terminal-result" | "settings-evidence";
+  eventId?: string;
 }
 type EncryptionService = Pick<
   WorkerEncryptionService,
@@ -26,6 +27,8 @@ function material(
   context: NativeCommandContentContext,
   revision?: number,
 ) {
+  if (context.direction === "settings-evidence" && !context.eventId)
+    throw new Error("Native settings evidence requires its event identity.");
   const component = service.componentKey("chat-content", revision);
   try {
     const associatedData = encryptionAssociatedDataSchema.parse({
@@ -38,6 +41,9 @@ function material(
             service.serverIdentity(),
             context.chatId,
             context.operationId,
+            ...(context.direction === "settings-evidence"
+              ? [context.eventId]
+              : []),
           ]),
         )
         .digest("hex"),

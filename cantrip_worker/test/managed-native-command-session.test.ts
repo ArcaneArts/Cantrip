@@ -1,3 +1,4 @@
+import { NativeHistoryObservations } from "../src/codex/native-history-observation.js";
 import { describe, expect, it, vi } from "vitest";
 import type {
   AgentTurnResult,
@@ -89,7 +90,20 @@ function fixture(start = true) {
       return { receipt };
     }),
   };
+  const settingsHistory = new NativeHistoryObservations();
+  settingsHistory.replace("transport");
+  const settingsDelivery = {
+    track: vi.fn(async () => {}),
+    record: vi.fn(async () => {}),
+  };
   const runtime = {
+    observeNativeHistory: (
+      threadId: string,
+      observer: Parameters<NativeHistoryObservations["subscribe"]>[1],
+    ) =>
+      settingsHistory.subscribe(threadId, observer, async () => {
+        throw new Error("No snapshot expected");
+      }),
     transportGeneration: "transport",
     prepareAdmittedNativeExecution: vi.fn(async () => {
       order.push("register");
@@ -136,6 +150,7 @@ function fixture(start = true) {
     identity,
     runtime: runtime as never,
     client: client as unknown as NativeCommandClient,
+    settingsDelivery,
     encryption: {
       ownerId: () => "owner",
       serverIdentity: () => "server",
@@ -174,6 +189,8 @@ function fixture(start = true) {
   };
   return {
     adapter,
+    settingsDelivery,
+    settingsHistory,
     client,
     runtime,
     publication,
@@ -191,6 +208,99 @@ const result = {
 } as AgentTurnResult;
 
 describe("managed native command session", () => {
+  it("admits the exact normalized TUI settings frame and registers evidence before forwarding", async () => {
+    const f = fixture(false);
+    const command = await f.adapter.admit({
+      ...f.operation,
+      kind: "settings",
+      method: "thread/settings/update",
+      frame: {
+        id: 13,
+        method: "thread/settings/update",
+        params: { threadId: "thread", effort: "high", serviceTier: null },
+      },
+    });
+    expect(command.forward).toEqual({
+      method: "thread/settings/update",
+      params: {
+        threadId: "thread",
+        effort: "high",
+        serviceTier: null,
+        operationId: "operation",
+      },
+    });
+    const admission = f.client.admit.mock.calls[0]![0] as any;
+    expect(admission.intent.settingKeys).toEqual(["effort", "serviceTier"]);
+    expect(admission.intent.nativeSettingsOperationId).toBe("operation");
+    const content = await openNativeCommandContent({
+      service: {
+        ownerId: () => "owner",
+        serverIdentity: () => "server",
+        componentKey: () => ({
+          keyRevision: 1,
+          key: new Uint8Array(32).fill(7),
+        }),
+      },
+      context: {
+        chatId: "chat",
+        operationId: "operation",
+        direction: "request",
+      },
+      envelope: admission.protectedPayload,
+    });
+    expect(content).toEqual({ id: 13, ...command.forward });
+    expect(f.settingsDelivery.track).not.toHaveBeenCalled();
+    await command.beforeForward();
+    expect(f.settingsDelivery.track).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operationId: "operation",
+        nativeOperationId: "operation",
+        operationGeneration: "operation-generation",
+        runtimeGeneration: "transport",
+      }),
+    );
+    await command.settle({
+      result: { operationId: "operation", submissionId: "queued-submission" },
+    });
+    expect(f.settingsDelivery.record).toHaveBeenCalledWith(
+      expect.anything(),
+      "queued",
+      "queued-submission",
+      expect.anything(),
+    );
+    expect(f.publication.complete).not.toHaveBeenCalled();
+  });
+
+  it("passes the admitted settings rewrite to GUI dispatch and retains immediate native rejection", async () => {
+    const f = fixture(false);
+    const dispatch = vi.fn(async (forward) => {
+      expect(f.settingsDelivery.track).toHaveBeenCalledTimes(1);
+      expect(forward.params.operationId).toBe("operation");
+      throw new CodexNativeRpcError("Invalid effort", {
+        code: -32600,
+        message: "Invalid effort",
+      });
+    });
+    await expect(
+      f.adapter.executeGuiCommand(session, {
+        operationId: "operation",
+        method: "thread/settings/update",
+        params: { threadId: "thread", effort: "bad" },
+        dispatch,
+      }),
+    ).rejects.toThrow("Invalid effort");
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(f.settingsDelivery.record).toHaveBeenCalledWith(
+      expect.objectContaining({ operationId: "operation" }),
+      "rejected",
+      null,
+      { error: { code: -32600, message: "Invalid effort" } },
+    );
+    expect(f.client.settle).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "rejected", executionComplete: false }),
+    );
+  });
+
   it("orders clear after the prior native setter response without waiting for its server receipt or model work", async () => {
     const f = fixture(false);
     const setter = await f.adapter.admit({

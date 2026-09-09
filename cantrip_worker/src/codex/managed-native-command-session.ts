@@ -1,3 +1,5 @@
+import { ManagedNativeSettings } from "./managed-native-settings.js";
+import type { NativeSettingsDelivery } from "../native-settings-delivery.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { managedNativeMethods } from "@cantrip/protocol";
@@ -72,8 +74,10 @@ export interface ManagedNativeCommandSessionOptions {
     | "resolveAdmittedNativeReply"
     | "transportGeneration"
     | "resolveManagedExecution"
+    | "observeNativeHistory"
   >;
   client: NativeCommandClient;
+  settingsDelivery?: Pick<NativeSettingsDelivery, "track" | "record">;
   encryption: Pick<
     WorkerEncryptionService,
     "ownerId" | "serverIdentity" | "componentKey"
@@ -122,7 +126,16 @@ export class ManagedNativeCommandSession {
     this.assertActivationGeneration(expected);
     return this.expectedActivation.run({ generation: expected }, dispatch);
   }
-  constructor(private readonly options: ManagedNativeCommandSessionOptions) {}
+  private readonly settings: ManagedNativeSettings | null;
+  constructor(private readonly options: ManagedNativeCommandSessionOptions) {
+    this.settings = options.settingsDelivery
+      ? new ManagedNativeSettings({
+          runtime: options.runtime,
+          delivery: options.settingsDelivery,
+          onError: options.onError,
+        })
+      : null;
+  }
 
   private createExecution(
     receipt: NativeCommandReceipt,
@@ -617,7 +630,7 @@ export class ManagedNativeCommandSession {
     }
     let result: unknown;
     try {
-      result = await command.dispatch();
+      result = await command.dispatch(admission.forward);
     } catch (error) {
       await admission.settle(
         error instanceof CodexNativeRpcError
@@ -633,6 +646,22 @@ export class ManagedNativeCommandSession {
   async admit(
     operation: ManagedNativeOperation,
   ): Promise<ManagedNativeAdmission> {
+    let forward: ManagedNativeAdmission["forward"];
+    if (
+      operation.method === "thread/settings/update" &&
+      object(operation.frame.params) &&
+      operation.frame.params.operationId === undefined
+    ) {
+      forward = {
+        method: operation.method,
+        params: {
+          ...operation.frame.params,
+          operationId: operation.operationId,
+        },
+      };
+      // Admit and encrypt the exact normalized frame that will reach native.
+      operation = { ...operation, frame: { ...operation.frame, ...forward } };
+    }
     const session: NativeCommandSession = {
       chatId: operation.identity.chatId,
       threadId: operation.identity.threadId,
@@ -782,6 +811,7 @@ export class ManagedNativeCommandSession {
     };
     return {
       operationGeneration: grant.receipt.operationGeneration,
+      ...(forward ? { forward } : {}),
       beforeForward: async () => {
         const priorGoalResponse =
           operation.method === "thread/goal/clear" ||
@@ -862,6 +892,19 @@ export class ManagedNativeCommandSession {
           assertRootCurrent();
           this.assertTransport(session);
           execution.handle?.assertCurrent();
+          if (intent.nativeSettingsOperationId && this.settings) {
+            await this.settings.track({
+              chatId: session.chatId,
+              operationId: operation.operationId,
+              operationGeneration: grant.receipt.operationGeneration,
+              threadId: session.threadId!,
+              runtimeGeneration: session.runtimeGeneration!,
+              nativeOperationId: intent.nativeSettingsOperationId,
+            });
+            assertRootCurrent();
+            this.assertTransport(session);
+            execution.handle?.assertCurrent();
+          }
         } catch (error) {
           execution.handle?.fail(
             error instanceof Error
@@ -874,6 +917,16 @@ export class ManagedNativeCommandSession {
       settle: (frame) =>
         (settlement ??= (async () => {
           resolveNativeResponse();
+          if (intent.nativeSettingsOperationId && this.settings) {
+            try {
+              await this.settings.acknowledge(
+                intent.nativeSettingsOperationId,
+                frame,
+              );
+            } catch (error) {
+              this.options.onError(error, operation.operationId);
+            }
+          }
           const rejected = frame !== null && "error" in frame;
           nativeAcceptance = rejected
             ? "rejected"

@@ -275,8 +275,25 @@ export async function managedNativeCommandIntent(
   }
   if (operation.kind === "settings") {
     intent.settingKeys = Object.keys(params).filter(
-      (key) => key !== "threadId" && key !== "turnId",
+      (key) =>
+        key !== "threadId" &&
+        key !== "turnId" &&
+        !(
+          operation.method === "thread/settings/update" && key === "operationId"
+        ),
     );
+  }
+  if (
+    operation.method === "thread/settings/update" &&
+    params.operationId !== undefined
+  ) {
+    if (
+      typeof params.operationId !== "string" ||
+      !params.operationId.length ||
+      params.operationId.length > 255
+    )
+      throw new Error("Invalid native settings operation identity.");
+    intent.nativeSettingsOperationId = params.operationId;
   }
   intent.pathsWithinPlacement = true;
   return intent;

@@ -140,6 +140,25 @@ describe("managed native payload policy", () => {
     ).rejects.toThrow("config");
   });
 
+  it("keeps native operation correlation separate from changed settings", async () => {
+    const context = await fixture();
+    const intent = await managedNativeCommandIntent(
+      operation(
+        "thread/settings/update",
+        {
+          threadId: "thread",
+          operationId: "native-setting",
+          model: "next",
+          serviceTier: null,
+        },
+        "settings",
+      ),
+      context,
+    );
+    expect(intent.nativeSettingsOperationId).toBe("native-setting");
+    expect(intent.settingKeys).toEqual(["model", "serviceTier"]);
+  });
+
   it("allows current-profile TUI turn settings and maps command permissionProfile to native permissions", async () => {
     const context = await fixture();
     await expect(

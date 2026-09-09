@@ -1,3 +1,6 @@
+import { nativeCommandReceipt as receipt } from "./native-command-receipt.js";
+import { NativeSettingsEvidenceRepository } from "./native-settings-evidence.js";
+import type { NativeSettingsEvidence } from "@cantrip/protocol";
 import { NativeLogicalCompletionRepository } from "./native-logical-completions.js";
 import { rememberNativeCommandTurn } from "./native-command-turns.js";
 import {
@@ -13,7 +16,6 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   classifyManagedNativeMethod,
   managedNativeServerRequests,
-  nativeCommandReceiptSchema,
   type NativeCommandAdmission,
   type NativeCommandContinuation,
   type NativeCommandDispatch,
@@ -127,6 +129,11 @@ export function nativeCommandPolicy(input: NativeCommandAdmission): {
   kind: string;
   active: boolean;
 } {
+  if (
+    input.intent.nativeSettingsOperationId &&
+    input.method !== "thread/settings/update"
+  )
+    throw new NativeCommandError("invalid-settings-operation-scope");
   if (input.method === "serverRequest/reply") {
     if (
       !input.reply ||
@@ -172,25 +179,6 @@ export function nativeCommandPolicy(input: NativeCommandAdmission): {
       input.method === "turn/settings/update",
   };
 }
-function receipt(row: CommandRow): NativeCommandReceipt {
-  return nativeCommandReceiptSchema.parse({
-    chatId: row.chatId,
-    startsExecution: row.kind === "start",
-    operationId: row.operationId,
-    operationGeneration: row.operationGeneration,
-    logicalOperationId: row.logicalOperationId,
-    previousOperationId: row.previousOperationId,
-    activationGeneration: row.activationGeneration,
-    executionLaneId: row.executionLaneId,
-    status: row.status,
-    method: row.method,
-    payloadDigest: row.payloadDigest,
-    rejectionCode: row.rejectionCode,
-    threadId: (row.identity as NativeCommandSession).threadId,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
-  });
-}
 function samePlacement(
   context: ChatExecutionContext | null,
   workerId: string,
@@ -224,6 +212,12 @@ export class NativeCommandRepository {
       transaction: RepositoryTransaction,
     ) => ServerRepository,
   ) {}
+  recordSettingsEvidence(ownerId: string, input: NativeSettingsEvidence) {
+    return new NativeSettingsEvidenceRepository(this.database).record(
+      ownerId,
+      input,
+    );
+  }
   private async lock(
     tx: RepositoryTransaction,
     ownerId: string,
@@ -1347,6 +1341,17 @@ export class NativeCommandRepository {
           .set({
             identity: input.session,
             status: "dispatched",
+            ...(row.method === "thread/settings/update" &&
+            intent.nativeSettingsOperationId
+              ? {
+                  settingsApplication: {
+                    nativeOperationId: intent.nativeSettingsOperationId,
+                    submissionId: null,
+                    status: "pending" as const,
+                    evidenceCount: 0,
+                  },
+                }
+              : {}),
             updatedAt: new Date(),
           })
           .where(eq(schema.nativeCommands.operationId, row.operationId))
