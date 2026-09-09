@@ -525,6 +525,11 @@ describe.skipIf(!binary)(
               entry.method === "thread/settings/updated" &&
               entry.params.threadSettings.model === "native-selected-model",
           )!.params.threadSettings;
+        await vi.waitFor(() =>
+          expect(
+            runtime!.getNativeThreadSettings(threadId).confirmed?.settings,
+          ).toEqual(selectedSettings),
+        );
         let expectedRoot = settings(
           await second.request("thread/resume", { threadId }),
         );
@@ -558,6 +563,9 @@ describe.skipIf(!binary)(
                 ...selectedSettings,
                 approvalPolicy,
               });
+              expect(
+                runtime!.getNativeThreadSettings(threadId).confirmed?.settings,
+              ).toEqual(event!.params.threadSettings);
             },
             { timeout: 5_000 },
           );

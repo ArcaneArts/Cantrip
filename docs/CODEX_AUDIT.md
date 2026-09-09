@@ -1979,6 +1979,49 @@ establish complete settings synchronization or readiness to enable eager startup
 Worker/server revision ordering, effective state, rejection/recovery handling and
 catalog/account mapping remain outstanding.
 
+**Pass 15 — worker settings evidence:**
+
+The worker now retains the complete native settings notification instead of
+discarding everything except collaboration mode. A transport-local reader
+returns a copied confirmed snapshot plus separate requested patches and their
+queue/application/error evidence. This preserves native permission material,
+custom efforts, tier values and future JSON fields without claiming that those
+values have been mapped into an authorized Cantrip route or permission profile.
+
+Plan preparation uses the operation/submission correlation from patch `0021`.
+Queue acknowledgment no longer populates the confirmed Plan Mode cache; pending
+intent deduplicates repeated preparation separately. A notification before its
+acknowledgment is retained, and a late acknowledgment never overwrites a newer
+external selection. Malformed receipts remain unconfirmed, malformed snapshots
+leave the prior observation intact, and thread closure/runtime teardown clear
+transport evidence and reject stale acknowledgments. The Plan Mode getter stays
+observational and retains its explicit display fallback when no native sample
+exists. The setter's returned mode is requested intent, not proof of application.
+
+Submission-correlated asynchronous error notifications update the matching
+worker request. Early errors wait for the submission ID before attribution;
+unrelated turn/child errors are not consumed as settings failures. These worker
+tests do not establish native failure isolation: source inspection still finds
+native `EventMsg::Error` setting thread system-error state before routing a
+settings constraint failure. That native behavior needs its own regression and
+correction before the final authority/settings acceptance matrix can pass.
+
+Validation: 178 tests across five focused worker files pass, including full
+snapshot retention, queue-versus-applied state, early/late acknowledgment/error
+ordering, tier tri-state, stale closure and existing session/observation behavior.
+The production-worker fixture passes against the actual packaged native runtime,
+and now verifies complete worker snapshots against independently observed native
+settings during view attachment and cold recovery. Worker typecheck and
+diff/TypeScript format checks pass. `pnpm check` again stops at the unchanged
+two server decomposition budgets; later broad checks were not reached.
+
+This pass changes neither the durable command receipt contract nor canonical
+server settings. Durable desired/pending/effective revisions, native TUI request
+correlation, account/model mapping, active-turn policy, restart recovery and
+publication into both views remain outstanding. Transport observation sequence
+numbers are explicitly not durable revisions. No app/worker restart, model turn,
+desktop input or CI job is used by these fixtures.
+
 **Still outstanding:** completion of authorized command admission, origin-independent
 lifecycle/CUA authority, durable all-turn projection/replay,
 complete settings parity, eager GUI-first session startup and the full acceptance

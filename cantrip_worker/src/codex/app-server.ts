@@ -1,3 +1,4 @@
+import { NativeThreadSettingsState } from "./native-thread-settings.js";
 import { z } from "zod";
 import { publishPendingInteraction } from "./pending-interaction-publication.js";
 import {
@@ -1683,11 +1684,6 @@ interface NativeCollaborationModeListResponse {
     model: string | null;
     reasoning_effort: RunAgentTurnOptions["model"]["reasoningEffort"];
   }>;
-}
-
-interface ThreadSettingsUpdatedParams {
-  threadId: string;
-  threadSettings: { collaborationMode: NativeCollaborationMode };
 }
 
 interface TurnPlanUpdatedParams {
@@ -4239,7 +4235,7 @@ export class CodexAppServer implements CodexRuntime {
   readonly #rootExecutionsByThread = new Map<string, RootExecution>();
   readonly #orphanAgentThreads = new Map<string, ChildThreadMetadata>();
   readonly #knownAgentThreads = new Map<string, ChildThreadMetadata>();
-  readonly #collaborationModes = new Map<string, PlanMode>();
+  readonly #threadSettings = new NativeThreadSettingsState();
   readonly #diagnosticSecrets = new Set<string>();
   #runtimeIsZai = false;
   readonly #externalImportStatuses = new Map<
@@ -6339,6 +6335,13 @@ export class CodexAppServer implements CodexRuntime {
     return response;
   }
 
+  /** Observation only: never starts a runtime, resumes a thread or writes settings. */
+  getNativeThreadSettings(
+    threadId: string,
+  ): ReturnType<NativeThreadSettingsState["read"]> {
+    return this.#threadSettings.read(threadId);
+  }
+
   async getPlanMode(
     options: GoalRuntimeOptions & { fallbackMode: PlanMode },
   ): Promise<{ mode: PlanMode; threadId: string | null }> {
@@ -6346,7 +6349,7 @@ export class CodexAppServer implements CodexRuntime {
     if (!threadId) {
       return { mode: options.fallbackMode, threadId: null };
     }
-    const knownMode = this.#collaborationModes.get(threadId);
+    const knownMode = this.#threadSettings.confirmedPlanMode(threadId);
     if (knownMode) return { mode: knownMode, threadId };
     // There is no native unloaded settings read. Resuming here would initialize
     // inherited account MCP before managed preparation, without yielding a mode
@@ -6400,7 +6403,7 @@ export class CodexAppServer implements CodexRuntime {
     assertCurrent();
     if (
       options.intent === "configure" &&
-      this.#collaborationModes.get(threadId) !== options.planMode
+      this.#threadSettings.selectedPlanMode(threadId) !== options.planMode
     ) {
       await this.updatePlanModeOnThread(
         threadId,
@@ -7060,7 +7063,7 @@ export class CodexAppServer implements CodexRuntime {
     this.#managedThreadOverlays.clear();
     this.#readyMcpConfigFingerprintsByThread.clear();
     this.#permissionProfilesByThread.clear();
-    this.#collaborationModes.clear();
+    this.#threadSettings.clear();
     this.#externalImportStatuses.clear();
     this.#externalTurnBaselines.clear();
     this.#externalThreadChanges.clear();
@@ -8525,7 +8528,7 @@ export class CodexAppServer implements CodexRuntime {
     this.#managedThreadOverlays.delete(threadId);
     this.#readyMcpConfigFingerprintsByThread.delete(threadId);
     this.#permissionProfilesByThread.delete(threadId);
-    this.#collaborationModes.delete(threadId);
+    this.#threadSettings.forget(threadId);
     this.#goals.delete(threadId);
   }
 
@@ -8590,13 +8593,27 @@ export class CodexAppServer implements CodexRuntime {
     assertCurrent();
     const collaborationMode = await this.collaborationMode(mode, model);
     assertCurrent();
-    if (this.#collaborationModes.get(threadId) !== mode) {
-      await this.request("thread/settings/update", {
-        threadId,
+    if (this.#threadSettings.selectedPlanMode(threadId) !== mode) {
+      const operationId = randomUUID();
+      const pending = this.#threadSettings.begin(threadId, operationId, {
         collaborationMode,
       });
-      assertCurrent();
-      this.#collaborationModes.set(threadId, mode);
+      try {
+        const acknowledgment = await this.request("thread/settings/update", {
+          threadId,
+          operationId,
+          collaborationMode,
+        });
+        assertCurrent();
+        this.#threadSettings.acknowledge(threadId, pending, acknowledgment);
+      } catch (error) {
+        this.#threadSettings.failed(
+          threadId,
+          pending,
+          error instanceof CodexNativeRpcError,
+        );
+        throw error;
+      }
     }
     return collaborationMode;
   }
@@ -8811,7 +8828,7 @@ export class CodexAppServer implements CodexRuntime {
       this.#managedThreadOverlays.clear();
       this.#readyMcpConfigFingerprintsByThread.clear();
       this.#permissionProfilesByThread.clear();
-      this.#collaborationModes.clear();
+      this.#threadSettings.clear();
       this.#externalImportStatuses.clear();
       this.#externalTurnBaselines.clear();
       this.#externalThreadChanges.clear();
@@ -9150,12 +9167,21 @@ export class CodexAppServer implements CodexRuntime {
       );
 
     if (message.method === "thread/settings/updated") {
-      const params = message.params as ThreadSettingsUpdatedParams;
-      this.#collaborationModes.set(
-        params.threadId,
-        params.threadSettings.collaborationMode.mode,
-      );
-      this.observeExternalThreadChange(params.threadId, "plan");
+      try {
+        const { threadId } = this.#threadSettings.observe(message.params);
+        this.observeExternalThreadChange(threadId, "plan");
+      } catch {
+        this.recordDiagnostic(
+          {
+            at: new Date().toISOString(),
+            direction: "from-runtime",
+            kind: "malformed",
+            method: message.method,
+            payload: message.params,
+          },
+          "Malformed native settings notification; confirmed settings were retained.",
+        );
+      }
       return;
     }
 
@@ -10004,6 +10030,7 @@ export class CodexAppServer implements CodexRuntime {
     }
 
     if (message.method === "error") {
+      if (this.#threadSettings.observeError(message.params)) return;
       const params = message.params as ErrorNotificationParams;
       const state = this.notificationTarget(
         params.threadId,
@@ -11046,6 +11073,6 @@ export class CodexAppServer implements CodexRuntime {
     this.#rootExecutionsByThread.clear();
     this.#orphanAgentThreads.clear();
     this.#knownAgentThreads.clear();
-    this.#collaborationModes.clear();
+    this.#threadSettings.clear();
   }
 }
