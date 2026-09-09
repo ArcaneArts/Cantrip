@@ -1935,6 +1935,50 @@ active-turn selection policy and the whole-product acceptance matrix remain
 outstanding. This pass preserves the existing startup trigger and does not
 launch the user's app/worker or CI.
 
+**Pass 14 — native settings correlation and protocol exports:**
+
+Source inspection found the native settings notification reading the current
+mutable configuration rather than the immutable snapshot in its applied event.
+The update response also discards the native submission ID. The new actual-runtime
+fixture fails on the previous packaged binary in both legacy and paginated
+history: five requested changes produce five empty acknowledgments, so the
+caller cannot correlate them with individual applied snapshots.
+
+Reviewed patch `0021` carries optional managed operation
+identity through the queued update, acknowledgment and successful applied event;
+converts the exact committed snapshot; and emits a correlated result for no-op
+updates. Ordinary uncorrelated callers retain their empty response and existing
+deduplication. Operation IDs are correlation metadata, not idempotency keys;
+the acknowledgment means queued, not applied. Asynchronous constraint failures
+retain the native submission-ID error path. Full worker handling of those errors,
+lost acknowledgments and reconnect remains outstanding.
+
+The native schema fixtures and precomputed stable/experimental exports are
+regenerated from the patched protocol. This also brings prior managed execution,
+configuration and history additions into the packaged CLI's generated API.
+Imported upstream remains unchanged; all changes ship in the reviewed patch.
+
+Validation: the final standard packaged release passes all 13 tests across the
+settings, observation, empty-thread attachment and managed-worker fixtures.
+Settings tests cover both history formats, exact ordered snapshots/submission
+IDs, repeated and empty updates, malformed-value rejection followed by recovery,
+custom effort strings and service-tier set/omit/clear. Core intentionally reports
+a tier clear as `"default"`; desired state must preserve the requested tri-state
+separately. The packaged CLI's actual schema-export command is tested too.
+These isolated fixtures use no model turns or desktop input. The prior observation
+fixture's missing `goalEpoch: null` expectation was also reproduced against the
+previous bundle before correction.
+
+All 317 native protocol library tests (plus one intentionally ignored generator),
+42 core settings tests and six TUI settings tests pass. Worker typecheck and
+diff/TypeScript formatting checks pass. Verification confirms all 6,499 pristine
+upstream files and the ordered 20-patch series. The broad repository check stops
+at the same unchanged server decomposition budgets (`chat-turn-runtime.ts` and
+`task-routes.ts`); later broad checks were not reached. These results do not
+establish complete settings synchronization or readiness to enable eager startup.
+Worker/server revision ordering, effective state, rejection/recovery handling and
+catalog/account mapping remain outstanding.
+
 **Still outstanding:** completion of authorized command admission, origin-independent
 lifecycle/CUA authority, durable all-turn projection/replay,
 complete settings parity, eager GUI-first session startup and the full acceptance
