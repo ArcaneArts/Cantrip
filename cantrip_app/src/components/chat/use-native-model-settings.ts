@@ -56,6 +56,18 @@ export function useNativeModelSettings(input: {
     retry: false,
     staleTime: 30_000,
   });
+  // Decryption verifies the attribution MAC alongside the exact native snapshot.
+  // The selected model route is distinct from the session's stable routing identity.
+  const attribution = observed.confirmed
+    ? observed.state.data?.effective?.modelAttribution?.selection
+    : undefined;
+  const currentRouteId =
+    attribution?.status === "resolved" &&
+    binding &&
+    attribution.workerId === binding.workerId &&
+    attribution.providerAccountId === binding.providerAccountId
+      ? attribution.routeId
+      : binding?.modelRouteId;
   const update = {
     isPending,
     error: updateError,
@@ -77,6 +89,7 @@ export function useNativeModelSettings(input: {
         patch = nativeModelSettingsPatch({
           binding,
           inventory: inventory.data,
+          currentRouteId,
           ...selection,
         });
       } catch (error) {
@@ -114,7 +127,7 @@ export function useNativeModelSettings(input: {
       ? resolveNativeModelSelection(
           inventory.data,
           selected.model,
-          binding?.modelRouteId,
+          currentRouteId,
         )
       : null;
   return {

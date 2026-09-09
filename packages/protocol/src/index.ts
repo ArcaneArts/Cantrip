@@ -22,3 +22,5 @@ export * from "./native-initial-turn-settings.js";
 export * from "./native-settings-update.js";
 export * from "./native-history-turn-read.js";
 export * from "./native-account-defaults.js";
+
+export * from "./native-model-attribution.js";

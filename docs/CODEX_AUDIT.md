@@ -2631,8 +2631,9 @@ unchanged chat settings, version conflicts, competing writes, null removal,
 and the existing canonical queue/reconnect behavior. The isolated fake provider
 received no inference request during defaults operations. Imported upstream
 remains pristine; the established build produced all three packaged artifacts.
-Both native account-defaults unit tests passed. Delivery uses this pass’s
-isolated PR with squash auto-merge; merge observation remains the final step.
+Both native account-defaults unit tests passed. PR #1875 was observed squash-merged
+on September 9, 2026 (`9dd48afb56522adf8592227125685e4f84958ed9`);
+Primary was fast-forwarded cleanly and the owned lane removed.
 
 `pnpm check` stops at existing decomposition budgets in untouched
 `chat-turn-runtime.ts` (2275 lines) and `task-routes.ts` (2149 lines), both over 1999. The focused tests and type checks do not imply that the full repository
@@ -2642,6 +2643,48 @@ Remaining goal work includes canonical model-to-route attribution, controlled
 provider/account migration, full replacement presentation/queue/history
 continuity, the remaining all-origin lifecycle and CUA acceptance matrix, and
 eager eligible session preparation with GUI-first presentation.
+
+### Pass 26 — authenticated selected-model route attribution
+
+Native settings reads and automatic notifications now publish the selected
+Cantrip model/route IDs beside the encrypted native snapshot. A separate MAC
+binds those public IDs to the owner, server, encryption key, native source/version
+and exact settings fingerprint. Catalog recovery can enrich the same native
+version without fabricating a native settings change; the durable publication
+revision advances only when the metadata changes. Conflicting resolved metadata
+at the same native version is rejected, and old observations cannot replace a
+newer choice.
+
+The worker resolves within the active provider/account. A known configured route
+is retained when inventory omits it instead of substituting a same-name alias.
+Ambiguous and missing mappings remain explicit. Publication performs no extra
+catalog discovery. The server validates route ownership and provider/account
+scope; stale or removed catalog entries discard only unusable attribution, not
+the actual native settings. The GUI consumes the mapping only after snapshot
+and metadata authentication succeeds.
+
+Selected-model attribution is deliberately separate from the physical session's
+route identity. This avoids retiring the command/CUA gateway merely because a
+native model selection changed. This pass does not yet change immutable turn or
+usage attribution, execution routing, or provider/account migration. Those remain
+required follow-up work; a model string is not evidence of an account switch.
+
+Validation: 29 worker settings-read/publication/encryption/model-mapping tests,
+23 server settings-state/binding tests, seven PGlite ownership/persistence/restart
+cases, and 34 app model-picker/encryption tests passed. The actual pinned native
+managed-session fixture passed, including model changes observed on a second
+native subscription, authenticated production readback, restoration of the
+original choice and unchanged physical route identity. The configured-root
+fixture initially exposed a child-model alias overwriting the root mapping;
+root precedence was corrected before the passing run. Full workspace typechecks
+passed. `pnpm check` still stops at untouched decomposition budgets in
+`chat-turn-runtime.ts` (2275 lines) and `task-routes.ts` (2149 lines), both above
+1999. No CI, personal desktop input or user-worker restart ran.
+
+The full goal remains incomplete: turn/usage routing and attribution, controlled
+provider/account migration, replacement TUI/queue/history continuity, remaining
+all-origin lifecycle/CUA acceptance, and eager GUI-first session preparation
+still require implementation and verification.
 
 ### What “perfect mirror” must mean
 

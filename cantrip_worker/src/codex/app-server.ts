@@ -1,3 +1,4 @@
+import { nativeModelAttribution } from "../native-model-attribution.js";
 import {
   readNativeAccountDefaults,
   writeNativeAccountDefaults,
@@ -4288,6 +4289,10 @@ export function completedCodexThreadTurnFromRead(
 
 export class CodexAppServer implements CodexRuntime {
   readonly #liveManagedModelCatalog = new LiveManagedModelCatalog();
+  readonly #managedAttributionModels = new Map<
+    string,
+    RunAgentTurnOptions["model"]
+  >();
   #managedModelInventoryProvider: RunAgentTurnOptions["provider"] | null = null;
   #managedModelInventoryRefresh: {
     generation: string;
@@ -4312,6 +4317,36 @@ export class CodexAppServer implements CodexRuntime {
   getManagedModelInventory():
     import("@cantrip/protocol").NativeModelInventory | null {
     return structuredClone(this.#managedModelInventory);
+  }
+
+  getManagedModelAttribution(
+    nativeName: string,
+    scope: Pick<
+      import("@cantrip/protocol").NativeSettingsReadScope,
+      "workerId" | "modelRouteId" | "providerAccountId"
+    >,
+  ): import("@cantrip/protocol").NativeModelAttribution {
+    const provider = this.#managedModelInventoryProvider;
+    if (!provider || (provider.accountId ?? null) !== scope.providerAccountId)
+      return { status: "unavailable" };
+    const anchor = scope.modelRouteId
+      ? this.#managedAttributionModels.get(scope.modelRouteId)
+      : undefined;
+    // A configured route remains an exact identity even when discovery omits it.
+    // Never substitute the one remaining alias for that known current route.
+    if (anchor?.name === nativeName)
+      return nativeModelAttribution(scope, nativeName, {
+        workerId: scope.workerId,
+        providerId: provider.id,
+        providerKind: provider.kind,
+        providerAccountId: provider.accountId ?? null,
+        models: [anchor],
+      });
+    return nativeModelAttribution(
+      scope,
+      nativeName,
+      this.#managedModelInventory,
+    );
   }
 
   private async loadManagedModelInventory(
@@ -7626,6 +7661,17 @@ export class CodexAppServer implements CodexRuntime {
           dispatch: (params) =>
             this.request("model/managedCatalog/update", params),
         });
+        if (this.#nativeTransportGeneration === generation) {
+          this.#managedAttributionModels.set(model.routeId, model);
+          if (
+            subagentDefaults &&
+            subagentDefaults.model.routeId !== model?.routeId
+          )
+            this.#managedAttributionModels.set(
+              subagentDefaults.model.routeId,
+              subagentDefaults.model,
+            );
+        }
       }
       return;
     }
@@ -9490,6 +9536,13 @@ export class CodexAppServer implements CodexRuntime {
     this.#nativeTransportGeneration = randomUUID();
     this.#managedModelInventoryProvider = provider;
     this.#managedModelInventory = managedInventory;
+    this.#managedAttributionModels.clear();
+    if (model) this.#managedAttributionModels.set(model.routeId, model);
+    if (subagentDefaults && subagentDefaults.model.routeId !== model?.routeId)
+      this.#managedAttributionModels.set(
+        subagentDefaults.model.routeId,
+        subagentDefaults.model,
+      );
     this.#liveManagedModelCatalog.replace(
       this.#nativeTransportGeneration,
       [
@@ -11770,6 +11823,7 @@ export class CodexAppServer implements CodexRuntime {
     this.#managedModelInventoryProvider = null;
     this.#managedModelInventoryRefresh = null;
     this.#managedModelInventory = null;
+    this.#managedAttributionModels.clear();
     this.#historyObservations.replace(null);
     this.#preparationEpoch += 1;
     this.#threadPreparations.clear();

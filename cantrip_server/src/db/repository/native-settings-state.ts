@@ -103,6 +103,29 @@ function inBinding(
   );
 }
 
+/** Preserve the first resolved route at one immutable native version. Recovery
+ * may fill missing inventory metadata without fabricating a native settings edit. */
+function retainModelAttribution(
+  previous: ProtectedNativeSettingsSnapshot,
+  next: ProtectedNativeSettingsSnapshot,
+): ProtectedNativeSettingsSnapshot {
+  const prior = previous.modelAttribution;
+  const incoming = next.modelAttribution;
+  if (prior?.selection.status === "resolved") {
+    if (
+      incoming?.selection.status === "resolved" &&
+      !isDeepStrictEqual(prior.selection, incoming.selection)
+    )
+      throw new Error(
+        "Native settings version has conflicting model attribution.",
+      );
+    return { ...next, modelAttribution: prior };
+  }
+  return incoming
+    ? next
+    : { ...next, ...(prior ? { modelAttribution: prior } : {}) };
+}
+
 /** Only a fresh, authorized native read may establish or replace a binding.
  * expectedBindingId is a compare-and-set token, not a cached readiness check. */
 export function bindNativeSettingsRead(
@@ -137,6 +160,12 @@ export function bindNativeSettingsRead(
       state.effective.contentFingerprint !== snapshot.contentFingerprint
     )
       throw new Error("Settings version has conflicting content.");
+    else if (
+      next === prior &&
+      state.effective.protectedContent.keyRevision ===
+        snapshot.protectedContent.keyRevision
+    )
+      effective = retainModelAttribution(state.effective, snapshot);
   }
   const pending = state.pending.map((entry) =>
     !sameNativeSource &&
@@ -187,7 +216,12 @@ export function observeNativeSettings(
         );
       if (previous.contentFingerprint !== snapshot.contentFingerprint)
         throw new Error("Settings version has conflicting content.");
-      return state; // Fresh encryption nonces do not create a new settings revision.
+      const effective = retainModelAttribution(previous, snapshot);
+      if (
+        isDeepStrictEqual(previous.modelAttribution, effective.modelAttribution)
+      )
+        return state; // Fresh encryption nonces do not create a new settings revision.
+      return advance({ ...state, effective });
     }
   }
   return advance({ ...state, effective: snapshot });

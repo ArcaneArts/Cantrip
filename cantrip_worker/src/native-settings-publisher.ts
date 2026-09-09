@@ -40,7 +40,8 @@ export class NativeSettingsPublisher {
     private readonly options: {
       scope: NativeSettingsReadScope;
       generation: string;
-      runtime: Pick<CodexAppServer, "observeNativeHistory">;
+      runtime: Pick<CodexAppServer, "observeNativeHistory"> &
+        Partial<Pick<CodexAppServer, "getManagedModelAttribution">>;
       isCurrent(): boolean;
       service: Parameters<typeof protectNativeSettingsSnapshot>[0]["service"];
       client: Pick<NativeCommandClient, "refreshSettings" | "observeSettings">;
@@ -230,6 +231,10 @@ export class NativeSettingsPublisher {
           snapshot: await protectNativeSettingsSnapshot({
             service: this.options.service,
             settings: pending.settings,
+            modelAttribution: this.options.runtime.getManagedModelAttribution?.(
+              pending.settings.model,
+              this.options.scope,
+            ) ?? { status: "unavailable" },
             context: {
               chatId: binding.chatId,
               workerId: binding.workerId,

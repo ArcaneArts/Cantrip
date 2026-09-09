@@ -268,3 +268,60 @@ describe("canonical native settings transitions", () => {
     ).toThrow("generation");
   });
 });
+
+describe("version-bound model attribution", () => {
+  const attribution = (routeId = "selected") => ({
+    selection: {
+      status: "resolved" as const,
+      workerId: "worker",
+      providerId: "provider",
+      providerAccountId: null,
+      modelId: "selected-model",
+      routeId,
+    },
+    fingerprint: "a".repeat(64),
+  });
+  it("fills missing metadata at the same native revision without changing desired settings or the session route", () => {
+    const state = initial();
+    const mapped = observeNativeSettings(state, binding.bindingId, {
+      ...state.effective!,
+      modelAttribution: attribution(),
+    });
+    expect(mapped.revision).toBe(String(BigInt(state.revision) + 1n));
+    expect(mapped.effective!.context).toEqual(state.effective!.context);
+    expect(mapped.effective!.contentFingerprint).toBe(
+      state.effective!.contentFingerprint,
+    );
+    expect(mapped.desired).toEqual(state.desired);
+    expect(mapped.binding!.modelRouteId).toBe("route");
+    expect(
+      observeNativeSettings(mapped, binding.bindingId, { ...state.effective! }),
+    ).toEqual(mapped);
+  });
+  it("rejects contradictory route identity at one native version and ignores late older settings", () => {
+    const state = initial();
+    const mapped = observeNativeSettings(state, binding.bindingId, {
+      ...snapshot("5"),
+      modelAttribution: attribution(),
+    });
+    expect(() =>
+      observeNativeSettings(mapped, binding.bindingId, {
+        ...snapshot("5"),
+        modelAttribution: attribution("other"),
+      }),
+    ).toThrow("conflicting model attribution");
+    expect(
+      observeNativeSettings(mapped, binding.bindingId, {
+        ...snapshot("4"),
+        modelAttribution: attribution("old"),
+      }),
+    ).toEqual(mapped);
+    const next = observeNativeSettings(mapped, binding.bindingId, {
+      ...snapshot("6"),
+      modelAttribution: attribution("new"),
+    });
+    expect(next.effective!.modelAttribution!.selection).toMatchObject({
+      routeId: "new",
+    });
+  });
+});
