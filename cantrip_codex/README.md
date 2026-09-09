@@ -281,3 +281,32 @@ tier marker. Full Cantrip desired/pending/effective settings synchronization
 remains a separate integration requirement; the native
 fields alone do not implement that product state. Current validation evidence is
 recorded in `docs/CODEX_AUDIT.md`.
+
+## Versioned settings reads
+
+Reviewed patch `0023` adds experimental `thread/settings/read` for an already
+loaded thread. It reads the thread's selected settings without resuming the
+thread, changing configuration, submitting model input, or starting MCP. An
+unloaded or invalid thread returns the native lookup error. A read is not a
+barrier for queued settings operations: an acknowledged update may still be
+pending when the snapshot is taken. Use its correlated applied notification to
+establish that the update took effect.
+
+Live settings carry `settingsVersion: { epoch, revision }`. Core captures both
+settings and version under the same state lock, including immutable applied
+snapshots. A changed selection increments the decimal u64 revision; a no-op
+retains it. The epoch changes when Core is replaced. Revisions are comparable
+only within an epoch, and a current read supplies a replacement baseline. Older
+historical snapshots can omit the version; persisted old epochs do not become
+current merely because their result is delivered late.
+
+Cantrip retains newer observed state if an older read arrives afterward. Equal
+versions with conflicting content are reported without replacing the known
+selection. Operation evidence still records older applied requests even when a
+newer selection is confirmed. Thread/transport retirement clears the observation
+scope; neither these versions nor local observation counters are server settings
+revisions or execution grants. These are thread selections for subsequent work,
+not proof that an already-running turn changed its pinned model/settings.
+
+Canonical desired/pending/effective settings publication remains an integration
+requirement. Validation and remaining work are recorded in `docs/CODEX_AUDIT.md`.

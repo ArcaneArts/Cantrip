@@ -327,3 +327,67 @@ describe("native thread settings evidence", () => {
     expect(state.read("root").confirmed?.settings.model).toBe("native-choice");
   });
 });
+
+describe("versioned native settings snapshots", () => {
+  const sample = (
+    revision: string,
+    model = "native-choice",
+    epoch = "core-one",
+  ) => ({
+    ...event(),
+    threadSettings: {
+      ...nativeThreadSettings({ model }),
+      settingsVersion: { epoch, revision },
+    },
+  });
+  it("retains newer live state when an earlier read returns after its notification", () => {
+    const state = new NativeThreadSettingsState();
+    state.observe(sample("9007199254740993", "new-choice"));
+    state.observe(sample("9007199254740992", "old-choice"));
+    expect(state.read("root").confirmed?.settings.model).toBe("new-choice");
+    state.observe(event(undefined, undefined, "unversioned-old-choice"));
+    expect(state.read("root").confirmed?.settings.model).toBe("new-choice");
+  });
+  it("keeps stale operation evidence without regressing the current selection", () => {
+    const state = new NativeThreadSettingsState();
+    const request = state.begin("root", "old", { model: "old-choice" });
+    state.observe(sample("2", "new-choice"));
+    state.observe({
+      ...sample("1", "old-choice"),
+      operationId: "old",
+      submissionId: "submission",
+    });
+    state.acknowledge("root", request, {
+      operationId: "old",
+      submissionId: "submission",
+    });
+    expect(state.read("root").requests[0]?.status).toBe("applied");
+    expect(state.read("root").requests[0]?.applied?.settings.model).toBe(
+      "old-choice",
+    );
+    expect(state.read("root").confirmed?.settings.model).toBe("new-choice");
+  });
+  it("accepts repeated equal versions but rejects contradictory snapshots and malformed counters", () => {
+    const state = new NativeThreadSettingsState();
+    state.observe(sample("1"));
+    state.observe(sample("1"));
+    expect(() => state.observe(sample("1", "conflicting-choice"))).toThrow(
+      "reused",
+    );
+    for (const revision of ["-1", "1.5", "01", "18446744073709551616"])
+      expect(() => state.observe(sample(revision))).toThrow();
+    expect(state.read("root").confirmed?.settings.model).toBe("native-choice");
+  });
+  it("starts a separate epoch only after the old thread observation is retired", () => {
+    const state = new NativeThreadSettingsState();
+    state.observe(sample("12"));
+    expect(() =>
+      state.observe(sample("0", "recovered-choice", "core-two")),
+    ).toThrow("epoch");
+    state.forget("root");
+    state.observe(sample("0", "recovered-choice", "core-two"));
+    expect(state.read("root").confirmed?.settings.model).toBe(
+      "recovered-choice",
+    );
+  });
+});

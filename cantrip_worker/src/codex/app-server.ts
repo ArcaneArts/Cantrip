@@ -6402,6 +6402,30 @@ export class CodexAppServer implements CodexRuntime {
     return this.#threadSettings.read(threadId);
   }
 
+  /** Read Core's atomic settings/version snapshot, without loading or configuring it. */
+  async readNativeThreadSettings(
+    threadId: string,
+  ): Promise<ReturnType<NativeThreadSettingsState["read"]>> {
+    const generation = this.transportGeneration;
+    const preparationVersion =
+      this.#threadPreparationVersions.get(threadId) ?? 0;
+    const value = (await this.request("thread/settings/read", {
+      threadId,
+    })) as { threadId?: unknown };
+    if (
+      this.transportGeneration !== generation ||
+      (this.#threadPreparationVersions.get(threadId) ?? 0) !==
+        preparationVersion
+    )
+      throw new Error(
+        "Native settings read belongs to a replaced thread or transport.",
+      );
+    if (value.threadId !== threadId)
+      throw new Error("Native settings read returned another thread.");
+    this.#threadSettings.observe(value);
+    return this.#threadSettings.read(threadId);
+  }
+
   async getPlanMode(
     options: GoalRuntimeOptions & { fallbackMode: PlanMode },
   ): Promise<{ mode: PlanMode; threadId: string | null }> {

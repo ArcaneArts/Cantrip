@@ -451,6 +451,19 @@ describe.skipIf(!binary)(
         };
         let first = await connect();
         let second = await connect();
+        const initialSettingsRead =
+          await runtime.readNativeThreadSettings(threadId);
+        const initialSettingsVersion =
+          initialSettingsRead.confirmed!.settings.settingsVersion!;
+        expect(initialSettingsVersion).toEqual({
+          epoch: expect.any(String),
+          revision: expect.stringMatching(/^[0-9]+$/),
+        });
+        expect(
+          (await runtime.readNativeThreadSettings(threadId)).confirmed
+            ?.settings,
+        ).toEqual(initialSettingsRead.confirmed!.settings);
+
         const picker = await first.request("model/list", {});
         expect(picker.data.map((entry: JsonObject) => entry.model)).toEqual([
           "gpt-5",
@@ -578,6 +591,13 @@ describe.skipIf(!binary)(
           const resumed = await second.request("thread/resume", { threadId });
           expect(resumed.thread.sessionId).toBe(engineSessionId);
           expect(settings(resumed)).toEqual(expectedRoot);
+          const before = await runtime!.readNativeThreadSettings(threadId);
+          const version = before.confirmed!.settings.settingsVersion!;
+          expect(before.confirmed!.settings).toEqual({
+            ...selectedSettings,
+            approvalPolicy: expectedRoot.approvalPolicy,
+            settingsVersion: version,
+          });
           const at = second.messages.length;
           // Native deduplicates empty updates. Probe a field whose pre-probe
           // value was just verified by resume so personality/collaboration and
@@ -597,6 +617,10 @@ describe.skipIf(!binary)(
               expect(event!.params.threadSettings).toEqual({
                 ...selectedSettings,
                 approvalPolicy,
+                settingsVersion: {
+                  epoch: version.epoch,
+                  revision: (BigInt(version.revision) + 1n).toString(),
+                },
               });
               expect(
                 runtime!.getNativeThreadSettings(threadId).confirmed?.settings,
@@ -684,6 +708,15 @@ describe.skipIf(!binary)(
         );
         coordinator = new ManagedSessionCoordinator(journal);
         expect(await coordinator.prepare(preserve("three"))).toEqual(prepared);
+        const recoveredSettings =
+          await runtime.readNativeThreadSettings(threadId);
+        expect(
+          recoveredSettings.confirmed!.settings.settingsVersion!.epoch,
+        ).not.toBe(initialSettingsVersion.epoch);
+        expect(recoveredSettings.confirmed!.settings.model).toBe(
+          expectedRoot.model,
+        );
+
         second = await connect(restartedEndpoint);
         const coldJoined = await first.request("thread/resume", { threadId });
         engineSessionId = coldJoined.thread.sessionId;

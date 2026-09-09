@@ -148,6 +148,28 @@ describe("managed native gateway", () => {
     expect(managedNativeMethods.get("invented/mutation")).toBeUndefined();
   });
 
+  it("forwards settings reads without a mutation admission or synthetic turn", async () => {
+    const admission = vi.fn(async () => admitted());
+    const f = await fixture(admission);
+    expect(managedNativeMethods.get("thread/settings/read")).toBe("read");
+    expect(
+      (await f.request("thread/settings/read", { threadId: identity.threadId }))
+        .result,
+    ).toEqual({ accepted: "thread/settings/read" });
+    expect(admission).not.toHaveBeenCalled();
+    expect(
+      f.messages.filter(
+        (frame) =>
+          frame.method !== "initialize" && frame.method !== "initialized",
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        method: "thread/settings/read",
+        params: { threadId: identity.threadId },
+      }),
+    ]);
+  });
+
   it("admits before actual forwarding and records the actual receipt", async () => {
     const grant = deferred();
     const settle = vi.fn(async () => {});
