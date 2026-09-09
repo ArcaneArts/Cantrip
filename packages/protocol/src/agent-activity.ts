@@ -346,6 +346,7 @@ export const agentActivitySchema = z.discriminatedUnion("type", [
     type: z.literal("nativeItem"),
     kind: z.enum([
       "hookPrompt",
+      "interAgentCommunication",
       "functionCallOutput",
       "sleep",
       "imageGeneration",

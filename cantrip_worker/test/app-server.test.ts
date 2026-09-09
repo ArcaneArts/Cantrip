@@ -369,6 +369,66 @@ describe("Codex rich event normalization", () => {
     });
   });
 
+  it("retains live agent communication identity without exposing opaque payloads", () => {
+    const item = {
+      type: "interAgentCommunication" as const,
+      id: "agent_message_fixture",
+      author: "/root",
+      recipient: "/root/reviewer",
+      otherRecipients: ["/root/checker"],
+      triggerTurn: true,
+      text: "  Inspect this change.\nKeep this spacing.  ",
+      encryptedContent: null,
+    };
+    const correlation = {
+      sourceMethod: "item/completed",
+      diagnosticId: null,
+      threadId: "child-thread",
+      turnId: "child-turn",
+      itemId: item.id,
+    };
+    const normalize = (
+      value:
+        | typeof item
+        | (Omit<typeof item, "encryptedContent"> & {
+            encryptedContent: string;
+          }),
+      lifecycle: "started" | "completed" = "completed",
+    ) =>
+      normalizeCodexThreadItem(value, "/workspace", lifecycle, correlation, {
+        captureRaw: true,
+        startedAtMs: 1_000,
+        completedAtMs: lifecycle === "completed" ? 1_200 : null,
+      });
+    expect(normalize(item)).toMatchObject({
+      type: "nativeItem",
+      kind: "interAgentCommunication",
+      id: item.id,
+      title: "Agent task · /root → /root/reviewer, /root/checker",
+      details: item.text,
+      status: "completed",
+      durationMs: 200,
+      correlation,
+    });
+    expect(normalize(item, "started")).toMatchObject({
+      status: "running",
+      durationMs: null,
+    });
+    const encrypted = normalize({
+      ...item,
+      encryptedContent: "opaque-native-secret",
+    });
+    expect(encrypted).toMatchObject({
+      id: item.id,
+      details: "Encrypted agent message; text unavailable.",
+    });
+    expect(JSON.stringify(encrypted)).not.toContain("opaque-native-secret");
+    expect(JSON.stringify(encrypted)).not.toContain(item.text);
+    expect(
+      normalize({ ...item, otherRecipients: [42] as unknown as string[] }),
+    ).toBeNull();
+  });
+
   it("keeps supported reasoning summaries and drops private reasoning content", () => {
     const activity = normalizeCodexThreadItem(
       {

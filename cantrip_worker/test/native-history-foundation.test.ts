@@ -988,6 +988,19 @@ describe.skipIf(!binary)("pinned native history foundation", () => {
         const parentAfterChild = await readCodexNativeHistory(rpc, threadId);
         expect(childHistory.thread.parentThreadId).toBe(threadId);
         const childTurn = childHistory.thread.turns.at(-1)!;
+        expect(
+          childTurn.items.find(
+            (item) => item.type === "interAgentCommunication",
+          ),
+        ).toMatchObject({
+          author: "/root",
+          recipient: "/root/history_child",
+          triggerTurn: true,
+          // This synthetic tool result uses the native encrypted-argument path.
+          // Opaque payloads must remain retained without becoming display text.
+          text: null,
+          encryptedContent: expect.stringContaining("HISTORY_CHILD_FIXTURE"),
+        });
         const childMetadata = childHistory.history!.turns.find(
           (value) => value.turnId === childTurn.id,
         )!;

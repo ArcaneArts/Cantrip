@@ -229,3 +229,25 @@ retention enabled and disabled. An actual child finishes after its parent to
 check inherited retention, late activity, scoped usage and restart recovery.
 Validation status is recorded in
 `docs/CODEX_AUDIT.md`; a fixture's presence alone is not evidence that it passed.
+
+## Agent communication history
+
+Reviewed patch `0020` emits a distinct `interAgentCommunication` item when an
+agent consumes an inter-agent request or message. Its model-context record and
+display item share the same native ID. Ordinary legacy and paginated history,
+canonical retention, live item notifications and the bundled CLI retain this
+item without treating it as a root-user prompt, final assistant answer or extra
+tool invocation.
+
+The public item includes author/recipient paths, other recipients, whether the
+message triggers a turn, nullable display text and an optional opaque encrypted
+payload. A payload marked encrypted is never rendered as plaintext. Cantrip
+keeps the source encrypted through its history pipeline and shows an unavailable
+notice when display text cannot be recovered. This does not decrypt native
+provider payloads or reinterpret unspecified encryption metadata.
+
+This emission applies when a communication is consumed by the patched runtime.
+Recovering communication display items from older raw-only histories and showing
+mailbox messages before consumption require separate reconciliation work.
+Validation status and the remaining acceptance matrix are in
+`docs/CODEX_AUDIT.md`.

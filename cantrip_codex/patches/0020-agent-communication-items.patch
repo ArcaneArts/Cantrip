@@ -1,0 +1,529 @@
+diff --git a/codex-rs/analytics/src/reducer.rs b/codex-rs/analytics/src/reducer.rs
+index be5b8f2..21cc96a 100644
+--- a/codex-rs/analytics/src/reducer.rs
++++ b/codex-rs/analytics/src/reducer.rs
+@@ -497,6 +497,7 @@ impl TurnToolCounts {
+             ThreadItem::ImageGeneration(_) => self.image_generation += 1,
+             ThreadItem::UserMessage { .. }
+             | ThreadItem::HookPrompt { .. }
++            | ThreadItem::InterAgentCommunication { .. }
+             | ThreadItem::AgentMessage { .. }
+             | ThreadItem::FunctionCallOutput { .. }
+             | ThreadItem::Plan { .. }
+@@ -2479,6 +2480,7 @@ pub(crate) fn tracked_tool_item_id(item: &ThreadItem) -> Option<&str> {
+         ThreadItem::ImageGeneration(item) => Some(&item.id),
+         ThreadItem::UserMessage { .. }
+         | ThreadItem::HookPrompt { .. }
++        | ThreadItem::InterAgentCommunication { .. }
+         | ThreadItem::AgentMessage { .. }
+         | ThreadItem::FunctionCallOutput { .. }
+         | ThreadItem::Plan { .. }
+diff --git a/codex-rs/app-server-protocol/src/protocol/thread_history.rs b/codex-rs/app-server-protocol/src/protocol/thread_history.rs
+index 896fbd4..e1cc245 100644
+--- a/codex-rs/app-server-protocol/src/protocol/thread_history.rs
++++ b/codex-rs/app-server-protocol/src/protocol/thread_history.rs
+@@ -723,7 +723,8 @@ impl ThreadHistoryBuilder {
+         );
+         let should_upsert = match item {
+             codex_protocol::items::TurnItem::Plan(plan) => !plan.text.is_empty(),
+-            codex_protocol::items::TurnItem::HookPrompt(_)
++            codex_protocol::items::TurnItem::InterAgentCommunication(_)
++            | codex_protocol::items::TurnItem::HookPrompt(_)
+             | codex_protocol::items::TurnItem::FunctionCallOutput(_)
+             | codex_protocol::items::TurnItem::CommandExecution(_)
+             | codex_protocol::items::TurnItem::DynamicToolCall(_)
+diff --git a/codex-rs/app-server-protocol/src/protocol/v2/item.rs b/codex-rs/app-server-protocol/src/protocol/v2/item.rs
+index 9b24e09..b55ac24 100644
+--- a/codex-rs/app-server-protocol/src/protocol/v2/item.rs
++++ b/codex-rs/app-server-protocol/src/protocol/v2/item.rs
+@@ -247,6 +247,18 @@ pub enum ThreadItem {
+     },
+     #[serde(rename_all = "camelCase")]
+     #[ts(rename_all = "camelCase")]
++    InterAgentCommunication {
++        id: String,
++        author: String,
++        recipient: String,
++        other_recipients: Vec<String>,
++        /// None means the payload is encrypted and cannot be displayed as text.
++        text: Option<String>,
++        encrypted_content: Option<String>,
++        trigger_turn: bool,
++    },
++    #[serde(rename_all = "camelCase")]
++    #[ts(rename_all = "camelCase")]
+     AgentMessage {
+         id: String,
+         text: String,
+@@ -440,6 +452,7 @@ impl ThreadItem {
+         match self {
+             ThreadItem::UserMessage { id, .. }
+             | ThreadItem::HookPrompt { id, .. }
++            | ThreadItem::InterAgentCommunication { id, .. }
+             | ThreadItem::AgentMessage { id, .. }
+             | ThreadItem::FunctionCallOutput { id, .. }
+             | ThreadItem::Plan { id, .. }
+@@ -862,6 +875,25 @@ impl From<CoreTurnItem> for ThreadItem {
+                 client_id: user.client_id,
+                 content: user.content.into_iter().map(UserInput::from).collect(),
+             },
++            CoreTurnItem::InterAgentCommunication(item) => {
++                let communication = item.communication;
++                ThreadItem::InterAgentCommunication {
++                    id: item.id,
++                    author: communication.author.to_string(),
++                    recipient: communication.recipient.to_string(),
++                    other_recipients: communication
++                        .other_recipients
++                        .into_iter()
++                        .map(|path| path.to_string())
++                        .collect(),
++                    text: communication
++                        .encrypted_content
++                        .is_none()
++                        .then_some(communication.content),
++                    encrypted_content: communication.encrypted_content,
++                    trigger_turn: communication.trigger_turn,
++                }
++            }
+             CoreTurnItem::HookPrompt(hook_prompt) => ThreadItem::HookPrompt {
+                 id: hook_prompt.id,
+                 fragments: hook_prompt
+diff --git a/codex-rs/app-server-protocol/src/protocol/v2/tests.rs b/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
+index f6f2fee..2c48a40 100644
+--- a/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
++++ b/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
+@@ -5159,3 +5159,50 @@ fn tool_request_user_input_params_default_legacy_missing_is_blocking_to_true() {
+         }
+     );
+ }
++
++#[test]
++fn inter_agent_communication_items_preserve_identity_and_encrypted_payload_boundaries() {
++    use codex_protocol::items::InterAgentCommunicationItem;
++    use codex_protocol::protocol::InterAgentCommunication;
++    let author = codex_protocol::AgentPath::root();
++    let recipient = author.join("worker").unwrap();
++    for encrypted in [false, true] {
++        let communication = if encrypted {
++            InterAgentCommunication::new_encrypted(
++                author.clone(),
++                recipient.clone(),
++                vec![],
++                "ciphertext-only".into(),
++                true,
++            )
++        } else {
++            InterAgentCommunication::new(
++                author.clone(),
++                recipient.clone(),
++                vec![],
++                "exact child request\n".into(),
++                true,
++            )
++        };
++        let item = ThreadItem::from(TurnItem::InterAgentCommunication(
++            InterAgentCommunicationItem {
++                id: "communication-id".into(),
++                communication,
++            },
++        ));
++        let value = serde_json::to_value(&item).unwrap();
++        assert_eq!(value["type"], "interAgentCommunication");
++        assert_eq!(value["id"], "communication-id");
++        assert_eq!(value["author"], "/root");
++        assert_eq!(value["recipient"], "/root/worker");
++        assert_eq!(value["triggerTurn"], true);
++        if encrypted {
++            assert_eq!(value["text"], serde_json::Value::Null);
++            assert_eq!(value["encryptedContent"], "ciphertext-only");
++        } else {
++            assert_eq!(value["text"], "exact child request\n");
++            assert_eq!(value["encryptedContent"], serde_json::Value::Null);
++        }
++        assert_eq!(serde_json::from_value::<ThreadItem>(value).unwrap(), item);
++    }
++}
+diff --git a/codex-rs/app-server/src/notification_media.rs b/codex-rs/app-server/src/notification_media.rs
+index 3009846..484151f 100644
+--- a/codex-rs/app-server/src/notification_media.rs
++++ b/codex-rs/app-server/src/notification_media.rs
+@@ -188,7 +188,8 @@ fn without_thread_item_media(mut item: ThreadItem) -> ThreadItem {
+             });
+         }
+         ThreadItem::ImageGeneration(item) => item.result.clear(),
+-        ThreadItem::HookPrompt { .. }
++        ThreadItem::InterAgentCommunication { .. }
++        | ThreadItem::HookPrompt { .. }
+         | ThreadItem::AgentMessage { .. }
+         | ThreadItem::Plan { .. }
+         | ThreadItem::Reasoning { .. }
+diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
+index 6b5a419..4bfd057 100644
+--- a/codex-rs/core/src/session/mod.rs
++++ b/codex-rs/core/src/session/mod.rs
+@@ -3849,9 +3849,24 @@ impl Session {
+     pub(crate) async fn record_inter_agent_communication(
+         &self,
+         turn_context: &TurnContext,
+-        communication: InterAgentCommunication,
++        mut communication: InterAgentCommunication,
+     ) {
++        // Assign one ID before both model-context and display persistence. A
++        // communication is not a root user prompt or an assistant final answer.
++        let id = communication
++            .id
++            .clone()
++            .filter(|id| !id.is_empty())
++            .unwrap_or_else(|| ResponseItemId::new("agent_message"));
++        communication.id = Some(id.clone());
+         let response_item = communication.to_model_input_item();
++        let display_item =
++            TurnItem::InterAgentCommunication(codex_protocol::items::InterAgentCommunicationItem {
++                id: id.to_string(),
++                communication: communication.clone(),
++            });
++        self.emit_turn_item_started(turn_context, &display_item)
++            .await;
+         let (items, _) = self.prepare_conversation_items_for_history(
+             turn_context,
+             std::slice::from_ref(&response_item),
+@@ -3874,6 +3889,8 @@ impl Session {
+         ])
+         .await;
+         self.send_raw_response_items(turn_context, items).await;
++        self.emit_turn_item_completed(turn_context, display_item)
++            .await;
+     }
+ 
+     async fn maybe_warn_on_server_model_mismatch(
+diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
+index 5d1dd15..9f660c9 100644
+--- a/codex-rs/core/src/session/tests.rs
++++ b/codex-rs/core/src/session/tests.rs
+@@ -2624,6 +2624,22 @@ async fn record_inter_agent_communication_sets_turn_id_in_rollout_and_resume() {
+     else {
+         panic!("expected resumed rollout history");
+     };
++    let display = resumed
++        .history
++        .iter()
++        .find_map(|record| match record {
++            RolloutItem::EventMsg(EventMsg::ItemCompleted(event)) => match &event.item {
++                TurnItem::InterAgentCommunication(item) => Some((event, item)),
++                _ => None,
++            },
++            _ => None,
++        })
++        .expect("communication display item must be durable");
++    assert_eq!(display.0.turn_id, turn_context.sub_id);
++    assert_eq!(display.1.id, recorded_items[0].id().unwrap().as_str());
++    assert_eq!(display.1.communication.content, "child done");
++    assert_eq!(display.1.communication.author.to_string(), "/root/worker");
++    assert_eq!(display.1.communication.recipient.to_string(), "/root");
+     let persisted_items = resumed
+         .history
+         .iter()
+diff --git a/codex-rs/protocol/src/items.rs b/codex-rs/protocol/src/items.rs
+index 362854f..a95f171 100644
+--- a/codex-rs/protocol/src/items.rs
++++ b/codex-rs/protocol/src/items.rs
+@@ -46,6 +46,7 @@ pub enum TurnItem {
+     UserMessage(UserMessageItem),
+     FunctionCallOutput(FunctionCallOutputItem),
+     HookPrompt(HookPromptItem),
++    InterAgentCommunication(InterAgentCommunicationItem),
+     AgentMessage(AgentMessageItem),
+     Plan(PlanItem),
+     Reasoning(ReasoningItem),
+@@ -95,6 +96,12 @@ pub struct FunctionCallOutputItem {
+     pub output: FunctionCallOutputBody,
+ }
+ 
++#[derive(Debug, Clone, Deserialize, Serialize, TS, JsonSchema, PartialEq, Eq)]
++pub struct InterAgentCommunicationItem {
++    pub id: String,
++    pub communication: crate::protocol::InterAgentCommunication,
++}
++
+ #[derive(Debug, Clone, Deserialize, Serialize, TS, JsonSchema, PartialEq, Eq)]
+ pub struct HookPromptItem {
+     pub id: String,
+@@ -702,6 +709,7 @@ impl TurnItem {
+             TurnItem::UserMessage(item) => item.id.clone(),
+             TurnItem::FunctionCallOutput(item) => item.id.clone(),
+             TurnItem::HookPrompt(item) => item.id.clone(),
++            TurnItem::InterAgentCommunication(item) => item.id.clone(),
+             TurnItem::AgentMessage(item) => item.id.clone(),
+             TurnItem::Plan(item) => item.id.clone(),
+             TurnItem::Reasoning(item) => item.id.clone(),
+diff --git a/codex-rs/protocol/src/legacy_events.rs b/codex-rs/protocol/src/legacy_events.rs
+index 2ef68b9..513952a 100644
+--- a/codex-rs/protocol/src/legacy_events.rs
++++ b/codex-rs/protocol/src/legacy_events.rs
+@@ -527,7 +527,7 @@ impl TurnItem {
+             TurnItem::CommandExecution(_)
+             | TurnItem::DynamicToolCall(_)
+             | TurnItem::CollabAgentToolCall(_) => Vec::new(),
+-            TurnItem::SubAgentActivity(_) => Vec::new(),
++            TurnItem::SubAgentActivity(_) | TurnItem::InterAgentCommunication(_) => Vec::new(),
+             TurnItem::WebSearch(item) => vec![item.as_legacy_event()],
+             TurnItem::ImageView(item) => {
+                 vec![EventMsg::ViewImageToolCall(ViewImageToolCallEvent {
+diff --git a/codex-rs/rollout/src/persistence_metrics.rs b/codex-rs/rollout/src/persistence_metrics.rs
+index 7344266..6e423db 100644
+--- a/codex-rs/rollout/src/persistence_metrics.rs
++++ b/codex-rs/rollout/src/persistence_metrics.rs
+@@ -265,6 +265,7 @@ fn turn_item_type(item: &TurnItem) -> &'static str {
+         TurnItem::UserMessage(_) => "user_message",
+         TurnItem::FunctionCallOutput(_) => "function_call_output",
+         TurnItem::HookPrompt(_) => "hook_prompt",
++        TurnItem::InterAgentCommunication(_) => "inter_agent_communication",
+         TurnItem::AgentMessage(_) => "agent_message",
+         TurnItem::Plan(_) => "plan",
+         TurnItem::Reasoning(_) => "reasoning",
+diff --git a/codex-rs/rollout/src/policy.rs b/codex-rs/rollout/src/policy.rs
+index 8b27c99..1e05cdb 100644
+--- a/codex-rs/rollout/src/policy.rs
++++ b/codex-rs/rollout/src/policy.rs
+@@ -99,6 +99,7 @@ pub fn should_persist_event_msg(ev: &EventMsg, history_mode: ThreadHistoryMode)
+                 || matches!(
+                     event.item,
+                     TurnItem::FunctionCallOutput(_)
++                        | TurnItem::InterAgentCommunication(_)
+                         | TurnItem::Plan(_)
+                         | TurnItem::Extension(ExtensionItem::Sleep(_))
+                 )
+diff --git a/codex-rs/thread-store/src/local/thread_history.rs b/codex-rs/thread-store/src/local/thread_history.rs
+index 28ccbc6..4779bf2 100644
+--- a/codex-rs/thread-store/src/local/thread_history.rs
++++ b/codex-rs/thread-store/src/local/thread_history.rs
+@@ -528,6 +528,7 @@ WHERE thread_id = ?
+                 ..
+             }
+             | ThreadItem::HookPrompt { .. }
++            | ThreadItem::InterAgentCommunication { .. }
+             | ThreadItem::FunctionCallOutput { .. }
+             | ThreadItem::Plan { .. }
+             | ThreadItem::Reasoning { .. }
+diff --git a/codex-rs/thread-store/src/local/thread_history/search.rs b/codex-rs/thread-store/src/local/thread_history/search.rs
+index f93fe61..ed419ed 100644
+--- a/codex-rs/thread-store/src/local/thread_history/search.rs
++++ b/codex-rs/thread-store/src/local/thread_history/search.rs
+@@ -331,6 +331,7 @@ fn searchable_text(item: &ThreadItem) -> Option<Cow<'_, str>> {
+             let text = markdown_to_search_text(text);
+             (!text.is_empty()).then_some(Cow::Owned(text))
+         }
++        ThreadItem::InterAgentCommunication { text, .. } => text.as_deref().map(Cow::Borrowed),
+         ThreadItem::HookPrompt { .. }
+         | ThreadItem::FunctionCallOutput { .. }
+         | ThreadItem::Plan { .. }
+diff --git a/codex-rs/tui/src/app/agent_status_feed.rs b/codex-rs/tui/src/app/agent_status_feed.rs
+index 1039b04..b6df2ba 100644
+--- a/codex-rs/tui/src/app/agent_status_feed.rs
++++ b/codex-rs/tui/src/app/agent_status_feed.rs
+@@ -170,6 +170,11 @@ fn activity_summary(item: &ThreadItem) -> Option<String> {
+             };
+             return Some(action.to_string());
+         }
++        ThreadItem::InterAgentCommunication {
++            author, recipient, ..
++        } => {
++            return bounded_summary(&format!("Agent message: {author} → {recipient}"));
++        }
+         ThreadItem::SubAgentActivity {
+             kind, agent_path, ..
+         } => {
+diff --git a/codex-rs/tui/src/chatwidget/replay.rs b/codex-rs/tui/src/chatwidget/replay.rs
+index cb2c8d8..c701237 100644
+--- a/codex-rs/tui/src/chatwidget/replay.rs
++++ b/codex-rs/tui/src/chatwidget/replay.rs
+@@ -221,6 +221,28 @@ impl ChatWidget {
+                     ));
+                 }
+             }
++            ThreadItem::InterAgentCommunication {
++                author,
++                recipient,
++                other_recipients,
++                text,
++                encrypted_content,
++                trigger_turn,
++                ..
++            } => {
++                self.add_to_history(history_cell::PrefixedWrappedHistoryCell::new(
++                    crate::thread_transcript::agent_communication_text(
++                        &author,
++                        &recipient,
++                        &other_recipients,
++                        text.as_deref(),
++                        encrypted_content.is_some(),
++                        trigger_turn,
++                    ),
++                    "• ".dim(),
++                    "  ",
++                ));
++            }
+             ThreadItem::HookPrompt { .. } => {}
+             ThreadItem::CollabAgentToolCall {
+                 id,
+diff --git a/codex-rs/tui/src/dynamic_tools.rs b/codex-rs/tui/src/dynamic_tools.rs
+index f918fe0..f3fffa6 100644
+--- a/codex-rs/tui/src/dynamic_tools.rs
++++ b/codex-rs/tui/src/dynamic_tools.rs
+@@ -1071,6 +1071,7 @@ async fn execute_inner(
+                                     ThreadItem::UserMessage { .. }
+                                     | ThreadItem::FunctionCallOutput { .. }
+                                     | ThreadItem::HookPrompt { .. }
++                                    | ThreadItem::InterAgentCommunication { .. }
+                                     | ThreadItem::AgentMessage { .. }
+                                     | ThreadItem::Plan { .. }
+                                     | ThreadItem::Reasoning { .. }
+@@ -1351,6 +1352,12 @@ fn turn_summary(turn: &Turn, include_outputs: bool, output_chars: usize) -> Valu
+                     UserInput::Mention { name, path } => json!({"type": "mention", "name": name, "path": path}),
+                 }).collect::<Vec<_>>()
+             }),
++            ThreadItem::InterAgentCommunication { id, author, recipient, other_recipients, text, encrypted_content, trigger_turn } => json!({
++                "type": "interAgentCommunication", "id": id, "author": author,
++                "recipient": recipient, "otherRecipients": other_recipients,
++                "text": text.as_deref().map(|text| truncate(text, DEFAULT_OUTPUT_CHARS)),
++                "encrypted": encrypted_content.is_some(), "triggerTurn": trigger_turn
++            }),
+             ThreadItem::HookPrompt { id, fragments } => json!({
+                 "type": "hookPrompt", "id": id, "fragmentCount": fragments.len()
+             }),
+diff --git a/codex-rs/tui/src/thread_transcript.rs b/codex-rs/tui/src/thread_transcript.rs
+index 2c5f44e..9f34eda 100644
+--- a/codex-rs/tui/src/thread_transcript.rs
++++ b/codex-rs/tui/src/thread_transcript.rs
+@@ -135,6 +135,28 @@ pub(crate) fn thread_items_to_transcript_cells(
+                     )));
+                 }
+             }
++            ThreadItem::InterAgentCommunication {
++                author,
++                recipient,
++                other_recipients,
++                text,
++                encrypted_content,
++                trigger_turn,
++                ..
++            } => {
++                cells.push(Arc::new(PrefixedWrappedHistoryCell::new(
++                    agent_communication_text(
++                        &author,
++                        &recipient,
++                        &other_recipients,
++                        text.as_deref(),
++                        encrypted_content.is_some(),
++                        trigger_turn,
++                    ),
++                    "• ".dim(),
++                    "  ",
++                )));
++            }
+             ThreadItem::FunctionCallOutput {
+                 name,
+                 namespace,
+@@ -267,6 +289,28 @@ fn fallback_transcript_cell(item: &ThreadItem) -> Option<PlainHistoryCell> {
+         ThreadItem::CollabAgentToolCall { tool, status, .. } => {
+             vec![format!("agent tool: {tool:?} · {status:?}").dim().into()]
+         }
++        ThreadItem::InterAgentCommunication {
++            author,
++            recipient,
++            other_recipients,
++            text,
++            encrypted_content,
++            trigger_turn,
++            ..
++        } => {
++            vec![
++                agent_communication_text(
++                    author,
++                    recipient,
++                    other_recipients,
++                    text.as_deref(),
++                    encrypted_content.is_some(),
++                    *trigger_turn,
++                )
++                .dim()
++                .into(),
++            ]
++        }
+         ThreadItem::SubAgentActivity {
+             kind, agent_path, ..
+         } => {
+@@ -309,3 +353,72 @@ fn fallback_transcript_cell(item: &ThreadItem) -> Option<PlainHistoryCell> {
+     };
+     (!lines.is_empty()).then(|| PlainHistoryCell::new(lines))
+ }
++
++pub(crate) fn agent_communication_text(
++    author: &str,
++    recipient: &str,
++    other_recipients: &[String],
++    text: Option<&str>,
++    encrypted: bool,
++    trigger_turn: bool,
++) -> String {
++    let recipients = std::iter::once(recipient)
++        .chain(other_recipients.iter().map(String::as_str))
++        .collect::<Vec<_>>()
++        .join(", ");
++    let kind = if trigger_turn {
++        "Agent task"
++    } else {
++        "Agent message"
++    };
++    let content = if encrypted {
++        "Encrypted agent message; text unavailable."
++    } else {
++        text.unwrap_or("Agent message text unavailable.")
++    };
++    format!("{kind} · {author} → {recipients}\n{content}")
++}
++
++#[cfg(test)]
++mod communication_tests {
++    use super::*;
++
++    #[test]
++    fn communication_transcripts_label_text_and_hide_opaque_payloads() {
++        let cwd = AbsolutePathBuf::try_from(std::env::current_dir().unwrap()).unwrap();
++        for encrypted in [false, true] {
++            let item = ThreadItem::InterAgentCommunication {
++                id: "communication".into(),
++                author: "/root".into(),
++                recipient: "/root/worker".into(),
++                other_recipients: vec!["/root/reviewer".into()],
++                text: Some("exact request".into()),
++                encrypted_content: encrypted.then(|| "ciphertext-only".into()),
++                trigger_turn: true,
++            };
++            let cells = thread_items_to_transcript_cells(
++                None,
++                &cwd,
++                vec![item],
++                RawReasoningVisibility::Hidden,
++                None,
++            );
++            assert_eq!(cells.len(), 1);
++            let text = cells[0]
++                .display_lines(120)
++                .iter()
++                .flat_map(|line| line.spans.iter().map(|span| span.content.as_ref()))
++                .collect::<String>();
++            assert!(text.contains("Agent task"));
++            assert!(text.contains("/root/reviewer"));
++            assert_eq!(text.contains("exact request"), !encrypted);
++            assert!(text.contains("/root/worker"));
++            assert!(!text.contains("ciphertext-only"));
++            assert!(text.contains(if encrypted {
++                "Encrypted agent message"
++            } else {
++                "exact request"
++            }));
++        }
++    }
++}
