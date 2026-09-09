@@ -2209,7 +2209,7 @@ modified in this pass. Canonical settings publication and the complete GUI/TUI
 acceptance matrix remain outstanding; versioned reads alone do not establish
 that integration.
 
-**Pass 20 — shared settings publication and confirmed-state UI (delivery pending):**
+**Pass 20 — shared settings publication and confirmed-state UI ([PR #1870](https://github.com/ArcaneArts/Cantrip/pull/1870)):**
 
 The isolated pass adds a shared native version/snapshot protocol, worker-side
 snapshot encryption and keyed content fingerprints, and server state transitions
@@ -2306,8 +2306,8 @@ GUI/native mutation controllers, decoding/mapping the requested selection,
 controlled provider/account migration, complete service-tier/default/custom-child
 and permission parity, and the full actual-TUI acceptance matrix remain. Those
 are required follow-on work under the original goal; this milestone's tests do
-not prove complete desired/pending/effective GUI/TUI control. PR/automerge is
-pending for this isolated worktree.
+not prove complete desired/pending/effective GUI/TUI control. The isolated
+publication/read milestone is tracked in PR #1870; the full goal remains active.
 
 **Still outstanding:** completion of authorized command admission, origin-independent
 lifecycle/CUA authority, durable all-turn projection/replay,
