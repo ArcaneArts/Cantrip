@@ -2164,6 +2164,51 @@ the mapping to canonical desired/pending/effective revisions, full service-tier
 metadata, explicit provider/account migration, and the complete cross-view
 acceptance matrix remain outstanding.
 
+**Pass 19 — implemented: versioned native settings reads:**
+
+The current settings evidence has operation correlation but lacks a shared
+version for live notifications and reconnect reads. Server admission order and
+HTTP arrival order cannot substitute for native settings application order.
+Reviewed patch `0023` adds a read-only `thread/settings/read` on loaded threads,
+and an epoch/decimal-revision pair captured under Core's settings state lock.
+Changed selected settings advance the revision; no-ops retain it; replacement
+Core instances start a different epoch. Applied notifications carry the exact
+version with their immutable snapshot. Imported upstream remains unchanged.
+
+The worker has an explicit atomic read method and compares same-epoch versions
+without JavaScript integer precision loss. Late older reads cannot regress
+confirmed settings, while older applied operation evidence remains recorded.
+Contradictory same-version snapshots and unretired epoch changes retain the known
+selection. Thread/transport retirement invalidates pending reads and permits a
+new baseline. Neither native versions nor observation counters replace the
+server's still-required canonical desired/pending/effective revisions, and
+thread-default changes do not rewrite a running turn's attribution.
+
+Reads and listener baselines use the same selected-settings snapshot conversion
+as applied notifications, rather than a separately resolved environment view.
+This keeps version equality meaningful for permission/environment fields too.
+
+Validation: 319 native protocol tests, stable/experimental schema regeneration,
+19 native Core settings tests, 125 worker tests, worker typecheck, formatting,
+diff checks and pristine-upstream/ordered-patch verification passed. The final
+established native release build and all four packaged-CLI read/restart tests
+passed. Those tests verify missing-thread reads create no thread, repeated reads
+retain their version, changed/no-op operations have exact revision deltas,
+reads match applied notifications, and an actual native process restart yields
+a new epoch while retaining the selected settings. Local provider/MCP fixtures
+verify preparation without inference or account configuration changes.
+
+The Core tests retain actual request assertions proving running-turn settings
+stay pinned and the next turn receives the changed selection. Worker read tests
+cover a notification arriving ahead of its older read, thread/transport
+retirement, wrong-thread replies and native lookup errors. A gateway test checks
+reads bypass mutation admission without submitting a synthetic turn.
+`pnpm check` stops on existing server decomposition limits: `build-app.ts`
+1503/1500, `chat-turn-runtime.ts` 2260/1999 and `task-routes.ts` 2149/1999. None is
+modified in this pass. Canonical settings publication and the complete GUI/TUI
+acceptance matrix remain outstanding; versioned reads alone do not establish
+that integration.
+
 **Still outstanding:** completion of authorized command admission, origin-independent
 lifecycle/CUA authority, durable all-turn projection/replay,
 complete settings parity, eager GUI-first session startup and the full acceptance

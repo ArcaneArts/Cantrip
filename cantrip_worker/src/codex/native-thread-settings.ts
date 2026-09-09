@@ -1,9 +1,25 @@
 import { z } from "zod";
+import { isDeepStrictEqual } from "node:util";
+
+export const nativeSettingsVersionSchema = z
+  .object({
+    epoch: z.string().min(1),
+    revision: z
+      .string()
+      .regex(/^(0|[1-9][0-9]{0,19})$/u)
+      .refine(
+        (value) =>
+          /^(0|[1-9][0-9]{0,19})$/u.test(value) &&
+          BigInt(value) <= 18_446_744_073_709_551_615n,
+      ),
+  })
+  .strict();
 
 // Preserve native security/profile material and future fields verbatim. Mapping
 // these values to authorized Cantrip profiles belongs to the managed controller.
 export const nativeThreadSettingsSchema = z
   .object({
+    settingsVersion: nativeSettingsVersionSchema.optional(),
     cwd: z.string(),
     approvalPolicy: z.union([z.string(), z.record(z.string(), z.json())]),
     approvalsReviewer: z.string(),
@@ -201,7 +217,28 @@ export class NativeThreadSettingsState {
       submissionId: params.submissionId ?? null,
       settings: params.threadSettings,
     };
-    this.confirmed.set(params.threadId, observation);
+    const previous = this.confirmed.get(params.threadId);
+    const previousVersion = previous?.settings.settingsVersion;
+    const version = observation.settings.settingsVersion;
+    let replace = true;
+    if (previousVersion) {
+      if (!version)
+        replace = false; // An older unversioned sample cannot roll back a known version.
+      else if (previousVersion.epoch !== version.epoch)
+        throw new Error(
+          "Native settings epoch changed without retiring the thread observation.",
+        );
+      else if (BigInt(version.revision) < BigInt(previousVersion.revision))
+        replace = false;
+      else if (
+        version.revision === previousVersion.revision &&
+        !isDeepStrictEqual(previous.settings, observation.settings)
+      )
+        throw new Error(
+          "Native settings version was reused with different settings.",
+        );
+    }
+    if (replace) this.confirmed.set(params.threadId, observation);
     const request = params.operationId
       ? this.requests.get(params.threadId)?.get(params.operationId)
       : undefined;

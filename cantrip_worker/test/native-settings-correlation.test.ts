@@ -54,6 +54,15 @@ describe.skipIf(!binary)("native settings acknowledgments", () => {
         path.join(output, "v2", "CodexErrorInfo.ts"),
         "utf8",
       );
+      expect(
+        await readFile(path.join(output, "v2", "ThreadSettings.ts"), "utf8"),
+      ).toContain("settingsVersion");
+      expect(
+        await readFile(
+          path.join(output, "v2", "ThreadSettingsReadResponse.ts"),
+          "utf8",
+        ),
+      ).toContain("threadSettings");
       expect(errors).toContain("threadSettingsUpdateFailed");
       expect(errors).toContain("operationId: string | null");
       const requests = await readFile(
@@ -192,6 +201,11 @@ describe.skipIf(!binary)("native settings acknowledgments", () => {
           capabilities: { experimentalApi: true },
         });
         client.notify("initialized");
+        const absent = await client.request("thread/settings/read", {
+          threadId: "00000000-0000-4000-8000-000000000001",
+        });
+        expect(absent.error).toBeDefined();
+        expect((await request("thread/loaded/list", {})).data).toEqual([]);
         const started = await request("thread/start", {
           historyMode,
           cwd: workspace,
@@ -202,6 +216,18 @@ describe.skipIf(!binary)("native settings acknowledgments", () => {
           config: { model_reasoning_effort: "high" },
         });
         const threadId = started.thread.id as string;
+        const baseline = await request("thread/settings/read", { threadId });
+        expect(baseline.threadSettings.settingsVersion).toEqual({
+          epoch: expect.any(String),
+          revision: expect.stringMatching(/^[0-9]+$/),
+        });
+        expect(await request("thread/settings/read", { threadId })).toEqual(
+          baseline,
+        );
+        expect((await request("thread/loaded/list", {})).data).toEqual([
+          threadId,
+        ]);
+
         expect(await request("thread/settings/update", { threadId })).toEqual(
           {},
         );
@@ -306,6 +332,26 @@ describe.skipIf(!binary)("native settings acknowledgments", () => {
               "default",
             ][index],
           })),
+        );
+        const initialVersion = baseline.threadSettings.settingsVersion;
+        const versions = applied().map(
+          ({ params }) => params.threadSettings.settingsVersion,
+        );
+        expect(versions.map((version) => version.epoch)).toEqual(
+          operations.map(() => initialVersion.epoch),
+        );
+        expect(
+          versions.map(
+            (version) =>
+              BigInt(version.revision) - BigInt(initialVersion.revision),
+          ),
+        ).toEqual([0n, 1n, 2n, 3n, 3n, 4n, 4n, 5n, 6n]);
+        const settled = await request("thread/settings/read", { threadId });
+        expect(settled.threadSettings).toEqual(
+          applied().at(-1)!.params.threadSettings,
+        );
+        expect(await request("thread/settings/read", { threadId })).toEqual(
+          settled,
         );
         for (const { params } of applied()) {
           expect(params.threadSettings).toMatchObject({
