@@ -2022,6 +2022,55 @@ publication into both views remain outstanding. Transport observation sequence
 numbers are explicitly not durable revisions. No app/worker restart, model turn,
 desktop input or CI job is used by these fixtures.
 
+**Pass 16 — isolate rejected native settings from running turns:**
+
+A deterministic native regression reproduced a rejected queued settings update
+changing a healthy running thread from `Active` to `SystemError`. The fixture
+uses the actual Core queue and app-server event handler with a locally gated
+provider response. It submits at the queue application boundary directly to
+avoid depending on a preview/commit race. The baseline test failed at the status
+assertion; with the correction it passes and the original turn completes without
+an error. This establishes that failure path, not the cause of every reported
+computer-use interruption.
+
+The new typed `threadSettingsUpdateFailed` error retains the settings operation
+identity and submission ID. App-server reports the rejected operation without
+changing the turn summary or thread status. Core agent status and native history
+respect the nonterminal error scope; the TUI displays a warning without ending
+its running turn, draining its input queue or recording a fatal-turn error.
+Turn-start validation and actual provider/model errors keep their fatal behavior.
+The existing nonterminal rollback/steering errors also no longer set system-error
+status before their existing handling runs.
+
+Worker settings tracking accepts an operation-correlated rejection before or
+without its queue acknowledgment, preserves it after a lost RPC response, and
+retains outstanding requests until their response settles. Explicit operation
+identity never falls back to a different operation sharing a submission ID.
+Contradictory applied/rejected evidence stays uncertain. These changes remain
+transport-local; durable revisions and publication of settings results into both
+interfaces still belong to the outstanding settings work.
+
+Validation: the baseline native regression failed as expected, the fixed
+regression passes, all 297 app-server library tests pass, and 101 focused worker
+tests pass. All 319 app-server protocol and 335 Core protocol library tests pass,
+including stable/experimental schema consistency; six Core agent-status tests
+pass. The larger Core integration test target initially failed to compile because
+one existing client fixture still called removed `Op::UserInput`; this pass ports
+that fixture to the current typed turn-submission API; its isolated test now
+passes. Five additional stale assertions expected no initial owned settings
+rollout or omitted its base permission profile. The corrected tests assert the
+complete persisted settings, no invented conversation turn and no provider
+Responses request. All 19 Core settings integration cases now pass, including
+active-turn snapshot/next-turn isolation and immutable postcommit notifications.
+All 29 focused live TUI notification tests pass, including the new nonterminal
+settings warning and existing fatal-error/completion cases. The standard packaged
+release build succeeds, and all 12 actual-bundle tests pass: exported protocol,
+settings correlation, production-worker session preparation and empty-thread
+attachment/recovery. Verification confirms all 6,499 pristine upstream files and
+the ordered 21-patch series. Worker typecheck, TypeScript formatting and diff
+checks pass. The broad check still stops at the unchanged server decomposition
+budgets; later broad checks were not reached. No personal desktop input or CI ran.
+
 **Still outstanding:** completion of authorized command admission, origin-independent
 lifecycle/CUA authority, durable all-turn projection/replay,
 complete settings parity, eager GUI-first session startup and the full acceptance

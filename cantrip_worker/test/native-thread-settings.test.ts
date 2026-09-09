@@ -15,6 +15,149 @@ const event = (
 });
 
 describe("native thread settings evidence", () => {
+  it("retains an early rejected request until its outstanding RPC settles", () => {
+    const state = new NativeThreadSettingsState();
+    const first = state.begin("root", "first", patch);
+    state.observeError({
+      threadId: "root",
+      turnId: "sub-first",
+      willRetry: false,
+      error: {
+        message: "rejected",
+        codexErrorInfo: {
+          threadSettingsUpdateFailed: { operationId: "first" },
+        },
+      },
+    });
+    const second = state.begin("root", "second", patch);
+    state.acknowledge("root", first, {
+      operationId: "first",
+      submissionId: "sub-first",
+    });
+    state.acknowledge("root", second, {
+      operationId: "second",
+      submissionId: "sub-second",
+    });
+    expect(
+      state.read("root").requests.map((request) => request.status),
+    ).toEqual(["rejected", "queued"]);
+    state.begin("root", "third", patch);
+    expect(
+      state.read("root").requests.map((request) => request.operationId),
+    ).toEqual(["second", "third"]);
+  });
+
+  it.each(["error-first", "applied-first"])(
+    "does not hide contradictory native results: %s",
+    (order) => {
+      const state = new NativeThreadSettingsState();
+      const pending = state.begin("root", "op", patch);
+      const reject = () =>
+        state.observeError({
+          threadId: "root",
+          turnId: "sub",
+          willRetry: false,
+          error: {
+            message: "rejected",
+            codexErrorInfo: {
+              threadSettingsUpdateFailed: { operationId: "op" },
+            },
+          },
+        });
+      if (order === "error-first") reject();
+      state.observe(event("op", "sub"));
+      if (order === "applied-first") reject();
+      state.acknowledge("root", pending, {
+        operationId: "op",
+        submissionId: "sub",
+      });
+      expect(state.read("root").requests[0]).toMatchObject({
+        status: "uncertain",
+        error: { message: "rejected" },
+        applied: { submissionId: "sub" },
+      });
+    },
+  );
+
+  it("rejects an acknowledgment that contradicts the rejection submission", () => {
+    const state = new NativeThreadSettingsState();
+    const pending = state.begin("root", "op", patch);
+    state.observeError({
+      threadId: "root",
+      turnId: "sub",
+      willRetry: false,
+      error: {
+        message: "rejected",
+        codexErrorInfo: { threadSettingsUpdateFailed: { operationId: "op" } },
+      },
+    });
+    expect(() =>
+      state.acknowledge("root", pending, {
+        operationId: "op",
+        submissionId: "different",
+      }),
+    ).toThrow("not correlated");
+    expect(state.read("root").requests[0]).toMatchObject({
+      status: "uncertain",
+      submissionId: "sub",
+    });
+  });
+
+  it("retains an operation-correlated rejection before or without its queue acknowledgment", () => {
+    const state = new NativeThreadSettingsState();
+    const pending = state.begin("root", "op", patch);
+    const error = {
+      threadId: "root",
+      turnId: "sub",
+      willRetry: false,
+      error: {
+        message: "constraint rejected",
+        codexErrorInfo: { threadSettingsUpdateFailed: { operationId: "op" } },
+      },
+    };
+    expect(state.observeError(error)).toBe(true);
+    state.failed("root", pending, false);
+    expect(state.read("root").requests[0]).toMatchObject({
+      submissionId: "sub",
+      status: "rejected",
+      error: error.error,
+    });
+    state.acknowledge("root", pending, {
+      operationId: "op",
+      submissionId: "sub",
+    });
+    expect(state.read("root").requests[0]).toMatchObject({
+      status: "rejected",
+      error: error.error,
+    });
+  });
+
+  it.each(["other", ""])(
+    "does not match a different explicit operation by submission ID: %j",
+    (operationId) => {
+      const state = new NativeThreadSettingsState();
+      const pending = state.begin("root", "op", patch);
+      state.acknowledge("root", pending, {
+        operationId: "op",
+        submissionId: "sub",
+      });
+      expect(
+        state.observeError({
+          threadId: "root",
+          turnId: "sub",
+          willRetry: false,
+          error: {
+            message: "other command",
+            codexErrorInfo: {
+              threadSettingsUpdateFailed: { operationId },
+            },
+          },
+        }),
+      ).toBe(false);
+      expect(state.read("root").requests[0]?.status).toBe("queued");
+    },
+  );
+
   it.each(["before", "after"])(
     "correlates asynchronous errors %s acknowledgment",
     (order) => {
