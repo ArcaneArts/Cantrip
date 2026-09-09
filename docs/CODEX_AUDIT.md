@@ -1906,6 +1906,35 @@ types, automatic presentation retargeting and the remaining whole-product
 acceptance matrix still need verification. This pass does not establish those
 paths or enable eager startup.
 
+**Pass 13 — GUI settings commands:**
+
+The project-agent command palette now includes `/model` and `/permissions`.
+Palette selection and direct composer submission use one local handler to open
+the existing model/reasoning dialog or permission-profile menu. Toolbar and slash
+entry share controlled open state and the same existing save/validation paths;
+other consumers retain uncontrolled picker behavior. Switching chats closes the
+local picker. Closing the model dialog clears stale save errors before a later
+slash-command opening.
+
+Recognized settings commands are consumed before prompt submission or queued
+prompt updates, including when the suggestion menu is dismissed. Unsupported
+arguments show local guidance and preserve the draft; they never become model
+input. A valid command clears only its text/reference selection, preserving
+attachments and the current queue-edit selection. Opening `/model` does not
+require a model to have already been selected. Existing relocation and model-save
+pending behavior is retained without adding a native readiness gate.
+
+Validation: 40 tests across six focused app files pass, covering local command
+routing, whitespace/case/argument handling, picker state, pending operations,
+palette discovery and existing model/permission controls. App typecheck and
+diff/format checks pass. The broad repository check stops at the same unchanged
+two server decomposition budgets. These are component/hook and parser tests,
+not a rendered-browser or native settings synchronization acceptance result.
+Complete native desired/pending/effective settings, model catalog parity,
+active-turn selection policy and the whole-product acceptance matrix remain
+outstanding. This pass preserves the existing startup trigger and does not
+launch the user's app/worker or CI.
+
 **Still outstanding:** completion of authorized command admission, origin-independent
 lifecycle/CUA authority, durable all-turn projection/replay,
 complete settings parity, eager GUI-first session startup and the full acceptance
