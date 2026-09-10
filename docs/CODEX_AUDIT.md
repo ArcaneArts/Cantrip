@@ -2678,8 +2678,7 @@ original choice and unchanged physical route identity. The configured-root
 fixture initially exposed a child-model alias overwriting the root mapping;
 root precedence was corrected before the passing run. Full workspace typechecks
 passed. `pnpm check` still stops at untouched decomposition budgets in
-`chat-turn-runtime.ts` (2275 lines) and `task-routes.ts` (2149 lines), both above
-1999. No CI, personal desktop input or user-worker restart ran.
+`chat-turn-runtime.ts` (2275 lines) and `task-routes.ts` (2149 lines), both above 1999. No CI, personal desktop input or user-worker restart ran.
 
 The full goal remains incomplete: turn/usage routing and attribution, controlled
 provider/account migration, replacement TUI/queue/history continuity, remaining
@@ -2917,8 +2916,7 @@ source journal, encrypted HTTP ingestion, database persistence and replay. Six
 native/usage cases passed, including the actual pinned native replacement/settings
 fixture. Workspace typechecks passed. These are focused results, not proof of the
 full acceptance matrix. The migration snapshot differs only in the three intended
-columns. `pnpm check` still stops at the unchanged file budgets recorded in pass
-27. No CI, live desktop input, user worker restart or native binary change ran.
+columns. `pnpm check` still stops at the unchanged file budgets recorded in pass 27. No CI, live desktop input, user worker restart or native binary change ran.
 
 Remaining: immutable model-behavior observations, controlled provider/account
 migration, replacement TUI/queue/history continuity, remaining all-origin native
@@ -3028,6 +3026,57 @@ provider/account migration or complete historical-turn import into replacement
 native threads. Those, full canonical-queue/replacement acceptance, remaining
 all-origin lifecycle/CUA validation, eager GUI-first preparation and the final
 user implementation test remain required. No CI or personal desktop input ran.
+
+### Pass 34 — recover rejected model context on the same native thread
+
+Managed GUI invalid-compaction recovery now admits a fresh continuation and
+resets only the rejected model context in the existing native thread. The next
+real turn uses the existing protected-history reconstruction. This replaces the
+unnecessary new-thread handoff for this recovery path; the existing replacement
+and presentation-retarget APIs remain available for actual thread changes.
+
+Native patch `0032` requires the exact durable last-turn boundary and an idle
+native turn lock. It appends and flushes a context-only checkpoint before
+mutating live context, preserving existing history, native authorization
+transcript, settings, queue, thread identity and the CLI connection. A dedicated
+checkpoint marker keeps legacy history projection from inventing a turn and
+defaults to false for existing records. Actual storage errors propagate;
+failed persistence cannot clear the live model context.
+
+The first packaged test run exposed a real paginated-history error: recovery
+used the legacy-only loader. It now reads the latest paginated turn through the
+storage projection (one metadata row), retaining the legacy reader for legacy
+threads. Both modes pass the native recovery test against actual SQLite storage.
+
+Validation: the final standard packaged build completed in 15m06s; all 6,499
+imported files and the ordered 31-patch series verify. All 15 tests across five
+native runtime files pass against that binary. The new legacy and paginated
+fixtures preserve complete native historical turns, an image attachment, queued
+input and settings through recovery and an actual process restart. They reject
+active, stale and malformed resets, then prove the next provider request excludes
+the rejected model context. The managed queue gate retains pending input until
+its owner admits execution; reset itself makes no provider request.
+
+The actual worker/server/database and direct-gateway TUI fixture now completes
+invalid-compaction recovery on the original thread, adapter and runtime. A fresh
+attachment confirms CLI process generation one, and the original CLI submits a
+subsequent turn with fresh exact-turn CUA authority. Existing Stop, later input,
+queue, TUI attachment and replacement-settings regressions also pass. The test
+initially read process generation from the canonical screen snapshot; the final
+assertion reads the actual attachment hydration metadata that owns this field.
+
+All workspace typechecks and 138 focused worker tests pass; the final worker
+typecheck also passes after the attachment assertion correction. Native source
+selections pass two recovery/storage tests, 30 reconstruction tests and 15 history
+serialization/schema tests. The history suite corrects the earlier stale record
+variant count and verifies backward-compatible reset-marker serialization.
+Changed-file formatting and diff checks pass. Standard `pnpm check` still stops
+at the existing 2321/1999 chat-turn-runtime and 2149/1999 task-routes decomposition
+budgets. No CI or personal desktop input ran.
+
+Still required: controlled provider/account migration with native history and
+queue continuity, remaining all-origin acceptance, GUI-first eager preparation,
+and the final user implementation test.
 
 ### What “perfect mirror” must mean
 

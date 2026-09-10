@@ -77,6 +77,7 @@ describe.skipIf(!binary)(
       "gui",
       "gui-capacity",
       "gui-compaction",
+      "gui-context-recovery",
     ] as const)(
       "tracks %s turns, accepts GUI Stop, and gives the next turn fresh authority",
       async (origin) => {
@@ -91,8 +92,10 @@ describe.skipIf(!binary)(
         let publicationRecovered = false;
         let releasePendingAcknowledgment: (() => void) | undefined;
         const capacityRetry = origin === "gui-capacity";
+        const inPlaceRecovery = origin === "gui-context-recovery";
         const compactionRetry = origin === "gui-compaction";
-        const retried = capacityRetry || compactionRetry;
+        const rejectedContext = compactionRetry || inPlaceRecovery;
+        const retried = capacityRetry || rejectedContext;
         let modelAttempts = 0;
         const directory = await mkdtemp(
           path.join(tmpdir(), "cantrip-native-command-"),
@@ -175,7 +178,7 @@ describe.skipIf(!binary)(
             );
             return;
           }
-          if (compactionRetry && modelAttempts === 1) {
+          if (rejectedContext && modelAttempts === 1) {
             response.writeHead(400, { "content-type": "application/json" });
             response.end(
               JSON.stringify({
@@ -495,7 +498,7 @@ describe.skipIf(!binary)(
             await peer.request("thread/resume", { threadId: viewThreadId });
           };
           await attachView();
-          if (compactionRetry) {
+          if (rejectedContext) {
             terminalManager = new TerminalManager({
               environment: { HOME: home },
             });
@@ -640,7 +643,7 @@ describe.skipIf(!binary)(
                   onBeforeRetry: retried
                     ? async (retry) => {
                         expect(retry.reason).toBe(
-                          compactionRetry ? "invalid-compaction" : "capacity",
+                          rejectedContext ? "invalid-compaction" : "capacity",
                         );
                         expect(modelAttempts).toBe(1);
                         expect(
@@ -760,7 +763,26 @@ describe.skipIf(!binary)(
                           );
                           threadId = replacement.threadId;
                           expect(adapter).not.toBe(previousAdapter);
-                        } else await admit(threadId);
+                        } else {
+                          await admit(threadId);
+                          if (inPlaceRecovery) {
+                            const before =
+                              await runtime!.readNativeHistory(threadId);
+                            await runtime!.resetManagedModelContext(
+                              threadId,
+                              retry.turnId,
+                              retry.signal,
+                            );
+                            const after =
+                              await runtime!.readNativeHistory(threadId);
+                            expect(after.thread.turns).toEqual(
+                              before.thread.turns,
+                            );
+                            expect(threadId).toBe(originalThreadId);
+                            expect(adapter).toBe(previousAdapter);
+                            expect(terminalSettled).toBe(false);
+                          }
+                        }
                         return {
                           operationGeneration: guiReceipt!.operationGeneration,
                           threadId,
@@ -1136,7 +1158,7 @@ describe.skipIf(!binary)(
               ),
             ).toBe(true);
           }
-          if (compactionRetry) {
+          if (rejectedContext) {
             await vi.waitFor(
               () =>
                 expect(stripVTControlCharacters(terminalOutput)).toContain(
@@ -1183,13 +1205,37 @@ describe.skipIf(!binary)(
                 turnId: fourth,
               }),
             ).toMatchObject({ rootThreadId: threadId, rootTurnId: fourth });
-            expect(
-              runtime.resolveComputerUseExecution({
-                chatId,
-                threadId: originalThreadId,
-                turnId: fourth,
-              }),
-            ).toBeNull();
+            if (compactionRetry)
+              expect(
+                runtime.resolveComputerUseExecution({
+                  chatId,
+                  threadId: originalThreadId,
+                  turnId: fourth,
+                }),
+              ).toBeNull();
+            else {
+              expect(threadId).toBe(originalThreadId);
+              const observedGenerations: number[] = [];
+              const verificationView = terminalManager!.attachExisting(
+                "replacement-tui",
+                "recovery-verification",
+                (event) => {
+                  if (event.type === "terminal.output" && event.hydration)
+                    observedGenerations.push(event.hydration.processGeneration);
+                },
+              );
+              try {
+                await vi.waitFor(() =>
+                  expect(observedGenerations).toEqual([1]),
+                );
+              } finally {
+                terminalManager!.detach(
+                  "replacement-tui",
+                  "recovery-verification",
+                );
+                await verificationView;
+              }
+            }
             const events = [
               {
                 type: "response.output_item.done",
