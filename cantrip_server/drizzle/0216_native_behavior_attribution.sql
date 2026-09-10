@@ -1,0 +1,1 @@
+ALTER TABLE "model_behavior_observations" ADD COLUMN "native_attribution" jsonb;

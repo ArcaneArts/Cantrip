@@ -1,4 +1,10 @@
-import type { AgentActivity } from "@cantrip/protocol";
+import {
+  emptyNativeBehaviorAttribution,
+  mergeNativeBehaviorAttribution,
+  type AgentActivity,
+  type NativeBehaviorAttribution,
+  type WorkerEvent,
+} from "@cantrip/protocol";
 
 const TOOL_ACTIVITY_TYPES = new Set<AgentActivity["type"]>([
   "command",
@@ -29,6 +35,7 @@ function toolFailed(activity: AgentActivity): boolean {
 }
 
 export interface ModelBehaviorSnapshot {
+  nativeAttribution: NativeBehaviorAttribution;
   firstActivityAt: Date | null;
   firstVisibleResponseAt: Date | null;
   finalAnswerAppeared: boolean;
@@ -65,6 +72,57 @@ export interface ModelBehaviorUsage {
  * more than once; command text and model output are never persisted here.
  */
 export class ModelBehaviorTracker {
+  #nativeAttribution = emptyNativeBehaviorAttribution();
+
+  observeNativeTurn(
+    turnId: string | null | undefined,
+    capture?: NativeBehaviorAttribution["captures"][number],
+  ) {
+    if (
+      !capture &&
+      (!turnId || this.#nativeAttribution.turnIds.includes(turnId))
+    )
+      return;
+    this.#nativeAttribution = mergeNativeBehaviorAttribution(
+      this.#nativeAttribution,
+      {
+        version: 1,
+        turnIds: turnId ? [turnId] : [],
+        captures: capture ? [capture] : [],
+        conflictingTurnKeys: [],
+      },
+    );
+  }
+
+  observeNativeEvent(event: WorkerEvent) {
+    if (
+      event.type === "agent.protected-message" ||
+      event.type === "agent.protected-task-message"
+    ) {
+      this.observeNativeTurn(
+        event.telemetry.turnId,
+        "nativeModelAttribution" in event.telemetry
+          ? event.telemetry.nativeModelAttribution
+          : undefined,
+      );
+    } else if (event.type === "agent.activity") {
+      this.observeNativeTurn(
+        event.activity.correlation?.turnId,
+        "nativeModelAttribution" in event.activity
+          ? event.activity.nativeModelAttribution
+          : undefined,
+      );
+    } else if (event.type === "agent.message")
+      this.observeNativeTurn(event.message.correlation?.turnId);
+    else if (event.type === "agent.checkpoint")
+      this.observeNativeTurn(event.turnId);
+    else if (
+      event.type === "agent.interaction.requested" ||
+      event.type === "agent.interaction.requested.protected"
+    )
+      this.observeNativeTurn(event.request.turnId);
+  }
+
   #approvalIds = new Set<string>();
   #compactionIds = new Set<string>();
   #filePaths = new Set<string>();
@@ -146,6 +204,7 @@ export class ModelBehaviorTracker {
   snapshot(): ModelBehaviorSnapshot {
     const tests = [...this.#tests.values()];
     return {
+      nativeAttribution: structuredClone(this.#nativeAttribution),
       firstActivityAt: this.#firstActivityAt,
       firstVisibleResponseAt: this.#firstVisibleResponseAt,
       finalAnswerAppeared: this.#finalAnswerAppeared,

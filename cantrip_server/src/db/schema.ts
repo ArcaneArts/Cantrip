@@ -4542,6 +4542,10 @@ export const modelBehaviorObservations = pgTable(
     chatId: text("chat_id").references(() => chats.id, {
       onDelete: "set null",
     }),
+    nativeAttribution:
+      jsonb("native_attribution").$type<
+        import("@cantrip/protocol").NativeBehaviorAttribution
+      >(),
     modelId: text("model_id").references(() => modelProfiles.id, {
       onDelete: "set null",
     }),

@@ -1219,6 +1219,7 @@ export function createChatTurnRuntime({
                     )
                       return;
                     const observedAt = new Date();
+                    behaviorTracker.observeNativeEvent(event);
                     const sourceEvent = observationIdentity(event);
                     if (
                       event.type === "agent.activity" &&
@@ -1829,6 +1830,7 @@ export function createChatTurnRuntime({
             const result = agentTurnResultSchema.parse(rawResult);
             const completedAt = new Date();
             behaviorTurnId = result.turnId ?? behaviorTurnId;
+            behaviorTracker.observeNativeTurn(result.turnId);
             if (result.text.trim()) {
               behaviorTracker.markVisibleResponse(true, completedAt);
             }
