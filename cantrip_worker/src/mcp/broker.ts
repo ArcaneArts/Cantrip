@@ -139,7 +139,15 @@ function authorized(requestValue: string | undefined, expected: string) {
 
 function bindingIdentityMatchesInput(
   binding: SessionClaims,
-  input: SessionClaims,
+  input: Pick<
+    SessionClaims,
+    | "ownerId"
+    | "contextKind"
+    | "projectId"
+    | "scratchRootId"
+    | "chatId"
+    | "workerId"
+  >,
 ): boolean {
   return (
     binding.ownerId === input.ownerId &&
@@ -459,6 +467,42 @@ export class CantripMcpBroker {
       counts: { allowedOperations: binding.allowedOperations.length },
     });
     return { ...attachment, binding };
+  }
+
+  // Bind an admitted native execution to the already configured idle host.
+  activateSession(
+    input: Omit<
+      CantripMcpBinding,
+      "bindingId" | "issuedAt" | "expiresAt" | "allowedOperations"
+    >,
+  ): (() => void) | null {
+    // Admission supplies an execution lane, not a new tool configuration. Keep
+    // the prepared host's credentials, catalog and enabled/disabled CUA state.
+    for (const stored of this.#bindings.values()) {
+      const claims = stored.claims;
+      if (
+        !bindingIdentityMatchesInput(claims, input) ||
+        claims.worktreeId !== input.worktreeId ||
+        claims.rootKind !== input.rootKind ||
+        claims.permissionProfileId !== input.permissionProfileId ||
+        Date.parse(stored.connection.expiresAt) <= this.#now()
+      )
+        continue;
+      const attachment = this.createBinding({
+        ...claims,
+        executionLaneId: input.executionLaneId,
+        computerUse: stored.computerUse,
+        legacyCanonicalRoot: stored.legacyCanonicalRoot,
+        serverCompatibility: stored.serverCompatibility,
+      });
+      return () => {
+        this.deactivateBinding(
+          attachment.connection.bindingId,
+          input.executionLaneId,
+        );
+      };
+    }
+    return null;
   }
 
   // A delayed completion/Stop from an older turn cannot deactivate its successor.

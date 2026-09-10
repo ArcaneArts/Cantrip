@@ -136,6 +136,80 @@ function deferred<T>() {
 }
 
 describe("idle MCP sessions and exact active bindings", () => {
+  it("activates prepared hosts for native turns and scopes late cleanup to its lane", async () => {
+    const normal = vi.fn(
+      async (_binding: Parameters<CuaMcpExecutor>[0]) => result,
+    );
+    const computer = vi.fn<CuaMcpExecutor>(async () => ({ content: [] }));
+    const broker = await fixture({ execute: normal });
+    broker.setComputerUseExecutor(computer);
+    const session = broker.createSession(claims);
+    const first = broker.activateSession({
+      ...claims,
+      executionLaneId: "first",
+    });
+    expect(first).toBeTypeOf("function");
+    expect((await execute(session)).status).toBe(200);
+    expect((await execute(session, true)).status).toBe(200);
+    expect(normal.mock.calls[0]?.[0]).toMatchObject({
+      executionLaneId: "first",
+      allowedOperations: claims.allowedOperations,
+    });
+    expect(JSON.parse(await readFile(session.connectionPath, "utf8"))).toEqual(
+      session.connection,
+    );
+    const second = broker.activateSession({
+      ...claims,
+      executionLaneId: "second",
+    });
+    first!();
+    expect((await execute(session, true)).status).toBe(200);
+    expect(computer.mock.calls.at(-1)?.[0].executionLaneId).toBe("second");
+    second!();
+    expect((await execute(session)).status).toBe(409);
+    expect((await execute(session, true)).status).toBe(409);
+  });
+
+  it("never activates another placement, permission profile or expired host", async () => {
+    let now = Date.now();
+    const broker = await fixture({ now: () => now, ttlMs: 10000 });
+    const session = broker.createSession(claims);
+    for (const patch of [
+      { ownerId: "other" },
+      { workerId: "other" },
+      { chatId: "other" },
+      { projectId: "other" },
+      { worktreeId: "other" },
+      { permissionProfileId: ":yolo" },
+    ])
+      expect(
+        broker.activateSession({
+          ...claims,
+          ...patch,
+          executionLaneId: "first",
+        }),
+      ).toBeNull();
+    expect((await execute(session)).status).toBe(409);
+    now += 10001;
+    expect(
+      broker.activateSession({ ...claims, executionLaneId: "first" }),
+    ).toBeNull();
+  });
+
+  it("keeps computer use disabled when activating a prepared host", async () => {
+    const broker = await fixture({ execute: async () => result });
+    broker.setComputerUseExecutor(async () => ({ content: [] }));
+    const session = broker.createSession({ ...claims, computerUse: false });
+    const release = broker.activateSession({
+      ...claims,
+      executionLaneId: "first",
+    });
+    expect(release).toBeTypeOf("function");
+    expect((await execute(session)).status).toBe(200);
+    expect((await execute(session, true)).status).toBe(403);
+    release!();
+  });
+
   it("initializes both real stdio catalogs idle, then uses the same hosts for real authorized turns", async () => {
     const normal = vi.fn(async () => result);
     const computer = vi.fn<CuaMcpExecutor>(async () => ({ content: [] }));

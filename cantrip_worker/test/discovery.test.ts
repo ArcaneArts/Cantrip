@@ -1,3 +1,6 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -29,6 +32,31 @@ const availableMethods = Object.fromEntries(
 );
 
 describe("Codex runtime discovery", () => {
+  it.skipIf(process.platform === "win32")(
+    "keeps startup warnings out of a successful version identifier",
+    async () => {
+      const directory = await mkdtemp(
+        path.join(tmpdir(), "cantrip-version-warning-"),
+      );
+      const binary = path.join(directory, "codex");
+      try {
+        await writeFile(
+          binary,
+          '#!/bin/sh\nprintf "codex-cli 0.153.4\\n"\nprintf "WARNING: a startup diagnostic is not a version\\n" >&2\n',
+          { mode: 0o700 },
+        );
+        expect(await discoverCodexVersion(binary)).toBe("codex-cli 0.153.4");
+        await writeFile(
+          binary,
+          '#!/bin/sh\nprintf "codex-cli 0.153.4\\n" >&2\n',
+        );
+        expect(await discoverCodexVersion(binary)).toBe("codex-cli 0.153.4");
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("probes every native customization capability family without duplicates", () => {
     expect(CODEX_CUSTOMIZATION_METHODS).toMatchObject({
       collaboration: ["collaborationMode/list"],

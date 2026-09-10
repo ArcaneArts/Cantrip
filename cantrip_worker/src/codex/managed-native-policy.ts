@@ -42,6 +42,17 @@ async function resolvedNativePath(candidate: string): Promise<string> {
   }
 }
 
+/** Compare filesystem identity, including macOS /var and /private/var aliases. */
+export async function managedNativePathsMatch(
+  left: string,
+  right: string,
+): Promise<boolean> {
+  return (
+    path.resolve(left) === path.resolve(right) ||
+    (await resolvedNativePath(left)) === (await resolvedNativePath(right))
+  );
+}
+
 /** These are payload authorization checks, not cached runtime-readiness gates. */
 export async function managedNativeCommandIntent(
   operation: ManagedNativeOperation,
@@ -243,7 +254,11 @@ export async function managedNativeCommandIntent(
     if (
       !Array.isArray(params.runtimeWorkspaceRoots) ||
       params.runtimeWorkspaceRoots.length !== 1 ||
-      params.runtimeWorkspaceRoots[0] !== context.cwd
+      typeof params.runtimeWorkspaceRoots[0] !== "string" ||
+      !(await managedNativePathsMatch(
+        params.runtimeWorkspaceRoots[0],
+        context.cwd,
+      ))
     ) {
       throw new Error(
         "Native workspace roots must match the authorized placement.",
@@ -253,7 +268,7 @@ export async function managedNativeCommandIntent(
   if (
     params.cwd != null &&
     (typeof params.cwd !== "string" ||
-      path.resolve(params.cwd) !== path.resolve(context.cwd))
+      !(await managedNativePathsMatch(params.cwd, context.cwd)))
   ) {
     throw new Error("Native cwd must match the authorized placement.");
   }
