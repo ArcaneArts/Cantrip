@@ -144,6 +144,83 @@ async function fixture() {
 }
 
 describe("durable native history ownership", () => {
+  it("accounts retained encrypted history through its owner and releases bytes on cascade", async () => {
+    const f = await fixture();
+    const binding = await database.repository.nativeHistoryBindings.open(
+      LOCAL_USER_ID,
+      f.request,
+    );
+    const usage = async () =>
+      (await database.repository.accountResourceUsage.measureStorage()).find(
+        (row) =>
+          row.ownerId === LOCAL_USER_ID &&
+          row.category === "conversations" &&
+          row.storageClass === "server",
+      )!;
+    const baseline = await usage();
+    const streamId = randomUUID();
+    await database.repository.nativeHistoryBindings.withBinding(
+      LOCAL_USER_ID,
+      workerId,
+      f.chatId,
+      binding.id,
+      async (tx) => {
+        await tx
+          .insert(schema.nativeHistoryStreams)
+          .values({ id: streamId, bindingId: binding.id });
+        await tx.insert(schema.nativeHistoryReceipts).values({
+          commitId: randomUUID(),
+          streamId,
+          sequence: 1,
+          recordId: randomUUID(),
+          digest: "a".repeat(64),
+          payloadDigest: "b".repeat(64),
+        });
+        await tx.insert(schema.nativeHistoryTurns).values({
+          bindingId: binding.id,
+          turnId: "storage-turn",
+          revision: 1,
+          ordinal: 0,
+          status: "completed",
+          metadata: envelope,
+          payloadDigest: "c".repeat(64),
+        });
+      },
+    );
+    const created = await usage();
+    expect(created.rowCount - baseline.rowCount).toBe(3n);
+    expect(created.logicalBytes).toBeGreaterThan(baseline.logicalBytes);
+    await database.repository.nativeHistoryBindings.withBinding(
+      LOCAL_USER_ID,
+      workerId,
+      f.chatId,
+      binding.id,
+      async (tx) => {
+        await tx
+          .update(schema.nativeHistoryTurns)
+          .set({ metadata: { ...envelope, ciphertext: "A".repeat(8192) } })
+          .where(eq(schema.nativeHistoryTurns.bindingId, binding.id));
+      },
+    );
+    expect((await usage()).logicalBytes).toBeGreaterThan(created.logicalBytes);
+    await database.repository.nativeHistoryBindings.withBinding(
+      LOCAL_USER_ID,
+      workerId,
+      f.chatId,
+      binding.id,
+      async (tx) => {
+        // Removing the stream must also remove its retained receipts.
+        await tx
+          .delete(schema.nativeHistoryStreams)
+          .where(eq(schema.nativeHistoryStreams.id, streamId));
+        await tx
+          .delete(schema.nativeHistoryTurns)
+          .where(eq(schema.nativeHistoryTurns.bindingId, binding.id));
+      },
+    );
+    expect(await usage()).toEqual(baseline);
+  });
+
   it("derives immutable child ancestry from an owned historical parent after the root session retires", async () => {
     const f = await fixture();
     const parent = await database.repository.nativeHistoryBindings.open(
@@ -1166,12 +1243,17 @@ describe("durable historical turn projection", () => {
             bindingId: _bindingId,
             payloadDigest: _digest,
             usage,
+            modelAttribution: _enrichedAttribution,
+            capturedModelAttribution,
             ...row
           } = rows[0]!;
           return {
             ...row,
             threadId: binding.threadId,
             ...(usage == null ? {} : { usage }),
+            ...(capturedModelAttribution == null
+              ? {}
+              : { modelAttribution: capturedModelAttribution }),
           };
         },
       );

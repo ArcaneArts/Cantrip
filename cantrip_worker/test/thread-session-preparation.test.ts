@@ -1,3 +1,4 @@
+import { connectFixtureNativeObservation } from "./fixtures/connected-native-observation.js";
 import { nativeThreadSettings } from "./fixtures/native-thread-settings.js";
 import { describe, expect, it, vi } from "vitest";
 import { unprobedCodexRuntimeReport } from "@cantrip/protocol";
@@ -83,6 +84,7 @@ function fixture() {
       create?: boolean,
     ): Promise<string | null>;
   };
+  connectFixtureNativeObservation(runtime);
   native.ensureStarted = vi.fn().mockResolvedValue(undefined);
   native.methodAvailable = () => true;
   const request = vi.fn(
@@ -357,15 +359,25 @@ describe("thread session preparation", () => {
       ...options,
       permissionProfileId: ":read-only",
     });
-    const resume = f.request.mock.calls.find(
-      ([method]) => method === "thread/resume",
-    )![1];
-    expect(resume).toMatchObject({
-      managedConfig: {
-        mcpServers: { example: expect.any(Object) },
-        executionGate: { runnerGeneration: "runner" },
-      },
+    // Merely reloading must inherit the current managed security selection.
+    expect(f.request).not.toHaveBeenCalled();
+    await f.runtime.prepareManagedThread({
+      ...managed,
+      mcpServers: undefined,
+      canonicalHistory: false,
+      intent: "preserve",
     });
+    const update = f.request.mock.calls.find(
+      ([method]) => method === "thread/managedConfig/update",
+    )![1];
+    expect(update).toMatchObject({
+      canonicalHistory: false,
+      mcpServers: { example: expect.any(Object) },
+      executionGate: { runnerGeneration: "runner" },
+    });
+    expect(
+      f.request.mock.calls.some(([method]) => method === "thread/resume"),
+    ).toBe(false);
     expect(
       f.request.mock.calls.some(([method]) => method === "thread/unsubscribe"),
     ).toBe(false);
@@ -1087,6 +1099,65 @@ describe("thread session preparation", () => {
     } finally {
       now.mockRestore();
     }
+  });
+
+  it("waits for the matching applied settings event after the enqueue receipt", async () => {
+    const f = fixture();
+    const request = f.request.getMockImplementation()!;
+    const enqueued = deferred<Record<string, unknown>>();
+    f.request.mockImplementation(async (method, params) => {
+      if (method !== "thread/settings/update") return request(method, params);
+      const input = params as Record<string, unknown>;
+      enqueued.resolve(input);
+      return {
+        operationId: input.operationId,
+        submissionId: "delayed-settings",
+      };
+    });
+    let settled = false;
+    const pending = f.runtime.prepareManagedThread({
+      ...managed,
+      threadId: null,
+    });
+    void pending.then(
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      },
+    );
+    const input = await enqueued.promise;
+    const notify = (operationId: unknown, revision: string) =>
+      f.native.handleMessage(
+        Buffer.from(
+          JSON.stringify({
+            method: "thread/settings/updated",
+            params: {
+              threadId: "thread-1",
+              operationId,
+              submissionId: "delayed-settings",
+              threadSettings: nativeThreadSettings({
+                settingsVersion: { epoch: "fixture-core", revision },
+                collaborationMode: input.collaborationMode as ReturnType<
+                  typeof nativeThreadSettings
+                >["collaborationMode"],
+              }),
+            },
+          }),
+        ),
+      );
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(settled).toBe(false);
+    notify("unrelated-operation", "2");
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(settled).toBe(false);
+    notify(input.operationId, "3");
+    await pending;
+    expect(settled).toBe(true);
+    expect(
+      f.request.mock.calls.filter(([method]) => method === "thread/start"),
+    ).toHaveLength(1);
   });
 
   it("retains identity before a rejected plan update and retries without starting another thread", async () => {

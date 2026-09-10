@@ -112,11 +112,11 @@ const server = new WebSocketServer({ host: "127.0.0.1", port: 0 }, () => {
   process.stdout.write("listening on: ws://127.0.0.1:" + address.port + "\\n");
 });
 
-function completeTurn(socket, turnId, text) {
+function completeTurn(socket, threadId, turnId, text) {
   socket.send(JSON.stringify({
     method: "item/completed",
     params: {
-      threadId: "portable-thread",
+      threadId,
       turnId,
       item: {
         type: "agentMessage",
@@ -129,13 +129,14 @@ function completeTurn(socket, turnId, text) {
   socket.send(JSON.stringify({
     method: "turn/completed",
     params: {
-      threadId: "portable-thread",
+      threadId,
       turn: { id: turnId, status: "completed", error: null, durationMs: 1 }
     }
   }));
 }
 
 server.on("connection", (socket) => {
+  let nextThread = 0;
   let chatGptAuthenticated = false;
   let chatGptAccessToken = null;
   let freshThreadCompactionRejected = false;
@@ -147,7 +148,7 @@ server.on("connection", (socket) => {
       if (message.result.accessToken !== "chatgpt-access-2") process.exit(31);
       const pending = pendingChatGptTurn;
       pendingChatGptTurn = null;
-      completeTurn(socket, pending.turnId, pending.text);
+      completeTurn(socket, pending.threadId, pending.turnId, pending.text);
       return;
     }
     if (message.id === undefined) return;
@@ -269,7 +270,7 @@ server.on("connection", (socket) => {
     if (message.method === "thread/start") {
       socket.send(JSON.stringify({
         id: message.id,
-        result: { thread: { id: "portable-thread" } }
+        result: { thread: { id: "portable-thread-" + ++nextThread } }
       }));
       return;
     }
@@ -308,7 +309,7 @@ server.on("connection", (socket) => {
       socket.send(JSON.stringify({ id: message.id, result: { turn: { id: turnId } } }));
       setTimeout(async () => {
         if (chatGptAuthenticated) {
-          pendingChatGptTurn = { turnId, text };
+          pendingChatGptTurn = { threadId: message.params.threadId, turnId, text };
           socket.send(JSON.stringify({
             id: 9001,
             method: "account/chatgptAuthTokens/refresh",
@@ -325,7 +326,7 @@ server.on("connection", (socket) => {
           body: "{}"
         });
         if (!response.ok) process.exit(33);
-        completeTurn(socket, turnId, text);
+        completeTurn(socket, message.params.threadId, turnId, text);
       }, 25);
       return;
     }
@@ -535,9 +536,9 @@ describe("portable provider accounts on a brand-new worker", () => {
       ).resolves.toMatchObject({
         status: "completed",
         text: "Portable Grok turn completed.",
-        threadId: "portable-thread",
+        threadId: "portable-thread-2",
       });
-      expect(recoveredThreadIds).toEqual(["stale-thread", "portable-thread"]);
+      expect(recoveredThreadIds).toEqual(["stale-thread", "portable-thread-2"]);
 
       const freshThreadIds: string[] = [];
       await expect(
@@ -550,9 +551,12 @@ describe("portable provider accounts on a brand-new worker", () => {
       ).resolves.toMatchObject({
         status: "completed",
         text: "Portable Grok turn completed.",
-        threadId: "portable-thread",
+        threadId: "portable-thread-4",
       });
-      expect(freshThreadIds).toEqual(["portable-thread", "portable-thread"]);
+      expect(freshThreadIds).toEqual([
+        "portable-thread-3",
+        "portable-thread-4",
+      ]);
 
       expect(await readdir(chatGptHome)).toEqual([]);
       expect(await readdir(grokHome)).toEqual([]);

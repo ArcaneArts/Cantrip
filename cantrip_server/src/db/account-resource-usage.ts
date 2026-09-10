@@ -231,6 +231,30 @@ function ownerSql(resolution: StorageOwnerResolution): OwnerSql {
         joins:
           'inner join "tunnel_attachments" attachment on attachment."id" = t."attachment_id" inner join "tunnels" tunnel on tunnel."id" = attachment."tunnel_id"',
       };
+    case "native-command":
+      return {
+        expression: 'command."owner_id"',
+        joins:
+          'inner join "native_commands" command on command."operation_id" = t."operation_id"',
+      };
+    case "native-history-binding":
+      return {
+        expression: 'binding."owner_id"',
+        joins:
+          'inner join "native_history_bindings" binding on binding."id" = t."binding_id"',
+      };
+    case "native-history-stream":
+      return {
+        expression: 'binding."owner_id"',
+        joins:
+          'inner join "native_history_streams" stream on stream."id" = t."stream_id" inner join "native_history_bindings" binding on binding."id" = stream."binding_id"',
+      };
+    case "queue-claim":
+      return {
+        expression: 'chat."owner_id"',
+        joins:
+          'inner join "managed_queue_claims" claim on claim."id" = t."claim_id" inner join "chats" chat on chat."id" = claim."chat_id"',
+      };
     case "chat":
       return {
         expression: 'project."owner_id"',

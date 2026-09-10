@@ -1,3 +1,4 @@
+import { connectFixtureNativeObservation } from "./fixtures/connected-native-observation.js";
 import { describe, expect, it, vi } from "vitest";
 import { unprobedCodexRuntimeReport } from "@cantrip/protocol";
 import {
@@ -52,9 +53,7 @@ function fixture() {
     "/unused/home",
     unprobedCodexRuntimeReport,
   );
-  vi.spyOn(runtime, "transportGeneration", "get").mockReturnValue(
-    "native-generation",
-  );
+  connectFixtureNativeObservation(runtime, "native-generation");
   const native = runtime as unknown as {
     ensureStarted(): Promise<void>;
     methodAvailable(method: string): boolean;

@@ -1,13 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { once } from "node:events";
-import {
-  mkdtemp,
-  mkdir,
-  readFile,
-  readdir,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { mkdtemp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -118,35 +111,9 @@ describe.skipIf(!binary)(
       const errors: unknown[] = [];
       try {
         await Promise.all([mkdir(cwd), mkdir(home), mkdir(data)]);
-        const catalog = JSON.parse(
-          await readFile(
-            new URL(
-              "../../cantrip_codex/upstream/codex-rs/models-manager/models.json",
-              import.meta.url,
-            ),
-            "utf8",
-          ),
-        );
-        const modelCatalog = path.join(home, "history-models.json");
-        await writeFile(
-          modelCatalog,
-          JSON.stringify({
-            models: [
-              {
-                ...catalog.models[0],
-                slug: "gpt-5",
-                multi_agent_version: "v2",
-                tool_mode: null,
-                use_responses_lite: false,
-                supports_search_tool: false,
-                upgrade: null,
-              },
-            ],
-          }),
-        );
         await writeFile(
           path.join(home, "config.toml"),
-          `features.plugins=false\nmodel_catalog_json=${JSON.stringify(modelCatalog)}\n`,
+          "features.plugins=false\nfeatures.multi_agent_v2.enabled=true\n",
         );
         provider.listen(0, "127.0.0.1");
         await once(provider, "listening");
@@ -353,8 +320,10 @@ describe.skipIf(!binary)(
           },
           { timeout: 15_000 },
         );
-        // Exercise history with explicit native V2 model metadata and session
-        // configuration. This does not establish model-catalog/default parity.
+        // Exercise history with explicit native V2 fixture configuration. The
+        // worker owns the compatible-provider model catalog; select V2 via
+        // the native feature configuration rather than an overridden catalog.
+        // This does not establish model-catalog/default parity.
         await call("thread/managedConfig/update", {
           threadId,
           mcpServers: {},
@@ -389,7 +358,12 @@ describe.skipIf(!binary)(
               (item: any) =>
                 item.type === "subAgentActivity" && item.kind === "started",
             )?.agentThreadId;
-            expect(childThreadId).toBeTruthy();
+            expect(
+              childThreadId,
+              `Native parent had no child; advertised tools: ${JSON.stringify(
+                (requests.at(-1) as any)?.tools?.map((tool: any) => tool.name),
+              )}`,
+            ).toBeTruthy();
           },
           { timeout: 15_000 },
         );

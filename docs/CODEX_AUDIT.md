@@ -3975,6 +3975,46 @@ Remaining: review the actual contract differences before updating the boundary
 inventory, continue full live GUI/CLI/worker acceptance and perform the user
 demo. This tooling pass does not establish complete product integration.
 
+### Pass 50 — account for retained native state and repair acceptance fixtures
+
+Storage accounting now includes the managed preparation, command, settings,
+queue and native history tables introduced by the shared session implementation,
+as well as the project presentation tables. Encrypted retained content is counted
+as server storage. Indirect ownership follows the owning command, history
+binding/stream or queue claim; no new tables are blanket-excluded. A database
+regression checks exact row growth, encrypted payload growth and receipt cascade
+deletion. The exhaustive manifest test still covers every exported durable table.
+
+Acceptance fixtures now use a connected native observation reducer instead of
+mocking only the RPC transport. Preparation verifies that an enqueue receipt and
+an unrelated settings event cannot substitute for the matching applied event.
+Passive reload preserves managed settings. The actual pinned runtime history
+fixture explicitly selects native V2 through its isolated configuration; its old
+file-backed model catalog was overridden by the worker's managed catalog. Child
+creation, late child history, images/tool output, encryption, lost-receipt replay
+and recovery are exercised without a personal account. Provider recovery fixtures
+now allocate distinct IDs for newly started native threads. CUA authority fixtures
+explicitly enable CUA in their isolated database, leaving the product default off.
+The encrypted history round-trip assertion uses original captured attribution,
+separate from server-enriched attribution and SQL null representation.
+
+Validation: 101 focused worker cases and 24 server cases pass, including the
+actual pinned native history fixture against a loopback fake provider. Worker
+and server TypeScript checks, scoped formatting and diff checks pass. `pnpm check`
+still stops at the previously recorded unreviewed `agentOperations` boundary
+digest. No reviewed digest was changed and no CI or personal desktop input ran.
+
+Broad baseline evidence before these corrections: worker 2,387 passed / 14 failed
+/ 44 skipped; server 1,358 passed / 47 failed / 56 skipped; app 2,540 passed /
+3 failed / 3 skipped. These are not full-green runs. Four worker run-configuration
+failures were caused by the global strict diagnostic environment flags being
+redacted as secrets; all 26 cases pass without those flags. Other failures include
+older private-label fixtures and changed UI expectations, which this pass does
+not blanket-update. The goal-streaming cases remain unresolved: two fixtures lack
+a real turn-start event, and the immediate native continuation exposes a dropped
+checkpoint during asynchronous completion. Full application acceptance, boundary
+inventory review and the user demo remain outstanding.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal
