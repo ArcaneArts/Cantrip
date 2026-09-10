@@ -347,8 +347,113 @@ describe("managed chat session preparation", () => {
     expect(f.prepareManagedThread).toHaveBeenCalledTimes(2);
     release();
     await replacement;
-    await attach;
+    await expect(attach).resolves.toEqual({ threadId: "replacement" });
     expect(f.prepareManagedThread).toHaveBeenCalledTimes(3);
+    expect(f.prepareManagedThread.mock.calls[2]![0]).toMatchObject({
+      threadId: "replacement",
+      intent: "preserve",
+    });
+    // The predecessor mapping is durable and survives a worker restart.
+    await expect(
+      new ManagedSessionCoordinator(f.directory).prepare({
+        ...f.input,
+        configuration: {
+          ...f.input.configuration,
+          threadId: "native-thread",
+          intent: "preserve",
+        },
+      }),
+    ).resolves.toEqual({ threadId: "replacement" });
+  });
+
+  it("keeps an uncommitted replacement recoverable when a view opens its predecessor", async () => {
+    const f = await fixture();
+    await f.coordinator.prepare(f.input);
+    f.prepareManagedThread.mockImplementationOnce(async (options) => {
+      await options.onThreadIdentified?.("replacement");
+      return { threadId: "replacement" };
+    });
+    await expect(
+      f.coordinator.replace(
+        {
+          ...f.input,
+          onPrepared: async () => {
+            throw new Error("canonical write failed");
+          },
+        },
+        "native-thread",
+      ),
+    ).rejects.toThrow("canonical write failed");
+    await expect(
+      f.coordinator.prepare({
+        ...f.input,
+        configuration: {
+          ...f.input.configuration,
+          intent: "preserve",
+          threadId: "native-thread",
+        },
+      }),
+    ).resolves.toEqual({ threadId: "native-thread" });
+    await expect(
+      new ManagedSessionCoordinator(f.directory).replace(
+        {
+          ...f.input,
+          onPrepared: async () => {},
+        },
+        "native-thread",
+      ),
+    ).resolves.toEqual({ threadId: "replacement" });
+    expect(f.prepareManagedThread.mock.lastCall![0]).toMatchObject({
+      threadId: "replacement",
+      intent: "preserve",
+    });
+  });
+
+  it("follows multiple committed replacements without crossing an account boundary", async () => {
+    const f = await fixture();
+    await f.coordinator.prepare(f.input);
+    for (const [before, after] of [
+      ["native-thread", "replacement-one"],
+      ["replacement-one", "replacement-two"],
+    ]) {
+      f.prepareManagedThread.mockImplementationOnce(async (options) => {
+        await options.onThreadIdentified?.(after!);
+        return { threadId: after! };
+      });
+      await f.coordinator.replace(
+        {
+          ...f.input,
+          configuration: { ...f.input.configuration, threadId: before! },
+          onPrepared: async () => {},
+        },
+        before!,
+      );
+    }
+    const restored = new ManagedSessionCoordinator(f.directory);
+    await expect(
+      restored.prepare({
+        ...f.input,
+        configuration: {
+          ...f.input.configuration,
+          threadId: "native-thread",
+          intent: "preserve",
+        },
+      }),
+    ).resolves.toEqual({ threadId: "replacement-two" });
+    await expect(
+      restored.prepare({
+        ...f.input,
+        configuration: {
+          ...f.input.configuration,
+          threadId: "native-thread",
+          intent: "preserve",
+          provider: {
+            ...f.input.configuration.provider,
+            accountId: "different-account",
+          },
+        },
+      }),
+    ).resolves.toEqual({ threadId: "native-thread" });
   });
 
   it("requires an explicit canonical old identity when no recovery association exists", async () => {

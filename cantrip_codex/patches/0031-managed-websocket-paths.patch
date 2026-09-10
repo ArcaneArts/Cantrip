@@ -1,0 +1,68 @@
+--- a/codex-rs/tui/src/lib.rs
++++ b/codex-rs/tui/src/lib.rs
+@@ -365,7 +365,7 @@
+-    let expected_host = if host.contains(':') {
++    let expected_host = if host.contains(':') && !host.starts_with('[') {
+         format!("[{host}]")
+     } else {
+         host.to_string()
+     };
+     host_and_port == format!("{expected_host}:{explicit_default_port}")
+ }
+@@ -402,7 +402,6 @@
+     if matches!(parsed.scheme(), "ws" | "wss")
+         && parsed.host_str().is_some()
+         && remote_addr_has_explicit_port(addr, &parsed)
+-        && parsed.path() == "/"
+         && parsed.query().is_none()
+         && parsed.fragment().is_none()
+     {
+@@ -2493,6 +2492,48 @@
+                 auth_token: None,
+             }
+         );
++    }
++
++    #[test]
++    fn resolve_remote_addr_preserves_websocket_gateway_paths() {
++        for (address, normalized) in [
++            (
++                "ws://127.0.0.1:4500/managed/capability",
++                "ws://127.0.0.1:4500/managed/capability",
++            ),
++            (
++                "wss://example.com:443/managed/capability",
++                "wss://example.com/managed/capability",
++            ),
++            (
++                "ws://[::1]:80/managed/capability",
++                "ws://[::1]/managed/capability",
++            ),
++            (
++                "wss://example.com:4500/a%20b/session",
++                "wss://example.com:4500/a%20b/session",
++            ),
++        ] {
++            assert_eq!(
++                resolve_remote_addr(address).expect("WebSocket paths should be preserved"),
++                RemoteAppServerEndpoint::WebSocket {
++                    websocket_url: normalized.to_string(),
++                    auth_token: None,
++                }
++            );
++        }
++    }
++
++    #[test]
++    fn resolve_remote_addr_rejects_gateway_queries_and_fragments() {
++        for address in [
++            "ws://127.0.0.1:4500/managed/capability?other=1",
++            "ws://127.0.0.1:4500/managed/capability#fragment",
++            "https://127.0.0.1:4500/managed/capability",
++            "ws://127.0.0.1/managed/capability",
++        ] {
++            assert!(resolve_remote_addr(address).is_err());
++        }
+     }
+ 
+     #[test]

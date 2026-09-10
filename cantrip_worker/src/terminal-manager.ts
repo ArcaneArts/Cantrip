@@ -116,6 +116,13 @@ interface TerminalSession {
     result: Promise<TerminalRecoveryRedraw>;
   } | null;
   removeAfterExit: boolean;
+  retargeting?: {
+    launch: Extract<TerminalLaunch, { type: "codex" }>;
+    promise: Promise<void>;
+    resolve(): void;
+    reject(error: Error): void;
+    force: ReturnType<typeof setTimeout> | null;
+  };
   restartDelayOverride: number | null;
   restartCount: number;
   restartTimer: ReturnType<typeof setTimeout> | null;
@@ -457,10 +464,168 @@ export class TerminalManager {
       this.#spawn(terminalId, session);
     } else if (session.cwd !== cwd) {
       throw new Error("Terminal session belongs to a different source folder.");
+    } else if (
+      session.launch.type === "codex" &&
+      session.launch.session &&
+      launch.type === "codex"
+    ) {
+      if (launch.session?.chatId !== session.launch.session.chatId)
+        throw new Error(
+          "Terminal session belongs to a different managed chat.",
+        );
+      if (
+        launch.threadId &&
+        (session.launch.threadId !== launch.threadId ||
+          session.launch.remoteUrl !== launch.remoteUrl)
+      )
+        return this.retargetManagedCodex(launch.session.chatId, {
+          threadId: launch.threadId,
+          remoteUrl: launch.remoteUrl,
+        }).then(() => {
+          // Another committed handoff may have superseded this view's target
+          // while the old child exited. Attach the resulting surface without
+          // recursively applying this stale launch again.
+          const current = this.#sessions.get(terminalId);
+          if (!current || current !== session)
+            throw new Error("The managed CLI was closed during reattachment.");
+          if (current.exited) return current.exited;
+          return this.#attach(terminalId, current, attachmentId, emit);
+        });
     }
 
     if (session.exited) return Promise.resolve(session.exited);
     return this.#attach(terminalId, session, attachmentId, emit);
+  }
+
+  /** Replace only the attached TUI, retaining its surface, dimensions and subscribers.
+   * The caller first commits the native handoff and retires the old gateway
+   * after retargeting. Resolution acknowledges spawning, not native readiness;
+   * an actual later exit still settles the attached streams normally.
+   * No native process or turn is stopped by this presentation operation.
+   */
+  async retargetManagedCodex(
+    chatId: string,
+    target: { threadId: string; remoteUrl: string },
+  ): Promise<void> {
+    const changes: Promise<void>[] = [];
+    for (const [terminalId, session] of this.#sessions) {
+      const launch = session.launch;
+      if (
+        launch.type !== "codex" ||
+        launch.session?.chatId !== chatId ||
+        session.removeAfterExit ||
+        this.#closing
+      )
+        continue;
+      if (session.retargeting) {
+        // A second committed replacement can arrive while the first TUI is
+        // exiting. The pending surface follows the latest selected target.
+        session.retargeting.launch = { ...launch, ...target };
+        changes.push(session.retargeting.promise);
+        continue;
+      }
+      if (
+        launch.threadId === target.threadId &&
+        launch.remoteUrl === target.remoteUrl
+      )
+        continue;
+      const nextLaunch = { ...launch, ...target };
+      let resolve!: () => void;
+      let reject!: (error: Error) => void;
+      const promise = new Promise<void>((yes, no) => {
+        resolve = yes;
+        reject = no;
+      });
+      const handoff = {
+        launch: nextLaunch,
+        promise,
+        resolve,
+        reject,
+        force: null as ReturnType<typeof setTimeout> | null,
+      };
+      session.retargeting = handoff;
+      changes.push(promise);
+      if (!session.process) {
+        this.#finishManagedRetarget(terminalId, session);
+        continue;
+      }
+      const child = session.process;
+      // Never infer an exit from elapsed time. Force only this owned TUI if it
+      // ignores the initial signal; the actual onExit callback performs reattach.
+      handoff.force = setTimeout(() => {
+        if (session.retargeting === handoff && session.process === child) {
+          try {
+            child.kill("SIGKILL");
+          } catch {
+            /* Retain the actual exit wait. */
+          }
+        }
+      }, 2_000);
+      handoff.force.unref();
+      try {
+        child.kill();
+      } catch (error) {
+        clearTimeout(handoff.force);
+        session.retargeting = undefined;
+        this.#appendOutput(
+          terminalId,
+          session,
+          "\r\n[Managed CLI reattachment failed. Reopen the CLI to retry.]\r\n",
+        );
+        reject(
+          error instanceof Error
+            ? error
+            : new Error("Managed CLI reattachment failed."),
+        );
+      }
+    }
+    const results = await Promise.allSettled(changes);
+    const failures = results.filter(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    if (failures.length)
+      throw new AggregateError(
+        failures.map((failure) => failure.reason),
+        "Managed CLI reattachment failed.",
+      );
+  }
+
+  #finishManagedRetarget(terminalId: string, session: TerminalSession): void {
+    const handoff = session.retargeting;
+    if (!handoff) return;
+    session.retargeting = undefined;
+    if (handoff.force) clearTimeout(handoff.force);
+    if (session.removeAfterExit || this.#closing) {
+      handoff.reject(
+        new Error("The managed CLI was closed during reattachment."),
+      );
+      return;
+    }
+    session.launch = handoff.launch;
+    session.exited = null;
+    this.#resetReplayState(terminalId, session);
+    // Reset the old alternate screen and its scrollback in every live view.
+    this.#appendOutput(terminalId, session, "\x1b[?1049l\x1bc");
+    try {
+      this.#spawn(terminalId, session);
+      handoff.resolve();
+    } catch (error) {
+      this.#appendOutput(
+        terminalId,
+        session,
+        "\r\n[Managed CLI reattachment failed. Reopen the CLI to retry.]\r\n",
+      );
+      this.#finalizeSession(terminalId, session, {
+        status: "exited",
+        exitCode: 1,
+        signal: null,
+      });
+      handoff.reject(
+        error instanceof Error
+          ? error
+          : new Error("Managed CLI reattachment failed."),
+      );
+    }
   }
 
   detach(terminalId: string, attachmentId: string): TerminalOpenResult {
@@ -502,6 +667,8 @@ export class TerminalManager {
 
   input(terminalId: string, data: string): void {
     const session = this.liveSession(terminalId);
+    if (session.retargeting)
+      throw new Error("The managed CLI is reattaching; input was not sent.");
     session.process!.write(data);
   }
 
@@ -854,6 +1021,10 @@ export class TerminalManager {
     child.onExit(({ exitCode, signal }) => {
       if (session.process !== child) return;
       session.process = null;
+      if (session.retargeting && !session.removeAfterExit && !this.#closing) {
+        this.#finishManagedRetarget(terminalId, session);
+        return;
+      }
       const result = terminalOpenResultSchema.parse({
         status: "exited",
         exitCode,
@@ -893,6 +1064,18 @@ export class TerminalManager {
         this.#scheduleServiceRestart(terminalId, session, delay);
         return;
       }
+      if (
+        session.launch.type === "codex" &&
+        session.processGeneration > 1 &&
+        exitCode !== 0 &&
+        !session.removeAfterExit &&
+        !this.#closing
+      )
+        this.#appendOutput(
+          terminalId,
+          session,
+          "\r\n[Managed CLI exited after reattachment. Reopen the CLI to retry.]\r\n",
+        );
       workerLogger.event(
         exitCode === 0 || session.removeAfterExit ? "info" : "warn",
         "Terminal process exited",
@@ -934,6 +1117,14 @@ export class TerminalManager {
     session: TerminalSession,
     result: Extract<TerminalOpenResult, { status: "exited" }>,
   ): void {
+    const handoff = session.retargeting;
+    session.retargeting = undefined;
+    if (handoff) {
+      if (handoff.force) clearTimeout(handoff.force);
+      handoff.reject(
+        new Error("The managed CLI was closed during reattachment."),
+      );
+    }
     session.exited = result;
     for (const resolve of session.waiters.values()) resolve(result);
     session.subscribers.clear();
