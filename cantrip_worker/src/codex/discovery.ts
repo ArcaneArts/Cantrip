@@ -329,7 +329,9 @@ export async function discoverCodexVersion(
     const { stdout, stderr } = await execFileAsync(binary, ["--version"], {
       timeout: 5_000,
     });
-    const version = `${stdout}${stderr}`.trim();
+    // Startup warnings are diagnostics, not part of the version identifier.
+    // Some wrappers report the version only on stderr, so retain that fallback.
+    const version = stdout.trim() || stderr.trim();
     return version.length > 0 ? version : null;
   } catch {
     return null;

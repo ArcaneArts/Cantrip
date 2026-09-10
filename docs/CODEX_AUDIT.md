@@ -4847,6 +4847,76 @@ restart or rendered GUI/mobile implementation test. Those remaining acceptance
 requirements and the final user demo still apply. No personal provider, live
 desktop input, CI job, native upstream patch or user-worker restart was used.
 
+### Pass 69 — complete worker restart and admitted CLI MCP activation
+
+The new `native-worker-process-recovery.test.ts` launches the compiled worker
+entry point in a separate Node process against the complete server and its real
+WorkerBridge. It provisions an isolated encrypted account and worker principal,
+grants component keys, prepares the native session, drives actual encrypted
+terminal input/snapshots and the GUI turn API, then kills only its own worker
+process group and relaunches it from the same saved data. The pinned native
+engine and TUI execute against a deterministic local provider. A test-only
+preload isolates unrelated desktop capture and CodeGraph installation; CUA uses
+the compiled Rust helper with its explicit fake backend.
+
+This exposed four production defects that narrower in-process fixtures missed:
+
+- Startup diagnostics were concatenated into the Codex version. A long warning
+  could fail instruction-context validation after `turn/start` had already
+  succeeded. Version discovery now prefers stdout and retains stderr-only
+  wrappers; activity metadata uses the parsed semantic version with a bounded
+  fallback.
+- macOS `/var` and `/private/var` aliases failed exact workspace validation.
+  Managed native admission now compares resolved filesystem identity while
+  continuing to reject another workspace, extra roots and malformed roots.
+- Native execution admission compared an opaque worker routing reference with
+  a filesystem path. It now resolves that reference through the worker-owned
+  registry before checking workspace identity, retaining route/account checks.
+- CLI-originated admission registered CUA authority but left the prepared MCP
+  host idle. Admission now activates the existing authenticated host for the
+  accepted execution lane. It preserves credentials, allowed operations,
+  configuration and disabled CUA state. Completion/failure releases only that
+  lane; late cleanup cannot deactivate a successor. Other owners, chats,
+  placements and permission profiles cannot activate the host.
+
+Both actual worker-process restart directions passed: GUI first then CLI after
+restart, and CLI first then GUI. Each turn invokes CUA through the real MCP host,
+broker and exact-turn authority; its own PNG reaches the next provider request.
+The same native thread survives, worker and terminal generations change, key
+grants rehydrate, and encrypted user/assistant history remains exactly once with
+stable message IDs. No model request occurs during preboot or restart. The test
+waits for canonical idle status and committed input/output before crashing.
+Initial test-only failures were corrected by enabling CUA in fixture settings
+and declaring the fake provider's image-input catalog; no production permission
+or modality checks were weakened.
+
+Validation: 114 focused broker/session/policy/routing/discovery/admission tests,
+89 focused worker worktree/app-server tests and 57 focused app tests passed.
+Explicit strict typechecking of all changed tests passed. Worker, CLI and CUA
+builds passed; the app build passed after building its required `@cantrip/glitch`
+workspace dependency. The focused server matrix reports 21 failures and 53
+passes; every failure heading occurs in the earlier full-check baseline.
+
+The first required `pnpm check` reached full server testing: 41 failures,
+1,363 passes and 70 skips. Forty failures match pass 68, and the additional
+intermittent direct-attachment lease test passed with all 28 tests in its
+isolated suite. After the MCP activation fix, another required check passed
+source typechecks and stopped on two unchanged Rust large-score execution-limit
+tests under parallel test load. The standalone CUA suite repeated those two
+limits (109 library tests passed); running each failing test alone passed in
+1.37 and 1.12 seconds. No Rust source changed in this pass. The final
+`pnpm cua:test:worker` passed 134 protocol, 25 crypto, 703 worker, 241 server
+and 309 app tests (three server cases skipped).
+Global formatting and full worker/app testing were not reached by either check;
+scoped formatting and diff checks are used for this pass.
+
+This establishes completed-conversation recovery through a whole worker-process
+restart, rather than only replacing its native engine. Full-worker loss during
+pending interactions/active work, the remaining matrix reconciliation and the
+rendered GUI/mobile/user desktop demo still require their own evidence. No
+personal provider, live desktop input, CI job, native upstream patch or user
+worker restart was used.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal

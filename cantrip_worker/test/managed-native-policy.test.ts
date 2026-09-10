@@ -61,6 +61,37 @@ function operation(
 }
 
 describe("managed native payload policy", () => {
+  it("accepts canonical aliases for the exact workspace without allowing another root", async () => {
+    const context = await fixture();
+    const alias = path.join(path.dirname(context.cwd), "alias");
+    const outside = path.join(path.dirname(context.cwd), "outside-alias");
+    await symlink(context.cwd, alias, "junction");
+    await symlink(context.codexHome, outside, "junction");
+    for (const [authorized, requested] of [
+      [context.cwd, alias],
+      [alias, context.cwd],
+    ]) {
+      await expect(
+        managedNativeCommandIntent(
+          operation("turn/start", {
+            threadId: "thread",
+            cwd: requested,
+            runtimeWorkspaceRoots: [requested],
+          }),
+          { ...context, cwd: authorized! },
+        ),
+      ).resolves.toBeDefined();
+    }
+    for (const params of [
+      { cwd: outside },
+      { runtimeWorkspaceRoots: [outside] },
+      { runtimeWorkspaceRoots: [alias, outside] },
+      { runtimeWorkspaceRoots: [null] },
+    ])
+      await expect(
+        managedNativeCommandIntent(operation("turn/start", params), context),
+      ).rejects.toThrow("authorized placement");
+  });
   it("derives goal pause and resume solely from actual explicit native status", async () => {
     const context = await fixture();
     expect(

@@ -5781,7 +5781,11 @@ export class CodexAppServer implements CodexRuntime {
           active: activeTurn,
           hasGitMetadata: await workspaceHasGitMetadata(options.cwd),
           options,
-          runtimeVersion: this.compatibility.version?.raw ?? null,
+          runtimeVersion:
+            (
+              this.compatibility.version?.semantic ??
+              this.compatibility.version?.raw
+            )?.slice(0, 100) ?? null,
           turnId: response.turn.id,
           turnPolicy,
         }),

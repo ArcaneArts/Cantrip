@@ -1,3 +1,4 @@
+import { managedNativePathsMatch } from "./codex/managed-native-policy.js";
 import { completeManagedRuntimeHandoff } from "./codex/managed-runtime-handoff-completion.js";
 import {
   eligibleManagedQueueItem,
@@ -2677,7 +2678,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         const execution = grant.execution;
         if (
           !execution ||
-          execution.cwd !== options.cwd ||
+          !(await managedNativePathsMatch(
+            await routingRegistry.resolveToken(execution.cwd),
+            options.cwd,
+          )) ||
           execution.modelRouteId !== options.model.routeId ||
           execution.providerAccountId !== (options.provider.accountId ?? null)
         ) {
@@ -2728,6 +2732,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         let publication: Promise<void> = Promise.resolve();
         let publicationFailure: unknown;
         let releaseCua: (() => Promise<void>) | null = null;
+        let releaseMcp: (() => void) | null = null;
         const emit = async (
           event: Parameters<NativeCommandClient["event"]>[0]["event"],
         ) => {
@@ -2748,6 +2753,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           void enqueue(build).catch(() => {});
         };
         const release = async () => {
+          releaseMcp?.();
+          releaseMcp = null;
           const cleanup = releaseCua;
           releaseCua = null;
           await cleanup?.();
@@ -2773,6 +2780,25 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             publish: (event) => enqueue(async () => event),
             publishActivity: (activity) =>
               queue(() => sealer.activity(activity)),
+          });
+        }
+        if (grant.receipt.executionLaneId) {
+          releaseMcp = mcpBroker.activateSession({
+            ownerId: identity.ownerId,
+            workerId: identity.workerId,
+            chatId: session.chatId,
+            contextKind: session.contextKind,
+            projectId: session.projectId,
+            worktreeId:
+              session.contextKind === "project" ? session.worktreeId : null,
+            scratchRootId:
+              session.contextKind === "standalone"
+                ? session.scratchRootId
+                : null,
+            rootKind:
+              session.contextKind === "project" ? session.rootKind : null,
+            permissionProfileId: options.permissionProfileId,
+            executionLaneId: grant.receipt.executionLaneId,
           });
         }
         cliBroker.bindCodexThread(options.threadId, {
