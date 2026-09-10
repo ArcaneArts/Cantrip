@@ -1,3 +1,4 @@
+import { queueStateChanged } from "./native-command-queue.js";
 import { assertNativeRuntimeWritable } from "./native-runtime-handoff-guard.js";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
@@ -581,7 +582,7 @@ export class NativeRuntimeHandoffRepository {
           : !["preparing", "prepared"].includes(row.phase)
       )
         fail("handoff-phase-conflict");
-      return this.update(tx, row, {
+      const result = await this.update(tx, row, {
         phase: outcome,
         errorCode: null,
         retiredRuntimeGenerations:
@@ -594,6 +595,14 @@ export class NativeRuntimeHandoffRepository {
               ]
             : row.retiredRuntimeGenerations,
       });
+      // Durable queue delivery retries the wake after a lost worker reply or
+      // transient failure, without replaying an input or changing pause/Stop.
+      await tx
+        .insert(schema.managedQueueStates)
+        .values({ chatId: row.chatId })
+        .onConflictDoNothing();
+      await queueStateChanged(tx, row.chatId);
+      return result;
     });
   }
   async failure(

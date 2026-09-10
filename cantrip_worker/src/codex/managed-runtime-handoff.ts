@@ -58,12 +58,12 @@ export interface ManagedRuntimeHandoffDependencies {
     state: NativeRuntimeHandoffState,
     runtime: HandoffRuntime,
   ): Promise<void>;
-  completed?(state: NativeRuntimeHandoffState): void;
+  completed?(state: NativeRuntimeHandoffState): void | Promise<void>;
   restoreSource?(
     state: NativeRuntimeHandoffState,
     runtime: HandoffRuntime,
   ): Promise<void>;
-  cancelled?(state: NativeRuntimeHandoffState): void;
+  cancelled?(state: NativeRuntimeHandoffState): void | Promise<void>;
 }
 
 /** Executes one reserved handoff, with the server phase as the commit authority.
@@ -166,7 +166,7 @@ export class ManagedRuntimeHandoffCoordinator {
       },
       signal,
     );
-    d.cancelled?.(cancelled);
+    await d.cancelled?.(cancelled);
     return cancelled;
   }
 
@@ -213,11 +213,11 @@ export class ManagedRuntimeHandoffCoordinator {
     const scope = { chatId, operationId };
     let state = await d.client.request({ ...scope, action: "read" }, signal);
     if (state.phase === "completed") {
-      d.completed?.(state);
+      await d.completed?.(state);
       return state;
     }
     if (state.phase === "cancelled") {
-      d.cancelled?.(state);
+      await d.cancelled?.(state);
       return state;
     }
     try {
@@ -362,7 +362,7 @@ export class ManagedRuntimeHandoffCoordinator {
         { ...scope, action: "finish", outcome: "completed" },
         signal,
       );
-      d.completed?.(completed);
+      await d.completed?.(completed);
       return completed;
     } catch (error) {
       // A failure records diagnostic state; it does not revoke the reservation,

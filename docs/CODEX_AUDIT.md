@@ -3533,6 +3533,53 @@ Remaining: verify active-goal continuation and queue execution across transfer,
 then expose GUI migration, implement eager GUI-first startup and execute the full
 acceptance matrix. No live user worker, personal desktop input or CI was used.
 
+### Pass 40 — resume eligible work after handoff finalization
+
+A real native test reproduced a cancellation defect: an active goal whose attempt
+had been deferred stayed idle after the handoff restored the already-loaded source.
+Releasing the local staging hold did not schedule another native idle check. A
+successful transfer to a newly loaded destination already resumed in that test.
+
+Both completion and cancellation now release the hold, start observation and await
+a queue-aware native wake through one finalization helper. The existing canonical
+queue remains the input owner: pending eligible input takes priority, and durable
+Pause/Stop state suppresses the goal wake. Native wake does not rebind a stopped
+runner. Finalization callbacks are awaited, so an unsuccessful wake cannot be
+silently reported as successful local completion.
+
+The server transaction that finishes a handoff also records a durable queue
+notification, creating its revision row when this chat has never used the queue.
+Duplicate finish acknowledgments do not increment it again. The worker now awaits
+the actual wake attempt before acknowledging a queue notification. A disconnected
+or failed request therefore leaves that revision available for the existing delivery
+loop to retry, without replaying a prompt or requiring a worker restart.
+
+Validation:
+
+- All 31 cases across the existing handoff suite and the new native execution suite
+  pass with the actual pinned app-server. The seven new cases cover completed and
+  cancelled transfers with active, paused and explicitly stopped goals, plus a
+  cancelled transfer whose immediate wake and first notification delivery fail.
+- Active cases obtain real authenticated command admission, produce a deterministic
+  local provider response, and retain its completed native turn. The retry case
+  checks the durable unacknowledged revision, delivers it again and observes goal
+  execution; repeating finish does not create another queue revision.
+- Explicit idle Stop uses the same durable compare-and-set as the GUI control.
+  Paused native goals remain paused. Neither case sends a provider request.
+- The four existing native managed-queue execution cases and two staging cases
+  pass; all nine execution-runner cases pass. These are regression coverage, not
+  proof of queued-prompt execution across a provider transfer.
+- Worker/server typechecks, scoped formatting and diff whitespace checks pass.
+  `pnpm check` again stops at the unchanged decomposition budgets in
+  `chat-turn-runtime.ts` (2330/1999) and `task-routes.ts` (2149/1999); later chained
+  checks did not run. No CI, real provider account, user worker restart or personal
+  desktop interaction was used.
+
+Still outstanding: the combined canonical queued-prompt execution/transfer matrix,
+GUI provider/account migration selection, eager eligible empty-chat preparation
+with GUI-first presentation, and the remaining full acceptance/manual demo. The
+active goal remains the complete integration objective.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal

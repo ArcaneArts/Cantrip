@@ -1,3 +1,8 @@
+import { completeManagedRuntimeHandoff } from "./codex/managed-runtime-handoff-completion.js";
+import {
+  eligibleManagedQueueItem,
+  wakeManagedQueueAutonomy,
+} from "./codex/managed-queue-wake.js";
 import { ManagedRuntimeHandoffPublication } from "./codex/managed-runtime-handoff-publication.js";
 import {
   ManagedRuntimeHandoffCoordinator,
@@ -2899,20 +2904,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         }),
     });
     const synchronizeQueue = () => cutover.synchronize();
-    const eligibleQueueItem = (
-      snapshot: Awaited<ReturnType<ManagedNativeQueueClient["read"]>>,
-    ) =>
-      snapshot.items.find(
-        (item) =>
-          !item.frozen &&
-          item.state === "pending" &&
-          !snapshot.claims.some(
-            (claim) =>
-              claim.promptId === item.id &&
-              claim.promptRevision === item.revision &&
-              claim.status === "rejected",
-          ),
-      );
     const resumeQueue = async (): Promise<{ resumed: boolean }> => {
       assertQueueCurrent();
       await synchronizeQueue();
@@ -2924,7 +2915,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         threadId: options.threadId,
         revision: String(snapshot.revision),
       });
-      const eligible = eligibleQueueItem(snapshot);
+      const eligible = eligibleManagedQueueItem(snapshot);
       if (snapshot.paused || !eligible) return { resumed: false };
       await queue.execute({
         method: "thread/queue/start",
@@ -2956,13 +2947,14 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         threadId: options.threadId,
         revision: String(snapshot.revision),
       });
-      if (snapshot.paused || eligibleQueueItem(snapshot)) return;
-      const runner = managedExecutionRunners.get(runtime)?.get(session.chatId);
-      if (runner)
-        await runtime.wakeManagedExecution(
-          { threadId: options.threadId, ...runner.configuration },
-          generation,
-        );
+      await wakeManagedQueueAutonomy({
+        snapshot,
+        runtime,
+        threadId: options.threadId,
+        runtimeGeneration: generation,
+        runner: managedExecutionRunners.get(runtime)?.get(session.chatId)
+          ?.configuration,
+      });
     };
     runtime.setManagedQueueResume(options.threadId, resumeQueue);
     const entry: {
@@ -3200,6 +3192,22 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       }
     },
   });
+  const finishRuntimeHandoff = (state: NativeRuntimeHandoffState) =>
+    completeManagedRuntimeHandoff({
+      state,
+      current: managedCurrentRuntimes.get(state.chatId),
+      staging: handoffStaging,
+      observe: (runtime) =>
+        observeManagedSettings(state.chatId, runtime, state.source.threadId),
+      wake: async (runtime) => {
+        const entry = managedCommandSessions
+          .get(runtime)
+          ?.get(`${state.chatId}:${state.source.threadId}`);
+        if (!entry)
+          throw new Error("Published handoff has no managed command session.");
+        await entry.wakeQueue();
+      },
+    });
   const runtimeHandoffs = () => {
     const scope = nativeNamespaceScope();
     const identity = JSON.stringify(scope);
@@ -3331,7 +3339,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         handoffPublication.publish(state, staged, "destination"),
       restoreSource: (state, staged) =>
         handoffPublication.publish(state, staged, "source"),
-      cancelled: (state) => {
+      cancelled: async (state) => {
         for (const runtime of stagedHandoffDestinations.get(
           state.operationId,
         ) ?? []) {
@@ -3347,34 +3355,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             if (candidate === runtime) codexRuntimes.delete(id);
         }
         stagedHandoffDestinations.delete(state.operationId);
-        const runtime = managedCurrentRuntimes.get(state.chatId);
-        if (
-          !runtime ||
-          runtime.transportGeneration !==
-            (state.binding ?? state.source).runtimeGeneration
-        )
-          return;
-        handoffStaging.release(
-          runtime,
-          state.source.threadId,
-          state.operationId,
-        );
-        observeManagedSettings(state.chatId, runtime, state.source.threadId);
+        await finishRuntimeHandoff(state);
       },
-      completed: (state) => {
+      completed: async (state) => {
         stagedHandoffDestinations.delete(state.operationId);
-        const runtime = managedCurrentRuntimes.get(state.chatId);
-        if (
-          !runtime ||
-          runtime.transportGeneration !== state.prepared?.runtimeGeneration
-        )
-          return;
-        handoffStaging.release(
-          runtime,
-          state.source.threadId,
-          state.operationId,
-        );
-        observeManagedSettings(state.chatId, runtime, state.source.threadId);
+        await finishRuntimeHandoff(state);
       },
     });
     handoffCoordinator = { identity, coordinator };
@@ -6542,15 +6527,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             threadId: entry.threadId,
             revision: String(command.revision),
           });
-          void entry.wakeQueue().catch((error) =>
-            workerLogger.event("warn", "Managed queue wake failed", {
-              event: "codex.queue.wake-failed",
-              subsystem: "codex",
-              operation: "wake-managed-queue",
-              chatId: command.chatId,
-              error: workerLogError(error),
-            }),
-          );
+          // Acknowledge only after the actual wake attempt. The server retains
+          // its durable notification revision when this request fails.
+          await entry.wakeQueue();
         }
         return { acknowledged: true };
       }
