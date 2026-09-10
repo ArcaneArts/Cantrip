@@ -1,3 +1,5 @@
+import { createNativeHistoryOutputModeResolver } from "../src/native-history-output-mode.js";
+import { parseCodexNativeHistory } from "../src/codex/native-history.js";
 import { randomUUID } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import type { NativeHistoryBinding } from "@cantrip/protocol";
@@ -63,6 +65,83 @@ function fixture() {
 }
 
 describe("native output identity selection before encryption", () => {
+  it("encrypts plan-mode live output with its original turn classification", async () => {
+    const f = fixture();
+    const read = vi.fn(async (threadId: string) =>
+      parseCodexNativeHistory(
+        {
+          thread: { id: threadId, turns: [], status: { type: "idle" } },
+          history: {
+            version: 1,
+            currentTurnId: "turn",
+            currentTurnState: "live",
+            live: { epoch: "test", throughSequence: "0", items: [] },
+            turns: [
+              {
+                turnId: "turn",
+                source: "canonical",
+                retention: "complete",
+                contexts: [
+                  {
+                    cwd: "/workspace",
+                    model: "test",
+                    collaborationMode: "plan",
+                    reasoningEffort: null,
+                    rootTurnId: null,
+                  },
+                ],
+                items: [],
+                usage: null,
+                warnings: null,
+                errors: null,
+              },
+            ],
+          },
+        },
+        threadId,
+      ),
+    );
+    const mode = createNativeHistoryOutputModeResolver(read);
+    const resolver = createManagedNativeOutputIdentityResolver({
+      client: { open: async () => f.binding, resolve: f.resolve },
+      scope: () => ({
+        chatId: f.binding.chatId,
+        threadId: f.binding.threadId,
+        provenance: { kind: "current" },
+      }),
+      mode,
+    });
+    const sealer = new EncryptedChatEventSealer(
+      f.service,
+      f.binding.chatId,
+      { explanation: null, steps: [], question: null },
+      resolver,
+    );
+    const message = {
+      ...f.message,
+      correlation: {
+        sourceMethod: "item/completed",
+        threadId: f.binding.threadId,
+        turnId: "turn",
+        itemId: "answer",
+        diagnosticId: null,
+      },
+    };
+    const [first, second] = await Promise.all([
+      sealer.message(message),
+      sealer.message(message),
+    ]);
+    expect(first.message.classification.mode).toBe("plan");
+    expect(second.message.classification.mode).toBe("plan");
+    expect(first.message.id).toBe(second.message.id);
+    expect(read).toHaveBeenCalledTimes(1);
+    read.mockRejectedValueOnce(new Error("read unavailable"));
+    const next = { ...f.identity, turnId: "next" };
+    await expect(mode(next)).rejects.toThrow("read unavailable");
+    await expect(mode(next)).rejects.toThrow("not yet retained");
+    expect(read).toHaveBeenCalledTimes(3);
+  });
+
   it("uses the verified async child binding and original root turn for shared output identity", async () => {
     const f = fixture();
     const agentScope = {
@@ -85,6 +164,7 @@ describe("native output identity selection before encryption", () => {
       .fn<NativeHistoryClient["open"]>()
       .mockResolvedValue({ ...f.binding, ancestorThreadIds: ["root-thread"] });
     const resolver = createManagedNativeOutputIdentityResolver({
+      mode: async () => "default",
       client: { open, resolve: f.resolve },
       scope,
     });
@@ -136,6 +216,7 @@ describe("native output identity selection before encryption", () => {
       provenance: { kind: "current" as const },
     }));
     const resolver = createManagedNativeOutputIdentityResolver({
+      mode: async () => "default",
       client: { open, resolve: f.resolve },
       scope,
     });
@@ -178,6 +259,7 @@ describe("native output identity selection before encryption", () => {
     const open = vi.fn<NativeHistoryClient["open"]>();
     const scope = vi.fn(() => null);
     const resolver = createManagedNativeOutputIdentityResolver({
+      mode: async () => "default",
       client: { open, resolve: f.resolve },
       scope,
     });

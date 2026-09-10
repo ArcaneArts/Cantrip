@@ -874,7 +874,10 @@ export function createChatRecoveryRuntime({
       );
     }
 
-    await interruptLiveAgentInteractionRequests(notification.chatId);
+    await interruptLiveAgentInteractionRequests(
+      notification.chatId,
+      notification.executionLaneId,
+    );
     const finished = logicalRoot
       ? await finishManagedGui({
           repository,

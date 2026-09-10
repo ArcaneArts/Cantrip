@@ -1,5 +1,9 @@
 import { nativeTurnModelAttributionSchema } from "./native-turn-model-attribution.js";
 import { z } from "zod";
+import {
+  agentInteractionResolutionCreateSchema,
+  encryptedAgentInteractionResolutionCreateSchema,
+} from "./agent-interactions.js";
 import { computerUseChunkEventSchema } from "./computer-use.js";
 import {
   cuaApprovalRequestEventSchema,
@@ -301,6 +305,12 @@ export const workerEventSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("agent.interaction.cleared"),
     requestKey: z.string().min(1).max(200),
+    resolution: z
+      .union([
+        agentInteractionResolutionCreateSchema,
+        encryptedAgentInteractionResolutionCreateSchema,
+      ])
+      .optional(),
   }),
   z.object({
     type: z.literal("agent.interaction.expired"),

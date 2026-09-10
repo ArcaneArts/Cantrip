@@ -346,6 +346,109 @@ describe("CUA durable interaction lifecycle without Codex chat-state changes", (
     expect(await chatStatus()).toBe("idle");
   });
 
+  it("stores an accepted GUI answer after its native resolved notification without reopening interrupted requests", async () => {
+    const request =
+      await repository.recordEncryptedAgentInteractionRequest(
+        encryptedRequest(),
+      );
+    const answer = {
+      idempotencyKey: randomUUID(),
+      classification: { kind: "permissions" as const },
+      protectedResponse: protectedPayload,
+    };
+    await repository.terminalizeAgentInteractionRequestFromWorker(
+      request.requestKey,
+      chatId,
+      "worker",
+      "interrupted",
+      { ...answer, idempotencyKey: "native-answer" },
+    );
+    await expect(
+      repository.resolveEncryptedAgentInteractionRequest(
+        "owner",
+        request.id,
+        answer,
+      ),
+    ).rejects.toThrow("already resolved");
+    expect(
+      await repository.resolveEncryptedAgentInteractionRequest(
+        "owner",
+        request.id,
+        answer,
+        true,
+      ),
+    ).toMatchObject({
+      status: "resolved",
+      protectedResponse: protectedPayload,
+    });
+    await expect(
+      repository.resolveEncryptedAgentInteractionRequest("owner", request.id, {
+        ...answer,
+        idempotencyKey: randomUUID(),
+      }),
+    ).rejects.toThrow("already resolved");
+    const interrupted =
+      await repository.recordEncryptedAgentInteractionRequest(
+        encryptedRequest(),
+      );
+    await repository.terminalizeAgentInteractionRequestFromWorker(
+      interrupted.requestKey,
+      chatId,
+      "worker",
+      "interrupted",
+    );
+    await expect(
+      repository.resolveEncryptedAgentInteractionRequest(
+        "owner",
+        interrupted.id,
+        answer,
+        true,
+      ),
+    ).rejects.toThrow("already interrupted");
+  });
+
+  it("does not clear another execution's pending interactions", async () => {
+    const request =
+      await repository.recordEncryptedAgentInteractionRequest(
+        encryptedRequest(),
+      );
+    expect(
+      await repository.interruptAgentInteractionRequests(
+        chatId,
+        "other-execution",
+      ),
+    ).toEqual([]);
+    expect(
+      await repository.getAgentInteractionRequest("owner", request.id),
+    ).toMatchObject({ status: "pending" });
+    expect(
+      await repository.interruptAgentInteractionRequests(chatId),
+    ).toMatchObject([{ id: request.id, status: "interrupted" }]);
+  });
+
+  it("converges concurrent accepted GUI and native answer publications", async () => {
+    const request =
+      await repository.recordEncryptedAgentInteractionRequest(
+        encryptedRequest(),
+      );
+    const answer = {
+      classification: { kind: "permissions" as const },
+      protectedResponse: protectedPayload,
+    };
+    const replies = await Promise.all(
+      ["gui", "native"].map((idempotencyKey) =>
+        repository.resolveEncryptedAgentInteractionRequest(
+          "owner",
+          request.id,
+          { ...answer, idempotencyKey },
+          true,
+        ),
+      ),
+    );
+    expect(replies[0]).toEqual(replies[1]);
+    expect(replies[0]?.status).toBe("resolved");
+  });
+
   it("does not restore chat status when CUA expires, is interrupted, or is terminalized by its worker", async () => {
     const expiring = await repository.recordEncryptedAgentInteractionRequest({
       ...encryptedRequest(),

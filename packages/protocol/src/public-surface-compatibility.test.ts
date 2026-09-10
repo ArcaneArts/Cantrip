@@ -233,6 +233,7 @@ const managedRuntimeExports = [
   "nativeSettingsVersionSchema",
   "nativeThreadSettingsSchema",
   "nativeTurnModelAttributionSchema",
+  "nativeTurnRecoveryObservationSchema",
   "permissionTransitionSchema",
   "protectedNativeSettingsSnapshotSchema",
   "reconcileNativeHistoryUsage",
@@ -267,7 +268,7 @@ describe("protocol public surface compatibility", () => {
         !managedRuntimeExports.includes(name),
     );
 
-    expect(exportNames).toHaveLength(2_120);
+    expect(exportNames).toHaveLength(2_121);
     expect(
       exportNames.filter((name) => managedRuntimeExports.includes(name)),
     ).toEqual(managedRuntimeExports);

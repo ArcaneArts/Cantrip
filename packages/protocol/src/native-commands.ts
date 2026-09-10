@@ -314,3 +314,18 @@ export const nativePermissionTransitionResolutionSchema = z
 export type NativePermissionTransitionResolution = z.infer<
   typeof nativePermissionTransitionResolutionSchema
 >;
+
+/** Content-free evidence read from the resumed native thread after worker loss. */
+export const nativeTurnRecoveryObservationSchema = z
+  .object({
+    threadId: id,
+    runtimeGeneration: id,
+    turnId: id,
+    status: z
+      .enum(["inProgress", "completed", "failed", "interrupted"])
+      .nullable(),
+  })
+  .strict();
+export type NativeTurnRecoveryObservation = z.infer<
+  typeof nativeTurnRecoveryObservationSchema
+>;

@@ -3,6 +3,7 @@ import {
   validateChatTurnInput,
 } from "./chat-turn-configuration.js";
 import { finishManagedGui } from "./finish-managed-gui.js";
+import { clearAgentInteraction } from "./clear-agent-interaction.js";
 
 import { protectChatInput } from "./protect-chat-input.js";
 import {
@@ -245,6 +246,8 @@ export function createChatTurnRuntime({
     });
     publishChatSummary(execution.chatId, execution.projectId);
     const executionLaneId = execution.executionLaneId;
+    const clearExecutionRequests = () =>
+      interruptLiveAgentInteractionRequests(execution.chatId, executionLaneId);
     const finishExecution = (status: "idle" | "failed") =>
       nativeCommandReceipt
         ? finishManagedGui({
@@ -1054,19 +1057,13 @@ export function createChatTurnRuntime({
                       return;
                     }
                     if (
-                      event.type === "agent.interaction.cleared" ||
-                      event.type === "agent.interaction.expired"
-                    ) {
-                      await terminalizeLiveAgentInteractionRequest(
-                        event.requestKey,
-                        execution.chatId,
-                        execution.workerId,
-                        event.type === "agent.interaction.expired"
-                          ? "expired"
-                          : "interrupted",
-                      );
+                      await clearAgentInteraction(
+                        event,
+                        execution,
+                        terminalizeLiveAgentInteractionRequest,
+                      )
+                    )
                       return;
-                    }
                     if (event.type === "agent.protected-task-message") {
                       if (!encryptedTaskRelay && !encryptedTaskMessages) {
                         throw new Error(
@@ -1660,7 +1657,7 @@ export function createChatTurnRuntime({
                 attribution,
               );
             }
-            await interruptLiveAgentInteractionRequests(execution.chatId);
+            await clearExecutionRequests();
             const finished = await finishExecution("idle");
             publishChatTurnBoundary(
               execution.chatId,
@@ -1933,7 +1930,7 @@ export function createChatTurnRuntime({
             attribution,
           );
         }
-        await interruptLiveAgentInteractionRequests(execution.chatId);
+        await clearExecutionRequests();
         const finished = await finishExecution(
           interrupted || execution.contextKind === "standalone"
             ? "idle"

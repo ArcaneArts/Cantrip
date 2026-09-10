@@ -512,6 +512,7 @@ export class AgentInteractionRepository {
     ownerId: string,
     requestId: string,
     input: AgentInteractionResolutionCreate,
+    acceptedNativeReply = false,
   ): Promise<AgentInteractionRequest | null> {
     await this.collaborators.expireAgentInteractionRequests();
     const existing = await this.collaborators.getAgentInteractionRequest(
@@ -542,6 +543,8 @@ export class AgentInteractionRepository {
       ) {
         return toAgentInteractionRequest(row);
       }
+      if (acceptedNativeReply && row.status === "resolved")
+        return toAgentInteractionRequest(row);
       throw new AgentInteractionConflictError(
         `Interaction request is already ${existing.status}.`,
       );
@@ -566,6 +569,14 @@ export class AgentInteractionRepository {
       )
       .returning();
     if (!rows[0]) {
+      if (acceptedNativeReply) {
+        const [saved] = await this.database
+          .select()
+          .from(schema.agentInteractionRequests)
+          .where(eq(schema.agentInteractionRequests.id, requestId));
+        if (saved?.status === "resolved")
+          return toAgentInteractionRequest(saved);
+      }
       throw new AgentInteractionConflictError(
         "Interaction request was resolved concurrently.",
       );
@@ -600,6 +611,7 @@ export class AgentInteractionRepository {
     ownerId: string,
     requestId: string,
     input: EncryptedAgentInteractionResolutionCreate,
+    acceptedNativeReply = false,
   ): Promise<EncryptedAgentInteractionRequest | null> {
     await this.collaborators.expireAgentInteractionRequests();
     const existing = await this.collaborators.getAgentInteractionRequest(
@@ -630,6 +642,8 @@ export class AgentInteractionRepository {
       if (row.resolutionIdempotencyKey === input.idempotencyKey) {
         return toEncryptedAgentInteractionRequest(row);
       }
+      if (acceptedNativeReply && row.status === "resolved")
+        return toEncryptedAgentInteractionRequest(row);
       throw new AgentInteractionConflictError(
         `Interaction request is already ${existing.status}.`,
       );
@@ -654,6 +668,14 @@ export class AgentInteractionRepository {
       )
       .returning();
     if (!rows[0]) {
+      if (acceptedNativeReply) {
+        const [saved] = await this.database
+          .select()
+          .from(schema.agentInteractionRequests)
+          .where(eq(schema.agentInteractionRequests.id, requestId));
+        if (saved?.status === "resolved")
+          return toEncryptedAgentInteractionRequest(saved);
+      }
       throw new AgentInteractionConflictError(
         "Interaction request was resolved concurrently.",
       );
@@ -716,6 +738,7 @@ export class AgentInteractionRepository {
 
   async interruptAgentInteractionRequests(
     chatId: string,
+    executionLaneId?: string,
   ): Promise<AgentInteractionRequestWire[]> {
     const now = new Date();
     const rows = await this.database
@@ -724,6 +747,12 @@ export class AgentInteractionRepository {
       .where(
         and(
           eq(schema.agentInteractionRequests.chatId, chatId),
+          executionLaneId === undefined
+            ? undefined
+            : eq(
+                schema.agentInteractionRequests.executionLaneId,
+                executionLaneId,
+              ),
           eq(schema.agentInteractionRequests.status, "pending"),
         ),
       )
@@ -736,7 +765,36 @@ export class AgentInteractionRepository {
     chatId: string,
     workerId: string,
     status: "expired" | "interrupted",
+    resolution?:
+      | AgentInteractionResolutionCreate
+      | EncryptedAgentInteractionResolutionCreate,
   ): Promise<AgentInteractionRequestWire | null> {
+    if (resolution) {
+      const [request] = await this.database
+        .select()
+        .from(schema.agentInteractionRequests)
+        .where(
+          and(
+            eq(schema.agentInteractionRequests.requestKey, requestKey),
+            eq(schema.agentInteractionRequests.chatId, chatId),
+            eq(schema.agentInteractionRequests.workerId, workerId),
+          ),
+        );
+      if (!request) return null;
+      return "protectedResponse" in resolution
+        ? this.resolveEncryptedAgentInteractionRequest(
+            request.ownerId,
+            request.id,
+            resolution,
+            true,
+          )
+        : this.resolveAgentInteractionRequest(
+            request.ownerId,
+            request.id,
+            resolution,
+            true,
+          );
+    }
     const now = new Date();
     const rows = await this.database
       .update(schema.agentInteractionRequests)

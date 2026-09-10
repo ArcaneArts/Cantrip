@@ -14,6 +14,7 @@ import {
   encryptPrivateDisplayLabel,
   encryptChatMessageProtectedContent,
   encryptQueuedPromptProtectedContent,
+  encryptInteractionResponseContent,
   decryptChatMessageProtectedContent,
   exportHpkePublicKey,
   generateAccountMasterKey,
@@ -34,11 +35,19 @@ const workerRoot = fileURLToPath(new URL("../", import.meta.url));
 
 // This launches dist/index.js, not a subset of worker components. Build the
 // worker first. Only the test's own processes and temporary data are stopped.
-it
-  .skipIf(!binary || !helper || process.platform === "win32")
-  .each(["gui", "terminal"] as const)(
-  "restores a %s conversation and continues from the other view after the worker process exits",
-  async (origin) => {
+it.skipIf(!binary || !helper || process.platform === "win32").each(
+  (["gui", "terminal"] as const).flatMap((origin) =>
+    (["completed", "provider", "question"] as const).map((interruption) => ({
+      origin,
+      interruption,
+    })),
+  ),
+)(
+  "restores $origin work after worker loss during $interruption and continues from the other view",
+  async ({ origin, interruption }) => {
+    const interrupted = interruption !== "completed";
+    const questionMode = interruption === "question";
+    const mode = questionMode ? ("plan" as const) : ("default" as const);
     const root = await mkdtemp(path.join(tmpdir(), "cantrip-worker-restart-"));
     const home = path.join(root, "home");
     const dataDirectory = path.join(root, "server");
@@ -76,6 +85,14 @@ it
       );
       const index = Number(lastUser?.match(/WORKER_INPUT_(\d+)/)?.[1]);
       let item: Record<string, any>;
+      if (interruption === "provider" && index === 1) {
+        // Keep the real native model request open until its own worker dies.
+        response.writeHead(200, { "content-type": "text/event-stream" });
+        response.write(
+          `data: ${JSON.stringify({ type: "response.created", response: { id: "pending-model" } })}\n\n`,
+        );
+        return;
+      }
       if (!issuedCua.has(index)) {
         const inventory =
           body.tools?.flatMap((tool: any) =>
@@ -86,10 +103,11 @@ it
                 }))
               : [tool],
           ) ?? [];
-        const tool = inventory.find(
-          (tool: any) =>
-            (tool.namespace?.includes("cantrip_cua") && tool.name === "js") ||
-            tool.name === "mcp__cantrip_cua__js",
+        const tool = inventory.find((tool: any) =>
+          questionMode
+            ? tool.name === "request_user_input"
+            : (tool.namespace?.includes("cantrip_cua") && tool.name === "js") ||
+              tool.name === "mcp__cantrip_cua__js",
         );
         if (!tool) {
           modelErrors.push(
@@ -105,10 +123,32 @@ it
           call_id: `cua-${index}`,
           name: tool.name,
           ...(tool.namespace ? { namespace: tool.namespace } : {}),
-          arguments: JSON.stringify({
-            script:
-              "await cua.attach({targetId:'fake-window',targetGeneration:1}); await cua.snapshot();",
-          }),
+          arguments: JSON.stringify(
+            questionMode
+              ? {
+                  questions: [
+                    {
+                      id: "choice",
+                      header: "Choice",
+                      question: `QUESTION_PROMPT_${index}`,
+                      options: [
+                        {
+                          label: "First",
+                          description: "First fixture option.",
+                        },
+                        {
+                          label: "Second",
+                          description: "Second fixture option.",
+                        },
+                      ],
+                    },
+                  ],
+                }
+              : {
+                  script:
+                    "await cua.attach({targetId:'fake-window',targetGeneration:1}); await cua.snapshot();",
+                },
+          ),
         };
       } else {
         const content = body.input
@@ -118,7 +158,10 @@ it
               entry.call_id === `cua-${index}`,
           )
           .flatMap((entry: any) => entry.output);
-        if (
+        if (questionMode) {
+          if (!JSON.stringify(content).includes("First"))
+            modelErrors.push("The fresh question did not receive its answer");
+        } else if (
           content.some(
             (entry: any) =>
               entry.type === "input_image" &&
@@ -455,6 +498,8 @@ it
         worktreeMode: "agent-managed",
       });
       expect(chat).toBeTruthy();
+      if (questionMode)
+        await repository.updateChatPlanMode(ownerId, chatId, "plan");
       await api("POST", `/api/chats/${chatId}/preparation`);
       const prepared = async () =>
         (await api("GET", `/api/chats/${chatId}/preparation`)).preparation;
@@ -562,9 +607,58 @@ it
                 attachmentIds: message.attachmentIds,
               },
             });
-            return JSON.stringify(opened.content);
+            const text = JSON.stringify(opened.content);
+            if (text.includes("WORKER_RESULT_"))
+              expect(message.mode).toBe(mode);
+            return text;
           }),
         );
+      const interactions = async () =>
+        (await api("GET", `/api/agent-requests?chatId=${chatId}`)) as any[];
+      const respond = async (request: any) => {
+        const classification = { kind: "userInput" as const };
+        return await app.inject({
+          method: "POST",
+          url: `/api/agent-requests/${request.id}/respond`,
+          payload: {
+            idempotencyKey: randomUUID(),
+            classification,
+            protectedResponse: await encryptInteractionResponseContent({
+              ownerId,
+              requestKey: request.requestKey,
+              keyRevision: 1,
+              componentKey: key("interaction-content"),
+              content: {
+                version: 1,
+                classification,
+                response: {
+                  kind: "userInput",
+                  answers: { choice: { answers: ["First"] } },
+                },
+              },
+            }),
+          },
+        });
+      };
+      const pendingQuestion = async (index: number) => {
+        let pending: any;
+        await vi.waitFor(
+          async () => {
+            expect(modelErrors).toEqual([]);
+            const current = (await interactions()).filter(
+              (request) => request.status === "pending",
+            );
+            expect(current).toHaveLength(1);
+            pending = current[0];
+            expect((await snapshot()).result.data).toContain(
+              `QUESTION_PROMPT_${index}`,
+            );
+          },
+          { timeout: 15000 },
+        );
+        return pending;
+      };
+      let oldQuestion: any;
       const send = async (index: number, origin: "gui" | "terminal") => {
         const prompt = `WORKER_INPUT_${index}`;
         if (origin === "terminal") {
@@ -579,7 +673,7 @@ it
           const id = randomUUID();
           const classification = {
             role: "user" as const,
-            mode: "default" as const,
+            mode,
             attachmentIds: [],
           };
           const message = {
@@ -605,7 +699,7 @@ it
             modelId: profile!.id,
             queuedPrompt: {
               id: queuedId,
-              classification: { mode: "default", attachmentIds: [] },
+              classification: { mode, attachmentIds: [] },
               protectedContent: await encryptQueuedPromptProtectedContent({
                 ownerId,
                 promptId: queuedId,
@@ -613,7 +707,7 @@ it
                 componentKey: key("chat-content"),
                 content: {
                   version: 1,
-                  classification: { mode: "default", attachmentIds: [] },
+                  classification: { mode, attachmentIds: [] },
                   text: prompt,
                 },
               }),
@@ -626,12 +720,50 @@ it
             },
           });
         }
+        if (index === 1 && interrupted) {
+          await vi.waitFor(
+            async () => {
+              expect(modelErrors).toEqual([]);
+              expect(inference).toHaveLength(1);
+              expect(
+                (await repository.getChatExecutionContext(ownerId, chatId))
+                  ?.status,
+              ).toBe(questionMode ? "waiting-for-approval" : "running");
+              expect(
+                (await texts()).filter((text) => text.includes(prompt)),
+              ).toHaveLength(1);
+            },
+            { timeout: 15000 },
+          );
+          if (questionMode) oldQuestion = await pendingQuestion(1);
+          return;
+        }
+        if (questionMode) {
+          const fresh = await pendingQuestion(2);
+          expect(fresh.requestKey).not.toBe(oldQuestion.requestKey);
+          expect(fresh.provenance.turnId).not.toBe(
+            oldQuestion.provenance.turnId,
+          );
+          const stale = await respond(oldQuestion);
+          expect(stale.statusCode, stale.body).toBe(409);
+          if (origin === "gui") await terminalInput("\r");
+          else {
+            const accepted = await respond(fresh);
+            expect(accepted.statusCode, accepted.body).toBe(200);
+          }
+          await vi.waitFor(async () =>
+            expect(
+              (await interactions()).find((request) => request.id === fresh.id)
+                ?.status,
+            ).toBe("resolved"),
+          );
+        }
         try {
           await vi.waitFor(
             async () => {
               expect(modelErrors).toEqual([]);
-              expect(inference).toHaveLength(index * 2);
-              expect(verifiedImages).toContain(index);
+              expect(inference).toHaveLength(index * 2 - (interrupted ? 1 : 0));
+              if (!questionMode) expect(verifiedImages).toContain(index);
               expect(JSON.stringify(inference.at(-1)?.input)).toContain(prompt);
               const saved = await texts();
               for (const marker of [prompt, `WORKER_RESULT_${index}`])
@@ -664,7 +796,7 @@ it
         }
       };
       await send(1, origin);
-      expect(verifiedImages).toEqual([1]);
+      expect(verifiedImages).toEqual(interrupted ? [] : [1]);
       const beforeIds = (await messages()).map((message) => message.id);
       const firstPid = child!.pid;
       await stop();
@@ -691,7 +823,10 @@ it
       await vi.waitFor(
         async () => {
           const current = await prepared();
-          expect(current, output).toMatchObject({
+          expect(
+            current,
+            JSON.stringify(current) + "\n" + output,
+          ).toMatchObject({
             phase: "ready",
             terminalId: before.terminalId,
           });
@@ -707,7 +842,7 @@ it
       await vi.waitFor(
         async () => {
           const frame = await snapshot();
-          expect(frame).toMatchObject({
+          expect(frame, JSON.stringify(frame)).toMatchObject({
             ok: true,
             result: { status: "running" },
           });
@@ -715,18 +850,45 @@ it
         },
         { timeout: 10000 },
       );
-      expect(inference).toHaveLength(2);
+      expect(inference).toHaveLength(interrupted ? 1 : 2);
       expect((await messages()).map((message) => message.id)).toEqual(
-        beforeIds,
+        expect.arrayContaining(beforeIds),
       );
+      if (interrupted) {
+        await vi.waitFor(
+          async () => {
+            const current = await repository.getChatExecutionContext(
+              ownerId,
+              chatId,
+            );
+            expect(["idle", "failed"]).toContain(current?.status);
+            expect(current?.executionLaneId).toBeNull();
+            expect(
+              (await interactions()).filter(
+                (request) => request.status === "pending",
+              ),
+            ).toEqual([]);
+          },
+          { timeout: 15000 },
+        );
+        if (oldQuestion) {
+          const stale = await respond(oldQuestion);
+          expect(stale.statusCode, stale.body).toBe(409);
+        }
+      } else
+        expect((await messages()).map((message) => message.id)).toEqual(
+          beforeIds,
+        );
       await send(2, origin === "gui" ? "terminal" : "gui");
-      expect(verifiedImages).toEqual([1, 2]);
+      expect(verifiedImages).toEqual(
+        questionMode ? [] : interrupted ? [2] : [1, 2],
+      );
       await vi.waitFor(
         async () => {
           const saved = await texts();
           for (const text of [
             "WORKER_INPUT_1",
-            "WORKER_RESULT_1",
+            ...(interrupted ? [] : ["WORKER_RESULT_1"]),
             "WORKER_INPUT_2",
             "WORKER_RESULT_2",
           ])
@@ -734,6 +896,10 @@ it
               saved.filter((item) => item.includes(text)),
               `${text}: ${JSON.stringify(saved)}`,
             ).toHaveLength(1);
+          if (interrupted)
+            expect(saved.some((text) => text.includes("WORKER_RESULT_1"))).toBe(
+              false,
+            );
           expect(
             (await repository.getChatExecutionContext(ownerId, chatId))?.status,
           ).toBe("idle");
@@ -746,6 +912,7 @@ it
         { timeout: 15000, interval: 150 },
       );
     } catch (error) {
+      console.error("WORKER RECOVERY FAILURE", error);
       throw new Error(`${String(error)}\nIsolated worker output:\n${output}`, {
         cause: error,
       });

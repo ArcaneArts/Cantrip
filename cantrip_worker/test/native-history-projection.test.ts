@@ -799,9 +799,13 @@ describe("durable native history projection transactions", () => {
     expect((await canonical()).messages).toHaveLength(1);
   });
 
-  it.each([false, true])(
-    "shares a fresh output identity before encryption (sealer first=%s)",
-    async (sealerFirst) => {
+  it.each(
+    (["default", "plan"] as const).flatMap((mode) =>
+      [false, true].map((sealerFirst) => ({ mode, sealerFirst })),
+    ),
+  )(
+    "shares a fresh $mode output identity before encryption (sealer first=$sealerFirst)",
+    async ({ mode, sealerFirst }) => {
       const binding = await client.open({
         chatId: f.chatId,
         threadId,
@@ -813,7 +817,7 @@ describe("durable native history projection transactions", () => {
           service,
           client,
           associate: async () => ({ kind: "output" }),
-          context: async () => ({ cwd: directory, mode: "default" }),
+          context: async () => ({ cwd: directory, mode }),
           materialize: async () => ({
             attachments: [],
           }),
@@ -825,6 +829,7 @@ describe("durable native history projection transactions", () => {
         f.chatId,
         { explanation: null, steps: [], question: null },
         createManagedNativeOutputIdentityResolver({
+          mode: async () => mode,
           client: { open: client.open.bind(client), resolve },
           scope: () => ({
             chatId: binding.chatId,
@@ -870,6 +875,7 @@ describe("durable native history projection transactions", () => {
       );
       const stored = await canonical();
       expect(stored.messages).toHaveLength(1);
+      expect(stored.messages[0]!.mode).toBe(mode);
       expect(stored.messages[0]!.id).toBe(old.message.id);
       expect(stored.items[0]!.messageId).toBe(old.message.id);
       expect(saved?.protectedContent).toEqual(

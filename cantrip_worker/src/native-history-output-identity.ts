@@ -95,6 +95,7 @@ export function createManagedNativeOutputIdentityResolver(options: {
     | Omit<NativeHistoryBindingOpen, "workerId">
     | null
     | Promise<Omit<NativeHistoryBindingOpen, "workerId"> | null>;
+  mode(identity: NativeHistoryItemIdentity): Promise<"default" | "plan">;
   signal?: AbortSignal;
 }): EncryptedChatOutputIdentityResolver {
   const bindings = new Map<
@@ -164,6 +165,10 @@ export function createManagedNativeOutputIdentityResolver(options: {
         if (bindings.get(key) === attempt) bindings.delete(key);
       });
     }
-    return (await ready)(output);
+    const [resolved, mode] = await Promise.all([
+      (await ready)(output),
+      options.mode(selected),
+    ]);
+    return resolved ? { ...resolved, mode } : null;
   };
 }

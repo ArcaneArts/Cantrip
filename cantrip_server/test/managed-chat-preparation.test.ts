@@ -73,6 +73,8 @@ async function fixture(
     route!.id,
   ))!;
   const preparation = createManagedChatPreparation({
+    interruptLiveAgentInteractionRequests: (...args) =>
+      f.repository.interruptAgentInteractionRequests(...args),
     repository: f.repository,
     bridge,
     serverId: "server",

@@ -205,6 +205,86 @@ async function finish(
 }
 
 describe("durable native command admission", () => {
+  it("recovers only the exact terminal turn observed by a replacement runtime", async () => {
+    const repository = database.repository;
+    const commands = repository.nativeCommands;
+    const input = admission(
+      await repository.getChatExecutionContext(LOCAL_USER_ID, chatId),
+    );
+    const accepted = await commands.admit(LOCAL_USER_ID, input);
+    await dispatch(input, accepted.receipt);
+    await commands.settle(LOCAL_USER_ID, {
+      workerId,
+      operationId: input.operationId,
+      operationGeneration: accepted.receipt.operationGeneration,
+      status: "applied",
+      resultDigest: null,
+      protectedResult: null,
+      rejectionCode: null,
+      executionComplete: false,
+      reconciliation: {
+        nativeTurnId: "recovery-turn",
+        runtimeGeneration: "runtime-one",
+      },
+    });
+    const expected = (await commands.recoveryContext(LOCAL_USER_ID, chatId))!;
+    expect(expected.turnId).toBe("recovery-turn");
+    const observed = {
+      threadId: input.session.threadId!,
+      turnId: expected.turnId,
+      runtimeGeneration: "runtime-two",
+      status: "interrupted" as const,
+    };
+    for (const invalid of [
+      { ...observed, threadId: "other-thread" },
+      { ...observed, turnId: "other-turn" },
+      { ...observed, runtimeGeneration: "runtime-one" },
+      { ...observed, status: "inProgress" as const },
+      { ...observed, status: null },
+    ]) {
+      expect(
+        await commands.recoverExecution(
+          LOCAL_USER_ID,
+          workerId,
+          expected,
+          invalid,
+        ),
+      ).toBe(false);
+      expect(
+        (await commands.controlContext(LOCAL_USER_ID, chatId))
+          .activationGeneration,
+      ).toBe(accepted.receipt.activationGeneration);
+    }
+    expect(
+      await commands.recoverExecution(
+        LOCAL_USER_ID,
+        workerId,
+        expected,
+        observed,
+      ),
+    ).toBe(true);
+    expect(await commands.recoveryContext(LOCAL_USER_ID, chatId)).toBeNull();
+    expect(
+      (await repository.getChatExecutionContext(LOCAL_USER_ID, chatId))?.status,
+    ).toBe("idle");
+    const next = admission(
+      await repository.getChatExecutionContext(LOCAL_USER_ID, chatId),
+    );
+    const successor = await commands.admit(LOCAL_USER_ID, next);
+    await dispatch(next, successor.receipt);
+    await commands.recoverExecution(
+      LOCAL_USER_ID,
+      workerId,
+      expected,
+      observed,
+    );
+    expect(
+      (await commands.controlContext(LOCAL_USER_ID, chatId))
+        .activationGeneration,
+    ).toBe(successor.receipt.activationGeneration);
+    await finish(next, successor.receipt);
+  });
+
   it("atomically arbitrates GUI and TUI starts, preserves idempotency, and fences reused lanes", async () => {
     const context = await database.repository.getChatExecutionContext(
       LOCAL_USER_ID,
