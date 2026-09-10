@@ -123,6 +123,22 @@ uses the actual TUI without a root-URL proxy, so it exercises this parser contra
 
 ## Managed thread configuration
 
+Reviewed patch `0032` adds `thread/managedContext/reset` for an admitted
+invalid-compaction retry on the existing native thread. It requires an explicit
+nullable `expectedLastTurnId`, compares that boundary against actual durable
+history under the native turn lock, and rejects active or stale requests. The
+worker admits the continuation before resetting context and then submits its
+protected-history recovery prompt through the normal turn path. History,
+settings, queue, thread identity and the attached TUI remain in place.
+
+The reset preserves the native authorization transcript and appends and flushes
+a history-neutral context checkpoint before changing live model context.
+Persistence errors retain live context and fail the operation. Ordinary
+compaction records retain their existing wire format; the new `context_reset`
+marker defaults to false and avoids fabricating a historical turn for recovery. The next real turn reconstructs model input; the reset itself
+does not call the provider or synthesize user input. This does not migrate a
+conversation across provider/account runtimes.
+
 Reviewed patch `0012` adds `thread/managedConfig/update` for complete replacement
 of a loaded thread's managed MCP servers, developer instructions and child-agent
 defaults. It preserves the current root model, permissions, service tier and

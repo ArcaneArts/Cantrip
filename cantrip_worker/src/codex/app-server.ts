@@ -5290,9 +5290,12 @@ export class CodexAppServer implements CodexRuntime {
             )
               this.#pendingCapacityRetries.delete(options.chatId);
           }
-          this.forgetThread(staleThreadId);
+          const retainedThread = attemptedThreadId === staleThreadId;
+          if (!retainedThread) this.forgetThread(staleThreadId);
           workerLogger.warn(
-            "Codex rejected stored compaction state; retrying the turn on a fresh thread",
+            retainedThread
+              ? "Codex rejected stored compaction state; retrying with recovered context on the same thread"
+              : "Codex rejected stored compaction state; retrying the turn on a fresh thread",
             {
               chatId: options.chatId,
               providerKind: options.provider.kind,
@@ -6307,6 +6310,33 @@ export class CodexAppServer implements CodexRuntime {
     if (generation !== this.#nativeTransportGeneration)
       throw new Error("The native history transport changed during the read.");
     return snapshot;
+  }
+
+  /** Recover only the model context after an admitted native failure. History,
+   * settings, queue and presentation remain on the same native thread. */
+  async resetManagedModelContext(
+    threadId: string,
+    expectedTurnId: string | null,
+    signal: AbortSignal,
+  ): Promise<void> {
+    signal.throwIfAborted();
+    const generation = this.#nativeTransportGeneration;
+    // A rejection before turn/start has no new turn ID. Read the actual durable
+    // boundary and let the native mutation compare it under its turn lock.
+    const lastTurnId =
+      expectedTurnId ??
+      (await this.readNativeHistory(threadId)).thread.turns.at(-1)?.id ??
+      null;
+    signal.throwIfAborted();
+    if (generation !== this.#nativeTransportGeneration)
+      throw new Error("The native transport changed before context recovery.");
+    await this.request("thread/managedContext/reset", {
+      threadId,
+      expectedLastTurnId: lastTurnId,
+    });
+    signal.throwIfAborted();
+    if (generation !== this.#nativeTransportGeneration)
+      throw new Error("The native transport changed during context recovery.");
   }
 
   observeNativeHistory(

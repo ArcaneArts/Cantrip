@@ -2059,7 +2059,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     Omit<ManagedBindingOptions, "threadId"> & { threadId?: string | null }
   >();
   const managedCurrentRuntimes = new Map<string, CodexAppServer>();
-  const managedCurrentThreads = new Map<string, string>();
   const managedCommandSessions = new WeakMap<
     CodexAppServer,
     Map<
@@ -2229,7 +2228,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     threadId: string,
   ) => {
     managedCurrentRuntimes.set(chatId, runtime);
-    managedCurrentThreads.set(chatId, threadId);
     observeManagedSettings(chatId, runtime, threadId);
   };
   const managedSessionIdentity = (session: ManagedSessionContext) => ({
@@ -7070,7 +7068,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                     service: workerEncryption,
                     threadId: null,
                   });
-                let replacementRunner: ManagedExecutionRunner | null = null;
                 const admit = async (threadId: string) => {
                   const entry = managedCommandSessionFor(runtime, session, {
                     cwd: command.cwd,
@@ -7106,14 +7103,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                       permissionProfileId: turnOptions.permissionProfileId,
                       planMode: turnOptions.planMode,
                     },
-                    ...(retry.reason === "invalid-compaction"
-                      ? {
-                          handoff: {
-                            expectedThreadId: retry.threadId!,
-                            replacementThreadId: threadId,
-                          },
-                        }
-                      : {}),
                     onAdmitted: (grant) => {
                       nativeCommandState.receipt = grant.receipt;
                       nativeCommandState.prompt = nextPrompt;
@@ -7136,132 +7125,17 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                       nativeCommandState.entry = entry;
                       nativeCommandState.dispatch = dispatch;
                       guiAdapters.add(entry.adapter);
-                      if (replacementRunner)
-                        managedExecutionRunners
-                          .get(runtime)!
-                          .set(session.chatId, replacementRunner);
                     },
                   });
                 };
-                let threadId = retry.threadId;
-                if (retry.reason === "invalid-compaction") {
-                  const runner = managedExecutionRunnerFor(
-                    runtime,
-                    session,
-                    {
-                      cwd: command.cwd,
-                      threadId: null,
-                      model: command.model,
-                      provider: provider(),
-                      permissionProfileId: command.permissionProfileId,
-                    },
-                    true,
-                  );
-                  replacementRunner = runner;
-                  const prepared = await managedSessions.replace(
-                    {
-                      identity: managedSessionIdentity(session),
-                      runtime,
-                      captureReplacementSettings: async () => {
-                        retry.signal.throwIfAborted();
-                        const settings =
-                          await runtime.captureNativeReplacementSettings(
-                            retry.threadId!,
-                          );
-                        retry.signal.throwIfAborted();
-                        return settings;
-                      },
-                      configuration: {
-                        cwd: command.cwd,
-                        threadId: retry.threadId,
-                        model: command.model,
-                        provider: provider(),
-                        permissionProfileId: command.permissionProfileId,
-                        executionProfile: command.executionProfile,
-                        subagentDefaults,
-                        mcpServers: resolvedMcpServers,
-                        planMode: command.planMode,
-                        intent: "configure",
-                        executionGate: runner.configuration,
-                        signal: retry.signal,
-                      },
-                      onPrepared: async (replacementThreadId) => {
-                        runner.prepared(replacementThreadId);
-                        await admit(replacementThreadId);
-                      },
-                    },
-                    retry.threadId,
-                  );
-                  threadId = prepared.threadId;
-                  Object.assign(managedRunnerConfigurations.get(runner)!, {
+                const threadId = retry.threadId;
+                await admit(threadId);
+                if (retry.reason === "invalid-compaction")
+                  await runtime.resetManagedModelContext(
                     threadId,
-                  });
-                  selectManagedRuntime(session.chatId, runtime, threadId);
-                  const selectedThreadId = threadId;
-                  const previousGateway = managedCommandSessions
-                    .get(runtime)
-                    ?.get(`${session.chatId}:${retry.threadId}`)?.gateway;
-                  void (async () => {
-                    const upstreamUrl = await runtime.remoteEndpoint(
-                      command.model,
-                      provider(),
-                      {
-                        subagentDefaults,
-                        executionProfile: command.executionProfile,
-                      },
-                    );
-                    const gateway = await managedGatewayFor(
-                      runtime,
-                      session,
-                      {
-                        cwd: command.cwd,
-                        threadId: selectedThreadId,
-                        model: command.model,
-                        provider: provider(),
-                        permissionProfileId: command.permissionProfileId,
-                      },
-                      upstreamUrl,
-                    );
-                    if (
-                      managedCurrentRuntimes.get(session.chatId) !== runtime ||
-                      managedCurrentThreads.get(session.chatId) !==
-                        selectedThreadId
-                    )
-                      return;
-                    await terminals.retargetManagedCodex(session.chatId, {
-                      threadId: selectedThreadId,
-                      remoteUrl: gateway.url,
-                    });
-                  })()
-                    .catch((error) =>
-                      workerLogger.event(
-                        "warn",
-                        "Managed CLI reattachment failed; native continuation remains active",
-                        {
-                          event: "codex.console.reattach-failed",
-                          subsystem: "codex",
-                          operation: "retarget-console",
-                          chatId: session.chatId,
-                          error: workerLogError(error),
-                        },
-                      ),
-                    )
-                    .finally(() => {
-                      if (previousGateway)
-                        void previousGateway
-                          .then(async (gateway) => {
-                            managedNativeGateways.delete(gateway);
-                            await gateway.close();
-                          })
-                          .catch(() => {});
-                    });
-                  threadObservations.bind(
-                    observationScope(command.chatId, threadId, turnOptions),
-                    runtime,
+                    retry.turnId,
+                    retry.signal,
                   );
-                } else {
-                  await admit(threadId);
-                }
                 return {
                   operationGeneration:
                     nativeCommandState.receipt!.operationGeneration,
