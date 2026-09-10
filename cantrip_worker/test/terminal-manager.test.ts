@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -753,3 +754,85 @@ describe("TerminalManager", () => {
     },
   );
 });
+
+it.skipIf(process.platform === "win32")(
+  "reports a detached managed CLI exit with its newest preparation identity",
+  async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "cantrip-cli-exit-"));
+    directories.push(directory);
+    const fakeCodex = path.join(directory, "fake-codex");
+    await writeFile(fakeCodex, "#!/bin/sh\nread line\nexit 3\n");
+    await chmod(fakeCodex, 0o755);
+    const observations: unknown[] = [];
+    const manager = new TerminalManager({
+      observeLifecycle: (value) => observations.push(value),
+    });
+    const launch = {
+      type: "codex" as const,
+      binary: fakeCodex,
+      codexHome: directory,
+      remoteUrl: "ws://127.0.0.1:4500",
+      threadId: "native-thread",
+      model: { id: "m", name: "fixture" },
+      provider: {
+        id: "p",
+        name: "fixture",
+        kind: "openai-compatible" as const,
+        baseUrl: "http://127.0.0.1:1/v1",
+        apiKey: null,
+      },
+      session: {
+        chatId: "chat",
+        contextKind: "project" as const,
+        projectId: "project",
+        worktreeId: "worktree",
+        rootKind: "git-worktree" as const,
+        scratchRootId: null,
+        computerUseEnabled: false,
+      },
+    };
+    const old = randomUUID(),
+      current = randomUUID();
+    try {
+      const open = manager.open(
+        "terminal",
+        "old",
+        directory,
+        80,
+        24,
+        launch,
+        () => {},
+        old,
+      );
+      manager.detach("terminal", "old");
+      await open;
+      const retry = manager.open(
+        "terminal",
+        "current",
+        directory,
+        80,
+        24,
+        launch,
+        () => {},
+        current,
+      );
+      manager.detach("terminal", "current");
+      await retry;
+      expect(manager.hasLiveSession("terminal")).toBe(true);
+      manager.input("terminal", "finish\r");
+      await expect
+        .poll(() => observations)
+        .toEqual([
+          {
+            terminalId: "terminal",
+            status: "exited",
+            exitCode: 3,
+            signal: null,
+            managedPreparationGeneration: current,
+          },
+        ]);
+    } finally {
+      manager.closeAll();
+    }
+  },
+);

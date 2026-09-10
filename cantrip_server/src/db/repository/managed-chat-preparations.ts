@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import {
   managedChatPreparationSchema,
   type ManagedChatPreparation,
@@ -68,18 +68,62 @@ export class ManagedChatPreparationRepository {
     failedPhase: ManagedChatPreparation["failedPhase"] = null,
     terminalId = state.terminalId,
   ) {
-    const [row] = await this.database
-      .update(schema.managedChatPreparations)
-      .set({ phase, failedPhase, terminalId, updatedAt: new Date() })
-      .where(
-        and(
-          eq(schema.managedChatPreparations.ownerId, ownerId),
-          eq(schema.managedChatPreparations.chatId, state.chatId),
-          eq(schema.managedChatPreparations.generation, state.generation),
-        ),
+    return this.database.transaction(async (tx) => {
+      const [row] = await tx
+        .update(schema.managedChatPreparations)
+        .set({ phase, failedPhase, terminalId, updatedAt: new Date() })
+        .where(
+          and(
+            eq(schema.managedChatPreparations.ownerId, ownerId),
+            eq(schema.managedChatPreparations.chatId, state.chatId),
+            eq(schema.managedChatPreparations.generation, state.generation),
+            phase === "ready"
+              ? eq(schema.managedChatPreparations.phase, "console")
+              : undefined,
+          ),
+        )
+        .returning();
+      if (
+        row &&
+        (phase === "ready" || (phase === "failed" && failedPhase === "console"))
       )
-      .returning();
-    return row ? wire(row) : null;
+        await tx
+          .update(schema.terminals)
+          .set({
+            status: phase === "ready" ? "running" : "failed",
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.terminals.id, terminalId));
+      return row ? wire(row) : null;
+    });
+  }
+  async consoleExited(
+    ownerId: string,
+    workerId: string,
+    terminalId: string,
+    generation: string,
+  ) {
+    return this.database.transaction(async (tx) => {
+      const [row] = await tx
+        .update(schema.managedChatPreparations)
+        .set({ phase: "failed", failedPhase: "console", updatedAt: new Date() })
+        .where(
+          and(
+            eq(schema.managedChatPreparations.ownerId, ownerId),
+            eq(schema.managedChatPreparations.workerId, workerId),
+            eq(schema.managedChatPreparations.terminalId, terminalId),
+            eq(schema.managedChatPreparations.generation, generation),
+            inArray(schema.managedChatPreparations.phase, ["console", "ready"]),
+          ),
+        )
+        .returning();
+      if (row)
+        await tx
+          .update(schema.terminals)
+          .set({ status: "exited", updatedAt: new Date() })
+          .where(eq(schema.terminals.id, terminalId));
+      return row ? wire(row) : null;
+    });
   }
   async forWorker(ownerId: string, workerId: string) {
     const rows = await this.database

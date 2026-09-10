@@ -90,7 +90,7 @@ it("distinguishes CLI failure and retries only when requested", async () => {
   api.request.mockResolvedValue({ preparation: receipt("failed", "console") });
   await mount();
   expect(JSON.stringify(renderer.toJSON())).toContain(
-    "Session prepared, but the CLI could not start",
+    "Session prepared, but the CLI is unavailable",
   );
   const button = renderer.root.findByType("button");
   api.request.mockImplementation(async (_path, options) => ({

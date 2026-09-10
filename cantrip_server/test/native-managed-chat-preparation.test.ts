@@ -52,7 +52,21 @@ it.skipIf(!binary || process.platform === "win32")(
     let closed: Promise<unknown> | undefined;
     let runtime: CodexAppServer | undefined;
     let gateway: ManagedNativeGateway | undefined;
-    const terminals = new TerminalManager({ environment: { HOME: root } });
+    const observed: Promise<unknown>[] = [];
+    const terminals = new TerminalManager({
+      environment: { HOME: root },
+      observeLifecycle: (event) => {
+        if (event.managedPreparationGeneration)
+          observed.push(
+            f.repository.managedChatPreparations.consoleExited(
+              owner,
+              f.workerId,
+              event.terminalId,
+              event.managedPreparationGeneration,
+            ),
+          );
+      },
+    });
     const opened: Promise<unknown>[] = [];
     const crypto = {
       ownerId: () => owner,
@@ -308,6 +322,7 @@ it.skipIf(!binary || process.platform === "win32")(
               if (event.type === "terminal.ready")
                 options?.onEvent?.(event as never);
             },
+            command.managedPreparationGeneration,
           );
           // No terminal capability replies and no terminal.input calls.
           opened.push(result);
@@ -354,11 +369,33 @@ it.skipIf(!binary || process.platform === "win32")(
         (await f.repository.getChatExecutionContext(owner, f.chatId))!.threadId,
       ).toBe(bound.threadId);
       expect(resumed).toBe(1);
+      // Close only the fixture CLI after bootstrap detached. The native thread
+      // remains alive; its preparation must become unavailable and retryable.
+      terminals.close(state.terminalId);
+      await vi.waitFor(async () =>
+        expect(
+          (await f.repository.managedChatPreparations.get(owner, f.chatId))
+            ?.phase,
+        ).toBe("failed"),
+      );
+      await preparation.join(owner, f.chatId);
+      expect(
+        (await native.readNativeHistory(bound.threadId!)).thread.turns,
+      ).toEqual([]);
+      await preparation.request(owner, f.chatId);
+      await preparation.settle(owner, f.chatId);
+      await vi.waitFor(() => expect(resumed).toBe(2), { timeout: 15000 });
+      expect(
+        (await f.repository.managedChatPreparations.get(owner, f.chatId))
+          ?.phase,
+      ).toBe("ready");
+      expect(terminals.hasLiveSession(state.terminalId)).toBe(true);
       expect(commands).not.toContain("terminal.input");
       expect(providerRequests).toEqual([]);
     } finally {
       terminals.closeAll();
       await Promise.allSettled(opened);
+      await Promise.allSettled(observed);
       await gateway?.close();
       const force = setTimeout(() => child?.kill("SIGKILL"), 5000);
       runtime?.close();

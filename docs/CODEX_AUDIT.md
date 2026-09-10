@@ -3829,6 +3829,55 @@ Remaining: post-PTY-spawn failure reporting, full live GUI/worker acceptance for
 the combined paths, the remaining bidirectional matrix and the user demo. This
 pass does not establish full CLI/GUI mirror completion.
 
+### Pass 46 — detached CLI exit status and retry
+
+A new startup regression reproduced a CLI returning `exited` immediately after
+its ready event while eager preparation still persisted `ready`. Preparation
+now checks the actual terminal-open result. It also passes its generation to
+the worker, which retains that identity on the managed terminal and includes
+it in exit observations even when the bootstrap/view attachment has detached.
+A retry updates the identity on the retained process; ordinary view attachment
+does not clear it.
+
+Authenticated exit handling updates only the matching owner, worker, terminal
+and preparation generation. The preparation and terminal status changes share
+a transaction. A late ready write cannot revive a failed attempt, and a delayed
+exit from an older attempt cannot mark the replacement CLI exited. A successful
+retry records the terminal running again. CLI-only failure continues to leave
+the prepared native conversation usable from the GUI.
+
+Chat lifecycle invalidations and chat/project resynchronization now refresh the
+preparation query. The GUI describes an unavailable CLI and offers the existing
+explicit retry, covering both launch failure and a later exit. No permanent
+capture, terminal presentation, input, or speculative readiness prerequisite
+was added.
+
+Validation:
+
+- 17 server cases pass, including immediate post-ready exit, authenticated
+  detached exit handling, owner/worker/terminal/generation isolation, stale
+  worker observations, database restart, retry, and late-ready suppression.
+  The production notification dispatcher is exercised with a deterministic
+  transport and actual migrated PGlite storage.
+- The actual pinned-native case now prepares and detaches its real CLI, closes
+  only that fixture CLI, observes failed preparation, keeps the native history
+  available, and explicitly retries to a second admitted CLI attachment on the
+  same conversation. No provider request or synthetic input occurs. Its worker
+  lifecycle observer feeds the production repository; the separately tested
+  notification dispatcher covers authenticated transport handling.
+- Ten worker terminal cases pass, including a real isolated PTY that exits after
+  bootstrap detach and reports its newest preparation identity. Thirty-three
+  rendered GUI/live-query cases pass. Protocol build, app/server/worker
+  typechecks, production app build and scoped formatting/diff checks pass.
+- `pnpm check` still stops at unchanged decomposition budgets:
+  `chat-turn-runtime.ts` 2334/1999 and `task-routes.ts` 2149/1999. The later chained
+  checks did not run. No CI, personal applications, real provider accounts or
+  user worker restart was used.
+
+Remaining: the full live GUI/worker bidirectional acceptance matrix, resolution
+of full-check failures, and the user implementation demo. This pass does not
+claim the complete mirror goal has been verified.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal

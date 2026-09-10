@@ -104,6 +104,7 @@ export const workerSurfaceCommandSchemas = [
       cols: z.number().int().min(1).max(1_000),
       rows: z.number().int().min(1).max(1_000),
       outputMode: z.enum(["protected", "discard"]).optional(),
+      managedPreparationGeneration: z.string().uuid().optional(),
       launch: z.discriminatedUnion("type", [
         z.object({ type: z.literal("shell") }),
         z.object({

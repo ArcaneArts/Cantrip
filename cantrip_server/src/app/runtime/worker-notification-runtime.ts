@@ -567,7 +567,25 @@ export function createWorkerNotificationRuntime({
       ) {
         return;
       }
-      await updateTerminalStatus(notification.terminalId, "exited");
+      if (notification.managedPreparationGeneration && context.linkedChatId) {
+        const changed = await repository.managedChatPreparations.consoleExited(
+          ownerId,
+          workerId,
+          notification.terminalId,
+          notification.managedPreparationGeneration,
+        );
+        if (changed) {
+          publishLiveInvalidation("terminal", {
+            entityId: notification.terminalId,
+            projectId: context.projectId,
+          });
+          publishLiveInvalidation("chat", {
+            chatId: changed.chatId,
+            projectId: context.projectId,
+            entityId: changed.chatId,
+          });
+        }
+      } else await updateTerminalStatus(notification.terminalId, "exited");
       return;
     }
     if (notification.type === "chat.turn.outcome") {

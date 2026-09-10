@@ -1,3 +1,4 @@
+import { createWorkerNotificationRuntime } from "../src/app/runtime/worker-notification-runtime.js";
 import Fastify from "fastify";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -25,7 +26,11 @@ afterEach(async () => {
   await f?.close();
 });
 async function fixture(
-  options: { thread?: () => Promise<void>; console?: () => Promise<void> } = {},
+  options: {
+    thread?: () => Promise<void>;
+    console?: () => Promise<void>;
+    exitAfterReady?: boolean;
+  } = {},
 ) {
   const calls: string[] = [];
   const attachments = new Map<string, () => void>();
@@ -51,6 +56,8 @@ async function fixture(
           type: "terminal.ready",
           terminalId: command.terminalId,
         } as never);
+        if (options.exitAfterReady)
+          return { status: "exited", exitCode: 1, signal: null };
         return finished;
       }
       if (command.type === "terminal.detach") {
@@ -303,5 +310,169 @@ it("does not let a late older recovery replace a newer prepared session", async 
   } finally {
     release();
     await oldJoin;
+  }
+});
+
+it("reports a CLI that exits immediately after ready as failed, while preserving GUI usability", async () => {
+  const { preparation } = await fixture({ exitAfterReady: true });
+  await preparation.request(owner, f.chatId);
+  await preparation.settle(owner, f.chatId);
+  expect(
+    await f.repository.managedChatPreparations.get(owner, f.chatId),
+  ).toMatchObject({ phase: "failed", failedPhase: "console" });
+  await expect(preparation.join(owner, f.chatId)).resolves.toBeUndefined();
+});
+
+it("retains a matching CLI exit across restart and refuses stale exits or a late ready write", async () => {
+  const { preparation } = await fixture();
+  await preparation.request(owner, f.chatId);
+  await preparation.settle(owner, f.chatId);
+  const jobs = f.repository.managedChatPreparations;
+  const ready = (await jobs.get(owner, f.chatId))!;
+  expect(
+    (await f.repository.getTerminalExecutionContext(owner, ready.terminalId))
+      ?.status,
+  ).toBe("running");
+  expect(
+    await jobs.consoleExited(
+      "other-owner",
+      f.workerId,
+      ready.terminalId,
+      ready.generation,
+    ),
+  ).toBeNull();
+  expect(
+    await jobs.consoleExited(
+      owner,
+      "other-worker",
+      ready.terminalId,
+      ready.generation,
+    ),
+  ).toBeNull();
+  expect(
+    await jobs.consoleExited(
+      owner,
+      f.workerId,
+      "other-terminal",
+      ready.generation,
+    ),
+  ).toBeNull();
+  expect(
+    await jobs.consoleExited(
+      owner,
+      f.workerId,
+      ready.terminalId,
+      ready.generation,
+    ),
+  ).toMatchObject({ phase: "failed", failedPhase: "console" });
+  expect(await jobs.update(owner, ready, "ready")).toBeNull();
+  expect(
+    (await f.repository.getTerminalExecutionContext(owner, ready.terminalId))
+      ?.status,
+  ).toBe("exited");
+  await f.restart();
+  expect(
+    await f.repository.managedChatPreparations.get(owner, f.chatId),
+  ).toMatchObject({ phase: "failed", failedPhase: "console" });
+  const { preparation: retry } = await fixture();
+  await retry.request(owner, f.chatId);
+  await retry.settle(owner, f.chatId);
+  const current = await f.repository.managedChatPreparations.get(
+    owner,
+    f.chatId,
+  );
+  expect(current).toMatchObject({
+    phase: "ready",
+    terminalId: ready.terminalId,
+  });
+  expect(
+    await f.repository.managedChatPreparations.consoleExited(
+      owner,
+      f.workerId,
+      ready.terminalId,
+      ready.generation,
+    ),
+  ).toBeNull();
+  expect(
+    await f.repository.managedChatPreparations.get(owner, f.chatId),
+  ).toEqual(current);
+});
+
+it("applies an authenticated detached CLI exit through production worker notifications", async () => {
+  const { preparation } = await fixture();
+  await preparation.request(owner, f.chatId);
+  await preparation.settle(owner, f.chatId);
+  const ready = (await f.repository.managedChatPreparations.get(
+    owner,
+    f.chatId,
+  ))!;
+  let receive!: (notification: unknown) => Promise<void>;
+  const publish = vi.fn(),
+    warn = vi.fn();
+  const runtime = createWorkerNotificationRuntime({
+    repository: f.repository,
+    app: { log: { warn } },
+    serverId: () => "server",
+    runAsOwner: (_owner: string, run: () => Promise<void>) => run(),
+    updateTerminalStatus: async () => {},
+    publishLiveInvalidation: publish,
+    bridge: {
+      request: async () => ({
+        serverId: "server",
+        ownerId: owner,
+        workerId: f.workerId,
+        workerProcessGeneration: "worker-process",
+      }),
+      subscribeNotifications: (_worker: string, listener: typeof receive) => {
+        receive = listener;
+        return () => {};
+      },
+    },
+  } as never);
+  runtime.ensureWorkerNotificationSubscription(owner, f.workerId);
+  const notification = {
+    type: "terminal.runtime.observed",
+    terminalId: ready.terminalId,
+    managedPreparationGeneration: ready.generation,
+    status: "exited",
+    exitCode: 1,
+    signal: null,
+  };
+  try {
+    await receive({ ...notification, workerProcessGeneration: "old-process" });
+    expect(
+      (await f.repository.managedChatPreparations.get(owner, f.chatId))?.phase,
+    ).toBe("ready");
+    await receive({
+      ...notification,
+      workerProcessGeneration: "worker-process",
+    });
+    expect(
+      (await f.repository.managedChatPreparations.get(owner, f.chatId))?.phase,
+    ).toBe("failed");
+    expect(publish).toHaveBeenCalledWith(
+      "chat",
+      expect.objectContaining({ chatId: f.chatId, entityId: f.chatId }),
+    );
+    await preparation.request(owner, f.chatId);
+    await preparation.settle(owner, f.chatId);
+    const next = await f.repository.managedChatPreparations.get(
+      owner,
+      f.chatId,
+    );
+    await receive({
+      ...notification,
+      workerProcessGeneration: "worker-process",
+    });
+    expect(
+      await f.repository.managedChatPreparations.get(owner, f.chatId),
+    ).toEqual(next);
+    expect(
+      (await f.repository.getTerminalExecutionContext(owner, ready.terminalId))
+        ?.status,
+    ).toBe("running");
+    expect(warn).not.toHaveBeenCalled();
+  } finally {
+    runtime.close();
   }
 });

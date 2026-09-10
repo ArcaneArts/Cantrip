@@ -222,6 +222,9 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
       return projectId
         ? [
             ["chats", projectId],
+            event.entityId
+              ? ["managed-chat-preparation", event.entityId]
+              : ["managed-chat-preparation"],
             ["run-configurations", projectId],
           ]
         : event.scope.kind === "chat"
@@ -230,6 +233,7 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
               ["messages", event.scope.chatId],
               ["chat-runtime-selection", event.scope.chatId],
               ["native-settings", event.scope.chatId],
+              ["managed-chat-preparation", event.scope.chatId],
               ["task-dashboard", event.scope.chatId],
             ]
           : event.scope.kind === "current-user"
@@ -456,6 +460,7 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
         ["git-conflict", scope.projectId],
         ["chat-import-jobs", scope.projectId],
         ["chats", scope.projectId],
+        ["managed-chat-preparation"],
         ["terminals", scope.projectId],
         ["run-configuration-runtimes", scope.projectId],
         ["run-configurations", scope.projectId],
@@ -475,6 +480,7 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
         ["chat-sync", scope.chatId],
         ["chat-runtime-selection", scope.chatId],
         ["native-settings", scope.chatId],
+        ["managed-chat-preparation", scope.chatId],
         ["chat-relocation-jobs", scope.chatId],
         ["messages", scope.chatId],
         ["task", scope.chatId],
