@@ -11,6 +11,7 @@ import { stripVTControlCharacters } from "node:util";
 import { expect, vi } from "vitest";
 import { createNativeCommandWorkerFixture } from "../../cantrip_server/test/native-command-worker-fixture.js";
 import { CodexAppServer } from "../src/codex/app-server.js";
+import type { AgentInteractionRuntimeRequest } from "@cantrip/protocol";
 import { discoverCodexRuntime } from "../src/codex/discovery.js";
 import { ManagedSessionCoordinator } from "../src/codex/managed-session.js";
 import { ManagedNativeCommandSession } from "../src/codex/managed-native-command-session.js";
@@ -37,7 +38,7 @@ const { Terminal: HeadlessTerminal } = createRequire(import.meta.url)(
 export async function createNativeSharedViewFixture(
   binary: string,
   modelBaseUrl: string,
-  options: { computerUse?: boolean } = {},
+  options: { computerUse?: boolean; planMode?: "default" | "plan" } = {},
 ) {
   const directory = await mkdtemp(path.join(tmpdir(), "cantrip-shared-view-"));
   const cwd = path.join(directory, "workspace");
@@ -46,6 +47,20 @@ export async function createNativeSharedViewFixture(
   const children: ChildProcessWithoutNullStreams[] = [];
   const errors: unknown[] = [];
   const turnFailures: unknown[] = [];
+  const interactionRequests: AgentInteractionRuntimeRequest[] = [];
+  const interactionCleared: string[] = [];
+  const interactionExpired: string[] = [];
+  const interactionCallbacks = {
+    onInteractionRequest: (request: AgentInteractionRuntimeRequest) => {
+      interactionRequests.push(request);
+    },
+    onInteractionCleared: (key: string) => {
+      interactionCleared.push(key);
+    },
+    onInteractionExpired: (key: string) => {
+      interactionExpired.push(key);
+    },
+  };
   const permissionProfileId = options.computerUse ? ":yolo" : ":workspace";
   let cua: Awaited<ReturnType<typeof createNativeCuaWorkerFixture>> | undefined;
   const messages: string[] = [];
@@ -188,7 +203,7 @@ export async function createNativeSharedViewFixture(
         provider,
         threadId: null,
         permissionProfileId,
-        planMode: "default",
+        planMode: options.planMode ?? "default",
         executionProfile: "ide",
         mcpServers: cua?.servers ?? [],
         intent: "configure",
@@ -198,6 +213,8 @@ export async function createNativeSharedViewFixture(
         await f.bindThread(id);
       },
     });
+    const preparedMode = (await r.readNativeThreadSettings(threadId)).confirmed
+      ?.settings.collaborationMode.mode;
     const transport = {
       serverUrl: f.serverUrl,
       workerId,
@@ -234,6 +251,7 @@ export async function createNativeSharedViewFixture(
             provider,
             chatId,
             captureProtectedDiagnostics: false,
+            ...interactionCallbacks,
             onMessage: (message) => messages.push(message.text),
           },
           complete: async (result) => {
@@ -356,6 +374,8 @@ export async function createNativeSharedViewFixture(
       },
       { timeout: 15000 },
     );
+    const attachedMode = (await r.readNativeThreadSettings(threadId)).confirmed
+      ?.settings.collaborationMode.mode;
     return {
       authority: f,
       runtime: r,
@@ -369,11 +389,19 @@ export async function createNativeSharedViewFixture(
       historyClient,
       cua,
       turnFailures,
+      interactionRequests,
+      interactionCleared,
+      interactionExpired,
+      preparedMode,
+      attachedMode,
+      tuiInput: (data: string) => t.input("shared-tui", data),
       guiStop: () => r.interruptChat(chatId, threadId),
       tuiStop: () => t.input("shared-tui", "\x03"),
       terminalText,
       terminalSettled: () => terminalSettled,
       diagnostics: () => ({
+        preparedMode,
+        attachedMode,
         terminal: stripVTControlCharacters(terminalOutput).slice(-4000),
         stderr: nativeStderr.slice(-3000),
         errors: [...new Set(errors.map(String))],
@@ -478,7 +506,7 @@ export async function createNativeSharedViewFixture(
             executionProfile: "ide",
             isPrimary: true,
             automationPaused: false,
-            planMode: "default",
+            planMode: options.planMode ?? "default",
             policyContext: null,
             permissionProfileId,
             prompt,
@@ -510,6 +538,7 @@ export async function createNativeSharedViewFixture(
               adapter.dispatchGui(receipt, guiSession, receipt),
             onNativeReceipt: (result) =>
               adapter.guiReceipt(receipt, guiSession, result),
+            ...interactionCallbacks,
             onMessage: (message) => messages.push(message.text),
           }),
         );

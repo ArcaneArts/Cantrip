@@ -1,0 +1,46 @@
+diff --git a/codex-rs/tui/src/app_server_session/rollout_history.rs b/codex-rs/tui/src/app_server_session/rollout_history.rs
+--- a/codex-rs/tui/src/app_server_session/rollout_history.rs
++++ b/codex-rs/tui/src/app_server_session/rollout_history.rs
+@@ -14,6 +14,8 @@
+ use codex_app_server_protocol::ClientRequest;
+ use codex_app_server_protocol::ThreadHistoryMode;
+ use codex_app_server_protocol::ThreadResumeResponse;
++use codex_app_server_protocol::ThreadSettingsReadParams;
++use codex_app_server_protocol::ThreadSettingsReadResponse;
+ use codex_features::Feature;
+ use codex_protocol::ThreadId;
+ use color_eyre::eyre::Result;
+@@ -148,6 +150,33 @@
+             started_thread_from_resume_response(response, &config, self.thread_params_mode())
+                 .await?;
+         started.session.fork_parent_title = fork_parent_title;
++        if self.is_managed_gateway_thread(Some(thread_id)) {
++            // Resume's legacy session payload omits collaboration mode. Loading
++            // an already-managed view must not turn its first input into a
++            // Default-mode override of a prepared Plan-mode thread.
++            let request_id = self.next_request_id();
++            let selected: ThreadSettingsReadResponse = self
++                .client
++                .request_typed(ClientRequest::ThreadSettingsRead {
++                    request_id,
++                    params: ThreadSettingsReadParams {
++                        thread_id: thread_id.to_string(),
++                    },
++                })
++                .await
++                .map_err(|err| {
++                    bootstrap_request_error(
++                        "thread/settings/read failed during managed TUI bootstrap",
++                        err,
++                    )
++                })?;
++            let mut mode = selected.thread_settings.collaboration_mode;
++            mode.settings.model = selected.thread_settings.model;
++            mode.settings.reasoning_effort = selected.thread_settings.effort;
++            started.session.model = mode.settings.model.clone();
++            started.session.reasoning_effort = mode.settings.reasoning_effort.clone();
++            started.session.collaboration_mode = Some(Box::new(mode));
++        }
+         if self.task_tools_available(thread_id) {
+             self.remember_task_tool_thread(thread_id);
+             started.task_tools_available = true;
