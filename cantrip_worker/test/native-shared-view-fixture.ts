@@ -313,52 +313,55 @@ export async function createNativeSharedViewFixture(
     history.bind({ runtime: r, chatId, threadId });
     terminal = new TerminalManager({ environment: { HOME: home } });
     const t = terminal;
-    attachment = t
-      .open(
-        "shared-tui",
-        "view",
-        cwd,
-        130,
-        45,
-        {
-          type: "codex",
-          binary,
-          codexHome: home,
-          remoteUrl: gateway.url,
-          threadId,
-          model,
-          provider,
-          session: {
-            chatId,
-            contextKind: "project",
-            projectId,
-            worktreeId: placementId,
-            rootKind: "git-worktree",
-            scratchRootId: null,
-            computerUseEnabled: options.computerUse === true,
+    const remoteUrl = gateway.url;
+    const openTerminal = () =>
+      t
+        .open(
+          "shared-tui",
+          "view",
+          cwd,
+          130,
+          45,
+          {
+            type: "codex",
+            binary,
+            codexHome: home,
+            remoteUrl,
+            threadId,
+            model,
+            provider,
+            session: {
+              chatId,
+              contextKind: "project",
+              projectId,
+              worktreeId: placementId,
+              rootKind: "git-worktree",
+              scratchRootId: null,
+              computerUseEnabled: options.computerUse === true,
+            },
           },
-        },
-        (event) => {
-          if (event.type !== "terminal.output") return;
-          terminalOutput += event.data;
-          display.write(event.data);
-          try {
-            if (event.data.includes("\x1b[6n"))
-              t.input("shared-tui", "\x1b[1;1R");
-            if (event.data.includes("\x1b[c"))
-              t.input("shared-tui", "\x1b[?1;2c");
-            if (event.data.includes("\x1b]10;?"))
-              t.input("shared-tui", "\x1b]10;rgb:ffff/ffff/ffff\x1b\\");
-            if (event.data.includes("\x1b]11;?"))
-              t.input("shared-tui", "\x1b]11;rgb:0000/0000/0000\x1b\\");
-          } catch {
-            /* Final capability query during teardown. */
-          }
-        },
-      )
-      .finally(() => {
-        terminalSettled = true;
-      });
+          (event) => {
+            if (event.type !== "terminal.output") return;
+            terminalOutput += event.data;
+            display.write(event.data);
+            try {
+              if (event.data.includes("\x1b[6n"))
+                t.input("shared-tui", "\x1b[1;1R");
+              if (event.data.includes("\x1b[c"))
+                t.input("shared-tui", "\x1b[?1;2c");
+              if (event.data.includes("\x1b]10;?"))
+                t.input("shared-tui", "\x1b]10;rgb:ffff/ffff/ffff\x1b\\");
+              if (event.data.includes("\x1b]11;?"))
+                t.input("shared-tui", "\x1b]11;rgb:0000/0000/0000\x1b\\");
+            } catch {
+              /* Final capability query during teardown. */
+            }
+          },
+        )
+        .finally(() => {
+          terminalSettled = true;
+        });
+    attachment = openTerminal();
     void attachment.catch((error) => errors.push(error));
     await vi.waitFor(
       () => {
@@ -394,6 +397,33 @@ export async function createNativeSharedViewFixture(
       interactionExpired,
       preparedMode,
       attachedMode,
+      restartTerminal: async (startupInput = "") => {
+        const resumes = f.phases.filter(
+          (entry) =>
+            entry.phase === "admit" && entry.body.method === "thread/resume",
+        ).length;
+        t.close("shared-tui");
+        await attachment;
+        terminalOutput = "";
+        display.reset();
+        terminalSettled = false;
+        attachment = openTerminal();
+        void attachment.catch((error) => errors.push(error));
+        if (startupInput) t.input("shared-tui", startupInput);
+        await vi.waitFor(
+          () => {
+            const applied = f.phases.filter(
+              (entry) =>
+                entry.phase === "admit" &&
+                entry.body.method === "thread/resume" &&
+                f.receipts.get(entry.body.operationId)?.status === "applied",
+            );
+            expect(applied).toHaveLength(resumes + 1);
+            expect(terminalText()).toContain(model.name);
+          },
+          { timeout: 15000 },
+        );
+      },
       tuiInput: (data: string) => t.input("shared-tui", data),
       guiStop: () => r.interruptChat(chatId, threadId),
       tuiStop: () => t.input("shared-tui", "\x03"),

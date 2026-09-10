@@ -4696,6 +4696,64 @@ This closes specific reply and attachment gaps; pending-interaction restart,
 other interaction types, remaining whole-product acceptance and the final user
 demo still require their own evidence.
 
+### Pass 66 — cancelled interactions and fast replies after CLI recovery
+
+Actual native question cancellation reproduced a stale GUI request for both
+input origins. The native tool received an empty answer and the turn completed,
+but consuming the pending worker record prevented the later native resolution
+notification from clearing the GUI callback. The internal cancellation path now
+clears that callback explicitly. A repeated cancellation remains idempotent and
+a subsequent user reply is rejected rather than resolving another request.
+
+The acceptance fixture now closes and reopens the physical CLI while a native
+approval or question is pending, for GUI-originated and CLI-originated turns.
+The same request survives without additional inference or native turn creation;
+it is answered through the opposite surface after replay. Restart coverage also
+queues Enter before CLI initialization and requires that typeahead to leave the
+request pending until a fresh reply to the displayed prompt.
+
+Testing exposed an intermittent native startup race: the CLI rendered a
+protected prompt and then drained buffered input. An immediate Enter sent after
+the prompt became visible could therefore disappear without reply admission.
+Reviewed native patch 0038 centralizes that drain before rendering. A visible
+screen records that its pre-display input has been quarantined, so nested
+startup renders cannot drain the fresh reply again. Rendering without an active
+view re-arms the boundary for a later protected screen. Existing incomplete
+paste/control-sequence handling remains in the original native drain primitive.
+
+Validation: the standard native release build and upstream verification passed
+with 37 reviewed patches and unchanged imported source. All ten interaction cases
+and both shared-steering cases passed against the final binary. The four
+immediate CLI reply cases passed twice more without artificial waits. Another
+20 actual-native command/CUA, TUI attachment, inherited-settings, settings
+correlation and thread-observation cases passed. The existing native PTY startup
+test also passed, checking buffered typeahead, partial escape/control sequences
+and bracketed-paste quarantine (one selected test, 4,114 filtered out). The native
+TUI test binary compiled with the updated App state.
+
+All 119 focused worker regressions and final worker source typechecking passed.
+Strict checking of the changed tests reports only the nine existing errors in
+the imported server fixture. Scoped Prettier, native Rust formatting and diff
+checks passed; recursive Rust formatting also reported pre-existing differences
+in untouched app event, permission-shortcut and reconnect modules. The required
+repository check, before the final native refinement, reached the same 40 server
+failures, with all 47 failure headings matching pass 65, 1,364 passes and 70 skips.
+Later full worker/app suites and global formatting were not reached. The final
+native build and acceptance runs above validate the later native refinement.
+No CI or personal provider/desktop interaction was used.
+
+Reproduce the interaction and shared-view cases from `cantrip_worker`:
+
+```sh
+CANTRIP_CODEX_TEST_BINARY=/absolute/path/to/reviewed/pinned/codex \
+pnpm exec vitest run test/native-shared-interactions.test.ts \
+  test/native-shared-steering.test.ts
+```
+
+This verifies physical CLI view replacement while the worker/native engine stays
+alive. It does not claim full worker-process restart, other elicitation types,
+remaining whole-product acceptance or the final user demo have been performed.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal
