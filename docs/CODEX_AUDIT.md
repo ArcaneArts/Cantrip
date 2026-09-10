@@ -4299,6 +4299,69 @@ scoped format/diff checks. Broader worker/app suites and the final chained
 formatter did not run. Full GUI/CLI acceptance and the user demo remain
 outstanding; no CI or personal desktop testing ran.
 
+### Pass 59 — exercise model-initiated CUA through the pinned runtime
+
+The connected native acceptance fixture now composes the real managed session,
+server command admission, CUA MCP stdio host and broker, per-operation authority
+HTTP route, native turn lifetime resolver, and compiled Rust fake backend. Its
+GUI-originated first turn and native terminal-protocol first turn must both
+produce a fake-window PNG through a model-initiated tool call. Subsequent turns
+must receive new authority, and completed/interrupted turn identities must no
+longer authorize an operation. The fake provider uses the OpenAI namespace tool
+format; its endpoint and credentials belong only to this temporary fixture.
+These cases do not constitute real macOS input or a personal provider request.
+
+This test exposed a production gap in the pinned engine: the existing zero-timeout
+patch applies to direct MCP RPC calls, but model-initiated calls use
+`PreparedMcpCall::call_with_preparation`. That path interpreted the managed CUA
+`tool_timeout_sec = 0` as an immediately expired deadline and returned
+`timed out awaiting tools/call after 0ns` before reaching the worker broker.
+The reviewed patch now applies the same untimed convention to frozen bindings;
+finite server/caller deadlines and exact catalog authority remain in place.
+
+A separate compatibility gap was reproduced during this pass and is **still
+outstanding**: patch `0003-portable-compatible-provider-tools.patch` disables
+namespace tools for generic compatible providers, while native tool planning
+omits MCP namespace specs instead of exposing portable function declarations.
+The MCP status catalog can therefore show both CUA tools while the model receives
+neither. This requires a portable exposure/dispatch fix, not enabling unsupported
+namespace schemas for every provider or treating catalog presence as successful
+model access.
+
+Validation: the prior pinned binary failed both new native cases with the
+zero-nanosecond timeout. The reviewed runtime rebuild succeeded (Codex 0.153.4,
+upstream `3d2ee51ca2d5db578f328aa75e20aa22c0197c9a`, patch digest
+`107080ffbe302bad3f8b4b7dfad897267c01b0fd433d12f87ec59a2130013502`).
+All **31 focused tests in five files passed**, including the ten actual-native
+command-session cases, MCP transport, managed composition and timeout coverage.
+The fixture advertises image capability through the production managed model
+catalog and verifies a PNG image in each corresponding model tool-result input.
+
+Both CUA cases start a requested 150-second script and interrupt it while its
+host call is pending: GUI Stop cancels a terminal-originated turn, and actual TUI
+Ctrl-C cancels the GUI-originated conversation's queued successor. Both stops
+pass durable admission, cancel CUA within the five-second assertion window,
+retire the interrupted identity, and allow the next native turn to capture an
+image with fresh authority. This is cancellation evidence, not a completed
+150-second playback test. The synthetic provider identifies turns by their
+accepted prompt, accommodating a final request racing native cancellation
+without attributing that old-turn request to the next turn.
+
+The required `pnpm check` ran: all workspace typechecks, Rust checks and the
+selected CUA suites passed (187 Rust CUA tests; 134 protocol, 25 crypto, 692
+worker, 241 server and 309 app tests). The full server suite still failed with
+**40 failures, 1,364 passes and 70 skips**; normalized failure names match the
+previous pass's baseline. Full protocol/crypto suites passed (697/95). The full
+worker/app suites and final repository-wide formatter were not reached after
+that server failure; scoped formatting and `git diff --check` passed. The final
+worker typecheck also passed after the fixture changes.
+
+The portable-provider gap above, remaining full acceptance reconciliation and
+final user demo remain outstanding. In particular, the actual TUI Ctrl-C case
+covers the queued successor in a GUI-first conversation, not a GUI-submitted
+active turn; do not treat it alone as the complete cross-origin Stop matrix.
+No CI, personal inference, desktop input or worker restart ran.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal

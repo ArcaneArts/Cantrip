@@ -11,6 +11,7 @@ import type { ServerConfig } from "../src/config.js";
 import { connectDatabase } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 import { createApplicationOwnerContext } from "../src/app/http/owner-context.js";
+import { installComputerUseAgentRoutes } from "../src/app/routes/computer-use-agent.js";
 import { installInternalNativeQueueRoutes } from "../src/app/routes/internal-native-queue.js";
 import { installInternalNativeCommandRoutes } from "../src/app/routes/internal-native-commands.js";
 import { installInternalNativeHistoryRoutes } from "../src/app/routes/internal-native-history.js";
@@ -25,6 +26,8 @@ export async function createNativeCommandWorkerFixture(options: {
   cwd: string;
   modelBaseUrl: string;
   modelName?: string;
+  computerUse?: boolean;
+  providerName?: string;
   dispatchNextQueuedPrompt?: (chatId: string) => Promise<void>;
   publishChatInvalidation?: (chatId: string, resource: "chat-queue") => void;
 }) {
@@ -58,7 +61,7 @@ export async function createNativeCommandWorkerFixture(options: {
       options.modelBaseUrl,
     );
     const provider = await repository.createModelProvider(LOCAL_USER_ID, {
-      name: "Native worker fixture provider",
+      name: options.providerName ?? "Native worker fixture provider",
       kind: "openai-compatible",
       baseUrl: options.modelBaseUrl,
     });
@@ -76,6 +79,9 @@ export async function createNativeCommandWorkerFixture(options: {
       throw new Error("Could not create fixture model profile.");
     await repository.updateSettings(LOCAL_USER_ID, {
       defaultModelId: modelProfile.id,
+      ...(options.computerUse
+        ? { computerUseEnabled: true, defaultPermissionProfileId: ":yolo" }
+        : {}),
     });
     const modelRuntime = await repository.getModelRuntime(
       LOCAL_USER_ID,
@@ -167,6 +173,12 @@ export async function createNativeCommandWorkerFixture(options: {
     });
     installInternalNativeHistoryRoutes(app, {
       config,
+      repository,
+      runAsOwner: ownerContext.runAsOwner,
+    });
+    installComputerUseAgentRoutes(app, {
+      config,
+      serverId,
       repository,
       runAsOwner: ownerContext.runAsOwner,
     });
