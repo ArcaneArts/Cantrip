@@ -4216,6 +4216,43 @@ repository check. Later chained checks did not run. The full shared GUI/CLI
 acceptance matrix and user demo remain outstanding.
 No CI, personal provider requests, desktop interaction or user settings changed.
 
+### Pass 57 — preserve preview input capacity and lifetime through HTTP
+
+The preview operation route still capped encrypted requests at 128 KiB and
+applied a 30-second worker deadline to input macros. It now allows the existing
+16 MiB control plaintext limit plus its authentication tag, base64url expansion
+and bounded envelope overhead. Exact schema validation still rejects excess
+ciphertext. `input.perform` uses the worker bridge's untimed request option;
+explicit Stop, session/preview revocation and worker disconnection still own
+cancellation. Other operations retain their 30-second deadline. The route
+inventory records the changed source line. Agent-local MCP dispatch is unchanged.
+
+Validation: 101 focused server cases pass across the route, encrypted native
+round trip and preview suites. A maximum-size opaque request crosses the actual
+HTTP handler and production worker bridge over a real loopback WebSocket; one
+extra ciphertext byte is rejected before dispatch. A pending input survives
+150,001 milliseconds of simulated time while a separate session-close request
+completes, without replaying input. Both regressions fail against the old route.
+An authenticated 4,096-frame timeline exceeding the old HTTP limit also reaches
+the actual Rust helper. Its capture-only fake backend deliberately rejects input;
+the test verifies that protected rejection and a successful capture on the same
+session afterward, rather than claiming physical input executed. This does not
+prove a real 150-second performance or all response-direction transport bounds.
+The cross-instance coordinated bridge still converts an untimed request into
+its existing 24-hour lifetime and limits coordination messages to 12 MiB. Its
+capacity and lifetime need a separate coordinated-transport pass; this pass
+verifies the local worker socket and removes the preview route's 30-second
+deadline.
+
+The required `pnpm check` passes lint/types, all 187 Rust CUA cases, and the
+selected CUA protocol (134), crypto (25), worker (692), server (232, three
+skipped) and app (309) cases. Full protocol and crypto suites pass 697 and 95
+cases. It then stops in the broader server suite with 1,368 passing, 40 failing
+and 57 skipped cases; there are no new failure headings versus Pass 56. The
+broader worker/app suites and final chained formatter did not run. Scoped
+formatting and diff checks pass. The combined GUI/CLI acceptance matrix and user
+demo remain outstanding. No CI or personal desktop input ran.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal

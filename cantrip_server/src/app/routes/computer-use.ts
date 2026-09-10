@@ -1,5 +1,6 @@
 import {
   CUA_MAX_CHUNKS,
+  CUA_CONTROL_BYTES,
   computerUseChunkEventSchema,
   computerUseHttpResultSchema,
   computerUseRequestSchema,
@@ -76,7 +77,9 @@ export function installComputerUseRoutes(
   app.post<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/computer-use/operation",
     {
-      bodyLimit: 128 * 1024,
+      // Full control plaintext plus the AEAD tag, base64url expansion and
+      // bounded routing/envelope JSON. Schema validation retains exact limits.
+      bodyLimit: Math.ceil(((CUA_CONTROL_BYTES + 16) * 4) / 3) + 1024,
       errorHandler: (error, _request, reply) =>
         reply
           .code(error.statusCode === 413 ? 413 : 400)
@@ -184,7 +187,9 @@ export function installComputerUseRoutes(
           },
           {
             ownerId,
-            timeoutMs: 30_000,
+            // The sealed input can contain a long timeline. Its native
+            // execution/preview lifetime and explicit Stop own cancellation.
+            timeoutMs: input.data.operation === "input.perform" ? null : 30_000,
             onEvent: async (event) => {
               if (!acceptingChunks) return;
               if (event.type === "computer-use.activity") {
