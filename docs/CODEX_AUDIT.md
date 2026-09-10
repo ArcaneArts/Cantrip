@@ -4798,6 +4798,55 @@ replace complete rendered GUI acceptance, full process-restart recovery or the
 final user implementation demo. No native upstream patch, personal provider
 inference, desktop input, CI job or user worker restart was needed.
 
+### Pass 68 — actual native-process crash and recovery acceptance
+
+New pinned-runtime tests stop the fixture's real app-server process with
+`SIGKILL`, observe its exit and retired transport generation, and reconstruct
+managed preparation from the saved session association. The same native thread
+is loaded by a new process. The managed command adapter, gateway, physical TUI
+and encrypted history publisher are recreated for the replacement generation.
+No native RPC or provider success is mocked; model responses come from an
+isolated deterministic provider and CUA uses the compiled Rust fake backend.
+
+The two completed-conversation cases start from opposite interfaces. Before
+and after the crash, actual model-initiated CUA screenshots reach the provider.
+The second real turn starts through the opposite interface. Both retain native
+turn identity/status, selected settings, canonical encrypted message IDs and
+exactly one copy of each user input and final answer. Restart itself makes no
+model request. Retired command adapters and CUA execution contexts cannot act
+on the replacement generation. Reopening encrypted projection again preserves
+all message IDs.
+
+Two more cases crash while a GUI- or CLI-originated question is pending. The
+old request clears, its late reply is rejected before and during the replacement
+turn, and the old native turn is explicitly interrupted after resume. A fresh
+question on the same thread is answered from the opposite interface. The
+CLI-origin loss settles through the native admission path; the GUI fixture
+invokes durable logical completion after receiving the actual process-loss
+rejection, as its existing GUI admission harness does. No old input is replayed
+and the replacement question resolves once.
+
+All four new cases passed without a production fix. All eighteen actual native
+cases passed together across process recovery, shared steering, shared
+questions/approvals and child CUA. Both pending-question cases passed again with
+an explicit interrupted-status assertion. Explicit strict test typechecking reports
+only the same nine imported server-fixture diagnostics as pass 66, with none in
+the new or modified worker tests.
+
+The required `pnpm check` passed workspace source typechecks, Rust checks,
+selected CUA suites (187 Rust, 134 protocol, 25 crypto, 703 worker, 241 server
+and 309 app), and full protocol/crypto suites (697/95). Full server testing
+ended at the established baseline: 40 failures, 1,364 passes and 70 skips. All
+47 failure headings match pass 66 exactly; the transient tunnel-lease test from
+pass 67 passed in this run. Full worker/app suites and global formatting were
+not reached. Final scoped formatting and diff checks passed.
+
+This establishes app-server process loss/replacement with the worker fixture
+and canonical server alive. It does not claim a complete worker Node-process
+restart or rendered GUI/mobile implementation test. Those remaining acceptance
+requirements and the final user demo still apply. No personal provider, live
+desktop input, CI job, native upstream patch or user-worker restart was used.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal
