@@ -4532,6 +4532,13 @@ export class CodexAppServer implements CodexRuntime {
   readonly #rootExecutionsByThread = new Map<string, RootExecution>();
   readonly #orphanAgentThreads = new Map<string, ChildThreadMetadata>();
   readonly #knownAgentThreads = new Map<string, ChildThreadMetadata>();
+  readonly #unassociatedComputerUseTurns = new Map<
+    string,
+    {
+      lifetime: CodexExecutionLifetime;
+      roots: Map<RootExecution, AbortSignal>;
+    }
+  >();
   readonly #threadSettings = new NativeThreadSettingsState();
   readonly #diagnosticSecrets = new Set<string>();
   #runtimeIsZai = false;
@@ -7745,6 +7752,9 @@ export class CodexAppServer implements CodexRuntime {
     }
     this.#rootExecutionsByActive.clear();
     this.#rootExecutionsByThread.clear();
+    for (const pending of this.#unassociatedComputerUseTurns.values())
+      pending.lifetime.abort();
+    this.#unassociatedComputerUseTurns.clear();
     this.#orphanAgentThreads.clear();
     this.#knownAgentThreads.clear();
     this.#mcpConfigFingerprintsByThread.clear();
@@ -8675,9 +8685,59 @@ export class CodexAppServer implements CodexRuntime {
         execution.computerUseLifetime.turnId === turnId);
   }
 
+  /** Native child turn/started can precede the parent's spawn result. Retain
+   * the event, but grant nothing until runtime ancestry identifies its root. */
+  private unassociatedComputerUseTurn(threadId: string, turnId?: string) {
+    const existing = this.#unassociatedComputerUseTurns.get(threadId);
+    if (existing && (!turnId || existing.lifetime.turnId === turnId))
+      return existing;
+    // A genuine newer child start takes a new root snapshot; a duplicate start
+    // retains its old (possibly aborted) lifetime and can never refresh it.
+    existing?.lifetime.abort();
+    this.#unassociatedComputerUseTurns.delete(threadId);
+    const roots = new Map<RootExecution, AbortSignal>();
+    for (const execution of this.#rootExecutionsByActive.values()) {
+      const turnId = execution.computerUseLifetime.turnId;
+      const signal = turnId && execution.computerUseLifetime.signal(turnId);
+      if (signal) roots.set(execution, signal);
+    }
+    if (!roots.size) return null;
+    if (this.#unassociatedComputerUseTurns.size >= MAX_ORPHAN_AGENT_THREADS) {
+      const oldest = this.#unassociatedComputerUseTurns.keys().next().value;
+      if (oldest !== undefined) {
+        this.#unassociatedComputerUseTurns.get(oldest)?.lifetime.abort();
+        this.#unassociatedComputerUseTurns.delete(oldest);
+      }
+    }
+    const pending = { lifetime: new CodexExecutionLifetime(), roots };
+    this.#unassociatedComputerUseTurns.set(threadId, pending);
+    return pending;
+  }
+
+  private adoptComputerUseTurn(
+    execution: RootExecution,
+    state: AgentRuntimeState,
+  ): void {
+    const pending = this.#unassociatedComputerUseTurns.get(state.threadId);
+    if (!pending) return;
+    this.#unassociatedComputerUseTurns.delete(state.threadId);
+    const turnId = execution.computerUseLifetime.turnId;
+    const signal = turnId && execution.computerUseLifetime.signal(turnId);
+    // A delayed spawn result cannot transfer an old child start into another
+    // root turn, or revive authority after Stop/completion/replacement.
+    if (!signal || pending.roots.get(execution) !== signal)
+      pending.lifetime.abort();
+    state.computerUseLifetime = pending.lifetime;
+  }
+
   private observeComputerUseTurnStart(threadId: string, turnId: string): void {
     const execution = this.#rootExecutionsByThread.get(threadId);
-    if (!execution) return;
+    if (!execution) {
+      this.unassociatedComputerUseTurn(threadId, turnId)?.lifetime.observe(
+        turnId,
+      );
+      return;
+    }
     if (threadId === execution.rootThreadId) {
       if (execution.active.admission) {
         const admission = execution.active.admission;
@@ -8697,7 +8757,10 @@ export class CodexAppServer implements CodexRuntime {
 
   private abortComputerUseThread(threadId: string, closed = true): void {
     const execution = this.#rootExecutionsByThread.get(threadId);
-    if (!execution) return;
+    if (!execution) {
+      this.#unassociatedComputerUseTurns.get(threadId)?.lifetime.abort();
+      return;
+    }
     if (threadId === execution.rootThreadId) {
       this.abortComputerUseExecution(execution);
       if (closed && execution.active.admission) {
@@ -8896,6 +8959,7 @@ export class CodexAppServer implements CodexRuntime {
     }
     if (execution.agents.size >= MAX_AGENT_THREADS_PER_EXECUTION) return null;
     const state = this.createAgentRuntimeState(execution, metadata);
+    this.adoptComputerUseTurn(execution, state);
     execution.agents.set(metadata.threadId, state);
     this.#rootExecutionsByThread.set(metadata.threadId, execution);
     this.#orphanAgentThreads.delete(metadata.threadId);
@@ -9496,6 +9560,13 @@ export class CodexAppServer implements CodexRuntime {
     if (this.#rootExecutionsByThread.get(execution.rootThreadId) === execution)
       this.#rootExecutionsByThread.delete(execution.rootThreadId);
     this.#rootExecutionsByActive.delete(active);
+    for (const [threadId, pending] of this.#unassociatedComputerUseTurns) {
+      pending.roots.delete(execution);
+      if (!pending.roots.size) {
+        pending.lifetime.abort();
+        this.#unassociatedComputerUseTurns.delete(threadId);
+      }
+    }
     for (const [threadId, metadata] of this.#orphanAgentThreads) {
       if (
         releasedThreadIds.has(threadId) ||
@@ -11155,7 +11226,8 @@ export class CodexAppServer implements CodexRuntime {
       const lifetime =
         params.threadId === execution?.rootThreadId
           ? execution.computerUseLifetime
-          : execution?.agents.get(params.threadId)?.computerUseLifetime;
+          : (execution?.agents.get(params.threadId)?.computerUseLifetime ??
+            this.unassociatedComputerUseTurn(params.threadId)?.lifetime);
       if (execution?.active.admission && !lifetime?.turnId) return;
       // Late completion of A must not release the still-running B execution.
       // Only real turn starts advance this bounded lifetime, not telemetry.
@@ -12165,6 +12237,9 @@ export class CodexAppServer implements CodexRuntime {
     this.#activeTurnsByThread.clear();
     this.#rootExecutionsByActive.clear();
     this.#rootExecutionsByThread.clear();
+    for (const pending of this.#unassociatedComputerUseTurns.values())
+      pending.lifetime.abort();
+    this.#unassociatedComputerUseTurns.clear();
     this.#orphanAgentThreads.clear();
     this.#knownAgentThreads.clear();
     this.#threadSettings.clear();

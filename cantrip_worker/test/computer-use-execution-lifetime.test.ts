@@ -84,7 +84,7 @@ function fixture(executionKind = "chat") {
     diffChanges: [],
     durationMs: null,
     fileStartedAtMs: new Map(),
-    finalText: null,
+    finalText: null as string | null,
     interactionMode: "interactive",
     interruptionRequestedAtMs: null,
     itemStartedAtMs: new Map(),
@@ -110,7 +110,7 @@ function fixture(executionKind = "chat") {
       threadId,
       turn: { id: turnId, startedAt: 1 },
     });
-  const child = (threadId = "child", parentThreadId = "root") => {
+  const associate = (threadId = "child", parentThreadId = "root") => {
     notify("thread/started", {
       thread: {
         id: threadId,
@@ -123,6 +123,9 @@ function fixture(executionKind = "chat") {
         },
       },
     });
+  };
+  const child = (threadId = "child", parentThreadId = "root") => {
+    associate(threadId, parentThreadId);
     start(threadId, `${threadId}-turn`);
   };
   const resolve = (threadId = "root", turnId = "root-turn", chatId = "chat") =>
@@ -138,10 +141,171 @@ function fixture(executionKind = "chat") {
         error: null,
       },
     });
-  return { runtime, native, active, notify, start, child, resolve, complete };
+  return {
+    runtime,
+    native,
+    active,
+    notify,
+    start,
+    associate,
+    child,
+    resolve,
+    complete,
+  };
 }
 
 describe("Codex runtime computer-use scope", () => {
+  it("retains an early native child start until the spawn result supplies ancestry", () => {
+    const f = fixture();
+    f.start("child", "child-turn");
+    expect(f.resolve("child", "child-turn")).toBeNull();
+    f.notify("item/completed", {
+      threadId: "root",
+      turnId: "root-turn",
+      item: {
+        id: "spawn",
+        model: "test-model",
+        type: "collabAgentToolCall",
+        tool: "spawn_agent",
+        status: "completed",
+        senderThreadId: "root",
+        receiverThreadIds: ["child"],
+        agentsStates: {},
+      },
+    });
+    expect(f.resolve("child", "child-turn")).toMatchObject({
+      rootThreadId: "root",
+      rootTurnId: "root-turn",
+      parentThreadId: "root",
+      threadId: "child",
+      turnId: "child-turn",
+      signal: { aborted: false },
+    });
+    const signal = f.resolve("child", "child-turn")!.signal;
+    f.associate();
+    expect(f.resolve("child", "child-turn")!.signal).toBe(signal);
+    f.runtime.close();
+    expect(signal.aborted).toBe(true);
+  });
+
+  it.each(["completed", "interrupted", "failed"])(
+    "does not revive an unassociated child whose turn already %s",
+    (status) => {
+      const f = fixture();
+      f.start("child", "child-turn");
+      f.complete("child", "child-turn", status);
+      f.start("child", "child-turn");
+      f.associate();
+      expect(f.resolve("child", "child-turn")).toBeNull();
+      expect(f.resolve()?.signal.aborted).toBe(false);
+      f.start("child", "next-child");
+      expect(f.resolve("child", "next-child")?.signal.aborted).toBe(false);
+      f.runtime.close();
+    },
+  );
+
+  it("remembers completion before both child start and association", () => {
+    const f = fixture();
+    f.complete("child", "child-turn");
+    f.start("child", "child-turn");
+    f.associate();
+    expect(f.resolve("child", "child-turn")).toBeNull();
+    f.runtime.close();
+  });
+
+  it("does not transfer an early child start across a root turn replacement", () => {
+    const f = fixture();
+    f.start("child", "child-turn");
+    f.start("root", "replacement");
+    f.associate();
+    expect(f.resolve("child", "child-turn")).toBeNull();
+    f.start("child", "child-turn");
+    expect(f.resolve("child", "child-turn")).toBeNull();
+    f.start("child", "next-child");
+    expect(f.resolve("child", "next-child")).toMatchObject({
+      rootTurnId: "replacement",
+    });
+    f.runtime.close();
+  });
+
+  it("associates a genuine newer early child start with the newer active root", () => {
+    const f = fixture();
+    f.start("child", "old-child");
+    f.start("root", "next-root");
+    f.start("child", "next-child");
+    f.complete("child", "old-child");
+    f.associate();
+    expect(f.resolve("child", "old-child")).toBeNull();
+    expect(f.resolve("child", "next-child")).toMatchObject({
+      rootTurnId: "next-root",
+      signal: { aborted: false },
+    });
+    f.runtime.close();
+  });
+
+  it("keeps pending nested starts separate from other chats and new roots", () => {
+    const f = fixture();
+    f.start("nested", "nested-turn");
+    f.start("child", "child-turn");
+    f.associate("nested", "child");
+    expect(f.resolve("nested", "nested-turn")).toBeNull();
+    f.associate();
+    expect(f.resolve("nested", "nested-turn")).toMatchObject({
+      rootThreadId: "root",
+      parentThreadId: "child",
+    });
+    f.start("other-child", "other-child-turn");
+    const other = { ...f.active, chatId: "other", threadId: "other-root" };
+    f.native.registerRootExecution(other);
+    f.native.bindTurnStartResponse("other-turn", other);
+    f.associate("other-child", "other-root");
+    expect(f.resolve("other-child", "other-child-turn", "other")).toBeNull();
+    expect(f.resolve("nested", "nested-turn", "other")).toBeNull();
+    f.runtime.close();
+  });
+
+  it("keeps an unassociated child revoked after Stop and ignores its late start", async () => {
+    const f = fixture();
+    f.start("child", "child-turn");
+    vi.spyOn(f.native, "request").mockResolvedValue({});
+    await f.runtime.interruptChat("chat", "root");
+    f.associate();
+    f.start("child", "child-turn");
+    expect(f.resolve("child", "child-turn")).toBeNull();
+    expect(f.resolve()).toBeNull();
+    f.runtime.close();
+  });
+
+  it("retains pending child closure and only adopts under its actual active root", () => {
+    const f = fixture();
+    const other = { ...f.active, chatId: "other", threadId: "other-root" };
+    f.native.registerRootExecution(other);
+    f.native.bindTurnStartResponse("other-turn", other);
+    f.start("child", "child-turn");
+    f.start("closed-child", "closed-turn");
+    f.notify("thread/closed", { threadId: "closed-child" });
+    f.associate("closed-child", "other-root");
+    expect(f.resolve("closed-child", "closed-turn", "other")).toBeNull();
+    f.associate("child", "other-root");
+    expect(f.resolve("child", "child-turn", "other")).toMatchObject({
+      rootThreadId: "other-root",
+      rootTurnId: "other-turn",
+    });
+    expect(f.resolve("child", "child-turn")).toBeNull();
+    f.runtime.close();
+  });
+
+  it("does not revive an early child after its root is released", () => {
+    const f = fixture();
+    f.start("child", "child-turn");
+    f.native.releaseActiveTurn(f.active);
+    f.native.registerRootExecution(f.active);
+    f.native.bindTurnStartResponse("next-root", f.active);
+    f.associate();
+    expect(f.resolve("child", "child-turn")).toBeNull();
+    f.runtime.close();
+  });
+
   it("returns exact root and nested child ownership with stable live signals", () => {
     const f = fixture();
     f.child();

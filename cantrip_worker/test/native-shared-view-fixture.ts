@@ -3,6 +3,7 @@ import { encryptChatMessageProtectedContent } from "@cantrip/crypto";
 import { acquireChatTurnExecution } from "../../cantrip_server/src/app/runtime/chat-turn-admission.js";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
+import { createRequire } from "node:module";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -23,12 +24,20 @@ import { ManagedNativeHistory } from "../src/managed-native-history.js";
 import { NativeHistoryClient } from "../src/native-history-client.js";
 import { AttachmentStore } from "../src/attachment-store.js";
 import type { WorkerEncryptionService } from "../src/worker-encryption.js";
+import { nativePermissionPatch } from "../src/codex/managed-native-permissions.js";
+import { createNativeCuaWorkerFixture } from "./native-cua-worker-fixture.js";
+import { computerUsePreviewAuthority } from "../../cantrip_server/src/app/routes/computer-use-preview.js";
+
+const { Terminal: HeadlessTerminal } = createRequire(import.meta.url)(
+  "@xterm/headless",
+) as typeof import("@xterm/headless");
 
 /** Actual engine, physical TUI, admitted GUI commands, and encrypted server history.
  * Provider responses are supplied by the caller; native RPC is never mocked. */
 export async function createNativeSharedViewFixture(
   binary: string,
   modelBaseUrl: string,
+  options: { computerUse?: boolean } = {},
 ) {
   const directory = await mkdtemp(path.join(tmpdir(), "cantrip-shared-view-"));
   const cwd = path.join(directory, "workspace");
@@ -36,10 +45,26 @@ export async function createNativeSharedViewFixture(
   const data = path.join(directory, "data");
   const children: ChildProcessWithoutNullStreams[] = [];
   const errors: unknown[] = [];
+  const turnFailures: unknown[] = [];
+  const permissionProfileId = options.computerUse ? ":yolo" : ":workspace";
+  let cua: Awaited<ReturnType<typeof createNativeCuaWorkerFixture>> | undefined;
   const messages: string[] = [];
   const completed: string[] = [];
   const frames: Record<string, any>[] = [];
   let terminalOutput = "";
+  const display = new HeadlessTerminal({
+    cols: 130,
+    rows: 45,
+    scrollback: 10000,
+    allowProposedApi: true,
+  });
+  const terminalText = () => {
+    const buffer = display.buffer.active;
+    return Array.from(
+      { length: buffer.length },
+      (_, row) => buffer.getLine(row)?.translateToString(true) ?? "",
+    ).join("\n");
+  };
   let nativeStderr = "";
   let terminalSettled = false;
   let authority:
@@ -52,6 +77,7 @@ export async function createNativeSharedViewFixture(
   const close = async () => {
     terminal?.closeAll();
     await attachment?.catch(() => {});
+    display.dispose();
     await history?.stop();
     await gateway?.close();
     const exits = children.map((child) =>
@@ -70,6 +96,7 @@ export async function createNativeSharedViewFixture(
     runtime?.close();
     await Promise.all(exits);
     clearTimeout(force);
+    await cua?.close();
     await authority?.close();
     await rm(directory, {
       recursive: true,
@@ -81,10 +108,37 @@ export async function createNativeSharedViewFixture(
   try {
     await Promise.all([mkdir(cwd), mkdir(home), mkdir(data)]);
     await writeFile(path.join(home, "config.toml"), "features.plugins=false\n");
-    authority = await createNativeCommandWorkerFixture({ cwd, modelBaseUrl });
+    authority = await createNativeCommandWorkerFixture({
+      cwd,
+      modelBaseUrl,
+      computerUse: options.computerUse,
+      ...(options.computerUse
+        ? { providerName: "OpenAI", modelName: "gpt-5.6-sol" }
+        : {}),
+    });
     const f = authority;
     const { chatId, projectId, placementId, ownerId, workerId, serverId } = f;
-    const model = f.modelRuntime.model;
+    const model: Parameters<CodexAppServer["runTurn"]>[0]["model"] =
+      f.modelRuntime.model;
+    if (options.computerUse)
+      model.catalog = {
+        nativeModelId: model.name,
+        displayName: "Native child CUA fixture",
+        description: null,
+        contextWindow: 128000,
+        maxOutputTokens: null,
+        inputModalities: ["text", "image"],
+        outputModalities: ["text"],
+        supportsTools: true,
+        supportsParallelTools: false,
+        supportsStructuredOutput: true,
+        supportsVision: true,
+        supportsReasoning: false,
+        supportedReasoningEfforts: [],
+        defaultReasoningEffort: null,
+        reasoningMandatory: null,
+        metadataSource: "manual",
+      };
     const provider = { ...f.modelRuntime.provider, apiKey: "fixture-only" };
     runtime = new CodexAppServer(
       binary,
@@ -108,6 +162,12 @@ export async function createNativeSharedViewFixture(
       },
     );
     const r = runtime;
+    if (options.computerUse)
+      cua = await createNativeCuaWorkerFixture({
+        authority: f,
+        runtime: r,
+        directory: data,
+      });
     const identity = {
       serverId,
       ownerId,
@@ -127,10 +187,10 @@ export async function createNativeSharedViewFixture(
         model,
         provider,
         threadId: null,
-        permissionProfileId: ":workspace",
+        permissionProfileId,
         planMode: "default",
         executionProfile: "ide",
-        mcpServers: [],
+        mcpServers: cua?.servers ?? [],
         intent: "configure",
         subagentDefaults: null,
       },
@@ -161,31 +221,32 @@ export async function createNativeSharedViewFixture(
       policy: {
         cwd,
         codexHome: home,
-        permissionProfileId: ":workspace",
-        security: {
-          permissions: ":workspace",
-          approvalPolicy: "on-request",
-          approvalsReviewer: "user",
-        },
+        permissionProfileId,
+        security: nativePermissionPatch(permissionProfileId),
       },
       onError: (error) => errors.push(error),
-      beginExecution: async () => ({
-        options: {
-          cwd,
-          model,
-          provider,
-          chatId,
-          captureProtectedDiagnostics: false,
-          onMessage: (message) => messages.push(message.text),
-        },
-        complete: async (result) => {
-          completed.push(result.turnId!);
-        },
-        failed: async (error) => {
-          errors.push(error);
-        },
-        release: async () => {},
-      }),
+      beginExecution: async (grant, session) => {
+        const release = cua?.activate(grant, session.threadId!);
+        return {
+          options: {
+            cwd,
+            model,
+            provider,
+            chatId,
+            captureProtectedDiagnostics: false,
+            onMessage: (message) => messages.push(message.text),
+          },
+          complete: async (result) => {
+            completed.push(result.turnId!);
+          },
+          failed: async (error) => {
+            turnFailures.push(error);
+          },
+          release: async () => {
+            await release?.();
+          },
+        };
+      },
     });
     const generation = r.transportGeneration!;
     const session = {
@@ -256,12 +317,13 @@ export async function createNativeSharedViewFixture(
             worktreeId: placementId,
             rootKind: "git-worktree",
             scratchRootId: null,
-            computerUseEnabled: false,
+            computerUseEnabled: options.computerUse === true,
           },
         },
         (event) => {
           if (event.type !== "terminal.output") return;
           terminalOutput += event.data;
+          display.write(event.data);
           try {
             if (event.data.includes("\x1b[6n"))
               t.input("shared-tui", "\x1b[1;1R");
@@ -305,12 +367,33 @@ export async function createNativeSharedViewFixture(
       errors,
       children,
       historyClient,
-      terminalText: () => stripVTControlCharacters(terminalOutput),
+      cua,
+      turnFailures,
+      guiStop: () => r.interruptChat(chatId, threadId),
+      tuiStop: () => t.input("shared-tui", "\x03"),
+      terminalText,
       terminalSettled: () => terminalSettled,
       diagnostics: () => ({
         terminal: stripVTControlCharacters(terminalOutput).slice(-4000),
         stderr: nativeStderr.slice(-3000),
-        errors: errors.map(String),
+        errors: [...new Set(errors.map(String))],
+        turnFailures: turnFailures.map(String),
+        childEvents: frames
+          .filter((frame) =>
+            [
+              "thread/started",
+              "turn/started",
+              "item/started",
+              "item/completed",
+            ].includes(frame.method),
+          )
+          .map((frame) => ({
+            method: frame.method,
+            thread: frame.params.threadId ?? frame.params.thread?.id,
+            parent: frame.params.thread?.source,
+            type: frame.params.item?.type,
+            receiver: frame.params.item?.receiverThreadIds,
+          })),
         frames: frames
           .filter((frame) => frame.error || frame.method?.startsWith("turn/"))
           .slice(-15),
@@ -324,11 +407,9 @@ export async function createNativeSharedViewFixture(
       }),
       async tuiSend(text: string) {
         t.input("shared-tui", text);
-        await vi.waitFor(
-          () =>
-            expect(stripVTControlCharacters(terminalOutput)).toContain(text),
-          { timeout: 5000 },
-        );
+        await vi.waitFor(() => expect(terminalText()).toContain(text), {
+          timeout: 5000,
+        });
         t.input("shared-tui", "\r");
       },
       async guiStart(prompt: string) {
@@ -364,7 +445,7 @@ export async function createNativeSharedViewFixture(
         ).not.toBeNull();
         // Use the real GUI server admission entry so its logical input ID is
         // bound to the saved encrypted message before native execution starts.
-        const { nativeCommandReceipt: receipt } =
+        const { nativeCommandReceipt: receipt, execution } =
           await acquireChatTurnExecution({
             repository: f.repository,
             ownerId,
@@ -383,6 +464,7 @@ export async function createNativeSharedViewFixture(
           ...session,
           connectionId: `gui:${receipt.operationGeneration}`,
         };
+        let releaseCua: (() => Promise<void>) | undefined;
         const run = adapter.withGuiPreparation(receipt, guiSession, () =>
           r.runTurn({
             operationGeneration: receipt.operationGeneration,
@@ -398,15 +480,32 @@ export async function createNativeSharedViewFixture(
             automationPaused: false,
             planMode: "default",
             policyContext: null,
-            permissionProfileId: ":workspace",
+            permissionProfileId,
             prompt,
-            mcpServers: [],
+            mcpServers: cua?.servers ?? [],
             rootKind: f.context.rootKind,
             skillNames: [],
             subagentDefaults: null,
             subagentProtocolVersion: undefined,
             worktreeMode: f.context.worktreeMode,
             worktreePolicy: f.context.worktreePolicy,
+            onThreadLoaded: (id) => {
+              if (cua)
+                releaseCua = cua.activate(
+                  {
+                    receipt,
+                    computerUseAuthority: {
+                      ...computerUsePreviewAuthority({
+                        context: execution,
+                        ownerId,
+                        serverId,
+                      }),
+                      executionLaneId: receipt.executionLaneId!,
+                    },
+                  },
+                  id,
+                );
+            },
             onBeforeNativeDispatch: () =>
               adapter.dispatchGui(receipt, guiSession, receipt),
             onNativeReceipt: (result) =>
@@ -423,6 +522,7 @@ export async function createNativeSharedViewFixture(
           clientMessageId,
           originalInput: protectedInput,
           async finish() {
+            await releaseCua?.();
             adapter.markGuiFinished(
               receipt.operationId,
               receipt.operationGeneration,
