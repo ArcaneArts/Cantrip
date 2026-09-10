@@ -5511,6 +5511,51 @@ export const nativeCommands = pgTable(
     ),
   ],
 );
+/** Durable reservation for one controlled provider/account handoff. No native
+ * artifact paths or credentials cross the worker boundary. */
+export const nativeRuntimeHandoffs = pgTable(
+  "native_runtime_handoffs",
+  {
+    operationId: text("operation_id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    chatId: text("chat_id")
+      .notNull()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    workerId: text("worker_id")
+      .notNull()
+      .references(() => workers.id, { onDelete: "cascade" }),
+    phase: text("phase").notNull(),
+    source: jsonb("source")
+      .$type<import("@cantrip/protocol").NativeSettingsBinding>()
+      .notNull(),
+    targetModelRouteId: text("target_model_route_id").notNull(),
+    targetProviderAccountId: text("target_provider_account_id"),
+    prepared:
+      jsonb("prepared").$type<
+        import("@cantrip/protocol").NativeRuntimeHandoffPrepared
+      >(),
+    errorCode: text("error_code"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("native_runtime_handoffs_active_chat")
+      .on(table.chatId)
+      .where(sql`${table.phase} NOT IN ('completed', 'cancelled')`),
+    index("native_runtime_handoffs_chat").on(table.chatId),
+    check(
+      "native_runtime_handoffs_phase_check",
+      sql`${table.phase} IN ('preparing','prepared','committed','completed','cancelled')`,
+    ),
+  ],
+);
+
 /** Canonical opaque selection state, serialized with the owning chat's commands. */
 export const nativeSettingsStates = pgTable("native_settings_states", {
   chatId: text("chat_id")

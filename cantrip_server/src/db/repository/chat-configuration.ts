@@ -1,3 +1,4 @@
+import { assertNativeRuntimeWritable } from "./native-runtime-handoff-guard.js";
 import { lockNativeCommandChat } from "./native-command-lock.js";
 import { NativeCommandError } from "./native-command-errors.js";
 import { ChatRuntimeContextRepository } from "./chat-runtime-context.js";
@@ -62,29 +63,33 @@ export class ChatConfigurationRepository {
     if (!model) {
       return null;
     }
-    const chats = await this.database
-      .select({ chat: schema.chats })
-      .from(schema.chats)
-      .where(
-        and(eq(schema.chats.id, chatId), eq(schema.chats.ownerId, ownerId)),
-      )
-      .limit(1);
-    const chat = chats[0]?.chat;
-    if (!chat) {
-      return null;
-    }
-    const result = await this.database
-      .update(schema.chats)
-      .set({
-        modelId: input.modelId,
-        ...(reasoningEffort !== undefined ? { reasoningEffort } : {}),
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.chats.id, chatId))
-      .returning();
-    return toContextualChatWireSummary(
-      firstOrThrow(result, "selecting a chat model"),
-    );
+    return this.database.transaction(async (tx) => {
+      const chats = await tx
+        .select({ chat: schema.chats })
+        .from(schema.chats)
+        .where(
+          and(eq(schema.chats.id, chatId), eq(schema.chats.ownerId, ownerId)),
+        )
+        .limit(1);
+      const chat = chats[0]?.chat;
+      if (!chat) {
+        return null;
+      }
+      await lockNativeCommandChat(tx, ownerId, chatId);
+      await assertNativeRuntimeWritable(tx, chatId);
+      const result = await tx
+        .update(schema.chats)
+        .set({
+          modelId: input.modelId,
+          ...(reasoningEffort !== undefined ? { reasoningEffort } : {}),
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.chats.id, chatId))
+        .returning();
+      return toContextualChatWireSummary(
+        firstOrThrow(result, "selecting a chat model"),
+      );
+    });
   }
 
   async getChatModelConfiguration(
@@ -106,59 +111,63 @@ export class ChatConfigurationRepository {
     chatId: string,
     input: ChatModelConfigurationUpdate,
   ): Promise<ContextualChatWireSummary | null> {
-    if (!input.modelId) return null;
+    return this.database.transaction(async (tx) => {
+      if (!input.modelId) return null;
 
-    const modelIds = [
-      input.modelId,
-      ...(input.subagentModelId ? [input.subagentModelId] : []),
-    ];
-    const ownedModels = await this.database
-      .select({ id: schema.modelProfiles.id })
-      .from(schema.modelProfiles)
-      .where(
-        and(
-          eq(schema.modelProfiles.ownerId, ownerId),
-          inArray(schema.modelProfiles.id, modelIds),
-        ),
-      );
-    if (
-      new Set(ownedModels.map(({ id }) => id)).size !== new Set(modelIds).size
-    )
-      return null;
-    const chats = await this.database
-      .select({ contextKind: schema.chats.contextKind })
-      .from(schema.chats)
-      .where(
-        and(eq(schema.chats.id, chatId), eq(schema.chats.ownerId, ownerId)),
+      const modelIds = [
+        input.modelId,
+        ...(input.subagentModelId ? [input.subagentModelId] : []),
+      ];
+      const ownedModels = await tx
+        .select({ id: schema.modelProfiles.id })
+        .from(schema.modelProfiles)
+        .where(
+          and(
+            eq(schema.modelProfiles.ownerId, ownerId),
+            inArray(schema.modelProfiles.id, modelIds),
+          ),
+        );
+      if (
+        new Set(ownedModels.map(({ id }) => id)).size !== new Set(modelIds).size
       )
-      .limit(1);
-    if (!chats[0]) return null;
-    if (
-      chats[0].contextKind === "standalone" &&
-      (input.customSubagentModel ||
-        input.subagentModelId !== null ||
-        input.subagentReasoningEffort !== null)
-    ) {
-      throw new ExecutionLaneConflictError(
-        "Standalone Chat does not support subagent configuration.",
-      );
-    }
+        return null;
+      const chats = await tx
+        .select({ contextKind: schema.chats.contextKind })
+        .from(schema.chats)
+        .where(
+          and(eq(schema.chats.id, chatId), eq(schema.chats.ownerId, ownerId)),
+        )
+        .limit(1);
+      if (!chats[0]) return null;
+      if (
+        chats[0].contextKind === "standalone" &&
+        (input.customSubagentModel ||
+          input.subagentModelId !== null ||
+          input.subagentReasoningEffort !== null)
+      ) {
+        throw new ExecutionLaneConflictError(
+          "Standalone Chat does not support subagent configuration.",
+        );
+      }
 
-    const result = await this.database
-      .update(schema.chats)
-      .set({
-        modelId: input.modelId,
-        reasoningEffort: input.reasoningEffort,
-        customSubagentModel: input.customSubagentModel,
-        subagentModelId: input.subagentModelId,
-        subagentReasoningEffort: input.subagentReasoningEffort,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(eq(schema.chats.id, chatId), eq(schema.chats.ownerId, ownerId)),
-      )
-      .returning();
-    return result[0] ? toContextualChatWireSummary(result[0]) : null;
+      await lockNativeCommandChat(tx, ownerId, chatId);
+      await assertNativeRuntimeWritable(tx, chatId);
+      const result = await tx
+        .update(schema.chats)
+        .set({
+          modelId: input.modelId,
+          reasoningEffort: input.reasoningEffort,
+          customSubagentModel: input.customSubagentModel,
+          subagentModelId: input.subagentModelId,
+          subagentReasoningEffort: input.subagentReasoningEffort,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(eq(schema.chats.id, chatId), eq(schema.chats.ownerId, ownerId)),
+        )
+        .returning();
+      return result[0] ? toContextualChatWireSummary(result[0]) : null;
+    });
   }
 
   async setChatReasoningEffort(
@@ -166,14 +175,25 @@ export class ChatConfigurationRepository {
     chatId: string,
     reasoningEffort: ReasoningEffort | null,
   ): Promise<ContextualChatWireSummary | null> {
-    const result = await this.database
-      .update(schema.chats)
-      .set({ reasoningEffort, updatedAt: new Date() })
-      .where(
-        and(eq(schema.chats.id, chatId), eq(schema.chats.ownerId, ownerId)),
-      )
-      .returning();
-    return result[0] ? toContextualChatWireSummary(result[0]) : null;
+    return this.database.transaction(async (tx) => {
+      const [owned] = await tx
+        .select({ id: schema.chats.id })
+        .from(schema.chats)
+        .where(
+          and(eq(schema.chats.id, chatId), eq(schema.chats.ownerId, ownerId)),
+        );
+      if (!owned) return null;
+      await lockNativeCommandChat(tx, ownerId, chatId);
+      await assertNativeRuntimeWritable(tx, chatId);
+      const result = await tx
+        .update(schema.chats)
+        .set({ reasoningEffort, updatedAt: new Date() })
+        .where(
+          and(eq(schema.chats.id, chatId), eq(schema.chats.ownerId, ownerId)),
+        )
+        .returning();
+      return result[0] ? toContextualChatWireSummary(result[0]) : null;
+    });
   }
 
   async getModelReasoningDefault(
@@ -214,6 +234,8 @@ export class ChatConfigurationRepository {
         .limit(1);
       if (!ownedModels[0]) return null;
 
+      await lockNativeCommandChat(transaction, ownerId, chatId);
+      await assertNativeRuntimeWritable(transaction, chatId);
       const result = await transaction
         .update(schema.chats)
         .set({

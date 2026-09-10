@@ -1,4 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { lockNativeCommandChat } from "./native-command-lock.js";
+import { assertNativeRuntimeWritable } from "./native-runtime-handoff-guard.js";
+import { NativeCommandError } from "./native-command-errors.js";
 
 import {
   DEFAULT_PERMISSION_PROFILE_ID,
@@ -304,61 +307,89 @@ export class ChatRuntimeContextRepository {
     if ((worktreeId === null) === (scratchRootId === null)) {
       throw new Error("Chat runtime requires exactly one execution root.");
     }
-    const rows = await this.database
-      .insert(schema.chatRuntimeSessions)
-      .values({
-        id: randomUUID(),
-        chatId,
-        workerId,
-        worktreeId,
-        scratchRootId,
-        codexThreadId: threadId,
-        modelRouteId,
-        providerAccountId: providerAccountId ?? null,
-        status,
-      })
-      .onConflictDoUpdate({
-        target: worktreeId
-          ? [
-              schema.chatRuntimeSessions.chatId,
-              schema.chatRuntimeSessions.workerId,
-              schema.chatRuntimeSessions.worktreeId,
-            ]
-          : [
-              schema.chatRuntimeSessions.chatId,
-              schema.chatRuntimeSessions.workerId,
-              schema.chatRuntimeSessions.scratchRootId,
-            ],
-        targetWhere: worktreeId
-          ? isNotNull(schema.chatRuntimeSessions.worktreeId)
-          : isNotNull(schema.chatRuntimeSessions.scratchRootId),
-        set: {
+    await this.database.transaction(async (tx) => {
+      const [chat] = await tx
+        .select({ ownerId: schema.chats.ownerId })
+        .from(schema.chats)
+        .where(eq(schema.chats.id, chatId));
+      if (!chat) throw new Error("Chat not found while updating its runtime.");
+      await lockNativeCommandChat(tx, chat.ownerId, chatId);
+      await assertNativeRuntimeWritable(tx, chatId);
+      const [settings] = await tx
+        .select({ state: schema.nativeSettingsStates.state })
+        .from(schema.nativeSettingsStates)
+        .where(eq(schema.nativeSettingsStates.chatId, chatId));
+      const binding = settings?.state.binding;
+      if (
+        binding &&
+        binding.modelRouteId !== null &&
+        binding.workerId === workerId &&
+        binding.threadId === threadId &&
+        binding.placementId === (worktreeId ?? scratchRootId) &&
+        (binding.modelRouteId !== modelRouteId ||
+          (providerAccountId !== undefined &&
+            binding.providerAccountId !== providerAccountId))
+      )
+        throw new NativeCommandError(
+          "native-runtime-route-replaced",
+          "The native route changed before this runtime update. Refresh the bound session.",
+        );
+      const rows = await tx
+        .insert(schema.chatRuntimeSessions)
+        .values({
+          id: randomUUID(),
+          chatId,
+          workerId,
+          worktreeId,
+          scratchRootId,
           codexThreadId: threadId,
           modelRouteId,
-          ...(providerAccountId === undefined ? {} : { providerAccountId }),
+          providerAccountId: providerAccountId ?? null,
           status,
+        })
+        .onConflictDoUpdate({
+          target: worktreeId
+            ? [
+                schema.chatRuntimeSessions.chatId,
+                schema.chatRuntimeSessions.workerId,
+                schema.chatRuntimeSessions.worktreeId,
+              ]
+            : [
+                schema.chatRuntimeSessions.chatId,
+                schema.chatRuntimeSessions.workerId,
+                schema.chatRuntimeSessions.scratchRootId,
+              ],
+          targetWhere: worktreeId
+            ? isNotNull(schema.chatRuntimeSessions.worktreeId)
+            : isNotNull(schema.chatRuntimeSessions.scratchRootId),
+          set: {
+            codexThreadId: threadId,
+            modelRouteId,
+            ...(providerAccountId === undefined ? {} : { providerAccountId }),
+            status,
+            updatedAt: new Date(),
+          },
+        })
+        .returning();
+      const runtime = firstOrThrow(rows, "updating a chat runtime");
+      await tx
+        .update(schema.chatExecutionLanes)
+        .set({
+          runtimeSessionId: runtime.id,
+          codexThreadId: threadId,
           updatedAt: new Date(),
-        },
-      })
-      .returning();
-    const runtime = firstOrThrow(rows, "updating a chat runtime");
-    await this.database
-      .update(schema.chatExecutionLanes)
-      .set({
-        runtimeSessionId: runtime.id,
-        codexThreadId: threadId,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(schema.chatExecutionLanes.chatId, chatId),
-          eq(schema.chatExecutionLanes.workerId, workerId),
-          worktreeId
-            ? eq(schema.chatExecutionLanes.worktreeId, worktreeId)
-            : eq(schema.chatExecutionLanes.scratchRootId, scratchRootId!),
-          eq(schema.chatExecutionLanes.state, "active"),
-        ),
-      );
+        })
+        .where(
+          and(
+            eq(schema.chatExecutionLanes.chatId, chatId),
+            eq(schema.chatExecutionLanes.workerId, workerId),
+            worktreeId
+              ? eq(schema.chatExecutionLanes.worktreeId, worktreeId)
+              : eq(schema.chatExecutionLanes.scratchRootId, scratchRootId!),
+            eq(schema.chatExecutionLanes.state, "active"),
+          ),
+        );
+    });
   }
 
   async setChatStatus(

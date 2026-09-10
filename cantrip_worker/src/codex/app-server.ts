@@ -1,5 +1,10 @@
 import { nativeModelAttribution } from "../native-model-attribution.js";
 import {
+  requestManagedHistoryTransfer,
+  type ManagedHistoryExport,
+  type ManagedHistoryImport,
+} from "./managed-history-transfer.js";
+import {
   readNativeAccountDefaults,
   writeNativeAccountDefaults,
   nativeAccountDefaultsParams,
@@ -6310,6 +6315,26 @@ export class CodexAppServer implements CodexRuntime {
     if (generation !== this.#nativeTransportGeneration)
       throw new Error("The native history transport changed during the read.");
     return snapshot;
+  }
+
+  exportManagedHistory(input: ManagedHistoryExport, signal?: AbortSignal) {
+    return requestManagedHistoryTransfer(
+      (method, params) => this.request(method, params),
+      () => this.transportGeneration,
+      "thread/managedHistory/export",
+      input,
+      signal,
+    );
+  }
+
+  importManagedHistory(input: ManagedHistoryImport, signal?: AbortSignal) {
+    return requestManagedHistoryTransfer(
+      (method, params) => this.request(method, params),
+      () => this.transportGeneration,
+      "thread/managedHistory/import",
+      input,
+      signal,
+    );
   }
 
   /** Recover only the model context after an admitted native failure. History,

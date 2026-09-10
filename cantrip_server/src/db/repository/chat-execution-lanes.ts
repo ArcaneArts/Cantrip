@@ -1,3 +1,4 @@
+import { assertNativeRuntimeWritable } from "./native-runtime-handoff-guard.js";
 import { randomUUID } from "node:crypto";
 
 import {
@@ -392,6 +393,7 @@ export class ChatExecutionLaneRepository {
     try {
       return await this.database.transaction(async (transaction) => {
         await transaction.execute(projectChatExecutionLock(ownerId, chatId));
+        await assertNativeRuntimeWritable(transaction, chatId);
         const rows = await transaction
           .select({
             chat: schema.chats,
