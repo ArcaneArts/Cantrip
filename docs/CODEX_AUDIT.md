@@ -4641,6 +4641,61 @@ fixture's GUI logical settlement is `idle`. This pass does not claim new UI
 outcome-parity coverage. Remaining acceptance reconciliation and the final user
 implementation demo still apply.
 
+### Pass 65 — physical cross-view replies and preserved Plan mode
+
+The actual pinned engine, physical TUI and worker/server admission fixture
+reproduced two gaps that earlier protocol-peer tests did not expose. A GUI reply
+to a CLI-originated approval dispatched and completed the command but left the
+GUI interaction callback pending. Reply dispatch had already consumed the
+pending record, so the later native resolution event could not clear it. The
+accepted GUI reply now publishes the same clearing callback as an accepted
+terminal reply.
+
+A prepared Plan-mode thread also remained Plan in native settings before and
+after CLI attachment, but the CLI's first real input changed it to Default.
+The resume compatibility payload omits collaboration mode; initializing the TUI
+from that payload alone lost the existing selection. Reviewed native patch 0037
+reads the actual selected thread settings during managed TUI resume and installs
+the collaboration mode with its model and reasoning effort. It does not submit
+a turn, mutate configuration or change ordinary unmanaged CLI startup.
+
+The new acceptance fixture covers command approval and user-input questions
+for both GUI-originated and terminal-originated turns. It answers each through
+the opposite surface, using physical TUI Enter for terminal replies. The fixture
+waits for the rendered approval prompt rather than treating an earlier command
+preview as a ready interaction. It verifies matching pending identity, rejected
+mismatched and duplicate replies, one admitted reply with the correct origin,
+actual provider tool output, cleared GUI interaction state, the final answer in
+both views and reuse of the same native process and CLI. Question cases prepare
+Plan mode and verify that attachment preserves it before real input.
+
+Validation: the standard native release build and upstream verification passed
+(36 reviewed patches; imported source unchanged). All four new interaction cases
+passed against the final binary. Another 22 actual-native cases passed across
+managed command/CUA sessions, shared steering, physical TUI attachment, inherited
+settings, settings correlation and read-only thread observation. The 119 focused
+worker regressions and final worker source typecheck passed. Strict checking of
+the new test files reports only the nine existing errors in the imported server
+fixture, with no errors in changed files. Scoped formatting, Rust formatting of
+the patched source and diff checks passed.
+
+The required repository check passed its source/Rust/selected-CUA phases and
+stopped at the same 40 full-server failures as pass 61 (all 47 failure headings
+match; 1,364 server passes and 70 skips). Full worker/app suites and global
+formatting were not reached. No CI, personal provider inference, user application
+launch or real desktop input was used.
+
+Reproduce the new acceptance cases from `cantrip_worker` after dependency builds:
+
+```sh
+CANTRIP_CODEX_TEST_BINARY=/absolute/path/to/reviewed/pinned/codex \
+pnpm exec vitest run test/native-shared-interactions.test.ts
+```
+
+This closes specific reply and attachment gaps; pending-interaction restart,
+other interaction types, remaining whole-product acceptance and the final user
+demo still require their own evidence.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal

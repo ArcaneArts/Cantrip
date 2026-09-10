@@ -7556,6 +7556,7 @@ export class CodexAppServer implements CodexRuntime {
           throw new Error("The agent interaction is no longer pending.");
         this.releaseAgentInteraction(pending);
         this.send({ id: pending.rpcId, result });
+        pending.active.onInteractionCleared?.(pending.request.requestKey);
         return { accepted: true };
       },
     });
