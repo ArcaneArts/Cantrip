@@ -49,6 +49,8 @@ import {
 } from "./projects.js";
 
 interface ChatExecutionContextBase {
+  /** Server-owned Stop revision captured when input submission begins. */
+  managedInputRevision?: number;
   automationPaused: boolean;
   chatId: string;
   /** Filled by getChatExecutionContext; optional for older execution adapters. */

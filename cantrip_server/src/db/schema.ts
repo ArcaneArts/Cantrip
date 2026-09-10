@@ -3258,6 +3258,9 @@ export const chats = pgTable(
     managedAutonomyStopped: boolean("managed_autonomy_stopped")
       .notNull()
       .default(false),
+    managedInputRevision: integer("managed_input_revision")
+      .notNull()
+      .default(0),
     planMode: text("plan_mode").notNull().default("default"),
     githubItemKind: text("github_item_kind"),
     githubItemNumber: integer("github_item_number"),

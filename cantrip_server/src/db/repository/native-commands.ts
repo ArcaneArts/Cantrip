@@ -368,6 +368,7 @@ export class NativeCommandRepository {
       canonicalQueueMutation?: boolean;
       clientMessageId?: string;
       queueClaim?: { id: string; promptRevision: number };
+      expectedInputRevision?: number;
     } = {},
   ): Promise<NativeCommandAdmissionResult> {
     const queueClaim = executionOptions.queueClaim ?? input.queueClaim;
@@ -442,6 +443,14 @@ export class NativeCommandRepository {
       let starts = false;
       let consumeReply = false;
       try {
+        // Compare inside the same chat lock as Stop and lane acquisition. A
+        // request waiting for native preparation must not start after Stop.
+        if (
+          executionOptions.expectedInputRevision !== undefined &&
+          executionOptions.expectedInputRevision !==
+            context.managedInputRevision
+        )
+          throw new NativeCommandError("cancelled-before-admission");
         await assertNativeRuntimeWritable(
           tx,
           input.session.chatId,
@@ -1641,7 +1650,10 @@ export class NativeCommandRepository {
   ): Promise<void> {
     await tx
       .update(schema.chats)
-      .set({ managedAutonomyStopped: true })
+      .set({
+        managedAutonomyStopped: true,
+        managedInputRevision: sql`${schema.chats.managedInputRevision} + 1`,
+      })
       .where(eq(schema.chats.id, chatId));
     await tx
       .update(schema.nativeCommandActivations)

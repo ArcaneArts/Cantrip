@@ -83,7 +83,11 @@ export async function mutateManagedGuiQueue(
   ...args: Parameters<typeof prepareGuiQueueMutation>
 ) {
   const input = await prepareGuiQueueMutation(...args);
-  const result = await args[0].managedQueue.mutate(args[1], input);
+  const result = await args[0].managedQueue.mutate(args[1], input, {
+    expectedInputRevision: ["add", "start"].includes(input.mutation.kind)
+      ? args[2].managedInputRevision
+      : undefined,
+  });
   if (result.receipt.status === "rejected")
     throw new NativeCommandError(
       result.receipt.rejectionCode ?? "queue-mutation-rejected",
