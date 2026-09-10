@@ -3276,6 +3276,55 @@ their owning records, and the portable importer does not restore thread goals.
 Preserve these selected-thread records before enabling the full handoff; do not
 copy an account's entire database or assume rollout history contains them.
 
+### Pass 38 — selected-thread native state transfer
+
+Reviewed patch `0035` extends the portable transfer envelope to version 2 with
+persisted memory mode, the selected project and ordered roots, the goal and its
+continuation deferral. Section identity/appearance and thread ordering retain
+their native metadata representation. Version 1 envelopes are rejected rather
+than accepted with missing state; both legacy and paginated rollout formats
+remain supported.
+
+Destination publication restores the selected goal in its native goal database,
+then inserts project/section records and thread metadata in one state-database
+transaction. Existing conflicting project, section or goal values are reported
+instead of overwritten. A pristine, unreferenced native Pinned section may adopt
+the source's customization. Exact interrupted imports can retry, while a visible
+completed destination retains later history, memory choices, queue changes and
+cleared goals. Only the selected conversation's records are transferred; account
+databases and project command-idempotency records are not copied.
+
+The importer also accepts later SessionMeta records in a history segment. Native
+legacy memory-mode changes append these records, and native replay allows copied
+fork metadata. The first record remains authoritative for segment identity and
+ancestry. The former unconditional rejection prevented valid legacy transfers.
+
+Validation:
+
+- The final packaged Codex 0.153.4 release builds successfully with the reviewed
+  patch; pristine upstream verification covers 6,499 files and 34 patches.
+- Four actual native cases pass: legacy and paginated portable transfer plus
+  canonical account configuration in ordinary and separate history homes.
+- Transfer cases retain paused goal identity, configuration revision, usage
+  counters, project/section presentation and disabled memory mode. Cold restart
+  and an old import retry preserve cleared goals, newer memory settings and
+  removed queue items. The source goal and history remain intact.
+- An actual SQLite INSERT failure rolls back thread/project/section publication.
+  Real conflicting section, project and goal records are rejected without
+  overwrite, then the same transfer succeeds after the fixture fault is removed.
+  Old envelope versions and foreign first-record ownership are rejected.
+- The preceding packaged binary fails the new version-2 assertion in both
+  history modes. The first candidate exposed the legacy metadata defect; the
+  corrected release passes all four cases without weakening identity checks.
+- Worker typechecking, scoped formatting, native Rust formatting and diff checks
+  pass. The standard check stops at the existing chat-turn-runtime.ts (2330/1999)
+  and task-routes.ts (2149/1999) budgets; its later stages did not run.
+
+Full provider handoff orchestration, GUI migration, eager GUI-first startup and
+the final acceptance matrix remain outstanding; this pass does not enable
+migration. No live user worker, personal desktop input, real-account inference
+or CI was used.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal
