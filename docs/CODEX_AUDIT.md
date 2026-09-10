@@ -4115,6 +4115,34 @@ investigation. The remaining server/app acceptance failures and manual user
 demo are also still outstanding. No CI, personal provider inference or desktop
 input ran.
 
+### Pass 54 — isolate helper process launches in the CUA test harness
+
+The reported shutdown failure reproduced in different JavaScript process cases
+under the concurrent suite, while the original rendezvous case passed alone.
+Thread samples showed the helper still blocked reading stdin, with both native
+and JavaScript executors idle: it had not entered shutdown. File-descriptor
+inspection then showed a sibling helper retaining both ends of the affected
+helper's stdin pipe after the owning parent closed its write handle. That
+inherited writer prevented EOF; extending JavaScript or shutdown deadlines would
+not address it.
+
+The process fixture now serializes only pipe creation and child launch. Once
+spawn returns the guard is released, so independent helpers, host promises and
+native operations still execute concurrently. Timeout diagnostics also report
+the actual child exit state. No production CUA code or timeout changed, and the
+temporary process-sampling/file-descriptor instrumentation was removed.
+
+Validation: the original concurrent suite failed before the change. Six complete
+concurrent process-suite runs pass afterward (22 cases per run), retaining the
+five-second shutdown deadline. The required `pnpm check` passes all 187 Rust CUA
+cases, CUA/CLI lint, all workspace types and 206 root script tests; the CUA script
+suite passes 52 cases with two existing skips. It next stops in the CUA protocol
+selection: 131 pass and three fail. The remaining failures are the old public
+export/worker-command inventory expectations and a control-ciphertext fixture.
+They require contract review, not blanket baseline replacement. Full server/app
+acceptance and the user demo remain outstanding. No CI, personal provider
+inference or desktop input ran.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal

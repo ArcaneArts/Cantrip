@@ -6,7 +6,10 @@ use serde_json::{Value, json};
 use std::{
     io::{Read, Write},
     process::{Child, ChildStdin, Command, Stdio},
-    sync::mpsc::{self, Receiver},
+    sync::{
+        Mutex,
+        mpsc::{self, Receiver},
+    },
     time::Duration,
 };
 
@@ -17,18 +20,25 @@ struct Process {
     next_id: u64,
 }
 
+// Concurrent pipe creation/spawn can leak another helper's stdin descriptors
+// into a sibling on macOS. A retained writer prevents EOF in the owning test.
+// Serialize only launches; all helper execution and protocol work stays concurrent.
+static PROCESS_SPAWN: Mutex<()> = Mutex::new(());
+
 impl Process {
     fn start(fake: bool) -> Self {
         let mut command = Command::new(env!("CARGO_BIN_EXE_cantrip-cua"));
         if fake {
             command.args(["--backend", "fake"]);
         }
+        let spawn_guard = PROCESS_SPAWN.lock().unwrap();
         let mut child = command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
             .unwrap();
+        drop(spawn_guard);
         let input = child.stdin.take();
         let mut output = child.stdout.take().unwrap();
         let (tx, frames) = mpsc::channel();
@@ -112,7 +122,11 @@ impl Process {
                 Ok(_) => continue,
                 Err(mpsc::RecvTimeoutError::Disconnected) => break,
                 Err(mpsc::RecvTimeoutError::Timeout) => {
-                    panic!("child stdout did not close before shutdown deadline")
+                    panic!(
+                        "child stdout did not close before shutdown deadline; pid={}, status={:?}",
+                        self.child.id(),
+                        self.child.try_wait().unwrap()
+                    )
                 }
             }
         }
