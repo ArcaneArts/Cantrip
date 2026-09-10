@@ -269,3 +269,39 @@ it("does not launch a console after its chat was archived during native preparat
   await preparation.workerConnected(owner, f.workerId);
   expect(calls).toHaveLength(before);
 });
+
+it("does not let a late older recovery replace a newer prepared session", async () => {
+  const { preparation, calls } = await fixture();
+  await preparation.request(owner, f.chatId);
+  await preparation.settle(owner, f.chatId);
+  let release!: () => void;
+  const recovery = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await preparation.workerConnected(
+    owner,
+    f.workerId,
+    new Map([[f.chatId, recovery]]),
+  );
+  const oldJoin = expect(preparation.join(owner, f.chatId)).rejects.toThrow(
+    "The preparation was replaced.",
+  );
+  try {
+    await preparation.workerConnected(owner, f.workerId);
+    await preparation.settle(owner, f.chatId);
+    const current = await f.repository.managedChatPreparations.get(
+      owner,
+      f.chatId,
+    );
+    const count = calls.length;
+    release();
+    await oldJoin;
+    expect(calls).toHaveLength(count);
+    expect(
+      await f.repository.managedChatPreparations.get(owner, f.chatId),
+    ).toEqual(current);
+  } finally {
+    release();
+    await oldJoin;
+  }
+});

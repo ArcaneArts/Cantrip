@@ -3786,6 +3786,49 @@ Remaining: combined transfer/reconnect/preparation recovery, post-PTY-spawn
 failure reporting, the full bidirectional acceptance matrix, and the user demo.
 This pass does not establish the full CLI/GUI mirror objective.
 
+### Pass 45 — reconnect preparation joins provider recovery per chat
+
+Combined migrated-database handoff/preparation tests reproduced eager CLI
+preparation contacting the old route while reconnect recovery was still
+in progress. The reconnect callback previously waited only for dispatch, not
+for the dispatched worker operation to settle. Both successful transfer and
+cancellation recovery exhibited this ordering gap.
+
+Handoff reconnect now returns the actual recovery operation promise for each
+chat. Eager preparation registers its joinable job immediately, waits for that
+chat's recovery, and only then resolves current placement, route and account.
+Unrelated chats on the same worker prepare without waiting for another chat's
+transfer. A superseded job waiting on an older recovery cannot later claim a
+new preparation generation or overwrite the newer prepared session.
+
+The asynchronous HTTP transfer API is unchanged: requests still receive their
+accepted durable operation immediately. Recovery is based on actual dispatched
+operations, not a cached capability or readiness check. Transfer and preparation
+retain their own failure handling and explicit retry semantics.
+
+Validation: the two new combined repository/controller fixtures first failed
+because the old route received `chat.thread.ensure` before recovery completed.
+After the fix, they verify no premature ensure, an immediate GUI join waiting
+for recovery, unaffected preparation of a second chat, and preparation against
+the destination after completion or the retained source after cancellation.
+A third regression proves a late older reconnect cannot replace the current
+ready receipt or dispatch more native work. These use deterministic worker
+handlers and real PGlite transactions; they do not establish the entire live
+worker/GUI transfer matrix.
+
+Validation results: 39 focused server cases pass, with the two gated native
+cases run separately and passing on the pinned binary (including actual CLI
+retargeting and cold-destination recovery). The actual native eager preparation
+case also passes. Server typecheck and scoped formatting/diff checks pass.
+`pnpm check` still stops at unchanged decomposition budgets in
+`chat-turn-runtime.ts` (2334/1999) and `task-routes.ts` (2149/1999); later chained
+checks did not run. No CI, real provider accounts, personal applications, or
+user worker restart was used.
+
+Remaining: post-PTY-spawn failure reporting, full live GUI/worker acceptance for
+the combined paths, the remaining bidirectional matrix and the user demo. This
+pass does not establish full CLI/GUI mirror completion.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal
