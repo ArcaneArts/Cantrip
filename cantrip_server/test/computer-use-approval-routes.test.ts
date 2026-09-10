@@ -494,35 +494,43 @@ describe("computer-use approval responses", () => {
     },
   );
 
-  it("preserves the protected Codex runtime path for historical provenance", async () => {
-    const f = setup();
-    delete f.state.interaction.provenance.owner;
-    f.state.interaction.provenance.threadId = "codex-thread";
-    f.isConnected.mockReturnValue(true);
-    const runtime = {
-      model: { id: "model" },
-      provider: { id: "provider" },
-    } as ModelRuntime;
-    f.runtimeForContext.mockResolvedValue(runtime);
-    expect((await f.send()).statusCode).toBe(200);
-    expect(f.isConnected).toHaveBeenCalledWith("worker-one");
-    expect(f.runtimeForContext).toHaveBeenCalledWith(f.state.context);
-    expect(f.request).toHaveBeenCalledExactlyOnceWith(
-      "worker-one",
-      {
-        type: "agent.interaction.respond.protected",
-        executionProfile: "standalone-chat",
-        requestKey: "native-request-one",
-        response: {
-          classification: resolution().classification,
-          protectedResponse: resolution().protectedResponse,
+  it.each(["standalone", "project"] as const)(
+    "routes historical child replies through the owning %s conversation",
+    async (contextKind) => {
+      const f = setup();
+      delete f.state.interaction.provenance.owner;
+      f.state.interaction.provenance.threadId = "codex-child-thread";
+      f.state.context.threadId = "canonical-root-thread";
+      f.state.context.contextKind = contextKind;
+      f.isConnected.mockReturnValue(true);
+      const runtime = {
+        model: { id: "model" },
+        provider: { id: "provider" },
+      } as ModelRuntime;
+      f.runtimeForContext.mockResolvedValue(runtime);
+      expect((await f.send()).statusCode).toBe(200);
+      expect(f.isConnected).toHaveBeenCalledWith("worker-one");
+      expect(f.runtimeForContext).toHaveBeenCalledWith(f.state.context);
+      expect(f.request).toHaveBeenCalledExactlyOnceWith(
+        "worker-one",
+        {
+          type: "agent.interaction.respond.protected",
+          chatId: f.state.context.chatId,
+          threadId: f.state.context.threadId,
+          executionProfile:
+            contextKind === "standalone" ? "standalone-chat" : "ide",
+          requestKey: "native-request-one",
+          response: {
+            classification: resolution().classification,
+            protectedResponse: resolution().protectedResponse,
+          },
+          model: runtime.model,
+          provider: runtime.provider,
         },
-        model: runtime.model,
-        provider: runtime.provider,
-      },
-      { timeoutMs: 30_000 },
-    );
-  });
+        { timeoutMs: 30_000 },
+      );
+    },
+  );
 
   it("preserves Codex offline handling without treating it as native approval", async () => {
     const f = setup();
@@ -575,6 +583,8 @@ describe("computer-use approval responses", () => {
     ).toBe(200);
     expect(f.request.mock.lastCall?.[1]).toEqual({
       type: "agent.interaction.respond",
+      chatId: f.state.context.chatId,
+      threadId: f.state.context.threadId,
       executionProfile: "standalone-chat",
       requestKey: "native-request-one",
       response: visible,

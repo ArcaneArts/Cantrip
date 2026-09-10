@@ -210,6 +210,8 @@ export function installAgentInteractionRoutes(
                 : protectedInput
                   ? {
                       type: "agent.interaction.respond.protected",
+                      chatId: context.chatId,
+                      threadId: context.threadId,
                       executionProfile:
                         context.contextKind === "standalone"
                           ? "standalone-chat"
@@ -224,6 +226,8 @@ export function installAgentInteractionRoutes(
                     }
                   : {
                       type: "agent.interaction.respond",
+                      chatId: context.chatId,
+                      threadId: context.threadId,
                       executionProfile:
                         context.contextKind === "standalone"
                           ? "standalone-chat"

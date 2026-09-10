@@ -566,6 +566,8 @@ export const workerChatCommandSchemas = [
   }),
   z.object({
     type: z.literal("agent.interaction.respond"),
+    chatId: z.string().min(1).optional(),
+    threadId: z.string().min(1).nullable().optional(),
     nativeActivationGeneration: z.string().min(1).nullable().optional(),
     executionProfile: z.enum(["ide", "standalone-chat"]).default("ide"),
     requestKey: z.string().min(1).max(200),
@@ -575,6 +577,8 @@ export const workerChatCommandSchemas = [
   }),
   z.object({
     type: z.literal("agent.interaction.respond.protected"),
+    chatId: z.string().min(1).optional(),
+    threadId: z.string().min(1).nullable().optional(),
     nativeActivationGeneration: z.string().min(1).nullable().optional(),
     executionProfile: z.enum(["ide", "standalone-chat"]).default("ide"),
     requestKey: z.string().min(1).max(200),
@@ -584,6 +588,8 @@ export const workerChatCommandSchemas = [
   }),
   z.object({
     type: z.literal("agent.interaction.cancel"),
+    chatId: z.string().min(1).optional(),
+    threadId: z.string().min(1).nullable().optional(),
     executionProfile: z.enum(["ide", "standalone-chat"]).default("ide"),
     requestKey: z.string().min(1).max(200),
     reason: z.string().min(1).max(4_000),
