@@ -62,7 +62,11 @@ function fixedBase64UrlSchema(bytes: number) {
   return canonicalBase64UrlSchema.length(Math.ceil((bytes * 4) / 3));
 }
 
-export const encryptionBytesSchema = canonicalBase64UrlSchema.max(22_369_622);
+// The largest payload is 16 MiB of plaintext; AES-GCM appends a 16-byte tag.
+// Bound the encoded ciphertext, including that tag, rather than the plaintext.
+export const encryptionBytesSchema = canonicalBase64UrlSchema.max(
+  Math.ceil(((16 * 1_024 * 1_024 + 16) * 4) / 3),
+);
 export const encryptionKeyBytesSchema = fixedBase64UrlSchema(32);
 export const encryptionNonceSchema = fixedBase64UrlSchema(12);
 export const encryptionP256PublicKeyBytesSchema = fixedBase64UrlSchema(65);

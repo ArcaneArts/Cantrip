@@ -4143,6 +4143,42 @@ They require contract review, not blanket baseline replacement. Full server/app
 acceptance and the user demo remain outstanding. No CI, personal provider
 inference or desktop input ran.
 
+### Pass 55 — preserve the encrypted CUA payload boundary
+
+The maximum control-ciphertext failure was a production contract mismatch:
+endpoint content allows 16 MiB of plaintext, but the shared envelope validator
+bounded ciphertext as though AES-GCM did not append its 16-byte authentication
+tag. The envelope bound now includes the tag. Plaintext, script, frame and
+timeline limits are unchanged. A real endpoint encryption/decryption regression
+round-trips the full plaintext boundary, validates its CUA request/response
+routing envelopes, and rejects both oversized plaintext and a canonical
+ciphertext one byte beyond the boundary.
+
+The public-surface review compares the actual runtime exports at `9c7147979`
+with the current namespace: 128 additions, no removals. The test explicitly
+names the added effects/timeline, context-compaction and managed-native
+contracts while preserving the original 1,946-export fingerprint. Fourteen
+reviewed worker commands are similarly excluded before checking the original
+ordered command baseline. Existing event and notification fingerprints remain
+unchanged; no protocol symbol or command is removed to satisfy the inventory.
+
+Validation: the focused protocol and crypto suites pass 68 and 27 cases.
+After rebuilding package outputs, the full protocol and crypto suites pass
+697 and 95 cases respectively. The first broad attempts encountered stale
+compiled test output and a missing crypto build; they are not recorded as
+successful runs. The required `pnpm check` passes lint/types, all 187 Rust CUA
+cases and the CUA selections: 134 protocol, 25 crypto, 692 worker, 229 server
+(with three skips), and 309 app cases. It then stops in the broader server
+suite: 1,362 pass, 44 fail and 56 skip across 247 files. These remaining
+acceptance failures are not a green repository check; later chained checks did
+not run.
+
+This validates the encrypted envelope boundary, not every transport's maximum
+body size. Inspection also found the client-preview operation HTTP route still
+uses a 128 KiB body limit; that separate transport boundary needs review. Full
+server/app acceptance and the user demo remain outstanding. No CI, personal
+provider inference or desktop input ran.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal
