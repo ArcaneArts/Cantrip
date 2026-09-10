@@ -14,6 +14,19 @@ const runtime = vi.hoisted(() => ({
   sendPermission: vi.fn(),
   matches: vi.fn(() => true),
 }));
+vi.mock("./use-runtime-handoff", () => ({
+  useRuntimeHandoff: () => ({
+    query: { data: null },
+    latest: null,
+    active: false,
+    busy: false,
+    error: null,
+    unconfirmed: null,
+  }),
+}));
+vi.mock("./native-runtime-handoff-editor", () => ({
+  NativeRuntimeHandoffEditor: () => null,
+}));
 vi.mock("./use-native-settings-state", () => ({
   useNativeSettingsState: () => runtime.observed,
 }));

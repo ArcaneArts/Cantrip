@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { modelProviderAccountWireSummarySchema } from "./providers.js";
 import {
   nativeSettingsBindingSchema,
   protectedNativeSettingsSnapshotSchema,
@@ -62,6 +63,26 @@ export type NativeRuntimeHandoffPrepared = z.infer<
 >;
 export type NativeRuntimeHandoffState = z.infer<
   typeof nativeRuntimeHandoffStateSchema
+>;
+
+export const nativeRuntimeHandoffInventorySchema = z.object({
+  chatId: id,
+  binding: nativeSettingsBindingSchema.nullable(),
+  latest: nativeRuntimeHandoffStateSchema.nullable(),
+  providers: z.array(
+    z.object({
+      id,
+      name: z.string(),
+      accounts: z.array(modelProviderAccountWireSummarySchema),
+      requiresAccount: z.boolean(),
+      models: z.array(
+        z.object({ routeId: id, name: z.string(), profileName: z.string() }),
+      ),
+    }),
+  ),
+});
+export type NativeRuntimeHandoffInventory = z.infer<
+  typeof nativeRuntimeHandoffInventorySchema
 >;
 
 const workerOperation = z.object({

@@ -1,4 +1,6 @@
 import { NativeAccountDefaultsEditor } from "./native-account-defaults-editor";
+import { NativeRuntimeHandoffEditor } from "./native-runtime-handoff-editor";
+import { useRuntimeHandoff } from "./use-runtime-handoff";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,6 +29,12 @@ export function NativeModelSettingsPicker({
   disabled?: boolean;
 }) {
   const { binding, selected, inventory, observed, update } = controller;
+  const handoff = useRuntimeHandoff({
+    binding,
+    identity: observed.identity,
+    open: open && binding?.contextKind === "project",
+    unlocked: observed.encryption.status === "ready",
+  });
   const [storedDraft, setDraft] = useState<NativeModelDraft | null>(null);
   const [dirty, setDirty] = useState<NativeModelDirty>({});
   const [editingBindingId, setEditingBindingId] = useState<string | null>(null);
@@ -100,6 +108,9 @@ export function NativeModelSettingsPicker({
     controller.localStatus === "queued";
   const status = observed.state.data?.desiredStatus;
   const editable = Boolean(
+    !handoff.active &&
+    !handoff.busy &&
+    !handoff.unconfirmed &&
     draft &&
     binding &&
     inventory.data &&
@@ -122,13 +133,15 @@ export function NativeModelSettingsPicker({
             {selected?.model ?? "Session model"}
           </span>
           <span className="block truncate text-[10px] text-muted-foreground">
-            {pending
-              ? "Change pending"
-              : (selected?.effort ?? "Default reasoning")}
+            {handoff.active || handoff.busy || handoff.unconfirmed
+              ? "Transfer pending"
+              : pending
+                ? "Change pending"
+                : (selected?.effort ?? "Default reasoning")}
           </span>
         </span>
       </Button>
-      <DialogContent className="max-w-xl">
+      <DialogContent className="max-h-[85dvh] max-w-xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Session model settings</DialogTitle>
           <DialogDescription>
@@ -389,9 +402,26 @@ export function NativeModelSettingsPicker({
             </select>
           </label>
         ) : null}
-        <p className="text-xs text-muted-foreground">
-          Provider and account changes require a session migration.
-        </p>
+        {open &&
+        binding &&
+        binding.contextKind === "project" &&
+        observed.identity &&
+        observed.encryption.status === "ready" ? (
+          <NativeRuntimeHandoffEditor
+            controller={handoff}
+            binding={binding}
+            identity={observed.identity}
+            disabled={
+              update.isPending || pending || Object.values(dirty).some(Boolean)
+            }
+          />
+        ) : null}
+        {Object.values(dirty).some(Boolean) ? (
+          <p className="text-xs">
+            Save or discard your model settings edits before transferring the
+            conversation.
+          </p>
+        ) : null}
         {controller.error ? (
           <p role="alert" className="text-xs text-destructive">
             {controller.error.message}

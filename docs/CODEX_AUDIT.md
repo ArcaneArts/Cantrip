@@ -3624,6 +3624,56 @@ Next: GUI provider/account migration selection, eager eligible empty-chat
 preparation with GUI-first presentation, then the remaining full acceptance and
 user demo. The complete integration goal remains active.
 
+### Pass 42 — GUI provider/account transfer controls
+
+The native model picker shared by the composer and `/model` now includes a
+provider/account transfer section for bound project agent sessions. It selects
+the exact destination route and account, starts the existing durable handoff,
+shows its phase/error, retries the same operation and offers cancellation before
+commit. Unsaved model-setting edits must be saved or discarded first. The picker
+continues to show confirmed native settings; selecting a destination does not
+optimistically relabel the current session. The expanded dialog scrolls within
+the viewport.
+
+A read-only chat endpoint exposes owned, enabled configured routes/accounts and
+the latest durable transfer. It neither starts native work nor treats cached
+sign-in, model availability or quota observations as admission prerequisites.
+Account labels stay encrypted over the transport/query cache, are authenticated
+in the mounted view, and disappear when encryption locks. Credential homes and
+credentials are not part of this inventory.
+
+The GUI recovers an existing transfer when reopened. A lost begin response is
+reconciled with durable status; if still unconfirmed, retry preserves the exact
+operation ID and destination. A definitively rejected request permits correction.
+The UI tracks an ongoing transfer after closing the picker and refreshes native
+settings as its phase/binding changes. A committed transfer can be retried, but
+is not offered cancellation that would pretend the old runtime is still active.
+
+Validation:
+
+- All 26 server handoff cases pass with the pinned actual native runtime enabled.
+  New HTTP/repository cases verify owner isolation, read-only discovery, durable
+  latest-status recovery, disabled-route/account omission, and enabled accounts
+  remaining selectable despite cached signed-out/exhausted-quota observations.
+- All 26 focused app cases pass: existing model-picker regressions, rendered
+  transfer controls/controller recovery, and API receipt/identity boundaries.
+  They cover exact account/route selection, duplicate-click suppression,
+  cancellation, reopening a committed transfer, uncertain/rejected requests,
+  lost-response reconciliation and encryption-lock invalidation. These app tests
+  use deterministic transport fixtures, not a live GUI-to-native transfer.
+- Protocol/dependency builds, app/server typechecks, the production app build and
+  scoped formatting/diff checks pass. The first app build needed the local
+  `@cantrip/glitch` dependency built; the subsequent complete build passed.
+- `pnpm check` still stops at unchanged decomposition budgets in
+  `chat-turn-runtime.ts` (2330/1999) and `task-routes.ts` (2149/1999); later chained
+  checks did not run. No CI, real account/provider inference, personal desktop
+  interaction or user worker restart was used.
+
+Still required: eager eligible empty-chat managed preparation and CLI attachment
+with GUI-first presentation, remaining full acceptance coverage (including this
+GUI selection through native execution), and the user implementation demo. This
+pass does not establish the full mirror objective or all cross-model queue cases.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal

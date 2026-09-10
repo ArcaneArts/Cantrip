@@ -17,6 +17,18 @@ export function installChatRuntimeHandoffRoutes(
   },
 ) {
   const { repository, bridge } = dependencies;
+  app.get<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/runtime-handoffs",
+    async (request, reply) => {
+      const inventory = await repository.nativeRuntimeHandoffs.inventory(
+        dependencies.applicationOwnerId(),
+        request.params.chatId,
+      );
+      return (
+        inventory ?? reply.code(404).send({ code: "handoff-chat-not-found" })
+      );
+    },
+  );
   const active = new Map<string, Promise<void>>();
   const dispatch = (
     ownerId: string,
