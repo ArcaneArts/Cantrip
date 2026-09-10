@@ -1404,7 +1404,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/computer-use.ts",
-      "line": 76,
+      "line": 77,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/computer-use/operation",

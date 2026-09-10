@@ -11,6 +11,7 @@ import {
 } from "../../packages/crypto/src/index.js";
 import {
   computerUseHttpResultSchema,
+  computerUseActionSchema,
   cuaSessionResultSchema,
   type ComputerUseAction,
   type ComputerUseRequest,
@@ -273,6 +274,44 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
       expect(f.service.status().sessions).toBe(0);
       expect(f.logs.join("\n")).not.toContain("Private agent label");
     });
+
+    it("delivers a large encrypted timeline to the actual helper and preserves its session after rejection", async () => {
+      const f = setup();
+      const sessionId = await f.session();
+      const action = computerUseActionSchema.parse({
+        operation: "input.perform",
+        sessionId,
+        ...target,
+        command: {
+          kind: "timeline",
+          frames: Array.from({ length: 4096 }, (_, index) => ({
+            atMs: 0,
+            ...(index % 2 === 0 ? { keyDown: ["A"] } : { keyUp: ["A"] }),
+          })),
+        },
+      });
+      expect(Buffer.byteLength(JSON.stringify(action))).toBeGreaterThan(
+        128 * 1024,
+      );
+      const response = await f.send(action);
+      // The real Rust fixture backend supports capture, but deliberately rejects
+      // input. Its authenticated rejection proves delivery without pretending
+      // synthetic input was executed or using the user's desktop for this test.
+      expect(response.result).toMatchObject({
+        status: "error",
+        operation: "input.perform",
+        code: "unsupported",
+        outcome: "rejected",
+      });
+      const snapshot = await f.send({
+        operation: "observation.snapshot",
+        sessionId,
+        ...target,
+      });
+      expect(snapshot.result.status).toBe("ok");
+      expect(snapshot.payload?.byteLength).toBeGreaterThan(0);
+      expect(f.launch).toHaveBeenCalledOnce();
+    }, 15000);
 
     it("returns protected denial without launching the helper", async () => {
       const f = setup();

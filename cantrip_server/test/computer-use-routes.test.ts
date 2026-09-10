@@ -8,6 +8,7 @@ import {
 } from "@cantrip/protocol/computer-use";
 import type { WorkerEvent } from "@cantrip/protocol";
 import Fastify, { type FastifyInstance } from "fastify";
+import WebSocket, { WebSocketServer } from "ws";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -142,7 +143,7 @@ async function emit(options: WorkerRequestOptions | undefined, event: unknown) {
   await options?.onEvent?.(event as WorkerEvent);
 }
 
-describe("unregistered computer-use relay factory", () => {
+describe("computer-use relay", () => {
   it("authorizes the authoritative owner/chat/worker lane before dispatch", async () => {
     const fixture = setup();
     const order: string[] = [];
@@ -204,6 +205,135 @@ describe("unregistered computer-use relay factory", () => {
         request: body("capabilities.get"),
       },
     ]);
+  });
+
+  it("relays the maximum opaque control body through the actual worker socket", async () => {
+    const fixture = setup();
+    const bridge = new WorkerBridge();
+    // Match the server's inbound bound. Worker clients use ws's default receive
+    // limit, as in production; this large request travels server -> worker.
+    const server = new WebSocketServer({
+      host: "127.0.0.1",
+      port: 0,
+      maxPayload: 8 * 1024 * 1024,
+    });
+    await once(server, "listening");
+    const connected = once(server, "connection");
+    const worker = new WebSocket(
+      `ws://127.0.0.1:${(server.address() as { port: number }).port}`,
+    );
+    await once(worker, "open");
+    const [socket] = await connected;
+    bridge.attach("worker-one", socket);
+    let received: ComputerUseRequest | undefined;
+    worker.on("message", (data) => {
+      const { requestId, command } = JSON.parse(data.toString());
+      received = command.request;
+      worker.send(
+        JSON.stringify({
+          kind: "response",
+          requestId,
+          ok: true,
+          result: result(),
+        }),
+      );
+    });
+    fixture.request.mockImplementation((workerId, command, options) =>
+      bridge.request(workerId, command, options),
+    );
+    const requestBody = {
+      ...body("input.perform"),
+      protectedContent: opaque(CUA_CONTROL_BYTES + 16),
+    };
+    try {
+      const response = await fixture.send(requestBody);
+      expect(response.statusCode, response.body).toBe(200);
+      expect(received).toEqual(requestBody);
+      expect(fixture.authorize).toHaveBeenCalledOnce();
+      // The HTTP allowance includes JSON overhead, but does not admit one
+      // extra plaintext byte into the authenticated control schema.
+      const oversized = await fixture.send({
+        ...requestBody,
+        protectedContent: opaque(CUA_CONTROL_BYTES + 17),
+      });
+      expect(oversized.statusCode).toBe(400);
+      expect(fixture.request).toHaveBeenCalledOnce();
+      expect(fixture.authorize).toHaveBeenCalledOnce();
+    } finally {
+      worker.terminate();
+      socket.terminate();
+      await bridge.close();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  }, 15000);
+
+  it("keeps a long input pending beyond 150 seconds without retrying or blocking Stop", async () => {
+    const fixture = setup();
+    await fixture.app.ready();
+    const bridge = new WorkerBridge();
+    let signalSent!: () => void;
+    const sent = new Promise<void>((resolve) => {
+      signalSent = resolve;
+    });
+    let inputRequestId: string | undefined;
+    const socket = Object.assign(new EventEmitter(), {
+      bufferedAmount: 0,
+      readyState: 1,
+      close() {},
+      send(data: string | Uint8Array) {
+        const { requestId, command } = JSON.parse(String(data));
+        if (command.request.operation === "input.perform") {
+          inputRequestId = requestId;
+          signalSent();
+        } else {
+          socket.emit(
+            "message",
+            JSON.stringify({
+              kind: "response",
+              requestId,
+              ok: true,
+              result: { ...result(), operationId: command.request.operationId },
+            }),
+          );
+        }
+      },
+    });
+    bridge.attach("worker-one", socket);
+    fixture.request.mockImplementation((workerId, command, options) =>
+      bridge.request(workerId, command, options),
+    );
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    let settled = false;
+    try {
+      const pending = fixture.send(body("input.perform")).then((response) => {
+        settled = true;
+        return response;
+      });
+      await sent;
+      await vi.advanceTimersByTimeAsync(150_001);
+      expect(settled).toBe(false);
+      expect(fixture.request).toHaveBeenCalledOnce();
+      const stopped = await fixture.send({
+        ...body("session.close"),
+        operationId: otherOperationId,
+      });
+      expect(stopped.statusCode, stopped.body).toBe(200);
+      // Stand in for the worker's terminal result after cancellation/completion.
+      socket.emit(
+        "message",
+        JSON.stringify({
+          kind: "response",
+          requestId: inputRequestId,
+          ok: true,
+          result: result(),
+        }),
+      );
+      expect((await pending).statusCode).toBe(200);
+      expect(fixture.request).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+      await bridge.close();
+    }
   });
 
   it("waits for queued chunk callbacks before returning an immediate final worker response", async () => {
@@ -454,7 +584,7 @@ describe("unregistered computer-use relay factory", () => {
     });
     const oversized = await fixture.send({
       ...body(),
-      padding: "x".repeat(128 * 1024),
+      padding: "x".repeat(Math.ceil(((CUA_CONTROL_BYTES + 16) * 4) / 3) + 1024),
     });
     expect(oversized.statusCode).toBe(413);
     expect(oversized.json()).toEqual({
@@ -463,4 +593,4 @@ describe("unregistered computer-use relay factory", () => {
     expect(fixture.request).not.toHaveBeenCalled();
   });
 });
-import { EventEmitter } from "node:events";
+import { EventEmitter, once } from "node:events";
