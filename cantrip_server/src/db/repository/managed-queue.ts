@@ -359,7 +359,11 @@ export class ManagedQueueRepository {
         : { found: false as const };
     });
   }
-  async mutate(ownerId: string, input: ManagedQueueMutate) {
+  async mutate(
+    ownerId: string,
+    input: ManagedQueueMutate,
+    options: { expectedInputRevision?: number } = {},
+  ) {
     return this.database.transaction(async (tx) => {
       const { admission, mutation } = input;
       const chatId = admission.session.chatId;
@@ -386,7 +390,10 @@ export class ManagedQueueRepository {
       const grant = await repository.nativeCommands.admit(
         ownerId,
         effectiveAdmission,
-        { canonicalQueueMutation: true },
+        {
+          canonicalQueueMutation: true,
+          expectedInputRevision: options.expectedInputRevision,
+        },
       );
       if (grant.receipt.status !== "accepted")
         return {

@@ -114,6 +114,7 @@ export class ChatRuntimeContextRepository {
       chatId: row.chat.id,
       computerUseEnabled: row.settings?.computerUseEnabled === true,
       computerUseAuthorityGeneration: row.chat.computerUseAuthorityGeneration,
+      managedInputRevision: row.chat.managedInputRevision,
       cwd: row.worktree.absolutePath,
       experience: row.chat.experience as ChatWireSummary["experience"],
       defaultPermissionProfileId:
@@ -219,6 +220,7 @@ export class ChatRuntimeContextRepository {
       chatId,
       computerUseEnabled: row.settings?.computerUseEnabled === true,
       computerUseAuthorityGeneration: row.chat.computerUseAuthorityGeneration,
+      managedInputRevision: row.chat.managedInputRevision,
       cwd: row.root.protectedPathHandle ?? "standalone-root-unavailable",
       experience: "agent",
       defaultPermissionProfileId:

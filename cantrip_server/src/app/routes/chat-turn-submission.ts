@@ -1,4 +1,5 @@
 import { managedConsoleSessionContext } from "../../terminals/managed-session.js";
+import { NativeCommandError } from "../../db/repository/native-command-errors.js";
 import { mutateManagedGuiQueue } from "../runtime/managed-queue-input.js";
 import { randomUUID } from "node:crypto";
 
@@ -238,6 +239,10 @@ export function installChatTurnSubmissionRoutes(
           error,
         );
         if (resolution) return resolution;
+        if (error instanceof NativeCommandError)
+          return reply
+            .code(error.statusCode)
+            .send({ error: error.message, code: error.code });
         const message = errorMessage(error);
         const status = message.includes("offline")
           ? 503
@@ -392,6 +397,11 @@ export function installChatTurnSubmissionRoutes(
           error,
         );
         if (resolution) return resolution;
+        if (error instanceof NativeCommandError) {
+          return reply
+            .code(error.statusCode)
+            .send({ error: error.message, code: error.code });
+        }
         const message = errorMessage(error);
         return reply
           .code(message.includes("offline") ? 503 : 409)

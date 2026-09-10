@@ -3738,6 +3738,54 @@ includes full application creation/first-input/view races, failure after PTY
 spawn, combined transfer/reconnect/preparation recovery, and the broader matrix
 and user demo. This pass does not complete the full CLI/GUI mirror objective.
 
+### Pass 44 — Stop cancels input waiting for startup or admission
+
+The production HTTP first-send fixture reproduced a real cancellation race:
+Stop returned `interrupted: true` while native preparation was waiting, but
+releasing preparation subsequently accepted the old input with HTTP 202 and
+started it. A second migrated-database fixture reproduced a delayed GUI queue
+addition resuming autonomy after Stop.
+
+Each explicit accepted Stop now advances a durable chat input revision under
+the command-admission chat lock. GUI submissions retain the revision observed
+before joining native preparation; admission compares that revision under the
+same lock before acquiring an execution lane or accepting input. GUI queue add
+and start operations carry the same server-owned revision through queue
+admission. This is an actual ordering check against Stop, not a readiness or
+capability precondition. Queue observation and unrelated edits are unaffected.
+
+Cancelled admissions persist their rejected operation receipt and return a
+machine-readable `cancelled-before-admission` conflict. Replaying that operation
+cannot resurrect it, including after database restart. A new submission after
+Stop uses the current revision and can start normally; a stale Stop targeting
+an earlier activation cannot advance the revision or cancel the new turn.
+The normal send and edit/retry routes preserve typed command-error responses.
+
+Validation:
+
+- 78 tests pass across five server files. Four new production `buildApp` HTTP
+  cases use real migrated PGlite and a deterministic worker bridge: native
+  preparation failure, Stop during native startup, Stop during later Code
+  preparation, and first-send/idempotent retry despite CLI-only startup failure.
+  Cancelled cases persist no user input and dispatch no model turn; a fresh
+  post-Stop input is accepted. The bridge intentionally records then rejects
+  model execution, so this proves server admission, not full native mirroring.
+- Four new repository/helper cases prove durable rejection across restart and
+  replay, fresh input after Stop, stale Stop isolation, repeated explicit Stop,
+  and delayed-versus-fresh GUI queue additions. Existing admission, preparation
+  and console suites pass in the same run.
+- The existing actual pinned-native preparation/CLI attachment test also passes
+  with zero provider requests. Server typecheck and scoped formatting/diff
+  checks pass. No CI, personal applications, provider accounts, or user worker
+  restarts were used.
+- `pnpm check` stops at decomposition budgets: `chat-turn-runtime.ts` is now
+  2334/1999 lines (2330 before this pass), and `task-routes.ts` remains 2149/1999.
+  The subsequent chained checks did not run; this is not a clean full check.
+
+Remaining: combined transfer/reconnect/preparation recovery, post-PTY-spawn
+failure reporting, the full bidirectional acceptance matrix, and the user demo.
+This pass does not establish the full CLI/GUI mirror objective.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal

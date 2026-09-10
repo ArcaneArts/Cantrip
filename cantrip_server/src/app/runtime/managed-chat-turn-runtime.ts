@@ -31,6 +31,8 @@ export function createManagedChatTurnRuntime(
     input,
     options,
   ) => {
+    const expectedInputRevision =
+      options?.expectedInputRevision ?? context.managedInputRevision;
     if (context.contextKind === "project" && context.experience === "agent") {
       const ownerId = deps.applicationOwnerId();
       await preparation.join(ownerId, context.chatId);
@@ -42,7 +44,10 @@ export function createManagedChatTurnRuntime(
         throw new Error("The prepared chat is no longer available.");
       context = prepared;
     }
-    return runtime.beginTurn(context, input, options);
+    return runtime.beginTurn(context, input, {
+      ...options,
+      expectedInputRevision,
+    });
   };
   return {
     ...runtime,

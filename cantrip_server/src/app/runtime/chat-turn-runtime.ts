@@ -1,4 +1,5 @@
 import { finishManagedGui } from "./finish-managed-gui.js";
+import { NativeCommandError } from "../../db/repository/native-command-errors.js";
 import { protectChatInput } from "./protect-chat-input.js";
 import {
   managedConsoleSessionContext,
@@ -104,6 +105,7 @@ export type ChatTurnInput = Omit<ChatTurnCreate, "attachmentIds" | "mode"> & {
 };
 
 export interface ChatTurnOptions {
+  expectedInputRevision?: number;
   managedQueueClaim?: { id: string; promptRevision: number };
   protectedNativeInput?: import("@cantrip/protocol").EncryptedPayloadEnvelope;
   nativeClientUserMessageId?: string;
@@ -546,6 +548,8 @@ export function createChatTurnRuntime({
               purpose: options.purpose,
               queueClaim: options.managedQueueClaim,
               clientMessageId: protectedAdmissionInput!.id,
+              expectedInputRevision:
+                options.expectedInputRevision ?? context.managedInputRevision,
             },
           ),
         )
@@ -569,7 +573,7 @@ export function createChatTurnRuntime({
       (nativeCommandReceipt && nativeCommandReceipt.status !== "accepted") ||
       !execution?.executionLaneId
     ) {
-      throw new Error(
+      throw new NativeCommandError(
         nativeCommandReceipt?.rejectionCode ??
           "Chat execution lane could not be acquired.",
       );
