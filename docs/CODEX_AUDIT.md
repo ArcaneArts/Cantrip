@@ -3580,6 +3580,50 @@ GUI provider/account migration selection, eager eligible empty-chat preparation
 with GUI-first presentation, and the remaining full acceptance/manual demo. The
 active goal remains the complete integration objective.
 
+### Pass 41 — preserve queued input during provider handoffs
+
+Actual native execution tests reproduced a queue/handoff race: a prompt could be
+claimed while the handoff reserved its runtime, before native command admission
+rejected the dispatch. The canonical prompt then no longer remained simply
+pending for execution after the transfer.
+
+Queue claiming and handoff reservation now arbitrate under their existing shared
+chat lock. A preparing, prepared or committed handoff keeps the prompt pending;
+the queue delivery scan also omits that reserved chat. If an active queue claim
+wins first, handoff reservation returns the existing operation-pending error and
+preserves that claim. These decisions use the actual durable reservation/claim,
+not cached worker availability. Finished or cancelled handoffs release queued
+work through the existing canonical delivery path.
+
+Validation:
+
+- All 34 cases in the two server handoff suites pass against the pinned native
+  app-server, including three added queue cases: completion, cancellation and a
+  claim that wins before reservation.
+- The completion/cancellation cases preserve the exact encrypted input, pending
+  message and logical model selection through preparing/prepared/committed phases
+  as applicable. Actual server queue delivery, recovery dispatch, authenticated
+  command admission and native execution then produce exactly one local provider
+  request and completed native response. Repeating dispatch produces no second
+  execution. The claim-first case leaves its claim intact and rejects the handoff.
+- Four existing actual-native managed-queue regressions and 63 command-admission
+  and deferred-permission queue tests pass. Server typecheck, scoped formatting
+  and diff whitespace checks pass.
+- `pnpm check` stops at the unchanged decomposition budgets in
+  `chat-turn-runtime.ts` (2330/1999) and `task-routes.ts` (2149/1999); later chained
+  checks did not run. No CI, real provider account, personal desktop interaction
+  or user worker restart was used.
+
+Scope: the new fixture uses production queue delivery/recovery and an admitted
+native turn adapter; it does not render the GUI or exercise the entire production
+chat-turn bootstrap. Its transfer changes provider/native model route while
+retaining the queued logical model profile. Cross-model queued selection is not
+proven by this case.
+
+Next: GUI provider/account migration selection, eager eligible empty-chat
+preparation with GUI-first presentation, then the remaining full acceptance and
+user demo. The complete integration goal remains active.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal

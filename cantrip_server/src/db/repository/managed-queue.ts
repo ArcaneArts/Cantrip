@@ -40,6 +40,9 @@ function noPendingPermission(chatId: typeof schema.chats.id | string) {
     OR (s.state->>'desiredStatus' = 'uncertain' AND s.state->'desired'->'permissionTransition' IS NOT NULL)
   ))`;
 }
+function noPendingHandoff(chatId: typeof schema.chats.id | string) {
+  return sql`NOT EXISTS (SELECT 1 FROM native_runtime_handoffs h WHERE h.chat_id = ${chatId} AND h.phase IN ('preparing','prepared','committed'))`;
+}
 /** Canonical executable queue. Native requests mutate this state; they never enqueue a second native copy. */
 export class ManagedQueueRepository {
   constructor(
@@ -63,6 +66,7 @@ export class ManagedQueueRepository {
           eq(schema.chats.automationPaused, false),
           eq(schema.chats.managedAutonomyStopped, false),
           noPendingPermission(schema.chats.id),
+          noPendingHandoff(schema.chats.id),
           sql`((${schema.queuedPrompts.state} = 'pending' AND ${schema.queuedPrompts.frozen} = false AND NOT EXISTS (SELECT 1 FROM managed_queue_claims c WHERE c.prompt_id = ${schema.queuedPrompts.id} AND c.prompt_revision = ${schema.queuedPrompts.revision} AND c.status = 'rejected')) OR (${schema.queuedPrompts.state} = 'claimed' AND EXISTS (SELECT 1 FROM managed_queue_claims c WHERE c.prompt_id = ${schema.queuedPrompts.id} AND c.status = 'claimed' AND c.operation_id IS NULL)))`,
         ),
       );
@@ -661,7 +665,13 @@ export class ManagedQueueRepository {
       const [eligible] = await tx
         .select({ id: schema.chats.id })
         .from(schema.chats)
-        .where(and(eq(schema.chats.id, chatId), noPendingPermission(chatId)));
+        .where(
+          and(
+            eq(schema.chats.id, chatId),
+            noPendingPermission(chatId),
+            noPendingHandoff(chatId),
+          ),
+        );
       if (!eligible) return null;
       const [existing] = await tx
         .select()

@@ -710,7 +710,24 @@ export class NativeRuntimeHandoffRepository {
         ),
       )
       .limit(1);
-    if (lane || command) fail("handoff-native-operation-pending");
+    // Queue claiming and handoff reservation share the chat lock. A claim that
+    // won first owns the next dispatch even before native admission is stored.
+    const [claim] = await tx
+      .select({ id: schema.managedQueueClaims.id })
+      .from(schema.managedQueueClaims)
+      .where(
+        and(
+          eq(schema.managedQueueClaims.chatId, chatId),
+          inArray(schema.managedQueueClaims.status, [
+            "claimed",
+            "accepted",
+            "dispatched",
+            "uncertain",
+          ]),
+        ),
+      )
+      .limit(1);
+    if (lane || command || claim) fail("handoff-native-operation-pending");
   }
   private async target(
     tx: RepositoryTransaction,

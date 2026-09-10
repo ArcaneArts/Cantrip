@@ -1,3 +1,4 @@
+import { createHandoffQueueFixture } from "./native-handoff-queue-fixture.js";
 import { createManagedQueueDelivery } from "../src/app/runtime/managed-queue-delivery.js";
 import { completeManagedRuntimeHandoff } from "../../cantrip_worker/src/codex/managed-runtime-handoff-completion.js";
 import { wakeManagedQueueAutonomy } from "../../cantrip_worker/src/codex/managed-queue-wake.js";
@@ -39,6 +40,9 @@ import { protectNativeSettingsSnapshot } from "../../cantrip_worker/src/native-s
 /** Own native processes + migrated database + admitted execution, no user accounts. */
 it.skipIf(!process.env.CANTRIP_CODEX_TEST_BINARY).each([
   { outcome: "completed", disposition: "active" },
+  { outcome: "completed", disposition: "queued" },
+  { outcome: "completed", disposition: "claim-wins" },
+  { outcome: "cancelled", disposition: "queued" },
   { outcome: "cancelled", disposition: "active" },
   { outcome: "cancelled", disposition: "wake-retry" },
   { outcome: "completed", disposition: "paused" },
@@ -46,8 +50,9 @@ it.skipIf(!process.env.CANTRIP_CODEX_TEST_BINARY).each([
   { outcome: "completed", disposition: "stopped" },
   { outcome: "cancelled", disposition: "stopped" },
 ] as const)(
-  "preserves $disposition goal execution after a $outcome native provider handoff",
+  "handles $disposition work when attempting a $outcome native provider handoff",
   async ({ outcome, disposition }) => {
+    const queueCase = disposition === "queued" || disposition === "claim-wins";
     const f = await createNativeSettingsFixture();
     const root = await mkdtemp(
       path.join(tmpdir(), "cantrip-handoff-execution-"),
@@ -67,6 +72,8 @@ it.skipIf(!process.env.CANTRIP_CODEX_TEST_BINARY).each([
     const staging = new ManagedRuntimeHandoffStaging<CodexAppServer>();
     const errors: unknown[] = [];
     const completed: string[] = [];
+    let queueFixture:
+      Awaited<ReturnType<typeof createHandoffQueueFixture>> | undefined;
     const entries: {
       runtime: CodexAppServer;
       runner: ManagedExecutionRunner;
@@ -232,7 +239,8 @@ it.skipIf(!process.env.CANTRIP_CODEX_TEST_BINARY).each([
         .values({ id: "execution-model-b", ownerId, name: "B" });
       await f.db.insert(schema.modelRoutes).values({
         id: "execution-route-b",
-        modelId: "execution-model-b",
+        position: 1,
+        modelId: queueCase ? sourceRoute!.modelId : "execution-model-b",
         providerId: "execution-b",
         modelName: "fixture-b",
       });
@@ -418,14 +426,38 @@ it.skipIf(!process.env.CANTRIP_CODEX_TEST_BINARY).each([
         serverUrl,
         workerId: f.workerId,
         token: () => f.config.workerToken,
+        fetch: async (url, options) => {
+          const response = await fetch(url, options);
+          const action = JSON.parse(options!.body as string).action;
+          if (
+            queueFixture &&
+            response.ok &&
+            ["prepared", "commit"].includes(action)
+          ) {
+            const state = await response.clone().json();
+            expect(state.phase).toBe(
+              action === "prepared" ? "prepared" : "committed",
+            );
+            expect(await f.repository.managedQueue.pendingDispatches()).toEqual(
+              [],
+            );
+            await queueFixture.tick();
+            expect(
+              await f.repository.managedQueue.claimNext(ownerId, f.chatId),
+            ).toBeNull();
+            await queueFixture.assertPending();
+            expect(requests).toHaveLength(0);
+          }
+          return response;
+        },
       });
       await rpc(source.runtime, "thread/goal/set", {
         threadId,
         objective: "Continue HANDOFF_ACTIVE_GOAL after provider transfer",
-        status: disposition === "paused" ? "paused" : "active",
+        status: disposition === "paused" || queueCase ? "paused" : "active",
         tokenBudget: 1000,
       });
-      if (disposition !== "paused")
+      if (disposition !== "paused" && !queueCase)
         await vi.waitFor(() => expect(denied).toBe(1), { timeout: 15000 });
       if (disposition === "stopped") {
         // The GUI's idle Stop uses this durable CAS; it has no active turn to interrupt.
@@ -439,6 +471,43 @@ it.skipIf(!process.env.CANTRIP_CODEX_TEST_BINARY).each([
       }
       expect(requests).toHaveLength(0);
       setup = false;
+      if (queueCase)
+        queueFixture = await createHandoffQueueFixture({
+          fixture: f,
+          client,
+          encryption: crypto,
+          target: () => {
+            const entry = entries.find((e) => e.runtime === current)!;
+            return {
+              runtime: current!,
+              configuration: configurations.get(current!)!,
+              adapter: adapterFor(entry),
+              session: session(current!),
+            };
+          },
+          completed: (turnId) => completed.push(turnId),
+          failed: (error) => errors.push(error),
+        });
+      if (disposition === "claim-wins") {
+        const claim = await f.repository.managedQueue.claimNext(
+          ownerId,
+          f.chatId,
+        );
+        expect(claim?.promptId).toBe(queueFixture!.promptId);
+        await expect(
+          f.repository.nativeRuntimeHandoffs.begin(ownerId, f.chatId, {
+            operationId: randomUUID(),
+            bindingId: state.binding!.bindingId,
+            targetModelRouteId: "execution-route-b",
+            targetProviderAccountId: null,
+          }),
+        ).rejects.toThrow("handoff-native-operation-pending");
+        expect(
+          (await f.repository.managedQueue.claim(ownerId, f.chatId, claim!.id))
+            ?.status,
+        ).toBe("claimed");
+        return;
+      }
       const job = await f.repository.nativeRuntimeHandoffs.begin(
         ownerId,
         f.chatId,
@@ -449,6 +518,17 @@ it.skipIf(!process.env.CANTRIP_CODEX_TEST_BINARY).each([
           targetProviderAccountId: null,
         },
       );
+      if (queueFixture) {
+        expect(await f.repository.managedQueue.pendingDispatches()).toEqual([]);
+        await queueFixture.tick();
+        await queueFixture.dispatch();
+        await queueFixture.assertPending();
+        expect(queueFixture.launches).toBe(0);
+        expect(requests).toHaveLength(0);
+        expect(
+          await f.repository.managedQueue.claimNext(ownerId, f.chatId),
+        ).toBeNull();
+      }
       if (outcome === "cancelled")
         await f.repository.nativeRuntimeHandoffs.requestCancellation(
           ownerId,
@@ -609,11 +689,15 @@ it.skipIf(!process.env.CANTRIP_CODEX_TEST_BINARY).each([
         ).toHaveLength(0);
         return;
       }
+      if (queueFixture) {
+        await queueFixture.assertPending();
+        await queueFixture.tick();
+      }
       await vi.waitFor(() => expect(requests).toHaveLength(1), {
         timeout: 15000,
       });
       expect(JSON.stringify(requests[0]!.body)).toContain(
-        "HANDOFF_ACTIVE_GOAL",
+        queueFixture ? "QUEUED_HANDOFF_INPUT" : "HANDOFF_ACTIVE_GOAL",
       );
       const active = entries.find((e) => e.runtime === current)!;
       await adapterFor(active).executeGuiCommand(session(current!), {
@@ -660,11 +744,20 @@ it.skipIf(!process.env.CANTRIP_CODEX_TEST_BINARY).each([
               ].includes(error),
           ),
       ).toEqual([]);
+      if (queueFixture) {
+        await queueFixture.settled();
+        await queueFixture.dispatch();
+        expect(queueFixture.launches).toBe(1);
+        expect(
+          (await f.repository.managedQueue.snapshot(ownerId, f.chatId)).items,
+        ).toHaveLength(0);
+      }
       expect(requests).toHaveLength(1);
       expect(
         JSON.stringify(await current!.readNativeHistory(threadId)),
       ).toContain("Continued after transfer");
     } finally {
+      queueFixture?.close();
       for (const entry of entries) await entry.close();
       modelServer.closeAllConnections();
       await new Promise<void>((resolve) => modelServer.close(() => resolve()));
