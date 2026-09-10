@@ -5089,6 +5089,63 @@ before the native deadlock reproduction. No user desktop input, personal
 inference, user worker restart or CI job was used. Full-goal acceptance and the
 final user demo remain outstanding.
 
+**Pass 73 — child output publication and recovery:**
+
+Whole-worker child acceptance reproduced two defects that the earlier component
+fixtures did not cover. Child CUA captured the synthetic window successfully,
+but an auxiliary child activity key exceeded the public idempotency-key limit.
+GUI-originated work failed; terminal-originated work reported publication failure.
+Oversized auxiliary keys now use deterministic SHA-256 encoding. Existing valid
+keys and all derived message IDs retain their original identity. Canonical
+mapping failures still propagate rather than silently minting replacement IDs.
+
+After that fix, a worker restart followed by a new root turn duplicated the old
+child answer. Saved records had the same child thread, turn and item IDs, but
+legacy `thread/read` recovery attributed the second copy to the newer root.
+The timestamp recovery window admitted the earlier child turn. Recovery now reads
+retained native context and requires matching root-turn attribution when that
+evidence is available. Managed retained snapshots belong to durable projection;
+they are not additionally published through the legacy child-message callback.
+Legacy unretained runtimes retain their compatibility recovery behavior and the
+existing bounded reconciliation request deadline.
+
+The acceptance fixture launches the real production worker, pinned packaged
+Codex, encrypted terminal transport, server/database and deterministic provider.
+It requests a native child and waits for its actual result, verifies the fake CUA
+image reached the child, decrypts persisted output, restarts only its own worker,
+and submits the next input from the other surface. It checks stable saved IDs,
+exactly one child answer and correct child ownership before and after recovery.
+These are synthetic native child turns, not delegated implementation agents or
+personal model requests.
+
+Validation: all ten actual whole-worker restart cases pass (174.45 seconds of
+test execution), including both input origins, Default/Plan child CUA, completed
+work, interrupted provider requests and pending questions. Fourteen focused
+encryption/ownership/identity tests pass, as do the earlier 38
+encryption/identity/projection cases. Worker typecheck passes. After restoring the existing reconciliation request deadline during review,
+the final build passed all four child restart cases plus three legacy subagent
+ownership cases (seven tests in 59.58 seconds). Scoped formatting and diff checks
+pass.
+
+The required `RUST_TEST_THREADS=1 pnpm check` completed source verification,
+source typechecks and CLI/CUA regression checks, then stopped at the full server
+suite: 40 failures, 1,370 passes and 70 skips. Every failure heading also occurred
+in pass 72; its extra deferred-queue timeout did not recur. No server source or
+server tests changed here. Full worker/app suites and global formatting were not
+reached. The check started before the child-recovery edit; final worker build,
+typecheck and focused native/ownership tests cover that edit. This is not a green
+full-suite result.
+
+Initial fixture-only failures involved an incomplete test scope, matching the
+last provider request rather than the root input, and counting activity summaries
+as assistant messages. The fixture now uses native wait/result delivery rather
+than completing its root while the child is still finishing. These corrections
+are separate from the reproduced production failures above.
+
+No user desktop input, user worker restart or CI job is used. Remaining full-goal
+work includes shared-view presentation acceptance, reconciliation of the complete
+original matrix, and the final user implementation demo.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal

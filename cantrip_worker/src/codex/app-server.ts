@@ -9277,11 +9277,27 @@ export class CodexAppServer implements CodexRuntime {
     state: AgentRuntimeState,
     executionStartedAtMs: number,
     executionCompletedAtMs: number,
+    rootTurnId: string | null,
+    history: CodexNativeHistorySnapshot["history"],
   ): CodexThreadTurn[] {
     const windowStart = executionStartedAtMs - RECOVERY_TURN_CLOCK_SLOP_MS;
     const windowEnd = executionCompletedAtMs + RECOVERY_TURN_CLOCK_SLOP_MS;
     return response.thread.turns
       .filter((turn) => {
+        const retained = history?.turns.find(
+          (entry) => entry.turnId === turn.id,
+        );
+        if (retained?.contexts !== undefined) {
+          // Nearby timestamps do not establish child ownership. In particular,
+          // a restart followed by a quick new root used to replay the old child
+          // within the clock-slop window under the new root's scope.
+          return (
+            retained.contexts.length > 0 &&
+            retained.contexts.every(
+              (context) => context.rootTurnId === rootTurnId,
+            )
+          );
+        }
         if (state.segmentTurnIds.has(turn.id)) return true;
         if (turn.startedAt === null) return false;
         const startedAtMs = turn.startedAt * 1_000;
@@ -9300,11 +9316,12 @@ export class CodexAppServer implements CodexRuntime {
     executionCompletedAtMs: number,
     isCurrent: () => boolean,
   ): Promise<void> {
-    const response = (await this.request(
-      "thread/read",
-      { threadId: state.threadId, includeTurns: true },
-      COMPLETED_TURN_RECONCILIATION_TIMEOUT_MS,
-    )) as CodexThreadReadResponse;
+    const snapshot = await readCodexNativeHistory(
+      (method, params) =>
+        this.request(method, params, COMPLETED_TURN_RECONCILIATION_TIMEOUT_MS),
+      state.threadId,
+    );
+    const response = snapshot as unknown as CodexThreadReadResponse;
     if (!isCurrent()) return;
     const metadata = childThreadMetadataFromNotification({
       thread: response.thread,
@@ -9315,8 +9332,20 @@ export class CodexAppServer implements CodexRuntime {
       state,
       execution.active.startedAtMs,
       executionCompletedAtMs,
+      execution.rootTurnId,
+      snapshot.history,
     );
     for (const turn of turns) {
+      // Managed durable projection owns retained snapshots. Re-emitting these
+      // as legacy thread/read events would assign another message identity.
+      if (
+        this.#managedThreadOverlays.get(execution.rootThreadId)?.options
+          .canonicalHistory &&
+        snapshot.history?.turns.some(
+          (entry) => entry.turnId === turn.id && entry.source === "canonical",
+        )
+      )
+        continue;
       state.segmentTurnIds.add(turn.id);
       const normalized = normalizeCodexThreadTurn(
         turn,

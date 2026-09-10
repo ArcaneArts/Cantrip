@@ -414,7 +414,16 @@ export class EncryptedChatEventSealer {
               resolved.idempotencyKey,
             ),
         }
-      : { id: this.#id(legacyKey), idempotencyKey: legacyKey };
+      : {
+          id: this.#id(legacyKey),
+          // Child status/activity IDs can already contain several native UUIDs.
+          // Keep existing valid keys and message IDs stable; only previously
+          // unpublishable oversized keys need a bounded deterministic encoding.
+          idempotencyKey:
+            legacyKey.length <= 200
+              ? legacyKey
+              : `agent-output:sha256:${createHash("sha256").update(legacyKey).digest("hex")}`,
+        };
   }
 
   async message(message: NormalizedAgentMessage) {
