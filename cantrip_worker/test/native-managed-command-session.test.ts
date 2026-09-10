@@ -1,3 +1,8 @@
+import {
+  nativeCuaTimelineMs,
+  nativeCuaScript,
+  assertCompletedNativeCuaTimeline,
+} from "./native-cua-timeline-acceptance.js";
 import { createNativeCuaWorkerFixture } from "./native-cua-worker-fixture.js";
 import { TerminalManager } from "../src/terminal-manager.js";
 import { stripVTControlCharacters } from "node:util";
@@ -207,7 +212,7 @@ describe.skipIf(!binary)(
                   name: tool.name,
                   namespace: tool.namespace,
                   arguments: JSON.stringify({
-                    script: `await cua.attach({targetId:'fake-window',targetGeneration:1}); await cua.moveCursor({x:20,y:30}); await cua.snapshot(); ${cuaIndex === 4 ? "for (let i=0;i<15;i++) await cua.wait(10000);" : ""} '${marker}'`,
+                    script: nativeCuaScript(cuaIndex),
                   }),
                 },
               },
@@ -996,7 +1001,7 @@ describe.skipIf(!binary)(
                 { timeout: 15000 },
               );
               await vi.waitFor(() => expect(modelRequests).toHaveLength(1), {
-                timeout: 20000,
+                timeout: 20000 + (cuaCase ? nativeCuaTimelineMs : 0),
               });
               turnId = guiActualTurnId!;
               expect(turnId).toBeTruthy();
@@ -1140,7 +1145,8 @@ describe.skipIf(!binary)(
               ).toHaveLength(1);
             }
             await vi.waitFor(() => expect(modelRequests.length).toBe(index), {
-              timeout: 15000,
+              timeout:
+                15000 + (cuaCase && index === 1 ? nativeCuaTimelineMs : 0),
             });
             expect(
               runtime.resolveComputerUseExecution({
@@ -1153,6 +1159,8 @@ describe.skipIf(!binary)(
               const callIndex = index === 3 ? 3 : index - 1;
               expect(cua.calls).toHaveLength(callIndex + 1);
               const call = cua.calls[callIndex]!;
+              if (index === 1 && nativeCuaTimelineMs)
+                assertCompletedNativeCuaTimeline(call, cua.activities);
               expect(call.error).toBeUndefined();
               expect(call.args[1]).toMatchObject({ threadId, turnId });
               expect(call.result?.isError).not.toBe(true);
@@ -1958,7 +1966,7 @@ describe.skipIf(!binary)(
           });
         }
       },
-      60000,
+      60000 + nativeCuaTimelineMs,
     );
   },
 );

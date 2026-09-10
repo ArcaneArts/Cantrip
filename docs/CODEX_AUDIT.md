@@ -4450,6 +4450,68 @@ demo. In particular, these Stop tests cannot establish uninterrupted long CUA
 execution or mixed-origin steering within one retained turn. Those need their
 own connected evidence. No production change was needed for this Stop case.
 
+### Pass 62 — uninterrupted native CUA timeline acceptance
+
+The connected CUA fixture now has an opt-in 150-second mouse timeline. The first
+actual model call compiles two scheduled clicks into one `input.perform` request,
+waits for its final release, then captures a frame. The same native turn must
+receive that image as tool-result input and complete normally; later turns still
+exercise Stop and fresh authority. Both GUI and terminal origins and namespace
+and portable provider formats are covered.
+
+`cantrip_cua/examples/timed_input_fixture.rs` is a separate Cargo example, not a
+shipped helper mode. It delegates capture to the existing explicit fake backend
+and executes fake pointer events with the production `timeline::run` scheduler,
+including real clock waits and held-input cleanup. It supports pointer timelines
+only and never posts OS events, opens applications, or replaces native backend
+failures. The default helper and its existing capture-only fake mode are unchanged.
+Three example tests verify real wait duration, immediate cancellation cleanup,
+and rejection of invalid/unsupported input before simulated dispatch.
+
+The opt-in assertions require one completed input activity for the exact native
+turn, a dispatched final position, at least 150 seconds of measured host and input
+execution, and a later screenshot. This is stronger than timing a model call or
+requesting a long script and immediately canceling it. Only test observation
+budgets grow for this mode; no production timeout changes.
+
+Reproduction, from the repository root after dependency builds:
+
+```sh
+cargo build --manifest-path cantrip_cua/Cargo.toml --example timed_input_fixture
+cargo test --manifest-path cantrip_cua/Cargo.toml --example timed_input_fixture
+cd cantrip_worker
+CANTRIP_CUA_LONG_TIMELINE_TEST=1 \
+CANTRIP_CUA_TEST_BINARY="$(pwd)/../cantrip_cua/target/debug/examples/timed_input_fixture" \
+CANTRIP_CODEX_TEST_BINARY=/absolute/path/to/reviewed/pinned/codex \
+pnpm exec vitest run test/native-managed-command-session.test.ts -t 'tracks (gui|terminal)(-portable)?-cua '
+```
+
+The four selected cases each execute the full duration. A normal invocation
+without `CANTRIP_CUA_LONG_TIMELINE_TEST=1` retains the fast capture/Stop suite.
+Validation: all **four filtered long-run native cases passed** with the final
+receipt/activity assertions, each taking approximately 159–163 seconds including
+startup, the full 150-second timeline, subsequent turns, Stop and cleanup. An
+initial missing assertion-argument wiring error was corrected before these final
+runs. The regular **33 tests in five files** passed with long mode off; all three
+Rust example tests passed. The reused pinned runtime is the final pass-60 build.
+Worker typecheck, Rust/TypeScript formatting and `git diff --check` passed.
+
+The required `pnpm check` passed workspace typechecks, Rust checks and selected
+CUA suites (187 Rust, 134 protocol, 25 crypto, 692 worker, 241 server and 309 app
+tests), then failed in the full server suite: **41 failures, 1,363 passes and
+70 skips**. Forty failures match the previous baseline. The additional
+`direct-attachment-coordinator` lease-renewal callback assertion passed alone
+with unchanged timing/expectations (one pass, 27 filtered skips). Full
+protocol/crypto passed (697/95); full worker/app suites and the repository-wide
+formatter were not reached. No CI, personal inference, desktop input or worker
+restart ran.
+
+This proves the long request's lifetime through the native model/MCP, worker,
+server authority and real helper protocol with simulated input. Real macOS event
+acceptance, audio, cursor/effects presentation and human-input coexistence still
+require the final user demo. Mixed-origin steering and the remaining acceptance
+matrix still need connected verification; the full goal is not complete.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal
