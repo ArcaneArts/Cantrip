@@ -37,17 +37,24 @@ const workerRoot = fileURLToPath(new URL("../", import.meta.url));
 // worker first. Only the test's own processes and temporary data are stopped.
 it.skipIf(!binary || !helper || process.platform === "win32").each(
   (["gui", "terminal"] as const).flatMap((origin) =>
-    (["completed", "provider", "question"] as const).map((interruption) => ({
-      origin,
-      interruption,
-    })),
+    (["completed", "provider", "question", "child", "child-plan"] as const).map(
+      (interruption) => ({
+        origin,
+        interruption,
+      }),
+    ),
   ),
 )(
   "restores $origin work after worker loss during $interruption and continues from the other view",
   async ({ origin, interruption }) => {
-    const interrupted = interruption !== "completed";
+    const childMode = interruption === "child" || interruption === "child-plan";
+    const interrupted =
+      interruption === "provider" || interruption === "question";
     const questionMode = interruption === "question";
-    const mode = questionMode ? ("plan" as const) : ("default" as const);
+    const mode =
+      questionMode || interruption === "child-plan"
+        ? ("plan" as const)
+        : ("default" as const);
     const root = await mkdtemp(path.join(tmpdir(), "cantrip-worker-restart-"));
     const home = path.join(root, "home");
     const dataDirectory = path.join(root, "server");
@@ -65,6 +72,8 @@ it.skipIf(!binary || !helper || process.platform === "win32").each(
     const issuedCua = new Set<number>();
     const verifiedImages: number[] = [];
     const modelErrors: string[] = [];
+    const spawned = new Set<number>();
+    const waits = new Map<number, number>();
     const provider = createServer(async (request, response) => {
       let raw = "";
       for await (const chunk of request) raw += chunk;
@@ -80,10 +89,13 @@ it.skipIf(!binary || !helper || process.platform === "win32").each(
         body.input?.findLast(
           (entry: any) =>
             entry.role === "user" &&
-            /WORKER_INPUT_[12]/.test(JSON.stringify(entry)),
+            /(?:WORKER_INPUT|CHILD_INPUT)_[12]/.test(JSON.stringify(entry)),
         ),
       );
-      const index = Number(lastUser?.match(/WORKER_INPUT_(\d+)/)?.[1]);
+      const isChild = /CHILD_INPUT_/.test(lastUser ?? "");
+      const index = Number(
+        lastUser?.match(/(?:WORKER_INPUT|CHILD_INPUT)_(\d+)/)?.[1],
+      );
       let item: Record<string, any>;
       if (interruption === "provider" && index === 1) {
         // Keep the real native model request open until its own worker dies.
@@ -91,6 +103,85 @@ it.skipIf(!binary || !helper || process.platform === "win32").each(
         response.write(
           `data: ${JSON.stringify({ type: "response.created", response: { id: "pending-model" } })}\n\n`,
         );
+        return;
+      }
+      if (childMode && !isChild) {
+        const inventory =
+          body.tools?.flatMap((tool: any) =>
+            tool.type === "namespace"
+              ? tool.tools.map((entry: any) => ({
+                  ...entry,
+                  namespace: tool.name,
+                }))
+              : [tool],
+          ) ?? [];
+        if (spawned.has(index)) {
+          if (JSON.stringify(body.input).includes(`CHILD_RESULT_${index}`)) {
+            reply({
+              type: "message",
+              role: "assistant",
+              id: `answer-${index}`,
+              phase: "final_answer",
+              content: [
+                { type: "output_text", text: `WORKER_RESULT_${index}` },
+              ],
+            });
+            return;
+          }
+          const wait = inventory.find((tool: any) =>
+            tool.name?.endsWith("wait_agent"),
+          );
+          if (!wait) {
+            modelErrors.push("Native root did not expose wait_agent");
+            response.writeHead(400).end("Missing native wait tool");
+            return;
+          }
+          const call = (waits.get(index) ?? 0) + 1;
+          waits.set(index, call);
+          const spawnOutput = body.input.find(
+            (entry: any) =>
+              entry.type === "function_call_output" &&
+              entry.call_id === `spawn-${index}`,
+          );
+          const agentId = JSON.stringify(spawnOutput?.output).match(
+            /agent_id\\?"\s*:\s*\\?"([^"\\]+)/,
+          )?.[1];
+          reply({
+            type: "function_call",
+            id: `wait-${index}-${call}`,
+            call_id: `wait-${index}-${call}`,
+            name: wait.name,
+            ...(wait.namespace ? { namespace: wait.namespace } : {}),
+            arguments: JSON.stringify({
+              timeout_ms: 10000,
+              ...(wait.parameters?.properties?.ids ? { ids: [agentId] } : {}),
+            }),
+          });
+          return;
+        }
+        const tool = inventory.find((tool: any) =>
+          tool.name?.endsWith("spawn_agent"),
+        );
+        if (!tool) {
+          modelErrors.push("Native root did not expose spawn_agent");
+          response.writeHead(400).end("Missing native spawn tool");
+          return;
+        }
+        spawned.add(index);
+        const fields = tool.parameters?.properties ?? {};
+        reply({
+          type: "function_call",
+          id: `spawn-${index}`,
+          call_id: `spawn-${index}`,
+          name: tool.name,
+          ...(tool.namespace ? { namespace: tool.namespace } : {}),
+          arguments: JSON.stringify({
+            message: `CHILD_INPUT_${index}: inspect the synthetic window.`,
+            ...(fields.task_name ? { task_name: `worker_child_${index}` } : {}),
+            ...(fields.fork_turns ? { fork_turns: "none" } : {}),
+            ...(fields.fork_context ? { fork_context: false } : {}),
+          }),
+        });
         return;
       }
       if (!issuedCua.has(index)) {
@@ -178,28 +269,36 @@ it.skipIf(!binary || !helper || process.platform === "win32").each(
           role: "assistant",
           id: `answer-${index}`,
           phase: "final_answer",
-          content: [{ type: "output_text", text: `WORKER_RESULT_${index}` }],
+          content: [
+            {
+              type: "output_text",
+              text: `${isChild ? "CHILD_RESULT" : "WORKER_RESULT"}_${index}`,
+            },
+          ],
         };
       }
-      response.writeHead(200, { "content-type": "text/event-stream" });
-      for (const event of [
-        { type: "response.created", response: { id: `worker-${index}` } },
-        {
-          type: "response.output_item.done",
-          item,
-        },
-        {
-          type: "response.completed",
-          response: {
-            id: `worker-${index}`,
-            usage: { input_tokens: 3, output_tokens: 2, total_tokens: 5 },
+      reply(item);
+      function reply(item: Record<string, any>) {
+        response.writeHead(200, { "content-type": "text/event-stream" });
+        for (const event of [
+          { type: "response.created", response: { id: `worker-${index}` } },
+          {
+            type: "response.output_item.done",
+            item,
           },
-        },
-      ])
-        response.write(
-          `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`,
-        );
-      response.end();
+          {
+            type: "response.completed",
+            response: {
+              id: `worker-${index}`,
+              usage: { input_tokens: 3, output_tokens: 2, total_tokens: 5 },
+            },
+          },
+        ])
+          response.write(
+            `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`,
+          );
+        response.end();
+      }
     });
     provider.listen(0, "127.0.0.1");
     await once(provider, "listening");
@@ -498,7 +597,7 @@ it.skipIf(!binary || !helper || process.platform === "win32").each(
         worktreeMode: "agent-managed",
       });
       expect(chat).toBeTruthy();
-      if (questionMode)
+      if (mode === "plan")
         await repository.updateChatPlanMode(ownerId, chatId, "plan");
       await api("POST", `/api/chats/${chatId}/preparation`);
       const prepared = async () =>
@@ -762,10 +861,36 @@ it.skipIf(!binary || !helper || process.platform === "win32").each(
           await vi.waitFor(
             async () => {
               expect(modelErrors).toEqual([]);
-              expect(inference).toHaveLength(index * 2 - (interrupted ? 1 : 0));
+              if (!childMode)
+                expect(inference).toHaveLength(
+                  index * 2 - (interrupted ? 1 : 0),
+                );
+              else expect(spawned.size).toBe(index);
               if (!questionMode) expect(verifiedImages).toContain(index);
-              expect(JSON.stringify(inference.at(-1)?.input)).toContain(prompt);
+              expect(
+                inference.some((request) =>
+                  JSON.stringify(request.input).includes(prompt),
+                ),
+              ).toBe(true);
               const saved = await texts();
+              if (childMode) {
+                const childMessages = saved.filter((text) =>
+                  JSON.parse(text).some(
+                    (part: any) =>
+                      part.type === "text" &&
+                      part.text === `CHILD_RESULT_${index}`,
+                  ),
+                );
+                expect(childMessages, JSON.stringify(saved)).toHaveLength(1);
+                const childText = JSON.parse(childMessages[0]!)[0];
+                expect(childText.agentScope).toMatchObject({
+                  isRoot: false,
+                  depth: 1,
+                });
+                expect(childText.agentScope.agentThreadId).not.toBe(
+                  context.threadId,
+                );
+              }
               for (const marker of [prompt, `WORKER_RESULT_${index}`])
                 expect(
                   saved.filter((text) => text.includes(marker)),
@@ -797,6 +922,7 @@ it.skipIf(!binary || !helper || process.platform === "win32").each(
       };
       await send(1, origin);
       expect(verifiedImages).toEqual(interrupted ? [] : [1]);
+      const beforeInferenceCount = inference.length;
       const beforeIds = (await messages()).map((message) => message.id);
       const firstPid = child!.pid;
       await stop();
@@ -850,7 +976,7 @@ it.skipIf(!binary || !helper || process.platform === "win32").each(
         },
         { timeout: 10000 },
       );
-      expect(inference).toHaveLength(interrupted ? 1 : 2);
+      expect(inference).toHaveLength(beforeInferenceCount);
       expect((await messages()).map((message) => message.id)).toEqual(
         expect.arrayContaining(beforeIds),
       );
@@ -891,9 +1017,16 @@ it.skipIf(!binary || !helper || process.platform === "win32").each(
             ...(interrupted ? [] : ["WORKER_RESULT_1"]),
             "WORKER_INPUT_2",
             "WORKER_RESULT_2",
+            ...(childMode ? ["CHILD_RESULT_1", "CHILD_RESULT_2"] : []),
           ])
             expect(
-              saved.filter((item) => item.includes(text)),
+              saved.filter((item) =>
+                text.startsWith("CHILD_RESULT_")
+                  ? JSON.parse(item).some(
+                      (part: any) => part.type === "text" && part.text === text,
+                    )
+                  : item.includes(text),
+              ),
               `${text}: ${JSON.stringify(saved)}`,
             ).toHaveLength(1);
           if (interrupted)

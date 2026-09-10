@@ -15,6 +15,82 @@ import {
 import type { WorkerEncryptionService } from "./worker-encryption.js";
 
 describe("worker chat message encryption", () => {
+  it("publishes long child activity identities once across sealer recovery", async () => {
+    const ownerId = "owner-long-child";
+    const componentKey = new Uint8Array(32).fill(8);
+    const service = {
+      ownerId: () => ownerId,
+      componentKey: () => ({
+        key: new Uint8Array(componentKey),
+        keyRevision: 1,
+      }),
+    } as unknown as WorkerEncryptionService;
+    const sealer = () =>
+      new EncryptedChatEventSealer(service, "child-chat", {
+        explanation: null,
+        steps: [],
+        question: null,
+      });
+    const turnId = "11111111-1111-4111-8111-111111111111";
+    const threadId = "22222222-2222-4222-8222-222222222222";
+    const scope = {
+      rootThreadId: "33333333-3333-4333-8333-333333333333",
+      rootTurnId: turnId,
+      agentThreadId: threadId,
+      parentThreadId: "33333333-3333-4333-8333-333333333333",
+      isRoot: false,
+      depth: 1,
+      agentPath: ["root", "child"],
+      nickname: null,
+      role: null,
+    };
+    const activity = {
+      type: "agentCommunication" as const,
+      id: `child-status:${threadId}:${turnId}:${threadId}`,
+      kind: "followupSent" as const,
+      senderThreadId: scope.rootThreadId,
+      receiverThreadIds: [threadId],
+      message: "Private child result",
+      status: "completed" as const,
+      agentScope: scope,
+      correlation: {
+        sourceMethod: "turn/completed",
+        diagnosticId: null,
+        threadId,
+        turnId,
+        itemId: null,
+      },
+    };
+    const first = await sealer().activity(activity);
+    const replay = await sealer().activity(activity);
+    expect(first.message.idempotencyKey.length).toBeLessThanOrEqual(200);
+    expect(replay.message.idempotencyKey).toBe(first.message.idempotencyKey);
+    expect(replay.message.id).toBe(first.message.id);
+    expect(
+      (await sealer().activity({ ...activity, id: activity.id + "-next" }))
+        .message.id,
+    ).not.toBe(first.message.id);
+    expect(JSON.stringify(first)).not.toContain(activity.message);
+    await expect(
+      decryptChatMessageProtectedContent({
+        ownerId,
+        messageId: first.message.id,
+        keyRevision: 1,
+        componentKey,
+        encrypted: first.message.protectedContent,
+        publicClassification: first.message.classification,
+      }),
+    ).resolves.toMatchObject({
+      content: [{ type: "activity", activity: { message: activity.message } }],
+    });
+    const short = await sealer().message({
+      id: "short",
+      text: "Short",
+      phase: "final_answer",
+    });
+    expect(short.message.idempotencyKey).toBe("agent-message:root:turn:short");
+  });
+
   it("protects queued automation turns and re-encrypts fork copies", async () => {
     const ownerId = "owner-chat-encryption";
     const componentKey = new Uint8Array(32).fill(7);
