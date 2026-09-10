@@ -1548,6 +1548,13 @@
       "when": 1789024375440,
       "tag": "0220_managed_handoff_native_epochs",
       "breakpoints": true
+    },
+    {
+      "idx": 221,
+      "version": "7",
+      "when": 1789029900000,
+      "tag": "0221_managed_chat_preparation",
+      "breakpoints": true
     }
   ]
 }

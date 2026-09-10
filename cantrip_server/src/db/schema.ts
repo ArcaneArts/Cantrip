@@ -5511,6 +5511,38 @@ export const nativeCommands = pgTable(
     ),
   ],
 );
+/** Preparation receipts contain identity and lifecycle only, never CLI output. */
+export const managedChatPreparations = pgTable(
+  "managed_chat_preparations",
+  {
+    chatId: text("chat_id")
+      .primaryKey()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    workerId: text("worker_id").notNull(),
+    terminalId: text("terminal_id").notNull(),
+    generation: text("generation").notNull(),
+    phase: text("phase").notNull().default("pending"),
+    failedPhase: text("failed_phase"),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("managed_chat_preparations_worker").on(table.ownerId, table.workerId),
+    check(
+      "managed_chat_preparations_phase_check",
+      sql`${table.phase} IN ('pending','thread','console','ready','failed')`,
+    ),
+    check(
+      "managed_chat_preparations_failed_phase_check",
+      sql`${table.failedPhase} IN ('thread','console')`,
+    ),
+  ],
+);
+
 /** Durable reservation for one controlled provider/account handoff. No native
  * artifact paths or credentials cross the worker boundary. */
 export const nativeRuntimeHandoffs = pgTable(

@@ -106,12 +106,16 @@ export async function prepareManagedConsoleLaunch(
   };
   let threadId = context.threadId;
   if (!threadId) {
-    const result = (await bridge.request(context.workerId, {
-      type: "chat.thread.ensure",
-      cwd: context.cwd,
-      threadId: null,
-      ...configurationFields,
-    })) as { threadId?: unknown };
+    const result = (await bridge.request(
+      context.workerId,
+      {
+        type: "chat.thread.ensure",
+        cwd: context.cwd,
+        threadId: null,
+        ...configurationFields,
+      },
+      { ownerId, timeoutMs: null },
+    )) as { threadId?: unknown };
     if (typeof result.threadId !== "string" || !result.threadId) {
       throw new Error("Codex did not return a console thread.");
     }

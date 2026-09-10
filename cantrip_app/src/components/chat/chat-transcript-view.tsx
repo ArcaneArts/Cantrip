@@ -21,6 +21,7 @@ import { AgentInteractionPanel } from "@/components/chat/agent-interaction-panel
 import { AgentInspectContent } from "@/components/chat/agent-inspect-content";
 import { AgentInspectPanelShell } from "@/components/chat/agent-inspect-panel";
 import { GoalPanel } from "@/components/chat/goal-panel";
+import { ManagedChatPreparationStatus } from "./managed-chat-preparation-status";
 import { ChatModeControl } from "@/components/chat/chat-mode-control";
 import { ChatComposerPrimaryActions } from "@/components/chat/chat-composer-primary-actions";
 import { ChatTranscriptEntries } from "@/components/chat/chat-transcript-entries";
@@ -282,6 +283,15 @@ export function ChatTranscriptView({
         message={turnPromptOverlay.message}
         visible={turnPromptOverlay.visible}
       />
+      {chat.contextKind === "project" &&
+      chat.experience === "agent" &&
+      !effectiveInspectOnly ? (
+        <ManagedChatPreparationStatus
+          key={chat.id}
+          chatId={chat.id}
+          projectId={chat.projectId}
+        />
+      ) : null}
       <div
         ref={transcriptViewportRef}
         className={cn(

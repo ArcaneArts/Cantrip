@@ -195,7 +195,17 @@ export class TerminalRepository {
         linkedChatId: row.chat.id,
         kind: "chat-console",
       })
+      .onConflictDoNothing({ target: schema.terminals.linkedChatId })
       .returning();
+    if (!result[0]) {
+      const [winner] = await this.database
+        .select()
+        .from(schema.terminals)
+        .where(eq(schema.terminals.linkedChatId, chatId));
+      if (!winner)
+        throw new Error("The linked console was removed during creation.");
+      return this.collaborators.toTerminalWireSummary(winner);
+    }
     return this.collaborators.toTerminalWireSummary(
       firstOrThrow(result, "creating a chat console"),
     );

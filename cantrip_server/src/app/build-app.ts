@@ -112,7 +112,7 @@ import { createApplicationServiceFoundation } from "./runtime/application-servic
 import { createBackgroundJobRuntime } from "./runtime/background-job-runtime.js";
 import { createChatRecoveryRuntime } from "./runtime/chat-recovery-runtime.js";
 import { createChatThreadSyncRuntime } from "./runtime/chat-thread-sync-runtime.js";
-import { createChatTurnRuntime } from "./runtime/chat-turn-runtime.js";
+import { createManagedChatTurnRuntime } from "./runtime/managed-chat-turn-runtime.js";
 import { createManagedQueueDelivery } from "./runtime/managed-queue-delivery.js";
 import { installNativeLogicalCompletionDelivery } from "./runtime/native-logical-completion-delivery.js";
 import { createCliOperationRuntime } from "./runtime/cli-operation-runtime.js";
@@ -799,7 +799,9 @@ export async function buildApp({
     upsertLiveChatMessage,
   });
 
-  const { beginTurn } = createChatTurnRuntime({
+  const { beginTurn, managedChatPreparation } = createManagedChatTurnRuntime({
+    runtimeForContext,
+    publishChatInvalidation,
     app,
     serverId,
     applicationOwnerId,
@@ -1022,6 +1024,7 @@ export async function buildApp({
   } = settingsRouteRuntime;
 
   installProjectRoutes(app, {
+    prepareManagedChat: managedChatPreparation.request,
     applicationOwnerId,
     bridge,
     serverId,
@@ -1402,7 +1405,10 @@ export async function buildApp({
     refreshWorkerScopedCatalogs,
     repository,
     resumePendingWorktreeTransitionsForWorker,
-    resumeNativeRuntimeHandoffsForWorker: nativeRuntimeHandoffs.workerConnected,
+    resumeNativeRuntimeHandoffsForWorker:
+      managedChatPreparation.afterWorkerRecovery(
+        nativeRuntimeHandoffs.workerConnected,
+      ),
     revokedWorkerCredentialIds,
     runAsOwner,
     scheduleWorkerWorktreeObservation,

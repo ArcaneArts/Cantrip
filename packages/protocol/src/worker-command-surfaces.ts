@@ -87,6 +87,13 @@ export const workerSurfaceCommandSchemas = [
   }),
   z
     .object({
+      type: z.literal("terminal.prepare-state"),
+      terminalId: z.string().uuid(),
+      serverId: z.string().min(1).max(255),
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("terminal.open"),
       terminalId: z.string().min(1),
       attachmentId: z.string().min(1),

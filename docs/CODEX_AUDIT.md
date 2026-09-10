@@ -3674,6 +3674,70 @@ with GUI-first presentation, remaining full acceptance coverage (including this
 GUI selection through native execution), and the user implementation demo. This
 pass does not establish the full mirror objective or all cross-model queue cases.
 
+### Pass 43 — eager managed preparation with GUI-first presentation
+
+New project agent-chat creation now persists a preparation job and starts the
+shared native configuration path immediately. It binds the native thread before
+opening its linked CLI. It submits no synthetic prompt and does not select or
+mount the terminal view. Existing chats without preparation records keep their
+current launch behavior; standalone Chats are excluded.
+
+An immediate GUI turn joins native preparation, rereads canonical placement and
+thread identity, then enters the existing turn runtime. It does not wait for CLI
+startup after the native thread is ready. A preparation failure rejects that
+join; a later CLI-only failure leaves the prepared native conversation usable.
+Concurrent creation requests share preparation and linked-console insertion
+resolves its uniqueness race to the existing console.
+
+Preparation state is durable and owner-scoped, with stable console identity and
+attempt generations that reject obsolete status writes. Worker reconnect retries
+recorded unarchived sessions. A bound reconnect resolves its exact configured
+route/account without substituting an account based on cached quota/availability.
+The worker encrypts the initially empty console metadata; no plaintext directory,
+terminal content or input is persisted by this new path.
+
+The GUI displays preparation, CLI startup and phase-specific failure, with an
+explicit retry. Reads do not start sessions. Account changes discard stale retry
+results. The worker retains the PTY when the bootstrap attachment detaches, just
+as it retains it when a presentation detaches. Explicit terminal closure and
+worker shutdown still own process cleanup. Archiving during native preparation
+prevents subsequent console creation, and archived chats are excluded from
+reconnect preparation.
+
+Validation:
+
+- Eight real migrated-database/service/HTTP cases pass: concurrent preparation,
+  immediate join, thread versus console failure, explicit retry, owner isolation,
+  read-only status, canonical console reuse, stale generation rejection, immediate
+  failure propagation and archive during preparation. Eight existing managed
+  console configuration/binding cases also pass; the ensure-call expectation now
+  includes explicit owner scope and no fixed startup timeout.
+- The new actual pinned-native case passes through the production preparation
+  coordinator, worker session coordinator, real encryption, authenticated native
+  command/queue routes, managed gateway and real CLI PTY. Native thread binding
+  precedes PTY open; a successful admitted native resume is observed with no
+  terminal presentation or terminal capability replies. The native history stays
+  empty, the fake provider receives zero requests, detaching keeps the process
+  alive, and reconnect reuses the same thread/console without another CLI resume.
+  This test assembles worker handlers around production components; it is not a
+  full running-worker WebSocket or mounted-GUI acceptance test.
+- Six rendered GUI cases pass for absent/preparing/starting/prepared state,
+  explicit retry and account-switch isolation. These use deterministic transport
+  fixtures. App/server/worker typechecks, dependency builds, production app build
+  and scoped source formatting/diff checks pass.
+- `pnpm check` stops at the unchanged `chat-turn-runtime.ts` (2330/1999) and
+  `task-routes.ts` (2149/1999) budgets. This pass's temporary bootstrap overflow
+  was removed by extracting managed-turn composition. Later chained checks did
+  not run. No CI, real provider account, personal desktop input or worker restart
+  was used.
+
+The durable ready receipt acknowledges native preparation plus PTY spawning; it
+is not a permanent health assertion or proof of a future model turn. The native
+fixture separately verifies successful CLI attachment. Remaining acceptance work
+includes full application creation/first-input/view races, failure after PTY
+spawn, combined transfer/reconnect/preparation recovery, and the broader matrix
+and user demo. This pass does not complete the full CLI/GUI mirror objective.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal

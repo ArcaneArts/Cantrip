@@ -441,6 +441,7 @@ import {
   type TerminalRuntimeEvent,
 } from "./terminal-manager.js";
 import { openTerminalPrivateState } from "./terminal-private-state.js";
+import { prepareManagedConsoleState } from "./managed-console-state.js";
 import { TerminalDirectEndpointManager } from "./terminal-direct-endpoint.js";
 import { TerminalWorkerLinkAdapter } from "./terminal-worker-link-adapter.js";
 import {
@@ -6083,6 +6084,12 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "attachment.delete":
         await attachments.remove(command.chatId, command.attachmentId);
         return { accepted: true };
+      case "terminal.prepare-state":
+        return prepareManagedConsoleState(
+          command.terminalId,
+          command.serverId,
+          workerEncryption,
+        );
       case "terminal.open": {
         const inputContext = {
           serverId: command.serverId,
