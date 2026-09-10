@@ -4253,6 +4253,52 @@ broader worker/app suites and final chained formatter did not run. Scoped
 formatting and diff checks pass. The combined GUI/CLI acceptance matrix and user
 demo remain outstanding. No CI or personal desktop input ran.
 
+### Pass 58 — preserve untimed input through coordinated relays
+
+Cross-instance worker requests now preserve `timeoutMs: null` through both
+relay instances instead of converting it into a 24-hour operation deadline.
+This matches the existing local worker contract for CUA input and other
+explicitly untimed streaming commands. Finite operations keep their existing
+deadline, including elapsed delivery time. Coordination messages retain their
+finite freshness lifetime; an input already dispatched can return fresh events
+and a completion after that original message expires. A command that expires
+during owner resolution returns a typed timeout without reaching the worker.
+
+The coordination message bound now derives from the existing 16 MiB encrypted
+control contract plus its authentication tag, base64 expansion and bounded
+routing overhead. Both publication and Redis subscription use that same bound.
+Snapshot images still use their existing chunks. CUA request schemas, endpoint
+encryption and owner authorization are unchanged; nullable execution timeouts
+require updated relay instances.
+
+Untimed requests are retired if their relay owner is confirmed lost or replaced,
+without replaying uncertain input. Events and results must come from the relay
+instance that accepted the request. Same-process socket recovery preserves the
+pending request. Delayed presence announcements are checked against current
+ownership before rejecting work, and an older ownership read cannot overwrite
+a newer connection observation. Failed ownership reads leave active work alone.
+
+Validation: 67 focused server cases and server typecheck pass. The nine new
+cases cover maximum opaque CUA input through an in-memory coordinator and a
+real loopback worker WebSocket, oversized relay rejection, simulated execution
+beyond 24 hours with independent Stop and late events/completion, owner loss,
+replacement (including the requesting relay becoming the local owner),
+same-process socket recovery, foreign responses, stale presence
+and a delayed ownership-read race. The size and duration tests both fail against
+the preceding source. These are transport tests with synthetic responses, not
+physical desktop input or a live Redis deployment. Existing coordinated finite
+deadline and disconnect tests pass. The new suite is included in the CUA test
+selection. The required `pnpm check` passed lint/types, 187 Rust CUA cases,
+selected CUA protocol (134), crypto (25), worker (692), server (240, three
+skipped) and app (309) cases, plus full protocol/crypto suites (697/95). It then
+stopped in the broader server suite with 1,376 passing, 40 failing and 57 skipped
+cases, with unchanged failure headings from Pass 57. The final local-owner
+handoff regression and one-line attachment cleanup were added afterward: the
+regression first failed, then passed in the final 67-case run with typecheck and
+scoped format/diff checks. Broader worker/app suites and the final chained
+formatter did not run. Full GUI/CLI acceptance and the user demo remain
+outstanding; no CI or personal desktop testing ran.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal

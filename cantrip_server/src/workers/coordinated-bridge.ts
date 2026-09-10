@@ -57,12 +57,13 @@ interface LocalConnection {
 
 interface PendingRemoteRequest {
   commandType: WorkerCommand["type"];
+  instanceId: string;
   eventQueue: Promise<void>;
   onEvent?: WorkerRequestOptions["onEvent"];
   reject(error: Error): void;
   resolve(value: unknown): void;
   startedAtMs: number;
-  timeout: ReturnType<typeof setTimeout>;
+  timeout: ReturnType<typeof setTimeout> | undefined;
   workerId: string;
 }
 
@@ -362,6 +363,7 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
       await this.#discardSupersededClaim(workerId, connectionId, socket);
       return false;
     }
+    this.#rejectRemoteRequests(workerId, this.#coordinator.instanceId);
     serverLogger.event("info", "Worker attached to relay instance", {
       event: "coordination.worker.attached",
       subsystem: "relay-coordination",
@@ -610,12 +612,13 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
       this.#failedRequests += 1;
       throw new WorkerUnavailableError(`Worker ${workerId} is unavailable.`);
     }
-    const timeoutMs = Math.min(
+    const timeoutMs =
       options.timeoutMs === null
-        ? MAX_REMOTE_COMMAND_LIFETIME_MS
-        : (options.timeoutMs ?? 10 * 60_000),
-      MAX_REMOTE_COMMAND_LIFETIME_MS,
-    );
+        ? null
+        : Math.min(
+            options.timeoutMs ?? 10 * 60_000,
+            MAX_REMOTE_COMMAND_LIFETIME_MS,
+          );
     const requestId = randomUUID();
     const startedAtMs = Date.now();
     this.#routedRequests += 1;
@@ -628,30 +631,34 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
       workerId,
     });
     return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        this.#pending.delete(requestId);
-        this.#failedRequests += 1;
-        serverLogger.event("warn", "Remote worker command timed out", {
-          event: "coordination.command.timed-out",
-          subsystem: "relay-coordination",
-          operation: command.type,
-          requestId,
-          reasonCode: "timeout",
-          status: "failed",
-          durationMs: Date.now() - startedAtMs,
-          workerId,
-        });
-        reject(
-          new WorkerCommandError(
-            `Worker command ${command.type} timed out.`,
-            "worker-command-timeout",
-            { operation: command.type, requestId, workerId },
-          ),
-        );
-      }, timeoutMs);
-      timeout.unref();
+      const timeout =
+        timeoutMs === null
+          ? undefined
+          : setTimeout(() => {
+              this.#pending.delete(requestId);
+              this.#failedRequests += 1;
+              serverLogger.event("warn", "Remote worker command timed out", {
+                event: "coordination.command.timed-out",
+                subsystem: "relay-coordination",
+                operation: command.type,
+                requestId,
+                reasonCode: "timeout",
+                status: "failed",
+                durationMs: Date.now() - startedAtMs,
+                workerId,
+              });
+              reject(
+                new WorkerCommandError(
+                  `Worker command ${command.type} timed out.`,
+                  "worker-command-timeout",
+                  { operation: command.type, requestId, workerId },
+                ),
+              );
+            }, timeoutMs);
+      timeout?.unref();
       this.#pending.set(requestId, {
         commandType: command.type,
+        instanceId: presence.instanceId,
         eventQueue: Promise.resolve(),
         onEvent: options.onEvent,
         reject,
@@ -671,7 +678,8 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
             command,
             timeoutMs,
           },
-          timeoutMs,
+          // Message freshness is bounded independently of an accepted operation.
+          timeoutMs ?? MAX_REMOTE_COMMAND_LIFETIME_MS,
         )
         .catch((error) => {
           const pending = this.#pending.get(requestId);
@@ -703,7 +711,11 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
         return;
       case "worker-command-event": {
         const pending = this.#pending.get(message.requestId);
-        if (!pending?.onEvent) return;
+        if (
+          !pending?.onEvent ||
+          pending.instanceId !== message.sourceInstanceId
+        )
+          return;
         const event = workerEventSchema.safeParse(message.event);
         if (!event.success) return;
         const eventQueue = pending.eventQueue.then(() =>
@@ -739,7 +751,7 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
       }
       case "worker-command-response": {
         const pending = this.#pending.get(message.requestId);
-        if (!pending) return;
+        if (!pending || pending.instanceId !== message.sourceInstanceId) return;
         clearTimeout(pending.timeout);
         this.#pending.delete(message.requestId);
         try {
@@ -818,9 +830,37 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
       case "worker-presence":
         if (message.action === "online") {
           if (!this.#connections.has(message.presence.workerId)) {
+            let presence = message.presence;
+            const knownConnectionId = this.#knownRemoteWorkers.get(
+              presence.workerId,
+            );
+            if (
+              [...this.#pending.values()].some(
+                (pending) => pending.workerId === presence.workerId,
+              )
+            ) {
+              // Delayed presence messages are not proof that the request's
+              // owner was replaced. Confirm ownership before rejecting work.
+              try {
+                const current = await this.#coordinator.findWorker(
+                  presence.workerId,
+                );
+                if (!current) return;
+                presence = current;
+              } catch {
+                return;
+              }
+            }
+            if (
+              this.#connections.has(presence.workerId) ||
+              this.#knownRemoteWorkers.get(presence.workerId) !==
+                knownConnectionId
+            )
+              return;
+            this.#rejectRemoteRequests(presence.workerId, presence.instanceId);
             this.#knownRemoteWorkers.set(
-              message.presence.workerId,
-              message.presence.connectionId,
+              presence.workerId,
+              presence.connectionId,
             );
           }
         } else {
@@ -831,6 +871,22 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
               message.presence.connectionId ||
             this.#coordinator.cachedWorker(workerId)
           ) {
+            return;
+          }
+          try {
+            const current = await this.#coordinator.findWorker(workerId);
+            if (
+              this.#connections.has(workerId) ||
+              this.#knownRemoteWorkers.get(workerId) !==
+                message.presence.connectionId
+            )
+              return;
+            if (current) {
+              this.#rejectRemoteRequests(workerId, current.instanceId);
+              this.#knownRemoteWorkers.set(workerId, current.connectionId);
+              return;
+            }
+          } catch {
             return;
           }
           this.#knownRemoteWorkers.delete(workerId);
@@ -877,12 +933,27 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
       message.workerId,
     );
     const ownerId = await this.#resolveOwnerId(message.workerId);
-    const remainingTimeoutMs = Math.min(
-      message.timeoutMs,
-      message.expiresAt - Date.now(),
-      MAX_REMOTE_COMMAND_LIFETIME_MS,
-    );
-    if (remainingTimeoutMs <= 0) return;
+    const remainingTimeoutMs =
+      message.timeoutMs === null
+        ? null
+        : Math.min(
+            message.timeoutMs,
+            message.expiresAt - Date.now(),
+            MAX_REMOTE_COMMAND_LIFETIME_MS,
+          );
+    if (
+      message.expiresAt <= Date.now() ||
+      (remainingTimeoutMs !== null && remainingTimeoutMs <= 0)
+    ) {
+      await this.#respond(
+        message,
+        false,
+        undefined,
+        "Worker command expired before dispatch.",
+        "worker-command-timeout",
+      );
+      return;
+    }
     if (
       !command.success ||
       !local ||
@@ -909,7 +980,7 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
               requestId: message.requestId,
               event,
             },
-            message.timeoutMs,
+            message.timeoutMs ?? MAX_REMOTE_COMMAND_LIFETIME_MS,
           );
         },
       });
@@ -949,7 +1020,7 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
         error,
         errorCode,
       },
-      request.timeoutMs,
+      request.timeoutMs ?? MAX_REMOTE_COMMAND_LIFETIME_MS,
     );
   }
 
@@ -1129,8 +1200,27 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
   }
 
   #dispatchOffline(workerId: string): void {
+    this.#rejectRemoteRequests(workerId);
     for (const listener of this.#offlineListeners.get(workerId) ?? []) {
       listener();
+    }
+  }
+
+  /** A lost relay owner cannot finish its old requests on the replacement.
+   * Preserve same-instance socket recovery; never replay uncertain input. */
+  #rejectRemoteRequests(workerId: string, retainedInstanceId?: string): void {
+    for (const [requestId, pending] of this.#pending) {
+      if (
+        pending.workerId !== workerId ||
+        pending.instanceId === retainedInstanceId
+      )
+        continue;
+      clearTimeout(pending.timeout);
+      this.#pending.delete(requestId);
+      this.#failedRequests += 1;
+      pending.reject(
+        new WorkerUnavailableError(`Worker ${workerId} is unavailable.`),
+      );
     }
   }
 
@@ -1211,8 +1301,13 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
       } catch {
         continue;
       }
-      if (this.#connections.has(workerId)) continue;
+      if (
+        this.#connections.has(workerId) ||
+        this.#knownRemoteWorkers.get(workerId) !== knownConnectionId
+      )
+        continue;
       if (presence) {
+        this.#rejectRemoteRequests(workerId, presence.instanceId);
         this.#knownRemoteWorkers.set(workerId, presence.connectionId);
       } else if (
         this.#knownRemoteWorkers.get(workerId) === knownConnectionId &&

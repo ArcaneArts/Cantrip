@@ -37,6 +37,7 @@ for (const [project, ...tests] of [
     "cantrip_server",
     "test/auth-api.test.ts",
     "test/computer-use-routes.test.ts",
+    "test/computer-use-coordinated-transport.test.ts",
     "test/computer-use-activity.test.ts",
     "test/computer-use-trajectory.test.ts",
     "test/computer-use-agent-authority.test.ts",
