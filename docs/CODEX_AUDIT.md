@@ -4406,6 +4406,50 @@ personal inference, desktop input or worker restart ran.
 Remaining full acceptance reconciliation and the user demo still apply; this
 pass does not establish completion of the full goal.
 
+### Pass 61 — actual CLI Stop of a GUI-submitted CUA turn
+
+The native command-session fixture now covers the missing input-origin case:
+while the actual attached TUI remains alive, an admitted GUI `runTurn` starts a
+model-initiated CUA script requesting 150 seconds of waits after a captured
+frame. Once the host call is pending and the TUI displays its interrupt control,
+the test sends Ctrl-C to that PTY. The terminal-originated interrupt must pass
+server admission against the exact GUI native turn, reject the GUI run, cancel
+the pending CUA call within five seconds, and produce a native `interrupted`
+completion. It does not label cancellation a successful GUI result.
+
+A subsequent GUI-submitted turn must obtain fresh authority through the same
+runtime, MCP broker and native thread. Its captured PNG must reach the actual
+provider tool-result input, its final text must appear in both GUI callbacks and
+the attached TUI, and durable logical settlement must release the execution lane.
+Both completed and interrupted identities must reject later CUA operations.
+The existing queued-successor Stop case remains separately covered; it is no
+longer used as a substitute for GUI-submitted active-turn evidence.
+
+Validation: **33 focused tests in five files passed**, including all twelve
+actual pinned-native command-session cases and both namespace and portable
+provider variants of this new Stop/recovery sequence. Worker typecheck passed.
+This pass reuses the final pass-60 runtime and uses only localhost fake providers
+and the compiled Rust fake desktop backend. It does not establish real macOS
+input, completed 150-second playback, or the full mounted-GUI acceptance matrix.
+A wider run against that same pinned binary also passed **36 tests in sixteen
+worker files**, covering native preparation, settings, history, queue execution,
+CLI attachment, and portable history transfer. Three server suites passed
+**39 tests**, including the actual-native eager CLI startup and provider-handoff
+cases. The required `pnpm check` passed workspace typechecks, Rust checks and
+the selected CUA suites (187 Rust, 134 protocol, 25 crypto, 692 worker, 241 server
+and 309 app tests), then failed in the full server suite with **40 failures,
+1,364 passes and 70 skips**. Failure names match the pass-59 baseline exactly;
+there were no additional timeout cases. Full protocol/crypto passed (697/95).
+Full worker/app suites and the final repository-wide formatter were not reached
+after the server failure. Scoped formatting and `git diff --check` passed.
+No CI, personal inference, desktop input or user-worker restart ran.
+
+Remaining: reconcile every row of the acceptance matrix against current native,
+server, worker and rendered-app evidence, close any gaps, then perform the user
+demo. In particular, these Stop tests cannot establish uninterrupted long CUA
+execution or mixed-origin steering within one retained turn. Those need their
+own connected evidence. No production change was needed for this Stop case.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal
