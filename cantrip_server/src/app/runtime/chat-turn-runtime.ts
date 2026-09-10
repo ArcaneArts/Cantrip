@@ -1,40 +1,32 @@
+import {
+  chatTurnModelConfiguration,
+  validateChatTurnInput,
+} from "./chat-turn-configuration.js";
 import { finishManagedGui } from "./finish-managed-gui.js";
-import { NativeCommandError } from "../../db/repository/native-command-errors.js";
+
 import { protectChatInput } from "./protect-chat-input.js";
 import {
   managedConsoleSessionContext,
   prepareManagedConsoleLaunch,
 } from "../../terminals/managed-session.js";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 import {
   NATIVE_SUBAGENT_PROTOCOL_VERSION,
   agentTurnResultSchema,
-  chatMessageOpaqueContentSchema,
   chatMessageRelayResultSchema,
   chatTurnRollbackAcceptedSchema,
   mentionedSkillNames,
-  modelConfigurationSchema,
   nativeSubagentCapabilityCompatible,
   workerEventIsProvisional,
-  type AgentTurnResult,
   type ChatMessage,
-  type ChatMessageOpaqueContent,
   type ChatMessageOpaqueSummary,
-  type ChatTurnCreate,
-  type ReasoningEffort,
-  type TaskDispatchWorkerLease,
   type WorkerEvent,
   type WorkerObservationEventIdentity,
 } from "@cantrip/protocol";
-import {
-  taskMessageRelayResultSchema,
-  type TaskMessageOpaqueContent,
-  type TaskOperationRelayRequest,
-} from "@cantrip/protocol/tasks";
-import type { JsonObject } from "@cantrip/protocol/bounded-json";
+import { taskMessageRelayResultSchema } from "@cantrip/protocol/tasks";
+
 import { cantripVersion } from "@cantrip/version";
-import type { FastifyInstance } from "fastify";
 
 import { applyComputerUseAgentEvent } from "./computer-use-agent-events.js";
 import { computerUsePreviewAuthority } from "../routes/computer-use-preview.js";
@@ -51,15 +43,12 @@ import {
 import {
   toChatAttachmentOpaqueSummary,
   type ChatExecutionAttribution,
-  type ChatExecutionContext,
-  type ModelRuntime,
-  type ServerRepository,
 } from "../../db/repository.js";
 import { errorMessage } from "../../http/request-helpers.js";
 import { persistProviderRateLimitActivity } from "../../models/provider-quota.js";
 import { taskOperationRelayTurnFields } from "../../tasks/encrypted-relay.js";
 import { withTaskLaunchStageTimeout } from "../../tasks/launch-observation.js";
-import type { LimitedWorkerCommandBus } from "../../workers/limited-command-bus.js";
+
 import {
   ROUTE_FAILURE_COOLDOWN_MS,
   STREAMING_WORKER_COMMAND_TIMEOUT_MS,
@@ -73,165 +62,19 @@ import {
   workerObservationMessageId,
   workerObservationTurnId,
 } from "../shared/worker-observations.js";
-import type { createLiveMutationRuntime } from "./live-mutation-runtime.js";
-import type { createModelRoutingRuntime } from "./model-routing-runtime.js";
 
-type LiveMutationRuntime = ReturnType<typeof createLiveMutationRuntime>;
-type ModelRoutingRuntime = ReturnType<typeof createModelRoutingRuntime>;
-type OwnerRunner = <T>(ownerId: string, operation: () => T) => T;
-type TaskTurnBootstrapStage =
-  | "acquire-execution-lane"
-  | "append-task-message"
-  | "attribute-task-message"
-  | "load-message-headers"
-  | "load-worker-attribution"
-  | "mark-dispatch-running"
-  | "notify-code-agent-started"
-  | "persist-chat-runtime"
-  | "persist-turn-mode"
-  | "prepare-code-editors"
-  | "resolve-attachments"
-  | "resolve-effective-policies"
-  | "resolve-mcp-servers"
-  | "resolve-model"
-  | "resolve-model-routes";
-
-export type ChatTurnInput = Omit<ChatTurnCreate, "attachmentIds" | "mode"> & {
-  attachmentIds?: string[];
-  customSubagentModel?: boolean;
-  mode?: ChatTurnCreate["mode"];
-  subagentModelId?: string | null;
-  subagentReasoningEffort?: ReasoningEffort | null;
-};
-
-export interface ChatTurnOptions {
-  expectedInputRevision?: number;
-  managedQueueClaim?: { id: string; promptRevision: number };
-  protectedNativeInput?: import("@cantrip/protocol").EncryptedPayloadEnvelope;
-  nativeClientUserMessageId?: string;
-  queuedPromptId?: string;
-  acquiringActor?: "agent" | "user";
-  encryptedTaskMessages?: {
-    userMessage: TaskMessageOpaqueContent;
-    response?: { id: string; idempotencyKey: string };
-  };
-  encryptedChatMessages?: {
-    userMessage: ChatMessageOpaqueContent;
-    response: { id: string; idempotencyKey: string };
-  };
-  messageRole?: "system" | "user";
-  purpose?: string;
-  retryMessageId?: string;
-  runtimes?: ModelRuntime[];
-  preflightWorkerCommandTimeoutMs?: number | null;
-  structuredResult?: {
-    outputSchema?: JsonObject;
-    taskOperation?: TaskOperationRelayRequest;
-    afterCompleted?(input: {
-      attribution: ChatExecutionAttribution;
-      execution: ChatExecutionContext;
-      result: AgentTurnResult;
-      userMessage: ChatMessage;
-    }): Promise<void>;
-    onCompleted(input: {
-      attribution: ChatExecutionAttribution;
-      execution: ChatExecutionContext;
-      result: AgentTurnResult;
-      userMessage: ChatMessage;
-    }): Promise<void>;
-    onFailed(input: {
-      error: unknown;
-      execution: ChatExecutionContext;
-      userMessage: ChatMessage;
-    }): Promise<void>;
-  };
-  afterTurnCompleted?(input: {
-    attribution: ChatExecutionAttribution;
-    execution: ChatExecutionContext;
-    result: AgentTurnResult;
-    userMessage: ChatMessage;
-  }): Promise<void>;
-  afterTurnFailed?(input: {
-    error: unknown;
-    execution: ChatExecutionContext;
-    userMessage: ChatMessage;
-  }): Promise<void>;
-  workerPrompt?: string;
-  taskDispatchLease?: TaskDispatchWorkerLease;
-}
-
-export type BeginChatTurn = (
-  context: ChatExecutionContext,
-  input: ChatTurnInput,
-  options?: ChatTurnOptions,
-) => Promise<ChatMessage>;
-
-interface ChatTurnLiveMutationDependencies extends Pick<
-  LiveMutationRuntime,
-  | "appendLiveChatMessage"
-  | "appendLiveEncryptedChatMessage"
-  | "appendLiveTaskMessage"
-  | "interruptLiveAgentInteractionRequests"
-  | "publishChatSummary"
-  | "publishChatTurnBoundary"
-  | "publishInferenceProgress"
-  | "recordLiveAgentInteractionRequest"
-  | "recordLiveEncryptedAgentInteractionRequest"
-  | "setLiveChatMessageModelRoute"
-  | "setLiveEncryptedChatMessageModelRoute"
-  | "setLiveTaskMessageModelRoute"
-  | "taskMessageServerStub"
-  | "terminalizeLiveAgentInteractionRequest"
-  | "updateLiveChatPlanMode"
-  | "updateLiveEncryptedChatPlanState"
-  | "upsertLiveChatMessage"
-  | "upsertLiveEncryptedChatMessage"
-  | "upsertLiveTaskMessage"
-> {}
-
-interface ChatTurnModelRoutingDependencies extends Pick<
-  ModelRoutingRuntime,
-  | "captureRuntimeQuota"
-  | "recordRuntimeModelBehavior"
-  | "recordRuntimeTokenUsage"
-  | "resolveModelId"
-  | "routePairsForConfiguration"
-  | "runtimeCanResumeContext"
-  | "scheduleRuntimeQuotaSamples"
-> {}
-
-export interface ChatTurnRuntimeDependencies
-  extends ChatTurnLiveMutationDependencies, ChatTurnModelRoutingDependencies {
-  app: Pick<FastifyInstance, "log">;
-  applicationOwnerId: () => string;
-  serverId: string;
-  bridge: LimitedWorkerCommandBus;
-  cancelChatTurnOutcomeRecovery: (
-    workerId: string,
-    chatId: string,
-    clientMessageId: string,
-  ) => void;
-  continuePendingWorktreeTransition: (chatId: string) => Promise<boolean>;
-  dispatchNextQueuedPrompt: (chatId: string) => Promise<void>;
-  notifyCodeAgentState: (
-    context: Pick<ChatExecutionContext, "chatId" | "cwd" | "workerId">,
-    phase: "started" | "completed" | "failed",
-    paths?: Iterable<string>,
-    timeoutMs?: number | null,
-  ) => Promise<void>;
-  prepareCodeEditorsForTurn: (
-    context: ChatExecutionContext,
-    timeoutMs?: number | null,
-  ) => Promise<void>;
-  repository: ServerRepository;
-  resolvePromptAttachments: (
-    context: ChatExecutionContext,
-    attachmentIds: string[],
-  ) => ReturnType<ServerRepository["getChatAttachments"]>;
-  routeCooldowns: Map<string, number>;
-  runtimeCooldownKey: (runtime: ModelRuntime) => string;
-  runAsOwner: OwnerRunner;
-}
+export type {
+  ChatTurnInput,
+  ChatTurnOptions,
+  BeginChatTurn,
+  ChatTurnRuntimeDependencies,
+} from "./chat-turn-types.js";
+import type {
+  BeginChatTurn,
+  ChatTurnRuntimeDependencies,
+} from "./chat-turn-types.js";
+import { createTaskTurnBootstrapObserver } from "./task-turn-bootstrap-observer.js";
+import { acquireChatTurnExecution } from "./chat-turn-admission.js";
 
 /**
  * Owns the complete lifecycle of one chat turn, including execution-lane
@@ -282,91 +125,12 @@ export function createChatTurnRuntime({
   const beginTurn: BeginChatTurn = async (context, input, options = {}) => {
     const turnStartedAtMs = Date.now();
     const ownerId = applicationOwnerId();
-    const observeTaskTurnBootstrapStage = async <T>(
-      stage: TaskTurnBootstrapStage,
-      operation: () => Promise<T>,
-    ): Promise<T> => {
-      const lease = options.taskDispatchLease;
-      if (!lease) return operation();
-      const startedAt = Date.now();
-      app.log.info(
-        {
-          event: "task.turn-bootstrap-stage",
-          subsystem: "task-scheduler",
-          operation: "bootstrap-turn",
-          status: "started",
-          chatId: context.chatId,
-          cycleId: lease.cycleId,
-          operationId: lease.operationId,
-          serverVersion: cantripVersion.version,
-          stage,
-        },
-        "Scheduled Task turn bootstrap stage started",
-      );
-      try {
-        const result =
-          options.preflightWorkerCommandTimeoutMs === undefined ||
-          options.preflightWorkerCommandTimeoutMs === null
-            ? await operation()
-            : await withTaskLaunchStageTimeout(
-                "begin-turn",
-                options.preflightWorkerCommandTimeoutMs,
-                operation,
-              );
-        app.log.info(
-          {
-            event: "task.turn-bootstrap-stage",
-            subsystem: "task-scheduler",
-            operation: "bootstrap-turn",
-            status: "completed",
-            chatId: context.chatId,
-            cycleId: lease.cycleId,
-            operationId: lease.operationId,
-            serverVersion: cantripVersion.version,
-            stage,
-            durationMs: Date.now() - startedAt,
-          },
-          "Scheduled Task turn bootstrap stage completed",
-        );
-        return result;
-      } catch (error) {
-        app.log.warn(
-          {
-            event: "task.turn-bootstrap-stage",
-            subsystem: "task-scheduler",
-            operation: "bootstrap-turn",
-            status: "failed",
-            chatId: context.chatId,
-            cycleId: lease.cycleId,
-            operationId: lease.operationId,
-            serverVersion: cantripVersion.version,
-            stage,
-            durationMs: Date.now() - startedAt,
-            err: error,
-          },
-          "Scheduled Task turn bootstrap stage failed",
-        );
-        throw error;
-      }
-    };
-    if (
-      context.contextKind === "standalone" &&
-      ((input.mode !== undefined && input.mode !== "default") ||
-        options.structuredResult ||
-        options.encryptedTaskMessages ||
-        options.taskDispatchLease)
-    ) {
-      throw new Error(
-        "Standalone Chat supports only ordinary default-mode conversation turns.",
-      );
-    }
-    if (
-      options.structuredResult &&
-      Boolean(options.structuredResult.outputSchema) ===
-        Boolean(options.structuredResult.taskOperation)
-    ) {
-      throw new Error("Structured turns require exactly one result contract.");
-    }
+    const observeTaskTurnBootstrapStage = createTaskTurnBootstrapObserver(
+      app,
+      context,
+      options,
+    );
+    validateChatTurnInput(context, input, options);
     const encryptedTaskRelay = options.structuredResult?.taskOperation
       ? taskOperationRelayTurnFields(options.structuredResult.taskOperation)
       : null;
@@ -377,31 +141,8 @@ export function createChatTurnRuntime({
     const modelId = await observeTaskTurnBootstrapStage("resolve-model", () =>
       resolveModelId(context, input.modelId),
     );
-    const requestedReasoningEffort =
-      input.reasoningEffort !== undefined
-        ? input.reasoningEffort
-        : context.reasoningEffort;
-    const turnModelConfiguration = modelConfigurationSchema.parse({
-      modelId,
-      reasoningEffort: requestedReasoningEffort,
-      customSubagentModel:
-        context.contextKind === "standalone"
-          ? false
-          : (input.customSubagentModel ??
-            context.modelConfiguration.customSubagentModel),
-      subagentModelId:
-        context.contextKind === "standalone"
-          ? null
-          : input.subagentModelId !== undefined
-            ? input.subagentModelId
-            : context.modelConfiguration.subagentModelId,
-      subagentReasoningEffort:
-        context.contextKind === "standalone"
-          ? null
-          : input.subagentReasoningEffort !== undefined
-            ? input.subagentReasoningEffort
-            : context.modelConfiguration.subagentReasoningEffort,
-    });
+    const { requestedReasoningEffort, turnModelConfiguration } =
+      chatTurnModelConfiguration(context, input, modelId);
     const routePairs = await observeTaskTurnBootstrapStage(
       "resolve-model-routes",
       () =>
@@ -494,90 +235,14 @@ export function createChatTurnRuntime({
       encryptedChatMessages?.userMessage ??
       encryptedTaskMessages?.userMessage ??
       options.structuredResult?.taskOperation?.userMessage;
-    const managedNativeCommands =
-      managedConsoleSessionContext(context) !== undefined;
-    if (managedNativeCommands && !protectedAdmissionInput)
-      throw new Error("Chat turn content was not encrypted.");
-    const nativeAdmission = managedNativeCommands
-      ? await observeTaskTurnBootstrapStage("acquire-execution-lane", () =>
-          repository.nativeCommands.admit(
-            ownerId,
-            {
-              workerId: context.workerId,
-              operationId: `gui:${createHash("sha256")
-                .update(
-                  JSON.stringify([
-                    ownerId,
-                    context.chatId,
-                    protectedAdmissionInput!.idempotencyKey,
-                    ...(options.managedQueueClaim
-                      ? [options.managedQueueClaim.id]
-                      : []),
-                  ]),
-                )
-                .digest("hex")}`,
-              origin: "gui",
-              method: "turn/start",
-              session: {
-                chatId: context.chatId,
-                threadId: context.threadId,
-                contextKind: context.contextKind,
-                projectId: context.projectId,
-                placementId: context.worktreeId ?? context.scratchRootId,
-                modelRouteId: context.modelRouteId,
-                providerAccountId: context.providerAccountId,
-                runtimeGeneration: null,
-                connectionId: null,
-              },
-              payloadDigest: createHash("sha256")
-                .update(JSON.stringify(protectedAdmissionInput))
-                .digest("hex"),
-              protectedPayload:
-                protectedAdmissionInput!.protectedContent.envelope,
-              expectedActivationGeneration: null,
-              intent: {
-                scope: "thread",
-                settingKeys: [],
-                expectedTurnId: null,
-                permissionProfileId:
-                  effectivePermissionProfile(context).effectiveId,
-              },
-            },
-            {
-              acquiringActor: options.acquiringActor,
-              purpose: options.purpose,
-              queueClaim: options.managedQueueClaim,
-              clientMessageId: protectedAdmissionInput!.id,
-              expectedInputRevision:
-                options.expectedInputRevision ?? context.managedInputRevision,
-            },
-          ),
-        )
-      : null;
-    if (nativeAdmission?.replayed)
-      throw new Error(
-        "This chat input already has a native operation receipt.",
-      );
-    const execution = nativeAdmission
-      ? nativeAdmission.execution
-      : await observeTaskTurnBootstrapStage("acquire-execution-lane", () =>
-          repository.startChatExecutionLane(
-            ownerId,
-            context.chatId,
-            options.acquiringActor ?? "user",
-            options.purpose ?? "Chat turn",
-          ),
-        );
-    const nativeCommandReceipt = nativeAdmission?.receipt;
-    if (
-      (nativeCommandReceipt && nativeCommandReceipt.status !== "accepted") ||
-      !execution?.executionLaneId
-    ) {
-      throw new NativeCommandError(
-        nativeCommandReceipt?.rejectionCode ??
-          "Chat execution lane could not be acquired.",
-      );
-    }
+    const { execution, nativeCommandReceipt } = await acquireChatTurnExecution({
+      repository,
+      ownerId,
+      context,
+      options,
+      protectedAdmissionInput,
+      observeTaskTurnBootstrapStage,
+    });
     publishChatSummary(execution.chatId, execution.projectId);
     const executionLaneId = execution.executionLaneId;
     const finishExecution = (status: "idle" | "failed") =>
