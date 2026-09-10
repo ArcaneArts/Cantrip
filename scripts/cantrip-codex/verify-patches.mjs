@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { cp, mkdtemp, rm } from "node:fs/promises";
+import { cp, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -10,12 +10,12 @@ export async function verifyCodexPatchSeries(sourceDirectory, patches) {
   const environment = Object.fromEntries(
     Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_")),
   );
-  const runGit = (args, input) =>
+  const runGit = (args) =>
     spawnSync("git", args, {
       cwd: temporary,
       env: environment,
       encoding: "utf8",
-      input,
+      stdio: ["ignore", "pipe", "pipe"],
     });
   try {
     const initialized = runGit(["init", "--quiet"]);
@@ -33,10 +33,16 @@ export async function verifyCodexPatchSeries(sourceDirectory, patches) {
       verbatimSymlinks: true,
     });
     for (const patch of patches) {
-      const applied = runGit(
-        ["apply", "--ignore-space-change", "--directory=source", "-"],
-        patch.contents,
-      );
+      // File input avoids a synchronous parent/child pipe stall while preserving
+      // the exact supplied bytes (which need not match a checked-in patch path).
+      const patchFile = path.join(temporary, "current.patch");
+      await writeFile(patchFile, patch.contents);
+      const applied = runGit([
+        "apply",
+        "--ignore-space-change",
+        "--directory=source",
+        patchFile,
+      ]);
       if (applied.status !== 0) {
         throw new Error(
           `Codex patch ${patch.name} does not apply cleanly:\n${applied.error?.message ?? applied.stderr ?? ""}`,

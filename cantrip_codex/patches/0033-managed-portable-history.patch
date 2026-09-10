@@ -1,0 +1,1303 @@
+diff --git a/codex-rs/app-server/src/message_processor.rs b/codex-rs/app-server/src/message_processor.rs
+--- a/codex-rs/app-server/src/message_processor.rs
++++ b/codex-rs/app-server/src/message_processor.rs
+@@ -1513,6 +1513,16 @@
+                     )
+                     .await
+             }
++            ClientRequest::ThreadManagedHistoryExport { params, .. } => {
++                self.turn_processor
++                    .thread_managed_history_export(&request_id, params)
++                    .await
++            }
++            ClientRequest::ThreadManagedHistoryImport { params, .. } => {
++                self.thread_processor
++                    .thread_managed_history_import(params)
++                    .await
++            }
+             ClientRequest::ThreadManagedContextReset { params, .. } => {
+                 self.turn_processor
+                     .thread_managed_context_reset(&request_id, params)
+diff --git a/codex-rs/app-server/src/request_processors/managed_history_transfer.rs b/codex-rs/app-server/src/request_processors/managed_history_transfer.rs
+new file mode 100644
+--- /dev/null
++++ b/codex-rs/app-server/src/request_processors/managed_history_transfer.rs
+@@ -0,0 +1,74 @@
++//! Transfer artifacts stay on the worker; RPC responses carry paths, never a
++//! conversation-sized JSON payload. This is separate from model context reset.
++use std::fs;
++use std::io::Write;
++use std::path::PathBuf;
++
++use codex_protocol::ThreadId;
++use codex_thread_store::PortableThreadHistory;
++
++pub(super) async fn write_export(
++    home: PathBuf,
++    transfer_id: ThreadId,
++    snapshot: PortableThreadHistory,
++) -> anyhow::Result<PathBuf> {
++    tokio::task::spawn_blocking(move || {
++        let directory = home.join("managed-history-exports");
++        let mut builder = fs::DirBuilder::new();
++        builder.recursive(true);
++        #[cfg(unix)]
++        {
++            use std::os::unix::fs::DirBuilderExt;
++            builder.mode(0o700);
++        }
++        builder.create(&directory)?;
++        let path = directory.join(format!("{transfer_id}.json"));
++        let bytes = serde_json::to_vec(&snapshot)?;
++        if path.exists() {
++            anyhow::ensure!(
++                fs::read(&path)? == bytes,
++                "history export operation ID was reused after history changed"
++            );
++            return Ok(path);
++        }
++        let temporary = directory.join(format!("{transfer_id}-{}.partial", ThreadId::new()));
++        let mut options = fs::OpenOptions::new();
++        options.write(true).create_new(true);
++        #[cfg(unix)]
++        {
++            use std::os::unix::fs::OpenOptionsExt;
++            options.mode(0o600);
++        }
++        let mut file = options.open(&temporary)?;
++        file.write_all(&bytes)?;
++        file.sync_all()?;
++        drop(file);
++        // Publish without replacing an export created by a concurrent request
++        // on another thread that reused the same operation ID.
++        match fs::hard_link(&temporary, &path) {
++            Ok(()) => {}
++            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
++                let same = fs::read(&path)? == bytes;
++                fs::remove_file(&temporary)?;
++                anyhow::ensure!(
++                    same,
++                    "history export operation ID was reused for another snapshot"
++                );
++                return Ok(path);
++            }
++            Err(err) => {
++                let _ = fs::remove_file(&temporary);
++                return Err(err.into());
++            }
++        }
++        fs::remove_file(&temporary)?;
++        fs::File::open(&directory)?.sync_all()?;
++        Ok(path)
++    })
++    .await?
++}
++
++pub(super) async fn read_export(path: PathBuf) -> anyhow::Result<PortableThreadHistory> {
++    anyhow::ensure!(path.is_absolute(), "history export path must be absolute");
++    tokio::task::spawn_blocking(move || Ok(serde_json::from_reader(fs::File::open(path)?)?)).await?
++}
+diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
+--- a/codex-rs/app-server/src/request_processors/thread_processor.rs
++++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
+@@ -463,6 +463,39 @@
+ }
+ 
+ impl ThreadRequestProcessor {
++    pub(crate) async fn thread_managed_history_import(
++        &self,
++        params: codex_app_server_protocol::ThreadManagedHistoryImportParams,
++    ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
++        let thread_id = ThreadId::from_string(&params.thread_id)
++            .map_err(|err| invalid_request(err.to_string()))?;
++        let transfer_id = ThreadId::from_string(&params.transfer_id)
++            .map_err(|err| invalid_request(err.to_string()))?;
++        if self.thread_manager.get_thread(thread_id).await.is_ok() {
++            return Err(invalid_request("migration destination is already loaded"));
++        }
++        let snapshot = super::managed_history_transfer::read_export(PathBuf::from(params.path))
++            .await
++            .map_err(|err| invalid_request(format!("cannot read managed history export: {err}")))?;
++        if snapshot.thread_id != thread_id {
++            return Err(invalid_request(
++                "history export belongs to another conversation",
++            ));
++        }
++        let path = self
++            .thread_store
++            .import_portable_history(transfer_id, snapshot)
++            .await
++            .map_err(|err| thread_store_mutation_error("import managed history", err))?;
++        Ok(Some(
++            codex_app_server_protocol::ThreadManagedHistoryImportResponse {
++                thread_id: params.thread_id,
++                path: path.to_string_lossy().into_owned(),
++            }
++            .into(),
++        ))
++    }
++
+     #[allow(clippy::too_many_arguments)]
+     pub(crate) fn new(
+         auth_manager: Arc<AuthManager>,
+diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/codex-rs/app-server/src/request_processors/turn_processor.rs
+--- a/codex-rs/app-server/src/request_processors/turn_processor.rs
++++ b/codex-rs/app-server/src/request_processors/turn_processor.rs
+@@ -186,6 +186,41 @@
+         .map(|response| Some(response.into()))
+     }
+ 
++    pub(crate) async fn thread_managed_history_export(
++        &self,
++        request_id: &ConnectionRequestId,
++        params: codex_app_server_protocol::ThreadManagedHistoryExportParams,
++    ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
++        let transfer_id = ThreadId::from_string(&params.transfer_id)
++            .map_err(|err| invalid_request(err.to_string()))?;
++        let (_, thread) = self.load_thread(&params.thread_id).await?;
++        self.ensure_direct_input_allowed(request_id, thread.as_ref())
++            .await?;
++        let snapshot = thread
++            .export_managed_history(params.expected_last_turn_id.as_deref())
++            .await
++            .map_err(|err| match err.details() {
++                CodexErrorDetails::InvalidRequest(message) => invalid_request(message.clone()),
++                _ => internal_error(format!("failed to export managed history: {err}")),
++            })?;
++        let path = super::managed_history_transfer::write_export(
++            self.config.codex_home.to_path_buf(),
++            transfer_id,
++            snapshot,
++        )
++        .await
++        .map_err(|err| {
++            internal_error(format!("failed to publish managed history export: {err}"))
++        })?;
++        Ok(Some(
++            codex_app_server_protocol::ThreadManagedHistoryExportResponse {
++                thread_id: params.thread_id,
++                path: path.to_string_lossy().into_owned(),
++            }
++            .into(),
++        ))
++    }
++
+     pub(crate) async fn thread_managed_context_reset(
+         &self,
+         request_id: &ConnectionRequestId,
+@@ -201,7 +236,9 @@
+                 CodexErrorDetails::InvalidRequest(message) => invalid_request(message.clone()),
+                 _ => internal_error(format!("failed to reset managed model context: {err}")),
+             })?;
+-        Ok(Some(codex_app_server_protocol::ThreadManagedContextResetResponse {}.into()))
++        Ok(Some(
++            codex_app_server_protocol::ThreadManagedContextResetResponse {}.into(),
++        ))
+     }
+ 
+     pub(crate) async fn thread_inject_items(
+diff --git a/codex-rs/app-server/src/request_processors.rs b/codex-rs/app-server/src/request_processors.rs
+--- a/codex-rs/app-server/src/request_processors.rs
++++ b/codex-rs/app-server/src/request_processors.rs
+@@ -1,4 +1,5 @@
+ mod managed_configuration;
++mod managed_history_transfer;
+ 
+ use crate::bespoke_event_handling::apply_bespoke_event_handling;
+ use crate::command_exec::CommandExecManager;
+diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
+--- a/codex-rs/app-server-protocol/src/protocol/common.rs
++++ b/codex-rs/app-server-protocol/src/protocol/common.rs
+@@ -841,6 +841,16 @@
+         // Explicitly concurrent: this primarily reads append-only rollout storage.
+         serialization: None,
+         response: v2::ThreadItemsListResponse,
++    },
++    ThreadManagedHistoryExport => "thread/managedHistory/export" {
++        params: v2::ThreadManagedHistoryExportParams,
++        serialization: thread_id(params.thread_id),
++        response: v2::ThreadManagedHistoryExportResponse,
++    },
++    ThreadManagedHistoryImport => "thread/managedHistory/import" {
++        params: v2::ThreadManagedHistoryImportParams,
++        serialization: thread_id(params.thread_id),
++        response: v2::ThreadManagedHistoryImportResponse,
+     },
+     /// Reset rejected model context without removing conversation history or starting work.
+     ThreadManagedContextReset => "thread/managedContext/reset" {
+diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
+--- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
++++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
+@@ -2475,3 +2475,46 @@
+ #[serde(rename_all = "camelCase")]
+ #[ts(export_to = "v2/")]
+ pub struct ThreadManagedContextResetResponse {}
++
++/// Worker-private portable history capture. No model turn is started.
++#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
++#[serde(rename_all = "camelCase", deny_unknown_fields)]
++#[ts(export_to = "v2/")]
++pub struct ThreadManagedHistoryExportParams {
++    pub thread_id: String,
++    pub transfer_id: String,
++    #[serde(deserialize_with = "Option::deserialize")]
++    #[schemars(
++        required,
++        schema_with = "crate::protocol::serde_helpers::nullable_string_schema"
++    )]
++    #[ts(type = "string | null")]
++    pub expected_last_turn_id: Option<String>,
++}
++
++/// Import an owned export into an unused destination conversation. The caller
++/// must coordinate account credentials and native ownership before resuming it.
++#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
++#[serde(rename_all = "camelCase", deny_unknown_fields)]
++#[ts(export_to = "v2/")]
++pub struct ThreadManagedHistoryImportParams {
++    pub thread_id: String,
++    pub transfer_id: String,
++    pub path: String,
++}
++
++#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
++#[serde(rename_all = "camelCase")]
++#[ts(export_to = "v2/")]
++pub struct ThreadManagedHistoryExportResponse {
++    pub thread_id: String,
++    pub path: String,
++}
++
++#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
++#[serde(rename_all = "camelCase")]
++#[ts(export_to = "v2/")]
++pub struct ThreadManagedHistoryImportResponse {
++    pub thread_id: String,
++    pub path: String,
++}
+diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
+--- a/codex-rs/core/src/codex_thread.rs
++++ b/codex-rs/core/src/codex_thread.rs
+@@ -796,6 +796,15 @@
+             .await;
+     }
+ 
++    pub async fn export_managed_history(
++        &self,
++        expected_last_turn_id: Option<&str>,
++    ) -> CodexResult<codex_thread_store::PortableThreadHistory> {
++        self.session
++            .export_managed_history(expected_last_turn_id)
++            .await
++    }
++
+     /// Recover model context in place, retaining conversation history, settings and queue.
+     pub async fn reset_managed_model_context(
+         &self,
+diff --git a/codex-rs/core/src/session/managed_context.rs b/codex-rs/core/src/session/managed_context.rs
+--- a/codex-rs/core/src/session/managed_context.rs
++++ b/codex-rs/core/src/session/managed_context.rs
+@@ -3,6 +3,37 @@
+ use super::*;
+ 
+ impl Session {
++    pub(crate) async fn export_managed_history(
++        &self,
++        expected_last_turn_id: Option<&str>,
++    ) -> CodexResult<codex_thread_store::PortableThreadHistory> {
++        let active = self.active_turn.lock().await;
++        if active.is_some() {
++            return Err(CodexErr::InvalidRequest(
++                "cannot migrate history during an active turn".into(),
++            ));
++        }
++        let live = self
++            .live_thread_for_persistence("export managed history")
++            .map_err(|err| CodexErr::Io(std::io::Error::other(err)))?;
++        live.flush()
++            .await
++            .map_err(|err| CodexErr::Io(std::io::Error::other(err)))?;
++        let last_turn = live
++            .last_recorded_turn_id(true)
++            .await
++            .map_err(|err| CodexErr::Io(std::io::Error::other(err)))?;
++        if last_turn.as_deref() != expected_last_turn_id {
++            return Err(CodexErr::InvalidRequest(
++                "history transfer targets a stale native turn".into(),
++            ));
++        }
++        let _settings = thread_settings::acquire_persistence_lock(self).await;
++        live.export_portable_history()
++            .await
++            .map_err(|err| CodexErr::Io(std::io::Error::other(err)))
++    }
++
+     pub(crate) async fn reset_managed_model_context(
+         &self,
+         expected_last_turn_id: Option<&str>,
+diff --git a/codex-rs/state/src/model/queued_item.rs b/codex-rs/state/src/model/queued_item.rs
+--- a/codex-rs/state/src/model/queued_item.rs
++++ b/codex-rs/state/src/model/queued_item.rs
+@@ -4,7 +4,7 @@
+ use sqlx::sqlite::SqliteRow;
+ 
+ /// One durable, ordered user submission for a thread.
+-#[derive(Debug, Clone, PartialEq, Eq)]
++#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+ pub struct QueuedUserSubmissionRecord {
+     pub id: String,
+     pub thread_id: ThreadId,
+diff --git a/codex-rs/state/src/model/thread_metadata.rs b/codex-rs/state/src/model/thread_metadata.rs
+--- a/codex-rs/state/src/model/thread_metadata.rs
++++ b/codex-rs/state/src/model/thread_metadata.rs
+@@ -121,7 +121,7 @@
+ }
+ 
+ /// Canonical persisted thread metadata.
+-#[derive(Debug, Clone, PartialEq, Eq)]
++#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+ pub struct ThreadMetadata {
+     /// The thread identifier.
+     pub id: ThreadId,
+diff --git a/codex-rs/state/src/runtime/queued_items.rs b/codex-rs/state/src/runtime/queued_items.rs
+--- a/codex-rs/state/src/runtime/queued_items.rs
++++ b/codex-rs/state/src/runtime/queued_items.rs
+@@ -72,6 +72,42 @@
+         rows.into_iter()
+             .map(|(thread_id, revision)| Ok((ThreadId::try_from(thread_id)?, revision)))
+             .collect()
++    }
++
++    /// Restore the exact ordered queue for a new migration destination. An exact
++    /// retry is harmless; a pre-existing different queue is never replaced.
++    pub async fn restore_into_empty(
++        &self,
++        thread_id: ThreadId,
++        records: &[QueuedUserSubmissionRecord],
++    ) -> anyhow::Result<()> {
++        let mut transaction = self.pool.begin_with("BEGIN IMMEDIATE").await?;
++        let existing = sqlx::query(
++            "SELECT id, thread_id, payload_json FROM queued_items WHERE thread_id = ? ORDER BY queue_order"
++        ).bind(thread_id.to_string()).fetch_all(&mut *transaction).await?
++            .iter().map(QueuedUserSubmissionRecord::try_from_row).collect::<anyhow::Result<Vec<_>>>()?;
++        if !existing.is_empty() {
++            anyhow::ensure!(
++                existing == records,
++                "migration destination queue is already in use"
++            );
++            transaction.commit().await?;
++            return Ok(());
++        }
++        let mut ids = std::collections::HashSet::new();
++        let now_ms = datetime_to_epoch_millis(Utc::now());
++        for (order, record) in records.iter().enumerate() {
++            anyhow::ensure!(
++                record.thread_id == thread_id && ids.insert(&record.id),
++                "invalid migration queue identity"
++            );
++            sqlx::query("INSERT INTO queued_items (id, thread_id, payload_json, queue_order, created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?)")
++                .bind(&record.id).bind(thread_id.to_string()).bind(&record.payload)
++                .bind(i64::try_from(order)?).bind(now_ms).bind(now_ms)
++                .execute(&mut *transaction).await?;
++        }
++        transaction.commit().await?;
++        Ok(())
+     }
+ 
+     pub async fn enqueue(
+diff --git a/codex-rs/thread-store/src/lib.rs b/codex-rs/thread-store/src/lib.rs
+--- a/codex-rs/thread-store/src/lib.rs
++++ b/codex-rs/thread-store/src/lib.rs
+@@ -8,6 +8,7 @@
+ mod in_memory;
+ mod live_thread;
+ mod local;
++mod portable_history;
+ mod projects;
+ mod queue_store;
+ mod store;
+@@ -33,6 +34,8 @@
+ pub use local::RolloutMigrationProgress;
+ pub use local::RolloutMigrationReport;
+ pub use local::RolloutMigrationStatus;
++pub use portable_history::PortableRolloutSegment;
++pub use portable_history::PortableThreadHistory;
+ pub use projects::CreateProjectParams;
+ pub use projects::CreatedProject;
+ pub use projects::DeletedProject;
+diff --git a/codex-rs/thread-store/src/live_thread.rs b/codex-rs/thread-store/src/live_thread.rs
+--- a/codex-rs/thread-store/src/live_thread.rs
++++ b/codex-rs/thread-store/src/live_thread.rs
+@@ -333,6 +333,15 @@
+         }))
+     }
+ 
++    pub async fn export_portable_history(&self) -> ThreadStoreResult<crate::PortableThreadHistory> {
++        self.thread_store
++            .export_portable_history(LoadThreadHistoryParams {
++                thread_id: self.thread_id,
++                include_archived: true,
++            })
++            .await
++    }
++
+     pub async fn load_history(
+         &self,
+         include_archived: bool,
+diff --git a/codex-rs/thread-store/src/local/mod.rs b/codex-rs/thread-store/src/local/mod.rs
+--- a/codex-rs/thread-store/src/local/mod.rs
++++ b/codex-rs/thread-store/src/local/mod.rs
+@@ -8,6 +8,8 @@
+ mod move_thread_to_section;
+ mod paginated_fork;
+ mod pending_thread_metadata;
++mod portable_history;
++mod portable_history_import;
+ mod projects;
+ mod read_thread;
+ mod revert_thread;
+@@ -501,6 +503,21 @@
+         Box::pin(LocalThreadStore::load_history(self, params))
+     }
+ 
++    fn import_portable_history(
++        &self,
++        transfer_id: ThreadId,
++        snapshot: crate::PortableThreadHistory,
++    ) -> ThreadStoreFuture<'_, std::path::PathBuf> {
++        Box::pin(portable_history_import::import(self, transfer_id, snapshot))
++    }
++
++    fn export_portable_history(
++        &self,
++        params: LoadThreadHistoryParams,
++    ) -> ThreadStoreFuture<'_, crate::PortableThreadHistory> {
++        Box::pin(portable_history::export(self, params))
++    }
++
+     fn load_latest_model_context(
+         &self,
+         params: LoadThreadHistoryParams,
+diff --git a/codex-rs/thread-store/src/local/portable_history.rs b/codex-rs/thread-store/src/local/portable_history.rs
+new file mode 100644
+--- /dev/null
++++ b/codex-rs/thread-store/src/local/portable_history.rs
+@@ -0,0 +1,125 @@
++use std::io::Read;
++use std::path::Path;
++
++use codex_protocol::protocol::ThreadHistoryMode;
++use codex_rollout::RolloutItem;
++use codex_rollout::RolloutLine;
++
++use super::LocalThreadStore;
++use super::thread_rollout_resolver;
++use crate::LoadThreadHistoryParams;
++use crate::PortableRolloutSegment;
++use crate::PortableThreadHistory;
++use crate::ThreadStoreError;
++use crate::ThreadStoreResult;
++
++fn storage_error(error: impl std::fmt::Display) -> ThreadStoreError {
++    ThreadStoreError::Internal {
++        message: format!("portable history capture failed: {error}"),
++    }
++}
++
++pub(super) async fn export(
++    store: &LocalThreadStore,
++    params: LoadThreadHistoryParams,
++) -> ThreadStoreResult<PortableThreadHistory> {
++    let _local_writer = store.live_writer_locks.lock(params.thread_id).await;
++    // The live recorder owns its interprocess lock. Offline reads acquire it so
++    // another process cannot mutate/revert this conversation during capture.
++    let _writer = store.acquire_writer_locks(&[params.thread_id]).await?;
++    let selected = if params.include_archived {
++        thread_rollout_resolver::resolve_current_including_archived(store, params.thread_id).await?
++    } else {
++        thread_rollout_resolver::resolve_current(store, params.thread_id).await?
++    }
++    .ok_or(ThreadStoreError::ThreadNotFound {
++        thread_id: params.thread_id,
++    })?;
++    let database = store
++        .state_db()
++        .await
++        .ok_or_else(|| storage_error("metadata database is unavailable"))?;
++    let metadata = database
++        .get_thread(params.thread_id)
++        .await
++        .map_err(storage_error)?
++        .ok_or_else(|| storage_error("thread metadata is absent"))?;
++    let segments = if metadata.history_mode == ThreadHistoryMode::Paginated {
++        store
++            .resolve_rollout_lineage(params.thread_id)
++            .await?
++            .segments()
++            .iter()
++            .map(|segment| {
++                (
++                    segment.rollout_id,
++                    segment.rollout_path.clone(),
++                    segment.end.map(|end| end.end_byte_offset),
++                )
++            })
++            .collect::<Vec<_>>()
++    } else {
++        vec![(selected.rollout_id, selected.path.clone(), None)]
++    };
++    let thread_id = params.thread_id;
++    let segments = tokio::task::spawn_blocking(move || {
++        let mut output = Vec::new();
++        for (rollout_id, path, end) in segments {
++            let content = read_segment(&path, end)?;
++            output.push(PortableRolloutSegment {
++                rollout_id,
++                content,
++            });
++        }
++        let root = output
++            .last()
++            .ok_or_else(|| storage_error("empty lineage"))?;
++        let head: RolloutLine = serde_json::from_str(root.content.lines().next().unwrap_or(""))
++            .map_err(storage_error)?;
++        if !matches!(head.item, RolloutItem::SessionMeta(meta) if meta.meta.id == thread_id) {
++            return Err(storage_error("selected rollout belongs to another thread"));
++        }
++        Ok(output)
++    })
++    .await
++    .map_err(storage_error)??;
++    let mut queue = Vec::new();
++    loop {
++        let page = database
++            .thread_queue()
++            .list_page(params.thread_id, queue.len(), 1000)
++            .await
++            .map_err(storage_error)?;
++        let count = page.len();
++        queue.extend(page);
++        if count < 1000 {
++            break;
++        }
++    }
++    Ok(PortableThreadHistory {
++        version: 1,
++        thread_id: params.thread_id,
++        metadata,
++        segments,
++        queue,
++    })
++}
++
++fn read_segment(path: &Path, end: Option<u64>) -> ThreadStoreResult<String> {
++    let input = codex_rollout::open_rollout_seekable_reader(path).map_err(storage_error)?;
++    let mut bytes = Vec::new();
++    input
++        .take(end.unwrap_or(u64::MAX))
++        .read_to_end(&mut bytes)
++        .map_err(storage_error)?;
++    if end.is_some_and(|end| end != bytes.len() as u64) || !bytes.ends_with(b"\n") {
++        return Err(storage_error("history prefix is truncated or incomplete"));
++    }
++    let content = String::from_utf8(bytes).map_err(storage_error)?;
++    // Do not reserialize: HistoryPosition includes exact byte offsets. Reject
++    // malformed input rather than acknowledging an incomplete conversation.
++    for line in content.lines().filter(|line| !line.trim().is_empty()) {
++        serde_json::from_str::<RolloutLine>(line).map_err(storage_error)?;
++    }
++    Ok(content)
++}
+diff --git a/codex-rs/thread-store/src/local/portable_history_import.rs b/codex-rs/thread-store/src/local/portable_history_import.rs
+new file mode 100644
+--- /dev/null
++++ b/codex-rs/thread-store/src/local/portable_history_import.rs
+@@ -0,0 +1,306 @@
++//! Destination-side publication. Staged files contain only the selected bounded
++//! ancestry. No account configuration, credentials or unrelated database is copied.
++use std::collections::HashSet;
++use std::fs;
++use std::io::Write;
++use std::path::Path;
++use std::path::PathBuf;
++
++use codex_protocol::ThreadId;
++use codex_protocol::protocol::ThreadHistoryMode;
++use codex_rollout::RolloutItem;
++use codex_rollout::RolloutLine;
++
++use super::LocalThreadStore;
++use crate::PortableThreadHistory;
++use crate::ThreadStoreError;
++use crate::ThreadStoreResult;
++
++fn error(error: impl std::fmt::Display) -> ThreadStoreError {
++    ThreadStoreError::Internal {
++        message: format!("portable history import failed: {error}"),
++    }
++}
++fn conflict(message: &str) -> ThreadStoreError {
++    ThreadStoreError::Conflict {
++        message: message.into(),
++    }
++}
++
++pub(super) async fn import(
++    store: &LocalThreadStore,
++    transfer_id: ThreadId,
++    snapshot: PortableThreadHistory,
++) -> ThreadStoreResult<PathBuf> {
++    let files = validate(&snapshot)?;
++    let thread_id = snapshot.thread_id;
++    let mut ids = snapshot
++        .segments
++        .iter()
++        .map(|s| s.rollout_id)
++        .collect::<Vec<_>>();
++    ids.push(thread_id);
++    ids.sort_by_key(ToString::to_string);
++    ids.dedup();
++    let mut local_writers = Vec::new();
++    for id in &ids {
++        local_writers.push(store.live_writer_locks.lock(*id).await);
++        store.ensure_live_recorder_absent(*id).await?;
++    }
++    let _writers = store.acquire_writer_locks(&ids).await?;
++    let database = store
++        .state_db()
++        .await
++        .ok_or_else(|| error("metadata database is unavailable"))?;
++    let subdir = if snapshot.metadata.archived_at.is_some() {
++        codex_rollout::ARCHIVED_SESSIONS_SUBDIR
++    } else {
++        codex_rollout::SESSIONS_SUBDIR
++    };
++    // Recursive rollout-ID lookup sees ancestors here, while the ordinary date
++    // directory discovery does not invent extra chats from ancestor fragments.
++    let destination = store
++        .config
++        .codex_home
++        .join(subdir)
++        .join(format!("managed-transfer-{transfer_id}"));
++    let root_path = destination.join(files.last().ok_or_else(|| error("empty lineage"))?);
++    let manifest = serde_json::to_vec(&snapshot).map_err(error)?;
++    let mut metadata = snapshot.metadata.clone();
++    metadata.rollout_path = root_path.clone();
++    if let Some(existing) = database.get_thread(thread_id).await.map_err(error)? {
++        if existing.rollout_path != root_path {
++            return Err(conflict(
++                "migration destination conversation already exists",
++            ));
++        }
++        // The import can be acknowledged before its last response reaches the
++        // worker. Exact retries return the prior result without changing history.
++        verify_manifest(&destination, &manifest)?;
++        if destination.join("complete").is_file() {
++            return Ok(root_path);
++        }
++    }
++    for segment in &snapshot.segments {
++        if let Some(existing) = codex_rollout::find_rollout_path_by_rollout_id(
++            &store.config.codex_home,
++            segment.rollout_id,
++        )
++        .await
++        .map_err(error)?
++        {
++            if existing.parent() != Some(destination.as_path()) {
++                return Err(conflict(
++                    "migration destination already owns a source rollout",
++                ));
++            }
++        }
++    }
++    let stage = store
++        .config
++        .codex_home
++        .join("managed-history-staging")
++        .join(transfer_id.to_string());
++    let publish_destination = destination.clone();
++    let manifest_copy = manifest.clone();
++    let segments = snapshot.segments.clone();
++    let import_files = files.clone();
++    tokio::task::spawn_blocking(move || -> ThreadStoreResult<()> {
++        if publish_destination.exists() {
++            verify_manifest(&publish_destination, &manifest_copy)?;
++        } else {
++            private_dir(&stage)?;
++            write_exact(&stage.join("snapshot.json"), &manifest_copy)?;
++            for (segment, name) in segments.iter().zip(&import_files) {
++                write_exact(&stage.join(name), segment.content.as_bytes())?;
++            }
++            fs::File::open(&stage)
++                .and_then(|f| f.sync_all())
++                .map_err(error)?;
++            let parent = publish_destination
++                .parent()
++                .ok_or_else(|| error("missing parent"))?;
++            private_dir(parent)?;
++            fs::rename(&stage, &publish_destination).map_err(error)?;
++            fs::File::open(parent)
++                .and_then(|f| f.sync_all())
++                .map_err(error)?;
++        }
++        for (segment, name) in segments.iter().zip(&import_files) {
++            if fs::read(publish_destination.join(name)).map_err(error)?
++                != segment.content.as_bytes()
++            {
++                return Err(conflict(
++                    "published migration history changed before completion",
++                ));
++            }
++        }
++        Ok(())
++    })
++    .await
++    .map_err(error)??;
++    if metadata.history_mode == ThreadHistoryMode::Paginated {
++        for (segment, name) in snapshot.segments.iter().zip(&files) {
++            super::thread_history_materialization::materialize_to_sqlite(
++                store,
++                segment.rollout_id,
++                &destination.join(name),
++            )
++            .await?;
++        }
++    }
++    database
++        .thread_queue()
++        .restore_into_empty(thread_id, &snapshot.queue)
++        .await
++        .map_err(error)?;
++    // Metadata is the final visibility step. No existing row is overwritten.
++    let inserted = database
++        .insert_thread_if_absent(&metadata)
++        .await
++        .map_err(error)?;
++    if !inserted
++        && database
++            .get_thread(thread_id)
++            .await
++            .map_err(error)?
++            .is_none_or(|current| current.rollout_path != root_path)
++    {
++        return Err(conflict("migration destination changed during publication"));
++    }
++    let final_directory = destination.clone();
++    tokio::task::spawn_blocking(move || {
++        write_exact(&final_directory.join("complete"), b"1\n")?;
++        fs::File::open(&final_directory)
++            .and_then(|f| f.sync_all())
++            .map_err(error)
++    })
++    .await
++    .map_err(error)??;
++    Ok(root_path)
++}
++
++fn validate(snapshot: &PortableThreadHistory) -> ThreadStoreResult<Vec<String>> {
++    if snapshot.version != 1
++        || snapshot.metadata.id != snapshot.thread_id
++        || snapshot.segments.is_empty()
++    {
++        return Err(conflict("invalid portable history identity or version"));
++    }
++    let mut seen = HashSet::new();
++    let mut names = Vec::new();
++    let mut previous = None;
++    for segment in &snapshot.segments {
++        if !seen.insert(segment.rollout_id) || !segment.content.ends_with('\n') {
++            return Err(conflict("duplicate or incomplete portable history segment"));
++        }
++        let mut lines = segment
++            .content
++            .lines()
++            .filter(|line| !line.trim().is_empty());
++        let first: RolloutLine = serde_json::from_str(lines.next().unwrap_or("")).map_err(error)?;
++        let RolloutItem::SessionMeta(meta) = first.item else {
++            return Err(conflict("portable history segment has no session metadata"));
++        };
++        if meta.meta.history_mode != snapshot.metadata.history_mode {
++            return Err(conflict("portable history modes disagree"));
++        }
++        if let Some(base) = meta.meta.history_base {
++            if previous != Some((base.thread_id, base.end_byte_offset)) {
++                return Err(conflict(
++                    "portable history ancestry or byte cutoff is incomplete",
++                ));
++            }
++        } else if previous.is_some() {
++            return Err(conflict("portable history contains an unrelated segment"));
++        }
++        for line in lines {
++            let record: RolloutLine = serde_json::from_str(line).map_err(error)?;
++            if matches!(record.item, RolloutItem::SessionMeta(_)) {
++                return Err(conflict("unexpected session metadata inside a segment"));
++            }
++        }
++        let suffix = if meta.meta.id == segment.rollout_id {
++            String::new()
++        } else {
++            format!("_{}", segment.rollout_id)
++        };
++        let timestamp = chrono::DateTime::parse_from_rfc3339(&meta.meta.timestamp)
++            .map_err(error)?
++            .format("%Y-%m-%dT%H-%M-%S");
++        names.push(format!(
++            "rollout-{timestamp}-{}{suffix}.jsonl",
++            meta.meta.id
++        ));
++        previous = Some((segment.rollout_id, segment.content.len() as u64));
++    }
++    let root: RolloutLine = serde_json::from_str(
++        snapshot
++            .segments
++            .last()
++            .unwrap()
++            .content
++            .lines()
++            .next()
++            .unwrap(),
++    )
++    .map_err(error)?;
++    if !matches!(root.item, RolloutItem::SessionMeta(meta) if meta.meta.id == snapshot.thread_id) {
++        return Err(conflict(
++            "portable history root belongs to another conversation",
++        ));
++    }
++    Ok(names)
++}
++
++fn private_dir(path: &Path) -> ThreadStoreResult<()> {
++    let mut builder = fs::DirBuilder::new();
++    builder.recursive(true);
++    #[cfg(unix)]
++    {
++        use std::os::unix::fs::DirBuilderExt;
++        builder.mode(0o700);
++    }
++    builder.create(path).map_err(error)
++}
++fn verify_manifest(directory: &Path, expected: &[u8]) -> ThreadStoreResult<()> {
++    if fs::read(directory.join("snapshot.json")).map_err(error)? != expected {
++        return Err(conflict(
++            "migration operation ID was reused for a different snapshot",
++        ));
++    }
++    Ok(())
++}
++fn write_exact(path: &Path, content: &[u8]) -> ThreadStoreResult<()> {
++    let mut options = fs::OpenOptions::new();
++    options.write(true).create_new(true);
++    #[cfg(unix)]
++    {
++        use std::os::unix::fs::OpenOptionsExt;
++        options.mode(0o600);
++    }
++    match options.open(path) {
++        Ok(mut file) => {
++            file.write_all(content)
++                .and_then(|_| file.sync_all())
++                .map_err(error)?;
++        }
++        Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
++            let existing = fs::read(path).map_err(error)?;
++            if !content.starts_with(&existing) {
++                return Err(conflict(
++                    "migration staging file differs from the requested snapshot",
++                ));
++            }
++            let mut file = fs::OpenOptions::new()
++                .append(true)
++                .open(path)
++                .map_err(error)?;
++            file.write_all(&content[existing.len()..])
++                .and_then(|_| file.sync_all())
++                .map_err(error)?;
++        }
++        Err(err) => return Err(error(err)),
++    }
++    Ok(())
++}
+diff --git a/codex-rs/thread-store/src/local/portable_history_tests.rs b/codex-rs/thread-store/src/local/portable_history_tests.rs
+new file mode 100644
+--- /dev/null
++++ b/codex-rs/thread-store/src/local/portable_history_tests.rs
+@@ -0,0 +1,297 @@
++use super::*;
++use crate::LoadThreadHistoryParams;
++use crate::ThreadMetadataPatch;
++use crate::UpdateThreadMetadataParams;
++use crate::{ItemSortKey, ListItemsParams};
++use pretty_assertions::assert_eq;
++
++async fn portable_turns(store: &LocalThreadStore, thread_id: ThreadId) -> serde_json::Value {
++    let page = store
++        .list_turns(ListTurnsParams {
++            thread_id,
++            include_archived: false,
++            cursor: None,
++            page_size: 100,
++            sort_direction: SortDirection::Asc,
++            items_view: StoredTurnItemsView::Summary,
++        })
++        .await
++        .unwrap();
++    let mut value = serde_json::to_value(page.turns).unwrap();
++    for turn in value.as_array_mut().unwrap() {
++        for item in turn["items"].as_array_mut().unwrap() {
++            // Physical offsets are rebuilt; durable item IDs and timestamps must match.
++            item.as_object_mut().unwrap().remove("updated_at_ordinal");
++        }
++    }
++    let page = store
++        .list_items(ListItemsParams {
++            thread_id,
++            turn_id: None,
++            include_archived: false,
++            cursor: None,
++            page_size: 100,
++            sort_direction: SortDirection::Asc,
++            sort_key: ItemSortKey::CreatedAtOrdinal,
++            after_updated_at_ordinal: None,
++        })
++        .await
++        .unwrap();
++    assert!(page.next_cursor.is_none());
++    let mut items = serde_json::to_value(page.items).unwrap();
++    for item in items.as_array_mut().unwrap() {
++        item.as_object_mut().unwrap().remove("updated_at_ordinal");
++    }
++    serde_json::json!({ "turns": value, "items": items })
++}
++
++#[tokio::test]
++async fn portable_history_preserves_nested_frozen_ancestry_and_child_visibility() {
++    for child_only in [false, true] {
++        let home = TempDir::new().unwrap();
++        let destination = TempDir::new().unwrap();
++        let store = projection_store(home.path()).await;
++        let ancestor = ThreadId::new();
++        create_paginated_thread(&store, ancestor).await;
++        store
++            .persist_thread(ancestor, PersistContext::Standard)
++            .await
++            .unwrap();
++        store
++            .append_items(AppendThreadItemsParams {
++                thread_id: ancestor,
++                items: vec![
++                    turn_started("ancestor-turn"),
++                    user_message("ancestor before cutoff"),
++                    completed_item(
++                        ancestor,
++                        "ancestor-turn",
++                        agent_message("ancestor-answer", MessagePhase::FinalAnswer),
++                    ),
++                    turn_completed("ancestor-turn"),
++                ],
++            })
++            .await
++            .unwrap();
++        let ancestor_base = prepare_paginated_fork(&store, ancestor, ForkBoundary::Latest)
++            .await
++            .history_base
++            .unwrap();
++        store
++            .append_items(AppendThreadItemsParams {
++                thread_id: ancestor,
++                items: vec![
++                    turn_started("later-turn"),
++                    user_message("must not cross the frozen cutoff"),
++                    turn_completed("later-turn"),
++                ],
++            })
++            .await
++            .unwrap();
++        let ancestor_path = store.live_rollout_path(ancestor).await.unwrap();
++        store.shutdown_thread(ancestor).await.unwrap();
++        let middle = ThreadId::new();
++        create_paginated_subagent_thread(&store, middle, Some(ancestor_base), None).await;
++        store
++            .persist_thread(middle, PersistContext::Standard)
++            .await
++            .unwrap();
++        store
++            .append_items(AppendThreadItemsParams {
++                thread_id: middle,
++                items: vec![
++                    turn_started("middle-turn"),
++                    user_message("middle history"),
++                    completed_item(
++                        middle,
++                        "middle-turn",
++                        agent_message("middle-answer", MessagePhase::FinalAnswer),
++                    ),
++                    turn_completed("middle-turn"),
++                ],
++            })
++            .await
++            .unwrap();
++        let middle_base = prepare_paginated_fork(&store, middle, ForkBoundary::Latest)
++            .await
++            .history_base
++            .unwrap();
++        let middle_path = store.live_rollout_path(middle).await.unwrap();
++        store.shutdown_thread(middle).await.unwrap();
++        let leaf = ThreadId::new();
++        create_paginated_subagent_thread(
++            &store,
++            leaf,
++            Some(middle_base),
++            child_only.then_some(middle_base.end_ordinal_exclusive + 1),
++        )
++        .await;
++        store
++            .persist_thread(leaf, PersistContext::Standard)
++            .await
++            .unwrap();
++        store
++            .append_items(AppendThreadItemsParams {
++                thread_id: leaf,
++                items: vec![
++                    turn_started("leaf-turn"),
++                    user_message("leaf history"),
++                    completed_item(
++                        leaf,
++                        "leaf-turn",
++                        agent_message("leaf-answer", MessagePhase::FinalAnswer),
++                    ),
++                    turn_completed("leaf-turn"),
++                ],
++            })
++            .await
++            .unwrap();
++        store.flush_thread(leaf).await.unwrap();
++        store
++            .update_thread_metadata(UpdateThreadMetadataParams {
++                thread_id: leaf,
++                include_archived: false,
++                patch: ThreadMetadataPatch {
++                    name: Some(Some("Retained name".into())),
++                    ..Default::default()
++                },
++            })
++            .await
++            .unwrap();
++        let queued = store
++            .state_db()
++            .await
++            .unwrap()
++            .thread_queue()
++            .enqueue(leaf, r#"{"input":[{"type":"text","text":"pending"}]}"#)
++            .await
++            .unwrap();
++        compress_rollout(&ancestor_path);
++        compress_rollout(&middle_path);
++        let before = portable_turns(&store, leaf).await;
++        let snapshot = store
++            .export_portable_history(LoadThreadHistoryParams {
++                thread_id: leaf,
++                include_archived: false,
++            })
++            .await
++            .unwrap();
++        assert_eq!(snapshot.queue, vec![queued]);
++        assert_eq!(snapshot.metadata.name.as_deref(), Some("Retained name"));
++        let encoded = serde_json::to_string(&snapshot).unwrap();
++        assert!(encoded.contains("ancestor before cutoff"));
++        assert!(encoded.contains("middle history"));
++        assert!(!encoded.contains("must not cross the frozen cutoff"));
++        assert_eq!(snapshot.segments.len(), 3);
++        let target = projection_store(destination.path()).await;
++        let transfer_id = ThreadId::new();
++        // Real filesystem failure: the staging root is a file. No history
++        // metadata becomes visible and retry does not require a fresh runtime.
++        let staging_root = destination.path().join("managed-history-staging");
++        fs::write(&staging_root, b"blocked by fixture").unwrap();
++        assert!(
++            target
++                .import_portable_history(transfer_id, snapshot.clone())
++                .await
++                .is_err()
++        );
++        assert!(
++            target
++                .state_db()
++                .await
++                .unwrap()
++                .get_thread(leaf)
++                .await
++                .unwrap()
++                .is_none()
++        );
++        fs::remove_file(&staging_root).unwrap();
++        // An interrupted write left an incomplete unpublished manifest. The
++        // same operation repairs only its matching prefix and retains queue IDs.
++        let stage = staging_root.join(transfer_id.to_string());
++        fs::create_dir_all(&stage).unwrap();
++        let manifest = serde_json::to_vec(&snapshot).unwrap();
++        fs::write(stage.join("snapshot.json"), &manifest[..manifest.len() / 2]).unwrap();
++        // A real conflicting destination queue fails after files/projections
++        // were published. Clearing the fixture conflict permits an exact retry.
++        let conflict = target
++            .state_db()
++            .await
++            .unwrap()
++            .thread_queue()
++            .enqueue(leaf, "other pending input")
++            .await
++            .unwrap();
++        assert!(
++            target
++                .import_portable_history(transfer_id, snapshot.clone())
++                .await
++                .is_err()
++        );
++        assert!(
++            target
++                .state_db()
++                .await
++                .unwrap()
++                .get_thread(leaf)
++                .await
++                .unwrap()
++                .is_none()
++        );
++        target
++            .state_db()
++            .await
++            .unwrap()
++            .thread_queue()
++            .delete(leaf, &conflict.id)
++            .await
++            .unwrap();
++        let path = target
++            .import_portable_history(transfer_id, snapshot.clone())
++            .await
++            .unwrap();
++        assert_eq!(
++            target
++                .import_portable_history(transfer_id, snapshot.clone())
++                .await
++                .unwrap(),
++            path
++        );
++        let queue = target
++            .state_db()
++            .await
++            .unwrap()
++            .thread_queue()
++            .list_page(leaf, 0, 100)
++            .await
++            .unwrap();
++        assert_eq!(queue, snapshot.queue);
++        let metadata = target
++            .state_db()
++            .await
++            .unwrap()
++            .get_thread(leaf)
++            .await
++            .unwrap()
++            .unwrap();
++        assert_eq!(metadata.name, snapshot.metadata.name);
++        assert_eq!(metadata.model, snapshot.metadata.model);
++        assert_eq!(metadata.cwd, snapshot.metadata.cwd);
++        assert_eq!(metadata.tokens_used, snapshot.metadata.tokens_used);
++        assert!(
++            target
++                .import_portable_history(ThreadId::new(), snapshot.clone())
++                .await
++                .is_err()
++        );
++        let mut conflicting = snapshot.clone();
++        conflicting.metadata.title = "different transfer".into();
++        assert!(
++            target
++                .import_portable_history(transfer_id, conflicting)
++                .await
++                .is_err()
++        );
++        assert_eq!(portable_turns(&target, leaf).await, before);
++    }
++}
+diff --git a/codex-rs/thread-store/src/local/thread_history_materialization_tests.rs b/codex-rs/thread-store/src/local/thread_history_materialization_tests.rs
+--- a/codex-rs/thread-store/src/local/thread_history_materialization_tests.rs
++++ b/codex-rs/thread-store/src/local/thread_history_materialization_tests.rs
+@@ -2744,3 +2744,6 @@
+ 
+ #[path = "history_snapshot_tests.rs"]
+ mod history_snapshot_tests;
++
++#[path = "portable_history_tests.rs"]
++mod portable_history_tests;
+diff --git a/codex-rs/thread-store/src/portable_history.rs b/codex-rs/thread-store/src/portable_history.rs
+new file mode 100644
+--- /dev/null
++++ b/codex-rs/thread-store/src/portable_history.rs
+@@ -0,0 +1,27 @@
++//! Complete, worker-private conversation transport. This is not model input or
++//! an account configuration export. History identity and event timestamps survive.
++use codex_protocol::ThreadId;
++use codex_state::QueuedUserSubmissionRecord;
++use codex_state::ThreadMetadata;
++use serde::Deserialize;
++use serde::Serialize;
++
++#[derive(Clone, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct PortableThreadHistory {
++    pub version: u32,
++    pub thread_id: ThreadId,
++    pub metadata: ThreadMetadata,
++    pub segments: Vec<PortableRolloutSegment>,
++    pub queue: Vec<QueuedUserSubmissionRecord>,
++}
++
++/// Exact decoded bytes preserve native ordinals, frozen byte cutoffs, canonical
++/// item identity and each ancestor's own visibility boundary. Only the selected
++/// prefix is included; no other conversation or account configuration is copied.
++#[derive(Clone, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct PortableRolloutSegment {
++    pub rollout_id: ThreadId,
++    pub content: String,
++}
+diff --git a/codex-rs/thread-store/src/store.rs b/codex-rs/thread-store/src/store.rs
+--- a/codex-rs/thread-store/src/store.rs
++++ b/codex-rs/thread-store/src/store.rs
+@@ -156,6 +156,34 @@
+         })
+     }
+ 
++    /// Captures complete presentation history, including frozen fork ancestry,
++    /// metadata and pending input. Callers must serialize native commands and flush
++    /// the live writer; this operation must never substitute a compacted context.
++    fn export_portable_history(
++        &self,
++        _params: LoadThreadHistoryParams,
++    ) -> ThreadStoreFuture<'_, crate::PortableThreadHistory> {
++        Box::pin(async {
++            Err(ThreadStoreError::Unsupported {
++                operation: "export_portable_history",
++            })
++        })
++    }
++
++    /// Publish a worker-owned transfer into an unused destination conversation.
++    /// The operation ID is durable and retries never replace an existing writer.
++    fn import_portable_history(
++        &self,
++        _transfer_id: ThreadId,
++        _snapshot: crate::PortableThreadHistory,
++    ) -> ThreadStoreFuture<'_, std::path::PathBuf> {
++        Box::pin(async {
++            Err(ThreadStoreError::Unsupported {
++                operation: "import_portable_history",
++            })
++        })
++    }
++
+     /// Loads the persisted rollout items needed to reconstruct the latest model-visible context.
+     ///
+     /// Implementations that cannot perform a targeted read may return the full persisted history.

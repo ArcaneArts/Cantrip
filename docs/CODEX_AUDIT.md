@@ -3078,6 +3078,79 @@ Still required: controlled provider/account migration with native history and
 queue continuity, remaining all-origin acceptance, GUI-first eager preparation,
 and the final user implementation test.
 
+### Pass 35 — portable native history for account migration
+
+A two-provider/two-home probe against the pass-34 packaged runtime confirmed
+that a path-only handoff cannot resume paginated history in a destination account:
+its native store cannot resolve the source rollout through its own namespace.
+Reviewed patch `0033` adds native history export/import as a foundation for the
+controlled migration controller. It does not yet expose an app-facing migration.
+
+The worker-private snapshot contains complete native records, persisted thread
+metadata and ordered queued input. It follows frozen paginated ancestry, including
+older records beyond compacted model context, and preserves exact segment bytes,
+ordinals, byte cutoffs, item IDs and event timestamps. It copies only the selected
+bounded lineage, not account configuration, credentials or unrelated histories.
+A native test caught changed child-history visibility in an initial flattening
+approach; preserving the original segments resolves that failure.
+
+`thread/managedHistory/export` flushes the live writer, checks actual native
+activity and the expected last turn, and publishes a private artifact without
+clobbering another operation. `thread/managedHistory/import` requires an unused,
+unloaded destination conversation. It acquires writer locks, stages the original
+segments, publishes their directory, rebuilds native projections, restores the
+queue transactionally, and publishes root metadata last. A stable operation ID
+supports retries after interrupted writes and partial publication. An acknowledged
+old import can be retried without rolling back newer destination history or
+resurrecting input the destination already removed. RPC results contain local
+artifact paths rather than conversation-sized JSON payloads.
+
+Validation:
+
+- The standard packaged native release build completed, verifying all 6,499
+  pristine imported files and 32 ordered reviewed patches.
+- The actual packaged runtime passes both legacy and paginated transfer cases.
+  Real requests move from isolated provider A to B and back to A in a fresh
+  namespace, retaining native history and prior input. The fixture checks cold
+  restart, exact retries, retained queue IDs, source preservation, conflicting
+  destination defaults, and empty prepared-thread transfer with zero inference.
+  Active export, stale boundaries, loaded import and existing-source collisions
+  are rejected using actual native operations. Queued input remains pending;
+  the fixture answers native execution admission requests with a denial instead
+  of accidentally running the queue or leaving admission unresolved.
+- The native storage test passes nested/compressed ancestry with both inherited
+  and child-only visibility, exact message identity, truncated-manifest repair,
+  a real staging obstruction, a queue conflict after file publication, and retry
+  after removing only the fixture obstruction. App-server compile checks pass.
+- The four-file packaged regression selection initially passed 39 tests with one
+  stale empty-attachment assertion failing. The same failure reproduced against
+  the unchanged pass-34 bundle: the assertion expected old child defaults and an
+  unchanged revision after explicit configuration edits. That fixture now uses
+  the real read-only settings RPC and verifies current child settings plus exact
+  version preservation across view attachment. All eight cases in that file pass
+  on rerun; the other three files passed their 32 cases covering context recovery,
+  settings and managed queue execution.
+- Worker typechecking and both patch-verifier regression tests pass. The standard
+  `pnpm check` stops at existing server file-size budgets (`chat-turn-runtime.ts`
+  2321/1999 and `task-routes.ts` 2149/1999); it is not reported as passing.
+
+The first packaged build stalled before Cargo: process samples showed
+`git apply -` waiting for stdin while its synchronous Node parent waited for the
+child. Verification now writes the exact supplied bytes to a disposable patch
+file and runs `git apply` with stdin ignored. Ordered real application is still
+required, and both dependent-patch and broken-patch tests pass. No CI, personal
+application input, user worker restart or real-account inference ran.
+
+Remaining full-goal work includes the durable provider/account handoff controller,
+actual credential/runtime routing, CLI retargeting, canonical queue/settings and
+attachment continuity, and provider-valid model context. Before enabling the
+controller, cover destination reconciliation of SQLite-only memory mode and
+section/project/goal state; the history snapshot is not a copy of an account's
+whole database. Provider-specific encrypted context must not be blindly reused
+across accounts. Eager GUI-first startup and the complete acceptance matrix remain
+required after these shared paths work. This storage pass does not establish the
+full migration or CLI/GUI integration goal.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal
