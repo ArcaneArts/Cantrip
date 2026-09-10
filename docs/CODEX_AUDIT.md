@@ -4993,6 +4993,49 @@ This closes the active whole-worker recovery gap found in pass 69. It does not
 claim the remaining acceptance reconciliation, rendered GUI/mobile test or final
 user desktop demo is complete.
 
+### Pass 71 — recover previously published provisional Plan output
+
+Pass 70 fixes new live encryption. A deterministic upgrade fixture then proved
+that an already stored provisional default-mode answer still blocked its first
+Plan-mode canonical commit with HTTP 409 after projection reopened. The original
+native item and message identity were intact; the mismatch was in the old live
+classification.
+
+The first canonical commit can now repair that specific provisional output while
+atomically replacing its encrypted content and public classification. It requires
+an uncommitted canonical assistant/activity reservation, no input alias or
+preserved input, the old default-mode assistant classification, the new Plan
+classification, and the bound worker's protected native evidence. Chat, thread,
+message identity, ownership and ciphertext requirements still apply. Committed
+revisions cannot change mode through this path, and reverse mode changes, user
+records and evidence-free writes remain rejected. The original message ID is
+retained; no input is replayed and no authority is restored.
+
+Validation: the original failing HTTP reproduction now passes after reopening
+projection and simulating a lost acknowledgement following the successful
+repair. A second test covers adoption of an older deterministic output ID using
+its exact historical command/turn proof, followed by another reopen and revision.
+Both normal and Plan mode variants decrypt the final answer and preserve the
+original user message's mode. Four rejection tests verify real HTTP/database
+rollback for committed history, missing evidence, reverse changes and user
+content. The full projection suite passed 26 cases before the additional Plan
+alias case; the final three upgrade/adoption cases passed afterward. Focused
+worker worktree/app-server tests (90) and app worktree/History tests (57) passed;
+all source typechecks and the app production build passed. The focused server
+matrix retains its baseline 21 failures and 53 passes; every failure heading
+matches pass 70. The final required `pnpm check` passed source verification,
+CLI/CUA checks, all source typechecks and the CUA regression matrix, then stopped
+on the same 40 server failures as pass 70 (1,368 passed, 70 skipped; no new failure
+headings). Full worker/app suites and global formatting were not reached;
+scoped formatting and diff checks passed.
+
+No native runtime or CUA input code changed. The initial required check hit the
+same two unchanged Rust large-score timing failures recorded in pass 69; a
+serialized Rust-test rerun passed all 111 Rust library tests. No CI,
+personal inference, live desktop input or user worker restart was performed.
+The remaining full-goal acceptance reconciliation and final user demo are still
+outstanding.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal

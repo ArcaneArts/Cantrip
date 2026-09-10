@@ -799,13 +799,19 @@ describe("durable native history projection transactions", () => {
     expect((await canonical()).messages).toHaveLength(1);
   });
 
-  it.each(
-    (["default", "plan"] as const).flatMap((mode) =>
-      [false, true].map((sealerFirst) => ({ mode, sealerFirst })),
+  it.each([
+    ...(["default", "plan"] as const).flatMap((mode) =>
+      [false, true].map((sealerFirst) => ({
+        mode,
+        sealerFirst,
+        legacy: false,
+      })),
     ),
-  )(
-    "shares a fresh $mode output identity before encryption (sealer first=$sealerFirst)",
-    async ({ mode, sealerFirst }) => {
+    { mode: "plan" as const, sealerFirst: true, legacy: true },
+  ])(
+    "shares a fresh $mode output identity before encryption (sealer first=$sealerFirst, legacy=$legacy)",
+    async ({ mode, sealerFirst, legacy }) => {
+      let liveMode: "default" | "plan" = legacy ? "default" : mode;
       const binding = await client.open({
         chatId: f.chatId,
         threadId,
@@ -829,7 +835,7 @@ describe("durable native history projection transactions", () => {
         f.chatId,
         { explanation: null, steps: [], question: null },
         createManagedNativeOutputIdentityResolver({
-          mode: async () => mode,
+          mode: async () => liveMode,
           client: { open: client.open.bind(client), resolve },
           scope: () => ({
             chatId: binding.chatId,
@@ -852,8 +858,24 @@ describe("durable native history projection transactions", () => {
             itemId: "shared-answer",
           },
         });
+      let loseReply = legacy;
+      const ingest = client.ingest.bind(client);
+      vi.spyOn(client, "ingest").mockImplementation(async (...args) => {
+        const receipt = await ingest(...args);
+        if (loseReply) {
+          loseReply = false;
+          throw new Error("fixture lost repaired-mode acknowledgement");
+        }
+        return receipt;
+      });
       const canonicalWrite = async () => {
         await event("shared-answer", "canonical final");
+        if (legacy) {
+          await expect(projection.drain()).rejects.toThrow(
+            "fixture lost repaired-mode acknowledgement",
+          );
+          projection = await reopen();
+        }
         await projection.drain();
       };
       if (!sealerFirst) await canonicalWrite();
@@ -865,7 +887,9 @@ describe("durable native history projection transactions", () => {
         f.chatId,
         old.message,
       );
+      if (legacy) projection = await reopen();
       if (sealerFirst) await canonicalWrite();
+      liveMode = mode;
       // A later streaming event has the same canonical identity and is returned
       // as the committed final output by the legacy publication route.
       const saved = await f.repository.upsertEncryptedMessage(
@@ -888,6 +912,7 @@ describe("durable native history projection transactions", () => {
           history: [],
           prompt: {
             ...old.message,
+            classification: { ...old.message.classification, mode },
             protectedContent: saved!.protectedContent!,
           },
         }),
@@ -895,139 +920,235 @@ describe("durable native history projection transactions", () => {
     },
   );
 
-  it("recovers an existing output by native turn over HTTP and updates it after reopening without duplicating the message", async () => {
-    const binding = await client.open({
-      chatId: f.chatId,
-      threadId,
-      provenance: { kind: "binding", bindingId: options.bindingId },
-    });
-    const original = await protectChatMessage({
-      id: randomUUID(),
-      service,
-      message: {
-        role: "user",
-        content: [{ type: "text", text: "GUI request" }],
-        idempotencyKey: "gui-request",
-      },
-    });
-    await f.repository.appendEncryptedMessage(f.ownerId, f.chatId, original);
-    const admission = nativeCommandAdmissionSchema.parse({
-      workerId: f.workerId,
-      operationId: randomUUID(),
-      origin: "gui",
-      method: "turn/start",
-      session: {
+  it.each(["committed", "no-evidence", "reverse", "user"] as const)(
+    "does not retag %s history when recovering a provisional output",
+    async (kind) => {
+      const binding = await client.open({
         chatId: f.chatId,
         threadId,
-        contextKind: "project",
-        projectId: f.projectId,
-        placementId: binding.worktreeId,
-        modelRouteId: binding.modelRouteId,
-        providerAccountId: binding.providerAccountId,
-        runtimeGeneration: randomUUID(),
-        connectionId: "output-recovery-fixture",
-      },
-      payloadDigest: "a".repeat(64),
-      protectedPayload: original.protectedContent.envelope,
-      expectedActivationGeneration: null,
-      intent: { scope: "thread" },
-    });
-    const grant = await f.repository.nativeCommands.admit(
-      f.ownerId,
-      admission,
-      { clientMessageId: original.id },
-    );
-    await f.repository.nativeCommands.dispatch(f.ownerId, {
-      workerId: f.workerId,
-      operationId: admission.operationId,
-      operationGeneration: grant.receipt.operationGeneration,
-      payloadDigest: admission.payloadDigest,
-      session: admission.session,
-    });
-    await f.repository.nativeCommands.settle(f.ownerId, {
-      workerId: f.workerId,
-      operationId: admission.operationId,
-      operationGeneration: grant.receipt.operationGeneration,
-      status: "applied",
-      protectedResult: original.protectedContent.envelope,
-      resultDigest: "b".repeat(64),
-      rejectionCode: null,
-      executionComplete: true,
-      reconciliation: {
-        nativeTurnId: "turn",
-        runtimeGeneration: admission.session.runtimeGeneration!,
-      },
-    });
-    // Recovery of already published outputs requests provenance by native
-    // identity; the worker does not have to know the command operation ID.
-    const associate = vi.fn(async () => ({ kind: "observed-output" as const }));
-    project.mockImplementation(
-      createNativeHistoryProjector({
+        provenance: { kind: "binding", bindingId: options.bindingId },
+      });
+      let canonicalMode: "default" | "plan" =
+        kind === "committed" || kind === "reverse" ? "default" : "plan";
+      const projectNative = createNativeHistoryProjector({
         binding,
         service,
         client,
-        associate,
-        context: async () => ({ cwd: directory, mode: "default" }),
-        materialize: async () => ({
-          attachments: [],
+        associate: async () => ({ kind: "output" }),
+        context: async () => ({ cwd: directory, mode: canonicalMode }),
+        materialize: async () => ({ attachments: [] }),
+      });
+      project.mockImplementation(async (...args) => {
+        const result = await projectNative(...args);
+        if (kind === "no-evidence")
+          for (const batch of result.batches)
+            for (const item of batch.items) delete item.evidence;
+        return result;
+      });
+      const resolver = createManagedNativeOutputIdentityResolver({
+        client,
+        mode: async () => (kind === "reverse" ? "plan" : "default"),
+        scope: () => ({
+          chatId: f.chatId,
+          threadId,
+          provenance: { kind: "binding", bindingId: binding.id },
         }),
-      }),
-    );
-    await event("answer", "recovered answer");
-    await expect(projection.drain()).rejects.toMatchObject({
-      code: "output-message-unavailable",
-    });
-    expect((await projection.checkpoint()).cursor.sequence).toBe(0);
-    expect((await canonical()).items).toEqual([]);
-    const sealer = new EncryptedChatEventSealer(service, f.chatId, {
-      explanation: null,
-      steps: [],
-      question: null,
-    });
-    const old = await sealer.message({
-      id: "answer",
-      text: "old partial answer",
-      phase: "final_answer",
-      streaming: true,
-      correlation: {
-        sourceMethod: "item/started",
-        diagnosticId: null,
-        threadId,
-        turnId: "turn",
-        itemId: "answer",
-      },
-    });
-    await f.repository.appendEncryptedMessage(f.ownerId, f.chatId, old.message);
-    const recovered = await reopen();
-    await recovered.drain();
-    let stored = await canonical();
-    expect(stored.messages).toHaveLength(2);
-    expect(stored.items[0]!.messageId).toBe(old.message.id);
-    expect(stored.items[0]!.outputOperationId).toBe(admission.operationId);
-    associate.mockImplementation(async () => {
-      throw new Error("Existing mapping must be reused");
-    });
-    await event("answer", "final recovered answer");
-    await (await reopen()).drain();
-    stored = await canonical();
-    expect(stored.messages).toHaveLength(2);
-    const final = stored.messages.find(
-      (message) => message.id === old.message.id,
-    )!;
-    expect(
-      await openEncryptedChatTurn({
+      });
+      const sealer = new EncryptedChatEventSealer(
         service,
-        threadId,
-        history: [],
-        prompt: {
-          ...old.message,
-          protectedContent: final.protectedContent!,
+        f.chatId,
+        { explanation: null, steps: [], question: null },
+        resolver,
+      );
+      let { message } = await sealer.message({
+        id: "protected-answer",
+        text: "old output",
+        phase: "final_answer",
+        correlation: {
+          sourceMethod: "item/completed",
+          diagnosticId: null,
+          threadId,
+          turnId: "turn",
+          itemId: "protected-answer",
         },
-      }),
-    ).toBe("final recovered answer");
-    expect(stored.items[0]!.revision).toBe(2);
-    expect(stored.items[0]!.protectedEvidence).not.toBeNull();
-  });
+      });
+      if (kind === "user")
+        message = await protectChatMessage({
+          service,
+          id: message.id,
+          message: {
+            role: "user",
+            mode: "default",
+            idempotencyKey: message.idempotencyKey,
+            content: [{ type: "text", text: "user content" }],
+          },
+        });
+      await f.repository.upsertEncryptedMessage(f.ownerId, f.chatId, message);
+      if (kind === "committed") {
+        await event("protected-answer", "committed answer");
+        await projection.drain();
+        canonicalMode = "plan";
+      }
+      const before = await canonical();
+      await event("protected-answer", "replacement must not apply");
+      await expect(projection.drain()).rejects.toMatchObject({
+        status: 409,
+        code: "item-canonical-message-conflict",
+      });
+      const after = await canonical();
+      expect(after.messages).toEqual(before.messages);
+      expect(after.items).toEqual(before.items);
+      expect(after.receipts).toEqual(before.receipts);
+    },
+  );
+
+  it.each(["default", "plan"] as const)(
+    "recovers an existing %s output by native turn over HTTP and updates it after reopening without duplicating the message",
+    async (mode) => {
+      const binding = await client.open({
+        chatId: f.chatId,
+        threadId,
+        provenance: { kind: "binding", bindingId: options.bindingId },
+      });
+      const original = await protectChatMessage({
+        id: randomUUID(),
+        service,
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "GUI request" }],
+          idempotencyKey: "gui-request",
+        },
+      });
+      await f.repository.appendEncryptedMessage(f.ownerId, f.chatId, original);
+      const admission = nativeCommandAdmissionSchema.parse({
+        workerId: f.workerId,
+        operationId: randomUUID(),
+        origin: "gui",
+        method: "turn/start",
+        session: {
+          chatId: f.chatId,
+          threadId,
+          contextKind: "project",
+          projectId: f.projectId,
+          placementId: binding.worktreeId,
+          modelRouteId: binding.modelRouteId,
+          providerAccountId: binding.providerAccountId,
+          runtimeGeneration: randomUUID(),
+          connectionId: "output-recovery-fixture",
+        },
+        payloadDigest: "a".repeat(64),
+        protectedPayload: original.protectedContent.envelope,
+        expectedActivationGeneration: null,
+        intent: { scope: "thread" },
+      });
+      const grant = await f.repository.nativeCommands.admit(
+        f.ownerId,
+        admission,
+        { clientMessageId: original.id },
+      );
+      await f.repository.nativeCommands.dispatch(f.ownerId, {
+        workerId: f.workerId,
+        operationId: admission.operationId,
+        operationGeneration: grant.receipt.operationGeneration,
+        payloadDigest: admission.payloadDigest,
+        session: admission.session,
+      });
+      await f.repository.nativeCommands.settle(f.ownerId, {
+        workerId: f.workerId,
+        operationId: admission.operationId,
+        operationGeneration: grant.receipt.operationGeneration,
+        status: "applied",
+        protectedResult: original.protectedContent.envelope,
+        resultDigest: "b".repeat(64),
+        rejectionCode: null,
+        executionComplete: true,
+        reconciliation: {
+          nativeTurnId: "turn",
+          runtimeGeneration: admission.session.runtimeGeneration!,
+        },
+      });
+      // Recovery of already published outputs requests provenance by native
+      // identity; the worker does not have to know the command operation ID.
+      const associate = vi.fn(async () => ({
+        kind: "observed-output" as const,
+      }));
+      project.mockImplementation(
+        createNativeHistoryProjector({
+          binding,
+          service,
+          client,
+          associate,
+          context: async () => ({ cwd: directory, mode }),
+          materialize: async () => ({
+            attachments: [],
+          }),
+        }),
+      );
+      await event("answer", "recovered answer");
+      await expect(projection.drain()).rejects.toMatchObject({
+        code: "output-message-unavailable",
+      });
+      expect((await projection.checkpoint()).cursor.sequence).toBe(0);
+      expect((await canonical()).items).toEqual([]);
+      const sealer = new EncryptedChatEventSealer(service, f.chatId, {
+        explanation: null,
+        steps: [],
+        question: null,
+      });
+      const old = await sealer.message({
+        id: "answer",
+        text: "old partial answer",
+        phase: "final_answer",
+        streaming: true,
+        correlation: {
+          sourceMethod: "item/started",
+          diagnosticId: null,
+          threadId,
+          turnId: "turn",
+          itemId: "answer",
+        },
+      });
+      await f.repository.appendEncryptedMessage(
+        f.ownerId,
+        f.chatId,
+        old.message,
+      );
+      const recovered = await reopen();
+      await recovered.drain();
+      let stored = await canonical();
+      expect(stored.messages).toHaveLength(2);
+      expect(stored.items[0]!.messageId).toBe(old.message.id);
+      expect(stored.items[0]!.outputOperationId).toBe(admission.operationId);
+      associate.mockImplementation(async () => {
+        throw new Error("Existing mapping must be reused");
+      });
+      await event("answer", "final recovered answer");
+      await (await reopen()).drain();
+      stored = await canonical();
+      expect(stored.messages).toHaveLength(2);
+      const final = stored.messages.find(
+        (message) => message.id === old.message.id,
+      )!;
+      expect(
+        await openEncryptedChatTurn({
+          service,
+          threadId,
+          history: [],
+          prompt: {
+            ...old.message,
+            classification: { ...old.message.classification, mode },
+            protectedContent: final.protectedContent!,
+          },
+        }),
+      ).toBe("final recovered answer");
+      expect(final.mode).toBe(mode);
+      expect(
+        stored.messages.find((message) => message.id === original.id)!.mode,
+      ).toBe("default");
+      expect(stored.items[0]!.revision).toBe(2);
+      expect(stored.items[0]!.protectedEvidence).not.toBeNull();
+    },
+  );
 
   it.each([false, true])(
     "automatically aliases observed native client IDs and preserves original attachments: %s",

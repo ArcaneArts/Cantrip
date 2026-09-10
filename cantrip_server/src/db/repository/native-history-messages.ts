@@ -88,6 +88,23 @@ export async function persistNativeHistoryMessages(
       )
       .for("update");
     const existing = matches[0];
+    // Before native mode was carried by live encryption, a provisional Plan
+    // output could be stored as default. The first canonical commit owns this
+    // exact reserved output and replaces ciphertext and classification together.
+    // Never retag inputs, committed history, fallback identities or bare writes
+    // without the bound worker's protected native evidence.
+    const recoverProvisionalPlanMode =
+      mapping.revision === 0 &&
+      mapping.payloadDigest === null &&
+      !mapping.preservedInput &&
+      !mapping.aliasOperationId &&
+      !mapping.aliasClaimId &&
+      mapping.identityKind === "canonical" &&
+      (mapping.component === "assistant" || mapping.component === "activity") &&
+      existing?.role === "assistant" &&
+      existing.mode === "default" &&
+      message.classification.mode === "plan" &&
+      item.evidence !== undefined;
     if (
       matches.length > 1 ||
       (existing &&
@@ -95,7 +112,8 @@ export async function persistNativeHistoryMessages(
           existing.id !== message.id ||
           existing.idempotencyKey !== message.idempotencyKey ||
           existing.role !== message.classification.role ||
-          existing.mode !== message.classification.mode ||
+          (existing.mode !== message.classification.mode &&
+            !recoverProvisionalPlanMode) ||
           !existing.protectedContent))
     )
       throw new NativeHistoryError("item-canonical-message-conflict");
