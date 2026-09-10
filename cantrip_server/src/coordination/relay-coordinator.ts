@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { createClient } from "redis";
+import { CUA_CONTROL_BYTES } from "@cantrip/protocol/computer-use";
 import {
   workerLinkSessionSchema,
   type WorkerLinkSession,
@@ -10,7 +11,10 @@ import { serverLogger } from "../logger.js";
 
 const DEFAULT_MESSAGE_TTL_MS = 60_000;
 const DEFAULT_PRESENCE_TTL_MS = 30_000;
-const MAX_COORDINATION_MESSAGE_BYTES = 12 * 1_024 * 1_024;
+// Carry the full encrypted control contract, including its tag/base64 expansion
+// and routing envelope. Snapshot image data still uses bounded chunks.
+const MAX_COORDINATION_MESSAGE_BYTES =
+  Math.ceil(((CUA_CONTROL_BYTES + 16) * 4) / 3) + 64 * 1_024;
 
 export interface WorkerPresenceClaim {
   connectionId: string;
@@ -49,7 +53,7 @@ export type RelayCoordinationPayload =
       ownerId: string;
       requestId: string;
       command: unknown;
-      timeoutMs: number;
+      timeoutMs: number | null;
     })
   | (CoordinationPayloadBase & {
       kind: "worker-command-event";
