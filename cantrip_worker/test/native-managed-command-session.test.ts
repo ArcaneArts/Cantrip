@@ -1,3 +1,4 @@
+import { createNativeCuaWorkerFixture } from "./native-cua-worker-fixture.js";
 import { TerminalManager } from "../src/terminal-manager.js";
 import { stripVTControlCharacters } from "node:util";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
@@ -70,6 +71,9 @@ describe.skipIf(!binary)(
   "native managed execution through worker admission",
   () => {
     it.each([
+      ...(process.env.CANTRIP_CUA_TEST_BINARY
+        ? (["terminal-cua", "gui-cua"] as const)
+        : []),
       "terminal",
       "terminal-question-gui",
       "terminal-question-cli",
@@ -79,10 +83,16 @@ describe.skipIf(!binary)(
       "gui-compaction",
       "gui-context-recovery",
     ] as const)(
-      "tracks %s turns, accepts GUI Stop, and gives the next turn fresh authority",
+      "tracks %s turns, accepts cross-view Stop, and gives the next turn fresh authority",
       async (origin) => {
+        const cuaCase = origin.endsWith("-cua");
+        const permissionProfileId = cuaCase ? ":yolo" : ":workspace";
+        let cua:
+          Awaited<ReturnType<typeof createNativeCuaWorkerFixture>> | undefined;
+        let releaseGuiCua: (() => Promise<void>) | undefined;
         const guiOrigin = origin.startsWith("gui");
         const terminalOrigin = origin.startsWith("terminal");
+        const realTuiStop = origin === "gui-cua";
         const questionCase = origin.startsWith("terminal-question");
         const pendingBodies: unknown[] = [];
         let publishedRequest: {
@@ -97,6 +107,10 @@ describe.skipIf(!binary)(
         const rejectedContext = compactionRetry || inPlaceRecovery;
         const retried = capacityRetry || rejectedContext;
         let modelAttempts = 0;
+        const cuaIssued = new Set<number>();
+        const cuaObserved = new Set<number>();
+        let cancelledTurnFollowups = 0;
+        const modelDiagnostics: unknown[] = [];
         const directory = await mkdtemp(
           path.join(tmpdir(), "cantrip-native-command-"),
         );
@@ -113,6 +127,86 @@ describe.skipIf(!binary)(
             return;
           }
           modelAttempts += 1;
+          const input = JSON.parse(inputText);
+          const lastUser = input.input?.findLast(
+            (item: Frame) => item.role === "user",
+          );
+          const cuaIndex = cuaCase
+            ? Number(
+                (JSON.stringify(lastUser) ?? "").match(
+                  /Synthetic input (\d+)/,
+                )?.[1],
+              )
+            : 0;
+          if (cuaCase && ![1, 2, 3].includes(cuaIndex)) {
+            response.writeHead(500).end("Missing synthetic turn identity");
+            return;
+          }
+          if (cuaCase && !cuaIssued.has(cuaIndex)) {
+            cuaIssued.add(cuaIndex);
+            const tool = input.tools
+              ?.flatMap((entry: Frame) =>
+                entry.type === "namespace"
+                  ? entry.tools.map((tool: Frame) => ({
+                      ...tool,
+                      namespace: entry.name,
+                    }))
+                  : [entry],
+              )
+              .find(
+                (entry: Frame) =>
+                  entry.namespace?.includes("cantrip_cua") &&
+                  entry.name === "js",
+              );
+            modelDiagnostics.push(
+              input.tools?.map((tool: Frame) => ({
+                name: tool.name,
+                type: tool.type,
+              })),
+            );
+            if (!tool) {
+              response
+                .writeHead(500)
+                .end(
+                  `No CUA JS tool in actual inventory: ${JSON.stringify(input.tools?.map((entry: Frame) => entry.name ?? entry.type))}`,
+                );
+              return;
+            }
+            const marker = `cua-native-${cuaIndex}`;
+            const events = [
+              { type: "response.created", response: { id: marker } },
+              {
+                type: "response.output_item.done",
+                item: {
+                  id: `${marker}-item`,
+                  type: "function_call",
+                  call_id: `${marker}-call`,
+                  name: tool.name,
+                  namespace: tool.namespace,
+                  arguments: JSON.stringify({
+                    script: `await cua.attach({targetId:'fake-window',targetGeneration:1}); await cua.moveCursor({x:20,y:30}); await cua.snapshot(); '${marker}'`,
+                  }),
+                },
+              },
+              {
+                type: "response.completed",
+                response: {
+                  id: marker,
+                  usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 },
+                },
+              },
+            ];
+            response.writeHead(200, { "content-type": "text/event-stream" });
+            response.end(
+              events
+                .map(
+                  (event) =>
+                    `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`,
+                )
+                .join(""),
+            );
+            return;
+          }
           if (questionCase && modelAttempts === 1) {
             const input = JSON.parse(inputText);
             const tool = input.tools?.find((entry: Frame) =>
@@ -197,6 +291,22 @@ describe.skipIf(!binary)(
             );
             return;
           }
+          // Cancellation can settle the tool just before the native turn task
+          // observes Stop. Keep that final provider request pending; it belongs
+          // to the interrupted turn, not the next synthetic prompt.
+          if (cuaCase && cuaObserved.has(cuaIndex)) {
+            if (cuaIndex !== 2) {
+              response.writeHead(500).end("Unexpected repeated model request");
+              return;
+            }
+            cancelledTurnFollowups += 1;
+            response.writeHead(200, { "content-type": "text/event-stream" });
+            response.write(
+              'event: response.created\ndata: {"type":"response.created","response":{"id":"cancelled-turn-followup"}}\n\n',
+            );
+            return;
+          }
+          if (cuaCase) cuaObserved.add(cuaIndex);
           modelRequests.push(response);
           modelInputs.push(inputText);
           response.writeHead(200, {
@@ -211,6 +321,7 @@ describe.skipIf(!binary)(
           | Awaited<ReturnType<typeof createNativeCommandWorkerFixture>>
           | undefined;
         const children: ChildProcessWithoutNullStreams[] = [];
+        let nativeStderr = "";
         let runtime: CodexAppServer | undefined;
         let gateway: ManagedNativeGateway | undefined;
         let socket: WebSocket | undefined;
@@ -237,6 +348,11 @@ describe.skipIf(!binary)(
           authority = await createNativeCommandWorkerFixture({
             cwd,
             modelBaseUrl: `${url}/v1`,
+            computerUse: cuaCase,
+            // Exercise the real namespace/vision format against localhost only.
+            ...(cuaCase
+              ? { providerName: "OpenAI", modelName: "gpt-5.6-sol" }
+              : {}),
           });
           const {
             phases,
@@ -248,6 +364,28 @@ describe.skipIf(!binary)(
             workerId,
           } = authority;
           const model = authority.modelRuntime.model;
+          if (cuaCase) {
+            // The deterministic provider accepts image input. Advertise that
+            // capability through the same managed catalog used in production.
+            model.catalog = {
+              nativeModelId: model.name,
+              displayName: "Native CUA vision fixture",
+              description: null,
+              contextWindow: 128000,
+              maxOutputTokens: null,
+              inputModalities: ["text", "image"],
+              outputModalities: ["text"],
+              supportsTools: true,
+              supportsParallelTools: false,
+              supportsStructuredOutput: true,
+              supportsVision: true,
+              supportsReasoning: false,
+              supportedReasoningEfforts: [],
+              defaultReasoningEffort: null,
+              reasoningMandatory: null,
+              metadataSource: "unknown",
+            };
+          }
           const provider = {
             ...authority.modelRuntime.provider,
             apiKey: "fixture-only",
@@ -257,6 +395,9 @@ describe.skipIf(!binary)(
               cwd,
               env: { ...options.env, HOME: home, CODEX_HOME: home },
               stdio: "pipe",
+            });
+            child.stderr.on("data", (chunk) => {
+              nativeStderr += chunk.toString();
             });
             children.push(child);
             return child;
@@ -271,6 +412,12 @@ describe.skipIf(!binary)(
             undefined,
             launch,
           );
+          if (cuaCase)
+            cua = await createNativeCuaWorkerFixture({
+              authority,
+              runtime,
+              directory: data,
+            });
           const identity = {
             serverId,
             ownerId,
@@ -326,10 +473,10 @@ describe.skipIf(!binary)(
               model,
               provider,
               threadId: null,
-              permissionProfileId: ":workspace",
+              permissionProfileId,
               planMode: questionCase ? "plan" : "default",
               executionProfile: "ide",
-              mcpServers: [],
+              mcpServers: cua?.servers ?? [],
               intent: "configure",
               ...(runner ? { executionGate: runner.configuration } : {}),
             },
@@ -383,9 +530,9 @@ describe.skipIf(!binary)(
               policy: {
                 cwd,
                 codexHome: home,
-                permissionProfileId: ":workspace",
+                permissionProfileId,
                 security: {
-                  permissions: ":workspace",
+                  permissions: permissionProfileId,
                   approvalPolicy: "on-request",
                   approvalsReviewer: "user",
                 },
@@ -400,41 +547,46 @@ describe.skipIf(!binary)(
                     intent?.resumeAutonomy === true,
                   );
               },
-              beginExecution: async (grant, session) => ({
-                options: {
-                  cwd,
-                  model,
-                  provider,
-                  chatId,
-                  captureProtectedDiagnostics: false,
-                  onMessage: (message) => messages.push(message.text),
-                  ...(questionCase
-                    ? {
-                        onNativeInteractionRequest: async (
-                          request: import("../src/codex/app-server.js").AdmittedNativeReply,
-                        ) => {
-                          publishedRequest = request;
-                          await client.pending({
-                            session,
-                            activationGeneration:
-                              grant.receipt.activationGeneration!,
-                            nativeRequestId: `${typeof request.requestId}:${request.requestId}`,
-                            requestMethod: request.requestMethod,
-                            turnId: request.turnId,
-                          });
-                          publicationRecovered = true;
-                        },
-                      }
-                    : {}),
-                },
-                complete: async (result) => {
-                  completed.push(result.turnId!);
-                },
-                failed: async (error) => {
-                  turnFailures.push(error);
-                },
-                release: async () => {},
-              }),
+              beginExecution: async (grant, session) => {
+                const releaseCua = cua?.activate(grant, session.threadId!);
+                return {
+                  options: {
+                    cwd,
+                    model,
+                    provider,
+                    chatId,
+                    captureProtectedDiagnostics: false,
+                    onMessage: (message) => messages.push(message.text),
+                    ...(questionCase
+                      ? {
+                          onNativeInteractionRequest: async (
+                            request: import("../src/codex/app-server.js").AdmittedNativeReply,
+                          ) => {
+                            publishedRequest = request;
+                            await client.pending({
+                              session,
+                              activationGeneration:
+                                grant.receipt.activationGeneration!,
+                              nativeRequestId: `${typeof request.requestId}:${request.requestId}`,
+                              requestMethod: request.requestMethod,
+                              turnId: request.turnId,
+                            });
+                            publicationRecovered = true;
+                          },
+                        }
+                      : {}),
+                  },
+                  complete: async (result) => {
+                    completed.push(result.turnId!);
+                  },
+                  failed: async (error) => {
+                    turnFailures.push(error);
+                  },
+                  release: async () => {
+                    await releaseCua?.();
+                  },
+                };
+              },
             });
           adapter = makeAdapter(runner);
           adaptersByThread.set(threadId, adapter);
@@ -498,7 +650,7 @@ describe.skipIf(!binary)(
             await peer.request("thread/resume", { threadId: viewThreadId });
           };
           await attachView();
-          if (rejectedContext) {
+          if (rejectedContext || realTuiStop) {
             terminalManager = new TerminalManager({
               environment: { HOME: home },
             });
@@ -524,7 +676,7 @@ describe.skipIf(!binary)(
                     worktreeId: placementId,
                     rootKind: "git-worktree",
                     scratchRootId: null,
-                    computerUseEnabled: false,
+                    computerUseEnabled: cuaCase,
                   },
                 },
                 (event) => {
@@ -573,6 +725,7 @@ describe.skipIf(!binary)(
           let guiActualTurnId: string | undefined;
           const originalThreadId = threadId;
           for (const index of [1, 2, 3]) {
+            if (realTuiStop && index === 2) terminalOutput = "";
             let turnId: string;
             if (guiOrigin && index === 1) {
               const operationId = randomUUID();
@@ -608,7 +761,7 @@ describe.skipIf(!binary)(
                   scope: "thread",
                   settingKeys: [],
                   expectedTurnId: null,
-                  permissionProfileId: ":workspace",
+                  permissionProfileId,
                 },
               });
               guiReceipt = admission.receipt;
@@ -630,8 +783,12 @@ describe.skipIf(!binary)(
                   automationPaused: false,
                   planMode: "default",
                   policyContext: null,
-                  permissionProfileId: ":workspace",
+                  permissionProfileId,
                   prompt: "Synthetic input 1",
+                  mcpServers: cua?.servers ?? [],
+                  onThreadLoaded: (id) => {
+                    releaseGuiCua = cua?.activate(admission, id);
+                  },
                   rootKind: authority!.context.rootKind,
                   skillNames: [],
                   subagentDefaults: null,
@@ -725,10 +882,10 @@ describe.skipIf(!binary)(
                                 threadId: retry.threadId!,
                                 model,
                                 provider,
-                                permissionProfileId: ":workspace",
+                                permissionProfileId,
                                 executionProfile: "ide",
                                 subagentDefaults: null,
-                                mcpServers: [],
+                                mcpServers: cua?.servers ?? [],
                                 planMode: "default",
                                 intent: "configure",
                                 executionGate: replacementRunner!.configuration,
@@ -961,6 +1118,39 @@ describe.skipIf(!binary)(
                 turnId,
               }),
             ).toMatchObject({ rootThreadId: threadId, rootTurnId: turnId });
+            if (cua) {
+              const callIndex = index === 3 ? 3 : index - 1;
+              expect(cua.calls).toHaveLength(callIndex + 1);
+              const call = cua.calls[callIndex]!;
+              expect(call.error).toBeUndefined();
+              expect(call.args[1]).toMatchObject({ threadId, turnId });
+              expect(call.result?.isError).not.toBe(true);
+              expect(
+                call.result?.content.some((item) => item.type === "image"),
+              ).toBe(true);
+              expect(modelInputs[index - 1]).toContain(`cua-native-${index}`);
+              const modelContent = JSON.parse(modelInputs[index - 1]!)
+                .input.filter(
+                  (item: Frame) =>
+                    item.type === "function_call_output" &&
+                    item.call_id === `cua-native-${index}-call`,
+                )
+                .flatMap((item: Frame) => item.output);
+              expect(modelContent).toContainEqual(
+                expect.objectContaining({
+                  type: "input_image",
+                  image_url: expect.stringMatching(/^data:image\/png;base64,/),
+                }),
+              );
+              expect(
+                cua.activities.some(
+                  (activity) =>
+                    activity.operation === "observation.snapshot" &&
+                    activity.outcome === "completed" &&
+                    activity.binding.turnId === turnId,
+                ),
+              ).toBe(true);
+            }
             const requestPhase = phases.findLastIndex(
               (entry) =>
                 entry.phase === "admit" && entry.body.method === "turn/start",
@@ -978,9 +1168,88 @@ describe.skipIf(!binary)(
               });
             }
             if (index === 2) {
-              expect(
-                await runtime.interruptChat(chatId, threadId),
-              ).toMatchObject({ interrupted: true });
+              if (cua) {
+                // A second model-initiated call stays active for a requested
+                // 150 seconds. Cross-view Stop must cancel it without waiting for it.
+                const tools = JSON.parse(modelInputs[1]!).tools;
+                const namespace = tools.find(
+                  (tool: Frame) =>
+                    tool.type === "namespace" &&
+                    tool.name.includes("cantrip_cua"),
+                ).name;
+                const events = [
+                  {
+                    type: "response.output_item.done",
+                    item: {
+                      type: "function_call",
+                      id: "waiting-cua-item",
+                      call_id: "waiting-cua-call",
+                      name: "js",
+                      namespace,
+                      arguments: JSON.stringify({
+                        script:
+                          "await cua.snapshot(); for (let i=0;i<15;i++) await cua.wait(10000); 'must-not-finish'",
+                      }),
+                    },
+                  },
+                  {
+                    type: "response.completed",
+                    response: {
+                      id: "response-2",
+                      usage: {
+                        input_tokens: 0,
+                        output_tokens: 0,
+                        total_tokens: 0,
+                      },
+                    },
+                  },
+                ];
+                modelRequests[1]!.end(
+                  events
+                    .map(
+                      (event) =>
+                        `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`,
+                    )
+                    .join(""),
+                );
+                await vi.waitFor(
+                  () => {
+                    expect(cua!.calls).toHaveLength(3);
+                    expect(
+                      cua!.activities.filter(
+                        (activity) =>
+                          activity.operation === "observation.snapshot" &&
+                          activity.outcome === "completed" &&
+                          activity.binding.turnId === turnId,
+                      ),
+                    ).toHaveLength(2);
+                  },
+                  { timeout: 15000 },
+                );
+                expect(cua.calls[2]!.result).toBeUndefined();
+                expect(cua.calls[2]!.error).toBeUndefined();
+              }
+              if (realTuiStop) {
+                await vi.waitFor(
+                  () =>
+                    expect(stripVTControlCharacters(terminalOutput)).toMatch(
+                      /esc to interrupt/i,
+                    ),
+                  { timeout: 15000 },
+                );
+                terminalManager!.input("replacement-tui", "\x03");
+              } else {
+                expect(
+                  await runtime.interruptChat(chatId, threadId),
+                ).toMatchObject({ interrupted: true });
+              }
+              if (cua) {
+                await vi.waitFor(
+                  () => expect(cua!.calls[2]!.error).toBeTruthy(),
+                  { timeout: 5000 },
+                );
+                cua.assertRetired(2);
+              }
               if (origin === "terminal-question-cli") {
                 // The old metadata transport is still held. Reply dispatch,
                 // completion, the next turn and GUI Stop all progressed anyway.
@@ -1024,6 +1293,7 @@ describe.skipIf(!binary)(
             }
             if (guiOrigin && index === 1) {
               const result = await guiRun!;
+              await releaseGuiCua?.();
               completed.push(result.turnId!);
               for (const guiAdapter of guiAdapters)
                 guiAdapter.markGuiFinished(
@@ -1094,6 +1364,7 @@ describe.skipIf(!binary)(
                 turnId,
               }),
             ).toBeNull();
+            cua?.assertRetired(index === 3 ? 3 : index - 1);
             if (index !== 2) expect(completed).toContain(turnId);
           }
           expect(messages).toEqual(
@@ -1108,7 +1379,7 @@ describe.skipIf(!binary)(
             phases.some(
               (entry) =>
                 entry.phase === "admit" &&
-                entry.body.origin === "gui" &&
+                entry.body.origin === (realTuiStop ? "terminal" : "gui") &&
                 entry.body.method === "turn/interrupt",
             ),
           ).toBe(true);
@@ -1125,7 +1396,13 @@ describe.skipIf(!binary)(
             (receipt) => receipt.startsExecution,
           );
           expect(executionReceipts).toHaveLength(retried ? 4 : 3);
-          expect(modelAttempts).toBe(retried || questionCase ? 4 : 3);
+          expect(modelAttempts).toBe(
+            cuaCase
+              ? 6 + cancelledTurnFollowups
+              : retried || questionCase
+                ? 4
+                : 3,
+          );
           if (retried)
             expect(
               phases.filter((entry) => entry.phase === "continue"),
@@ -1290,6 +1567,31 @@ describe.skipIf(!binary)(
                 completed,
                 modelRequests: modelRequests.length,
                 modelAttempts,
+                nativeStderr: nativeStderr.slice(-4000),
+                modelDiagnostics,
+                cuaModelOutputs: cuaCase
+                  ? modelInputs.map((body) =>
+                      JSON.parse(body)
+                        .input?.filter(
+                          (item: Frame) => item.type === "function_call_output",
+                        )
+                        .map((item: Frame) => ({
+                          ...item,
+                          output: Array.isArray(item.output)
+                            ? item.output.filter(
+                                (part: Frame) => part.type !== "input_image",
+                              )
+                            : item.output,
+                        })),
+                    )
+                  : undefined,
+                cuaCalls: cua?.calls.map((call) => ({
+                  request: call.args[1],
+                  error: String(call.error),
+                  result: call.result?.content.filter(
+                    (item) => item.type === "text",
+                  ),
+                })),
                 nativeTurns: peer?.messages
                   .filter(
                     (frame) =>
@@ -1350,6 +1652,7 @@ describe.skipIf(!binary)(
           await new Promise<void>((resolve) =>
             modelServer.close(() => resolve()),
           );
+          await cua?.close();
           await authority?.close();
           await rm(directory, {
             recursive: true,
