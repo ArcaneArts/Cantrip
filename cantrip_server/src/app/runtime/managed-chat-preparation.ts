@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   encryptedLinkedConsoleCreateSchema,
+  terminalOpenResultSchema,
   type ManagedChatPreparation,
 } from "@cantrip/protocol";
 import type {
@@ -153,6 +154,8 @@ export function createManagedChatPreparation(deps: Dependencies) {
         );
         if (!terminal?.stateProtection)
           throw new Error("The chat console is unavailable.");
+        state = await jobs.update(ownerId, state, "console", null, terminal.id);
+        if (!state) throw new Error("The preparation was replaced.");
         const attachmentId = `managed-preparation:${state.generation}`;
         let markReady!: () => void;
         let markFailed!: (error: unknown) => void;
@@ -173,6 +176,7 @@ export function createManagedChatPreparation(deps: Dependencies) {
             cols: 100,
             rows: 30,
             outputMode: "discard",
+            managedPreparationGeneration: state.generation,
             launch,
           },
           {
@@ -199,7 +203,9 @@ export function createManagedChatPreparation(deps: Dependencies) {
             { ownerId, timeoutMs: null },
           );
         }
-        await opened;
+        const result = terminalOpenResultSchema.parse(await opened);
+        if (result.status === "exited")
+          throw new Error("The CLI exited during preparation.");
         await jobs.update(ownerId, state, "ready", null, terminal.id);
       } catch (error) {
         nativeFailed(error);

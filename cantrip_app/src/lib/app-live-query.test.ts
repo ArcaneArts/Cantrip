@@ -627,6 +627,7 @@ describe("application live query bridge", () => {
       ),
     ).toEqual([
       ["chats", "project-one"],
+      ["managed-chat-preparation"],
       ["run-configurations", "project-one"],
     ]);
     expect(
@@ -641,6 +642,7 @@ describe("application live query bridge", () => {
       ["messages", "chat-one"],
       ["chat-runtime-selection", "chat-one"],
       ["native-settings", "chat-one"],
+      ["managed-chat-preparation", "chat-one"],
       ["task-dashboard", "chat-one"],
     ]);
     expect(
@@ -1931,4 +1933,27 @@ describe("application live query bridge", () => {
       vi.useRealTimers();
     }
   });
+});
+
+it("refreshes preparation after a chat lifecycle event and chat resynchronization", () => {
+  expect(
+    appLiveScopeQueryKeys({ kind: "project", projectId: "project" }),
+  ).toContainEqual(["managed-chat-preparation"]);
+  expect(
+    appLiveEventQueryKeys(
+      event({
+        resource: "chat",
+        scope: { kind: "project", projectId: "project" },
+        entityId: "chat",
+      }),
+    ),
+  ).toContainEqual(["managed-chat-preparation", "chat"]);
+  expect(
+    appLiveEventQueryKeys(
+      event({ resource: "chat", scope: { kind: "chat", chatId: "chat" } }),
+    ),
+  ).toContainEqual(["managed-chat-preparation", "chat"]);
+  expect(
+    appLiveScopeQueryKeys({ kind: "chat", chatId: "chat" }),
+  ).toContainEqual(["managed-chat-preparation", "chat"]);
 });

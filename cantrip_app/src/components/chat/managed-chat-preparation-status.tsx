@@ -90,7 +90,7 @@ export function ManagedChatPreparationStatus({
               ready: "Session prepared",
               failed:
                 state.data?.failedPhase === "console"
-                  ? "Session prepared, but the CLI could not start."
+                  ? "Session prepared, but the CLI is unavailable."
                   : "The agent session could not be prepared.",
             }[state.data!.phase]}
       </span>

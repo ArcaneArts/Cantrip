@@ -101,6 +101,7 @@ type TerminalRecoveryRedraw =
     };
 
 interface TerminalSession {
+  managedPreparationGeneration?: string;
   buffer: string;
   bufferTruncated: boolean;
   canonicalAvailable: boolean;
@@ -288,6 +289,7 @@ export interface TerminalManagerOptions {
 }
 
 export interface TerminalLifecycleObservation {
+  managedPreparationGeneration?: string;
   terminalId: string;
   status: "exited";
   exitCode: number;
@@ -410,6 +412,7 @@ export class TerminalManager {
     rows: number,
     launch: TerminalLaunch,
     emit: (event: TerminalRuntimeEvent) => void,
+    managedPreparationGeneration?: string,
   ): Promise<TerminalOpenResult> {
     const service = this.#services.get(terminalId);
     if (service) {
@@ -439,6 +442,7 @@ export class TerminalManager {
     if (!session) {
       ensureSpawnHelperExecutable();
       session = {
+        managedPreparationGeneration,
         buffer: "",
         bufferTruncated: false,
         canonicalAvailable: true,
@@ -474,6 +478,8 @@ export class TerminalManager {
         throw new Error(
           "Terminal session belongs to a different managed chat.",
         );
+      if (managedPreparationGeneration)
+        session.managedPreparationGeneration = managedPreparationGeneration;
       if (
         launch.threadId &&
         (session.launch.threadId !== launch.threadId ||
@@ -1151,6 +1157,9 @@ export class TerminalManager {
     }
     this.#observeLifecycle({
       terminalId,
+      ...(session.managedPreparationGeneration
+        ? { managedPreparationGeneration: session.managedPreparationGeneration }
+        : {}),
       status: "exited",
       exitCode: result.exitCode,
       signal: result.signal,

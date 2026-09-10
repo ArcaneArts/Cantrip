@@ -387,6 +387,7 @@ export const workerNotificationSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("terminal.runtime.observed"),
+      managedPreparationGeneration: z.string().uuid().optional(),
       terminalId: z.string().min(1).max(200),
       workerProcessGeneration: z.string().min(1).max(200),
       status: z.literal("exited"),

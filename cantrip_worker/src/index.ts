@@ -6237,6 +6237,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                 remoteUrl,
               },
               protectedEmit,
+              command.managedPreparationGeneration,
             );
             await outputQueue;
             return result;
