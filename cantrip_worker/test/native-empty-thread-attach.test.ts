@@ -476,8 +476,24 @@ describe.skipIf(!binary)("pinned native empty-thread remote attach", () => {
       expect(siblingCallPids.size).toBe(1);
       const siblingCatalogRequestsBefore = siblingCatalogRequests;
       const notificationStart = peer.messages.length;
-      let personality = "pragmatic";
+      let childrenConfigured = true;
       const assertPreserved = async () => {
+        const before = await creator.request("thread/settings/read", {
+          threadId,
+        });
+        expect(before.threadSettings).toEqual({
+          ...baselineSettings,
+          multiAgentEnabled: childrenConfigured,
+          subagentModel: childrenConfigured ? "fixture-child-model" : null,
+          subagentReasoningEffort: childrenConfigured ? "medium" : null,
+          settingsVersion: before.threadSettings.settingsVersion,
+        });
+        expect(before.threadSettings.settingsVersion.epoch).toBe(
+          baselineSettings.settingsVersion.epoch,
+        );
+        expect(
+          BigInt(before.threadSettings.settingsVersion.revision),
+        ).toBeGreaterThan(BigInt(baselineSettings.settingsVersion.revision));
         const joined = await creator.request("thread/resume", { threadId });
         expect(joined.thread).toMatchObject({
           id: threadId,
@@ -485,32 +501,11 @@ describe.skipIf(!binary)("pinned native empty-thread remote attach", () => {
           turns: [],
         });
         expect(settings(joined)).toEqual(originalRootSettings);
-        // Native has no read-settings RPC. Change only this test's personality
-        // to request a fresh complete settings notification without restoring
-        // model, collaboration, permissions or any managed configuration.
-        personality = personality === "pragmatic" ? "friendly" : "pragmatic";
-        const before = peer.messages.length;
-        await creator.request("thread/settings/update", {
-          threadId,
-          personality,
-        });
-        await vi.waitFor(
-          () => {
-            const observed = peer.messages
-              .slice(before)
-              .find(
-                (message) =>
-                  message.method === "thread/settings/updated" &&
-                  message.params.threadId === threadId,
-              );
-            expect(observed).toBeDefined();
-            expect(observed!.params.threadSettings).toEqual({
-              ...baselineSettings,
-              personality,
-            });
-          },
-          { timeout: 5_000 },
-        );
+        // Observation must preserve the latest explicit child configuration and
+        // its exact settings version, without a mutation to elicit a notification.
+        expect(
+          await creator.request("thread/settings/read", { threadId }),
+        ).toEqual(before);
         const siblingJoined = await creator.request("thread/resume", {
           threadId: siblingId,
         });
@@ -600,6 +595,7 @@ describe.skipIf(!binary)("pinned native empty-thread remote attach", () => {
         arguments: {},
       });
       expect(removedCall.error).toBeDefined();
+      childrenConfigured = false;
       await assertPreserved();
       expect(
         peer.messages
