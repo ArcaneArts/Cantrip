@@ -4362,6 +4362,50 @@ covers the queued successor in a GUI-first conversation, not a GUI-submitted
 active turn; do not treat it alone as the complete cross-origin Stop matrix.
 No CI, personal inference, desktop input or worker restart ran.
 
+### Pass 60 — portable MCP tool declarations and exact dispatch
+
+The prior pinned runtime reproduced missing model-visible CUA tools for generic
+compatible providers in both GUI-first and terminal-first native cases. The
+namespace capability flag correctly rejects a vendor-specific wire format, but
+the planner used it to drop the entire namespace, including ordinary MCP
+function tools. Successful MCP initialization/catalog reads did not prevent
+that omission.
+
+The reviewed patch keeps the canonical tool plan and adapts only its
+provider-facing declarations when namespaces are unsupported. Namespace children
+receive flat callable names, preserving their schemas, descriptions and callable
+types. Ordinary names remain readable; colliding, oversized or non-ASCII names
+receive deterministic bounded aliases. Top-level tool names are reserved before
+aliases are assigned. An exact per-plan map resolves only advertised aliases
+back to the original handlers, including parallelism and incremental argument
+consumers. Input names are canonicalized before logging/redaction and dispatch;
+provider history retains the original call for result pairing. Supported
+namespace providers keep their original format. Authority and MCP bindings are
+unchanged.
+
+Validation: both new compatible-provider cases failed against the previous
+binary. The final rebuilt runtime passed **33 tests in five files**, including
+all twelve actual-native command-session cases with both provider formats and
+both input origins. These exercise localhost providers, compiled Rust fake CUA,
+actual MCP stdio/broker and HTTP authority, image inputs, Stop and fresh-turn
+recovery. Two alias-module tests also passed,
+compiled directly with pinned Rust 1.95.0 against the actual release dependency
+artifacts; they cover schemas, exact mapping, omitted/foreign names, delimiter
+collisions, top-level names, long Unicode names and reordered inventories.
+The final reviewed release build succeeded (Codex 0.153.4, upstream
+`3d2ee51ca2d5db578f328aa75e20aa22c0197c9a`, patch digest
+`9f2ef919e4481a86ffe4e55d1c61ea495af30ee5aa55fb3ef4428f58f8975410`),
+including canonicalization before logging/redaction. The required `pnpm check`
+passed workspace typechecks and the selected CUA suites, then reached the full
+server suite: 43 failures, 1,361 passes and 70 skips. Forty
+failure names match the prior baseline; three additional five-second timeouts
+passed on a focused single-worker rerun with their original limits (three passes,
+seven skips). Full worker/app suites and the final repository formatter were not
+reached. Scoped TypeScript formatting and `git diff --check` passed. No CI,
+personal inference, desktop input or worker restart ran.
+Remaining full acceptance reconciliation and the user demo still apply; this
+pass does not establish completion of the full goal.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal
