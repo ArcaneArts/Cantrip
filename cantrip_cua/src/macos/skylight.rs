@@ -133,6 +133,12 @@ fn routing_fields(pid: i32, window: u32, group: i64, click_state: i64) -> [(u32,
         (92, i64::from(window)),
     ]
 }
+pub(super) fn next_group() -> i64 {
+    use std::sync::atomic::{AtomicI64, Ordering};
+    static GROUP: AtomicI64 = AtomicI64::new(1);
+    GROUP.fetch_add(1, Ordering::Relaxed)
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -147,10 +153,4 @@ mod tests {
             assert!(click.contains(&(field, 123)));
         }
     }
-}
-
-pub(super) fn next_group() -> i64 {
-    use std::sync::atomic::{AtomicI64, Ordering};
-    static GROUP: AtomicI64 = AtomicI64::new(1);
-    GROUP.fetch_add(1, Ordering::Relaxed)
 }

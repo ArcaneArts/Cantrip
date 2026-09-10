@@ -31,11 +31,11 @@ test("App Platform static sites use browser-only build commands", async () => {
 
   assert.match(
     spec,
-    /^\s{4}build_command: pnpm --filter @cantrip\/version build && pnpm --filter @cantrip\/logging build && pnpm --filter @cantrip\/protocol build && pnpm --filter @cantrip\/crypto build && pnpm --filter @cantrip\/app build$/mu,
+    /^\s{4}build_command: pnpm --filter @cantrip\/app\.\.\. build$/mu,
   );
   assert.match(
     spec,
-    /^\s{4}build_command: pnpm --filter @cantrip\/site build$/mu,
+    /^\s{4}build_command: pnpm --filter @cantrip\/site\.\.\. build$/mu,
   );
   assert.doesNotMatch(spec, /^\s{4}build_command: pnpm (?:run )?build$/mu);
 });

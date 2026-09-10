@@ -4084,6 +4084,37 @@ failures, the combined acceptance matrix and the user implementation demo
 remain outstanding. No runtime behavior, user settings, native input or CI jobs
 were changed by this pass.
 
+### Pass 53 — restore validation against the current contracts
+
+Network tranche two now inspects the operational schema exported by the actual
+source protocol instead of searching the old barrel for field declarations.
+Both required telemetry fields remain present and required by the verifier.
+The network acceptance evidence now names the current Explorer ownership,
+bounded prewarm, same-editor reconnect and bounded retry cases after reviewing
+their assertions. It retains the same feature/topology matrix and does not
+infer physical-device results. The static-site build test now expects the
+existing dependency-inclusive pnpm selectors while retaining its prohibition
+on the repository-wide native build. No deployment manifest changed.
+
+The full check also exposed ten CUA Clippy errors in test code. Redundant test
+closures and cloned single-element slices were simplified, the fake unit
+backend is constructed directly, and the unchanged routing-group function is
+placed before its test module. No input, capture, cancellation or cursor
+semantics changed.
+
+Validation: all 206 root script tests, 49 affected Explorer tests, 13 focused
+CUA timeline tests, 12 effects tests and the routing-field test pass. CUA
+formatting and all-target Clippy pass. The required `pnpm check` now passes the
+boundary/network checks, both upstream integrity checks, CLI/CUA linting and
+all workspace TypeScript checks. Its subsequent CUA test run passes 111 library
+cases but stops in the process suite: 21 pass and
+`javascript_host_rendezvous_leaves_native_executor_available` fails because
+child stdout does not close before the shutdown deadline. This is not recorded
+as a successful full check and the shutdown failure requires separate
+investigation. The remaining server/app acceptance failures and manual user
+demo are also still outstanding. No CI, personal provider inference or desktop
+input ran.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal

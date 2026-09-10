@@ -435,7 +435,7 @@ mod tests {
                 }
             },
             |_| Ok(()),
-            |at| Ok(at),
+            Ok,
         )
         .unwrap_err();
         assert_eq!(error.code, ErrorCode::InputUnknown);
@@ -516,7 +516,7 @@ mod tests {
                 cancel.cancel();
             },
             |_| Ok(()),
-            |at| Ok(at),
+            Ok,
         );
         assert_eq!(result.unwrap_err().code, ErrorCode::Cancelled);
         assert_eq!(
@@ -634,7 +634,7 @@ mod tests {
                 c.cancel();
             },
             |_| Ok(()),
-            |at| Ok(at),
+            Ok,
         );
         assert_eq!(result.unwrap_err().code, ErrorCode::InputUnknown);
         assert_eq!(*events.borrow(), [Transition::Down(0), Transition::Up(0)]);
@@ -665,7 +665,7 @@ mod tests {
                 }
                 Ok(())
             },
-            |at| Ok(at),
+            Ok,
         )
         .unwrap_err();
         assert_eq!(error.code, ErrorCode::InputUnknown);
@@ -726,7 +726,7 @@ mod tests {
             &Cancellation::default(),
             |_| panic!("no input or cleanup before first down"),
             |_| Err(CuaError::new(ErrorCode::Unsupported, "unavailable")),
-            |at| Ok(at),
+            Ok,
         )
         .unwrap_err();
         assert_eq!(error.code, ErrorCode::Unsupported);

@@ -1,6 +1,7 @@
 import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { tsImport } from "tsx/esm/api";
 
 import {
   combineApplicationSources,
@@ -102,7 +103,7 @@ const [
   server,
   compatibility,
   metrics,
-  protocol,
+  operationalStats,
   network,
   acceptance,
   progress,
@@ -113,7 +114,9 @@ const [
   readApplication(),
   read("cantrip_server/src/operations/legacy-feature-transports.ts"),
   read("cantrip_server/src/operations/metrics.ts"),
-  read("packages/protocol/src/index.ts"),
+  tsImport("../packages/protocol/src/index.ts", import.meta.url).then(
+    (protocol) => protocol.serverOperationalStatsSchema,
+  ),
   read("docs/NETWORK.md"),
   read("docs/NETWORK_ACCEPTANCE.md"),
   read("docs/NETWORK_PROGRESS.md"),
@@ -205,7 +208,7 @@ for (const marker of [
   }
 }
 for (const marker of ["legacyFeatureTransports", "workerLinkRelay"]) {
-  if (!protocol.includes(marker)) {
+  if (!operationalStats?.shape[marker]) {
     violations.push(`server operational protocol is missing ${marker}`);
   }
 }
