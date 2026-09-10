@@ -125,6 +125,10 @@ describe.skipIf(!binary)(
         const data = path.join(directory, "runtime");
         const modelRequests: ServerResponse[] = [];
         const modelInputs: string[] = [];
+        const cuaResponses = new Map<
+          number,
+          { response: ServerResponse; input: string }
+        >();
         const modelServer = createServer(async (request, response) => {
           let inputText = "";
           for await (const chunk of request) inputText += chunk.toString();
@@ -144,7 +148,10 @@ describe.skipIf(!binary)(
                 )?.[1],
               )
             : 0;
-          if (cuaCase && ![1, 2, 3].includes(cuaIndex)) {
+          if (
+            cuaCase &&
+            !(realTuiStop ? [1, 2, 3, 4, 5] : [1, 2, 3]).includes(cuaIndex)
+          ) {
             response.writeHead(500).end("Missing synthetic turn identity");
             return;
           }
@@ -200,7 +207,7 @@ describe.skipIf(!binary)(
                   name: tool.name,
                   namespace: tool.namespace,
                   arguments: JSON.stringify({
-                    script: `await cua.attach({targetId:'fake-window',targetGeneration:1}); await cua.moveCursor({x:20,y:30}); await cua.snapshot(); '${marker}'`,
+                    script: `await cua.attach({targetId:'fake-window',targetGeneration:1}); await cua.moveCursor({x:20,y:30}); await cua.snapshot(); ${cuaIndex === 4 ? "for (let i=0;i<15;i++) await cua.wait(10000);" : ""} '${marker}'`,
                   }),
                 },
               },
@@ -311,7 +318,7 @@ describe.skipIf(!binary)(
           // observes Stop. Keep that final provider request pending; it belongs
           // to the interrupted turn, not the next synthetic prompt.
           if (cuaCase && cuaObserved.has(cuaIndex)) {
-            if (cuaIndex !== 2) {
+            if (cuaIndex !== 2 && cuaIndex !== 4) {
               response.writeHead(500).end("Unexpected repeated model request");
               return;
             }
@@ -322,7 +329,10 @@ describe.skipIf(!binary)(
             );
             return;
           }
-          if (cuaCase) cuaObserved.add(cuaIndex);
+          if (cuaCase) {
+            cuaObserved.add(cuaIndex);
+            cuaResponses.set(cuaIndex, { response, input: inputText });
+          }
           modelRequests.push(response);
           modelInputs.push(inputText);
           response.writeHead(200, {
@@ -1460,6 +1470,266 @@ describe.skipIf(!binary)(
                 (entry) => typeof entry.body.intent.expectedTurnId === "string",
               ),
             ).toBe(true);
+          }
+          if (realTuiStop) {
+            // A GUI-first conversation's queued successor is autonomous. Also
+            // interrupt an actual GUI-submitted turn from the physical TUI, then
+            // submit another GUI turn through the same live runtime and broker.
+            for (const index of [4, 5]) {
+              terminalOutput = "";
+              const operationId = randomUUID();
+              const session = {
+                chatId,
+                threadId,
+                contextKind: "project" as const,
+                projectId,
+                placementId,
+                runtimeGeneration: generation,
+                connectionId: `gui:${operationId}`,
+                modelRouteId: model.routeId,
+                providerAccountId: null,
+              };
+              const protectedInput = await protectNativeCommandContent({
+                service: encryption,
+                context: { chatId, operationId, direction: "request" },
+                content: { prompt: `Synthetic input ${index}` },
+              });
+              const admission = await client.admit({
+                operationId,
+                origin: "gui",
+                session: {
+                  ...session,
+                  connectionId: null,
+                  runtimeGeneration: null,
+                },
+                method: "turn/start",
+                payloadDigest: protectedInput.digest,
+                protectedPayload: protectedInput.envelope,
+                expectedActivationGeneration: null,
+                intent: {
+                  scope: "thread",
+                  settingKeys: [],
+                  expectedTurnId: null,
+                  permissionProfileId,
+                },
+              });
+              const receipt = admission.receipt;
+              expect(receipt.status).toBe("accepted");
+              session.connectionId = `gui:${receipt.operationGeneration}`;
+              const callIndex = cua!.calls.length;
+              let actualTurnId: string | undefined;
+              let release: (() => Promise<void>) | undefined;
+              const run = adapter.withGuiPreparation(receipt, session, () =>
+                runtime!.runTurn({
+                  operationGeneration: receipt.operationGeneration,
+                  chatId,
+                  threadId,
+                  cwd,
+                  model,
+                  provider,
+                  captureProtectedDiagnostics: false,
+                  clientMessageId: `gui-cross-view-${index}`,
+                  executionProfile: "ide",
+                  isPrimary: true,
+                  automationPaused: false,
+                  planMode: "default",
+                  policyContext: null,
+                  permissionProfileId,
+                  prompt: `Synthetic input ${index}`,
+                  mcpServers: cua!.servers,
+                  onThreadLoaded: (id) => {
+                    release = cua!.activate(admission, id);
+                  },
+                  rootKind: authority!.context.rootKind,
+                  skillNames: [],
+                  subagentDefaults: null,
+                  subagentProtocolVersion: undefined,
+                  worktreeMode: authority!.context.worktreeMode,
+                  worktreePolicy: authority!.context.worktreePolicy,
+                  onBeforeNativeDispatch: () =>
+                    adapter.dispatchGui(receipt, session, receipt),
+                  onNativeReceipt: async (result) => {
+                    actualTurnId = result.turn.id;
+                    await adapter.guiReceipt(receipt, session, result);
+                  },
+                  onMessage: (message) => messages.push(message.text),
+                }),
+              );
+              // Observe rejection immediately without converting it to success.
+              const settlement = run.then(
+                (result) => ({ result, error: undefined }),
+                (error: unknown) => ({ result: undefined, error }),
+              );
+              await vi.waitFor(
+                () => {
+                  expect(actualTurnId).toBeTypeOf("string");
+                  expect(cua!.calls).toHaveLength(callIndex + 1);
+                  expect(
+                    cua!.activities.some(
+                      (activity) =>
+                        activity.operation === "observation.snapshot" &&
+                        activity.outcome === "completed" &&
+                        activity.binding.turnId === actualTurnId,
+                    ),
+                  ).toBe(true);
+                },
+                { timeout: 15000 },
+              );
+              const call = cua!.calls[callIndex]!;
+              expect(call.args[1]).toMatchObject({
+                threadId,
+                turnId: actualTurnId,
+              });
+              if (index === 4) {
+                expect(call.result).toBeUndefined();
+                expect(call.error).toBeUndefined();
+                await vi.waitFor(
+                  () =>
+                    expect(stripVTControlCharacters(terminalOutput)).toMatch(
+                      /esc to interrupt/i,
+                    ),
+                  { timeout: 15000 },
+                );
+                terminalManager!.input("replacement-tui", "\x03");
+                await vi.waitFor(() => expect(call.error).toBeTruthy(), {
+                  timeout: 5000,
+                });
+                const stopped = await settlement;
+                expect(stopped.error).toBeTruthy();
+                expect(stopped.result).toBeUndefined();
+                await vi.waitFor(
+                  () =>
+                    expect(
+                      peer.messages.some(
+                        (frame) =>
+                          frame.method === "turn/completed" &&
+                          frame.params.turn.id === actualTurnId &&
+                          frame.params.turn.status === "interrupted",
+                      ),
+                    ).toBe(true),
+                  { timeout: 5000 },
+                );
+                expect(
+                  phases.some(
+                    (entry) =>
+                      entry.phase === "admit" &&
+                      entry.body.origin === "terminal" &&
+                      entry.body.method === "turn/interrupt" &&
+                      entry.body.intent.expectedTurnId === actualTurnId,
+                  ),
+                ).toBe(true);
+              } else {
+                await vi.waitFor(
+                  () => expect(cuaResponses.has(index)).toBe(true),
+                  { timeout: 15000 },
+                );
+                expect(call.error).toBeUndefined();
+                expect(call.result?.isError).not.toBe(true);
+                const observed = cuaResponses.get(index)!;
+                const output = JSON.parse(observed.input)
+                  .input.filter(
+                    (item: Frame) =>
+                      item.type === "function_call_output" &&
+                      item.call_id === `cua-native-${index}-call`,
+                  )
+                  .flatMap((item: Frame) => item.output);
+                expect(output).toContainEqual(
+                  expect.objectContaining({
+                    type: "input_image",
+                    image_url: expect.stringMatching(
+                      /^data:image\/png;base64,/,
+                    ),
+                  }),
+                );
+                const events = [
+                  {
+                    type: "response.output_item.done",
+                    item: {
+                      type: "message",
+                      role: "assistant",
+                      id: "gui-recovered-result",
+                      content: [
+                        {
+                          type: "output_text",
+                          text: "GUI CUA recovered after TUI Stop",
+                        },
+                      ],
+                    },
+                  },
+                  {
+                    type: "response.completed",
+                    response: {
+                      id: "gui-recovered-response",
+                      usage: {
+                        input_tokens: 0,
+                        output_tokens: 0,
+                        total_tokens: 0,
+                      },
+                    },
+                  },
+                ];
+                observed.response.end(
+                  events
+                    .map(
+                      (event) =>
+                        `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`,
+                    )
+                    .join(""),
+                );
+                const finished = await settlement;
+                expect(finished.error).toBeUndefined();
+                expect(finished.result?.turnId).toBe(actualTurnId);
+                expect(messages).toContain("GUI CUA recovered after TUI Stop");
+                await vi.waitFor(
+                  () =>
+                    expect(stripVTControlCharacters(terminalOutput)).toContain(
+                      "GUI CUA recovered after TUI Stop",
+                    ),
+                  { timeout: 15000 },
+                );
+              }
+              await release!();
+              adapter.markGuiFinished(
+                receipt.operationId,
+                receipt.operationGeneration,
+              );
+              expect(
+                await authority.repository.nativeCommands.finishLogicalGui(
+                  ownerId,
+                  workerId,
+                  receipt.operationId,
+                  receipt.operationGeneration,
+                  "idle",
+                ),
+              ).toBe(true);
+              adapter.completeGuiLogical(
+                receipt.operationId,
+                receipt.operationGeneration,
+              );
+              expect(
+                runtime.resolveComputerUseExecution({
+                  chatId,
+                  threadId,
+                  turnId: actualTurnId!,
+                }),
+              ).toBeNull();
+              cua!.assertRetired(callIndex);
+              expect(
+                await authority.repository.getChatExecutionContext(
+                  ownerId,
+                  chatId,
+                ),
+              ).toMatchObject({
+                threadId,
+                status: "idle",
+                executionLaneId: null,
+              });
+              expect(children).toHaveLength(1);
+              expect(runtime.transportGeneration).toBe(generation);
+              expect(terminalSettled).toBe(false);
+            }
+            expect(phases.every((entry) => entry.status === 200)).toBe(true);
+            expect(errors).toEqual([]);
           }
           if (rejectedContext) {
             await vi.waitFor(
