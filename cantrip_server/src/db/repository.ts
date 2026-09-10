@@ -1,4 +1,5 @@
 import { NativeRuntimeHandoffRepository } from "./repository/native-runtime-handoffs.js";
+import { ManagedChatPreparationRepository } from "./repository/managed-chat-preparations.js";
 import { ManagedQueueRepository } from "./repository/managed-queue.js";
 import { NativeCommandRepository } from "./repository/native-commands.js";
 import { NativeHistoryBindingRepository } from "./repository/native-history-bindings.js";
@@ -300,6 +301,7 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
   readonly chatExecutionLanes: ChatExecutionLaneRepository;
   readonly nativeCommands: NativeCommandRepository;
   readonly nativeRuntimeHandoffs: NativeRuntimeHandoffRepository;
+  readonly managedChatPreparations: ManagedChatPreparationRepository;
   readonly nativeHistoryBindings: NativeHistoryBindingRepository;
   readonly nativeHistoryArchive: NativeHistoryArchiveRepository;
   readonly nativeHistoryItems: NativeHistoryItemRepository;
@@ -439,6 +441,9 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
       this.nativeHistoryBindings,
     );
     this.nativeRuntimeHandoffs = new NativeRuntimeHandoffRepository(database);
+    this.managedChatPreparations = new ManagedChatPreparationRepository(
+      database,
+    );
     this.nativeCommands = new NativeCommandRepository(
       database,
       this.chatExecutionLanes,

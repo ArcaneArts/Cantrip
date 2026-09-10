@@ -111,6 +111,7 @@ export function installStandaloneChatCatalogRoutes(
 }
 
 export interface ProjectChatCatalogRouteDependencies {
+  prepareManagedChat?: (ownerId: string, chatId: string) => Promise<unknown>;
   applicationOwnerId: () => string;
   bridge: Pick<WorkerCommandBus, "isConnected">;
   publishStandaloneChatRootJobChange: (
@@ -132,6 +133,7 @@ export function installProjectChatCatalogRoutes(
     publishStandaloneChatRootJobChange,
     repository,
     standaloneChatRootJobExecutor,
+    prepareManagedChat,
   }: ProjectChatCatalogRouteDependencies,
 ): void {
   app.get<{ Params: { projectId: string } }>(
@@ -196,6 +198,7 @@ export function installProjectChatCatalogRoutes(
         if (!chat) {
           return reply.code(404).send({ error: "Project source not found" });
         }
+        await prepareManagedChat?.(applicationOwnerId(), chat.id);
         return reply.code(201).send(chatWireSummarySchema.parse(chat));
       } catch (error) {
         if (error instanceof ExecutionPlacementUnavailableError) {

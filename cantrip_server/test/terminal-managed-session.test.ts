@@ -176,12 +176,16 @@ describe("managed console preparation", () => {
       context.modelConfiguration,
       [root],
     );
-    expect(f.bridge.request).toHaveBeenCalledExactlyOnceWith("worker-1", {
-      type: "chat.thread.ensure",
-      cwd: context.cwd,
-      threadId: null,
-      ...expected,
-    });
+    expect(f.bridge.request).toHaveBeenCalledExactlyOnceWith(
+      "worker-1",
+      {
+        type: "chat.thread.ensure",
+        cwd: context.cwd,
+        threadId: null,
+        ...expected,
+      },
+      { ownerId: "owner-1", timeoutMs: null },
+    );
     expect(launch).toEqual({
       type: "codex",
       threadId: "native-thread",

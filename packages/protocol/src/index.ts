@@ -29,4 +29,5 @@ export * from "./native-history-usage.js";
 
 export * from "./native-behavior-attribution.js";
 export * from "./native-runtime-handoff.js";
+export * from "./managed-chat-preparation.js";
 export * from "./native-runtime-handoff-configuration.js";
