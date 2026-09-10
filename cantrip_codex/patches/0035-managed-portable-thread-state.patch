@@ -1,0 +1,415 @@
+diff --git a/codex-rs/state/src/lib.rs b/codex-rs/state/src/lib.rs
+--- a/codex-rs/state/src/lib.rs
++++ b/codex-rs/state/src/lib.rs
+@@ -34,6 +34,7 @@
+ pub use model::RolloutMigrationState;
+ /// Preferred entrypoint: owns configuration and metrics.
+ pub use runtime::StateRuntime;
++pub use runtime::portable_thread::PortableThreadState;
+ pub use sqlite::SqliteConfig;
+ 
+ pub use audit::ThreadStateAuditRow;
+diff --git a/codex-rs/state/src/model/thread_goal.rs b/codex-rs/state/src/model/thread_goal.rs
+--- a/codex-rs/state/src/model/thread_goal.rs
++++ b/codex-rs/state/src/model/thread_goal.rs
+@@ -3,13 +3,14 @@
+ use chrono::DateTime;
+ use chrono::Utc;
+ use codex_protocol::ThreadId;
++use serde::Deserialize;
+ use serde::Serialize;
+ use sqlx::Row;
+ use sqlx::sqlite::SqliteRow;
+ 
+ use super::epoch_millis_to_datetime;
+ 
+-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
++#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+ #[serde(rename_all = "snake_case")]
+ pub enum ThreadGoalStatus {
+     Active,
+@@ -57,7 +58,7 @@
+     }
+ }
+ 
+-#[derive(Debug, Clone, PartialEq, Eq)]
++#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+ pub struct ThreadGoal {
+     pub thread_id: ThreadId,
+     pub goal_id: String,
+diff --git a/codex-rs/state/src/runtime/goals.rs b/codex-rs/state/src/runtime/goals.rs
+--- a/codex-rs/state/src/runtime/goals.rs
++++ b/codex-rs/state/src/runtime/goals.rs
+@@ -64,6 +64,53 @@
+         .await?;
+ 
+         row.map(|row| thread_goal_from_row(&row)).transpose()
++    }
++
++    /// Restore only an absent goal or verify an exact interrupted import.
++    /// A late transfer must never reset a newer goal's usage or configuration.
++    pub(super) async fn restore_portable_thread_goal(
++        &self,
++        thread_id: ThreadId,
++        goal: Option<&crate::ThreadGoal>,
++        deferred: bool,
++    ) -> anyhow::Result<()> {
++        let mut transaction = self.pool.begin_with("BEGIN IMMEDIATE").await?;
++        let existing = sqlx::query("SELECT * FROM thread_goals WHERE thread_id = ?")
++            .bind(thread_id.to_string())
++            .fetch_optional(&mut *transaction)
++            .await?
++            .map(|row| thread_goal_from_row(&row))
++            .transpose()?;
++        if let Some(existing) = existing {
++            anyhow::ensure!(Some(&existing) == goal, "destination goal already differs");
++            let actual: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM thread_goal_continuation_deferrals WHERE thread_id = ?)")
++                .bind(thread_id.to_string()).fetch_one(&mut *transaction).await?;
++            anyhow::ensure!(
++                actual == deferred,
++                "destination goal continuation state already differs"
++            );
++        } else if let Some(goal) = goal {
++            anyhow::ensure!(
++                goal.thread_id == thread_id,
++                "transferred goal identity mismatch"
++            );
++            sqlx::query("INSERT INTO thread_goals(thread_id, goal_id, configuration_revision, objective, status, token_budget, tokens_used, time_used_seconds, created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
++                .bind(thread_id.to_string()).bind(&goal.goal_id).bind(goal.configuration_revision)
++                .bind(&goal.objective).bind(goal.status.as_str()).bind(goal.token_budget)
++                .bind(goal.tokens_used).bind(goal.time_used_seconds)
++                .bind(datetime_to_epoch_millis(goal.created_at)).bind(datetime_to_epoch_millis(goal.updated_at))
++                .execute(&mut *transaction).await?;
++            if deferred {
++                sqlx::query("INSERT INTO thread_goal_continuation_deferrals(thread_id) VALUES (?)")
++                    .bind(thread_id.to_string())
++                    .execute(&mut *transaction)
++                    .await?;
++            }
++        } else {
++            anyhow::ensure!(!deferred, "transferred goal deferral has no goal");
++        }
++        transaction.commit().await?;
++        Ok(())
+     }
+ 
+     pub async fn replace_thread_goal_snapshot(
+diff --git a/codex-rs/state/src/runtime/portable_thread.rs b/codex-rs/state/src/runtime/portable_thread.rs
+new file mode 100644
+--- /dev/null
++++ b/codex-rs/state/src/runtime/portable_thread.rs
+@@ -0,0 +1,185 @@
++//! Selected-thread state needed when its history moves to another native home.
++//! Queue and goal databases publish before the thread's final visibility row.
++use super::StateRuntime;
++use crate::{Project, ThreadGoal, ThreadMetadata};
++use serde::{Deserialize, Serialize};
++use sqlx::Row;
++
++#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct PortableThreadState {
++    pub memory_mode: String,
++    pub project: Option<Project>,
++    pub goal: Option<ThreadGoal>,
++    pub goal_continuation_deferred: bool,
++}
++
++impl StateRuntime {
++    pub async fn export_portable_thread_state(
++        &self,
++        metadata: &ThreadMetadata,
++    ) -> anyhow::Result<PortableThreadState> {
++        let memory_mode = self
++            .get_thread_memory_mode(metadata.id)
++            .await?
++            .ok_or_else(|| anyhow::anyhow!("source thread memory mode is absent"))?;
++        let project = match metadata.project_id.as_deref() {
++            Some(id) => Some(
++                self.get_project(id)
++                    .await?
++                    .ok_or_else(|| anyhow::anyhow!("source thread project is absent"))?,
++            ),
++            None => None,
++        };
++        let goal = self.thread_goals().get_thread_goal(metadata.id).await?;
++        let goal_continuation_deferred = self
++            .thread_goals()
++            .has_thread_goal_continuation_deferral(metadata.id)
++            .await?;
++        Ok(PortableThreadState {
++            memory_mode,
++            project,
++            goal,
++            goal_continuation_deferred,
++        })
++    }
++
++    pub async fn insert_portable_thread_if_absent(
++        &self,
++        metadata: &ThreadMetadata,
++        state: &PortableThreadState,
++    ) -> anyhow::Result<bool> {
++        anyhow::ensure!(
++            matches!(state.memory_mode.as_str(), "enabled" | "disabled"),
++            "invalid transferred memory mode"
++        );
++        anyhow::ensure!(
++            metadata.project_id.as_deref() == state.project.as_ref().map(|p| p.id.as_str()),
++            "transferred project identity mismatch"
++        );
++        anyhow::ensure!(
++            state
++                .goal
++                .as_ref()
++                .is_none_or(|g| g.thread_id == metadata.id),
++            "transferred goal identity mismatch"
++        );
++        anyhow::ensure!(
++            !state.goal_continuation_deferred || state.goal.is_some(),
++            "transferred goal deferral has no goal"
++        );
++
++        // Native import owns the selected thread's writer lock. Do not restore
++        // old auxiliary state over a visible destination, even on a late retry.
++        if self.get_thread(metadata.id).await?.is_some() {
++            return Ok(false);
++        }
++        self.thread_goals()
++            .restore_portable_thread_goal(
++                metadata.id,
++                state.goal.as_ref(),
++                state.goal_continuation_deferred,
++            )
++            .await?;
++        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
++        if let Some(section) = &metadata.section {
++            let appearance = section
++                .appearance
++                .as_ref()
++                .map(serde_json::to_string)
++                .transpose()?;
++            sqlx::query("INSERT INTO thread_sections(id, name, appearance) VALUES (?, ?, ?) ON CONFLICT(id) DO NOTHING")
++                .bind(&section.id).bind(&section.name).bind(&appearance).execute(&mut *tx).await?;
++            let row = sqlx::query("SELECT name, appearance FROM thread_sections WHERE id = ?")
++                .bind(&section.id)
++                .fetch_one(&mut *tx)
++                .await?;
++            let existing_name: String = row.try_get("name")?;
++            let existing_appearance: Option<String> = row.try_get("appearance")?;
++            let existing_appearance = existing_appearance
++                .map(|s| serde_json::from_str::<serde_json::Value>(&s))
++                .transpose()?;
++            let expected_appearance = section
++                .appearance
++                .as_ref()
++                .map(serde_json::to_value)
++                .transpose()?;
++            if existing_name != section.name || existing_appearance != expected_appearance {
++                // Every empty native database contains this pristine built-in
++                // section. Its selected-thread presentation may be customized.
++                let pristine = section.id == "01984de2-8f74-7c91-a3b2-5c5e937cf318"
++                    && existing_name == "Pinned"
++                    && existing_appearance.is_none();
++                let referenced: i64 =
++                    sqlx::query_scalar("SELECT COUNT(*) FROM threads WHERE thread_section_id = ?")
++                        .bind(&section.id)
++                        .fetch_one(&mut *tx)
++                        .await?;
++                anyhow::ensure!(
++                    pristine && referenced == 0,
++                    "destination section already differs"
++                );
++                sqlx::query("UPDATE thread_sections SET name = ?, appearance = ? WHERE id = ?")
++                    .bind(&section.name)
++                    .bind(appearance)
++                    .bind(&section.id)
++                    .execute(&mut *tx)
++                    .await?;
++            }
++        }
++        if let Some(project) = &state.project {
++            let inserted = sqlx::query("INSERT INTO projects(id, name, metadata, position, created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING")
++                .bind(&project.id).bind(&project.name).bind(serde_json::to_string(&project.metadata)?)
++                .bind(project.position).bind(project.created_at_ms).bind(project.updated_at_ms)
++                .execute(&mut *tx).await?.rows_affected() > 0;
++            if inserted {
++                for (position, root) in project.roots.iter().enumerate() {
++                    sqlx::query(
++                        "INSERT INTO project_roots(project_id, position, path) VALUES (?, ?, ?)",
++                    )
++                    .bind(&project.id)
++                    .bind(i64::try_from(position)?)
++                    .bind(&root.path)
++                    .execute(&mut *tx)
++                    .await?;
++                }
++            } else {
++                let row = sqlx::query("SELECT name, metadata, position, created_at_ms, updated_at_ms FROM projects WHERE id = ?")
++                    .bind(&project.id).fetch_one(&mut *tx).await?;
++                let metadata_json: String = row.try_get("metadata")?;
++                anyhow::ensure!(
++                    row.try_get::<String, _>("name")? == project.name
++                        && serde_json::from_str::<std::collections::BTreeMap<String, String>>(
++                            &metadata_json
++                        )? == project.metadata
++                        && row.try_get::<i64, _>("position")? == project.position
++                        && row.try_get::<i64, _>("created_at_ms")? == project.created_at_ms
++                        && row.try_get::<i64, _>("updated_at_ms")? == project.updated_at_ms,
++                    "destination project already differs"
++                );
++                let roots: Vec<String> = sqlx::query_scalar(
++                    "SELECT path FROM project_roots WHERE project_id = ? ORDER BY position",
++                )
++                .bind(&project.id)
++                .fetch_all(&mut *tx)
++                .await?;
++                anyhow::ensure!(
++                    roots
++                        == project
++                            .roots
++                            .iter()
++                            .map(|r| r.path.clone())
++                            .collect::<Vec<_>>(),
++                    "destination project roots already differ"
++                );
++            }
++        }
++        let inserted = self
++            .insert_thread_if_absent_in_transaction(metadata, &state.memory_mode, &mut tx)
++            .await?;
++        tx.commit().await?;
++        self.insert_thread_spawn_edge_from_source_if_absent(metadata.id, metadata.source.as_str())
++            .await?;
++        Ok(inserted)
++    }
++}
+diff --git a/codex-rs/state/src/runtime/threads.rs b/codex-rs/state/src/runtime/threads.rs
+--- a/codex-rs/state/src/runtime/threads.rs
++++ b/codex-rs/state/src/runtime/threads.rs
+@@ -358,7 +358,7 @@
+         Ok(())
+     }
+ 
+-    async fn insert_thread_spawn_edge_from_source_if_absent(
++    pub(super) async fn insert_thread_spawn_edge_from_source_if_absent(
+         &self,
+         child_thread_id: ThreadId,
+         source: &str,
+@@ -602,6 +602,22 @@
+     pub async fn insert_thread_if_absent(
+         &self,
+         metadata: &crate::ThreadMetadata,
++    ) -> anyhow::Result<bool> {
++        let mut transaction = self.pool.begin().await?;
++        let inserted = self
++            .insert_thread_if_absent_in_transaction(metadata, "enabled", &mut transaction)
++            .await?;
++        transaction.commit().await?;
++        self.insert_thread_spawn_edge_from_source_if_absent(metadata.id, metadata.source.as_str())
++            .await?;
++        Ok(inserted)
++    }
++
++    pub(super) async fn insert_thread_if_absent_in_transaction(
++        &self,
++        metadata: &crate::ThreadMetadata,
++        memory_mode: &str,
++        transaction: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+     ) -> anyhow::Result<bool> {
+         let updated_at = self.allocate_thread_updated_at(metadata.updated_at)?;
+         let recency_at = self.allocate_thread_recency_at(metadata.recency_at)?;
+@@ -693,12 +709,10 @@
+         .bind(metadata.git_sha.as_deref())
+         .bind(metadata.git_branch.as_deref())
+         .bind(metadata.git_origin_url.as_deref())
+-        .bind("enabled")
++        .bind(memory_mode)
+         .bind(metadata.project_id.as_deref())
+-        .execute(self.pool.as_ref())
++        .execute(&mut **transaction)
+         .await?;
+-        self.insert_thread_spawn_edge_from_source_if_absent(metadata.id, metadata.source.as_str())
+-            .await?;
+         Ok(result.rows_affected() > 0)
+     }
+ 
+diff --git a/codex-rs/state/src/runtime.rs b/codex-rs/state/src/runtime.rs
+--- a/codex-rs/state/src/runtime.rs
++++ b/codex-rs/state/src/runtime.rs
+@@ -45,6 +45,7 @@
+ mod logs;
+ mod memories;
+ mod projects;
++pub(crate) mod portable_thread;
+ mod queued_items;
+ mod recovery;
+ mod remote_control;
+diff --git a/codex-rs/thread-store/src/local/portable_history.rs b/codex-rs/thread-store/src/local/portable_history.rs
+--- a/codex-rs/thread-store/src/local/portable_history.rs
++++ b/codex-rs/thread-store/src/local/portable_history.rs
+@@ -96,10 +96,15 @@
+             break;
+         }
+     }
++    let state = database
++        .export_portable_thread_state(&metadata)
++        .await
++        .map_err(storage_error)?;
+     Ok(PortableThreadHistory {
+-        version: 1,
++        version: 2,
+         thread_id: params.thread_id,
+         metadata,
++        state,
+         segments,
+         queue,
+     })
+diff --git a/codex-rs/thread-store/src/local/portable_history_import.rs b/codex-rs/thread-store/src/local/portable_history_import.rs
+--- a/codex-rs/thread-store/src/local/portable_history_import.rs
++++ b/codex-rs/thread-store/src/local/portable_history_import.rs
+@@ -156,7 +156,7 @@
+         .map_err(error)?;
+     // Metadata is the final visibility step. No existing row is overwritten.
+     let inserted = database
+-        .insert_thread_if_absent(&metadata)
++        .insert_portable_thread_if_absent(&metadata, &snapshot.state)
+         .await
+         .map_err(error)?;
+     if !inserted
+@@ -181,7 +181,7 @@
+ }
+ 
+ fn validate(snapshot: &PortableThreadHistory) -> ThreadStoreResult<Vec<String>> {
+-    if snapshot.version != 1
++    if snapshot.version != 2
+         || snapshot.metadata.id != snapshot.thread_id
+         || snapshot.segments.is_empty()
+     {
+@@ -215,10 +215,11 @@
+             return Err(conflict("portable history contains an unrelated segment"));
+         }
+         for line in lines {
+-            let record: RolloutLine = serde_json::from_str(line).map_err(error)?;
+-            if matches!(record.item, RolloutItem::SessionMeta(_)) {
+-                return Err(conflict("unexpected session metadata inside a segment"));
+-            }
++            // Native legacy history appends SessionMeta for memory-mode changes
++            // and can retain metadata copied from fork history. As in native
++            // replay, the first record alone owns this segment's identity and
++            // ancestry; preserve later records as ordinary history items.
++            let _: RolloutLine = serde_json::from_str(line).map_err(error)?;
+         }
+         let suffix = if meta.meta.id == segment.rollout_id {
+             String::new()
+diff --git a/codex-rs/thread-store/src/portable_history.rs b/codex-rs/thread-store/src/portable_history.rs
+--- a/codex-rs/thread-store/src/portable_history.rs
++++ b/codex-rs/thread-store/src/portable_history.rs
+@@ -12,6 +12,7 @@
+     pub version: u32,
+     pub thread_id: ThreadId,
+     pub metadata: ThreadMetadata,
++    pub state: codex_state::PortableThreadState,
+     pub segments: Vec<PortableRolloutSegment>,
+     pub queue: Vec<QueuedUserSubmissionRecord>,
+ }

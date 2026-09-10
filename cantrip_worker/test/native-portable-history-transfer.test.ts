@@ -1,11 +1,12 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { once } from "node:events";
 import { randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
+import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import { CodexRpcClient } from "../src/codex/rpc-client.js";
 import { readCodexNativeHistory } from "../src/codex/native-history.js";
@@ -113,6 +114,7 @@ describe.skipIf(!binary)(
               `sandbox_mode="${account === "a" ? "read-only" : "danger-full-access"}"`,
               `model_reasoning_effort="${account === "a" ? "high" : "low"}"`,
               "features.plugins=false",
+              "features.goals=true",
               `[model_providers.fixture-${account}]`,
               `name="Fixture ${account}"`,
               `base_url="http://127.0.0.1:${(provider.address() as { port: number }).port}/${account}/v1"`,
@@ -152,7 +154,7 @@ describe.skipIf(!binary)(
                 allow: false,
               })
               .then((result) => {
-                expect(trigger).toBe("queue");
+                expect(["queue", "goal"]).toContain(trigger);
                 expect(result.error).toBeUndefined();
                 expect(result.result).toEqual({ accepted: true });
                 declinedAttempts.push(attemptId);
@@ -207,7 +209,41 @@ describe.skipIf(!binary)(
             expectedLastTurnId: null,
           });
           expect(requests).toHaveLength(0);
+          await rpc("thread/memoryMode/set", { threadId, mode: "disabled" });
+          const section = (
+            await rpc("threadSection/create", {
+              name: "Transfer section",
+              appearance: { icon: "music", color: "violet" },
+            })
+          ).section;
+          await rpc("thread/section/move", { threadId, sectionId: section.id });
+          const project = (
+            await rpc("project/create", {
+              name: "Transfer project",
+              roots: [{ path: cwd }],
+              metadata: { fixture: "selected conversation" },
+              idempotencyKey: randomUUID(),
+            })
+          ).project;
+          await rpc("thread/metadata/update", {
+            threadId,
+            projectId: project.id,
+          });
+          await rpc("thread/goal/set", {
+            threadId,
+            objective: "Retain this fixture goal",
+            tokenBudget: 1000,
+            status: "active",
+          });
           const firstTurnId = await turn(threadId, "BEFORE_MIGRATION");
+          await expect
+            .poll(
+              async () =>
+                (await rpc("thread/goal/get", { threadId })).goal?.tokensUsed,
+            )
+            .toBeGreaterThan(0);
+          await rpc("thread/goal/set", { threadId, status: "paused" });
+          const sourceGoal = await rpc("thread/goal/get", { threadId });
           const source = await readCodexNativeHistory(rpc, threadId);
           const sourceRead = await rpc("thread/read", {
             threadId,
@@ -232,6 +268,31 @@ describe.skipIf(!binary)(
             transferId,
             expectedLastTurnId: firstTurnId,
           });
+          const sourceTransfer = JSON.parse(
+            await readFile(exported.path, "utf8"),
+          );
+          if (historyMode === "legacy") {
+            const metadataRecords = sourceTransfer.segments.flatMap(
+              (segment: Json) =>
+                segment.content
+                  .split("\n")
+                  .filter(Boolean)
+                  .map((line: string) => JSON.parse(line))
+                  .filter((line: Json) => line.type === "session_meta"),
+            );
+            expect(metadataRecords.length).toBeGreaterThan(1);
+            expect(
+              metadataRecords.some(
+                (record: Json) => record.payload.memory_mode === "disabled",
+              ),
+            ).toBe(true);
+          }
+          expect(sourceTransfer.version).toBe(2);
+          expect(sourceTransfer.state).toMatchObject({
+            memory_mode: "disabled",
+            project: { id: project.id, name: project.name },
+            goal: { objective: "Retain this fixture goal", status: "paused" },
+          });
           expect(
             await rpc("thread/managedHistory/export", {
               threadId,
@@ -241,6 +302,164 @@ describe.skipIf(!binary)(
           ).toEqual(exported);
           await stop();
           await start("b");
+          // Later metadata is valid history, but it cannot replace the first
+          // record's ownership or bypass the transfer envelope version.
+          const invalidTransferPath = path.join(
+            directory,
+            "invalid-transfer.json",
+          );
+          await writeFile(
+            invalidTransferPath,
+            JSON.stringify({ ...sourceTransfer, version: 1 }),
+          );
+          await expect(
+            rpc("thread/managedHistory/import", {
+              threadId,
+              transferId: randomUUID(),
+              path: invalidTransferPath,
+            }),
+          ).rejects.toThrow("invalid portable history identity or version");
+          const foreignRoot = structuredClone(sourceTransfer);
+          const rootSegment = foreignRoot.segments.at(-1);
+          const rootLines = rootSegment.content.split("\n");
+          const foreignHeader = JSON.parse(rootLines[0]);
+          foreignHeader.payload.id = randomUUID();
+          foreignHeader.payload.session_id = foreignHeader.payload.id;
+          rootLines[0] = JSON.stringify(foreignHeader);
+          rootSegment.content = rootLines.join("\n");
+          await writeFile(invalidTransferPath, JSON.stringify(foreignRoot));
+          await expect(
+            rpc("thread/managedHistory/import", {
+              threadId,
+              transferId: randomUUID(),
+              path: invalidTransferPath,
+            }),
+          ).rejects.toThrow(
+            "portable history root belongs to another conversation",
+          );
+          // Fail the actual publication write after auxiliary state is staged.
+          // Only this fixture's private databases are opened directly.
+          const stateDb = new DatabaseSync(
+            path.join(directory, "b", "state_5.sqlite"),
+          );
+          try {
+            stateDb.exec("PRAGMA busy_timeout = 5000");
+            stateDb.exec(
+              "CREATE TRIGGER fail_imported_thread BEFORE INSERT ON threads BEGIN SELECT RAISE(ABORT, 'fixture import write failure'); END",
+            );
+            await expect(
+              rpc("thread/managedHistory/import", {
+                threadId,
+                transferId,
+                path: exported.path,
+              }),
+            ).rejects.toThrow("fixture import write failure");
+            expect(
+              stateDb
+                .prepare("SELECT id FROM threads WHERE id = ?")
+                .get(threadId),
+            ).toBeUndefined();
+            expect(
+              stateDb
+                .prepare("SELECT id FROM projects WHERE id = ?")
+                .get(project.id),
+            ).toBeUndefined();
+            expect(
+              stateDb
+                .prepare("SELECT id FROM thread_sections WHERE id = ?")
+                .get(section.id),
+            ).toBeUndefined();
+            stateDb.exec("DROP TRIGGER fail_imported_thread");
+            stateDb
+              .prepare("INSERT INTO thread_sections(id, name) VALUES (?, ?)")
+              .run(section.id, "Destination section");
+            await expect(
+              rpc("thread/managedHistory/import", {
+                threadId,
+                transferId,
+                path: exported.path,
+              }),
+            ).rejects.toThrow("destination section already differs");
+            expect(
+              stateDb
+                .prepare("SELECT name FROM thread_sections WHERE id = ?")
+                .get(section.id),
+            ).toEqual({ name: "Destination section" });
+            stateDb
+              .prepare("DELETE FROM thread_sections WHERE id = ?")
+              .run(section.id);
+            const transferredProject = sourceTransfer.state.project;
+            stateDb
+              .prepare(
+                "INSERT INTO projects(id, name, metadata, position, created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?)",
+              )
+              .run(
+                project.id,
+                "Destination project",
+                JSON.stringify(transferredProject.metadata),
+                transferredProject.position,
+                transferredProject.created_at_ms,
+                transferredProject.updated_at_ms,
+              );
+            await expect(
+              rpc("thread/managedHistory/import", {
+                threadId,
+                transferId,
+                path: exported.path,
+              }),
+            ).rejects.toThrow("destination project already differs");
+            expect(
+              stateDb
+                .prepare("SELECT name FROM projects WHERE id = ?")
+                .get(project.id),
+            ).toEqual({ name: "Destination project" });
+            stateDb
+              .prepare("DELETE FROM projects WHERE id = ?")
+              .run(project.id);
+          } finally {
+            stateDb.close();
+          }
+          // Goals publish in their own database. A retry must reject a changed
+          // goal rather than overwrite it with the old transfer artifact.
+          const goalsDb = new DatabaseSync(
+            path.join(directory, "b", "goals_1.sqlite"),
+          );
+          try {
+            goalsDb.exec("PRAGMA busy_timeout = 5000");
+            expect(
+              goalsDb
+                .prepare(
+                  "SELECT objective FROM thread_goals WHERE thread_id = ?",
+                )
+                .get(threadId),
+            ).toEqual({ objective: "Retain this fixture goal" });
+            goalsDb
+              .prepare(
+                "UPDATE thread_goals SET objective = ? WHERE thread_id = ?",
+              )
+              .run("Changed destination goal", threadId);
+            await expect(
+              rpc("thread/managedHistory/import", {
+                threadId,
+                transferId,
+                path: exported.path,
+              }),
+            ).rejects.toThrow("destination goal already differs");
+            expect(
+              goalsDb
+                .prepare(
+                  "SELECT objective FROM thread_goals WHERE thread_id = ?",
+                )
+                .get(threadId),
+            ).toEqual({ objective: "Changed destination goal" });
+            goalsDb
+              .prepare(
+                "UPDATE thread_goals SET objective = ? WHERE thread_id = ?",
+              )
+              .run("Retain this fixture goal", threadId);
+          } finally {
+            goalsDb.close();
+          }
           const imported = await rpc("thread/managedHistory/import", {
             threadId,
             transferId,
@@ -269,6 +488,31 @@ describe.skipIf(!binary)(
           expect(resumed.approvalPolicy).toEqual(initial.approvalPolicy);
           expect(resumed.reasoningEffort).toEqual(initial.reasoningEffort);
           expect(resumed.serviceTier).toEqual(initial.serviceTier);
+          expect(await rpc("thread/goal/get", { threadId })).toEqual(
+            sourceGoal,
+          );
+          expect(
+            (await rpc("project/read", { projectId: project.id })).project,
+          ).toMatchObject({
+            id: project.id,
+            name: project.name,
+            roots: project.roots,
+            metadata: project.metadata,
+          });
+          expect((await rpc("threadSection/list", {})).data).toContainEqual(
+            section,
+          );
+          const targetTransfer = await rpc("thread/managedHistory/export", {
+            threadId,
+            transferId: randomUUID(),
+            expectedLastTurnId: firstTurnId,
+          });
+          expect(
+            JSON.parse(await readFile(targetTransfer.path, "utf8")).state,
+          ).toMatchObject({
+            memory_mode: "disabled",
+            goal: sourceTransfer.state.goal,
+          });
           await expect(
             rpc("thread/managedHistory/import", {
               threadId,
@@ -295,6 +539,8 @@ describe.skipIf(!binary)(
             rpc,
             threadId,
           );
+          await rpc("thread/goal/clear", { threadId });
+          await rpc("thread/memoryMode/set", { threadId, mode: "enabled" });
           await rpc("thread/queue/delete", {
             threadId,
             queuedSubmissionId: queued.queuedSubmission.id,
@@ -307,6 +553,12 @@ describe.skipIf(!binary)(
             threadId,
             transferId: returnId,
             expectedLastTurnId: secondTurnId,
+          });
+          expect(
+            JSON.parse(await readFile(returnExport.path, "utf8")).state,
+          ).toMatchObject({
+            memory_mode: "enabled",
+            goal: null,
           });
           await stop();
           // A cold runtime reads the imported native history without another import.
@@ -329,6 +581,22 @@ describe.skipIf(!binary)(
           expect(
             (await readCodexNativeHistory(rpc, threadId)).thread.turns,
           ).toEqual(destinationHistory.thread.turns);
+          expect((await rpc("thread/goal/get", { threadId })).goal).toBeNull();
+          // Export requires a loaded engine. Inspect the persisted fixture row
+          // directly here so a resume cannot obscure an old-import regression.
+          const coldState = new DatabaseSync(
+            path.join(directory, "b", "state_5.sqlite"),
+            { readOnly: true },
+          );
+          try {
+            expect(
+              coldState
+                .prepare("SELECT memory_mode FROM threads WHERE id = ?")
+                .get(threadId),
+            ).toEqual({ memory_mode: "enabled" });
+          } finally {
+            coldState.close();
+          }
           expect((await rpc("thread/queue/list", { threadId })).data).toEqual(
             [],
           );
@@ -336,6 +604,9 @@ describe.skipIf(!binary)(
           await stop();
           // Source ownership/history remain intact until the future handoff controller commits.
           await start("a");
+          expect(await rpc("thread/goal/get", { threadId })).toEqual(
+            sourceGoal,
+          );
           await expect(
             rpc("thread/managedHistory/import", {
               threadId,
