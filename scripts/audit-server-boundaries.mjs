@@ -1,3 +1,9 @@
+import {
+  nativeTableClassifications,
+  nativeRouteContentClassification,
+  nativeWorkerCommandContentClassification,
+} from "./native-content-classifications.mjs";
+import { readWorkerCommandTypes } from "./worker-command-inventory.mjs";
 import { readStaticServerRoutes } from "./server-route-parser.mjs";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
@@ -101,9 +107,9 @@ const CONTENT_CLASSIFICATIONS = new Set([
 // digest; regenerating the inventory alone cannot silently accept it.
 const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
-    "e972d6a405822c32d9deac209bf80d3c648c125aeb53fcf2ffce8af4bba18136",
+    "e3d9fd44d7f99028b28fd217e76c9010826c1839b2f9579021bbce25691236dc",
   applicationRoutes:
-    "ce16a76e2d04aa4bdd73d47e7e61948202beb238fd6a7a3e10108edbe430e8e3",
+    "6a1032e2c7efe616c23c9e49e14048ec287e042ed1b38a11fee294d71df23889",
   clientControlCommands:
     "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
   cliCommands:
@@ -111,12 +117,13 @@ const REVIEWED_CONTRACT_DIGESTS = {
   liveResources:
     "a42c3383061dec85ceca8d416ab0cf4822ee618c2f3d5d140554584c00f505e8",
   workerCommands:
-    "d6c1af7ed515c1451c6e8626bfdd8a42d1483548db113e32fe4a952e0f9fe769",
+    "69c3fe703b1a3d4a21d33616d9a698795ac6b3f7bcb7e8df59671fce02f85d06",
   tunnelFrameKinds:
     "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8",
 };
 
 const DURABLE_TABLE_CLASSIFICATIONS = {
+  ...nativeTableClassifications,
   systemState: "intentionally-public-control-plane",
   users: "intentionally-public-control-plane",
   accountLicenseWhitelist: "intentionally-public-control-plane",
@@ -3302,95 +3309,6 @@ function literalValuesInInitializer(sourceText, declarationName, opener) {
   ].map((match) => match[1]);
 }
 
-const referencedWorkerCommandSchemas = [
-  ["code-surfaces.ts", "codeTransportRouteAuthorizeCommandSchema"],
-  ["code-surfaces.ts", "codeTransportRouteRevokeCommandSchema"],
-  ["code-surfaces.ts", "codeTransportRevokeCommandSchema"],
-  ["direct-data-plane.ts", "directCapabilityPrepareCommandSchema"],
-  ["direct-data-plane.ts", "directCapabilityRenewCommandSchema"],
-  ["direct-data-plane.ts", "directCapabilityRevokeCommandSchema"],
-  ["worker-link.ts", "workerLinkGrantInstallCommandSchema"],
-  ["worker-link.ts", "workerLinkGrantRenewCommandSchema"],
-  ["worker-link.ts", "workerLinkGrantRevokeCommandSchema"],
-  ["worker-link.ts", "workerLinkIdentityResolveCommandSchema"],
-  ["worker-link.ts", "workerLinkPeerSessionInstallCommandSchema"],
-  ["worker-link.ts", "workerLinkPeerSessionRenewCommandSchema"],
-  ["worker-link.ts", "workerLinkPeerSessionRevokeCommandSchema"],
-  ["worker-link.ts", "workerLinkPeerSignalCommandSchema"],
-  ["worker-link.ts", "workerLinkSessionInstallCommandSchema"],
-  ["worker-link.ts", "workerLinkSessionRenewCommandSchema"],
-  ["worker-link.ts", "workerLinkSessionRouteCommandSchema"],
-  ["worker-link.ts", "workerLinkSessionRevokeCommandSchema"],
-  [
-    "workspace-repository-discovery.ts",
-    "workspaceRepositoryDiscoveryCommandSchema",
-  ],
-  [
-    "workspace-repository-discovery.ts",
-    "workspaceRepositoryImportValidateCommandSchema",
-  ],
-];
-
-async function workerCommandLiteralValues() {
-  const protocolSourcePath = resolve(repositoryRoot, "packages/protocol/src");
-  const commandPaths = (await readdir(protocolSourcePath))
-    .filter((file) => /^worker-command-.+\.ts$/u.test(file))
-    .map((file) => resolve(protocolSourcePath, file));
-  const referencedSourceFiles = [
-    ...new Set(
-      referencedWorkerCommandSchemas.map(([sourceFile]) => sourceFile),
-    ),
-  ];
-  const [workerCommandSchemaText, commandTexts, referencedSourceTexts] =
-    await Promise.all([
-      readFile(resolve(protocolSourcePath, "worker-commands.ts"), "utf8"),
-      Promise.all(commandPaths.map((path) => readFile(path, "utf8"))),
-      Promise.all(
-        referencedSourceFiles.map((sourceFile) =>
-          readFile(resolve(protocolSourcePath, sourceFile), "utf8"),
-        ),
-      ),
-    ]);
-  const commandText = commandTexts.join("\n");
-  const referencedSourceTextByFile = new Map(
-    referencedSourceFiles.map((sourceFile, index) => [
-      sourceFile,
-      referencedSourceTexts[index],
-    ]),
-  );
-  const workerCommandInitializer = declarationInitializer(
-    workerCommandSchemaText,
-    "workerCommandSchema",
-    "[",
-  );
-  if (!workerCommandInitializer.includes("...worker")) {
-    throw new Error("Audited worker command module arrays are not composed.");
-  }
-  for (const [, schemaName] of referencedWorkerCommandSchemas) {
-    if (!new RegExp(`\\b${schemaName}\\b`, "u").test(commandText)) {
-      throw new Error(
-        `Audited worker command schema ${schemaName} is not in a worker command module.`,
-      );
-    }
-  }
-  return [
-    ...new Set([
-      ...[
-        ...commandText.matchAll(
-          /^ {2,6}(?=\S)[^\n]*\btype:\s*z\.literal\(["']([^"']+)["']\)/gmu,
-        ),
-      ].map((match) => match[1]),
-      ...referencedWorkerCommandSchemas.flatMap(([sourceFile, schemaName]) =>
-        literalValuesInInitializer(
-          referencedSourceTextByFile.get(sourceFile),
-          schemaName,
-          "(",
-        ),
-      ),
-    ]),
-  ];
-}
-
 function enumValues(sourceText, declarationName) {
   const declaration = sourceText.indexOf(`export const ${declarationName}`);
   if (declaration < 0) throw new Error(`Missing ${declarationName}.`);
@@ -3460,6 +3378,8 @@ function durableTableContentInventory(schemaText) {
 }
 
 function applicationRouteContentClassification(route) {
+  const native = nativeRouteContentClassification(route);
+  if (native) return native;
   const key = `${route.method} ${route.path}`;
   if (key === "POST /api/internal/computer-use/authority") {
     return {
@@ -3591,6 +3511,8 @@ function applicationRouteContentClassification(route) {
 }
 
 function workerCommandContentClassification(command) {
+  const native = nativeWorkerCommandContentClassification(command);
+  if (native) return native;
   if (command.startsWith("computer-use.preview.")) {
     return {
       classification: "intentionally-public-control-plane",
@@ -3767,6 +3689,12 @@ function cliCommandContentClassification(command) {
 }
 
 function agentOperationContentClassification(operation) {
+  if (operation === "context.compact")
+    return {
+      classification: "worker-local",
+      rationale:
+        "authorized current-turn worker compaction scheduling; server receives routing and bounded context telemetry, not prompt or compacted transcript content",
+    };
   if (/^run(?:-|\.)/u.test(operation)) {
     return {
       classification: "endpoint-protected",
@@ -4415,7 +4343,7 @@ async function buildInventory() {
   const routeKeys = parsedRoutes.map(
     ({ method, path, transport }) => `${transport} ${method} ${path}`,
   );
-  const workerCommands = (await workerCommandLiteralValues()).sort();
+  const workerCommands = (await readWorkerCommandTypes()).sort();
   const liveResources = enumValues(
     liveProtocolText,
     "appLiveResourceSchema",
