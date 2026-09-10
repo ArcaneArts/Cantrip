@@ -24,13 +24,25 @@ function send(response: ServerResponse, id: string, item: Frame) {
 
 describe.skipIf(!binary)("shared native interaction replies", () => {
   it.each([
-    { origin: "gui", kind: "question" },
-    { origin: "terminal", kind: "question" },
-    { origin: "gui", kind: "approval" },
-    { origin: "terminal", kind: "approval" },
-  ] as const)(
-    "answers a $kind from a $origin turn through the opposite view",
-    async ({ origin, kind }) => {
+    ...(["gui", "terminal"] as const).flatMap((origin) =>
+      (["question", "approval"] as const).flatMap((kind) =>
+        [false, true].map((reopen) => ({
+          origin,
+          kind,
+          reopen,
+          cancel: false,
+        })),
+      ),
+    ),
+    ...(["gui", "terminal"] as const).map((origin) => ({
+      origin,
+      kind: "question" as const,
+      reopen: false,
+      cancel: true,
+    })),
+  ])(
+    "resolves $kind from $origin (reopen=$reopen, cancel=$cancel)",
+    async ({ origin, kind, reopen, cancel }) => {
       const requests: Frame[] = [];
       const errors: string[] = [];
       const responses: ServerResponse[] = [];
@@ -131,13 +143,30 @@ describe.skipIf(!binary)("shared native interaction replies", () => {
             expect(f!.interactionRequests).toHaveLength(1);
             expect(f!.terminalText()).toContain(
               kind === "question"
-                ? question
+                ? "enter to submit answer"
                 : "Press enter to confirm or esc to cancel",
             );
           },
           { timeout: 20000 },
         );
         const pending = f.interactionRequests[0]!;
+        if (reopen) {
+          // Startup typeahead must not answer the replayed request. Only the
+          // fresh response after its complete prompt is displayed may do so.
+          await f.restartTerminal("\r");
+          await vi.waitFor(
+            () =>
+              expect(f!.terminalText()).toContain(
+                kind === "question"
+                  ? "enter to submit answer"
+                  : "Press enter to confirm or esc to cancel",
+              ),
+            { timeout: 10000 },
+          );
+          expect(f.interactionRequests).toEqual([pending]);
+          expect(f.interactionCleared).toEqual([]);
+          expect(requests).toHaveLength(1);
+        }
         expect(pending.threadId).toBe(f.threadId);
         expect(pending.payload.kind).toBe(
           kind === "question" ? "userInput" : "commandExecution",
@@ -163,7 +192,12 @@ describe.skipIf(!binary)("shared native interaction replies", () => {
         ).rejects.toThrow("response kind does not match");
         expect(f.interactionCleared).toEqual([]);
         expect(requests).toHaveLength(1);
-        if (gui) f.tuiInput("\r");
+        if (cancel)
+          await f.runtime.cancelAgentInteraction(
+            pending.requestKey,
+            "Shared fixture cancelled.",
+          );
+        else if (gui) f.tuiInput("\r");
         else await f.runtime.answerAgentInteraction(pending.requestKey, reply);
         await vi.waitFor(() => expect(requests).toHaveLength(2), {
           timeout: 10000,
@@ -173,9 +207,13 @@ describe.skipIf(!binary)("shared native interaction replies", () => {
             item.type === "function_call_output" &&
             item.call_id === "interaction-call",
         );
-        expect(JSON.stringify(output)).toContain(
-          kind === "question" ? "First" : "SHARED_APPROVAL_OK",
-        );
+        if (cancel) {
+          expect(output).toHaveLength(1);
+          expect(JSON.parse(output[0].output)).toEqual({ answers: {} });
+        } else
+          expect(JSON.stringify(output)).toContain(
+            kind === "question" ? "First" : "SHARED_APPROVAL_OK",
+          );
         await vi.waitFor(
           () => {
             expect(f!.interactionCleared).toEqual([pending.requestKey]);
@@ -184,25 +222,40 @@ describe.skipIf(!binary)("shared native interaction replies", () => {
           { timeout: 10000 },
         );
         expect(f.interactionExpired).toEqual([]);
+        if (cancel) {
+          await expect(
+            f.runtime.cancelAgentInteraction(
+              pending.requestKey,
+              "Duplicate cancellation.",
+            ),
+          ).resolves.toEqual({ accepted: true });
+          expect(f.interactionCleared).toEqual([pending.requestKey]);
+        }
         await expect(
           f.runtime.answerAgentInteraction(pending.requestKey, reply),
         ).rejects.toThrow("no longer pending");
         const replies = [...f.authority.receipts.values()].filter(
           (receipt) => receipt.method === "serverRequest/reply",
         );
-        expect(replies).toHaveLength(1);
+        expect(replies).toHaveLength(cancel ? 0 : 1);
         expect(
           f.authority.phases.filter(
             (phase) =>
               phase.phase === "admit" &&
               phase.body.method === "serverRequest/reply",
           ),
-        ).toEqual([
-          expect.objectContaining({
-            status: 200,
-            body: expect.objectContaining({ origin: gui ? "terminal" : "gui" }),
-          }),
-        ]);
+        ).toEqual(
+          cancel
+            ? []
+            : [
+                expect.objectContaining({
+                  status: 200,
+                  body: expect.objectContaining({
+                    origin: gui ? "terminal" : "gui",
+                  }),
+                }),
+              ],
+        );
         if (gui) {
           expect((await gui.settled).error).toBeUndefined();
           await gui.finish();

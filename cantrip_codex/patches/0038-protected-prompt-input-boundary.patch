@@ -1,0 +1,124 @@
+diff --git a/codex-rs/tui/src/app.rs b/codex-rs/tui/src/app.rs
+--- a/codex-rs/tui/src/app.rs
++++ b/codex-rs/tui/src/app.rs
+@@ -632,6 +632,8 @@
+     startup_protected_input_boundary: bool,
+     /// Keeps that boundary armed while a startup approval waits for the typing-idle timer.
+     startup_pending_protected_request: bool,
++    /// The visible protected screen already discarded pre-display typeahead.
++    startup_input_quarantined: bool,
+     /// Invalidates in-flight full rate-limit reads when a newer rolling hard stop arrives.
+     rate_limit_hard_stop_generation: u64,
+     rate_limit_refresh_state: rate_limit_refresh::RateLimitRefreshState,
+@@ -917,16 +919,8 @@
+                         return Ok(AppRunControl::Continue);
+                     }
+                     // Allow widgets to process any pending timers before rendering.
+-                    let had_active_view = self.chat_widget.has_active_view();
+                     self.chat_widget.pre_draw_tick();
+                     let rendered_area = self.render_chat_widget_frame(tui, screen_size)?;
+-                    if !had_active_view
+-                        && self.chat_widget.has_active_view()
+-                        && self.startup_protected_input_boundary
+-                    {
+-                        tui.discard_pending_input_before_interactive_screen()?;
+-                        self.startup_pending_protected_request = false;
+-                    }
+                     if self.chat_widget.ambient_pet_image_enabled() {
+                         let ambient_pet_area = Rect::new(
+                             /*x*/ 0,
+@@ -973,6 +967,17 @@
+     }
+ 
+     fn render_chat_widget_frame(&mut self, tui: &mut tui::Tui, screen_size: Size) -> Result<Rect> {
++        if self.chat_widget.has_active_view() && self.startup_protected_input_boundary {
++            if !self.startup_input_quarantined {
++                // Drain before painting the first actionable screen. Repeated startup
++                // renders must not discard a reply to a prompt that is already visible.
++                tui.discard_pending_input_before_interactive_screen()?;
++                self.startup_input_quarantined = true;
++            }
++            self.startup_pending_protected_request = false;
++        } else if !self.chat_widget.has_active_view() {
++            self.startup_input_quarantined = false;
++        }
+         let dashboard_visible = self
+             .chat_widget
+             .selected_index_for_present_view(AGENTS_OVERVIEW_VIEW_ID)
+diff --git a/codex-rs/tui/src/app/startup.rs b/codex-rs/tui/src/app/startup.rs
+--- a/codex-rs/tui/src/app/startup.rs
++++ b/codex-rs/tui/src/app/startup.rs
+@@ -141,10 +141,6 @@
+         fn render_startup_frame(app: &mut App, tui: &mut tui::Tui) -> Result<()> {
+             app.chat_widget.pre_draw_tick();
+             app.render_chat_widget_frame(tui, tui.terminal.last_known_screen_size)?;
+-            if app.chat_widget.has_active_view() && app.startup_protected_input_boundary {
+-                tui.discard_pending_input_before_interactive_screen()?;
+-                app.startup_pending_protected_request = false;
+-            }
+             Ok(())
+         }
+ 
+@@ -594,6 +590,7 @@
+             pending_startup_thread_start,
+             startup_protected_input_boundary: true,
+             startup_pending_protected_request: false,
++            startup_input_quarantined: false,
+             rate_limit_hard_stop_generation: 0,
+             rate_limit_refresh_state: Default::default(),
+             pending_plugin_enabled_writes: HashMap::new(),
+diff --git a/codex-rs/tui/src/app/thread_routing.rs b/codex-rs/tui/src/app/thread_routing.rs
+--- a/codex-rs/tui/src/app/thread_routing.rs
++++ b/codex-rs/tui/src/app/thread_routing.rs
+@@ -1007,7 +1007,11 @@
+         }
+         if let ServerNotification::ThreadSettingsUpdated(notification) = &notification {
+             if self.observed_native_settings.contains_key(&thread_id)
+-                && !self.accept_native_settings_version(thread_id, &notification.thread_settings, false)
++                && !self.accept_native_settings_version(
++                    thread_id,
++                    &notification.thread_settings,
++                    false,
++                )
+             {
+                 return Ok(());
+             }
+@@ -1905,8 +1909,6 @@
+         {
+             self.chat_widget.pre_draw_tick();
+             self.render_chat_widget_frame(tui, tui.terminal.last_known_screen_size)?;
+-            tui.discard_pending_input_before_interactive_screen()?;
+-            self.startup_pending_protected_request = false;
+         }
+         if self.backtrack_render_pending {
+             tui.frame_requester().schedule_frame();
+diff --git a/codex-rs/tui/src/app/test_support.rs b/codex-rs/tui/src/app/test_support.rs
+--- a/codex-rs/tui/src/app/test_support.rs
++++ b/codex-rs/tui/src/app/test_support.rs
+@@ -82,6 +82,7 @@
+         pending_startup_thread_start: false,
+         startup_protected_input_boundary: false,
+         startup_pending_protected_request: false,
++        startup_input_quarantined: false,
+         rate_limit_hard_stop_generation: 0,
+         rate_limit_refresh_state: Default::default(),
+         pending_plugin_enabled_writes: HashMap::new(),
+diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
+--- a/codex-rs/tui/src/app/tests.rs
++++ b/codex-rs/tui/src/app/tests.rs
+@@ -5492,6 +5492,7 @@
+         pending_startup_thread_start: false,
+         startup_protected_input_boundary: false,
+         startup_pending_protected_request: false,
++        startup_input_quarantined: false,
+         rate_limit_hard_stop_generation: 0,
+         rate_limit_refresh_state: Default::default(),
+         pending_plugin_enabled_writes: HashMap::new(),
+@@ -5578,6 +5579,7 @@
+             pending_startup_thread_start: false,
+             startup_protected_input_boundary: false,
+             startup_pending_protected_request: false,
++            startup_input_quarantined: false,
+             rate_limit_hard_stop_generation: 0,
+             rate_limit_refresh_state: Default::default(),
+             pending_plugin_enabled_writes: HashMap::new(),

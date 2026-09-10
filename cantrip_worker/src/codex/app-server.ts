@@ -7576,6 +7576,7 @@ export class CodexAppServer implements CodexRuntime {
       ...failClosedAgentInteractionReply(pending.request.payload.kind, reason),
     });
     this.releaseAgentInteraction(pending);
+    pending.active.onInteractionCleared?.(pending.request.requestKey);
     return agentInteractionAcceptedSchema.parse({ accepted: true });
   }
 
