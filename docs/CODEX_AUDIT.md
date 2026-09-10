@@ -3950,6 +3950,31 @@ live application/worker acceptance matrix, and perform the user demo. Passing
 these fixtures does not prove all GUI rendering, reconnect, history and CUA
 coexistence requirements together.
 
+### Pass 49 — inventory native command, queue and history routes accurately
+
+The boundary audit previously treated every `${action}` path as a hardcoded
+`suspend`/`resume` pair and rejected `${phase}` paths. That both hid the real
+native history/queue and CodeGraph endpoints and stopped validation on native
+command routes. Route discovery now parses TypeScript syntax, resolves lexical
+literal loops and local factory calls, and retains each registration's source,
+line, method and handler evidence. It ignores commented/string examples and
+rejects unresolved, mutable, escaping or correlated dynamic inputs rather than
+inventing routes. Application registration and authorization are unchanged.
+
+Validation: 16 parser regression cases pass, including the actual native command,
+queue, history, CodeGraph and remote surface source files, shadowed bindings,
+unbraced loops, generic calls and unsupported dynamic factories. Frozen-lockfile
+installation and scoped formatting/diff checks pass. Parser dependencies use
+versions already present in the lockfile. `pnpm check` passes decomposition,
+workflow removal and Run configuration checks, and now parses the application
+route corpus. It next stops at the existing unreviewed `agentOperations` digest
+mismatch. Reviewed digests and the durable boundary inventory were not blindly
+regenerated. No CI, provider requests or desktop input ran.
+
+Remaining: review the actual contract differences before updating the boundary
+inventory, continue full live GUI/CLI/worker acceptance and perform the user
+demo. This tooling pass does not establish complete product integration.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal

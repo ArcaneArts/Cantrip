@@ -1,3 +1,4 @@
+import { readStaticServerRoutes } from "./server-route-parser.mjs";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
@@ -958,59 +959,18 @@ function matchingDelimiter(text, start, open, close) {
 }
 
 function parseRoutes(sourceText, file) {
-  const routes = [];
-  const routeStart = /\bapp\.(delete|get|head|patch|post|put)\b/gu;
-  for (const match of sourceText.matchAll(routeStart)) {
-    const method = match[1];
-    const start = match.index;
-    let cursor = skipSpace(sourceText, start + match[0].length);
-    if (sourceText[cursor] === "<") {
-      cursor = skipSpace(
-        sourceText,
-        matchingDelimiter(sourceText, cursor, "<", ">") + 1,
-      );
-    }
-    if (sourceText[cursor] !== "(") {
-      throw new Error(
-        `Could not parse server route in ${file} near byte ${start}.`,
-      );
-    }
-    const end = matchingDelimiter(sourceText, cursor, "(", ")");
-    const text = sourceText.slice(start, end + 1);
-    const pathMatch = text.match(
-      /^app\.[a-z]+(?:\s*<[\s\S]*?>)?\s*\(\s*(["'])([^"']+)\1/u,
-    );
-    const templatePathMatch = text.match(
-      /^app\.[a-z]+(?:\s*<[\s\S]*?>)?\s*\(\s*`([^`]+)`/u,
-    );
-    const paths = pathMatch
-      ? [pathMatch[2]]
-      : templatePathMatch?.[1].includes("${action}")
-        ? ["suspend", "resume"].map((action) =>
-            templatePathMatch[1].replace("${action}", action),
-          )
-        : [];
-    if (paths.length === 0) {
-      throw new Error(
-        `Server route at ${file}:${sourceText.slice(0, start).split("\n").length} does not use a static path.`,
-      );
-    }
-    for (const path of paths) {
-      routes.push({
-        boundary: routeBoundary(path),
-        file,
-        line: sourceText.slice(0, start).split("\n").length,
-        method: method.toUpperCase(),
-        ownerEvidence: ownerEvidence(path, text),
-        path,
-        source: text,
-        transport: /\bwebsocket\s*:\s*true\b/u.test(text)
-          ? "websocket"
-          : "http",
-      });
-    }
-  }
-  return routes;
+  return readStaticServerRoutes(sourceText, file).map((route) => ({
+    boundary: routeBoundary(route.path),
+    file: route.file,
+    line: route.line,
+    method: route.method,
+    ownerEvidence: ownerEvidence(route.path, route.source),
+    path: route.path,
+    source: route.source,
+    transport: /\bwebsocket\s*:\s*true\b/u.test(route.source)
+      ? "websocket"
+      : "http",
+  }));
 }
 
 function taskRouteBoundaryAudit(routes) {

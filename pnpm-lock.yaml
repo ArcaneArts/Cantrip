@@ -11,6 +11,12 @@ patchedDependencies:
 importers:
   .:
     devDependencies:
+      "@babel/parser":
+        specifier: 7.29.8
+        version: 7.29.8
+      "@babel/traverse":
+        specifier: 7.29.8
+        version: 7.29.8(supports-color@10.2.2)
       "@types/node":
         specifier: ^26.1.2
         version: 26.1.2
