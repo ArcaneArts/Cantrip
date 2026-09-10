@@ -112,6 +112,109 @@ const context = () => f.repository.getChatExecutionContext(owner, f.chatId);
 // Real migrated storage and the existing native admission/dispatch paths. These
 // establish controller ownership, not a simulated claim of native file transfer.
 describe("durable native provider handoff", () => {
+  it("discovers owned transfer routes and the durable latest operation without dispatching", async () => {
+    const app = Fastify();
+    let currentOwner = owner;
+    const dispatched: unknown[] = [];
+    installChatRuntimeHandoffRoutes(app, {
+      applicationOwnerId: () => currentOwner,
+      repository: f.repository,
+      bridge: {
+        request: async (_worker, command) => {
+          dispatched.push(command);
+        },
+      },
+      publishChatInvalidation() {},
+    });
+    try {
+      const url = `/api/chats/${f.chatId}/runtime-handoffs`;
+      let response = await app.inject({ url });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        chatId: f.chatId,
+        binding: { bindingId },
+        latest: null,
+        providers: expect.arrayContaining([
+          expect.objectContaining({
+            id: targetProvider,
+            requiresAccount: false,
+            accounts: [],
+            models: [
+              {
+                routeId: targetRoute,
+                name: "fixture-b",
+                profileName: "Model B",
+              },
+            ],
+          }),
+        ]),
+      });
+      const created = await begin();
+      response = await app.inject({ url });
+      expect(response.json().latest).toEqual(created);
+      await operations().requestCancellation(
+        owner,
+        f.chatId,
+        created.operationId,
+      );
+      await operations().finish(
+        owner,
+        f.workerId,
+        created.operationId,
+        "cancelled",
+      );
+      expect((await app.inject({ url })).json().latest.phase).toBe("cancelled");
+      await f.db
+        .update(schema.modelRoutes)
+        .set({ enabled: false })
+        .where(eq(schema.modelRoutes.id, targetRoute));
+      expect(
+        (await app.inject({ url }))
+          .json()
+          .providers.some(
+            (provider: { id: string }) => provider.id === targetProvider,
+          ),
+      ).toBe(false);
+      currentOwner = "another-owner";
+      expect((await app.inject({ url })).statusCode).toBe(404);
+      expect(dispatched).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("lists enabled account choices without treating cached sign-in or quota state as a readiness gate", async () => {
+    await f.db
+      .update(schema.modelProviders)
+      .set({ kind: "grok" })
+      .where(eq(schema.modelProviders.id, targetProvider));
+    for (const [index, enabled] of [true, false].entries()) {
+      await f.db.insert(schema.modelProviderAccounts).values({
+        id: `inventory-account-${index}`,
+        providerId: targetProvider,
+        position: index,
+        protectedLabel: {
+          formatVersion: 1,
+          keyRevision: 1,
+          envelope: settingsEnvelope,
+        },
+        credentialHomeKey: `private-home-${index}`,
+        credentialState: "signed-out",
+        enabled,
+        weeklyUsageUsedBasisPoints: 10000,
+      });
+    }
+    const inventory = await operations().inventory(owner, f.chatId);
+    const provider = inventory!.providers.find(
+      (provider) => provider.id === targetProvider,
+    )!;
+    expect(provider.requiresAccount).toBe(true);
+    expect(provider.accounts.map((account) => account.id)).toEqual([
+      "inventory-account-0",
+    ]);
+    expect(provider.accounts[0]).not.toHaveProperty("credentialHomeKey");
+    expect(provider.accounts[0]).not.toHaveProperty("protectedCredential");
+  });
   it.skipIf(!process.env.CANTRIP_CODEX_TEST_BINARY)(
     "executes native transfer and recovers a cold destination after a lost canonical commit response",
     async () => {

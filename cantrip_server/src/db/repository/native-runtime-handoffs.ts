@@ -2,7 +2,8 @@ import { queueStateChanged } from "./native-command-queue.js";
 import { assertNativeRuntimeWritable } from "./native-runtime-handoff-guard.js";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
+import { nativeRuntimeHandoffInventory } from "./native-runtime-handoff-inventory.js";
 import {
   nativeRuntimeHandoffRequestSchema,
   nativeRuntimeHandoffPreparedSchema,
@@ -65,6 +66,28 @@ function sameSnapshot(
  * replacement are performed by the authenticated worker outside transactions. */
 export class NativeRuntimeHandoffRepository {
   constructor(private readonly database: RepositoryDatabase) {}
+  async inventory(ownerId: string, chatId: string) {
+    const [latest] = await this.database
+      .select({ operationId: schema.nativeRuntimeHandoffs.operationId })
+      .from(schema.nativeRuntimeHandoffs)
+      .where(
+        and(
+          eq(schema.nativeRuntimeHandoffs.ownerId, ownerId),
+          eq(schema.nativeRuntimeHandoffs.chatId, chatId),
+        ),
+      )
+      .orderBy(
+        desc(schema.nativeRuntimeHandoffs.createdAt),
+        desc(schema.nativeRuntimeHandoffs.operationId),
+      )
+      .limit(1);
+    return nativeRuntimeHandoffInventory(
+      this.database,
+      ownerId,
+      chatId,
+      latest ? await this.get(ownerId, chatId, latest.operationId) : null,
+    );
+  }
   async get(ownerId: string, chatId: string, operationId: string) {
     const [row] = await this.database
       .select()
