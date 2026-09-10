@@ -7738,9 +7738,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                 command.chatId,
                 control.paused,
               );
-              if (control.paused) pausedChats.add(command.chatId);
+              const paused = runtime.isChatPaused(command.chatId);
+              if (paused) pausedChats.add(command.chatId);
               else pausedChats.delete(command.chatId);
-              return { paused: control.paused, active };
+              return { paused, active };
             }
             if (control.kind === "reply") {
               const response = control.protectedResponse

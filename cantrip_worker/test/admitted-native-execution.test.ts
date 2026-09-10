@@ -595,6 +595,30 @@ describe("GUI native mutation admission dispatch", () => {
     expect(f.resolve("root", "turn-b")).not.toBeNull();
     next.fail(new Error("done"));
   });
+
+  it.each([true, false])(
+    "keeps the latest requested pause after paused=%s acknowledges late",
+    async (firstPaused) => {
+      const f = fixture();
+      const handle = await f.runtime.prepareAdmittedNativeExecution(options);
+      f.start();
+      const releases: (() => void)[] = [];
+      f.runtime.setManagedNativeCommandDispatcher("root", async (command) => {
+        await new Promise<void>((resolve) => releases.push(resolve));
+        return command.dispatch();
+      });
+      const first = f.runtime.setActiveChatPaused("chat", firstPaused);
+      const second = f.runtime.setActiveChatPaused("chat", !firstPaused);
+      expect(releases).toHaveLength(2);
+      releases[1]!();
+      await second;
+      expect(f.runtime.isChatPaused("chat")).toBe(!firstPaused);
+      releases[0]!();
+      await first;
+      expect(f.runtime.isChatPaused("chat")).toBe(!firstPaused);
+      handle.fail(new Error("done"));
+    },
+  );
 });
 
 describe("one admitted native reply ledger for GUI and console", () => {

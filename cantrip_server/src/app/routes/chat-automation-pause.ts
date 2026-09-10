@@ -130,13 +130,24 @@ export function installChatAutomationPauseRoute(
         }
       }
 
-      const updated =
-        resumed ??
-        (await repository.setChatAutomationPaused(
-          applicationOwnerId(),
-          context.chatId,
-          input.data.paused,
-        ));
+      // Active native controls persist their intent at authorized dispatch. A
+      // boundary acknowledgement may arrive after a newer pause/resume, so this
+      // older HTTP request must not write its original intent a second time.
+      const nativeOwnsPause =
+        managedNative &&
+        Boolean(control.activationGeneration) &&
+        workerConnected;
+      const updated = nativeOwnsPause
+        ? await repository.getChatExecutionContext(
+            applicationOwnerId(),
+            context.chatId,
+          )
+        : (resumed ??
+          (await repository.setChatAutomationPaused(
+            applicationOwnerId(),
+            context.chatId,
+            input.data.paused,
+          )));
       if (!updated) {
         if (workerConnected) {
           await bridge
@@ -150,7 +161,7 @@ export function installChatAutomationPauseRoute(
 
       publishChatSummary(context.chatId, context.projectId);
 
-      if (!input.data.paused) {
+      if (!input.data.paused && !updated.automationPaused) {
         try {
           await resumeChatAutomation(context.chatId);
         } catch (error) {
@@ -173,23 +184,23 @@ export function installChatAutomationPauseRoute(
 
       app.log.info(
         {
-          event: input.data.paused
+          event: updated.automationPaused
             ? "chat.automation.paused"
             : "chat.automation.resumed",
           subsystem: "chat-execution",
-          operation: input.data.paused ? "pause" : "resume",
-          status: input.data.paused ? "paused" : "active",
+          operation: updated.automationPaused ? "pause" : "resume",
+          status: updated.automationPaused ? "paused" : "active",
           chatId: context.chatId,
           projectId: context.projectId,
           workerId: context.workerId,
         },
-        input.data.paused
+        updated.automationPaused
           ? "Chat automation paused"
           : "Chat automation resumed",
       );
 
       return reply.send(
-        chatPauseStateSchema.parse({ paused: input.data.paused }),
+        chatPauseStateSchema.parse({ paused: updated.automationPaused }),
       );
     },
   );

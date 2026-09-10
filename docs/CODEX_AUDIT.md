@@ -5036,6 +5036,59 @@ personal inference, live desktop input or user worker restart was performed.
 The remaining full-goal acceptance reconciliation and final user demo are still
 outstanding.
 
+### Pass 72 — release native command ordering while pause waits
+
+An actual pinned-runtime acceptance fixture reproduced a pause deadlock for
+both GUI- and terminal-originated turns. The pause RPC submitted its Core
+operation and then waited for the durable model/tool boundary while retaining
+the native per-thread request serialization queue. Steering and Stop shared that
+queue, so they could not reach the running turn while its pause was pending.
+The four-case reproduction failed: steering reached its 120-second RPC timeout,
+and opposite-view Stop did not complete while the provider stream remained open.
+
+Reviewed patch `0039` retains serialization for pause validation and Core
+submission, then sends the eventual boundary acknowledgement asynchronously.
+This releases the thread mutation queue for controls without acknowledging a
+pause before the actual boundary. The tracked upstream source stays unchanged.
+The new acceptance fixture covers both input origins, a held provider response,
+steering across the boundary, resume in the same turn, cross-view Stop before the
+boundary, and answering an outstanding native question before resuming.
+
+The overlap check also reproduced a server state race: an older HTTP pause
+acknowledgement wrote its original intent again after a newer resume had already
+been dispatched. A late resume returned its old state and could attempt to
+resume automation after a newer pause. Active native controls now read the state
+already saved by authorized native dispatch instead of repeating that write.
+Responses reflect that state, and a superseded resume does not wake automation.
+The worker likewise synchronizes its local flag from the runtime's latest
+requested state after acknowledgement, so an older callback cannot undo a newer
+request locally.
+Idle and non-native controls retain their existing persistence path.
+
+Validation: the rebuilt Codex 0.153.4 bundle contains 38 reviewed patches. All six
+new actual-runtime pause cases pass, and the twelve existing shared steering and
+interaction cases pass against that bundle. A fixture assertion initially
+expected an interrupted terminal turn to use the completion callback; it now
+checks the actual typed interruption and verifies the durable chat is idle, not
+failed. Both late-acknowledgement HTTP/database reproductions pass, along with
+all 57 server admission tests. The patch/source verifier, server source
+typechecks, 79 focused worker admission/policy/execution tests, and scoped
+formatting pass. The final required check passed source verification, all source
+typechecks and the CLI/CUA regression checks, then stopped with 41 server
+failures, 1,369 passes and 70 skips. Forty failures match pass 71; the additional
+failure was a five-second timeout in an unchanged deferred-queue database test.
+All nine cases in that file passed on focused rerun. Its database, queue and
+fixture implementation are unchanged by this pass. The initial check, which
+began before the final server/worker state fixes, had the same 40 failures as
+pass 71. Full worker/app suites and global formatting were not reached; this is
+not a clean full-suite result.
+
+The first fixture attempt had an incorrect receipt lookup (dispatch records carry
+operation IDs rather than method names); that test-only error was corrected
+before the native deadlock reproduction. No user desktop input, personal
+inference, user worker restart or CI job was used. Full-goal acceptance and the
+final user demo remain outstanding.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal
