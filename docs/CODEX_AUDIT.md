@@ -4044,6 +4044,46 @@ or desktop input ran. The full application acceptance matrix, boundary inventory
 review, outstanding server/app baseline failures and user implementation demo
 remain outstanding.
 
+### Pass 52 — review native boundary inventory and use the actual worker schema
+
+The boundary audit's hand-maintained imported-schema list omitted
+`chat.account-defaults`, `chat.settings.update` and `chat.permissions.update`.
+Discovery now loads the source `workerCommandSchema` and enumerates its actual
+composed discriminated union, including imported and extended schemas. It does
+not depend on generated protocol output or scan nested payload literals as
+commands. The discovered set contains 292 commands; this repairs audit coverage,
+not agent tool discovery or native runtime behavior.
+
+Reviewed the added native admission, queue, history, preparation, settings and
+provider-handoff routes against their handlers and protocol payloads. The
+inventory now explicitly classifies all 20 native persistence tables and the
+native route/worker boundaries. In particular, history resolve preserves
+protected input and attachments, queue lookup/start receipts contain protected
+results, and prepared handoffs retain encrypted settings snapshots. Those are
+endpoint-protected contracts, not metadata-only acknowledgements. Bindings,
+activations, pending-request identities and delivery ledgers remain classified
+as routing/lifecycle metadata. Internal routes authenticate the owning worker;
+GUI routes resolve the application owner and current chat binding. These
+classifications do not replace the runtime ownership and admission checks.
+
+The reviewed inventory adds 43 actual routes and removes two nonexistent
+CodeGraph suspend/resume routes exposed by the previously repaired parser; the
+real loop registers sync/rebuild. It also includes 14 added worker commands and
+worker-local `context.compact`. Only the three changed route/worker/agent
+contract digests are updated. The unchanged CLI, live-resource, client-control
+and tunnel contract sets retain their previous digests. The inventory contains
+530 routes and 109 tables, and still rejects unreviewed sets or unclassified
+tables.
+
+Validation: all 20 focused route-parser, command-discovery and content-boundary
+cases pass. Inventory regeneration and the independent `--check` both pass.
+The required `pnpm check` now passes this boundary and network tranche one;
+it stops at existing network tranche two source assertions for
+`legacyFeatureTransports` and `workerLinkRelay`. Full server/app baseline
+failures, the combined acceptance matrix and the user implementation demo
+remain outstanding. No runtime behavior, user settings, native input or CI jobs
+were changed by this pass.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal
