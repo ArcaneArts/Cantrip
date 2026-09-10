@@ -973,13 +973,17 @@ export class ManagedNativeCommandSession {
           }
           await publication?.failed(error);
           await releasePublication();
-          // An observed model failure is separate from whether start was accepted.
+          // Stop ends a turn without leaving the chat failed. Use the native
+          // outcome, not error text that a real provider failure may also contain.
+          const interrupted =
+            error instanceof CodexTurnFailureError &&
+            error.terminalStatus === "interrupted";
           await this.persistResult(
             execution,
-            { failed: true },
+            interrupted ? { interrupted: true } : { failed: true },
             execution.nativeDecline ? "rejected" : nativeAcceptance,
             true,
-            "failed",
+            interrupted ? "idle" : "failed",
             true,
           );
         }

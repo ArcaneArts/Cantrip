@@ -10,6 +10,7 @@ import { openNativeCommandContent } from "../src/native-command-content.js";
 import { ManagedNativeCommandSession } from "../src/codex/managed-native-command-session.js";
 import {
   CodexNativeRpcError,
+  CodexTurnFailureError,
   type AdmittedNativeExecution,
 } from "../src/codex/app-server.js";
 import type { NativeCommandClient } from "../src/native-command-client.js";
@@ -230,6 +231,64 @@ const result = {
 } as AgentTurnResult;
 
 describe("managed native command session", () => {
+  it.each(["interrupted", "failed"] as const)(
+    "settles native %s with its authoritative terminal outcome",
+    async (outcome) => {
+      const f = fixture();
+      const admission = await f.adapter.admit(f.operation);
+      await admission.beforeForward();
+      await admission.settle({ result: { turn: { id: "turn" } } });
+      // Deliberately use the same text: classification must come from native status.
+      const error = new CodexTurnFailureError(
+        "The provider connection was interrupted.",
+        null,
+        "thread",
+        "turn",
+        outcome,
+      );
+      f.done.reject(error);
+      await expect
+        .poll(
+          () =>
+            f.client.settle.mock.calls.filter(([input]) => input.terminalResult)
+              .length,
+        )
+        .toBe(1);
+      const terminal = f.client.settle.mock.calls
+        .map(([input]) => input)
+        .find((input) => input.terminalResult);
+      expect(terminal).toMatchObject({
+        status: "applied",
+        executionComplete: true,
+        executionStatus: outcome === "interrupted" ? "idle" : "failed",
+        reconciliation: { nativeTurnId: "turn" },
+      });
+      await expect(
+        openNativeCommandContent({
+          service: {
+            ownerId: () => "owner",
+            serverIdentity: () => "server",
+            componentKey: () => ({
+              keyRevision: 1,
+              key: new Uint8Array(32).fill(7),
+            }),
+          },
+          context: {
+            chatId: "chat",
+            operationId: "operation",
+            direction: "terminal-result",
+          },
+          envelope: terminal!.terminalResult!.protectedResult!,
+        }),
+      ).resolves.toEqual(
+        outcome === "interrupted" ? { interrupted: true } : { failed: true },
+      );
+      expect(f.publication.failed).toHaveBeenCalledExactlyOnceWith(error);
+      expect(f.publication.release).toHaveBeenCalledTimes(1);
+      expect(f.onError).not.toHaveBeenCalled();
+    },
+  );
+
   it("settles explicitly unconsumed pending-permission input idle without publishing a failed turn", async () => {
     const f = fixture();
     const admission = await f.adapter.admit(f.operation);
