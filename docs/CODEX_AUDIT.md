@@ -4179,6 +4179,43 @@ uses a 128 KiB body limit; that separate transport boundary needs review. Full
 server/app acceptance and the user demo remain outstanding. No CI, personal
 provider inference or desktop input ran.
 
+### Pass 56 — validate eager startup and encrypted first input at the server
+
+The worktree API fixtures still assumed thread preparation began when a console
+view opened. Assertions and binding-failure injection now surround chat creation,
+where eager preparation actually runs. They verify canonical binding before
+console creation, one CLI launch without a model turn, reused worker-protected
+console state on repeated view opens, and a failed thread binding that creates no
+console and recovers through the preparation retry endpoint.
+
+The bridge fixture now handles protected console-state preparation and encrypted
+project-turn responses. Prepared native IDs distinguish chats sharing the same
+worktree, and a completed turn retains its supplied thread ID. The first-input
+case creates two chats on Primary, waits for both preparations, sends distinct
+encrypted inputs, and checks each dispatch, retained thread, message identity,
+protected input and execution-lane attribution. It uses the current encrypted
+wire contracts rather than the removed plaintext request format. The standalone
+fork case chooses its initial permission profile before the first native turn;
+it no longer bypasses the required managed update path on an already-bound
+session. Production authorization and lifecycle code are unchanged.
+
+Validation: all four revised API cases pass; server typecheck passes. Nineteen
+startup/recovery cases pass across four additional suites, including the actual
+pinned native CLI preparation test with an isolated home and rejecting local
+provider. That native case proves zero-inference preparation/attachment; the new
+API first-input case uses a fake worker response and is not evidence of complete
+native execution or GUI rendering. The first-input test now explicitly sets its
+project policy so it passes independently and in suite order. The complete
+worktree suite improves from 21 passing/23 failing cases to 25 passing/19 failing
+cases; its remaining failures are outside these four updated cases, with no new
+failure headings. The required `pnpm check` passes lint/types and the CUA
+selections, then stops in the broader server suite with 1,365 passing, 41 failing
+and 56 skipped cases. That run included the policy-order failure subsequently
+fixed and verified in the complete worktree rerun; it is not reported as a green
+repository check. Later chained checks did not run. The full shared GUI/CLI
+acceptance matrix and user demo remain outstanding.
+No CI, personal provider requests, desktop interaction or user settings changed.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal

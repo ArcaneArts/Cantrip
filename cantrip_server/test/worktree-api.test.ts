@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -8,6 +8,7 @@ import {
   appLiveServerMessageSchema,
   chatPauseStateSchema,
   chatSummarySchema,
+  chatWireSummarySchema,
   chatMessageListSchema,
   chatMessageWireListSchema,
   encryptedChatTurnCreateSchema,
@@ -457,8 +458,8 @@ function protectedStandaloneTurn(
       version: 1 as const,
       algorithm: "AES-256-GCM" as const,
       keyRevision: 1,
-      nonce: "AAAAAAAAAAAAAAAA",
-      ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+      nonce: randomBytes(12).toString("base64url"),
+      ciphertext: randomBytes(32).toString("base64url"),
     },
   };
   const message = {
@@ -1814,6 +1815,8 @@ const workerBridge = {
       case "project.share.close":
         projectShareCloseIds.push(command.shareId);
         return { accepted: true };
+      case "terminal.prepare-state":
+        return protectedTerminalFields(command.terminalId);
       case "terminal.open":
         terminalOpenCommands.push(command);
         if (heldTerminalOpen) {
@@ -1878,7 +1881,9 @@ const workerBridge = {
         };
       case "chat.thread.ensure":
         return {
-          threadId: command.threadId ?? `thread-${command.cwd}`,
+          threadId:
+            command.threadId ??
+            `thread-${command.session?.chatId ?? "unbound"}-${command.cwd}`,
         };
       case "chat.pause.set":
         chatPauseCommands.push({ ...command, timeoutMs: options?.timeoutMs });
@@ -1955,7 +1960,7 @@ const workerBridge = {
           };
         }
         if (
-          command.prompt.startsWith("Continue working toward the active goal")
+          command.prompt?.startsWith("Continue working toward the active goal")
         ) {
           activeChatGoal = activeChatGoal
             ? { ...activeChatGoal, status: "paused" }
@@ -2015,8 +2020,28 @@ const workerBridge = {
             output: command.cwd,
           },
         });
+        if (command.resultMode.kind === "chat-message-encrypted") {
+          return {
+            threadId:
+              command.threadId ?? `thread-${command.chatId}-${command.cwd}`,
+            text: "",
+            status: "completed",
+            structuredResult: {
+              message: {
+                ...command.protectedPrompt,
+                id: command.resultMode.messageId,
+                classification: {
+                  role: "assistant",
+                  mode: "default",
+                  attachmentIds: [],
+                },
+                idempotencyKey: command.resultMode.idempotencyKey,
+              },
+            },
+          };
+        }
         return {
-          threadId: `thread-${command.worktreeId}`,
+          threadId: command.threadId ?? `thread-${command.worktreeId}`,
           text: "Completed in the selected worktree.",
           status: "completed",
         };
@@ -2134,20 +2159,8 @@ afterAll(async () => {
 });
 
 describe.sequential("server worktree control plane", () => {
-  it("prepares and canonically binds an encrypted managed console before creating its view", async () => {
+  it("eagerly binds the native thread before preparing the encrypted CLI and reuses it on view opens", async () => {
     const fields = protectedChatFields();
-    const create = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/chats`,
-      payload: { ...fields, worktreeId: primaryId, worktreeMode: "pinned" },
-    });
-    expect(create.statusCode, create.body).toBe(201);
-    const context = await database.repository.getChatExecutionContext(
-      LOCAL_USER_ID,
-      fields.id,
-    );
-    expect(context?.threadId).toBeNull();
-
     const requests = vi.spyOn(workerBridge, "request");
     const createConsole = database.repository.getOrCreateChatConsole.bind(
       database.repository,
@@ -2159,74 +2172,109 @@ describe.sequential("server worktree control plane", () => {
           ownerId,
           chatId,
         );
-        expect(bound?.threadId).toBe(`thread-${context!.cwd}`);
-        expect(bound?.workerId).toBe(context!.workerId);
+        expect(bound?.threadId).toBe(`thread-${chatId}-${bound!.cwd}`);
+        expect(bound?.workerId).toBe("test-worker");
         expect(bound?.worktreeId).toBe(primaryId);
         return createConsole(ownerId, chatId, input);
       });
     try {
-      const terminalFields = protectedTerminalFields();
-      const response = await app.inject({
+      const create = await app.inject({
         method: "POST",
-        url: `/api/chats/${fields.id}/console`,
-        payload: terminalFields,
+        url: `/api/projects/${projectId}/chats`,
+        payload: { ...fields, worktreeId: primaryId, worktreeMode: "pinned" },
       });
-      expect(response.statusCode, response.body).toBe(201);
-      const terminal = terminalWireSummarySchema.parse(response.json());
-      expect(terminal).toMatchObject({
-        id: terminalFields.id,
-        linkedChatId: fields.id,
-        worktreeId: primaryId,
-        kind: "chat-console",
-        titleProtection: terminalFields.titleProtection,
-        stateProtection: terminalFields.stateProtection,
-      });
-      expect(requests.mock.calls.map(([, command]) => command)).toEqual([
+      expect(create.statusCode, create.body).toBe(201);
+      await expect
+        .poll(
+          async () =>
+            (
+              await database.repository.managedChatPreparations.get(
+                LOCAL_USER_ID,
+                fields.id,
+              )
+            )?.phase,
+        )
+        .toBe("ready");
+      const context = (await database.repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        fields.id,
+      ))!;
+      const commands = requests.mock.calls.map(([, command]) => command);
+      expect(
+        commands.filter((command) => command.type === "chat.thread.ensure"),
+      ).toEqual([
         expect.objectContaining({
-          type: "chat.thread.ensure",
           threadId: null,
-          cwd: context!.cwd,
-          model: expect.objectContaining({ id: context!.modelId }),
+          cwd: context.cwd,
+          model: expect.objectContaining({ id: context.modelId }),
           provider: expect.any(Object),
           mcpServers: [],
-          planMode: context!.planMode,
+          planMode: context.planMode,
           session: {
             chatId: fields.id,
             computerUseEnabled: false,
             contextKind: "project",
             projectId,
             worktreeId: primaryId,
-            rootKind: context!.rootKind,
+            rootKind: context.rootKind,
             scratchRootId: null,
           },
         }),
       ]);
-
-      const reopen = await app.inject({
-        method: "POST",
-        url: `/api/chats/${fields.id}/console`,
-        payload: protectedTerminalFields(),
-      });
-      expect(reopen.statusCode, reopen.body).toBe(201);
-      expect(terminalWireSummarySchema.parse(reopen.json()).id).toBe(
-        terminal.id,
+      expect(
+        commands.filter((command) => command.type === "terminal.open"),
+      ).toEqual([
+        expect.objectContaining({
+          worktreePath: context.cwd,
+          outputMode: "discard",
+          launch: expect.objectContaining({ threadId: context.threadId }),
+        }),
+      ]);
+      const protectedStateIndex = commands.findIndex(
+        (command) => command.type === "terminal.prepare-state",
       );
-      expect(requests).toHaveBeenCalledTimes(1);
-      expect(consoleCreation).toHaveBeenCalledTimes(2);
+      expect(protectedStateIndex).toBeGreaterThanOrEqual(0);
+      const protectedState =
+        await requests.mock.results[protectedStateIndex]!.value;
+      expect(consoleCreation).toHaveBeenCalledTimes(1);
+      for (let view = 0; view < 2; view++) {
+        const response = await app.inject({
+          method: "POST",
+          url: `/api/chats/${fields.id}/console`,
+          payload: protectedTerminalFields(),
+        });
+        expect(response.statusCode, response.body).toBe(201);
+        expect(terminalWireSummarySchema.parse(response.json())).toMatchObject({
+          ...protectedState,
+          linkedChatId: fields.id,
+          worktreeId: primaryId,
+          kind: "chat-console",
+        });
+      }
+      expect(
+        requests.mock.calls.filter(
+          ([, command]) => command.type === "chat.thread.ensure",
+        ),
+      ).toHaveLength(1);
+      expect(
+        requests.mock.calls.filter(
+          ([, command]) => command.type === "terminal.open",
+        ),
+      ).toHaveLength(1);
+      expect(
+        requests.mock.calls.filter(
+          ([, command]) => command.type === "chat.turn",
+        ),
+      ).toHaveLength(0);
+      expect(consoleCreation).toHaveBeenCalledTimes(3);
     } finally {
       requests.mockRestore();
       consoleCreation.mockRestore();
     }
   });
 
-  it("keeps a failed managed-console binding retryable without creating a view", async () => {
+  it("retries a failed eager native binding without creating a phantom console", async () => {
     const fields = protectedChatFields();
-    const create = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/chats`,
-      payload: { ...fields, worktreeId: primaryId, worktreeMode: "pinned" },
-    });
-    expect(create.statusCode, create.body).toBe(201);
     const binding = vi
       .spyOn(database.repository, "updateChatRuntime")
       .mockRejectedValueOnce(new Error("canonical binding unavailable"));
@@ -2234,17 +2282,28 @@ describe.sequential("server worktree control plane", () => {
       database.repository,
       "getOrCreateChatConsole",
     );
-    const terminalFields = protectedTerminalFields();
-    const request = {
-      method: "POST" as const,
-      url: `/api/chats/${fields.id}/console`,
-      payload: terminalFields,
-    };
+    const requests = vi.spyOn(workerBridge, "request");
     try {
-      const failed = await app.inject(request);
-      expect(failed.statusCode, failed.body).toBe(409);
-      expect(failed.json()).toEqual({ error: "canonical binding unavailable" });
+      const create = await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/chats`,
+        payload: { ...fields, worktreeId: primaryId, worktreeMode: "pinned" },
+      });
+      expect(create.statusCode, create.body).toBe(201);
+      await expect
+        .poll(async () =>
+          database.repository.managedChatPreparations.get(
+            LOCAL_USER_ID,
+            fields.id,
+          ),
+        )
+        .toMatchObject({ phase: "failed", failedPhase: "thread" });
       expect(consoleCreation).not.toHaveBeenCalled();
+      expect(
+        requests.mock.calls.filter(
+          ([, command]) => command.type === "terminal.open",
+        ),
+      ).toHaveLength(0);
       expect(
         (
           await database.repository.getChatExecutionContext(
@@ -2253,18 +2312,53 @@ describe.sequential("server worktree control plane", () => {
           )
         )?.threadId,
       ).toBeNull();
-
-      const retried = await app.inject(request);
-      expect(retried.statusCode, retried.body).toBe(201);
-      expect(terminalWireSummarySchema.parse(retried.json())).toMatchObject({
-        id: terminalFields.id,
-        linkedChatId: fields.id,
+      const retried = await app.inject({
+        method: "POST",
+        url: `/api/chats/${fields.id}/preparation`,
       });
+      expect(retried.statusCode, retried.body).toBe(202);
+      await expect
+        .poll(
+          async () =>
+            (
+              await database.repository.managedChatPreparations.get(
+                LOCAL_USER_ID,
+                fields.id,
+              )
+            )?.phase,
+        )
+        .toBe("ready");
       expect(consoleCreation).toHaveBeenCalledTimes(1);
+      expect(binding).toHaveBeenCalledTimes(2);
+      expect(
+        requests.mock.calls.filter(
+          ([, command]) => command.type === "terminal.open",
+        ),
+      ).toHaveLength(1);
+      expect(
+        requests.mock.calls.filter(
+          ([, command]) => command.type === "chat.turn",
+        ),
+      ).toHaveLength(0);
+      const opened = await app.inject({
+        method: "POST",
+        url: `/api/chats/${fields.id}/console`,
+        payload: protectedTerminalFields(),
+      });
+      expect(opened.statusCode, opened.body).toBe(201);
+      expect(terminalWireSummarySchema.parse(opened.json()).id).toBe(
+        (
+          await database.repository.managedChatPreparations.get(
+            LOCAL_USER_ID,
+            fields.id,
+          )
+        )?.terminalId,
+      );
       expect(binding).toHaveBeenCalledTimes(2);
     } finally {
       binding.mockRestore();
       consoleCreation.mockRestore();
+      requests.mockRestore();
     }
   });
 
@@ -2298,6 +2392,14 @@ describe.sequential("server worktree control plane", () => {
     if (context?.contextKind !== "standalone" || !context.modelId) {
       throw new Error("Standalone Chat execution context was not ready.");
     }
+
+    // Configure the unbound standalone chat before its first native turn.
+    // Bound permissions must use the managed native command path.
+    await database.repository.setChatPermissionProfile(
+      LOCAL_USER_ID,
+      chat.id,
+      ":read-only",
+    );
 
     const liveEvents: AppLiveServerMessage[] = [];
     let liveClient: WebSocket | null = null;
@@ -2504,11 +2606,6 @@ describe.sequential("server worktree control plane", () => {
       ),
     ).toBe(true);
 
-    await database.repository.setChatPermissionProfile(
-      LOCAL_USER_ID,
-      chat.id,
-      ":read-only",
-    );
     const forkFields = protectedChatFields();
     const forkResponse = await app.inject({
       method: "POST",
@@ -3083,89 +3180,128 @@ describe.sequential("server worktree control plane", () => {
     );
   });
 
-  it("shares Primary while binding each Codex turn and message to one lane", async () => {
-    const createPrimaryChat = (title: string) =>
-      app.inject({
-        method: "POST",
-        url: `/api/projects/${projectId}/chats`,
-        payload: { title, worktreeMode: "agent-managed" },
-      });
-    const [firstResponse, secondResponse] = await Promise.all([
-      createPrimaryChat("Primary chat one"),
-      createPrimaryChat("Primary chat two"),
-    ]);
-    expect(
-      [firstResponse.statusCode, secondResponse.statusCode],
-      JSON.stringify([firstResponse.body, secondResponse.body]),
-    ).toEqual([201, 201]);
-    const first = chatSummarySchema.parse(firstResponse.json());
-    const second = chatSummarySchema.parse(secondResponse.json());
-    const [firstLanes, secondLanes] = await Promise.all([
-      database.repository.listChatExecutionLanes(LOCAL_USER_ID, first.id),
-      database.repository.listChatExecutionLanes(LOCAL_USER_ID, second.id),
-    ]);
-    expect(firstLanes[0]).toMatchObject({
-      worktreeId: primaryId,
-      exclusive: false,
-      state: "suspended",
+  it("shares Primary while keeping eager sessions and encrypted first turns bound to their own chats", async () => {
+    const policy = await app.inject({
+      method: "PATCH",
+      url: `/api/projects/${projectId}/worktree-policy`,
+      payload: { policy: "required-for-writes" },
     });
-    expect(secondLanes[0]).toMatchObject({
-      worktreeId: primaryId,
-      exclusive: false,
-      state: "suspended",
-    });
-
-    const started = await app.inject({
-      method: "POST",
-      url: `/api/chats/${first.id}/turns`,
-      payload: { text: "Run pwd", idempotencyKey: "primary-turn-1" },
-    });
-    expect(started.statusCode, started.body).toBe(202);
-    await expect
-      .poll(async () => {
-        const context = await database.repository.getChatExecutionContext(
-          LOCAL_USER_ID,
-          first.id,
-        );
-        return context?.status;
-      })
-      .toBe("idle");
-
-    const command = chatTurnCommands.at(-1)!;
-    expect(command).toMatchObject({
-      chatId: first.id,
-      cwd: primaryPath,
-      isPrimary: true,
-      worktreeId: primaryId,
-      worktreeMode: "agent-managed",
-      worktreePolicy: "required-for-writes",
-    });
-    expect(command.executionLaneId).toBeTruthy();
-    const messages = chatMessageListSchema.parse(
-      (
-        await app.inject({
-          method: "GET",
-          url: `/api/chats/${first.id}/messages`,
-        })
-      ).json(),
-    );
-    expect(messages).toHaveLength(3);
-    expect(
-      messages.every(
-        ({ executionLaneId, worktreeId }) =>
-          executionLaneId === command.executionLaneId &&
-          worktreeId === primaryId,
+    expect(policy.statusCode, policy.body).toBe(200);
+    const inputs = [protectedChatFields(), protectedChatFields()];
+    const created = await Promise.all(
+      inputs.map((fields) =>
+        app.inject({
+          method: "POST",
+          url: `/api/projects/${projectId}/chats`,
+          payload: { ...fields, worktreeMode: "agent-managed" },
+        }),
       ),
-    ).toBe(true);
-    const context = await database.repository.getChatExecutionContext(
-      LOCAL_USER_ID,
-      first.id,
     );
-    expect(context).toMatchObject({
-      threadId: `thread-${primaryId}`,
-      worktreeId: primaryId,
-    });
-    expect(context?.executionLaneId).toBeNull();
+    expect(
+      created.map(({ statusCode }) => statusCode),
+      created.map(({ body }) => body).join("\n"),
+    ).toEqual([201, 201]);
+    const chats = created.map((response) =>
+      chatWireSummarySchema.parse(response.json()),
+    );
+    await expect
+      .poll(async () =>
+        Promise.all(
+          chats.map(
+            async (chat) =>
+              (
+                await database.repository.managedChatPreparations.get(
+                  LOCAL_USER_ID,
+                  chat.id,
+                )
+              )?.phase,
+          ),
+        ),
+      )
+      .toEqual(["ready", "ready"]);
+    const contexts = await Promise.all(
+      chats.map((chat) =>
+        database.repository.getChatExecutionContext(LOCAL_USER_ID, chat.id),
+      ),
+    );
+    expect(contexts[0]?.threadId).toBeTruthy();
+    expect(contexts[1]?.threadId).toBeTruthy();
+    expect(contexts[0]?.threadId).not.toBe(contexts[1]?.threadId);
+    const before = chatTurnCommands.length;
+    for (const [index, chat] of chats.entries()) {
+      const input = protectedStandaloneTurn(contexts[index]!.modelId!);
+      const started = await app.inject({
+        method: "POST",
+        url: `/api/chats/${chat.id}/turns`,
+        payload: input,
+      });
+      expect(started.statusCode, started.body).toBe(202);
+      await expect.poll(() => chatTurnCommands.length).toBe(before + index + 1);
+      await expect
+        .poll(
+          async () =>
+            (
+              await database.repository.getChatExecutionContext(
+                LOCAL_USER_ID,
+                chat.id,
+              )
+            )?.status,
+        )
+        .toBe("idle");
+      const command = chatTurnCommands.at(-1)!;
+      expect(command).toMatchObject({
+        chatId: chat.id,
+        cwd: primaryPath,
+        isPrimary: true,
+        worktreeId: primaryId,
+        worktreeMode: "agent-managed",
+        worktreePolicy: "required-for-writes",
+        threadId: contexts[index]!.threadId,
+        protectedPrompt: input.message,
+      });
+      expect(command.executionLaneId).toBeTruthy();
+      const messages = chatMessageWireListSchema.parse(
+        (
+          await app.inject({
+            method: "GET",
+            url: `/api/chats/${chat.id}/messages`,
+          })
+        ).json(),
+      ).messages;
+      expect(messages.map(({ role }) => role)).toEqual([
+        "user",
+        "assistant",
+        "assistant",
+      ]);
+      expect(
+        messages.every(
+          ({ executionLaneId, worktreeId }) =>
+            executionLaneId === command.executionLaneId &&
+            worktreeId === primaryId,
+        ),
+      ).toBe(true);
+      expect(messages[0]?.id).toBe(input.message.id);
+      expect(command.resultMode.kind).toBe("chat-message-encrypted");
+      if (command.resultMode.kind !== "chat-message-encrypted")
+        throw new Error("Expected protected reply mode.");
+      expect(messages.at(-1)?.id).toBe(command.resultMode.messageId);
+      expect(messages[0]?.protectedContent).toEqual(
+        input.message.protectedContent,
+      );
+      expect(
+        await database.repository.getChatExecutionContext(
+          LOCAL_USER_ID,
+          chat.id,
+        ),
+      ).toMatchObject({
+        threadId: contexts[index]!.threadId,
+        worktreeId: primaryId,
+        executionLaneId: null,
+      });
+    }
+    expect(
+      chatTurnCommands.slice(before).map(({ threadId }) => threadId),
+    ).toEqual(contexts.map((context) => context!.threadId));
   });
 
   it("resolves queued prompts at dispatch time unless explicitly pinned", async () => {
