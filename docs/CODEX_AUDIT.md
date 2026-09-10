@@ -4015,6 +4015,35 @@ a real turn-start event, and the immediate native continuation exposes a dropped
 checkpoint during asynchronous completion. Full application acceptance, boundary
 inventory review and the user demo remain outstanding.
 
+### Pass 51 — preserve goal checkpoints across immediate continuation
+
+A legacy native goal can emit the next turn start while the previous completion
+is awaiting workspace or history reconciliation. Exact-turn guards correctly
+prevented stale completion from mutating the new turn, but also discarded its
+checkpoint. The runtime now retains one completed segment's text before awaiting
+cleanup. A real next start publishes that checkpoint once and resets segment-local
+output; normal completion uses the same publication path. It never relaxes the
+current-turn authority guard or grants a new turn from item telemetry. Managed
+runners still require a fresh command admission for each native turn.
+
+The protocol fixture now emits a real turn-start notification before the stale
+start acknowledgement. Its prior item-only sequence could not legitimately
+establish the replacement turn. Deterministic regressions reproduce the dropped
+checkpoint before the fix and verify immediate continuation, already-published
+checkpoint deduplication, no old-text leakage, and rejection of old completion and
+acknowledgement events while the new CUA signal remains live. Explicit release
+still aborts that signal.
+
+Validation: the full worker suite with the pinned runtime enabled passes 2,404
+cases across 262 files; 44 cases are skipped under their existing test
+conditions (including two entirely skipped files). The deterministic race tests failed before the fix
+and pass afterward. Worker TypeScript, scoped formatting and diff checks pass.
+`pnpm check` still stops at the previously recorded unreviewed `agentOperations`
+boundary digest; no digest or gate was relaxed. No CI, personal provider inference
+or desktop input ran. The full application acceptance matrix, boundary inventory
+review, outstanding server/app baseline failures and user implementation demo
+remain outstanding.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal

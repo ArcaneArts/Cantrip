@@ -232,6 +232,11 @@ interface PendingRpcRequest {
 }
 
 interface ActiveTurn {
+  goalCompletion?: {
+    turnId: string;
+    text: string;
+    checkpointPublished: boolean;
+  };
   nativeModelAttribution?: import("@cantrip/protocol").NativeTurnModelAttribution;
   initialSettings?: NativeInitialTurnSettings;
   inheritThreadSettings?: boolean;
@@ -712,6 +717,33 @@ function clearTurnInspectionTelemetry(active: AgentEventState): void {
   active.fileStartedAtMs.clear();
   active.itemStartedAtMs.clear();
   active.pendingActivities.clear();
+}
+
+/** Reset segment-local output only; the surrounding legacy goal stays alive. */
+function resetGoalSegment(active: ActiveTurn): void {
+  clearTurnInspectionTelemetry(active);
+  active.delta = "";
+  active.diffChanges = [];
+  active.finalText = null;
+  active.durationMs = null;
+  active.latestUsage = null;
+  active.pendingAgentMessage = null;
+  active.interruptionRequestedAtMs = null;
+  active.liveAgentMessageFingerprints.clear();
+  active.reasoningSummaries.clear();
+  active.startedAtMs = Date.now();
+}
+
+function publishGoalCheckpoint(active: ActiveTurn, turnId: string): void {
+  const completed = active.goalCompletion;
+  if (
+    !completed ||
+    completed.turnId !== turnId ||
+    completed.checkpointPublished
+  )
+    return;
+  completed.checkpointPublished = true;
+  active.onCheckpoint?.({ text: completed.text, turnId });
 }
 
 export function findActiveChatTurn<
@@ -8720,6 +8752,12 @@ export class CodexAppServer implements CodexRuntime {
   }
 
   private bindRootTurn(execution: RootExecution, turnId: string): void {
+    const completed = execution.active.goalCompletion;
+    const continuing =
+      execution.rootTurnId !== turnId &&
+      completed?.turnId === execution.rootTurnId &&
+      !execution.active.admission;
+    if (continuing) resetGoalSegment(execution.active);
     if (execution.rootTurnId !== turnId) {
       execution.rootTurnId = turnId;
       execution.active.observedActivityFingerprints.clear();
@@ -8736,6 +8774,9 @@ export class CodexAppServer implements CodexRuntime {
       }
     }
     this.#activeTurns.set(turnId, execution.active);
+    // A real next turn proves continuation even while the old completion is
+    // awaiting filesystem/history reads. Never let those reads own the new turn.
+    if (continuing) publishGoalCheckpoint(execution.active, completed!.turnId);
   }
 
   private childFallbackPath(
@@ -9440,6 +9481,7 @@ export class CodexAppServer implements CodexRuntime {
       "The native execution ended before the interaction was answered.",
     );
     active.admission?.controller.abort();
+    active.goalCompletion = undefined;
     if (!execution) return true;
     this.abortComputerUseExecution(execution);
     const releasedThreadIds = new Set([
@@ -11327,6 +11369,22 @@ export class CodexAppServer implements CodexRuntime {
   ): Promise<void> {
     const isCurrent = this.turnFinalizationCurrent(active, turnId);
     if (!isCurrent()) return;
+    // Capture before the first await: native goals can start their next turn
+    // before workspace/history reconciliation finishes. Keep this bounded to
+    // one completed segment, independent of exact-turn execution authority.
+    if (
+      active.executionKind === "chat" &&
+      !active.admission &&
+      active.contextCompactionRequestedAtMs === null &&
+      this.#goals.has(active.threadId) &&
+      active.goalCompletion?.turnId !== turnId
+    ) {
+      active.goalCompletion = {
+        turnId,
+        text: active.finalText ?? active.delta,
+        checkpointPublished: false,
+      };
+    }
     let released = false;
     try {
       this.clearInteractionsForTurn(
@@ -11387,17 +11445,11 @@ export class CodexAppServer implements CodexRuntime {
             active.chatId ? this.#pausedChats.has(active.chatId) : false,
           )
         ) {
-          active.onCheckpoint?.({ text, turnId });
+          publishGoalCheckpoint(active, turnId);
           const baseline = await workspaceSnapshot(active.cwd);
           if (!isCurrent()) return;
           active.baseline = baseline;
-          active.delta = "";
-          active.diffChanges = [];
-          active.finalText = null;
-          active.interruptionRequestedAtMs = null;
-          active.liveAgentMessageFingerprints.clear();
-          active.reasoningSummaries.clear();
-          active.startedAtMs = Date.now();
+          resetGoalSegment(active);
           workerLogger.event("info", "Codex goal remains active", {
             event: "codex.turn.continuation",
             subsystem: "codex",

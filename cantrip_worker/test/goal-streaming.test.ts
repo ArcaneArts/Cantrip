@@ -259,6 +259,12 @@ server.on("connection", (socket) => {
         }, 10);
         return;
       }
+      // Native start can arrive before the RPC acknowledgement. Item telemetry
+      // alone cannot grant authority to an otherwise unobserved turn ID.
+      socket.send(JSON.stringify({
+        method: "turn/started",
+        params: { threadId, turn: { id: actualTurnId, startedAt: 1 } }
+      }));
       reply(socket, message.id, { turn: { id: "synthetic-start-response" } });
       setTimeout(() => {
         socket.send(JSON.stringify({
