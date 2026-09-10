@@ -75,6 +75,8 @@ function fixture(executionKind = "chat") {
     agentScope: null,
     baseline: new Map(),
     captureProtectedDiagnostics: false,
+    contextCompactionRequestedAtMs: null,
+    onCheckpoint: vi.fn(),
     commandTelemetry: new Map(),
     completedCommandIds: new Set(),
     cwd: "/unused",
@@ -438,6 +440,89 @@ describe("Codex runtime computer-use scope", () => {
     f.complete("child", "actual-start");
     expect(current.aborted).toBe(true);
     expect(f.resolve("child", "actual-start")).toBeNull();
+    f.runtime.close();
+  });
+
+  it("does not duplicate a checkpoint already published before the native continuation", async () => {
+    const f = fixture();
+    const goal = {
+      threadId: "root",
+      objective: "fixture",
+      status: "active",
+      tokenBudget: null,
+      tokensUsed: 0,
+      timeUsedSeconds: 0,
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    f.notify("thread/goal/updated", { threadId: "root", goal });
+    vi.spyOn(f.native, "request").mockResolvedValue({ goal });
+    f.active.finalText = "First checkpoint.";
+    await f.native.completeTurn(f.active, "root-turn", 2, null);
+    expect(f.active.onCheckpoint).toHaveBeenCalledExactlyOnceWith({
+      text: "First checkpoint.",
+      turnId: "root-turn",
+    });
+    f.start("root", "next-turn");
+    expect(f.active.onCheckpoint).toHaveBeenCalledTimes(1);
+    expect(f.active.resolve).not.toHaveBeenCalled();
+    expect(f.active.reject).not.toHaveBeenCalled();
+    expect(f.resolve("root", "next-turn")?.signal.aborted).toBe(false);
+    f.runtime.close();
+  });
+
+  it("retains one goal checkpoint when the next turn starts during completion and never leaks old text", async () => {
+    const f = fixture();
+    f.notify("thread/goal/updated", {
+      threadId: "root",
+      goal: {
+        threadId: "root",
+        objective: "fixture",
+        status: "active",
+        tokenBudget: null,
+        tokensUsed: 0,
+        timeUsedSeconds: 0,
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    });
+    f.active.finalText = "First checkpoint.";
+    f.active.delta = "old streamed text";
+    let entered!: () => void;
+    let release!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const deferred = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.spyOn(f.native, "reconcileSubagentExecution").mockImplementation(() => {
+      entered();
+      return deferred;
+    });
+    const finishing = f.native.completeTurn(f.active, "root-turn", 2, null);
+    await started;
+    f.start("root", "next-turn");
+    expect(f.active.onCheckpoint).toHaveBeenCalledExactlyOnceWith({
+      text: "First checkpoint.",
+      turnId: "root-turn",
+    });
+    expect(f.active.finalText).toBeNull();
+    expect(f.active.delta).toBe("");
+    const current = f.resolve("root", "next-turn")!.signal;
+    f.active.delta = "Next turn text";
+    f.start("root", "next-turn");
+    f.complete("root", "root-turn");
+    f.native.bindTurnStartResponse("root-turn", f.active);
+    release();
+    await finishing;
+    expect(f.active.onCheckpoint).toHaveBeenCalledTimes(1);
+    expect(f.active.delta).toBe("Next turn text");
+    expect(current.aborted).toBe(false);
+    expect(f.active.resolve).not.toHaveBeenCalled();
+    expect(f.active.reject).not.toHaveBeenCalled();
+    f.native.releaseActiveTurn(f.active, "next-turn");
+    expect(current.aborted).toBe(true);
     f.runtime.close();
   });
 
