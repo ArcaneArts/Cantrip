@@ -3151,6 +3151,68 @@ across accounts. Eager GUI-first startup and the complete acceptance matrix rema
 required after these shared paths work. This storage pass does not establish the
 full migration or CLI/GUI integration goal.
 
+### Pass 36 — durable provider handoff arbitration and transport
+
+The server now owns a persisted handoff operation for an eligible project agent
+chat. It reserves the source binding and destination route/account, requires
+owned destination settings evidence, and atomically commits the canonical runtime
+route with its protected settings binding. The native conversation ID and custom
+child defaults are retained. Only the owning worker can advance the operation;
+errors retain the reservation, and elapsed time never implies cancellation or a
+successful switch. Cancellation is permitted before commit, after the worker
+restores the source; completion follows destination selection.
+
+Exact retries return the durable phase. If a prepared destination restarts before
+commit, its worker can replace the prepared receipt by comparing the recorded
+runtime generation. Late receipts cannot overwrite the replacement or alter a
+committed operation. Source generations remain retired after completion, including
+when a later migration returns to an earlier account. The active-chat uniqueness
+constraint and chat history index support these checks without scanning every
+chat's operation history.
+
+Native admission/dispatch, GUI execution-lane starts, legacy model/effort writes
+and runtime upserts now share the handoff reservation. Late runtime updates cannot
+replace the route confirmed by the current native binding. The authenticated
+worker HTTP endpoint supports reading and advancing an existing operation; it
+cannot independently begin a migration or select another account. The worker
+client preserves operation identity after transport failure and rejects receipts
+for another chat/worker/operation. New typed native transfer methods call the
+actual export/import operation and validate conversation identity, local artifact
+paths, cancellation and runtime-generation continuity.
+
+Validation:
+
+- 97 tests pass across nine server files: handoff storage/HTTP recovery plus
+  native command admission, settings persistence, permission transitions and
+  authority, runtime selection, standalone execution, execution helpers and
+  model attribution. Nine handoff cases use the real migrated PGlite database,
+  including reopen/recovery, competing reservations, stale/foreign bindings,
+  both input origins, a real SQL-trigger write failure and atomic rollback,
+  destination-generation replacement, and stale source callbacks. The HTTP case
+  uses the real worker client and server endpoint, deliberately discards a
+  successful commit response, and recovers the committed phase without repeating
+  preparation. These receipts alone do not prove native destination activation.
+- Five worker tests pass: three transfer-transport failure cases and the actual
+  packaged Codex 0.153.4 legacy/paginated transfer cases through the new adapter.
+  The latter preserve the conversation and queue across isolated provider homes,
+  make real requests to deterministic local providers, and retain native rejection
+  of active/stale/colliding transfers. The pass-35 packaged binary is reused;
+  imported upstream and reviewed native patches are unchanged.
+- Server and worker typechecks pass. The generated migration changes only the new
+  handoff table and its indexes. Diff/format checks pass. The standard `pnpm check`
+  still stops at the existing 2321/1999 and 2149/1999 server file-size budgets;
+  later stages of that command are not reported as passing.
+
+This pass does not expose provider migration in the GUI or start it automatically.
+Still required before that enablement: the worker's durable destination namespace
+selection and full handoff executor, actual account/credential routing, source and
+destination execution-gate ownership, CLI retargeting, queue/attachment continuity,
+SQLite-only state reconciliation and provider-valid context reconstruction. The
+server operation and native file transfer must be connected and tested together;
+passing these separate boundaries does not establish a completed migration.
+Eager GUI-first startup and the full acceptance matrix remain part of the goal.
+No CI, personal desktop input, real-account inference or user worker restart ran.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal

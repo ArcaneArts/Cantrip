@@ -9,6 +9,7 @@ import { createInterface } from "node:readline";
 import { describe, expect, it } from "vitest";
 import { CodexRpcClient } from "../src/codex/rpc-client.js";
 import { readCodexNativeHistory } from "../src/codex/native-history.js";
+import { requestManagedHistoryTransfer } from "../src/codex/managed-history-transfer.js";
 
 const binary = process.env.CANTRIP_CODEX_TEST_BINARY?.trim();
 type Json = Record<string, any>;
@@ -70,10 +71,23 @@ describe.skipIf(!binary)(
         const admissionErrors: unknown[] = [];
         const declinedAttempts: string[] = [];
         const rpc = async (method: string, params: Json): Promise<Json> => {
-          const result = await client!.request(method, params);
-          if (result.error)
-            throw new Error(`${method}: ${result.error.message}`);
-          return result.result as Json;
+          const request = async (name: string, input: unknown) => {
+            const result = await client!.request(name, input);
+            if (result.error)
+              throw new Error(`${name}: ${result.error.message}`);
+            return result.result as Json;
+          };
+          if (
+            method === "thread/managedHistory/export" ||
+            method === "thread/managedHistory/import"
+          )
+            return requestManagedHistoryTransfer(
+              request,
+              () => client,
+              method,
+              params,
+            );
+          return request(method, params);
         };
         const stop = async () => {
           if (!child) return;
