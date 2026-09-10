@@ -4512,6 +4512,63 @@ acceptance, audio, cursor/effects presentation and human-input coexistence still
 require the final user demo. Mixed-origin steering and the remaining acceptance
 matrix still need connected verification; the full goal is not complete.
 
+### Pass 63 — mixed-origin steering and durable shared history
+
+`native-shared-steering.test.ts` now exercises both directions against the
+reviewed pinned pass-60 runtime: a GUI-started turn steered by Enter in the
+physical attached CLI, and a CLI-started turn steered through the GUI worker
+entry. The provider is a deterministic localhost SSE server; neither native
+RPC replies nor command admission are mocked.
+
+The shared fixture prepares one managed thread, attaches the actual TUI through
+the admission gateway, and binds the worker's encrypted history pipeline to the
+real migrated server repository. GUI start uses `acquireChatTurnExecution` with
+a genuinely persisted encrypted input, preserving the server's logical message
+identity. The CLI's Enter behavior is steering; Tab queues separately. The test
+waits for the real resume receipt and rendered model before this steering case,
+so it does not confuse preliminary thread reads with completed attachment.
+
+Both cases require a durably applied `turn/steer` receipt for the exact active
+turn before the fixture releases the first provider response. The next provider
+request contains both inputs. One native start and one completed outcome remain,
+the actual TUI and GUI callbacks receive the final output, and decrypted saved
+history contains both inputs and both outputs exactly once. GUI input resolution
+must retain the original message ID and complete encrypted input envelope. A
+history stop/reopen preserves all message IDs without another native/model turn,
+new runtime process, or terminal replacement.
+
+Validation: **both new pinned-runtime cases passed**. The adjacent existing
+managed-command and managed-history suites also passed (**nine tests**); an
+initial new-test assertion incorrectly treated `preservedInput` as a boolean
+instead of its complete envelope and was corrected before the final two-case
+run. Missing canonical GUI input setup and premature TUI readiness assumptions
+were likewise corrected in the test fixture, without relaxing production
+provenance or adding readiness gates. The only tolerated projection diagnostic
+is the existing transient “Original native turn context is not yet retained”
+retry; successful flush, decrypted content and reopen are required afterward.
+
+The required `pnpm check` passed workspace source typechecks, Rust checks and
+selected CUA suites (187 Rust, 134 protocol, 25 crypto, 692 worker, 241 server and
+309 app tests), plus full protocol/crypto (697/95). It then stopped on the same
+**40 full-server failures**, with **1,364 passes and 70 skips**. All 47 failure
+headings match pass 61; no new failure heading appeared. Full worker/app suites
+and global formatting were not reached. Scoped formatting and `git diff --check`
+passed. The explicit strict type pass reports no errors in the two new files,
+but remains nonzero on nine pre-existing type errors in the imported server
+fixture (outside normal source typecheck).
+
+Reproduce from `cantrip_worker` after dependency builds:
+
+```sh
+CANTRIP_CODEX_TEST_BINARY=/absolute/path/to/reviewed/pinned/codex \
+pnpm exec vitest run test/native-shared-steering.test.ts \
+  test/managed-native-history.test.ts test/native-managed-command-session.test.ts
+```
+
+No CI, personal inference, desktop input, or user-worker restart was performed.
+This adds connected steering/history evidence; it does not replace remaining
+child-CUA acceptance or the final user implementation demo.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal
