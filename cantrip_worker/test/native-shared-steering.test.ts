@@ -241,6 +241,7 @@ describe.skipIf(!binary)(
             saved.map((row) => row.id).sort(),
           );
           expect(requests).toHaveLength(2);
+          expect(f.turnFailures).toEqual([]);
           expect(f.children).toHaveLength(1);
           expect(f.runtime.transportGeneration).toBe(f.generation);
           expect(f.terminalSettled()).toBe(false);

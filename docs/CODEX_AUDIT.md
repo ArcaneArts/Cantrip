@@ -4569,6 +4569,78 @@ No CI, personal inference, desktop input, or user-worker restart was performed.
 This adds connected steering/history evidence; it does not replace remaining
 child-CUA acceptance or the final user implementation demo.
 
+### Pass 64 — child CUA before spawn association
+
+The actual pinned runtime exposed an ordering bug: a child's `turn/started`
+arrives before the parent's completed `collabAgentToolCall` supplies its child
+thread ID. The worker discarded the unassociated start. By the time the child
+called its advertised CUA tool, ownership was known but its exact turn had no
+live authority. The broker correctly rejected it; restarting the helper could
+not repair the missing lifecycle event.
+
+The worker now retains early native turn lifetimes alongside the exact root
+signals active when they arrived. Runtime ancestry must subsequently associate
+the child with one of those same, still-active root executions before the
+lifetime can be used. A completed/interrupted/failed child, a closed thread, or
+an ended/replaced root cannot regain authority through a late spawn result or
+same-turn start. Root release and runtime teardown clear pending associations.
+The pending map uses the existing orphan-thread bound. This does not grant
+input from tool discovery, ancestry alone, history telemetry, or an MCP request,
+and introduces no readiness wait or automatic input replay.
+
+`native-child-cua.test.ts` exercises the real pinned app-server/TUI, actual
+server admission and per-operation HTTP CUA authority, managed MCP stdio, and
+the compiled Rust helper's synthetic window backend. Both GUI-origin and
+physical CLI-origin roots spawn native children through the provider-advertised
+tool. Each origin checks three distinct root/child turns in one session:
+screenshot PNG reaches the first child and completion retires its authority
+while the root remains active; opposite-view Stop cancels a second child's
+pending 150-second wait and retires its authority; a third turn takes a fresh
+screenshot without replacing the runtime or CLI. The pending wait is explicitly
+stopped, not allowed to finish. Pass 62 remains the evidence for full 150-second
+playback.
+
+The shared fixture now supports CUA through real granted execution contexts,
+uses the production permission mapping, separates expected interrupted-turn
+failures from infrastructure errors, and renders physical TUI output through
+headless xterm before inspecting it. Stripping ANSI sequences alone lost spaces
+on incremental redraws. The deterministic provider handles native child-result
+notifications as well as the scripted user inputs.
+
+Validation: 38 lifecycle tests cover early association, nested/multiple roots,
+completion-before-start, closure, Stop, replacement and release alongside the
+existing lifetime regressions. Both child-CUA cases and both shared-steering
+cases passed on the pinned pass-60 binary. The adjacent app-server/history/
+lifetime selection passed 135 tests; 12 actual managed-command runtime cases
+also passed. Explicit strict typechecking reports no errors in this pass's
+files and remains nonzero on nine pre-existing imported server-fixture errors.
+
+The required `pnpm check` passed workspace source typechecks, Rust checks and
+selected CUA suites (187 Rust, 134 protocol, 25 crypto, 700 worker, 241 server
+and 309 app tests), plus full protocol/crypto (697/95). It stopped at the same
+40 full-server failures, with 1,364 passes and 70 skips; all 47 failure headings
+match pass 61 exactly. Full worker/app suites and global formatting were not
+reached. Final worker typecheck and scoped format/diff checks passed. The final
+newer-child/root ordering refinement was verified afterward by the 38 lifecycle
+and two actual child-CUA cases; the shared-steering pair and twelve native
+command cases also passed during this pass.
+
+Reproduce from `cantrip_worker` after dependency and CUA helper builds:
+
+```sh
+CANTRIP_CODEX_TEST_BINARY=/absolute/path/to/reviewed/pinned/codex \
+CANTRIP_CUA_TEST_BINARY=/absolute/path/to/cantrip-cua \
+pnpm exec vitest run test/native-child-cua.test.ts \
+  test/native-shared-steering.test.ts test/computer-use-execution-lifetime.test.ts
+```
+
+No personal model inference, desktop input, CI, worker restart or native patch
+change was used. The native interrupted turn is checked explicitly; the existing
+admission receipt settles that interrupted CLI lane as `failed`, whereas the
+fixture's GUI logical settlement is `idle`. This pass does not claim new UI
+outcome-parity coverage. Remaining acceptance reconciliation and the final user
+implementation demo still apply.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal

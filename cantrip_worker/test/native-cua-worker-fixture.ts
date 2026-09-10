@@ -63,6 +63,9 @@ export async function createNativeCuaWorkerFixture(input: {
     result?: CallToolResult;
     error?: unknown;
     elapsedMs?: number;
+    observedExecution?: ReturnType<
+      CodexAppServer["resolveComputerUseExecution"]
+    >;
   }> = [];
   const activities: CuaActivity[] = [];
   const broker = new CantripMcpBroker({
@@ -74,6 +77,11 @@ export async function createNativeCuaWorkerFixture(input: {
   broker.setComputerUseExecutor(async (...args) => {
     const call: (typeof calls)[number] = { args };
     calls.push(call);
+    call.observedExecution = runtime.resolveComputerUseExecution({
+      chatId: server.chatId,
+      threadId: args[1].threadId,
+      turnId: args[1].turnId,
+    });
     const started = performance.now();
     try {
       return (call.result = await coordinator.execute(...args));
@@ -118,7 +126,13 @@ export async function createNativeCuaWorkerFixture(input: {
     servers,
     calls,
     activities,
-    activate(grant: NativeCommandAdmissionResult, threadId: string) {
+    activate(
+      grant: Pick<
+        NativeCommandAdmissionResult,
+        "receipt" | "computerUseAuthority"
+      >,
+      threadId: string,
+    ) {
       expect(grant.computerUseAuthority).toBeTruthy();
       const active = broker.createBinding({
         ...claims,
