@@ -22,6 +22,7 @@ async function fixture(ignoreHangup = false) {
   const source = `#!${process.execPath}
 ${ignoreHangup ? "process.on('SIGHUP', () => {});" : ""}
 console.log('ATTACHED:' + process.env.CANTRIP_CODEX_ATTACH_THREAD_ID);
+console.log('LAUNCH:' + JSON.stringify({ home: process.env.CODEX_HOME, args: process.argv.slice(2) }));
 process.stdin.on('data', data => console.log('INPUT:' + data.toString().trim()));
 setInterval(() => {}, 1000);
 `;
@@ -142,6 +143,36 @@ describe.skipIf(process.platform === "win32")(
       expect(f.output.join("")).not.toContain("ATTACHED:intermediate");
       expect(f.output.join("")).not.toContain("must-not-dispatch");
       expect(f.settled()).toBe(false);
+      f.manager.input("terminal", "\x03");
+      await f.open;
+    }, 10000);
+
+    it("uses the destination account home and provider after coalesced retargets", async () => {
+      const f = await fixture(true);
+      const home = path.join(f.root, "destination-account");
+      const first = f.manager.retargetManagedCodex("chat", {
+        threadId: "intermediate",
+        remoteUrl: "ws://127.0.0.1:2/intermediate",
+        codexHome: home,
+        model: { ...f.launch.model, name: "destination-model" },
+        provider: {
+          ...f.launch.provider,
+          id: "destination-provider",
+          baseUrl: "http://127.0.0.1:7/v1",
+        },
+      });
+      const latest = f.manager.retargetManagedCodex("chat", {
+        threadId: "latest",
+        remoteUrl: "ws://127.0.0.1:3/latest",
+      });
+      await Promise.all([first, latest]);
+      await expect
+        .poll(async () => (await f.manager.canonicalSnapshot("terminal"))?.data)
+        .toContain("destination-account");
+      const snapshot = (await f.manager.canonicalSnapshot("terminal"))!.data;
+      expect(snapshot).toContain("ATTACHED:latest");
+      expect(snapshot).toContain("http://127.0.0.1:7/v1");
+      expect(snapshot).not.toContain("ATTACHED:intermediate");
       f.manager.input("terminal", "\x03");
       await f.open;
     }, 10000);

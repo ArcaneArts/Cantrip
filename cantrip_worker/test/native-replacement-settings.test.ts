@@ -50,6 +50,10 @@ function fixture() {
   let actualSource = structuredClone(source);
   let dispatched: Record<string, unknown> | null = null;
   const request = vi.fn<typeof native.request>(async (method, params) => {
+    if (method === "collaborationMode/list")
+      return {
+        data: [{ mode: "plan", model: null, reasoning_effort: "medium" }],
+      };
     if (method === "thread/settings/read")
       return { threadId: "old", threadSettings: actualSource };
     if (method === "thread/settings/update") {
@@ -121,6 +125,61 @@ function fixture() {
     dispatched: () => dispatched,
   };
 }
+
+describe("new managed session settings preparation", () => {
+  it("waits for its applied plan selection, accepting native default instructions", async () => {
+    const f = fixture();
+    let complete = false;
+    const result = f.runtime
+      .prepareManagedThread({ ...f.options, planMode: "plan" })
+      .then((value) => {
+        complete = true;
+        return value;
+      });
+    await vi.waitFor(() => expect(f.dispatched()).not.toBeNull());
+    expect(complete).toBe(false);
+    f.notify("thread/settings/updated", {
+      threadId: "new",
+      operationId: "another-operation",
+      submissionId: "other-submission",
+      threadSettings: nativeThreadSettings({
+        collaborationMode: {
+          mode: "plan",
+          settings: {
+            model: "bootstrap",
+            reasoning_effort: "medium",
+            developer_instructions: "Native plan instructions",
+          },
+        },
+      }),
+    });
+    await new Promise<void>((resolve) => queueMicrotask(resolve));
+    expect(complete).toBe(false);
+    f.applied({
+      collaborationMode: {
+        mode: "plan",
+        settings: {
+          model: "bootstrap",
+          reasoning_effort: "medium",
+          developer_instructions: "Native plan instructions",
+        },
+      },
+    });
+    await expect(result).resolves.toEqual({ threadId: "new" });
+    expect(complete).toBe(true);
+  });
+  it("keeps existing-thread plan changes pending without blocking their acknowledgment", async () => {
+    const f = fixture();
+    await expect(
+      f.runtime.prepareManagedThread({
+        ...f.options,
+        threadId: "new",
+        planMode: "plan",
+      }),
+    ).resolves.toEqual({ threadId: "new" });
+    expect(f.dispatched()).not.toBeNull();
+  });
+});
 
 describe("native settings on invalid-compaction replacement", () => {
   it("captures the actual Core and waits for correlated application before completing preparation", async () => {

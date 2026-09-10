@@ -3325,6 +3325,214 @@ the final acceptance matrix remain outstanding; this pass does not enable
 migration. No live user worker, personal desktop input, real-account inference
 or CI was used.
 
+### Pass 39 — provider handoff execution and recovery
+
+The owned `codex/managed-provider-handoff` lane now adds authenticated recovery
+of a restarted source before commit, or destination after commit. The original
+source binding remains immutable so retries of the original reservation still
+match. A separate canonical binding and retired-generation journal are persisted
+by migration 0218. Recovery compares the current binding, validates the actual
+protected settings attribution, and publishes settings and operation state in
+one transaction. It cannot change the routing decision or revive a retired
+incarnation, including after cancellation. The worker HTTP protocol exposes the
+operation-scoped recovery action.
+
+Native destination preparation imports the same conversation into the isolated
+home, selects its destination provider/model, and preserves imported settings
+while initializing the supplied managed MCP configuration. A private worker
+journal persists the original source boundary before export. If native export
+succeeds but its response is lost, recovery reads that exact published artifact;
+it does not re-export changed source metadata. A receipt digest rejects later
+artifact mutation or deletion. Credentials and full configuration are not stored
+in this journal.
+
+The worker handoff coordinator now sequences source preparation/recovery,
+export/import, model-context reset, destination confirmation, canonical commit,
+namespace selection, publication and completion. It rereads the server phase on
+retry and does not roll back routing after an uncertain commit response. This
+coordinator is now connected to production worker dispatch, isolated destination
+runtime creation, full managed MCP composition, canonical association publication
+and existing-CLI retargeting. An authenticated configuration endpoint resolves the
+exact reserved provider/account and fresh configuration on recovery. Public start,
+status and retry endpoints retain one durable operation identity and do not infer
+completion from a worker request acknowledgment. GUI selection is not yet wired.
+
+A per-runtime/thread staging hold delays autonomous requests and suppresses staged
+window/thread observations until the server completes publication. Other threads
+remain available. Explicit abort releases the waiting request, while retirement
+permanently rejects source requests. The new settings observer starts after
+completion rather than racing an ordinary binding refresh against the reservation.
+
+The combined native/server test now drives the coordinator through authenticated
+HTTP, real migrated storage, native export/import/context reset, encrypted settings
+and namespace selection in both directions (A → B → A). It drops the first commit
+response and cold-restarts the destination engine; recovery resolves only the
+committed destination and retains the original native thread. A second variant
+now keeps an actual pinned native TUI attached through a real managed gateway,
+authenticated command-admission HTTP and the shared publication implementation.
+It verifies completed resume receipts, retained native settings, failed-publication
+retry, A → B → A terminal replacement and cancellation restoration. The original
+cold-source recovery variant remains separate. The TUI variant additionally retains
+a real completed native turn, the complete paused-goal response and one canonical
+encrypted queued prompt. It reads that same prompt through the replacement TUI
+and verifies a synthetic account-backed provider with a separate configuration
+home. GUI rendering and active goal/queue execution still require coverage.
+Cancellation and authenticated worker reconnect recovery are wired, with focused
+validation described below.
+
+Cancellation is now a durable request (migration 0219) serialized against commit.
+The public cancel endpoint dispatches separately from an already pending handoff
+request. A cancelled request rejects late preparation/commit; a commit that wins
+first cannot be rolled back. The worker interrupts its local staging attempt,
+restores and republishes the actual source, and only then acknowledges cancellation.
+A failed source publication retains the reservation for retry. The prepared
+abandoned destination generation is permanently retired, while the source staging
+hold is released after cancellation is acknowledged.
+
+Authenticated worker reconnection queries active operations for that exact owner
+and worker and redispatches their existing operation identities, including pending
+cancellation. An older in-flight request cannot suppress this recovery or remove
+the replacement's tracking entry. Ordinary status reads remain read-only.
+
+CLI retargeting now carries destination provider, model and account configuration
+home into the saved launch state. Coalesced replacements preserve the latest launch
+configuration while changing the endpoint, so the respawned TUI bootstraps the
+correct account. The real-child terminal test verifies the account home and
+provider arguments across this race. Native publication is now also covered by
+the admitted TUI test described above.
+
+Handoff receipts now carry the authenticated worker's reasoning-effort value from
+the same native read as the encrypted snapshot. Commit and restart recovery update
+the chat's root effort atomically with settings; null selects the default and an
+omitted legacy claim leaves the existing value intact. A legacy prepared receipt
+can gain this claim without replacing its native version, and conflicting claims
+for that same receipt are rejected. Custom child defaults remain unchanged.
+
+Reading an older committed operation without a stored binding now exposes the
+actual canonical binding only if it exactly matches the committed receipt. This
+allows the worker to compare and replace that binding during cold recovery.
+Source recovery also distinguishes the physical provider/account route from a
+model selected within that provider in the native CLI. It preserves the actual
+source attribution (including unavailable inventory metadata) instead of requiring
+the original model name. Destination attribution remains exact, and a source claim
+for another provider/account is rejected.
+
+Per-conversation Core replacement is now separate from transport replacement.
+Migration 0220 persists retired `(runtimeGeneration, nativeEpoch)` pairs. Recovery
+can bind a new Core epoch on the same live transport without retiring that transport;
+prepared destination replacement compares both the expected transport generation
+and old epoch. Retired epochs cannot be republished through recovery, settings
+observations or ordinary settings refresh. Normal settings publication also respects
+an active handoff reservation, preventing a concurrent read from replacing the
+handoff binding.
+
+The native reload test first established that `thread/unsubscribe` only detaches a
+view. Its isolated fixture now uses actual archive/unarchive to replace the Core,
+then verifies that the transport stays unchanged and the recovered epoch changes.
+This exposed an additional recovery defect: re-importing an acknowledged transfer
+could reject a rollout moved by native lifecycle operations. Once preparation is
+acknowledged, recovery now resumes the existing destination instead of re-importing
+it, and does not require the old source export artifact. Initial import still uses
+the immutable journal and validates the export receipt.
+
+The actual native test exposed an existing new-session settings race: plan-mode
+preparation returned after enqueue acknowledgment, before Core applied the mode.
+New-thread preparation now waits for its correlated application event, using the
+same waiter as replacement-settings restoration. Normal existing-thread updates
+still expose pending state. Core's generated default mode instructions are not
+mistaken for a rejected explicit mode/model/effort selection.
+
+Validation during implementation (final results below):
+
+- All 22 handoff cases at the Core-recovery stage passed with the actual native fixture, including
+  source and destination Core reloads on unchanged transports, cold-runtime
+  recovery, missing old export after acknowledged import, epoch retirement and
+  ordinary settings publication races. A further 22 tests pass across settings
+  persistence, publication and write-binding suites. Current protocol build,
+  worker typecheck and server typecheck pass.
+- Twenty settings/handoff cases passed with the actual native runtime after
+  adding effort null/value/legacy/conflict checks and legacy committed-binding
+  recovery. The expanded native case also subsequently passed with a cold source
+  restart before export and commit, followed by cold destination recovery. The
+  source-model fixture required a distinct second route position; that corrected
+  focused case passed and verifies cross-provider rejection and same-provider
+  effective-model preservation. Worker/server typechecks passed for these changes.
+- Cancellation tests passed with actual native destination preparation and an
+  actively waiting worker request: local abort, failed source publication,
+  source-only retry and final cancellation. The native/database file passed all
+  fifteen cases before adding the reconnect case.
+- Eighteen current database/HTTP/authenticated-WebSocket cases pass across two
+  files (the native case was skipped in that focused run). They cover reconnect
+  while an older dispatch is settling, pending cancellation recovery, exact
+  owner/worker scope, terminal-operation exclusion and permanent rejection of
+  an abandoned prepared destination.
+- Seven actual-child terminal replacement tests pass, including preservation of
+  the destination account home/provider across coalesced retargets. This does
+  not substitute for full native CLI publication coverage.
+- The current server typecheck passed. Worker typecheck passed after cancellation,
+  saved-launch changes and owned destination cleanup.
+- `pnpm check` stops at existing decomposition budgets in `chat-turn-runtime.ts`
+  (2330/1999) and `task-routes.ts` (2149/1999). This pass's initial bootstrap
+  overflow was corrected by grouping native route registration in the existing
+  installer; the later repository-wide checks therefore have not run.
+- Thirteen real migrated-database/HTTP cases pass, including source restart,
+  committed-destination restart, lost commit response, transaction rollback,
+  stale generation rejection, post-cancellation source continuity, public
+  start/status/retry and exact configuration access. One case uses the actual
+  native runtime for both transfer directions and cold destination recovery.
+- Both staging-hold cases pass: unrelated threads remain available, explicit
+  abort rejects a waiter, and retired source attempts cannot be released.
+- The combined native test found a worker-path alias issue: native export can
+  return the canonical macOS path while the configured home uses its symlink
+  alias. Recovery now compares the actual file paths via realpath, retaining
+  exact artifact identity rather than rejecting the same file by spelling.
+- The pinned native runtime passes imported-session preparation with actual MCP
+  initialize/tools-list, preserved native settings, zero preparation inference,
+  lost export response recovery, artifact corruption and missing-artifact checks.
+  Together with native replacement integration and replacement unit cases,
+  fifteen tests passed across three files before adding two dedicated plan-race
+  unit cases.
+- All 124 focused worker cases now pass across app-server, managed-session,
+  managed-session-MCP and replacement-settings tests, including the new
+  correlated-application and existing-thread pending-update cases. Two old MCP
+  fixtures needed native application notifications in addition to acknowledgments.
+- Protocol build, server typecheck and worker typecheck passed during development.
+  The standard repository check was rerun for the final changes and stopped at
+  the same two unchanged decomposition budgets described above.
+
+The real TUI test exposed an admission deadlock: a handoff reserved the chat,
+then the preserving `thread/resume` needed to attach its replacement was rejected
+as a mutation during that same reservation. Admission and dispatch now permit
+attachment only to the actual canonical settings binding. Prepared destinations
+before commit, retired runtimes, execution and settings mutations remain blocked.
+A database regression covers source attachment, forbidden precommit destination
+attachment, committed destination attachment and continued mutation rejection.
+
+Publication now has one production implementation for preserving preparation,
+endpoint/gateway creation, saved CLI launch retargeting and old gateway retirement.
+It checks the actual prepared thread and runtime, selects the replacement only
+after terminal spawning succeeds, and retains obsolete gateways for retirement
+across failed retries. This changes only the view; it never stops a shared native
+runtime. The fixture initially rejected all native operations, including preserving
+resume; it was corrected to use the actual command-session adapter and authenticated
+server instead of granting synthetic admission. Only completed admitted resume
+receipts count as attachment evidence.
+
+Final validation: all 24 handoff tests pass (two actual native integration
+cases), all 76 command-admission/settings regressions pass across four files,
+worker/server typechecks pass, and diff whitespace checks pass. The final native
+TUI case uses one deterministic fake-provider response to seed an actual native
+turn; transfer and attachment make no inference requests. It compares retained
+native turns and paused-goal state after publication/restoration, and the real
+TUI reads the original encrypted queue entry through authenticated queue routes.
+A synthetic Grok account exercises account routing and a separate configuration
+home, whose defaults remain unchanged. This does not exercise a real subscription
+login or establish active goal/queued-prompt execution after handoff.
+
+Remaining: verify active-goal continuation and queue execution across transfer,
+then expose GUI migration, implement eager GUI-first startup and execute the full
+acceptance matrix. No live user worker, personal desktop input or CI was used.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal

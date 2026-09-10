@@ -5527,9 +5527,22 @@ export const nativeRuntimeHandoffs = pgTable(
       .notNull()
       .references(() => workers.id, { onDelete: "cascade" }),
     phase: text("phase").notNull(),
+    cancelRequested: boolean("cancel_requested").notNull().default(false),
     source: jsonb("source")
       .$type<import("@cantrip/protocol").NativeSettingsBinding>()
       .notNull(),
+    binding:
+      jsonb("binding").$type<
+        import("@cantrip/protocol").NativeSettingsBinding
+      >(),
+    retiredRuntimeGenerations: jsonb("retired_runtime_generations")
+      .$type<string[]>()
+      .notNull()
+      .default([]),
+    retiredNativeEpochs: jsonb("retired_native_epochs")
+      .$type<{ runtimeGeneration: string; nativeEpoch: string }[]>()
+      .notNull()
+      .default([]),
     targetModelRouteId: text("target_model_route_id").notNull(),
     targetProviderAccountId: text("target_provider_account_id"),
     prepared:

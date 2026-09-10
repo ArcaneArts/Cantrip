@@ -1,0 +1,1 @@
+ALTER TABLE "native_runtime_handoffs" ADD COLUMN "cancel_requested" boolean DEFAULT false NOT NULL;

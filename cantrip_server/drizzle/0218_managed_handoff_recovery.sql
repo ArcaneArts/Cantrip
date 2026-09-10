@@ -1,0 +1,2 @@
+ALTER TABLE "native_runtime_handoffs" ADD COLUMN "binding" jsonb;--> statement-breakpoint
+ALTER TABLE "native_runtime_handoffs" ADD COLUMN "retired_runtime_generations" jsonb DEFAULT '[]'::jsonb NOT NULL;

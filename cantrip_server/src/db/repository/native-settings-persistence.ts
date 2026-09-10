@@ -1,3 +1,4 @@
+import { assertNativeRuntimeWritable } from "./native-runtime-handoff-guard.js";
 import { scopedNativeModelAttribution } from "./native-model-attribution.js";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
@@ -84,6 +85,12 @@ export class NativeSettingsStateRepository {
       );
     return this.database.transaction(async (tx) => {
       await lockNativeCommandChat(tx, ownerId, chatId);
+      await assertNativeRuntimeWritable(
+        tx,
+        chatId,
+        snapshot.context.runtimeGeneration,
+        snapshot.context.settingsVersion.epoch,
+      );
       if (
         !isDeepStrictEqual(before.scope, await readScope(tx, ownerId, chatId))
       )
@@ -150,6 +157,12 @@ export class NativeSettingsStateRepository {
     const chatId = input.snapshot.context.chatId;
     return this.database.transaction(async (tx) => {
       await lockNativeCommandChat(tx, ownerId, chatId);
+      await assertNativeRuntimeWritable(
+        tx,
+        chatId,
+        input.snapshot.context.runtimeGeneration,
+        input.snapshot.context.settingsVersion.epoch,
+      );
       const currentScope = await readScope(tx, ownerId, chatId);
       const [activation] = await tx
         .select()

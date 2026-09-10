@@ -30,6 +30,36 @@ const wire = ({ ownerId: _owner, ...row }: Row) =>
     updatedAt: row.updatedAt.toISOString(),
   });
 
+function epochRetired(
+  row: Row,
+  runtimeGeneration: string,
+  nativeEpoch: string,
+) {
+  return row.retiredNativeEpochs.some(
+    (entry) =>
+      entry.runtimeGeneration === runtimeGeneration &&
+      entry.nativeEpoch === nativeEpoch,
+  );
+}
+function retireEpoch(row: Row, runtimeGeneration: string, nativeEpoch: string) {
+  return epochRetired(row, runtimeGeneration, nativeEpoch)
+    ? row.retiredNativeEpochs
+    : [...row.retiredNativeEpochs, { runtimeGeneration, nativeEpoch }];
+}
+
+function sameSnapshot(
+  a: NativeRuntimeHandoffPrepared["snapshot"],
+  b: NativeRuntimeHandoffPrepared["snapshot"],
+) {
+  // A retried worker read may encrypt the same version with a new nonce.
+  return (
+    a.contentFingerprint === b.contentFingerprint &&
+    a.protectedContent.keyRevision === b.protectedContent.keyRevision &&
+    isDeepStrictEqual(a.context, b.context) &&
+    isDeepStrictEqual(a.modelAttribution, b.modelAttribution)
+  );
+}
+
 /** Owns durable routing only. Files, credentials, native operations and CLI
  * replacement are performed by the authenticated worker outside transactions. */
 export class NativeRuntimeHandoffRepository {
@@ -45,7 +75,48 @@ export class NativeRuntimeHandoffRepository {
           eq(schema.nativeRuntimeHandoffs.operationId, operationId),
         ),
       );
-    return row ? wire(row) : null;
+    if (!row) return null;
+    if (
+      !row.binding &&
+      row.prepared &&
+      ["committed", "completed"].includes(row.phase)
+    ) {
+      // Pre-recovery-schema operations did not persist their destination binding.
+      // Expose the actual canonical binding only when it still matches that
+      // committed receipt, so the worker can compare it during cold recovery.
+      const current = (
+        await new NativeSettingsStateRepository(this.database).get(
+          ownerId,
+          chatId,
+        )
+      )?.binding;
+      if (
+        current &&
+        isDeepStrictEqual(current, {
+          ...row.source,
+          bindingId: current.bindingId,
+          modelRouteId: row.targetModelRouteId,
+          providerAccountId: row.targetProviderAccountId,
+          runtimeGeneration: row.prepared.runtimeGeneration,
+          nativeEpoch: row.prepared.snapshot.context.settingsVersion.epoch,
+        })
+      )
+        return wire({ ...row, binding: current });
+    }
+    return wire(row);
+  }
+  async activeForWorker(ownerId: string, workerId: string) {
+    const rows = await this.database
+      .select()
+      .from(schema.nativeRuntimeHandoffs)
+      .where(
+        and(
+          eq(schema.nativeRuntimeHandoffs.ownerId, ownerId),
+          eq(schema.nativeRuntimeHandoffs.workerId, workerId),
+          inArray(schema.nativeRuntimeHandoffs.phase, activePhases),
+        ),
+      );
+    return rows.map(wire);
   }
   async begin(
     ownerId: string,
@@ -104,6 +175,7 @@ export class NativeRuntimeHandoffRepository {
           chatId,
           workerId: source!.workerId,
           source: source!,
+          binding: source!,
           phase: "preparing",
           targetModelRouteId: input.targetModelRouteId,
           targetProviderAccountId: input.targetProviderAccountId,
@@ -112,15 +184,37 @@ export class NativeRuntimeHandoffRepository {
       return wire(row!);
     });
   }
+  async requestCancellation(
+    ownerId: string,
+    chatId: string,
+    operationId: string,
+  ) {
+    const state = await this.get(ownerId, chatId, operationId);
+    if (!state) fail("handoff-not-found");
+    return this.mutate(
+      ownerId,
+      state!.workerId,
+      operationId,
+      async (tx, row) => {
+        if (row.phase === "cancelled") return row;
+        if (["committed", "completed"].includes(row.phase))
+          fail("handoff-already-committed");
+        if (row.cancelRequested) return row;
+        return this.update(tx, row, { cancelRequested: true, errorCode: null });
+      },
+    );
+  }
   async prepared(
     ownerId: string,
     workerId: string,
     operationId: string,
     value: NativeRuntimeHandoffPrepared,
     expectedPreparedRuntimeGeneration: string | null = null,
+    expectedPreparedNativeEpoch: string | null = null,
   ) {
     const prepared = nativeRuntimeHandoffPreparedSchema.parse(value);
     return this.mutate(ownerId, workerId, operationId, async (tx, row) => {
+      if (row.cancelRequested) fail("handoff-cancel-requested");
       if (row.prepared) {
         const prior = row.prepared;
         const same = !(
@@ -139,14 +233,39 @@ export class NativeRuntimeHandoffRepository {
             prepared.snapshot.modelAttribution,
           )
         );
-        if (same) return row;
+        if (same) {
+          if (
+            prior.reasoningEffort !== undefined &&
+            prepared.reasoningEffort !== undefined &&
+            prior.reasoningEffort !== prepared.reasoningEffort
+          )
+            fail("handoff-preparation-conflict");
+          if (
+            row.phase === "prepared" &&
+            prior.reasoningEffort === undefined &&
+            prepared.reasoningEffort !== undefined
+          )
+            return this.update(tx, row, {
+              prepared: { ...prior, reasoningEffort: prepared.reasoningEffort },
+            });
+          return row;
+        }
         if (
           row.phase !== "prepared" ||
           prior.runtimeGeneration !== expectedPreparedRuntimeGeneration ||
-          prepared.runtimeGeneration === prior.runtimeGeneration
+          (expectedPreparedNativeEpoch !== null &&
+            prior.snapshot.context.settingsVersion.epoch !==
+              expectedPreparedNativeEpoch) ||
+          (prepared.runtimeGeneration === prior.runtimeGeneration &&
+            (expectedPreparedNativeEpoch === null ||
+              prepared.snapshot.context.settingsVersion.epoch ===
+                expectedPreparedNativeEpoch))
         )
           fail("handoff-preparation-conflict");
-      } else if (expectedPreparedRuntimeGeneration !== null) {
+      } else if (
+        expectedPreparedRuntimeGeneration !== null ||
+        expectedPreparedNativeEpoch !== null
+      ) {
         fail("handoff-preparation-conflict");
       }
       if (!["preparing", "prepared"].includes(row.phase))
@@ -165,7 +284,14 @@ export class NativeRuntimeHandoffRepository {
         context.chatId !== row.chatId ||
         context.workerId !== workerId ||
         context.runtimeGeneration !== prepared.runtimeGeneration ||
-        prepared.runtimeGeneration === row.source.runtimeGeneration ||
+        prepared.runtimeGeneration ===
+          (row.binding ?? row.source).runtimeGeneration ||
+        row.retiredRuntimeGenerations.includes(prepared.runtimeGeneration) ||
+        epochRetired(
+          row,
+          prepared.runtimeGeneration,
+          context.settingsVersion.epoch,
+        ) ||
         selection?.status !== "resolved" ||
         selection.workerId !== workerId ||
         selection.routeId !== row.targetModelRouteId ||
@@ -174,11 +300,28 @@ export class NativeRuntimeHandoffRepository {
         selection.providerAccountId !== row.targetProviderAccountId
       )
         fail("handoff-prepared-source-mismatch");
-      await this.assertSource(tx, ownerId, row.source);
+      await this.assertSource(tx, ownerId, row.binding ?? row.source);
       await this.assertIdle(tx, row.chatId);
       return this.update(tx, row, {
         phase: "prepared",
         prepared,
+        retiredNativeEpochs: row.prepared
+          ? retireEpoch(
+              row,
+              row.prepared.runtimeGeneration,
+              row.prepared.snapshot.context.settingsVersion.epoch,
+            )
+          : row.retiredNativeEpochs,
+        retiredRuntimeGenerations:
+          row.prepared &&
+          row.prepared.runtimeGeneration !== prepared.runtimeGeneration
+            ? [
+                ...new Set([
+                  ...row.retiredRuntimeGenerations,
+                  row.prepared.runtimeGeneration,
+                ]),
+              ]
+            : row.retiredRuntimeGenerations,
         errorCode: null,
       });
     });
@@ -186,9 +329,10 @@ export class NativeRuntimeHandoffRepository {
   async commit(ownerId: string, workerId: string, operationId: string) {
     return this.mutate(ownerId, workerId, operationId, async (tx, row) => {
       if (["committed", "completed"].includes(row.phase)) return row;
+      if (row.cancelRequested) fail("handoff-cancel-requested");
       if (row.phase !== "prepared" || !row.prepared)
         fail("handoff-not-prepared");
-      await this.assertSource(tx, ownerId, row.source);
+      await this.assertSource(tx, ownerId, row.binding ?? row.source);
       await this.assertIdle(tx, row.chatId);
       const target = await this.target(
         tx,
@@ -254,13 +398,171 @@ export class NativeRuntimeHandoffRepository {
       // existing canonical state. The destination snapshot confirms root settings.
       await tx
         .update(schema.chats)
-        .set({ modelId: target.modelId, updatedAt: new Date() })
+        .set({
+          modelId: target.modelId,
+          ...(prepared.reasoningEffort !== undefined
+            ? { reasoningEffort: prepared.reasoningEffort }
+            : {}),
+          updatedAt: new Date(),
+        })
         .where(eq(schema.chats.id, row.chatId));
       await tx
         .update(schema.nativeSettingsStates)
         .set({ state: next, updatedAt: new Date() })
         .where(eq(schema.nativeSettingsStates.chatId, row.chatId));
-      return this.update(tx, row, { phase: "committed", errorCode: null });
+      return this.update(tx, row, {
+        phase: "committed",
+        binding,
+        retiredRuntimeGenerations: [
+          ...new Set([
+            ...row.retiredRuntimeGenerations,
+            (row.binding ?? row.source).runtimeGeneration,
+          ]),
+        ],
+        errorCode: null,
+      });
+    });
+  }
+  /** Publish a fresh native read after an actual runtime restart. The reserved
+   * source stays immutable for begin retries and namespace ancestry. Recovery
+   * changes only the currently canonical side, never the routing decision. */
+  async recover(
+    ownerId: string,
+    workerId: string,
+    operationId: string,
+    side: "source" | "destination",
+    expectedBindingId: string,
+    value: NativeRuntimeHandoffPrepared,
+  ) {
+    const recovered = nativeRuntimeHandoffPreparedSchema.parse(value);
+    return this.mutate(ownerId, workerId, operationId, async (tx, row) => {
+      if (
+        side === "source"
+          ? !["preparing", "prepared"].includes(row.phase)
+          : row.phase !== "committed"
+      )
+        fail("handoff-phase-conflict");
+      const state = await new NativeSettingsStateRepository(tx).get(
+        ownerId,
+        row.chatId,
+      );
+      if (!state?.binding || state.pending.length)
+        fail("handoff-settings-pending");
+      const current = state!.binding!;
+      // Older persisted operations have no binding column. Establish their
+      // authorized identity from the immutable source or committed receipt.
+      const prior =
+        row.binding ??
+        (side === "source"
+          ? row.source
+          : {
+              ...row.source,
+              bindingId: current.bindingId,
+              runtimeGeneration: row.prepared!.runtimeGeneration,
+              nativeEpoch: row.prepared!.snapshot.context.settingsVersion.epoch,
+              modelRouteId: row.targetModelRouteId,
+              providerAccountId: row.targetProviderAccountId,
+            });
+      await this.assertSource(tx, ownerId, prior);
+      await this.assertIdle(tx, row.chatId);
+      const routeId =
+        side === "source" ? row.source.modelRouteId! : row.targetModelRouteId;
+      const accountId =
+        side === "source"
+          ? row.source.providerAccountId
+          : row.targetProviderAccountId;
+      const route = await this.target(tx, ownerId, routeId, accountId);
+      const context = recovered.snapshot.context;
+      const selection = recovered.snapshot.modelAttribution?.selection;
+      // The source's physical route identifies its provider/account, while the
+      // native model may have changed within that provider in the CLI. Preserve
+      // that actual attribution; only destination selection must match exactly.
+      const selectedRoute =
+        side === "source" && selection?.status === "resolved"
+          ? await this.target(tx, ownerId, selection.routeId, accountId)
+          : route;
+      const selectionMatches =
+        selection?.status === "resolved"
+          ? selection.workerId === workerId &&
+            selection.providerId === route.providerId &&
+            selectedRoute.providerId === route.providerId &&
+            selection.modelId === selectedRoute.modelId &&
+            selection.providerAccountId === accountId &&
+            (side === "source" || selection.routeId === routeId)
+          : side === "source";
+      if (
+        recovered.threadId !== row.source.threadId ||
+        context.threadId !== recovered.threadId ||
+        context.chatId !== row.chatId ||
+        context.workerId !== workerId ||
+        context.runtimeGeneration !== recovered.runtimeGeneration ||
+        !selectionMatches ||
+        row.retiredRuntimeGenerations.includes(recovered.runtimeGeneration) ||
+        epochRetired(
+          row,
+          recovered.runtimeGeneration,
+          context.settingsVersion.epoch,
+        ) ||
+        (side === "source" &&
+          row.prepared?.runtimeGeneration === recovered.runtimeGeneration)
+      )
+        fail("handoff-recovery-source-mismatch");
+      if (
+        current.runtimeGeneration === recovered.runtimeGeneration &&
+        current.nativeEpoch === context.settingsVersion.epoch
+      ) {
+        if (
+          state!.effective &&
+          sameSnapshot(state!.effective, recovered.snapshot)
+        )
+          return row;
+        fail("handoff-recovery-conflict");
+      }
+      if (current.bindingId !== expectedBindingId)
+        fail("handoff-recovery-conflict");
+      const binding: NativeSettingsBinding = {
+        ...current,
+        bindingId: randomUUID(),
+        runtimeGeneration: recovered.runtimeGeneration,
+        nativeEpoch: context.settingsVersion.epoch,
+      };
+      const next = bindNativeSettingsRead(
+        state!,
+        expectedBindingId,
+        binding,
+        recovered.snapshot,
+      );
+      if (recovered.reasoningEffort !== undefined)
+        await tx
+          .update(schema.chats)
+          .set({
+            reasoningEffort: recovered.reasoningEffort,
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.chats.id, row.chatId));
+      await tx
+        .update(schema.nativeSettingsStates)
+        .set({ state: next, updatedAt: new Date() })
+        .where(eq(schema.nativeSettingsStates.chatId, row.chatId));
+      return this.update(tx, row, {
+        binding,
+        ...(side === "destination" ? { prepared: recovered } : {}),
+        retiredNativeEpochs: retireEpoch(
+          row,
+          current.runtimeGeneration,
+          current.nativeEpoch,
+        ),
+        retiredRuntimeGenerations:
+          current.runtimeGeneration === recovered.runtimeGeneration
+            ? row.retiredRuntimeGenerations
+            : [
+                ...new Set([
+                  ...row.retiredRuntimeGenerations,
+                  current.runtimeGeneration,
+                ]),
+              ],
+        errorCode: null,
+      });
     });
   }
   /** Only the owning worker may acknowledge that it selected the destination or
@@ -279,7 +581,19 @@ export class NativeRuntimeHandoffRepository {
           : !["preparing", "prepared"].includes(row.phase)
       )
         fail("handoff-phase-conflict");
-      return this.update(tx, row, { phase: outcome, errorCode: null });
+      return this.update(tx, row, {
+        phase: outcome,
+        errorCode: null,
+        retiredRuntimeGenerations:
+          outcome === "cancelled" && row.prepared
+            ? [
+                ...new Set([
+                  ...row.retiredRuntimeGenerations,
+                  row.prepared.runtimeGeneration,
+                ]),
+              ]
+            : row.retiredRuntimeGenerations,
+      });
     });
   }
   async failure(
@@ -359,11 +673,7 @@ export class NativeRuntimeHandoffRepository {
     const current = (
       await new NativeSettingsStateRepository(tx).get(ownerId, source.chatId)
     )?.binding;
-    if (
-      !current ||
-      current.runtimeGeneration !== source.runtimeGeneration ||
-      current.nativeEpoch !== source.nativeEpoch
-    )
+    if (!current || !isDeepStrictEqual(current, source))
       fail("handoff-source-replaced");
   }
   private async assertIdle(tx: RepositoryTransaction, chatId: string) {

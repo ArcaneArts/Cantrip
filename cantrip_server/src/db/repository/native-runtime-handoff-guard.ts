@@ -10,7 +10,21 @@ export async function assertNativeRuntimeWritable(
   database: RepositoryDatabase,
   chatId: string,
   runtimeGeneration?: string | null,
+  nativeEpoch?: string | null,
+  access: "write" | "attach" = "write",
 ): Promise<void> {
+  // Attachment is a preserving, admitted view operation. During publication it
+  // may target only the actual canonical binding; it cannot start execution or
+  // select the prepared-but-uncommitted destination. Retirement still applies.
+  let currentAttachment = false;
+  if (access === "attach" && runtimeGeneration) {
+    const [settings] = await database
+      .select({ state: schema.nativeSettingsStates.state })
+      .from(schema.nativeSettingsStates)
+      .where(eq(schema.nativeSettingsStates.chatId, chatId));
+    currentAttachment =
+      settings?.state.binding?.runtimeGeneration === runtimeGeneration;
+  }
   const [row] = await database
     .select({ phase: schema.nativeRuntimeHandoffs.phase })
     .from(schema.nativeRuntimeHandoffs)
@@ -18,7 +32,15 @@ export async function assertNativeRuntimeWritable(
       and(
         eq(schema.nativeRuntimeHandoffs.chatId, chatId),
         or(
-          inArray(schema.nativeRuntimeHandoffs.phase, activePhases),
+          currentAttachment
+            ? undefined
+            : inArray(schema.nativeRuntimeHandoffs.phase, activePhases),
+          runtimeGeneration
+            ? sql`${schema.nativeRuntimeHandoffs.retiredRuntimeGenerations} @> ${JSON.stringify([runtimeGeneration])}::jsonb`
+            : undefined,
+          runtimeGeneration && nativeEpoch
+            ? sql`${schema.nativeRuntimeHandoffs.retiredNativeEpochs} @> ${JSON.stringify([{ runtimeGeneration, nativeEpoch }])}::jsonb`
+            : undefined,
           runtimeGeneration
             ? and(
                 inArray(schema.nativeRuntimeHandoffs.phase, [

@@ -2051,6 +2051,11 @@ export interface PrepareManagedThreadOptions extends GoalRuntimeOptions {
   onThreadIdentified?: (threadId: string) => void | Promise<void>;
 }
 
+export type PrepareImportedManagedThreadOptions = Omit<
+  PrepareManagedThreadOptions,
+  "threadId" | "intent" | "replacementSettings"
+> & { transfer: ManagedHistoryImport };
+
 export interface HydrateChatRelocationOptions extends GoalRuntimeOptions {
   payload: ChatRelocationContextPayload;
   planMode: PlanMode;
@@ -4531,6 +4536,11 @@ export class CodexAppServer implements CodexRuntime {
   >();
   readonly #imageSupport = new Map<string, boolean>();
   readonly #loadedThreads = new Set<string>();
+  readonly #managedHistoryImports = new Map<
+    string,
+    { epoch: number; transferId: string; path: string }
+  >();
+  readonly #managedImportPreparations = new Map<string, Promise<void>>();
   readonly #threadPreparationVersions = new Map<string, number>();
   readonly #mcpOauthStatuses = new Map<string, CodexMcpOauthStatus>();
   readonly #mcpConfigFingerprintsByThread = new Map<string, string>();
@@ -6318,6 +6328,11 @@ export class CodexAppServer implements CodexRuntime {
     return snapshot;
   }
 
+  /** Worker-owned conversation storage; separate from canonical account config. */
+  get managedHistoryHome(): string {
+    return this.codexHome;
+  }
+
   exportManagedHistory(input: ManagedHistoryExport, signal?: AbortSignal) {
     return requestManagedHistoryTransfer(
       (method, params) => this.request(method, params),
@@ -6996,6 +7011,40 @@ export class CodexAppServer implements CodexRuntime {
         ? {}
         : { multiAgentMode: settings.multiAgentMode }),
     };
+    await this.applyPreparedNativeSettings(
+      threadId,
+      patch,
+      (actual) =>
+        actual.modelProvider === settings.modelProvider &&
+        actual.serviceTier === settings.serviceTier &&
+        Object.entries(patch).every(([key, value]) =>
+          key === "unsetServiceTier"
+            ? actual.serviceTier === null
+            : isDeepStrictEqual(actual[key], value),
+        ),
+      assertCurrent,
+      signal,
+    );
+    const finalSource = await this.readNativeThreadSettings(
+      captured.sourceThreadId,
+    );
+    assertCurrent();
+    if (!isDeepStrictEqual(finalSource.confirmed?.settings, captured.settings))
+      throw new Error(
+        "Native source settings changed during thread replacement.",
+      );
+  }
+
+  /** Preparation must await Core application, not just the enqueue receipt.
+   * Normal active-turn settings updates still expose their pending state. */
+  private async applyPreparedNativeSettings(
+    threadId: string,
+    patch: Record<string, unknown>,
+    validate: (settings: NativeThreadSettings) => boolean,
+    assertCurrent: () => void,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    signal?.throwIfAborted();
     const operationId = randomUUID();
     let resolve!: () => void;
     let reject!: (error: unknown) => void;
@@ -7014,16 +7063,8 @@ export class CodexAppServer implements CodexRuntime {
           .requests.find((candidate) => candidate.operationId === operationId);
         if (request?.status === "applied") {
           const actual = request.applied?.settings;
-          if (
-            actual?.modelProvider !== settings.modelProvider ||
-            actual?.serviceTier !== settings.serviceTier ||
-            !Object.entries(patch).every(([key, value]) =>
-              key === "unsetServiceTier"
-                ? actual?.serviceTier === null
-                : isDeepStrictEqual(actual?.[key], value),
-            )
-          )
-            reject(new Error("Native replacement applied different settings."));
+          if (!actual || !validate(actual))
+            reject(new Error("Native preparation applied different settings."));
           else resolve();
         } else if (
           request?.status === "rejected" ||
@@ -7033,7 +7074,7 @@ export class CodexAppServer implements CodexRuntime {
             new Error(
               typeof request.error?.message === "string"
                 ? request.error.message
-                : "Native replacement settings application was not confirmed.",
+                : "Native preparation settings application was not confirmed.",
             ),
           );
       } catch (error) {
@@ -7045,7 +7086,7 @@ export class CodexAppServer implements CodexRuntime {
         if (event.method === "thread/closed")
           reject(
             new Error(
-              "Native replacement thread closed before settings applied.",
+              "Native preparation thread closed before settings applied.",
             ),
           );
         // The raw history observer runs before the settings state reducer.
@@ -7073,16 +7114,6 @@ export class CodexAppServer implements CodexRuntime {
       check();
       await applied;
       assertCurrent();
-      const finalSource = await this.readNativeThreadSettings(
-        captured.sourceThreadId,
-      );
-      assertCurrent();
-      if (
-        !isDeepStrictEqual(finalSource.confirmed?.settings, captured.settings)
-      )
-        throw new Error(
-          "Native source settings changed during thread replacement.",
-        );
     } finally {
       signal?.removeEventListener("abort", abort);
       subscription.signal.removeEventListener("abort", abort);
@@ -7118,6 +7149,84 @@ export class CodexAppServer implements CodexRuntime {
       options.planMode,
       options.model,
     );
+    return { threadId };
+  }
+
+  /** Stage a transferred conversation in this isolated destination runtime.
+   * The caller owns handoff authorization and canonical publication. Native
+   * resume selects the destination provider/model while inheriting the imported
+   * permissions, service tier, collaboration mode and custom child settings. */
+  prepareImportedManagedThread(
+    options: PrepareImportedManagedThreadOptions,
+  ): Promise<{ threadId: string }> {
+    const key = options.transfer.threadId;
+    const previous =
+      this.#managedImportPreparations.get(key) ?? Promise.resolve();
+    const result = previous.then(() =>
+      this.prepareImportedManagedThreadSerialized(options),
+    );
+    const settled = result.then(
+      () => {},
+      () => {},
+    );
+    this.#managedImportPreparations.set(key, settled);
+    void settled.then(() => {
+      if (this.#managedImportPreparations.get(key) === settled)
+        this.#managedImportPreparations.delete(key);
+    });
+    return result;
+  }
+
+  private async prepareImportedManagedThreadSerialized(
+    options: PrepareImportedManagedThreadOptions,
+  ): Promise<{ threadId: string }> {
+    await this.ensureStarted(
+      options.model,
+      options.provider,
+      options.subagentDefaults,
+      options.executionProfile,
+    );
+    const epoch = this.#preparationEpoch;
+    const { transfer } = options;
+    options.signal?.throwIfAborted();
+    const imported = this.#managedHistoryImports.get(transfer.threadId);
+    if (
+      imported?.epoch !== epoch ||
+      imported.transferId !== transfer.transferId ||
+      imported.path !== transfer.path
+    ) {
+      await this.importManagedHistory(transfer, options.signal);
+      this.assertPreparationEpoch(epoch);
+      this.#managedHistoryImports.set(transfer.threadId, {
+        epoch,
+        transferId: transfer.transferId,
+        path: transfer.path,
+      });
+    }
+    const threadId = await this.loadThread(
+      {
+        ...options,
+        threadId: transfer.threadId,
+        managedConfiguration: true,
+        adoptImportedProvider: true,
+      },
+      false,
+      "preserve",
+    );
+    this.assertPreparationEpoch(epoch);
+    options.signal?.throwIfAborted();
+    if (threadId !== transfer.threadId)
+      throw new Error("Native handoff prepared another conversation.");
+    const { confirmed } = await this.readNativeThreadSettings(threadId);
+    this.assertPreparationEpoch(epoch);
+    if (
+      confirmed?.settings.model !== options.model.name ||
+      confirmed.settings.modelProvider !==
+        codexModelProviderName(options.provider)
+    )
+      throw new Error(
+        "Native handoff did not select the requested provider and model.",
+      );
     return { threadId };
   }
 
@@ -7158,6 +7267,7 @@ export class CodexAppServer implements CodexRuntime {
         options.planMode,
         options.model,
         assertCurrent,
+        options.threadId === null ? { signal: options.signal } : undefined,
       );
       assertCurrent();
     }
@@ -7594,6 +7704,7 @@ export class CodexAppServer implements CodexRuntime {
     this.#runtimeIsZai = false;
     this.#starting = null;
     this.#loadedThreads.clear();
+    this.#managedHistoryImports.clear();
     this.#managedNativeCommandDispatchers.clear();
     for (const execution of this.#rootExecutionsByActive.values()) {
       for (const state of execution.agents.values()) {
@@ -7854,6 +7965,7 @@ export class CodexAppServer implements CodexRuntime {
     this.#diagnosticSecrets.clear();
     this.#runtimeIsZai = false;
     this.#loadedThreads.clear();
+    this.#managedHistoryImports.clear();
     this.#mcpConfigFingerprintsByThread.clear();
     this.#managedConfigApplications.clear();
     this.#managedThreadOverlays.clear();
@@ -7976,6 +8088,7 @@ export class CodexAppServer implements CodexRuntime {
       subagentDefaults?: RuntimeSubagentDefaults | null;
       onThreadIdentified?: PrepareManagedThreadOptions["onThreadIdentified"];
       managedConfiguration?: boolean;
+      adoptImportedProvider?: boolean;
       executionGate?: PrepareManagedThreadOptions["executionGate"];
       canonicalHistory?: PrepareManagedThreadOptions["canonicalHistory"];
     },
@@ -8023,6 +8136,7 @@ export class CodexAppServer implements CodexRuntime {
       subagentDefaults?: RuntimeSubagentDefaults | null;
       onThreadIdentified?: PrepareManagedThreadOptions["onThreadIdentified"];
       managedConfiguration?: boolean;
+      adoptImportedProvider?: boolean;
       executionGate?: PrepareManagedThreadOptions["executionGate"];
       canonicalHistory?: PrepareManagedThreadOptions["canonicalHistory"];
     },
@@ -8128,6 +8242,13 @@ export class CodexAppServer implements CodexRuntime {
             : undefined;
         const resumed = (await request("thread/resume", {
           threadId: options.threadId,
+          ...(options.adoptImportedProvider
+            ? {
+                model: options.model.name,
+                modelProvider: codexModelProviderName(options.provider),
+                ...codexReasoningEffortParams(options.model),
+              }
+            : {}),
           ...(managedConfig ? { managedConfig } : {}),
         })) as ThreadResponse;
         if (resumed.thread.id !== options.threadId)
@@ -9417,11 +9538,29 @@ export class CodexAppServer implements CodexRuntime {
     mode: PlanMode,
     model: RunAgentTurnOptions["model"],
     assertCurrent: () => void = () => {},
+    preparation?: { signal?: AbortSignal },
   ): Promise<NativeCollaborationMode> {
     assertCurrent();
     const collaborationMode = await this.collaborationMode(mode, model);
     assertCurrent();
     if (this.#threadSettings.selectedPlanMode(threadId) !== mode) {
+      if (preparation) {
+        await this.applyPreparedNativeSettings(
+          threadId,
+          { collaborationMode },
+          // Core resolves null developer instructions to the mode's default
+          // instructions; compare the explicit selection fields we requested.
+          (actual) =>
+            actual.collaborationMode.mode === collaborationMode.mode &&
+            actual.collaborationMode.settings.model ===
+              collaborationMode.settings.model &&
+            actual.collaborationMode.settings.reasoning_effort ===
+              collaborationMode.settings.reasoning_effort,
+          assertCurrent,
+          preparation.signal,
+        );
+        return collaborationMode;
+      }
       const operationId = randomUUID();
       await this.applyNativeThreadSettings(
         threadId,
@@ -9661,6 +9800,7 @@ export class CodexAppServer implements CodexRuntime {
       this.#runtimeIsZai = false;
       this.#starting = null;
       this.#loadedThreads.clear();
+      this.#managedHistoryImports.clear();
       this.#mcpConfigFingerprintsByThread.clear();
       this.#managedConfigApplications.clear();
       this.#managedThreadOverlays.clear();
@@ -9718,6 +9858,7 @@ export class CodexAppServer implements CodexRuntime {
       this.#runtimeIsZai = false;
       this.#starting = null;
       this.#loadedThreads.clear();
+      this.#managedHistoryImports.clear();
       this.#mcpConfigFingerprintsByThread.clear();
       this.#managedConfigApplications.clear();
       this.#managedThreadOverlays.clear();

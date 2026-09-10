@@ -1,5 +1,8 @@
 import type { FastifyInstance } from "fastify";
-import { nativeRuntimeHandoffWorkerRequestSchema } from "@cantrip/protocol";
+import {
+  nativeRuntimeHandoffWorkerRequestSchema,
+  nativeRuntimeHandoffConfigurationRequestSchema,
+} from "@cantrip/protocol";
 import type { ServerRepository } from "../../db/repository.js";
 import { NativeCommandError } from "../../db/repository/native-command-errors.js";
 import { authenticateWorkerRequest } from "../../workers/credentials.js";
@@ -15,6 +18,11 @@ export function installInternalNativeRuntimeHandoffRoutes(
       Parameters<typeof installInternalNativeCommandRoutes>[1]["live"],
       "publishChatInvalidation"
     >;
+    configuration?: (
+      ownerId: string,
+      state: import("@cantrip/protocol").NativeRuntimeHandoffState,
+      side: "source" | "destination",
+    ) => Promise<import("@cantrip/protocol").NativeRuntimeHandoffConfiguration>;
     repository: Pick<
       ServerRepository,
       "nativeRuntimeHandoffs" | "authenticateWorkerCredential" | "getWorker"
@@ -22,6 +30,64 @@ export function installInternalNativeRuntimeHandoffRoutes(
   },
 ): void {
   const { repository, config, runAsOwner, live } = dependencies;
+  if (dependencies.configuration)
+    app.post(
+      "/api/internal/native-runtime-handoffs/configuration",
+      { logLevel: "warn" },
+      async (request, reply) => {
+        const parsed = nativeRuntimeHandoffConfigurationRequestSchema.safeParse(
+          request.body,
+        );
+        if (!parsed.success)
+          return reply
+            .code(400)
+            .send({ code: "invalid-native-runtime-handoff" });
+        const input = parsed.data;
+        const authentication = await authenticateWorkerRequest(
+          repository,
+          config,
+          request,
+          input.workerId,
+          "worker:agent-tools",
+        );
+        if (!authentication)
+          return reply.code(401).send({ code: "unauthorized" });
+        return runAsOwner(authentication.ownerId, async () => {
+          try {
+            const state = await repository.nativeRuntimeHandoffs.get(
+              authentication.ownerId,
+              input.chatId,
+              input.operationId,
+            );
+            if (!state || state.workerId !== input.workerId)
+              return reply.code(404).send({ code: "handoff-not-found" });
+            const result = await dependencies.configuration!(
+              authentication.ownerId,
+              state,
+              input.side,
+            );
+            const current = await repository.nativeRuntimeHandoffs.get(
+              authentication.ownerId,
+              input.chatId,
+              input.operationId,
+            );
+            if (
+              !current ||
+              current.updatedAt !== state.updatedAt ||
+              current.phase !== state.phase
+            )
+              throw new NativeCommandError("handoff-configuration-replaced");
+            return result;
+          } catch (error) {
+            if (error instanceof NativeCommandError)
+              return reply
+                .code(error.statusCode)
+                .send({ code: error.code, error: error.message });
+            throw error;
+          }
+        });
+      },
+    );
   app.post(
     "/api/internal/native-runtime-handoffs",
     { logLevel: "warn" },
@@ -64,6 +130,17 @@ export function installInternalNativeRuntimeHandoffRoutes(
                 input.operationId,
                 input.prepared,
                 input.expectedPreparedRuntimeGeneration,
+                input.expectedPreparedNativeEpoch,
+              );
+              break;
+            case "recover":
+              result = await operations.recover(
+                ownerId,
+                input.workerId,
+                input.operationId,
+                input.side,
+                input.expectedBindingId,
+                input.recovered,
               );
               break;
             case "commit":

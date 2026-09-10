@@ -2,6 +2,7 @@ import { chmodSync, existsSync, statSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { isDeepStrictEqual } from "node:util";
 
 import {
   terminalOpenResultSchema,
@@ -481,6 +482,9 @@ export class TerminalManager {
         return this.retargetManagedCodex(launch.session.chatId, {
           threadId: launch.threadId,
           remoteUrl: launch.remoteUrl,
+          provider: launch.provider,
+          model: launch.model,
+          codexHome: launch.codexHome,
         }).then(() => {
           // Another committed handoff may have superseded this view's target
           // while the old child exited. Attach the resulting surface without
@@ -505,7 +509,12 @@ export class TerminalManager {
    */
   async retargetManagedCodex(
     chatId: string,
-    target: { threadId: string; remoteUrl: string },
+    target: { threadId: string; remoteUrl: string } & Partial<
+      Pick<
+        Extract<TerminalLaunch, { type: "codex" }>,
+        "provider" | "model" | "codexHome"
+      >
+    >,
   ): Promise<void> {
     const changes: Promise<void>[] = [];
     for (const [terminalId, session] of this.#sessions) {
@@ -520,16 +529,23 @@ export class TerminalManager {
       if (session.retargeting) {
         // A second committed replacement can arrive while the first TUI is
         // exiting. The pending surface follows the latest selected target.
-        session.retargeting.launch = { ...launch, ...target };
+        session.retargeting.launch = {
+          ...session.retargeting.launch,
+          ...target,
+        };
         changes.push(session.retargeting.promise);
         continue;
       }
-      if (
-        launch.threadId === target.threadId &&
-        launch.remoteUrl === target.remoteUrl
-      )
-        continue;
       const nextLaunch = { ...launch, ...target };
+      if (
+        launch.threadId === nextLaunch.threadId &&
+        launch.remoteUrl === nextLaunch.remoteUrl &&
+        launch.codexHome === nextLaunch.codexHome &&
+        isDeepStrictEqual(launch.provider, nextLaunch.provider)
+      ) {
+        session.launch = nextLaunch;
+        continue;
+      }
       let resolve!: () => void;
       let reject!: (error: Error) => void;
       const promise = new Promise<void>((yes, no) => {

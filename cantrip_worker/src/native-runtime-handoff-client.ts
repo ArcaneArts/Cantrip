@@ -1,5 +1,8 @@
 import {
   nativeRuntimeHandoffStateSchema,
+  nativeRuntimeHandoffConfigurationRequestSchema,
+  nativeRuntimeHandoffConfigurationSchema,
+  type NativeRuntimeHandoffConfigurationRequest,
   nativeRuntimeHandoffWorkerRequestSchema,
   type NativeRuntimeHandoffWorkerRequest,
 } from "@cantrip/protocol";
@@ -22,8 +25,56 @@ export class NativeRuntimeHandoffClient {
       ...action,
       workerId: this.options.workerId,
     });
+    const body = await this.send(
+      "/api/internal/native-runtime-handoffs",
+      input,
+      signal,
+    );
+    const result = nativeRuntimeHandoffStateSchema.parse(body);
+    if (
+      result.operationId !== input.operationId ||
+      result.chatId !== input.chatId ||
+      result.workerId !== input.workerId
+    )
+      throw new Error(
+        "Native runtime handoff response belongs to another operation.",
+      );
+    return result;
+  }
+  async configuration(
+    action: Omit<NativeRuntimeHandoffConfigurationRequest, "workerId">,
+    signal?: AbortSignal,
+  ) {
+    const input = nativeRuntimeHandoffConfigurationRequestSchema.parse({
+      ...action,
+      workerId: this.options.workerId,
+    });
+    const result = nativeRuntimeHandoffConfigurationSchema.parse(
+      await this.send(
+        "/api/internal/native-runtime-handoffs/configuration",
+        input,
+        signal,
+      ),
+    );
+    if (
+      result.state.operationId !== input.operationId ||
+      result.state.chatId !== input.chatId ||
+      result.state.workerId !== input.workerId ||
+      result.side !== input.side ||
+      result.configuration.session.chatId !== input.chatId ||
+      result.configuration.threadId !== result.state.source.threadId
+    )
+      throw new Error("Handoff configuration belongs to another operation.");
+    return result;
+  }
+
+  private async send(
+    endpoint: string,
+    input: unknown,
+    signal?: AbortSignal,
+  ): Promise<unknown> {
     const response = await (this.options.fetch ?? fetch)(
-      new URL("/api/internal/native-runtime-handoffs", this.options.serverUrl),
+      new URL(endpoint, this.options.serverUrl),
       {
         method: "POST",
         redirect: "error",
@@ -49,15 +100,6 @@ export class NativeRuntimeHandoffClient {
         typeof failure.code === "string" ? failure.code : null,
       );
     }
-    const result = nativeRuntimeHandoffStateSchema.parse(body);
-    if (
-      result.operationId !== input.operationId ||
-      result.chatId !== input.chatId ||
-      result.workerId !== input.workerId
-    )
-      throw new Error(
-        "Native runtime handoff response belongs to another operation.",
-      );
-    return result;
+    return body;
   }
 }
