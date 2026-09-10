@@ -1,10 +1,16 @@
+import { createManagedChatPreparation } from "../src/app/runtime/managed-chat-preparation.js";
+import {
+  protectedChatFields,
+  protectedTerminalFields,
+} from "./private-label-fixture.js";
+import type { WorkerCommandBus } from "../src/workers/bridge.js";
 import { installChatRuntimeHandoffRoutes } from "../src/app/routes/chat-runtime-handoffs.js";
 import { runtimeHandoffConfiguration } from "../src/terminals/runtime-handoff-configuration.js";
 import { resolveModelRoutePairs } from "../src/models/subagent-routing.js";
 import { exerciseNativeHandoff } from "./native-handoff-executor-fixture.js";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { beforeEach, afterEach, describe, expect, it } from "vitest";
+import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import Fastify from "fastify";
 import type { NativeRuntimeHandoffPrepared } from "@cantrip/protocol";
 import { LOCAL_USER_ID as owner } from "../src/db/repository.js";
@@ -1285,3 +1291,152 @@ describe("durable native provider handoff", () => {
     expect((await begin()).phase).toBe("preparing");
   });
 });
+
+it.each(["completed", "cancelled"] as const)(
+  "waits for %s reconnect recovery per chat before preparing its CLI",
+  async (outcome) => {
+    const app = Fastify();
+    const original = (await context())!;
+    const other = (await f.repository.createChat(owner, original.projectId!, {
+      ...protectedChatFields(),
+      worktreeId: original.worktreeId,
+    }))!;
+    await f.repository.managedChatPreparations.request(
+      owner,
+      f.chatId,
+      f.workerId,
+    );
+    await f.repository.managedChatPreparations.request(
+      owner,
+      other.id,
+      f.workerId,
+    );
+    const job = await begin();
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const ensured: { chatId: string; routeId: string | undefined }[] = [];
+    const attachments = new Map<string, () => void>();
+    const bridge: Pick<WorkerCommandBus, "request"> = {
+      request: async (_worker, command, options) => {
+        if (command.type === "chat.runtime.handoff") {
+          await waiting;
+          if (outcome === "completed") {
+            await markPrepared(job.operationId);
+            await operations().commit(owner, f.workerId, job.operationId);
+          } else
+            await operations().requestCancellation(
+              owner,
+              f.chatId,
+              job.operationId,
+            );
+          await operations().finish(
+            owner,
+            f.workerId,
+            job.operationId,
+            outcome,
+          );
+          return { status: outcome };
+        }
+        if (command.type === "chat.thread.ensure") {
+          ensured.push({
+            chatId: command.session!.chatId,
+            routeId: command.model.routeId,
+          });
+          return {
+            threadId: command.threadId ?? `native-${command.session!.chatId}`,
+          };
+        }
+        if (command.type === "terminal.prepare-state")
+          return protectedTerminalFields(command.terminalId);
+        if (command.type === "terminal.open") {
+          const finished = new Promise((resolve) =>
+            attachments.set(command.attachmentId, () =>
+              resolve({ status: "detached" }),
+            ),
+          );
+          options?.onEvent?.({ type: "terminal.ready" } as never);
+          return finished;
+        }
+        if (command.type === "terminal.detach") {
+          attachments.get(command.attachmentId)?.();
+          return { status: "detached" };
+        }
+        throw new Error(`Unexpected worker command ${command.type}`);
+      },
+    };
+    const recovery = installChatRuntimeHandoffRoutes(app, {
+      applicationOwnerId: () => owner,
+      repository: f.repository,
+      bridge,
+      publishChatInvalidation() {},
+    });
+    const preparation = createManagedChatPreparation({
+      repository: f.repository,
+      bridge,
+      serverId: "server",
+      runAsOwner: async (_owner, run) => run(),
+      publish() {},
+      runtimeForContext: async () =>
+        (await f.repository.getModelRuntimeByRoute(
+          owner,
+          original.modelRouteId!,
+        ))!,
+      routePairsForConfiguration: async (
+        _context,
+        _configuration,
+        runtimes,
+      ) => [
+        {
+          root: { runtime: runtimes[0]!, reasoningEffort: null },
+          subagent: null,
+        },
+      ],
+    });
+    let barriers:
+      Awaited<ReturnType<typeof recovery.workerConnected>> | undefined;
+    try {
+      barriers = await recovery.workerConnected(owner, f.workerId);
+      await preparation.workerConnected(owner, f.workerId, barriers);
+      await preparation.settle(owner, other.id);
+      expect(
+        (await f.repository.managedChatPreparations.get(owner, other.id))
+          ?.phase,
+      ).toBe("ready");
+      expect(ensured.filter((call) => call.chatId === f.chatId)).toEqual([]);
+      let joined = false;
+      const join = preparation.join(owner, f.chatId).then(() => {
+        joined = true;
+      });
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(joined).toBe(false);
+      release();
+      await join;
+      await preparation.settle(owner, f.chatId);
+      expect(ensured.filter((call) => call.chatId === f.chatId)).toEqual([
+        {
+          chatId: f.chatId,
+          routeId:
+            outcome === "completed" ? targetRoute : original.modelRouteId,
+        },
+      ]);
+      expect(
+        (await f.repository.managedChatPreparations.get(owner, f.chatId))
+          ?.phase,
+      ).toBe("ready");
+    } finally {
+      release();
+      if (barriers instanceof Map) await Promise.allSettled(barriers.values());
+      await preparation.settle(owner, f.chatId);
+      await preparation.settle(owner, other.id);
+      await vi.waitFor(async () =>
+        expect(
+          (await operations().get(owner, f.chatId, job.operationId))?.phase,
+        ).toBe(outcome),
+      );
+      await app.close();
+    }
+  },
+  60000,
+);

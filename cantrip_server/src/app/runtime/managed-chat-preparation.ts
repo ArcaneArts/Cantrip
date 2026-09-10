@@ -41,7 +41,12 @@ export function createManagedChatPreparation(deps: Dependencies) {
     { nativeReady: Promise<void>; finished: Promise<void> }
   >();
   const key = (ownerId: string, chatId: string) => `${ownerId}:${chatId}`;
-  const start = (ownerId: string, chatId: string, replace = false) => {
+  const start = (
+    ownerId: string,
+    chatId: string,
+    replace = false,
+    recovery?: Promise<void>,
+  ) => {
     const identity = key(ownerId, chatId);
     const existing = active.get(identity);
     if (existing && !replace) return existing;
@@ -58,6 +63,11 @@ export function createManagedChatPreparation(deps: Dependencies) {
       let state: ManagedChatPreparation | null = null;
       let phase: "thread" | "console" = "thread";
       try {
+        // Resolve placement only after this chat's in-flight transfer settles.
+        // Register the job first so an immediate GUI join waits with it.
+        await recovery;
+        if (active.get(identity) !== job)
+          throw new Error("The preparation was replaced.");
         const context = await deps.repository.getChatExecutionContext(
           ownerId,
           chatId,
@@ -221,9 +231,13 @@ export function createManagedChatPreparation(deps: Dependencies) {
       if (state && state.phase !== "ready" && state.failedPhase !== "console")
         await start(ownerId, chatId).nativeReady;
     },
-    async workerConnected(ownerId: string, workerId: string) {
+    async workerConnected(
+      ownerId: string,
+      workerId: string,
+      recoveries: ReadonlyMap<string, Promise<void>> = new Map(),
+    ) {
       for (const chatId of await jobs.forWorker(ownerId, workerId))
-        start(ownerId, chatId, true);
+        start(ownerId, chatId, true, recoveries.get(chatId));
     },
     async settle(ownerId: string, chatId: string) {
       await active.get(key(ownerId, chatId))?.finished;

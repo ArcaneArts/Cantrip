@@ -55,10 +55,15 @@ export function createManagedChatTurnRuntime(
     managedChatPreparation: {
       ...preparation,
       afterWorkerRecovery:
-        (recover: (ownerId: string, workerId: string) => Promise<void>) =>
+        (
+          recover: (
+            ownerId: string,
+            workerId: string,
+          ) => Promise<ReadonlyMap<string, Promise<void>>>,
+        ) =>
         async (ownerId: string, workerId: string) => {
-          await recover(ownerId, workerId);
-          await preparation.workerConnected(ownerId, workerId);
+          const recoveries = await recover(ownerId, workerId);
+          await preparation.workerConnected(ownerId, workerId, recoveries);
         },
     },
   };

@@ -37,11 +37,10 @@ export function installChatRuntimeHandoffRoutes(
   ) => {
     const intent = state.cancelRequested ? "cancel" : "continue";
     const key = `${state.operationId}:${intent}`;
-    if (
-      ["completed", "cancelled"].includes(state.phase) ||
-      (!reconnect && active.has(key))
-    )
-      return;
+    if (["completed", "cancelled"].includes(state.phase))
+      return Promise.resolve();
+    const existing = active.get(key);
+    if (!reconnect && existing) return existing;
     const operation = bridge
       .request(
         state.workerId,
@@ -72,6 +71,7 @@ export function installChatRuntimeHandoffRoutes(
     // The durable reservation remains the retry authority even if failure
     // diagnostics cannot be stored during a server/database outage.
     void operation.catch(() => {});
+    return operation;
   };
   app.post<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/runtime-handoffs",
@@ -158,7 +158,11 @@ export function installChatRuntimeHandoffRoutes(
         ownerId,
         workerId,
       );
-      for (const state of states) dispatch(ownerId, state, true);
+      // Preparation must join actual recovery, not merely its dispatch. Keep
+      // barriers per chat so one transfer cannot hold up unrelated sessions.
+      return new Map(
+        states.map((state) => [state.chatId, dispatch(ownerId, state, true)]),
+      );
     },
   };
 }
