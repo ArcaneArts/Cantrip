@@ -446,6 +446,10 @@ export class NativeCommandRepository {
           tx,
           input.session.chatId,
           input.session.runtimeGeneration,
+          undefined,
+          classifyManagedNativeMethod(input.method) === "attach"
+            ? "attach"
+            : "write",
         );
         if (!managedConsoleSessionContext(context))
           throw new NativeCommandError("managed-session-ineligible");
@@ -1365,17 +1369,19 @@ export class NativeCommandRepository {
   ): Promise<NativeCommandAdmissionResult> {
     return this.database.transaction(async (tx) => {
       await this.lock(tx, ownerId, input.session.chatId);
-      await assertNativeRuntimeWritable(
-        tx,
-        input.session.chatId,
-        input.session.runtimeGeneration,
-      );
       const row = await this.command(
         tx,
         ownerId,
         input.workerId,
         input.operationId,
         input.operationGeneration,
+      );
+      await assertNativeRuntimeWritable(
+        tx,
+        input.session.chatId,
+        input.session.runtimeGeneration,
+        undefined,
+        row.kind === "attach" ? "attach" : "write",
       );
       if (
         row.payloadDigest !== input.payloadDigest ||

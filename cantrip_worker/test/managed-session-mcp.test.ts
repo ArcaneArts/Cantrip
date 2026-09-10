@@ -9,6 +9,8 @@ import type {
 } from "@cantrip/protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { NativeHistoryObservations } from "../src/codex/native-history-observation.js";
+import { nativeThreadSettings } from "./fixtures/native-thread-settings.js";
 import { CodexAppServer } from "../src/codex/app-server.js";
 import { ManagedSessionCoordinator } from "../src/codex/managed-session.js";
 import { withManagedSessionMcpServers } from "../src/codex/managed-session-mcp.js";
@@ -34,10 +36,19 @@ async function fixture() {
     unprobedCodexRuntimeReport,
   );
   const native = runtime as unknown as {
+    handleMessage(data: Buffer): void;
     ensureStarted(): Promise<void>;
     methodAvailable(method: string): boolean;
     request(method: string, params: unknown): Promise<unknown>;
   };
+  const observations = new NativeHistoryObservations();
+  observations.replace("fixture-transport");
+  vi.spyOn(runtime, "observeNativeHistory").mockImplementation(
+    (threadId, observer) =>
+      observations.subscribe(threadId, observer, async () => {
+        throw new Error("No history read expected");
+      }),
+  );
   native.ensureStarted = vi.fn().mockResolvedValue(undefined);
   native.methodAvailable = () => true;
   const request = vi.fn(
@@ -49,7 +60,30 @@ async function fixture() {
       if (method === "collaborationMode/list")
         return { data: [{ mode: "default" }] };
       if (method === "thread/settings/update") {
-        const input = params as { operationId: string };
+        const input = params as {
+          operationId: string;
+          collaborationMode: {
+            mode: "default";
+            settings: Record<string, string | null>;
+          };
+        };
+        const notification = {
+          threadId: "native-thread",
+          operationId: input.operationId,
+          submissionId: `submission:${input.operationId}`,
+          threadSettings: nativeThreadSettings({
+            collaborationMode: input.collaborationMode,
+          }),
+        };
+        observations.notification("thread/settings/updated", notification);
+        native.handleMessage(
+          Buffer.from(
+            JSON.stringify({
+              method: "thread/settings/updated",
+              params: notification,
+            }),
+          ),
+        );
         return {
           operationId: input.operationId,
           submissionId: `submission:${input.operationId}`,

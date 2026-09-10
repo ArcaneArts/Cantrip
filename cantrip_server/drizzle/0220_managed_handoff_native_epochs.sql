@@ -1,0 +1,1 @@
+ALTER TABLE "native_runtime_handoffs" ADD COLUMN "retired_native_epochs" jsonb DEFAULT '[]'::jsonb NOT NULL;

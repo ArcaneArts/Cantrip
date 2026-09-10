@@ -105,6 +105,10 @@ afterAll(async () => {
 
 describe("worker notification connection order", () => {
   it("subscribes before attachment and trusts the live command connection", async () => {
+    const recoverHandoffs = vi.spyOn(
+      database.repository.nativeRuntimeHandoffs,
+      "activeForWorker",
+    );
     const workerProcessGeneration = "11111111-1111-4111-8111-111111111111";
     const lifecycle: string[] = [];
     connectionLifecycle = lifecycle;
@@ -127,6 +131,10 @@ describe("worker notification connection order", () => {
     );
 
     await expect.poll(() => subscribedBeforeAttach).toBe(true);
+    await expect
+      .poll(() => recoverHandoffs.mock.calls)
+      .toContainEqual([LOCAL_USER_ID, "notification-order-worker"]);
+    recoverHandoffs.mockRestore();
     await expect.poll(() => lifecycle.includes("ready")).toBe(true);
     expect(lifecycle.indexOf("pending")).toBeLessThan(
       lifecycle.indexOf("ready"),

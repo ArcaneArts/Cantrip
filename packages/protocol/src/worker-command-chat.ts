@@ -55,6 +55,14 @@ import {
 } from "./worker-runtime-support.js";
 
 export const workerChatCommandSchemas = [
+  z
+    .object({
+      type: z.literal("chat.runtime.handoff"),
+      chatId: z.string().min(1),
+      operationId: z.string().uuid(),
+      intent: z.enum(["continue", "cancel"]).default("continue"),
+    })
+    .strict(),
   nativeAccountDefaultsCommandSchema,
   nativeSettingsUpdateCommandSchema,
   nativePermissionUpdateCommandSchema,

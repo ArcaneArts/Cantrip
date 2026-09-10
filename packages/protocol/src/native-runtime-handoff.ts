@@ -19,6 +19,9 @@ export const nativeRuntimeHandoffPreparedSchema = z
     threadId: id,
     runtimeGeneration: id,
     snapshot: protectedNativeSettingsSnapshotSchema,
+    // Authenticated worker claim from the same native read as snapshot. Omission
+    // supports persisted legacy receipts; null explicitly selects the default.
+    reasoningEffort: z.string().min(1).max(80).nullable().optional(),
   })
   .strict();
 export const nativeRuntimeHandoffStateSchema = z
@@ -33,7 +36,15 @@ export const nativeRuntimeHandoffStateSchema = z
       "completed",
       "cancelled",
     ]),
+    // Immutable reservation identity, including the original begin binding.
+    cancelRequested: z.boolean().default(false),
     source: nativeSettingsBindingSchema,
+    // Current canonical binding while recovery replaces a native incarnation.
+    binding: nativeSettingsBindingSchema.nullable().default(null),
+    retiredRuntimeGenerations: z.array(id).default([]),
+    retiredNativeEpochs: z
+      .array(z.object({ runtimeGeneration: id, nativeEpoch: id }).strict())
+      .default([]),
     targetModelRouteId: id,
     targetProviderAccountId: id.nullable(),
     prepared: nativeRuntimeHandoffPreparedSchema.nullable(),
@@ -69,6 +80,15 @@ export const nativeRuntimeHandoffWorkerRequestSchema = z.discriminatedUnion(
         // A restarted destination may replace its receipt before commit only by
         // comparing the generation the server currently owns.
         expectedPreparedRuntimeGeneration: id.nullable(),
+        expectedPreparedNativeEpoch: id.nullable().optional(),
+      })
+      .strict(),
+    workerOperation
+      .extend({
+        action: z.literal("recover"),
+        side: z.enum(["source", "destination"]),
+        expectedBindingId: id,
+        recovered: nativeRuntimeHandoffPreparedSchema,
       })
       .strict(),
     workerOperation.extend({ action: z.literal("commit") }).strict(),

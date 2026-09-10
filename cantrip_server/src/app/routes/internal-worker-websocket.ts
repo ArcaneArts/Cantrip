@@ -69,6 +69,10 @@ export interface InternalWorkerWebsocketRouteDependencies {
     ServerRepository,
     "authenticateWorkerCredential" | "getWorkerOwnerId"
   >;
+  resumeNativeRuntimeHandoffsForWorker: (
+    ownerId: string,
+    workerId: string,
+  ) => Promise<void>;
   resumePendingWorktreeTransitionsForWorker: (
     ownerId: string,
     workerId: string,
@@ -108,6 +112,7 @@ export function installInternalWorkerWebsocketRoute(
     refreshWorkerScopedCatalogs,
     repository,
     resumePendingWorktreeTransitionsForWorker,
+    resumeNativeRuntimeHandoffsForWorker,
     revokedWorkerCredentialIds,
     runAsOwner,
     scheduleWorkerWorktreeObservation,
@@ -321,6 +326,15 @@ export function installInternalWorkerWebsocketRoute(
           workerProcessGeneration: resolvedWorkerProcessGeneration,
         });
         catalogWorkers.set(workerId, workerAuth.ownerId);
+        void resumeNativeRuntimeHandoffsForWorker(
+          workerAuth.ownerId,
+          workerId,
+        ).catch((error) => {
+          app.log.error(
+            { err: error, workerId },
+            "Could not resume native runtime handoffs",
+          );
+        });
         void providerCredentialMigrations
           .migrateWorker(workerAuth.ownerId, workerId)
           .then((summary) => {

@@ -1,3 +1,16 @@
+import { ManagedRuntimeHandoffPublication } from "./codex/managed-runtime-handoff-publication.js";
+import {
+  ManagedRuntimeHandoffCoordinator,
+  type HandoffRuntime,
+} from "./codex/managed-runtime-handoff.js";
+import { ManagedRuntimeHandoffJournal } from "./codex/managed-runtime-handoff-journal.js";
+import { ManagedRuntimeHandoffStaging } from "./codex/managed-runtime-handoff-staging.js";
+import { NativeRuntimeHandoffClient } from "./native-runtime-handoff-client.js";
+import { protectNativeSettingsSnapshot } from "./native-settings-content.js";
+import type {
+  NativeRuntimeHandoffConfiguration,
+  NativeRuntimeHandoffState,
+} from "@cantrip/protocol";
 import {
   ManagedRuntimeNamespaces,
   managedRuntimeTarget,
@@ -132,6 +145,7 @@ import { codexAccountHome } from "./codex/account-home.js";
 import {
   CodexAppServer,
   codexChatThreadSecurityParams,
+  codexModelProviderName,
   codexRuntimeId,
   type AgentOperationResult,
   type RuntimeSubagentDefaults,
@@ -1833,19 +1847,32 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     ownerId: workerEncryption.ownerId(),
     workerId: config.workerId,
   });
-  const runtimeFor = (command: {
-    threadId?: string | null;
-    chatId?: string | null;
-    executionProfile?: "ide" | "standalone-chat";
-    standaloneSkillRoot?: string | null;
-    model: Extract<WorkerCommand, { type: "chat.turn" }>["model"];
-    provider: RuntimeProvider;
-    subagentDefaults?: RuntimeSubagentDefaults | null;
-  }) => {
+  const handoffStaging = new ManagedRuntimeHandoffStaging<CodexAppServer>();
+  const runtimeFor = (
+    command: {
+      threadId?: string | null;
+      chatId?: string | null;
+      executionProfile?: "ide" | "standalone-chat";
+      standaloneSkillRoot?: string | null;
+      model: Extract<WorkerCommand, { type: "chat.turn" }>["model"];
+      provider: RuntimeProvider;
+      subagentDefaults?: RuntimeSubagentDefaults | null;
+    },
+    stagingOperationId?: string,
+  ) => {
     const namespace =
-      command.executionProfile === "standalone-chat" || !command.threadId
-        ? null
-        : managedRuntimeNamespaces.resolve(nativeNamespaceScope(), command);
+      stagingOperationId && command.threadId
+        ? {
+            operationId: stagingOperationId,
+            home: managedRuntimeNamespaces.destination(
+              nativeNamespaceScope(),
+              command.threadId,
+              stagingOperationId,
+            ),
+          }
+        : command.executionProfile === "standalone-chat" || !command.threadId
+          ? null
+          : managedRuntimeNamespaces.resolve(nativeNamespaceScope(), command);
     const configurationHome = accountBackedProvider(command.provider.kind)
       ? accountHomeFor(
           command.provider.credentialHomeKey ?? command.provider.id,
@@ -1914,6 +1941,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         nativeModelInventoryClient.read(provider),
       );
       runtime.setExternalThreadChangeObserver((change) => {
+        if (runtime && handoffStaging.held(runtime, change.threadId)) return;
         if (change.changes.includes("queue") && runtime) {
           for (const entry of managedCommandSessions.get(runtime)?.values() ??
             [])
@@ -2296,6 +2324,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       options.threadId ?? null,
       {
         requested: async (attempt, signal) => {
+          await handoffStaging.wait(runtime, attempt.threadId, signal);
           const ownerSignal = managedGuiBridgeLifetime.signal;
           if (attempt.trigger === "queue") {
             const generation = runtime.transportGeneration;
@@ -2416,6 +2445,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       "type" | "session" | "provider" | "mcpServers"
     > & { provider: RuntimeProvider; mcpServers?: McpServerOpaqueRuntime[] },
     intent: "configure" | "preserve",
+    observeSettings = true,
+    selectRuntime = true,
   ) => {
     const executionProfile =
       session.contextKind === "standalone" ? "standalone-chat" : "ide";
@@ -2484,7 +2515,12 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             session.contextKind === "project" ? session.worktreeId : null,
         },
       });
-      selectManagedRuntime(session.chatId, runtime, result.threadId);
+      if (observeSettings)
+        selectManagedRuntime(session.chatId, runtime, result.threadId);
+      else if (selectRuntime) {
+        settingsPublishers.get(session.chatId)?.publisher.close();
+        managedCurrentRuntimes.set(session.chatId, runtime);
+      }
     }
     threadObservations.bind(
       observationScope(session.chatId, result.threadId, options),
@@ -3095,6 +3131,255 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           "preserve",
         )
       : null;
+
+  const handoffClient = new NativeRuntimeHandoffClient({
+    serverUrl: config.serverUrl,
+    workerId: config.workerId,
+    token: () => config.token,
+  });
+  const handoffConfigurations = new WeakMap<
+    HandoffRuntime,
+    NativeRuntimeHandoffConfiguration["configuration"]
+  >();
+  let handoffCoordinator: {
+    identity: string;
+    coordinator: ManagedRuntimeHandoffCoordinator;
+  } | null = null;
+  const stagedHandoffDestinations = new Map<string, Set<CodexAppServer>>();
+  const handoffPublication = new ManagedRuntimeHandoffPublication({
+    current: (chatId) => managedCurrentRuntimes.get(chatId),
+    prepare: async (state, staged) => {
+      const options = handoffConfigurations.get(staged);
+      if (!options) throw new Error("Missing prepared handoff configuration.");
+      const configuration = {
+        ...options,
+        provider: staged.configuration.provider,
+      };
+      const result = await prepareManagedSession(
+        options.session,
+        configuration,
+        "preserve",
+        false,
+        false,
+      );
+      return {
+        ...result,
+        activate: () => {
+          settingsPublishers.get(state.chatId)?.publisher.close();
+          managedCurrentRuntimes.set(state.chatId, result.runtime);
+        },
+        executionProfile:
+          options.session.contextKind === "standalone"
+            ? "standalone-chat"
+            : "ide",
+        codexHome: accountBackedProvider(staged.configuration.provider.kind)
+          ? accountHomeFor(
+              staged.configuration.provider.credentialHomeKey ??
+                staged.configuration.provider.id,
+            )
+          : codexHome,
+        gateway: (upstreamUrl) =>
+          managedGatewayFor(
+            result.runtime,
+            options.session,
+            configuration,
+            upstreamUrl,
+          ),
+      };
+    },
+    terminals,
+    retire: async (state, previous) => {
+      handoffStaging.retire(previous, state.source.threadId, state.operationId);
+      const old = managedCommandSessions
+        .get(previous)
+        ?.get(`${state.chatId}:${state.source.threadId}`);
+      if (old?.gateway) {
+        const obsolete = await old.gateway;
+        await obsolete.close();
+        managedNativeGateways.delete(obsolete);
+      }
+    },
+  });
+  const runtimeHandoffs = () => {
+    const scope = nativeNamespaceScope();
+    const identity = JSON.stringify(scope);
+    if (handoffCoordinator?.identity === identity)
+      return handoffCoordinator.coordinator;
+    const coordinator = new ManagedRuntimeHandoffCoordinator({
+      scope,
+      client: handoffClient,
+      namespaces: managedRuntimeNamespaces,
+      journal: new ManagedRuntimeHandoffJournal(config.dataDirectory, scope),
+      resolve: async (state, side) => {
+        const fresh = await handoffClient.configuration({
+          chatId: state.chatId,
+          operationId: state.operationId,
+          side,
+        });
+        if (
+          fresh.state.phase !== state.phase ||
+          fresh.state.updatedAt !== state.updatedAt
+        )
+          throw new Error(
+            "Handoff phase changed during configuration resolution.",
+          );
+        const options = fresh.configuration;
+        const provider = await openRuntimeProvider({
+          provider: options.provider,
+          service: workerEncryption,
+        });
+        const subagentDefaults = options.subagentDefaults
+          ? {
+              model: options.subagentDefaults.model,
+              provider: await openRuntimeProvider({
+                provider: options.subagentDefaults.provider,
+                service: workerEncryption,
+              }),
+            }
+          : null;
+        const runtime = runtimeFor(
+          {
+            ...options,
+            provider,
+            subagentDefaults,
+            chatId: state.chatId,
+            executionProfile: "ide",
+          },
+          side === "destination" ? state.operationId : undefined,
+        );
+        handoffStaging.hold(runtime, state.source.threadId, state.operationId);
+        if (side === "destination") {
+          let destinations = stagedHandoffDestinations.get(state.operationId);
+          if (!destinations)
+            stagedHandoffDestinations.set(
+              state.operationId,
+              (destinations = new Set()),
+            );
+          destinations.add(runtime);
+        }
+        const runner = managedExecutionRunnerFor(runtime, options.session, {
+          ...options,
+          provider,
+        });
+        const prepared: HandoffRuntime = {
+          runtime,
+          home: runtime.managedHistoryHome,
+          configuration: {
+            ...options,
+            provider,
+            subagentDefaults,
+            executionProfile: "ide",
+            canonicalHistory: true,
+            executionGate: runner.configuration,
+            mcpServers: await agentMcpServers(
+              options.cwd,
+              options.mcpServers,
+              {
+                ...options.session,
+                workerId: config.workerId,
+                permissionProfileId: options.permissionProfileId,
+              },
+              "ide",
+              options.session.computerUseEnabled,
+            ),
+          },
+        };
+        handoffConfigurations.set(prepared, options);
+        return prepared;
+      },
+      protectSettings: async (state, side, prepared, observed) => {
+        const settings = observed.confirmed?.settings;
+        const generation = prepared.runtime.transportGeneration;
+        if (!settings?.settingsVersion || !generation)
+          throw new Error("Native handoff settings have no connected version.");
+        const { model, provider } = prepared.configuration;
+        if (
+          (side === "destination" && settings.model !== model.name) ||
+          settings.modelProvider !== codexModelProviderName(provider)
+        )
+          throw new Error(
+            "Native handoff settings do not match the reserved provider and model.",
+          );
+        return protectNativeSettingsSnapshot({
+          service: workerEncryption,
+          context: {
+            chatId: state.chatId,
+            threadId: state.source.threadId,
+            workerId: config.workerId,
+            runtimeGeneration: generation,
+            settingsVersion: settings.settingsVersion,
+          },
+          settings,
+          modelAttribution:
+            settings.model === model.name
+              ? {
+                  status: "resolved",
+                  workerId: config.workerId,
+                  providerId: provider.id,
+                  providerAccountId: provider.accountId ?? null,
+                  modelId: model.id,
+                  routeId: model.routeId,
+                }
+              : prepared.runtime.getManagedModelAttribution(settings.model, {
+                  workerId: config.workerId,
+                  modelRouteId: state.source.modelRouteId,
+                  providerAccountId: state.source.providerAccountId,
+                }),
+        });
+      },
+      publish: (state, staged) =>
+        handoffPublication.publish(state, staged, "destination"),
+      restoreSource: (state, staged) =>
+        handoffPublication.publish(state, staged, "source"),
+      cancelled: (state) => {
+        for (const runtime of stagedHandoffDestinations.get(
+          state.operationId,
+        ) ?? []) {
+          handoffStaging.retire(
+            runtime,
+            state.source.threadId,
+            state.operationId,
+          );
+          // These engines were created in this operation's private destination
+          // namespace. The source and other chats' engines remain untouched.
+          runtime.close();
+          for (const [id, candidate] of codexRuntimes)
+            if (candidate === runtime) codexRuntimes.delete(id);
+        }
+        stagedHandoffDestinations.delete(state.operationId);
+        const runtime = managedCurrentRuntimes.get(state.chatId);
+        if (
+          !runtime ||
+          runtime.transportGeneration !==
+            (state.binding ?? state.source).runtimeGeneration
+        )
+          return;
+        handoffStaging.release(
+          runtime,
+          state.source.threadId,
+          state.operationId,
+        );
+        observeManagedSettings(state.chatId, runtime, state.source.threadId);
+      },
+      completed: (state) => {
+        stagedHandoffDestinations.delete(state.operationId);
+        const runtime = managedCurrentRuntimes.get(state.chatId);
+        if (
+          !runtime ||
+          runtime.transportGeneration !== state.prepared?.runtimeGeneration
+        )
+          return;
+        handoffStaging.release(
+          runtime,
+          state.source.threadId,
+          state.operationId,
+        );
+        observeManagedSettings(state.chatId, runtime, state.source.threadId);
+      },
+    });
+    handoffCoordinator = { identity, coordinator };
+    return coordinator;
+  };
 
   const catalogRuntimeFor = (credentialHomeKey: string) => {
     let runtime = codexCatalogRuntimes.get(credentialHomeKey);
@@ -7766,6 +8051,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           service: workerEncryption,
           resolve: () => managedSettingsTarget(command.scope),
         });
+      case "chat.runtime.handoff":
+        return runtimeHandoffs()[
+          command.intent === "cancel" ? "cancel" : "run"
+        ](command.chatId, command.operationId, managedGuiBridgeLifetime.signal);
       case "chat.thread.ensure":
         if (command.session) {
           const { threadId } = await prepareManagedSession(

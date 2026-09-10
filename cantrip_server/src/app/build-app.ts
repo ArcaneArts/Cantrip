@@ -1,4 +1,3 @@
-import { installInternalNativeQueueRoutes } from "./routes/internal-native-queue.js";
 import { installManagedNativeRoutes } from "./routes/internal-native.js";
 import { installNativeHistoryRuntime } from "./runtime/native-history-runtime.js";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -1346,14 +1345,9 @@ export async function buildApp({
   });
   app.addHook("onReady", async () => managedQueueDelivery.start());
   app.addHook("onClose", async () => managedQueueDelivery.stop());
-  installInternalNativeQueueRoutes(app, {
-    config,
-    repository,
-    runAsOwner,
-    dispatchNextQueuedPrompt,
-    publishChatInvalidation,
-  });
-  installManagedNativeRoutes(app, {
+  const nativeRuntimeHandoffs = installManagedNativeRoutes(app, {
+    applicationOwnerId,
+    routePairsForConfiguration,
     bridge,
     config,
     serverId,
@@ -1408,6 +1402,7 @@ export async function buildApp({
     refreshWorkerScopedCatalogs,
     repository,
     resumePendingWorktreeTransitionsForWorker,
+    resumeNativeRuntimeHandoffsForWorker: nativeRuntimeHandoffs.workerConnected,
     revokedWorkerCredentialIds,
     runAsOwner,
     scheduleWorkerWorktreeObservation,
