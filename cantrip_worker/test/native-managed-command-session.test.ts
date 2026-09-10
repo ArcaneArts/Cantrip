@@ -1,3 +1,5 @@
+import { TerminalManager } from "../src/terminal-manager.js";
+import { stripVTControlCharacters } from "node:util";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import type { AgentTurnResult, NativeCommandReceipt } from "@cantrip/protocol";
@@ -99,6 +101,7 @@ describe.skipIf(!binary)(
         const cwd = path.join(directory, "workspace");
         const data = path.join(directory, "runtime");
         const modelRequests: ServerResponse[] = [];
+        const modelInputs: string[] = [];
         const modelServer = createServer(async (request, response) => {
           let inputText = "";
           for await (const chunk of request) inputText += chunk.toString();
@@ -192,6 +195,7 @@ describe.skipIf(!binary)(
             return;
           }
           modelRequests.push(response);
+          modelInputs.push(inputText);
           response.writeHead(200, {
             "content-type": "text/event-stream",
             "cache-control": "no-cache",
@@ -208,6 +212,11 @@ describe.skipIf(!binary)(
         let gateway: ManagedNativeGateway | undefined;
         let socket: WebSocket | undefined;
         let peer!: Peer;
+        let terminalManager: TerminalManager | undefined;
+        let terminalAttachment: Promise<unknown> | undefined;
+        let terminalSettled = false;
+        let terminalOutput = "";
+        const tuiFrames: Frame[] = [];
         const completed: string[] = [];
         const errors: unknown[] = [];
         const turnFailures: unknown[] = [];
@@ -431,7 +440,7 @@ describe.skipIf(!binary)(
           const generation = runtime.transportGeneration!;
           const attachView = async () => {
             socket?.terminate();
-            await gateway?.close();
+            const previousGateway = gateway;
             const viewThreadId = threadId;
             const viewAdapter = adapter;
             runtime!.setManagedNativeCommandDispatcher(
@@ -461,11 +470,20 @@ describe.skipIf(!binary)(
                 providerAccountId: null,
               },
               upstreamUrl,
+              onNativeMessage: (frame) => tuiFrames.push(frame),
               isCurrent: () => runtime!.transportGeneration === generation,
               admit: (operation) => viewAdapter.admit(operation),
               resolveReply: (operation, frame) =>
                 viewAdapter.resolveReply(operation, frame),
             });
+            if (terminalManager) {
+              await terminalManager.retargetManagedCodex(chatId, {
+                threadId: viewThreadId,
+                remoteUrl: gateway.url,
+              });
+              expect(terminalSettled).toBe(false);
+            }
+            await previousGateway?.close();
             socket = new WebSocket(gateway.url);
             peer = new Peer(socket);
             await once(socket, "open");
@@ -477,6 +495,74 @@ describe.skipIf(!binary)(
             await peer.request("thread/resume", { threadId: viewThreadId });
           };
           await attachView();
+          if (compactionRetry) {
+            terminalManager = new TerminalManager({
+              environment: { HOME: home },
+            });
+            terminalAttachment = terminalManager
+              .open(
+                "replacement-tui",
+                "open-view",
+                cwd,
+                130,
+                45,
+                {
+                  type: "codex",
+                  binary: binary!,
+                  codexHome: home,
+                  remoteUrl: gateway!.url,
+                  threadId,
+                  model,
+                  provider,
+                  session: {
+                    chatId,
+                    contextKind: "project",
+                    projectId,
+                    worktreeId: placementId,
+                    rootKind: "git-worktree",
+                    scratchRootId: null,
+                    computerUseEnabled: false,
+                  },
+                },
+                (event) => {
+                  if (event.type !== "terminal.output") return;
+                  terminalOutput += event.data;
+                  try {
+                    if (event.data.includes("\x1b[6n"))
+                      terminalManager!.input("replacement-tui", "\x1b[1;1R");
+                    if (event.data.includes("\x1b[c"))
+                      terminalManager!.input("replacement-tui", "\x1b[?1;2c");
+                    if (event.data.includes("\x1b]10;?"))
+                      terminalManager!.input(
+                        "replacement-tui",
+                        "\x1b]10;rgb:ffff/ffff/ffff\x1b\\",
+                      );
+                    if (event.data.includes("\x1b]11;?"))
+                      terminalManager!.input(
+                        "replacement-tui",
+                        "\x1b]11;rgb:0000/0000/0000\x1b\\",
+                      );
+                  } catch {
+                    /* An old PTY can emit a final query while being replaced. */
+                  }
+                },
+              )
+              .finally(() => {
+                terminalSettled = true;
+              });
+            const resumedBefore = tuiFrames.filter(
+              (frame) => frame.result?.thread?.id === threadId,
+            ).length;
+            await vi.waitFor(
+              () =>
+                expect(
+                  tuiFrames.filter(
+                    (frame) => frame.result?.thread?.id === threadId,
+                  ).length,
+                ).toBeGreaterThan(resumedBefore),
+              { timeout: 15000 },
+            );
+          }
           const consumedTurns = new Set<string>();
           let guiRun: Promise<AgentTurnResult> | undefined;
           let guiReceipt: NativeCommandReceipt | undefined;
@@ -704,9 +790,21 @@ describe.skipIf(!binary)(
               });
               turnId = guiActualTurnId!;
               expect(turnId).toBeTruthy();
-              // Recovery proves canonical replacement and explicit reattachment.
-              // Retargeting an already open terminal is a separate presentation task.
-              if (compactionRetry) await attachView();
+              // Rebind the test's GUI peer and the already-open real TUI to the
+              // canonically admitted replacement, preserving its original stream.
+              if (compactionRetry) {
+                await attachView();
+                await vi.waitFor(
+                  () =>
+                    expect(
+                      tuiFrames.filter(
+                        (frame) => frame.result?.thread?.id === threadId,
+                      ).length,
+                    ).toBeGreaterThanOrEqual(2),
+                  { timeout: 15000 },
+                );
+                expect(terminalSettled).toBe(false);
+              }
               for (const frame of peer.messages.filter(
                 (frame) => frame.method === "turn/started",
               ))
@@ -1038,10 +1136,109 @@ describe.skipIf(!binary)(
               ),
             ).toBe(true);
           }
+          if (compactionRetry) {
+            await vi.waitFor(
+              () =>
+                expect(stripVTControlCharacters(terminalOutput)).toContain(
+                  "Synthetic result 3",
+                ),
+              { timeout: 15000 },
+            );
+            expect(terminalSettled).toBe(false);
+            const previousTurns = new Set(consumedTurns);
+            terminalManager!.input(
+              "replacement-tui",
+              "Synthetic input from the retargeted TUI",
+            );
+            await vi.waitFor(() =>
+              expect(stripVTControlCharacters(terminalOutput)).toContain(
+                "retargeted",
+              ),
+            );
+            terminalManager!.input("replacement-tui", "\r");
+            await vi.waitFor(() => expect(modelRequests).toHaveLength(4), {
+              timeout: 15000,
+            });
+            expect(modelInputs[3]).toContain(
+              "Synthetic input from the retargeted TUI",
+            );
+            await vi.waitFor(() =>
+              expect(
+                peer.messages.some(
+                  (frame) =>
+                    frame.method === "turn/started" &&
+                    !previousTurns.has(frame.params.turn.id),
+                ),
+              ).toBe(true),
+            );
+            const fourth = peer.messages.find(
+              (frame) =>
+                frame.method === "turn/started" &&
+                !previousTurns.has(frame.params.turn.id),
+            )!.params.turn.id;
+            expect(
+              runtime.resolveComputerUseExecution({
+                chatId,
+                threadId,
+                turnId: fourth,
+              }),
+            ).toMatchObject({ rootThreadId: threadId, rootTurnId: fourth });
+            expect(
+              runtime.resolveComputerUseExecution({
+                chatId,
+                threadId: originalThreadId,
+                turnId: fourth,
+              }),
+            ).toBeNull();
+            const events = [
+              {
+                type: "response.output_item.done",
+                item: {
+                  type: "message",
+                  role: "assistant",
+                  id: "retarget-result",
+                  content: [
+                    { type: "output_text", text: "Retargeted TUI result" },
+                  ],
+                },
+              },
+              {
+                type: "response.completed",
+                response: {
+                  id: "response-4",
+                  usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 },
+                },
+              },
+            ];
+            modelRequests[3]!.end(
+              events
+                .map(
+                  (event) =>
+                    `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`,
+                )
+                .join(""),
+            );
+            await vi.waitFor(() => expect(completed).toContain(fourth), {
+              timeout: 15000,
+            });
+            await vi.waitFor(() =>
+              expect(stripVTControlCharacters(terminalOutput)).toContain(
+                "Retargeted TUI result",
+              ),
+            );
+            expect(messages).toContain("Retargeted TUI result");
+            expect(children).toHaveLength(1);
+            expect(runtime.transportGeneration).toBe(generation);
+            expect(terminalSettled).toBe(false);
+            terminalManager!.close("replacement-tui");
+            await terminalAttachment;
+          }
         } catch (error) {
           throw new Error(
             `Native ${origin} fixture failed: ${String(error)}; diagnostics=${JSON.stringify(
               {
+                terminalOutput:
+                  stripVTControlCharacters(terminalOutput).slice(-3500),
                 errors: errors.map(String),
                 turnFailures: turnFailures.map(String),
                 completed,
@@ -1082,6 +1279,8 @@ describe.skipIf(!binary)(
           );
         } finally {
           releasePendingAcknowledgment?.();
+          terminalManager?.closeAll();
+          if (terminalAttachment) await terminalAttachment.catch(() => {});
           socket?.terminate();
           await gateway?.close();
           for (const response of modelRequests) response.destroy();

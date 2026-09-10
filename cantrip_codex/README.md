@@ -112,6 +112,15 @@ An additional native catalog fixture offers a model upgrade and verifies that
 ordinary CLI startup still presents it while managed attachment proceeds without
 the prompt or configuration writes.
 
+Reviewed patch `0031` preserves WebSocket URL paths in the CLI's `--remote`
+parser. Managed gateways use an unguessable path on a loopback listener; replacing
+it with a root URL loses the capability. Scheme/host/explicit-port validation and
+the existing rejection of query strings and fragments remain unchanged. Explicit
+default ports also accept the URL parser's already-bracketed IPv6 host. The
+worker's gateway still authenticates the path and mediates native mutations.
+The direct-gateway replacement fixture in `native-managed-command-session.test.ts`
+uses the actual TUI without a root-URL proxy, so it exercises this parser contract.
+
 ## Managed thread configuration
 
 Reviewed patch `0012` adds `thread/managedConfig/update` for complete replacement

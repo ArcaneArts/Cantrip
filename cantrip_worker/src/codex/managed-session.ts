@@ -28,6 +28,8 @@ const associationSchema = z
     threadId: z.string().min(1),
     prepared: z.boolean().default(false),
     replacementOf: z.string().min(1).optional(),
+    handoffCommitted: z.boolean().optional(),
+    replacedThreads: z.array(z.string().min(1)).optional(),
   })
   .strict();
 
@@ -138,6 +140,39 @@ export class ManagedSessionCoordinator {
         : fingerprint);
     let threadId =
       configuration.threadId ?? (matchesPrevious ? previous.threadId : null);
+    // A view request may have been routed before the canonical handoff. Only
+    // committed predecessors may follow the replacement; an identified or
+    // configured replacement alone does not establish that handoff succeeded.
+    if (
+      !replacementOf &&
+      matchesPrevious &&
+      previous.handoffCommitted &&
+      threadId &&
+      previous.replacedThreads?.includes(threadId)
+    )
+      threadId = previous.threadId;
+    const observingPredecessor =
+      !replacementOf &&
+      matchesPrevious &&
+      !previous.handoffCommitted &&
+      previous.replacementOf === threadId;
+    const handoffCommitted =
+      !replacementOf &&
+      matchesPrevious &&
+      !!previous.replacementOf &&
+      previous.threadId === threadId &&
+      (previous.handoffCommitted ||
+        (previous.prepared && configuration.threadId === previous.threadId));
+    const replacedThreads = matchesPrevious
+      ? [
+          ...new Set([
+            ...(previous.replacedThreads ?? []),
+            ...(handoffCommitted && previous.replacementOf
+              ? [previous.replacementOf]
+              : []),
+          ]),
+        ]
+      : undefined;
     if (replacementOf) {
       const matches = matchesPrevious;
       const resumingReplacement =
@@ -200,6 +235,13 @@ export class ManagedSessionCoordinator {
           ...(retainedReplacement
             ? { replacementOf: retainedReplacement }
             : {}),
+          ...(replacedThreads ? { replacedThreads } : {}),
+          ...(handoffCommitted ||
+          (matchesPrevious &&
+            previous.threadId === identifiedThreadId &&
+            previous.handoffCommitted)
+            ? { handoffCommitted: true }
+            : {}),
           prepared:
             intent === "preserve" &&
             previous?.threadId === identifiedThreadId &&
@@ -207,8 +249,10 @@ export class ManagedSessionCoordinator {
         };
         // Retain the actual identity even when the durable write itself fails;
         // a retry in this process must not create another native conversation.
-        this.identified.set(key, association);
-        await this.write(key, association);
+        if (!observingPredecessor) {
+          this.identified.set(key, association);
+          await this.write(key, association);
+        }
         await input.onThreadIdentified?.(identifiedThreadId);
       },
     });
@@ -217,11 +261,31 @@ export class ManagedSessionCoordinator {
       identity: fingerprint,
       threadId: result.threadId,
       prepared: true,
+      ...(replacedThreads ? { replacedThreads } : {}),
+      ...(handoffCommitted ||
+      (matchesPrevious &&
+        previous.threadId === result.threadId &&
+        previous.handoffCommitted)
+        ? { handoffCommitted: true }
+        : {}),
       ...(retainedReplacement ? { replacementOf: retainedReplacement } : {}),
     };
-    this.identified.set(key, completed);
-    await this.write(key, completed);
+    if (!observingPredecessor) {
+      this.identified.set(key, completed);
+      await this.write(key, completed);
+    }
     await input.onPrepared?.(result.threadId);
+    if (replacementOf && input.onPrepared) {
+      const committed: Association = {
+        ...completed,
+        handoffCommitted: true,
+        replacedThreads: [
+          ...new Set([...(replacedThreads ?? []), replacementOf]),
+        ],
+      };
+      this.identified.set(key, committed);
+      await this.write(key, committed);
+    }
     return result;
   }
 

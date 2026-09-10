@@ -2059,6 +2059,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     Omit<ManagedBindingOptions, "threadId"> & { threadId?: string | null }
   >();
   const managedCurrentRuntimes = new Map<string, CodexAppServer>();
+  const managedCurrentThreads = new Map<string, string>();
   const managedCommandSessions = new WeakMap<
     CodexAppServer,
     Map<
@@ -2228,6 +2229,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     threadId: string,
   ) => {
     managedCurrentRuntimes.set(chatId, runtime);
+    managedCurrentThreads.set(chatId, threadId);
     observeManagedSettings(chatId, runtime, threadId);
   };
   const managedSessionIdentity = (session: ManagedSessionContext) => ({
@@ -2339,6 +2341,52 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     managedRunnerConfigurations.set(runner, options);
     return runner;
   };
+  const managedGatewayFor = async (
+    runtime: CodexAppServer,
+    session: ManagedSessionContext,
+    options: ManagedBindingOptions,
+    upstreamUrl: string,
+  ): Promise<ManagedNativeGateway> => {
+    const managed = managedCommandSessionFor(runtime, session, options);
+    const scopeIsCurrent = managed.queueScope.capture();
+    managed.gateway ??= createManagedNativeGateway({
+      identity: {
+        ...managedSessionIdentity(session),
+        threadId: options.threadId,
+        runtimeGeneration: managed.generation,
+        modelRouteId: options.model.routeId,
+        providerAccountId: options.provider.accountId ?? null,
+      },
+      upstreamUrl,
+      prepareModelCatalogRequest: (method, params) =>
+        runtime.prepareManagedModelCatalogRequest(method, params),
+      queue: {
+        execute: async (request) => {
+          await managed.synchronizeQueue();
+          return managed.queue.execute(request);
+        },
+        subscribe: (listener) => managed.queue.subscribe(listener),
+      },
+      isCurrent: () =>
+        runtime.transportGeneration === managed.generation &&
+        managedCurrentRuntimes.get(session.chatId) === runtime &&
+        scopeIsCurrent(),
+      admit: (operation) => managed.adapter.admit(operation),
+      resolveReply: (operation, frame) =>
+        managed.adapter.resolveReply(operation, frame),
+    }).then((gateway) => {
+      managedNativeGateways.add(gateway);
+      return gateway;
+    });
+    const pending = managed.gateway;
+    try {
+      return await pending;
+    } catch (error) {
+      if (managed.gateway === pending) managed.gateway = undefined;
+      throw error;
+    }
+  };
+
   const prepareManagedSession = async (
     session: ManagedSessionContext,
     options: Omit<
@@ -2397,7 +2445,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     });
     runner?.prepared(result.threadId);
     if (runner) {
-      Object.assign(managedRunnerConfigurations.get(runner)!, options);
+      Object.assign(managedRunnerConfigurations.get(runner)!, options, {
+        threadId: result.threadId,
+      });
       managedCommandSessionFor(runtime, session, {
         ...options,
         threadId: result.threadId,
@@ -5821,7 +5871,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                 permissionProfileId:
                   command.launch.permissionProfileId ?? ":workspace",
                 provider: provider(),
-                threadId: command.launch.threadId,
+                threadId: prepared?.threadId ?? command.launch.threadId,
               });
             }
             const upstreamUrl = await runtime.remoteEndpoint(
@@ -5837,53 +5887,21 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             );
             let remoteUrl = upstreamUrl;
             if (command.launch.session && prepared) {
-              const managed = managedCommandSessionFor(
-                runtime,
-                command.launch.session,
-                {
-                  cwd,
-                  threadId: prepared.threadId,
-                  model: command.launch.model,
-                  provider: provider(),
-                  permissionProfileId:
-                    command.launch.permissionProfileId ?? ":workspace",
-                },
-              );
-              const scopeIsCurrent = managed.queueScope.capture();
-              managed.gateway ??= createManagedNativeGateway({
-                identity: {
-                  ...managedSessionIdentity(command.launch.session),
-                  threadId: prepared.threadId,
-                  runtimeGeneration: managed.generation,
-                  modelRouteId: command.launch.model.routeId,
-                  providerAccountId: provider().accountId ?? null,
-                },
-                upstreamUrl,
-                prepareModelCatalogRequest: (method, params) =>
-                  runtime.prepareManagedModelCatalogRequest(method, params),
-                queue: {
-                  execute: async (request) => {
-                    await managed.synchronizeQueue();
-                    return managed.queue.execute(request);
+              remoteUrl = (
+                await managedGatewayFor(
+                  runtime,
+                  command.launch.session,
+                  {
+                    cwd,
+                    threadId: prepared.threadId,
+                    model: command.launch.model,
+                    provider: provider(),
+                    permissionProfileId:
+                      command.launch.permissionProfileId ?? ":workspace",
                   },
-                  subscribe: (listener) => managed.queue.subscribe(listener),
-                },
-                isCurrent: () =>
-                  runtime.transportGeneration === managed.generation &&
-                  scopeIsCurrent(),
-                admit: (operation) => managed.adapter.admit(operation),
-                resolveReply: (operation, frame) =>
-                  managed.adapter.resolveReply(operation, frame),
-              }).then((gateway) => {
-                managedNativeGateways.add(gateway);
-                return gateway;
-              });
-              try {
-                remoteUrl = (await managed.gateway).url;
-              } catch (error) {
-                managed.gateway = undefined;
-                throw error;
-              }
+                  upstreamUrl,
+                )
+              ).url;
             }
             const result = await terminals.open(
               command.terminalId,
@@ -5893,6 +5911,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               command.rows,
               {
                 ...command.launch,
+                threadId: prepared?.threadId ?? command.launch.threadId,
                 binary: config.codexBinary,
                 codexHome: accountBackedProvider(provider().kind)
                   ? accountHomeFor(
@@ -7178,6 +7197,64 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                     threadId,
                   });
                   selectManagedRuntime(session.chatId, runtime, threadId);
+                  const selectedThreadId = threadId;
+                  const previousGateway = managedCommandSessions
+                    .get(runtime)
+                    ?.get(`${session.chatId}:${retry.threadId}`)?.gateway;
+                  void (async () => {
+                    const upstreamUrl = await runtime.remoteEndpoint(
+                      command.model,
+                      provider(),
+                      {
+                        subagentDefaults,
+                        executionProfile: command.executionProfile,
+                      },
+                    );
+                    const gateway = await managedGatewayFor(
+                      runtime,
+                      session,
+                      {
+                        cwd: command.cwd,
+                        threadId: selectedThreadId,
+                        model: command.model,
+                        provider: provider(),
+                        permissionProfileId: command.permissionProfileId,
+                      },
+                      upstreamUrl,
+                    );
+                    if (
+                      managedCurrentRuntimes.get(session.chatId) !== runtime ||
+                      managedCurrentThreads.get(session.chatId) !==
+                        selectedThreadId
+                    )
+                      return;
+                    await terminals.retargetManagedCodex(session.chatId, {
+                      threadId: selectedThreadId,
+                      remoteUrl: gateway.url,
+                    });
+                  })()
+                    .catch((error) =>
+                      workerLogger.event(
+                        "warn",
+                        "Managed CLI reattachment failed; native continuation remains active",
+                        {
+                          event: "codex.console.reattach-failed",
+                          subsystem: "codex",
+                          operation: "retarget-console",
+                          chatId: session.chatId,
+                          error: workerLogError(error),
+                        },
+                      ),
+                    )
+                    .finally(() => {
+                      if (previousGateway)
+                        void previousGateway
+                          .then(async (gateway) => {
+                            managedNativeGateways.delete(gateway);
+                            await gateway.close();
+                          })
+                          .catch(() => {});
+                    });
                   threadObservations.bind(
                     observationScope(command.chatId, threadId, turnOptions),
                     runtime,

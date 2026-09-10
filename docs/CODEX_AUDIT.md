@@ -2973,6 +2973,62 @@ TUI/queue/history continuity, the remaining actual native lifecycle/CUA acceptan
 eager eligible preparation with GUI-default presentation, and the final necessary
 user implementation test. The full goal remains active.
 
+### Pass 33 — managed gateway attachment and CLI replacement
+
+An actual direct-gateway TUI fixture reproduced a startup failure before any
+model request: the pinned CLI rejected the managed WebSocket capability path.
+Earlier PTY coverage used a transparent root-URL proxy, which masked this
+production mismatch. Reviewed patch `0031` preserves WebSocket paths while
+retaining existing scheme, host, explicit-port, query and fragment validation.
+The parser also accepts already-bracketed IPv6 hosts with explicit default ports;
+the new regression caught the previous double-bracketing rejection.
+The worker continues to authenticate the unguessable gateway path and mediate
+commands; this does not expose the underlying native endpoint.
+
+Invalid-compaction continuation now selects a preserving gateway for the
+canonically admitted replacement and retargets existing managed CLI surfaces.
+Only the TUI process is replaced. Terminal identity, dimensions, subscribers and
+stream lifetimes survive; canonical terminal replay resets before the new TUI
+renders. Rapid replacements coalesce to the latest selected target, including
+view requests that were already awaiting an older handoff. Closing the
+presentation cancels pending reattachment; actual child exit, not a timeout,
+triggers spawning. Unforwarded keyboard input during reattachment is rejected
+rather than replayed into another conversation. Spawn acknowledgment is not a
+claim of native readiness; actual later startup exits remain visible/retryable.
+Presentation errors do not cancel the admitted native continuation.
+
+The coordinator durably retains committed predecessor identities. A view request
+routed before handoff resolves to the replacement instead of changing the chat
+back to its old thread. An uncommitted replacement is not exposed as canonical,
+and observing its predecessor does not discard the pending recovery record.
+Alias recovery is scoped to the same placement/provider/account. Console open,
+external synchronization and runner configuration use the resolved thread ID.
+
+Validation: 75 worker tests across five files pass, covering
+real PTY exit/respawn, multiple attached views, close/superseding handoffs,
+actual executable failure/reopen, gateway behavior and durable coordinator
+recovery. Workspace typechecks passed, followed by a worker check after the
+final lifecycle edits. The six real-PTY retarget tests passed again after final
+review. The final standard packaged native rebuild completed in 9m23s;
+all 6,499 imported files and the 30-patch ordered series verify. The actual
+direct-gateway replacement fixture passed: the original PTY attachment receives
+the replacement's output and submits a subsequent prompt through authenticated
+command admission. The synthetic provider receives the exact prompt, both native
+views receive the answer, the native runtime process/generation stays unchanged,
+and the new turn has CUA authority only on the replacement. This also covers GUI
+Stop and later fresh authority. All 12 native tests across four files passed
+against the final packaged binary, including TUI attachment, native queue and
+replacement-settings regressions. All eight Rust address-parser tests pass.
+Changed TypeScript formatting, Rust formatting and diff checks pass.
+`pnpm check` still stops at the unchanged 2321/1999 chat-turn-runtime and
+2149/1999 task-routes decomposition budgets.
+
+This is presentation continuity for the existing invalid-compaction path, not
+provider/account migration or complete historical-turn import into replacement
+native threads. Those, full canonical-queue/replacement acceptance, remaining
+all-origin lifecycle/CUA validation, eager GUI-first preparation and the final
+user implementation test remain required. No CI or personal desktop input ran.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal
