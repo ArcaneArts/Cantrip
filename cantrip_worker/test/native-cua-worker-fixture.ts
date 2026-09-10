@@ -62,6 +62,7 @@ export async function createNativeCuaWorkerFixture(input: {
     args: Parameters<CuaAgentCoordinator["execute"]>;
     result?: CallToolResult;
     error?: unknown;
+    elapsedMs?: number;
   }> = [];
   const activities: CuaActivity[] = [];
   const broker = new CantripMcpBroker({
@@ -73,11 +74,14 @@ export async function createNativeCuaWorkerFixture(input: {
   broker.setComputerUseExecutor(async (...args) => {
     const call: (typeof calls)[number] = { args };
     calls.push(call);
+    const started = performance.now();
     try {
       return (call.result = await coordinator.execute(...args));
     } catch (error) {
       call.error = error;
       throw error;
+    } finally {
+      call.elapsedMs = performance.now() - started;
     }
   });
   await broker.start();
