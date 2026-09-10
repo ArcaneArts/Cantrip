@@ -3878,6 +3878,36 @@ Remaining: the full live GUI/worker bidirectional acceptance matrix, resolution
 of full-check failures, and the user implementation demo. This pass does not
 claim the complete mirror goal has been verified.
 
+### Pass 47 — turn runtime module boundaries
+
+Extracted the chat turn input/dependency types, input validation and model
+configuration, native/legacy execution admission, and scheduled-turn bootstrap
+observer into focused modules. Task route dependency types now live separately
+from route installation. Existing exported types remain available from their
+original modules. Admission checks, operation identities, Stop revision checks,
+error messages, timeout semantics and the order of side effects are preserved.
+The narrowed execution-lane type crosses the helper boundary only after the
+existing runtime admission check succeeds.
+
+Validation:
+
+- Server typecheck passes. Seventy-seven startup/admission, Stop, turn retry,
+  outcome recovery, task dispatch and launch-observation cases pass.
+- Eight encrypted task relay/lifecycle cases pass through the existing server
+  routes. The actual pinned-native preparation/CLI exit/retry case passes with
+  no provider request or synthetic input: 86 focused cases in total.
+- Application decomposition now passes for all 180 monitored source files;
+  the two changed runtime files are within their existing budgets. Scoped
+  formatting and diff checks pass.
+- `pnpm check` advances past that gate, then stops at the unchanged repository
+  decomposition failure: `native-commands.ts` is 2428/2000 lines. Later chained
+  checks have not run. No budgets were raised and no CI was launched.
+
+Remaining: resolve the native command repository module boundary, run the full
+repository checks and the live bidirectional acceptance matrix, and perform the
+user implementation demo. These structural checks and isolated native fixtures
+are not evidence that the complete mirror goal has passed.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal
