@@ -322,10 +322,7 @@ describe.skipIf(!binary || !helper)(
                     f!.authority.chatId,
                   ),
                 ).toMatchObject({
-                  // Native interrupted execution receipts settle the lane as
-                  // failed; the native turn above must specifically be interrupted.
-                  status:
-                    index === 2 && origin === "terminal" ? "failed" : "idle",
+                  status: "idle",
                   executionLaneId: null,
                 }),
               { timeout: 10000 },

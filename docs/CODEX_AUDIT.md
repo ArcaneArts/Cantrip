@@ -4754,6 +4754,50 @@ This verifies physical CLI view replacement while the worker/native engine stays
 alive. It does not claim full worker-process restart, other elicitation types,
 remaining whole-product acceptance or the final user demo have been performed.
 
+### Pass 67 — preserve interrupted CLI outcomes
+
+Acceptance reconciliation revisited the explicit pass-64 discrepancy: opposite-
+view Stop interrupted both native roots correctly, but the canonical CLI-origin
+chat settled `failed` while the GUI-origin chat settled `idle`. The worker's
+managed native completion path classified every rejected turn completion as a
+failed execution, losing the native interrupted status.
+
+`CodexTurnFailureError` now retains the authoritative native terminal status.
+The CLI settlement records interrupted content in the encrypted terminal result
+and returns the execution lane to idle on Stop. Actual failures still settle
+failed, and the original turn-start admission remains applied independently of
+its terminal outcome. Classification does not inspect provider error text.
+
+A regression case failed before the change with `executionStatus: failed`
+instead of idle. Paired interrupted/failure tests intentionally use identical
+error messages and verify lane status, exact native turn correlation, encrypted
+terminal-result contents and single publication cleanup. The physical child-CUA
+acceptance now requires idle after every turn for both input origins, including
+opposite-view Stop of the child wait and a subsequent fresh root/child turn on
+the same runtime and CLI.
+
+Validation: 156 worker tests passed across managed command sessions, app-server
+and admitted native execution. The final encrypted-result assertion passed in
+all 39 managed command session tests. Sixteen actual pinned-runtime cases passed
+across child CUA, shared steering and managed commands. This includes both input
+origins, cross-view Stop and reuse afterward.
+
+The required final `pnpm check` passed all workspace source typechecks, Rust
+checks and selected CUA suites (187 Rust, 134 protocol, 25 crypto, 703 worker,
+241 server and 309 app), plus full protocol/crypto (697/95). Full server testing
+ended with 41 failures, 1,363 passes and 70 skips: the same 47 failure headings
+as pass 66 plus one tunnel-lease renewal callback test. All 28 tests in that
+unchanged direct-attachment file passed on an isolated rerun. Full worker/app
+suites and global formatting were not reached. Scoped formatting and diff checks
+passed. Explicit test typechecking reported 19 fixture diagnostics; comparison
+with the unchanged baseline test produced the exact same diagnostics after
+normalizing line numbers. No new test type error was introduced.
+
+This closes canonical stopped-chat status parity from pass 64. It does not
+replace complete rendered GUI acceptance, full process-restart recovery or the
+final user implementation demo. No native upstream patch, personal provider
+inference, desktop input, CI job or user worker restart was needed.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal

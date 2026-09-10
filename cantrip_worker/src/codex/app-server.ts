@@ -4107,6 +4107,7 @@ export class CodexTurnFailureError extends Error {
     readonly reasonCode: string | null,
     readonly threadId: string,
     readonly turnId: string,
+    readonly terminalStatus: "failed" | "interrupted" = "failed",
   ) {
     super(message);
     this.name = "CodexTurnFailureError";
@@ -11395,6 +11396,7 @@ export class CodexAppServer implements CodexRuntime {
             codexErrorReasonCode(params.turn.error?.codexErrorInfo),
             params.threadId,
             params.turn.id,
+            terminalStatus === "interrupted" ? "interrupted" : "failed",
           ),
           terminalStatus,
           observedAtMs,
