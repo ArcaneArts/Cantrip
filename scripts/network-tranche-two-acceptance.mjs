@@ -231,16 +231,17 @@ export const featureMatrix = [
     evidence: [
       evidence(
         "cantrip_app/src/components/app/sidebar-explorer-controller.test.ts",
-        "does not provision a speculative spare while one sidebar Explorer owns preview navigation",
+        "provisions one bounded warm successor while a sidebar Explorer owns preview navigation",
+        "keeps the promoted preview surface addressable without returning it to the file tree under Strict Mode",
       ),
       evidence(
         "cantrip_app/src/components/explorer/persistent-explorer-code-ownership.test.tsx",
-        "promotes a sidebar preview under the same Explorer identity without reconnecting Code",
+        "promotes a prewarmed owner without replacing its editor",
       ),
       evidence(
         "cantrip_app/src/components/explorer/explorer-code-editor-lifecycle.test.tsx",
-        "retries file open after the bridge reconnects without replacing the attachment",
-        "caps automatic attachment replacement until the workbench is ready",
+        "reconnects a terminal shared transport without replacing its editor session or frame",
+        "caps pending in-flight retries across repeated worker-online flaps",
       ),
     ],
   },

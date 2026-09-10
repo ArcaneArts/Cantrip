@@ -131,13 +131,13 @@ fn geometry_changes_reset_motion_but_window_translation_does_not() {
     // Bring the service cursor up to the last actual presentation position.
     state.cursor.position.x = 300.0;
     state.target.as_mut().unwrap().bounds.x += 700.0;
-    telemetry.synchronize(&[state.clone()], 300_000_000);
+    telemetry.synchronize(std::slice::from_ref(&state), 300_000_000);
     assert_eq!(
         telemetry.window("window", 1, 300_000_000)[0].raw_velocity[0],
         1000.0
     );
     state.target.as_mut().unwrap().bounds.width = 900.0;
-    telemetry.synchronize(&[state.clone()], 300_000_000);
+    telemetry.synchronize(std::slice::from_ref(&state), 300_000_000);
     assert_eq!(
         telemetry.window("window", 1, 300_000_000)[0].raw_velocity,
         [0.0; 2]
@@ -162,7 +162,7 @@ fn input_records_events_without_advancing_the_presented_cursor() {
     let mut telemetry = Telemetry::default();
     let state = session("agent");
     let target = state.target.as_ref().unwrap();
-    telemetry.synchronize(&[state.clone()], 0);
+    telemetry.synchronize(std::slice::from_ref(&state), 0);
     telemetry.input("agent", target, event(EventKind::Press, 4, 8), 10);
     telemetry.input("agent", target, event(EventKind::KeyDown, 8, 1), 11);
     let a = telemetry.window("window", 1, 11).remove(0);
@@ -184,7 +184,7 @@ fn detach_and_new_generation_clear_held_input_and_ignore_late_callbacks() {
     let mut telemetry = Telemetry::default();
     let mut state = session("agent");
     let old = state.target.clone().unwrap();
-    telemetry.synchronize(&[state.clone()], 0);
+    telemetry.synchronize(std::slice::from_ref(&state), 0);
     telemetry.input("agent", &old, event(EventKind::Press, 0, 8), 1);
     state.target.as_mut().unwrap().generation = 2;
     telemetry.synchronize(&[state], 2);
@@ -244,7 +244,7 @@ fn events_are_bounded_and_expire_without_changing_last_click_time() {
     let mut telemetry = Telemetry::default();
     let state = session("agent");
     let target = state.target.as_ref().unwrap();
-    telemetry.synchronize(&[state.clone()], 0);
+    telemetry.synchronize(std::slice::from_ref(&state), 0);
     for n in 0..100 {
         telemetry.input("agent", target, event(EventKind::ControlAction, 0, 0), n);
     }
@@ -285,7 +285,7 @@ fn shader_frame_preserves_precision_coordinates_flags_and_event_order() {
     let state = session("agent");
     let target = state.target.as_ref().unwrap();
     let epoch = 8_000_000_000_000_000;
-    telemetry.synchronize(&[state.clone()], epoch);
+    telemetry.synchronize(std::slice::from_ref(&state), epoch);
     telemetry.movement(
         "agent",
         target,
@@ -396,7 +396,7 @@ fn effect_configuration_is_explicitly_unsupported_on_backends_without_a_renderer
         error::ErrorCode,
         service::{CuaService, Operation},
     };
-    let mut service = CuaService::new(FakeBackend::default());
+    let mut service = CuaService::new(FakeBackend);
     let result = service
         .execute(
             Operation::EffectsConfigure {
