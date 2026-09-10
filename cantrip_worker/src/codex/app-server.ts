@@ -56,6 +56,7 @@ import {
   CANTRIP_MCP_TOOL_NAMES,
   MANAGED_CUA_MCP_NAME,
   agentInteractionAcceptedSchema,
+  agentInteractionResponseSchema,
   agentInteractionRuntimeRequestSchema,
   agentThreadSyncSchema,
   agentTurnResultSchema,
@@ -275,7 +276,10 @@ interface ActiveTurn {
   providerKind: string;
   onActivity?: (activity: AgentActivity) => void;
   onMessage?: (message: NormalizedAgentMessage) => void;
-  onInteractionCleared?: (requestKey: string) => void;
+  onInteractionCleared?: (
+    requestKey: string,
+    response?: AgentInteractionResponse,
+  ) => void;
   onInteractionExpired?: (requestKey: string) => void;
   onInteractionRequest?: (request: AgentInteractionRuntimeRequest) => void;
   onNativeInteractionRequest?: (
@@ -1235,6 +1239,39 @@ export function agentInteractionRequestFromServerRequest(
       metadata: value._meta ?? null,
     },
   });
+}
+
+/** Translate the accepted native reply for durable, encrypted GUI display. */
+export function agentInteractionResponseFromNativeResult(
+  kind: AgentInteractionRequestKind,
+  result: unknown,
+): AgentInteractionResponse | undefined {
+  if (!result || typeof result !== "object" || Array.isArray(result))
+    return undefined;
+  const value = result as Record<string, unknown>;
+  const response: Record<string, unknown> = { ...value, kind };
+  if (kind === "mcpElicitation") response.metadata = value._meta ?? null;
+  if (
+    kind === "commandExecution" &&
+    value.decision &&
+    typeof value.decision === "object"
+  ) {
+    const decision = value.decision as Record<
+      string,
+      { execpolicy_amendment?: unknown; network_policy_amendment?: unknown }
+    >;
+    if (decision.acceptWithExecpolicyAmendment) {
+      response.decision = "acceptWithExecpolicyAmendment";
+      response.execpolicyAmendment =
+        decision.acceptWithExecpolicyAmendment.execpolicy_amendment;
+    } else if (decision.applyNetworkPolicyAmendment) {
+      response.decision = "applyNetworkPolicyAmendment";
+      response.networkPolicyAmendment =
+        decision.applyNetworkPolicyAmendment.network_policy_amendment;
+    }
+  }
+  const parsed = agentInteractionResponseSchema.safeParse(response);
+  return parsed.success ? parsed.data : undefined;
 }
 
 export function codexResultForAgentInteraction(
@@ -7532,7 +7569,15 @@ export class CodexAppServer implements CodexRuntime {
     // or let a simultaneous GUI/console response win the same native request.
     this.releaseAgentInteraction(pending);
     this.send({ id: pending.rpcId, ...input.response });
-    pending.active.onInteractionCleared?.(pending.request.requestKey);
+    pending.active.onInteractionCleared?.(
+      pending.request.requestKey,
+      "result" in input.response
+        ? agentInteractionResponseFromNativeResult(
+            pending.request.payload.kind,
+            input.response.result,
+          )
+        : undefined,
+    );
     return { accepted: true };
   }
 
@@ -7561,7 +7606,10 @@ export class CodexAppServer implements CodexRuntime {
           throw new Error("The agent interaction is no longer pending.");
         this.releaseAgentInteraction(pending);
         this.send({ id: pending.rpcId, result });
-        pending.active.onInteractionCleared?.(pending.request.requestKey);
+        pending.active.onInteractionCleared?.(
+          pending.request.requestKey,
+          response,
+        );
         return { accepted: true };
       },
     });
@@ -8262,7 +8310,32 @@ export class CodexAppServer implements CodexRuntime {
     let replacingUnsubscribedThread = false;
     const request = async (method: string, params: unknown) => {
       assertCurrent();
-      const result = await this.request(method, params);
+      // After worker loss, its detached process guard needs up to 2.5 seconds
+      // to notice the loss and terminate the old native writer. Retry only an
+      // actual lock rejection; never remove the lock or replay turn input.
+      const deadline = Date.now() + 3_000;
+      let result: unknown;
+      for (;;) {
+        assertCurrent();
+        try {
+          result = await this.request(method, params);
+          break;
+        } catch (error) {
+          assertCurrent();
+          if (
+            method !== "thread/resume" ||
+            !options.managedConfiguration ||
+            !preparingThreadId ||
+            !(error instanceof CodexNativeRpcError) ||
+            error.nativeError.code !== -32600 ||
+            error.nativeError.message !==
+              `thread ${preparingThreadId} already has an active writer` ||
+            Date.now() >= deadline
+          )
+            throw error;
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+      }
       this.assertPreparationEpoch(epoch);
       // Only our own unsubscribe/resume sequence can retire an idle engine as
       // part of reconfiguration. A cold resume has no such expected retirement:

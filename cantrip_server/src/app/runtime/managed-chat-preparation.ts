@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
+import { serverLogger } from "../../logger.js";
 import {
   encryptedLinkedConsoleCreateSchema,
   terminalOpenResultSchema,
+  nativeTurnRecoveryObservationSchema,
   type ManagedChatPreparation,
 } from "@cantrip/protocol";
 import type {
@@ -18,6 +20,7 @@ type Dependencies = Pick<
   "runtimeForContext" | "routePairsForConfiguration"
 > & {
   repository: ServerRepository;
+  interruptLiveAgentInteractionRequests: ServerRepository["interruptAgentInteractionRequests"];
   bridge: Pick<WorkerCommandBus, "request">;
   serverId: string;
   publish(ownerId: string, chatId: string): void;
@@ -100,6 +103,10 @@ export function createManagedChatPreparation(deps: Dependencies) {
         )
           throw new Error("The bound provider identity changed.");
         if (context.threadId) {
+          const recovery = await deps.repository.nativeCommands.recoveryContext(
+            ownerId,
+            chatId,
+          );
           const { type: _type, ...configuration } = launch;
           const existing = (await deps.bridge.request(
             context.workerId,
@@ -111,11 +118,28 @@ export function createManagedChatPreparation(deps: Dependencies) {
               permissionProfileId:
                 configuration.permissionProfileId ?? ":workspace",
               mcpServers: configuration.mcpServers ?? [],
+              ...(recovery ? { recoveryTurnId: recovery.turnId } : {}),
             },
             { ownerId, timeoutMs: null },
-          )) as { threadId: string };
+          )) as { threadId: string; recovery?: unknown };
           if (existing.threadId !== launch.threadId)
             throw new Error("The prepared native thread changed.");
+          if (recovery && existing.recovery) {
+            const recovered =
+              await deps.repository.nativeCommands.recoverExecution(
+                ownerId,
+                context.workerId,
+                recovery,
+                nativeTurnRecoveryObservationSchema.parse(existing.recovery),
+              );
+            if (recovered && recovery.receipt.executionLaneId) {
+              await deps.interruptLiveAgentInteractionRequests(
+                chatId,
+                recovery.receipt.executionLaneId,
+              );
+              deps.publish(ownerId, chatId);
+            }
+          }
         }
         const current = await deps.repository.getChatExecutionContext(
           ownerId,
@@ -208,6 +232,14 @@ export function createManagedChatPreparation(deps: Dependencies) {
           throw new Error("The CLI exited during preparation.");
         await jobs.update(ownerId, state, "ready", null, terminal.id);
       } catch (error) {
+        serverLogger.event("warn", "Managed chat preparation failed", {
+          event: "chat.preparation.failed",
+          subsystem: "chat-preparation",
+          operation: phase,
+          status: "failed",
+          chatId,
+          error: error instanceof Error ? error : new Error(String(error)),
+        });
         nativeFailed(error);
         if (state) await jobs.update(ownerId, state, "failed", phase);
       } finally {

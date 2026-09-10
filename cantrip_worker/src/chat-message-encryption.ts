@@ -323,7 +323,11 @@ export type EncryptedChatOutput =
   | { kind: "activity"; activity: AgentActivity };
 export type EncryptedChatOutputIdentityResolver = (
   output: EncryptedChatOutput,
-) => Promise<{ id: string; idempotencyKey: string } | null>;
+) => Promise<{
+  id: string;
+  idempotencyKey: string;
+  mode?: ChatTurnMode;
+} | null>;
 
 export class EncryptedChatEventSealer {
   readonly #chatId: string;
@@ -403,6 +407,7 @@ export class EncryptedChatEventSealer {
     const resolved = await this.resolveOutput?.(structuredClone(output));
     return resolved
       ? {
+          mode: resolved.mode,
           id: chatMessageOpaqueContentSchema.shape.id.parse(resolved.id),
           idempotencyKey:
             chatMessageOpaqueContentSchema.shape.idempotencyKey.parse(
@@ -428,6 +433,7 @@ export class EncryptedChatEventSealer {
         id: identity.id,
         message: {
           role: "assistant",
+          mode: identity.mode,
           content: chatMessageContentSchema.parse([
             {
               type: "text",
@@ -473,6 +479,7 @@ export class EncryptedChatEventSealer {
         id: identity.id,
         message: {
           role: "assistant",
+          mode: identity.mode,
           content: chatMessageContentSchema.parse([
             { type: "activity", activity },
           ]),

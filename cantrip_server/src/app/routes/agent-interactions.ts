@@ -252,11 +252,13 @@ export function installAgentInteractionRoutes(
               applicationOwnerId(),
               request.params.requestId,
               protectedInput,
+              true,
             )
           : await resolveLiveAgentInteractionRequest(
               applicationOwnerId(),
               request.params.requestId,
               visibleInput!,
+              true,
             );
         return reply.send(agentInteractionRequestWireSchema.parse(interaction));
       } catch (error) {

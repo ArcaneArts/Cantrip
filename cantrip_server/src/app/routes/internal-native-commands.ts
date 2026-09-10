@@ -1,4 +1,5 @@
 import { notifyManagedQueueReceipt } from "../runtime/managed-queue-receipts.js";
+import { clearAgentInteraction } from "../runtime/clear-agent-interaction.js";
 import { applyComputerUseAgentEvent } from "../runtime/computer-use-agent-events.js";
 import { nativeCommandEventSchema } from "@cantrip/protocol";
 import type { createLiveMutationRuntime } from "../runtime/live-mutation-runtime.js";
@@ -214,13 +215,10 @@ export function installInternalNativeCommandRoutes(
                   event.state,
                 );
               } else {
-                await transactionRepository.terminalizeAgentInteractionRequestFromWorker(
-                  event.requestKey,
-                  context.chatId,
-                  input.workerId,
-                  event.type === "agent.interaction.expired"
-                    ? "expired"
-                    : "interrupted",
+                await clearAgentInteraction(event, context, (...args) =>
+                  transactionRepository.terminalizeAgentInteractionRequestFromWorker(
+                    ...args,
+                  ),
                 );
               }
               return () => {

@@ -2,6 +2,7 @@ import {
   clearSensitiveBytes,
   decryptInteractionResponseContent,
   encryptInteractionRequestContent,
+  encryptInteractionResponseContent,
 } from "@cantrip/crypto";
 import {
   agentInteractionResponseSchema,
@@ -17,6 +18,30 @@ import {
 
 import type { WorkerEncryptionService } from "./worker-encryption.js";
 import type { WorkerEndpointEncryptionService } from "./endpoint-content-encryption.js";
+
+export async function protectAgentInteractionResponse(input: {
+  requestKey: string;
+  response: AgentInteractionResponse;
+  service: WorkerEncryptionService;
+}) {
+  const component = input.service.componentKey("interaction-content");
+  const classification = { kind: input.response.kind };
+  try {
+    return {
+      idempotencyKey: `native-response:${input.requestKey}`,
+      classification,
+      protectedResponse: await encryptInteractionResponseContent({
+        ownerId: input.service.ownerId(),
+        requestKey: input.requestKey,
+        keyRevision: component.keyRevision,
+        componentKey: component.key,
+        content: { version: 1, classification, response: input.response },
+      }),
+    };
+  } finally {
+    clearSensitiveBytes(component.key);
+  }
+}
 
 export async function protectAgentInteractionRequest(input: {
   request: AgentInteractionRuntimeRequest;

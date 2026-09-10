@@ -4917,6 +4917,82 @@ rendered GUI/mobile/user desktop demo still require their own evidence. No
 personal provider, live desktop input, CI job, native upstream patch or user
 worker restart was used.
 
+### Pass 70 — active worker recovery and accepted interaction replies
+
+The full-worker fixture now covers loss during an active provider response and a
+pending native question, in addition to completed conversations. Each case runs
+in both directions: GUI input before loss and CLI input afterward, or the reverse.
+It uses the actual compiled worker, complete server/WorkerBridge, pinned Codex
+0.153.4 engine and remote TUI, encrypted account grants, deterministic provider
+and the explicit fake Rust CUA backend. No personal inference, desktop input,
+worker restart, native upstream patch or CI job is used.
+
+The connected runs exposed and now cover these defects:
+
+- A killed worker's detached native process guard takes time to terminate its
+  writer. Managed preparation retries only the actual exact-thread JSON-RPC
+  active-writer rejection for up to three seconds. Other failures surface
+  immediately, thread/transport replacement cancels the retry, and no lock is
+  deleted or native input replayed.
+- An interrupted CLI-originated execution could retain old durable authority.
+  Preparation captures that exact activation, resumes the same native thread,
+  and asks the replacement runtime to read the old turn. Only actual terminal
+  status from a different runtime incarnation can settle the captured operation.
+  Missing/in-progress observations and wrong thread/turn evidence cannot clear
+  it; late recovery cannot settle a successor.
+- Old GUI completion cleanup could interrupt a new lane's question. Execution
+  cleanup now scopes interaction interruption to its own lane. Recovered old
+  requests also publish the normal live interaction invalidation.
+- Native accepted answers were emitted as a generic cleared request, marking
+  them interrupted before the GUI reply acknowledgement could persist. The
+  worker now carries the accepted normalized answer in the clear event, encrypts
+  it for encrypted conversations, and both origins use one resolution path.
+  Racing native-event and GUI-ack publications converge on the already accepted
+  answer. Ordinary conflicting replies still fail; cancelled requests are never
+  reopened. Native approval amendments, questions, permissions and elicitation
+  responses retain their supported response shapes.
+- Live assistant encryption defaulted to normal mode while durable native
+  history retained Plan mode. Depending on publication order this caused an
+  `item-canonical-message-conflict` and stranded the GUI answer. Canonical live
+  messages and activities now resolve the original native turn mode before
+  encryption, with successful lookups shared per turn for that sealer lifetime.
+  The lookup only affects publication and never gates or repeats native input.
+  Missing or conflicting evidence is not replaced with the current GUI setting;
+  canonical history identity/classification checks remain intact.
+
+The fixture verifies no synthetic startup/recovery inference, same native thread,
+new worker/terminal generations, rehydrated encryption, old request retirement,
+rejection of the stale answer, fresh cross-view question resolution, canonical
+idle state and exactly-once protected user/assistant history. Normal resumed
+turns also prove their own CUA PNG reaches the provider. Question cases preserve
+Plan mode across restart and commit the fresh answer from the opposite view.
+
+Validation: all six full-worker scenarios passed in the final run, including
+persisted answer mode and live interaction invalidation. Four protected history
+integration cases also passed for both publication orders in normal/Plan mode.
+Focused output-mode tests (7), preparation tests (12), worker worktree/app-server
+tests (90), and app worktree/History tests (57) passed. The focused server matrix
+reports 21 failures and 53 passes; every failure heading matches pass 69.
+Worker, server and app source compilation passed; the app production build
+passed with its existing chunk-size warning. Explicit strict typechecking of the
+full-worker and output-mode fixtures passed. Broader test-only typechecking
+reports 152 diagnostics; checking baseline test copies reproduced the same
+number and every distinct diagnostic message.
+
+The final required `pnpm check` passed source verification, CLI/CUA checks,
+all source typechecks and the CUA regression matrix (134 protocol, 25 crypto,
+704 worker, 244 server and 309 app tests; three server cases skipped). It then
+reached full server testing: 40 failures, 1,368 passes and 70 skips. Every failure
+heading occurs in pass 69's baseline. Full worker/app suites and global formatting
+were not reached; the focused suites and scoped formatting/diff checks above are
+the evidence for this pass. Initial check attempts caught new file-size,
+route-inventory and protocol-export baseline updates; these were corrected
+before the final check.
+
+This closes the active whole-worker recovery gap found in pass 69. It does not
+claim the remaining acceptance reconciliation, rendered GUI/mobile test or final
+user desktop demo is complete.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal

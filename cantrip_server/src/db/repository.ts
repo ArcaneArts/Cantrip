@@ -1048,11 +1048,13 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
     ownerId: string,
     requestId: string,
     input: AgentInteractionResolutionCreate,
+    acceptedNativeReply = false,
   ): Promise<AgentInteractionRequest | null> {
     return this.agentInteractions.resolveAgentInteractionRequest(
       ownerId,
       requestId,
       input,
+      acceptedNativeReply,
     );
   }
 
@@ -1072,11 +1074,13 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
     ownerId: string,
     requestId: string,
     input: EncryptedAgentInteractionResolutionCreate,
+    acceptedNativeReply = false,
   ): Promise<EncryptedAgentInteractionRequest | null> {
     return this.agentInteractions.resolveEncryptedAgentInteractionRequest(
       ownerId,
       requestId,
       input,
+      acceptedNativeReply,
     );
   }
 
@@ -1100,8 +1104,12 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
 
   async interruptAgentInteractionRequests(
     chatId: string,
+    executionLaneId?: string,
   ): Promise<AgentInteractionRequestWire[]> {
-    return this.agentInteractions.interruptAgentInteractionRequests(chatId);
+    return this.agentInteractions.interruptAgentInteractionRequests(
+      chatId,
+      executionLaneId,
+    );
   }
 
   async terminalizeAgentInteractionRequestFromWorker(
@@ -1109,12 +1117,16 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
     chatId: string,
     workerId: string,
     status: "expired" | "interrupted",
+    resolution?:
+      | AgentInteractionResolutionCreate
+      | EncryptedAgentInteractionResolutionCreate,
   ): Promise<AgentInteractionRequestWire | null> {
     return this.agentInteractions.terminalizeAgentInteractionRequestFromWorker(
       requestKey,
       chatId,
       workerId,
       status,
+      resolution,
     );
   }
 

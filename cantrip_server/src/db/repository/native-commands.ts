@@ -1,3 +1,4 @@
+import { NativeCommandRecoveryRepository } from "./native-command-recovery.js";
 import {
   nativeCommandContext,
   readNativeCommand,
@@ -1381,6 +1382,20 @@ export class NativeCommandRepository {
             : null,
       };
     });
+  }
+  recoveryContext(ownerId: string, chatId: string) {
+    return new NativeCommandRecoveryRepository(
+      this.database,
+      this,
+    ).recoveryContext(ownerId, chatId);
+  }
+  recoverExecution(
+    ...args: Parameters<NativeCommandRecoveryRepository["recoverExecution"]>
+  ) {
+    return new NativeCommandRecoveryRepository(
+      this.database,
+      this,
+    ).recoverExecution(...args);
   }
   async withEventContext<T>(
     ownerId: string,

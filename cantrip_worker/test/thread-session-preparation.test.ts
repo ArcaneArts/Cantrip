@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   CodexAppServer,
+  CodexNativeRpcError,
   codexRuntimeId,
   type GoalRuntimeOptions,
   type PrepareManagedThreadOptions,
@@ -141,6 +142,91 @@ function fixture() {
 }
 
 describe("thread session preparation", () => {
+  it.each(["configure", "preserve"] as const)(
+    "retries a retiring native writer during managed %s without sending input",
+    async (intent) => {
+      const f = fixture();
+      const request = f.request.getMockImplementation()!;
+      let resumes = 0;
+      f.request.mockImplementation(async (method, params) => {
+        if (method === "thread/resume" && ++resumes === 1)
+          throw new CodexNativeRpcError("writer busy", {
+            code: -32600,
+            message: "thread thread-1 already has an active writer",
+          });
+        return request(method, params);
+      });
+      await expect(
+        f.runtime.prepareManagedThread({ ...managed, intent }),
+      ).resolves.toEqual({ threadId: "thread-1" });
+      expect(resumes).toBe(2);
+      expect(
+        f.request.mock.calls.some(([method]) => method === "turn/start"),
+      ).toBe(false);
+    },
+  );
+
+  it("preserves a persistent writer conflict after the shutdown grace period", async () => {
+    const f = fixture();
+    const error = new CodexNativeRpcError("writer busy", {
+      code: -32600,
+      message: "thread thread-1 already has an active writer",
+    });
+    f.request.mockRejectedValue(error);
+    await expect(f.runtime.prepareManagedThread(managed)).rejects.toBe(error);
+    expect(f.request.mock.calls.length).toBeGreaterThan(1);
+    expect(new Set(f.request.mock.calls.map(([method]) => method))).toEqual(
+      new Set(["thread/resume"]),
+    );
+  });
+
+  it.each([
+    new Error("thread thread-1 already has an active writer"),
+    new CodexNativeRpcError("other thread", {
+      code: -32600,
+      message: "thread thread-2 already has an active writer",
+    }),
+    new CodexNativeRpcError("other rejection", {
+      code: -32603,
+      message: "thread thread-1 already has an active writer",
+    }),
+  ])(
+    "does not retry unrelated or uncertain resume failures: %s",
+    async (error) => {
+      const f = fixture();
+      f.request.mockRejectedValue(error);
+      await expect(f.runtime.prepareManagedThread(managed)).rejects.toBe(error);
+      expect(f.request).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("does not retry a writer conflict after the prepared thread closes", async () => {
+    const f = fixture();
+    const entered = deferred<void>();
+    f.request.mockImplementation(async () => {
+      entered.resolve();
+      throw new CodexNativeRpcError("writer busy", {
+        code: -32600,
+        message: "thread thread-1 already has an active writer",
+      });
+    });
+    const pending = f.runtime.prepareManagedThread(managed);
+    const rejected = expect(pending).rejects.toThrow(
+      "thread closed or changed",
+    );
+    await entered.promise;
+    f.native.handleMessage(
+      Buffer.from(
+        JSON.stringify({
+          method: "thread/closed",
+          params: { threadId: "thread-1" },
+        }),
+      ),
+    );
+    await rejected;
+    expect(f.request).toHaveBeenCalledTimes(1);
+  });
+
   it("inherits native model, effort and collaboration selection on an ordinary managed GUI turn", async () => {
     const cwd = await mkdtemp(path.join(tmpdir(), "cantrip-inherited-turn-"));
     const f = fixture();

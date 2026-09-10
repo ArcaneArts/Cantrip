@@ -1,3 +1,4 @@
+import { createNativeHistoryOutputModeResolver } from "./native-history-output-mode.js";
 import { managedNativePathsMatch } from "./codex/managed-native-policy.js";
 import { completeManagedRuntimeHandoff } from "./codex/managed-runtime-handoff-completion.js";
 import {
@@ -331,6 +332,7 @@ import { finalizeCuaAgentTurn } from "./computer-use/turn-finalization.js";
 import {
   openAgentInteractionResponse,
   protectAgentInteractionRequest,
+  protectAgentInteractionResponse,
 } from "./interaction-encryption.js";
 import {
   EncryptedTaskEventSealer,
@@ -2706,6 +2708,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           { explanation: null, steps: [], question: null },
           session.contextKind === "project"
             ? createManagedNativeOutputIdentityResolver({
+                mode: createNativeHistoryOutputModeResolver((threadId) =>
+                  runtime.readNativeHistory(threadId),
+                ),
                 client: nativeHistoryClient,
                 scope: (threadId, agentScope) =>
                   threadId !== options.threadId
@@ -2830,10 +2835,19 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                   service: workerEncryption,
                 }),
               })),
-            onInteractionCleared: (requestKey) =>
+            onInteractionCleared: (requestKey, response) =>
               queue(async () => ({
                 type: "agent.interaction.cleared",
                 requestKey,
+                ...(response
+                  ? {
+                      resolution: await protectAgentInteractionResponse({
+                        requestKey,
+                        response,
+                        service: workerEncryption,
+                      }),
+                    }
+                  : {}),
               })),
             onInteractionExpired: (requestKey) =>
               queue(async () => ({
@@ -6753,6 +6767,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               }),
               command.contextKind === "project" && command.nativeCommandReceipt
                 ? createManagedNativeOutputIdentityResolver({
+                    mode: createNativeHistoryOutputModeResolver((threadId) =>
+                      runtime.readNativeHistory(threadId),
+                    ),
                     client: nativeHistoryClient,
                     scope: (threadId, agentScope) => {
                       const root = encryptedChatHistoryScopes.get(threadId);
@@ -7232,11 +7249,26 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                             type: "agent.interaction.requested",
                             request,
                           }),
-                    onInteractionCleared: (requestKey) =>
-                      emitAgentEvent({
+                    onInteractionCleared: (requestKey, response) =>
+                      emitProtectedAgentEvent(async () => ({
                         type: "agent.interaction.cleared",
                         requestKey,
-                      }),
+                        ...(response
+                          ? {
+                              resolution:
+                                encryptedChat || encryptedTask
+                                  ? await protectAgentInteractionResponse({
+                                      requestKey,
+                                      response,
+                                      service: workerEncryption,
+                                    })
+                                  : {
+                                      idempotencyKey: `native-response:${requestKey}`,
+                                      response,
+                                    },
+                            }
+                          : {}),
+                      })),
                     onInteractionExpired: (requestKey) =>
                       emitAgentEvent({
                         type: "agent.interaction.expired",
@@ -8070,11 +8102,34 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         ](command.chatId, command.operationId, managedGuiBridgeLifetime.signal);
       case "chat.thread.ensure":
         if (command.session) {
-          const { threadId } = await prepareManagedSession(
+          const { threadId, runtime } = await prepareManagedSession(
             command.session,
             { ...command, provider: provider() },
             "preserve",
           );
+          if (command.recoveryTurnId) {
+            const runtimeGeneration = runtime.transportGeneration;
+            const snapshot = await runtime.readNativeHistory(threadId);
+            if (
+              !runtimeGeneration ||
+              runtime.transportGeneration !== runtimeGeneration
+            )
+              throw new Error(
+                "The native runtime changed during recovery observation.",
+              );
+            return {
+              threadId,
+              recovery: {
+                threadId: snapshot.thread.id,
+                runtimeGeneration,
+                turnId: command.recoveryTurnId,
+                status:
+                  snapshot.thread.turns.find(
+                    (turn) => turn.id === command.recoveryTurnId,
+                  )?.status ?? null,
+              },
+            };
+          }
           return { threadId };
         }
         return runtimeFor({

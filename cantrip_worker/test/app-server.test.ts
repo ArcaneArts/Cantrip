@@ -26,6 +26,7 @@ import {
   codexChatApprovalPolicy,
   codexChatThreadSecurityParams,
   codexResultForAgentInteraction,
+  agentInteractionResponseFromNativeResult,
   CodexAppServer,
   CodexTurnFailureError,
   CodexExternalThreadChangeCoalescer,
@@ -1370,6 +1371,52 @@ describe("Codex agent interaction bridge", () => {
     expect(failClosedAgentInteractionReply("userInput", "expired")).toEqual({
       error: { code: -32_000, message: "expired" },
     });
+  });
+
+  it("retains native answers and approval amendments for encrypted cross-view display", () => {
+    for (const response of [
+      { kind: "userInput", answers: { choice: { answers: ["First"] } } },
+      { kind: "fileChange", decision: "accept" },
+      {
+        kind: "permissions",
+        permissions: {},
+        scope: "turn",
+        strictAutoReview: false,
+      },
+      {
+        kind: "mcpElicitation",
+        action: "accept",
+        content: { environment: "test" },
+        metadata: { source: "native" },
+      },
+      {
+        kind: "commandExecution",
+        decision: "acceptWithExecpolicyAmendment",
+        execpolicyAmendment: ["pnpm", "test"],
+        networkPolicyAmendment: null,
+      },
+      {
+        kind: "commandExecution",
+        decision: "applyNetworkPolicyAmendment",
+        execpolicyAmendment: null,
+        networkPolicyAmendment: { host: "example.com", action: "allow" },
+      },
+    ] as const) {
+      const input = response as Parameters<
+        typeof codexResultForAgentInteraction
+      >[0];
+      expect(
+        agentInteractionResponseFromNativeResult(
+          input.kind,
+          codexResultForAgentInteraction(input),
+        ),
+      ).toEqual(input);
+    }
+    expect(
+      agentInteractionResponseFromNativeResult("userInput", {
+        answers: "invalid",
+      }),
+    ).toBeUndefined();
   });
 });
 
