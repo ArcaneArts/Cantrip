@@ -47,6 +47,8 @@ export async function readNativeAccountDefaults(
   const result = configReadSchema.parse(
     await request("config/read", { includeLayers: true, cwd: null }),
   );
+  // Native config/read returns highest precedence first. A selected account
+  // file precedes the empty base user layer in a conversation's storage home.
   const user = result.layers.find(
     (layer) => layer.name.type === "user" && layer.name.profile == null,
   );

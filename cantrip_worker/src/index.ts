@@ -1,3 +1,7 @@
+import {
+  ManagedRuntimeNamespaces,
+  managedRuntimeTarget,
+} from "./codex/managed-runtime-namespaces.js";
 import { protectedNativeAccountDefaults } from "./native-account-defaults.js";
 import { updateProtectedNativeSettings } from "./native-settings-update.js";
 import { updateNativePermissions } from "./native-permission-update.js";
@@ -1821,14 +1825,33 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   const accountBackedProvider = (kind: string) =>
     kind === "chatgpt" || kind === "grok";
 
+  const managedRuntimeNamespaces = new ManagedRuntimeNamespaces(
+    config.dataDirectory,
+  );
+  const nativeNamespaceScope = () => ({
+    serverId: workerEncryption.serverIdentity(),
+    ownerId: workerEncryption.ownerId(),
+    workerId: config.workerId,
+  });
   const runtimeFor = (command: {
+    threadId?: string | null;
+    chatId?: string | null;
     executionProfile?: "ide" | "standalone-chat";
     standaloneSkillRoot?: string | null;
     model: Extract<WorkerCommand, { type: "chat.turn" }>["model"];
     provider: RuntimeProvider;
     subagentDefaults?: RuntimeSubagentDefaults | null;
   }) => {
-    const runtimeId = codexRuntimeId(
+    const namespace =
+      command.executionProfile === "standalone-chat" || !command.threadId
+        ? null
+        : managedRuntimeNamespaces.resolve(nativeNamespaceScope(), command);
+    const configurationHome = accountBackedProvider(command.provider.kind)
+      ? accountHomeFor(
+          command.provider.credentialHomeKey ?? command.provider.id,
+        )
+      : codexHome;
+    const baseRuntimeId = codexRuntimeId(
       command.model,
       command.provider,
       command.subagentDefaults ?? null,
@@ -1839,6 +1862,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           : []
         : globalCodexSkillRoots,
     );
+    const runtimeId = namespace
+      ? `${baseRuntimeId}:namespace:${namespace.operationId}`
+      : baseRuntimeId;
     let runtime = codexRuntimes.get(runtimeId);
     if (!runtime) {
       const directoryName = createHash("sha256")
@@ -1847,17 +1873,14 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       runtime = new CodexAppServer(
         config.codexBinary,
         path.join(config.dataDirectory, "codex-runtimes", directoryName),
-        command.executionProfile === "standalone-chat"
-          ? path.join(
-              config.dataDirectory,
-              "codex-standalone-homes",
-              directoryName,
-            )
-          : accountBackedProvider(command.provider.kind)
-            ? accountHomeFor(
-                command.provider.credentialHomeKey ?? command.provider.id,
+        namespace?.home ??
+          (command.executionProfile === "standalone-chat"
+            ? path.join(
+                config.dataDirectory,
+                "codex-standalone-homes",
+                directoryName,
               )
-            : codexHome,
+            : configurationHome),
         codexRuntime,
         undefined,
         async (provider) =>
@@ -1885,6 +1908,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             ? [command.standaloneSkillRoot]
             : []
           : globalCodexSkillRoots,
+        namespace ? configurationHome : null,
       );
       runtime.setManagedModelInventoryLoader((provider) =>
         nativeModelInventoryClient.read(provider),
@@ -2406,6 +2430,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       : null;
     const runtime = runtimeFor({
       ...options,
+      chatId: session.chatId,
       executionProfile,
       subagentDefaults,
     });
@@ -5182,6 +5207,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           service: workerEncryption,
           execute: () =>
             runtimeFor({
+              ...managedRuntimeTarget(command),
               model: command.model,
               provider: provider(),
             }).listSkills({
@@ -5204,6 +5230,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               return skillManager.list(command);
             }
             const runtime = runtimeFor({
+              ...managedRuntimeTarget(command),
               model: command.model,
               provider: provider(),
             });
@@ -5343,6 +5370,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               input.skillId,
             );
             const result = await runtimeFor({
+              ...managedRuntimeTarget(command),
               model: command.model,
               provider: provider(),
             }).configureSkill({
@@ -5370,6 +5398,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           service: workerEncryption,
           execute: () =>
             runtimeFor({
+              ...managedRuntimeTarget(command),
               model: command.model,
               provider: provider(),
             }).readCustomizationInventory(
@@ -5393,6 +5422,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           service: workerEncryption,
           execute: () =>
             runtimeFor({
+              ...managedRuntimeTarget(command),
               model: command.model,
               provider: provider(),
             }).previewExternalAgentConfig({
@@ -5422,6 +5452,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           service: workerEncryption,
           execute: () =>
             runtimeFor({
+              ...managedRuntimeTarget(command),
               model: command.model,
               provider: provider(),
             }).readMcpResource({
@@ -5460,6 +5491,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           service: workerEncryption,
           execute: () =>
             runtimeFor({
+              ...managedRuntimeTarget(command),
               model: command.model,
               provider: provider(),
             }).configureSkill({
@@ -5498,6 +5530,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           service: workerEncryption,
           execute: () =>
             runtimeFor({
+              ...managedRuntimeTarget(command),
               model: command.model,
               provider: provider(),
             }).setSkillRoots({
@@ -5536,6 +5569,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           lifecycle: () => "pending",
           execute: () =>
             runtimeFor({
+              ...managedRuntimeTarget(command),
               model: command.model,
               provider: provider(),
             }).startMcpOauth({
@@ -5573,6 +5607,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                 : "completed",
           execute: () =>
             runtimeFor({
+              ...managedRuntimeTarget(command),
               model: command.model,
               provider: provider(),
             }).mcpOauthStatus(input.server),
@@ -5605,6 +5640,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           service: workerEncryption,
           execute: () =>
             runtimeFor({
+              ...managedRuntimeTarget(command),
               model: command.model,
               provider: provider(),
             }).reloadMcpServers({
@@ -5642,6 +5678,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           lifecycle: (status) => status.status,
           execute: () =>
             runtimeFor({
+              ...managedRuntimeTarget(command),
               model: command.model,
               provider: provider(),
             }).applyExternalAgentConfig({
@@ -5674,6 +5711,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           lifecycle: (status) => status.status,
           execute: () =>
             runtimeFor({
+              ...managedRuntimeTarget(command),
               model: command.model,
               provider: provider(),
             }).externalImportStatus(input.importId),
@@ -5681,6 +5719,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       }
       case "permission-profiles.list":
         return runtimeFor({
+          ...managedRuntimeTarget(command),
           model: command.model,
           provider: provider(),
         }).listPermissionProfiles({
@@ -5846,6 +5885,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             const runtime =
               prepared?.runtime ??
               runtimeFor({
+                ...managedRuntimeTarget(command.launch),
                 model: command.launch.model,
                 provider: provider(),
               });
@@ -6101,6 +6141,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         );
         try {
           await runtimeFor({
+            ...managedRuntimeTarget(command),
             model: command.model,
             provider: provider(),
           }).runAgentOperation({
@@ -6372,6 +6413,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             )
           : null;
         const runtime = runtimeFor({
+          ...managedRuntimeTarget(command),
           executionProfile: command.executionProfile,
           standaloneSkillRoot,
           model: command.model,
@@ -7485,6 +7527,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           prepared?.runtime ??
           currentManagedRuntime(command.chatId, command.threadId) ??
           runtimeFor({
+            ...managedRuntimeTarget(command),
             executionProfile: command.executionProfile,
             model: command.model,
             provider: provider(),
@@ -7534,6 +7577,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           prepared?.runtime ??
           currentManagedRuntime(command.chatId, command.threadId) ??
           runtimeFor({
+            ...managedRuntimeTarget(command),
             executionProfile: command.executionProfile,
             model: command.model,
             provider: provider(),
@@ -7587,6 +7631,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         const result = await (
           currentManagedRuntime(command.chatId, command.threadId) ??
           runtimeFor({
+            ...managedRuntimeTarget(command),
             model: command.model,
             provider: provider(),
           })
@@ -7626,6 +7671,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           prepared?.runtime ??
           currentManagedRuntime(command.chatId, command.threadId) ??
           runtimeFor({
+            ...managedRuntimeTarget(command),
             model: command.model,
             provider: provider(),
           })
@@ -7656,6 +7702,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           prepared?.runtime ??
           currentManagedRuntime(command.chatId, command.threadId) ??
           runtimeFor({
+            ...managedRuntimeTarget(command),
             model: command.model,
             provider: provider(),
           })
@@ -7684,6 +7731,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           prepared?.runtime ??
           currentManagedRuntime(command.chatId, command.threadId) ??
           runtimeFor({
+            ...managedRuntimeTarget(command),
             model: command.model,
             provider: provider(),
           })
@@ -7728,6 +7776,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           return { threadId };
         }
         return runtimeFor({
+          ...managedRuntimeTarget(command),
           model: command.model,
           provider: provider(),
         }).ensureThread({
@@ -7755,6 +7804,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           service: workerEncryption,
         });
         const runtime = runtimeFor({
+          ...managedRuntimeTarget(command),
           model: upload.command.model,
           provider: relocationProvider,
         });
@@ -7827,6 +7877,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         }
         if (command.discard && command.threadId) {
           await runtimeFor({
+            ...managedRuntimeTarget(command),
             model: command.model,
             provider: provider(),
           }).discardRelocationThread(
@@ -7837,11 +7888,13 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           return { released: true };
         }
         return runtimeFor({
+          ...managedRuntimeTarget(command),
           model: command.model,
           provider: provider(),
         }).releaseRelocationThread(command.threadId, command.model, provider());
       case "chat.plan.get":
         return runtimeFor({
+          ...managedRuntimeTarget(command),
           model: command.model,
           provider: provider(),
         }).getPlanMode({
@@ -7854,6 +7907,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         });
       case "chat.plan.set":
         return runtimeFor({
+          ...managedRuntimeTarget(command),
           model: command.model,
           provider: provider(),
         }).setPlanMode({
@@ -7866,12 +7920,14 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         });
       case "agent.interaction.respond":
         return runtimeFor({
+          ...managedRuntimeTarget(command),
           executionProfile: command.executionProfile,
           model: command.model,
           provider: provider(),
         }).answerAgentInteraction(command.requestKey, command.response);
       case "agent.interaction.respond.protected":
         return runtimeFor({
+          ...managedRuntimeTarget(command),
           executionProfile: command.executionProfile,
           model: command.model,
           provider: provider(),
@@ -7885,6 +7941,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         );
       case "agent.interaction.cancel":
         return runtimeFor({
+          ...managedRuntimeTarget(command),
           executionProfile: command.executionProfile,
           model: command.model,
           provider: provider(),
@@ -7903,6 +7960,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           workerEncryption,
         );
         return runtimeFor({
+          ...managedRuntimeTarget(command),
           executionProfile: command.executionProfile,
           model: command.model,
           provider: provider(),

@@ -61,6 +61,34 @@ function fixture() {
   return { runtime, native, request, commands, options };
 }
 describe("native account defaults", () => {
+  it("uses the selected account user file above an empty conversation home", async () => {
+    const result = await readNativeAccountDefaults(async () => ({
+      config: { model: "session-model" },
+      layers: [
+        {
+          name: { type: "sessionFlags" },
+          version: "flags",
+          config: { model: "session-model" },
+        },
+        {
+          name: { type: "user", profile: "another-profile" },
+          version: "profile-file",
+          config: { model: "profile-model" },
+        },
+        {
+          name: { type: "user", profile: null },
+          version: "account-file",
+          config: { model: "account-model" },
+        },
+        { name: { type: "user" }, version: "empty-home", config: {} },
+      ],
+    }));
+    expect(result).toEqual({
+      version: "account-file",
+      stored: { model: "account-model" },
+      effective: { model: "session-model" },
+    });
+  });
   it("reads only account values without starting or mutating the native thread", async () => {
     const f = fixture();
     expect(await f.runtime.nativeAccountDefaults(f.options)).toEqual({

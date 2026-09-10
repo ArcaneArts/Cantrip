@@ -1272,6 +1272,9 @@ export function createChatTurnRuntime({
                         try {
                           await bridge.request(execution.workerId, {
                             type: "agent.interaction.cancel",
+                            chatId: execution.chatId,
+                            threadId:
+                              execution.threadId ?? event.request.threadId,
                             executionProfile:
                               execution.contextKind === "standalone"
                                 ? "standalone-chat"
@@ -1313,6 +1316,9 @@ export function createChatTurnRuntime({
                         try {
                           await bridge.request(execution.workerId, {
                             type: "agent.interaction.cancel",
+                            chatId: execution.chatId,
+                            threadId:
+                              execution.threadId ?? event.request.threadId,
                             executionProfile:
                               execution.contextKind === "standalone"
                                 ? "standalone-chat"
@@ -1358,6 +1364,9 @@ export function createChatTurnRuntime({
                         try {
                           await bridge.request(execution.workerId, {
                             type: "agent.interaction.cancel",
+                            chatId: execution.chatId,
+                            threadId:
+                              execution.threadId ?? event.request.threadId,
                             executionProfile:
                               execution.contextKind === "standalone"
                                 ? "standalone-chat"

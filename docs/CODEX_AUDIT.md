@@ -3213,6 +3213,69 @@ passing these separate boundaries does not establish a completed migration.
 Eager GUI-first startup and the full acceptance matrix remain part of the goal.
 No CI, personal desktop input, real-account inference or user worker restart ran.
 
+### Pass 37 — conversation storage routing and canonical account configuration
+
+The worker can select a dedicated native history home for a committed provider
+handoff while retaining the original native thread ID. Selection records form an
+immutable, flushed chain scoped to server, owner, worker and thread. Reopening
+the worker reads the same selected home; late publication of an older operation
+cannot restore it over a newer selection. An actual storage failure remains
+retryable with the same operation identity. A damaged conversation journal does
+not prevent unrelated conversations from resolving their own runtimes.
+
+Runtime resolution now carries conversation identity through preparation, input,
+settings, history, metadata, plan and interaction paths. Historical interaction
+replies carry the owning root conversation separately from a child's request
+identity, allowing replies to reach the process that owns its native request.
+Standalone chats and commands without an existing selected namespace retain
+their previous runtime placement.
+
+The reviewed native patch adds an explicit account user-config file to managed
+app-server launches. The destination can store history in its own home while
+native config reads and admitted account-default writes use the canonical account
+file. Credentials continue through the existing provider/account mechanism;
+selection records contain no credentials, raw settings or conversation content.
+The worker reads the selected user layer's values and version rather than the
+empty base user layer in the conversation home.
+
+Validation:
+
+- 17 worker tests pass across namespace persistence/reopen, duplicate publication,
+  stale and foreign routing, actual file failure/recovery, account defaults and
+  history-transfer transport failures.
+- 26 server interaction-route tests pass, including root routing for historical
+  child replies in project and standalone conversations. Server and worker
+  typechecks pass.
+- The packaged Codex 0.153.4 release build succeeds with the reviewed patch. Four
+  actual native cases pass: account defaults with ordinary and separate history
+  homes, plus legacy and paginated portable history transfer. The defaults cases
+  verify native preparation, preserved thread settings, explicit canonical-file
+  writes, cold restart and retained history without inference or copied auth.
+  The previous packaged binary passes the ordinary-home control and fails the
+  separate-home case because it cannot select the canonical account config.
+  Actual native config/read returns layers from highest to lowest precedence;
+  the first unprofiled user layer supplies the account values and write version.
+- Scoped formatting, native Rust formatting and diff checks pass; imported
+  upstream is unchanged.
+- The standard check stops at server file-size budgets: chat-turn-runtime.ts is
+  2330/1999 lines (nine added routing lines); task-routes.ts remains 2149/1999.
+  Later stages of that command are not reported as passing.
+
+The full handoff executor must still connect server reservation, source export,
+destination import/configuration, provider-valid context reconstruction,
+SQLite-only state reconciliation, commit, namespace publication, CLI retargeting
+and queue/attachment continuity. Publication is not yet invoked by an enabled
+provider migration controller. The GUI migration picker, eager GUI-first startup
+and full acceptance matrix remain required. No live user worker, personal desktop
+input, real-account inference or CI is used for this pass.
+
+The remaining native metadata work is concrete: `insert_thread_if_absent` binds
+memory mode to `enabled`, while the portable snapshot has no separate persisted
+memory-mode field. It also inserts section/project references without importing
+their owning records, and the portable importer does not restore thread goals.
+Preserve these selected-thread records before enabling the full handoff; do not
+copy an account's entire database or assume rollout history contains them.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal

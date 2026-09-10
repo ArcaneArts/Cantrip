@@ -4606,6 +4606,7 @@ export class CodexAppServer implements CodexRuntime {
     >,
     private readonly launchCodex: CodexProcessLauncher = launchCodexProcess,
     private readonly globalSkillRoots: readonly string[] = [],
+    private readonly configurationHome: string | null = null,
   ) {}
 
   private effectiveSkillRoots(): string[] {
@@ -9488,6 +9489,9 @@ export class CodexAppServer implements CodexRuntime {
         env: {
           ...process.env,
           CODEX_HOME: this.codexHome,
+          CANTRIP_CODEX_USER_CONFIG_FILE: this.configurationHome
+            ? path.join(this.configurationHome, "config.toml")
+            : undefined,
           ...providerConfiguration.environment,
         },
       },
