@@ -1,0 +1,371 @@
+--- a/codex-rs/core/src/tools/mod.rs
++++ b/codex-rs/core/src/tools/mod.rs
+@@ -11,6 +11,7 @@
+ pub(crate) mod network_approval;
+ pub(crate) mod orchestrator;
+ pub(crate) mod parallel;
++mod portable_namespaces;
+ pub(crate) mod registry;
+ pub(crate) mod router;
+ pub(crate) mod runtimes;
+--- a/codex-rs/core/src/tools/parallel.rs
++++ b/codex-rs/core/src/tools/parallel.rs
+@@ -61,6 +61,13 @@
+         }
+     }
+ 
++    pub(crate) fn canonicalize_tool_call(&self, call: &mut ToolCall) {
++        call.tool_name = self
++            .step_context
++            .tool_router
++            .canonical_tool_name(&call.tool_name);
++    }
++
+     pub(crate) fn create_diff_consumer(
+         &self,
+         tool_name: &codex_tools::ToolName,
+@@ -77,6 +84,8 @@
+         cancellation_token: CancellationToken,
+     ) -> impl std::future::Future<Output = Result<ResponseItemEnvelope, CodexErr>> {
+         let error_call = call.clone();
++        let mut call = call;
++        self.canonicalize_tool_call(&mut call);
+         let source = call.direct_source();
+         let future = self.handle_tool_call_with_source(call, source, cancellation_token);
+         async move {
+--- /dev/null
++++ b/codex-rs/core/src/tools/portable_namespaces.rs
+@@ -0,0 +1,202 @@
++//! Adapt advertised namespaces at the provider boundary, retaining exact runtime identities.
++use codex_tools::ResponsesApiNamespaceTool;
++use codex_tools::ToolName;
++use codex_tools::ToolSpec;
++use sha1::Digest;
++use sha1::Sha1;
++use std::collections::BTreeMap;
++use std::collections::BTreeSet;
++use std::sync::Arc;
++
++pub(crate) struct PortableNamespaces {
++    pub specs: Arc<[ToolSpec]>,
++    aliases: BTreeMap<String, ToolName>,
++}
++
++impl PortableNamespaces {
++    pub fn new(specs: &[ToolSpec]) -> Self {
++        let reserved: BTreeSet<String> = specs
++            .iter()
++            .filter_map(|spec| match spec {
++                ToolSpec::Namespace(_) => None,
++                _ => Some(spec.name().to_owned()),
++            })
++            .collect();
++        let mut used = reserved.clone();
++        let mut candidates = BTreeMap::<String, usize>::new();
++        for spec in specs {
++            if let ToolSpec::Namespace(namespace) = spec {
++                for tool in &namespace.tools {
++                    let name = match tool {
++                        ResponsesApiNamespaceTool::Function(tool) => &tool.name,
++                        ResponsesApiNamespaceTool::Custom(tool) => &tool.name,
++                    };
++                    *candidates
++                        .entry(format!("{}__{name}", namespace.name))
++                        .or_default() += 1;
++                }
++            }
++        }
++        // Reserve every simple alias before assigning hashed fallbacks. Adding
++        // a long name cannot steal a short name from a later namespace.
++        used.extend(candidates.keys().cloned());
++        let mut aliases = BTreeMap::new();
++        let mut result = Vec::new();
++        for spec in specs {
++            let ToolSpec::Namespace(namespace) = spec else {
++                result.push(spec.clone());
++                continue;
++            };
++            for tool in &namespace.tools {
++                let (name, mut flattened) = match tool {
++                    ResponsesApiNamespaceTool::Function(tool) => {
++                        (tool.name.clone(), ToolSpec::Function(tool.clone()))
++                    }
++                    ResponsesApiNamespaceTool::Custom(tool) => {
++                        (tool.name.clone(), ToolSpec::Freeform(tool.clone()))
++                    }
++                };
++                let canonical = ToolName::namespaced(&namespace.name, &name);
++                let candidate = format!("{}__{name}", namespace.name);
++                let standalone_collision = reserved.contains(&candidate);
++                let alias = if candidate.len() <= 64
++                    && candidate
++                        .bytes()
++                        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
++                    && candidates.get(&candidate) == Some(&1)
++                    && !standalone_collision
++                {
++                    candidate
++                } else {
++                    let prefix: String = candidate
++                        .chars()
++                        .map(|ch| {
++                            if ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-') {
++                                ch
++                            } else {
++                                '_'
++                            }
++                        })
++                        .take(23)
++                        .collect();
++                    let mut salt = 0_u64;
++                    loop {
++                        let mut hash = Sha1::new();
++                        hash.update((namespace.name.len() as u64).to_be_bytes());
++                        hash.update(namespace.name.as_bytes());
++                        hash.update((name.len() as u64).to_be_bytes());
++                        hash.update(name.as_bytes());
++                        hash.update(salt.to_be_bytes());
++                        let alias = format!("{prefix}_{:x}", hash.finalize());
++                        if used.insert(alias.clone()) {
++                            break alias;
++                        }
++                        salt += 1;
++                    }
++                };
++                let (tool_name, description) = match &mut flattened {
++                    ToolSpec::Function(tool) => (&mut tool.name, &mut tool.description),
++                    ToolSpec::Freeform(tool) => (&mut tool.name, &mut tool.description),
++                    _ => unreachable!("only callable namespace children are flattened"),
++                };
++                *tool_name = alias.clone();
++                if !namespace.description.trim().is_empty() {
++                    *description = format!("{}\n\n{}", namespace.description, description);
++                }
++                aliases.insert(alias, canonical);
++                result.push(flattened);
++            }
++        }
++        Self {
++            specs: result.into(),
++            aliases,
++        }
++    }
++
++    pub fn resolve(&self, name: &ToolName) -> ToolName {
++        if name.is_default_namespace() {
++            self.aliases
++                .get(&name.name)
++                .cloned()
++                .unwrap_or_else(|| name.clone())
++        } else {
++            name.clone()
++        }
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use codex_tools::ResponsesApiNamespace;
++    use codex_tools::ResponsesApiTool;
++    use serde_json::json;
++
++    fn function(name: &str) -> codex_tools::ResponsesApiTool {
++        ResponsesApiTool {
++            name: name.into(), description: "call help".into(), strict: false,
++            defer_loading: None, output_schema: None,
++            parameters: serde_json::from_value(json!({"type":"object", "properties":{"value":{"type":"string"}}, "required":["value"]})).unwrap(),
++        }
++    }
++    fn namespace(name: &str, tool: &str) -> ToolSpec {
++        ToolSpec::Namespace(ResponsesApiNamespace {
++            name: name.into(),
++            description: "namespace help".into(),
++            tools: vec![ResponsesApiNamespaceTool::Function(function(tool))],
++        })
++    }
++    #[test]
++    fn preserves_schema_and_resolves_only_advertised_aliases() {
++        let input = [
++            namespace("mcp__cantrip_cua", "js"),
++            ToolSpec::Function(function("exec_command")),
++        ];
++        let portable = PortableNamespaces::new(&input);
++        let ToolSpec::Function(tool) = &portable.specs[0] else {
++            panic!("expected function")
++        };
++        assert_eq!(tool.name, "mcp__cantrip_cua__js");
++        assert_eq!(tool.parameters, function("js").parameters);
++        assert_eq!(tool.description, "namespace help\n\ncall help");
++        assert_eq!(portable.specs[1], input[1]);
++        assert_eq!(
++            portable.resolve(&ToolName::plain(&tool.name)),
++            ToolName::namespaced("mcp__cantrip_cua", "js")
++        );
++        let foreign = ToolName::namespaced("other", &tool.name);
++        assert_eq!(portable.resolve(&foreign), foreign);
++        let hidden = ToolName::plain("mcp__cantrip_cua__hidden");
++        assert_eq!(portable.resolve(&hidden), hidden);
++    }
++    #[test]
++    fn disambiguates_delimiters_standalone_names_and_long_unicode_names() {
++        let input = [
++            namespace("a__b", "c"),
++            namespace("a", "b__c"),
++            namespace("mcp", "js"),
++            ToolSpec::Function(function("mcp__js")),
++            namespace(&"界".repeat(80), "js"),
++        ];
++        let portable = PortableNamespaces::new(&input);
++        let names: BTreeSet<_> = portable.specs.iter().map(ToolSpec::name).collect();
++        assert_eq!(names.len(), input.len());
++        assert!(names.iter().all(|name| name.len() <= 64 && name.is_ascii()));
++        assert_eq!(portable.specs, PortableNamespaces::new(&input).specs);
++        let mut reversed = input.clone();
++        reversed.reverse();
++        assert_eq!(portable.aliases, PortableNamespaces::new(&reversed).aliases);
++        assert_eq!(
++            portable.resolve(&ToolName::plain(portable.specs[0].name())),
++            ToolName::namespaced("a__b", "c")
++        );
++        assert_eq!(
++            portable.resolve(&ToolName::plain(portable.specs[1].name())),
++            ToolName::namespaced("a", "b__c")
++        );
++        assert_eq!(
++            portable.resolve(&ToolName::plain("mcp__js")),
++            ToolName::plain("mcp__js")
++        );
++    }
++}
+--- a/codex-rs/core/src/tools/router.rs
++++ b/codex-rs/core/src/tools/router.rs
+@@ -9,6 +9,7 @@
+ use crate::tools::context::ToolPayload;
+ #[cfg(test)]
+ use crate::tools::handlers::ToolSearchHandlerCache;
++use crate::tools::portable_namespaces::PortableNamespaces;
+ use crate::tools::registry::AnyToolResult;
+ use crate::tools::registry::CoreToolRuntime;
+ use crate::tools::registry::ToolArgumentDiffConsumer;
+@@ -74,6 +75,7 @@
+ pub struct ToolRouter {
+     registry: ToolRegistry,
+     model_visible_specs: Arc<[ToolSpec]>,
++    portable_namespaces: Option<PortableNamespaces>,
+     tool_mode: ToolMode,
+     code_mode_tool_names: BTreeMap<String, ToolName>,
+     tool_namespaces_info: Option<TurnToolNamespacesInfo>,
+@@ -122,6 +124,7 @@
+         let mut router = Self {
+             registry,
+             model_visible_specs: model_visible_specs.into(),
++            portable_namespaces: None,
+             tool_mode,
+             code_mode_tool_names,
+             tool_namespaces_info,
+@@ -135,7 +138,22 @@
+     }
+ 
+     pub(crate) fn model_visible_specs(&self) -> Arc<[ToolSpec]> {
+-        Arc::clone(&self.model_visible_specs)
++        Arc::clone(
++            self.portable_namespaces
++                .as_ref()
++                .map_or(&self.model_visible_specs, |portable| &portable.specs),
++        )
++    }
++
++    pub(crate) fn with_portable_namespaces(mut self) -> Self {
++        self.portable_namespaces = Some(PortableNamespaces::new(&self.model_visible_specs));
++        self
++    }
++
++    pub(crate) fn canonical_tool_name(&self, name: &ToolName) -> ToolName {
++        self.portable_namespaces
++            .as_ref()
++            .map_or_else(|| name.clone(), |portable| portable.resolve(name))
+     }
+ 
+     pub(crate) fn tool_mode(&self) -> ToolMode {
+@@ -229,17 +247,18 @@
+         &self,
+         tool_name: &ToolName,
+     ) -> Option<Box<dyn ToolArgumentDiffConsumer>> {
+-        self.registry.create_diff_consumer(tool_name)
++        self.registry
++            .create_diff_consumer(&self.canonical_tool_name(tool_name))
+     }
+ 
+     pub fn tool_supports_parallel(&self, call: &ToolCall) -> bool {
+         self.registry
+-            .supports_parallel_tool_calls(&call.tool_name)
++            .supports_parallel_tool_calls(&self.canonical_tool_name(&call.tool_name))
+             .unwrap_or(false)
+     }
+ 
+     pub(crate) fn tool_runtime(&self, tool_name: &ToolName) -> Option<Arc<dyn CoreToolRuntime>> {
+-        self.registry.tool(tool_name)
++        self.registry.tool(&self.canonical_tool_name(tool_name))
+     }
+ 
+     #[instrument(level = "trace", skip_all, err)]
+@@ -371,7 +390,7 @@
+             cancellation_token,
+             tracker,
+             call_id,
+-            tool_name,
++            tool_name: self.canonical_tool_name(&tool_name),
+             source,
+             payload,
+         };
+--- a/codex-rs/core/src/tools/spec_plan.rs
++++ b/codex-rs/core/src/tools/spec_plan.rs
+@@ -483,14 +483,19 @@
+         .filter(|info| !info.is_empty());
+     let child_management_tools = required_child_management_tool_names(turn_context, model_info);
+ 
+-    Ok(ToolRouter::from_parts(
++    let router = ToolRouter::from_parts(
+         registry,
+         model_visible_specs,
+         tool_mode,
+         code_mode_tool_names,
+         tool_namespaces_info,
+         &child_management_tools,
+-    ))
++    );
++    Ok(if namespace_tools_enabled(turn_context) {
++        router
++    } else {
++        router.with_portable_namespaces()
++    })
+ }
+ 
+ fn apply_direct_model_only_namespace_overrides(
+@@ -559,11 +564,6 @@
+     specs.extend(hosted_specs);
+ 
+     merge_into_namespaces(specs)
+-        .into_iter()
+-        .filter(|spec| {
+-            namespace_tools_enabled(turn_context) || !matches!(spec, ToolSpec::Namespace(_))
+-        })
+-        .collect()
+ }
+ 
+ fn spec_for_model_request(
+--- a/codex-rs/core/src/stream_events_utils.rs
++++ b/codex-rs/core/src/stream_events_utils.rs
+@@ -297,7 +297,10 @@
+ 
+     match ToolRouter::build_tool_call(item.clone()) {
+         // The model emitted a tool call; log it, persist the item immediately, and queue the tool execution.
+-        Ok(Some(call)) => {
++        Ok(Some(mut call)) => {
++            // Resolve aliases before redaction, tracing and runtime dispatch.
++            // Persist the provider's original item below for call/result pairing.
++            ctx.tool_runtime.canonicalize_tool_call(&mut call);
+             ctx.sess
+                 .input_queue
+                 .accept_mailbox_delivery_for_current_turn(

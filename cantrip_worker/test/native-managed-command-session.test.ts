@@ -72,7 +72,12 @@ describe.skipIf(!binary)(
   () => {
     it.each([
       ...(process.env.CANTRIP_CUA_TEST_BINARY
-        ? (["terminal-cua", "gui-cua"] as const)
+        ? ([
+            "terminal-cua",
+            "gui-cua",
+            "terminal-portable-cua",
+            "gui-portable-cua",
+          ] as const)
         : []),
       "terminal",
       "terminal-question-gui",
@@ -86,13 +91,14 @@ describe.skipIf(!binary)(
       "tracks %s turns, accepts cross-view Stop, and gives the next turn fresh authority",
       async (origin) => {
         const cuaCase = origin.endsWith("-cua");
+        const portableCua = origin.includes("portable");
         const permissionProfileId = cuaCase ? ":yolo" : ":workspace";
         let cua:
           Awaited<ReturnType<typeof createNativeCuaWorkerFixture>> | undefined;
         let releaseGuiCua: (() => Promise<void>) | undefined;
         const guiOrigin = origin.startsWith("gui");
         const terminalOrigin = origin.startsWith("terminal");
-        const realTuiStop = origin === "gui-cua";
+        const realTuiStop = guiOrigin && cuaCase;
         const questionCase = origin.startsWith("terminal-question");
         const pendingBodies: unknown[] = [];
         let publishedRequest: {
@@ -155,9 +161,19 @@ describe.skipIf(!binary)(
               )
               .find(
                 (entry: Frame) =>
-                  entry.namespace?.includes("cantrip_cua") &&
-                  entry.name === "js",
+                  (entry.namespace?.includes("cantrip_cua") &&
+                    entry.name === "js") ||
+                  entry.name === "mcp__cantrip_cua__js",
               );
+            if (
+              portableCua &&
+              input.tools?.some((tool: Frame) => tool.type === "namespace")
+            ) {
+              response
+                .writeHead(400)
+                .end("The compatible fixture rejects namespace schemas");
+              return;
+            }
             modelDiagnostics.push(
               input.tools?.map((tool: Frame) => ({
                 name: tool.name,
@@ -351,7 +367,12 @@ describe.skipIf(!binary)(
             computerUse: cuaCase,
             // Exercise the real namespace/vision format against localhost only.
             ...(cuaCase
-              ? { providerName: "OpenAI", modelName: "gpt-5.6-sol" }
+              ? {
+                  providerName: portableCua
+                    ? "Native compatible provider"
+                    : "OpenAI",
+                  modelName: "gpt-5.6-sol",
+                }
               : {}),
           });
           const {
@@ -1176,7 +1197,12 @@ describe.skipIf(!binary)(
                   (tool: Frame) =>
                     tool.type === "namespace" &&
                     tool.name.includes("cantrip_cua"),
-                ).name;
+                )?.name;
+                const toolName = namespace
+                  ? "js"
+                  : tools.find(
+                      (tool: Frame) => tool.name === "mcp__cantrip_cua__js",
+                    ).name;
                 const events = [
                   {
                     type: "response.output_item.done",
@@ -1184,7 +1210,7 @@ describe.skipIf(!binary)(
                       type: "function_call",
                       id: "waiting-cua-item",
                       call_id: "waiting-cua-call",
-                      name: "js",
+                      name: toolName,
                       namespace,
                       arguments: JSON.stringify({
                         script:
