@@ -18,9 +18,13 @@ export type StorageOwnerResolution =
   | "attachment"
   | "chat"
   | "model-profile"
+  | "native-command"
+  | "native-history-binding"
+  | "native-history-stream"
   | "owner-column"
   | "project"
   | "project-source"
+  | "queue-claim"
   | "provider"
   | "provider-account"
   | "provider-model"
@@ -195,6 +199,57 @@ export const STORAGE_ACCOUNTING_MANIFEST: readonly StorageAccountingManifestEntr
     projectOwned(schema.browsers),
     projectOwned(schema.remoteSurfaces),
     projectOwned(schema.projectViews),
+    projectOwned(schema.projectBuiltInSurfaceStates),
+    projectOwned(schema.projectDockPresentationPreferences),
+    projectOwned(schema.projectSurfaceLauncherPreferences),
+    accountOwned(schema.managedChatPreparations, "conversations"),
+    accountOwned(schema.nativeCommands, "conversations"),
+    chatOwned(schema.nativeCommandActivations),
+    chatOwned(schema.nativeCommandTurns),
+    chatOwned(schema.nativePendingRequests),
+    accountOwned(schema.nativeLogicalCompletions, "conversations"),
+    accountOwned(schema.nativeRuntimeHandoffs, "conversations"),
+    chatOwned(schema.nativeSettingsStates),
+    accountOwned(
+      schema.nativeSettingsEvidence,
+      "conversations",
+      "native-command",
+    ),
+    chatOwned(schema.managedQueueStates),
+    chatOwned(schema.managedQueueClaims),
+    chatOwned(schema.managedQueueImports),
+    accountOwned(
+      schema.managedQueueInputSnapshots,
+      "conversations",
+      "queue-claim",
+    ),
+    accountOwned(schema.nativeHistoryBindings, "conversations"),
+    accountOwned(
+      schema.nativeHistoryStreams,
+      "conversations",
+      "native-history-binding",
+    ),
+    accountOwned(
+      schema.nativeHistoryRejections,
+      "conversations",
+      "native-history-binding",
+    ),
+    accountOwned(
+      schema.nativeHistoryPublications,
+      "conversations",
+      "native-history-binding",
+    ),
+    accountOwned(
+      schema.nativeHistoryTurns,
+      "conversations",
+      "native-history-binding",
+    ),
+    accountOwned(
+      schema.nativeHistoryReceipts,
+      "conversations",
+      "native-history-stream",
+    ),
+    chatOwned(schema.nativeHistoryItems),
     chatOwned(schema.chatRuntimeSessions),
     chatOwned(schema.chatExecutionLanes),
     accountOwned(schema.agentInteractionRequests, "conversations"),

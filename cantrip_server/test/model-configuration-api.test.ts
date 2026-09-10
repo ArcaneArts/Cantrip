@@ -85,6 +85,10 @@ beforeAll(async () => {
     config.agentModel,
     config.ollamaBaseUrl,
   );
+  // These cases exercise enabled CUA authority; production defaults stay disabled.
+  await database.repository.updateSettings(LOCAL_USER_ID, {
+    computerUseEnabled: true,
+  });
   app = await buildApp({ config, database, logger: false, workerBridge });
 });
 
