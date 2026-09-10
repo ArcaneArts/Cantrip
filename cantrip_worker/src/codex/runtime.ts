@@ -102,6 +102,7 @@ export interface CodexRuntime {
     dispatcher: ManagedNativeCommandDispatcher | null,
   ): void;
   setChatPaused(chatId: string, paused: boolean): void;
+  isChatPaused(chatId: string): boolean;
   setActiveChatPaused(
     chatId: string,
     paused: boolean,

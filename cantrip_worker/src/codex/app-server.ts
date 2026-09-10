@@ -5023,6 +5023,11 @@ export class CodexAppServer implements CodexRuntime {
     }
   }
 
+  /** Latest requested automation state, regardless of older RPC acknowledgements. */
+  isChatPaused(chatId: string): boolean {
+    return this.#pausedChats.has(chatId);
+  }
+
   activeContextWindow(
     chatId: string,
     executionLaneId: string,

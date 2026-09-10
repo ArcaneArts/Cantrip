@@ -1155,6 +1155,130 @@ describe("durable native command admission", () => {
     }
   });
 
+  it.each([true, false])(
+    "does not overwrite a newer native pause intent when paused=%s acknowledges late",
+    async (firstPaused) => {
+      const repository = database.repository;
+      const start = admission(
+        await repository.getChatExecutionContext(LOCAL_USER_ID, chatId),
+      );
+      const active = await repository.nativeCommands.admit(
+        LOCAL_USER_ID,
+        start,
+      );
+      await dispatch(start, active.receipt);
+      await repository.setChatAutomationPaused(
+        LOCAL_USER_ID,
+        chatId,
+        !firstPaused,
+      );
+      const app = Fastify();
+      let release!: () => void;
+      const boundary = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let calls = 0;
+      let firstDispatched = false;
+      const resume = vi.fn(async () => {});
+      installChatAutomationPauseRoute(app, {
+        applicationOwnerId: () => LOCAL_USER_ID,
+        repository,
+        publishChatSummary: () => {},
+        resumeChatAutomation: resume,
+        bridge: {
+          isConnected: () => true,
+          request: (async (
+            _worker: string,
+            command: {
+              type: string;
+              control: { kind: string; paused: boolean };
+            },
+          ) => {
+            expect(command.type).toBe("chat.native-control");
+            const first = ++calls === 1;
+            const paused = command.control.paused;
+            const input = admission(
+              await repository.getChatExecutionContext(LOCAL_USER_ID, chatId),
+              {
+                method: "turn/pause",
+                origin: "gui",
+                expectedActivationGeneration:
+                  active.receipt.activationGeneration,
+                intent: {
+                  scope: "thread",
+                  settingKeys: [],
+                  expectedTurnId: null,
+                  paused,
+                  resumeAutonomy: !paused,
+                },
+              },
+            );
+            const grant = await repository.nativeCommands.admit(
+              LOCAL_USER_ID,
+              input,
+            );
+            expect(grant.receipt.status).toBe("accepted");
+            await dispatch(input, grant.receipt);
+            if (first) {
+              firstDispatched = true;
+              await boundary;
+            }
+            await repository.nativeCommands.settle(LOCAL_USER_ID, {
+              workerId,
+              operationId: input.operationId,
+              operationGeneration: grant.receipt.operationGeneration,
+              status: "applied",
+              resultDigest: null,
+              protectedResult: null,
+              rejectionCode: null,
+              executionComplete: false,
+            });
+            return {
+              paused,
+              active: {
+                threadId: start.session.threadId,
+                turnId: "pause-fixture",
+              },
+            };
+          }) as never,
+        },
+      });
+      let pending: Promise<unknown> | undefined;
+      try {
+        const older = app
+          .inject({
+            method: "PATCH",
+            url: `/api/chats/${chatId}/pause`,
+            payload: { paused: firstPaused },
+          })
+          .then((response) => response);
+        pending = older;
+        await vi.waitFor(() => expect(firstDispatched).toBe(true));
+        const newer = await app.inject({
+          method: "PATCH",
+          url: `/api/chats/${chatId}/pause`,
+          payload: { paused: !firstPaused },
+        });
+        expect(newer.statusCode, newer.body).toBe(200);
+        release();
+        const late = await older;
+        expect(late.statusCode, late.body).toBe(200);
+        expect(
+          (await repository.getChatExecutionContext(LOCAL_USER_ID, chatId))
+            ?.automationPaused,
+        ).toBe(!firstPaused);
+        expect(late.json()).toEqual({ paused: !firstPaused });
+        expect(resume).toHaveBeenCalledTimes(firstPaused ? 1 : 0);
+      } finally {
+        release();
+        await pending;
+        await app.close();
+        await finish(start, active.receipt);
+        await repository.setChatAutomationPaused(LOCAL_USER_ID, chatId, false);
+      }
+    },
+  );
+
   it("fences canonical route changes between admission and native dispatch", async () => {
     const repository = database.repository;
     const context = await repository.getChatExecutionContext(

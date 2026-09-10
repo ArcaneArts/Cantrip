@@ -1,0 +1,67 @@
+diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/codex-rs/app-server/src/request_processors/turn_processor.rs
+--- a/codex-rs/app-server/src/request_processors/turn_processor.rs
++++ b/codex-rs/app-server/src/request_processors/turn_processor.rs
+@@ -417,9 +417,7 @@
+         request_id: &ConnectionRequestId,
+         params: TurnPauseParams,
+     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+-        self.turn_pause_inner(request_id, params)
+-            .await
+-            .map(|response| Some(response.into()))
++        self.turn_pause_inner(request_id, params).await
+     }
+ 
+     pub(crate) async fn thread_realtime_start(
+@@ -1859,7 +1857,7 @@
+         &self,
+         request_id: &ConnectionRequestId,
+         params: TurnPauseParams,
+-    ) -> Result<TurnPauseResponse, JSONRPCErrorError> {
++    ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+         let TurnPauseParams {
+             thread_id,
+             turn_id,
+@@ -1882,14 +1880,35 @@
+             .await
+             .map_err(|err| internal_error(format!("failed to update turn pause state: {err}")))?;
+         if paused {
+-            thread
+-                .wait_until_turn_pause_boundary()
+-                .await
+-                .map_err(|err| {
+-                    internal_error(format!("failed to reach turn pause boundary: {err}"))
+-                })?;
+-        }
+-        Ok(TurnPauseResponse { paused })
++            // Keep validation and submission ordered with other thread mutations,
++            // but release that queue before waiting for model/tool work to finish.
++            // Otherwise Stop, steer and resume queue behind the very boundary
++            // they may need to release. Acknowledgement still requires the actual
++            // durable boundary, never merely accepting the pause request.
++            let outgoing = Arc::clone(&self.outgoing);
++            let request_id = request_id.clone();
++            tokio::spawn(async move {
++                match thread.wait_until_turn_pause_boundary().await {
++                    Ok(()) => {
++                        outgoing
++                            .send_response(request_id, TurnPauseResponse { paused })
++                            .await
++                    }
++                    Err(err) => {
++                        outgoing
++                            .send_error(
++                                request_id,
++                                internal_error(format!(
++                                    "failed to reach turn pause boundary: {err}"
++                                )),
++                            )
++                            .await
++                    }
++                }
++            });
++            return Ok(None);
++        }
++        Ok(Some(TurnPauseResponse { paused }.into()))
+     }
+ 
+     fn listener_task_context(&self) -> ListenerTaskContext {
