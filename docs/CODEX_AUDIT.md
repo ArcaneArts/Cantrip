@@ -3908,6 +3908,48 @@ repository checks and the live bidirectional acceptance matrix, and perform the
 user implementation demo. These structural checks and isolated native fixtures
 are not evidence that the complete mirror goal has passed.
 
+### Pass 48 — logical native input repository boundary
+
+Moved GUI logical-input continuation, outcome-root resolution, completion and
+pending-settings recovery lookup into `NativeLogicalInputRepository`. Shared
+placement/context and exact-generation command reads have one helper module.
+The existing `NativeCommandRepository` methods remain the public facade.
+Transactions, locks, ownership/generation checks, continuation lineage,
+completion receipts and queue-claim settlement retain their previous order.
+This extraction changes no schema, policy, command payload or native protocol.
+
+Validation:
+
+- All workspace typechecks pass. One hundred focused server cases pass across
+  command admission, Stop/startup, logical completion delivery, permission
+  deferral and provider handoff arbitration.
+- Twelve actual pinned-native worker cases pass across CLI/GUI work, questions
+  answered from both surfaces, native queue execution, capacity/compaction/context
+  retries, GUI Stop and fresh subsequent-turn authority. These use isolated
+  deterministic provider/MCP fixtures, not personal accounts or applications.
+- Ten actual pinned-native server handoff execution cases also pass, including
+  retained conversation state and queue/goal recovery across provider transfer.
+- The application and repository decomposition checks pass. The original
+  2428-line native command repository is now 1945 lines, within its unchanged
+  2000-line budget. Extracted method bodies were compared against the baseline;
+  scoped formatting and diff checks pass.
+- `pnpm check` now passes both decomposition gates, workflow removal and Run
+  configuration checks. It stops at the existing server-boundary audit parser,
+  which rejects the phase-based route registration in
+  `internal-native-commands.ts:288`. Later chained checks did not run through
+  that command.
+- Independently running later checks confirms network tranche one, Code and
+  Codex upstream/patch verification, and skill template verification pass.
+  Network tranche two fails its operational-protocol field assertions
+  (`legacyFeatureTransports`, `workerLinkRelay`); its acceptance verifier fails
+  an Explorer test-name assertion. Those files are unchanged by this pass.
+  No CI ran and no verification budget was relaxed.
+
+Remaining: resolve the applicable boundary-audit integration, establish the full
+live application/worker acceptance matrix, and perform the user demo. Passing
+these fixtures does not prove all GUI rendering, reconnect, history and CUA
+coexistence requirements together.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal
