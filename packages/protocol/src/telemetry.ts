@@ -1,3 +1,4 @@
+import { nativeBehaviorAttributionSchema } from "./native-behavior-attribution.js";
 import { z } from "zod";
 import { nativeHistoryUsageSchema } from "./native-history-usage.js";
 import {
@@ -341,6 +342,7 @@ const telemetryExportTokenUsageSchema = z.object({
 });
 
 const telemetryExportBehaviorSchema = z.object({
+  nativeAttribution: nativeBehaviorAttributionSchema.optional(),
   id: z.string().min(1),
   sourceKey: z.string().min(1),
   projectId: z.string().nullable(),

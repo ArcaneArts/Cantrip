@@ -26,3 +26,5 @@ export * from "./native-account-defaults.js";
 export * from "./native-model-attribution.js";
 export * from "./native-turn-model-attribution.js";
 export * from "./native-history-usage.js";
+
+export * from "./native-behavior-attribution.js";

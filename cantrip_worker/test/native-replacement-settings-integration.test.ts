@@ -1,3 +1,4 @@
+import { ModelBehaviorTracker } from "../../cantrip_server/src/analytics/model-behavior.js";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { once } from "node:events";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
@@ -13,7 +14,10 @@ import {
 import { discoverCodexRuntime } from "../src/codex/discovery.js";
 import { ManagedSessionCoordinator } from "../src/codex/managed-session.js";
 import { nativeHistoryUsageForTurn } from "../src/native-history-usage.js";
-import { reconcileNativeHistoryUsage } from "@cantrip/protocol";
+import {
+  reconcileNativeHistoryUsage,
+  summarizeNativeBehaviorAttribution,
+} from "@cantrip/protocol";
 
 const binary = process.env.CANTRIP_CODEX_TEST_BINARY?.trim();
 
@@ -28,6 +32,7 @@ describe.skipIf(!binary)("native replacement GUI turn settings", () => {
     const cwd = path.join(root, "workspace");
     const requests: Record<string, unknown>[] = [];
     const activities: unknown[] = [];
+    const behavior = new ModelBehaviorTracker();
     let releaseResponse!: () => void;
     const responseReady = new Promise<void>((resolve) => {
       releaseResponse = resolve;
@@ -262,7 +267,10 @@ describe.skipIf(!binary)("native replacement GUI turn settings", () => {
       expect(handedOff).toBe(true);
       expect(replacement.threadId).not.toBe(prepared.threadId);
       const turn: RunAgentTurnOptions = {
-        onActivity: (activity) => activities.push(activity),
+        onActivity: (activity) => {
+          activities.push(activity);
+          behavior.observeNativeEvent({ type: "agent.activity", activity });
+        },
         cwd,
         threadId: replacement.threadId,
         model,
@@ -315,6 +323,18 @@ describe.skipIf(!binary)("native replacement GUI turn settings", () => {
           routeId: chosen.routeId,
           modelId: chosen.id,
         }),
+      });
+      expect(behavior.snapshot().nativeAttribution.captures).toEqual(
+        expect.arrayContaining([capture]),
+      );
+      expect(
+        summarizeNativeBehaviorAttribution(
+          behavior.snapshot().nativeAttribution,
+        ),
+      ).toMatchObject({
+        selection: { modelId: chosen.id, routeId: chosen.routeId },
+        reasoningEffort: "low",
+        reasoningKnown: true,
       });
       expect(activities).toEqual(
         expect.arrayContaining([

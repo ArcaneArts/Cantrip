@@ -2925,6 +2925,54 @@ migration, replacement TUI/queue/history continuity, remaining all-origin native
 lifecycle/CUA acceptance, then eager eligible preparation with GUI-default
 presentation and the necessary final user demo. The full goal is still active.
 
+### Pass 32 — native attribution for logical-attempt behavior metrics
+
+The live GUI behavior tracker now retains observed native turn IDs and immutable
+root/child model captures. Running and final observations carry this evidence
+through the existing runtime wrapper. Empty or incomplete native evidence no
+longer inherits the launch model. A logical attempt with different captured
+selections remains unattributed by model; a mixed or unknown reasoning dimension
+is not classified as provider-default reasoning. The actual captured default
+(null) remains distinguishable from an evidence gap. Multiple captured physical
+turns do not masquerade as one turn, including identical turn IDs on different
+threads. Historical per-turn usage and message attribution remain separate.
+
+The behavior writer is extracted from the telemetry repository and serializes
+updates by owner/source inside a short database transaction. Capture sets merge
+monotonically across concurrent or stale updates, retain conflicts explicitly,
+and survive finalization and restart. Source reuse across attempts and captured
+worker/account/provider changes are rejected. Owned routes provide usable labels;
+missing catalogs cannot fall back to the bootstrap model. Final observations may
+receive late attribution without being reopened or losing their recorded metrics.
+Migration 0216 adds one nullable native-attribution column. Exports retain the
+content-free evidence; legacy records without capture retain their earlier
+semantics rather than receiving fabricated retrospective attribution.
+
+Validation: 24 tests passed across native behavior attribution, existing behavior
+counters, telemetry dashboard and catalog persistence. The new cases exercise
+real migrated PGlite storage, concurrent root/child writes, incomplete/conflicting
+captures, omitted late-bootstrap evidence, restart, schema-validated export,
+owner/source scope, actual constraint failure/rollback/retry, deleted routes,
+late running updates, default-versus-unknown dashboard grouping and the production
+runtime wrapper. The actual pinned native replacement/settings fixture passed
+with the real activity stream feeding the behavior tracker: the provider request
+and behavior capture retain the running model after changing next-turn settings.
+Workspace typechecks and changed-file formatting pass. The generated snapshot
+changes only the intended column. `pnpm check` still stops at the pre-existing
+runtime decomposition issues: chat-turn-runtime is now 2321 lines (two event/result
+observation calls added), and task-routes remains 2149, both over 1999. No CI,
+personal desktop input, user-worker restart or native binary change ran.
+
+These remain logical-attempt behavior observations collected by the existing
+live GUI observer, not a newly invented CLI history-derived behavioral record.
+Unavailable historical behavioral signals are not synthesized; canonical
+all-origin usage/timing/history recovery is handled by the prior passes. This
+pass does not change input authority, execution controls or session startup.
+Remaining full-goal work is controlled provider/account migration, replacement
+TUI/queue/history continuity, the remaining actual native lifecycle/CUA acceptance,
+eager eligible preparation with GUI-default presentation, and the final necessary
+user implementation test. The full goal remains active.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal
