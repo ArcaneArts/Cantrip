@@ -192,27 +192,30 @@ export async function createNativeSharedViewFixture(
       projectId,
       placementId,
     };
-    const { threadId } = await new ManagedSessionCoordinator(
-      path.join(data, "managed-sessions"),
-    ).prepare({
-      identity,
-      runtime: r,
-      configuration: {
-        cwd,
-        model,
-        provider,
-        threadId: null,
-        permissionProfileId,
-        planMode: options.planMode ?? "default",
-        executionProfile: "ide",
-        mcpServers: cua?.servers ?? [],
-        intent: "configure",
-        subagentDefaults: null,
-      },
-      onThreadIdentified: async (id) => {
-        await f.bindThread(id);
-      },
-    });
+    const configuration = {
+      cwd,
+      model,
+      provider,
+      threadId: null,
+      permissionProfileId,
+      planMode: options.planMode ?? "default",
+      executionProfile: "ide" as const,
+      mcpServers: cua?.servers ?? [],
+      intent: "configure" as const,
+      subagentDefaults: null,
+    };
+    const prepare = (intent: "configure" | "preserve") =>
+      new ManagedSessionCoordinator(
+        path.join(data, "managed-sessions"),
+      ).prepare({
+        identity,
+        runtime: r,
+        configuration: { ...configuration, intent },
+        onThreadIdentified: async (id) => {
+          await f.bindThread(id);
+        },
+      });
+    const { threadId } = await prepare("configure");
     const preparedMode = (await r.readNativeThreadSettings(threadId)).confirmed
       ?.settings.collaborationMode.mode;
     const transport = {
@@ -230,43 +233,45 @@ export async function createNativeSharedViewFixture(
         key: new Uint8Array(32).fill(73),
       }),
     } as WorkerEncryptionService;
-    const adapter = new ManagedNativeCommandSession({
-      identity,
-      runtime: r,
-      client,
-      encryption,
-      policy: {
-        cwd,
-        codexHome: home,
-        permissionProfileId,
-        security: nativePermissionPatch(permissionProfileId),
-      },
-      onError: (error) => errors.push(error),
-      beginExecution: async (grant, session) => {
-        const release = cua?.activate(grant, session.threadId!);
-        return {
-          options: {
-            cwd,
-            model,
-            provider,
-            chatId,
-            captureProtectedDiagnostics: false,
-            ...interactionCallbacks,
-            onMessage: (message) => messages.push(message.text),
-          },
-          complete: async (result) => {
-            completed.push(result.turnId!);
-          },
-          failed: async (error) => {
-            turnFailures.push(error);
-          },
-          release: async () => {
-            await release?.();
-          },
-        };
-      },
-    });
-    const generation = r.transportGeneration!;
+    const createAdapter = () =>
+      new ManagedNativeCommandSession({
+        identity,
+        runtime: r,
+        client,
+        encryption,
+        policy: {
+          cwd,
+          codexHome: home,
+          permissionProfileId,
+          security: nativePermissionPatch(permissionProfileId),
+        },
+        onError: (error) => errors.push(error),
+        beginExecution: async (grant, session) => {
+          const release = cua?.activate(grant, session.threadId!);
+          return {
+            options: {
+              cwd,
+              model,
+              provider,
+              chatId,
+              captureProtectedDiagnostics: false,
+              ...interactionCallbacks,
+              onMessage: (message) => messages.push(message.text),
+            },
+            complete: async (result) => {
+              completed.push(result.turnId!);
+            },
+            failed: async (error) => {
+              turnFailures.push(error);
+            },
+            release: async () => {
+              await release?.();
+            },
+          };
+        },
+      });
+    let adapter = createAdapter();
+    let generation = r.transportGeneration!;
     const session = {
       chatId,
       threadId,
@@ -281,21 +286,25 @@ export async function createNativeSharedViewFixture(
     r.setManagedNativeCommandDispatcher(threadId, (command) =>
       adapter.executeGuiCommand(session, command),
     );
-    gateway = await createManagedNativeGateway({
-      identity: {
-        ...identity,
-        threadId,
-        runtimeGeneration: generation,
-        modelRouteId: model.routeId,
-        providerAccountId: null,
-      },
-      upstreamUrl: await r.remoteEndpoint(model, provider),
-      isCurrent: () => r.transportGeneration === generation,
-      onNativeMessage: (frame) => frames.push(frame),
-      admit: (operation) => adapter.admit(operation),
-      resolveReply: (operation, frame) =>
-        adapter.resolveReply(operation, frame),
-    });
+    const openGateway = async () => {
+      const attachedGeneration = generation;
+      return createManagedNativeGateway({
+        identity: {
+          ...identity,
+          threadId,
+          runtimeGeneration: generation,
+          modelRouteId: model.routeId,
+          providerAccountId: null,
+        },
+        upstreamUrl: await r.remoteEndpoint(model, provider),
+        isCurrent: () => r.transportGeneration === attachedGeneration,
+        onNativeMessage: (frame) => frames.push(frame),
+        admit: (operation) => adapter.admit(operation),
+        resolveReply: (operation, frame) =>
+          adapter.resolveReply(operation, frame),
+      });
+    };
+    gateway = await openGateway();
     const historyClient = new NativeHistoryClient(transport);
     const openHistory = () =>
       new ManagedNativeHistory({
@@ -313,7 +322,7 @@ export async function createNativeSharedViewFixture(
     history.bind({ runtime: r, chatId, threadId });
     terminal = new TerminalManager({ environment: { HOME: home } });
     const t = terminal;
-    const remoteUrl = gateway.url;
+    let remoteUrl = gateway.url;
     const openTerminal = () =>
       t
         .open(
@@ -383,7 +392,9 @@ export async function createNativeSharedViewFixture(
       authority: f,
       runtime: r,
       threadId,
-      generation,
+      get generation() {
+        return generation;
+      },
       frames,
       messages,
       completed,
@@ -397,6 +408,60 @@ export async function createNativeSharedViewFixture(
       interactionExpired,
       preparedMode,
       attachedMode,
+      async restartRuntime(afterExit?: () => Promise<void>) {
+        const oldGeneration = generation;
+        const oldSession = { ...session };
+        const oldAdapter = adapter;
+        const process = children.at(-1)!;
+        expect(process.exitCode).toBeNull();
+        expect(process.signalCode).toBeNull();
+        t.close("shared-tui");
+        await attachment;
+        await gateway!.close();
+        await history!.stop();
+        const exited = once(process, "exit");
+        expect(process.kill("SIGKILL")).toBe(true);
+        await exited;
+        await vi.waitFor(() => expect(r.transportGeneration).toBeNull());
+        await afterExit?.();
+        const restored = await prepare("preserve");
+        expect(restored.threadId).toBe(threadId);
+        generation = r.transportGeneration!;
+        expect(generation).not.toBe(oldGeneration);
+        session.runtimeGeneration = generation;
+        session.connectionId = `gui:${generation}`;
+        adapter = createAdapter();
+        r.setManagedNativeCommandDispatcher(threadId, (command) =>
+          adapter.executeGuiCommand(session, command),
+        );
+        gateway = await openGateway();
+        remoteUrl = gateway.url;
+        history = openHistory();
+        history.bind({ runtime: r, chatId, threadId });
+        terminalOutput = "";
+        display.reset();
+        terminalSettled = false;
+        attachment = openTerminal();
+        void attachment.catch((error) => errors.push(error));
+        await vi.waitFor(
+          () => {
+            const resumes = f.phases.filter(
+              (entry) =>
+                entry.phase === "admit" &&
+                entry.body.method === "thread/resume" &&
+                entry.body.session.runtimeGeneration === generation,
+            );
+            expect(resumes).toHaveLength(1);
+            expect(f.receipts.get(resumes[0]!.body.operationId)?.status).toBe(
+              "applied",
+            );
+            expect(terminalText()).toContain(model.name);
+          },
+          { timeout: 15000 },
+        );
+        await history.flush();
+        return { oldGeneration, oldSession, oldAdapter };
+      },
       restartTerminal: async (startupInput = "") => {
         const resumes = f.phases.filter(
           (entry) =>
@@ -580,7 +645,7 @@ export async function createNativeSharedViewFixture(
           settled,
           clientMessageId,
           originalInput: protectedInput,
-          async finish() {
+          async finish(status: "idle" | "failed" = "idle") {
             await releaseCua?.();
             adapter.markGuiFinished(
               receipt.operationId,
@@ -592,7 +657,7 @@ export async function createNativeSharedViewFixture(
                 workerId,
                 receipt.operationId,
                 receipt.operationGeneration,
-                "idle",
+                status,
               ),
             ).toBe(true);
             adapter.completeGuiLogical(
