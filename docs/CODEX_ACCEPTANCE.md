@@ -1,11 +1,13 @@
 # Codex CLI/GUI acceptance status
 
 This reconciles the original 23-row matrix in
-[CODEX_AUDIT.md](CODEX_AUDIT.md#acceptance-and-diagnostic-plan) through pass 79.
-The implementation goal remains open until the final user demo passes. Historical
-findings in the audit describe the original baseline, not current defects.
+[CODEX_AUDIT.md](CODEX_AUDIT.md#acceptance-and-diagnostic-plan) through pass 80.
+The user confirmed the complete remaining demo on September 11, 2026:
+“Yes it all works confirmed.” Together with the recorded automated acceptance,
+this closes the scoped CLI/GUI integration goal. Historical findings in the
+audit describe the original baseline, not current defects.
 
-## Latest desktop result and next step
+## Final acceptance
 
 - Pass 77 ([#1927](https://github.com/ArcaneArts/Cantrip/pull/1927)) completed
   the top-level renderer bindings and reduced default console output. The user
@@ -20,10 +22,12 @@ findings in the audit describe the original baseline, not current defects.
   rate-limited diagnostic records the affected method and server cause code if
   it recurs. No claim is made that every backend receipt failure is resolved.
 
-**Still needed:** the cross-view, settings/control, attachment/interaction,
-piano and mobile/multi-window checks below. The user's terminal confirmation
-is not a full implementation-demo result. The current CUA inventory does not
-expose the development window; no substitute installed app was launched.
+**User acceptance received:** the confirmation answers the pending full demo
+checklist, covering cross-view work/history, settings and controls, attachments
+and interactions, piano/duet behavior, and mobile/multi-window checks. This is
+user-reported acceptance, not a new instrumented run or direct CUA observation
+by the implementation agent. No additional screenshots, timings or per-step
+thread IDs were supplied or inferred.
 
 ## Evidence boundary
 
@@ -36,17 +40,19 @@ authority and transport without operating the user's computer.
 
 The four completed 150-second cases from pass 62 remain evidence for request
 lifetime. They do not prove macOS input delivery, piano audio or a human duet.
-Pass 79 updates the evidence record only. No new private account inference,
+Pass 80 records final user acceptance only. No new private account inference,
 user worker restart, desktop input or CI job was performed.
 
 ## Original matrix reconciliation
 
-The evidence column describes the automated layer actually exercised. Rows with
-a remaining demo check are not claimed complete end to end. Test files below
-are under `cantrip_worker/test` unless another location is stated. Native tests
+The evidence column describes the automated layer actually exercised. The last
+column retains the requested demo criteria, accepted by the user's September 11
+confirmation of the whole checklist. It does not invent separate measured
+results for each row. Test files below are under `cantrip_worker/test` unless
+another location is stated. Native tests
 require an explicitly selected binary; an ordinary invocation may skip them.
 
-| #   | Original requirement                         | Automated evidence                                                                                                                                                                                                                                        | Remaining verification                                                                          |
+| #   | Original requirement                         | Automated evidence                                                                                                                                                                                                                                        | User-confirmed demo criteria                                                                    |
 | --- | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | 1   | Empty tab preboot                            | Server `native-managed-chat-preparation.test.ts` binds and attaches one real CLI without provider requests. App preparation-status tests cover state display.                                                                                             | Observe a new tab staying in GUI with its CLI already attached.                                 |
 | 2   | Creation/first-send/attach race              | `native-managed-worker-session.test.ts` joins concurrent preparation; server `managed-startup-api.test.ts` covers accepted input identity, retry and Stop during startup.                                                                                 | Immediate first send in the actual GUI.                                                         |
@@ -65,7 +71,7 @@ require an explicitly selected binary; an ordinary invocation may skip them.
 | 15  | Service-tier clear/omit and permissions      | Native settings correlation covers omitted, clear, standard and unset. Inherited-settings tests exercise native permission transitions; app permission tests distinguish pending/unavailable/confirmed state.                                             | Compare effective permissions. This macOS run is not an execution test on other OSes.           |
 | 16  | Missed completion with healthy UI            | Projection-capture tests lose a persistence response, remain otherwise idle, retry the exact batch and persist one message. App live-query and console tests refresh without the transcript mounted.                                                      | Completion visibility while switching views.                                                    |
 | 17  | Persistence failure after native read        | `native-history-projection.test.ts` and `native-history-outbox.test.ts` cover lost ACK, partial publication, checkpoint/disk failure, reopen and stable retry.                                                                                            | Combined history comparison.                                                                    |
-| 18  | Worker/runtime/UI reconnect/restart          | `native-process-recovery.test.ts` and `native-worker-process-recovery.test.ts` cover both origins, active/completed work, questions and child output with stable decrypted history and fresh authority. App retention tests cover presentation lifecycle. | Terminal stability reported after pass 78; full GUI reconnect/history comparison remains.       |
+| 18  | Worker/runtime/UI reconnect/restart          | `native-process-recovery.test.ts` and `native-worker-process-recovery.test.ts` cover both origins, active/completed work, questions and child output with stable decrypted history and fresh authority. App retention tests cover presentation lifecycle. | Terminal stability and GUI reconnect/history comparison.                                        |
 | 19  | Concurrent snapshot/live history             | Native history foundation, reducer and projection tests cover legacy/paginated live items, stale snapshots, terminal dominance and stable ordering/IDs.                                                                                                   | Combined history comparison.                                                                    |
 | 20  | Images/tools/reasoning/children/warnings     | Native history foundation exercises rich native items and restart. Rendering tests preserve sparse summaries, long output and explicit unresolved content. Whole-worker child tests verify encryption and ownership.                                      | Inspect activity details and an image attachment in both views.                                 |
 | 21  | Multi-chat/multi-window/mobile               | Native empty-thread/session tests isolate sibling contexts; app terminal retention preserves ownership; linked-console tests target two distinct chats.                                                                                                   | Actual mobile/multi-window resizing, switching and reconnect.                                   |
@@ -85,8 +91,8 @@ require an explicitly selected binary; an ordinary invocation may skip them.
   actual persistence/replay. Full worker restart evidence from passes 69–73 is
   distinct from component reconstruction or restarting only the native process.
 - GUI-first presentation and retained terminal ownership are implemented. The
-  final desktop/mobile demo remains necessary; mounted tests are not screenshots
-  of the running product.
+  user confirmed the final desktop/mobile demo. Mounted tests remain separate
+  evidence and are not screenshots of the running product.
 - The full repository check is not green. Exact results and focused evidence are
   recorded through audit pass 76; failed checks are not counted as successful tests.
 
@@ -131,10 +137,12 @@ These CUA fixtures explicitly select `--backend fake`. Full 150-second playback
 is a separate opt-in retained in audit pass 62; it was not repeated for this
 discovery change. Passes 68–73 retain native/worker crash-recovery evidence.
 
-## Final user implementation demo — partially confirmed
+## Final user implementation demo — confirmed September 11, 2026
 
-The user has confirmed that CLI switching works and reported improvement after
-the reconnect fix. The rest of this demo has not been reported complete.
+The user confirmed that the whole remaining checklist works. The steps below
+are retained for future regression testing; they are no longer pending goal
+work. Acceptance is based on that user report, without claiming additional
+agent-observed desktop testing.
 
 Use the updated app/server/worker and packaged CLI. Create a disposable agent
 chat and keep GUI as its initial view.

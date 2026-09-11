@@ -5,9 +5,10 @@ Source baseline: `970860ea6b197efaaa491c18fa60b1fa84a743e7`.
 Bundled upstream: Codex `0.153.4`, tag `rust-v0.153.4`, commit
 `3d2ee51ca2d5db578f328aa75e20aa22c0197c9a`, plus Cantrip's reviewed patches.
 
-Current implementation and remaining demo checks are tracked in
-[CODEX_ACCEPTANCE.md](CODEX_ACCEPTANCE.md). The original source findings and
-baseline-state tables below are historical; they must not be used as evidence
+Current implementation and final acceptance are tracked in
+[CODEX_ACCEPTANCE.md](CODEX_ACCEPTANCE.md). The user confirmed the full remaining
+demo on September 11, 2026; pass 80 records completion of the scoped goal.
+The original source findings and baseline-state tables below are historical; they must not be used as evidence
 that an already delivered feature is still missing.
 
 ## Decision and scope
@@ -5346,6 +5347,39 @@ pass does not claim direct visual acceptance or launch another Cantrip instance.
 Documentation links and reproduction paths are checked locally; no runtime
 change, broad test rerun, private inference or CI job is part of this pass.
 
+**Pass 80 — final user acceptance and goal completion:**
+
+After receiving the complete remaining demo checklist, the user confirmed on
+September 11, 2026: “Yes it all works confirmed.” This supplies the missing
+human acceptance for cross-view work/history, settings and controls,
+attachments/interactions, piano/duet behavior and mobile/multi-window checks.
+It is a user report, not an additional agent-operated desktop run; no new
+per-step IDs, screenshots, audio recordings or timings are claimed.
+
+The six objective areas are covered by the implementation and acceptance
+records: shared preparation/configuration; exact-turn MCP/CUA authority;
+authorized lifecycle/queue/interaction commands; encrypted durable history and
+recovery; settings/slash-command parity; and GUI-first eager startup with final
+presentation acceptance. The current 23-row checklist now distinguishes the
+recorded automated evidence from the accepted user demo criteria. No remaining
+scoped implementation or manual acceptance item is identified.
+
+Existing evidence limits remain explicit. The broad repository check has the
+failures recorded through pass 76 and is not retroactively marked green.
+External OAuth authorization and execution on other operating systems were not
+claimed by this macOS acceptance. The original production receipt failure's
+precise cause remains unconfirmed; pass 78 repaired its reproduced reconnect
+escalation and the user confirmed the resulting behavior. This completion is
+for the requested integration, not a claim that every unrelated repository test
+or possible backend failure is resolved.
+
+Validation for this documentation pass: the current checkout matches the merged
+implementation baseline, the retained final native/gateway test log reports
+25 passes, and the worker typecheck log is retained. Reproduction file paths,
+Markdown formatting and diff checks are verified without rerunning unchanged
+runtime suites. No CI, private inference, desktop input or app launch is part
+of this pass. Delivery uses the required isolated PR and squash automerge.
+
 ### What “perfect mirror” must mean
 
 The table in this historical design section describes the original audited
@@ -5957,3 +5991,8 @@ reviewed and this report is merged. The product implementation is a separate
 follow-on effort. It is complete only when the full mirror behavior above is
 demonstrated on the pinned runtime, including both input origins and failure
 recovery—not merely when a CLI window appears early.
+
+The follow-on integration described above is now implemented and accepted:
+pass 80 records the final user confirmation, alongside the automated evidence
+in [CODEX_ACCEPTANCE.md](CODEX_ACCEPTANCE.md). Earlier pending-work statements
+remain historical pass records rather than current blockers.
