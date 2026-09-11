@@ -1,3 +1,4 @@
+import { useChatExecutionControls } from "./use-chat-execution-controls";
 import { nativePermissionControlState } from "./native-permission-control-state";
 import type {
   AgentInteractionResponse,
@@ -146,13 +147,11 @@ import {
   getSkills,
   getTask,
   getWorkers,
-  interruptChat,
   loadChatAttachmentContent,
   retryChatTurn,
   reorderQueuedPrompts,
   respondToAgentInteractionRequest,
   saveChatComposerDraft,
-  setChatPaused,
   startTurn,
   steerQueuedPrompt,
   syncChat,
@@ -1399,61 +1398,10 @@ export function useChatTranscriptController({
       await queryClient.invalidateQueries({ queryKey: ["goal", chat.id] });
     },
   });
-  const setAutomationPaused = useMutation({
-    mutationFn: (paused: boolean) => setChatPaused(chat.id, paused),
-    onSettled: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: projectChatQueryKey }),
-        queryClient.invalidateQueries({ queryKey: ["goal", chat.id] }),
-        queryClient.invalidateQueries({ queryKey: ["messages", chat.id] }),
-        queryClient.invalidateQueries({ queryKey: ["prompt-queue", chat.id] }),
-      ]);
-    },
-  });
-  const interrupt = useMutation({
-    mutationFn: async () => {
-      const startedAt = performance.now();
-      clientLogger.info("Chat interruption requested", {
-        chatId: chat.id,
-        event: "chat.turn.interrupt.started",
-        operation: "interrupt-turn",
-        projectId: chat.projectId,
-        subsystem: "chat",
-      });
-      try {
-        const result = await interruptChat(chat.id);
-        clientLogger.info("Chat interruption completed", {
-          chatId: chat.id,
-          durationMs: Math.round(performance.now() - startedAt),
-          event: "chat.turn.interrupt.completed",
-          operation: "interrupt-turn",
-          projectId: chat.projectId,
-          status: "completed",
-          subsystem: "chat",
-        });
-        return result;
-      } catch (error) {
-        clientLogger.warn("Chat interruption failed", {
-          chatId: chat.id,
-          durationMs: Math.round(performance.now() - startedAt),
-          ...operationalErrorMetadata(error),
-          event: "chat.turn.interrupt.failed",
-          operation: "interrupt-turn",
-          projectId: chat.projectId,
-          reasonCode: "request-failed",
-          status: "failed",
-          subsystem: "chat",
-        });
-        throw error;
-      }
-    },
-    onSettled: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: projectChatQueryKey }),
-        queryClient.invalidateQueries({ queryKey: ["messages", chat.id] }),
-        queryClient.invalidateQueries({ queryKey: ["prompt-queue", chat.id] }),
-      ]);
-    },
+  const { setAutomationPaused, interrupt } = useChatExecutionControls({
+    chatId: chat.id,
+    projectId: chat.projectId,
+    projectChatQueryKey,
   });
   const [answerPlanPending, setAnswerPlanPending] = useState(false);
   const [answerPlanError, setAnswerPlanError] = useState<string | null>(null);
