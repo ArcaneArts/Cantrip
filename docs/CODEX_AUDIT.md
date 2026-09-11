@@ -5,6 +5,11 @@ Source baseline: `970860ea6b197efaaa491c18fa60b1fa84a743e7`.
 Bundled upstream: Codex `0.153.4`, tag `rust-v0.153.4`, commit
 `3d2ee51ca2d5db578f328aa75e20aa22c0197c9a`, plus Cantrip's reviewed patches.
 
+Current implementation and remaining demo checks are tracked in
+[CODEX_ACCEPTANCE.md](CODEX_ACCEPTANCE.md). The original source findings and
+baseline-state tables below are historical; they must not be used as evidence
+that an already delivered feature is still missing.
+
 ## Decision and scope
 
 Cantrip can support an already-running CLI when a new agent chat is created,
@@ -5284,7 +5289,67 @@ The broad run began before the dedicated preparation event change; the final
 focused tests, protocol suite, build and typechecks cover that change. The full
 check is not green. No app launch, personal desktop input or CI job was used.
 
+**Pass 77 (#1927) — complete renderer bindings and default console output:**
+
+The first placement repair did not pass the terminal inventory from
+`ApplicationShell` into its renderer bindings. That omission kept the CLI
+invisible even though the toggle and lower-level rendering tests worked.
+The top-level binding now supplies the inventory, and both it and the
+console-open chat set are required by the TypeScript boundary. The omitted
+field was reproduced as a compilation failure before the fix.
+
+Routine debug/trace records, including successful HTTP access records, remain
+in diagnostic archives and buffers without printing to the default service
+console. Explicit debug/trace logging still enables them; warnings, errors and
+startup information remain visible. This reduces console output, not the
+underlying frequency of every chat refresh.
+
+Validation: 16 focused rendering/terminal tests and 37 logging tests passed;
+app production build/typecheck, logging typecheck and diff checks passed.
+Subsequent user feedback confirmed that view switching worked and isolated the
+remaining flicker to the terminal contents, not GUI/CLI switching.
+
+**Pass 78 (#1928) — retain CLI attachment after receipt failures:**
+
+The user's recording shows the native CLI reporting connection loss and
+reinitializing repeatedly. Native logs also show repeated plugin-discovery
+failures. A deterministic test with the actual pinned TUI reproduced this loop
+by failing a discovery receipt acknowledgement after native execution.
+The gateway previously sent an error with a null request ID and closed the
+socket. Codex rejected that frame as invalid JSON-RPC, reconnected, and ran
+startup discovery again.
+
+Receipt settlement failures now stay correlated to their original request and
+leave the connection open. The result identifies the native operation as
+already dispatched with an unconfirmed receipt, preserves the server cause
+code, and warns against automatic replay. The diagnostic is rate-limited and
+does not include message/input/receipt content. Deferred-permission retention
+handling remains unchanged.
+
+Validation: the real native regression failed before the fix and retained one
+connection afterward. All 25 focused gateway/native-TUI tests passed, including
+no replay after discovery, turn-start and settings receipt failures; worker
+typecheck and diff checks passed. The exact original production settlement
+failure was not captured and is not claimed resolved. After this merge, the
+user reported the result was looking good and requested continuation of the
+goal. That confirms the reported terminal symptom improved; it does not certify
+every remaining acceptance row.
+
+**Pass 79 — record desktop feedback and final acceptance handoff:**
+
+The current checklist incorporates passes 77–78 and the user's confirmation.
+It preserves the distinction between real native tests, mounted UI tests and
+unperformed desktop/mobile checks. The next requirement is the remaining
+cross-view user demo, not reimplementing already delivered session plumbing.
+A CUA inventory check did not expose the running development window, so this
+pass does not claim direct visual acceptance or launch another Cantrip instance.
+Documentation links and reproduction paths are checked locally; no runtime
+change, broad test rerun, private inference or CI job is part of this pass.
+
 ### What “perfect mirror” must mean
+
+The table in this historical design section describes the original audited
+baseline. Use the current acceptance checklist for implementation status.
 
 It means equivalent conversation and control state, not pixel-identical terminal
 and web layouts. Both surfaces must show the same accepted user input, assistant
