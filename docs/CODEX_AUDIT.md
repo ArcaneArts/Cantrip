@@ -5189,6 +5189,63 @@ against current implementation and evidence, any concrete gaps that review
 finds, and the final user implementation demo. No user worker restart, desktop
 input or CI job was used.
 
+**Pass 75 — acceptance reconciliation and startup discovery:**
+
+The original 23-row acceptance matrix now has a current
+[requirement/evidence/demo checklist](CODEX_ACCEPTANCE.md). It distinguishes
+actual pinned-runtime, server/persistence and mounted-component evidence from
+macOS/mobile presentation and human-input checks that still require the final
+user demo. The original requirements and historical evidence remain intact.
+
+The missing real MCP-elicitation acceptance is now covered. A local stdio peer
+requests an empty confirmation form during a model-initiated tool call. The
+native runtime first requests permission to call that tool, then presents the
+peer's form. GUI-originated work is answered through the physical TUI; terminal
+work is answered through the worker's admitted GUI reply path. Both requests
+receive exactly one admitted response, the real MCP peer receives one acceptance,
+the model receives its tool result, and a duplicate answer is rejected. The
+initial test incorrectly expected only the peer's prompt; it was corrected to
+verify both actual prompts. No external OAuth flow or browser was opened.
+
+That run also exposed a real startup race: the CLI rendered a skills/list
+`stale-activation` error after the first GUI turn began. Skill and hook discovery
+were being invalidated by an unrelated turn transition between admission and
+dispatch. Those two methods now retain session-scoped admission across turn
+start/completion. Ownership, placement, runtime/connection and permission checks
+remain enforced. Ordinary mutations, Stop, interaction replies and CUA retain
+exact activation requirements. The deterministic repository regression first
+reproduced the skills-list replay failure; the second initial test was affected
+by the shared fixture's still-active failed case. The final regression covers
+both methods and also rejects a mismatched runtime before successful dispatch.
+
+Validation with the final reviewed native binary:
+
+- 26 native preparation/settings/account/migration cases in 12 files pass.
+- 37 native control cases in seven files pass after the discovery fix, including
+  MCP elicitation, ordinary questions/approvals, steering, pause, queues and all
+  four fake-CUA input origins/tool formats. Full 150-second playback was not
+  repeated; pass 62 retains that separate evidence.
+- 52 history foundation/projection/outbox cases pass with native live-history
+  assertions enabled, including real persistence retry and native restart.
+- 17 startup/preparation cases pass, including real eager PTY attachment and
+  server first-send routes. All 59 server admission cases pass, including stale
+  Stop/reply protections and the new discovery regression.
+- 467 app chat/terminal/live-query cases pass with two skips. Worker and app
+  builds, final server/worker typechecks and scoped formatting pass.
+
+The required `RUST_TEST_THREADS=1 pnpm check` stopped at the full server suite:
+40 failures, 1,370 passes, 70 skips. All failure headings also occurred in pass
+74; its extra tunnel-renewal observer failure did not recur. This broad run
+started before the discovery edit and new repository tests. Final server
+admission and actual-native control runs cover that change. Full worker/app
+suites and global formatting were not reached; this is not a green full check.
+
+No additional native patch, user worker restart, private account inference,
+personal desktop input or CI job was used. The implementation remains subject
+to the exact final user demo in the current checklist. Actual mobile/multi-window
+presentation, account-specific picker display, unfocused piano audio/input and
+human duet behavior have not been claimed from simulated acceptance.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal
