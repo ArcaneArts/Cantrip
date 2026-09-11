@@ -4,6 +4,14 @@ Cantrip exposes a bounded, read-only service console in **Settings → Logs**.
 It is intended for diagnosing the Cantrip client, its local embedded runtime,
 and linked worker processes without granting filesystem or terminal access.
 
+## Console verbosity
+
+Routine worker command traces and successful HTTP requests remain available in
+the diagnostic buffers and daily archives, but are quiet on the default service
+console. Startup messages, warnings, and errors remain visible. Set
+`CANTRIP_LOG_LEVEL=debug` (or `trace`) when detailed console output is needed; this
+controls console output, not diagnostic retention.
+
 ## Operational record contract
 
 Server, worker, and deliberate client events use one structured logging path.

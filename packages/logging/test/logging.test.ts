@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   createServiceLogger,
@@ -169,5 +169,75 @@ describe("service logging", () => {
         requestId: "safe-request-id",
       },
     });
+  });
+});
+
+describe("default console verbosity", () => {
+  it("retains debug diagnostics without printing routine traffic", () => {
+    const stdout = vi.spyOn(process.stdout, "write").mockReturnValue(true);
+    const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+    const records = vi.fn();
+    vi.stubEnv("CANTRIP_LOG_LEVEL", "info");
+    try {
+      const logger = createServiceLogger("worker", { onRecord: records });
+      logger.debug("Worker command dispatched");
+      logger.trace("Frame received");
+      expect(stdout).not.toHaveBeenCalled();
+      expect(records).toHaveBeenCalledTimes(2);
+      logger.info("Worker ready");
+      logger.warn("Connection failed");
+      expect(stdout).toHaveBeenCalledTimes(1);
+      expect(stderr).toHaveBeenCalledTimes(1);
+      vi.stubEnv("CANTRIP_LOG_LEVEL", "debug");
+      logger.debug("Requested diagnostic");
+      expect(stdout).toHaveBeenCalledTimes(2);
+    } finally {
+      stdout.mockRestore();
+      stderr.mockRestore();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("archives successful HTTP requests quietly and prints failures", () => {
+    const stdout = vi.spyOn(process.stdout, "write").mockReturnValue(true);
+    const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+    const records = vi.fn();
+    vi.stubEnv("CANTRIP_LOG_LEVEL", "info");
+    try {
+      const stream = createPinoServiceLogStream("server", {
+        onRecord: records,
+      });
+      for (const statusCode of [200, 204, 400, 500]) {
+        stream.write(
+          JSON.stringify({
+            level: 30,
+            reqId: String(statusCode),
+            msg: "incoming request",
+            req: { method: "GET", url: "/api/projects/project/chats" },
+          }),
+        );
+        stream.write(
+          JSON.stringify({
+            level: 30,
+            reqId: String(statusCode),
+            msg: "request completed",
+            res: { statusCode },
+            responseTime: 2,
+          }),
+        );
+      }
+      expect(stdout).not.toHaveBeenCalled();
+      expect(stderr).toHaveBeenCalledTimes(2);
+      expect(records.mock.calls.map(([record]) => record.level)).toEqual([
+        "debug",
+        "debug",
+        "warn",
+        "error",
+      ]);
+    } finally {
+      stdout.mockRestore();
+      stderr.mockRestore();
+      vi.unstubAllEnvs();
+    }
   });
 });

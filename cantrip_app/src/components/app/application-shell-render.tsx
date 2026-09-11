@@ -1,3 +1,4 @@
+import type { TerminalSummary } from "@cantrip/protocol";
 import { DEFAULT_ELITE_REVEAL_CONFIG } from "@cantrip/glitch";
 import { TabColorDialogHost } from "@/components/workspace/tab-color";
 import { useCallback, useEffect, useState } from "react";
@@ -22,6 +23,8 @@ import { ShellSidebar } from "@/components/app/shell-sidebar";
 import type { useTabLayoutOperations } from "@/components/app/tab-layout-operations";
 
 type ApplicationShellRenderBindings = Readonly<Record<string, any>> & {
+  terminals: { data: TerminalSummary[] | undefined };
+  chatConsoleOpenChats: ReadonlySet<string>;
   tabLayoutMutation: ReturnType<
     typeof useTabLayoutOperations
   >["tabLayoutMutation"];
