@@ -218,22 +218,20 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
         : event.scope.kind === "current-user"
           ? [["git-conflicts"]]
           : [];
+    case "chat-preparation": {
+      const chatId =
+        event.scope.kind === "chat" ? event.scope.chatId : event.entityId;
+      return chatId ? [["managed-chat-preparation", chatId]] : [];
+    }
     case "chat":
       return projectId
-        ? [
-            ["chats", projectId],
-            event.entityId
-              ? ["managed-chat-preparation", event.entityId]
-              : ["managed-chat-preparation"],
-            ["run-configurations", projectId],
-          ]
+        ? [["chats", projectId]]
         : event.scope.kind === "chat"
           ? [
               ["standalone-chats"],
               ["messages", event.scope.chatId],
               ["chat-runtime-selection", event.scope.chatId],
               ["native-settings", event.scope.chatId],
-              ["managed-chat-preparation", event.scope.chatId],
               ["task-dashboard", event.scope.chatId],
             ]
           : event.scope.kind === "current-user"

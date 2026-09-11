@@ -579,6 +579,10 @@ export function createWorkerNotificationRuntime({
             entityId: notification.terminalId,
             projectId: context.projectId,
           });
+          publishLiveInvalidation("chat-preparation", {
+            chatId: changed.chatId,
+            entityId: changed.chatId,
+          });
           publishLiveInvalidation("chat", {
             chatId: changed.chatId,
             projectId: context.projectId,

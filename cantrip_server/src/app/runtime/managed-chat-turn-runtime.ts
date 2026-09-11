@@ -13,14 +13,17 @@ export function createManagedChatTurnRuntime(
   deps: ChatTurnRuntimeDependencies &
     Pick<ReturnType<typeof createModelRoutingRuntime>, "runtimeForContext"> & {
       app: FastifyInstance;
-      publishChatInvalidation(chatId: string, kind: "chat"): void;
+      publishChatInvalidation(
+        chatId: string,
+        kind: "chat" | "chat-preparation",
+      ): void;
     },
 ) {
   const preparation = createManagedChatPreparation({
     ...deps,
     publish: (ownerId, chatId) => {
       void deps.runAsOwner(ownerId, async () =>
-        deps.publishChatInvalidation(chatId, "chat"),
+        deps.publishChatInvalidation(chatId, "chat-preparation"),
       );
     },
   });

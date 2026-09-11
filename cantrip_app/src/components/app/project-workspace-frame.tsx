@@ -533,6 +533,9 @@ function genericPaneBody(
       </div>
     );
   }
+  const paneBindings = projectPaneRenderBindings(bindings, presentation);
+  // The persistent layer places linked CLIs in the same host as their chat.
+  if (paneBindings.terminalSurfaceVisible) return null;
   return (
     <div
       className={cn(
@@ -544,9 +547,7 @@ function genericPaneBody(
       key={presentation.pane.id}
       style={nested ? undefined : { gridArea: presentation.gridArea }}
     >
-      <GlobalContentHost
-        bindings={projectPaneRenderBindings(bindings, presentation)}
-      />
+      <GlobalContentHost bindings={paneBindings} />
     </div>
   );
 }

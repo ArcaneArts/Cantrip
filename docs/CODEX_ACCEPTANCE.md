@@ -1,9 +1,14 @@
 # Codex CLI/GUI acceptance status
 
 This reconciles the original 23-row matrix in
-[CODEX_AUDIT.md](CODEX_AUDIT.md#acceptance-and-diagnostic-plan) after pass 75.
+[CODEX_AUDIT.md](CODEX_AUDIT.md#acceptance-and-diagnostic-plan) through pass 76.
 The implementation goal remains open until the final user demo passes. Historical
 findings in the audit describe the original baseline, not current defects.
+
+The first desktop feedback exposed a CLI toggle that changed the header without
+showing the terminal. Pass 76 fixes linked-terminal placement in chat panes and
+unnecessary Run/preparation refreshes. Mounted rendering and HTTP regressions
+cover those paths; repeat demo steps 1–2 below on the updated app and server.
 
 ## Evidence boundary
 
