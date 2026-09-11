@@ -9,6 +9,11 @@ const lifecycle = vi.hoisted(() => ({
   released: [] as string[],
 }));
 
+vi.mock("./linked-console-controls", () => ({
+  LinkedConsoleControls: ({ chatId }: { chatId: string }) =>
+    createElement("div", { "data-console-controls-chat": chatId }),
+}));
+
 vi.mock("./terminal-view", () => ({
   TerminalView: ({
     terminal,
@@ -119,6 +124,43 @@ describe("Persistent terminal views", () => {
         remove() {},
       }),
     });
+  });
+
+  it("shows controls only for the visible linked chat without replacing its terminal", async () => {
+    const linked = terminal("linked", "chat-linked");
+    const shell = terminal("shell");
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(render(linked, [linked, shell]));
+    });
+    expect(
+      renderer.root.findAllByProps({
+        "data-console-controls-chat": "chat-linked",
+      }),
+    ).toHaveLength(1);
+    const instance = renderer.root.findByProps({
+      "data-mock-terminal-view": true,
+    }).props["data-instance"];
+    await act(async () => renderer.update(render(shell, [linked, shell])));
+    expect(
+      renderer.root.findAllByProps({
+        "data-console-controls-chat": "chat-linked",
+      }),
+    ).toHaveLength(0);
+    await act(async () => renderer.update(render(linked, [linked, shell])));
+    expect(
+      renderer.root.findAllByProps({
+        "data-console-controls-chat": "chat-linked",
+      }),
+    ).toHaveLength(1);
+    expect(
+      renderer.root.findByProps({
+        "data-mock-terminal-view": true,
+        "data-terminal-id": linked.id,
+      }).props["data-instance"],
+    ).toBe(instance);
+    expect(lifecycle.released).toEqual([]);
+    await act(async () => renderer.unmount());
   });
 
   it("preserves an emulator instance across tab switches and releases it only after ownership closes", async () => {

@@ -5,6 +5,7 @@ import { PersistentSurfacePortal } from "@/components/app/persistent-surface-por
 import { clientLogger } from "@/lib/client-log-relay";
 import { cn } from "@/lib/utils";
 
+import { LinkedConsoleControls } from "./linked-console-controls";
 import { TerminalView } from "./terminal-view";
 
 // Xterm, its addons, and a WorkerLink stay owned here after their visible host
@@ -208,7 +209,7 @@ export function PersistentTerminalViews({
       <div
         aria-hidden={!visible}
         className={cn(
-          "min-h-0 min-w-0 flex-1 overflow-hidden",
+          "min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
           visible ? "flex" : "hidden",
         )}
         data-active={visible ? "true" : "false"}
@@ -218,6 +219,13 @@ export function PersistentTerminalViews({
         key={terminal.id}
         style={placement ? { gridArea: placement.gridArea } : undefined}
       >
+        {visible && linkedChatId ? (
+          <LinkedConsoleControls
+            key={linkedChatId}
+            chatId={linkedChatId}
+            projectId={terminal.projectId}
+          />
+        ) : null}
         <TerminalView
           commandPaletteOpen={
             visible && commandPaletteTerminalId === terminal.id

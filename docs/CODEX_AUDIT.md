@@ -5146,6 +5146,49 @@ No user desktop input, user worker restart or CI job is used. Remaining full-goa
 work includes shared-view presentation acceptance, reconciliation of the complete
 original matrix, and the final user implementation demo.
 
+**Pass 74 — shared execution controls in the linked console view:**
+
+Opening the CLI hides the GUI transcript and its composer controls. The retained
+terminal view previously exposed neither Pause/Resume/Stop nor canonical chat
+execution status; the PTY's `running` state only describes the shell. Linked
+consoles now display a compact status and control bar bound to their own chat.
+The bar reads the same project-chat query and live-event invalidations as the
+GUI, including waiting questions, approvals, failures and automatic-work pause.
+
+The GUI and console use one extracted execution-control hook, preserving the
+existing admitted server endpoints, logging and cache invalidation. Pause and
+Stop remain independent mutations: a pending safe-boundary pause cannot disable
+Stop. Missing or stale cached status does not block a real Stop request, and
+server rejections remain visible. Each simultaneously displayed console targets
+its own linked chat. Hiding or switching a presentation retains the terminal
+instance and does not submit input or release the underlying terminal.
+
+Validation: the final focused console/retention/live-query selection passes all
+39 tests, including an actual app live-event bridge update while the transcript
+is absent, two concurrent console bindings, Stop during pending Pause, and a
+rejected Stop with missing cached status. The preceding chat/terminal component
+selection passed 438 tests with two skips; these counts overlap. App typecheck
+and production build pass. These are mounted component tests with simulated
+server responses, not a new native-protocol acceptance run or a visual desktop
+demo. The underlying native pause/Stop paths were exercised in pass 72. This
+pass does not change the native TUI's own text or introduce a native slash command.
+
+The required `RUST_TEST_THREADS=1 pnpm check` stopped in the full server suite:
+41 failures, 1,369 passes and 70 skips. Forty failure headings match pass 73;
+the additional tunnel-lease renewal observer failure also reproduced in its
+focused file (27 passes, one failure); the unchanged Primary checkout passed
+all 28 tests. The existing observer test immediately renews a wall-clock lease,
+while the coordinator deliberately skips renewal when the expiry cannot advance.
+This is separate from the console-control changes; no server code or tests changed
+in this pass. Full worker/app suites and global formatting were not reached; this is
+not a green repository check. Initial new-test type/syntax errors were corrected
+before the final typecheck and focused run.
+
+Remaining work is reconciliation of the complete original acceptance matrix
+against current implementation and evidence, any concrete gaps that review
+finds, and the final user implementation demo. No user worker restart, desktop
+input or CI job was used.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal
