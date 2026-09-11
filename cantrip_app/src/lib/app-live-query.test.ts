@@ -625,11 +625,7 @@ describe("application live query bridge", () => {
           scope: { kind: "project", projectId: "project-one" },
         }),
       ),
-    ).toEqual([
-      ["chats", "project-one"],
-      ["managed-chat-preparation"],
-      ["run-configurations", "project-one"],
-    ]);
+    ).toEqual([["chats", "project-one"]]);
     expect(
       appLiveEventQueryKeys(
         event({
@@ -642,7 +638,6 @@ describe("application live query bridge", () => {
       ["messages", "chat-one"],
       ["chat-runtime-selection", "chat-one"],
       ["native-settings", "chat-one"],
-      ["managed-chat-preparation", "chat-one"],
       ["task-dashboard", "chat-one"],
     ]);
     expect(
@@ -1942,7 +1937,7 @@ it("refreshes preparation after a chat lifecycle event and chat resynchronizatio
   expect(
     appLiveEventQueryKeys(
       event({
-        resource: "chat",
+        resource: "chat-preparation",
         scope: { kind: "project", projectId: "project" },
         entityId: "chat",
       }),
@@ -1950,10 +1945,71 @@ it("refreshes preparation after a chat lifecycle event and chat resynchronizatio
   ).toContainEqual(["managed-chat-preparation", "chat"]);
   expect(
     appLiveEventQueryKeys(
-      event({ resource: "chat", scope: { kind: "chat", chatId: "chat" } }),
+      event({
+        resource: "chat-preparation",
+        scope: { kind: "chat", chatId: "chat" },
+      }),
     ),
   ).toContainEqual(["managed-chat-preparation", "chat"]);
   expect(
     appLiveScopeQueryKeys({ kind: "chat", chatId: "chat" }),
   ).toContainEqual(["managed-chat-preparation", "chat"]);
+});
+
+it("keeps run definitions and unrelated preparation cached during a chat activity burst", async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+  });
+  const definitions = vi.fn(async () => ({ entries: [] }));
+  const preparation = vi.fn(async () => ({ phase: "ready" }));
+  const runObserver = new QueryObserver(client, {
+    queryKey: ["run-configurations", "project"],
+    queryFn: definitions,
+  });
+  const preparationObserver = new QueryObserver(client, {
+    queryKey: ["managed-chat-preparation", "chat"],
+    queryFn: preparation,
+  });
+  const unsubscribe = [
+    runObserver.subscribe(() => {}),
+    preparationObserver.subscribe(() => {}),
+  ];
+  const bridge = new AppLiveQueryBridge(client);
+  try {
+    await Promise.all([runObserver.refetch(), preparationObserver.refetch()]);
+    definitions.mockClear();
+    preparation.mockClear();
+    for (let i = 0; i < 58; i++) {
+      bridge.handleEvent(
+        event({
+          resource: "chat",
+          entityId: i % 2 === 0 ? "chat" : null,
+          scope: { kind: "project", projectId: "project" },
+        }),
+      );
+      await Promise.resolve();
+    }
+    expect(definitions).not.toHaveBeenCalled();
+    expect(preparation).not.toHaveBeenCalled();
+    bridge.handleEvent(
+      event({
+        resource: "run-configuration",
+        scope: { kind: "project", projectId: "project" },
+      }),
+    );
+    bridge.handleEvent(
+      event({
+        resource: "chat-preparation",
+        entityId: "chat",
+        scope: { kind: "project", projectId: "project" },
+      }),
+    );
+    await vi.waitFor(() => {
+      expect(definitions).toHaveBeenCalledTimes(1);
+      expect(preparation).toHaveBeenCalledTimes(1);
+    });
+  } finally {
+    unsubscribe.forEach((dispose) => dispose());
+    client.clear();
+  }
 });

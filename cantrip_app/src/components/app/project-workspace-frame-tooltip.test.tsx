@@ -22,6 +22,7 @@ const surface = {
   definition: { id: "project.chat" },
   entity: {},
   kind: "chat",
+  member: { dockPresentation: null },
   paneId: "pane-1",
   projectId: "project-1",
   tabKey: "chat:chat-1",

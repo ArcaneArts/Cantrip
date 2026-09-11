@@ -1,3 +1,4 @@
+import { chatConsoleTerminal } from "@/components/chat/chat-console-state";
 import type { VisibleProjectPane } from "@/components/app/project-workspace-frame-model";
 import {
   projectBuiltInSurfaceAvailable,
@@ -22,8 +23,18 @@ export function projectPaneRenderBindings(
   const { activeSurface, activeTabKey, focused, pane, surfaces } = presentation;
   const selectedChat =
     activeSurface?.kind === "chat" ? activeSurface.entity : undefined;
-  const selectedTerminal =
+  const activeChat =
+    focused && bindings.activeProjectTaskChat
+      ? bindings.activeProjectTaskChat
+      : selectedChat;
+  const linkedConsoleTerminal = chatConsoleTerminal(
+    activeChat?.id,
+    bindings.chatConsoleOpenChats,
+    bindings.terminals?.data,
+  );
+  const selectedStandaloneTerminal =
     activeSurface?.kind === "terminal" ? activeSurface.entity : undefined;
+  const selectedTerminal = selectedStandaloneTerminal ?? linkedConsoleTerminal;
   const selectedExplorer =
     activeSurface?.kind === "explorer" ? activeSurface.entity : undefined;
   const selectedBrowser =
@@ -119,10 +130,7 @@ export function projectPaneRenderBindings(
 
   return {
     ...bindings,
-    activeChat:
-      focused && bindings.activeProjectTaskChat
-        ? bindings.activeProjectTaskChat
-        : selectedChat,
+    activeChat,
     activeProjectOverviewSection,
     activeProjectTaskChat: focused ? bindings.activeProjectTaskChat : undefined,
     activeProjectTaskChatId: focused ? bindings.activeProjectTaskChatId : null,
@@ -136,7 +144,7 @@ export function projectPaneRenderBindings(
     explorerSurfaceVisible: activeSurface?.kind === "explorer",
     gitHistoryProject,
     selectedPaneOwnedElsewhere: false,
-    linkedConsoleChat: undefined,
+    linkedConsoleChat: linkedConsoleTerminal ? activeChat : undefined,
     newBrowser: inPane(bindings.newBrowser),
     newChat: inPane(bindings.newChat),
     newCodeTab: inPane(bindings.newCodeTab),
@@ -175,7 +183,7 @@ export function projectPaneRenderBindings(
         ? bindings.selectedRunStopProblem
         : null,
     selectedRunTargetLabel,
-    selectedStandaloneTerminal: selectedTerminal,
+    selectedStandaloneTerminal,
     selectedSurface: activeSurface,
     selectedTabKey: activeTabKey,
     selectedTerminal,
@@ -192,8 +200,8 @@ export function projectPaneRenderBindings(
     sidebarFilePreview: null,
     sidebarFilePreviewPaneVisible: false,
     sidebarFilePreviewVisible: false,
-    terminalSurfaceVisible:
-      activeSurface?.kind === "terminal" &&
-      activeSurface.entity.kind !== "run-configuration",
+    terminalSurfaceVisible: Boolean(
+      selectedTerminal && selectedTerminal.kind !== "run-configuration",
+    ),
   };
 }

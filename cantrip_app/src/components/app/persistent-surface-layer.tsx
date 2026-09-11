@@ -1,3 +1,4 @@
+import { chatConsoleTerminal } from "@/components/chat/chat-console-state";
 import type { ProjectSummary } from "@cantrip/protocol";
 import { Loader2 } from "lucide-react";
 import { Suspense, useMemo } from "react";
@@ -23,6 +24,8 @@ export function PersistentSurfaceLayer({
 }) {
   const {
     activateSidebarFilePreview,
+    activeProjectTaskChat,
+    chatConsoleOpenChats,
     appMode,
     closeSidebarFilePreview,
     codeAppearance,
@@ -91,6 +94,7 @@ export function PersistentSurfaceLayer({
     terminalCommandPaletteTerminalId,
     terminalServiceTerminalId,
     terminalSurfaceVisible,
+    terminals,
     worktreeStatuses,
     worktrees,
   } = bindings;
@@ -125,21 +129,40 @@ export function PersistentSurfaceLayer({
   );
   const dockTerminalPlacements = useMemo(
     () =>
-      surfaceDockPanePresentations?.flatMap((presentation: any) =>
-        presentation.activeSurface?.kind === "terminal" &&
-        presentation.activeSurface.entity.kind !== "run-configuration"
+      surfaceDockPanePresentations?.flatMap((presentation: any) => {
+        const surface = presentation.activeSurface;
+        const chat =
+          presentation.focused && activeProjectTaskChat
+            ? activeProjectTaskChat
+            : surface?.kind === "chat"
+              ? surface.entity
+              : undefined;
+        const terminal =
+          surface?.kind === "terminal"
+            ? surface.entity
+            : chatConsoleTerminal(
+                chat?.id,
+                chatConsoleOpenChats,
+                terminals?.data,
+              );
+        return terminal && terminal.kind !== "run-configuration"
           ? [
               {
                 focused: presentation.focused,
                 gridArea: presentation.gridArea,
                 paneId: presentation.pane.id,
                 portalTarget: presentation.portalTarget,
-                terminal: presentation.activeSurface.entity,
+                terminal,
               },
             ]
-          : [],
-      ),
-    [surfaceDockPanePresentations],
+          : [];
+      }),
+    [
+      surfaceDockPanePresentations,
+      activeProjectTaskChat,
+      chatConsoleOpenChats,
+      terminals?.data,
+    ],
   );
   const dockExplorerPlacements = useMemo(() => {
     const placements = surfaceDockPanePresentations?.flatMap(

@@ -5246,6 +5246,44 @@ to the exact final user demo in the current checklist. Actual mobile/multi-windo
 presentation, account-specific picker display, unfocused piano audio/input and
 human duet behavior have not been claimed from simulated acceptance.
 
+**Pass 76 — linked CLI visibility and unnecessary refreshes:**
+
+The desktop test exposed a rendering omission: the header remembered CLI
+selection, but pane bindings discarded it and the persistent layer only placed
+standalone terminal tabs. Both render paths now receive the per-chat selection.
+Each pane resolves its own linked terminal, including unfocused panes. The
+persistent layer places it in the pane portal, and the generic body yields that
+space. Switching presentation dispatches no agent input.
+
+The supplied 687-line log contained 58 Run-definition requests and 58 preparation
+reads. Project chat events invalidated unrelated Run definitions and preparation
+queries. They now refresh the chat list. A dedicated `chat-preparation` event
+refreshes preparation when it changes or its CLI exits. Definition edits, worker
+availability and reconnect retain their existing refresh paths. A QueryObserver
+regression verifies zero definition/preparation reloads for 58 named/broad chat
+events and one reload each for a definition edit and preparation change.
+
+Native history reads use POST to transport turn identities. The mutation hook
+was announcing a chat mutation after this read. That specific route no longer
+publishes an invalidation. An HTTP test uses the real route and hook, while
+confirming ordinary message POSTs still publish changes.
+
+Two view-switch regressions failed before the fix. They now pass, as does a
+combined persistent-layer/terminal-owner rendering test checking visible CLI
+content and per-pane toggles. Terminal I/O is simulated in that test; the user's
+desktop retest remains required. An older dock-tooltip fixture was also updated
+to include the pane membership required by the current renderer.
+
+Validation: 66 focused app tests, 22 server startup/history/invalidation tests,
+and all 697 protocol tests pass. The server startup test observes the new event
+through the actual first-send route and live hub. App build/typecheck, server
+typecheck and scoped formatting pass. The required full `pnpm check` stopped at
+the server suite: 41 failures, 1,373 passes and 70 skips. Its failure headings
+include all those from pass 75 plus a tunnel lease-renewal coordinator test.
+The broad run began before the dedicated preparation event change; the final
+focused tests, protocol suite, build and typechecks cover that change. The full
+check is not green. No app launch, personal desktop input or CI job was used.
+
 ### What “perfect mirror” must mean
 
 It means equivalent conversation and control state, not pixel-identical terminal

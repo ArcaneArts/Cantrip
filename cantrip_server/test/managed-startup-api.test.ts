@@ -5,6 +5,7 @@ import {
   type WorkerCommand,
 } from "@cantrip/protocol";
 import { buildApp } from "../src/app.js";
+import { AppLiveHub } from "../src/live/hub.js";
 import {
   createNativeSettingsFixture,
   settingsEnvelope,
@@ -30,6 +31,7 @@ afterEach(async () => {
   await Promise.allSettled(pending.splice(0));
   await app?.close();
   await f?.close();
+  vi.restoreAllMocks();
 });
 function turn() {
   const id = randomUUID();
@@ -163,6 +165,7 @@ function observeSubmission(
   return read.finally(() => spy.mockRestore());
 }
 it("reports native preparation failure through the actual first-send route without claiming acceptance", async () => {
+  const published = vi.spyOn(AppLiveHub.prototype, "publish");
   const { chatId, reject, repository, commands } = await fixture();
   const input = turn();
   const observed = observeSubmission(repository, chatId);
@@ -177,6 +180,12 @@ it("reports native preparation failure through the actual first-send route witho
   const result = await response;
   expect(result.statusCode, result.body).toBe(400);
   expect(result.json().error).toContain("Fixture native preparation failed");
+  expect(published).toHaveBeenCalledWith(
+    expect.objectContaining({
+      resource: "chat-preparation",
+      scope: { kind: "chat", chatId },
+    }),
+  );
   expect(
     await repository.getEncryptedMessageByIdempotencyKey(
       owner,

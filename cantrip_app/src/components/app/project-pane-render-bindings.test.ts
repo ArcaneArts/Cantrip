@@ -61,6 +61,50 @@ function bindings() {
 }
 
 describe("project pane render bindings", () => {
+  it("shows each pane's linked CLI and restores its chat when toggled off", () => {
+    const chat = { id: "chat-one", activeWorkerId: "worker-one" };
+    const otherChat = { id: "chat-two" };
+    const terminal = {
+      id: "cli-one",
+      linkedChatId: chat.id,
+      kind: "chat-console",
+    };
+    const otherTerminal = {
+      id: "cli-two",
+      linkedChatId: otherChat.id,
+      kind: "chat-console",
+    };
+    const chatSurface = {
+      kind: "chat",
+      tabKey: "chat:chat-one",
+      entity: chat,
+    } as ProjectSurface;
+    const shell = {
+      ...bindings(),
+      chatConsoleOpenChats: new Set([chat.id, otherChat.id]),
+      terminals: { data: [terminal, otherTerminal] },
+      selectedTerminal: otherTerminal,
+      linkedConsoleChat: otherChat,
+    };
+    const resolved = projectPaneRenderBindings(
+      shell,
+      presentation(false, chatSurface),
+    );
+    expect(resolved.selectedTerminal).toBe(terminal);
+    expect(resolved.linkedConsoleChat).toBe(chat);
+    expect(resolved.selectedStandaloneTerminal).toBeUndefined();
+    expect(resolved.terminalSurfaceVisible).toBe(true);
+    shell.chatConsoleOpenChats.delete(chat.id);
+    const closed = projectPaneRenderBindings(
+      shell,
+      presentation(false, chatSurface),
+    );
+    expect(closed.selectedTerminal).toBeUndefined();
+    expect(closed.linkedConsoleChat).toBeUndefined();
+    expect(closed.selectedChat).toBe(chat);
+    expect(closed.terminalSurfaceVisible).toBe(false);
+  });
+
   it("lets only the focused pane publish shell header state", () => {
     const shell = bindings();
 

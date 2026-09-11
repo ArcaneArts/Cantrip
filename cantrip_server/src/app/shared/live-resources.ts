@@ -7,6 +7,7 @@ export type ChatLiveResource = Extract<
   | "chat-goal"
   | "chat-message"
   | "chat-plan"
+  | "chat-preparation"
   | "chat-queue"
   | "customization"
   | "inference-progress"
@@ -89,6 +90,8 @@ export function mutationLiveResources(
   if (route === "/api/chats/:chatId/console") {
     return ["chat", "terminal", "project-tab-layout"];
   }
+  // This POST transports a list of turn IDs; it only reads persisted history.
+  if (route === "/api/chats/:chatId/native-history/turns/read") return [];
   if (route === "/api/chats/:chatId/composer-draft") return [];
   if (
     route === "/api/projects/:projectId/chats" ||

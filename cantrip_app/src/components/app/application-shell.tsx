@@ -107,7 +107,10 @@ import {
   useShellStartupNavigation,
 } from "@/components/app/shell-navigation";
 import { updateAgentInspectOpenChats } from "@/components/chat/agent-inspect-panel";
-import { updateChatConsoleOpenChats } from "@/components/chat/chat-console-state";
+import {
+  chatConsoleTerminal,
+  updateChatConsoleOpenChats,
+} from "@/components/chat/chat-console-state";
 import {
   activeChatRelocationJob,
   isChatRelocationActive,
@@ -395,12 +398,10 @@ export function App() {
     preview: sidebarFilePreview,
   });
   const [showProjectOverview, setShowProjectOverview] = useState(false);
-  useEffect(() => setShowProjectOverview(false), [
-    selectedProjectId,
-    selectedTabKey,
-    showSettings,
-    showProjectSettings,
-  ]);
+  useEffect(
+    () => setShowProjectOverview(false),
+    [selectedProjectId, selectedTabKey, showSettings, showProjectSettings],
+  );
   const projectOverviewSelected =
     (showProjectOverview || !sidebarFilePreviewFocused) &&
     !showImporter &&
@@ -1186,12 +1187,11 @@ export function App() {
     !sidebarFilePreviewVisible && selectedSurface?.kind === "terminal"
       ? selectedSurface.entity
       : undefined;
-  const linkedConsoleTerminal =
-    activeChat && chatConsoleOpenChats.has(activeChat.id)
-      ? terminals.data?.find(
-          (terminal) => terminal.linkedChatId === activeChat.id,
-        )
-      : undefined;
+  const linkedConsoleTerminal = chatConsoleTerminal(
+    activeChat?.id,
+    chatConsoleOpenChats,
+    terminals.data,
+  );
   const selectedTerminal = selectedStandaloneTerminal ?? linkedConsoleTerminal;
   const linkedConsoleChat = linkedConsoleTerminal ? activeChat : undefined;
   const ownedTerminals = useMemo(() => {
@@ -1998,7 +1998,7 @@ export function App() {
     activeWorktreeTarget, agentInspectOpenChats, appActionContext, appMode,
     appToast, archiveStandaloneChat, archivedStandaloneChats, beginSidebarResize, bindChatWorktree,
     bindWorktreeMutation, bootstrap, browsers, chatRelocationOpen, chatRelocations,
-    chats, closeCompactProject, closeProjectTask, closeSidebarFilePreview, codeAppearance,
+    chatConsoleOpenChats, chats, closeCompactProject, closeProjectTask, closeSidebarFilePreview, codeAppearance,
     codeHeader, codeTabs, commandBarOpen, compactManagedHeader, compactShell,
     completeSidebarFilePinHandoff, contentRootRef, contentScrolled, createProjectSurface, createSidebarExplorerMutation, createSidebarFolder,
     createWorkspaceMutation, createWorktreeMutation, creatingSurfaceKinds, currentRelocation, deleteBrowserMutation, dockPresentationMutation,

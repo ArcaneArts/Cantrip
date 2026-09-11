@@ -27,6 +27,15 @@ describe("live mutation invalidation", () => {
     ).toEqual(["run-configuration"]);
   });
 
+  it("does not publish a mutation when reading native history through POST", () => {
+    expect(
+      mutationLiveResources("/api/chats/:chatId/native-history/turns/read"),
+    ).toEqual([]);
+    expect(mutationLiveResources("/api/chats/:chatId/messages")).toEqual([
+      "chat",
+    ]);
+  });
+
   it("does not fan out chat-list invalidations for composer autosaves", () => {
     expect(mutationLiveResources("/api/chats/:chatId/composer-draft")).toEqual(
       [],
