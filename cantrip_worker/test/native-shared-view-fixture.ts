@@ -11,7 +11,10 @@ import { stripVTControlCharacters } from "node:util";
 import { expect, vi } from "vitest";
 import { createNativeCommandWorkerFixture } from "../../cantrip_server/test/native-command-worker-fixture.js";
 import { CodexAppServer } from "../src/codex/app-server.js";
-import type { AgentInteractionRuntimeRequest } from "@cantrip/protocol";
+import type {
+  AgentInteractionRuntimeRequest,
+  McpServerConfiguration,
+} from "@cantrip/protocol";
 import { discoverCodexRuntime } from "../src/codex/discovery.js";
 import { ManagedSessionCoordinator } from "../src/codex/managed-session.js";
 import { ManagedNativeCommandSession } from "../src/codex/managed-native-command-session.js";
@@ -38,7 +41,11 @@ const { Terminal: HeadlessTerminal } = createRequire(import.meta.url)(
 export async function createNativeSharedViewFixture(
   binary: string,
   modelBaseUrl: string,
-  options: { computerUse?: boolean; planMode?: "default" | "plan" } = {},
+  options: {
+    computerUse?: boolean;
+    planMode?: "default" | "plan";
+    mcpServers?: McpServerConfiguration[];
+  } = {},
 ) {
   const directory = await mkdtemp(path.join(tmpdir(), "cantrip-shared-view-"));
   const cwd = path.join(directory, "workspace");
@@ -200,7 +207,7 @@ export async function createNativeSharedViewFixture(
       permissionProfileId,
       planMode: options.planMode ?? "default",
       executionProfile: "ide" as const,
-      mcpServers: cua?.servers ?? [],
+      mcpServers: [...(cua?.servers ?? []), ...(options.mcpServers ?? [])],
       intent: "configure" as const,
       subagentDefaults: null,
     };
@@ -605,7 +612,10 @@ export async function createNativeSharedViewFixture(
             policyContext: null,
             permissionProfileId,
             prompt,
-            mcpServers: cua?.servers ?? [],
+            mcpServers: [
+              ...(cua?.servers ?? []),
+              ...(options.mcpServers ?? []),
+            ],
             rootKind: f.context.rootKind,
             skillNames: [],
             subagentDefaults: null,

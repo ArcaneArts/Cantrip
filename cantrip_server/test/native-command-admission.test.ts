@@ -205,6 +205,65 @@ async function finish(
 }
 
 describe("durable native command admission", () => {
+  it.each(["skills/list", "hooks/list"])(
+    "keeps %s discovery admitted across a first-turn activation",
+    async (method) => {
+      const context = await database.repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        chatId,
+      );
+      const observation = admission(context, { method });
+      const observed = await database.repository.nativeCommands.admit(
+        LOCAL_USER_ID,
+        observation,
+      );
+      expect(observed.receipt.status).toBe("accepted");
+      const input = admission(context, { origin: "gui" });
+      const started = await database.repository.nativeCommands.admit(
+        LOCAL_USER_ID,
+        input,
+      );
+      expect(started.receipt.status).toBe("accepted");
+      await dispatch(input, started.receipt);
+      const replayed = await database.repository.nativeCommands.admit(
+        LOCAL_USER_ID,
+        observation,
+      );
+      expect(replayed.execution).not.toBeNull();
+      await expect(
+        dispatch(
+          {
+            ...observation,
+            session: {
+              ...observation.session,
+              runtimeGeneration: "retired-runtime",
+            },
+          },
+          observed.receipt,
+        ),
+      ).rejects.toMatchObject({ code: "stale-session" });
+      const sent = await dispatch(observation, observed.receipt);
+      expect(sent.receipt.activationGeneration).toBeNull();
+      await finish(observation, observed.receipt);
+      const during = admission(
+        await database.repository.getChatExecutionContext(
+          LOCAL_USER_ID,
+          chatId,
+        ),
+        { method },
+      );
+      const current = await database.repository.nativeCommands.admit(
+        LOCAL_USER_ID,
+        during,
+      );
+      expect(current.receipt.status).toBe("accepted");
+      expect(current.receipt.activationGeneration).toBeNull();
+      await finish(input, started.receipt);
+      await dispatch(during, current.receipt);
+      await finish(during, current.receipt);
+    },
+  );
+
   it("recovers only the exact terminal turn observed by a replacement runtime", async () => {
     const repository = database.repository;
     const commands = repository.nativeCommands;

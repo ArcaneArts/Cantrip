@@ -150,6 +150,11 @@ const scopedMutations = new Set([
   "fuzzyFileSearch/sessionStop",
 ]);
 
+// Startup discovery reads files under the admitted session/permission scope.
+// Its validity does not depend on an idle or active model turn. Keep ordinary
+// mutations, replies and input tied to their exact activation.
+const sessionDiscoveryMethods = new Set(["skills/list", "hooks/list"]);
+
 /** Server policy classifies the actual method, independently of a caller's labels. */
 export function nativeCommandPolicy(input: NativeCommandAdmission): {
   kind: string;
@@ -390,7 +395,8 @@ export class NativeCommandRepository {
             ? activation?.active &&
               activation.generation === existing.activationGeneration &&
               context.executionLaneId === existing.executionLaneId
-            : !["running", "waiting-for-approval"].includes(context.status));
+            : sessionDiscoveryMethods.has(existing.method) ||
+              !["running", "waiting-for-approval"].includes(context.status));
         return {
           receipt: receipt(existing),
           replayed: true,
@@ -675,7 +681,8 @@ export class NativeCommandRepository {
           const active =
             context.status === "running" ||
             context.status === "waiting-for-approval";
-          if (policy.active || active) {
+          const sessionDiscovery = sessionDiscoveryMethods.has(input.method);
+          if (policy.active || (active && !sessionDiscovery)) {
             if (
               !activation?.active ||
               !active ||
@@ -722,7 +729,10 @@ export class NativeCommandRepository {
                 throw new NativeCommandError("stale-native-reply");
               consumeReply = true;
             }
-          } else if (input.expectedActivationGeneration !== null)
+          } else if (
+            !sessionDiscovery &&
+            input.expectedActivationGeneration !== null
+          )
             throw new NativeCommandError("stale-activation");
         }
       } catch (error) {
@@ -1042,7 +1052,10 @@ export class NativeCommandRepository {
           .update(schema.nativeCommandActivations)
           .set({ runtimeGeneration: input.session.runtimeGeneration })
           .where(eq(schema.nativeCommandActivations.chatId, row.chatId));
-      } else if (["running", "waiting-for-approval"].includes(context.status))
+      } else if (
+        !sessionDiscoveryMethods.has(row.method) &&
+        ["running", "waiting-for-approval"].includes(context.status)
+      )
         throw new NativeCommandError("stale-activation");
       if (!context.threadId) {
         if (
