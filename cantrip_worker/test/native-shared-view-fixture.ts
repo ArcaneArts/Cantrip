@@ -43,6 +43,8 @@ export async function createNativeSharedViewFixture(
   modelBaseUrl: string,
   options: {
     computerUse?: boolean;
+    plugins?: boolean;
+    afterNativeReceipt?(method: string): void;
     planMode?: "default" | "plan";
     mcpServers?: McpServerConfiguration[];
   } = {},
@@ -129,7 +131,10 @@ export async function createNativeSharedViewFixture(
   };
   try {
     await Promise.all([mkdir(cwd), mkdir(home), mkdir(data)]);
-    await writeFile(path.join(home, "config.toml"), "features.plugins=false\n");
+    await writeFile(
+      path.join(home, "config.toml"),
+      `features.plugins=${options.plugins ?? false}\n`,
+    );
     authority = await createNativeCommandWorkerFixture({
       cwd,
       modelBaseUrl,
@@ -306,7 +311,16 @@ export async function createNativeSharedViewFixture(
         upstreamUrl: await r.remoteEndpoint(model, provider),
         isCurrent: () => r.transportGeneration === attachedGeneration,
         onNativeMessage: (frame) => frames.push(frame),
-        admit: (operation) => adapter.admit(operation),
+        admit: async (operation) => {
+          const admission = await adapter.admit(operation);
+          return {
+            ...admission,
+            settle: async (receipt) => {
+              await admission.settle(receipt);
+              if (receipt) options.afterNativeReceipt?.(operation.method);
+            },
+          };
+        },
         resolveReply: (operation, frame) =>
           adapter.resolveReply(operation, frame),
       });

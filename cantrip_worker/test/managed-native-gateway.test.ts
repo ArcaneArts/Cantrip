@@ -126,6 +126,39 @@ const admitted = (settle = vi.fn(async () => {})): ManagedNativeAdmission => ({
 });
 
 describe("managed native gateway", () => {
+  it.each(["plugin/list", "turn/start", "thread/settings/update"])(
+    "keeps a %s receipt failure correlated without disconnecting or replaying",
+    async (method) => {
+      const f = await fixture(async () =>
+        admitted(
+          vi.fn(async () => {
+            throw new CantripServerRequestError(
+              "Receipt storage is unavailable.",
+              503,
+              "receipt-store-unavailable",
+            );
+          }),
+        ),
+      );
+      const response = await f.request(method, { threadId: identity.threadId });
+      expect(response.id).not.toBeNull();
+      expect(response.error.data).toMatchObject({
+        code: "native-receipt-unconfirmed",
+        causeCode: "receipt-store-unavailable",
+        receiptStatus: "unconfirmed",
+        nativeDispatched: true,
+      });
+      expect((await f.request("config/read", {})).result).toEqual({
+        accepted: "config/read",
+      });
+      expect(
+        f.messages.filter((frame) => frame.method === "initialize"),
+      ).toHaveLength(1);
+      expect(
+        f.messages.filter((frame) => frame.method === method),
+      ).toHaveLength(1);
+    },
+  );
   it.each(["notRetained", "uncertain"] as const)(
     "preserves correlated pending input evidence when retention is %s",
     async (queueRetention) => {
