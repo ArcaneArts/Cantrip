@@ -1,3 +1,4 @@
+import { workerLogger } from "../logger.js";
 import {
   isNativePermissionDeferred,
   NativePermissionRetentionError,
@@ -178,7 +179,7 @@ export async function createManagedNativeGateway(
         throw new Error("Native connection is unavailable.");
       socket.send(JSON.stringify(frame));
     };
-    const fail = (id: unknown, error: unknown) => {
+    const fail = (id: unknown, error: unknown, receiptUnconfirmed = false) => {
       if (client.readyState === WebSocket.OPEN) {
         const frame = fault(
           id,
@@ -196,6 +197,20 @@ export async function createManagedNativeGateway(
                 : {}),
             },
           });
+        if (receiptUnconfirmed) {
+          Object.assign(frame.error, {
+            data: {
+              ...("data" in frame.error ? (frame.error.data as object) : {}),
+              ...(error instanceof CantripServerRequestError
+                ? { causeCode: error.code }
+                : {}),
+              code: "native-receipt-unconfirmed",
+              receiptStatus: "unconfirmed",
+              nativeDispatched: true,
+            },
+          });
+          frame.error.message = `The native operation was dispatched, but Cantrip could not confirm its receipt: ${frame.error.message} Do not automatically resend the action.`;
+        }
         send(client, frame);
       }
     };
@@ -540,7 +555,27 @@ export async function createManagedNativeGateway(
                 send(client, frame);
                 return;
               }
-              throw error;
+              // A persistence failure belongs to this response. A null-ID error
+              // followed by closing the socket turns it into a transport fault,
+              // causing the CLI to reconnect and repeat startup discovery.
+              workerLogger.rateLimited(
+                `native-receipt-unconfirmed:${identity.chatId}:${entry.method}`,
+                "warn",
+                "Native CLI receipt could not be confirmed; connection retained",
+                {
+                  event: "codex.native.receipt-unconfirmed",
+                  subsystem: "codex",
+                  operation: entry.method,
+                  chatId: identity.chatId,
+                  status: "uncertain",
+                  reasonCode:
+                    error instanceof CantripServerRequestError
+                      ? error.code
+                      : "receipt-settlement-failed",
+                },
+              );
+              fail(frame.id, error, true);
+              return;
             }
           } else if (entry.method === "initialize" && object(frame.result)) {
             initialized = true;
