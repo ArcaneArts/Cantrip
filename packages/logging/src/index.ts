@@ -259,6 +259,11 @@ export function formatHttpLog(input: {
 }
 
 function defaultOutput(line: string, level: ServiceLogLevel): void {
+  // Detailed records still reach the diagnostic buffer/archive via onRecord.
+  const threshold = process.env.CANTRIP_LOG_LEVEL?.toLowerCase() ?? "info";
+  if (level === "trace" && threshold !== "trace") return;
+  if (level === "debug" && threshold !== "debug" && threshold !== "trace")
+    return;
   const destination =
     level === "warn" || level === "error" || level === "fatal"
       ? process.stderr
@@ -376,7 +381,13 @@ export function createPinoServiceLogStream(
           pendingRequests.delete(entry.reqId!);
           const durationMs = entry.responseTime;
           const recordLevel =
-            statusCode >= 500 ? "error" : statusCode >= 400 ? "warn" : level;
+            statusCode >= 500
+              ? "error"
+              : statusCode >= 400
+                ? "warn"
+                : level === "warn" || level === "error" || level === "fatal"
+                  ? level
+                  : "debug";
           emit(
             {
               timestamp: timestamp.toISOString(),
