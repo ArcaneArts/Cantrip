@@ -14,6 +14,7 @@ struct Packet {
 #[derive(Default)]
 struct State {
     events: Vec<(String, Packet)>,
+    closed: Vec<String>,
     fail: Option<(String, bool, bool)>,
     panic: Option<(String, bool)>,
 }
@@ -23,6 +24,9 @@ impl InputBackend for Recording {
     type Control = String;
     type Packet = Packet;
     type Error = &'static str;
+    fn closed(&mut self, target: &String) {
+        self.0.borrow_mut().closed.push(target.clone());
+    }
     fn prepare<'a>(
         &mut self,
         _: &String,
@@ -399,4 +403,64 @@ fn transient_pointer_action_cannot_interfere_with_another_drag() {
     ));
     assert_eq!(state.borrow().events.len(), 1);
     assert_eq!(host.held_count(a), Ok(1));
+}
+
+#[test]
+fn refreshing_delivery_context_preserves_holds_and_rejects_target_rebinding() {
+    let (mut host, state) = fixture();
+    let a = host
+        .open(target(1), "process".into(), "before".into())
+        .unwrap();
+    host.submit(a, &target(1), 1, &down("A")).unwrap();
+    assert_eq!(
+        host.update_destination(a, &target(2), "wrong".into()),
+        Err(OwnershipError::StaleInput)
+    );
+    host.update_destination(a, &target(1), "after".into())
+        .unwrap();
+    assert_eq!(host.held_count(a), Ok(1));
+    host.submit(a, &target(1), 2, &up("A")).unwrap();
+    assert_eq!(
+        state
+            .borrow()
+            .events
+            .iter()
+            .map(|(t, _)| t.as_str())
+            .collect::<Vec<_>>(),
+        ["before", "after"]
+    );
+    assert_eq!(state.borrow().events[1].1.modifiers, [Modifier::Meta]);
+}
+#[test]
+fn precompilation_has_no_input_side_effect_and_uses_the_live_participants_context() {
+    let (mut host, state) = fixture();
+    let a = host
+        .open(target(1), "process".into(), "first".into())
+        .unwrap();
+    let prepared = host.prepare(a, &down("A")).unwrap();
+    assert!(state.borrow().events.is_empty());
+    assert_eq!(host.held_count(a), Ok(0));
+    host.submit_prepared(a, &target(1), 1, prepared).unwrap();
+    host.close(a);
+    assert_eq!(state.borrow().events.len(), 2);
+    assert!(host.prepare(a, &down("B")).is_err());
+}
+
+#[test]
+fn backend_resources_close_once_after_release_even_on_delivery_failure() {
+    let (mut host, state) = fixture();
+    let a = host
+        .open(target(1), "process".into(), "first".into())
+        .unwrap();
+    let b = host
+        .open(target(1), "process".into(), "second".into())
+        .unwrap();
+    host.submit(a, &target(1), 1, &down("A")).unwrap();
+    state.borrow_mut().fail = Some(("B".into(), true, true));
+    assert!(host.submit(a, &target(1), 2, &down("B")).is_err());
+    assert_eq!(state.borrow().closed, ["first"]);
+    host.close(a);
+    assert_eq!(state.borrow().closed, ["first"]);
+    host.close(b);
+    assert_eq!(state.borrow().closed, ["first", "second"]);
 }

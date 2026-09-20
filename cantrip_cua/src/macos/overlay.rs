@@ -437,7 +437,9 @@ pub(super) fn refresh_with_windows(windows: &[Window]) {
 }
 
 /// Native presentation adapter. It receives only cursor/target data, never agent authority.
-pub(super) struct MacOsCursorRenderer;
+/// Presents a complete snapshot of native cursor participants. Consumers share
+/// one coordinator when combining adapters; omission removes that cursor panel.
+pub struct MacOsCursorRenderer;
 impl CursorRenderer<crate::target::Target> for MacOsCursorRenderer {
     fn present(
         &mut self,

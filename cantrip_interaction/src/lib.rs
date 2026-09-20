@@ -1,4 +1,5 @@
 //! Platform-independent interaction primitives. No agent, transport, or OS dependencies.
+pub mod capabilities;
 pub mod cursor;
 pub mod error;
 pub mod geometry;
