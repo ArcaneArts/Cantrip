@@ -46,7 +46,7 @@ fn event(key: MediaKey, down: bool, modifiers: &[Modifier]) -> Result<Event> {
             windowNumber:0_isize,
             context:std::ptr::null::<AnyObject>(),
             subtype:8_i16,
-            data1:key.data(down),
+            data1:crate::gesture::media_data(key, down),
             data2:(-1_isize)
         ];
         let native = native.ok_or_else(failed)?;
@@ -118,7 +118,7 @@ mod tests {
                     let flags: usize = msg_send![&*native, modifierFlags];
                     assert_eq!(kind, 14);
                     assert_eq!(subtype, 8);
-                    assert_eq!(data, key.data(down));
+                    assert_eq!(data, crate::gesture::media_data(key, down));
                     assert_eq!(flags & (1 << 17), 1 << 17);
                 });
             }
