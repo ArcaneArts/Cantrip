@@ -1,6 +1,6 @@
 //! CUA scheduling adapter for shared cursor paths.
 use crate::{cancellation::Cancellation, error::Result, target::Point};
-pub use cantrip_interaction::motion::{TimedSpline, travel};
+pub use cantrip_interaction::motion::travel;
 use std::time::Duration;
 
 pub fn animate(

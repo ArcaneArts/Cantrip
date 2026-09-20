@@ -84,7 +84,7 @@ impl Event {
                     x: point.x,
                     y: point.y,
                 },
-                button.number(),
+                crate::gesture::mouse_button_number(button),
             )
         })
     }
@@ -189,7 +189,7 @@ pub(super) fn perform(
             let point = position;
             // Allocate and address the complete pair before the activation request.
             let tracking = Event::mouse(source.0, 5, global)?;
-            let (down_type, up_type) = button.event_types();
+            let (down_type, up_type) = crate::gesture::mouse_event_types(*button);
             let down = Event::mouse_button(source.0, down_type, global, *button)?;
             let up = Event::mouse_button(source.0, up_type, global, *button)?;
             for event in [&tracking, &down, &up] {
@@ -253,7 +253,7 @@ pub(super) fn perform(
                     let global = target.bounds.to_global(point)?;
                     let tracking = Event::mouse(source.0, 5, global)?;
                     let button = frame.pointer_button.unwrap_or_default();
-                    let (down_type, up_type) = button.event_types();
+                    let (down_type, up_type) = crate::gesture::mouse_event_types(button);
                     let down = Event::mouse_button(source.0, down_type, global, button)?;
                     let up = Event::mouse_button(source.0, up_type, global, button)?;
                     prepare(&tracking, point, true);
@@ -494,7 +494,7 @@ mod tests {
             (Back, 3, (25, 26)),
             (Forward, 4, (25, 26)),
         ] {
-            assert_eq!(button.event_types(), types);
+            assert_eq!(crate::gesture::mouse_event_types(button), types);
             for kind in [types.0, types.1] {
                 let point = Point { x: 10.0, y: 20.0 };
                 let event = Event::mouse_button(source.0, kind, point, button).unwrap();

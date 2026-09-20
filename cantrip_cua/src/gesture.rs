@@ -54,76 +54,40 @@ pub enum InputCommand {
         point: Option<Point>,
     },
 }
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub enum Modifier {
-    Shift,
-    Control,
-    Alt,
-    Meta,
-}
-#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum MouseButton {
-    #[default]
-    Left,
-    Right,
-    Middle,
-    Back,
-    Forward,
-}
-impl MouseButton {
-    pub fn number(self) -> u32 {
-        match self {
-            Self::Left => 0,
-            Self::Right => 1,
-            Self::Middle => 2,
-            Self::Back => 3,
-            Self::Forward => 4,
-        }
-    }
-    pub fn event_types(self) -> (u32, u32) {
-        match self {
-            Self::Left => (1, 2),
-            Self::Right => (3, 4),
-            _ => (25, 26),
-        }
+pub use cantrip_interaction::input::{
+    MediaKey, Modifier, MouseButton, deserialize_key, deserialize_keys, normalize_key,
+    valid_modifiers,
+};
+pub fn mouse_button_number(button: MouseButton) -> u32 {
+    match button {
+        MouseButton::Left => 0,
+        MouseButton::Right => 1,
+        MouseButton::Middle => 2,
+        MouseButton::Back => 3,
+        MouseButton::Forward => 4,
     }
 }
-/// IOKit hidsystem/ev_keymap.h consumer-key codes, not ANSI key positions.
-#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
-pub enum MediaKey {
-    PlayPause,
-    NextTrack,
-    PreviousTrack,
-    FastForward,
-    Rewind,
-    VolumeUp,
-    VolumeDown,
-    VolumeMute,
-}
-impl MediaKey {
-    pub fn code(self) -> u16 {
-        match self {
-            Self::VolumeUp => 0,
-            Self::VolumeDown => 1,
-            Self::VolumeMute => 7,
-            Self::PlayPause => 16,
-            Self::NextTrack => 17,
-            Self::PreviousTrack => 18,
-            Self::FastForward => 19,
-            Self::Rewind => 20,
-        }
-    }
-    pub fn data(self, down: bool) -> isize {
-        ((self.code() as isize) << 16) | ((if down { 0xA } else { 0xB }) << 8)
+pub fn mouse_event_types(button: MouseButton) -> (u32, u32) {
+    match button {
+        MouseButton::Left => (1, 2),
+        MouseButton::Right => (3, 4),
+        _ => (25, 26),
     }
 }
-pub fn valid_modifiers(modifiers: &[Modifier]) -> bool {
-    modifiers.len() <= 4
-        && modifiers
-            .iter()
-            .enumerate()
-            .all(|(i, m)| !modifiers[..i].contains(m))
+pub fn media_code(key: MediaKey) -> u16 {
+    match key {
+        MediaKey::VolumeUp => 0,
+        MediaKey::VolumeDown => 1,
+        MediaKey::VolumeMute => 7,
+        MediaKey::PlayPause => 16,
+        MediaKey::NextTrack => 17,
+        MediaKey::PreviousTrack => 18,
+        MediaKey::FastForward => 19,
+        MediaKey::Rewind => 20,
+    }
+}
+pub fn media_data(key: MediaKey, down: bool) -> isize {
+    ((media_code(key) as isize) << 16) | ((if down { 0xA } else { 0xB }) << 8)
 }
 fn default_duration() -> u64 {
     200
@@ -192,23 +156,6 @@ impl InputCommand {
             ))
         }
     }
-}
-pub fn normalize_key(key: String) -> String {
-    if key.len() == 1 && key.as_bytes()[0].is_ascii_lowercase() {
-        key.to_ascii_uppercase()
-    } else {
-        key
-    }
-}
-fn deserialize_key<'de, D: serde::Deserializer<'de>>(
-    d: D,
-) -> std::result::Result<String, D::Error> {
-    String::deserialize(d).map(normalize_key)
-}
-pub fn deserialize_keys<'de, D: serde::Deserializer<'de>>(
-    d: D,
-) -> std::result::Result<Vec<String>, D::Error> {
-    Vec::<String>::deserialize(d).map(|keys| keys.into_iter().map(normalize_key).collect())
 }
 /// Physical ANSI key positions for shortcuts. Unicode text does not use this map.
 pub fn key_code(key: &str) -> Option<u16> {

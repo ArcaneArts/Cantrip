@@ -2,7 +2,8 @@
 
 `cantrip_interaction` is the platform-independent Rust crate used by native CUA
 for cursor state, identity color, software rasterization, motion paths, geometry,
-and generated input/presentation telemetry. It does not depend on CUA, agent
+generated input/presentation telemetry, input vocabulary, timeline execution,
+and participant-held-input ownership. It does not depend on CUA, agent
 turns, MCP, AppKit, remote desktop, or a browser engine.
 
 ## Cursor consumers
@@ -63,12 +64,61 @@ CUA's shader ABI and configuration remain in `cantrip_cua::effects`. Compatibili
 exports preserve its current tests and callers. Native event delivery, capture,
 and Metal/AppKit rendering are still macOS-specific.
 
+## Input vocabulary and ownership
+
+`input::InputEvent` distinguishes pointer movement/down/up, physical key down/up
+(including repeat), scroll, text commit/composition, surface preparation,
+explicit host focus, and system media actions. Modifiers, mouse buttons, media
+keys, and shortcut normalization are shared with CUA. Native Quartz/IOKit codes
+remain in the CUA delivery adapter, not the shared crate. Structural validation
+does not pretend to establish that a backend supports or can deliver an event.
+
+`Ownership<C, R>` retains prepared releases across calls. Each live participant
+gets a token unique to that registry and lifetime; reopening the same target
+cannot accept an old token. Target identity and generation are retained without
+assuming a particular surface type. Per-participant sequence fencing rejects
+reordered or duplicate commands before dispatch, including retries after an
+uncertain result. The adapter, not this registry, verifies authorization.
+
+`C` is a backend-normalized collision key. `R` is the prepared matching release,
+including native routing and modifier state if needed. A backend chooses the
+collision domain: for example, different windows may share application keyboard
+state. Conflicting holds are rejected without releasing the existing owner.
+Different controls can be held concurrently. Cleanup removes only the closing
+participant's holds, returns releases in reverse acquisition order, and is
+idempotent. A drag can replace its retained release position before dispatching
+movement. Adapters must attempt every returned release even if one fails and
+must report uncertainty without replaying it.
+
+`Ownership` does not post OS events or run cleanup implicitly. Its native host
+must consume the returned releases on cancellation, close, and delivery failure.
+That integration is still pending; this is not yet a remotely callable input API.
+
+## Shared timeline execution
+
+CUA now uses `schedule::dispatch` for its existing prepared native timelines.
+The shared executor owns ordering, lazy visual lookahead, late cosmetic-frame
+dropping, and release-on-exit. Its caller supplies cancellation, waiting, event
+preparation, and posting. Failure retains both the caller's error and whether
+input began; CUA preserves its existing unverified/no-replay receipts.
+
+The current synchronous CUA adapter still occupies its executor during a long
+gesture. Fair scheduling across sessions and native continuous-input delivery
+are required follow-up work, not capabilities implied by this extraction.
+
 ## Integration boundary and remaining extraction
 
-This first extraction supplies the real CUA cursor implementation to other Rust
-consumers. It does not yet provide the continuous input session API, held-input
-ownership, or a public native host for additional participants. Those are the
-next part of the input extraction, not capabilities supplied by a cursor renderer.
+Cursor presentation and timeline execution use the shared implementation today.
+The persistent ownership registry and typed continuous events are ready for the
+next native delivery/host integration. No remote desktop or browser integration
+is included.
+
+Remaining goal work: integrate a typed native host with this ownership registry;
+route existing CUA gesture delivery through it; make long schedules yield to
+unrelated sessions; remove the legacy short drag-duration limit using bounded,
+lazy sampling; expose real backend capability/delivery results; measure extraction
+overhead; and complete native regression/goal acceptance. These are required
+follow-ups before the overall extraction can be considered complete.
 
 A future remote-desktop adapter will supply authorized participant sessions,
 window targets, frame geometry, and immediate pointer motion. A future embedded
