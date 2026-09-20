@@ -90,13 +90,47 @@ idempotent. A drag can replace its retained release position before dispatching
 movement. Adapters must attempt every returned release even if one fails and
 must report uncertainty without replaying it.
 
-`Ownership` does not post OS events or run cleanup implicitly. Its native host
-must consume the returned releases on cancellation, close, and delivery failure.
-That integration is still pending; this is not yet a remotely callable input API.
+`host::InputHost<B>` now drives this ownership registry and a concrete
+`InputBackend`. It accepts typed events across calls or packets preallocated by
+a macro compiler. A Down reserves its matching release before posting. Up
+removes ownership before posting, so uncertain results are never replayed.
+Native packet preparation includes the exact target identity/generation, which
+is checked before posting a prepared packet to a different destination.
+
+`Prepared` distinguishes Down, Up, repeat, held movement, and transient actions.
+Backends supply canonical controls and retain release routing/modifiers. A
+transient pointer movement cannot interfere with another participant's drag.
+The native backend uses one pointer collision key for all buttons because an
+application has one drag context, and physical key codes canonicalize aliases.
+
+`PostFailure` distinguishes definitely unsent events from uncertain delivery.
+An unsent Down does not generate a stray Up; an unsent movement retains the
+previous release position. A delivery failure closes only that participant and
+attempts all outstanding releases in reverse order. Cleanup errors are returned;
+a panic still triggers scoped cleanup before unwinding. Close and Drop are
+idempotent. Release packets bypass the cancelled operation token. Successful
+native dispatch returns `DispatchedUnverified`, never proof of app behavior.
+
+The concrete backend is `cantrip_cua/src/macos/input_backend.rs`. It reuses the
+existing private Quartz source, SkyLight routing and target-only preparation,
+matching up-event flags, native dispatch timestamps, and effects telemetry.
+Composition returns an explicit unsupported result; committed text and physical
+keys remain distinct. Focus and media retain their explicit side-effect domains.
+
+CUA's macro adapter compiles existing timelines and text into prepared packets,
+and sends drag movement through the typed continuous interface. It currently
+opens a host for each macro, matching the existing balanced-command lifetime.
+Sharing a native host across CUA sessions and exposing a reusable persistent
+native session facade remain required work. The shared host already supports
+persistent holds and multiple participants, but that alone does not establish
+native cross-session arbitration. This is not a remotely callable input API.
 
 ## Shared timeline execution
 
-CUA now uses `schedule::dispatch` for its existing prepared native timelines.
+CUA now uses `schedule::dispatch_fallible` for its prepared native timelines.
+The original infallible `dispatch` remains a compatibility wrapper. Delivery
+errors stop the sequence and attempt remaining releases without hiding cleanup
+failures.
 The shared executor owns ordering, lazy visual lookahead, late cosmetic-frame
 dropping, and release-on-exit. Its caller supplies cancellation, waiting, event
 preparation, and posting. Failure retains both the caller's error and whether
@@ -108,13 +142,12 @@ are required follow-up work, not capabilities implied by this extraction.
 
 ## Integration boundary and remaining extraction
 
-Cursor presentation and timeline execution use the shared implementation today.
-The persistent ownership registry and typed continuous events are ready for the
-next native delivery/host integration. No remote desktop or browser integration
-is included.
+Cursor presentation, native gesture delivery, ownership, and timeline execution
+use the shared contracts today. No remote desktop or browser integration is
+included.
 
-Remaining goal work: integrate a typed native host with this ownership registry;
-route existing CUA gesture delivery through it; make long schedules yield to
+Remaining goal work: share native participant lifetime across calls and CUA
+sessions, migrate remaining legacy input paths, make long schedules yield to
 unrelated sessions; remove the legacy short drag-duration limit using bounded,
 lazy sampling; expose real backend capability/delivery results; measure extraction
 overhead; and complete native regression/goal acceptance. These are required
