@@ -152,6 +152,57 @@ pub enum Operation {
     JavascriptReset { binding: SessionBinding },
 }
 
+impl Operation {
+    pub(crate) fn binding(&self) -> Option<&SessionBinding> {
+        match self {
+            Self::TargetAttach { binding, .. }
+            | Self::TargetDetach { binding }
+            | Self::Snapshot { binding, .. }
+            | Self::CursorConfigure { binding, .. }
+            | Self::CursorMove { binding, .. }
+            | Self::ControlsInspect { binding, .. }
+            | Self::InputPress { binding, .. }
+            | Self::InputClick { binding, .. }
+            | Self::InputPerform { binding, .. }
+            | Self::SessionClose { binding }
+            | Self::JavascriptEvaluate { binding, .. }
+            | Self::JavascriptReset { binding } => Some(binding),
+            _ => None,
+        }
+    }
+    pub(crate) fn replaces_input_lifetime(&self, plan: &InputPlan) -> bool {
+        if self.binding() != Some(&plan.binding) {
+            return false;
+        }
+        match self {
+            Self::SessionClose { .. } | Self::TargetDetach { .. } => true,
+            Self::TargetAttach {
+                target_id,
+                target_generation,
+                ..
+            } => target_id != &plan.target.id || *target_generation != plan.target.generation,
+            _ => false,
+        }
+    }
+}
+pub(crate) struct InputPlan {
+    pub binding: SessionBinding,
+    state: SessionState,
+    target: Target,
+    command: crate::gesture::InputCommand,
+    position: Point,
+    started: std::time::Instant,
+    now_ms: u64,
+    pub progress: crate::input_job::InputProgress,
+}
+pub(crate) enum Dispatch {
+    Complete(Result<OperationResult>),
+    Input {
+        plan: Box<InputPlan>,
+        work: crate::input_job::InputWork,
+    },
+}
+
 pub struct OperationResult {
     pub data: Value,
     pub payload: Vec<u8>,
@@ -255,6 +306,198 @@ impl<B: CaptureBackend> CuaService<B> {
             ));
         }
         Ok(state.clone())
+    }
+
+    pub(crate) fn dispatch(
+        &mut self,
+        operation: Operation,
+        cancel: &Cancellation,
+        now_ms: u64,
+    ) -> Dispatch {
+        let Operation::InputPerform {
+            binding,
+            target_id,
+            target_generation,
+            command,
+        } = operation
+        else {
+            return Dispatch::Complete(self.execute(operation, cancel, now_ms));
+        };
+        let plan = cancel.check().and_then(|_| {
+            self.prepare_input(
+                binding,
+                target_id,
+                target_generation,
+                command,
+                cancel,
+                now_ms,
+            )
+        });
+        let plan = match plan {
+            Ok(plan) => plan,
+            Err(error) => {
+                self.backend
+                    .present_cursors(self.sessions.values().cloned().collect());
+                return Dispatch::Complete(Err(error));
+            }
+        };
+        match self.backend.input_work(
+            &plan.binding.session_id,
+            &plan.target,
+            &plan.command,
+            plan.position,
+            cancel,
+            plan.progress.clone(),
+        ) {
+            Err(error) => Dispatch::Complete(self.finish_input(plan, Err(error))),
+            Ok(Some(work)) => Dispatch::Input {
+                plan: Box::new(plan),
+                work,
+            },
+            Ok(None) => {
+                let progress = plan.progress.clone();
+                let result = self.backend.perform(
+                    &plan.binding.session_id,
+                    &plan.target,
+                    &plan.command,
+                    plan.position,
+                    cancel,
+                    &mut |point| progress.set(point),
+                );
+                Dispatch::Complete(self.finish_input(plan, result))
+            }
+        }
+    }
+    fn prepare_input(
+        &mut self,
+        binding: SessionBinding,
+        target_id: String,
+        target_generation: u64,
+        command: crate::gesture::InputCommand,
+        cancel: &Cancellation,
+        now_ms: u64,
+    ) -> Result<InputPlan> {
+        command.validate()?;
+        let mut state = self.attached(&binding, &target_id, target_generation)?;
+        let target = self
+            .backend
+            .resolve_target(&target_id, target_generation, cancel)?;
+        if let crate::gesture::InputCommand::Timeline { frames } = &command {
+            for frame in frames {
+                if let Some(point) = frame.pointer_down {
+                    target.bounds.to_global(point)?;
+                }
+            }
+        }
+        let position = match &command {
+            crate::gesture::InputCommand::Drag { start, end, .. } => {
+                target.bounds.to_global(*end)?;
+                *start
+            }
+            crate::gesture::InputCommand::PreparedPress { point, .. } => {
+                point.unwrap_or(state.cursor.position)
+            }
+            crate::gesture::InputCommand::Scroll { point, .. } => {
+                point.unwrap_or(state.cursor.position)
+            }
+            _ => state.cursor.position,
+        };
+        target.bounds.to_global(position)?;
+        let started = std::time::Instant::now();
+        state.target = Some(target.clone());
+        if matches!(command, crate::gesture::InputCommand::PreparedPress { .. })
+            && state.cursor.appearance.visible
+            && target.bounds.contains_local(state.cursor.position)
+        {
+            let points = crate::cursor_motion::travel(state.cursor.position, position);
+            crate::cursor_motion::animate(
+                &points,
+                cancel,
+                |at| crate::gesture::wait_until(started + at, cancel),
+                |point| {
+                    state.cursor.move_to(
+                        point,
+                        &target.bounds,
+                        now_ms + started.elapsed().as_millis() as u64,
+                    )?;
+                    self.sessions
+                        .insert(binding.session_id.clone(), state.clone());
+                    self.backend
+                        .present_cursor_step(self.sessions.values().cloned().collect());
+                    Ok(())
+                },
+            )?;
+        } else {
+            state.cursor.move_to(position, &target.bounds, now_ms)?;
+            self.sessions
+                .insert(binding.session_id.clone(), state.clone());
+            self.backend
+                .present_cursors(self.sessions.values().cloned().collect());
+        }
+
+        let progress = crate::input_job::InputProgress::new(
+            state.cursor.clone(),
+            target.bounds,
+            now_ms.saturating_add(started.elapsed().as_millis() as u64),
+        );
+        Ok(InputPlan {
+            binding,
+            state,
+            target,
+            command,
+            position,
+            started,
+            now_ms,
+            progress,
+        })
+    }
+    pub(crate) fn finish_input(
+        &mut self,
+        plan: InputPlan,
+        result: crate::input_job::InputResult,
+    ) -> Result<OperationResult> {
+        self.backend
+            .input_finished(&plan.binding.session_id, result.is_ok());
+        let InputPlan {
+            binding,
+            mut state,
+            target,
+            command,
+            started,
+            now_ms,
+            progress,
+            ..
+        } = plan;
+        state.cursor = progress.cursor();
+        // Runtime serializes operations for this exact session until completion.
+        // Never publish an old result into a replaced/closed session regardless.
+        self.attached(&binding, &target.id, target.generation)?;
+        let completed = now_ms.saturating_add(started.elapsed().as_millis() as u64);
+        let result = match result {
+            Ok((current, input)) => {
+                state
+                    .cursor
+                    .mark_action(input.method, input.outcome, completed);
+                state.target = Some(current);
+                self.sessions
+                    .insert(binding.session_id.clone(), state.clone());
+                Ok(OperationResult::json(
+                    json!({"session":state,"input":input}),
+                ))
+            }
+            Err(error) => {
+                state.cursor.mark_action(
+                    command.method(),
+                    crate::input::error_outcome(error.code),
+                    completed,
+                );
+                self.sessions.insert(binding.session_id.clone(), state);
+                Err(error)
+            }
+        };
+        self.backend
+            .present_cursors(self.sessions.values().cloned().collect());
+        result
     }
 
     pub fn execute(
@@ -641,104 +884,15 @@ impl<B: CaptureBackend> CuaService<B> {
                     json!({"session":state, "input":input}),
                 ))
             }
-            Operation::InputPerform {
-                binding,
-                target_id,
-                target_generation,
-                command,
-            } => {
-                command.validate()?;
-                let mut state = self.attached(&binding, &target_id, target_generation)?;
-                let target = self
-                    .backend
-                    .resolve_target(&target_id, target_generation, cancel)?;
-                if let crate::gesture::InputCommand::Timeline { frames } = &command {
-                    for frame in frames {
-                        if let Some(point) = frame.pointer_down {
-                            target.bounds.to_global(point)?;
-                        }
-                    }
-                }
-                let position = match &command {
-                    crate::gesture::InputCommand::Drag { start, end, .. } => {
-                        target.bounds.to_global(*end)?;
-                        *start
-                    }
-                    crate::gesture::InputCommand::PreparedPress { point, .. } => {
-                        point.unwrap_or(state.cursor.position)
-                    }
-                    crate::gesture::InputCommand::Scroll { point, .. } => {
-                        point.unwrap_or(state.cursor.position)
-                    }
-                    _ => state.cursor.position,
-                };
-                target.bounds.to_global(position)?;
-                let started = std::time::Instant::now();
-                state.target = Some(target.clone());
-                if matches!(command, crate::gesture::InputCommand::PreparedPress { .. })
-                    && state.cursor.appearance.visible
-                    && target.bounds.contains_local(state.cursor.position)
-                {
-                    let points = crate::cursor_motion::travel(state.cursor.position, position);
-                    crate::cursor_motion::animate(
-                        &points,
-                        cancel,
-                        |at| crate::gesture::wait_until(started + at, cancel),
-                        |point| {
-                            state.cursor.move_to(
-                                point,
-                                &target.bounds,
-                                now_ms + started.elapsed().as_millis() as u64,
-                            )?;
-                            self.sessions
-                                .insert(binding.session_id.clone(), state.clone());
-                            self.backend
-                                .present_cursor_step(self.sessions.values().cloned().collect());
-                            Ok(())
-                        },
-                    )?;
-                } else {
-                    state.cursor.move_to(position, &target.bounds, now_ms)?;
-                    self.sessions
-                        .insert(binding.session_id.clone(), state.clone());
-                    self.backend
-                        .present_cursors(self.sessions.values().cloned().collect());
-                }
-                let result = self.backend.perform(
-                    &binding.session_id,
-                    &target,
-                    &command,
-                    position,
-                    cancel,
-                    &mut |point| {
-                        let _ = state.cursor.move_to(
-                            point,
-                            &target.bounds,
-                            now_ms + started.elapsed().as_millis() as u64,
-                        );
-                    },
-                );
-                let completed = now_ms + started.elapsed().as_millis() as u64;
-                match result {
-                    Ok((current, input)) => {
-                        state
-                            .cursor
-                            .mark_action(input.method, input.outcome, completed);
-                        state.target = Some(current);
-                        self.sessions
-                            .insert(binding.session_id.clone(), state.clone());
-                        Ok(OperationResult::json(
-                            json!({"session":state,"input":input}),
-                        ))
-                    }
-                    Err(error) => {
-                        state.cursor.mark_action(
-                            command.method(),
-                            crate::input::error_outcome(error.code),
-                            completed,
-                        );
-                        self.sessions.insert(binding.session_id.clone(), state);
-                        Err(error)
+            operation @ Operation::InputPerform { .. } => {
+                // Synchronous embedders use the same preparation and cleanup as
+                // the framed runtime, but execute their owned work in this call.
+                match self.dispatch(operation, cancel, now_ms) {
+                    Dispatch::Complete(result) => result,
+                    Dispatch::Input { plan, work } => {
+                        let progress = plan.progress.clone();
+                        let result = work(&mut |point| progress.set(point));
+                        self.finish_input(*plan, result)
                     }
                 }
             }

@@ -27,7 +27,7 @@ use crate::{
     target::{Bounds, Target, TargetKind},
 };
 use block2::RcBlock;
-use cantrip_interaction::presentation::{CursorRenderer, PresentationDelivery};
+use cantrip_interaction::presentation::PresentationDelivery;
 use dispatch2::DispatchQueue;
 use objc2::{
     AnyThread,
@@ -52,7 +52,7 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     ptr::NonNull,
     sync::{
-        Arc, OnceLock,
+        Arc, Mutex, OnceLock,
         atomic::{AtomicUsize, Ordering},
     },
 };
@@ -186,7 +186,8 @@ pub struct MacOsBackend {
     registry: Registry,
     truncated: bool,
     input_host: NativeInputHost,
-    input_sessions: HashMap<String, NativeInputSession>,
+    input_sessions: HashMap<String, Arc<Mutex<NativeInputSession>>>,
+    input_progress: HashMap<String, crate::input_job::InputProgress>,
 }
 
 enum Selection {
@@ -207,6 +208,17 @@ impl MacOsBackend {
         }
     }
 
+    fn live_cursors(
+        &self,
+        mut sessions: Vec<crate::service::SessionState>,
+    ) -> Vec<crate::service::SessionState> {
+        for state in &mut sessions {
+            if let Some(progress) = self.input_progress.get(&state.binding.session_id) {
+                state.cursor = progress.cursor();
+            }
+        }
+        sessions
+    }
     fn read_page(
         &mut self,
         selection: Selection,
@@ -262,16 +274,20 @@ impl CaptureBackend for MacOsBackend {
     }
 
     fn present_cursors(&mut self, sessions: Vec<crate::service::SessionState>) {
+        let sessions = self.live_cursors(sessions);
         sharing::retain_sessions(&sessions);
         window_effects::sessions(sessions.clone());
-        overlay::MacOsCursorRenderer.present(
+        overlay::present_input_cursors(
             sessions.into_iter().map(Into::into).collect(),
+            self.input_progress.clone(),
             PresentationDelivery::Latest,
         );
     }
     fn present_cursor_step(&mut self, sessions: Vec<crate::service::SessionState>) {
-        overlay::MacOsCursorRenderer.present(
+        let sessions = self.live_cursors(sessions);
+        overlay::present_input_cursors(
             sessions.into_iter().map(Into::into).collect(),
+            self.input_progress.clone(),
             PresentationDelivery::BeforeInput,
         );
     }
@@ -328,49 +344,97 @@ impl CaptureBackend for MacOsBackend {
         cancel: &Cancellation,
         progress: &mut dyn FnMut(crate::target::Point),
     ) -> Result<(Target, crate::input::InputReceipt)> {
-        self.accessibility.clear(session);
         let current = self.resolve_target(&target.id, target.generation, cancel)?;
+        let latest = crate::input_job::InputProgress::new(
+            crate::cursor::CursorState {
+                position,
+                ..Default::default()
+            },
+            current.bounds,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64,
+        );
+        let work = self
+            .input_work(session, &current, command, position, cancel, latest.clone())?
+            .expect("native work");
+        let result = work(&mut |point| {
+            latest.set(point);
+            progress(point);
+        });
+        self.input_finished(session, result.is_ok());
+        result
+    }
+    fn input_work(
+        &mut self,
+        session: &str,
+        target: &Target,
+        command: &crate::gesture::InputCommand,
+        position: crate::target::Point,
+        cancel: &Cancellation,
+        latest: crate::input_job::InputProgress,
+    ) -> Result<Option<crate::input_job::InputWork>> {
+        self.accessibility.clear(session);
         if self.input_sessions.get(session).is_some_and(|input| {
-            input.target_identity().id != current.id
-                || input.target_identity().generation != current.generation
+            let input = input
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            input.target_identity().id != target.id
+                || input.target_identity().generation != target.generation
         }) {
             self.close_input(session)?;
         }
         if !self.input_sessions.contains_key(session) {
             self.input_sessions.insert(
                 session.to_owned(),
-                self.input_host
-                    .open(session.to_owned(), current.clone(), position)?,
+                Arc::new(Mutex::new(self.input_host.open(
+                    session.to_owned(),
+                    target.clone(),
+                    position,
+                )?)),
             );
         }
-        let result = effects::observe(|| {
-            gesture::perform(
-                self.input_sessions
-                    .get_mut(session)
-                    .expect("opened participant"),
-                &current,
-                command,
-                position,
-                cancel,
-                &mut |point, action| {
-                    progress(point);
-                    overlay::move_cursor(
-                        session,
-                        &current,
-                        point,
-                        action.then_some(command.method()),
-                    );
-                },
-            )
-        });
-        if result.is_err() {
+        let participant = self.input_sessions[session].clone();
+        self.input_progress.insert(session.into(), latest.clone());
+        let session = session.to_owned();
+        let target = target.clone();
+        let command = command.clone();
+        let cancel = cancel.clone();
+        Ok(Some(Box::new(move |progress| {
+            effects::observe(|| {
+                gesture::perform(
+                    &mut participant
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner),
+                    &target,
+                    &command,
+                    position,
+                    &cancel,
+                    &mut |point, action| {
+                        progress(point);
+                        if action {
+                            latest.mark_action(command.method());
+                        }
+                        overlay::move_cursor(&session, &target, latest.clone(), !action);
+                    },
+                )
+            })
+        })))
+    }
+    fn input_finished(&mut self, session: &str, succeeded: bool) {
+        self.input_progress.remove(session);
+        if !succeeded {
             let _ = self.close_input(session);
         }
-        result
     }
     fn close_input(&mut self, session: &str) -> Result<()> {
+        self.input_progress.remove(session);
         match self.input_sessions.remove(session) {
-            Some(mut input) => input.close(),
+            Some(input) => input
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .close(),
             None => Ok(()),
         }
     }
