@@ -379,6 +379,7 @@ impl<B: CaptureBackend> CuaService<B> {
                 if state.target.as_ref().is_none_or(|previous| {
                     previous.id != target.id || previous.generation != target.generation
                 }) {
+                    self.backend.close_input(&binding.session_id)?;
                     self.backend.clear_controls(&binding.session_id);
                     let appearance = state.cursor.appearance.clone();
                     state.cursor = CursorState::default();
@@ -391,6 +392,7 @@ impl<B: CaptureBackend> CuaService<B> {
             }
             Operation::TargetDetach { binding } => {
                 let mut state = self.session(&binding)?.clone();
+                self.backend.close_input(&binding.session_id)?;
                 self.backend.clear_controls(&binding.session_id);
                 state.target = None;
                 state.cursor.trail_points.clear();
@@ -743,6 +745,7 @@ impl<B: CaptureBackend> CuaService<B> {
             Operation::SessionClose { binding } => {
                 self.session(&binding)?;
                 cancel.check()?;
+                self.backend.close_input(&binding.session_id)?;
                 self.backend.clear_controls(&binding.session_id);
                 self.sessions.remove(&binding.session_id);
                 Ok(OperationResult {

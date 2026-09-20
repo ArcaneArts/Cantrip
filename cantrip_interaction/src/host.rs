@@ -37,6 +37,15 @@ pub trait InputBackend {
     type Packet;
     type Error;
 
+    fn capabilities(&self) -> crate::capabilities::InputCapabilities {
+        Default::default()
+    }
+
+    /// Release backend resources after this participant's retained releases were
+    /// attempted. Default backends own no target-scoped native resources.
+    fn closed(&mut self, _target: &Self::Target) {}
+    fn refreshed(&mut self, _previous: &Self::Target, _next: &Self::Target) {}
+
     fn prepare<'a>(
         &mut self,
         target: &Self::Target,
@@ -70,6 +79,11 @@ impl<E> From<OwnershipError> for InputFailure<E> {
     }
 }
 
+pub type Preparation<B> = Result<
+    Prepared<<B as InputBackend>::Control, <B as InputBackend>::Packet>,
+    InputFailure<<B as InputBackend>::Error>,
+>;
+
 /// A synchronous, single-dispatch host. It never sleeps or owns a macro clock.
 /// A scheduler supplies individual due events; continuous clients submit events
 /// across calls using the same participant. Adapters own authority checks.
@@ -86,6 +100,9 @@ impl<B: InputBackend> InputHost<B> {
             targets: BTreeMap::new(),
         }
     }
+    pub fn capabilities(&self) -> crate::capabilities::InputCapabilities {
+        self.backend.capabilities()
+    }
     pub fn open(
         &mut self,
         identity: TargetIdentity,
@@ -101,6 +118,46 @@ impl<B: InputBackend> InputHost<B> {
     }
     pub fn target(&self, owner: Participant) -> Result<&TargetIdentity, OwnershipError> {
         self.ownership.target(owner)
+    }
+    /// Refresh authoritative geometry or per-operation delivery context without
+    /// replacing the participant or moving its holds to a different target.
+    pub fn update_destination(
+        &mut self,
+        owner: Participant,
+        identity: &TargetIdentity,
+        target: B::Target,
+    ) -> Result<(), OwnershipError> {
+        if self.ownership.target(owner)? != identity {
+            return Err(OwnershipError::StaleInput);
+        }
+        self.unwind_scoped(owner, |host| {
+            host.backend.refreshed(&host.targets[&owner], &target);
+            host.targets.insert(owner, target);
+        });
+        Ok(())
+    }
+    /// Preallocate a typed event without dispatching or consuming a sequence.
+    pub fn prepare(&mut self, owner: Participant, event: &InputEvent) -> Preparation<B> {
+        self.ownership.target(owner)?;
+        event.validate().map_err(InputFailure::Invalid)?;
+        self.unwind_scoped(owner, |host| {
+            host.backend
+                .prepare(&host.targets[&owner], event, host.ownership.holds(owner)?)
+                .map_err(InputFailure::Prepare)
+        })
+    }
+    /// Backend-specific macro compilers may allocate packet resources through
+    /// this hook. The callback must only prepare resources, never post input.
+    /// This trusted in-process hook is not a transport or authorization boundary.
+    pub fn compile<T>(
+        &mut self,
+        owner: Participant,
+        compile: impl FnOnce(&mut B, &B::Target) -> Result<T, B::Error>,
+    ) -> Result<T, InputFailure<B::Error>> {
+        self.ownership.target(owner)?;
+        self.unwind_scoped(owner, |host| {
+            compile(&mut host.backend, &host.targets[&owner]).map_err(InputFailure::Prepare)
+        })
     }
     pub fn submit(
         &mut self,
@@ -244,6 +301,13 @@ impl<B: InputBackend> InputHost<B> {
                 // The original dispatch panic is resumed by unwind_scoped.
                 Err(_) => failures.push(PostFailure::BackendPanicked),
             }
+        }
+        if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.backend.closed(&target)
+        }))
+        .is_err()
+        {
+            failures.push(PostFailure::BackendPanicked);
         }
         failures
     }

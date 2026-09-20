@@ -6,9 +6,12 @@ mod effects;
 mod geometry;
 mod gesture;
 mod input_backend;
+mod input_session;
+pub use input_session::{NativeInputHost, NativeInputSession};
 mod input_telemetry;
 mod media;
 mod overlay;
+pub use overlay::MacOsCursorRenderer;
 mod pending;
 mod registry;
 mod sharing;
@@ -182,6 +185,8 @@ pub struct MacOsBackend {
     accessibility: accessibility::Accessibility,
     registry: Registry,
     truncated: bool,
+    input_host: NativeInputHost,
+    input_sessions: HashMap<String, NativeInputSession>,
 }
 
 enum Selection {
@@ -190,6 +195,18 @@ enum Selection {
 }
 
 impl MacOsBackend {
+    /// Share this host with another authorized native-input adapter so controls
+    /// in the same process use one ownership registry. No authority is granted.
+    pub fn input_host(&self) -> NativeInputHost {
+        self.input_host.clone()
+    }
+    pub fn with_input_host(input_host: NativeInputHost) -> Self {
+        Self {
+            input_host,
+            ..Self::default()
+        }
+    }
+
     fn read_page(
         &mut self,
         selection: Selection,
@@ -313,9 +330,24 @@ impl CaptureBackend for MacOsBackend {
     ) -> Result<(Target, crate::input::InputReceipt)> {
         self.accessibility.clear(session);
         let current = self.resolve_target(&target.id, target.generation, cancel)?;
-        effects::observe(|| {
+        if self.input_sessions.get(session).is_some_and(|input| {
+            input.target_identity().id != current.id
+                || input.target_identity().generation != current.generation
+        }) {
+            self.close_input(session)?;
+        }
+        if !self.input_sessions.contains_key(session) {
+            self.input_sessions.insert(
+                session.to_owned(),
+                self.input_host
+                    .open(session.to_owned(), current.clone(), position)?,
+            );
+        }
+        let result = effects::observe(|| {
             gesture::perform(
-                session,
+                self.input_sessions
+                    .get_mut(session)
+                    .expect("opened participant"),
                 &current,
                 command,
                 position,
@@ -330,8 +362,19 @@ impl CaptureBackend for MacOsBackend {
                     );
                 },
             )
-        })
+        });
+        if result.is_err() {
+            let _ = self.close_input(session);
+        }
+        result
     }
+    fn close_input(&mut self, session: &str) -> Result<()> {
+        match self.input_sessions.remove(session) {
+            Some(mut input) => input.close(),
+            None => Ok(()),
+        }
+    }
+
     fn native_input(&self) -> bool {
         true
     }

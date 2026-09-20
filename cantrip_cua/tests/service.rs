@@ -760,3 +760,54 @@ fn default_cursor_hue_follows_agent_identity_across_turns_and_sessions() {
         CursorAppearance::for_identity(&preview.chat_id)
     );
 }
+
+#[test]
+fn input_lifetime_ends_on_detach_replacement_and_close_not_observation_or_reattach() {
+    struct Backend {
+        closed: Arc<Mutex<Vec<String>>>,
+    }
+    impl CaptureBackend for Backend {
+        fn name(&self) -> &'static str {
+            "lifetime fixture"
+        }
+        fn available(&self) -> bool {
+            true
+        }
+        fn targets(&mut self, cancel: &Cancellation) -> Result<Vec<Target>> {
+            FakeBackend.targets(cancel)
+        }
+        fn capture(&mut self, target: &Target, cancel: &Cancellation) -> Result<Capture> {
+            FakeBackend.capture(target, cancel)
+        }
+        fn close_input(&mut self, session: &str) -> Result<()> {
+            self.closed.lock().unwrap().push(session.into());
+            Ok(())
+        }
+    }
+    let closed = Arc::new(Mutex::new(vec![]));
+    let mut service = CuaService::new(Backend {
+        closed: closed.clone(),
+    });
+    let owner = binding();
+    apply(&mut service, attach(&owner, "fake-window", 1));
+    closed.lock().unwrap().clear();
+    apply(&mut service, attach(&owner, "fake-window", 1));
+    apply(&mut service, snapshot(&owner, 1));
+    move_cursor(&mut service, &owner, 20., 30.);
+    configure(&mut service, &owner);
+    assert!(closed.lock().unwrap().is_empty());
+    apply(&mut service, attach(&owner, "fake-monitor", 1));
+    apply(
+        &mut service,
+        Operation::TargetDetach {
+            binding: owner.clone(),
+        },
+    );
+    apply(
+        &mut service,
+        Operation::SessionClose {
+            binding: owner.clone(),
+        },
+    );
+    assert_eq!(*closed.lock().unwrap(), vec![owner.session_id.clone(); 3]);
+}

@@ -1,17 +1,19 @@
 //! CUA macro adapter. Native resources and dispatch belong to the shared host's
 //! concrete backend; CUA keeps validation, cancellation and wire receipts here.
-use super::input_backend::{Control, Destination, NativeInput, Packet};
+use super::{
+    input_backend::{Control, Packet},
+    input_session::{NativeInputSession, unknown},
+};
 use crate::{
     cancellation::Cancellation,
-    error::{CuaError, ErrorCode, Result},
+    error::Result,
     gesture::{InputCommand, MouseButton, drag_points, key_code, text_units, wait_until},
     input::InputReceipt,
     target::{Point, Target},
 };
 use cantrip_interaction::{
-    host::{InputBackend, InputFailure, InputHost, Prepared},
+    host::Prepared,
     input::InputEvent,
-    ownership::{Participant, TargetIdentity},
     schedule::{Frame, Transition, dispatch_fallible, with_pointer_travel},
 };
 use std::{
@@ -39,75 +41,8 @@ impl Pair {
         }
     }
 }
-fn failure(error: InputFailure<CuaError>) -> CuaError {
-    use cantrip_interaction::host::PostFailure;
-    match error {
-        InputFailure::Prepare(error) => error,
-        InputFailure::Invalid(error) => CuaError::invalid(error.to_string()),
-        InputFailure::Ownership(error) => CuaError::invalid(format!(
-            "Input ownership rejected the operation: {error:?}. No input was posted."
-        )),
-        InputFailure::Post {
-            failure: PostFailure::NotDispatched(error),
-            cleanup,
-        } if cleanup.is_empty() => error,
-        InputFailure::Post { .. } => unknown(),
-    }
-}
-fn unknown() -> CuaError {
-    CuaError::new(
-        ErrorCode::InputUnknown,
-        "Input stopped after dispatch may have begun; participant-scoped release cleanup was attempted. Do not replay automatically.",
-    )
-}
-struct Session {
-    host: InputHost<NativeInput>,
-    owner: Participant,
-    identity: TargetIdentity,
-    sequence: u64,
-}
-impl Session {
-    fn new(backend: NativeInput, destination: Destination) -> Self {
-        let identity = TargetIdentity {
-            id: destination.target.id.clone(),
-            generation: destination.target.generation,
-        };
-        let domain = format!("process:{:?}", destination.target.process_id);
-        let mut host = InputHost::new(backend, 1, 17);
-        let owner = host
-            .open(identity.clone(), domain, destination)
-            .expect("new input host capacity");
-        Self {
-            host,
-            owner,
-            identity,
-            sequence: 0,
-        }
-    }
-    fn prepared(&mut self, packet: Prepared<Control, Packet>) -> Result<()> {
-        self.sequence += 1;
-        self.host
-            .submit_prepared(self.owner, &self.identity, self.sequence, packet)
-            .map(|_| ())
-            .map_err(failure)
-    }
-    fn event(&mut self, event: InputEvent) -> Result<()> {
-        self.sequence += 1;
-        self.host
-            .submit(self.owner, &self.identity, self.sequence, &event)
-            .map(|_| ())
-            .map_err(failure)
-    }
-    fn close(&mut self) -> Result<()> {
-        if self.host.close(self.owner).is_empty() {
-            Ok(())
-        } else {
-            Err(unknown())
-        }
-    }
-}
 fn run(
-    session: &mut Session,
+    session: &mut NativeInputSession,
     frames: impl IntoIterator<Item = Frame>,
     pairs: &mut [Pair],
     cancel: &Cancellation,
@@ -159,7 +94,42 @@ fn run(
     .map_err(|error| if began { unknown() } else { error.source })
 }
 pub(super) fn perform(
-    participant: &str,
+    session: &mut NativeInputSession,
+    target: &Target,
+    command: &InputCommand,
+    position: Point,
+    cancel: &Cancellation,
+    progress: &mut dyn FnMut(Point, bool),
+) -> Result<(Target, InputReceipt)> {
+    struct Scope<'a> {
+        session: &'a mut NativeInputSession,
+        armed: bool,
+    }
+    impl Drop for Scope<'_> {
+        fn drop(&mut self) {
+            if self.armed {
+                let _ = self.session.close();
+            }
+        }
+    }
+    let mut scope = Scope {
+        session,
+        armed: true,
+    };
+    let result = perform_inner(scope.session, target, command, position, cancel, progress);
+    if result.is_err() {
+        let cleanup = scope.session.close();
+        scope.armed = false;
+        if cleanup.is_err() {
+            return Err(unknown());
+        }
+    } else {
+        scope.armed = false;
+    }
+    result
+}
+fn perform_inner(
+    session: &mut NativeInputSession,
     target: &Target,
     command: &InputCommand,
     position: Point,
@@ -185,12 +155,7 @@ pub(super) fn perform(
             },
         ));
     }
-    let destination = Destination {
-        target: target.clone(),
-        participant: participant.to_owned(),
-        position,
-    };
-    let mut backend = NativeInput::new(cancel.clone());
+    session.begin_macro(target.clone(), position, cancel)?;
     let mut final_position = position;
     let mut pairs = vec![];
     let mut frames = vec![];
@@ -198,15 +163,11 @@ pub(super) fn perform(
         InputCommand::PreparedPress {
             hold_ms, button, ..
         } => {
-            pairs.push(Pair::new(backend.prepare(
-                &destination,
-                &InputEvent::PointerDown {
-                    point: position,
-                    button: *button,
-                    modifiers: vec![],
-                },
-                std::iter::empty(),
-            )?));
+            pairs.push(Pair::new(session.prepare(&InputEvent::PointerDown {
+                point: position,
+                button: *button,
+                modifiers: vec![],
+            })?));
             frames.push(Frame {
                 at: Duration::ZERO,
                 events: vec![Transition::Down(0)],
@@ -232,29 +193,21 @@ pub(super) fn perform(
                 }
                 for key in &frame.key_down {
                     let i = pairs.len();
-                    pairs.push(Pair::new(backend.prepare(
-                        &destination,
-                        &InputEvent::KeyDown {
-                            key: key.clone(),
-                            modifiers: frame.key_modifiers.clone(),
-                            repeat: false,
-                        },
-                        std::iter::empty(),
-                    )?));
+                    pairs.push(Pair::new(session.prepare(&InputEvent::KeyDown {
+                        key: key.clone(),
+                        modifiers: frame.key_modifiers.clone(),
+                        repeat: false,
+                    })?));
                     keys.insert(key.clone(), i);
                     events.push(Transition::Down(i));
                 }
                 if let Some(point) = frame.pointer_down {
                     let i = pairs.len();
-                    pairs.push(Pair::new(backend.prepare(
-                        &destination,
-                        &InputEvent::PointerDown {
-                            point,
-                            button: frame.pointer_button.unwrap_or_default(),
-                            modifiers: frame.pointer_modifiers.clone(),
-                        },
-                        std::iter::empty(),
-                    )?));
+                    pairs.push(Pair::new(session.prepare(&InputEvent::PointerDown {
+                        point,
+                        button: frame.pointer_button.unwrap_or_default(),
+                        modifiers: frame.pointer_modifiers.clone(),
+                    })?));
                     pointer = Some(i);
                     events.push(Transition::Down(i));
                 }
@@ -272,17 +225,11 @@ pub(super) fn perform(
                     [9] => (48, vec![]),
                     _ => (0, unit),
                 };
-                pairs.push(Pair::new(backend.key_pair(
-                    &destination,
-                    key,
-                    &text,
-                    &[],
-                )?));
+                pairs.push(Pair::new(session.key_pair(key, &text, &[])?));
             }
         }
         InputCommand::Key { key, modifiers } => {
-            pairs.push(Pair::new(backend.key_pair(
-                &destination,
+            pairs.push(Pair::new(session.key_pair(
                 key_code(key).expect("validated key"),
                 &[],
                 modifiers,
@@ -290,25 +237,20 @@ pub(super) fn perform(
         }
         InputCommand::Drag { start, end, .. } => {
             target.bounds.to_global(*end)?;
-            pairs.push(Pair::new(backend.prepare(
-                &destination,
-                &InputEvent::PointerDown {
-                    point: *start,
-                    button: MouseButton::Left,
-                    modifiers: vec![],
-                },
-                std::iter::empty(),
-            )?));
+            pairs.push(Pair::new(session.prepare(&InputEvent::PointerDown {
+                point: *start,
+                button: MouseButton::Left,
+                modifiers: vec![],
+            })?));
         }
         _ => {}
     }
-    let mut session = Session::new(backend, destination);
     let result: Result<()> = (|| {
         match command {
             InputCommand::PreparedPress { .. } | InputCommand::Timeline { .. } => {
                 let points: Vec<_> = pairs.iter().map(|p| p.point).collect();
                 run(
-                    &mut session,
+                    session,
                     with_pointer_travel(frames, &points, position),
                     &mut pairs,
                     cancel,
@@ -343,39 +285,55 @@ pub(super) fn perform(
                 for (at, point) in drag_points(*start, *end, *duration_ms) {
                     wait_until(began + at, cancel).map_err(|_| unknown())?;
                     session
-                        .event(InputEvent::PointerMove {
-                            point,
-                            modifiers: vec![],
-                        })
+                        .send(
+                            InputEvent::PointerMove {
+                                point,
+                                modifiers: vec![],
+                            },
+                            cancel,
+                        )
                         .map_err(|_| unknown())?;
                     final_position = point;
                     progress(point, true);
                 }
-                session.event(InputEvent::PointerUp {
-                    point: final_position,
-                    button: MouseButton::Left,
-                })?;
+                session.send(
+                    InputEvent::PointerUp {
+                        point: final_position,
+                        button: MouseButton::Left,
+                    },
+                    cancel,
+                )?;
             }
             InputCommand::Scroll {
                 delta_x, delta_y, ..
-            } => session.event(InputEvent::Scroll {
-                point: position,
-                delta_x: *delta_x,
-                delta_y: *delta_y,
-                modifiers: vec![],
-            })?,
-            InputCommand::WindowInput {} => session.event(InputEvent::PrepareSurface)?,
-            InputCommand::Media { key, modifiers } => session.event(InputEvent::Media {
-                key: *key,
-                modifiers: modifiers.clone(),
-            })?,
+            } => session
+                .send(
+                    InputEvent::Scroll {
+                        point: position,
+                        delta_x: *delta_x,
+                        delta_y: *delta_y,
+                        modifiers: vec![],
+                    },
+                    cancel,
+                )
+                .map(|_| ())?,
+            InputCommand::WindowInput {} => session
+                .send(InputEvent::PrepareSurface, cancel)
+                .map(|_| ())?,
+            InputCommand::Media { key, modifiers } => session
+                .send(
+                    InputEvent::Media {
+                        key: *key,
+                        modifiers: modifiers.clone(),
+                    },
+                    cancel,
+                )
+                .map(|_| ())?,
             InputCommand::Focus {} => unreachable!(),
         }
         Ok(())
     })();
-    let cleanup = session.close();
     result?;
-    cleanup?;
     let has_position = !matches!(
         command,
         InputCommand::Media { .. } | InputCommand::WindowInput {}

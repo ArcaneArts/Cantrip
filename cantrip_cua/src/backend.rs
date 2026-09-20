@@ -81,6 +81,11 @@ pub trait CaptureBackend: Send {
     fn native_input(&self) -> bool {
         false
     }
+    /// End native input lifetime only on detach, target replacement, or close.
+    /// Clearing accessibility inspection caches must not release held input.
+    fn close_input(&mut self, _session: &str) -> Result<()> {
+        Ok(())
+    }
     fn clear_controls(&mut self, _session: &str) {}
     fn controls(
         &mut self,

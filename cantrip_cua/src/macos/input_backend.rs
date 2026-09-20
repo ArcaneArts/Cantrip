@@ -37,6 +37,10 @@ unsafe extern "C" {
     fn CFRelease(value: Ref);
 }
 struct Event(Ref);
+// These are exclusively owned CoreGraphics buffers, created and used on the
+// native worker thread already. Moving ownership is safe; concurrent access is
+// not provided (Event remains !Sync and the shared host serializes posting).
+unsafe impl Send for Event {}
 impl Drop for Event {
     fn drop(&mut self) {
         unsafe { CFRelease(self.0) }
@@ -87,10 +91,13 @@ pub(super) enum Control {
     // Native apps have a single mouse drag context, even across mouse buttons.
     Pointer,
 }
+#[derive(Clone)]
 pub(super) struct Destination {
     pub target: Target,
     pub participant: String,
     pub position: Point,
+    pub cancel: Cancellation,
+    pub group: i64,
 }
 enum Payload {
     Events(Vec<Event>),
@@ -135,34 +142,31 @@ impl Packet {
 struct Context {
     source: Event,
     delivery: super::skylight::Delivery,
-    group: i64,
     epoch: u64,
     clock: Instant,
 }
 pub(super) struct NativeInput {
-    context: Option<Context>,
-    cancel: Cancellation,
+    contexts: std::collections::BTreeMap<i64, Context>,
 }
 impl NativeInput {
-    pub fn new(cancel: Cancellation) -> Self {
+    pub fn new() -> Self {
         Self {
-            context: None,
-            cancel,
+            contexts: Default::default(),
         }
     }
-    fn context(&mut self) -> Result<&Context> {
-        if self.context.is_none() {
+    fn context(&mut self, target: &Destination) -> Result<&Context> {
+        if let std::collections::btree_map::Entry::Vacant(entry) = self.contexts.entry(target.group)
+        {
             let source = Event::owned(unsafe { CGEventSourceCreate(-1) })?;
             let clock_event = Event::owned(unsafe { CGEventCreate(source.0) })?;
-            self.context = Some(Context {
+            entry.insert(Context {
                 source,
                 delivery: super::skylight::Delivery::load()?,
-                group: super::skylight::next_group(),
                 epoch: unsafe { CGEventGetTimestamp(clock_event.0) },
                 clock: Instant::now(),
             });
         }
-        Ok(self.context.as_ref().unwrap())
+        Ok(&self.contexts[&target.group])
     }
     pub fn key_pair(
         &mut self,
@@ -171,7 +175,7 @@ impl NativeInput {
         text: &[u16],
         modifiers: &[Modifier],
     ) -> Result<Prepared<Control, Packet>> {
-        let context = self.context()?;
+        let context = self.context(target)?;
         let down =
             Event::owned(unsafe { CGEventCreateKeyboardEvent(context.source.0, key, true) })?;
         let up = Event::owned(unsafe { CGEventCreateKeyboardEvent(context.source.0, key, false) })?;
@@ -201,7 +205,7 @@ impl NativeInput {
         kind: u32,
         tracking: bool,
     ) -> Result<Packet> {
-        let context = self.context()?;
+        let context = self.context(target)?;
         let global = target.target.bounds.to_global(point)?;
         let mut events = Vec::with_capacity(if tracking { 2 } else { 1 });
         if tracking {
@@ -244,10 +248,10 @@ impl Context {
             CGEventSetFlags(event.0, 0);
             if mouse {
                 self.delivery
-                    .prepare(event.0, pid, window, point, self.group, 1);
+                    .prepare(event.0, pid, window, point, target.group, 1);
             } else {
                 self.delivery
-                    .prepare_routed(event.0, pid, window, point, self.group);
+                    .prepare_routed(event.0, pid, window, point, target.group);
             }
         }
         event.set_modifiers(modifiers);
@@ -259,6 +263,37 @@ impl InputBackend for NativeInput {
     type Control = Control;
     type Packet = Packet;
     type Error = CuaError;
+    fn closed(&mut self, target: &Destination) {
+        self.contexts.remove(&target.group);
+    }
+    fn refreshed(&mut self, previous: &Destination, next: &Destination) {
+        if previous.group != next.group {
+            self.contexts.remove(&previous.group);
+        }
+    }
+    fn capabilities(&self) -> cantrip_interaction::capabilities::InputCapabilities {
+        use cantrip_interaction::capabilities::{InputCapabilities, PointerIsolation, Support::*};
+        InputCapabilities {
+            pointer: PointerIsolation::SurfaceDirected,
+            buttons: vec![
+                MouseButton::Left,
+                MouseButton::Right,
+                MouseButton::Middle,
+                MouseButton::Back,
+                MouseButton::Forward,
+            ],
+            persistent_holds: Implemented,
+            committed_text: Implemented,
+            composition: NotImplemented,
+            physical_keys: Implemented,
+            scroll: Implemented,
+            surface_preparation: Implemented,
+            host_focus: Implemented,
+            system_media: Implemented,
+            process_shared_state: true,
+            simultaneous_pointer_holds: Some(1),
+        }
+    }
     fn prepare<'a>(
         &mut self,
         target: &Destination,
@@ -266,7 +301,7 @@ impl InputBackend for NativeInput {
         held: impl Iterator<Item = (&'a Control, &'a Packet)>,
     ) -> Result<Prepared<Control, Packet>> {
         use InputEvent::*;
-        self.cancel.check()?;
+        target.cancel.check()?;
         let mut held = held;
         let action = |packet| Prepared::Action {
             controls: vec![],
@@ -415,7 +450,7 @@ impl InputBackend for NativeInput {
                 let x = delta_x.checked_neg().ok_or_else(|| {
                     CuaError::invalid("Scroll delta cannot be represented by the native backend.")
                 })?;
-                let context = self.context()?;
+                let context = self.context(target)?;
                 let global = target.target.bounds.to_global(*point)?;
                 let event = Event::owned(unsafe {
                     CGEventCreateScrollWheelEvent(context.source.0, 0, 2, y, x)
@@ -492,7 +527,7 @@ impl InputBackend for NativeInput {
     ) -> std::result::Result<Delivery, PostFailure<CuaError>> {
         use PostFailure::*;
         if !packet.cleanup {
-            self.cancel.check().map_err(NotDispatched)?;
+            target.cancel.check().map_err(NotDispatched)?;
         }
         if packet.identity.id != target.target.id
             || packet.identity.generation != target.target.generation
@@ -514,14 +549,16 @@ impl InputBackend for NativeInput {
                 super::click::process_destination(&target.target).map_err(NotDispatched)?;
             // Even if activation is uncertain, the pointer Down itself has
             // not been sent. Preserve the error but do not invent a mouse Up.
-            super::window_input::prepare_then(pid, window, &self.cancel, || self.cancel.check())
-                .map_err(NotDispatched)?;
+            super::window_input::prepare_then(pid, window, &target.cancel, || {
+                target.cancel.check()
+            })
+            .map_err(NotDispatched)?;
         }
         match &packet.payload {
             Payload::Events(events) => {
                 let (pid, _) =
                     super::click::process_destination(&target.target).map_err(NotDispatched)?;
-                let context = self.context().map_err(NotDispatched)?;
+                let context = self.context(target).map_err(NotDispatched)?;
                 for event in events {
                     context.post(target, pid, event);
                 }
@@ -542,8 +579,8 @@ impl InputBackend for NativeInput {
             Payload::Text(pairs) => {
                 let (pid, _) =
                     super::click::process_destination(&target.target).map_err(NotDispatched)?;
-                let cancel = self.cancel.clone();
-                let context = self.context().map_err(NotDispatched)?;
+                let cancel = target.cancel.clone();
+                let context = self.context(target).map_err(NotDispatched)?;
                 for (i, (down, up)) in pairs.iter().enumerate() {
                     // Text is committed as balanced scalar pairs. Even a panic
                     // between the halves cannot strand a physical key.
@@ -559,14 +596,14 @@ impl InputBackend for NativeInput {
             Payload::Prepare => {
                 let (pid, window) =
                     super::click::process_destination(&target.target).map_err(NotDispatched)?;
-                super::window_input::prepare(pid, window, &self.cancel).map_err(classify)?
+                super::window_input::prepare(pid, window, &target.cancel).map_err(classify)?
             }
             Payload::Focus => {
-                super::accessibility::request_focus(&target.target, &self.cancel)
+                super::accessibility::request_focus(&target.target, &target.cancel)
                     .map_err(Uncertain)?;
             }
             Payload::Media(key, modifiers) => {
-                super::media::press(*key, modifiers, &self.cancel).map_err(classify)?
+                super::media::press(*key, modifiers, &target.cancel).map_err(classify)?
             }
         }
         Ok(Delivery::DispatchedUnverified)
@@ -633,6 +670,8 @@ mod tests {
     fn destination() -> Destination {
         Destination {
             participant: "test".into(),
+            cancel: Cancellation::default(),
+            group: super::super::skylight::next_group(),
             position: Point { x: 10., y: 20. },
             target: Target {
                 id: "macos-window-123".into(),
@@ -657,7 +696,7 @@ mod tests {
     }
     #[test]
     fn typed_backend_retains_flags_drag_button_and_latest_release_coordinates() {
-        let mut backend = NativeInput::new(Cancellation::default());
+        let mut backend = NativeInput::new();
         let target = destination();
         let Prepared::Down { release, .. } = backend
             .prepare(
@@ -712,7 +751,7 @@ mod tests {
     }
     #[test]
     fn typed_key_repeat_and_release_preserve_original_modifiers() {
-        let mut backend = NativeInput::new(Cancellation::default());
+        let mut backend = NativeInput::new();
         let target = destination();
         let Prepared::Down {
             control, release, ..
@@ -761,7 +800,7 @@ mod tests {
     }
     #[test]
     fn stale_prepared_packet_is_rejected_before_native_post() {
-        let mut backend = NativeInput::new(Cancellation::default());
+        let mut backend = NativeInput::new();
         let mut target = destination();
         let Prepared::Down { packet, .. } = backend.key_pair(&target, 0, &[], &[]).unwrap() else {
             panic!()
@@ -777,7 +816,7 @@ mod tests {
     }
     #[test]
     fn committed_text_preallocates_balanced_unicode_and_control_pairs() {
-        let mut backend = NativeInput::new(Cancellation::default());
+        let mut backend = NativeInput::new();
         let target = destination();
         let Prepared::Action { controls, packet } = backend
             .prepare(
@@ -809,5 +848,39 @@ mod tests {
                 assert_eq!(CGEventGetIntegerValueField(up.0, 9), code);
             }
         }
+    }
+    #[test]
+    fn participants_have_distinct_private_sources_and_release_only_their_resources() {
+        let mut backend = NativeInput::new();
+        let a = destination();
+        let b = destination();
+        let input = InputEvent::KeyDown {
+            key: "A".into(),
+            modifiers: vec![],
+            repeat: false,
+        };
+        drop(backend.prepare(&a, &input, std::iter::empty()).unwrap());
+        drop(backend.prepare(&b, &input, std::iter::empty()).unwrap());
+        assert_eq!(backend.contexts.len(), 2);
+        assert_ne!(
+            backend.contexts[&a.group].source.0,
+            backend.contexts[&b.group].source.0
+        );
+        backend.closed(&a);
+        assert_eq!(backend.contexts.len(), 1);
+        assert!(backend.contexts.contains_key(&b.group));
+        let mut replacement = b.clone();
+        replacement.group = super::super::skylight::next_group();
+        backend.refreshed(&b, &replacement);
+        assert!(backend.contexts.is_empty());
+        drop(
+            backend
+                .prepare(&replacement, &input, std::iter::empty())
+                .unwrap(),
+        );
+        assert_eq!(backend.contexts.len(), 1);
+        backend.closed(&replacement);
+        backend.closed(&replacement);
+        assert!(backend.contexts.is_empty());
     }
 }
