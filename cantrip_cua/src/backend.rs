@@ -64,6 +64,20 @@ pub trait CaptureBackend: Send {
             "Experimental background input is unavailable; no input was posted.",
         ))
     }
+    /// Prepare an independent operation after the service resolved and authorized
+    /// its exact target. None uses the synchronous compatibility implementation.
+    fn input_work(
+        &mut self,
+        _session: &str,
+        _target: &Target,
+        _command: &crate::gesture::InputCommand,
+        _position: crate::target::Point,
+        _cancel: &Cancellation,
+        _progress: crate::input_job::InputProgress,
+    ) -> Result<Option<crate::input_job::InputWork>> {
+        Ok(None)
+    }
+    fn input_finished(&mut self, _session: &str, _succeeded: bool) {}
     fn perform(
         &mut self,
         _session: &str,

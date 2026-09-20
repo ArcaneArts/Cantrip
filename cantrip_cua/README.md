@@ -654,6 +654,21 @@ separate verification requirement; the progress ledger records that evidence.
 ## Bounds and cancellation
 
 - One executor owns mutable sessions; an independent reader handles cancellation.
+  Authorized native gestures run in independent input jobs, with at most one job
+  per attached session. Other sessions can attach, inspect, capture, or dispatch
+  input while a long gesture is waiting between events. Native event ownership
+  remains coordinated by the shared input host; this does not create independent
+  application keyboard focus or multiple simultaneous drags in one process.
+- Same-session requests retain order. Exact-authority close, detach, or target
+  replacement cancels that session's running gesture and queued input before the
+  lifecycle change. Reattaching the same target or presenting a different binding
+  cannot cancel it. Cancelled queued requests can finish without waiting for a
+  long gesture. Input is never replayed automatically.
+- Input job progress is a latest-only cursor state with a bounded trail; it does
+  not enqueue one executor message per frame. The native presentation queue reads
+  that live state so another session's update cannot replace it with stale cursor
+  coordinates or erase its click feedback. Thread panics report unknown delivery,
+  run native scoped cleanup, and retire that job without stopping other sessions.
 - At most 16 native sessions, 256 inventory targets, and 36 pending requests.
   The worker admits 16 ordinary requests and reserves 20 slots for the 16 native
   session closes and four JavaScript resets, including cancellation correlations.
@@ -661,8 +676,11 @@ separate verification requirement; the progress ledger records that evidence.
 - The executor may wait up to two seconds for output capacity; the reader never
   blocks on that queue. Output overload closes the connection instead of growing
   memory without limit. Lost output cancels active native work immediately.
-- EOF cancels current and queued work. Final output draining is bounded; the
-  executable exits rather than keeping blocked I/O threads alive indefinitely.
+- EOF cancels current and queued work. Native input cleanup gets a shared
+  two-second shutdown window, then final output draining is bounded; this is a
+  transport-shutdown bound, not a gesture-duration limit. The executable exits
+  rather than keeping blocked I/O threads alive indefinitely. A native call that
+  ignores cancellation reports shutdown failure instead of claiming cleanup.
 - Accepted mutations check cancellation immediately before commit. Cancellation
   after commit does not relabel a successful mutation as uncommitted.
 - Capture checks cancellation across backend, raster, composition, and encoding

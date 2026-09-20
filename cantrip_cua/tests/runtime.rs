@@ -132,6 +132,12 @@ struct Harness {
 
 impl Harness {
     fn new() -> Self {
+        Self::with_backend(|entered, exited| BlockingCapture { entered, exited })
+    }
+
+    fn with_backend<B: CaptureBackend + 'static>(
+        make: impl FnOnce(Sender<()>, Sender<bool>) -> B,
+    ) -> Self {
         let (input_tx, input_rx) = mpsc::channel();
         let (output_tx, frames) = mpsc::channel();
         let (entered_tx, entered) = mpsc::channel();
@@ -143,12 +149,10 @@ impl Harness {
             bytes: vec![],
             failed: fail_output.clone(),
         };
+        let backend = make(entered_tx, exited_tx);
         let thread = std::thread::spawn(move || {
             let result = runtime::run(
-                BlockingCapture {
-                    entered: entered_tx,
-                    exited: exited_tx,
-                },
+                backend,
                 ChannelReader {
                     input: input_rx,
                     current: Cursor::new(vec![]),
@@ -396,4 +400,267 @@ fn failed_output_pipe_cancels_native_capture_without_waiting_for_input_eof() {
     harness.assert_capture_was_cancelled();
     assert!(harness.input.is_some());
     assert!(harness.finish().is_err());
+}
+
+// A gesture stays live until the test releases it or the runtime cancels it.
+// Channels prove concurrency/ordering without measuring scheduler-dependent delays.
+struct InputEntry {
+    session: String,
+    cancel: Cancellation,
+    release: Sender<()>,
+}
+struct ConcurrentInput {
+    entries: Sender<InputEntry>,
+    finished: Sender<(String, bool)>,
+    panic_next: bool,
+}
+impl CaptureBackend for ConcurrentInput {
+    fn name(&self) -> &'static str {
+        "independent-input-fixture"
+    }
+    fn available(&self) -> bool {
+        true
+    }
+    fn targets(&mut self, cancel: &Cancellation) -> Result<Vec<Target>> {
+        FakeBackend.targets(cancel)
+    }
+    fn capture(&mut self, target: &Target, cancel: &Cancellation) -> Result<Capture> {
+        FakeBackend.capture(target, cancel)
+    }
+    fn input_work(
+        &mut self,
+        session: &str,
+        target: &Target,
+        _command: &cantrip_cua::gesture::InputCommand,
+        position: cantrip_cua::target::Point,
+        cancel: &Cancellation,
+        _progress: cantrip_cua::input_job::InputProgress,
+    ) -> Result<Option<cantrip_cua::input_job::InputWork>> {
+        let session = session.to_owned();
+        let target = target.clone();
+        let cancel = cancel.clone();
+        let entries = self.entries.clone();
+        let panic = std::mem::take(&mut self.panic_next);
+        Ok(Some(Box::new(move |progress| {
+            let (release, released) = mpsc::channel();
+            entries
+                .send(InputEntry {
+                    session,
+                    cancel: cancel.clone(),
+                    release,
+                })
+                .unwrap();
+            if panic {
+                panic!("fixture delivery panic");
+            }
+            loop {
+                cancel.check()?;
+                match released.recv_timeout(Duration::from_millis(5)) {
+                    Ok(()) => break,
+                    Err(mpsc::RecvTimeoutError::Timeout) => {}
+                    Err(_) => {
+                        return Err(CuaError::new(ErrorCode::InputFailed, "test release closed"));
+                    }
+                }
+            }
+            progress(position);
+            Ok((
+                target,
+                cantrip_cua::input::InputReceipt {
+                    control: None,
+                    method: "recorded",
+                    activation: false,
+                    outcome: "unknown",
+                    position: Some(position),
+                    global_position: None,
+                    effects: None,
+                    window_delivery: Some("unverified"),
+                },
+            ))
+        })))
+    }
+    fn input_finished(&mut self, session: &str, succeeded: bool) {
+        self.finished.send((session.into(), succeeded)).unwrap();
+    }
+}
+fn input_harness(panic_next: bool) -> (Harness, Receiver<InputEntry>, Receiver<(String, bool)>) {
+    let (entries_tx, entries) = mpsc::channel();
+    let (finished_tx, finished) = mpsc::channel();
+    let harness = Harness::with_backend(|_, _| ConcurrentInput {
+        entries: entries_tx,
+        finished: finished_tx,
+        panic_next,
+    });
+    (harness, entries, finished)
+}
+fn input_request(harness: &mut Harness, binding: Value) -> u64 {
+    harness.request(json!({"operation":"input.perform", "binding":binding,
+        "targetId":"fake-window", "targetGeneration":1,
+        "command":{"kind":"key", "key":"a"}}))
+}
+fn input_entry(entries: &Receiver<InputEntry>) -> InputEntry {
+    entries
+        .recv_timeout(TEST_DEADLINE)
+        .expect("input entry deadline")
+}
+fn assert_ok(outcome: Outcome) {
+    assert!(matches!(outcome, Outcome::Ok { .. }), "{outcome:?}");
+}
+fn barrier(harness: &mut Harness) {
+    let id = harness.request(json!({"operation":"capabilities.get"}));
+    assert_ok(harness.response(id));
+}
+
+#[test]
+fn long_input_allows_another_session_and_preserves_same_session_order() {
+    let (mut h, entries, finished) = input_harness(false);
+    h.attach();
+    let first = input_request(&mut h, binding());
+    let a = input_entry(&entries);
+    let second = input_request(&mut h, binding());
+    let mut other = binding();
+    other["sessionId"] = json!("other");
+    let attach = h.request(json!({"operation":"target.attach", "binding":other,
+        "targetId":"fake-window", "targetGeneration":1}));
+    assert_ok(h.response(attach));
+    let independent = input_request(&mut h, other);
+    let b = input_entry(&entries);
+    assert_eq!(b.session, "other");
+    b.release.send(()).unwrap();
+    assert_ok(h.response(independent));
+    assert!(!a.cancel.is_cancelled());
+    assert!(
+        entries.try_recv().is_err(),
+        "second same-session job must wait"
+    );
+    a.release.send(()).unwrap();
+    assert_ok(h.response(first));
+    let c = input_entry(&entries);
+    assert_eq!(c.session, a.session);
+    c.release.send(()).unwrap();
+    assert_ok(h.response(second));
+    for _ in 0..3 {
+        assert!(finished.recv_timeout(TEST_DEADLINE).unwrap().1);
+    }
+    h.finish().unwrap();
+}
+
+#[test]
+fn queued_cancel_is_answered_while_input_remains_live() {
+    let (mut h, entries, _finished) = input_harness(false);
+    h.attach();
+    let running = input_request(&mut h, binding());
+    let a = input_entry(&entries);
+    let queued = input_request(&mut h, binding());
+    barrier(&mut h);
+    h.cancel(queued);
+    assert_error(h.response(queued), ErrorCode::Cancelled);
+    assert!(!a.cancel.is_cancelled());
+    h.cancel(running);
+    assert_error(h.response(running), ErrorCode::Cancelled);
+    assert!(a.cancel.is_cancelled());
+    h.finish().unwrap();
+}
+
+#[test]
+fn close_and_detach_cancel_only_their_authorized_input_before_transition() {
+    for operation in ["session.close", "target.detach", "target.attach"] {
+        let (mut h, entries, finished) = input_harness(false);
+        h.attach();
+        let running = input_request(&mut h, binding());
+        let a = input_entry(&entries);
+        let queued = input_request(&mut h, binding());
+        let mut request = json!({"operation":operation,"binding":binding()});
+        if operation == "target.attach" {
+            request["targetId"] = json!("missing-window");
+            request["targetGeneration"] = json!(2);
+        }
+        let close = h.request(request);
+        assert_error(h.response(running), ErrorCode::Cancelled);
+        assert_error(h.response(queued), ErrorCode::Cancelled);
+        let result = h.response(close);
+        if operation == "target.attach" {
+            assert_error(result, ErrorCode::TargetNotFound);
+        } else {
+            assert_ok(result);
+        }
+        assert!(a.cancel.is_cancelled());
+        assert_eq!(
+            finished.recv_timeout(TEST_DEADLINE).unwrap(),
+            (a.session, false)
+        );
+        assert!(entries.try_recv().is_err());
+        h.finish().unwrap();
+    }
+}
+
+#[test]
+fn same_target_reattach_and_wrong_authority_cannot_cancel_live_input() {
+    for wrong_authority in [false, true] {
+        let (mut h, entries, _finished) = input_harness(false);
+        h.attach();
+        let running = input_request(&mut h, binding());
+        let a = input_entry(&entries);
+        let mut caller = binding();
+        let request = if wrong_authority {
+            caller["chatId"] = json!("wrong-chat");
+            json!({"operation":"session.close", "binding":caller})
+        } else {
+            json!({"operation":"target.attach", "binding":caller,
+            "targetId":"fake-window", "targetGeneration":1})
+        };
+        let observer = h.request(request);
+        barrier(&mut h);
+        assert!(!a.cancel.is_cancelled());
+        a.release.send(()).unwrap();
+        assert_ok(h.response(running));
+        if wrong_authority {
+            assert_error(h.response(observer), ErrorCode::OwnershipMismatch);
+        } else {
+            assert_ok(h.response(observer));
+        }
+        h.finish().unwrap();
+    }
+}
+
+#[test]
+fn delivery_panic_does_not_strand_session_or_executor() {
+    let (mut h, entries, finished) = input_harness(true);
+    h.attach();
+    let failed = input_request(&mut h, binding());
+    let _a = input_entry(&entries);
+    assert_error(h.response(failed), ErrorCode::InputUnknown);
+    assert!(!finished.recv_timeout(TEST_DEADLINE).unwrap().1);
+    let next = input_request(&mut h, binding());
+    input_entry(&entries).release.send(()).unwrap();
+    assert_ok(h.response(next));
+    h.finish().unwrap();
+}
+
+#[test]
+fn eof_and_output_failure_cancel_active_input_and_finish_cleanup() {
+    for fail_output in [false, true] {
+        let (mut h, entries, finished) = input_harness(false);
+        h.attach();
+        let running = input_request(&mut h, binding());
+        let a = input_entry(&entries);
+        let queued = input_request(&mut h, binding());
+        barrier(&mut h);
+        if fail_output {
+            h.fail_output.store(true, Ordering::Release);
+            h.request(json!({"operation":"capabilities.get"}));
+            assert!(a.cancel.wait_cancelled(TEST_DEADLINE));
+        }
+        let result = h.finish();
+        assert_eq!(result.is_err(), fail_output);
+        if !fail_output {
+            assert_error(h.waiting.remove(&running).unwrap(), ErrorCode::Cancelled);
+            assert_error(h.waiting.remove(&queued).unwrap(), ErrorCode::Cancelled);
+        }
+        assert!(a.cancel.is_cancelled());
+        assert_eq!(
+            finished.recv_timeout(TEST_DEADLINE).unwrap(),
+            (a.session, false)
+        );
+    }
 }

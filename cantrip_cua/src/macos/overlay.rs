@@ -278,29 +278,32 @@ struct Presentation {
 }
 thread_local! { static PRESENTATION: RefCell<Presentation> = RefCell::default(); }
 pub(super) fn present(sessions: Vec<CursorPresentation<crate::target::Target>>) {
-    // Register owners before native input can be posted on the executor.
-    crate::effects::live::synchronize(&sessions);
-    // Only plain owned data crosses the executor/main-queue boundary.
-    DispatchQueue::main().exec_async(move || {
-        autoreleasepool(|_| {
-            PRESENTATION.with_borrow_mut(|presentation| {
-                presentation.sessions = sessions;
-                if !presentation.ticking {
-                    presentation.ticking = true;
-                    schedule(true);
-                }
-            });
-            refresh();
-        })
-    });
+    present_input_cursors(sessions, HashMap::new(), PresentationDelivery::Latest);
 }
 /// Called only by the native executor. Drain earlier main-queue updates and
 /// render this travel frame before allowing the executor to post the click.
 pub(super) fn present_step(sessions: Vec<CursorPresentation<crate::target::Target>>) {
-    DispatchQueue::main().exec_sync(move || {
+    present_input_cursors(sessions, HashMap::new(), PresentationDelivery::BeforeInput);
+}
+/// Concurrent gestures can advance after the executor builds its complete
+/// snapshot. Sample their latest state on the presentation queue so an unrelated
+/// request cannot rewind a cursor or erase its click glow/trail.
+pub(super) fn present_input_cursors(
+    mut sessions: Vec<CursorPresentation<crate::target::Target>>,
+    progress: HashMap<String, crate::input_job::InputProgress>,
+    delivery: PresentationDelivery,
+) {
+    // Register owners before their first native event is posted.
+    crate::effects::live::synchronize(&sessions);
+    let update = move || {
         autoreleasepool(|_| {
+            for state in &mut sessions {
+                if let Some(live) = progress.get(&state.participant_id) {
+                    state.cursor = live.cursor();
+                }
+            }
+            crate::effects::live::synchronize(&sessions);
             PRESENTATION.with_borrow_mut(|p| {
-                crate::effects::live::synchronize(&sessions);
                 p.sessions = sessions;
                 if !p.ticking {
                     p.ticking = true;
@@ -309,14 +312,18 @@ pub(super) fn present_step(sessions: Vec<CursorPresentation<crate::target::Targe
             });
             refresh();
         })
-    });
+    };
+    match delivery {
+        PresentationDelivery::Latest => DispatchQueue::main().exec_async(update),
+        PresentationDelivery::BeforeInput => DispatchQueue::main().exec_sync(update),
+    }
 }
 /// Update only the exact active attachment, without replacing other sessions.
 pub(super) fn move_cursor(
     session: &str,
     target: &crate::target::Target,
-    point: crate::target::Point,
-    method: Option<&'static str>,
+    progress: crate::input_job::InputProgress,
+    before_input: bool,
 ) {
     let session = session.to_owned();
     let target = target.clone();
@@ -329,25 +336,25 @@ pub(super) fn move_cursor(
                             .as_ref()
                             .is_some_and(|t| t.id == target.id && t.generation == target.generation)
                 }) {
-                    crate::effects::live::movement(&session, &target, point, false);
-                    let now = timestamp();
-                    let _ = state.cursor.move_to(point, &target.bounds, now);
-                    if let Some(method) = method {
-                        state.cursor.mark_action(method, "unknown", now);
-                    }
+                    // Another presentation may have consumed a newer point while
+                    // this callback waited. Always sample the current state here.
+                    let cursor = progress.cursor();
+                    crate::effects::live::movement(&session, &target, cursor.position, false);
+                    state.cursor = cursor;
                 }
             });
             refresh();
         })
     };
-    if method.is_some() {
-        DispatchQueue::main().exec_async(update);
-    } else {
-        // Visual travel must arrive before the next native down, not catch up
-        // behind it. Held drag points keep their existing asynchronous path.
+    if before_input {
+        // Visual travel arrives before the next native down. Actual input
+        // notifications retain their asynchronous path.
         DispatchQueue::main().exec_sync(update);
+    } else {
+        DispatchQueue::main().exec_async(update);
     }
 }
+
 fn timestamp() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)

@@ -7,6 +7,7 @@ pub mod effects;
 pub mod error;
 pub mod gesture;
 pub mod input;
+pub mod input_job;
 pub mod inventory;
 mod javascript;
 pub mod protocol;
