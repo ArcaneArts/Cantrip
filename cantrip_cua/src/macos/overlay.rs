@@ -1,8 +1,6 @@
 //! Click-through desktop presentation. Main-thread AppKit only; no input posting.
-use crate::{
-    service::SessionState,
-    target::{Bounds, TargetKind},
-};
+use crate::target::{Bounds, TargetKind};
+use cantrip_interaction::presentation::{CursorPresentation, CursorRenderer, PresentationDelivery};
 use dispatch2::{DispatchQueue, DispatchTime};
 use objc2::{
     msg_send,
@@ -196,7 +194,12 @@ impl Panel {
             let _: () = msg_send![&*self.window, orderOut: Option::<&AnyObject>::None];
         }
     }
-    fn update(&mut self, state: &SessionState, native: &Window, region: &Bounds) -> Option<()> {
+    fn update(
+        &mut self,
+        state: &CursorPresentation<crate::target::Target>,
+        native: &Window,
+        region: &Bounds,
+    ) -> Option<()> {
         // Renderer preserves the same appearance/trail/action feedback as model images.
         let key = format!(
             "{}:{}:{}:{}:{:?}:{}",
@@ -240,7 +243,11 @@ impl Panel {
         Some(())
     }
 }
-fn cursor_png(state: &SessionState, bounds: &Bounds, region: &Bounds) -> Option<Vec<u8>> {
+fn cursor_png(
+    state: &CursorPresentation<crate::target::Target>,
+    bounds: &Bounds,
+    region: &Bounds,
+) -> Option<Vec<u8>> {
     let width = region.width.ceil() as u32;
     let height = region.height.ceil() as u32;
     let pixels = (width as usize).checked_mul(height as usize)?;
@@ -265,12 +272,12 @@ fn cursor_png(state: &SessionState, bounds: &Bounds, region: &Bounds) -> Option<
 }
 #[derive(Default)]
 struct Presentation {
-    sessions: Vec<SessionState>,
+    sessions: Vec<CursorPresentation<crate::target::Target>>,
     panels: HashMap<String, Vec<Panel>>,
     ticking: bool,
 }
 thread_local! { static PRESENTATION: RefCell<Presentation> = RefCell::default(); }
-pub(super) fn present(sessions: Vec<SessionState>) {
+pub(super) fn present(sessions: Vec<CursorPresentation<crate::target::Target>>) {
     // Register owners before native input can be posted on the executor.
     crate::effects::live::synchronize(&sessions);
     // Only plain owned data crosses the executor/main-queue boundary.
@@ -289,7 +296,7 @@ pub(super) fn present(sessions: Vec<SessionState>) {
 }
 /// Called only by the native executor. Drain earlier main-queue updates and
 /// render this travel frame before allowing the executor to post the click.
-pub(super) fn present_step(sessions: Vec<SessionState>) {
+pub(super) fn present_step(sessions: Vec<CursorPresentation<crate::target::Target>>) {
     DispatchQueue::main().exec_sync(move || {
         autoreleasepool(|_| {
             PRESENTATION.with_borrow_mut(|p| {
@@ -317,7 +324,7 @@ pub(super) fn move_cursor(
         autoreleasepool(|_| {
             PRESENTATION.with_borrow_mut(|p| {
                 if let Some(state) = p.sessions.iter_mut().find(|s| {
-                    s.binding.session_id == session
+                    s.participant_id == session
                         && s.target
                             .as_ref()
                             .is_some_and(|t| t.id == target.id && t.generation == target.generation)
@@ -376,7 +383,7 @@ pub(super) fn refresh_with_windows(windows: &[Window]) {
     PRESENTATION.with_borrow_mut(|p| {
         p.panels.retain(|id, _| {
             p.sessions.iter().any(|s| {
-                &s.binding.session_id == id
+                &s.participant_id == id
                     && s.target
                         .as_ref()
                         .is_some_and(|t| t.kind == TargetKind::Window)
@@ -400,7 +407,7 @@ pub(super) fn refresh_with_windows(windows: &[Window]) {
                 || native.is_none()
                 || !native.unwrap().bounds.contains_local(state.cursor.position)
             {
-                if let Some(panels) = p.panels.get(&state.binding.session_id) {
+                if let Some(panels) = p.panels.get(&state.participant_id) {
                     for panel in panels {
                         panel.hide();
                     }
@@ -408,10 +415,7 @@ pub(super) fn refresh_with_windows(windows: &[Window]) {
                 continue;
             }
             let native = native.unwrap();
-            let panels = p
-                .panels
-                .entry(state.binding.session_id.clone())
-                .or_default();
+            let panels = p.panels.entry(state.participant_id.clone()).or_default();
             let Ok(regions) = state.cursor.desktop_tiles(&native.bounds) else {
                 for panel in panels {
                     panel.hide();
@@ -430,4 +434,19 @@ pub(super) fn refresh_with_windows(windows: &[Window]) {
             }
         }
     });
+}
+
+/// Native presentation adapter. It receives only cursor/target data, never agent authority.
+pub(super) struct MacOsCursorRenderer;
+impl CursorRenderer<crate::target::Target> for MacOsCursorRenderer {
+    fn present(
+        &mut self,
+        participants: Vec<CursorPresentation<crate::target::Target>>,
+        delivery: PresentationDelivery,
+    ) {
+        match delivery {
+            PresentationDelivery::Latest => present(participants),
+            PresentationDelivery::BeforeInput => present_step(participants),
+        }
+    }
 }

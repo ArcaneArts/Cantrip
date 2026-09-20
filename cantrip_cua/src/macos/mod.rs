@@ -23,6 +23,7 @@ use crate::{
     target::{Bounds, Target, TargetKind},
 };
 use block2::RcBlock;
+use cantrip_interaction::presentation::{CursorRenderer, PresentationDelivery};
 use dispatch2::DispatchQueue;
 use objc2::{
     AnyThread,
@@ -245,10 +246,16 @@ impl CaptureBackend for MacOsBackend {
     fn present_cursors(&mut self, sessions: Vec<crate::service::SessionState>) {
         sharing::retain_sessions(&sessions);
         window_effects::sessions(sessions.clone());
-        overlay::present(sessions);
+        overlay::MacOsCursorRenderer.present(
+            sessions.into_iter().map(Into::into).collect(),
+            PresentationDelivery::Latest,
+        );
     }
     fn present_cursor_step(&mut self, sessions: Vec<crate::service::SessionState>) {
-        overlay::present_step(sessions);
+        overlay::MacOsCursorRenderer.present(
+            sessions.into_iter().map(Into::into).collect(),
+            PresentationDelivery::BeforeInput,
+        );
     }
     fn background_click(
         &mut self,

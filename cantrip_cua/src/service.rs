@@ -768,3 +768,34 @@ impl Write for BoundedImage {
         Ok(())
     }
 }
+
+// The agent adapter chooses identity; shared rendering never reads chat metadata.
+impl cantrip_interaction::presentation::CursorSource for SessionState {
+    type Target = Target;
+    fn participant_id(&self) -> &str {
+        &self.binding.session_id
+    }
+    fn appearance_identity(&self) -> &str {
+        self.binding
+            .thread_id
+            .as_deref()
+            .unwrap_or(&self.binding.chat_id)
+    }
+    fn target(&self) -> Option<&Target> {
+        self.target.as_ref()
+    }
+    fn cursor(&self) -> &CursorState {
+        &self.cursor
+    }
+}
+
+impl From<SessionState> for cantrip_interaction::presentation::CursorPresentation<Target> {
+    fn from(state: SessionState) -> Self {
+        Self {
+            participant_id: state.binding.session_id,
+            appearance_identity: state.binding.thread_id.unwrap_or(state.binding.chat_id),
+            target: state.target,
+            cursor: state.cursor,
+        }
+    }
+}

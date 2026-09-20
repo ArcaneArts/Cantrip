@@ -3,10 +3,7 @@ use super::{
     now_ns,
     telemetry::{Agent, InputEvent, Telemetry},
 };
-use crate::{
-    service::SessionState,
-    target::{Point, Target},
-};
+use crate::target::{Point, Target};
 use std::sync::{Mutex, OnceLock};
 fn state() -> &'static Mutex<Telemetry> {
     static STATE: OnceLock<Mutex<Telemetry>> = OnceLock::new();
@@ -15,7 +12,7 @@ fn state() -> &'static Mutex<Telemetry> {
 fn with<T>(f: impl FnOnce(&mut Telemetry) -> T) -> T {
     f(&mut state().lock().unwrap_or_else(|e| e.into_inner()))
 }
-pub fn synchronize(sessions: &[SessionState]) {
+pub fn synchronize(sessions: &[impl cantrip_interaction::presentation::CursorSource]) {
     with(|s| s.synchronize(sessions, now_ns()));
 }
 pub fn movement(session: &str, target: &Target, point: Point, discontinuity: bool) {

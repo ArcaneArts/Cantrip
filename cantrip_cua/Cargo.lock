@@ -43,9 +43,9 @@ name = "cantrip-cua"
 version = "0.0.0"
 dependencies = [
  "block2",
+ "cantrip-interaction",
  "crossbeam-channel",
  "dispatch2",
- "font8x8",
  "objc2",
  "objc2-core-foundation",
  "objc2-core-graphics",
@@ -59,6 +59,15 @@ dependencies = [
  "rquickjs",
  "serde",
  "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "cantrip-interaction"
+version = "0.0.0"
+dependencies = [
+ "font8x8",
+ "serde",
  "sha2",
 ]
 
