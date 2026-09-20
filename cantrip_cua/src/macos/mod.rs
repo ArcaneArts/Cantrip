@@ -5,6 +5,7 @@ mod click;
 mod effects;
 mod geometry;
 mod gesture;
+mod input_backend;
 mod input_telemetry;
 mod media;
 mod overlay;

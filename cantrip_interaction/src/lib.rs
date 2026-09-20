@@ -2,6 +2,7 @@
 pub mod cursor;
 pub mod error;
 pub mod geometry;
+pub mod host;
 pub mod input;
 pub mod motion;
 pub mod presentation;

@@ -117,6 +117,19 @@ impl<C: Ord + Clone, R> Ownership<C, R> {
         session.last_sequence = Some(sequence);
         Ok(())
     }
+    /// Check a real owned control without changing state. Used by transient
+    /// operations (such as pointer tracking) that must not disrupt a held drag.
+    pub fn available(&self, owner: Participant, control: &C) -> Result<(), OwnershipError> {
+        let session = self
+            .sessions
+            .get(&owner)
+            .ok_or(OwnershipError::SessionNotFound)?;
+        match self.owners.get(&(session.domain.clone(), control.clone())) {
+            Some(current) if *current == owner => Err(OwnershipError::AlreadyHeld),
+            Some(_) => Err(OwnershipError::Conflict),
+            None => Ok(()),
+        }
+    }
     /// Reserve only after the backend has prepared a matching release and before
     /// posting Down. Preparation must not itself post Down. If Down might have
     /// been posted, take/drain the release even when dispatch returns an error.
@@ -164,6 +177,19 @@ impl<C: Ord + Clone, R> Ownership<C, R> {
             .map(|h| &h.release)
             .ok_or(OwnershipError::NotHeld)
     }
+    pub fn holds(
+        &self,
+        owner: Participant,
+    ) -> Result<impl Iterator<Item = (&C, &R)>, OwnershipError> {
+        let session = self
+            .sessions
+            .get(&owner)
+            .ok_or(OwnershipError::SessionNotFound)?;
+        Ok(session
+            .holds
+            .iter()
+            .map(|(control, hold)| (control, &hold.release)))
+    }
     /// Replace cleanup after a drag moves. Allocate the replacement before
     /// dispatching movement; never lose the existing release on preparation failure.
     pub fn update_release(
@@ -172,6 +198,14 @@ impl<C: Ord + Clone, R> Ownership<C, R> {
         control: &C,
         release: R,
     ) -> Result<(), OwnershipError> {
+        self.replace_release(owner, control, release).map(|_| ())
+    }
+    pub fn replace_release(
+        &mut self,
+        owner: Participant,
+        control: &C,
+        release: R,
+    ) -> Result<R, OwnershipError> {
         let hold = self
             .sessions
             .get_mut(&owner)
@@ -179,8 +213,7 @@ impl<C: Ord + Clone, R> Ownership<C, R> {
             .holds
             .get_mut(control)
             .ok_or(OwnershipError::NotHeld)?;
-        hold.release = release;
-        Ok(())
+        Ok(std::mem::replace(&mut hold.release, release))
     }
     /// Remove ownership before dispatching Up. The caller must not replay an
     /// uncertain result. Repeated release cannot release another participant.

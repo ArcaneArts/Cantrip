@@ -89,8 +89,34 @@ pub fn with_pointer_travel(
 pub fn dispatch<I, E>(
     frames: I,
     count: usize,
+    check: impl FnMut() -> Result<(), E>,
+    mut post: impl FnMut(Transition),
+    prepare: impl FnMut(Transition) -> Result<(), E>,
+    wait: impl FnMut(Duration) -> Result<Duration, E>,
+) -> Result<(), DispatchFailure<E>>
+where
+    I: IntoIterator,
+    I::Item: std::borrow::Borrow<Frame>,
+{
+    dispatch_fallible(
+        frames,
+        count,
+        check,
+        |event| {
+            post(event);
+            Ok(())
+        },
+        prepare,
+        wait,
+    )
+}
+/// Fallible backend delivery. Stop at the first failed transition, release all
+/// remaining holds once, and retain whether any input may have begun.
+pub fn dispatch_fallible<I, E>(
+    frames: I,
+    count: usize,
     mut check: impl FnMut() -> std::result::Result<(), E>,
-    post: impl FnMut(Transition),
+    post: impl FnMut(Transition) -> Result<(), E>,
     mut prepare: impl FnMut(Transition) -> std::result::Result<(), E>,
     mut wait: impl FnMut(Duration) -> std::result::Result<Duration, E>,
 ) -> std::result::Result<(), DispatchFailure<E>>
@@ -98,18 +124,29 @@ where
     I: IntoIterator,
     I::Item: std::borrow::Borrow<Frame>,
 {
-    struct Held<F: FnMut(Transition)> {
+    struct Held<E, F: FnMut(Transition) -> Result<(), E>> {
         keys: Vec<bool>,
         post: F,
     }
-    impl<F: FnMut(Transition)> Drop for Held<F> {
-        fn drop(&mut self) {
+    impl<E, F: FnMut(Transition) -> Result<(), E>> Held<E, F> {
+        fn release_all(&mut self) -> Result<(), E> {
+            let mut result = Ok(());
             for i in (0..self.keys.len()).rev() {
                 if self.keys[i] {
                     self.keys[i] = false;
-                    (self.post)(Transition::Up(i));
+                    if let Err(error) = (self.post)(Transition::Up(i))
+                        && result.is_ok()
+                    {
+                        result = Err(error);
+                    }
                 }
             }
+            result
+        }
+    }
+    impl<E, F: FnMut(Transition) -> Result<(), E>> Drop for Held<E, F> {
+        fn drop(&mut self) {
+            let _ = self.release_all();
         }
     }
     let mut held = Held {
@@ -156,11 +193,18 @@ where
                 }
                 Transition::Move(_) => {}
             }
-            (held.post)(event);
+            if let Err(error) = (held.post)(event) {
+                result = Err(error);
+                break;
+            }
         }
         if result.is_err() {
             break;
         }
+    }
+    let cleanup = held.release_all();
+    if result.is_ok() {
+        result = cleanup;
     }
     drop(held);
     result.map_err(|source| DispatchFailure {
