@@ -39,7 +39,9 @@ window captures. Effects remain off by default.
 `Motion::Immediate` produces the destination at time zero for future human
 input. `EaseOut` preserves the existing 60–90 ms cubic deceleration.
 `Scheduled` supplies a lazy spline ending at a known deadline, with optional
-neighboring points. Long gaps do not allocate a frame per sample in advance.
+neighboring points. `Linear { duration }` supplies the lazy path used by native
+drags. Long gaps and drags do not allocate a frame per sample in advance; zero
+duration still yields the exact endpoint before release.
 These are presentation paths: they never sleep, post input, or prove delivery.
 CUA still owns cancellation and its existing timing adapter.
 
@@ -159,11 +161,18 @@ input; separately constructed hosts intentionally have separate registries.
 Neither remote desktop nor a browser adapter is implemented here.
 
 Native buffers are exclusively owned and movable between worker threads. The
-host serializes preparation and dispatch, but no timeline delay, screenshot or
-cursor animation runs under its mutex. Backend panics unwind after scoped
-cleanup; mutex poison from one participant does not strand other participants.
-The existing CUA request executor still serializes whole macros; making that
-executor cooperative is the next integration step.
+host serializes preparation and dispatch. Planned timeline waits, screenshots,
+and cursor animation run outside its mutex. Legacy one-click operations retain
+their bounded native settling waits, and semantic AX calls are synchronous.
+Backend panics unwind after scoped cleanup; mutex poison from one participant
+does not strand other participants.
+
+CUA runs prepared native gestures independently, at most one job per session.
+The main executor retains authorization and ordered state mutations while
+unrelated sessions continue. Exact-binding close/detach/target replacement
+cancels only matching input. Queued cancellations finish promptly. Progress uses
+one latest cursor state with a bounded trail, sampled again on the presentation
+queue to avoid stale updates from another session erasing click feedback.
 
 `InputCapabilities` describes implementation support and limitations: native
 surface-directed input, supported buttons, persistent holds, text versus
@@ -183,21 +192,35 @@ dropping, and release-on-exit. Its caller supplies cancellation, waiting, event
 preparation, and posting. Failure retains both the caller's error and whether
 input began; CUA preserves its existing unverified/no-replay receipts.
 
-The current synchronous CUA adapter still occupies its executor during a long
-gesture. Fair scheduling across CUA sessions remains required follow-up work.
-Native continuous-input consumers can already retain independent session handles.
+The native macro adapter waits using relative elapsed offsets with cancellable
+condition-variable sleeps. No absolute clock addition can overflow on a long
+safe-integer duration. The shared scheduling core takes caller-supplied clocks;
+continuous consumers need no macro or timer to retain held input across calls.
 
-## Integration boundary and remaining extraction
+## Compatibility actions and integration boundary
 
 Cursor presentation, native gesture delivery, ownership, and timeline execution
 use the shared contracts today. No remote desktop or browser integration is
 included.
 
-Remaining goal work: migrate remaining legacy input paths, make long schedules
-yield to unrelated CUA sessions; remove the legacy short drag-duration limit using
-bounded, lazy sampling; measure extraction
-overhead; and complete native regression/goal acceptance. These are required
-follow-ups before the overall extraction can be considered complete.
+Legacy background, process, and explicit global clicks now use the same native
+participant and shared host through `submit_action`. Physical click pairs declare
+the pointer collision control, so they cannot release a different participant's
+held drag. AX press and explicit focus use the semantic-action hook without
+pretending they post physical pointer events. Their established native routing,
+receipts, and explicit activation behavior remain unchanged. There is no fallback
+from background delivery to the host cursor.
+
+`submit_action` is a trusted synchronous adapter hook for existing backend-specific
+operations. It fences session/target/sequence before the callback, checks declared
+control conflicts, and performs participant-scoped failure/unwind cleanup. The
+callback must balance its own transient native resources, classify uncertain
+input honestly, and never perform a scheduled macro inside this hook. It is not
+an agent tool, permission grant, or arbitrary code execution endpoint.
+
+Native regression acceptance remains required after extraction; unit tests and
+software benchmarks alone do not prove that a specific application accepted input.
+See [the acceptance checklist](INTERACTION_FOUNDATION_ACCEPTANCE.md).
 
 A future remote-desktop adapter will supply authorized participant sessions,
 window targets, frame geometry, and immediate pointer motion. A future embedded
@@ -216,3 +239,56 @@ The native CUA suite continues to cover cursor pixels/tiles, alpha composition,
 styles, glow, scheduling cancellation, effect uniforms/telemetry, stale targets,
 wire contracts, and script execution. It does not substitute for a visual test
 of native event delivery when that implementation changes.
+
+## Connecting another consumer later
+
+A native adapter supplies its own authorization and resolves target metadata. It
+shares the application's `NativeInputHost`, opens one session per participant,
+keeps that handle across messages, and submits original monotonic sequence IDs.
+For example, two separate incoming messages can hold and release a physical key:
+
+```rust
+use cantrip_cua::{cancellation::Cancellation, error::Result, macos::NativeInputSession};
+use cantrip_interaction::input::InputEvent;
+
+fn note_down(session: &mut NativeInputSession, sequence: u64, cancel: &Cancellation) -> Result<()> {
+    session.submit(sequence, InputEvent::KeyDown {
+        key: "C".into(), modifiers: vec![], repeat: false,
+    }, cancel)?;
+    Ok(())
+}
+fn note_up(session: &mut NativeInputSession, sequence: u64, cancel: &Cancellation) -> Result<()> {
+    session.submit(sequence, InputEvent::KeyUp { key: "C".into() }, cancel)?;
+    Ok(())
+}
+```
+
+These functions do not authorize requests or resolve windows. The adapter does
+that before calling them. On disconnect, close the handle and remove its cursor
+from the renderer's complete participant snapshot. On target replacement, close
+and open a new handle; never transfer old held input or replay an uncertain event.
+Use `Motion::Immediate` for human cursor updates. Mouse button holds use the same
+Down/Move/Up lifecycle, with cleanup retaining the last dispatched drag position.
+
+An embedded browser implemented through page-level APIs instead supplies an
+`InputBackend` with its own `Target`, canonical `Control`, prepared `Packet`, and
+actual delivery errors. It implements `CursorTarget`/`CursorRenderer` for its
+surface rather than fabricating native macOS window IDs. Text composition is
+supported only if that backend implements it. If a browser consumer instead
+chooses native-window input, it uses the native adapter above. Both remain future
+integrations, with their own permissions and transport lifetimes.
+
+## Measuring software overhead
+
+Run the recording-backend workload without desktop permissions or real input:
+
+```sh
+cargo run --locked --release --manifest-path cantrip_interaction/Cargo.toml --example overhead
+```
+
+It warms up three runs and reports median/p95 from 21 measured runs of 200,000
+events. The direct recording backend is compared with that same backend through
+shared validation, ownership, sequence handling, and cleanup. Open/close cycles
+also repeatedly reuse capacity. This measures software bookkeeping, excluding
+Quartz, AX, rendering, capture, network, and application latency. It is not a
+native performance claim or an automatic timing gate.

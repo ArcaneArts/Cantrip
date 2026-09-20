@@ -189,6 +189,33 @@ impl<B: InputBackend> InputHost<B> {
         self.accept(owner, identity, sequence)?;
         self.unwind_scoped(owner, |host| host.dispatch(owner, packet))
     }
+    /// Run a backend-specific semantic action (e.g. accessibility activation)
+    /// through the same lifetime, sequence, collision and failure rules as input
+    /// packets. The callback owns any balanced native resources it uses. This is
+    /// a trusted in-process adapter hook, never a transport/permission boundary.
+    /// It must finish synchronously; scheduled sequences submit individual packets.
+    pub fn submit_action<T>(
+        &mut self,
+        owner: Participant,
+        identity: &TargetIdentity,
+        sequence: u64,
+        controls: &[B::Control],
+        action: impl FnOnce(&mut B, &B::Target) -> Result<T, PostFailure<B::Error>>,
+    ) -> Result<T, InputFailure<B::Error>> {
+        self.accept(owner, identity, sequence)?;
+        for control in controls {
+            self.ownership.available(owner, control)?;
+        }
+        self.unwind_scoped(owner, |host| {
+            match action(&mut host.backend, &host.targets[&owner]) {
+                Ok(result) => Ok(result),
+                Err(failure) => {
+                    let cleanup = host.close(owner);
+                    Err(InputFailure::Post { failure, cleanup })
+                }
+            }
+        })
+    }
     fn accept(
         &mut self,
         owner: Participant,
