@@ -80,3 +80,6 @@ cantrip_code/upstream/build/node_modules/
 cantrip_code/upstream/coverage/
 cantrip_code/upstream/test-results/
 cantrip_code/upstream/test-output.json
+
+# Shared Rust interaction foundation.
+cantrip_interaction/target/

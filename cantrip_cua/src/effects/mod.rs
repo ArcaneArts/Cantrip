@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, sync::OnceLock, time::Instant};
 
 pub const CONTRACT_VERSION: u32 = 1;
-pub const MAX_CURSORS: usize = crate::service::MAX_SESSIONS;
+pub const MAX_CURSORS: usize = cantrip_interaction::telemetry::MAX_RENDERED_PARTICIPANTS;
 pub const MAX_EVENTS: usize = 64;
 
 /// One process-local monotonic epoch. Nanoseconds never pass through epoch floats.

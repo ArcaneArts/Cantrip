@@ -193,7 +193,7 @@ fn detach_and_new_generation_clear_held_input_and_ignore_late_callbacks() {
     let a = telemetry.window("window", 2, 3).remove(0);
     assert_eq!(a.buttons(), 0);
     assert_eq!(a.sequence, 0);
-    telemetry.synchronize(&[], 4);
+    telemetry.synchronize(&[] as &[SessionState], 4);
     telemetry.input("agent", &old, event(EventKind::Press, 0, 0), 5);
     assert!(telemetry.window("window", 2, 5).is_empty());
 }

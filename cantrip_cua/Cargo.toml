@@ -16,10 +16,10 @@ name = "cantrip-cua"
 path = "src/main.rs"
 
 [dependencies]
+cantrip-interaction = { path = "../cantrip_interaction" }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = { version = "1.0.143", features = ["float_roundtrip"] }
 png = "0.18.0"
-font8x8 = "0.3.1"
 sha2 = "0.10.9"
 crossbeam-channel = "0.5.15"
 rquickjs = { version = "=0.12.2", default-features = false, features = ["std"] }

@@ -53,3 +53,9 @@ impl std::fmt::Display for CuaError {
 }
 
 impl std::error::Error for CuaError {}
+
+impl From<cantrip_interaction::error::ValidationError> for CuaError {
+    fn from(error: cantrip_interaction::error::ValidationError) -> Self {
+        Self::invalid(error.0)
+    }
+}
