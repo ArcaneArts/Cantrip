@@ -142,7 +142,10 @@ fn perform_inner(
     // Focus reports updated geometry. It is never an implicit input fallback.
     if matches!(command, InputCommand::Focus {}) {
         let mut current = target.clone();
-        current.bounds = super::accessibility::request_focus(target, cancel)?;
+        session.refresh(target.clone(), position, cancel)?;
+        current.bounds = session.action(&[], cancel, || {
+            super::accessibility::request_focus(target, cancel)
+        })?;
         return Ok((
             current,
             InputReceipt {

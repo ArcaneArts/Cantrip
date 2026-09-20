@@ -188,6 +188,29 @@ impl NativeInputSession {
             Err(unknown())
         }
     }
+    /// Compatibility/semantic native actions share ownership without pretending
+    /// an accessibility activation is a physical key or mouse packet.
+    pub(super) fn action<T>(
+        &mut self,
+        controls: &[Control],
+        cancel: &Cancellation,
+        action: impl FnOnce() -> Result<T>,
+    ) -> Result<T> {
+        self.context(cancel)?;
+        let sequence = self.next_sequence()?;
+        lock(&self.shared)
+            .submit_action(self.owner, &self.identity, sequence, controls, |_, _| {
+                cancel.check().map_err(PostFailure::NotDispatched)?;
+                action().map_err(|error| {
+                    if error.code == ErrorCode::InputUnknown {
+                        PostFailure::Uncertain(error)
+                    } else {
+                        PostFailure::NotDispatched(error)
+                    }
+                })
+            })
+            .map_err(failure)
+    }
     pub(super) fn begin_macro(
         &mut self,
         target: Target,
@@ -301,6 +324,33 @@ mod tests {
     fn open(host: &NativeInputHost, id: &str) -> NativeInputSession {
         host.open(id.into(), target(), Point { x: 10., y: 20. })
             .unwrap()
+    }
+    #[test]
+    fn semantic_action_preserves_results_and_cancellation_closes_only_its_owner() {
+        let host = NativeInputHost::new(2, 17);
+        let mut a = open(&host, "a");
+        let mut b = open(&host, "b");
+        let result = a
+            .action(&[], &Cancellation::default(), || Ok(("native-result", 42)))
+            .unwrap();
+        assert_eq!(result, ("native-result", 42));
+        let cancel = Cancellation::default();
+        cancel.cancel();
+        assert_eq!(
+            a.action::<()>(&[], &cancel, || panic!("cancelled action was invoked"))
+                .unwrap_err()
+                .code,
+            ErrorCode::Cancelled
+        );
+        assert_eq!(
+            a.refresh(target(), Point::default(), &Cancellation::default())
+                .unwrap_err()
+                .code,
+            ErrorCode::SessionNotFound
+        );
+        b.action(&[], &Cancellation::default(), || Ok(())).unwrap();
+        let _replacement = open(&host, "replacement");
+        // Closures above record adapter behavior only; no native input is posted.
     }
     #[test]
     fn cloned_hosts_share_capacity_and_dropping_one_participant_frees_only_its_slot() {

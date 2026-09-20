@@ -464,3 +464,117 @@ fn backend_resources_close_once_after_release_even_on_delivery_failure() {
     host.close(b);
     assert_eq!(state.borrow().closed, ["first", "second"]);
 }
+
+#[test]
+fn semantic_actions_share_collision_domains_and_keep_native_results() {
+    use std::cell::Cell;
+    let (mut host, _) = fixture();
+    let a = host
+        .open(target(1), "process".into(), "first".into())
+        .unwrap();
+    let b = host
+        .open(target(1), "process".into(), "second".into())
+        .unwrap();
+    let c = host
+        .open(target(1), "independent".into(), "third".into())
+        .unwrap();
+    host.submit(a, &target(1), 1, &down("A")).unwrap();
+    let calls = Cell::new(0);
+    assert!(matches!(
+        host.submit_action(b, &target(1), 1, &["A".into()], |_, _| {
+            calls.set(calls.get() + 1);
+            Ok(())
+        }),
+        Err(InputFailure::Ownership(OwnershipError::Conflict))
+    ));
+    assert_eq!(calls.get(), 0);
+    assert_eq!(host.held_count(a), Ok(1));
+    assert_eq!(host.held_count(b), Ok(0));
+    let value = host
+        .submit_action(c, &target(1), 1, &["A".into()], |_, destination| {
+            assert_eq!(destination, "third");
+            Ok(("dispatched-unverified", 42))
+        })
+        .unwrap();
+    assert_eq!(value, ("dispatched-unverified", 42));
+    // Semantic activation need not claim physical controls it never touches.
+    host.submit_action(b, &target(1), 2, &[], |_, _| Ok(()))
+        .unwrap();
+    host.submit(a, &target(1), 2, &up("A")).unwrap();
+    host.submit_action(b, &target(1), 3, &["A".into()], |_, _| Ok(()))
+        .unwrap();
+}
+
+#[test]
+fn semantic_actions_fence_replay_and_stale_target_before_callback() {
+    let (mut host, _) = fixture();
+    let a = host
+        .open(target(1), "process".into(), "first".into())
+        .unwrap();
+    host.submit_action(a, &target(1), 1, &[], |_, _| Ok(()))
+        .unwrap();
+    host.submit(a, &target(1), 2, &down("A")).unwrap();
+    assert!(matches!(
+        host.submit_action::<()>(a, &target(1), 1, &[], |_, _| panic!("replayed")),
+        Err(InputFailure::Ownership(_))
+    ));
+    assert!(matches!(
+        host.submit_action::<()>(a, &target(2), 3, &[], |_, _| panic!("stale target")),
+        Err(InputFailure::Ownership(OwnershipError::StaleInput))
+    ));
+    assert_eq!(host.held_count(a), Ok(1));
+    host.close(a);
+    assert!(matches!(
+        host.submit_action::<()>(a, &target(1), 3, &[], |_, _| panic!("closed")),
+        Err(InputFailure::Ownership(OwnershipError::SessionNotFound))
+    ));
+}
+
+#[test]
+fn semantic_action_failures_and_panics_release_only_their_participant() {
+    for panic in [false, true] {
+        let (mut host, state) = fixture();
+        let a = host
+            .open(target(1), "process".into(), "first".into())
+            .unwrap();
+        let b = host
+            .open(target(1), "process".into(), "second".into())
+            .unwrap();
+        host.submit(a, &target(1), 1, &down("A")).unwrap();
+        host.submit(a, &target(1), 2, &down("B")).unwrap();
+        host.submit(b, &target(1), 1, &down("C")).unwrap();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            host.submit_action::<()>(a, &target(1), 3, &[], |_, _| {
+                if panic {
+                    panic!("native action panic");
+                }
+                Err(PostFailure::Uncertain("action may have run"))
+            })
+        }));
+        if panic {
+            assert!(result.is_err());
+        } else {
+            assert!(matches!(
+                result.unwrap(),
+                Err(InputFailure::Post {
+                    failure: PostFailure::Uncertain(_),
+                    ..
+                })
+            ));
+        }
+        assert_eq!(host.held_count(a), Err(OwnershipError::SessionNotFound));
+        assert_eq!(host.held_count(b), Ok(1));
+        assert!(host.close(a).is_empty());
+        let state = state.borrow();
+        assert_eq!(
+            state
+                .events
+                .iter()
+                .filter(|(_, p)| !p.down)
+                .map(|(_, p)| p.key.as_str())
+                .collect::<Vec<_>>(),
+            ["B", "A"]
+        );
+        assert_eq!(state.closed, ["first"]);
+    }
+}

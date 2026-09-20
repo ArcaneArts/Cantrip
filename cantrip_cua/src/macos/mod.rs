@@ -208,6 +208,55 @@ impl MacOsBackend {
         }
     }
 
+    fn input_participant(
+        &mut self,
+        session: &str,
+        target: &Target,
+        position: crate::target::Point,
+    ) -> Result<Arc<Mutex<NativeInputSession>>> {
+        if self.input_sessions.get(session).is_some_and(|input| {
+            let input = input
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            input.target_identity().id != target.id
+                || input.target_identity().generation != target.generation
+        }) {
+            self.close_input(session)?;
+        }
+        if !self.input_sessions.contains_key(session) {
+            self.input_sessions.insert(
+                session.to_owned(),
+                Arc::new(Mutex::new(self.input_host.open(
+                    session.to_owned(),
+                    target.clone(),
+                    position,
+                )?)),
+            );
+        }
+        Ok(self.input_sessions[session].clone())
+    }
+    fn input_action<T>(
+        &mut self,
+        session: &str,
+        target: &Target,
+        position: crate::target::Point,
+        controls: &[input_backend::Control],
+        cancel: &Cancellation,
+        action: impl FnOnce(&mut accessibility::Accessibility) -> Result<T>,
+    ) -> Result<T> {
+        let participant = self.input_participant(session, target, position)?;
+        let result = {
+            let mut input = participant
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            input.refresh(target.clone(), position, cancel)?;
+            input.action(controls, cancel, || action(&mut self.accessibility))
+        };
+        if result.is_err() {
+            let _ = self.close_input(session);
+        }
+        result
+    }
     fn live_cursors(
         &self,
         mut sessions: Vec<crate::service::SessionState>,
@@ -300,7 +349,14 @@ impl CaptureBackend for MacOsBackend {
     ) -> Result<(Target, crate::input::InputReceipt)> {
         self.accessibility.clear(session);
         let current = self.resolve_target(&target.id, target.generation, cancel)?;
-        effects::observe(|| click::background_click(session, &current, point, cancel))
+        self.input_action(
+            session,
+            &current,
+            point,
+            &[input_backend::Control::Pointer],
+            cancel,
+            |_| effects::observe(|| click::background_click(session, &current, point, cancel)),
+        )
     }
 
     fn click(
@@ -310,9 +366,8 @@ impl CaptureBackend for MacOsBackend {
         position: crate::target::Point,
         cancel: &Cancellation,
     ) -> Result<(Target, crate::input::InputReceipt)> {
-        effects::observe(|| {
-            self.accessibility
-                .press_at(session, target, position, cancel)
+        self.input_action(session, target, position, &[], cancel, |accessibility| {
+            effects::observe(|| accessibility.press_at(session, target, position, cancel))
         })
     }
     fn process_click(
@@ -323,7 +378,14 @@ impl CaptureBackend for MacOsBackend {
         cancel: &Cancellation,
     ) -> Result<(Target, crate::input::InputReceipt)> {
         self.accessibility.clear(session);
-        effects::observe(|| click::process_click(session, target, position, cancel))
+        self.input_action(
+            session,
+            target,
+            position,
+            &[input_backend::Control::Pointer],
+            cancel,
+            |_| effects::observe(|| click::process_click(session, target, position, cancel)),
+        )
     }
     fn global_click(
         &mut self,
@@ -333,7 +395,14 @@ impl CaptureBackend for MacOsBackend {
         cancel: &Cancellation,
     ) -> Result<(Target, crate::input::InputReceipt)> {
         self.accessibility.clear(session);
-        effects::observe(|| click::click(session, target, position, cancel))
+        self.input_action(
+            session,
+            target,
+            position,
+            &[input_backend::Control::Pointer],
+            cancel,
+            |_| effects::observe(|| click::click(session, target, position, cancel)),
+        )
     }
     fn perform(
         &mut self,
@@ -376,26 +445,7 @@ impl CaptureBackend for MacOsBackend {
         latest: crate::input_job::InputProgress,
     ) -> Result<Option<crate::input_job::InputWork>> {
         self.accessibility.clear(session);
-        if self.input_sessions.get(session).is_some_and(|input| {
-            let input = input
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            input.target_identity().id != target.id
-                || input.target_identity().generation != target.generation
-        }) {
-            self.close_input(session)?;
-        }
-        if !self.input_sessions.contains_key(session) {
-            self.input_sessions.insert(
-                session.to_owned(),
-                Arc::new(Mutex::new(self.input_host.open(
-                    session.to_owned(),
-                    target.clone(),
-                    position,
-                )?)),
-            );
-        }
-        let participant = self.input_sessions[session].clone();
+        let participant = self.input_participant(session, target, position)?;
         self.input_progress.insert(session.into(), latest.clone());
         let session = session.to_owned();
         let target = target.clone();
@@ -470,12 +520,21 @@ impl CaptureBackend for MacOsBackend {
         reference: &str,
         cancel: &Cancellation,
     ) -> Result<crate::input::InputReceipt> {
-        effects::observe(|| {
-            self.accessibility
-                .press(session, target, reference, cancel)
-                .map(|receipt| (target.clone(), receipt))
-        })
-        .map(|(_, receipt)| receipt)
+        self.input_action(
+            session,
+            target,
+            crate::target::Point::default(),
+            &[],
+            cancel,
+            |accessibility| {
+                effects::observe(|| {
+                    accessibility
+                        .press(session, target, reference, cancel)
+                        .map(|receipt| (target.clone(), receipt))
+                })
+                .map(|(_, receipt)| receipt)
+            },
+        )
     }
 
     fn name(&self) -> &'static str {
