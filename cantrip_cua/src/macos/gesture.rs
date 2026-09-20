@@ -7,7 +7,9 @@ use super::{
 use crate::{
     cancellation::Cancellation,
     error::Result,
-    gesture::{InputCommand, MouseButton, drag_points, key_code, text_units, wait_until},
+    gesture::{
+        InputCommand, MouseButton, drag_points, key_code, text_units, wait_for_offset, wait_until,
+    },
     input::InputReceipt,
     target::{Point, Target},
 };
@@ -87,7 +89,7 @@ fn run(
         },
         |_| Ok(()),
         |at| {
-            wait_until(started + at, cancel)?;
+            wait_for_offset(started, at, cancel)?;
             Ok(started.elapsed())
         },
     )
@@ -283,7 +285,7 @@ fn perform_inner(
                 progress(*start, true);
                 let began = Instant::now();
                 for (at, point) in drag_points(*start, *end, *duration_ms) {
-                    wait_until(began + at, cancel).map_err(|_| unknown())?;
+                    wait_for_offset(began, at, cancel).map_err(|_| unknown())?;
                     session
                         .send(
                             InputEvent::PointerMove {

@@ -152,14 +152,18 @@ Letters/digits describe physical ANSI shortcut keys; use `typeText` for text.
 maximum ±10000 per axis, at the supplied position or current custom cursor.
 `clickDrag(start, end, durationMs = 200)` sends one left-button hold, a linear
 path at approximately 60 motion events per second, and one release. Duration
-is 50–2000 ms. Desktop cursor updates follow dispatched points and retain the
+is any nonnegative safe-integer number of milliseconds (default 200), with no
+elapsed-time cutoff. Zero duration moves directly to the endpoint while held.
+Samples are generated lazily, so memory use does not grow with duration.
+Desktop cursor updates follow dispatched points and retain the
 current appearance; covering windows still cover this cursor. Rendering and
 event scheduling are best effort. Stop releases at the last dispatched point,
 without jumping to the requested endpoint. Keys also always release after down.
 
 All four methods return `background-text`, `background-key`, `background-scroll`
-or `background-drag`, with `outcome: "unknown"` and `windowDelivery: "unverified"`.
-These mean the native API does not acknowledge application acceptance. Inspect
+or `background-drag`, with `outcome: "dispatched"` and `windowDelivery: "unverified"`
+when all event-post calls completed. This does not acknowledge application
+acceptance; interrupted or uncertain dispatch remains unknown. Inspect
 a fresh snapshot; do not claim success from the receipt or replay an uncertain
 action. Protected activity records method/outcome and sampled focus effects,
 without typed text in its metadata or cursor label.

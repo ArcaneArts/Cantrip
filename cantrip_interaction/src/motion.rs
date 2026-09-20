@@ -8,6 +8,10 @@ use std::time::Duration;
 pub enum Motion {
     Immediate,
     EaseOut,
+    /// Linear native drag motion, sampled lazily at approximately 60 Hz.
+    Linear {
+        duration: Duration,
+    },
     Scheduled {
         previous: Option<Point>,
         next: Option<Point>,
@@ -18,6 +22,7 @@ pub enum Motion {
 pub enum MotionPath {
     Steps(std::vec::IntoIter<(Duration, Point)>),
     Spline(TimedSpline),
+    Linear(TimedLinear),
 }
 impl Motion {
     pub fn path(self, start: Point, end: Point) -> crate::error::Result<MotionPath> {
@@ -30,6 +35,9 @@ impl Motion {
         let steps = match self {
             Self::Immediate => vec![(Duration::ZERO, end)],
             Self::EaseOut => travel(start, end),
+            Self::Linear { duration } => {
+                return Ok(MotionPath::Linear(TimedLinear::new(start, end, duration)));
+            }
             Self::Scheduled {
                 previous,
                 next,
@@ -60,6 +68,7 @@ impl Iterator for MotionPath {
         match self {
             Self::Steps(steps) => steps.next(),
             Self::Spline(spline) => spline.next(),
+            Self::Linear(line) => line.next(),
         }
     }
 }
@@ -89,6 +98,73 @@ pub fn travel(start: Point, end: Point) -> Vec<(Duration, Point)> {
             (Duration::from_secs_f64(ms * t / 1000.0), point)
         })
         .collect()
+}
+
+/// Constant-space native drag path. Sample counts and timestamps use integer
+/// arithmetic, including durations beyond a platform Instant's representable
+/// deadline. A zero-duration drag still emits its endpoint before release.
+#[derive(Clone, Debug)]
+pub struct TimedLinear {
+    start: Point,
+    end: Point,
+    duration: Duration,
+    sample: u128,
+    samples: u128,
+}
+impl TimedLinear {
+    pub fn new(start: Point, end: Point, duration: Duration) -> Self {
+        let samples = (u128::from(duration.as_secs()) * 60
+            + (u128::from(duration.subsec_nanos()) * 60).div_ceil(1_000_000_000))
+        .max(1);
+        Self {
+            start,
+            end,
+            duration,
+            sample: 0,
+            samples,
+        }
+    }
+}
+impl Iterator for TimedLinear {
+    type Item = (Duration, Point);
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.sample == self.samples {
+            return None;
+        }
+        self.sample += 1;
+        if self.sample == self.samples {
+            return Some((self.duration, self.end));
+        }
+        let at = Duration::new(
+            (self.sample / 60) as u64,
+            ((self.sample % 60) * 1_000_000_000 / 60) as u32,
+        );
+        let t = at.as_secs_f64() / self.duration.as_secs_f64();
+        Some((
+            at,
+            Point {
+                x: self.start.x * (1.0 - t) + self.end.x * t,
+                y: self.start.y * (1.0 - t) + self.end.y * t,
+            },
+        ))
+    }
+    fn nth(&mut self, n: usize) -> Option<Self::Item> {
+        self.sample = (self.sample + n as u128).min(self.samples);
+        self.next()
+    }
+    fn last(mut self) -> Option<Self::Item> {
+        if self.sample == self.samples {
+            return None;
+        }
+        self.sample = self.samples - 1;
+        self.next()
+    }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        match usize::try_from(self.samples - self.sample) {
+            Ok(left) => (left, Some(left)),
+            Err(_) => (usize::MAX, None),
+        }
+    }
 }
 
 /// A timed cubic Bezier segment sampled lazily. Storage is independent of the
@@ -193,6 +269,63 @@ impl Iterator for TimedSpline {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn linear_paths_are_lazy_precise_and_support_zero_or_extreme_durations() {
+        let start = Point { x: 0.0, y: 100.0 };
+        let end = Point { x: 120.0, y: 40.0 };
+        let path: Vec<_> = TimedLinear::new(start, end, Duration::from_millis(200)).collect();
+        assert_eq!(path.len(), 12);
+        assert_eq!(path.last(), Some(&(Duration::from_millis(200), end)));
+        assert!(
+            path.windows(2)
+                .all(|p| p[0].0 < p[1].0 && p[0].1.x < p[1].1.x)
+        );
+        assert_eq!(
+            TimedLinear::new(start, end, Duration::ZERO).collect::<Vec<_>>(),
+            vec![(Duration::ZERO, end)]
+        );
+        for duration in [
+            Duration::from_millis(150_000),
+            Duration::from_millis(9_007_199_254_740_991),
+            Duration::MAX,
+        ] {
+            let mut path = TimedLinear::new(start, end, duration);
+            assert!(std::mem::size_of_val(&path) < 128);
+            let first = path.next().unwrap();
+            assert!(first.0 <= Duration::from_millis(17));
+            assert!(first.1.x.is_finite() && first.1.y.is_finite());
+            assert_eq!(path.last(), Some((duration, end)));
+        }
+        let duration = Duration::from_millis(25);
+        let points: Vec<_> = TimedLinear::new(start, end, duration).collect();
+        assert_eq!(points.len(), 2);
+        assert_eq!(points[1], (duration, end));
+        assert!(points[0].0 < duration);
+    }
+    #[test]
+    fn linear_policy_uses_the_shared_path_and_rejects_nonfinite_coordinates() {
+        let end = Point { x: 10.0, y: 20.0 };
+        let result = Motion::Linear {
+            duration: Duration::ZERO,
+        }
+        .path(Point::default(), end)
+        .unwrap()
+        .collect::<Vec<_>>();
+        assert_eq!(result, vec![(Duration::ZERO, end)]);
+        assert!(
+            Motion::Linear {
+                duration: Duration::ZERO
+            }
+            .path(
+                Point {
+                    x: f64::NAN,
+                    y: 0.0
+                },
+                end
+            )
+            .is_err()
+        );
+    }
     #[test]
     fn timed_splines_use_the_full_gap_and_land_without_overshoot() {
         let start = Point { x: 100., y: 200. };

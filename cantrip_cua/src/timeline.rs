@@ -2,7 +2,7 @@
 use crate::{
     cancellation::Cancellation,
     error::{CuaError, ErrorCode, Result},
-    gesture::{key_code, wait_until},
+    gesture::{key_code, wait_for_offset},
     target::Point,
 };
 use serde::{Deserialize, Serialize};
@@ -125,7 +125,7 @@ where
 {
     let start = Instant::now();
     dispatch(frames, count, cancel, post, prepare, |at| {
-        wait_until(start + at, cancel)?;
+        wait_for_offset(start, at, cancel)?;
         Ok(start.elapsed())
     })
 }

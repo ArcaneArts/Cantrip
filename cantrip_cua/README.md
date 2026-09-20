@@ -597,14 +597,22 @@ receives only image metadata and an evaluation-local image index; returning a
 forged image object does not create an image result.
 
 The bounds are four JavaScript contexts, one active evaluation per context,
-8 MiB heap and 256 KiB stack per context, 32 KiB UTF-8 source, 32 KiB serialized
-JavaScript value, 64 host calls per evaluation and one outstanding host call per
-context, plus 10,000 cumulative promise jobs. Active JavaScript execution has a
-cumulative two-second budget. Managed calls have a 345-second wall deadline
-including host/approval waits; individual approvals expire after five minutes.
-The CUA broker deadline is 360 seconds and Codex's CUA tool deadline is 370
-seconds. The worker-internal default remains 45 seconds. These limits bound the
-whole call, so multiple approvals do not each extend its wall deadline.
+128 MiB heap and 256 KiB stack per context, 2 MiB UTF-8 source, 32 KiB serialized
+JavaScript value, 16,384 host calls per evaluation and one outstanding host call
+per context, plus 200,000 cumulative promise jobs. Active JavaScript execution
+has a cumulative ten-second budget; awaiting native playback does not consume it.
+Managed evaluations and playback have no elapsed-time cutoff (`wallTimeoutMs: 0`,
+with the CUA broker/tool deadlines also disabled). Internal callers may opt into
+an explicit bounded wall deadline. Resource limits still apply, and explicit
+Stop, authority revocation, disconnect, or a real delivery failure terminates work.
+Approval prompts keep their separate expiration; it is not a playback deadline.
+
+Drags use the shared constant-space `TimedLinear` path and accept nonnegative
+safe-integer milliseconds, like native timelines and pointer holds. Default drag
+duration remains 200 ms; zero duration moves to the endpoint while held. Relative
+elapsed waits avoid overflowing a platform's absolute clock for very large values.
+The cancellation condition wakes each wait; long durations need no artificial
+chunks and do not allocate arrays of future drag points.
 
 Native image allocations are bounded separately from the JavaScript heap: at
 most two snapshots and 16 MiB aggregate native PNG bytes per evaluation. The
