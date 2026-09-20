@@ -137,7 +137,7 @@ impl InputCommand {
                 start,
                 end,
                 duration_ms,
-            } => point(*start) && point(*end) && (50..=2000).contains(duration_ms),
+            } => point(*start) && point(*end) && *duration_ms <= crate::target::MAX_SEQUENCE,
             Self::Scroll {
                 delta_x,
                 delta_y,
@@ -262,20 +262,12 @@ pub fn text_units(text: &str) -> Vec<Vec<u16>> {
         .map(|c| c.encode_utf16(&mut [0; 2]).to_vec())
         .collect()
 }
-pub fn drag_points(start: Point, end: Point, duration_ms: u64) -> Vec<(Duration, Point)> {
-    let frames = (duration_ms * 60).div_ceil(1000);
-    (1..=frames)
-        .map(|i| {
-            let t = i as f64 / frames as f64;
-            (
-                Duration::from_secs_f64(duration_ms as f64 / 1000.0 * t),
-                Point {
-                    x: start.x + (end.x - start.x) * t,
-                    y: start.y + (end.y - start.y) * t,
-                },
-            )
-        })
-        .collect()
+pub fn drag_points(
+    start: Point,
+    end: Point,
+    duration_ms: u64,
+) -> cantrip_interaction::motion::TimedLinear {
+    cantrip_interaction::motion::TimedLinear::new(start, end, Duration::from_millis(duration_ms))
 }
 /// Down/up remain one bounded operation. Always release, even on Stop or panic.
 /// Once down was posted, cancellation has an unknown outcome, never retryable.
@@ -300,6 +292,18 @@ pub fn held_gesture(
     drop(release);
     result.map_err(|_| CuaError::new(ErrorCode::InputUnknown,"Input stopped after dispatch began; release cleanup was sent. Do not replay automatically."))
 }
+/// Wait on an elapsed offset rather than adding a potentially huge duration to
+/// Instant. Individual sleeps are bounded for OS time conversion, not total time.
+pub fn wait_for_offset(started: Instant, at: Duration, cancel: &Cancellation) -> Result<()> {
+    loop {
+        cancel.check()?;
+        let remaining = at.saturating_sub(started.elapsed());
+        if remaining.is_zero() {
+            return Ok(());
+        }
+        cancel.wait_cancelled(remaining.min(Duration::from_secs(3600)));
+    }
+}
 pub fn wait_until(deadline: Instant, cancel: &Cancellation) -> Result<()> {
     loop {
         cancel.check()?;
@@ -313,6 +317,44 @@ pub fn wait_until(deadline: Instant, cancel: &Cancellation) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn long_drag_duration_is_numeric_bound_not_elapsed_cutoff() {
+        for duration_ms in [0, 1, 49, 2001, 150_000, crate::target::MAX_SEQUENCE] {
+            InputCommand::Drag {
+                start: Point::default(),
+                end: Point { x: 10.0, y: 20.0 },
+                duration_ms,
+            }
+            .validate()
+            .unwrap();
+        }
+        assert!(
+            InputCommand::Drag {
+                start: Point::default(),
+                end: Point::default(),
+                duration_ms: crate::target::MAX_SEQUENCE + 1
+            }
+            .validate()
+            .is_err()
+        );
+    }
+    #[test]
+    fn extreme_relative_wait_is_cancellable_without_constructing_a_deadline() {
+        let cancel = Cancellation::default();
+        let worker = cancel.clone();
+        let (entered, ready) = std::sync::mpsc::channel();
+        let thread = std::thread::spawn(move || {
+            entered.send(()).unwrap();
+            wait_for_offset(Instant::now(), Duration::MAX, &worker)
+        });
+        ready.recv_timeout(Duration::from_secs(2)).unwrap();
+        cancel.cancel();
+        assert_eq!(
+            thread.join().unwrap().unwrap_err().code,
+            ErrorCode::Cancelled
+        );
+        wait_for_offset(Instant::now(), Duration::ZERO, &Cancellation::default()).unwrap();
+    }
     #[test]
     fn lowercase_shortcuts_and_timeline_keys_are_canonicalized_before_validation() {
         let key: InputCommand = serde_json::from_value(
@@ -374,7 +416,8 @@ mod tests {
     }
     #[test]
     fn timed_drag_reaches_endpoint() {
-        let p = drag_points(Point { x: 0., y: 100. }, Point { x: 120., y: 40. }, 200);
+        let p: Vec<_> =
+            drag_points(Point { x: 0., y: 100. }, Point { x: 120., y: 40. }, 200).collect();
         assert_eq!(p.len(), 12);
         assert_eq!(p.last().unwrap().0, Duration::from_millis(200));
         assert_eq!(p.last().unwrap().1, Point { x: 120., y: 40. });

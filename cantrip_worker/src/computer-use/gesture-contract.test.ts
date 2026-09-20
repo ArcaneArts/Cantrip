@@ -43,13 +43,41 @@ describe("bounded native macros", () => {
       kind: "drag",
       start: { x: 1, y: 2 },
       end: { x: 3, y: 4 },
-      durationMs: 100000,
+      durationMs: Number.MAX_SAFE_INTEGER + 1,
     },
     { kind: "scroll", deltaY: Infinity },
     { kind: "scroll", deltaY: 1, processId: 777 },
   ])("rejects malformed or unbounded command %j", (command) => {
     expect(cuaInputCommandSchema.safeParse(command).success).toBe(false);
   });
+  it.each([0, 1, 49, 2001, 150000, Number.MAX_SAFE_INTEGER])(
+    "accepts drag duration %s without a playback cutoff",
+    (durationMs) => {
+      const command = {
+        kind: "drag",
+        start: { x: 1, y: 2 },
+        end: { x: 3, y: 4 },
+        durationMs,
+      };
+      expect(cuaInputCommandSchema.parse(command)).toEqual(command);
+      expect(
+        cuaJavascriptActionSchema.parse({ operation: "perform", command }),
+      ).toEqual({ operation: "perform", command });
+    },
+  );
+  it.each([-1, 0.5, Infinity, NaN])(
+    "rejects invalid drag duration %s",
+    (durationMs) => {
+      expect(
+        cuaInputCommandSchema.safeParse({
+          kind: "drag",
+          start: { x: 0, y: 0 },
+          end: { x: 1, y: 1 },
+          durationMs,
+        }).success,
+      ).toBe(false);
+    },
+  );
   it("does not permit redirected authority, held keys or implicit fallback", () => {
     for (const extra of [
       { binding: {} },

@@ -413,7 +413,7 @@ impl<B: CaptureBackend> CuaService<B> {
             crate::cursor_motion::animate(
                 &points,
                 cancel,
-                |at| crate::gesture::wait_until(started + at, cancel),
+                |at| crate::gesture::wait_for_offset(started, at, cancel),
                 |point| {
                     state.cursor.move_to(
                         point,

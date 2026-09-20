@@ -387,7 +387,7 @@ export const cuaInputCommandSchema = z.discriminatedUnion("kind", [
     kind: z.literal("drag"),
     start: cuaPointSchema,
     end: cuaPointSchema,
-    durationMs: z.number().int().min(50).max(2000).default(200),
+    durationMs: z.number().int().nonnegative().safe().default(200),
   }),
   z.strictObject({
     kind: z.literal("scroll"),
