@@ -214,6 +214,8 @@ export interface RemoteSurfaceCanvasProps {
   getCoordinateSpace(): RemoteSurfaceSize;
   ignoreRepeatedKeyDown?: boolean;
   onFocus(): void;
+  onInputCancel?(): void;
+  onPointerMotion?(x: number, y: number, click: boolean): void;
   onFrameError(): void;
   onKey(input: RemoteSurfaceKeyInput): void;
   onMobileText?(text: string): void;
@@ -382,6 +384,8 @@ export const RemoteSurfaceCanvas = forwardRef<
     getCoordinateSpace,
     ignoreRepeatedKeyDown = false,
     onFocus,
+    onInputCancel,
+    onPointerMotion,
     onFrameError,
     onKey,
     onMobileText,
@@ -402,6 +406,19 @@ export const RemoteSurfaceCanvas = forwardRef<
   const touchPointersRef = useRef(new RemoteSurfaceTouchPointerTracker());
   const touchTapsRef = useRef(new RemoteSurfaceTouchTapTracker());
   callbacksRef.current = { onFrameError, onRendered };
+
+  useEffect(() => {
+    if (!onInputCancel) return;
+    const hidden = () => {
+      if (document.hidden) onInputCancel();
+    };
+    window.addEventListener("blur", onInputCancel);
+    document.addEventListener("visibilitychange", hidden);
+    return () => {
+      window.removeEventListener("blur", onInputCancel);
+      document.removeEventListener("visibilitychange", hidden);
+    };
+  }, [onInputCancel]);
 
   useEffect(() => {
     const renderer = new RemoteSurfaceFrameRenderer({
@@ -450,6 +467,14 @@ export const RemoteSurfaceCanvas = forwardRef<
   ) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    if (type === "cancel") onInputCancel?.();
+    const bounds = canvas.getBoundingClientRect();
+    if (bounds.width > 0 && bounds.height > 0)
+      onPointerMotion?.(
+        Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width)),
+        Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height)),
+        type === "down",
+      );
     if (event.pointerType === "touch" && onTouch) {
       // WKWebView can stop delivering the parallel legacy touch stream once
       // pointer handling owns the gesture, so capture and forward this stream.
@@ -577,6 +602,9 @@ export const RemoteSurfaceCanvas = forwardRef<
         style={{ ...style, cursor }}
         tabIndex={0}
         onFocus={onFocus}
+        onBlur={(event) => {
+          if (event.relatedTarget !== mobileInputRef.current) onInputCancel?.();
+        }}
         onContextMenu={
           preventContextMenu ? (event) => event.preventDefault() : undefined
         }
@@ -606,6 +634,9 @@ export const RemoteSurfaceCanvas = forwardRef<
           onFocus={(event) => {
             resetMobileInput(event.currentTarget);
             onFocus();
+          }}
+          onBlur={(event) => {
+            if (event.relatedTarget !== canvasRef.current) onInputCancel?.();
           }}
           onInput={mobileText}
           onKeyDown={(event) => mobileKey(event, "down")}

@@ -181,6 +181,20 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
                 ),
               );
           },
+          assets: (participants) => {
+            const payload = encoder.encode(
+              JSON.stringify({ type: "desktop-cursor-assets", participants }),
+            );
+            for (const id of this.#attachments.keys())
+              this.#emit(id, "control", payload);
+          },
+          cursor: (id, x, y, click) => {
+            const payload = encoder.encode(
+              JSON.stringify({ type: "desktop-cursor", id, x, y, click }),
+            );
+            for (const recipient of this.#attachments.keys())
+              this.#emit(recipient, "control", payload);
+          },
           readClipboard: async () =>
             desktopClipboardText(await this.#client.readClipboard()),
           clipboard: (id, text) => {
@@ -956,6 +970,11 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
         this.#switchingTarget
       )
         throw new Error("Remote input attachment is inactive.");
+      if (message.type === "input-cancel") {
+        if (this.#participantInput.cancel(attachmentId, message.inputEpoch))
+          await this.#participantInput.attach(attachmentId, this.#activeTarget);
+        return;
+      }
       if (
         message.type === "pointer" ||
         message.type === "key" ||

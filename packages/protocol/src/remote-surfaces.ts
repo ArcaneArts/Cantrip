@@ -252,7 +252,16 @@ export const remoteDesktopApplicationIconSchema = z.object({
   data: z.string().max(180_000).nullable(),
 });
 
+const desktopCursorSprite = z.object({
+  width: z.literal(256),
+  height: z.literal(256),
+  hotspot: z.object({ x: z.literal(128), y: z.literal(128) }),
+  normal: z.array(z.number().int().min(0).max(255)).max(262144),
+  click: z.array(z.number().int().min(0).max(255)).max(262144),
+});
+
 export const remoteDesktopClientMessageSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("input-cancel"), inputEpoch: z.string().uuid() }),
   z.object({
     type: z.literal("viewport"),
     viewport: remoteSurfaceViewportSchema,
@@ -322,6 +331,19 @@ export const remoteDesktopClientMessageSchema = z.discriminatedUnion("type", [
 ]);
 
 export const remoteDesktopServerMessageSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("desktop-cursor-assets"),
+    participants: z
+      .array(z.object({ id: z.string().uuid(), sprite: desktopCursorSprite }))
+      .max(16),
+  }),
+  z.object({
+    type: z.literal("desktop-cursor"),
+    id: z.string().uuid(),
+    x: z.number().min(0).max(1),
+    y: z.number().min(0).max(1),
+    click: z.boolean(),
+  }),
   z.object({
     type: z.literal("desktop-input"),
     epoch: z.string().uuid().nullable(),

@@ -1,4 +1,8 @@
 import {
+  RemoteCursorOverlay,
+  type CursorOverlayHandle,
+} from "./cursor-overlay";
+import {
   remoteDesktopClientMessageSchema,
   remoteDesktopServerMessageSchema,
   type RemoteDesktopClientMessage,
@@ -269,6 +273,14 @@ export function ManagedRemoteDesktopView({
     },
   });
 
+  const cursorOverlayRef = useRef<CursorOverlayHandle>(null);
+  const [cursorAssets, setCursorAssets] = useState<
+    Extract<
+      import("@cantrip/protocol").RemoteDesktopServerMessage,
+      { type: "desktop-cursor-assets" }
+    >["participants"]
+  >([]);
+  const [ownCursorId, setOwnCursorId] = useState<string | null>(null);
   const inputEpochRef = useRef<string | null>(null);
   const inputSequenceRef = useRef(0);
   const [inputMessage, setInputMessage] = useState<string | null>(null);
@@ -290,9 +302,19 @@ export function ManagedRemoteDesktopView({
     const message = remoteDesktopServerMessageSchema.parse(
       JSON.parse(decoder.decode(frame.payload)),
     );
-    if (message.type === "desktop-input") {
+    if (message.type === "desktop-cursor-assets")
+      setCursorAssets(message.participants);
+    else if (message.type === "desktop-cursor")
+      cursorOverlayRef.current?.remote(
+        message.id,
+        message.x,
+        message.y,
+        message.click,
+      );
+    else if (message.type === "desktop-input") {
       if (inputEpochRef.current !== message.epoch) inputSequenceRef.current = 0;
       inputEpochRef.current = message.epoch;
+      setOwnCursorId(message.epoch);
       setInputMessage(message.message);
     } else if (message.type === "desktop-state") {
       const nextSize = { width: message.width, height: message.height };
@@ -369,6 +391,8 @@ export function ManagedRemoteDesktopView({
     messages: desktopTransportMessages,
     onConnecting: () => {
       inputEpochRef.current = null;
+      setCursorAssets([]);
+      setOwnCursorId(null);
       inputSequenceRef.current = 0;
       setInputMessage(null);
       remoteCanvasRef.current?.reset();
@@ -403,6 +427,14 @@ export function ManagedRemoteDesktopView({
     },
     [sendFrame],
   );
+
+  const cancelInput = useCallback(() => {
+    const epoch = inputEpochRef.current;
+    if (!epoch) return;
+    inputEpochRef.current = null;
+    setOwnCursorId(null);
+    send({ type: "input-cancel", inputEpoch: epoch });
+  }, [send]);
 
   const retryDesktop = () => {
     setError(null);
@@ -800,6 +832,15 @@ export function ManagedRemoteDesktopView({
             ariaLabel={`${desktop.title} managed desktop surface`}
             className="touch-none outline-none"
             coordinateLimit="last-pixel"
+            cursor={
+              cursorAssets.some((asset) => asset.id === ownCursorId)
+                ? "none"
+                : undefined
+            }
+            onInputCancel={cancelInput}
+            onPointerMotion={(x, y, click) =>
+              cursorOverlayRef.current?.move(x, y, click)
+            }
             framePolicy="latest"
             getCoordinateSpace={() => desktopSizeRef.current}
             onFocus={() => send({ type: "focus" })}
@@ -815,6 +856,13 @@ export function ManagedRemoteDesktopView({
             pointerMoveThrottleMs={32}
             preventContextMenu
             style={{ width: canvasSize.width, height: canvasSize.height }}
+          />
+          <RemoteCursorOverlay
+            ref={cursorOverlayRef}
+            assets={cursorAssets}
+            ownId={ownCursorId}
+            width={canvasSize.width}
+            height={canvasSize.height}
           />
           {inputMessage ? (
             <div className="pointer-events-none absolute bottom-4 left-4 max-w-lg rounded bg-background/90 p-2 text-xs">

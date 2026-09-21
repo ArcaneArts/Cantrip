@@ -17,7 +17,12 @@ const size = {
   logicalWidth: 100,
   logicalHeight: 100,
 };
-function fixture() {
+function fixture(
+  presentation: {
+    assets?: (...args: any[]) => void;
+    cursor?: (...args: any[]) => void;
+  } = {},
+) {
   const instances: Array<{
     send: ReturnType<typeof vi.fn>;
     close: ReturnType<typeof vi.fn>;
@@ -34,6 +39,7 @@ function fixture() {
   const clipboard = vi.fn();
   const readClipboard = vi.fn(async () => "copied");
   const input = new DesktopParticipantInput({
+    ...presentation,
     workerId: "worker",
     surfaceId: "surface",
     participants: { open },
@@ -123,6 +129,42 @@ describe("remote desktop participant input", () => {
     await expect(f.input.send("a", old, size)).rejects.toThrow(/stale/);
     expect(f.instances[1]!.send).not.toHaveBeenCalled();
     await f.input.close();
+  });
+  it("ignores stale cancellation and releases only the matching participant", async () => {
+    const f = fixture();
+    await f.input.attach("a", target);
+    await f.input.attach("b", target);
+    const old = f.epoch("a");
+    expect(f.input.cancel("a", "stale")).toBe(false);
+    expect(f.input.cancel("a", old)).toBe(true);
+    await f.input.attach("a", target);
+    expect(f.input.cancel("a", old)).toBe(false);
+    await f.input.send("a", f.message("a", 1, {}), size);
+    await f.input.send("b", f.message("b", 1, {}), size);
+    await vi.waitFor(() =>
+      expect(f.instances[0]!.close).toHaveBeenCalledOnce(),
+    );
+    expect(f.instances[1]!.close).not.toHaveBeenCalled();
+    await f.input.close();
+  });
+  it("keeps delivered input alive when presentation broadcasts fail", async () => {
+    const cursor = vi.fn(() => {
+      throw new Error("transport closed");
+    });
+    const f = fixture({
+      cursor,
+      assets: () => {
+        throw new Error("transport closed");
+      },
+    });
+    await f.input.attach("a", target);
+    await f.input.send("a", f.message("a", 1, {}), size);
+    await f.input.send("a", f.message("a", 2, { event: "up" }), size);
+    expect(cursor).toHaveBeenCalledWith(f.epoch("a"), 0.25, 0.4, true);
+    expect(f.instances[0]!.send).toHaveBeenCalledTimes(2);
+    expect(f.instances[0]!.close).not.toHaveBeenCalled();
+    await f.input.close();
+    expect(f.instances[0]!.close).toHaveBeenCalledOnce();
   });
   it("does not open global input for monitors", async () => {
     const f = fixture();
