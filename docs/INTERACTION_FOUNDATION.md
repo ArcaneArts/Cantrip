@@ -218,9 +218,11 @@ callback must balance its own transient native resources, classify uncertain
 input honestly, and never perform a scheduled macro inside this hook. It is not
 an agent tool, permission grant, or arbitrary code execution endpoint.
 
-Native regression acceptance remains required after extraction; unit tests and
-software benchmarks alone do not prove that a specific application accepted input.
-See [the acceptance checklist](INTERACTION_FOUNDATION_ACCEPTANCE.md).
+Implementation and migration are complete. The user deferred further native QA
+on 2026-09-21; untested application behavior remains explicitly recorded rather
+than blocking this implementation handoff. Unit tests and software benchmarks
+alone do not prove that a specific application accepted input. See the
+[completion record and deferred QA checklist](INTERACTION_FOUNDATION_ACCEPTANCE.md).
 
 A future remote-desktop adapter will supply authorized participant sessions,
 window targets, frame geometry, and immediate pointer motion. A future embedded
