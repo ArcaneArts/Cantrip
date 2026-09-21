@@ -165,6 +165,7 @@ describe("ManagedDesktopRemoteSurfaceAdapter", () => {
         data: Buffer.from("icon").toString("base64"),
       })),
     };
+    const listTargets = vi.fn(async () => desktopTargets);
     const adapter = new ManagedDesktopRemoteSurfaceAdapter(
       async () => client,
       async () => ({
@@ -175,7 +176,7 @@ describe("ManagedDesktopRemoteSurfaceAdapter", () => {
         capture,
         encode,
       }),
-      async () => desktopTargets,
+      listTargets,
       async () => undefined,
       applicationIcons,
     );
@@ -252,14 +253,40 @@ describe("ManagedDesktopRemoteSurfaceAdapter", () => {
         return true;
       },
     );
-    session.attach({
+    let releaseInventory!: () => void;
+    const inventoryPending = new Promise<void>((resolve) => {
+      releaseInventory = resolve;
+    });
+    listTargets.mockClear();
+    listTargets.mockImplementationOnce(async () => {
+      await inventoryPending;
+      return desktopTargets;
+    });
+    const firstAttach = session.attach({
       id: "attachment-1",
       viewport: { width: 1_280, height: 720, devicePixelRatio: 1 },
     });
+    let secondAttached = false;
+    const secondAttach = Promise.resolve(
+      session.attach({
+        id: "attachment-2",
+        viewport: { width: 1_280, height: 720, devicePixelRatio: 1 },
+      }),
+    ).then(() => {
+      secondAttached = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(secondAttached).toBe(false);
+    expect(capture).not.toHaveBeenCalled();
+    expect(listTargets).toHaveBeenCalledOnce();
+    releaseInventory();
+    await Promise.all([firstAttach, secondAttach]);
+    session.detach("attachment-2");
     await eventually(() =>
       emissions.some(({ channel }) => channel === "frame"),
     );
     await eventually(() => capture.mock.calls.length >= 4);
+    expect(listTargets).toHaveBeenCalledOnce();
     expect(encode).toHaveBeenCalledWith(
       expect.objectContaining({ width: 1_920, height: 1_080 }),
       expect.objectContaining({ quality: expect.any(Number), width: 1_280 }),
@@ -304,12 +331,14 @@ describe("ManagedDesktopRemoteSurfaceAdapter", () => {
       ),
     );
     expect(targetMessageCount()).toBe(targetsBeforeReadyViewport + 1);
+    expect(listTargets).toHaveBeenCalledOnce();
 
     await session.handleFrame(
       "attachment-1",
       "control",
       new TextEncoder().encode(JSON.stringify({ type: "refresh-targets" })),
     );
+    expect(listTargets).toHaveBeenCalledTimes(2);
     expect(
       emissions.some(({ channel, payload }) => {
         if (channel !== "control") return false;
