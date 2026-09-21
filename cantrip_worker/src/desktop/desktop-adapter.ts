@@ -114,7 +114,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
   #capturing = false;
   #closed = false;
   #encoding = false;
-  #initialized = false;
+  #initialization: Promise<void> | null = null;
   #inputTargetError: string | null = null;
   #launchingApplication: string | null = null;
   #framesEmitted = 0;
@@ -179,18 +179,24 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
     this.#tuner = new AdaptiveDesktopStreamTuner(options.streamSettings);
   }
 
-  async initialize(): Promise<void> {
-    if (this.#initialized) return;
-    this.#initialized = true;
-    await this.switchTarget(this.#requestedTarget, true);
+  initialize(): Promise<void> {
+    // Every attachment waits for the same pipeline, including concurrent joins.
+    this.#initialization ??= this.switchTarget(this.#requestedTarget, true);
+    return this.#initialization;
   }
 
   async attach(attachment: RemoteSurfaceAttachment): Promise<void> {
     this.#attachments.set(attachment.id, attachment);
     await this.initialize();
-    this.publishState(attachment.id, "ready", null);
-    await this.refreshTargets(attachment.id);
+    if (this.#closed || this.#attachments.get(attachment.id) !== attachment)
+      return;
+    this.publishState(
+      attachment.id,
+      this.#inputTargetError ? "error" : "ready",
+      this.#inputTargetError ?? this.#targetMessage,
+    );
     this.scheduleCapture(0);
+    await this.publishTargets(attachment.id);
   }
 
   async updateConfiguration(
@@ -258,7 +264,8 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
           status,
           this.#inputTargetError ?? this.#targetMessage,
         );
-        await this.refreshTargets(attachmentId);
+        this.scheduleCapture(0);
+        await this.publishTargets(attachmentId);
       }
       this.scheduleCapture(0);
       return;
@@ -684,7 +691,9 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
         this.#inputTargetError ? "error" : "ready",
         this.#inputTargetError ?? this.#targetMessage,
       );
-      await this.refreshTargets();
+      // The inventory was already obtained for this target switch. A new
+      // enumeration here delayed first-frame delivery (and attach/viewport
+      // previously repeated it again). Explicit refresh still enumerates.
       workerLogger.event("info", "Desktop capture target switched", {
         event: "desktop.target.switched",
         subsystem: "desktop",
@@ -731,6 +740,8 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
         this.scheduleCapture(0);
       }
     }
+    // Encoding/encryption of target metadata must not hold up the first frame.
+    await this.publishTargets().catch(() => undefined);
   }
 
   private useCompatibilityBackend(error: unknown): void {
