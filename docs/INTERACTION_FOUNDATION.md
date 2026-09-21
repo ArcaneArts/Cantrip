@@ -334,3 +334,29 @@ its exact binding when open/input fails. It never sends old handles or cleanup
 to a replacement helper. Agent chat/turn cancellation leaves these independent
 participants alone; worker disconnect closes them all. Helper generation is a
 worker lifetime fence, not a client-provided field.
+
+### Remote desktop input routing
+
+Production remote desktop now supplies the shared worker participant bridge.
+Window input no longer activates the host window or uses the compatibility
+system-mouse methods. Display/monitor sharing is view-only with a message asking
+for a window; unavailable native input is reported rather than falling back.
+The existing video pipeline still supplies frames in this milestone.
+
+Each attachment receives a `desktop-input` control message with its input epoch.
+Pointer, key and clipboard messages carry `inputEpoch` and `inputSequence`.
+Target switches, disconnects and suspension invalidate that epoch and release
+its participant. Old epochs and duplicate sequences are rejected before input.
+Native sub-events for clipboard text/copy are numbered inside that consumed
+attachment message; no failed action is retried. Pointer pixels are mapped to
+current pipeline logical dimensions. Native multi-display/DPI behavior needs the
+final user QA pass.
+
+Mouse buttons (including back/forward), dragging, wheel input, physical key
+holds/repeats/modifiers and committed text use shared native events. Clipboard
+paste is split at UTF-8 code-point boundaries for the native text event capacity.
+Remote mobile text is forwarded as committed text. Client cursor rendering,
+client blur/gesture cancellation, and CUA capture reuse remain follow-up work.
+The native independent-input backend is macOS; unsupported platforms report
+input unavailable. Existing remote authorization and encrypted target state
+remain in the RemoteSurface worker boundary.

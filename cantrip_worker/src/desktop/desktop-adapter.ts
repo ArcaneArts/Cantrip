@@ -1,3 +1,5 @@
+import { DesktopParticipantInput } from "./participant-input.js";
+import type { WorkerInputParticipants } from "../computer-use/participants.js";
 import os from "node:os";
 import { randomUUID } from "node:crypto";
 
@@ -108,6 +110,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
   readonly #ownerId: string;
   readonly #serverId: string;
   readonly #surfacePrivateState: WorkerEncryptionService;
+  readonly #participantInput: DesktopParticipantInput | null;
   #stateRevision: number;
   readonly #tuner: AdaptiveDesktopStreamTuner;
   #captureTimer: ReturnType<typeof setTimeout> | null = null;
@@ -143,6 +146,10 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
 
   constructor(options: {
     client: DesktopAutomationClient;
+    interactions?: {
+      workerId: string;
+      participants: Pick<WorkerInputParticipants, "open">;
+    };
     configuration: Extract<RemoteSurfaceConfiguration, { kind: "desktop" }>;
     createFramePipeline: DesktopFramePipelineFactory;
     display: DisplaySize;
@@ -160,6 +167,34 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
     surfaceId: string;
   }) {
     this.#client = options.client;
+    this.#participantInput = options.interactions
+      ? new DesktopParticipantInput({
+          ...options.interactions,
+          surfaceId: options.surfaceId,
+          state: (id, epoch, message) => {
+            if (this.#attachments.has(id))
+              this.#emit(
+                id,
+                "control",
+                encoder.encode(
+                  JSON.stringify({ type: "desktop-input", epoch, message }),
+                ),
+              );
+          },
+          readClipboard: async () =>
+            desktopClipboardText(await this.#client.readClipboard()),
+          clipboard: (id, text) => {
+            if (this.#attachments.has(id))
+              this.#emit(
+                id,
+                "clipboard",
+                encoder.encode(
+                  JSON.stringify({ type: "desktop-clipboard", text }),
+                ),
+              );
+          },
+        })
+      : null;
     this.configuration = options.configuration;
     this.#activeTarget = options.initialTarget;
     this.#createFramePipeline = options.createFramePipeline;
@@ -197,6 +232,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
     );
     this.scheduleCapture(0);
     await this.publishTargets(attachment.id);
+    await this.#participantInput?.attach(attachment.id, this.#activeTarget);
   }
 
   async updateConfiguration(
@@ -233,6 +269,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
   }
 
   detach(attachmentId: string): void {
+    this.#participantInput?.detach(attachmentId);
     this.#attachments.delete(attachmentId);
     this.#resynchronizedAttachments.delete(attachmentId);
     if (this.#attachments.size === 0) this.clearCaptureTimer();
@@ -283,7 +320,8 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
       return;
     }
     try {
-      await this.enqueue(() => this.applyInput(attachmentId, message));
+      if (this.#participantInput) await this.applyInput(attachmentId, message);
+      else await this.enqueue(() => this.applyInput(attachmentId, message));
     } catch (error) {
       workerLogger.rateLimited(
         `desktop-input-rejected:${this.#surfaceId}:${message.type}`,
@@ -305,6 +343,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
 
   suspend(): void {
     this.#suspended = true;
+    this.#participantInput?.reset();
     this.clearCaptureTimer();
     this.#pendingFrame = null;
     this.#nextCaptureAt = 0;
@@ -321,6 +360,8 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
 
   resume(): void {
     this.#suspended = false;
+    for (const id of this.#attachments.keys())
+      void this.#participantInput?.attach(id, this.#activeTarget);
     this.#nextCaptureAt = 0;
     this.publishState(
       undefined,
@@ -340,6 +381,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
 
   close(): void {
     this.#closed = true;
+    void this.#participantInput?.close();
     this.clearCaptureTimer();
     this.#pendingFrame = null;
     workerLogger.event("info", "Desktop capture session closed", {
@@ -592,6 +634,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
       return;
     }
     this.#switchingTarget = true;
+    this.#participantInput?.reset();
     const startedAtMs = Date.now();
     workerLogger.event("debug", "Desktop capture target switch started", {
       event: "desktop.target.switching",
@@ -679,7 +722,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
       } else {
         this.#targetMessage = `${desktopTargetName(requested)} is unavailable; showing ${desktopTargetName(pipeline.target)}.`;
       }
-      if (pipeline.target.kind === "window") {
+      if (pipeline.target.kind === "window" && !this.#participantInput) {
         try {
           await this.focusInputTarget();
         } catch (error) {
@@ -742,9 +785,16 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
     }
     // Encoding/encryption of target metadata must not hold up the first frame.
     await this.publishTargets().catch(() => undefined);
+    if (!this.#closed && !this.#suspended)
+      await Promise.all(
+        [...this.#attachments.keys()].map((id) =>
+          this.#participantInput?.attach(id, this.#activeTarget),
+        ),
+      );
   }
 
   private useCompatibilityBackend(error: unknown): void {
+    this.#participantInput?.reset();
     this.#framePipeline = null;
     this.#pipelineRevision += 1;
     this.#pendingFrame = null;
@@ -898,6 +948,30 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
       | { type: "viewport" }
     >,
   ): Promise<void> {
+    if (this.#participantInput) {
+      if (
+        !this.#attachments.has(attachmentId) ||
+        this.#suspended ||
+        this.#closed ||
+        this.#switchingTarget
+      )
+        throw new Error("Remote input attachment is inactive.");
+      if (
+        message.type === "pointer" ||
+        message.type === "key" ||
+        message.type === "clipboard"
+      ) {
+        const logical = this.#framePipeline?.display ?? this.#display;
+        await this.#participantInput.send(attachmentId, message, {
+          pixelWidth: this.#display.width,
+          pixelHeight: this.#display.height,
+          logicalWidth: logical.width,
+          logicalHeight: logical.height,
+        });
+        this.scheduleCapture(0);
+      }
+      return;
+    }
     if (message.type === "pointer") {
       if (message.event !== "move") await this.focusInputTarget();
       const localX = Math.max(
@@ -1084,6 +1158,10 @@ export class ManagedDesktopRemoteSurfaceAdapter implements RemoteSurfaceAdapter 
     private readonly listTargets: DesktopTargetInventoryFactory = listNativeDesktopTargets,
     private readonly launchApplication: DesktopApplicationLauncher = launchDesktopApplication,
     private readonly applicationIcons: DesktopApplicationIconProvider | null = null,
+    private readonly interactions?: {
+      workerId: string;
+      participants: Pick<WorkerInputParticipants, "open">;
+    },
   ) {}
 
   get available(): boolean {
@@ -1278,6 +1356,7 @@ export class ManagedDesktopRemoteSurfaceAdapter implements RemoteSurfaceAdapter 
     const display = desktopDisplaySize(await client.getDisplaySize());
     const session = new ManagedDesktopRemoteSurfaceSession({
       client,
+      interactions: this.interactions,
       configuration: command.configuration,
       createFramePipeline: this.createFramePipeline,
       display,

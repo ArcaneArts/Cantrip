@@ -310,7 +310,7 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
       };
       const inventory = await service.targets(scope);
       expect(inventory.some((t) => t.id === "fake-window")).toBe(true);
-      const a = await service.participants.open(binding("a"), targetRef);
+      const a = await service.participants.open(binding("a"), "fake-window");
       const b = await service.participants.open(binding("b"), targetRef);
       await expect(a.send(1, key)).rejects.toMatchObject({
         code: "unsupported",

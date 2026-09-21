@@ -259,6 +259,13 @@ export const remoteDesktopClientMessageSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("pointer"),
+    inputEpoch: z.string().uuid().optional(),
+    inputSequence: z
+      .number()
+      .int()
+      .positive()
+      .max(Number.MAX_SAFE_INTEGER)
+      .optional(),
     event: z.enum(["move", "down", "up", "wheel"]),
     x: z.number().finite().nonnegative(),
     y: z.number().finite().nonnegative(),
@@ -273,6 +280,13 @@ export const remoteDesktopClientMessageSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("key"),
+    inputEpoch: z.string().uuid().optional(),
+    inputSequence: z
+      .number()
+      .int()
+      .positive()
+      .max(Number.MAX_SAFE_INTEGER)
+      .optional(),
     event: z.enum(["down", "up"]),
     key: z.string().max(100),
     code: z.string().max(100),
@@ -287,6 +301,13 @@ export const remoteDesktopClientMessageSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("clipboard"),
+    inputEpoch: z.string().uuid().optional(),
+    inputSequence: z
+      .number()
+      .int()
+      .positive()
+      .max(Number.MAX_SAFE_INTEGER)
+      .optional(),
     operation: z.enum(["copy", "paste-text"]),
     text: z.string().max(1_000_000).default(""),
   }),
@@ -301,6 +322,11 @@ export const remoteDesktopClientMessageSchema = z.discriminatedUnion("type", [
 ]);
 
 export const remoteDesktopServerMessageSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("desktop-input"),
+    epoch: z.string().uuid().nullable(),
+    message: z.string().max(2048).nullable(),
+  }),
   z.object({
     type: z.literal("desktop-state"),
     width: z.number().int().positive(),

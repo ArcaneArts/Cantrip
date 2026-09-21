@@ -717,12 +717,14 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   const browserAdapter = new BrowserRemoteSurfaceAdapter({
     dataDirectory: config.dataDirectory,
   });
+  const computerUse = new CantripCuaService({ workerId: config.workerId });
   const desktopAdapter = new ManagedDesktopRemoteSurfaceAdapter(
     undefined,
     undefined,
     undefined,
     undefined,
     new DesktopApplicationIconStore(config.dataDirectory),
+    { workerId: config.workerId, participants: computerUse.participants },
   );
   await workerStartupPhase(
     "initialize-desktop-capture",
@@ -774,8 +776,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     workerProcessGeneration,
   });
   const cliBroker = new CantripCliBroker(config);
-  // Construction is inert: no process, capture permission, or discovery probe.
-  const computerUse = new CantripCuaService({ workerId: config.workerId });
+  // The shared helper was constructed above; construction does not launch it.
   const mcpBroker = new CantripMcpBroker(config);
   const mcpHost = cantripMcpHostInvocation();
   const terminals = new TerminalManager({
