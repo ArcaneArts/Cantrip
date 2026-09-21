@@ -21,7 +21,7 @@ type Entry = {
   sequence: number;
   nativeSequence: number;
   queue: Promise<unknown>;
-  heldKeys: Set<string>;
+  heldKeys: Map<string, Set<string>>;
 };
 const modifiers = (bits: number): ("Shift" | "Control" | "Alt" | "Meta")[] => [
   ...(bits & 1 ? ["Alt" as const] : []),
@@ -109,7 +109,7 @@ export class DesktopParticipantInput {
       sequence: 0,
       nativeSequence: 0,
       queue: Promise.resolve(),
-      heldKeys: new Set(),
+      heldKeys: new Map(),
     };
     this.entries.set(id, entry);
     try {
@@ -241,18 +241,25 @@ export class DesktopParticipantInput {
             } as Record<string, string>
           )[submitted.code] ??
           submitted.key;
+        const physical = submitted.code || submitted.key;
+        const held = entry.heldKeys.get(key) ?? new Set<string>();
         if (submitted.event === "down") {
-          await post({
-            type: "keyDown",
-            data: {
-              key,
-              modifiers: modifiers(submitted.modifiers),
-              repeat: entry.heldKeys.has(key),
-            },
-          });
-          entry.heldKeys.add(key);
-        } else if (entry.heldKeys.delete(key))
+          // Left/right modifiers share one native key, but own separate holds.
+          if (!held.size || held.has(physical))
+            await post({
+              type: "keyDown",
+              data: {
+                key,
+                modifiers: modifiers(submitted.modifiers),
+                repeat: held.has(physical),
+              },
+            });
+          held.add(physical);
+          entry.heldKeys.set(key, held);
+        } else if (held.delete(physical) && !held.size) {
+          entry.heldKeys.delete(key);
           await post({ type: "keyUp", data: { key } });
+        }
       } else if (submitted.operation === "paste-text") {
         // Split UTF-8 text without splitting code points. The attachment sequence
         // is consumed once; generated native events are never retried.

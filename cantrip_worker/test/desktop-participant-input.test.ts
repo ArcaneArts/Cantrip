@@ -205,3 +205,36 @@ describe("remote desktop participant input", () => {
     await f.input.close();
   });
 });
+
+it("keeps a shared modifier held until both physical keys are released", async () => {
+  const f = fixture();
+  await f.input.attach("a", target);
+  const key = {
+    type: "key",
+    event: "down",
+    key: "Shift",
+    code: "ShiftLeft",
+    modifiers: 8,
+  };
+  await f.input.send("a", f.message("a", 1, key), size);
+  await f.input.send(
+    "a",
+    f.message("a", 2, { ...key, code: "ShiftRight" }),
+    size,
+  );
+  await f.input.send("a", f.message("a", 3, { ...key, event: "up" }), size);
+  expect(f.instances[0]!.send).toHaveBeenCalledTimes(1);
+  await f.input.send(
+    "a",
+    f.message("a", 4, { ...key, event: "up", code: "ShiftRight" }),
+    size,
+  );
+  expect(f.instances[0]!.send.mock.calls.map((c) => c[1])).toEqual([
+    {
+      type: "keyDown",
+      data: { key: "Shift", modifiers: ["Shift"], repeat: false },
+    },
+    { type: "keyUp", data: { key: "Shift" } },
+  ]);
+  await f.input.close();
+});
