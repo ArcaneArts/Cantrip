@@ -60,6 +60,10 @@ pub struct SessionState {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "operation", deny_unknown_fields)]
 pub enum Operation {
+    #[serde(rename = "capture.request")]
+    RemoteCapture {
+        request: crate::remote_capture::Request,
+    },
     #[serde(rename = "interaction.request")]
     Interaction {
         request: crate::interaction::Request,
@@ -235,6 +239,7 @@ pub struct CuaService<B: CaptureBackend> {
     sessions: HashMap<String, SessionState>,
     javascript: bool,
     interactions: crate::interaction::Participants,
+    remote_captures: crate::remote_capture::Captures,
 }
 
 impl<B: CaptureBackend> CuaService<B> {
@@ -244,6 +249,7 @@ impl<B: CaptureBackend> CuaService<B> {
             sessions: HashMap::new(),
             javascript: false,
             interactions: crate::interaction::Participants::default(),
+            remote_captures: crate::remote_capture::Captures::default(),
         }
     }
     pub(crate) fn enable_javascript(&mut self) {
@@ -524,10 +530,17 @@ impl<B: CaptureBackend> CuaService<B> {
         cancel: &Cancellation,
         now_ms: u64,
     ) -> Result<OperationResult> {
-        if !matches!(operation, Operation::Interaction { .. }) {
+        if !matches!(
+            operation,
+            Operation::Interaction { .. } | Operation::RemoteCapture { .. }
+        ) {
             cancel.check()?;
         }
         match operation {
+            Operation::RemoteCapture { request } => {
+                self.remote_captures
+                    .execute(&mut self.backend, request, cancel)
+            }
             Operation::Interaction { request } => self
                 .interactions
                 .execute(&mut self.backend, request, cancel, now_ms)
@@ -924,7 +937,7 @@ impl<B: CaptureBackend> CuaService<B> {
     }
 }
 
-struct BoundedImage(Vec<u8>);
+pub(crate) struct BoundedImage(pub(crate) Vec<u8>);
 impl Write for BoundedImage {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
         if bytes.len() > MAX_PAYLOAD_BYTES - self.0.len() {

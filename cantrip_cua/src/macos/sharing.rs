@@ -118,10 +118,11 @@ pub(super) fn release_for_effect(target: &crate::target::Target) {
         s.leases.remove(&(target.id.clone(), target.generation));
     });
 }
-pub(super) fn retain_sessions(sessions: &[SessionState]) {
+pub(super) fn retain_sessions(sessions: &[SessionState], remote: &[crate::target::Target]) {
     let alive: HashSet<Key> = sessions
         .iter()
         .filter_map(|s| s.target.as_ref())
+        .chain(remote.iter())
         .map(|t| (t.id.clone(), t.generation))
         .collect();
     DispatchQueue::main().exec_async(move || {

@@ -24,7 +24,7 @@ pub struct Binding {
     pub participant_id: String,
 }
 impl Binding {
-    fn validate(&self) -> Result<()> {
+    pub(crate) fn validate(&self) -> Result<()> {
         for id in [
             &self.worker_id,
             &self.surface_id,

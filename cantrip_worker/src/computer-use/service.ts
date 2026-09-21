@@ -1,3 +1,4 @@
+import { WorkerCaptures, type CaptureOwner } from "./captures.js";
 import { WorkerInputParticipants } from "./participants.js";
 import { CuaEffects } from "./effects.js";
 import { createHash, randomUUID } from "node:crypto";
@@ -115,9 +116,10 @@ export class CantripCuaService {
   private lastFailure: string | null = null;
   private readonly javascript: CuaJavascriptContexts;
   readonly participants: WorkerInputParticipants;
+  readonly captures: WorkerCaptures;
 
   constructor(private readonly options: CantripCuaServiceOptions) {
-    this.participants = new WorkerInputParticipants({
+    const participantOwner: CaptureOwner = {
       authorize: (binding) => {
         this.assertActive();
         if (binding.workerId !== this.options.workerId)
@@ -131,7 +133,9 @@ export class CantripCuaService {
       isCurrent: (runtime) =>
         this.runtime === runtime && this.connected && !this.stopped,
       background: (work) => this.background(work),
-    });
+    };
+    this.participants = new WorkerInputParticipants(participantOwner);
+    this.captures = new WorkerCaptures(participantOwner);
     this.javascript = new CuaJavascriptContexts(this, {
       runtime: async (signal) => {
         const runtime = await waitBeforeCuaSend(this.ensureRuntime(), signal);
@@ -204,6 +208,7 @@ export class CantripCuaService {
     this.crashes += 1;
     this.javascript.runtimeFailed(runtime, error);
     this.participants.runtimeFailed(runtime);
+    this.captures.runtimeFailed(runtime);
     for (const record of this.sessions.values()) {
       if (record.runtime === runtime) {
         this.sessions.delete(record.binding.sessionId);
@@ -833,6 +838,7 @@ export class CantripCuaService {
   disconnect(): void {
     this.connected = false;
     this.background(this.participants.closeAll());
+    this.background(this.captures.closeAll());
     this.javascript.cancel(() => true);
     for (const pending of this.pending) pending.controller.abort();
     for (const record of this.sessions.values()) this.invalidate(record);

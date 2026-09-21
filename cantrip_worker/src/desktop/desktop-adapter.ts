@@ -1,3 +1,5 @@
+import { CuaDesktopFrameSource } from "./cua-frame-source.js";
+import type { WorkerCaptures } from "../computer-use/captures.js";
 import { DesktopParticipantInput } from "./participant-input.js";
 import type { WorkerInputParticipants } from "../computer-use/participants.js";
 import os from "node:os";
@@ -132,6 +134,9 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
     requested: RemoteDesktopTarget;
   } | null = null;
   #pipelineRevision = 0;
+  readonly #sharedCapture: boolean;
+  #captureOpening: Promise<void> | null = null;
+  #captureFailures = 0;
   #statsWindowStarted = performance.now();
   #suspended = false;
   readonly #startedAtMs = Date.now();
@@ -146,9 +151,11 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
 
   constructor(options: {
     client: DesktopAutomationClient;
+    sharedCapture?: boolean;
     interactions?: {
       workerId: string;
       participants: Pick<WorkerInputParticipants, "open">;
+      captures?: WorkerCaptures;
     };
     configuration: Extract<RemoteSurfaceConfiguration, { kind: "desktop" }>;
     createFramePipeline: DesktopFramePipelineFactory;
@@ -167,6 +174,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
     surfaceId: string;
   }) {
     this.#client = options.client;
+    this.#sharedCapture = options.sharedCapture ?? false;
     this.#participantInput = options.interactions
       ? new DesktopParticipantInput({
           ...options.interactions,
@@ -286,7 +294,10 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
     this.#participantInput?.detach(attachmentId);
     this.#attachments.delete(attachmentId);
     this.#resynchronizedAttachments.delete(attachmentId);
-    if (this.#attachments.size === 0) this.clearCaptureTimer();
+    if (this.#attachments.size === 0) {
+      this.clearCaptureTimer();
+      if (this.#sharedCapture) this.releaseSharedCapture();
+    }
   }
 
   async handleFrame(
@@ -357,6 +368,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
 
   suspend(): void {
     this.#suspended = true;
+    if (this.#sharedCapture) this.releaseSharedCapture();
     this.#participantInput?.reset();
     this.clearCaptureTimer();
     this.#pendingFrame = null;
@@ -411,6 +423,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
         frames: this.#framesEmitted,
       },
     });
+    this.releaseSharedCapture();
     this.#attachments.clear();
     this.#resynchronizedAttachments.clear();
   }
@@ -443,6 +456,37 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
     this.#captureTimer = null;
   }
 
+  private releaseSharedCapture(): void {
+    const pipeline = this.#framePipeline;
+    this.#framePipeline = null;
+    this.#pipelineRevision += 1;
+    void pipeline?.close?.().catch(() => {});
+  }
+
+  private async ensureSharedCapture(): Promise<void> {
+    if (!this.#sharedCapture || this.#framePipeline) return;
+    if (this.#captureOpening) return this.#captureOpening;
+    const revision = this.#pipelineRevision;
+    this.#captureOpening = (async () => {
+      this.#targetInventory = await this.loadTargets();
+      const pipeline = await this.#createFramePipeline(this.#requestedTarget);
+      if (
+        revision !== this.#pipelineRevision ||
+        this.#closed ||
+        this.#suspended ||
+        !this.#attachments.size
+      ) {
+        await pipeline.close?.();
+        return;
+      }
+      this.#framePipeline = pipeline;
+      this.#activeTarget = pipeline.target;
+    })().finally(() => {
+      this.#captureOpening = null;
+    });
+    return this.#captureOpening;
+  }
+
   private async capture(): Promise<void> {
     if (
       this.#closed ||
@@ -454,7 +498,10 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
       return;
     this.#capturing = true;
     const startedAt = performance.now();
+    let attemptedRevision = this.#pipelineRevision;
     try {
+      await this.ensureSharedCapture();
+      attemptedRevision = this.#pipelineRevision;
       const pipeline = this.#framePipeline;
       const revision = this.#pipelineRevision;
       if (pipeline) {
@@ -465,12 +512,30 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
         ) {
           this.#display = { width: frame.width, height: frame.height };
           this.queueFrame(frame);
+          if (this.#captureFailures)
+            this.publishState(undefined, "ready", null);
+          this.#captureFailures = 0;
         }
-      } else {
+      } else if (!this.#sharedCapture) {
         await this.captureCompatibilityFrame();
       }
     } catch (error) {
-      if (this.#requestedTarget.kind === "window") {
+      if (
+        this.#closed ||
+        this.#suspended ||
+        !this.#attachments.size ||
+        attemptedRevision !== this.#pipelineRevision
+      )
+        return;
+      if (this.#sharedCapture) {
+        this.#captureFailures += 1;
+        this.releaseSharedCapture();
+        this.publishState(
+          undefined,
+          "error",
+          `Capture failed: ${errorMessage(error)}`,
+        );
+      } else if (this.#requestedTarget.kind === "window") {
         await this.switchTarget(this.#requestedTarget, true, error);
       } else if (this.#framePipeline) {
         this.useCompatibilityBackend(error);
@@ -479,7 +544,9 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
       }
     } finally {
       this.#capturing = false;
-      const interval = 1_000 / this.#streamSettings.targetFps;
+      const interval = this.#captureFailures
+        ? Math.min(5000, 250 * 2 ** Math.min(this.#captureFailures - 1, 5))
+        : 1_000 / this.#streamSettings.targetFps;
       if (!this.#nextCaptureAt) this.#nextCaptureAt = startedAt;
       this.#nextCaptureAt += interval;
       if (this.#nextCaptureAt < performance.now()) {
@@ -648,6 +715,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
       return;
     }
     this.#switchingTarget = true;
+    if (this.#sharedCapture) this.releaseSharedCapture();
     this.#participantInput?.reset();
     const startedAtMs = Date.now();
     workerLogger.event("debug", "Desktop capture target switch started", {
@@ -722,7 +790,14 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
         }
       }
 
+      const previous = this.#framePipeline;
+      this.#framePipeline = null;
+      await previous?.close?.();
       const pipeline = await this.#createFramePipeline(requested);
+      if (this.#closed) {
+        await pipeline.close?.();
+        return;
+      }
       this.#framePipeline = pipeline;
       this.#pipelineRevision += 1;
       this.#activeTarget = pipeline.target;
@@ -764,6 +839,12 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
         durationMs: Date.now() - startedAtMs,
       });
     } catch (error) {
+      if (this.#sharedCapture) {
+        this.#targetMessage = `Target capture unavailable: ${errorMessage(error)}`;
+        this.#inputTargetError = this.#targetMessage;
+        this.publishState(undefined, "error", this.#targetMessage);
+        return;
+      }
       this.#framePipeline = null;
       this.#pipelineRevision += 1;
       this.#activeTarget = { kind: "monitor", id: null, name: null };
@@ -808,7 +889,16 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
   }
 
   private useCompatibilityBackend(error: unknown): void {
+    if (this.#sharedCapture) {
+      this.publishState(
+        undefined,
+        "error",
+        `Capture failed: ${errorMessage(error)}`,
+      );
+      return;
+    }
     this.#participantInput?.reset();
+    void this.#framePipeline?.close?.().catch(() => {});
     this.#framePipeline = null;
     this.#pipelineRevision += 1;
     this.#pendingFrame = null;
@@ -1164,6 +1254,9 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
 
 export class ManagedDesktopRemoteSurfaceAdapter implements RemoteSurfaceAdapter {
   #available = false;
+  private get sharedCapture(): boolean {
+    return os.platform() === "darwin" && !!this.interactions?.captures;
+  }
   #client: DesktopAutomationClient | null = null;
   #nativeCaptureAvailable = false;
   #initializationError: string | null = null;
@@ -1180,6 +1273,7 @@ export class ManagedDesktopRemoteSurfaceAdapter implements RemoteSurfaceAdapter 
     private readonly interactions?: {
       workerId: string;
       participants: Pick<WorkerInputParticipants, "open">;
+      captures?: WorkerCaptures;
     },
   ) {}
 
@@ -1222,6 +1316,13 @@ export class ManagedDesktopRemoteSurfaceAdapter implements RemoteSurfaceAdapter 
         status: "unavailable",
         platform: os.platform(),
       });
+      return;
+    }
+    if (this.sharedCapture) {
+      // Attempt capture when a viewer attaches; no disposable capture probe.
+      this.#available = true;
+      this.#nativeCaptureAvailable = true;
+      this.#initializationError = null;
       return;
     }
     try {
@@ -1298,7 +1399,14 @@ export class ManagedDesktopRemoteSurfaceAdapter implements RemoteSurfaceAdapter 
     }
     this.#inventoryOperations.accept(command.operationId);
     const inventory = remoteDesktopTargetInventorySchema.parse(
-      await this.listTargets(),
+      this.sharedCapture
+        ? await new CuaDesktopFrameSource(this.interactions!.captures!, {
+            workerId: this.interactions!.workerId,
+            surfaceId: "inventory",
+            attachmentId: command.operationId,
+            participantId: "inventory",
+          }).inventory()
+        : await this.listTargets(),
     );
     const monitors = inventory.monitors.slice(0, command.limit);
     const windows = inventory.windows.slice(
@@ -1371,18 +1479,45 @@ export class ManagedDesktopRemoteSurfaceAdapter implements RemoteSurfaceAdapter 
       backend: this.frameBackend,
       requestedTargetKind: initialTarget.kind,
     });
-    const client = await this.client();
-    const display = desktopDisplaySize(await client.getDisplaySize());
+    const source = this.sharedCapture
+      ? new CuaDesktopFrameSource(this.interactions!.captures!, {
+          workerId: this.interactions!.workerId,
+          surfaceId: command.surfaceId,
+          attachmentId: command.surfaceId,
+          participantId: "remote-capture",
+        })
+      : null;
+    // The shared path needs legacy clipboard access only on an explicit copy.
+    const client = source
+      ? new Proxy({} as DesktopAutomationClient, {
+          get:
+            (_object, method: keyof DesktopAutomationClient) =>
+            async (...args: unknown[]) => {
+              if (method !== "readClipboard")
+                throw new Error(
+                  "Shared capture does not use global desktop input or capture.",
+                );
+              const actual = await this.client();
+              return actual.readClipboard();
+            },
+        })
+      : await this.client();
+    const display = source
+      ? { width: 1, height: 1 }
+      : desktopDisplaySize(await client.getDisplaySize());
     const session = new ManagedDesktopRemoteSurfaceSession({
       client,
       interactions: this.interactions,
       configuration: command.configuration,
-      createFramePipeline: this.createFramePipeline,
+      createFramePipeline: source
+        ? (target) => source.open(target)
+        : this.createFramePipeline,
+      sharedCapture: !!source,
       display,
       emit,
       framePipeline: null,
       launchApplication: this.launchApplication,
-      listTargets: this.listTargets,
+      listTargets: source ? () => source.inventory() : this.listTargets,
       applicationIcons: this.applicationIcons,
       initialTarget,
       ownerId,

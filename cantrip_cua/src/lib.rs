@@ -13,6 +13,7 @@ mod interaction_sprite;
 pub mod inventory;
 mod javascript;
 pub mod protocol;
+pub mod remote_capture;
 pub mod runtime;
 pub mod service;
 pub mod target;
