@@ -323,7 +323,7 @@ it is not proof that an application reacted.
 The macOS backend combines worker participant presentations with active CUA cursor
 presentations before rendering. Human positions are presented directly without the
 CUA macro travel animation. The native endpoint provides transparent cursor sprites for the remote client
-but does not yet provide its video stream. Native interaction QA remains deferred.
+and a separate capture-only endpoint for remote video. Native interaction QA remains deferred.
 
 `CantripCuaService.participants` owns worker-side handles. `open(binding, target)`
 returns initial target/cursor metadata and `send(sequence, event)` / `close()`
@@ -341,7 +341,8 @@ Production remote desktop now supplies the shared worker participant bridge.
 Window input no longer activates the host window or uses the compatibility
 system-mouse methods. Display/monitor sharing is view-only with a message asking
 for a window; unavailable native input is reported rather than falling back.
-The existing video pipeline still supplies frames in this milestone.
+On macOS, the production video pipeline uses the CUA backend through a separate
+worker capture lease.
 
 Each attachment receives a `desktop-input` control message with its input epoch.
 Pointer, key and clipboard messages carry `inputEpoch` and `inputSequence`.
@@ -355,8 +356,7 @@ final user QA pass.
 Mouse buttons (including back/forward), dragging, wheel input, physical key
 holds/repeats/modifiers and committed text use shared native events. Clipboard
 paste is split at UTF-8 code-point boundaries for the native text event capacity.
-Remote mobile text is forwarded as committed text. CUA capture reuse remains
-follow-up work.
+Remote mobile text is forwarded as committed text.
 The native independent-input backend is macOS; unsupported platforms report
 input unavailable. Existing remote authorization and encrypted target state
 remain in the RemoteSurface worker boundary.
@@ -382,3 +382,37 @@ focus inside an application: application state remains shared.
 Local regression coverage checks immediate movement, own-echo suppression, peer
 position retention, sprite transparency/color, URL disposal, cancellation scope,
 and presentation-failure isolation. Live multi-client native QA remains deferred.
+
+### Remote capture ownership and startup
+
+`CantripCuaService.captures` exposes worker-owned inventory and capture leases.
+The native `capture.request` endpoint is unavailable to agent JavaScript. Each
+lease checks its binding and exact target identity, returns unmodified PNG pixels
+through the existing binary framing, and never adds cursor pixels or effects.
+CUA snapshots retain their existing cursor rendering. Remote capture targets are
+included when the native sharing registry retains live streams, so agent session
+cleanup does not prune remote viewers.
+
+The macOS remote adapter no longer starts or probes the legacy automation client
+on initialization or connection. That client is loaded only for explicit clipboard
+copy. The attachment reuses its inventory for capture selection, then passes PNGs
+to the existing adaptive JPEG encoder and authorized remote transport. A selected
+window cannot silently become another window or full-display capture. Other
+platforms retain the existing capture backend; independent native input remains
+macOS-only.
+
+Last detach, suspension, closure and target replacement release the capture lease.
+Late frames are discarded by pipeline revision. Failed observations reopen capture
+with bounded retry backoff while leaving input sessions alone; input actions are
+never replayed. Helper replacement invalidates old handles and cleanup stays on
+the original helper. Remote recovery cannot claim that uncertain input succeeded.
+
+Validation for this milestone: 135 native library tests; focused worker tests for
+exact target selection, PNG/JPEG pixels and geometry, scoped cleanup, recovery,
+and startup; a real helper process with fake pixels checks binary framing and
+independence from unrelated agent cancellation. The local 200×200 fixture reached
+its first encoded frame in 8.6 ms with zero legacy startup calls and one inventory
+lookup (2026-09-21). This is a routing/encoding measurement, not a live screen or
+network latency claim. Full native/multi-client QA remains deferred. Capture still
+uses the CUA screenshot backend per frame and PNG-to-JPEG transcoding, so sustained
+high-resolution throughput needs profiling; this is not a hardware video encoder.

@@ -724,7 +724,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     undefined,
     undefined,
     new DesktopApplicationIconStore(config.dataDirectory),
-    { workerId: config.workerId, participants: computerUse.participants },
+    {
+      workerId: config.workerId,
+      participants: computerUse.participants,
+      captures: computerUse.captures,
+    },
   );
   await workerStartupPhase(
     "initialize-desktop-capture",

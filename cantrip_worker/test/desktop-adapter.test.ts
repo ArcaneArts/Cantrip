@@ -839,3 +839,136 @@ describe("ManagedDesktopRemoteSurfaceAdapter", () => {
     });
   });
 });
+
+it.skipIf(process.platform !== "darwin")(
+  "uses shared capture without startup probes and recovers video without cancelling input",
+  async () => {
+    const target = {
+      kind: "window" as const,
+      id: "42",
+      application: "Brave",
+      title: "Piano",
+    };
+    const native = {
+      id: "macos-window-42",
+      generation: 1,
+      kind: "window" as const,
+      title: "Piano",
+      application: "Brave",
+      processId: 123,
+      bounds: { x: 50, y: 60, width: 100, height: 100 },
+      pixelWidth: 200,
+      pixelHeight: 200,
+      scaleFactor: 2,
+      focused: false,
+      minimized: false,
+    };
+    const sharp = (await import("sharp")).default;
+    const png = await sharp({
+      create: { width: 200, height: 200, channels: 4, background: "#123456" },
+    })
+      .png()
+      .toBuffer();
+    let failNext = false;
+    const closes: ReturnType<typeof vi.fn>[] = [];
+    const captures = {
+      inventory: vi.fn(async () => [native]),
+      open: vi.fn(async () => {
+        const close = vi.fn(async () => {});
+        closes.push(close);
+        return {
+          initial: { target: native, handle: closes.length },
+          close,
+          frame: vi.fn(async () => {
+            if (failNext) {
+              failNext = false;
+              throw new Error("transient capture failure");
+            }
+            return { target: native, png, width: 200, height: 200 };
+          }),
+        };
+      }),
+    };
+    const inputClose = vi.fn(async () => {});
+    const inputOpen = vi.fn(async () => ({
+      send: vi.fn(),
+      close: inputClose,
+    })) as unknown as import("../src/computer-use/participants.js").WorkerInputParticipants["open"];
+    const legacy = vi.fn(async () => {
+      throw new Error("Legacy startup must not run");
+    });
+    const adapter = new ManagedDesktopRemoteSurfaceAdapter(
+      legacy,
+      legacy,
+      legacy,
+      async () => {},
+      null,
+      {
+        workerId,
+        participants: { open: inputOpen },
+        captures:
+          captures as unknown as import("../src/computer-use/captures.js").WorkerCaptures,
+      },
+    );
+    await adapter.initialize();
+    expect(legacy).not.toHaveBeenCalled();
+    expect(captures.inventory).not.toHaveBeenCalled();
+    adapter.setSurfacePrivateStateService(encryptionService, workerId);
+    let frames = 0;
+    let firstFrameMs = 0;
+    const startedAt = performance.now();
+    const session = await adapter.open(
+      {
+        type: "surface.attach",
+        surfaceId: "shared-capture",
+        attachmentId: "a",
+        projectId: "project",
+        serverId,
+        configuration: { kind: "desktop" },
+        stateResource: "remote-desktop-row",
+        stateRevision: 1,
+        stateProtection: await protectedTarget("shared-capture", target),
+        preferredTransport: "websocket",
+        viewport: { width: 200, height: 200, devicePixelRatio: 1 },
+        webrtc: null,
+      },
+      (_id, channel) => {
+        if (channel === "frame") {
+          frames++;
+          if (frames === 1) firstFrameMs = performance.now() - startedAt;
+        }
+        return true;
+      },
+    );
+    try {
+      await session.attach({
+        id: "a",
+        viewport: { width: 200, height: 200, devicePixelRatio: 1 },
+      });
+      await eventually(() => frames > 0);
+      process.stdout.write(
+        `Shared capture fixture: first frame ${firstFrameMs.toFixed(1)}ms, legacy startup calls ${legacy.mock.calls.length}, inventory calls ${captures.inventory.mock.calls.length}\n`,
+      );
+      expect(captures.inventory).toHaveBeenCalledOnce();
+      expect(legacy).not.toHaveBeenCalled();
+      const before = frames;
+      failNext = true;
+      await vi.waitFor(() => expect(captures.open).toHaveBeenCalledTimes(2), {
+        timeout: 2000,
+      });
+      await eventually(() => frames > before);
+      expect(inputClose).not.toHaveBeenCalled();
+      expect(closes[0]).toHaveBeenCalledOnce();
+      session.suspend();
+      await vi.waitFor(() => expect(closes[1]).toHaveBeenCalledOnce());
+      session.resume();
+      await vi.waitFor(() => expect(captures.open).toHaveBeenCalledTimes(3));
+      session.detach("a");
+      await vi.waitFor(() => expect(closes[2]).toHaveBeenCalledOnce());
+      expect(legacy).not.toHaveBeenCalled();
+    } finally {
+      session.close();
+      await adapter.shutdown();
+    }
+  },
+);

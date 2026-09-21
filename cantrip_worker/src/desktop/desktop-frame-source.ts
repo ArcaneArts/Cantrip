@@ -19,9 +19,8 @@ export interface DesktopDisplayOrigin {
   y: number;
 }
 
-export interface DesktopRawFrame extends DesktopDisplaySize {
-  rgba: Uint8Array;
-}
+export type DesktopRawFrame = DesktopDisplaySize &
+  ({ rgba: Uint8Array } | { png: Uint8Array });
 
 export interface DesktopFrameEncoding {
   quality: number;
@@ -30,6 +29,7 @@ export interface DesktopFrameEncoding {
 
 export interface NativeDesktopFramePipeline {
   readonly backend: "native";
+  close?(): Promise<void>;
   readonly display: DesktopDisplaySize;
   readonly origin: DesktopDisplayOrigin;
   readonly target: RemoteDesktopTarget;
@@ -384,9 +384,13 @@ export async function createNativeDesktopFramePipeline(
       };
     },
     async encode(frame, options) {
-      return sharp(frame.rgba, {
-        raw: { width: frame.width, height: frame.height, channels: 4 },
-      })
+      return (
+        "png" in frame
+          ? sharp(frame.png)
+          : sharp(frame.rgba, {
+              raw: { width: frame.width, height: frame.height, channels: 4 },
+            })
+      )
         .resize({ width: options.width, withoutEnlargement: true })
         .jpeg({
           quality: options.quality,

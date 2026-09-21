@@ -29,6 +29,8 @@ impl Raster {
 }
 
 pub trait CaptureBackend: Send {
+    /// Capture owners are independent of agent and input lifetimes.
+    fn retain_remote_captures(&mut self, _targets: Vec<Target>) {}
     /// Trusted worker participants share the native input host, not agent bindings.
     fn interaction_input(
         &mut self,

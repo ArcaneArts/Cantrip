@@ -188,6 +188,7 @@ pub struct MacOsBackend {
     input_host: NativeInputHost,
     input_sessions: HashMap<String, Arc<Mutex<NativeInputSession>>>,
     input_progress: HashMap<String, crate::input_job::InputProgress>,
+    remote_capture_targets: Vec<Target>,
     interaction_cursors: Vec<cantrip_interaction::presentation::CursorPresentation<Target>>,
 }
 
@@ -329,6 +330,9 @@ impl CaptureBackend for MacOsBackend {
         input.refresh(target.clone(), position, cancel)?;
         input.submit(sequence, event, cancel).map(|_| ())
     }
+    fn retain_remote_captures(&mut self, targets: Vec<Target>) {
+        self.remote_capture_targets = targets;
+    }
     fn present_interaction_cursors(
         &mut self,
         participants: Vec<cantrip_interaction::presentation::CursorPresentation<Target>>,
@@ -347,7 +351,7 @@ impl CaptureBackend for MacOsBackend {
 
     fn present_cursors(&mut self, sessions: Vec<crate::service::SessionState>) {
         let sessions = self.live_cursors(sessions);
-        sharing::retain_sessions(&sessions);
+        sharing::retain_sessions(&sessions, &self.remote_capture_targets);
         window_effects::sessions(sessions.clone());
         overlay::present_input_cursors(
             sessions
