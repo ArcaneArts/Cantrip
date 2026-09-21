@@ -819,8 +819,29 @@ describe("ManagedDesktopRemoteSurfaceAdapter", () => {
       await expect(
         session.handleFrame("a", "control", payload),
       ).rejects.toThrow(/stale/);
+      await session.attach({
+        id: "a",
+        viewport: { width: 200, height: 200, devicePixelRatio: 1 },
+      });
+      const renewed = messages
+        .filter((m) => m.type === "desktop-input" && m.epoch)
+        .at(-1);
+      if (renewed?.type !== "desktop-input")
+        throw new Error("missing renewed input epoch");
+      expect(renewed.epoch).not.toBe(state.epoch);
+      await expect(
+        session.handleFrame("a", "control", payload),
+      ).rejects.toThrow(/stale/);
+      const next = JSON.parse(new TextDecoder().decode(payload));
+      next.inputEpoch = renewed.epoch;
+      await session.handleFrame(
+        "a",
+        "control",
+        new TextEncoder().encode(JSON.stringify(next)),
+      );
+      expect(open).toHaveBeenCalledTimes(2);
       session.detach("a");
-      await eventually(() => close.mock.calls.length === 1);
+      await eventually(() => close.mock.calls.length === 2);
     } finally {
       await session.close();
       await adapter.shutdown();

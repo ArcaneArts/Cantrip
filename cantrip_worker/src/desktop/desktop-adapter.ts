@@ -243,6 +243,8 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
   }
 
   async attach(attachment: RemoteSurfaceAttachment): Promise<void> {
+    // A new transport lifetime must not inherit the previous sequence or holds.
+    this.#participantInput?.detach(attachment.id);
     this.#attachments.set(attachment.id, attachment);
     await this.initialize();
     if (this.#closed || this.#attachments.get(attachment.id) !== attachment)
