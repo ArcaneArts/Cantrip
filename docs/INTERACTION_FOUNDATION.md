@@ -310,7 +310,7 @@ the helper runtime identity alongside the handle, and close on detach or revocat
 `closeBinding` releases even an open whose response was lost and is safe to repeat.
 A helper restart invalidates every old handle; never submit one to a replacement
 helper. This endpoint is not available to agent JavaScript and does not grant
-remote-desktop authorization. Worker and frontend wiring are a subsequent milestone.
+remote-desktop authorization. The worker service owns the participant bridge; remote-desktop adapter and frontend wiring are a subsequent milestone.
 
 Native participant input uses the same `NativeInputHost` as CUA, preserving held
 controls between calls. Target replacement, cancellation, or dispatch failure ends
@@ -324,3 +324,13 @@ The macOS backend combines worker participant presentations with active CUA curs
 presentations before rendering. Human positions are presented directly without the
 CUA macro travel animation. This native endpoint does not yet provide a video
 stream or browser-side cursor rendering. Native interaction QA remains deferred.
+
+`CantripCuaService.participants` owns worker-side handles. `open(binding, target)`
+returns initial target/cursor metadata and `send(sequence, event)` / `close()`
+methods. Bindings must come from the authorized remote attachment, not client
+input. The bridge shares the existing helper, serializes each participant's
+input, snapshots queued event values, rejects duplicate sequences, and releases
+its exact binding when open/input fails. It never sends old handles or cleanup
+to a replacement helper. Agent chat/turn cancellation leaves these independent
+participants alone; worker disconnect closes them all. Helper generation is a
+worker lifetime fence, not a client-provided field.

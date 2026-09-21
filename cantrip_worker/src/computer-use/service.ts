@@ -1,3 +1,4 @@
+import { WorkerInputParticipants } from "./participants.js";
 import { CuaEffects } from "./effects.js";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -113,8 +114,24 @@ export class CantripCuaService {
   private cleanup = new Set<Promise<void>>();
   private lastFailure: string | null = null;
   private readonly javascript: CuaJavascriptContexts;
+  readonly participants: WorkerInputParticipants;
 
   constructor(private readonly options: CantripCuaServiceOptions) {
+    this.participants = new WorkerInputParticipants({
+      authorize: (binding) => {
+        this.assertActive();
+        if (binding.workerId !== this.options.workerId)
+          throw new CuaServiceError("ownership-mismatch");
+      },
+      runtime: async (signal) => {
+        const runtime = await waitBeforeCuaSend(this.ensureRuntime(), signal);
+        this.assertActive(signal);
+        return runtime;
+      },
+      isCurrent: (runtime) =>
+        this.runtime === runtime && this.connected && !this.stopped,
+      background: (work) => this.background(work),
+    });
     this.javascript = new CuaJavascriptContexts(this, {
       runtime: async (signal) => {
         const runtime = await waitBeforeCuaSend(this.ensureRuntime(), signal);
@@ -186,6 +203,7 @@ export class CantripCuaService {
     this.lastFailure = error.code;
     this.crashes += 1;
     this.javascript.runtimeFailed(runtime, error);
+    this.participants.runtimeFailed(runtime);
     for (const record of this.sessions.values()) {
       if (record.runtime === runtime) {
         this.sessions.delete(record.binding.sessionId);
@@ -814,6 +832,7 @@ export class CantripCuaService {
   }
   disconnect(): void {
     this.connected = false;
+    this.background(this.participants.closeAll());
     this.javascript.cancel(() => true);
     for (const pending of this.pending) pending.controller.abort();
     for (const record of this.sessions.values()) this.invalidate(record);

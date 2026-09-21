@@ -567,7 +567,7 @@ impl<B: CaptureBackend> CuaService<B> {
                     "protocolVersion": PROTOCOL_VERSION, "runtimeVersion": env!("CARGO_PKG_VERSION"),
                     "backend": self.backend.name(), "capture": self.backend.available(),
                     "nativeInput": self.backend.native_input(), "javascript": self.javascript, "cursorAppearanceVersion": 1,
-                    "operations": operations, "workerInteractionVersion": 1,
+                    "operations": operations,
                     "maxSessions": MAX_SESSIONS, "maxImageBytes": MAX_PAYLOAD_BYTES,
                 })))
             }
