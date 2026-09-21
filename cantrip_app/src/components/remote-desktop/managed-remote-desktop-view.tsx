@@ -865,8 +865,16 @@ export function ManagedRemoteDesktopView({
             height={canvasSize.height}
           />
           {inputMessage ? (
-            <div className="pointer-events-none absolute bottom-4 left-4 max-w-lg rounded bg-background/90 p-2 text-xs">
-              {inputMessage}
+            <div className="absolute bottom-4 left-4 max-w-lg rounded bg-background/90 p-2 text-xs">
+              <p>{inputMessage}</p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-2"
+                onClick={retryDesktop}
+              >
+                Reconnect
+              </Button>
             </div>
           ) : null}
           <SurfaceLoadingVeil

@@ -78,14 +78,15 @@ export const RemoteCursorOverlay = forwardRef<
   }, [assets]);
   useEffect(() => {
     for (const [id, point] of peerPositions.current) {
-      if (!urls.has(id)) peerPositions.current.delete(id);
+      if (!assets.some((asset) => asset.id === id))
+        peerPositions.current.delete(id);
       else if (id !== ownId) place(id, point.x, point.y, false);
     }
     if (ownId && position.current) {
       const { x, y } = position.current;
       place(ownId, x, y, false);
     }
-  }, [ownId, urls]);
+  }, [assets, ownId, urls]);
   return (
     <div
       aria-hidden="true"
