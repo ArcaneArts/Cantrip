@@ -35,8 +35,8 @@ it("moves immediately, ignores own echoes, preserves peers and releases image UR
     renderer = create(
       <RemoteCursorOverlay
         ref={ref}
-        assets={assets}
-        ownId="own"
+        assets={[]}
+        ownId={null}
         width={800}
         height={600}
       />,
@@ -53,6 +53,19 @@ it("moves immediately, ignores own echoes, preserves peers and releases image UR
       },
     );
   });
+  ref.current!.remote("peer", 0.6, 0.5, false);
+  await act(async () =>
+    renderer.update(
+      <RemoteCursorOverlay
+        ref={ref}
+        assets={assets}
+        ownId="own"
+        width={800}
+        height={600}
+      />,
+    ),
+  );
+  expect(nodes.at(-1)!.style.left).toBe("60%");
   ref.current!.move(0.2, 0.3, true);
   expect(nodes.at(-2)!.style.left).toBe("20%");
   expect(glow).toHaveBeenCalledOnce();

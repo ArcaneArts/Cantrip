@@ -238,3 +238,15 @@ it("keeps a shared modifier held until both physical keys are released", async (
   ]);
   await f.input.close();
 });
+
+it("resends idle peer positions on join without replaying clicks", async () => {
+  const cursor = vi.fn();
+  const f = fixture({ cursor });
+  await f.input.attach("a", target);
+  await f.input.send("a", f.message("a", 1, {}), size);
+  cursor.mockClear();
+  await f.input.attach("b", target);
+  expect(cursor).toHaveBeenCalledWith(f.epoch("a"), 0.25, 0.4, false);
+  expect(f.instances[0]!.send).toHaveBeenCalledOnce();
+  await f.input.close();
+});

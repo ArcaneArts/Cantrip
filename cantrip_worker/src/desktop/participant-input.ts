@@ -22,6 +22,7 @@ type Entry = {
   nativeSequence: number;
   queue: Promise<unknown>;
   heldKeys: Map<string, Set<string>>;
+  position: { x: number; y: number } | null;
 };
 const modifiers = (bits: number): ("Shift" | "Control" | "Alt" | "Meta")[] => [
   ...(bits & 1 ? ["Alt" as const] : []),
@@ -58,6 +59,16 @@ export class DesktopParticipantInput {
             : [],
         ),
       );
+      // A joining viewer also needs idle peers, without replaying a click glow.
+      for (const entry of this.entries.values())
+        if (entry.position) {
+          this.options.cursor?.(
+            entry.epoch,
+            entry.position.x,
+            entry.position.y,
+            false,
+          );
+        }
     } catch {
       // Presentation transport failures must not revoke input or skip cleanup.
     }
@@ -110,6 +121,7 @@ export class DesktopParticipantInput {
       nativeSequence: 0,
       queue: Promise.resolve(),
       heldKeys: new Map(),
+      position: null,
     };
     this.entries.set(id, entry);
     try {
@@ -213,11 +225,15 @@ export class DesktopParticipantInput {
                   data: { point, button: submitted.button },
                 },
           );
+        entry.position = {
+          x: Math.min(1, submitted.x / dimensions.pixelWidth),
+          y: Math.min(1, submitted.y / dimensions.pixelHeight),
+        };
         try {
           this.options.cursor?.(
             entry.epoch,
-            Math.min(1, submitted.x / dimensions.pixelWidth),
-            Math.min(1, submitted.y / dimensions.pixelHeight),
+            entry.position.x,
+            entry.position.y,
             submitted.event === "down",
           );
         } catch {
