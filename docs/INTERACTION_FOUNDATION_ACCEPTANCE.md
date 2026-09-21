@@ -1,12 +1,62 @@
 # Interaction foundation acceptance
 
-The extraction is implemented through CUA. Remote desktop and embedded-browser
-integration are intentionally absent. Native application acceptance is partly confirmed by the user (2026-09-21):
-background playback, smooth cursor animation, typing, and concurrent human
-keyboard/mouse input including app switching work without interruptions.
-Modifier-shortcut verification remains untested. The user reported an extra piano
-note at the physical pointer while the agent holds another key; this remains a
-native acceptance issue until the focused retest below passes.
+The extraction and CUA migration are implemented. Remote desktop and embedded-
+browser integration remain separate future projects.
+
+On 2026-09-21 the user confirmed background playback, smooth cursor animation,
+typing, and concurrent human keyboard/mouse input including app switching without
+interruptions. They subsequently directed that further live QA be deferred and
+that the pointer-echo fix be treated as provisionally resolved for implementation
+completion. The checklist below is deferred and is not a gate for this
+extraction's implementation handoff.
+
+This is an implementation completion record, not a claim that deferred native
+checks passed. The pointer-echo fix in #1938, modifier-shortcut acceptance, and
+any unreported visual checks remain on the later QA list. A new concrete failure
+should be handled as a focused follow-up, preserving the completed foundation.
+
+## Delivered milestones
+
+Each implementation cycle was merged through its own worktree and squash PR.
+
+| PR                                                       | Delivered behavior                                                                                  |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| [#1931](https://github.com/ArcaneArts/Cantrip/pull/1931) | Shared cursor state, identity color, geometry, presentation, rendering, and motion.                 |
+| [#1932](https://github.com/ArcaneArts/Cantrip/pull/1932) | Shared typed input, timeline execution, and participant hold ownership.                             |
+| [#1933](https://github.com/ArcaneArts/Cantrip/pull/1933) | Native gestures use the shared input host with fallible dispatch and scoped cleanup.                |
+| [#1934](https://github.com/ArcaneArts/Cantrip/pull/1934) | Persistent native input sessions and reusable macOS cursor renderer.                                |
+| [#1935](https://github.com/ArcaneArts/Cantrip/pull/1935) | Independent per-session native input jobs and bounded progress updates.                             |
+| [#1936](https://github.com/ArcaneArts/Cantrip/pull/1936) | Shared lazy drag timing and removal of the legacy short drag cap.                                   |
+| [#1937](https://github.com/ArcaneArts/Cantrip/pull/1937) | Compatibility actions use shared ownership; integration guide and overhead measurement.             |
+| [#1938](https://github.com/ArcaneArts/Cantrip/pull/1938) | Private legacy background event state and explicit preparation coordinates; native retest deferred. |
+
+## Completion audit
+
+The shared core contains no native framework, agent-turn, MCP, remote-desktop, or
+browser-engine dependency. Existing CUA cursor compatibility exports reference
+the shared implementation. Native typed gestures and legacy semantic actions
+use participant ownership, and CUA still owns authorization and lifecycle.
+Runtime tests cover independent session progress, ordered same-session input,
+scoped cancellation, and cleanup after delivery panic or transport failure.
+
+The extension points are usable today: `InputBackend`, `InputHost`,
+`CursorTarget`, `CursorSource`, `CursorRenderer`, typed coordinate transforms,
+and immediate/eased/scheduled motion. Native consumers can use `NativeInputHost`,
+`NativeInputSession`, and `MacOsCursorRenderer`. Their adapter supplies permissions,
+identity, target resolution, lifecycle, and transport. No agent evaluator is
+required to use the foundation. See `INTERACTION_FOUNDATION.md` for usage.
+
+Known backend constraints are explicit rather than unfinished extraction:
+macOS composition is unsupported, native media actions are system-wide, and
+an application may share mouse/keyboard state across windows. Logical ownership
+cannot make an application expose multiple independent drag contexts. Future
+adapters must share the native host where application state is shared.
+
+Local verification during the milestones covered shared-core/native Rust tests,
+JavaScript and worker input contracts, Rust formatting and Clippy, scoped cleanup,
+and the software-only benchmark below. The latest input fix passed the full
+native suite and the final focused macOS tests. No live desktop input or app
+restart was performed for that fix; no CI jobs were added or manually triggered.
 
 ## Evidence map
 
@@ -36,10 +86,10 @@ These are a minimal recording backend and in-process bookkeeping, not desktop
 input latency, a before/after product benchmark, or a performance guarantee.
 Re-run the documented command on the deployment machine when evaluating overhead.
 
-## Native check required from the user
+## Deferred native QA checklist
 
-After loading the merged helper normally, use the existing Brave piano and a
-scratch text editor. No other apps or messages need to be changed.
+When the user chooses to resume live QA, load the merged helper normally and
+use the existing Brave piano and a scratch text editor. No other apps or messages need to be changed.
 
 1. Keep Brave unfocused and partly covered. Ask an agent to reuse its attachment,
    click three visible piano keys, then drag across five adjacent white keys over
@@ -61,7 +111,7 @@ and any exact tool error. No success claim should rely solely on `dispatched` or
 presentation; explicit global/process compatibility methods retain their separate
 side-effect semantics and should only be used when specifically requested.
 
-## Physical-pointer echo retest
+## Deferred physical-pointer echo retest
 
 The follow-up isolates legacy background event sources and gives the native
 preparation down/up records finite off-window coordinates instead of unspecified
