@@ -169,7 +169,7 @@ impl Participants {
                     appearance: CursorAppearance::for_identity(&binding.participant_id),
                     ..CursorState::default()
                 };
-                let result = json!({"handle":handle,"target":target,"cursor":cursor});
+                let result = json!({"handle":handle,"target":target,"cursor":cursor,"sprite":crate::interaction_sprite::sprite(&cursor)});
                 self.live.insert(
                     handle,
                     Participant {

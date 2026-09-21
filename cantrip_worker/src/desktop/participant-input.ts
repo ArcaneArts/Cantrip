@@ -5,6 +5,7 @@ import type {
 } from "@cantrip/protocol";
 import type {
   InteractionEvent,
+  InteractionSprite,
   InteractionParticipant,
   WorkerInputParticipants,
 } from "../computer-use/participants.js";
@@ -42,10 +43,30 @@ export class DesktopParticipantInput {
         epoch: string | null,
         message: string | null,
       ): void;
+      assets?(participants: { id: string; sprite: InteractionSprite }[]): void;
+      cursor?(id: string, x: number, y: number, click: boolean): void;
       readClipboard(): Promise<string>;
       clipboard(attachmentId: string, text: string): void;
     },
   ) {}
+  private publishAssets(): void {
+    try {
+      this.options.assets?.(
+        [...this.entries.values()].flatMap((entry) =>
+          entry.participant?.initial?.sprite
+            ? [{ id: entry.epoch, sprite: entry.participant.initial.sprite }]
+            : [],
+        ),
+      );
+    } catch {
+      // Presentation transport failures must not revoke input or skip cleanup.
+    }
+  }
+  cancel(id: string, epoch: string): boolean {
+    if (this.entries.get(id)?.epoch !== epoch) return false;
+    this.detach(id);
+    return true;
+  }
   private background(work: Promise<void>) {
     const safe = work.catch(() => {});
     this.cleanup.add(safe);
@@ -98,6 +119,7 @@ export class DesktopParticipantInput {
         return;
       }
       entry.participant = participant;
+      this.publishAssets();
       this.options.state(id, epoch, null);
     } catch {
       if (this.entries.get(id) === entry) {
@@ -114,6 +136,7 @@ export class DesktopParticipantInput {
     const entry = this.entries.get(id);
     if (!entry) return;
     this.entries.delete(id);
+    this.publishAssets();
     entry.controller.abort();
     this.options.state(id, null, null);
     this.background(entry.opening.then((p) => p.close()));
@@ -190,6 +213,16 @@ export class DesktopParticipantInput {
                   data: { point, button: submitted.button },
                 },
           );
+        try {
+          this.options.cursor?.(
+            entry.epoch,
+            Math.min(1, submitted.x / dimensions.pixelWidth),
+            Math.min(1, submitted.y / dimensions.pixelHeight),
+            submitted.event === "down",
+          );
+        } catch {
+          // A lost cursor update is not a failed native input operation.
+        }
       } else if (submitted.type === "key") {
         const key =
           submitted.code.match(/^Key([A-Z])$/)?.[1] ??

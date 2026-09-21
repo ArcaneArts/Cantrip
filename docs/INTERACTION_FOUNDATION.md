@@ -322,8 +322,8 @@ it is not proof that an application reacted.
 
 The macOS backend combines worker participant presentations with active CUA cursor
 presentations before rendering. Human positions are presented directly without the
-CUA macro travel animation. This native endpoint does not yet provide a video
-stream or browser-side cursor rendering. Native interaction QA remains deferred.
+CUA macro travel animation. The native endpoint provides transparent cursor sprites for the remote client
+but does not yet provide its video stream. Native interaction QA remains deferred.
 
 `CantripCuaService.participants` owns worker-side handles. `open(binding, target)`
 returns initial target/cursor metadata and `send(sequence, event)` / `close()`
@@ -355,8 +355,30 @@ final user QA pass.
 Mouse buttons (including back/forward), dragging, wheel input, physical key
 holds/repeats/modifiers and committed text use shared native events. Clipboard
 paste is split at UTF-8 code-point boundaries for the native text event capacity.
-Remote mobile text is forwarded as committed text. Client cursor rendering,
-client blur/gesture cancellation, and CUA capture reuse remain follow-up work.
+Remote mobile text is forwarded as committed text. CUA capture reuse remains
+follow-up work.
 The native independent-input backend is macOS; unsupported platforms report
 input unavailable. Existing remote authorization and encrypted target state
 remain in the RemoteSurface worker boundary.
+
+### Remote client cursor presentation
+
+The native participant open response includes transparent normal/click PNGs made
+by the shared Rust cursor rasterizer. Their identity colors and geometry match
+CUA; the client does not redraw a separate SVG approximation. Assets and peer
+positions travel as control messages independently of video. The client positions
+its own sprite immediately before input throttling and ignores delayed echoes of
+its own position. Peer positions survive asset-list refreshes. Object URLs are
+released when assets change or the view unmounts. Asset generation or broadcast
+failure does not turn successful native input into an uncertain failure.
+
+Client focus loss, page hiding and pointer cancellation send an epoch-scoped
+`input-cancel`. The worker releases only that participant and opens a fresh epoch;
+delayed cancellation cannot close the replacement. This responds to the remote
+client losing its input context, not physical activity on the host. The helper
+still permits concurrent host activity. This does not imply independent text
+focus inside an application: application state remains shared.
+
+Local regression coverage checks immediate movement, own-echo suppression, peer
+position retention, sprite transparency/color, URL disposal, cancellation scope,
+and presentation-failure isolation. Live multi-client native QA remains deferred.

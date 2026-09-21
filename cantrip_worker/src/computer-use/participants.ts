@@ -55,7 +55,16 @@ const cursorSchema = cuaSessionSchema.shape.cursor.extend({
     })
     .optional(),
 });
+const spriteSchema = z.strictObject({
+  width: z.literal(256),
+  height: z.literal(256),
+  hotspot: z.strictObject({ x: z.literal(128), y: z.literal(128) }),
+  normal: z.array(z.number().int().min(0).max(255)).max(262144),
+  click: z.array(z.number().int().min(0).max(255)).max(262144),
+});
+export type InteractionSprite = z.infer<typeof spriteSchema>;
 const openedSchema = z.strictObject({
+  sprite: spriteSchema.nullable().optional(),
   handle: integer,
   target: cuaTargetSchema,
   cursor: cursorSchema,

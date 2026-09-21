@@ -9,6 +9,7 @@ pub mod gesture;
 pub mod input;
 pub mod input_job;
 pub mod interaction;
+mod interaction_sprite;
 pub mod inventory;
 mod javascript;
 pub mod protocol;
