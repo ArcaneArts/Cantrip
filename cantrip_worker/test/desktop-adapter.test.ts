@@ -691,6 +691,142 @@ describe("ManagedDesktopRemoteSurfaceAdapter", () => {
     await adapter.shutdown();
   });
 
+  it("routes production window input without focusing or using system pointer APIs", async () => {
+    const activateWindow = vi.fn();
+    const moveMouse = vi.fn();
+    const client = {
+      activateWindow,
+      moveMouse,
+      close: vi.fn(async () => {}),
+      getDisplaySize: vi.fn(async () =>
+        textResult('{"width":200,"height":200}', { width: 200, height: 200 }),
+      ),
+    } as unknown as DesktopAutomationClient;
+    const send = vi.fn(async () => ({}));
+    const close = vi.fn(async () => {});
+    const open = vi.fn(
+      async () =>
+        ({
+          send,
+          close,
+        }) as unknown as import("../src/computer-use/participants.js").InteractionParticipant,
+    );
+    const target = {
+      kind: "window" as const,
+      id: "42",
+      application: "Brave",
+      title: "Piano",
+    };
+    const adapter = new ManagedDesktopRemoteSurfaceAdapter(
+      async () => client,
+      async () => ({
+        backend: "native",
+        target,
+        display: { width: 100, height: 100 },
+        origin: { x: 50, y: 60 },
+        capture: async () => ({
+          width: 200,
+          height: 200,
+          rgba: new Uint8Array(200 * 200 * 4),
+        }),
+        encode: async () => new Uint8Array([1]),
+      }),
+      async () => ({
+        monitors: [],
+        windows: [
+          {
+            kind: "window" as const,
+            x: 50,
+            y: 60,
+            id: "42",
+            application: "Brave",
+            title: "Piano",
+            width: 100,
+            height: 100,
+            focused: false,
+            minimized: false,
+          },
+        ],
+      }),
+      async () => {},
+      null,
+      { workerId, participants: { open } },
+    );
+    await adapter.initialize();
+    adapter.setSurfacePrivateStateService(encryptionService, workerId);
+    const messages: ReturnType<
+      typeof remoteDesktopServerMessageSchema.parse
+    >[] = [];
+    const session = await adapter.open(
+      {
+        type: "surface.attach",
+        surfaceId: "shared-input",
+        attachmentId: "a",
+        projectId: "project",
+        serverId,
+        configuration: { kind: "desktop" },
+        stateResource: "remote-desktop-row",
+        stateRevision: 1,
+        stateProtection: await protectedTarget("shared-input", target),
+        preferredTransport: "websocket",
+        viewport: { width: 200, height: 200, devicePixelRatio: 1 },
+        webrtc: null,
+      },
+      (_id, channel, payload) => {
+        if (channel === "control")
+          messages.push(
+            remoteDesktopServerMessageSchema.parse(
+              JSON.parse(new TextDecoder().decode(payload)),
+            ),
+          );
+        return true;
+      },
+    );
+    try {
+      await session.attach({
+        id: "a",
+        viewport: { width: 200, height: 200, devicePixelRatio: 1 },
+      });
+      await eventually(() =>
+        messages.some((m) => m.type === "desktop-state" && m.width === 200),
+      );
+      const state = messages.find((m) => m.type === "desktop-input" && m.epoch);
+      expect(state?.type).toBe("desktop-input");
+      if (state?.type !== "desktop-input")
+        throw new Error("missing input epoch");
+      const payload = new TextEncoder().encode(
+        JSON.stringify({
+          type: "pointer",
+          event: "down",
+          x: 50,
+          y: 80,
+          button: "left",
+          inputEpoch: state.epoch,
+          inputSequence: 1,
+        }),
+      );
+      await session.handleFrame("a", "control", payload);
+      expect(send).toHaveBeenCalledWith(
+        1,
+        {
+          type: "pointerDown",
+          data: { point: { x: 25, y: 40 }, button: "left", modifiers: [] },
+        },
+        expect.any(AbortSignal),
+      );
+      expect(activateWindow).not.toHaveBeenCalled();
+      expect(moveMouse).not.toHaveBeenCalled();
+      await expect(
+        session.handleFrame("a", "control", payload),
+      ).rejects.toThrow(/stale/);
+      session.detach("a");
+      await eventually(() => close.mock.calls.length === 1);
+    } finally {
+      await session.close();
+      await adapter.shutdown();
+    }
+  });
+
   it("reports an unavailable native desktop backend", async () => {
     const adapter = new ManagedDesktopRemoteSurfaceAdapter(async () => {
       throw new Error("native backend unavailable");

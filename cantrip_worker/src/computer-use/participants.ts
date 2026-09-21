@@ -4,6 +4,7 @@ import { waitBeforeCuaSend } from "./cancellation.js";
 import type { CuaTransport } from "./transport.js";
 import {
   cuaIdSchema,
+  cuaInventorySchema,
   cuaTargetReferenceSchema,
   cuaTargetSchema,
   cuaSessionSchema,
@@ -105,11 +106,14 @@ export class WorkerInputParticipants {
 
   async open(
     input: InteractionBinding,
-    targetInput: CuaTargetReference,
+    targetInput: CuaTargetReference | string,
     signal?: AbortSignal,
   ): Promise<InteractionParticipant> {
     const binding = bindingSchema.parse(input);
-    const target = cuaTargetReferenceSchema.parse(targetInput);
+    const requested =
+      typeof targetInput === "string"
+        ? cuaIdSchema.parse(targetInput)
+        : cuaTargetReferenceSchema.parse(targetInput);
     this.owner.authorize(binding);
     if (signal?.aborted) throw new CuaProcessError("cancelled", "not-sent");
     const identity = JSON.stringify(binding);
@@ -135,6 +139,29 @@ export class WorkerInputParticipants {
       const runtime = await this.owner.runtime(record.controller.signal);
       record.runtime = runtime;
       this.assertLive(record);
+      let target = typeof requested === "string" ? null : requested;
+      let after: string | undefined;
+      while (!target) {
+        const inventory = await runtime.transport.request(
+          { operation: "targets.list", ...(after ? { after } : {}) },
+          { signal: record.controller.signal },
+        );
+        if (inventory.payload.length)
+          throw new CuaProcessError("protocol-error", "unknown");
+        const page = cuaInventorySchema.parse(inventory.data);
+        const selected = page.targets.find(
+          (candidate) => candidate.id === requested,
+        );
+        if (selected)
+          target = {
+            targetId: selected.id,
+            targetGeneration: selected.generation,
+          };
+        else if (!page.nextCursor || (after && page.nextCursor <= after))
+          throw new CuaProcessError("invalid-request", "not-sent");
+        else after = page.nextCursor;
+        this.assertLive(record);
+      }
       const result = await runtime.transport.request(
         {
           operation: "interaction.request",

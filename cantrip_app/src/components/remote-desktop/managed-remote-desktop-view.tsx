@@ -269,6 +269,10 @@ export function ManagedRemoteDesktopView({
     },
   });
 
+  const inputEpochRef = useRef<string | null>(null);
+  const inputSequenceRef = useRef(0);
+  const [inputMessage, setInputMessage] = useState<string | null>(null);
+
   function handleFrame(
     frame: RemoteSurfaceWorkerLinkInboundFrame,
     context: RemoteSurfaceWorkerLinkFrameContext,
@@ -286,7 +290,11 @@ export function ManagedRemoteDesktopView({
     const message = remoteDesktopServerMessageSchema.parse(
       JSON.parse(decoder.decode(frame.payload)),
     );
-    if (message.type === "desktop-state") {
+    if (message.type === "desktop-input") {
+      if (inputEpochRef.current !== message.epoch) inputSequenceRef.current = 0;
+      inputEpochRef.current = message.epoch;
+      setInputMessage(message.message);
+    } else if (message.type === "desktop-state") {
       const nextSize = { width: message.width, height: message.height };
       desktopSizeRef.current = nextSize;
       setDesktopSize(nextSize);
@@ -360,6 +368,9 @@ export function ManagedRemoteDesktopView({
     viewport: () => viewportRef.current,
     messages: desktopTransportMessages,
     onConnecting: () => {
+      inputEpochRef.current = null;
+      inputSequenceRef.current = 0;
+      setInputMessage(null);
       remoteCanvasRef.current?.reset();
       setStreamStatus(null);
       setLaunchingApplication(null);
@@ -370,13 +381,26 @@ export function ManagedRemoteDesktopView({
   });
 
   const send = useCallback(
-    (message: RemoteDesktopClientMessage) =>
-      sendFrame(
+    (message: RemoteDesktopClientMessage) => {
+      if (
+        message.type === "pointer" ||
+        message.type === "key" ||
+        message.type === "clipboard"
+      ) {
+        if (!inputEpochRef.current) return false;
+        message = {
+          ...message,
+          inputEpoch: inputEpochRef.current,
+          inputSequence: ++inputSequenceRef.current,
+        };
+      }
+      return sendFrame(
         "control",
         encoder.encode(
           JSON.stringify(remoteDesktopClientMessageSchema.parse(message)),
         ),
-      ),
+      );
+    },
     [sendFrame],
   );
 
@@ -778,18 +802,25 @@ export function ManagedRemoteDesktopView({
             coordinateLimit="last-pixel"
             framePolicy="latest"
             getCoordinateSpace={() => desktopSizeRef.current}
-            ignoreRepeatedKeyDown
             onFocus={() => send({ type: "focus" })}
             onFrameError={() =>
               setError("The worker sent an unreadable desktop frame.")
             }
             onKey={send}
+            onMobileText={(text) =>
+              send({ type: "clipboard", operation: "paste-text", text })
+            }
             onPointer={send}
             onRendered={() => setRenderedSurfaceId(desktop.id)}
             pointerMoveThrottleMs={32}
             preventContextMenu
             style={{ width: canvasSize.width, height: canvasSize.height }}
           />
+          {inputMessage ? (
+            <div className="pointer-events-none absolute bottom-4 left-4 max-w-lg rounded bg-background/90 p-2 text-xs">
+              {inputMessage}
+            </div>
+          ) : null}
           <SurfaceLoadingVeil
             label={
               connectionState === "reconnecting"
