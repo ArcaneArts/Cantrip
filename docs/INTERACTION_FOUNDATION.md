@@ -294,3 +294,33 @@ shared validation, ownership, sequence handling, and cleanup. Open/close cycles
 also repeatedly reuse capacity. This measures software bookkeeping, excluding
 Quartz, AX, rendering, capture, network, and application latency. It is not a
 native performance claim or an automatic timing gate.
+
+## Worker participant endpoint (remote integration)
+
+The native helper accepts `interaction.request` separately from agent operations.
+Its request types are `open`, `input`, `close`, and `closeBinding`. An open supplies an exact window
+ID/generation and a worker-derived binding (`workerId`, `surfaceId`, `attachmentId`,
+`participantId`). It returns a monotonically allocated helper-local `handle`, the
+resolved target, and the shared cursor appearance/state. Input supplies that
+binding/handle, an increasing safe-integer `sequence`, and a shared `InputEvent`
+encoded as `{type, data}` (for example `keyDown` with `key`, `modifiers`, `repeat`).
+
+The worker must derive these bindings from an authorized remote attachment, retain
+the helper runtime identity alongside the handle, and close on detach or revocation.
+`closeBinding` releases even an open whose response was lost and is safe to repeat.
+A helper restart invalidates every old handle; never submit one to a replacement
+helper. This endpoint is not available to agent JavaScript and does not grant
+remote-desktop authorization. Worker and frontend wiring are a subsequent milestone.
+
+Native participant input uses the same `NativeInputHost` as CUA, preserving held
+controls between calls. Target replacement, cancellation, or dispatch failure ends
+only that participant. Duplicate/out-of-order sequences and mismatched bindings
+post nothing. Reopening allocates a fresh handle, even for the same binding.
+Surface input cannot substitute monitor/global input, focus activation, or system
+media controls. A dispatched receipt explicitly leaves window delivery unverified;
+it is not proof that an application reacted.
+
+The macOS backend combines worker participant presentations with active CUA cursor
+presentations before rendering. Human positions are presented directly without the
+CUA macro travel animation. This native endpoint does not yet provide a video
+stream or browser-side cursor rendering. Native interaction QA remains deferred.

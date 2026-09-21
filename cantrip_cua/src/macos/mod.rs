@@ -188,6 +188,7 @@ pub struct MacOsBackend {
     input_host: NativeInputHost,
     input_sessions: HashMap<String, Arc<Mutex<NativeInputSession>>>,
     input_progress: HashMap<String, crate::input_job::InputProgress>,
+    interaction_cursors: Vec<cantrip_interaction::presentation::CursorPresentation<Target>>,
 }
 
 enum Selection {
@@ -312,6 +313,28 @@ impl MacOsBackend {
 }
 
 impl CaptureBackend for MacOsBackend {
+    fn interaction_input(
+        &mut self,
+        session: &str,
+        target: &Target,
+        position: crate::target::Point,
+        sequence: u64,
+        event: cantrip_interaction::input::InputEvent,
+        cancel: &Cancellation,
+    ) -> Result<()> {
+        let participant = self.input_participant(session, target, position)?;
+        let mut input = participant
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        input.refresh(target.clone(), position, cancel)?;
+        input.submit(sequence, event, cancel).map(|_| ())
+    }
+    fn present_interaction_cursors(
+        &mut self,
+        participants: Vec<cantrip_interaction::presentation::CursorPresentation<Target>>,
+    ) {
+        self.interaction_cursors = participants;
+    }
     fn configure_effects(
         &mut self,
         configuration: crate::effects::Configuration,
@@ -327,7 +350,11 @@ impl CaptureBackend for MacOsBackend {
         sharing::retain_sessions(&sessions);
         window_effects::sessions(sessions.clone());
         overlay::present_input_cursors(
-            sessions.into_iter().map(Into::into).collect(),
+            sessions
+                .into_iter()
+                .map(Into::into)
+                .chain(self.interaction_cursors.iter().cloned())
+                .collect(),
             self.input_progress.clone(),
             PresentationDelivery::Latest,
         );
@@ -335,7 +362,11 @@ impl CaptureBackend for MacOsBackend {
     fn present_cursor_step(&mut self, sessions: Vec<crate::service::SessionState>) {
         let sessions = self.live_cursors(sessions);
         overlay::present_input_cursors(
-            sessions.into_iter().map(Into::into).collect(),
+            sessions
+                .into_iter()
+                .map(Into::into)
+                .chain(self.interaction_cursors.iter().cloned())
+                .collect(),
             self.input_progress.clone(),
             PresentationDelivery::BeforeInput,
         );

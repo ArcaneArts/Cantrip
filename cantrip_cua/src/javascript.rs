@@ -1833,6 +1833,10 @@ mod tests {
 
     #[test]
     fn host_actions_only_accept_implemented_operations_and_no_authority_fields() {
+        assert!(
+            validate_action(r#"{"operation":"interaction.request","request":{"type":"open"}}"#)
+                .is_err()
+        );
         for operation in ["state", "targets", "snapshot", "cursor", "detach"] {
             assert!(validate_action(&json!({"operation":operation}).to_string()).is_ok());
             assert!(

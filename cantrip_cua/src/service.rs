@@ -60,6 +60,10 @@ pub struct SessionState {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "operation", deny_unknown_fields)]
 pub enum Operation {
+    #[serde(rename = "interaction.request")]
+    Interaction {
+        request: crate::interaction::Request,
+    },
     #[serde(rename = "effects.configure")]
     EffectsConfigure {
         configuration: crate::effects::Configuration,
@@ -230,6 +234,7 @@ pub struct CuaService<B: CaptureBackend> {
     backend: B,
     sessions: HashMap<String, SessionState>,
     javascript: bool,
+    interactions: crate::interaction::Participants,
 }
 
 impl<B: CaptureBackend> CuaService<B> {
@@ -238,6 +243,7 @@ impl<B: CaptureBackend> CuaService<B> {
             backend,
             sessions: HashMap::new(),
             javascript: false,
+            interactions: crate::interaction::Participants::default(),
         }
     }
     pub(crate) fn enable_javascript(&mut self) {
@@ -518,8 +524,14 @@ impl<B: CaptureBackend> CuaService<B> {
         cancel: &Cancellation,
         now_ms: u64,
     ) -> Result<OperationResult> {
-        cancel.check()?;
+        if !matches!(operation, Operation::Interaction { .. }) {
+            cancel.check()?;
+        }
         match operation {
+            Operation::Interaction { request } => self
+                .interactions
+                .execute(&mut self.backend, request, cancel, now_ms)
+                .map(OperationResult::json),
             Operation::EffectsConfigure { configuration } => {
                 configuration.validate()?;
                 Ok(OperationResult::json(
@@ -555,7 +567,7 @@ impl<B: CaptureBackend> CuaService<B> {
                     "protocolVersion": PROTOCOL_VERSION, "runtimeVersion": env!("CARGO_PKG_VERSION"),
                     "backend": self.backend.name(), "capture": self.backend.available(),
                     "nativeInput": self.backend.native_input(), "javascript": self.javascript, "cursorAppearanceVersion": 1,
-                    "operations": operations,
+                    "operations": operations, "workerInteractionVersion": 1,
                     "maxSessions": MAX_SESSIONS, "maxImageBytes": MAX_PAYLOAD_BYTES,
                 })))
             }
