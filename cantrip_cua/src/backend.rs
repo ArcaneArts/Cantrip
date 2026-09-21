@@ -29,6 +29,27 @@ impl Raster {
 }
 
 pub trait CaptureBackend: Send {
+    /// Trusted worker participants share the native input host, not agent bindings.
+    fn interaction_input(
+        &mut self,
+        _participant: &str,
+        _target: &Target,
+        _position: crate::target::Point,
+        _sequence: u64,
+        _event: cantrip_interaction::input::InputEvent,
+        _cancel: &Cancellation,
+    ) -> Result<()> {
+        Err(CuaError::new(
+            ErrorCode::Unsupported,
+            "Surface-directed input is unavailable; no input was posted.",
+        ))
+    }
+    fn present_interaction_cursors(
+        &mut self,
+        _participants: Vec<cantrip_interaction::presentation::CursorPresentation<Target>>,
+    ) {
+    }
+
     fn configure_effects(
         &mut self,
         configuration: crate::effects::Configuration,

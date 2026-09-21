@@ -68,7 +68,13 @@ pub enum InputScope {
     System,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(
+    tag = "type",
+    content = "data",
+    rename_all = "camelCase",
+    deny_unknown_fields
+)]
 pub enum TextInput {
     Commit(String),
     /// Selection is a UTF-16 range, matching native/browser composition APIs.
@@ -80,7 +86,14 @@ pub enum TextInput {
     CancelComposition,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(
+    tag = "type",
+    content = "data",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
 pub enum InputEvent {
     PointerMove {
         point: Point,
