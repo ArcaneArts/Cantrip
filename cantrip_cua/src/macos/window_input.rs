@@ -56,15 +56,22 @@ fn activation_record(window: u32) -> [u8; 248] {
     bytes
 }
 // Native make-key record layout used by yabai and trycua's SkyLight bridge.
-// These records address the target window only; no defocus record, foreground
-// request, HID post, or primer click is sent to the human's application.
+// These are mouse down/up records, not a focus-only API. Keep both coordinate
+// spaces explicitly outside the routed window: all-ones window coordinates are
+// NaNs, leaving the receiver to resolve a location (possibly the live pointer).
+// Layout reference: github.com/tmc/apple/blob/main/x/skylight/event_record.go.
+// No defocus record, foreground request, or global input is sent.
 fn key_window_record(window: u32, kind: u8) -> [u8; 248] {
     let mut record = [0; 248];
     record[4] = 248;
     record[8] = kind;
     record[0x3a] = 0x10;
     record[0x3c..0x40].copy_from_slice(&window.to_le_bytes());
-    record[0x20..0x30].fill(0xff);
+    // Global CGPoint at 0x10; window-local CGPoint at 0x20. The target window
+    // remains explicit even on desktops with negative display coordinates.
+    for offset in [0x10, 0x18, 0x20, 0x28] {
+        record[offset..offset + 8].copy_from_slice(&(-1.0_f64).to_le_bytes());
+    }
     record
 }
 
@@ -208,12 +215,34 @@ mod tests {
             } else {
                 assert_eq!(record[0x8a], 0);
                 assert_eq!(record[0x3a], 0x10);
-                assert!(record[0x20..0x30].iter().all(|&b| b == 0xff));
+                for offset in [0x10, 0x18, 0x20, 0x28] {
+                    let coordinate =
+                        f64::from_le_bytes(record[offset..offset + 8].try_into().unwrap());
+                    assert!(coordinate.is_finite() && coordinate < 0.0);
+                }
             }
             0
         })
         .unwrap();
         assert_eq!(calls, 3);
+    }
+    #[test]
+    fn preparation_mouse_pair_has_identical_off_window_locations_for_every_window() {
+        for window in [1, 0x12345678, u32::MAX] {
+            let down = key_window_record(window, 1);
+            let up = key_window_record(window, 2);
+            assert_eq!(&down[0x10..0x30], &up[0x10..0x30]);
+            for record in [down, up] {
+                assert_eq!(record.len(), 248);
+                assert_eq!(&record[0x3c..0x40], &window.to_le_bytes());
+                for offset in [0x10, 0x18, 0x20, 0x28] {
+                    assert_eq!(
+                        f64::from_le_bytes(record[offset..offset + 8].try_into().unwrap(),),
+                        -1.0
+                    );
+                }
+            }
+        }
     }
     #[test]
     fn stop_prevents_post_and_post_errors_are_uncertain_without_retry() {

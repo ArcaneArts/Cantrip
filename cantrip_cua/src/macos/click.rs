@@ -155,6 +155,18 @@ pub(super) fn process_click(
     ))
 }
 
+fn background_source() -> Result<MouseEvent> {
+    // Background input must not join the human's HID button-state table.
+    let source = unsafe { CGEventSourceCreate(-1) }; // kCGEventSourceStatePrivate
+    if source.is_null() {
+        return Err(CuaError::new(
+            ErrorCode::InputFailed,
+            "Could not create background event source; no input was posted.",
+        ));
+    }
+    Ok(MouseEvent(source)) // CF-owned source; same release semantics.
+}
+
 /// One explicit experimental mouse gesture. No public/global second posting.
 pub(super) fn background_click(
     session: &str,
@@ -166,14 +178,7 @@ pub(super) fn background_click(
     let (pid, window) = process_destination(target)?;
     let global = target.bounds.to_global(position)?;
     let delivery = super::skylight::Delivery::load()?;
-    let source = unsafe { CGEventSourceCreate(1) }; // kCGEventSourceStateHIDSystemState
-    if source.is_null() {
-        return Err(CuaError::new(
-            ErrorCode::InputFailed,
-            "Could not create background event source; no input was posted.",
-        ));
-    }
-    let source = MouseEvent(source); // CF-owned source; same release semantics.
+    let source = background_source()?;
     let movement = MouseEvent::with_source(5, global, source.0)?;
     let down = MouseEvent::with_source(1, global, source.0)?;
     let up = MouseEvent::with_source(2, global, source.0)?;
@@ -256,6 +261,26 @@ pub(super) fn process_destination(target: &Target) -> Result<(i32, u32)> {
 mod tests {
     use super::*;
     use crate::backend::{CaptureBackend, FakeBackend};
+    #[test]
+    fn background_mouse_events_use_private_state_without_posting() {
+        unsafe extern "C" {
+            fn CGEventSourceGetSourceStateID(source: Event) -> i32;
+            fn CGEventGetIntegerValueField(event: Event, field: u32) -> i64;
+        }
+        let source = background_source().unwrap();
+        let state = unsafe { CGEventSourceGetSourceStateID(source.0) };
+        assert!(
+            ![0, 1].contains(&state),
+            "private state must differ from session/HID tables"
+        );
+        for kind in [5, 1, 2] {
+            let event = MouseEvent::with_source(kind, Point { x: 20., y: 30. }, source.0).unwrap();
+            assert_eq!(
+                unsafe { CGEventGetIntegerValueField(event.0, 45) },
+                i64::from(state)
+            );
+        }
+    }
     #[test]
     fn process_destination_preserves_native_window_and_pid_without_posting() {
         let mut targets = FakeBackend.targets(&Cancellation::default()).unwrap();

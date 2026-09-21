@@ -1,8 +1,12 @@
 # Interaction foundation acceptance
 
 The extraction is implemented through CUA. Remote desktop and embedded-browser
-integration are intentionally absent. Native application acceptance below is
-still pending; do not infer it from event dispatch receipts or unit-test results.
+integration are intentionally absent. Native application acceptance is partly confirmed by the user (2026-09-21):
+background playback, smooth cursor animation, typing, and concurrent human
+keyboard/mouse input including app switching work without interruptions.
+Modifier-shortcut verification remains untested. The user reported an extra piano
+note at the physical pointer while the agent holds another key; this remains a
+native acceptance issue until the focused retest below passes.
 
 ## Evidence map
 
@@ -56,3 +60,18 @@ and any exact tool error. No success claim should rely solely on `dispatched` or
 `windowDelivery: unverified`. This check validates ordinary native delivery and
 presentation; explicit global/process compatibility methods retain their separate
 side-effect semantics and should only be used when specifically requested.
+
+## Physical-pointer echo retest
+
+The follow-up isolates legacy background event sources and gives the native
+preparation down/up records finite off-window coordinates instead of unspecified
+(NaN) window locations. Buffer-level tests verify these changes; they do not
+establish how Brave interprets the records.
+
+Ask the agent to repeat one piano key five times, holding each press for 200 ms
+with a one-second gap. Keep your pointer stationary over a different key without
+clicking; then repeat while moving across keys without pressing any button. Only
+the agent's selected note should sound. Finally repeat with Brave unfocused to
+confirm background delivery still works. Report stationary and moving results
+separately. A remaining moving-only echo could instead be the page's shared drag
+state; do not suppress human input or declare isolation proven from dispatch.
