@@ -253,6 +253,20 @@ export const remoteDesktopApplicationIconSchema = z.object({
 });
 
 export const remoteCursorSpriteSchema = z.object({
+  motion: z
+    .object({
+      minimumDistance: z.number().finite().nonnegative(),
+      pixelsPerMs: z.number().finite().positive(),
+      minDurationMs: z.number().finite().nonnegative(),
+      maxDurationMs: z.number().finite().nonnegative(),
+      easing: z.tuple([
+        z.number().min(0).max(1),
+        z.number().finite(),
+        z.number().min(0).max(1),
+        z.number().finite(),
+      ]),
+    })
+    .optional(),
   width: z.literal(256),
   height: z.literal(256),
   hotspot: z.object({ x: z.literal(128), y: z.literal(128) }),

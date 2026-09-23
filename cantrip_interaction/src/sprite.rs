@@ -7,6 +7,7 @@ use serde::Serialize;
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Sprite {
+    pub motion: crate::motion::TravelPolicy,
     pub width: u32,
     pub height: u32,
     pub hotspot: Point,
@@ -22,6 +23,7 @@ pub fn sprite(cursor: &CursorState) -> Option<Sprite> {
     state.mark_action("remote-pointer", "dispatched", 0);
     state.updated_at_ms = 0;
     Some(Sprite {
+        motion: crate::motion::TRAVEL_POLICY,
         width: 256,
         height: 256,
         hotspot: state.position,

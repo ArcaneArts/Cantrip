@@ -5,16 +5,11 @@ import {
   useRef,
   useState,
 } from "react";
+import type { remoteCursorSpriteSchema } from "@cantrip/protocol";
 /** Cursor assets are independent of the surface's video or input backend. */
 export interface CursorAsset {
   id: string;
-  sprite: {
-    width: number;
-    height: number;
-    hotspot: { x: number; y: number };
-    normal: number[];
-    click: number[];
-  };
+  sprite: ReturnType<typeof remoteCursorSpriteSchema.parse>;
 }
 type Assets = readonly CursorAsset[];
 export interface CursorOverlayHandle {
@@ -49,9 +44,21 @@ export const RemoteCursorOverlay = forwardRef<
   ) => {
     const node = nodes.current.get(id);
     if (!node) return;
+    const policy = assets.find((asset) => asset.id === id)?.sprite.motion;
+    const previous = peerPositions.current.get(id);
+    const distance = previous
+      ? Math.hypot((x - previous.x) * width, (y - previous.y) * height)
+      : 0;
+    const duration =
+      policy && distance >= policy.minimumDistance
+        ? Math.min(
+            policy.maxDurationMs,
+            Math.max(policy.minDurationMs, distance / policy.pixelsPerMs),
+          )
+        : 0;
     node.style.transition =
-      smooth && !click
-        ? "left 80ms cubic-bezier(0.215,0.61,0.355,1), top 80ms cubic-bezier(0.215,0.61,0.355,1)"
+      smooth && !click && policy && duration > 0
+        ? `left ${duration}ms cubic-bezier(${policy.easing.join(",")}), top ${duration}ms cubic-bezier(${policy.easing.join(",")})`
         : "none";
     node.style.left = `${x * 100}%`;
     node.style.top = `${y * 100}%`;
@@ -73,12 +80,12 @@ export const RemoteCursorOverlay = forwardRef<
       },
       remote(id, x, y, click, smooth) {
         if (id !== ownId) {
-          peerPositions.current.set(id, { x, y });
           place(id, x, y, click, smooth);
+          peerPositions.current.set(id, { x, y });
         }
       },
     }),
-    [ownId],
+    [ownId, assets, width, height],
   );
   useEffect(() => {
     const next = new Map<string, { normal: string; click: string }>();
