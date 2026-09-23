@@ -19,9 +19,12 @@ export class BrowserAgentCursor {
     dragging: false,
   };
   private disposed = false;
+  private loadingEpoch: string | null = null;
+  private retryAt = 0;
   constructor(
     private readonly emit: (state: State) => void,
     private readonly sprite = browserCursorSprite,
+    private readonly now = () => performance.now(),
   ) {}
 
   pointer(event: AgentPointerDispatch, width: number, height: number): void {
@@ -49,21 +52,38 @@ export class BrowserAgentCursor {
         click: false,
         dragging: false,
       };
-      const epoch = this.state.epoch;
-      void this.sprite(identity)
-        .then((sprite) => {
-          if (this.disposed || this.state.epoch !== epoch) return;
-          this.state = {
-            ...this.state,
-            sprite,
-            click: false,
-            sequence: this.state.sequence + 1,
-          };
-          this.publish(this.state);
-        })
-        .catch(() => undefined);
+      this.retryAt = 0;
     }
+    const epoch = this.state.epoch;
+    if (
+      this.state.sprite ||
+      this.loadingEpoch === epoch ||
+      this.now() < this.retryAt
+    )
+      return;
+    this.loadingEpoch = epoch;
+    // Presentation recovery is independent of input and bounded to one attempt
+    // per second, even during a high-frequency drag.
+    void Promise.resolve()
+      .then(() => this.sprite(identity))
+      .then((sprite) => {
+        if (this.disposed || this.state.epoch !== epoch) return;
+        this.state = {
+          ...this.state,
+          sprite,
+          click: false,
+          sequence: this.state.sequence + 1,
+        };
+        this.publish(this.state);
+      })
+      .catch(() => {
+        if (this.state.epoch === epoch) this.retryAt = this.now() + 1000;
+      })
+      .finally(() => {
+        if (this.loadingEpoch === epoch) this.loadingEpoch = null;
+      });
   }
+
   private publish(state: State): void {
     try {
       this.emit(state);
@@ -78,6 +98,7 @@ export class BrowserAgentCursor {
     if (identity === this.identity) this.hide();
   }
   hide(): void {
+    if (this.disposed) return;
     this.state = {
       ...this.state,
       position: null,
@@ -88,6 +109,7 @@ export class BrowserAgentCursor {
     this.publish(this.state);
   }
   close(): void {
+    if (this.disposed) return;
     this.hide();
     this.disposed = true;
   }

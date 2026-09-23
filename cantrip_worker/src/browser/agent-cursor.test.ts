@@ -37,7 +37,7 @@ it("keeps one normalized agent cursor, ignores late assets and closes without re
   );
   await Promise.resolve();
   first(sprite);
-  await Promise.resolve();
+  await vi.waitFor(() => expect(cursor.snapshot().sprite).toEqual(sprite));
   expect(cursor.snapshot().epoch).not.toBe(old);
   expect(cursor.snapshot()).toMatchObject({
     sprite,
@@ -55,4 +55,30 @@ it("keeps one normalized agent cursor, ignores late assets and closes without re
   );
   expect(emit).toHaveBeenCalledTimes(count);
   expect(cursor.snapshot().position).toBeNull();
+});
+
+it("retries failed assets without flooding the helper or reviving a closed cursor", async () => {
+  let now = 0;
+  const assets = vi
+    .fn()
+    .mockRejectedValueOnce(new Error("helper busy"))
+    .mockResolvedValue(sprite);
+  const emit = vi.fn();
+  const cursor = new BrowserAgentCursor(emit, assets, () => now);
+  cursor.prepare("a");
+  await new Promise((resolve) => setImmediate(resolve));
+  for (let i = 0; i < 100; i++) cursor.prepare("a");
+  expect(assets).toHaveBeenCalledTimes(1);
+  now = 1000;
+  cursor.prepare("a");
+  await new Promise((resolve) => setImmediate(resolve));
+  expect(assets).toHaveBeenCalledTimes(2);
+  expect(cursor.snapshot().sprite).toEqual(sprite);
+  cursor.close();
+  const count = emit.mock.calls.length;
+  cursor.close();
+  cursor.hide();
+  cursor.prepare("b");
+  expect(emit).toHaveBeenCalledTimes(count);
+  expect(assets).toHaveBeenCalledTimes(2);
 });

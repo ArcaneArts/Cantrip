@@ -45,6 +45,9 @@ export class BrowserCdpSession {
     ) {
       const x = params.x;
       const y = params.y;
+      const click = params.type === "mousePressed";
+      const dragging =
+        typeof params.buttons === "number" && params.buttons !== 0;
       void result
         .then(() => {
           try {
@@ -52,9 +55,8 @@ export class BrowserCdpSession {
               identity,
               x,
               y,
-              click: params.type === "mousePressed",
-              dragging:
-                typeof params.buttons === "number" && params.buttons !== 0,
+              click,
+              dragging,
             });
           } catch {
             /* Presentation must never block or retry input. */
