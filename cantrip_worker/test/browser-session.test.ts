@@ -66,3 +66,35 @@ it("publishes only agent pointer dispatches without awaiting presentation or cha
     true,
   );
 });
+
+it("retains the dispatched click state while its acknowledgement is pending", async () => {
+  let acknowledge!: (value: unknown) => void;
+  const request = vi.fn(
+    () =>
+      new Promise((resolve) => {
+        acknowledge = resolve;
+      }),
+  );
+  const session = new BrowserCdpSession(
+    { request } as unknown as CdpClient,
+    "target",
+  );
+  const observe = vi.fn();
+  session.onAgentPointer = observe;
+  const params = { type: "mousePressed", x: 3, y: 4, buttons: 1 };
+  const pending = session.agentCommand(
+    "agent",
+    "Input.dispatchMouseEvent",
+    params,
+  );
+  Object.assign(params, { type: "mouseReleased", x: 8, y: 9, buttons: 0 });
+  acknowledge({});
+  await pending;
+  expect(observe).toHaveBeenCalledWith({
+    identity: "agent",
+    x: 3,
+    y: 4,
+    click: true,
+    dragging: true,
+  });
+});
