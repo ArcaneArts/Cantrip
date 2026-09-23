@@ -207,6 +207,14 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
     this.#frames = new BrowserFramePipeline(
       (method, params) => this.command(method, params),
       () => this.#cdp.captureScreenshot(),
+      (viewport) => {
+        if (
+          this.#viewport.width !== viewport.width ||
+          this.#viewport.height !== viewport.height
+        )
+          this.#agentCursor.hide();
+        this.#viewport = { ...viewport };
+      },
     );
     this.configuration = options.configuration;
     this.#currentUrl = options.initialUrl;
@@ -605,12 +613,6 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
   private async configureViewport(
     viewport: RemoteSurfaceViewport,
   ): Promise<void> {
-    if (
-      this.#viewport.width !== viewport.width ||
-      this.#viewport.height !== viewport.height
-    )
-      this.#agentCursor.hide();
-    this.#viewport = { ...viewport };
     await this.#frames.configure(viewport);
   }
 

@@ -15,6 +15,9 @@ export class BrowserFramePipeline {
       params?: Record<string, unknown>,
     ) => Promise<unknown>,
     private readonly capture: () => Promise<{ data: string }>,
+    private readonly viewportApplied: (
+      viewport: RemoteSurfaceViewport,
+    ) => void = () => undefined,
   ) {}
 
   configure(viewport: RemoteSurfaceViewport): Promise<void> {
@@ -39,7 +42,7 @@ export class BrowserFramePipeline {
           height: requested.height,
           deviceScaleFactor: requested.devicePixelRatio,
           mobile: false,
-        }),
+        }).then(() => this.viewportApplied(requested)),
         this.command("Emulation.setTouchEmulationEnabled", {
           enabled: true,
           maxTouchPoints: 10,
