@@ -1736,9 +1736,14 @@ mod tests {
                 cancel.clone(),
             )
             .unwrap();
+        assert_eq!(session.active.as_ref().unwrap().wall_limit, Duration::MAX);
+        assert!(session.step().is_none());
         for seconds in [150, 7201, 86400] {
-            session.active.as_mut().unwrap().started =
-                Instant::now() - Duration::from_secs(seconds);
+            // Windows Instant cannot predate the monotonic clock's origin.
+            let Some(started) = Instant::now().checked_sub(Duration::from_secs(seconds)) else {
+                continue;
+            };
+            session.active.as_mut().unwrap().started = started;
             assert!(session.step().is_none());
         }
         cancel.cancel();
