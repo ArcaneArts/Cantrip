@@ -323,6 +323,36 @@ export const cantripMcpWebSessionSnapshotInputSchema = z
     maxChars: z.number().int().min(1_000).max(50_000).default(20_000),
   })
   .strict();
+export const cantripMcpWebSessionPointerInputSchema = z
+  .object({
+    sessionId: cantripWebSessionIdSchema,
+    action: z.enum(["move", "click", "drag"]),
+    x: z.number().finite().nonnegative(),
+    y: z.number().finite().nonnegative(),
+    to: z
+      .object({
+        x: z.number().finite().nonnegative(),
+        y: z.number().finite().nonnegative(),
+      })
+      .strict()
+      .optional(),
+    durationMs: z
+      .number()
+      .finite()
+      .nonnegative()
+      .max(Number.MAX_SAFE_INTEGER)
+      .optional(),
+  })
+  .strict()
+  .superRefine((input, context) => {
+    if ((input.action === "drag") !== Boolean(input.to))
+      context.addIssue({
+        code: "custom",
+        path: ["to"],
+        message: "Only drag requires a destination point.",
+      });
+  });
+
 export const cantripMcpWebSessionClickInputSchema = z
   .object({
     sessionId: cantripWebSessionIdSchema,

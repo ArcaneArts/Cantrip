@@ -428,6 +428,7 @@ export {
   cantripMcpWebSessionOpenInputSchema,
   cantripMcpWebSessionSnapshotInputSchema,
   cantripMcpWebSessionClickInputSchema,
+  cantripMcpWebSessionPointerInputSchema,
   cantripMcpWebSessionTypeInputSchema,
   cantripMcpWebSessionCloseInputSchema,
   cantripMcpBrowserServicesInputSchema,

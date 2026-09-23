@@ -244,6 +244,7 @@ const managedRuntimeExports = [
 
 const browserCursorExports = [
   "browserAgentCursorSchema",
+  "cantripMcpWebSessionPointerInputSchema",
   "remoteCursorSpriteSchema",
 ];
 
@@ -274,7 +275,7 @@ describe("protocol public surface compatibility", () => {
         !browserCursorExports.includes(name),
     );
 
-    expect(exportNames).toHaveLength(2_123);
+    expect(exportNames).toHaveLength(2_124);
     expect(
       exportNames.filter((name) => browserCursorExports.includes(name)),
     ).toEqual(browserCursorExports);

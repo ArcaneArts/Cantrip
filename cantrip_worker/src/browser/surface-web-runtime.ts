@@ -1,3 +1,7 @@
+import {
+  browserPointerGesture,
+  type BrowserPointerGesture,
+} from "./pointer-gesture.js";
 import { randomBytes } from "node:crypto";
 import type { CantripMcpBinding } from "@cantrip/protocol";
 import type { WorkerWebServiceOptions } from "../web/service.js";
@@ -94,7 +98,7 @@ export class BrowserSurfaceWebRuntime implements Runtime {
         text: string;
         elements: string[];
       }>(`(() => {
-        const nodes = Array.from(document.querySelectorAll('a,button,input,textarea,select,[role="button"],[contenteditable="true"]')).filter(n => n.getClientRects().length).slice(0,1000);
+        const nodes = Array.from(document.querySelectorAll('a,button,input,textarea,select,[role="button"],[contenteditable="true"]')).filter(n => n.getClientRects().length).slice(0,100);
         globalThis[${key}] = nodes;
         return { text: (document.body?.innerText || '').slice(0,${Math.max(1, maxChars)}), elements: nodes.map(n => ((n.getAttribute('aria-label') || n.innerText || n.getAttribute('placeholder') || n.getAttribute('name') || n.tagName)).slice(0,500)) };
       })()`);
@@ -112,6 +116,26 @@ export class BrowserSurfaceWebRuntime implements Runtime {
     });
   }
 
+  async pointerSession(
+    binding: CantripMcpBinding,
+    input: BrowserPointerGesture,
+  ): Promise<WebSessionState> {
+    const record = this.record(binding, input.sessionId);
+    return this.exclusive(record, async () => {
+      this.invalidate(record);
+      await browserPointerGesture(
+        record.cdp,
+        record.chat,
+        input,
+        undefined,
+        () => {
+          this.record(binding, input.sessionId);
+        },
+      );
+      return this.state(input.sessionId, record);
+    });
+  }
+
   async clickSession(
     binding: CantripMcpBinding,
     id: string,
@@ -123,26 +147,11 @@ export class BrowserSurfaceWebRuntime implements Runtime {
     return this.exclusive(record, async () => {
       const point = await this.point(record, ref);
       this.invalidate(record);
-      const params = { x: point.x, y: point.y, button: "left", clickCount: 1 };
-      await record.cdp.agentCommand(record.chat, "Input.dispatchMouseEvent", {
-        ...params,
-        type: "mouseMoved",
-        buttons: 0,
+      await browserPointerGesture(record.cdp, record.chat, {
+        sessionId: id,
+        action: "click",
+        ...point,
       });
-      try {
-        await record.cdp.agentCommand(record.chat, "Input.dispatchMouseEvent", {
-          ...params,
-          type: "mousePressed",
-          buttons: 1,
-        });
-      } finally {
-        // Release even when the acknowledgement is lost; never replay a press.
-        await record.cdp.agentCommand(record.chat, "Input.dispatchMouseEvent", {
-          ...params,
-          type: "mouseReleased",
-          buttons: 0,
-        });
-      }
       return this.state(id, record);
     });
   }

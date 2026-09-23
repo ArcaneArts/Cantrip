@@ -76,6 +76,7 @@ import {
   cantripMcpWebSearchResultSchema,
   cantripMcpWebSessionActionResultSchema,
   cantripMcpWebSessionClickInputSchema,
+  cantripMcpWebSessionPointerInputSchema,
   cantripMcpWebSessionCloseInputSchema,
   cantripMcpWebSessionCloseResultSchema,
   cantripMcpWebSessionOpenInputSchema,
@@ -766,6 +767,31 @@ export function createCantripMcpServer(
           cantripMcpWebSessionActionResultSchema.parse(
             await gateway({
               operation: "web.session.click",
+              arguments: arguments_,
+            }),
+          ),
+        );
+      } catch (error) {
+        return operationError(error);
+      }
+    },
+  );
+  registerTool(
+    "web_session_pointer",
+    {
+      title: "Move, click, or drag in the visible browser",
+      description:
+        "Move, click, or drag at viewport CSS-pixel coordinates in an exact Browser-target session. Drag uses x/y as its start and to as its end; durationMs defaults to 200. User interaction does not cancel the gesture.",
+      inputSchema: cantripMcpWebSessionPointerInputSchema,
+      outputSchema: cantripMcpWebSessionActionResultSchema,
+      annotations: openWorldMutationAnnotations,
+    },
+    async (arguments_) => {
+      try {
+        return operationResult(
+          cantripMcpWebSessionActionResultSchema.parse(
+            await gateway({
+              operation: "web.session.pointer",
               arguments: arguments_,
             }),
           ),
