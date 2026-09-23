@@ -730,7 +730,7 @@ export function createCantripMcpServer(
     {
       title: "Open an interactive web session",
       description:
-        "Open or navigate an owned managed-browser session. An exact Browser target opts into its persistent profile.",
+        "Open or navigate an owned managed-browser session. An exact Browser target attaches to that open Cantrip browser page; its agent cursor is visible to the user.",
       inputSchema: cantripMcpWebSessionOpenInputSchema,
       outputSchema: cantripMcpWebSessionOpenResultSchema,
       annotations: openWorldMutationAnnotations,

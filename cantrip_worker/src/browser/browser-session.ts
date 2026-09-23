@@ -17,7 +17,54 @@ export interface BrowserDomSnapshot {
  * Keeping the raw browser websocket and session id inside the worker prevents
  * callers from accidentally exposing a profile's privileged CDP endpoint.
  */
+export interface AgentPointerDispatch {
+  identity: string;
+  x: number;
+  y: number;
+  click: boolean;
+  dragging: boolean;
+}
 export class BrowserCdpSession {
+  onAgentStart: ((identity: string) => void) | null = null;
+  onAgentEnd: ((identity: string) => void) | null = null;
+  onAgentPointer: ((event: AgentPointerDispatch) => void) | null = null;
+
+  /** Trusted agent entry point; UI commands deliberately bypass presentation. */
+  agentCommand<T = unknown>(
+    identity: string,
+    method: string,
+    params: Record<string, unknown> = {},
+  ): Promise<T> {
+    const result = this.command<T>(method, params);
+    if (
+      method === "Input.dispatchMouseEvent" &&
+      typeof params.x === "number" &&
+      Number.isFinite(params.x) &&
+      typeof params.y === "number" &&
+      Number.isFinite(params.y)
+    ) {
+      const x = params.x;
+      const y = params.y;
+      void result
+        .then(() => {
+          try {
+            this.onAgentPointer?.({
+              identity,
+              x,
+              y,
+              click: params.type === "mousePressed",
+              dragging:
+                typeof params.buttons === "number" && params.buttons !== 0,
+            });
+          } catch {
+            /* Presentation must never block or retry input. */
+          }
+        })
+        .catch(() => undefined);
+    }
+    return result;
+  }
+
   constructor(
     readonly client: CdpClient,
     readonly sessionId: string,

@@ -19,7 +19,13 @@ export interface CursorAsset {
 type Assets = readonly CursorAsset[];
 export interface CursorOverlayHandle {
   move(x: number, y: number, click: boolean): void;
-  remote(id: string, x: number, y: number, click: boolean): void;
+  remote(
+    id: string,
+    x: number,
+    y: number,
+    click: boolean,
+    smooth?: boolean,
+  ): void;
 }
 /** Sprites are drawn by the shared native rasterizer. No video pixels are used. */
 export const RemoteCursorOverlay = forwardRef<
@@ -34,9 +40,19 @@ export const RemoteCursorOverlay = forwardRef<
     null,
   );
   const peerPositions = useRef(new Map<string, { x: number; y: number }>());
-  const place = (id: string, x: number, y: number, click: boolean) => {
+  const place = (
+    id: string,
+    x: number,
+    y: number,
+    click: boolean,
+    smooth = false,
+  ) => {
     const node = nodes.current.get(id);
     if (!node) return;
+    node.style.transition =
+      smooth && !click
+        ? "left 80ms cubic-bezier(0.215,0.61,0.355,1), top 80ms cubic-bezier(0.215,0.61,0.355,1)"
+        : "none";
     node.style.left = `${x * 100}%`;
     node.style.top = `${y * 100}%`;
     node.style.visibility = "visible";
@@ -55,10 +71,10 @@ export const RemoteCursorOverlay = forwardRef<
         position.current = { x, y, click };
         if (ownId) place(ownId, x, y, click);
       },
-      remote(id, x, y, click) {
+      remote(id, x, y, click, smooth) {
         if (id !== ownId) {
           peerPositions.current.set(id, { x, y });
-          place(id, x, y, click);
+          place(id, x, y, click, smooth);
         }
       },
     }),

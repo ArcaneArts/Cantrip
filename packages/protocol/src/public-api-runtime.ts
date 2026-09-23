@@ -156,6 +156,8 @@ export {
   remoteDesktopServerMessageSchema,
   remoteBrowserClientMessageSchema,
   remoteBrowserServerMessageSchema,
+  remoteCursorSpriteSchema,
+  browserAgentCursorSchema,
   remoteBrowserCursorMessageSchema,
   remoteBrowserClipboardMessageSchema,
   remoteSurfaceFrameHeaderSchema,

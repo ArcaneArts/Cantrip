@@ -163,7 +163,7 @@ const notes: Partial<Record<ToolName, string[]>> = {
     "Element references are bound to the current session generation and become stale after any action or navigation.",
   ],
   web_session_open: [
-    "Omit browserTarget for an ephemeral session. Provide an exact Browser target for an owner-partitioned persistent profile.",
+    "Omit browserTarget for an ephemeral session. Provide an exact Browser target to interact with that open Cantrip browser page. User interaction does not cancel the agent session.",
     "Resume and navigate an existing session with sessionId; its profile cannot be changed.",
   ],
   run_configuration_create: [

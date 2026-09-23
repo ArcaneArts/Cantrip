@@ -1,4 +1,8 @@
 import {
+  BrowserAgentCursorOverlay,
+  type BrowserAgentCursorHandle,
+} from "./agent-cursor-overlay";
+import {
   remoteBrowserClipboardMessageSchema,
   remoteBrowserClientMessageSchema,
   remoteBrowserCursorMessageSchema,
@@ -224,6 +228,7 @@ export function BrowserView({
     url: string;
   }): void;
 }) {
+  const agentCursorRef = useRef<BrowserAgentCursorHandle>(null);
   const remoteCanvasRef = useRef<RemoteSurfaceCanvasHandle>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const inputFocusedRef = useRef(false);
@@ -330,7 +335,10 @@ export function BrowserView({
         const state = remoteBrowserServerMessageSchema.parse(
           JSON.parse(decoder.decode(frame.payload)),
         );
-        if (state.type === "browser-runtime") {
+        if (state.type === "browser-agent-cursor") {
+          agentCursorRef.current?.receive(state);
+        } else if (state.type === "browser-runtime") {
+          if (state.status !== "ready") agentCursorRef.current?.reset();
           setRuntimeStatus(state.status);
           setRuntimeMessage(state.message);
           if (state.status === "ready") context.reportError(null);
@@ -425,7 +433,10 @@ export function BrowserView({
       workerId: browser.workerId ?? "",
       viewport: () => viewportRef.current,
       messages: browserTransportMessages,
-      onConnecting: () => remoteCanvasRef.current?.reset(),
+      onConnecting: () => {
+        remoteCanvasRef.current?.reset();
+        agentCursorRef.current?.reset();
+      },
       onFrame: handleFrame,
     });
 
@@ -1028,6 +1039,7 @@ export function BrowserView({
           onRendered={() => setRenderedSurfaceId(browser.id)}
           onTouch={send}
         />
+        <BrowserAgentCursorOverlay ref={agentCursorRef} />
         <SurfaceLoadingVeil
           fade={false}
           label={
