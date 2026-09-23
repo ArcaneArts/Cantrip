@@ -29,6 +29,7 @@ import {
   protectBrowserLocationOperation,
 } from "./browser-private-state.js";
 import { CdpClient } from "./cdp-client.js";
+import { BrowserFramePipeline } from "./frame-pipeline.js";
 import { BrowserCdpSession } from "./browser-session.js";
 import { findChromiumExecutable } from "./chromium.js";
 
@@ -163,6 +164,7 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
   readonly #attachments = new Map<string, RemoteSurfaceAttachment>();
   readonly #client: CdpClient;
   readonly #cdp: BrowserCdpSession;
+  readonly #frames: BrowserFramePipeline;
   readonly #emit: Parameters<RemoteSurfaceAdapter["open"]>[1];
   readonly #onCrash: (error: Error) => void;
   readonly #process: ChildProcess | null;
@@ -199,6 +201,10 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
   }) {
     this.#client = options.client;
     this.#cdp = options.cdp;
+    this.#frames = new BrowserFramePipeline(
+      (method, params) => this.command(method, params),
+      () => this.#cdp.captureScreenshot(),
+    );
     this.configuration = options.configuration;
     this.#currentUrl = options.initialUrl;
     this.#emit = options.emit;
@@ -300,7 +306,9 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
   async attach(attachment: RemoteSurfaceAttachment): Promise<void> {
     this.#attachments.set(attachment.id, attachment);
     await this.configureViewport(attachment.viewport);
-    await this.publishState(attachment.id);
+    // Navigation can temporarily detach the renderer. Metadata is refreshed by
+    // page events and must not tear down a successfully attached video surface.
+    await this.publishState(attachment.id).catch(() => undefined);
     try {
       await this.captureFrame(attachment.id);
     } catch (error) {
@@ -440,7 +448,7 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
   }
 
   async suspend(): Promise<void> {
-    await this.command("Page.stopScreencast").catch(() => undefined);
+    await this.#frames.suspend().catch(() => undefined);
   }
 
   async resume(): Promise<void> {
@@ -477,6 +485,7 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
       }).catch(() => undefined);
     });
     this.#cdp.on("Page.frameStartedLoading", () => {
+      this.#frames.invalidateFrames();
       this.#loading = true;
       void this.publishState().catch(() => undefined);
     });
@@ -486,8 +495,14 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
       void this.publishState().catch(() => undefined);
       void this.captureFrame().catch(() => undefined);
     });
+    this.#cdp.on("Page.frameNavigated", (params) => {
+      const { frame } = params as { frame?: { parentId?: string } };
+      if (!frame || frame.parentId) return;
+      // A main-frame renderer replacement can drop the previous screencast.
+      void this.#frames.restart().catch(() => undefined);
+      void this.publishState().catch(() => undefined);
+    });
     for (const event of [
-      "Page.frameNavigated",
       "Page.navigatedWithinDocument",
       "Page.loadEventFired",
     ]) {
@@ -562,26 +577,7 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
   private async configureViewport(
     viewport: RemoteSurfaceViewport,
   ): Promise<void> {
-    await Promise.all([
-      this.command("Emulation.setDeviceMetricsOverride", {
-        width: viewport.width,
-        height: viewport.height,
-        deviceScaleFactor: viewport.devicePixelRatio,
-        mobile: false,
-      }),
-      this.command("Emulation.setTouchEmulationEnabled", {
-        enabled: true,
-        maxTouchPoints: 10,
-      }),
-    ]);
-    await this.command("Page.stopScreencast").catch(() => undefined);
-    await this.command("Page.startScreencast", {
-      format: "jpeg",
-      quality: 78,
-      maxWidth: viewport.width,
-      maxHeight: viewport.height,
-      everyNthFrame: 1,
-    });
+    await this.#frames.configure(viewport);
   }
 
   private async navigationHistory(): Promise<NavigationHistory> {
@@ -633,7 +629,9 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
   }
 
   private async captureFrame(onlyAttachmentId?: string): Promise<void> {
-    const screenshot = await this.#cdp.captureScreenshot();
+    const generation = this.#frames.generation;
+    const screenshot = await this.#frames.frame();
+    if (this.#closed || generation !== this.#frames.generation) return;
     const payload = Buffer.from(screenshot.data, "base64");
     const recipients = onlyAttachmentId
       ? [onlyAttachmentId]
