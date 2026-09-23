@@ -10,6 +10,7 @@ import {
   type CantripMcpSessionAttachment,
   type CantripMcpSessionInput,
 } from "../src/mcp/broker.js";
+import type { WorkerWebService } from "../src/web/service.js";
 import type { CuaMcpExecutor } from "../src/mcp/cua-contract.js";
 
 const cleanups: Array<() => Promise<unknown>> = [];
@@ -615,3 +616,22 @@ describe("idle MCP sessions and exact active bindings", () => {
     ).not.toBe(base.connectionPath);
   });
 });
+
+it.each(["deactivate", "replace", "revoke"] as const)(
+  "cancels browser gestures on %s but not a view attachment or stale Stop",
+  async (action) => {
+    const broker = await fixture();
+    const cancelBinding = vi.fn();
+    broker.setWebService({ cancelBinding } as unknown as WorkerWebService);
+    const first = broker.createBinding({ ...claims, executionLaneId: "first" });
+    broker.createSession(claims);
+    broker.deactivateBinding(first.connection.bindingId, "old");
+    expect(cancelBinding).not.toHaveBeenCalled();
+    if (action === "deactivate")
+      broker.deactivateBinding(first.connection.bindingId, "first");
+    else if (action === "revoke")
+      broker.revokeBinding(first.connection.bindingId);
+    else broker.createBinding({ ...claims, executionLaneId: "next" });
+    expect(cancelBinding).toHaveBeenCalledExactlyOnceWith(first.binding);
+  },
+);

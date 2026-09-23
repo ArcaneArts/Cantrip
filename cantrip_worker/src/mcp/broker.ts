@@ -446,6 +446,11 @@ export class CantripMcpBroker {
     ) {
       for (const controller of stored.computerUseRequests) controller.abort();
     }
+    if (
+      stored.binding &&
+      stored.binding.executionLaneId !== binding.executionLaneId
+    )
+      this.#webService?.cancelBinding(stored.binding);
     stored.binding = binding;
     stored.claims = sessionClaimsSchema.parse(claims);
     stored.computerUse = computerUse;
@@ -510,6 +515,7 @@ export class CantripMcpBroker {
     const stored = this.#bindings.get(bindingId);
     if (!stored?.binding || stored.binding.executionLaneId !== executionLaneId)
       return false;
+    this.#webService?.cancelBinding(stored.binding);
     stored.binding = null;
     stored.staleContextRejected = false;
     stored.staleRejection = null;
@@ -521,6 +527,7 @@ export class CantripMcpBroker {
     const stored = this.#bindings.get(bindingId);
     if (!stored) return false;
     this.#bindings.delete(bindingId);
+    if (stored.binding) this.#webService?.cancelBinding(stored.binding);
     for (const controller of stored.computerUseRequests) controller.abort();
     removeConnectionDocument(stored);
     return true;

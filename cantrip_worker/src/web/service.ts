@@ -101,6 +101,7 @@ export interface WorkerWebServiceOptions {
     | "typeSession"
     | "closeSession"
   > & {
+    cancelBinding?(binding: CantripMcpBinding): void;
     pointerSession?(
       binding: CantripMcpBinding,
       input: z.infer<typeof cantripMcpWebSessionPointerInputSchema>,
@@ -264,6 +265,10 @@ export class WorkerWebService {
       mutated: false,
       data,
     });
+  }
+
+  cancelBinding(binding: CantripMcpBinding): void {
+    this.#sessionRuntime?.cancelBinding?.(binding);
   }
 
   async sessionPointer(

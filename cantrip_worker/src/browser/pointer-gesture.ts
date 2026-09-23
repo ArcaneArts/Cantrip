@@ -16,11 +16,31 @@ export async function browserPointerGesture(
       new Promise<void>((resolve) => setTimeout(resolve, ms)),
   },
   assertActive: () => void = () => undefined,
+  signal?: AbortSignal,
 ): Promise<void> {
-  assertActive();
+  const check = () => {
+    signal?.throwIfAborted();
+    assertActive();
+  };
+  const sleep = async (ms: number) => {
+    check();
+    if (!signal) return clock.sleep(ms);
+    let abort!: () => void;
+    const stopped = new Promise<never>((_, reject) => {
+      abort = () => reject(signal.reason);
+      signal.addEventListener("abort", abort, { once: true });
+    });
+    try {
+      await Promise.race([clock.sleep(ms), stopped]);
+    } finally {
+      signal.removeEventListener("abort", abort);
+    }
+    check();
+  };
+  check();
   let point = { x: input.x, y: input.y };
   const move = (buttons: number) => {
-    assertActive();
+    check();
     return cdp.agentCommand(identity, "Input.dispatchMouseEvent", {
       ...point,
       type: "mouseMoved",
@@ -33,7 +53,7 @@ export async function browserPointerGesture(
   const duration = input.durationMs ?? (input.action === "drag" ? 200 : 0);
   let pressed = false;
   try {
-    assertActive();
+    check();
     pressed = true;
     await cdp.agentCommand(identity, "Input.dispatchMouseEvent", {
       ...point,
@@ -48,10 +68,10 @@ export async function browserPointerGesture(
       for (;;) {
         const elapsed = clock.now() - started;
         if (elapsed < duration)
-          await clock.sleep(Math.min(1000 / 60, duration - elapsed));
+          await sleep(Math.min(1000 / 60, duration - elapsed));
         const progress =
           duration === 0 ? 1 : Math.min(1, (clock.now() - started) / duration);
-        assertActive();
+        check();
         point = {
           x: input.x + (to.x - input.x) * progress,
           y: input.y + (to.y - input.y) * progress,
@@ -61,8 +81,8 @@ export async function browserPointerGesture(
       }
     } else {
       while (clock.now() - started < duration) {
-        assertActive();
-        await clock.sleep(Math.min(1000, duration - (clock.now() - started)));
+        check();
+        await sleep(Math.min(1000, duration - (clock.now() - started)));
       }
     }
   } finally {
