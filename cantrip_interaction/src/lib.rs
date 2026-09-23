@@ -12,3 +12,6 @@ pub mod schedule;
 pub mod telemetry;
 
 pub mod ownership;
+
+#[cfg(feature = "sprites")]
+pub mod sprite;

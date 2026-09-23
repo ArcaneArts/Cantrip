@@ -67,6 +67,7 @@ name = "cantrip-interaction"
 version = "0.0.0"
 dependencies = [
  "font8x8",
+ "png",
  "serde",
  "sha2",
 ]
