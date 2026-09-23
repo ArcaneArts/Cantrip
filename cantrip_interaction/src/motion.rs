@@ -73,20 +73,43 @@ impl Iterator for MotionPath {
     }
 }
 
+/// Portable presentation policy consumed by native travel and browser overlays.
+#[derive(Clone, Copy, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TravelPolicy {
+    pub minimum_distance: f64,
+    pub pixels_per_ms: f64,
+    pub min_duration_ms: f64,
+    pub max_duration_ms: f64,
+    pub easing: [f64; 4],
+}
+pub const TRAVEL_POLICY: TravelPolicy = TravelPolicy {
+    minimum_distance: 1.0,
+    pixels_per_ms: 4.0,
+    min_duration_ms: 60.0,
+    max_duration_ms: 90.0,
+    // Linear time axis, cubic ease-out position axis.
+    easing: [1.0 / 3.0, 1.0, 2.0 / 3.0, 1.0],
+};
+
 pub fn travel(start: Point, end: Point) -> Vec<(Duration, Point)> {
     let distance = (end.x - start.x).hypot(end.y - start.y);
-    if distance < 1.0 {
+    if distance < TRAVEL_POLICY.minimum_distance {
         return vec![(Duration::ZERO, end)];
     }
     // At least four smooth steps when timing allows, rather than two large
     // jumps for nearby piano keys. Cross-window travel still caps at 90 ms.
-    let ms = (distance / 4.0).clamp(60.0, 90.0);
+    let ms = (distance / TRAVEL_POLICY.pixels_per_ms)
+        .clamp(TRAVEL_POLICY.min_duration_ms, TRAVEL_POLICY.max_duration_ms);
     let steps = (ms / (1000.0 / 60.0)).ceil() as u32;
     (1..=steps)
         .map(|i| {
             let t = f64::from(i) / f64::from(steps);
             // Cubic ease-out: maximum speed immediately, then deceleration.
-            let eased = 1.0 - (1.0 - t).powi(3);
+            let u = 1.0 - t;
+            let eased = 3.0 * u * u * t * TRAVEL_POLICY.easing[1]
+                + 3.0 * u * t * t * TRAVEL_POLICY.easing[3]
+                + t * t * t;
             let point = if i == steps {
                 end
             } else {

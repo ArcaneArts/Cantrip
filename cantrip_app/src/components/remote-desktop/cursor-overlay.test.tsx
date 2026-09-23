@@ -17,6 +17,13 @@ it("moves immediately, ignores own echoes, preserves peers and releases image UR
     width: 256 as const,
     height: 256 as const,
     hotspot: { x: 128 as const, y: 128 as const },
+    motion: {
+      minimumDistance: 1,
+      pixelsPerMs: 4,
+      minDurationMs: 60,
+      maxDurationMs: 90,
+      easing: [1 / 3, 1, 2 / 3, 1] as [number, number, number, number],
+    },
     normal: [1],
     click: [2],
   };
@@ -86,6 +93,28 @@ it("moves immediately, ignores own echoes, preserves peers and releases image UR
   );
   expect(nodes.at(-1)!.style.left).toBe("70%");
   expect(nodes.at(-1)!.style.visibility).toBe("visible");
+  ref.current!.remote("peer", 0.8, 0.6, false, true);
+  expect(nodes.at(-1)!.style.transition).toContain(
+    "60ms cubic-bezier(0.3333333333333333,1,0.6666666666666666,1)",
+  );
+  ref.current!.remote("peer", 0.9, 0.6, true, true);
+  expect(nodes.at(-1)!.style.transition).toBe("none");
+  // A resized surface uses its current dimensions when calculating travel time.
+  await act(async () =>
+    renderer.update(
+      <RemoteCursorOverlay
+        ref={ref}
+        assets={assets}
+        ownId="own"
+        width={3200}
+        height={600}
+      />,
+    ),
+  );
+  ref.current!.remote("peer", 1, 0.6, false, true);
+  expect(nodes.at(-1)!.style.transition).toMatch(/left 79\.999.*ms/);
+  ref.current!.remote("peer", 0.5, 0.6, false, false);
+  expect(nodes.at(-1)!.style.transition).toBe("none");
   await act(async () => renderer.unmount());
   expect(revoke).toHaveBeenCalledTimes(allocate.mock.calls.length);
   revoke.mockRestore();

@@ -5,6 +5,13 @@ it.skipIf(!process.env.CANTRIP_CUA_BIN)(
   async () => {
     const first = await browserCursorSprite("browser-agent-one");
     const second = await browserCursorSprite("browser-agent-two");
+    expect(first.motion).toEqual({
+      minimumDistance: 1,
+      pixelsPerMs: 4,
+      minDurationMs: 60,
+      maxDurationMs: 90,
+      easing: [1 / 3, 1, 2 / 3, 1],
+    });
     expect(first.width).toBe(256);
     expect(first.hotspot).toEqual({ x: 128, y: 128 });
     expect(first.normal.slice(0, 8)).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
