@@ -30,6 +30,24 @@ const opaque = (prefix: string) =>
 /** Exact Browser targets borrow the visible page; untargeted research stays isolated. */
 export class BrowserSurfaceWebRuntime implements Runtime {
   private readonly records = new Map<string, Record_>();
+  private readonly operations = new Set<{
+    binding: CantripMcpBinding;
+    controller: AbortController;
+  }>();
+
+  cancelBinding(binding: CantripMcpBinding): void {
+    for (const operation of this.operations) {
+      const active = operation.binding;
+      if (
+        active.bindingId === binding.bindingId &&
+        active.executionLaneId === binding.executionLaneId
+      ) {
+        operation.controller.abort(
+          new Error("Browser operation stopped with its agent turn."),
+        );
+      }
+    }
+  }
   constructor(
     private readonly fallback: Runtime,
     private readonly lookup: (
@@ -76,7 +94,7 @@ export class BrowserSurfaceWebRuntime implements Runtime {
     } catch {
       /* Presentation is independent of navigation. */
     }
-    return this.exclusive(record, async () => {
+    return this.exclusive(binding, record, async () => {
       this.invalidate(record);
       await this.navigate(record, target.href);
       return this.state(id!, record);
@@ -91,7 +109,7 @@ export class BrowserSurfaceWebRuntime implements Runtime {
     if (!this.records.has(id))
       return this.fallback.snapshotSession(binding, id, maxChars);
     const record = this.record(binding, id);
-    return this.exclusive(record, async () => {
+    return this.exclusive(binding, record, async () => {
       this.invalidate(record);
       const key = JSON.stringify(record.key);
       const result = await record.cdp.evaluate<{
@@ -121,7 +139,7 @@ export class BrowserSurfaceWebRuntime implements Runtime {
     input: BrowserPointerGesture,
   ): Promise<WebSessionState> {
     const record = this.record(binding, input.sessionId);
-    return this.exclusive(record, async () => {
+    return this.exclusive(binding, record, async (signal) => {
       this.invalidate(record);
       await browserPointerGesture(
         record.cdp,
@@ -131,7 +149,9 @@ export class BrowserSurfaceWebRuntime implements Runtime {
         () => {
           this.record(binding, input.sessionId);
         },
+        signal,
       );
+      signal.throwIfAborted();
       return this.state(input.sessionId, record);
     });
   }
@@ -144,14 +164,23 @@ export class BrowserSurfaceWebRuntime implements Runtime {
     if (!this.records.has(id))
       return this.fallback.clickSession(binding, id, ref);
     const record = this.record(binding, id);
-    return this.exclusive(record, async () => {
+    return this.exclusive(binding, record, async (signal) => {
       const point = await this.point(record, ref);
       this.invalidate(record);
-      await browserPointerGesture(record.cdp, record.chat, {
-        sessionId: id,
-        action: "click",
-        ...point,
-      });
+      await browserPointerGesture(
+        record.cdp,
+        record.chat,
+        {
+          sessionId: id,
+          action: "click",
+          ...point,
+        },
+        undefined,
+        () => {
+          this.record(binding, id);
+        },
+        signal,
+      );
       return this.state(id, record);
     });
   }
@@ -166,7 +195,7 @@ export class BrowserSurfaceWebRuntime implements Runtime {
     if (!this.records.has(id))
       return this.fallback.typeSession(binding, id, ref, value, submit);
     const record = this.record(binding, id);
-    return this.exclusive(record, async () => {
+    return this.exclusive(binding, record, async (signal) => {
       const index = this.element(record, ref);
       const prepared = await record.cdp.evaluate<boolean>(`(() => {
         const node = globalThis[${JSON.stringify(record.key)}]?.[${index}];
@@ -180,10 +209,12 @@ export class BrowserSurfaceWebRuntime implements Runtime {
         throw new Error(
           "Element is no longer editable; take a fresh snapshot.",
         );
+      signal.throwIfAborted();
       this.invalidate(record);
       await record.cdp.agentCommand(record.chat, "Input.insertText", {
         text: value,
       });
+      signal.throwIfAborted();
       if (submit) {
         try {
           await record.cdp.agentCommand(record.chat, "Input.dispatchKeyEvent", {
@@ -235,18 +266,34 @@ export class BrowserSurfaceWebRuntime implements Runtime {
     return record;
   }
   private async exclusive<T>(
+    binding: CantripMcpBinding,
     record: Record_,
-    action: () => Promise<T>,
+    action: (signal: AbortSignal) => Promise<T>,
   ): Promise<T> {
     if (record.busy)
       throw new Error(
         "Browser session has another agent operation in progress.",
       );
     record.busy = true;
+    const controller = new AbortController();
+    const operation = { binding, controller };
+    this.operations.add(operation);
+    const off = record.cdp.client.onClose((error) => controller.abort(error));
     try {
-      return await action();
+      const result = await action(controller.signal);
+      controller.signal.throwIfAborted();
+      return result;
     } finally {
+      off();
+      this.operations.delete(operation);
       record.busy = false;
+      if (controller.signal.aborted) {
+        try {
+          record.cdp.onAgentEnd?.(record.chat);
+        } catch {
+          /* Presentation only. */
+        }
+      }
     }
   }
   private invalidate(record: Record_) {
