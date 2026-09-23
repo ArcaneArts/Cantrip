@@ -537,19 +537,98 @@ describe("BrowserRemoteSurfaceAdapter", () => {
             }),
           ),
         );
+        for (const event of ["down", "up"]) {
+          await session.handleFrame(
+            "attachment-test",
+            "control",
+            new TextEncoder().encode(
+              JSON.stringify({
+                type: "pointer",
+                event,
+                x: 20,
+                y: 20,
+                button: "left",
+                buttons: event === "down" ? 1 : 0,
+                clickCount: 1,
+                modifiers: 0,
+              }),
+            ),
+          );
+          await session.handleFrame(
+            "attachment-test",
+            "control",
+            new TextEncoder().encode(
+              JSON.stringify({
+                type: "key",
+                event,
+                key: "Shift",
+                code: "ShiftLeft",
+                modifiers: event === "down" ? 8 : 0,
+              }),
+            ),
+          );
+        }
         await drag;
         const events = await cdp.evaluate<
           Array<{ type: string; x: number; y: number; buttons: number }>
         >("globalThis.pointerEvents");
         expect(
           events?.filter((event) => event.type === "mousedown"),
-        ).toHaveLength(1);
+        ).toHaveLength(2);
         expect(events?.filter((event) => event.type === "mouseup")).toEqual([
+          { type: "mouseup", x: 20, y: 20, buttons: 0 },
           { type: "mouseup", x: 500, y: 300, buttons: 0 },
         ]);
         expect(
           events?.some((event) => event.type === "mousemove" && event.x === 20),
         ).toBe(true);
+        // The cursor is a separate Cantrip overlay, never screenshot pixels.
+        await cdp.evaluate(
+          "document.activeElement?.blur(); getSelection()?.removeAllRanges()",
+        );
+        const beforeCursor = await cdp.captureScreenshot({ format: "png" });
+        await runtime.pointerSession(binding, {
+          sessionId: agent.sessionId,
+          action: "move",
+          x: 540,
+          y: 350,
+        });
+        expect(await cdp.captureScreenshot({ format: "png" })).toEqual(
+          beforeCursor,
+        );
+        // Resize/DPR and scrolling retain viewport CSS coordinates.
+        await session.handleFrame(
+          "attachment-test",
+          "control",
+          new TextEncoder().encode(
+            JSON.stringify({
+              type: "viewport",
+              viewport: { width: 800, height: 600, devicePixelRatio: 2 },
+            }),
+          ),
+        );
+        await cdp.evaluate("scrollTo(0, 200)");
+        await runtime.pointerSession(binding, {
+          sessionId: agent.sessionId,
+          action: "move",
+          x: 400,
+          y: 300,
+        });
+        expect(
+          JSON.parse(new TextDecoder().decode(cursorMessages().at(-1)!.payload))
+            .position,
+        ).toEqual({ x: 0.5, y: 0.5 });
+        // Reattachment restores position without replaying a click or input.
+        await session.detach("attachment-test");
+        await session.attach({
+          id: "attachment-test",
+          viewport: { width: 800, height: 600, devicePixelRatio: 2 },
+        });
+        expect(
+          JSON.parse(
+            new TextDecoder().decode(cursorMessages().at(-1)!.payload),
+          ),
+        ).toMatchObject({ position: { x: 0.5, y: 0.5 }, click: false });
         await runtime.snapshotSession(binding, agent.sessionId, 1000);
         await runtime.closeSession(binding, agent.sessionId);
         expect(adapter.session(surfaceId)).toBe(cdp);

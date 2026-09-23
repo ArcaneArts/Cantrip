@@ -99,3 +99,25 @@ describe("browser frame pipeline", () => {
     expect(command).toHaveBeenCalledTimes(13);
   });
 });
+
+it("publishes geometry only after metrics succeed, even if screencast startup fails", async () => {
+  const applied = vi.fn();
+  const command = vi.fn(async (method: string) => {
+    if (method === "Emulation.setDeviceMetricsOverride")
+      throw new Error("metrics failed");
+    return {};
+  });
+  const pipeline = new BrowserFramePipeline(
+    command,
+    async () => ({ data: "frame" }),
+    applied,
+  );
+  await expect(pipeline.configure(viewport)).rejects.toThrow("metrics failed");
+  expect(applied).not.toHaveBeenCalled();
+  command.mockImplementation(async (method) => {
+    if (method === "Page.startScreencast") throw new Error("video failed");
+    return {};
+  });
+  await expect(pipeline.configure(viewport)).rejects.toThrow("video failed");
+  expect(applied).toHaveBeenCalledExactlyOnceWith(viewport);
+});
