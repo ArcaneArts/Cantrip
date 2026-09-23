@@ -508,6 +508,49 @@ describe("BrowserRemoteSurfaceAdapter", () => {
             1000,
           ),
         ).rejects.toThrow("another conversation");
+
+        await cdp.evaluate(
+          "globalThis.pointerEvents = []; for (const type of ['mousedown','mousemove','mouseup']) document.addEventListener(type, event => globalThis.pointerEvents.push({type,x:event.clientX,y:event.clientY,buttons:event.buttons}))",
+        );
+        const drag = runtime.pointerSession(binding, {
+          sessionId: agent.sessionId,
+          action: "drag",
+          x: 300,
+          y: 200,
+          to: { x: 500, y: 300 },
+          durationMs: 200,
+        });
+        await new Promise((resolve) => setTimeout(resolve, 40));
+        await session.handleFrame(
+          "attachment-test",
+          "control",
+          new TextEncoder().encode(
+            JSON.stringify({
+              type: "pointer",
+              event: "move",
+              x: 20,
+              y: 20,
+              button: "none",
+              buttons: 0,
+              clickCount: 0,
+              modifiers: 0,
+            }),
+          ),
+        );
+        await drag;
+        const events = await cdp.evaluate<
+          Array<{ type: string; x: number; y: number; buttons: number }>
+        >("globalThis.pointerEvents");
+        expect(
+          events?.filter((event) => event.type === "mousedown"),
+        ).toHaveLength(1);
+        expect(events?.filter((event) => event.type === "mouseup")).toEqual([
+          { type: "mouseup", x: 500, y: 300, buttons: 0 },
+        ]);
+        expect(
+          events?.some((event) => event.type === "mousemove" && event.x === 20),
+        ).toBe(true);
+        await runtime.snapshotSession(binding, agent.sessionId, 1000);
         await runtime.closeSession(binding, agent.sessionId);
         expect(adapter.session(surfaceId)).toBe(cdp);
         expect(
