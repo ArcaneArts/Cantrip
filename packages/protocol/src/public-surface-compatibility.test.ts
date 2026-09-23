@@ -242,6 +242,11 @@ const managedRuntimeExports = [
   "workerComputerUseEffectsCommandSchema",
 ];
 
+const browserCursorExports = [
+  "browserAgentCursorSchema",
+  "remoteCursorSpriteSchema",
+];
+
 const managedWorkerCommands = [
   "chat.account-defaults",
   "chat.automation.resume",
@@ -265,10 +270,14 @@ describe("protocol public surface compatibility", () => {
     const baselineNames = exportNames.filter(
       (name) =>
         !cuaRuntimeExports.includes(name) &&
-        !managedRuntimeExports.includes(name),
+        !managedRuntimeExports.includes(name) &&
+        !browserCursorExports.includes(name),
     );
 
-    expect(exportNames).toHaveLength(2_121);
+    expect(exportNames).toHaveLength(2_123);
+    expect(
+      exportNames.filter((name) => browserCursorExports.includes(name)),
+    ).toEqual(browserCursorExports);
     expect(
       exportNames.filter((name) => managedRuntimeExports.includes(name)),
     ).toEqual(managedRuntimeExports);

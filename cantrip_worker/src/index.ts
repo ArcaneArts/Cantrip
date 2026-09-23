@@ -1,3 +1,4 @@
+import { BrowserSurfaceWebRuntime } from "./browser/surface-web-runtime.js";
 import { createNativeHistoryOutputModeResolver } from "./native-history-output-mode.js";
 import { managedNativePathsMatch } from "./codex/managed-native-policy.js";
 import { completeManagedRuntimeHandoff } from "./codex/managed-runtime-handoff-completion.js";
@@ -1142,7 +1143,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   });
   const webService = new WorkerWebService({
     searchRuntime: searxngRuntime,
-    sessionRuntime: playwrightRuntime,
+    sessionRuntime: new BrowserSurfaceWebRuntime(
+      playwrightRuntime,
+      (surface, owner) => browserAdapter.ownedSession(surface, owner),
+    ),
     renderPage: (url, beforeNavigation) =>
       playwrightRuntime.render(url, beforeNavigation),
   });

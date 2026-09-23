@@ -12,6 +12,30 @@ fn main() {
     {
         [] => run_default(),
         ["--backend", "fake"] => run(FakeBackend, std::io::stdin(), std::io::stdout()),
+        ["--cursor-sprite"] => {
+            use cantrip_interaction::cursor::{CursorAppearance, CursorState};
+            use std::io::Read;
+            let mut identity = String::new();
+            if std::io::stdin()
+                .take(4097)
+                .read_to_string(&mut identity)
+                .is_err()
+                || identity.len() > 4096
+            {
+                std::process::exit(2);
+            }
+            let state = CursorState {
+                appearance: CursorAppearance::for_identity(&identity),
+                ..CursorState::default()
+            };
+            let Some(sprite) = cantrip_interaction::sprite::sprite(&state) else {
+                std::process::exit(1);
+            };
+            if serde_json::to_writer(std::io::stdout(), &sprite).is_err() {
+                std::process::exit(1);
+            }
+            return;
+        }
         ["--version"] => {
             println!("cantrip-cua {} protocol 1", env!("CARGO_PKG_VERSION"));
             return;
@@ -25,7 +49,7 @@ fn main() {
         }
         _ => {
             eprintln!(
-                "Usage: cantrip-cua [--backend fake | --version | --installation-lock <path>]"
+                "Usage: cantrip-cua [--backend fake | --cursor-sprite | --version | --installation-lock <path>]"
             );
             std::process::exit(2);
         }

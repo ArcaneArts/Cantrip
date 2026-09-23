@@ -29,6 +29,7 @@ import {
   protectBrowserLocationOperation,
 } from "./browser-private-state.js";
 import { CdpClient } from "./cdp-client.js";
+import { BrowserAgentCursor } from "./agent-cursor.js";
 import { BrowserFramePipeline } from "./frame-pipeline.js";
 import { BrowserCdpSession } from "./browser-session.js";
 import { findChromiumExecutable } from "./chromium.js";
@@ -165,6 +166,8 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
   readonly #client: CdpClient;
   readonly #cdp: BrowserCdpSession;
   readonly #frames: BrowserFramePipeline;
+  readonly #agentCursor: BrowserAgentCursor;
+  #viewport = { width: 1, height: 1, devicePixelRatio: 1 };
   readonly #emit: Parameters<RemoteSurfaceAdapter["open"]>[1];
   readonly #onCrash: (error: Error) => void;
   readonly #process: ChildProcess | null;
@@ -216,7 +219,22 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
     this.#stateRevision = options.stateRevision;
     this.#surfacePrivateState = options.surfacePrivateState;
     this.#targetId = options.targetId;
+    this.#agentCursor = new BrowserAgentCursor((state) => {
+      const bytes = encoder.encode(JSON.stringify(state));
+      for (const id of this.#attachments.keys())
+        this.#emit(id, "control", bytes);
+    });
+    this.#cdp.onAgentStart = (identity) => this.#agentCursor.prepare(identity);
+    this.#cdp.onAgentEnd = (identity) => this.#agentCursor.end(identity);
+    this.#cdp.onAgentPointer = (event) =>
+      this.#agentCursor.pointer(
+        event,
+        this.#viewport.width,
+        this.#viewport.height,
+      );
+
     this.#client.onClose((error) => {
+      this.#agentCursor.close();
       if (!this.#closed) this.#onCrash(error);
     });
     this.#process?.once("exit", (code, signal) => {
@@ -306,6 +324,11 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
   async attach(attachment: RemoteSurfaceAttachment): Promise<void> {
     this.#attachments.set(attachment.id, attachment);
     await this.configureViewport(attachment.viewport);
+    this.#emit(
+      attachment.id,
+      "control",
+      encoder.encode(JSON.stringify(this.#agentCursor.snapshot())),
+    );
     // Navigation can temporarily detach the renderer. Metadata is refreshed by
     // page events and must not tear down a successfully attached video surface.
     await this.publishState(attachment.id).catch(() => undefined);
@@ -459,6 +482,10 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
   async close(): Promise<void> {
     if (this.#closed) return;
     this.#closed = true;
+    this.#agentCursor.close();
+    this.#cdp.onAgentPointer = null;
+    this.#cdp.onAgentEnd = null;
+    this.#cdp.onAgentStart = null;
     await this.#client
       .request("Target.closeTarget", { targetId: this.#targetId })
       .catch(() => undefined);
@@ -486,6 +513,7 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
     });
     this.#cdp.on("Page.frameStartedLoading", () => {
       this.#frames.invalidateFrames();
+      this.#agentCursor.hide();
       this.#loading = true;
       void this.publishState().catch(() => undefined);
     });
@@ -577,6 +605,12 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
   private async configureViewport(
     viewport: RemoteSurfaceViewport,
   ): Promise<void> {
+    if (
+      this.#viewport.width !== viewport.width ||
+      this.#viewport.height !== viewport.height
+    )
+      this.#agentCursor.hide();
+    this.#viewport = { ...viewport };
     await this.#frames.configure(viewport);
   }
 
@@ -959,6 +993,10 @@ class ResilientBrowserRemoteSurfaceSession implements RemoteSurfaceSession {
     this.#onClose();
   }
 
+  get ownerId(): string {
+    return this.#ownerId;
+  }
+
   get cdpSession(): BrowserCdpSession | null {
     return this.#session?.cdpSession ?? null;
   }
@@ -1174,6 +1212,11 @@ export class BrowserRemoteSurfaceAdapter implements RemoteSurfaceAdapter {
 
   setSurfacePrivateStateService(service: WorkerEncryptionService): void {
     this.#surfacePrivateState = service;
+  }
+
+  ownedSession(surfaceId: string, ownerId: string): BrowserCdpSession | null {
+    const session = this.#sessions.get(surfaceId);
+    return session?.ownerId === ownerId ? session.cdpSession : null;
   }
 
   session(surfaceId: string): BrowserCdpSession | null {

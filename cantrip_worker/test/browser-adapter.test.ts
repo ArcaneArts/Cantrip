@@ -1,3 +1,6 @@
+import { BrowserSurfaceWebRuntime } from "../src/browser/surface-web-runtime.js";
+import type { CantripMcpBinding } from "@cantrip/protocol";
+import type { WorkerWebServiceOptions } from "../src/web/service.js";
 import { createServer } from "node:http";
 import type { ChildProcess } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -418,6 +421,100 @@ describe("BrowserRemoteSurfaceAdapter", () => {
             emissions.some(({ channel }) => channel === "frame") &&
             emissions.some(({ channel }) => channel === "control"),
         );
+
+        const fallback = { openSession: vi.fn() } as unknown as NonNullable<
+          WorkerWebServiceOptions["sessionRuntime"]
+        >;
+        const runtime = new BrowserSurfaceWebRuntime(
+          fallback,
+          (surface, owner) => adapter.ownedSession(surface, owner),
+        );
+        const binding = {
+          ownerId,
+          chatId: "browser-agent-test",
+        } as CantripMcpBinding;
+        const agent = await runtime.openSession(binding, root, {
+          browserTarget: { projectId: "project-test", surfaceId },
+        });
+        const observed = await runtime.snapshotSession(
+          binding,
+          agent.sessionId,
+          1000,
+        );
+        const link = observed.elements.find(
+          (element) => element.description === "Cantrip browser",
+        )!;
+        const cdp = adapter.session(surfaceId)!;
+        await cdp.evaluate(
+          "globalThis.clicks = 0; document.getElementById('target').onclick = () => globalThis.clicks++",
+        );
+        await runtime.clickSession(binding, agent.sessionId, link.ref);
+        expect(await cdp.evaluate("globalThis.clicks")).toBe(1);
+        expect(fallback.openSession).not.toHaveBeenCalled();
+        const cursorMessages = () =>
+          emissions.filter(
+            ({ channel, payload }) =>
+              channel === "control" &&
+              JSON.parse(new TextDecoder().decode(payload)).type ===
+                "browser-agent-cursor",
+          );
+        expect(
+          cursorMessages().some(
+            ({ payload }) =>
+              JSON.parse(new TextDecoder().decode(payload)).click,
+          ),
+        ).toBe(true);
+        const count = cursorMessages().length;
+        await session.handleFrame(
+          "attachment-test",
+          "control",
+          new TextEncoder().encode(
+            JSON.stringify({
+              type: "pointer",
+              event: "move",
+              x: 10,
+              y: 10,
+              button: "none",
+              buttons: 0,
+              clickCount: 0,
+              modifiers: 0,
+            }),
+          ),
+        );
+        // User movement does not publish an agent movement or invalidate its session.
+        expect(cursorMessages().length).toBe(count);
+        const fresh = await runtime.snapshotSession(
+          binding,
+          agent.sessionId,
+          1000,
+        );
+        const input = fresh.elements.find(
+          (element) => element.description === "TEXTAREA",
+        )!;
+        await runtime.typeSession(
+          binding,
+          agent.sessionId,
+          input.ref,
+          "Shared page",
+          false,
+        );
+        expect(
+          await cdp.evaluate("document.getElementById('input').value"),
+        ).toBe("Shared page");
+        await expect(
+          runtime.snapshotSession(
+            { ...binding, chatId: "other" },
+            agent.sessionId,
+            1000,
+          ),
+        ).rejects.toThrow("another conversation");
+        await runtime.closeSession(binding, agent.sessionId);
+        expect(adapter.session(surfaceId)).toBe(cdp);
+        expect(
+          JSON.parse(new TextDecoder().decode(cursorMessages().at(-1)!.payload))
+            .position,
+        ).toBeNull();
+
         const framesBeforeNavigation = emissions.filter(
           ({ channel }) => channel === "frame",
         ).length;
