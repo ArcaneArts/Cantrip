@@ -4,8 +4,6 @@ use codex_app_server_protocol::ThreadQueueChangedNotification;
 use codex_extension_api::ThreadIdleCause;
 use codex_protocol::config_types::MultiAgentMode;
 
-pub(super) const THREAD_UNLOADING_DELAY: Duration = Duration::from_secs(30 * 60);
-
 #[derive(Clone)]
 pub(super) struct ListenerTaskContext {
     pub(super) thread_manager: Arc<ThreadManager>,
@@ -13,9 +11,8 @@ pub(super) struct ListenerTaskContext {
     pub(super) outgoing: Arc<OutgoingMessageSender>,
     pub(super) pending_thread_unloads: Arc<Mutex<HashSet<ThreadId>>>,
     pub(super) thread_watch_manager: ThreadWatchManager,
-    pub(super) thread_list_state_permit: Arc<Semaphore>,
-    pub(super) fallback_model_provider: String,
     pub(super) codex_home: PathBuf,
+    pub(super) thread_unload_delay: Duration,
     pub(super) skills_watcher: Arc<SkillsWatcher>,
     pub(super) turn_cost_worker: Option<crate::turn_cost_worker::TurnCostWorkerHandle>,
 }
@@ -59,7 +56,7 @@ impl UnloadingState {
     fn unloading_target(&self) -> Option<Instant> {
         match (self.has_subscribers, self.is_active) {
             ((false, has_no_subscribers_since), (false, is_inactive_since)) => {
-                Some(std::cmp::max(has_no_subscribers_since, is_inactive_since) + self.delay)
+                std::cmp::max(has_no_subscribers_since, is_inactive_since).checked_add(self.delay)
             }
             _ => None,
         }
@@ -224,7 +221,7 @@ pub(super) async fn ensure_listener_task_running(
     let Some(mut unloading_state) = UnloadingState::new(
         &listener_task_context,
         conversation_id,
-        THREAD_UNLOADING_DELAY,
+        listener_task_context.thread_unload_delay,
     )
     .await
     else {
@@ -272,8 +269,6 @@ pub(super) async fn ensure_listener_task_running(
         thread_state_manager,
         pending_thread_unloads,
         thread_watch_manager,
-        thread_list_state_permit,
-        fallback_model_provider,
         codex_home,
         turn_cost_worker,
         ..
@@ -354,8 +349,6 @@ pub(super) async fn ensure_listener_task_running(
                         thread_outgoing,
                         thread_state.clone(),
                         thread_watch_manager.clone(),
-                        thread_list_state_permit.clone(),
-                        fallback_model_provider.clone(),
                     )
                     .await;
                     if matches!(event.msg, EventMsg::ShutdownComplete)
@@ -488,7 +481,10 @@ pub(super) async fn handle_thread_listener_command(
     listener_command: ThreadListenerCommand,
 ) {
     match listener_command {
-        ThreadListenerCommand::SendThreadResumeResponse(resume_request) => {
+        ThreadListenerCommand::SendThreadResumeResponse {
+            request: resume_request,
+            completion_tx,
+        } => {
             handle_pending_thread_resume_request(
                 conversation_id,
                 conversation,
@@ -501,6 +497,7 @@ pub(super) async fn handle_thread_listener_command(
                 *resume_request,
             )
             .await;
+            let _ = completion_tx.send(());
         }
         ThreadListenerCommand::EmitThreadGoalUpdated { turn_id, goal } => {
             outgoing
@@ -577,21 +574,31 @@ pub(super) async fn handle_pending_thread_resume_request(
     pending_thread_unloads: &Arc<Mutex<HashSet<ThreadId>>>,
     mut pending: crate::thread_state::PendingThreadResumeRequest,
 ) {
-    let active_turn = {
+    let (active_turn_metadata, active_turn) = {
         let state = thread_state.lock().await;
-        state.active_turn_snapshot()
+        let items_view = if pending.include_turns {
+            Some(TurnItemsView::Full)
+        } else {
+            pending
+                .initial_turns_page
+                .as_ref()
+                .map(|page| page.items_view.unwrap_or(TurnItemsView::Summary))
+        };
+        let active_turn =
+            items_view.and_then(|view| state.active_turn_snapshot_with_items_view(view));
+        (state.active_turn_metadata_snapshot(), active_turn)
     };
     tracing::debug!(
         thread_id = %conversation_id,
         request_id = ?pending.request_id,
-        active_turn_present = active_turn.is_some(),
-        active_turn_id = ?active_turn.as_ref().map(|turn| turn.id.as_str()),
-        active_turn_status = ?active_turn.as_ref().map(|turn| &turn.status),
+        active_turn_present = active_turn_metadata.is_some(),
+        active_turn_id = ?active_turn_metadata.as_ref().map(|turn| turn.turn_id.as_str()),
+        active_turn_status = ?active_turn_metadata.as_ref().map(|turn| &turn.status),
         "composing running thread resume response"
     );
     let has_live_in_progress_turn =
         matches!(conversation.agent_status().await, AgentStatus::Running)
-            || active_turn
+            || active_turn_metadata
                 .as_ref()
                 .is_some_and(|turn| matches!(turn.status, TurnStatus::InProgress));
 
@@ -622,6 +629,11 @@ pub(super) async fn handle_pending_thread_resume_request(
         thread_status.clone(),
         has_live_in_progress_turn,
     );
+    let active_turn = if pending.initial_turns_page.is_some() {
+        active_turn.or_else(|| active_turn_metadata.map(Turn::from))
+    } else {
+        None
+    };
     let mut initial_turns_page = if let Some(mut page) = pending.paginated_initial_turns_page.take()
     {
         if let (Some(active_turn), Some(params)) =
@@ -727,6 +739,7 @@ pub(super) async fn handle_pending_thread_resume_request(
     let cwd = config_snapshot.cwd().clone();
     let ThreadConfigSnapshot {
         model,
+        disabled_plugin_ids,
         model_provider_id,
         service_tier,
         approval_policy,
@@ -734,17 +747,19 @@ pub(super) async fn handle_pending_thread_resume_request(
         active_permission_profile,
         workspace_roots,
         reasoning_effort,
+        collaboration_mode,
         originator,
         ..
     } = config_snapshot;
     let instruction_sources = pending.instruction_sources;
     let active_permission_profile =
         thread_response_active_permission_profile(active_permission_profile);
-    let session_id = conversation.session_configured().session_id.to_string();
+    let session_id = conversation.startup_metadata().session_id.to_string();
     thread.session_id = session_id;
 
     let response = ThreadResumeResponse {
         thread,
+        disabled_plugin_ids,
         model,
         model_provider: model_provider_id,
         service_tier,
@@ -756,6 +771,7 @@ pub(super) async fn handle_pending_thread_resume_request(
         sandbox,
         active_permission_profile,
         reasoning_effort,
+        collaboration_mode: Some(collaboration_mode),
         multi_agent_mode: MultiAgentMode::ExplicitRequestOnly,
         initial_turns_page,
         turns_backwards_cursor,

@@ -123,6 +123,12 @@ pub struct ExtractionOutcome {
 /// Canonical persisted thread metadata.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ThreadMetadata {
+    /// Originator recorded at creation, if available.
+    pub originator: Option<String>,
+    /// ChatGPT user that created the thread, if known.
+    pub creator_user_id: Option<String>,
+    /// ChatGPT account at creation, if known.
+    pub creator_account_id: Option<String>,
     /// The thread identifier.
     pub id: ThreadId,
     /// The absolute rollout path on disk.
@@ -179,6 +185,8 @@ pub struct ThreadMetadata {
     pub section_entered_at: Option<DateTime<Utc>>,
     /// Canonical project assignment owned by app-server, if any.
     pub project_id: Option<String>,
+    /// User-selected Daybreak preference, absent until explicitly set.
+    pub daybreak_enabled: Option<bool>,
     /// The git commit SHA, if known.
     pub git_sha: Option<String>,
     /// The git branch name, if known.
@@ -190,6 +198,12 @@ pub struct ThreadMetadata {
 /// Builder data required to construct [`ThreadMetadata`] without parsing filenames.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ThreadMetadataBuilder {
+    /// Originator recorded at creation, if available.
+    pub originator: Option<String>,
+    /// ChatGPT user that created the thread, if known.
+    pub creator_user_id: Option<String>,
+    /// ChatGPT account at creation, if known.
+    pub creator_account_id: Option<String>,
     /// The thread identifier.
     pub id: ThreadId,
     /// The absolute rollout path on disk.
@@ -246,6 +260,9 @@ impl ThreadMetadataBuilder {
             created_at,
             updated_at: None,
             recency_at: None,
+            originator: None,
+            creator_user_id: None,
+            creator_account_id: None,
             source,
             history_mode: ThreadHistoryMode::Legacy,
             thread_source: None,
@@ -278,7 +295,11 @@ impl ThreadMetadataBuilder {
             .recency_at
             .map(canonicalize_datetime)
             .unwrap_or(updated_at);
+        let guardian_review = crate::is_guardian_review_source(&self.source);
         ThreadMetadata {
+            originator: self.originator.clone(),
+            creator_user_id: self.creator_user_id.clone(),
+            creator_account_id: self.creator_account_id.clone(),
             id: self.id,
             rollout_path: self.rollout_path.clone(),
             created_at,
@@ -301,9 +322,14 @@ impl ThreadMetadataBuilder {
             reasoning_effort: None,
             cwd: self.cwd.clone(),
             cli_version: self.cli_version.clone().unwrap_or_default(),
-            title: String::new(),
-            name: None,
-            preview: None,
+            title: if guardian_review {
+                crate::GUARDIAN_THREAD_TITLE.to_string()
+            } else {
+                String::new()
+            },
+            name: (guardian_review && self.history_mode == ThreadHistoryMode::Paginated)
+                .then(|| crate::GUARDIAN_THREAD_TITLE.to_string()),
+            preview: guardian_review.then(|| crate::GUARDIAN_THREAD_PREVIEW.to_string()),
             sandbox_policy,
             approval_mode,
             tokens_used: 0,
@@ -313,6 +339,7 @@ impl ThreadMetadataBuilder {
             section_position: None,
             section_entered_at: None,
             project_id: None,
+            daybreak_enabled: None,
             git_sha: self.git_sha.clone(),
             git_branch: self.git_branch.clone(),
             git_origin_url: self.git_origin_url.clone(),
@@ -356,7 +383,11 @@ impl ThreadMetadata {
         }
 
         let title = self.title.trim();
-        if title.is_empty() || self.first_user_message.as_deref().map(str::trim) == Some(title) {
+        if title.is_empty()
+            || self.first_user_message.as_deref().map(str::trim) == Some(title)
+            || (title == crate::GUARDIAN_THREAD_TITLE
+                && crate::extract::metadata_is_guardian_review(self))
+        {
             self.title = existing.title.clone();
         }
     }
@@ -378,6 +409,15 @@ impl ThreadMetadata {
         }
         if self.source != other.source {
             diffs.push("source");
+        }
+        if self.creator_user_id != other.creator_user_id {
+            diffs.push("creator_user_id");
+        }
+        if self.creator_account_id != other.creator_account_id {
+            diffs.push("creator_account_id");
+        }
+        if self.originator != other.originator {
+            diffs.push("originator");
         }
         if self.agent_nickname != other.agent_nickname {
             diffs.push("agent_nickname");
@@ -439,6 +479,9 @@ impl ThreadMetadata {
         if self.project_id != other.project_id {
             diffs.push("project_id");
         }
+        if self.daybreak_enabled != other.daybreak_enabled {
+            diffs.push("daybreak_enabled");
+        }
         if self.git_sha != other.git_sha {
             diffs.push("git_sha");
         }
@@ -458,6 +501,9 @@ fn canonicalize_datetime(dt: DateTime<Utc>) -> DateTime<Utc> {
 
 #[derive(Debug)]
 pub(crate) struct ThreadRow {
+    originator: Option<String>,
+    creator_user_id: Option<String>,
+    creator_account_id: Option<String>,
     id: String,
     rollout_path: String,
     created_at: i64,
@@ -488,6 +534,7 @@ pub(crate) struct ThreadRow {
     section_position: Option<i64>,
     section_entered_at_ms: Option<i64>,
     project_id: Option<String>,
+    daybreak_enabled: Option<bool>,
     git_sha: Option<String>,
     git_branch: Option<String>,
     git_origin_url: Option<String>,
@@ -496,6 +543,9 @@ pub(crate) struct ThreadRow {
 impl ThreadRow {
     pub(crate) fn try_from_row(row: &SqliteRow) -> Result<Self> {
         Ok(Self {
+            originator: row.try_get("originator")?,
+            creator_user_id: row.try_get("creator_user_id")?,
+            creator_account_id: row.try_get("creator_account_id")?,
             id: row.try_get("id")?,
             rollout_path: row.try_get("rollout_path")?,
             created_at: row.try_get("created_at")?,
@@ -526,6 +576,7 @@ impl ThreadRow {
             section_position: row.try_get("section_position")?,
             section_entered_at_ms: row.try_get("section_entered_at_ms")?,
             project_id: row.try_get("project_id")?,
+            daybreak_enabled: row.try_get("daybreak_enabled")?,
             git_sha: row.try_get("git_sha")?,
             git_branch: row.try_get("git_branch")?,
             git_origin_url: row.try_get("git_origin_url")?,
@@ -538,6 +589,9 @@ impl TryFrom<ThreadRow> for ThreadMetadata {
 
     fn try_from(row: ThreadRow) -> std::result::Result<Self, Self::Error> {
         let ThreadRow {
+            originator,
+            creator_user_id,
+            creator_account_id,
             id,
             rollout_path,
             created_at,
@@ -568,6 +622,7 @@ impl TryFrom<ThreadRow> for ThreadMetadata {
             section_position,
             section_entered_at_ms,
             project_id,
+            daybreak_enabled,
             git_sha,
             git_branch,
             git_origin_url,
@@ -595,6 +650,9 @@ impl TryFrom<ThreadRow> for ThreadMetadata {
         };
         Ok(Self {
             id: ThreadId::try_from(id)?,
+            originator,
+            creator_user_id,
+            creator_account_id,
             rollout_path: PathBuf::from(rollout_path),
             created_at: epoch_millis_to_datetime(created_at)?,
             updated_at: epoch_millis_to_datetime(updated_at)?,
@@ -625,6 +683,7 @@ impl TryFrom<ThreadRow> for ThreadMetadata {
                 .map(epoch_millis_to_datetime)
                 .transpose()?,
             project_id,
+            daybreak_enabled,
             git_sha,
             git_branch,
             git_origin_url: git_origin_url
@@ -704,6 +763,9 @@ mod tests {
 
     fn thread_row(reasoning_effort: Option<&str>) -> ThreadRow {
         ThreadRow {
+            originator: None,
+            creator_user_id: None,
+            creator_account_id: None,
             id: "00000000-0000-0000-0000-000000000123".to_string(),
             rollout_path: "/tmp/rollout-123.jsonl".to_string(),
             created_at: 1_700_000_000,
@@ -734,6 +796,7 @@ mod tests {
             section_position: None,
             section_entered_at_ms: None,
             project_id: None,
+            daybreak_enabled: None,
             git_sha: None,
             git_branch: None,
             git_origin_url: None,
@@ -742,6 +805,9 @@ mod tests {
 
     fn expected_thread_metadata(reasoning_effort: Option<ReasoningEffort>) -> ThreadMetadata {
         ThreadMetadata {
+            originator: None,
+            creator_user_id: None,
+            creator_account_id: None,
             id: ThreadId::from_string("00000000-0000-0000-0000-000000000123")
                 .expect("valid thread id"),
             rollout_path: PathBuf::from("/tmp/rollout-123.jsonl"),
@@ -771,6 +837,7 @@ mod tests {
             section_position: None,
             section_entered_at: None,
             project_id: None,
+            daybreak_enabled: None,
             git_sha: None,
             git_branch: None,
             git_origin_url: None,

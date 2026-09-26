@@ -1,6 +1,24 @@
+diff --git a/codex-rs/core/src/stream_events_utils.rs b/codex-rs/core/src/stream_events_utils.rs
+index 3e3456e..189b8e1 100644
+--- a/codex-rs/core/src/stream_events_utils.rs
++++ b/codex-rs/core/src/stream_events_utils.rs
+@@ -307,7 +307,10 @@ pub(crate) async fn handle_output_item_done(
+ 
+     match ToolRouter::build_tool_call(item.clone()) {
+         // The model emitted a tool call; log it, persist the item immediately, and queue the tool execution.
+-        Ok(Some(call)) => {
++        Ok(Some(mut call)) => {
++            // Resolve aliases before redaction, tracing and runtime dispatch.
++            // Persist the provider's original item below for call/result pairing.
++            ctx.tool_runtime.canonicalize_tool_call(&mut call);
+             call_trace::received(
+                 ctx.sess.thread_id,
+                 &call.tool_name,
+diff --git a/codex-rs/core/src/tools/mod.rs b/codex-rs/core/src/tools/mod.rs
+index 464996b..8eb4f5f 100644
 --- a/codex-rs/core/src/tools/mod.rs
 +++ b/codex-rs/core/src/tools/mod.rs
-@@ -11,6 +11,7 @@
+@@ -14,6 +14,7 @@ mod multi_agent_tool;
  pub(crate) mod network_approval;
  pub(crate) mod orchestrator;
  pub(crate) mod parallel;
@@ -8,9 +26,11 @@
  pub(crate) mod registry;
  pub(crate) mod router;
  pub(crate) mod runtimes;
+diff --git a/codex-rs/core/src/tools/parallel.rs b/codex-rs/core/src/tools/parallel.rs
+index 53ddadc..05ba73e 100644
 --- a/codex-rs/core/src/tools/parallel.rs
 +++ b/codex-rs/core/src/tools/parallel.rs
-@@ -61,6 +61,13 @@
+@@ -63,6 +63,13 @@ impl ToolCallRuntime {
          }
      }
  
@@ -24,15 +44,18 @@
      pub(crate) fn create_diff_consumer(
          &self,
          tool_name: &codex_tools::ToolName,
-@@ -77,6 +84,8 @@
+@@ -79,6 +86,8 @@ impl ToolCallRuntime {
          cancellation_token: CancellationToken,
      ) -> impl std::future::Future<Output = Result<ResponseItemEnvelope, CodexErr>> {
          let error_call = call.clone();
 +        let mut call = call;
 +        self.canonicalize_tool_call(&mut call);
          let source = call.direct_source();
-         let future = self.handle_tool_call_with_source(call, source, cancellation_token);
-         async move {
+         let recorder = self.session.services.executed_tool_calls.clone();
+         let recorded_call = recorder.prepare_direct_call(&call, &source, &self.step_context);
+diff --git a/codex-rs/core/src/tools/portable_namespaces.rs b/codex-rs/core/src/tools/portable_namespaces.rs
+new file mode 100644
+index 0000000..52d4712
 --- /dev/null
 +++ b/codex-rs/core/src/tools/portable_namespaces.rs
 @@ -0,0 +1,202 @@
@@ -238,9 +261,11 @@
 +        );
 +    }
 +}
+diff --git a/codex-rs/core/src/tools/router.rs b/codex-rs/core/src/tools/router.rs
+index 17f44ac..e193597 100644
 --- a/codex-rs/core/src/tools/router.rs
 +++ b/codex-rs/core/src/tools/router.rs
-@@ -9,6 +9,7 @@
+@@ -10,6 +10,7 @@ use crate::tools::context::ToolInvocation;
  use crate::tools::context::ToolPayload;
  #[cfg(test)]
  use crate::tools::handlers::ToolSearchHandlerCache;
@@ -248,7 +273,7 @@
  use crate::tools::registry::AnyToolResult;
  use crate::tools::registry::CoreToolRuntime;
  use crate::tools::registry::ToolArgumentDiffConsumer;
-@@ -74,6 +75,7 @@
+@@ -74,6 +75,7 @@ pub(crate) fn tool_log_payload<'a>(
  pub struct ToolRouter {
      registry: ToolRegistry,
      model_visible_specs: Arc<[ToolSpec]>,
@@ -256,7 +281,7 @@
      tool_mode: ToolMode,
      code_mode_tool_names: BTreeMap<String, ToolName>,
      tool_namespaces_info: Option<TurnToolNamespacesInfo>,
-@@ -122,6 +124,7 @@
+@@ -122,6 +124,7 @@ impl ToolRouter {
          let mut router = Self {
              registry,
              model_visible_specs: model_visible_specs.into(),
@@ -264,7 +289,7 @@
              tool_mode,
              code_mode_tool_names,
              tool_namespaces_info,
-@@ -135,7 +138,22 @@
+@@ -135,7 +138,22 @@ impl ToolRouter {
      }
  
      pub(crate) fn model_visible_specs(&self) -> Arc<[ToolSpec]> {
@@ -288,7 +313,7 @@
      }
  
      pub(crate) fn tool_mode(&self) -> ToolMode {
-@@ -229,17 +247,18 @@
+@@ -227,17 +245,18 @@ impl ToolRouter {
          &self,
          tool_name: &ToolName,
      ) -> Option<Box<dyn ToolArgumentDiffConsumer>> {
@@ -310,7 +335,7 @@
      }
  
      #[instrument(level = "trace", skip_all, err)]
-@@ -371,7 +390,7 @@
+@@ -371,7 +390,7 @@ impl ToolRouter {
              cancellation_token,
              tracker,
              call_id,
@@ -319,9 +344,11 @@
              source,
              payload,
          };
+diff --git a/codex-rs/core/src/tools/spec_plan.rs b/codex-rs/core/src/tools/spec_plan.rs
+index 335ce59..6530a6a 100644
 --- a/codex-rs/core/src/tools/spec_plan.rs
 +++ b/codex-rs/core/src/tools/spec_plan.rs
-@@ -483,14 +483,19 @@
+@@ -481,14 +481,19 @@ pub(crate) fn finalize_tool_router(
          .filter(|info| !info.is_empty());
      let child_management_tools = required_child_management_tool_names(turn_context, model_info);
  
@@ -343,7 +370,7 @@
  }
  
  fn apply_direct_model_only_namespace_overrides(
-@@ -559,11 +564,6 @@
+@@ -557,11 +562,6 @@ fn build_model_visible_specs(
      specs.extend(hosted_specs);
  
      merge_into_namespaces(specs)
@@ -355,17 +382,3 @@
  }
  
  fn spec_for_model_request(
---- a/codex-rs/core/src/stream_events_utils.rs
-+++ b/codex-rs/core/src/stream_events_utils.rs
-@@ -297,7 +297,10 @@
- 
-     match ToolRouter::build_tool_call(item.clone()) {
-         // The model emitted a tool call; log it, persist the item immediately, and queue the tool execution.
--        Ok(Some(call)) => {
-+        Ok(Some(mut call)) => {
-+            // Resolve aliases before redaction, tracing and runtime dispatch.
-+            // Persist the provider's original item below for call/result pairing.
-+            ctx.tool_runtime.canonicalize_tool_call(&mut call);
-             ctx.sess
-                 .input_queue
-                 .accept_mailbox_delivery_for_current_turn(

@@ -157,6 +157,8 @@ impl Connection {
         let mut command = Command::new(host_program);
         #[cfg(unix)]
         command.process_group(0);
+        #[cfg(windows)]
+        command.creation_flags(/*flags*/ 0x0800_0000); // CREATE_NO_WINDOW
         command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -323,7 +325,6 @@ impl Connection {
     pub(super) async fn open_session(
         &self,
         session: RemoteSession,
-        delegate: Arc<dyn CodeModeSessionDelegate>,
         limits: CodeModeSessionCellExecutionLimits,
     ) -> Result<SessionCleanup, String> {
         if limits != CodeModeSessionCellExecutionLimits::default()
@@ -341,7 +342,6 @@ impl Connection {
         let (response_tx, response_rx) = oneshot::channel();
         self.send(DriverCommand::OpenSession {
             session,
-            delegate,
             limits,
             cleanup: cleanup.clone(),
             caller_cancellation: cancellation.token(),
@@ -358,12 +358,14 @@ impl Connection {
         &self,
         session: RemoteSession,
         request: ExecuteRequest,
+        delegate: Arc<dyn CodeModeSessionDelegate>,
     ) -> Result<StartedCell, String> {
         let cancellation = CallerCancellation::new();
         let (response_tx, response_rx) = oneshot::channel();
         self.send(DriverCommand::Execute {
             session,
             request,
+            delegate,
             caller_cancellation: cancellation.token(),
             response_tx,
         })

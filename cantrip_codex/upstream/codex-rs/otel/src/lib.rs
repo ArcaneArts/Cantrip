@@ -4,6 +4,7 @@ pub(crate) mod metrics;
 pub(crate) mod provider;
 pub(crate) mod trace_context;
 
+mod network_policy;
 mod otlp;
 mod targets;
 mod tool_result;
@@ -67,6 +68,15 @@ impl From<AuthMode> for TelemetryAuthMode {
             | AuthMode::PersonalAccessToken => Self::Chatgpt,
         }
     }
+}
+
+/// Install externally managed, non-Statsig process-global metrics.
+///
+/// Call this once during single-threaded startup, before any instruments are
+/// registered. Keep the returned handle to flush and shut down the exporter
+/// owned by this installation.
+pub fn install_global_metrics(metrics: MetricsClient) -> MetricsClient {
+    crate::metrics::install_global(metrics)
 }
 
 /// Start a metrics timer using the globally installed metrics client.

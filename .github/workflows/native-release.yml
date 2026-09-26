@@ -201,6 +201,8 @@ jobs:
           key: cantrip-code-dependencies-${{ matrix.target }}-${{ hashFiles('cantrip_code/upstream/.nvmrc', 'cantrip_code/upstream/package-lock.json') }}
       - name: Package worker from verified runtimes
         run: pnpm package:worker --target ${{ matrix.target }}
+      - name: Verify packaged Codex runtime
+        run: node scripts/cantrip-codex/verify-built-runtime.mjs artifacts/cantrip-worker-${{ matrix.target }}/bin
       - name: Verify packaged worker MCP
         run: node scripts/verify-packaged-worker-mcp.mjs artifacts/cantrip-worker-${{ matrix.target }}
       - name: Import macOS Developer ID certificate

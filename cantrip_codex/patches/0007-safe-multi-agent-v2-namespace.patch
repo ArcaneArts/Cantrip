@@ -1,7 +1,8 @@
 diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
+index 5013f50..909d941 100644
 --- a/codex-rs/core/src/config/config_tests.rs
 +++ b/codex-rs/core/src/config/config_tests.rs
-@@ -11567,6 +11567,10 @@ async fn multi_agent_v2_default_session_thread_cap_counts_root() -> std::io::Res
+@@ -12079,6 +12079,10 @@ enabled = true
          .fallback_cwd(Some(codex_home.path().to_path_buf()))
          .build()
          .await?;
@@ -13,9 +14,11 @@ diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config
      assert_eq!(
          config.multi_agent_v2,
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
+index 9078708..d8d2fe4 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
-@@ -232,6 +232,6 @@ pub(crate) const DEFAULT_MULTI_AGENT_V2_MIN_WAIT_TIMEOUT_MS: i64 = 10_000;
+@@ -255,7 +255,7 @@ pub(crate) const DEFAULT_MULTI_AGENT_V2_MAX_CONCURRENT_THREADS_PER_SESSION: usiz
+ pub(crate) const DEFAULT_MULTI_AGENT_V2_MIN_WAIT_TIMEOUT_MS: i64 = 10_000;
  pub(crate) const DEFAULT_MULTI_AGENT_V2_MAX_WAIT_TIMEOUT_MS: i64 = 3600 * 1000;
  pub(crate) const DEFAULT_MULTI_AGENT_V2_DEFAULT_WAIT_TIMEOUT_MS: i64 = 30_000;
 -const DEFAULT_MULTI_AGENT_V2_TOOL_NAMESPACE: &str = "collaboration";

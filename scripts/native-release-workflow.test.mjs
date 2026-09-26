@@ -57,9 +57,18 @@ test("smokes the packaged worker MCP on macOS and Windows before archiving", asy
     "- name: Package worker from verified runtimes",
   );
   const verifyStep = workerJob.indexOf("- name: Verify packaged worker MCP");
+  const codexVerifyStep = workerJob.indexOf(
+    "- name: Verify packaged Codex runtime",
+  );
   const archiveStep = workerJob.indexOf("archive-distribution.mjs worker");
   assert.ok(packageStep >= 0);
   assert.ok(verifyStep > packageStep);
+  assert.ok(codexVerifyStep > packageStep);
+  assert.ok(codexVerifyStep < verifyStep);
+  assert.match(
+    workerJob,
+    /cantrip-codex\/verify-built-runtime\.mjs artifacts\/cantrip-worker-\$\{\{ matrix\.target \}\}\/bin/u,
+  );
   assert.ok(archiveStep > verifyStep);
   assert.match(
     workerJob,

@@ -1,7 +1,8 @@
 diff --git a/codex-rs/state/src/lib.rs b/codex-rs/state/src/lib.rs
+index 6d88091..8b8420e 100644
 --- a/codex-rs/state/src/lib.rs
 +++ b/codex-rs/state/src/lib.rs
-@@ -34,6 +34,7 @@
+@@ -34,6 +34,7 @@ pub use model::RolloutMigrationSkippedRollout;
  pub use model::RolloutMigrationState;
  /// Preferred entrypoint: owns configuration and metrics.
  pub use runtime::StateRuntime;
@@ -10,9 +11,10 @@ diff --git a/codex-rs/state/src/lib.rs b/codex-rs/state/src/lib.rs
  
  pub use audit::ThreadStateAuditRow;
 diff --git a/codex-rs/state/src/model/thread_goal.rs b/codex-rs/state/src/model/thread_goal.rs
+index 93d8c3f..354f761 100644
 --- a/codex-rs/state/src/model/thread_goal.rs
 +++ b/codex-rs/state/src/model/thread_goal.rs
-@@ -3,13 +3,14 @@
+@@ -3,13 +3,14 @@ use anyhow::anyhow;
  use chrono::DateTime;
  use chrono::Utc;
  use codex_protocol::ThreadId;
@@ -28,7 +30,7 @@ diff --git a/codex-rs/state/src/model/thread_goal.rs b/codex-rs/state/src/model/
  #[serde(rename_all = "snake_case")]
  pub enum ThreadGoalStatus {
      Active,
-@@ -57,7 +58,7 @@
+@@ -57,7 +58,7 @@ impl TryFrom<&str> for ThreadGoalStatus {
      }
  }
  
@@ -37,15 +39,26 @@ diff --git a/codex-rs/state/src/model/thread_goal.rs b/codex-rs/state/src/model/
  pub struct ThreadGoal {
      pub thread_id: ThreadId,
      pub goal_id: String,
+diff --git a/codex-rs/state/src/runtime.rs b/codex-rs/state/src/runtime.rs
+index 376ad68..1090735 100644
+--- a/codex-rs/state/src/runtime.rs
++++ b/codex-rs/state/src/runtime.rs
+@@ -46,6 +46,7 @@ mod logs;
+ mod memories;
+ mod memory_versions;
+ mod projects;
++pub(crate) mod portable_thread;
+ mod queued_items;
+ mod recovery;
+ mod remote_control;
 diff --git a/codex-rs/state/src/runtime/goals.rs b/codex-rs/state/src/runtime/goals.rs
+index 939659c..0881abf 100644
 --- a/codex-rs/state/src/runtime/goals.rs
 +++ b/codex-rs/state/src/runtime/goals.rs
-@@ -64,6 +64,53 @@
-         .await?;
- 
+@@ -66,6 +66,53 @@ WHERE thread_id = ?
          row.map(|row| thread_goal_from_row(&row)).transpose()
-+    }
-+
+     }
+ 
 +    /// Restore only an absent goal or verify an exact interrupted import.
 +    /// A late transfer must never reset a newer goal's usage or configuration.
 +    pub(super) async fn restore_portable_thread_goal(
@@ -91,11 +104,14 @@ diff --git a/codex-rs/state/src/runtime/goals.rs b/codex-rs/state/src/runtime/go
 +        }
 +        transaction.commit().await?;
 +        Ok(())
-     }
- 
++    }
++
      pub async fn replace_thread_goal_snapshot(
+         &self,
+         goal: &crate::ThreadGoal,
 diff --git a/codex-rs/state/src/runtime/portable_thread.rs b/codex-rs/state/src/runtime/portable_thread.rs
 new file mode 100644
+index 0000000..acb8c99
 --- /dev/null
 +++ b/codex-rs/state/src/runtime/portable_thread.rs
 @@ -0,0 +1,185 @@
@@ -285,9 +301,10 @@ new file mode 100644
 +    }
 +}
 diff --git a/codex-rs/state/src/runtime/threads.rs b/codex-rs/state/src/runtime/threads.rs
+index 3a96225..86613a2 100644
 --- a/codex-rs/state/src/runtime/threads.rs
 +++ b/codex-rs/state/src/runtime/threads.rs
-@@ -358,7 +358,7 @@
+@@ -367,7 +367,7 @@ ON CONFLICT(child_thread_id) DO NOTHING
          Ok(())
      }
  
@@ -296,7 +313,7 @@ diff --git a/codex-rs/state/src/runtime/threads.rs b/codex-rs/state/src/runtime/
          &self,
          child_thread_id: ThreadId,
          source: &str,
-@@ -602,6 +602,22 @@
+@@ -611,6 +611,22 @@ ON CONFLICT(child_thread_id) DO NOTHING
      pub async fn insert_thread_if_absent(
          &self,
          metadata: &crate::ThreadMetadata,
@@ -319,13 +336,14 @@ diff --git a/codex-rs/state/src/runtime/threads.rs b/codex-rs/state/src/runtime/
      ) -> anyhow::Result<bool> {
          let updated_at = self.allocate_thread_updated_at(metadata.updated_at)?;
          let recency_at = self.allocate_thread_recency_at(metadata.recency_at)?;
-@@ -693,12 +709,10 @@
+@@ -709,13 +725,11 @@ ON CONFLICT(id) DO NOTHING
          .bind(metadata.git_sha.as_deref())
          .bind(metadata.git_branch.as_deref())
          .bind(metadata.git_origin_url.as_deref())
 -        .bind("enabled")
 +        .bind(memory_mode)
          .bind(metadata.project_id.as_deref())
+         .bind(metadata.daybreak_enabled)
 -        .execute(self.pool.as_ref())
 +        .execute(&mut **transaction)
          .await?;
@@ -334,21 +352,11 @@ diff --git a/codex-rs/state/src/runtime/threads.rs b/codex-rs/state/src/runtime/
          Ok(result.rows_affected() > 0)
      }
  
-diff --git a/codex-rs/state/src/runtime.rs b/codex-rs/state/src/runtime.rs
---- a/codex-rs/state/src/runtime.rs
-+++ b/codex-rs/state/src/runtime.rs
-@@ -45,6 +45,7 @@
- mod logs;
- mod memories;
- mod projects;
-+pub(crate) mod portable_thread;
- mod queued_items;
- mod recovery;
- mod remote_control;
 diff --git a/codex-rs/thread-store/src/local/portable_history.rs b/codex-rs/thread-store/src/local/portable_history.rs
+index 1e6d0c8..8332f89 100644
 --- a/codex-rs/thread-store/src/local/portable_history.rs
 +++ b/codex-rs/thread-store/src/local/portable_history.rs
-@@ -96,10 +96,15 @@
+@@ -96,10 +96,15 @@ pub(super) async fn export(
              break;
          }
      }
@@ -366,9 +374,10 @@ diff --git a/codex-rs/thread-store/src/local/portable_history.rs b/codex-rs/thre
          queue,
      })
 diff --git a/codex-rs/thread-store/src/local/portable_history_import.rs b/codex-rs/thread-store/src/local/portable_history_import.rs
+index baf6960..36e611e 100644
 --- a/codex-rs/thread-store/src/local/portable_history_import.rs
 +++ b/codex-rs/thread-store/src/local/portable_history_import.rs
-@@ -156,7 +156,7 @@
+@@ -156,7 +156,7 @@ pub(super) async fn import(
          .map_err(error)?;
      // Metadata is the final visibility step. No existing row is overwritten.
      let inserted = database
@@ -377,7 +386,7 @@ diff --git a/codex-rs/thread-store/src/local/portable_history_import.rs b/codex-
          .await
          .map_err(error)?;
      if !inserted
-@@ -181,7 +181,7 @@
+@@ -181,7 +181,7 @@ pub(super) async fn import(
  }
  
  fn validate(snapshot: &PortableThreadHistory) -> ThreadStoreResult<Vec<String>> {
@@ -386,7 +395,7 @@ diff --git a/codex-rs/thread-store/src/local/portable_history_import.rs b/codex-
          || snapshot.metadata.id != snapshot.thread_id
          || snapshot.segments.is_empty()
      {
-@@ -215,10 +215,11 @@
+@@ -215,10 +215,11 @@ fn validate(snapshot: &PortableThreadHistory) -> ThreadStoreResult<Vec<String>>
              return Err(conflict("portable history contains an unrelated segment"));
          }
          for line in lines {
@@ -403,9 +412,10 @@ diff --git a/codex-rs/thread-store/src/local/portable_history_import.rs b/codex-
          let suffix = if meta.meta.id == segment.rollout_id {
              String::new()
 diff --git a/codex-rs/thread-store/src/portable_history.rs b/codex-rs/thread-store/src/portable_history.rs
+index 7e5d55d..6f8ffbf 100644
 --- a/codex-rs/thread-store/src/portable_history.rs
 +++ b/codex-rs/thread-store/src/portable_history.rs
-@@ -12,6 +12,7 @@
+@@ -12,6 +12,7 @@ pub struct PortableThreadHistory {
      pub version: u32,
      pub thread_id: ThreadId,
      pub metadata: ThreadMetadata,

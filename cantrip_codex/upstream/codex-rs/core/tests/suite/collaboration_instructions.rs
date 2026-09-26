@@ -2,7 +2,6 @@ use anyhow::Result;
 use codex_core::TurnInputRequest;
 use codex_features::Feature;
 use codex_history::RolloutItem;
-use codex_history::RolloutLine;
 use codex_login::CodexAuth;
 use codex_models_manager::model_info::model_info_from_slug;
 use codex_protocol::config_types::CollaborationMode;
@@ -952,13 +951,14 @@ async fn resume_replays_collaboration_instructions() -> Result<()> {
     .await;
 
     let mut builder = test_codex();
-    let initial = builder.build(&server).await?;
+    let initial = builder.build_with_auto_env(&server).await?;
 
     let collab_text = "resume instructions";
+    let mode = collab_mode_for_model(ModeKind::Plan, "gpt-5.5", Some(collab_text));
     core_test_support::submit_thread_settings(
         &initial.codex,
         ThreadSettingsOverrides {
-            collaboration_mode: Some(collab_mode_with_instructions(Some(collab_text))),
+            collaboration_mode: Some(mode),
             ..Default::default()
         },
     )
@@ -974,6 +974,15 @@ async fn resume_replays_collaboration_instructions() -> Result<()> {
     wait_for_event(&initial.codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
 
     let resumed = builder.restart(&server, &initial).await?;
+    assert_eq!(
+        resumed
+            .codex
+            .config_snapshot()
+            .await
+            .collaboration_mode
+            .mode,
+        ModeKind::Plan
+    );
     resumed
         .codex
         .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
@@ -1037,7 +1046,7 @@ async fn cold_resume_refreshes_legacy_collaboration_snapshot_once(
     let legacy_rollout = std::fs::read_to_string(&rollout_path)?
         .lines()
         .map(|original_line| {
-            let mut line = serde_json::from_str::<RolloutLine>(original_line)?;
+            let mut line = codex_rollout::parse_rollout_line(original_line)?;
             if let RolloutItem::WorldState(world_state) = &mut line.item
                 && let Some(snapshot) = world_state.state.get_mut("collaboration_mode")
             {

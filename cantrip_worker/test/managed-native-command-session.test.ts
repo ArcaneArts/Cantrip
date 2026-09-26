@@ -724,8 +724,8 @@ describe("managed native command session", () => {
       );
       released = f.adapter.awaitExecutionReleased();
       await f.adapter.executeGuiCommand(preparedSession, {
-        method: "thread/rollback",
-        params: { threadId: "thread", numTurns: 1 },
+        method: "thread/revert",
+        params: { threadId: "thread", beforeTurnId: "turn" },
         dispatch: async () => {
           f.order.push("rollback");
           return {};

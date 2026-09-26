@@ -1,8 +1,8 @@
 diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
-index 6c00f88..df93ee2 100644
+index 8ddf160..fd56161 100644
 --- a/codex-rs/app-server-protocol/src/protocol/common.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/common.rs
-@@ -992,6 +992,11 @@ client_request_definitions! {
+@@ -1052,6 +1052,11 @@ client_request_definitions! {
          serialization: thread_id(params.thread_id),
          response: v2::TurnInterruptResponse,
      },
@@ -15,10 +15,10 @@ index 6c00f88..df93ee2 100644
      ThreadRealtimeStart => "thread/realtime/start" {
          params: v2::ThreadRealtimeStartParams,
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/turn.rs b/codex-rs/app-server-protocol/src/protocol/v2/turn.rs
-index 9629a78..e26288a 100644
+index f938d17..b05221c 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/turn.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/turn.rs
-@@ -318,6 +318,22 @@ pub struct TurnInterruptParams {
+@@ -334,6 +334,22 @@ pub struct TurnInterruptParams {
  #[ts(export_to = "v2/")]
  pub struct TurnInterruptResponse {}
  
@@ -42,10 +42,10 @@ index 9629a78..e26288a 100644
  #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
  #[serde(rename_all = "camelCase")]
 diff --git a/codex-rs/app-server/src/message_processor.rs b/codex-rs/app-server/src/message_processor.rs
-index 8e78c92..3742463 100644
+index 9e9a904..45192e0 100644
 --- a/codex-rs/app-server/src/message_processor.rs
 +++ b/codex-rs/app-server/src/message_processor.rs
-@@ -1486,6 +1486,9 @@ impl MessageProcessor {
+@@ -1645,6 +1645,9 @@ impl MessageProcessor {
                      .turn_interrupt(&request_id, params)
                      .await
              }
@@ -56,10 +56,10 @@ index 8e78c92..3742463 100644
                  self.turn_processor
                      .thread_realtime_start(&request_id, params)
 diff --git a/codex-rs/app-server/src/request_processors.rs b/codex-rs/app-server/src/request_processors.rs
-index 60875fa..81773cd 100644
+index c6b3693..f89f8fd 100644
 --- a/codex-rs/app-server/src/request_processors.rs
 +++ b/codex-rs/app-server/src/request_processors.rs
-@@ -303,6 +303,8 @@ use codex_app_server_protocol::TurnItemsView;
+@@ -302,6 +302,8 @@ use codex_app_server_protocol::TurnItemsView;
  use codex_app_server_protocol::TurnSettingsUpdateParams;
  use codex_app_server_protocol::TurnSettingsUpdateResponse;
  use codex_app_server_protocol::TurnSettingsUpdateStatus;
@@ -69,10 +69,10 @@ index 60875fa..81773cd 100644
  use codex_app_server_protocol::TurnStartResponse;
  use codex_app_server_protocol::TurnStatus;
 diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/codex-rs/app-server/src/request_processors/turn_processor.rs
-index 833475f..d2f547a 100644
+index e3b0d0b..95c1217 100644
 --- a/codex-rs/app-server/src/request_processors/turn_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/turn_processor.rs
-@@ -266,6 +266,16 @@ impl TurnRequestProcessor {
+@@ -275,6 +275,16 @@ impl TurnRequestProcessor {
          result.map(|response| response.map(Into::into))
      }
  
@@ -89,7 +89,7 @@ index 833475f..d2f547a 100644
      pub(crate) async fn thread_realtime_start(
          &self,
          request_id: &ConnectionRequestId,
-@@ -1622,6 +1632,43 @@ impl TurnRequestProcessor {
+@@ -1656,6 +1666,43 @@ impl TurnRequestProcessor {
          }
      }
  
@@ -134,10 +134,10 @@ index 833475f..d2f547a 100644
          ListenerTaskContext {
              thread_manager: Arc::clone(&self.thread_manager),
 diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
-index 172726f..31add45 100644
+index 24d5a89..6b8a916 100644
 --- a/codex-rs/core/src/codex_thread.rs
 +++ b/codex-rs/core/src/codex_thread.rs
-@@ -301,6 +301,34 @@ impl CodexThread {
+@@ -322,6 +322,34 @@ impl CodexThread {
          self.session.flush_rollout().await
      }
  
@@ -173,11 +173,11 @@ index 172726f..31add45 100644
          &self,
          op: Op,
 diff --git a/codex-rs/core/src/session/handlers.rs b/codex-rs/core/src/session/handlers.rs
-index e4594f7..612d6cc 100644
+index 8ab5964..baffca6 100644
 --- a/codex-rs/core/src/session/handlers.rs
 +++ b/codex-rs/core/src/session/handlers.rs
-@@ -542,6 +542,10 @@ pub(super) async fn submission_loop(
-                     interrupt(&sess).await;
+@@ -433,6 +433,10 @@ pub(super) async fn submission_loop(
+                         .await;
                      false
                  }
 +                Op::SetTurnPaused { paused } => {
@@ -188,10 +188,10 @@ index e4594f7..612d6cc 100644
                      clean_background_terminals(&sess).await;
                      false
 diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
-index 9130036..b5cee67 100644
+index b977bb1..880e222 100644
 --- a/codex-rs/core/src/session/mod.rs
 +++ b/codex-rs/core/src/session/mod.rs
-@@ -1215,6 +1215,23 @@ impl Session {
+@@ -1366,6 +1366,23 @@ impl Session {
          self.services.elicitations.subscribe()
      }
  
@@ -216,10 +216,10 @@ index 9130036..b5cee67 100644
          self.agent_status.send_replace(AgentStatus::Interrupted);
      }
 diff --git a/codex-rs/core/src/session/session.rs b/codex-rs/core/src/session/session.rs
-index 6d1953e..3a1f7d2 100644
+index da91f5e..a75f83f 100644
 --- a/codex-rs/core/src/session/session.rs
 +++ b/codex-rs/core/src/session/session.rs
-@@ -67,6 +67,8 @@ pub(crate) struct Session {
+@@ -88,6 +88,8 @@ pub(crate) struct Session {
      pub(crate) conversation: Arc<RealtimeConversationManager>,
      pub(crate) realtime_history: Option<Mutex<crate::realtime_history::RealtimeHistoryState>>,
      pub(crate) active_turn: Mutex<Option<ActiveTurn>>,
@@ -227,8 +227,8 @@ index 6d1953e..3a1f7d2 100644
 +    pub(crate) turn_pause_boundary_state: watch::Sender<bool>,
      pub(crate) async_hook_results: async_channel::Receiver<HookCompletedEvent>,
      pub(crate) input_queue: InputQueue,
-     pub(crate) guardian_review_session: GuardianReviewSessionManager,
-@@ -1485,6 +1487,8 @@ impl Session {
+     pub(crate) services: SessionServices,
+@@ -1745,6 +1747,8 @@ impl Session {
                  turn_environments: Arc::clone(&turn_environments),
              };
              let (mcp_prewarm_tx, mcp_prewarm_rx) = async_channel::bounded(1);
@@ -237,7 +237,7 @@ index 6d1953e..3a1f7d2 100644
              let sess = Arc::new(Session {
                  thread_id,
                  installation_id,
-@@ -1507,6 +1511,8 @@ impl Session {
+@@ -1771,6 +1775,8 @@ impl Session {
                      && services.live_thread.is_some())
                  .then(|| Mutex::new(Default::default())),
                  active_turn: Mutex::new(None),
@@ -245,12 +245,12 @@ index 6d1953e..3a1f7d2 100644
 +                turn_pause_boundary_state,
                  async_hook_results,
                  input_queue: InputQueue::new(),
-                 guardian_review_session: GuardianReviewSessionManager::default(),
+                 services,
 diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
-index b5931b3..54d9911 100644
+index 9a61d17..f04ad45 100644
 --- a/codex-rs/core/src/session/tests.rs
 +++ b/codex-rs/core/src/session/tests.rs
-@@ -6599,6 +6599,8 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
+@@ -6536,6 +6536,8 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
          turn_environments: Arc::clone(&turn_environments),
      };
  
@@ -259,7 +259,7 @@ index b5931b3..54d9911 100644
      let session = Session {
          thread_id,
          installation_id: "11111111-1111-4111-8111-111111111111".to_string(),
-@@ -6620,6 +6622,8 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
+@@ -6561,6 +6563,8 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
          conversation: Arc::new(RealtimeConversationManager::new()),
          realtime_history: None,
          active_turn: Mutex::new(None),
@@ -267,8 +267,8 @@ index b5931b3..54d9911 100644
 +        turn_pause_boundary_state,
          async_hook_results,
          input_queue: super::input_queue::InputQueue::new(),
-         guardian_review_session: crate::guardian::GuardianReviewSessionManager::default(),
-@@ -8899,6 +8903,8 @@ where
+         services,
+@@ -8806,6 +8810,8 @@ where
          turn_environments: Arc::clone(&turn_environments),
      };
  
@@ -277,7 +277,7 @@ index b5931b3..54d9911 100644
      let session = Arc::new(Session {
          thread_id,
          installation_id: "11111111-1111-4111-8111-111111111111".to_string(),
-@@ -8920,6 +8926,8 @@ where
+@@ -8831,6 +8837,8 @@ where
          conversation: Arc::new(RealtimeConversationManager::new()),
          realtime_history: None,
          active_turn: Mutex::new(None),
@@ -285,14 +285,14 @@ index b5931b3..54d9911 100644
 +        turn_pause_boundary_state,
          async_hook_results,
          input_queue: super::input_queue::InputQueue::new(),
-         guardian_review_session: crate::guardian::GuardianReviewSessionManager::default(),
+         services,
 diff --git a/codex-rs/core/src/session/turn.rs b/codex-rs/core/src/session/turn.rs
-index f7c4268..2c772c3 100644
+index 8f96220..cdc48c1 100644
 --- a/codex-rs/core/src/session/turn.rs
 +++ b/codex-rs/core/src/session/turn.rs
-@@ -138,6 +138,34 @@ use tracing::warn;
- 
- const POST_SAMPLING_TOKEN_ESTIMATE_TARGET: &str = "codex_core::post_sampling_token_estimate";
+@@ -146,6 +146,34 @@ pub(crate) struct McpStartupRequirements {
+     required_plugins: HashSet<String>,
+ }
  
 +async fn wait_for_turn_resume(
 +    sess: &Session,
@@ -325,10 +325,10 @@ index f7c4268..2c772c3 100644
  /// Takes initial turn input and runs a loop where, at each sampling request,
  /// the model replies with either:
  ///
-@@ -309,7 +337,9 @@ pub(crate) async fn run_turn(
-     // 2. After auto-compact, when model/tool continuation needs to resume before any steer.
+@@ -420,7 +448,9 @@ pub(crate) async fn run_turn(
  
      let mut next_step_context = Some(first_step_context);
+     let mut guardian_budget_compacted = false;
 +    let mut turn_pause_state = sess.subscribe_turn_pause_state();
      loop {
 +        wait_for_turn_resume(sess.as_ref(), &mut turn_pause_state, &cancellation_token).await?;
@@ -336,7 +336,7 @@ index f7c4268..2c772c3 100644
          // submitted through the UI while the model was running. Though the UI
          // may support this, the model might not.
 diff --git a/codex-rs/core/src/session/turn_tests.rs b/codex-rs/core/src/session/turn_tests.rs
-index d628f60..5f6b764 100644
+index f60ea8b..9446c72 100644
 --- a/codex-rs/core/src/session/turn_tests.rs
 +++ b/codex-rs/core/src/session/turn_tests.rs
 @@ -58,6 +58,39 @@ fn post_sampling_token_estimate_is_disabled_by_always_on_sinks() {
@@ -380,26 +380,26 @@ index d628f60..5f6b764 100644
  async fn plan_mode_uses_contributed_turn_item_for_last_agent_message() {
      let (mut session, turn_context) = crate::session::tests::make_session_and_context().await;
 diff --git a/codex-rs/core/src/tasks/mod.rs b/codex-rs/core/src/tasks/mod.rs
-index 5bf4101..5f59967 100644
+index 2ad6096..1689bc1 100644
 --- a/codex-rs/core/src/tasks/mod.rs
 +++ b/codex-rs/core/src/tasks/mod.rs
-@@ -565,6 +565,7 @@ impl Session {
-         let Some(mut active_turn) = active_turn else {
+@@ -589,6 +589,7 @@ impl Session {
+         let Some(active_turn) = active_turn else {
              return false;
          };
 +        self.set_turn_paused(false);
  
-         let task = active_turn.task.take();
-         let turn_context = task.as_ref().map(|task| Arc::clone(&task.turn_context));
-@@ -855,6 +856,7 @@ impl Session {
-             }
-         };
+         self.finish_turn_abort(active_turn, reason).await;
+         true
+@@ -864,6 +865,7 @@ impl Session {
+             self.send_event(turn_context.as_ref(), event).await;
+         }
          if cleared_active_turn {
 +            self.set_turn_paused(false);
              self.emit_thread_idle_lifecycle_if_idle(idle_cause).await;
          }
-         // Regular items were flushed before this terminal event was appended; buffering
-@@ -878,7 +880,11 @@ impl Session {
+         // Private reviewers already flushed the terminal event before delivering it.
+@@ -887,7 +889,11 @@ impl Session {
          {
              self.mark_interrupted();
          }
@@ -413,12 +413,12 @@ index 5bf4101..5f59967 100644
  
      pub(crate) async fn close_unified_exec_processes(&self) {
 diff --git a/codex-rs/protocol/src/protocol.rs b/codex-rs/protocol/src/protocol.rs
-index ae2107b..f66722e 100644
+index 397e2d0..babb545 100644
 --- a/codex-rs/protocol/src/protocol.rs
 +++ b/codex-rs/protocol/src/protocol.rs
-@@ -594,6 +594,9 @@ pub enum Op {
-     /// This server sends [`EventMsg::TurnAborted`] in response.
-     Interrupt,
+@@ -599,6 +599,9 @@ pub enum Op {
+         reply: oneshot::Sender<bool>,
+     },
  
 +    /// Hold the active turn at the next model/tool boundary until resumed.
 +    SetTurnPaused { paused: bool },
@@ -427,9 +427,9 @@ index ae2107b..f66722e 100644
      /// Use this when callers intentionally want to stop long-lived background shells.
      CleanBackgroundTerminals,
 @@ -931,6 +934,7 @@ impl Op {
-     pub fn kind(&self) -> &'static str {
          match self {
              Self::Interrupt => "interrupt",
+             Self::InterruptIfNoPendingInput { .. } => "interrupt_if_no_pending_input",
 +            Self::SetTurnPaused { .. } => "set_turn_paused",
              Self::CleanBackgroundTerminals => "clean_background_terminals",
              Self::RealtimeConversationStart(_) => "realtime_conversation_start",

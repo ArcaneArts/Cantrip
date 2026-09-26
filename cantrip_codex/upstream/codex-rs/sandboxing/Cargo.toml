@@ -12,14 +12,12 @@ doctest = false
 [lints]
 workspace = true
 
-# This direct dependency pins MXC's transitive ETW dependency for Windows GNU linking.
-[package.metadata.cargo-shear]
-ignored = ["tracelogging"]
-
 [dependencies]
 anyhow = { workspace = true }
+codex-mxc-sandbox = { workspace = true }
 codex-network-proxy = { workspace = true }
 codex-protocol = { workspace = true }
+codex-uds = { workspace = true }
 codex-utils-absolute-path = { workspace = true }
 codex-utils-path-uri = { workspace = true }
 codex-utils-pty = { workspace = true }
@@ -34,11 +32,8 @@ url = { workspace = true }
 which = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
-appcontainer_common = { workspace = true }
 codex-otel = { workspace = true }
 codex-utils-home-dir = { workspace = true }
-# 1.2.4 imports OneCore_apiset, which the GNU Windows toolchain does not ship.
-tracelogging = "=1.2.3"
 
 [dev-dependencies]
 anyhow = { workspace = true }

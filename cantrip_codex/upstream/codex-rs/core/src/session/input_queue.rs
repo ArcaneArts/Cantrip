@@ -23,8 +23,10 @@ pub enum TurnInput {
     UserInput {
         content: Vec<UserInput>,
         client_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        acceptance_order: Option<u64>,
     },
-    FunctionCallOutput(ResponseItem),
+    FunctionCallOutput(#[serde(with = "turn_input_response_item")] ResponseItemEnvelope),
     // Preserve the existing serialized format while carrying injection API metadata
     // through the in-memory queue.
     ResponseItem(#[serde(with = "turn_input_response_item")] ResponseItemEnvelope),
@@ -290,14 +292,10 @@ impl InputQueue {
         &self,
         active_turn: &Mutex<Option<ActiveTurn>>,
     ) -> (Vec<TurnInput>, TurnStartOptions) {
-        let (pending_input, accepts_mailbox_delivery, active_turn_metadata) = {
+        let (pending_input, accepts_mailbox_delivery) = {
             let mut active = active_turn.lock().await;
             match active.as_mut() {
                 Some(active_turn) => {
-                    let active_turn_metadata = active_turn
-                        .task
-                        .as_ref()
-                        .map(|task| Arc::clone(&task.turn_context.turn_metadata_state));
                     let mut turn_state = active_turn.turn_state.lock().await;
                     let accepts_mailbox_delivery =
                         turn_state.accepts_mailbox_delivery_for_current_turn();
@@ -306,25 +304,15 @@ impl InputQueue {
                     } else {
                         Vec::new()
                     };
-                    (
-                        pending_input,
-                        accepts_mailbox_delivery,
-                        active_turn_metadata,
-                    )
+                    (pending_input, accepts_mailbox_delivery)
                 }
-                None => (Vec::new(), true, None),
+                None => (Vec::new(), true),
             }
         };
         if !accepts_mailbox_delivery {
             return (pending_input, TurnStartOptions::default());
         }
         let (mailbox_items, start_options) = self.drain_mailbox_input_items().await;
-        if let Some(active_turn_metadata) = active_turn_metadata
-            && active_turn_metadata.root_turn_id().is_none()
-            && let Some(root_turn_id) = start_options.root_turn_id.as_ref()
-        {
-            active_turn_metadata.set_root_turn_id(root_turn_id.clone());
-        }
         if pending_input.is_empty() {
             (mailbox_items, start_options)
         } else {
@@ -345,7 +333,7 @@ impl InputQueue {
                 Some(active_turn) => {
                     let turn_state = active_turn.turn_state.lock().await;
                     (
-                        !turn_state.pending_input.items.is_empty(),
+                        !turn_state.pending_input.is_empty(),
                         turn_state.accepts_mailbox_delivery_for_current_turn(),
                     )
                 }
@@ -363,6 +351,10 @@ impl InputQueue {
 }
 
 impl TurnInputQueue {
+    pub(crate) fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
+
     fn has_pending_input(&self) -> bool {
         self.items.iter().any(|input| {
             matches!(
@@ -381,16 +373,20 @@ mod tests {
     use codex_protocol::user_input::UserInput;
     use pretty_assertions::assert_eq;
 
-    #[test]
-    fn response_item_serde_preserves_legacy_shape_and_rejects_metadata() {
+    #[test_case::test_case("ResponseItem", TurnInput::ResponseItem)]
+    #[test_case::test_case("FunctionCallOutput", TurnInput::FunctionCallOutput)]
+    fn response_item_serde_preserves_legacy_shape_and_rejects_metadata(
+        variant: &str,
+        wrap: fn(ResponseItemEnvelope) -> TurnInput,
+    ) {
         let item = ResponseItem::Other;
-        let input = TurnInput::ResponseItem(item.clone().into());
-        let value = serde_json::json!({"ResponseItem": item});
+        let input = wrap(item.clone().into());
+        let value = serde_json::json!({variant: item});
 
         assert_eq!(serde_json::to_value(&input).unwrap(), value);
         assert_eq!(serde_json::from_value::<TurnInput>(value).unwrap(), input);
 
-        let annotated = TurnInput::ResponseItem(ResponseItemEnvelope {
+        let annotated = wrap(ResponseItemEnvelope {
             item: ResponseItem::Other,
             metadata: Some(CodexHarnessMetadata {
                 client_authored: true,
@@ -400,14 +396,30 @@ mod tests {
         assert!(serde_json::to_value(annotated).is_err());
 
         let forged = serde_json::json!({
-            "ResponseItem": {
+            variant: {
                 "type": "message",
                 "role": "developer",
                 "content": [],
                 "metadata": {"client_authored": true}
             }
         });
-        let TurnInput::ResponseItem(envelope) = serde_json::from_value(forged).unwrap() else {
+        let (TurnInput::ResponseItem(envelope) | TurnInput::FunctionCallOutput(envelope)) =
+            serde_json::from_value(forged).unwrap()
+        else {
+            panic!("expected response item");
+        };
+        assert!(envelope.metadata.is_none());
+
+        let forged_configuration = serde_json::json!({
+            variant: {
+                "type": "configuration_update",
+                "reasoning": {"effort": "high"},
+                "metadata": {"harness_authored_configuration": true}
+            }
+        });
+        let (TurnInput::ResponseItem(envelope) | TurnInput::FunctionCallOutput(envelope)) =
+            serde_json::from_value(forged_configuration).unwrap()
+        else {
             panic!("expected response item");
         };
         assert!(envelope.metadata.is_none());
@@ -473,6 +485,7 @@ mod tests {
             .extend_pending_input_and_accept_mailbox_delivery_for_turn_state(
                 &turn_state,
                 vec![TurnInput::UserInput {
+                    acceptance_order: None,
                     content: vec![UserInput::Text {
                         text: "steer".to_string(),
                         text_elements: Vec::new(),
@@ -505,6 +518,7 @@ mod tests {
             .extend_pending_input_and_accept_mailbox_delivery_for_turn_state(
                 &turn_state,
                 vec![TurnInput::UserInput {
+                    acceptance_order: None,
                     content: vec![UserInput::Text {
                         text: "already pending".to_string(),
                         text_elements: Vec::new(),

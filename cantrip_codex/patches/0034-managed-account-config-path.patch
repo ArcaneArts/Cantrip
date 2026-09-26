@@ -1,20 +1,21 @@
 diff --git a/codex-rs/app-server/src/lib.rs b/codex-rs/app-server/src/lib.rs
+index 4ef6a9c..deac48d 100644
 --- a/codex-rs/app-server/src/lib.rs
 +++ b/codex-rs/app-server/src/lib.rs
-@@ -471,6 +471,12 @@
-     let loader_overrides = loader_overrides_with_test_user_config_file(
+@@ -505,6 +505,12 @@ pub async fn run_main_with_transport_options(
          loader_overrides,
          test_user_config_file_from_env(),
-+    )?;
+     )?;
 +    let loader_overrides = loader_overrides_with_managed_user_config_file(
 +        loader_overrides,
 +        std::env::var_os("CANTRIP_CODEX_USER_CONFIG_FILE")
 +            .filter(|value| !value.is_empty())
 +            .map(std::path::PathBuf::from),
-     )?;
++    )?;
      let (transport_event_tx, mut transport_event_rx) =
          mpsc::channel::<TransportEvent>(CHANNEL_CAPACITY);
-@@ -1335,6 +1341,32 @@
+     let (outgoing_tx, mut outgoing_rx) = mpsc::channel::<OutgoingEnvelope>(CHANNEL_CAPACITY);
+@@ -1473,6 +1479,32 @@ fn emit_state_db_backup_warning(message: &str) {
      }
  }
  

@@ -1,4 +1,4 @@
-/** Explicit inventory for pinned Codex 0.153.4 + the reviewed Cantrip patches.
+/** Explicit inventory for pinned Codex 0.157.1 + the reviewed Cantrip patches.
  * Unknown methods fail closed; a known mutation still requires admission.
  * Read labels describe authority, not whether native discovery allocates clients.
  */
@@ -21,6 +21,7 @@ const groups: Record<ManagedNativeMethodKind, readonly string[]> = {
     "thread/list",
     "thread/loaded/list",
     "thread/read",
+    "thread/attachment/list",
     "thread/settings/read",
     "thread/settings/operation/read",
     "thread/turns/list",
@@ -41,6 +42,8 @@ const groups: Record<ManagedNativeMethodKind, readonly string[]> = {
     "account/usage/read",
     "account/workspaceMessages/read",
     "getAuthStatus",
+    "userVerification/status",
+    "memory/status",
   ],
   attach: ["thread/resume", "thread/unsubscribe"],
   start: [
@@ -77,6 +80,8 @@ const groups: Record<ManagedNativeMethodKind, readonly string[]> = {
     "thread/fork",
     "thread/archive",
     "thread/delete",
+    "thread/attachment/add",
+    "thread/attachment/remove",
     "thread/increment_elicitation",
     "thread/decrement_elicitation",
     "thread/name/set",
@@ -95,7 +100,6 @@ const groups: Record<ManagedNativeMethodKind, readonly string[]> = {
     "thread/approveGuardianDeniedAction",
     "thread/backgroundTerminals/clean",
     "thread/backgroundTerminals/terminate",
-    "thread/rollback",
     "thread/revert",
     "thread/inject_items",
     "project/list",
@@ -159,6 +163,14 @@ const groups: Record<ManagedNativeMethodKind, readonly string[]> = {
     "windowsSandbox/setupStart",
     "windowsSandbox/readiness",
     "account/login/start",
+    "account/gatewayOAuth/read",
+    "account/gatewayOAuth/login",
+    "account/gatewayOAuth/cancel",
+    "userVerification/enroll",
+    "userVerification/delete",
+    "userVerification/verify",
+    "userVerification/cancel",
+    "rollout/compress",
     "account/bedrock/discover",
     "account/bedrock/setup",
     "account/login/cancel",

@@ -5,6 +5,7 @@ import type {
 
 import type { ProviderAccessTokenClient } from "../provider-access-tokens.js";
 import type { RuntimeProvider } from "../protected-secrets.js";
+import { isTestedCodexVersion, TESTED_CODEX_RANGE } from "./discovery.js";
 
 export type { RuntimeProvider } from "../protected-secrets.js";
 
@@ -18,8 +19,8 @@ export interface ExternalChatGptAuthSession {
 export function chatGptExternalAuthCapabilityError(
   report: CodexRuntimeReport,
 ): string | null {
-  if (!report.version || !/^0\.153\.\d+$/u.test(report.version.semantic)) {
-    return "Portable ChatGPT accounts require Codex 0.153.x.";
+  if (!report.version || !isTestedCodexVersion(report.version.semantic)) {
+    return `Portable ChatGPT accounts require Codex ${TESTED_CODEX_RANGE}.`;
   }
   if (!report.initialize?.experimentalApi) {
     return "Portable ChatGPT accounts require Codex experimental API support.";
