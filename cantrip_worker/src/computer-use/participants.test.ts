@@ -129,6 +129,58 @@ function fixture() {
   };
 }
 describe("worker input participants", () => {
+  it.each([false, true])(
+    "accepts shared sprites with motion=%s",
+    async (withMotion) => {
+      const { participants, request } = fixture();
+      const sprite = {
+        width: 256,
+        height: 256,
+        hotspot: { x: 128, y: 128 },
+        normal: [1],
+        click: [2],
+        ...(withMotion
+          ? {
+              motion: {
+                minimumDistance: 1,
+                pixelsPerMs: 4,
+                minDurationMs: 60,
+                maxDurationMs: 90,
+                easing: [1 / 3, 1, 2 / 3, 1],
+              },
+            }
+          : {}),
+      };
+      request.mockResolvedValueOnce(
+        response({ handle: 1, target, cursor, sprite }),
+      );
+      const opened = await participants.open(binding("a"), targetRef);
+      expect(opened.initial.sprite).toEqual(sprite);
+      await opened.close();
+    },
+  );
+  it("still rejects malformed motion and cleans up its native binding", async () => {
+    const { participants, request } = fixture();
+    request.mockResolvedValueOnce(
+      response({
+        handle: 1,
+        target,
+        cursor,
+        sprite: {
+          width: 256,
+          height: 256,
+          hotspot: { x: 128, y: 128 },
+          normal: [],
+          click: [],
+          motion: { pixelsPerMs: 0 },
+        },
+      }),
+    );
+    await expect(participants.open(binding("a"), targetRef)).rejects.toThrow();
+    expect((request.mock.calls.at(-1)![0] as any).request.type).toBe(
+      "closeBinding",
+    );
+  });
   it("preserves independent holds and original sequences; cleanup is attachment scoped", async () => {
     const { participants, request } = fixture();
     const a = await participants.open(binding("a"), targetRef);
@@ -311,6 +363,13 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
       const inventory = await service.targets(scope);
       expect(inventory.some((t) => t.id === "fake-window")).toBe(true);
       const a = await service.participants.open(binding("a"), "fake-window");
+      expect(a.initial.sprite?.motion).toEqual({
+        minimumDistance: 1,
+        pixelsPerMs: 4,
+        minDurationMs: 60,
+        maxDurationMs: 90,
+        easing: [1 / 3, 1, 2 / 3, 1],
+      });
       const b = await service.participants.open(binding("b"), targetRef);
       await expect(a.send(1, key)).rejects.toMatchObject({
         code: "unsupported",
