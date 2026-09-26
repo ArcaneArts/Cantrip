@@ -31,6 +31,36 @@ function git(root, arguments_, options = {}) {
   };
 }
 
+function hasSkipInstruction(message) {
+  return /\[(?:skip ci|ci skip|no ci|skip actions|actions skip)\]|^skip-checks:\s*true\s*$/imu.test(
+    message,
+  );
+}
+
+function finishPromotion(root, commit, changed, skipped) {
+  if (skipped) {
+    // A separate push contains only this clean commit. Putting it in the first
+    // push is insufficient when any ancestor in that push has a skip marker.
+    const tree = git(root, ["rev-parse", `${commit}^{tree}`]).stdout;
+    commit = git(root, [
+      "commit-tree",
+      tree,
+      "-p",
+      commit,
+      "-m",
+      "Publish native release artifacts",
+    ]).stdout;
+    git(root, ["push", "origin", `${commit}:refs/heads/release`], {
+      inherit: true,
+    });
+    changed = true;
+  }
+  console.log(
+    `Release is at ${commit.slice(0, 12)}; native artifacts build from this commit.`,
+  );
+  return { changed, commit };
+}
+
 export function promoteReleaseBranch({
   root = scriptRoot,
   verifyCompatibility = verifyInstallationCompatibility,
@@ -67,6 +97,8 @@ export function promoteReleaseBranch({
 
   verifyCompatibility({ root });
 
+  let promotionCommit = mainCommit;
+  let previousRelease = null;
   const remoteRelease = git(
     root,
     ["ls-remote", "--exit-code", "--heads", "origin", "release"],
@@ -82,9 +114,17 @@ export function promoteReleaseBranch({
       "rev-parse",
       "refs/remotes/origin/release",
     ]).stdout;
+    previousRelease = releaseCommit;
     if (releaseCommit === mainCommit) {
       console.log(`release already points to ${mainCommit.slice(0, 12)}.`);
-      return { changed: false, commit: mainCommit };
+      return finishPromotion(
+        root,
+        mainCommit,
+        false,
+        hasSkipInstruction(
+          git(root, ["log", "-1", "--format=%B", mainCommit]).stdout,
+        ),
+      );
     }
     const ancestry = git(
       root,
@@ -92,19 +132,89 @@ export function promoteReleaseBranch({
       { allowFailure: true },
     );
     if (ancestry.status !== 0) {
-      throw new Error(
-        "origin/release cannot fast-forward to main. Reconcile the release branch manually.",
+      if (ancestry.status !== 1) {
+        throw new Error("Could not inspect release ancestry.");
+      }
+      const mainTree = git(root, ["rev-parse", `${mainCommit}^{tree}`]).stdout;
+      const releaseTree = git(root, [
+        "rev-parse",
+        `${releaseCommit}^{tree}`,
+      ]).stdout;
+      const containsMain = git(
+        root,
+        ["merge-base", "--is-ancestor", mainCommit, releaseCommit],
+        { allowFailure: true },
       );
+      if (containsMain.status > 1)
+        throw new Error("Could not inspect main ancestry.");
+      if (containsMain.status === 0 && mainTree === releaseTree) {
+        console.log(
+          `release already contains main at ${releaseCommit.slice(0, 12)}.`,
+        );
+        return finishPromotion(
+          root,
+          releaseCommit,
+          false,
+          hasSkipInstruction(
+            git(root, ["log", "-1", "--format=%B", releaseCommit]).stdout,
+          ),
+        );
+      }
+      // Release is a promotion of main's exact snapshot, not an independent
+      // source branch. Preserve both histories without merging release-only
+      // content back into the product or rewriting the remote branch.
+      const skipPromotion = hasSkipInstruction(
+        git(root, ["log", "--format=%B", `${releaseCommit}..${mainCommit}`])
+          .stdout,
+      );
+      promotionCommit = git(root, [
+        "commit-tree",
+        mainTree,
+        "-p",
+        releaseCommit,
+        "-p",
+        mainCommit,
+        "-m",
+        `Promote main ${mainCommit.slice(0, 12)} to release${skipPromotion ? " [skip ci]" : ""}`,
+      ]).stdout;
     }
+  } else if (remoteRelease.status !== 2) {
+    throw new Error("Could not read origin/release; release was not promoted.");
   }
 
-  git(root, ["push", "origin", "refs/heads/main:refs/heads/release"], {
+  const skipped = hasSkipInstruction(
+    git(root, [
+      "log",
+      "--format=%B",
+      previousRelease
+        ? `${previousRelease}..${promotionCommit}`
+        : promotionCommit,
+    ]).stdout,
+  );
+  // Persist pending-trigger intent at the tip so retry can recover even when
+  // the skip marker appeared only on an ancestor of a clean main commit.
+  if (
+    skipped &&
+    !hasSkipInstruction(
+      git(root, ["log", "-1", "--format=%B", promotionCommit]).stdout,
+    )
+  ) {
+    promotionCommit = git(root, [
+      "commit-tree",
+      git(root, ["rev-parse", `${promotionCommit}^{tree}`]).stdout,
+      "-p",
+      promotionCommit,
+      "-m",
+      "Prepare native release [skip ci]",
+    ]).stdout;
+  }
+  git(root, ["push", "origin", `${promotionCommit}:refs/heads/release`], {
     inherit: true,
   });
   console.log(
-    `Promoted origin/release to ${mainCommit.slice(0, 12)}. GitHub Actions will build and publish the native release artifacts.`,
+    `Promoted origin/release to ${promotionCommit.slice(0, 12)}. GitHub Actions will build and publish the native release artifacts.`,
   );
-  return { changed: true, commit: mainCommit };
+  return finishPromotion(root, promotionCommit, true, skipped);
 }
 
 export function verifyInstallationCompatibility({ root = scriptRoot } = {}) {
