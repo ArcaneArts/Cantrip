@@ -1,4 +1,5 @@
 //! Accept current account-scoped model replies and refresh present pickers without reopening them.
+//! Preserve highlighted models by wire slug, independent of their display names.
 
 use super::model_popups::ALL_MODELS_SELECTION_VIEW_ID;
 use super::model_popups::MODEL_SELECTION_VIEW_ID;
@@ -36,28 +37,37 @@ impl ChatWidget {
         {
             return false;
         }
-        self.model_catalog = Arc::new(ModelCatalog::new(presets.clone()));
+        Arc::make_mut(&mut self.model_catalog).models = presets;
         self.refresh_effective_service_tier();
         self.refresh_model_dependent_surfaces();
-        // Refresh an existing parent without reopening it or interrupting its reasoning child.
-        match self.model_popup_view_id() {
-            Some(MODEL_SELECTION_VIEW_ID) => self.open_model_popup_with_presets(presets),
-            Some(ALL_MODELS_SELECTION_VIEW_ID) => self.open_all_models_popup(),
-            _ => {}
-        }
         true
     }
 
-    pub(super) fn show_model_selection_view(&mut self, mut params: SelectionViewParams) {
+    /// Keep a present model picker aligned with the active task, including Reserve entry/exit.
+    pub(super) fn refresh_open_model_picker(&mut self) {
+        // Refresh an existing parent without reopening it or interrupting its reasoning child.
+        match self.model_popup_view_id() {
+            Some(MODEL_SELECTION_VIEW_ID) => self.open_model_popup_with_presets(
+                self.model_catalog.try_list_models().unwrap_or_default(),
+            ),
+            Some(ALL_MODELS_SELECTION_VIEW_ID) => self.open_all_models_popup(),
+            _ => {}
+        }
+    }
+
+    pub(super) fn show_model_selection_view(
+        &mut self,
+        model_ids: Vec<String>,
+        mut params: SelectionViewParams,
+    ) {
         let selected_index = params
             .view_id
             .and_then(|view_id| self.bottom_pane.selected_index_for_present_view(view_id));
         let selected_model = selected_index.and_then(|index| self.model_popup_model_ids.get(index));
-        params.initial_selected_idx = params
-            .items
+        params.initial_selected_idx = model_ids
             .iter()
-            .position(|item| Some(&item.name) == selected_model);
-        self.model_popup_model_ids = params.items.iter().map(|item| item.name.clone()).collect();
+            .position(|model| Some(model) == selected_model);
+        self.model_popup_model_ids = model_ids;
         if let Some(view_id) = params.view_id.filter(|_| selected_index.is_some()) {
             self.bottom_pane
                 .replace_selection_view_if_present(view_id, params);

@@ -2290,6 +2290,12 @@ describe("parseCodexRpcMessage", () => {
     expect(isKnownCodexNotificationMethod("turn/plan/updated")).toBe(true);
     expect(isKnownCodexNotificationMethod("project/changed")).toBe(true);
     expect(isKnownCodexNotificationMethod("thread/project/updated")).toBe(true);
+    expect(isKnownCodexNotificationMethod("thread/attachment/updated")).toBe(
+      true,
+    );
+    expect(isKnownCodexNotificationMethod("account/gatewayOAuth/changed")).toBe(
+      true,
+    );
     expect(
       isKnownCodexNotificationMethod("autoApprovalReview/strictReviewRequired"),
     ).toBe(true);
@@ -2601,7 +2607,7 @@ describe("Codex runtime compatibility enforcement", () => {
         worktreeMode: "agent-managed",
         worktreePolicy: "required-for-writes",
       }),
-    ).rejects.toThrow(/Codex runtime is missing.*expected >=0\.153\.0/u);
+    ).rejects.toThrow(/Codex runtime is missing.*expected >=0\.157\.1/u);
   });
 
   it("uses the dedicated agent operation entry point for unavailable runtimes", async () => {
@@ -2639,7 +2645,7 @@ describe("Codex runtime compatibility enforcement", () => {
         },
         mcpServers: [],
       }),
-    ).rejects.toThrow(/Codex runtime is missing.*expected >=0\.153\.0/u);
+    ).rejects.toThrow(/Codex runtime is missing.*expected >=0\.157\.1/u);
   });
 });
 

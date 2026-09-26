@@ -1,7 +1,8 @@
 diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/codex-rs/app-server/src/request_processors/turn_processor.rs
+index a60f979..a4b51e6 100644
 --- a/codex-rs/app-server/src/request_processors/turn_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/turn_processor.rs
-@@ -417,9 +417,7 @@
+@@ -426,9 +426,7 @@ impl TurnRequestProcessor {
          request_id: &ConnectionRequestId,
          params: TurnPauseParams,
      ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
@@ -12,7 +13,7 @@ diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/code
      }
  
      pub(crate) async fn thread_realtime_start(
-@@ -1859,7 +1857,7 @@
+@@ -1890,7 +1888,7 @@ impl TurnRequestProcessor {
          &self,
          request_id: &ConnectionRequestId,
          params: TurnPauseParams,
@@ -21,7 +22,7 @@ diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/code
          let TurnPauseParams {
              thread_id,
              turn_id,
-@@ -1882,14 +1880,35 @@
+@@ -1913,14 +1911,35 @@ impl TurnRequestProcessor {
              .await
              .map_err(|err| internal_error(format!("failed to update turn pause state: {err}")))?;
          if paused {
@@ -31,8 +32,6 @@ diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/code
 -                .map_err(|err| {
 -                    internal_error(format!("failed to reach turn pause boundary: {err}"))
 -                })?;
--        }
--        Ok(TurnPauseResponse { paused })
 +            // Keep validation and submission ordered with other thread mutations,
 +            // but release that queue before waiting for model/tool work to finish.
 +            // Otherwise Stop, steer and resume queue behind the very boundary
@@ -60,7 +59,8 @@ diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/code
 +                }
 +            });
 +            return Ok(None);
-+        }
+         }
+-        Ok(TurnPauseResponse { paused })
 +        Ok(Some(TurnPauseResponse { paused }.into()))
      }
  

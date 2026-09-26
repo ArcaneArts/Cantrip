@@ -1,11 +1,11 @@
 diff --git a/codex-rs/app-server-client/src/lib.rs b/codex-rs/app-server-client/src/lib.rs
-index 6a96e10..d1bc438 100644
+index f1f93a1..c6a425a 100644
 --- a/codex-rs/app-server-client/src/lib.rs
 +++ b/codex-rs/app-server-client/src/lib.rs
-@@ -677,6 +677,13 @@ impl AppServerRequestHandle {
- }
+@@ -711,6 +711,13 @@ impl AppServerClient {
+         }
+     }
  
- impl AppServerClient {
 +    pub fn managed_gateway_thread_id(&self) -> Option<&str> {
 +        match self {
 +            Self::Remote(client) => client.managed_gateway_thread_id(),
@@ -173,7 +173,7 @@ index 0000000..ee833fe
 +    }
 +}
 diff --git a/codex-rs/app-server-client/src/remote.rs b/codex-rs/app-server-client/src/remote.rs
-index 0e375ee..2fad585 100644
+index 78d6272..931cc98 100644
 --- a/codex-rs/app-server-client/src/remote.rs
 +++ b/codex-rs/app-server-client/src/remote.rs
 @@ -15,6 +15,8 @@ use std::collections::VecDeque;
@@ -185,22 +185,29 @@ index 0e375ee..2fad585 100644
  use std::time::Duration;
  
  use crate::AppServerEvent;
-@@ -154,6 +156,8 @@ pub struct RemoteAppServerClient {
-     pending_events: VecDeque<AppServerEvent>,
-     server_version: Option<String>,
+@@ -155,6 +157,7 @@ struct RemoteServerMetadata {
      codex_home: Option<String>,
+     platform_family: Option<String>,
+     platform_os: Option<String>,
 +    managed_gateway_thread_id: Option<String>,
+ }
+ 
+ pub struct RemoteAppServerClient {
+@@ -162,6 +165,7 @@ pub struct RemoteAppServerClient {
+     event_rx: mpsc::UnboundedReceiver<AppServerEvent>,
+     pending_events: VecDeque<AppServerEvent>,
+     metadata: RemoteServerMetadata,
 +    managed_reply_sequence: AtomicU64,
      worker_handle: tokio::task::JoinHandle<()>,
  }
  
-@@ -192,6 +196,46 @@ impl RemoteAppServerClient {
-         self.codex_home.as_deref()
+@@ -235,6 +239,46 @@ impl RemoteAppServerClient {
+         self.metadata.platform_os.as_deref()
      }
  
 +    /// A gateway-scoped thread; absent on ordinary remote connections.
 +    pub fn managed_gateway_thread_id(&self) -> Option<&str> {
-+        self.managed_gateway_thread_id.as_deref()
++        self.metadata.managed_gateway_thread_id.as_deref()
 +    }
 +
 +    async fn acknowledge_managed_reply(
@@ -241,42 +248,19 @@ index 0e375ee..2fad585 100644
      async fn connect_with_stream<S>(
          channel_capacity: usize,
          endpoint: String,
-@@ -202,13 +246,14 @@ impl RemoteAppServerClient {
-         S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
-     {
-         let mut stream = stream;
--        let (pending_events, server_version, codex_home) = initialize_remote_connection(
--            &mut stream,
--            &endpoint,
--            initialize_params,
--            INITIALIZE_TIMEOUT,
--        )
--        .await?;
-+        let (pending_events, server_version, codex_home, managed_gateway_thread_id) =
-+            initialize_remote_connection(
-+                &mut stream,
-+                &endpoint,
-+                initialize_params,
-+                INITIALIZE_TIMEOUT,
-+            )
-+            .await?;
- 
-         let (command_tx, mut command_rx) = mpsc::channel::<RemoteClientCommand>(channel_capacity);
-         let (event_tx, event_rx) = mpsc::unbounded_channel::<AppServerEvent>();
-@@ -480,6 +525,8 @@ impl RemoteAppServerClient {
+@@ -522,6 +566,7 @@ impl RemoteAppServerClient {
+             event_rx,
              pending_events: pending_events.into(),
-             server_version,
-             codex_home,
-+            managed_gateway_thread_id,
+             metadata,
 +            managed_reply_sequence: AtomicU64::new(0),
              worker_handle,
          })
      }
-@@ -543,6 +590,11 @@ impl RemoteAppServerClient {
+@@ -585,6 +630,11 @@ impl RemoteAppServerClient {
          request_id: RequestId,
          result: JsonRpcResult,
      ) -> IoResult<()> {
-+        if self.managed_gateway_thread_id.is_some() {
++        if self.metadata.managed_gateway_thread_id.is_some() {
 +            return self
 +                .acknowledge_managed_reply(request_id, serde_json::json!({"result": result}))
 +                .await;
@@ -284,11 +268,11 @@ index 0e375ee..2fad585 100644
          let (response_tx, response_rx) = oneshot::channel();
          self.command_tx
              .send(RemoteClientCommand::ResolveServerRequest {
-@@ -570,6 +622,11 @@ impl RemoteAppServerClient {
+@@ -612,6 +662,11 @@ impl RemoteAppServerClient {
          request_id: RequestId,
          error: JSONRPCErrorError,
      ) -> IoResult<()> {
-+        if self.managed_gateway_thread_id.is_some() {
++        if self.metadata.managed_gateway_thread_id.is_some() {
 +            return self
 +                .acknowledge_managed_reply(request_id, serde_json::json!({"error": error}))
 +                .await;
@@ -296,58 +280,26 @@ index 0e375ee..2fad585 100644
          let (response_tx, response_rx) = oneshot::channel();
          self.command_tx
              .send(RemoteClientCommand::RejectServerRequest {
-@@ -606,6 +663,8 @@ impl RemoteAppServerClient {
+@@ -647,6 +702,7 @@ impl RemoteAppServerClient {
+             event_rx,
              pending_events: _pending_events,
-             server_version: _server_version,
-             codex_home: _codex_home,
-+            managed_gateway_thread_id: _,
+             metadata: _,
 +            managed_reply_sequence: _,
              worker_handle,
          } = self;
          let mut worker_handle = worker_handle;
-@@ -800,7 +859,12 @@ async fn initialize_remote_connection<S>(
-     endpoint: &str,
-     params: InitializeParams,
-     initialize_timeout: Duration,
--) -> IoResult<(Vec<AppServerEvent>, Option<String>, Option<String>)>
-+) -> IoResult<(
-+    Vec<AppServerEvent>,
-+    Option<String>,
-+    Option<String>,
-+    Option<String>,
-+)>
- where
-     S: AsyncRead + AsyncWrite + Unpin,
- {
-@@ -808,6 +872,7 @@ where
-     let mut pending_events = Vec::new();
-     let mut server_version = None;
-     let mut codex_home = None;
-+    let mut managed_gateway_thread_id = None;
-     write_jsonrpc_message(
-         stream,
-         JSONRPCMessage::Request(jsonrpc_request_from_client_request(
-@@ -845,6 +910,7 @@ where
-                                 .and_then(serde_json::Value::as_str)
-                                 .filter(|codex_home| !codex_home.is_empty())
-                                 .map(str::to_string);
-+                            managed_gateway_thread_id = parse_managed_gateway(&response.result)?;
+@@ -895,6 +951,7 @@ where
+                                 .and_then(serde_json::Value::as_str).map(str::to_string);
+                             metadata.platform_os = response.result.get("platformOs")
+                                 .and_then(serde_json::Value::as_str).map(str::to_string);
++                            metadata.managed_gateway_thread_id = parse_managed_gateway(&response.result)?;
                              break Ok(());
                          }
                          JSONRPCMessage::Error(error) if error.id == initialize_request_id => {
-@@ -937,7 +1003,37 @@ where
-     )
-     .await?;
+@@ -990,6 +1047,31 @@ where
+     Ok((pending_events, metadata))
+ }
  
--    Ok((pending_events, server_version, codex_home))
-+    Ok((
-+        pending_events,
-+        server_version,
-+        codex_home,
-+        managed_gateway_thread_id,
-+    ))
-+}
-+
 +fn parse_managed_gateway(result: &serde_json::Value) -> IoResult<Option<String>> {
 +    let Some(capability) = result.get("cantripManagedGateway") else {
 +        return Ok(None);
@@ -371,19 +323,20 @@ index 0e375ee..2fad585 100644
 +        ));
 +    }
 +    Ok(thread_id.map(str::to_string))
- }
- 
++}
++
  fn app_server_event_from_notification(notification: JSONRPCNotification) -> Option<AppServerEvent> {
-@@ -1029,6 +1125,8 @@ mod tests {
+     match ServerNotification::try_from(notification) {
+         Ok(notification) => Some(AppServerEvent::ServerNotification(Box::new(notification))),
+@@ -1078,6 +1160,7 @@ mod tests {
+             event_rx,
              pending_events: VecDeque::new(),
-             server_version: None,
-             codex_home: None,
-+            managed_gateway_thread_id: None,
+             metadata: RemoteServerMetadata::default(),
 +            managed_reply_sequence: AtomicU64::new(0),
              worker_handle,
          };
  
-@@ -1038,3 +1136,7 @@ mod tests {
+@@ -1087,3 +1170,7 @@ mod tests {
              .expect("shutdown should complete when worker exits first");
      }
  }
@@ -392,10 +345,10 @@ index 0e375ee..2fad585 100644
 +#[path = "managed_gateway_tests.rs"]
 +mod managed_gateway_tests;
 diff --git a/codex-rs/tui/src/app/event_dispatch.rs b/codex-rs/tui/src/app/event_dispatch.rs
-index d2ea7c5..4530c00 100644
+index 7fc9161..6c08e85 100644
 --- a/codex-rs/tui/src/app/event_dispatch.rs
 +++ b/codex-rs/tui/src/app/event_dispatch.rs
-@@ -1619,6 +1619,9 @@ impl App {
+@@ -2063,6 +2063,9 @@ impl App {
                  self.sync_active_thread_service_tier_to_cached_session()
                      .await;
  
@@ -403,33 +356,21 @@ index d2ea7c5..4530c00 100644
 +                    return Ok(AppRunControl::Continue);
 +                }
                  if let Some(default_effort) = default_effort.as_ref()
-                     && let Err(err) = crate::config_update::write_config_batch(
+                     && let Err(err) = self.persist_model_defaults(
                          app_server.request_handle(),
-@@ -2159,6 +2162,11 @@ impl App {
-                 }
+@@ -2273,6 +2276,11 @@ impl App {
              }
              AppEvent::PersistModelSelection { model, effort } => {
+                 self.app_event_tx.send(AppEvent::FollowTranscript);
 +                // Managed picker selections already submit thread/settings/update.
 +                // Keep account defaults unchanged and do not claim a write succeeded.
 +                if app_server.is_managed_gateway_thread(self.chat_widget.thread_id()) {
 +                    return Ok(AppRunControl::Continue);
 +                }
-                 match crate::config_update::write_config_batch(
+                 match self.persist_model_defaults(
                      app_server.request_handle(),
                      crate::config_update::build_model_selection_edits(
-@@ -2228,6 +2236,11 @@ impl App {
-                 self.chat_widget.on_plugin_mentions_loaded(plugins);
-             }
-             AppEvent::PersistPersonalitySelection { personality } => {
-+                // Managed picker selections already submit thread/settings/update.
-+                // Keep account defaults unchanged and do not claim a write succeeded.
-+                if app_server.is_managed_gateway_thread(self.chat_widget.thread_id()) {
-+                    return Ok(AppRunControl::Continue);
-+                }
-                 match crate::config_update::write_config_batch(
-                     app_server.request_handle(),
-                     vec![crate::config_update::replace_config_value(
-@@ -2258,6 +2271,11 @@ impl App {
+@@ -2357,6 +2365,11 @@ impl App {
                  self.config.service_tier = service_tier.clone();
                  self.sync_active_thread_service_tier_to_cached_session()
                      .await;
@@ -441,8 +382,8 @@ index d2ea7c5..4530c00 100644
                  let edits = crate::config_update::build_service_tier_selection_edits(
                      service_tier.as_deref(),
                  );
-@@ -2383,6 +2401,10 @@ impl App {
-                 self.chat_widget.set_approvals_reviewer(policy);
+@@ -2453,6 +2466,10 @@ impl App {
+                 }
                  self.sync_active_thread_permission_settings_to_cached_session()
                      .await;
 +                // Permission selection submits the thread override before this cache update.
@@ -452,10 +393,10 @@ index d2ea7c5..4530c00 100644
                  if let Err(err) = crate::config_update::write_config_batch(
                      app_server.request_handle(),
                      vec![crate::config_update::replace_config_value(
-@@ -2463,6 +2485,9 @@ impl App {
-                 }
+@@ -2525,6 +2542,9 @@ impl App {
              }
              AppEvent::PersistPlanModeReasoningEffort(effort) => {
+                 self.app_event_tx.send(AppEvent::FollowTranscript);
 +                if app_server.is_managed_gateway_thread(self.chat_widget.thread_id()) {
 +                    return Ok(AppRunControl::Continue);
 +                }
@@ -463,10 +404,10 @@ index d2ea7c5..4530c00 100644
                  let edit = if let Some(effort) = effort {
                      crate::config_update::replace_config_value(
 diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
-index 3a9b3db..4a95384 100644
+index 4e17f2d..02e343e 100644
 --- a/codex-rs/tui/src/app/tests.rs
 +++ b/codex-rs/tui/src/app/tests.rs
-@@ -8650,3 +8650,6 @@ mod active_reconnect;
+@@ -9714,3 +9714,6 @@ mod active_reconnect;
  #[cfg(unix)]
  #[path = "tests/navigation_reconnect_tests.rs"]
  mod navigation_reconnect;
@@ -634,10 +575,10 @@ index 0000000..ba750a1
 +    Ok(())
 +}
 diff --git a/codex-rs/tui/src/app_server_session.rs b/codex-rs/tui/src/app_server_session.rs
-index a29cc9a..f2bfa76 100644
+index 84df511..961048f 100644
 --- a/codex-rs/tui/src/app_server_session.rs
 +++ b/codex-rs/tui/src/app_server_session.rs
-@@ -480,6 +480,12 @@ impl AppServerSession {
+@@ -519,6 +519,12 @@ impl AppServerSession {
          self.remote_cwd_override.as_deref()
      }
  
@@ -650,7 +591,7 @@ index a29cc9a..f2bfa76 100644
      pub(crate) fn uses_remote_workspace(&self) -> bool {
          matches!(self.thread_params_mode, ThreadParamsMode::Remote)
      }
-@@ -1141,7 +1147,8 @@ impl AppServerSession {
+@@ -1221,7 +1227,8 @@ impl AppServerSession {
          &mut self,
          params: ThreadSettingsUpdateParams,
      ) -> Result<bool> {
@@ -660,7 +601,7 @@ index a29cc9a..f2bfa76 100644
              return Ok(false);
          }
          let request_id = self.next_request_id();
-@@ -1155,7 +1162,7 @@ impl AppServerSession {
+@@ -1235,7 +1242,7 @@ impl AppServerSession {
          {
              Ok(_) => Ok(true),
              Err(TypedRequestError::Server { source, .. })

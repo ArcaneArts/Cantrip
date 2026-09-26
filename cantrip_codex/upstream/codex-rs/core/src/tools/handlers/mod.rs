@@ -24,6 +24,7 @@ pub(crate) mod request_plugin_install_spec;
 mod request_user_input;
 mod request_user_input_async;
 pub(crate) mod request_user_input_spec;
+mod send_message_to_user_async;
 pub(crate) mod shell_spec;
 mod sleep;
 mod test_sync;
@@ -70,6 +71,7 @@ pub use request_permissions::RequestPermissionsHandler;
 pub use request_plugin_install::RequestPluginInstallHandler;
 pub use request_user_input::RequestUserInputHandler;
 pub use request_user_input_async::RequestUserInputAsyncHandler;
+pub use send_message_to_user_async::SendMessageToUserAsyncHandler;
 pub use sleep::SleepHandler;
 pub use test_sync::TestSyncHandler;
 pub(crate) use tool_search::ToolSearchHandlerCache;
@@ -241,10 +243,10 @@ pub(super) struct EffectiveAdditionalPermissions {
 pub(super) fn file_system_sandbox_policy_context_for_cwd<'a>(
     sandbox_context: &'a FileSystemSandboxContext,
     cwd: &'a PathUri,
-) -> Option<codex_protocol::permissions::FileSystemSandboxPolicyContext<'a>> {
-    let mut context = sandbox_context.policy_context()?;
+) -> codex_protocol::permissions::FileSystemSandboxPolicyContext<'a> {
+    let mut context = sandbox_context.policy_context();
     context.cwd = cwd;
-    Some(context)
+    context
 }
 
 pub(super) fn implicit_granted_permissions(
@@ -296,9 +298,9 @@ pub(super) async fn apply_granted_turn_permissions(
         if additional_permissions.is_none() {
             Some(granted.clone())
         } else {
-            effective_permissions.as_ref().and_then(|effective| {
-                preapproved_permission_profile(effective, granted, context.as_ref()?)
-            })
+            effective_permissions
+                .as_ref()
+                .and_then(|effective| preapproved_permission_profile(effective, granted, &context))
         }
     });
     let permissions_preapproved = preapproved_permissions.is_some();
@@ -394,7 +396,7 @@ mod tests {
     use codex_protocol::permissions::FileSystemSpecialPath;
     use codex_protocol::protocol::AskForApproval;
     use codex_protocol::protocol::GranularApprovalConfig;
-    use codex_sandboxing::policy_transforms::intersect_permission_profiles;
+    use codex_sandboxing::policy_transforms::intersect_permission_profiles_with_context;
     use codex_sandboxing::policy_transforms::merge_permission_profiles;
     use codex_utils_absolute_path::AbsolutePathBuf;
     use codex_utils_path_uri::PathUri;
@@ -536,21 +538,21 @@ mod tests {
             }),
             ..Default::default()
         };
-        let stored_grant = intersect_permission_profiles(
+        let cwd_uri = PathUri::from_host_native_path(cwd.path()).expect("cwd URI");
+        let stored_grant = intersect_permission_profiles_with_context(
             requested_permissions.clone(),
             requested_permissions.clone(),
-            cwd.path(),
+            &local_context(&cwd_uri),
         );
         let effective_permissions =
             merge_permission_profiles(Some(&requested_permissions), Some(&stored_grant))
                 .expect("merged permissions");
-        let cwd = PathUri::from_host_native_path(cwd.path()).expect("cwd URI");
 
         assert_eq!(
             preapproved_permission_profile(
                 &effective_permissions,
                 &stored_grant,
-                &local_context(&cwd),
+                &local_context(&cwd_uri),
             ),
             Some(stored_grant)
         );

@@ -1,14 +1,11 @@
 use std::time::Duration;
 
 use anyhow::Result;
-use app_test_support::ChatGptAuthFixture;
 use app_test_support::MockResponsesConfig;
 use app_test_support::TestAppServer;
-use app_test_support::write_chatgpt_auth;
 use codex_app_server_protocol::ThreadStartParams;
 use codex_app_server_protocol::TurnStartParams;
 use codex_app_server_protocol::UserInput;
-use codex_config::types::AuthCredentialsStoreMode;
 use core_test_support::load_default_config_for_test;
 use core_test_support::responses;
 use pretty_assertions::assert_eq;
@@ -44,6 +41,7 @@ async fn app_server_uses_configured_notes_backend_for_context_window_hints(
     hint_text: &str,
 ) -> Result<()> {
     let server = responses::start_mock_server().await;
+    let backend = responses::start_mock_server().await;
     let response_mock = responses::mount_sse_once(
         &server,
         responses::sse(vec![
@@ -115,7 +113,20 @@ async fn app_server_uses_configured_notes_backend_for_context_window_hints(
         .await;
 
     let codex_home = TempDir::new()?;
+    let config = load_default_config_for_test(&codex_home).await;
+    let mut model = codex_core::test_support::construct_model_info_offline("mock-model", &config);
+    model.supports_experimental_context = true;
+    let catalog_path = codex_home.path().join("models.json");
+    std::fs::write(
+        &catalog_path,
+        serde_json::to_vec(&json!({"models": [model]}))?,
+    )?;
     MockResponsesConfig::new(&server.uri())
+        .with_root_config(&format!("chatgpt_base_url = \"{}\"", backend.uri()))
+        .with_root_config(&format!(
+            "model_catalog_json = {}",
+            serde_json::to_string(&catalog_path)?
+        ))
         .with_model_provider("openai-custom")
         .with_provider_name("OpenAI")
         .with_provider_base_url(&format!("{}/backend-api/codex", server.uri()))
@@ -125,11 +136,7 @@ async fn app_server_uses_configured_notes_backend_for_context_window_hints(
             server.uri(),
         ))
         .write(codex_home.path())?;
-    write_chatgpt_auth(
-        codex_home.path(),
-        ChatGptAuthFixture::new("access-chatgpt"),
-        AuthCredentialsStoreMode::File,
-    )?;
+    mount_analytics_capture(&backend, codex_home.path()).await?;
 
     let mut app_server = TestAppServer::builder()
         .with_codex_home(codex_home.path())
@@ -143,7 +150,7 @@ async fn app_server_uses_configured_notes_backend_for_context_window_hints(
     timeout(
         Duration::from_secs(10),
         app_server.start_turn_and_wait_for_completion(TurnStartParams {
-            thread_id: thread.id,
+            thread_id: thread.id.clone(),
             input: vec![UserInput::Text {
                 text: "inspect history and notes".to_string(),
                 text_elements: Vec::new(),
@@ -218,6 +225,22 @@ async fn app_server_uses_configured_notes_backend_for_context_window_hints(
             && item["name"] == "thread_hint"
     }));
 
+    if use_history_notes_extension {
+        let event = wait_for_matching_analytics_event(&backend, DEFAULT_READ_TIMEOUT, |event| {
+            event["event_type"] == "codex_thread_hint_status"
+                && event["event_params"]["thread_id"] == thread.id
+        })
+        .await?;
+        assert_eq!(
+            event["event_params"]["status"],
+            if hint_status == 200 {
+                "succeeded"
+            } else {
+                "failed"
+            },
+        );
+    }
+
     Ok(())
 }
 
@@ -275,6 +298,7 @@ async fn history_notes_and_async_message_emit_control_tool_analytics() -> Result
         ),
     ];
     let server = responses::start_mock_server().await;
+    let backend = responses::start_mock_server().await;
     for (namespace, tool, arguments) in &calls[..9] {
         Mock::given(method("POST"))
             .and(path(format!(
@@ -311,6 +335,7 @@ async fn history_notes_and_async_message_emit_control_tool_analytics() -> Result
     let codex_home = TempDir::new()?;
     let config = load_default_config_for_test(&codex_home).await;
     let mut model = codex_core::test_support::construct_model_info_offline("mock-model", &config);
+    model.supports_experimental_context = true;
     model
         .experimental_supported_tools
         .push("send_user_message_async".to_string());
@@ -324,7 +349,7 @@ async fn history_notes_and_async_message_emit_control_tool_analytics() -> Result
         .with_provider_name("OpenAI")
         .with_provider_base_url(&format!("{}/backend-api/codex", server.uri()))
         .with_provider_config("supports_websockets = false\nrequires_openai_auth = true")
-        .with_root_config(&format!("chatgpt_base_url = \"{}\"", server.uri()))
+        .with_root_config(&format!("chatgpt_base_url = \"{}\"", backend.uri()))
         .with_root_config(&format!(
             "model_catalog_json = {}",
             serde_json::to_string(&catalog_path)?
@@ -333,7 +358,7 @@ async fn history_notes_and_async_message_emit_control_tool_analytics() -> Result
             "[features.token_budget]\nenabled = true\nuse_history_notes_extension = true",
         )
         .write(codex_home.path())?;
-    mount_analytics_capture(&server, codex_home.path()).await?;
+    mount_analytics_capture(&backend, codex_home.path()).await?;
 
     let mut app_server = TestAppServer::builder()
         .with_codex_home(codex_home.path())
@@ -370,7 +395,7 @@ async fn history_notes_and_async_message_emit_control_tool_analytics() -> Result
     }
 
     for (index, (namespace, tool, _)) in calls.iter().enumerate() {
-        let event = wait_for_matching_analytics_event(&server, DEFAULT_READ_TIMEOUT, |event| {
+        let event = wait_for_matching_analytics_event(&backend, DEFAULT_READ_TIMEOUT, |event| {
             event["event_type"] == "codex_control_tool_call_event"
                 && event["event_params"]["item_id"] == format!("call-{index}")
         })
@@ -396,7 +421,7 @@ async fn history_notes_and_async_message_emit_control_tool_analytics() -> Result
         );
         assert!(!event.to_string().contains("PRIVATE_"));
     }
-    let turn_event = wait_for_matching_analytics_event(&server, DEFAULT_READ_TIMEOUT, |event| {
+    let turn_event = wait_for_matching_analytics_event(&backend, DEFAULT_READ_TIMEOUT, |event| {
         event["event_type"] == "codex_turn_event"
             && event["event_params"]["turn_id"] == completed.turn.id
     })

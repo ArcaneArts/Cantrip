@@ -246,6 +246,8 @@ async fn thread_unarchive_preserves_pathless_store_metadata() -> Result<()> {
     let parent_thread_id = ThreadId::from_string("00000000-0000-4000-8000-000000000127")?;
     store
         .create_thread(CreateThreadParams {
+            creator_user_id: None,
+            creator_account_id: None,
             session_id: thread_id.into(),
             thread_id,
             extra_config: None,
@@ -262,6 +264,7 @@ async fn thread_unarchive_preserves_pathless_store_metadata() -> Result<()> {
             history_base: None,
             subagent_history_start_ordinal: None,
             initial_window_id: Uuid::now_v7().to_string(),
+            runtime_workspace_roots: None,
             metadata: ThreadPersistenceMetadata {
                 cwd: None,
                 model_provider: "test-provider".to_string(),
@@ -294,6 +297,7 @@ async fn thread_unarchive_preserves_pathless_store_metadata() -> Result<()> {
         loader_overrides,
         strict_config: false,
         cloud_config_bundle: CloudConfigBundleLoader::default(),
+        embedded_network_policy: Default::default(),
         thread_config_loader: Arc::new(codex_config::NoopThreadConfigLoader),
         feedback: CodexFeedback::new(),
         log_db: None,
@@ -332,6 +336,37 @@ async fn thread_unarchive_preserves_pathless_store_metadata() -> Result<()> {
     assert_eq!(thread.path, None);
     assert_eq!(thread.forked_from_id, Some(parent_thread_id.to_string()));
     assert_eq!(thread.name, Some("named pathless thread".to_string()));
+    assert_eq!(thread.environments, None);
+
+    // Pathless stores can return an unarchived thread while it is still loaded.
+    for (request_id, environments) in [(2, None), (4, Some(vec![]))] {
+        let result = client
+            .request(ClientRequest::ThreadStart {
+                request_id: RequestId::Integer(request_id),
+                params: ThreadStartParams {
+                    model: Some("mock-model".to_string()),
+                    environments,
+                    ..Default::default()
+                },
+            })
+            .await?
+            .expect("thread/start should succeed");
+        let ThreadStartResponse {
+            thread: started, ..
+        } = serde_json::from_value(result)?;
+        assert!(started.environments.is_some());
+        let result = client
+            .request(ClientRequest::ThreadUnarchive {
+                request_id: RequestId::Integer(request_id + 1),
+                params: ThreadUnarchiveParams {
+                    thread_id: started.id,
+                },
+            })
+            .await?
+            .expect("thread/unarchive should succeed for a loaded pathless thread");
+        let ThreadUnarchiveResponse { thread } = serde_json::from_value(result)?;
+        assert_eq!(thread.environments, started.environments);
+    }
 
     client.shutdown().await?;
     Ok(())

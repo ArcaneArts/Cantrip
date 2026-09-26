@@ -1,18 +1,20 @@
 diff --git a/codex-rs/tui/src/app_server_session/rollout_history.rs b/codex-rs/tui/src/app_server_session/rollout_history.rs
+index 5a86ee0..d555ac5 100644
 --- a/codex-rs/tui/src/app_server_session/rollout_history.rs
 +++ b/codex-rs/tui/src/app_server_session/rollout_history.rs
-@@ -14,6 +14,8 @@
- use codex_app_server_protocol::ClientRequest;
- use codex_app_server_protocol::ThreadHistoryMode;
- use codex_app_server_protocol::ThreadResumeResponse;
+@@ -20,6 +20,9 @@ use codex_app_server_protocol::ThreadResumeResponse;
+ use codex_app_server_protocol::ThreadTurnsListParams;
+ use codex_app_server_protocol::ThreadTurnsListResponse;
+ use codex_app_server_protocol::TurnItemsView;
 +use codex_app_server_protocol::ThreadSettingsReadParams;
 +use codex_app_server_protocol::ThreadSettingsReadResponse;
- use codex_features::Feature;
++use codex_features::Feature;
  use codex_protocol::ThreadId;
+ use codex_utils_absolute_path::AbsolutePathBuf;
  use color_eyre::eyre::Result;
-@@ -148,6 +150,33 @@
-             started_thread_from_resume_response(response, &config, self.thread_params_mode())
-                 .await?;
+@@ -234,6 +237,33 @@ impl AppServerSession {
+         )
+         .await?;
          started.session.fork_parent_title = fork_parent_title;
 +        if self.is_managed_gateway_thread(Some(thread_id)) {
 +            // Resume's legacy session payload omits collaboration mode. Loading

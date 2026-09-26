@@ -20,6 +20,7 @@
     "code:extension:test": "node --test cantrip_code/extensions/cantrip-workbench/test/*.test.cjs",
     "codex:sync": "node scripts/cantrip-codex/sync-upstream.mjs",
     "codex:verify": "node scripts/cantrip-codex/verify-upstream.mjs",
+    "codex:verify:runtime": "node scripts/cantrip-codex/verify-built-runtime.mjs",
     "codex:build": "node scripts/cantrip-codex/build.mjs",
     "codex:clean": "node scripts/cantrip-codex/clean.mjs",
     "skill-templates:verify": "node scripts/verify-skill-templates.mjs",

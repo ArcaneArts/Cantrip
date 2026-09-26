@@ -1,8 +1,8 @@
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/tests.rs b/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
-index da95817..7171d3a 100644
+index 7b8f791..c8ce3cc 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
-@@ -190,6 +190,22 @@ fn thread_sources_round_trip_as_scalar_labels() {
+@@ -191,6 +191,22 @@ fn thread_sources_round_trip_as_scalar_labels() {
      }
  }
  
@@ -26,11 +26,11 @@ index da95817..7171d3a 100644
  fn approvals_reviewer_serializes_auto_review_and_accepts_legacy_guardian_subagent() {
      assert_eq!(
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-index dc56a78..db2d8f1 100644
+index a137684..230d91b 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-@@ -395,6 +395,15 @@ pub struct ThreadResumeParams {
-     pub developer_instructions: Option<String>,
+@@ -416,6 +416,15 @@ pub struct ThreadResumeParams {
+     /// Changing this does not rewrite the thread's existing instructions.
      #[ts(optional = nullable)]
      pub personality: Option<Personality>,
 +    /// Override the dynamic tools restored from persisted thread metadata.
@@ -46,29 +46,30 @@ index dc56a78..db2d8f1 100644
      /// populating `thread.turns`. This is useful when the client plans to call
      /// `thread/turns/list` immediately after resuming. Full-history hydration
 diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
-index 0803fb1..48bb776 100644
+index 57c10fe..ebde0eb 100644
 --- a/codex-rs/app-server/src/request_processors/thread_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
-@@ -3629,6 +3629,7 @@ impl ThreadRequestProcessor {
+@@ -3674,6 +3674,7 @@ impl ThreadRequestProcessor {
              base_instructions,
              developer_instructions,
              personality,
 +            dynamic_tools,
              exclude_turns,
              initial_turns_page,
-         } = params;
-@@ -3658,13 +3659,17 @@ impl ThreadRequestProcessor {
+         } = params.clone();
+@@ -3703,7 +3704,7 @@ impl ThreadRequestProcessor {
                  Err(error) => Err(error),
              }
          };
--        let (thread_history, resume_source_thread) = match resume_result {
-+        let (mut thread_history, resume_source_thread) = match resume_result {
-             Ok(value) => value,
-             Err(error) => {
-                 self.outgoing.send_error(request_id, error).await;
-                 return Ok(());
-             }
-         };
+-        let (thread_history, resume_source_thread) = resume_result?;
++        let (mut thread_history, resume_source_thread) = resume_result?;
+         if let InitialHistory::Resumed(resumed) = &thread_history
+             && self
+                 .pending_thread_unloads
+@@ -3716,6 +3717,10 @@ impl ThreadRequestProcessor {
+                 resumed.conversation_id
+             )));
+         }
 +        if let Some(dynamic_tools) = dynamic_tools {
 +            validate_dynamic_tools(&dynamic_tools).map_err(invalid_request)?;
 +            thread_history.override_dynamic_tools(dynamic_tools);
@@ -76,11 +77,23 @@ index 0803fb1..48bb776 100644
          let paginated_thread_id = resume_source_thread.as_ref().and_then(|thread| {
              matches!(thread.history_mode, ThreadHistoryMode::Paginated).then_some(thread.thread_id)
          });
+diff --git a/codex-rs/app-server/src/request_processors/thread_processor_tests.rs b/codex-rs/app-server/src/request_processors/thread_processor_tests.rs
+index 44c29bd..54b35e2 100644
+--- a/codex-rs/app-server/src/request_processors/thread_processor_tests.rs
++++ b/codex-rs/app-server/src/request_processors/thread_processor_tests.rs
+@@ -677,6 +677,7 @@ mod thread_processor_behavior_tests {
+             base_instructions: None,
+             developer_instructions: None,
+             personality: None,
++            dynamic_tools: None,
+             exclude_turns: false,
+             initial_turns_page: None,
+         };
 diff --git a/codex-rs/history/src/lib.rs b/codex-rs/history/src/lib.rs
-index 6e15c01..260ef89 100644
+index 9da17e4..1219b73 100644
 --- a/codex-rs/history/src/lib.rs
 +++ b/codex-rs/history/src/lib.rs
-@@ -227,6 +227,23 @@ pub enum InitialHistory {
+@@ -332,6 +332,23 @@ pub enum InitialHistory {
  }
  
  impl InitialHistory {
@@ -104,13 +117,3 @@ index 6e15c01..260ef89 100644
      pub fn scan_rollout_items(&self, mut predicate: impl FnMut(&RolloutItem) -> bool) -> bool {
          match self {
              Self::New | Self::Cleared => false,
---- a/codex-rs/app-server/src/request_processors/thread_processor_tests.rs
-+++ b/codex-rs/app-server/src/request_processors/thread_processor_tests.rs
-@@ -673,6 +673,7 @@
-             base_instructions: None,
-             developer_instructions: None,
-             personality: None,
-+            dynamic_tools: None,
-             exclude_turns: false,
-             initial_turns_page: None,
-         };

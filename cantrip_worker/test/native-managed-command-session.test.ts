@@ -1742,9 +1742,10 @@ describe.skipIf(!binary)(
           if (rejectedContext) {
             await vi.waitFor(
               () =>
-                expect(stripVTControlCharacters(terminalOutput)).toContain(
-                  "Synthetic result 3",
-                ),
+                // Ratatui may advance between words with cursor movement, not spaces.
+                expect(
+                  stripVTControlCharacters(terminalOutput).replace(/\s+/gu, ""),
+                ).toContain("Syntheticresult3"),
               { timeout: 15000 },
             );
             expect(terminalSettled).toBe(false);
@@ -1849,9 +1850,9 @@ describe.skipIf(!binary)(
               timeout: 15000,
             });
             await vi.waitFor(() =>
-              expect(stripVTControlCharacters(terminalOutput)).toContain(
-                "Retargeted TUI result",
-              ),
+              expect(
+                stripVTControlCharacters(terminalOutput).replace(/\s+/gu, ""),
+              ).toContain("RetargetedTUIresult"),
             );
             expect(messages).toContain("Retargeted TUI result");
             expect(children).toHaveLength(1);
