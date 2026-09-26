@@ -2772,7 +2772,9 @@ export function codexMcpConfigOverride(
             isManagedCodeGraph || isManagedCantrip || isManagedCua
               ? {
                   required: true,
-                  ...(isManagedCua ? { tool_timeout_sec: 0 } : {}),
+                  ...(isManagedCua || isManagedCantrip
+                    ? { tool_timeout_sec: 0 }
+                    : {}),
                   enabled_tools: isManagedCua
                     ? ["js", "js_reset"]
                     : isManagedCodeGraph

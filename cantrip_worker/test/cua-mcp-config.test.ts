@@ -123,7 +123,7 @@ describe("managed CUA MCP configuration", () => {
       enabled_tools: ["js", "js_reset"],
       tool_timeout_sec: 0,
     });
-    expect(config.mcp_servers.cantrip).not.toHaveProperty("tool_timeout_sec");
+    expect(config.mcp_servers.cantrip).toHaveProperty("tool_timeout_sec", 0);
     expect(config.mcp_servers["user-server"]).not.toHaveProperty(
       "tool_timeout_sec",
     );

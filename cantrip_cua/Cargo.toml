@@ -16,7 +16,7 @@ name = "cantrip-cua"
 path = "src/main.rs"
 
 [dependencies]
-cantrip-interaction = { path = "../cantrip_interaction" }
+cantrip-interaction = { path = "../cantrip_interaction", features = ["sprites"] }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = { version = "1.0.143", features = ["float_roundtrip"] }
 png = "0.18.0"

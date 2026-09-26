@@ -34,6 +34,11 @@ export async function executeCantripMcpWebSessionOperation(
         options.binding,
         options.request.arguments,
       );
+    case "web.session.pointer":
+      return await service.sessionPointer(
+        options.binding,
+        options.request.arguments,
+      );
     case "web.session.click":
       return await service.sessionClick(
         options.binding,

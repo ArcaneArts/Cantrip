@@ -682,6 +682,7 @@ describe("Cantrip MCP worker broker", () => {
             "web_session_snapshot",
             "web_session_open",
             "web_session_click",
+            "web_session_pointer",
             "web_session_type",
             "web_session_close",
             "browser_services",

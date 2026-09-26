@@ -1,3 +1,6 @@
+import { BrowserSurfaceWebRuntime } from "../src/browser/surface-web-runtime.js";
+import type { CantripMcpBinding } from "@cantrip/protocol";
+import type { WorkerWebServiceOptions } from "../src/web/service.js";
 import { createServer } from "node:http";
 import type { ChildProcess } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -418,6 +421,222 @@ describe("BrowserRemoteSurfaceAdapter", () => {
             emissions.some(({ channel }) => channel === "frame") &&
             emissions.some(({ channel }) => channel === "control"),
         );
+
+        const fallback = { openSession: vi.fn() } as unknown as NonNullable<
+          WorkerWebServiceOptions["sessionRuntime"]
+        >;
+        const runtime = new BrowserSurfaceWebRuntime(
+          fallback,
+          (surface, owner) => adapter.ownedSession(surface, owner),
+        );
+        const binding = {
+          ownerId,
+          chatId: "browser-agent-test",
+        } as CantripMcpBinding;
+        const agent = await runtime.openSession(binding, root, {
+          browserTarget: { projectId: "project-test", surfaceId },
+        });
+        const observed = await runtime.snapshotSession(
+          binding,
+          agent.sessionId,
+          1000,
+        );
+        const link = observed.elements.find(
+          (element) => element.description === "Cantrip browser",
+        )!;
+        const cdp = adapter.session(surfaceId)!;
+        await cdp.evaluate(
+          "globalThis.clicks = 0; document.getElementById('target').onclick = () => globalThis.clicks++",
+        );
+        await runtime.clickSession(binding, agent.sessionId, link.ref);
+        expect(await cdp.evaluate("globalThis.clicks")).toBe(1);
+        expect(fallback.openSession).not.toHaveBeenCalled();
+        const cursorMessages = () =>
+          emissions.filter(
+            ({ channel, payload }) =>
+              channel === "control" &&
+              JSON.parse(new TextDecoder().decode(payload)).type ===
+                "browser-agent-cursor",
+          );
+        expect(
+          cursorMessages().some(
+            ({ payload }) =>
+              JSON.parse(new TextDecoder().decode(payload)).click,
+          ),
+        ).toBe(true);
+        const count = cursorMessages().length;
+        await session.handleFrame(
+          "attachment-test",
+          "control",
+          new TextEncoder().encode(
+            JSON.stringify({
+              type: "pointer",
+              event: "move",
+              x: 10,
+              y: 10,
+              button: "none",
+              buttons: 0,
+              clickCount: 0,
+              modifiers: 0,
+            }),
+          ),
+        );
+        // User movement does not publish an agent movement or invalidate its session.
+        expect(cursorMessages().length).toBe(count);
+        const fresh = await runtime.snapshotSession(
+          binding,
+          agent.sessionId,
+          1000,
+        );
+        const input = fresh.elements.find(
+          (element) => element.description === "TEXTAREA",
+        )!;
+        await runtime.typeSession(
+          binding,
+          agent.sessionId,
+          input.ref,
+          "Shared page",
+          false,
+        );
+        expect(
+          await cdp.evaluate("document.getElementById('input').value"),
+        ).toBe("Shared page");
+        await expect(
+          runtime.snapshotSession(
+            { ...binding, chatId: "other" },
+            agent.sessionId,
+            1000,
+          ),
+        ).rejects.toThrow("another conversation");
+
+        await cdp.evaluate(
+          "globalThis.pointerEvents = []; for (const type of ['mousedown','mousemove','mouseup']) document.addEventListener(type, event => globalThis.pointerEvents.push({type,x:event.clientX,y:event.clientY,buttons:event.buttons}))",
+        );
+        const drag = runtime.pointerSession(binding, {
+          sessionId: agent.sessionId,
+          action: "drag",
+          x: 300,
+          y: 200,
+          to: { x: 500, y: 300 },
+          durationMs: 200,
+        });
+        await new Promise((resolve) => setTimeout(resolve, 40));
+        await session.handleFrame(
+          "attachment-test",
+          "control",
+          new TextEncoder().encode(
+            JSON.stringify({
+              type: "pointer",
+              event: "move",
+              x: 20,
+              y: 20,
+              button: "none",
+              buttons: 0,
+              clickCount: 0,
+              modifiers: 0,
+            }),
+          ),
+        );
+        for (const event of ["down", "up"]) {
+          await session.handleFrame(
+            "attachment-test",
+            "control",
+            new TextEncoder().encode(
+              JSON.stringify({
+                type: "pointer",
+                event,
+                x: 20,
+                y: 20,
+                button: "left",
+                buttons: event === "down" ? 1 : 0,
+                clickCount: 1,
+                modifiers: 0,
+              }),
+            ),
+          );
+          await session.handleFrame(
+            "attachment-test",
+            "control",
+            new TextEncoder().encode(
+              JSON.stringify({
+                type: "key",
+                event,
+                key: "Shift",
+                code: "ShiftLeft",
+                modifiers: event === "down" ? 8 : 0,
+              }),
+            ),
+          );
+        }
+        await drag;
+        const events = await cdp.evaluate<
+          Array<{ type: string; x: number; y: number; buttons: number }>
+        >("globalThis.pointerEvents");
+        expect(
+          events?.filter((event) => event.type === "mousedown"),
+        ).toHaveLength(2);
+        expect(events?.filter((event) => event.type === "mouseup")).toEqual([
+          { type: "mouseup", x: 20, y: 20, buttons: 0 },
+          { type: "mouseup", x: 500, y: 300, buttons: 0 },
+        ]);
+        expect(
+          events?.some((event) => event.type === "mousemove" && event.x === 20),
+        ).toBe(true);
+        // The cursor is a separate Cantrip overlay, never screenshot pixels.
+        await cdp.evaluate(
+          "document.activeElement?.blur(); getSelection()?.removeAllRanges()",
+        );
+        const beforeCursor = await cdp.captureScreenshot({ format: "png" });
+        await runtime.pointerSession(binding, {
+          sessionId: agent.sessionId,
+          action: "move",
+          x: 540,
+          y: 350,
+        });
+        expect(await cdp.captureScreenshot({ format: "png" })).toEqual(
+          beforeCursor,
+        );
+        // Resize/DPR and scrolling retain viewport CSS coordinates.
+        await session.handleFrame(
+          "attachment-test",
+          "control",
+          new TextEncoder().encode(
+            JSON.stringify({
+              type: "viewport",
+              viewport: { width: 800, height: 600, devicePixelRatio: 2 },
+            }),
+          ),
+        );
+        await cdp.evaluate("scrollTo(0, 200)");
+        await runtime.pointerSession(binding, {
+          sessionId: agent.sessionId,
+          action: "move",
+          x: 400,
+          y: 300,
+        });
+        expect(
+          JSON.parse(new TextDecoder().decode(cursorMessages().at(-1)!.payload))
+            .position,
+        ).toEqual({ x: 0.5, y: 0.5 });
+        // Reattachment restores position without replaying a click or input.
+        await session.detach("attachment-test");
+        await session.attach({
+          id: "attachment-test",
+          viewport: { width: 800, height: 600, devicePixelRatio: 2 },
+        });
+        expect(
+          JSON.parse(
+            new TextDecoder().decode(cursorMessages().at(-1)!.payload),
+          ),
+        ).toMatchObject({ position: { x: 0.5, y: 0.5 }, click: false });
+        await runtime.snapshotSession(binding, agent.sessionId, 1000);
+        await runtime.closeSession(binding, agent.sessionId);
+        expect(adapter.session(surfaceId)).toBe(cdp);
+        expect(
+          JSON.parse(new TextDecoder().decode(cursorMessages().at(-1)!.payload))
+            .position,
+        ).toBeNull();
+
         const framesBeforeNavigation = emissions.filter(
           ({ channel }) => channel === "frame",
         ).length;

@@ -2068,6 +2068,7 @@ describe("codexMcpConfigOverride", () => {
           env: {},
           enabled: true,
           required: true,
+          tool_timeout_sec: 0,
           enabled_tools: [...CANTRIP_MCP_TOOL_NAMES],
         },
       },

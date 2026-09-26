@@ -23,8 +23,8 @@ import {
 } from "./cua-contract.js";
 import { CANTRIP_MCP_LOCAL_OPERATION_TIMEOUT_MS } from "./timeouts.js";
 
-// Native fetch has an independent headers/body deadline. Override it for CUA
-// only, so an entire performance can finish before the broker sends its reply.
+// Native fetch has an independent headers/body deadline. Override it for
+// explicitly unbounded CUA and browser gestures, not ordinary operations.
 const cuaBrokerDispatcher = new Agent().compose(
   (dispatch) => (options, handler) =>
     dispatch(
@@ -122,7 +122,7 @@ async function brokerRequest(
   // Keep fetch and its dispatcher on the same Undici version. Node's bundled
   // fetch uses an older callback contract and cannot consume this dispatcher.
   const response =
-    pathname === "/v1/computer-use"
+    limits.timeoutMs === 0
       ? await cuaFetch(url, { ...options, dispatcher: cuaBrokerDispatcher })
       : await fetch(url, options);
   const payload = await readBoundedJsonResponse(response, limits.maximumBytes);
@@ -164,15 +164,26 @@ export async function invokeCantripMcpBrokerOperation(
   if (Date.parse(document.expiresAt) <= Date.now()) {
     throw new Error("Cantrip MCP binding has expired.");
   }
-  const payload = await brokerRequest(document, "/v1/execute", {
-    method: "POST",
-    body: JSON.stringify(
-      cantripMcpBrokerOperationRequestSchema.parse({
-        bindingId: document.bindingId,
-        request,
-      }),
-    ),
-  });
+  const payload = await brokerRequest(
+    document,
+    "/v1/execute",
+    {
+      method: "POST",
+      body: JSON.stringify(
+        cantripMcpBrokerOperationRequestSchema.parse({
+          bindingId: document.bindingId,
+          request,
+        }),
+      ),
+    },
+    {
+      maximumBytes: CANTRIP_MCP_MAX_RESPONSE_BYTES,
+      timeoutMs:
+        request.operation === "web.session.pointer"
+          ? 0
+          : CANTRIP_MCP_LOCAL_OPERATION_TIMEOUT_MS,
+    },
+  );
   return cantripAgentOperationResultSchema.parse(payload);
 }
 

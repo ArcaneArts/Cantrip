@@ -1,3 +1,5 @@
+import type { z } from "zod";
+import type { WebSessionState } from "../managed-runtimes/playwright.js";
 import { randomBytes } from "node:crypto";
 
 import { Readability } from "@mozilla/readability";
@@ -7,6 +9,7 @@ import {
   cantripMcpWebReadResultSchema,
   cantripMcpWebSessionActionResultSchema,
   cantripMcpWebSessionClickInputSchema,
+  cantripMcpWebSessionPointerInputSchema,
   cantripMcpWebSessionCloseInputSchema,
   cantripMcpWebSessionCloseResultSchema,
   cantripMcpWebSessionOpenInputSchema,
@@ -97,7 +100,13 @@ export interface WorkerWebServiceOptions {
     | "clickSession"
     | "typeSession"
     | "closeSession"
-  >;
+  > & {
+    cancelBinding?(binding: CantripMcpBinding): void;
+    pointerSession?(
+      binding: CantripMcpBinding,
+      input: z.infer<typeof cantripMcpWebSessionPointerInputSchema>,
+    ): Promise<WebSessionState>;
+  };
 }
 
 function opaque(prefix: "wrc" | "wsr"): string {
@@ -254,6 +263,28 @@ export class WorkerWebService {
       target: null,
       worktreeId: null,
       mutated: false,
+      data,
+    });
+  }
+
+  cancelBinding(binding: CantripMcpBinding): void {
+    this.#sessionRuntime?.cancelBinding?.(binding);
+  }
+
+  async sessionPointer(
+    binding: CantripMcpBinding,
+    arguments_: unknown,
+  ): Promise<CantripAgentOperationResult> {
+    const input = cantripMcpWebSessionPointerInputSchema.parse(arguments_);
+    const runtime = this.#requireSessionRuntime();
+    if (!runtime.pointerSession)
+      throw new Error("Pointer gestures require an exact open Browser target.");
+    const data = await runtime.pointerSession(binding, input);
+    return cantripMcpWebSessionActionResultSchema.parse({
+      summary: `Dispatched browser ${input.action} in session ${data.sessionId}.`,
+      target: null,
+      worktreeId: null,
+      mutated: true,
       data,
     });
   }

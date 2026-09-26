@@ -149,3 +149,187 @@ test("deploys the exact commit promoted to release", async () => {
     await rm(fixture.root, { force: true, recursive: true });
   }
 });
+
+test("reconciles release-only history with main's exact tree and deploys the promoted SHA", async () => {
+  const fixture = await repositoryFixture();
+  try {
+    git(fixture.repository, "switch", "-c", "release");
+    await writeFile(
+      path.join(fixture.repository, "release-only.txt"),
+      "old release content\n",
+    );
+    git(fixture.repository, "add", ".");
+    git(fixture.repository, "commit", "-m", "release-only history");
+    const oldRelease = git(fixture.repository, "rev-parse", "HEAD");
+    git(fixture.repository, "push", "origin", "release");
+    git(fixture.repository, "switch", "main");
+    await writeFile(path.join(fixture.repository, "state.txt"), "new main\n");
+    git(fixture.repository, "commit", "-am", "main changes");
+    git(fixture.repository, "push", "origin", "main");
+    const main = git(fixture.repository, "rev-parse", "HEAD");
+    const deployed = [];
+    const result = await releaseCantrip({
+      root: fixture.repository,
+      verifyCompatibility: () => undefined,
+      deploy: async ({ commit }) => {
+        deployed.push(commit);
+      },
+      deployWeb: async ({ commit }) => {
+        deployed.push(commit);
+      },
+    });
+    const promoted = git(fixture.remote, "rev-parse", "release");
+    assert.notEqual(promoted, main);
+    assert.deepEqual(deployed, [promoted, promoted]);
+    assert.equal(result.promotion.commit, promoted);
+    assert.equal(
+      git(fixture.repository, "rev-parse", `${promoted}^{tree}`),
+      git(fixture.repository, "rev-parse", `${main}^{tree}`),
+    );
+    git(
+      fixture.repository,
+      "merge-base",
+      "--is-ancestor",
+      oldRelease,
+      promoted,
+    );
+    git(fixture.repository, "merge-base", "--is-ancestor", main, promoted);
+    assert.equal(git(fixture.repository, "rev-parse", "HEAD"), main);
+    assert.equal(git(fixture.repository, "status", "--porcelain"), "");
+    assert.deepEqual(
+      promoteReleaseBranch({
+        root: fixture.repository,
+        verifyCompatibility: () => undefined,
+      }),
+      { changed: false, commit: promoted },
+    );
+    await writeFile(path.join(fixture.repository, "state.txt"), "next main\n");
+    git(fixture.repository, "commit", "-am", "another release");
+    git(fixture.repository, "push", "origin", "main");
+    const next = promoteReleaseBranch({
+      root: fixture.repository,
+      verifyCompatibility: () => undefined,
+    });
+    assert.equal(next.changed, true);
+    git(
+      fixture.repository,
+      "merge-base",
+      "--is-ancestor",
+      promoted,
+      next.commit,
+    );
+    assert.equal(
+      git(fixture.repository, "rev-parse", `${next.commit}^{tree}`),
+      git(fixture.repository, "rev-parse", "main^{tree}"),
+    );
+  } finally {
+    await rm(fixture.root, { force: true, recursive: true });
+  }
+});
+
+test("pushes skip-marked history separately from a clean release trigger and retries idempotently", async () => {
+  const fixture = await repositoryFixture();
+  try {
+    git(
+      fixture.repository,
+      "commit",
+      "--allow-empty",
+      "-m",
+      "implementation [skip ci]",
+    );
+    git(
+      fixture.repository,
+      "commit",
+      "--allow-empty",
+      "-m",
+      "clean head above skipped ancestor",
+    );
+    git(fixture.repository, "push", "origin", "main");
+    const updates = path.join(fixture.root, "updates");
+    const { chmod, readFile } = await import("node:fs/promises");
+    const hook = path.join(fixture.remote, "hooks", "post-receive");
+    await writeFile(hook, `#!/bin/sh\ncat >> '${updates}'\n`);
+    await chmod(hook, 0o755);
+    const promote = () =>
+      promoteReleaseBranch({
+        root: fixture.repository,
+        verifyCompatibility: () => undefined,
+      });
+    const result = promote();
+    const pushes = (await readFile(updates, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => line.split(" "));
+    assert.equal(pushes.length, 2);
+    assert.equal(pushes[1][0], pushes[0][1]);
+    assert.equal(pushes[1][1], result.commit);
+    assert.equal(
+      git(
+        fixture.repository,
+        "rev-list",
+        "--count",
+        `${pushes[1][0]}..${result.commit}`,
+      ),
+      "1",
+    );
+    assert.equal(
+      git(fixture.repository, "log", "-1", "--format=%B", result.commit),
+      "Publish native release artifacts",
+    );
+    assert.equal(
+      git(fixture.repository, "rev-parse", `${result.commit}^{tree}`),
+      git(fixture.repository, "rev-parse", "main^{tree}"),
+    );
+    assert.deepEqual(promote(), { changed: false, commit: result.commit });
+  } finally {
+    await rm(fixture.root, { force: true, recursive: true });
+  }
+});
+
+test("recovers when the trigger push fails after divergent skipped history was promoted", async () => {
+  const fixture = await repositoryFixture();
+  try {
+    git(fixture.repository, "switch", "-c", "release");
+    git(
+      fixture.repository,
+      "commit",
+      "--allow-empty",
+      "-m",
+      "previous release trigger",
+    );
+    git(fixture.repository, "push", "origin", "release");
+    git(fixture.repository, "switch", "main");
+    git(
+      fixture.repository,
+      "commit",
+      "--allow-empty",
+      "-m",
+      "next main [skip ci]",
+    );
+    git(fixture.repository, "push", "origin", "main");
+    const { chmod } = await import("node:fs/promises");
+    const hook = path.join(fixture.remote, "hooks", "pre-receive");
+    await writeFile(
+      hook,
+      '#!/bin/sh\nread old new ref\nif test "$(git log -1 --format=%s "$new")" = "Publish native release artifacts"; then exit 1; fi\n',
+    );
+    await chmod(hook, 0o755);
+    const promote = () =>
+      promoteReleaseBranch({
+        root: fixture.repository,
+        verifyCompatibility: () => undefined,
+      });
+    assert.throws(promote, /git push/);
+    const staged = git(fixture.remote, "rev-parse", "release");
+    await rm(hook);
+    const completed = promote();
+    assert.equal(completed.changed, true);
+    assert.equal(
+      git(fixture.repository, "rev-parse", `${completed.commit}^`),
+      staged,
+    );
+    assert.deepEqual(promote(), { changed: false, commit: completed.commit });
+  } finally {
+    await rm(fixture.root, { force: true, recursive: true });
+  }
+});

@@ -252,7 +252,21 @@ export const remoteDesktopApplicationIconSchema = z.object({
   data: z.string().max(180_000).nullable(),
 });
 
-const desktopCursorSprite = z.object({
+export const remoteCursorSpriteSchema = z.object({
+  motion: z
+    .object({
+      minimumDistance: z.number().finite().nonnegative(),
+      pixelsPerMs: z.number().finite().positive(),
+      minDurationMs: z.number().finite().nonnegative(),
+      maxDurationMs: z.number().finite().nonnegative(),
+      easing: z.tuple([
+        z.number().min(0).max(1),
+        z.number().finite(),
+        z.number().min(0).max(1),
+        z.number().finite(),
+      ]),
+    })
+    .optional(),
   width: z.literal(256),
   height: z.literal(256),
   hotspot: z.object({ x: z.literal(128), y: z.literal(128) }),
@@ -334,7 +348,9 @@ export const remoteDesktopServerMessageSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("desktop-cursor-assets"),
     participants: z
-      .array(z.object({ id: z.string().uuid(), sprite: desktopCursorSprite }))
+      .array(
+        z.object({ id: z.string().uuid(), sprite: remoteCursorSpriteSchema }),
+      )
       .max(16),
   }),
   z.object({
@@ -448,7 +464,20 @@ export const remoteBrowserClientMessageSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
+export const browserAgentCursorSchema = z.object({
+  type: z.literal("browser-agent-cursor"),
+  epoch: z.string().uuid(),
+  sequence: z.number().int().nonnegative(),
+  position: z
+    .object({ x: z.number().finite(), y: z.number().finite() })
+    .nullable(),
+  click: z.boolean(),
+  dragging: z.boolean(),
+  sprite: remoteCursorSpriteSchema.optional(),
+});
+
 export const remoteBrowserServerMessageSchema = z.discriminatedUnion("type", [
+  browserAgentCursorSchema,
   z.object({
     type: z.literal("browser-state"),
     operationId: z.string().uuid(),
