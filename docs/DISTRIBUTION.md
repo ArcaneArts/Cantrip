@@ -321,9 +321,18 @@ pnpm release
 ```
 
 The command first runs `git pull --ff-only origin main`, requires local `main`
-to equal `origin/main`, verifies that `origin/release` can fast-forward, and
-then pushes `main` to `release`. It refuses dirty trees, non-`main` branches,
-unpushed main commits, and divergent release history. The branch push triggers
+to equal `origin/main`, and promotes main's exact file tree to `release`.
+When release has its own history (such as workflow-trigger or release merge
+commits), it creates a reconciliation commit with both histories as parents
+and main's exact tree. Release-only content is superseded by main; no history
+is discarded and no force push is used. A concurrent release update rejects
+the push; rerun to incorporate it. Repeating a completed promotion is a no-op.
+If the promoted commits contain GitHub skip instructions such as `[skip ci]`,
+the command pushes that history first, then separately pushes one empty clean
+trigger commit. GitHub sees a push containing only the clean commit and runs
+the release workflow. Both deployments use this final commit SHA; its files
+are still exactly main's. No force push or workflow-dispatch permission is needed.
+It refuses dirty trees, non-`main` branches, and unpushed main commits. The branch push triggers
 the native client release workflow. The release command then validates and
 applies `.do/app.yaml` with authenticated `doctl` and source updates, without
 waiting for activation or checking the active component SHAs. Finally, it

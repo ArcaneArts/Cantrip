@@ -48,7 +48,8 @@ Run a full release from synchronized `main`:
 pnpm release
 ```
 
-This fast-forwards the `release` branch, validates the DigitalOcean App
+This promotes main’s exact contents to the `release` branch, preserving divergent
+release history through a reconciliation commit when needed, validates the DigitalOcean App
 Platform specification and triggers deployment of its `app` and `site`
 components, cross-builds the Server bundle, writes the root-only environment,
 uploads the immutable release, runs the matching forward migration, switches
