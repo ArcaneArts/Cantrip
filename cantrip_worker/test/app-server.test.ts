@@ -72,6 +72,59 @@ import {
   workspaceHasGitMetadata,
 } from "../src/codex/app-server.js";
 
+describe("banked resets with account credits", () => {
+  it.each([100, 100.01])(
+    "checks live balance %s before consuming a reset",
+    async (balance) => {
+      const runtime = Object.create(CodexAppServer.prototype) as CodexAppServer;
+      const request = vi.fn(async () => ({ outcome: "reset" }));
+      Object.assign(runtime, {
+        ensureCatalogStarted: vi.fn(async () => {}),
+        requestWithChatGptAuthRecovery: request,
+      });
+      const read = vi.spyOn(runtime, "readQuotaSnapshot").mockResolvedValue({
+        snapshotId: "credits",
+        observedAt: new Date().toISOString(),
+        workerVersion: null,
+        codexVersion: null,
+        windows: [],
+        credits: {
+          hasCredits: true,
+          unlimited: false,
+          balance: String(balance),
+        },
+        rateLimitResetCredits: { availableCount: 2, credits: null },
+      });
+      const provider = {
+        id: "chatgpt",
+        name: "ChatGPT",
+        kind: "chatgpt",
+        baseUrl: "https://chatgpt.com/backend-api/codex",
+        apiKey: null,
+        protectedApiKey: null,
+        accountId: "account",
+        credentialHomeKey: "account",
+      } as Parameters<CodexAppServer["consumeRateLimitResetCredit"]>[0];
+      const work = runtime.consumeRateLimitResetCredit(provider, {
+        idempotencyKey: "00000000-0000-4000-8000-000000000111",
+      });
+      if (balance > 100) {
+        await expect(work).rejects.toThrow("more than 100 credits");
+        expect(request).not.toHaveBeenCalled();
+        expect(read).toHaveBeenCalledOnce();
+      } else {
+        await expect(work).resolves.toMatchObject({ outcome: "reset" });
+        expect(request).toHaveBeenCalledWith(
+          provider,
+          "account/rateLimitResetCredit/consume",
+          { idempotencyKey: "00000000-0000-4000-8000-000000000111" },
+        );
+        expect(read).toHaveBeenCalledTimes(2);
+      }
+    },
+  );
+});
+
 describe("external Codex thread change coalescing", () => {
   it("emits one bounded metadata-only revision for a noisy thread burst", () => {
     vi.useFakeTimers();
@@ -958,6 +1011,7 @@ describe("Codex rich event normalization", () => {
             limitId: "codex",
             limitName: "Codex",
             planType: "plus",
+            credits: { hasCredits: true, unlimited: false, balance: "120.50" },
             primary: {
               usedPercent: 42,
               windowDurationMins: 300,
@@ -974,6 +1028,7 @@ describe("Codex rich event normalization", () => {
       type: "rateLimit",
       limitId: "codex",
       primary: { usedPercent: 42 },
+      credits: { hasCredits: true, unlimited: false, balance: "120.50" },
     });
 
     expect(

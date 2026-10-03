@@ -18,6 +18,7 @@ import { GripVertical } from "lucide-react";
 import type { CSSProperties } from "react";
 
 import { cn } from "@/lib/utils";
+import { providerCreditsText } from "./provider-usage-display";
 
 export function reorderedProviderAccounts(
   accounts: ModelProviderAccountSummary[],
@@ -40,6 +41,7 @@ function SortableProviderAccountChip({
   onSelect,
   selected,
   sortableEnabled,
+  showCredits,
 }: {
   account: ModelProviderAccountSummary;
   disabled: boolean;
@@ -47,6 +49,7 @@ function SortableProviderAccountChip({
   onSelect(): void;
   selected: boolean;
   sortableEnabled: boolean;
+  showCredits: boolean;
 }) {
   const sortable = useSortable({
     id: account.id,
@@ -61,7 +64,7 @@ function SortableProviderAccountChip({
     <div
       ref={sortable.setNodeRef}
       className={cn(
-        "inline-flex h-8 shrink-0 items-center rounded-md text-sm font-medium transition-colors",
+        "inline-flex min-h-8 shrink-0 items-center rounded-md text-sm font-medium transition-colors",
         selected
           ? "border border-input bg-background shadow-xs"
           : "hover:bg-accent hover:text-accent-foreground",
@@ -85,7 +88,7 @@ function SortableProviderAccountChip({
       <button
         type="button"
         className={cn(
-          "flex h-full items-center gap-1.5 rounded-md pr-2.5 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+          "flex h-full items-center gap-1.5 rounded-md py-1 pr-2.5 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
           sortableEnabled ? "pl-0.5" : "pl-2.5",
         )}
         disabled={disabled}
@@ -96,7 +99,14 @@ function SortableProviderAccountChip({
         <span
           className={`size-1.5 rounded-full ${account.credentialState === "signed-in" ? "bg-emerald-400" : "bg-muted-foreground/45"}`}
         />
-        {account.label}
+        <span className="grid text-left">
+          <span>{account.label}</span>
+          {showCredits ? (
+            <span className="text-[10px] font-normal tabular-nums text-muted-foreground">
+              {providerCreditsText(account.credits)}
+            </span>
+          ) : null}
+        </span>
       </button>
     </div>
   );
@@ -108,12 +118,14 @@ export function ProviderAccountPriorityChips({
   onReorder,
   onSelect,
   selectedAccountId,
+  showCredits = false,
 }: {
   accounts: ModelProviderAccountSummary[];
   disabled: boolean;
   onReorder(accounts: ModelProviderAccountSummary[]): void;
   onSelect(accountId: string): void;
   selectedAccountId: string | null;
+  showCredits?: boolean;
 }) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -148,6 +160,7 @@ export function ProviderAccountPriorityChips({
               index={index}
               selected={account.id === selectedAccountId}
               sortableEnabled={sortableEnabled}
+              showCredits={showCredits}
               onSelect={() => onSelect(account.id)}
             />
           ))}

@@ -1,4 +1,5 @@
 import {
+  shouldUseChatGptCredits,
   NATIVE_SUBAGENT_PROTOCOL_VERSION,
   customizationContentScopeSchema,
   modelConfigurationFailureSchema,
@@ -7,6 +8,7 @@ import {
   protectedCustomizationResponseSchema,
   skillSettingsContextSchema,
   type ModelConfiguration,
+  type AgentActivity,
   type ProviderQuotaSnapshot,
   type ReasoningEffort,
 } from "@cantrip/protocol";
@@ -25,10 +27,16 @@ import type {
 } from "../../db/repository.js";
 import { errorMessage } from "../../http/request-helpers.js";
 import { isAccountProviderKind } from "../../models/account-provider.js";
-import { resolveAccountProviderRuntimes } from "../../models/chatgpt-account-routing.js";
+import {
+  resolveAccountProviderRuntimes,
+  updateRuntimeAccountCredits,
+} from "../../models/chatgpt-account-routing.js";
 import { evaluateModelRouteAvailability } from "../../models/model-route-availability.js";
 import type { OpenRouterRuntimeCatalogHydrator } from "../../models/openrouter-runtime-catalog.js";
-import { readAndPersistProviderQuotaSnapshot } from "../../models/provider-quota.js";
+import {
+  readAndPersistProviderQuotaSnapshot,
+  persistProviderRateLimitActivity,
+} from "../../models/provider-quota.js";
 import {
   prepareRuntimesForReasoning,
   reasoningStateForRuntimes,
@@ -48,6 +56,7 @@ export interface ModelRoutingRuntimeDependencies {
   applicationOwnerId: () => string;
   bridge: LimitedWorkerCommandBus;
   openRouterRuntimeCatalogs: OpenRouterRuntimeCatalogHydrator;
+  publishLiveInvalidation: (resource: "settings") => void;
   publishProjectTokenUsageChange: (
     ownerId: string,
     projectId: string,
@@ -67,6 +76,7 @@ export function createModelRoutingRuntime({
   applicationOwnerId,
   bridge,
   openRouterRuntimeCatalogs,
+  publishLiveInvalidation,
   publishProjectTokenUsageChange,
   repository,
   routeCooldowns,
@@ -151,7 +161,13 @@ export function createModelRoutingRuntime({
       for (const accountRuntime of accountRouting.runtimes) {
         const cooldownUntil =
           routeCooldowns.get(runtimeCooldownKey(accountRuntime)) ?? 0;
-        if (cooldownUntil > now) {
+        if (
+          cooldownUntil > now &&
+          !(
+            accountRuntime.provider.kind === "chatgpt" &&
+            shouldUseChatGptCredits(accountRuntime.provider.credits)
+          )
+        ) {
           unavailable.push(`${runtime.provider.name} account is cooling down`);
           continue;
         }
@@ -516,6 +532,44 @@ export function createModelRoutingRuntime({
 
   const quotaObservationTimers = new Set<NodeJS.Timeout>();
   const quotaResetObservationKeys = new Set<string>();
+  const recordRuntimeRateLimitActivity = async (
+    runtime: ModelRuntime,
+    execution: ChatExecutionContext,
+    executionAttemptId: string,
+    activity: Extract<AgentActivity, { type: "rateLimit" }>,
+  ): Promise<void> => {
+    if (!runtime.provider.accountId) return;
+    const creditsChanged =
+      (activity.limitId === null || activity.limitId === "codex") &&
+      updateRuntimeAccountCredits(runtime, activity.credits);
+    try {
+      await persistProviderRateLimitActivity(
+        repository,
+        {
+          ownerId: applicationOwnerId(),
+          providerId: runtime.provider.id,
+          accountId: runtime.provider.accountId,
+          accountPlanType: activity.planType,
+          workerId: execution.workerId,
+          trigger: "live-rate-limit-update",
+          chatId: execution.chatId,
+          turnId: activity.correlation?.turnId ?? null,
+          executionAttemptId,
+        },
+        activity,
+      );
+      if (creditsChanged) publishLiveInvalidation("settings");
+    } catch (error) {
+      app.log.warn(
+        {
+          accountId: runtime.provider.accountId,
+          err: error,
+          providerId: runtime.provider.id,
+        },
+        "Unable to persist provider quota observation",
+      );
+    }
+  };
   const captureRuntimeQuota = (
     runtime: ModelRuntime,
     execution: ChatExecutionContext,
@@ -549,6 +603,8 @@ export function createModelRoutingRuntime({
       },
     })
       .then(({ snapshot }) => {
+        if (updateRuntimeAccountCredits(runtime, snapshot.credits))
+          publishLiveInvalidation("settings");
         scheduleKnownResetQuotaSamples(
           runtime,
           execution,
@@ -782,6 +838,7 @@ export function createModelRoutingRuntime({
     customizationScopesMatch,
     reasoningStateForContext,
     recordRuntimeModelBehavior,
+    recordRuntimeRateLimitActivity,
     recordRuntimeTokenUsage,
     resolveModelId,
     routePairsForConfiguration,

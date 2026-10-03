@@ -1,4 +1,8 @@
 import type { ModelRuntime, ServerRepository } from "../db/repository.js";
+import {
+  shouldUseChatGptCredits,
+  type ProviderCreditsSnapshot,
+} from "@cantrip/protocol";
 import { serverLogger } from "../logger.js";
 import { isAccountProviderKind } from "./account-provider.js";
 import { accountProviderSupportsModel } from "./model-route-availability.js";
@@ -6,6 +10,29 @@ import { accountProviderSupportsModel } from "./model-route-availability.js";
 export interface AccountProviderRoutingResult {
   runtimes: ModelRuntime[];
   unavailable: string[];
+}
+
+export function canAutomaticallySwitchProviderAccount(
+  runtime: ModelRuntime,
+): boolean {
+  return !(
+    runtime.provider.kind === "chatgpt" &&
+    shouldUseChatGptCredits(runtime.provider.credits)
+  );
+}
+
+export function updateRuntimeAccountCredits(
+  runtime: ModelRuntime,
+  credits: ProviderCreditsSnapshot | null | undefined,
+): boolean {
+  if (runtime.provider.kind !== "chatgpt" || !credits) return false;
+  const previous = runtime.provider.credits;
+  runtime.provider.credits = credits;
+  return (
+    previous?.balance !== credits.balance ||
+    previous?.hasCredits !== credits.hasCredits ||
+    previous?.unlimited !== credits.unlimited
+  );
 }
 
 export async function resolveAccountProviderRuntimes(input: {
@@ -109,7 +136,12 @@ export async function resolveAccountProviderRuntimes(input: {
       account.weeklyUsageUsedPercent === null
         ? null
         : Math.max(0, 100 - account.weeklyUsageUsedPercent);
-    if (remainingPercent === null) {
+    if (
+      providerKind === "chatgpt" &&
+      shouldUseChatGptCredits(account.credits)
+    ) {
+      healthy.push(account);
+    } else if (remainingPercent === null) {
       healthy.push(account);
     } else if (remainingPercent > runtime.provider.weeklyUsageReservePercent) {
       healthy.push(account);
@@ -154,6 +186,7 @@ export async function resolveAccountProviderRuntimes(input: {
         ...runtime.provider,
         accountId: account.accountId,
         credentialHomeKey: account.credentialHomeKey,
+        credits: account.credits,
       },
     })),
     unavailable,

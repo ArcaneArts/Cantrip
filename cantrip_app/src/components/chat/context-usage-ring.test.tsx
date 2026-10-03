@@ -308,6 +308,11 @@ describe("context usage ring", () => {
 
   it("renders accessible context and combined account capacity on the ring", () => {
     const bundle = settings();
+    bundle.providers[0]!.accounts[1]!.credits = {
+      hasCredits: true,
+      unlimited: false,
+      balance: "1234.56",
+    };
     const markup = renderToStaticMarkup(
       <ContextUsageRing
         messages={[usageMessage(1, 25_000, 100_000)]}
@@ -323,7 +328,28 @@ describe("context usage ring", () => {
     expect(markup).toContain('stroke-dasharray="25 100"');
     expect(markup).toContain("72% total 7-day available across 2 accounts");
     expect(markup).toContain("current account two");
+    expect(markup).toContain("1,234.56 credits");
     expect(markup).toContain('aria-expanded="false"');
+  });
+
+  it("shows credits when there is only one signed-in account", () => {
+    const bundle = settings();
+    bundle.providers[0]!.accounts = [
+      account("only", 100, {
+        credits: { hasCredits: true, unlimited: false, balance: "250" },
+      }),
+    ];
+    const markup = renderToStaticMarkup(
+      <ContextUsageRing
+        messages={[]}
+        model={bundle.models[0]}
+        providers={bundle.providers}
+      />,
+    );
+    expect(markup).toContain("current account only, 250 credits");
+    expect(
+      selectedQuotaAccount(bundle.providers[0]!, "only")?.credits?.balance,
+    ).toBe("250");
   });
 
   it("includes banked ChatGPT resets in the combined account capacity", () => {

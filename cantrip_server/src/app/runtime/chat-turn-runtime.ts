@@ -3,6 +3,7 @@ import {
   validateChatTurnInput,
 } from "./chat-turn-configuration.js";
 import { finishManagedGui } from "./finish-managed-gui.js";
+import { canAutomaticallySwitchProviderAccount } from "../../models/chatgpt-account-routing.js";
 import { clearAgentInteraction } from "./clear-agent-interaction.js";
 
 import { protectChatInput } from "./protect-chat-input.js";
@@ -46,7 +47,6 @@ import {
   type ChatExecutionAttribution,
 } from "../../db/repository.js";
 import { errorMessage } from "../../http/request-helpers.js";
-import { persistProviderRateLimitActivity } from "../../models/provider-quota.js";
 import { taskOperationRelayTurnFields } from "../../tasks/encrypted-relay.js";
 import { withTaskLaunchStageTimeout } from "../../tasks/launch-observation.js";
 
@@ -102,6 +102,7 @@ export function createChatTurnRuntime({
   recordLiveAgentInteractionRequest,
   recordLiveEncryptedAgentInteractionRequest,
   recordRuntimeModelBehavior,
+  recordRuntimeRateLimitActivity,
   recordRuntimeTokenUsage,
   repository,
   resolveModelId,
@@ -1393,30 +1394,12 @@ export function createChatTurnRuntime({
                       event.activity.type === "rateLimit" &&
                       runtime.provider.accountId
                     ) {
-                      await persistProviderRateLimitActivity(
-                        repository,
-                        {
-                          ownerId,
-                          providerId: runtime.provider.id,
-                          accountId: runtime.provider.accountId,
-                          accountPlanType: event.activity.planType,
-                          workerId: execution.workerId,
-                          trigger: "live-rate-limit-update",
-                          chatId: execution.chatId,
-                          turnId: event.activity.correlation?.turnId ?? null,
-                          executionAttemptId,
-                        },
+                      await recordRuntimeRateLimitActivity(
+                        runtime,
+                        execution,
+                        executionAttemptId,
                         event.activity,
-                      ).catch((error) => {
-                        app.log.warn(
-                          {
-                            accountId: runtime.provider.accountId,
-                            err: error,
-                            providerId: runtime.provider.id,
-                          },
-                          "Unable to persist provider quota observation",
-                        );
-                      });
+                      );
                     }
                     if (event.activity.type === "fileChange") {
                       for (const change of event.activity.changes) {
@@ -1754,6 +1737,7 @@ export function createChatTurnRuntime({
                 ? "cancelled"
                 : "failed";
             const canRetry =
+              canAutomaticallySwitchProviderAccount(runtime) &&
               (!nativeCommandReceipt ||
                 (
                   await repository.nativeCommands.get(

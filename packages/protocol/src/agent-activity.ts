@@ -1,5 +1,6 @@
 import { nativeTurnModelAttributionSchema } from "./native-turn-model-attribution.js";
 import { z } from "zod";
+import { providerCreditsSnapshotSchema } from "./providers.js";
 import { nativeInitialTurnSettingsSchema } from "./native-initial-turn-settings.js";
 import {
   computerUseOperationSchema,
@@ -402,6 +403,7 @@ export const agentActivitySchema = z.discriminatedUnion("type", [
   z.object({
     ...agentActivityBaseShape,
     type: z.literal("rateLimit"),
+    credits: providerCreditsSnapshotSchema.nullable().optional(),
     limitId: z.string().nullable().default(null),
     limitName: z.string().nullable(),
     planType: z.string().nullable(),

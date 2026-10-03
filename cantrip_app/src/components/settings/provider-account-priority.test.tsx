@@ -66,4 +66,25 @@ describe("provider account priority", () => {
     expect(markup).toContain('aria-pressed="true"');
     expect(markup).toContain("lucide-grip-vertical");
   });
+
+  it("shows each ChatGPT account balance without treating missing credits as zero", () => {
+    const markup = renderToStaticMarkup(
+      <ProviderAccountPriorityChips
+        accounts={accounts.map((account) => ({
+          ...account,
+          credits:
+            account.id === "primary"
+              ? { hasCredits: true, unlimited: false, balance: "250" }
+              : null,
+        }))}
+        showCredits
+        disabled={false}
+        selectedAccountId="primary"
+        onReorder={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    );
+    expect(markup).toContain("250 credits");
+    expect(markup).toContain("Credits unavailable");
+  });
 });

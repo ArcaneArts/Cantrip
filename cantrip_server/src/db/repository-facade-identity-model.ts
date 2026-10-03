@@ -505,6 +505,14 @@ export abstract class IdentityModelRepositoryFacade {
     );
   }
 
+  async recordModelProviderAccountCredits(
+    input: Parameters<
+      ProviderAccountRepository["recordModelProviderAccountCredits"]
+    >[0],
+  ): Promise<boolean> {
+    return this.providerAccounts.recordModelProviderAccountCredits(input);
+  }
+
   async recordModelProviderAccountUsage(input: {
     accountId: string;
     ownerId: string;

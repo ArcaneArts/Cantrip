@@ -25,6 +25,7 @@ import type {
   ManagedWebRuntimeCapabilities,
   MobileProjectTabConfigurations,
   ModelReasoningEffortOption,
+  ProviderCreditsSnapshot,
   NativeHistoryTurn,
   NativeHistoryPreparedBatch,
   NativeHistoryItemEvidence,
@@ -541,6 +542,8 @@ export const modelProviderAccounts = pgTable(
       withTimezone: true,
     }),
     weeklyUsageUsedBasisPoints: integer("weekly_usage_used_basis_points"),
+    credits: jsonb("credits").$type<ProviderCreditsSnapshot>(),
+    creditsObservedAt: timestamp("credits_observed_at", { withTimezone: true }),
     weeklyUsageResetsAt: timestamp("weekly_usage_resets_at", {
       withTimezone: true,
     }),

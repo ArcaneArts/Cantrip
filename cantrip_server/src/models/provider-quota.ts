@@ -29,6 +29,15 @@ export async function persistProviderQuotaSnapshot(
   input: ProviderQuotaSnapshot,
 ): Promise<number> {
   const snapshot = providerQuotaSnapshotSchema.parse(input);
+  if (snapshot.credits) {
+    await repository.recordModelProviderAccountCredits({
+      ownerId: context.ownerId,
+      providerId: context.providerId,
+      accountId: context.accountId,
+      credits: snapshot.credits,
+      observedAt: new Date(snapshot.observedAt),
+    });
+  }
   let inserted = 0;
   for (const [index, window] of snapshot.windows.entries()) {
     const recorded = await repository.recordProviderQuotaObservation(
@@ -116,6 +125,10 @@ export async function persistProviderRateLimitActivity(
       observedAt: observedAt.toISOString(),
       workerVersion: null,
       codexVersion: null,
+      credits:
+        activity.limitId === null || activity.limitId === "codex"
+          ? activity.credits
+          : undefined,
       windows: (["primary", "secondary"] as const).flatMap((windowKind) => {
         const window = activity[windowKind];
         if (!window) return [];

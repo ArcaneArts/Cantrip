@@ -12,6 +12,44 @@ const weekly = (usedPercent: number) => ({
 });
 
 describe("Codex weekly rate limits", () => {
+  it("preserves canonical account credits independently of quota windows", () => {
+    const credits = { hasCredits: true, unlimited: false, balance: "1234.56" };
+    const options = { codexVersion: "0.157.1", workerVersion: "test" };
+    expect(
+      quotaSnapshotFromRateLimits(
+        {
+          rateLimitsByLimitId: {
+            reviews: {
+              primary: null,
+              secondary: null,
+              credits: { ...credits, balance: "9999" },
+            },
+            codex: { primary: null, secondary: null, credits },
+          },
+        },
+        options,
+      ),
+    ).toMatchObject({ credits, windows: [] });
+    expect(
+      quotaSnapshotFromRateLimits(
+        { rateLimits: { primary: null, secondary: null } },
+        options,
+      ).credits,
+    ).toBeNull();
+    expect(
+      quotaSnapshotFromRateLimits(
+        {
+          rateLimits: {
+            limitId: "reviews",
+            primary: null,
+            secondary: null,
+            credits,
+          },
+        },
+        options,
+      ).credits,
+    ).toBeNull();
+  });
   it("prefers the canonical snapshot over unordered additional limits", () => {
     expect(
       weeklyUsageFromRateLimits({
