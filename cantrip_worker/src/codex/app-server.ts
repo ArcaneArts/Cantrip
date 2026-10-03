@@ -72,6 +72,7 @@ import {
   permissionProfileCapabilitySchema,
   providerRateLimitResetConsumeOutcomeSchema,
   providerRateLimitResetConsumeResultSchema,
+  shouldUseChatGptCredits,
   YOLO_PERMISSION_PROFILE_ID,
   normalizedAgentMessageSchema,
   threadGoalSchema,
@@ -1737,6 +1738,7 @@ interface RateLimitWindow {
 
 interface AccountRateLimitsUpdatedParams {
   rateLimits: {
+    credits?: import("@cantrip/protocol").ProviderCreditsSnapshot | null;
     limitId: string | null;
     limitName: string | null;
     planType: string | null;
@@ -4084,6 +4086,7 @@ export function normalizeRateLimitActivity(
     reachedType: params.rateLimits.rateLimitReachedType,
     primary: params.rateLimits.primary,
     secondary: params.rateLimits.secondary,
+    credits: params.rateLimits.credits,
     correlation,
   });
 }
@@ -5255,6 +5258,12 @@ export class CodexAppServer implements CodexRuntime {
   ): Promise<ProviderRateLimitResetConsumeResult> {
     const startedAtMs = Date.now();
     await this.ensureCatalogStarted(provider);
+    const beforeReset = await this.readQuotaSnapshot(provider);
+    if (shouldUseChatGptCredits(beforeReset?.credits)) {
+      throw new Error(
+        "This account has more than 100 credits. Use those credits before redeeming a banked usage reset.",
+      );
+    }
     const response = (await this.requestWithChatGptAuthRecovery(
       provider,
       "account/rateLimitResetCredit/consume",

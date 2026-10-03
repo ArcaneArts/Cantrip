@@ -5,7 +5,10 @@ import type {
 import { describe, expect, it } from "vitest";
 
 import {
+  providerCreditsText,
+  providerTotalCreditsText,
   providerAccountWeeklyUsage,
+  providerAccountCredits,
   providerRateLimitResetImpact,
   providerWeeklyAvailability,
   providerWeeklyRemainingPercent,
@@ -36,6 +39,58 @@ function account(
 }
 
 describe("provider weekly availability", () => {
+  it("uses the newest account balance when a cached reset-status response is older", () => {
+    const current = account("current", 100, {
+      credits: { hasCredits: true, unlimited: false, balance: "110" },
+      creditsObservedAt: "2026-08-16T12:00:00.000Z",
+    });
+    const snapshot: ProviderQuotaSnapshot = {
+      snapshotId: "credits",
+      observedAt: "2026-08-16T11:00:00.000Z",
+      codexVersion: null,
+      workerVersion: null,
+      windows: [],
+      rateLimitResetCredits: null,
+      credits: { hasCredits: true, unlimited: false, balance: "200" },
+    };
+    expect(providerAccountCredits(current, snapshot)?.balance).toBe("110");
+    expect(
+      providerAccountCredits(current, {
+        ...snapshot,
+        observedAt: "2026-08-16T13:00:00.000Z",
+      })?.balance,
+    ).toBe("200");
+    expect(
+      providerAccountCredits(current, { ...snapshot, credits: null })?.balance,
+    ).toBe("110");
+    expect(providerAccountCredits(null, snapshot)?.balance).toBe("200");
+    expect(
+      providerAccountCredits(
+        {
+          ...current,
+          credentialState: "signed-out",
+          credits: null,
+          creditsObservedAt: null,
+        },
+        snapshot,
+      ),
+    ).toBeNull();
+  });
+  it("shows credit balances without turning unknown accounts into zero", () => {
+    const credits = { hasCredits: true, unlimited: false, balance: "1234.5" };
+    expect(providerCreditsText(credits)).toBe("1,234.5 credits");
+    expect(providerCreditsText({ ...credits, balance: "0" })).toBe("0 credits");
+    expect(providerCreditsText(null)).toBe("Credits unavailable");
+    expect(
+      providerCreditsText({ ...credits, unlimited: true, balance: null }),
+    ).toBe("Unlimited credits");
+    expect(
+      providerTotalCreditsText([
+        account("known", 100, { credits }),
+        account("unknown", 0),
+      ]),
+    ).toBe("1,234.5 credits reported (1/2 accounts)");
+  });
   it("converts used capacity into remaining capacity", () => {
     expect(providerWeeklyRemainingPercent(95)).toBe(5);
     expect(providerWeeklyRemainingPercent(0)).toBe(100);

@@ -17,6 +17,7 @@ import type {
 } from "@cantrip/protocol";
 import {
   isZaiCodingPlanBaseUrl,
+  shouldUseChatGptCredits,
   PROVIDER_REAUTH_REQUIRED_ERROR_CODE,
   ZAI_CODING_PLAN_BASE_URL,
 } from "@cantrip/protocol";
@@ -154,7 +155,10 @@ import {
 } from "./provider-catalog-display";
 import {
   providerAccountWeeklyUsage,
+  providerAccountCredits,
   providerRateLimitResetImpact,
+  providerCreditsText,
+  providerTotalCreditsText,
   providerWeeklyAvailability,
   providerWeeklyUsageFromQuotaSnapshot,
   providerWeeklyRemainingPercent,
@@ -945,6 +949,9 @@ function ProviderRow({
                 available
               </span>
             )}
+            {provider.kind === "chatgpt" ? (
+              <span>{providerTotalCreditsText(provider.accounts)}</span>
+            ) : null}
           </p>
         ) : (
           <p className="truncate font-mono text-xs text-muted-foreground">
@@ -1298,6 +1305,16 @@ export function SettingsPage({
   const rateLimitResetImpact =
     providerRateLimitResetImpact(selectedWeeklyUsage);
   const resetCredits = rateLimitResets.data?.rateLimitResetCredits ?? null;
+  const currentAccountProvider = settings.data?.providers.find(
+    (provider) => provider.id === accountProvider?.id,
+  );
+  const selectedCredits = providerAccountCredits(
+    currentAccountProvider?.accounts.find(
+      (account) => account.id === selectedAccount?.id,
+    ) ?? selectedAccount,
+    rateLimitResets.data,
+  );
+  const useAccountCredits = shouldUseChatGptCredits(selectedCredits);
   const availableResetCredit =
     resetCredits?.credits?.find((credit) => credit.status === "available") ??
     null;
@@ -2914,7 +2931,18 @@ export function SettingsPage({
                   </div>
                 ) : null}
                 <ProviderAccountPriorityChips
-                  accounts={accountProvider.accounts}
+                  accounts={accountProvider.accounts.map((account) => ({
+                    ...account,
+                    credits:
+                      account.id === selectedAccount?.id
+                        ? selectedCredits
+                        : (
+                            currentAccountProvider?.accounts.find(
+                              (current) => current.id === account.id,
+                            ) ?? account
+                          ).credits,
+                  }))}
+                  showCredits={accountProvider.kind === "chatgpt"}
                   disabled={reorderProviderAccounts.isPending}
                   selectedAccountId={selectedAccount?.id ?? null}
                   onSelect={setSelectedAccountId}
@@ -3023,6 +3051,15 @@ export function SettingsPage({
                   ) : null}
                   {accountProvider.kind === "chatgpt" ? (
                     <div className="grid gap-2 border-t pt-3">
+                      <p className="text-sm font-medium tabular-nums">
+                        {providerCreditsText(selectedCredits)}
+                      </p>
+                      {useAccountCredits ? (
+                        <p className="text-xs text-muted-foreground">
+                          Use account credits before switching accounts or
+                          redeeming a banked usage reset.
+                        </p>
+                      ) : null}
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
                           <p className="text-xs font-medium">
@@ -3053,6 +3090,7 @@ export function SettingsPage({
                           size="sm"
                           variant="outline"
                           disabled={
+                            useAccountCredits ||
                             rateLimitResets.isLoading ||
                             !resetCredits?.availableCount ||
                             !rateLimitResetImpact ||

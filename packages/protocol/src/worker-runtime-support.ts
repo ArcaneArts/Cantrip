@@ -8,6 +8,7 @@ import { protectedSecretEnvelopeSchema } from "./protected-secrets.js";
 import {
   modelProviderKindSchema,
   providerWeeklyUsageSchema,
+  providerCreditsSnapshotSchema,
   reasoningEffortSchema,
   modelReasoningEffortOptionSchema,
   providerModelCatalogEntrySchema,
@@ -194,6 +195,7 @@ export const providerQuotaSnapshotSchema = z.object({
   workerVersion: z.string().max(200).nullable(),
   codexVersion: z.string().max(500).nullable(),
   windows: z.array(providerQuotaWindowObservationSchema).max(500),
+  credits: providerCreditsSnapshotSchema.nullable().optional(),
   rateLimitResetCredits: providerRateLimitResetCreditsSummarySchema
     .nullable()
     .default(null),

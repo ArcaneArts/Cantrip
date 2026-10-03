@@ -5,6 +5,7 @@ import {
   type ProviderQuotaSnapshot,
   type ProviderRateLimitResetCreditsSummary,
   type ProviderWeeklyUsage,
+  type ProviderCreditsSnapshot,
 } from "@cantrip/protocol";
 
 export const WEEKLY_RATE_LIMIT_WINDOW_MINUTES = 7 * 24 * 60;
@@ -16,6 +17,7 @@ interface RateLimitWindow {
 }
 
 interface RateLimitSnapshot {
+  credits?: ProviderCreditsSnapshot | null;
   limitId?: string | null;
   limitName?: string | null;
   planType?: string | null;
@@ -51,6 +53,10 @@ export function quotaSnapshotFromRateLimits(
 ): ProviderQuotaSnapshot {
   const canonical =
     result.rateLimits ?? result.rateLimitsByLimitId?.codex ?? null;
+  const accountSnapshot =
+    !canonical?.limitId || canonical.limitId.trim() === "codex"
+      ? canonical
+      : null;
   const buckets = new Map<string, RateLimitSnapshot>();
   for (const [limitId, snapshot] of Object.entries(
     result.rateLimitsByLimitId ?? {},
@@ -102,6 +108,10 @@ export function quotaSnapshotFromRateLimits(
     workerVersion: options.workerVersion,
     codexVersion: options.codexVersion,
     windows,
+    credits:
+      accountSnapshot?.credits ??
+      result.rateLimitsByLimitId?.codex?.credits ??
+      null,
     rateLimitResetCredits: result.rateLimitResetCredits ?? null,
   });
 }

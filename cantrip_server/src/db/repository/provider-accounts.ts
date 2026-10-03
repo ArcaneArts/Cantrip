@@ -4,12 +4,23 @@ import type {
   ModelProviderAccountWireSummary,
   OrderedIds,
   ProviderModelAvailability,
+  ProviderCreditsSnapshot,
 } from "@cantrip/protocol";
 import type {
   ProtectedProviderCredential,
   ProviderCredentialPublicMetadata,
 } from "@cantrip/protocol/protected-secrets";
-import { and, asc, desc, eq, exists, inArray } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  exists,
+  inArray,
+  isNull,
+  lte,
+  or,
+} from "drizzle-orm";
 
 import {
   accountProviderLabel,
@@ -31,6 +42,7 @@ export interface ModelProviderAccountRuntime {
   modelAvailability: ProviderModelAvailability["state"] | null;
   position: number;
   weeklyUsageUsedPercent: number | null;
+  credits?: ProviderCreditsSnapshot | null;
 }
 
 export type ProviderAccountCredentialState =
@@ -92,6 +104,10 @@ export function toProviderAccountSummary(
     planType: account.planType,
     position: account.position,
     enabled: account.enabled,
+    credits: account.credits,
+    creditsObservedAt: account.creditsObservedAt
+      ? toISOString(account.creditsObservedAt)
+      : null,
     credentialState:
       account.credentialState as ModelProviderAccountWireSummary["credentialState"],
     weeklyUsageUsedPercent:
@@ -501,6 +517,8 @@ export class ProviderAccountRepository {
           credentialRefreshLeaseId: null,
           credentialRefreshLeaseExpiresAt: null,
           planType: null,
+          credits: null,
+          creditsObservedAt: null,
           weeklyUsageUsedBasisPoints: null,
           weeklyUsageResetsAt: null,
           authLastSyncedAt: now,
@@ -802,6 +820,49 @@ export class ProviderAccountRepository {
           },
         });
     });
+  }
+
+  async recordModelProviderAccountCredits(input: {
+    ownerId: string;
+    providerId: string;
+    accountId: string;
+    credits: ProviderCreditsSnapshot;
+    observedAt: Date;
+  }): Promise<boolean> {
+    const rows = await this.database
+      .update(schema.modelProviderAccounts)
+      .set({
+        credits: input.credits,
+        creditsObservedAt: input.observedAt,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.modelProviderAccounts.id, input.accountId),
+          eq(schema.modelProviderAccounts.providerId, input.providerId),
+          or(
+            isNull(schema.modelProviderAccounts.creditsObservedAt),
+            lte(
+              schema.modelProviderAccounts.creditsObservedAt,
+              input.observedAt,
+            ),
+          ),
+          exists(
+            this.database
+              .select({ id: schema.modelProviders.id })
+              .from(schema.modelProviders)
+              .where(
+                and(
+                  eq(schema.modelProviders.id, input.providerId),
+                  eq(schema.modelProviders.ownerId, input.ownerId),
+                  eq(schema.modelProviders.kind, "chatgpt"),
+                ),
+              ),
+          ),
+        ),
+      )
+      .returning({ id: schema.modelProviderAccounts.id });
+    return rows.length > 0;
   }
 
   async recordModelProviderAccountUsage(input: {
