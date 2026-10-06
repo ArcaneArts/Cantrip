@@ -480,26 +480,27 @@ describe("thread session preparation", () => {
     );
   });
 
-  it("keeps acknowledged gate ownership after MCP readiness fails", async () => {
+  it("keeps acknowledged gate ownership after a later native settings update fails", async () => {
     const f = fixture();
-    const internals = f.runtime as unknown as {
-      ensureManagedMcpReady(): Promise<void>;
-    };
-    vi.spyOn(internals, "ensureManagedMcpReady")
-      .mockRejectedValueOnce(new Error("catalog failed"))
-      .mockResolvedValue();
+    const request = f.request.getMockImplementation()!;
+    f.request.mockImplementation(async (method, params) => {
+      if (method === "thread/settings/update")
+        throw new Error("Native settings update failed");
+      return request(method, params);
+    });
     await expect(
       f.runtime.prepareManagedThread({
         ...managed,
+        planMode: "plan",
         executionGate: { runnerGeneration: "runner" },
       }),
-    ).rejects.toThrow("catalog failed");
+    ).rejects.toThrow("Native settings update failed");
     f.request.mockClear();
-    await f.native.loadThread(options);
+    await f.native.loadThread({ ...options, mcpServers: [] });
     expect(f.request).toHaveBeenCalledWith(
       "thread/managedConfig/update",
       expect.objectContaining({
-        mcpServers: { example: expect.any(Object) },
+        mcpServers: {},
         executionGate: { runnerGeneration: "runner" },
       }),
     );
@@ -934,23 +935,6 @@ describe("thread session preparation", () => {
 
   it("reloads managed MCP hosts after credential renewal at a stable connection path", async () => {
     const f = fixture();
-    const request = f.request.getMockImplementation()!;
-    f.request.mockImplementation(async (method, params) => {
-      if (method === "mcpServerStatus/list")
-        return {
-          data: [
-            {
-              name: "cantrip_cua",
-              tools: {
-                js: { name: "js", inputSchema: {} },
-                js_reset: { name: "js_reset", inputSchema: {} },
-              },
-            },
-          ],
-          nextCursor: null,
-        };
-      return request(method, params);
-    });
     const input = (generation: string) => ({
       ...options,
       mcpServers: [
@@ -966,10 +950,8 @@ describe("thread session preparation", () => {
     await f.native.loadThread(input("binding-after-expiry"));
     expect(f.request.mock.calls.map(([method]) => method)).toEqual([
       "thread/resume",
-      "mcpServerStatus/list",
       "thread/unsubscribe",
       "thread/resume",
-      "mcpServerStatus/list",
     ]);
     const resumes = f.request.mock.calls.filter(
       ([method]) => method === "thread/resume",
@@ -1116,35 +1098,20 @@ describe("thread session preparation", () => {
     },
   );
 
-  it("awaits the new identity binding before MCP failure and retries with the same native thread", async () => {
+  it("awaits the new identity binding before native configuration failure and retries with the same thread", async () => {
     const f = fixture();
     const identified = deferred<void>();
     const persisted = deferred<void>();
     const request = f.request.getMockImplementation()!;
-    const clock = { now: Date.now() };
-    const now = vi.spyOn(Date, "now").mockImplementation(() => clock.now);
     let threadId: string | null = null;
-    let rejectCatalog = true;
+    let rejectConfiguration = true;
     const nativeError = new Error("MCP initialization failed");
     f.request.mockImplementation(async (method, params) => {
-      if (method === "mcpServerStatus/list") {
+      if (method === "thread/managedConfig/update") {
         expect(threadId).toBe("thread-1");
-        if (rejectCatalog) {
-          clock.now += 11_000;
+        if (rejectConfiguration) {
           throw nativeError;
         }
-        return {
-          data: [
-            {
-              name: "cantrip_cua",
-              tools: {
-                js: { name: "js", inputSchema: {} },
-                js_reset: { name: "js_reset", inputSchema: {} },
-              },
-            },
-          ],
-          nextCursor: null,
-        };
       }
       return request(method, params);
     });
@@ -1158,33 +1125,25 @@ describe("thread session preparation", () => {
         await persisted.promise;
       },
     };
-    try {
-      const prepared = f.runtime.prepareManagedThread(input);
-      const failed = expect(prepared).rejects.toMatchObject({
-        cause: nativeError,
-      });
-      await identified.promise;
-      expect(f.request.mock.calls.map(([method]) => method)).toEqual([
-        "thread/start",
-      ]);
-      persisted.resolve();
-      await failed;
-      rejectCatalog = false;
-      await expect(
-        f.runtime.prepareManagedThread({ ...input, threadId }),
-      ).resolves.toEqual({ threadId: "thread-1" });
-      expect(f.request.mock.calls.map(([method]) => method)).toEqual([
-        "thread/start",
-        "thread/managedConfig/update",
-        "mcpServerStatus/list",
-        "thread/managedConfig/update",
-        "mcpServerStatus/list",
-        "collaborationMode/list",
-        "thread/settings/update",
-      ]);
-    } finally {
-      now.mockRestore();
-    }
+    const prepared = f.runtime.prepareManagedThread(input);
+    const failed = expect(prepared).rejects.toBe(nativeError);
+    await identified.promise;
+    expect(f.request.mock.calls.map(([method]) => method)).toEqual([
+      "thread/start",
+    ]);
+    persisted.resolve();
+    await failed;
+    rejectConfiguration = false;
+    await expect(
+      f.runtime.prepareManagedThread({ ...input, threadId }),
+    ).resolves.toEqual({ threadId: "thread-1" });
+    expect(f.request.mock.calls.map(([method]) => method)).toEqual([
+      "thread/start",
+      "thread/managedConfig/update",
+      "thread/managedConfig/update",
+      "collaborationMode/list",
+      "thread/settings/update",
+    ]);
   });
 
   it("waits for the matching applied settings event after the enqueue receipt", async () => {
@@ -1523,51 +1482,52 @@ describe("thread session preparation", () => {
     ).toHaveLength(1);
   });
 
-  it("serializes configuration removal behind the real managed MCP catalog result", async () => {
+  it("serializes configuration removal behind the actual native managed configuration acknowledgment", async () => {
     const f = fixture();
-    const catalog = deferred<unknown>();
+    const configuration = deferred<unknown>();
     const entered = deferred<void>();
     const request = f.request.getMockImplementation()!;
     f.request.mockImplementation(async (method, params) => {
-      if (method === "mcpServerStatus/list") {
+      if (
+        method === "thread/managedConfig/update" &&
+        (params as { mcpServers: Record<string, unknown> }).mcpServers
+          .cantrip_cua
+      ) {
         entered.resolve();
-        return catalog.promise;
+        return configuration.promise;
       }
       return request(method, params);
     });
     const withCua = {
-      ...configured,
+      ...managed,
       mcpServers: [{ ...configured.mcpServers[0]!, name: "cantrip_cua" }],
     };
-    const prepared = f.native.loadThread(withCua);
+    const prepared = f.runtime.prepareManagedThread(withCua);
     await entered.promise;
-    const removed = f.native.loadThread({ ...options, mcpServers: [] });
-    catalog.resolve({
-      data: [
-        {
-          name: "cantrip_cua",
-          tools: {
-            js: { name: "js", inputSchema: {} },
-            js_reset: { name: "js_reset", inputSchema: {} },
-          },
-        },
-      ],
-      nextCursor: null,
+    const removed = f.runtime.prepareManagedThread({
+      ...managed,
+      mcpServers: [],
     });
+    configuration.resolve({ threadId: "thread-1", applied: true });
     await Promise.all([prepared, removed]);
 
-    expect(f.request.mock.calls.map(([method]) => method)).toEqual([
+    const configurationCalls = f.request.mock.calls.filter(
+      ([method]) =>
+        method === "thread/resume" || method === "thread/managedConfig/update",
+    );
+    expect(configurationCalls.map(([method]) => method)).toEqual([
       "thread/resume",
-      "mcpServerStatus/list",
-      "thread/unsubscribe",
+      "thread/managedConfig/update",
       "thread/resume",
+      "thread/managedConfig/update",
     ]);
-    expect(f.request.mock.calls[3]?.[1]).toMatchObject({
+    expect(configurationCalls[2]?.[1]).toMatchObject({
       config: { mcp_servers: {} },
     });
-    // The later removal remains applied; the earlier catalog must not reset it.
-    await f.native.loadThread({ ...options, mcpServers: [] });
-    expect(f.request).toHaveBeenCalledTimes(4);
+    // The later removal remains applied; the earlier acknowledgment cannot reset it.
+    const requestsAfterRemoval = f.request.mock.calls.length;
+    await f.runtime.prepareManagedThread({ ...managed, mcpServers: [] });
+    expect(f.request).toHaveBeenCalledTimes(requestsAfterRemoval);
   });
 
   it("retries explicit preparation after a rejected resume without caching success or creating a thread", async () => {
