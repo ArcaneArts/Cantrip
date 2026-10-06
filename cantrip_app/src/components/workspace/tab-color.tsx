@@ -9,7 +9,10 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { StyledContextMenuItem } from "@/components/ui/styled-menu";
+import {
+  StyledContextMenuItem,
+  StyledDropdownMenuItem,
+} from "@/components/ui/styled-menu";
 import {
   TAB_COLOR_DIALOG_EVENT,
   TAB_COLOR_PRESETS,
@@ -62,20 +65,24 @@ export function TabIndicator({
 
 export function TabColorMenuItem({
   colorKey,
+  kind = "context",
   title,
 }: {
   colorKey: string;
+  kind?: "context" | "dropdown";
   title: string;
 }) {
+  const Item =
+    kind === "context" ? StyledContextMenuItem : StyledDropdownMenuItem;
   return (
-    <StyledContextMenuItem
+    <Item
       onSelect={() => {
-        // Let the context menu restore focus before the dialog takes ownership.
+        // Let either menu restore focus before the dialog takes ownership.
         window.setTimeout(() => openTabColorDialog(colorKey, title), 0);
       }}
     >
       <Palette className="size-4" /> Color…
-    </StyledContextMenuItem>
+    </Item>
   );
 }
 

@@ -13,6 +13,7 @@ import { projectSurfaceIdentityForTab } from "@/lib/project-surface-registry";
 import { WorkspaceDndStateProvider } from "./workspace-dnd-state";
 
 import { ProjectPaneTabStrip } from "./project-tab-bar";
+import { SurfaceMenuItems } from "./surface-tab-controls";
 
 const display = vi.hoisted(() => ({
   mode: "tabs" as "tabs" | "icons" | "hybrid",
@@ -466,7 +467,7 @@ describe("project pane tab strip", () => {
     expect(markup).toContain("index.ts");
     expect(markup).toContain("Agent chat");
     expect(markup.match(/role="tab"/gu)).toHaveLength(2);
-    expect(markup.match(/Color…/gu)).toHaveLength(2);
+    expect(markup.match(/Color…/gu)).toHaveLength(4);
     expect(markup.match(/data-tab-color="neutral"/gu)).toHaveLength(2);
   });
 
@@ -573,6 +574,60 @@ describe("project pane tab strip", () => {
     expect(markup.match(/lucide-trash-2/gu)).toHaveLength(2);
     expect(markup).not.toContain("Close file tab?");
   });
+
+  it.each(["center", "right", "bottom"] as const)(
+    "shares the same menu actions and move callbacks for a tab in %s",
+    async (paneRegion) => {
+      const surface = fileSurface();
+      const onMove = vi.fn();
+      let renderer!: TestRenderer.ReactTestRenderer;
+      await act(async () => {
+        renderer = TestRenderer.create(
+          <DndContext>
+            <ProjectPaneTabStrip
+              activeTabKey={surface.tabKey}
+              onClose={vi.fn()}
+              onCreate={vi.fn()}
+              onDelete={vi.fn()}
+              onRename={vi.fn()}
+              onMoveToRegion={onMove}
+              onSelect={vi.fn()}
+              paneRegion={paneRegion}
+              surfaces={[surface]}
+            />
+          </DndContext>,
+        );
+      });
+      const menus = renderer.root.findAllByType(SurfaceMenuItems);
+      expect(menus.map((menu) => menu.props.kind)).toEqual([
+        "dropdown",
+        "context",
+      ]);
+      const labels = (menu: TestRenderer.ReactTestInstance) =>
+        menu.findAllByType("button").map((item) => textContent(item).trim());
+      expect(labels(menus[0]!)).toEqual(labels(menus[1]!));
+      expect(labels(menus[0]!)).toContain("Color…");
+      expect(labels(menus[0]!)).toContain("Rename");
+      expect(labels(menus[0]!)).toContain("Close View");
+      expect(labels(menus[0]!)).toContain("Delete Resource");
+      const target = ["center", "right", "bottom"].find(
+        (region) => region !== paneRegion,
+      )!;
+      const moveLabel = `Move to ${target[0]!.toUpperCase()}${target.slice(1)}`;
+      for (const menu of menus) {
+        await act(async () =>
+          menu
+            .findAllByType("button")
+            .find((item) => textContent(item).trim() === moveLabel)!
+            .props.onClick(),
+        );
+      }
+      expect(onMove).toHaveBeenCalledTimes(2);
+      expect(onMove).toHaveBeenNthCalledWith(1, surface, target);
+      expect(onMove).toHaveBeenNthCalledWith(2, surface, target);
+      await act(async () => renderer.unmount());
+    },
+  );
 
   it("archives agent tabs on middle click and hides both Close View menu entries", async () => {
     const onClose = vi.fn();

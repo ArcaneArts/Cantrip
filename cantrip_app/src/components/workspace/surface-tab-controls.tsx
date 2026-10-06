@@ -1,13 +1,119 @@
+import * as ContextMenu from "@radix-ui/react-context-menu";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import type { ProjectPaneRegion } from "@cantrip/protocol";
 import { CopyPlus, MoreHorizontal, Pencil, Trash2, X } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
+  StyledContextMenuItem,
   StyledDropdownMenuContent,
   StyledDropdownMenuItem,
 } from "@/components/ui/styled-menu";
 import { cn } from "@/lib/utils";
+import type { ProjectSurface } from "@/lib/project-surface";
+import { TabColorMenuItem } from "./tab-color";
+
+type MoveRegion = Extract<ProjectPaneRegion, "center" | "right" | "bottom">;
+
+export function surfaceMoveTargets(
+  surface: ProjectSurface,
+  currentRegion: ProjectPaneRegion,
+  onMove?: (region: MoveRegion) => void,
+) {
+  return onMove
+    ? (["center", "right", "bottom"] as const)
+        .filter(
+          (region) =>
+            region !== currentRegion &&
+            surface.definition.supportedPlacements.includes(region),
+        )
+        .map((region) => ({
+          label: `Move to ${region === "center" ? "Center" : region === "right" ? "Right" : "Bottom"}`,
+          onSelect: () => onMove(region),
+        }))
+    : [];
+}
+
+export interface SurfaceMenuActions {
+  colorKey?: string;
+  deleteDisabled?: boolean;
+  deleteIcon?: ReactNode;
+  deleteLabel?: ReactNode;
+  deleteTone?: "default" | "destructive";
+  moveTargets?: ReturnType<typeof surfaceMoveTargets>;
+  onClose?: () => void;
+  onDelete?: () => void;
+  onDuplicate?: () => void;
+  onKeepOpen?: () => void;
+  onRename?: () => void;
+  title: string;
+}
+
+export function SurfaceMenuItems({
+  colorKey,
+  deleteDisabled = false,
+  deleteIcon,
+  deleteLabel = "Delete Resource",
+  deleteTone = "destructive",
+  kind,
+  moveTargets = [],
+  onClose,
+  onDelete,
+  onDuplicate,
+  onKeepOpen,
+  onRename,
+  title,
+}: SurfaceMenuActions & { kind: "context" | "dropdown" }) {
+  const Item =
+    kind === "context" ? StyledContextMenuItem : StyledDropdownMenuItem;
+  const Separator =
+    kind === "context" ? ContextMenu.Separator : DropdownMenu.Separator;
+  return (
+    <>
+      {colorKey ? (
+        <TabColorMenuItem colorKey={colorKey} kind={kind} title={title} />
+      ) : null}
+      {onRename ? (
+        <Item onSelect={onRename}>
+          <Pencil className="size-4" /> Rename
+        </Item>
+      ) : null}
+      {onDuplicate ? (
+        <Item onSelect={onDuplicate}>
+          <CopyPlus className="size-4" /> Duplicate
+        </Item>
+      ) : null}
+      {onKeepOpen ? <Item onSelect={onKeepOpen}>Keep Open</Item> : null}
+      {moveTargets.map((target) => (
+        <Item key={target.label} onSelect={target.onSelect}>
+          {target.label}
+        </Item>
+      ))}
+      {onClose ? (
+        <Item onSelect={onClose}>
+          <X className="size-4" /> Close View
+        </Item>
+      ) : null}
+      {onDelete ? (
+        <>
+          <Separator className="my-1 h-px bg-border" />
+          <Item
+            className={cn(
+              deleteTone === "destructive" &&
+                "text-destructive focus:bg-destructive/10",
+            )}
+            disabled={deleteDisabled}
+            onSelect={onDelete}
+          >
+            {deleteIcon ?? <Trash2 className="size-4" />}
+            {deleteDisabled ? "Stop agent before deleting" : deleteLabel}
+          </Item>
+        </>
+      ) : null}
+    </>
+  );
+}
 
 export function InlineRenameLabel({
   ariaLabel,
@@ -54,32 +160,16 @@ export function InlineRenameLabel({
 export function SurfaceActionsMenu({
   align = "end",
   contentClassName,
-  deleteDisabled = false,
-  deleteIcon,
-  deleteLabel = "Delete Resource",
-  deleteTone = "destructive",
-  onClose,
-  onDelete,
-  onDuplicate,
-  onRename,
   title,
   trigger,
   triggerClassName,
+  ...actions
 }: {
   align?: "start" | "center" | "end";
   contentClassName?: string;
-  deleteDisabled?: boolean;
-  deleteIcon?: ReactNode;
-  deleteLabel?: ReactNode;
-  deleteTone?: "default" | "destructive";
-  onClose?: () => void;
-  onDelete?: () => void;
-  onDuplicate?: () => void;
-  onRename?: () => void;
-  title: string;
   trigger?: ReactNode;
   triggerClassName?: string;
-}) {
+} & SurfaceMenuActions) {
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
@@ -103,37 +193,7 @@ export function SurfaceActionsMenu({
           align={align}
           className={cn("min-w-40", contentClassName)}
         >
-          {onRename ? (
-            <StyledDropdownMenuItem onSelect={onRename}>
-              <Pencil className="size-4" /> Rename
-            </StyledDropdownMenuItem>
-          ) : null}
-          {onDuplicate ? (
-            <StyledDropdownMenuItem onSelect={onDuplicate}>
-              <CopyPlus className="size-4" /> Duplicate
-            </StyledDropdownMenuItem>
-          ) : null}
-          {onClose ? (
-            <StyledDropdownMenuItem onSelect={onClose}>
-              <X className="size-4" /> Close View
-            </StyledDropdownMenuItem>
-          ) : null}
-          {onDelete ? (
-            <>
-              <DropdownMenu.Separator className="my-1 h-px bg-border" />
-              <StyledDropdownMenuItem
-                className={cn(
-                  deleteTone === "destructive" &&
-                    "text-destructive focus:bg-destructive/10",
-                )}
-                disabled={deleteDisabled}
-                onSelect={onDelete}
-              >
-                {deleteIcon ?? <Trash2 className="size-4" />}
-                {deleteDisabled ? "Stop agent before deleting" : deleteLabel}
-              </StyledDropdownMenuItem>
-            </>
-          ) : null}
+          <SurfaceMenuItems {...actions} kind="dropdown" title={title} />
         </StyledDropdownMenuContent>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>
