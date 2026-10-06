@@ -14,6 +14,7 @@ import {
   type ClientSessionIdentitySnapshot,
 } from "@/lib/client-session";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 const snapshot = () => JSON.stringify(getClientSessionIdentitySnapshot());
 const subscribe = (listener: () => void) =>
@@ -33,6 +34,9 @@ export function ManagedChatPreparationStatus({
   const client = useQueryClient();
   const [retrying, setRetrying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dismissedReadyKey, setDismissedReadyKey] = useState<string | null>(
+    null,
+  );
   const lifetime = useRef(0);
   useEffect(() => {
     lifetime.current += 1;
@@ -66,6 +70,15 @@ export function ManagedChatPreparationStatus({
         ? 1000
         : false,
   });
+  const readyKey =
+    !state.error && state.data?.phase === "ready"
+      ? JSON.stringify([identityKey, chatId, state.data.generation])
+      : null;
+  useEffect(() => {
+    if (!readyKey) return;
+    const timer = setTimeout(() => setDismissedReadyKey(readyKey), 2300);
+    return () => clearTimeout(timer);
+  }, [readyKey]);
   useEffect(() => {
     if (!state.data) return;
     void client.invalidateQueries({ queryKey: ["native-settings", chatId] });
@@ -74,10 +87,20 @@ export function ManagedChatPreparationStatus({
       void client.invalidateQueries({ queryKey: ["chats", projectId] });
     }
   }, [state.data?.phase, state.data?.generation, chatId, projectId]);
-  if (!identity || (!state.data && !state.error)) return null;
+  if (
+    !identity ||
+    (!state.data && !state.error) ||
+    (readyKey !== null && readyKey === dismissedReadyKey)
+  )
+    return null;
   return (
     <div
-      className="flex items-center gap-2 px-4 pt-2 text-xs text-muted-foreground sm:px-8 md:px-10"
+      key={readyKey ?? "preparing"}
+      className={cn(
+        "flex items-center gap-2 px-4 pt-2 text-xs text-muted-foreground sm:px-8 md:px-10",
+        readyKey &&
+          "animate-out fade-out [animation-delay:2s] [animation-duration:300ms] [animation-fill-mode:forwards] motion-reduce:animate-none",
+      )}
       role="status"
     >
       <span>

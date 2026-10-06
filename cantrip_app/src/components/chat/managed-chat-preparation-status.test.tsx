@@ -33,7 +33,8 @@ let renderer: TestRenderer.ReactTestRenderer;
 let client: QueryClient;
 const flush = () =>
   act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    if (vi.isFakeTimers()) await vi.advanceTimersByTimeAsync(20);
+    else await new Promise((resolve) => setTimeout(resolve, 20));
   });
 beforeEach(() => {
   (
@@ -48,6 +49,7 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => renderer?.unmount());
   client.clear();
+  vi.useRealTimers();
 });
 async function mount() {
   await act(async () => {
@@ -103,6 +105,58 @@ it("distinguishes CLI failure and retries only when requested", async () => {
   ).toHaveLength(1);
   expect(JSON.stringify(renderer.toJSON())).toContain("Session prepared");
   expect(renderer.root.findAllByType("button")).toHaveLength(0);
+});
+it("dismisses the prepared notice after its fade without redisplaying it on a refresh", async () => {
+  vi.useFakeTimers();
+  api.request.mockResolvedValue({ preparation: receipt("ready") });
+  await mount();
+  expect(JSON.stringify(renderer.toJSON())).toContain("Session prepared");
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(2000);
+  });
+  expect(JSON.stringify(renderer.toJSON())).toContain("Session prepared");
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(300);
+  });
+  expect(renderer.toJSON()).toBeNull();
+  await act(async () =>
+    client.invalidateQueries({ queryKey: ["managed-chat-preparation"] }),
+  );
+  await flush();
+  expect(renderer.toJSON()).toBeNull();
+});
+it("cancels dismissal when preparation fails and shows a new generation's success", async () => {
+  vi.useFakeTimers();
+  api.request.mockResolvedValue({ preparation: receipt("ready") });
+  await mount();
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1000);
+  });
+  api.request.mockResolvedValue({ preparation: receipt("failed", "console") });
+  await act(async () =>
+    client.invalidateQueries({ queryKey: ["managed-chat-preparation"] }),
+  );
+  await flush();
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(5000);
+  });
+  expect(JSON.stringify(renderer.toJSON())).toContain("CLI is unavailable");
+  expect(renderer.root.findAllByType("button")).toHaveLength(1);
+  api.request.mockResolvedValue({
+    preparation: {
+      ...receipt("ready"),
+      generation: "879144c0-e9d1-4a0e-9f3b-c375716b8e0b",
+    },
+  });
+  await act(async () =>
+    client.invalidateQueries({ queryKey: ["managed-chat-preparation"] }),
+  );
+  await flush();
+  expect(JSON.stringify(renderer.toJSON())).toContain("Session prepared");
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(2300);
+  });
+  expect(renderer.toJSON()).toBeNull();
 });
 it("discards an old account's retry result after identity changes", async () => {
   let reject!: (error: Error) => void;
