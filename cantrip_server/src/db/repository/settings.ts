@@ -304,6 +304,9 @@ export class SettingsRepository {
         settings.workspaceLayoutProfile as UserSettings["workspaceLayoutProfile"],
       showChatPromptOverlay: settings.showChatPromptOverlay,
       randomAgentNames: settings.randomAgentNames,
+      autoNameTasks: settings.autoNameTasks,
+      autoNameChats: settings.autoNameChats,
+      labelingModelId: settings.labelingModelId,
       desktopFrameRate:
         settings.desktopFrameRate as UserSettings["desktopFrameRate"],
       desktopStreamQuality:
@@ -425,6 +428,14 @@ export class SettingsRepository {
     ownerId: string,
     input: UserSettingsUpdate,
   ): Promise<SettingsBundleWire | null> {
+    if (
+      input.labelingModelId &&
+      !(await this.collaborators.getModelRuntime(
+        ownerId,
+        input.labelingModelId,
+      ))
+    )
+      return null;
     if (input.defaultModelId) {
       const model = await this.collaborators.getModelRuntime(
         ownerId,

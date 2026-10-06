@@ -59,6 +59,43 @@ pause, account configuration, and TUI admission paths alongside upstream's
 updated MCP, settings, and TUI interfaces. The imported upstream snapshot
 remains unpatched; these adaptations belong only to the build copy.
 
+## Lightweight automatic titles
+
+Patch `0043` adds the experimental `cantrip/inference` RPC for a bounded,
+single model request using the existing native provider and authentication.
+It does not start a thread, create a rollout, load project instructions, or
+initialize MCP tools. The request contains only labeling instructions and the
+initial request text. Both standard response messages and plaintext agent
+messages are supported. A failed request leaves the actual agent turn alone.
+
+General settings provide a labeling model (the default model unless overridden)
+and independent automatic-title switches for tasks and chats/agents, both on by
+default. The lowest known supported reasoning effort is selected; otherwise the
+model's default is preserved. Task titles are capped at six words; project agent
+and standalone Cantrip Chat titles at three. Explicit titles and manual renames
+are never overwritten. Random agent naming soft-disables chat/agent titling
+without clearing its saved setting; it does not disable task titles.
+
+Only the worker opens the encrypted initial message or task brief. It encrypts
+the generated label for the existing private-title pipeline; the server never
+receives the plaintext title. Runtime diagnostic responses omit private labeling
+content, including responses arriving after a timeout. Empty task creation is
+named on its first submitted brief, not on partial autosaves while typing;
+existing chats are not bulk-renamed.
+
+The actual native request can be tested without account credentials or charges:
+
+```sh
+CANTRIP_CODEX_TEST_BINARY="$PWD/cantrip_codex/.build/darwin-arm64/bundle/codex" \
+  pnpm --dir cantrip_worker exec vitest run test/native-label-inference.test.ts
+```
+
+The fixture uses an isolated home and local fake provider. It checks request
+contents, native authentication plumbing, absent tools/project context, no new
+durable threads, and validation/provider failures. It does not establish live
+ChatGPT account latency or full GUI behavior. The native release verifier also
+requires this RPC in the executable's generated experimental protocol.
+
 ## Managed empty-thread attachment
 
 The reviewed empty-thread resume patch lets a second remote client attach to a

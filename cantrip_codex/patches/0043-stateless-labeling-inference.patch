@@ -1,0 +1,268 @@
+diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
+index 4bf7bc8..7bae871 100644
+--- a/codex-rs/app-server-protocol/src/protocol/common.rs
++++ b/codex-rs/app-server-protocol/src/protocol/common.rs
+@@ -1173,6 +1173,12 @@ client_request_definitions! {
+         serialization: None,
+         response: v2::ModelListResponse,
+     },
++    #[experimental("cantrip/inference")]
++    CantripInference => "cantrip/inference" {
++        params: v2::CantripInferenceParams,
++        serialization: None,
++        response: v2::CantripInferenceResponse,
++    },
+     GatewayOAuthRead => "account/gatewayOAuth/read" {
+         params: #[ts(type = "undefined")] #[serde(skip_serializing_if = "Option::is_none")] Option<()>,
+         serialization: None,
+diff --git a/codex-rs/app-server-protocol/src/protocol/v2/model.rs b/codex-rs/app-server-protocol/src/protocol/v2/model.rs
+index 5317fdc..9ea4c2f 100644
+--- a/codex-rs/app-server-protocol/src/protocol/v2/model.rs
++++ b/codex-rs/app-server-protocol/src/protocol/v2/model.rs
+@@ -14,6 +14,23 @@ use serde::Deserialize;
+ use serde::Serialize;
+ use serde_json::Value as JsonValue;
+ 
++#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
++#[serde(rename_all = "camelCase", deny_unknown_fields)]
++#[ts(export_to = "v2/")]
++pub struct CantripInferenceParams {
++    pub model: String,
++    pub instructions: String,
++    pub input: String,
++    pub reasoning_effort: Option<ReasoningEffort>,
++}
++
++#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
++#[serde(rename_all = "camelCase")]
++#[ts(export_to = "v2/")]
++pub struct CantripInferenceResponse {
++    pub text: String,
++}
++
+ v2_enum_from_core!(
+     pub enum ModelRerouteReason from CoreModelRerouteReason {
+         HighRiskCyberActivity
+diff --git a/codex-rs/app-server/src/message_processor.rs b/codex-rs/app-server/src/message_processor.rs
+index 5601448..4b5cca1 100644
+--- a/codex-rs/app-server/src/message_processor.rs
++++ b/codex-rs/app-server/src/message_processor.rs
+@@ -1646,6 +1646,9 @@ impl MessageProcessor {
+             ClientRequest::ModelList { params, .. } => {
+                 self.catalog_processor.model_list(params).await
+             }
++            ClientRequest::CantripInference { params, .. } => {
++                self.catalog_processor.cantrip_inference(params).await
++            }
+             ClientRequest::ExperimentalFeatureList { params, .. } => {
+                 self.catalog_processor
+                     .experimental_feature_list(params)
+diff --git a/codex-rs/app-server/src/request_processors/catalog_processor.rs b/codex-rs/app-server/src/request_processors/catalog_processor.rs
+index 01f10d3..1a543d4 100644
+--- a/codex-rs/app-server/src/request_processors/catalog_processor.rs
++++ b/codex-rs/app-server/src/request_processors/catalog_processor.rs
+@@ -120,6 +120,48 @@ fn errors_to_info(
+ }
+ 
+ impl CatalogRequestProcessor {
++    pub(crate) async fn cantrip_inference(
++        &self,
++        params: codex_app_server_protocol::CantripInferenceParams,
++    ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
++        if params.model.is_empty()
++            || params.model.len() > 200
++            || params.input.trim().is_empty()
++            || params.input.len() > 24_000
++            || params.instructions.trim().is_empty()
++            || params.instructions.len() > 4096
++        {
++            return Err(invalid_params("Invalid bounded inference input"));
++        }
++        let config = self
++            .config_manager
++            .load_non_project_config()
++            .await
++            .map_err(|_| {
++                crate::error_code::internal_error("Inference configuration unavailable")
++            })?;
++        let model = self
++            .thread_manager
++            .get_models_manager()
++            .get_model_info(&params.model, &config.to_models_manager_config())
++            .await;
++        let request = codex_core::cantrip_inference::infer(
++            &config,
++            self.thread_manager.auth_manager(),
++            &model,
++            params.instructions,
++            params.input,
++            params.reasoning_effort,
++        );
++        let text = tokio::time::timeout(std::time::Duration::from_secs(25), request)
++            .await
++            .map_err(|_| crate::error_code::internal_error("Inference timed out"))?
++            .map_err(|_| crate::error_code::internal_error("Inference failed"))?;
++        Ok(Some(
++            codex_app_server_protocol::CantripInferenceResponse { text }.into(),
++        ))
++    }
++
+     pub(crate) fn new(
+         outgoing: Arc<OutgoingMessageSender>,
+         skills_watcher: Arc<SkillsWatcher>,
+diff --git a/codex-rs/core/src/cantrip_inference.rs b/codex-rs/core/src/cantrip_inference.rs
+new file mode 100644
+index 0000000..5bb73fa
+--- /dev/null
++++ b/codex-rs/core/src/cantrip_inference.rs
+@@ -0,0 +1,138 @@
++//! A single bounded model request, without a Codex thread, tools, or startup context.
++use crate::client::ModelClient;
++use crate::client_common::{Prompt, ResponseEvent};
++use crate::config::Config;
++use crate::responses_metadata::CodexResponsesMetadata;
++use codex_features::Feature;
++use codex_login::AuthManager;
++use codex_login::auth::AgentIdentityAuthPolicy;
++use codex_otel::SessionTelemetry;
++use codex_protocol::ThreadId;
++use codex_protocol::config_types::ReasoningSummary;
++use codex_protocol::models::{
++    BaseInstructions, ContentItem, ResponseItem, plaintext_agent_message_content,
++};
++use codex_protocol::openai_models::{ModelInfo, ReasoningEffort};
++use codex_protocol::protocol::SessionSource;
++use codex_rollout_trace::InferenceTraceContext;
++use futures::StreamExt;
++use std::sync::Arc;
++
++pub async fn infer(
++    config: &Config,
++    auth: Arc<AuthManager>,
++    model: &ModelInfo,
++    instructions: String,
++    input: String,
++    effort: Option<ReasoningEffort>,
++) -> anyhow::Result<String> {
++    // This ID only correlates the transport request. No thread or rollout is created.
++    let id = ThreadId::new();
++    let source = SessionSource::Custom("cantrip_labeling".into());
++    let client = ModelClient::new(
++        Some(auth),
++        if config.features.enabled(Feature::UseAgentIdentity) {
++            AgentIdentityAuthPolicy::ChatGptAuth
++        } else {
++            AgentIdentityAuthPolicy::JwtOnly
++        },
++        id,
++        config.model_provider.clone(),
++        source.clone(),
++        "cantrip".into(),
++        None,
++        false,
++        false,
++        config.features.enabled(Feature::EnableRequestCompression),
++        false,
++        None,
++        false,
++        None,
++        config.http_client_factory(),
++        config.workspace_routing_context(),
++        Vec::new(),
++    );
++    let prompt = Prompt {
++        base_instructions: BaseInstructions {
++            text: instructions,
++            provenance: None,
++        },
++        input: vec![ResponseItem::Message {
++            id: None,
++            role: "user".into(),
++            content: vec![ContentItem::InputText { text: input }],
++            phase: None,
++            internal_chat_message_metadata_passthrough: None,
++        }],
++        ..Default::default()
++    };
++    let telemetry = SessionTelemetry::new(
++        id,
++        &model.slug,
++        &model.slug,
++        None,
++        None,
++        None,
++        "cantrip".into(),
++        false,
++        "labeling".into(),
++        source,
++    );
++    let metadata =
++        CodexResponsesMetadata::new(String::new(), id.to_string(), id.to_string(), String::new());
++    let mut session = client.new_session();
++    let mut stream = session
++        .stream(
++            &prompt,
++            model,
++            &telemetry,
++            effort.or(config.model_reasoning_effort.clone()),
++            ReasoningSummary::None,
++            None,
++            &metadata,
++            &InferenceTraceContext::disabled(),
++        )
++        .await?;
++    let mut text = String::new();
++    let mut complete = false;
++    while let Some(event) = stream.next().await {
++        match event? {
++            ResponseEvent::OutputItemDone(ResponseItem::Message { role, content, .. })
++                if role == "assistant" =>
++            {
++                for item in content {
++                    if let ContentItem::OutputText { text: value } = item {
++                        text.push_str(&value);
++                        anyhow::ensure!(text.len() <= 4096, "Inference output exceeded its limit");
++                    }
++                }
++            }
++            ResponseEvent::OutputItemDone(ResponseItem::AgentMessage {
++                author,
++                recipient,
++                content,
++                ..
++            }) if author == "assistant" && recipient == "all" => {
++                if let Some(value) = plaintext_agent_message_content(&content) {
++                    text.push_str(&value);
++                    anyhow::ensure!(text.len() <= 4096, "Inference output exceeded its limit");
++                }
++            }
++            ResponseEvent::OutputItemDone(
++                ResponseItem::FunctionCall { .. } | ResponseItem::LocalShellCall { .. },
++            ) => {
++                anyhow::bail!("Tools are not available for stateless inference");
++            }
++            ResponseEvent::Completed { .. } => {
++                complete = true;
++                break;
++            }
++            _ => {}
++        }
++    }
++    anyhow::ensure!(
++        complete && !text.trim().is_empty(),
++        "Incomplete inference response"
++    );
++    Ok(text)
++}
+diff --git a/codex-rs/core/src/lib.rs b/codex-rs/core/src/lib.rs
+index f03673e..2ca160b 100644
+--- a/codex-rs/core/src/lib.rs
++++ b/codex-rs/core/src/lib.rs
+@@ -7,6 +7,7 @@
+ 
+ mod apply_patch;
+ mod apps;
++pub mod cantrip_inference;
+ mod client;
+ mod client_common;
+ mod model_request;

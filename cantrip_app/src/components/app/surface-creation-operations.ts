@@ -120,6 +120,7 @@ export function useProjectChatCreationOperation({
         paneId,
         target,
         githubAgentContext,
+        title === undefined && !randomAgentNames,
       ).then(async (chat) => {
         if (initialDraft) {
           await saveChatComposerDraft(chat.id, initialDraft);
@@ -217,6 +218,7 @@ export function useStandaloneChatOperations({
           (standaloneChats.data ?? []).map(({ title }) => title),
           randomAgentNames,
         ),
+        !randomAgentNames,
       );
     },
     onSuccess: (chat) => {
@@ -352,7 +354,7 @@ export function useProjectTaskCreationOperation({
     }) =>
       createTask(
         projectId,
-        "New task",
+        undefined,
         worktreeId,
         worktreeMode,
         paneId,

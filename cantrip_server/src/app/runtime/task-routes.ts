@@ -61,6 +61,8 @@ import {
   withTaskLaunchStageTimeout,
 } from "../../tasks/launch-observation.js";
 import { TaskStateTransitionError } from "../../tasks/state.js";
+import { createTaskLabeler } from "../../chats/automatic-labeling.js";
+import { createTaskOperationQueue } from "./task-operation-queue.js";
 import { WorkerUnavailableError } from "../../workers/bridge.js";
 
 import {
@@ -78,7 +80,9 @@ import type {
 /** Owns Task creation, dispatch scheduling, project controls, and Task routes. */
 export function installTaskRouteRuntime(
   app: FastifyInstance,
-  {
+  dependencies: TaskRouteRuntimeDependencies,
+) {
+  const {
     appendLiveTaskMessage,
     applicationOwnerId,
     availableModelRuntimes,
@@ -104,8 +108,8 @@ export function installTaskRouteRuntime(
     serverId,
     serverInstanceId,
     taskDispatchCycleLease,
-  }: TaskRouteRuntimeDependencies,
-) {
+  } = dependencies;
+  const nameTask = createTaskLabeler(dependencies);
   app.post<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/tasks",
     async (request, reply) => {
@@ -124,6 +128,7 @@ export function installTaskRouteRuntime(
           return reply.code(404).send({ error: "Project source not found" });
         }
         publishChatSummary(created.chat.id, created.chat.projectId);
+        nameTask(created.task);
         publishChatInvalidation(
           created.chat.id,
           "task",
@@ -1143,23 +1148,13 @@ export function installTaskRouteRuntime(
   taskScheduleTimer.unref();
   queueTaskScheduleTick();
 
-  const queueTaskOperation = async (
-    chatId: string,
-    input: TaskOperationStart,
-    operationKind: "direct" | "initial-plan" | "continue-plan" | "finalize",
-  ): Promise<TaskOpaqueSummary | null> => {
-    const ownerId = applicationOwnerId();
-    await repository.taskDispatch.enqueue(
-      ownerId,
-      chatId,
-      input.operationId,
-      operationKind,
-      input.rowVersion,
-    );
-    publishChatInvalidation(chatId, "task");
-    queueTaskScheduleTick();
-    return repository.tasks.get(ownerId, chatId);
-  };
+  const queueTaskOperation = createTaskOperationQueue({
+    repository,
+    applicationOwnerId,
+    publishChatInvalidation,
+    queueTaskScheduleTick,
+    nameTask,
+  });
 
   const pauseProjectTaskDispatches = async (
     ownerId: string,

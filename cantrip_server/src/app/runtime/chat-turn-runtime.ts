@@ -3,6 +3,10 @@ import {
   validateChatTurnInput,
 } from "./chat-turn-configuration.js";
 import { finishManagedGui } from "./finish-managed-gui.js";
+import {
+  generateAutomaticTitle,
+  labelingRoutes,
+} from "../../chats/automatic-labeling.js";
 import { canAutomaticallySwitchProviderAccount } from "../../models/chatgpt-account-routing.js";
 import { clearAgentInteraction } from "./clear-agent-interaction.js";
 
@@ -453,6 +457,19 @@ export function createChatTurnRuntime({
       "load-worker-attribution",
       () => repository.getWorker(ownerId, execution.workerId),
     );
+    if (encryptedChatMessages && (options.messageRole ?? "user") === "user") {
+      void generateAutomaticTitle({
+        repository,
+        bridge,
+        ownerId,
+        chatId: execution.chatId,
+        input: { kind: "message", message: encryptedChatMessages.userMessage },
+        availableModelRuntimes: labelingRoutes((configuration) =>
+          routePairsForConfiguration(execution, configuration),
+        ),
+        publishChatSummary,
+      });
+    }
     let resolveTaskWorkerDispatch: (() => void) | null = null;
     let rejectTaskWorkerDispatch: ((error: unknown) => void) | null = null;
     let taskWorkerDispatchSettled = false;
