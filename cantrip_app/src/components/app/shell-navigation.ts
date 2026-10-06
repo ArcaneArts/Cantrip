@@ -1128,19 +1128,37 @@ export function createShellProjectNavigationCommands({
     return openRequest;
   };
   const openProjectTask = (projectId: string, chatId: string) => {
-    setAppMode("ide");
-    setSidebarFilePreview((current) =>
-      current?.projectId === projectId ? { ...current, active: false } : null,
-    );
     setProjectTaskChatIds((current) => {
       const next = new Map(current);
       next.set(projectId, chatId);
       return next;
     });
+    setProjectOverviewSection("tasks");
+    const surfaceRef = {
+      kind: "builtin",
+      definitionId: "project.tasks",
+    } as const;
+    const tabKey = projectSurfaceViewId({ projectId, resource: surfaceRef });
+    const cachedLayout = queryClient.getQueryData<ProjectTabLayoutSummary>([
+      "project-tab-layout",
+      projectId,
+    ]);
+    if (
+      !cachedLayout ||
+      !projectTabLayoutContainsTab(cachedLayout, projectId, tabKey)
+    ) {
+      void openOrFocusSurface(projectId, surfaceRef);
+      return;
+    }
+    setAppMode("ide");
+    setSidebarFilePreview((current) =>
+      current?.projectId === projectId ? { ...current, active: false } : null,
+    );
     setDesktopSidebarDrawerOpen(false);
     setSelectedProjectId(projectId);
-    setProjectOverviewSection("tasks");
-    setWorkspaceSelection(emptyWorkspaceSelection(projectId));
+    setWorkspaceSelection((current) =>
+      selectWorkspaceTab(current, cachedLayout, tabKey),
+    );
     setPendingSurfaceSelection(null);
     setShowImporter(false);
     setShowSettings(false);
