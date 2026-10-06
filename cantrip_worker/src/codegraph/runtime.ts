@@ -22,6 +22,7 @@ import {
   extractCodeGraphArchive,
   type CodeGraphArchiveKind,
 } from "./archive.js";
+import { CODEGRAPH_MANAGED_ENVIRONMENT } from "./mcp.js";
 
 const RELEASE_API =
   "https://api.github.com/repos/colbymchenry/codegraph/releases/latest";
@@ -355,9 +356,7 @@ async function verifyMcpHandshake(
         cwd: projectRoot,
         env: {
           ...process.env,
-          ...CODEGRAPH_ENVIRONMENT,
-          CODEGRAPH_DIR: ".codegraph-cantrip",
-          CODEGRAPH_NO_DAEMON: "1",
+          ...CODEGRAPH_MANAGED_ENVIRONMENT,
         },
         stdio: ["pipe", "pipe", "pipe"],
         windowsHide: true,
