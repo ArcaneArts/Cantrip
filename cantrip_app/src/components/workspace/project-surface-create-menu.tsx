@@ -6,7 +6,14 @@ import type {
   ProjectWorktreeSummary,
   WorkerSummary,
 } from "@cantrip/protocol";
-import { ChevronRight, Cpu, GitFork, HardDrive, Sparkles } from "lucide-react";
+import {
+  ChevronRight,
+  Cpu,
+  GitFork,
+  HardDrive,
+  Play,
+  Sparkles,
+} from "lucide-react";
 import { type ReactNode } from "react";
 
 import { ProjectSurfaceIcon } from "./project-surface-icon";
@@ -17,6 +24,7 @@ import {
   StyledDropdownMenuSubTrigger,
 } from "@/components/ui/styled-menu";
 import type { ProjectSurface } from "@/lib/project-surface";
+import type { RunningRunConfiguration } from "@/lib/run-terminal-model";
 import { cn } from "@/lib/utils";
 
 export type ProjectSurfaceCreateKind =
@@ -31,6 +39,7 @@ export interface ProjectSurfacePlacementContext {
   capabilities?: ProjectCapabilities;
   projectId: string;
   replicas: readonly ProjectReplicaSummary[];
+  runningConfigurations?: readonly RunningRunConfiguration[];
   workers: readonly WorkerSummary[];
   worktrees: readonly ProjectWorktreeSummary[];
 }
@@ -170,6 +179,7 @@ export function ProjectSurfaceCreateMenu({
   creatingKinds = noCreatingKinds,
   onCreate,
   onOpenChange,
+  onOpenRunning,
   placement,
   trigger,
 }: {
@@ -179,6 +189,7 @@ export function ProjectSurfaceCreateMenu({
   creatingKinds?: ReadonlySet<ProjectSurfaceCreateKind>;
   onCreate(kind: ProjectSurfaceCreateKind, target?: ExecutionTarget): void;
   onOpenChange?(open: boolean): void;
+  onOpenRunning?(terminalId: string): void;
   placement?: ProjectSurfacePlacementContext;
   trigger: ReactNode;
 }) {
@@ -355,6 +366,41 @@ export function ProjectSurfaceCreateMenu({
               );
             },
           )}
+          {onOpenRunning ? (
+            <>
+              <DropdownMenu.Separator className="my-1 h-px bg-border" />
+              <DropdownMenu.Sub>
+                <StyledDropdownMenuSubTrigger
+                  disabled={!placement?.runningConfigurations?.length}
+                >
+                  <Play className="size-4" />
+                  Running
+                  <ChevronRight className="ml-auto size-3.5" />
+                </StyledDropdownMenuSubTrigger>
+                <DropdownMenu.Portal>
+                  <StyledDropdownMenuSubContent
+                    sideOffset={4}
+                    className="max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-56 max-w-sm overflow-y-auto"
+                  >
+                    {placement?.runningConfigurations?.map((runtime) => (
+                      <StyledDropdownMenuItem
+                        key={runtime.runtimeId}
+                        onSelect={() => onOpenRunning(runtime.terminalId)}
+                      >
+                        <Play className="size-4 shrink-0" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate">{runtime.name}</span>
+                          <span className="block text-[10px] text-muted-foreground">
+                            {runtime.targetLabel}
+                          </span>
+                        </span>
+                      </StyledDropdownMenuItem>
+                    ))}
+                  </StyledDropdownMenuSubContent>
+                </DropdownMenu.Portal>
+              </DropdownMenu.Sub>
+            </>
+          ) : null}
         </StyledDropdownMenuContent>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>

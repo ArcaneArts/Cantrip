@@ -63,6 +63,7 @@ export interface ProjectPaneTabStripProps {
   allowedCreateKinds?: ReadonlySet<ProjectSurfaceCreateKind>;
   creatingKinds?: ReadonlySet<ProjectSurfaceCreateKind>;
   onCreate(kind: ProjectSurfaceCreateKind, target?: ExecutionTarget): void;
+  onOpenRunning?(terminalId: string): void;
   onClose(surface: ProjectSurface): void;
   onDelete(surface: ProjectSurface): void;
   onRename(surface: ProjectSurface, title: string): void;
@@ -120,6 +121,7 @@ export function ProjectPaneTabStrip({
   allowedCreateKinds,
   creatingKinds,
   onCreate,
+  onOpenRunning,
   onClose,
   onDelete,
   onRename,
@@ -511,6 +513,7 @@ export function ProjectPaneTabStrip({
             allowedKinds={allowedCreateKinds}
             creatingKinds={creatingKinds}
             onCreate={onCreate}
+            onOpenRunning={onOpenRunning}
             placement={placement}
             trigger={
               <Button

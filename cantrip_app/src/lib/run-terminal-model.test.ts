@@ -1,6 +1,7 @@
 import type {
   ProjectWorktreeSummary,
   TerminalSummary,
+  WorkerSummary,
 } from "@cantrip/protocol";
 import type { RunConfigurationRepositoryInventory } from "@cantrip/protocol/run-configuration-definitions";
 import type { RunConfigurationRuntime } from "@cantrip/protocol/run-configuration-runtime";
@@ -12,6 +13,7 @@ import {
   runConfigurationRuntimeIsActive,
   runRuntimeLastResult,
   runTerminalTargetLabel,
+  runningRunConfigurations,
 } from "./run-terminal-model";
 
 const timestamp = "2026-08-24T12:00:00.000Z";
@@ -131,6 +133,55 @@ const inventory: RunConfigurationRepositoryInventory = {
 };
 
 describe("Run terminal model", () => {
+  it("lists only active runs with terminal bindings and distinguishes execution targets", () => {
+    const choices = runningRunConfigurations(
+      [
+        {
+          ...runtime("running"),
+          id: "alternate-runtime",
+          terminalId: "alternate-terminal",
+          worktreeId: alternateId,
+        },
+        runtime("starting"),
+        { ...runtime("restarting"), id: "unbound", terminalId: null },
+        ...(["idle", "exited", "failed", "lost"] as const).map((state) => ({
+          ...runtime(state),
+          id: state,
+        })),
+      ],
+      inventory,
+      [
+        worktree(primaryId, true, "main"),
+        worktree(alternateId, false, "codex/run-ui"),
+      ],
+      [{ workerId: "worker-one", name: "Local Worker" } as WorkerSummary],
+    );
+    expect(choices).toEqual([
+      {
+        runtimeId: "alternate-runtime",
+        terminalId: "alternate-terminal",
+        name: "Development server",
+        targetLabel: "codex/run-ui · Local Worker",
+      },
+      {
+        runtimeId,
+        terminalId: runtimeId,
+        name: "Development server",
+        targetLabel: "Primary · Local Worker",
+      },
+    ]);
+    expect(
+      runningRunConfigurations([runtime("stopping")], undefined, [], []),
+    ).toEqual([
+      {
+        runtimeId,
+        terminalId: runtimeId,
+        name: "Run configuration",
+        targetLabel: "Unavailable worktree · worker-one",
+      },
+    ]);
+  });
+
   it("uses the configuration name on Primary and a concise alternate suffix", () => {
     const worktrees = [
       worktree(primaryId, true, "main"),

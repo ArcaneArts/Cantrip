@@ -690,6 +690,7 @@ export class RunConfigurationStateRepository {
             projectId: input.projectId,
             tabId: terminalId,
             tabKind: "terminal",
+            region: "bottom",
           });
         }
       }

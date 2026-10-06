@@ -12,7 +12,6 @@ import {
   AppToast,
 } from "@/components/ui/app-toast";
 import { errorMessage as errorText } from "@/lib/error-message";
-import { projectSurfaceTabKey } from "@/lib/project-surface";
 import { GlobalContentHost } from "@/components/app/global-content-host";
 import { PersistentSurfaceLayer } from "@/components/app/persistent-surface-layer";
 import { ProjectWorkspaceFrame } from "@/components/app/project-workspace-frame";
@@ -127,13 +126,13 @@ export function ApplicationShellRender({
     linkedConsoleChat,
     mobileProjectSelectorOpen,
     openChatConsole,
+    openRunTerminal,
     overlayTitlebar,
     popOutActiveView,
     popOutProjectOverviewView,
     popoutError,
     popoutPending,
     projectSettingsSection,
-    revealWorkspace,
     runConfigurationEditorId,
     runConfigurationRuntimes,
     runConfigurations,
@@ -148,7 +147,6 @@ export function ApplicationShellRender({
     setAppToast,
     setChatConsoleOpen,
     setChatRelocationOpen,
-    setPendingSurfaceSelection,
     setRunConfigurationEditorId,
     setShowCustomizations,
     setTerminalServiceTerminalId,
@@ -360,14 +358,6 @@ export function ApplicationShellRender({
     : !sidebarCollapsed;
   const sidebarToggleVisible =
     !isPopout && (desktopSidebarDrawer || sidebarCollapsed);
-  const focusRunTerminal = (terminalId: string) => {
-    if (!selectedProject) return;
-    setPendingSurfaceSelection({
-      projectId: selectedProject.id,
-      tabKey: projectSurfaceTabKey("terminal", terminalId),
-    });
-    revealWorkspace();
-  };
   const renderProjectRunConfigurationControl = (compact: boolean) =>
     selectedProject ? (
       <RunConfigurationControl
@@ -384,7 +374,9 @@ export function ApplicationShellRender({
         workers={workers.data ?? []}
         worktrees={worktrees.data ?? []}
         onEditorConfigurationChange={setRunConfigurationEditorId}
-        onFocusTerminal={focusRunTerminal}
+        onFocusTerminal={(terminalId) =>
+          openRunTerminal(terminalId, undefined, "bottom", true)
+        }
       />
     ) : null;
   const renderBindings = {

@@ -489,6 +489,200 @@ describe("surface view open-or-focus", () => {
     open.mockRestore();
   });
 
+  it("refreshes a stale revision after Run creates its terminal before opening the view", async () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(["project-tab-layout", "project-1"], {
+      ...layout,
+      revision: 3,
+    });
+    const refresh = vi
+      .spyOn(api, "getProjectTabLayout")
+      .mockResolvedValue(layout);
+    const open = vi
+      .spyOn(api, "openProjectSurfaceView")
+      .mockRejectedValueOnce(
+        new api.CantripApiError("Layout revision changed", 409),
+      )
+      .mockResolvedValueOnce({
+        disposition: "focused",
+        layout,
+        paneId: "group-1",
+        viewId: "chat:agent-1",
+      });
+    try {
+      await openOrFocusProjectSurface({
+        projectId: "project-1",
+        queryClient,
+        surfaceRef,
+      });
+      expect(open.mock.calls.map(([, input]) => input.revision)).toEqual([
+        3, 4,
+      ]);
+      expect(refresh).toHaveBeenCalledExactlyOnceWith("project-1");
+    } finally {
+      open.mockRestore();
+      refresh.mockRestore();
+    }
+  });
+
+  it("reopens the existing Run terminal in the requested dock without creating a terminal", async () => {
+    const queryClient = new QueryClient();
+    const terminalRef = {
+      kind: "entity",
+      definitionId: "project.terminal",
+      resourceId: "run-terminal-1",
+    } as const;
+    queryClient.setQueryData(["project-tab-layout", "project-1"], {
+      ...layout,
+      panes: [],
+      revision: 5,
+    });
+    const open = vi.spyOn(api, "openProjectSurfaceView").mockResolvedValue({
+      disposition: "opened",
+      layout,
+      paneId: "group-1",
+      viewId: "terminal:run-terminal-1",
+    });
+    await openOrFocusProjectSurface({
+      projectId: "project-1",
+      queryClient,
+      surfaceRef: terminalRef,
+      targetRegion: "bottom",
+    });
+    expect(open).toHaveBeenCalledExactlyOnceWith("project-1", {
+      revision: 5,
+      surfaceRef: terminalRef,
+      targetRegion: "bottom",
+    });
+    open.mockRestore();
+  });
+
+  it("moves an existing Run view to the bottom and restores a collapsed dock before focusing", async () => {
+    const queryClient = new QueryClient();
+    const terminalRef = {
+      kind: "entity",
+      definitionId: "project.terminal",
+      resourceId: "run-terminal-1",
+    } as const;
+    const preference = {
+      preferredMode: "closed",
+      restoreFraction: 0.4,
+      splitFraction: 0.4,
+    } as const;
+    const runLayout = (
+      revision: number,
+      region: "center" | "bottom",
+      preferredMode: "closed" | "split",
+    ) =>
+      ({
+        ...layout,
+        revision,
+        panes: [
+          {
+            ...layout.panes[0],
+            id: region === "bottom" ? "bottom-pane" : "center-pane",
+            region,
+            members: [
+              {
+                tabKey: "terminal:run-terminal-1",
+                dockPresentation: { ...preference, preferredMode },
+              },
+            ],
+          },
+        ],
+      }) as ProjectTabLayoutSummary;
+    const center = runLayout(5, "center", "closed");
+    const bottom = runLayout(6, "bottom", "closed");
+    const visible = runLayout(7, "bottom", "split");
+    queryClient.setQueryData(["project-tab-layout", "project-1"], center);
+    const open = vi.spyOn(api, "openProjectSurfaceView").mockResolvedValue({
+      disposition: "focused",
+      layout: center,
+      paneId: "center-pane",
+      viewId: "terminal:run-terminal-1",
+    });
+    const move = vi
+      .spyOn(api, "moveProjectPaneMember")
+      .mockResolvedValue(bottom);
+    const reveal = vi
+      .spyOn(api, "updateProjectPaneMemberPresentation")
+      .mockResolvedValue(visible);
+    try {
+      const result = await openOrFocusProjectSurface({
+        projectId: "project-1",
+        queryClient,
+        surfaceRef: terminalRef,
+        targetRegion: "bottom",
+        moveToTargetRegion: true,
+        revealDock: true,
+      });
+      expect(move).toHaveBeenCalledExactlyOnceWith("project-1", {
+        revision: 5,
+        tabKey: "terminal:run-terminal-1",
+        targetPaneId: null,
+        targetMemberPosition: 0,
+        targetRegion: "bottom",
+      });
+      expect(reveal).toHaveBeenCalledExactlyOnceWith("project-1", {
+        revision: 6,
+        tabKey: "terminal:run-terminal-1",
+        ...preference,
+        preferredMode: "split",
+      });
+      expect(result.layout).toBe(visible);
+      expect(
+        queryClient.getQueryData(["project-tab-layout", "project-1"]),
+      ).toEqual(visible);
+    } finally {
+      open.mockRestore();
+      move.mockRestore();
+      reveal.mockRestore();
+    }
+  });
+
+  it("focuses an open Run in its existing pane when reopened from the Running menu", async () => {
+    const queryClient = new QueryClient();
+    const terminalRef = {
+      kind: "entity",
+      definitionId: "project.terminal",
+      resourceId: "run-terminal-1",
+    } as const;
+    const opened = {
+      ...layout,
+      panes: [
+        {
+          ...layout.panes[0],
+          region: "center",
+          members: [{ tabKey: "terminal:run-terminal-1" }],
+        },
+      ],
+    } as ProjectTabLayoutSummary;
+    queryClient.setQueryData(["project-tab-layout", "project-1"], opened);
+    const open = vi.spyOn(api, "openProjectSurfaceView").mockResolvedValue({
+      disposition: "focused",
+      layout: opened,
+      paneId: "group-1",
+      viewId: "terminal:run-terminal-1",
+    });
+    const move = vi.spyOn(api, "moveProjectPaneMember");
+    const reveal = vi.spyOn(api, "updateProjectPaneMemberPresentation");
+    try {
+      await openOrFocusProjectSurface({
+        projectId: "project-1",
+        queryClient,
+        surfaceRef: terminalRef,
+        targetRegion: "right",
+        revealDock: true,
+      });
+      expect(move).not.toHaveBeenCalled();
+      expect(reveal).not.toHaveBeenCalled();
+    } finally {
+      open.mockRestore();
+      move.mockRestore();
+      reveal.mockRestore();
+    }
+  });
+
   it("lets the latest surface-open intent win when responses arrive out of order", async () => {
     type ProjectCommandOptions = Parameters<
       typeof createShellProjectNavigationCommands

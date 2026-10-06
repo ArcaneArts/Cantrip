@@ -300,6 +300,7 @@ export function DockRail({
   activeTabKey,
   creatingKinds,
   onCreate,
+  onOpenRunning,
   onClose,
   onDelete,
   onMoveToRegion,
@@ -314,6 +315,7 @@ export function DockRail({
   activeTabKey: string | null;
   creatingKinds?: ReadonlySet<ProjectSurfaceCreateKind>;
   onCreate(kind: ProjectSurfaceCreateKind, target?: ExecutionTarget): void;
+  onOpenRunning?(terminalId: string): void;
   onClose(surface: ProjectSurface): void;
   onDelete(surface: ProjectSurface): void;
   onMoveToRegion?(
@@ -399,6 +401,7 @@ export function DockRail({
                 allowedKinds={createKindsForPaneRegion(region)}
                 creatingKinds={creatingKinds}
                 onCreate={onCreate}
+                onOpenRunning={onOpenRunning}
                 onOpenChange={(open) => {
                   setCreateMenuOpen(open);
                   if (open) setCreateTooltipOpen(false);
@@ -938,6 +941,13 @@ export function ProjectWorkspaceFrame({
             presentation.pane.region,
           )}
           creatingKinds={bindings.creatingSurfaceKinds}
+          onOpenRunning={(terminalId) =>
+            bindings.openRunTerminal(
+              terminalId,
+              presentation.pane.id,
+              presentation.pane.region,
+            )
+          }
           onCreate={(kind, target) =>
             bindings.createProjectSurface(
               presentation.pane.projectId,
@@ -1173,6 +1183,9 @@ export function ProjectWorkspaceFrame({
               activeTabKey=""
               allowedCreateKinds={createKindsForPaneRegion("center")}
               creatingKinds={bindings.creatingSurfaceKinds}
+              onOpenRunning={(terminalId) =>
+                bindings.openRunTerminal(terminalId, undefined, "center")
+              }
               onCreate={(kind, target) =>
                 bindings.createProjectSurface(
                   bindings.selectedProject.id,
@@ -1269,6 +1282,9 @@ export function ProjectWorkspaceFrame({
         <DockRail
           activeTabKey={right?.activeTabKey ?? null}
           creatingKinds={bindings.creatingSurfaceKinds}
+          onOpenRunning={(terminalId) =>
+            bindings.openRunTerminal(terminalId, right?.pane.id, "right")
+          }
           onCreate={(kind, target) =>
             bindings.createProjectSurface(
               bindings.selectedProject.id,
@@ -1294,6 +1310,9 @@ export function ProjectWorkspaceFrame({
         <DockRail
           activeTabKey={bottom?.activeTabKey ?? null}
           creatingKinds={bindings.creatingSurfaceKinds}
+          onOpenRunning={(terminalId) =>
+            bindings.openRunTerminal(terminalId, bottom?.pane.id, "bottom")
+          }
           onCreate={(kind, target) =>
             bindings.createProjectSurface(
               bindings.selectedProject.id,
