@@ -19,10 +19,8 @@ import {
 import type { ProjectSurface } from "@/lib/project-surface";
 import { cn } from "@/lib/utils";
 
-export type ProjectSurfaceCreateKind = Exclude<
-  ProjectSurface["kind"],
-  "builtin"
->;
+export type ProjectSurfaceCreateKind =
+  Exclude<ProjectSurface["kind"], "builtin"> | "tasks";
 
 export interface ProjectSurfaceCreateDefinition {
   kind: ProjectSurfaceCreateKind;
@@ -47,6 +45,7 @@ export interface ProjectSurfaceWorkerPlacement {
 
 export const projectSurfaceCreateDefinitions = [
   { kind: "chat", label: "Agent" },
+  { kind: "tasks", label: "Tasks" },
   { kind: "terminal", label: "Terminal" },
   { kind: "explorer", label: "Explorer" },
   { kind: "code", label: "Code" },
@@ -79,7 +78,7 @@ const projectToolCreateKinds = new Set<ProjectSurfaceCreateKind>([
 export function surfaceSupportsExplicitPlacement(
   kind: ProjectSurfaceCreateKind,
 ): boolean {
-  return !projectToolCreateKinds.has(kind);
+  return kind !== "tasks" && !projectToolCreateKinds.has(kind);
 }
 
 function capabilityReason(

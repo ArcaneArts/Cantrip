@@ -21,9 +21,9 @@ export function ProjectSurfaceIcon({
   filled = false,
   kind,
   ...props
-}: LucideProps & { filled?: boolean; kind: ProjectPaneVisualKind }) {
+}: LucideProps & { filled?: boolean; kind: ProjectPaneVisualKind | "tasks" }) {
   const Icon =
-    kind === "task"
+    kind === "task" || kind === "tasks"
       ? ListTodo
       : kind === "chat"
         ? Bot

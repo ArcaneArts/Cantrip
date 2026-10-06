@@ -37,6 +37,7 @@ export interface SurfaceCreationOperations {
     }
   >;
   remoteDesktop: CreationMutation<SurfaceCreateInput>;
+  tasks: CreationMutation<SurfaceCreateInput>;
   terminal: CreationMutation<SurfaceCreateInput>;
 }
 
@@ -104,6 +105,7 @@ export function createSurfaceCommandController({
     if (target) input.target = target;
     if (targetRegion) input.targetRegion = targetRegion;
     if (kind === "chat") creation.chat.mutate(input);
+    else if (kind === "tasks") creation.tasks.mutate(input);
     else if (kind === "terminal") creation.terminal.mutate(input);
     else if (kind === "explorer") creation.explorer.mutate(input);
     else if (kind === "browser") creation.browser.mutate(input);
@@ -154,6 +156,7 @@ export function createSurfaceCommandController({
   };
   const creatingSurfaceKinds = new Set<ProjectSurfaceCreateKind>([
     ...(creation.chat.isPending ? (["chat"] as const) : []),
+    ...(creation.tasks.isPending ? (["tasks"] as const) : []),
     ...(creation.terminal.isPending ? (["terminal"] as const) : []),
     ...(creation.explorer.isPending ? (["explorer"] as const) : []),
     ...(creation.browser.isPending ? (["browser"] as const) : []),
@@ -203,7 +206,13 @@ export function createSurfaceCommandController({
                     error: creation.remoteDesktop.error,
                     dismiss: creation.remoteDesktop.reset,
                   }
-                : null;
+                : creation.tasks.isError
+                  ? {
+                      label: "Tasks",
+                      error: creation.tasks.error,
+                      dismiss: creation.tasks.reset,
+                    }
+                  : null;
   return {
     createProjectSurface,
     creatingSurfaceKinds,

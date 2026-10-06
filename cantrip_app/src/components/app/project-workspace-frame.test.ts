@@ -292,6 +292,7 @@ describe("workspace region create capabilities", () => {
       "actions",
       "remote-desktop",
       "terminal",
+      "tasks",
     ]);
     expect(createKindsForPaneRegion("center")).toEqual(centerAndDockKinds);
     expect(createKindsForPaneRegion("right")).toEqual(centerAndDockKinds);
