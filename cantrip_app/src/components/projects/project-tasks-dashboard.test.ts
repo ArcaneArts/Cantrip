@@ -1,4 +1,4 @@
-import type { TaskDetail } from "@cantrip/protocol";
+import type { ChatSummary, TaskDetail } from "@cantrip/protocol";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -205,6 +205,46 @@ describe("flat Task list", () => {
 });
 
 describe("project Task workload", () => {
+  it.each(["running", "waiting-for-approval"] as const)(
+    "labels a stopped direct Task as paused while its resident turn is %s",
+    (status) => {
+      const stoppedTask = dispatch(
+        task({
+          chatId: "stopped",
+          createdAt: "2026-10-06T12:00:00.000Z",
+          state: "implementing",
+        }),
+        "running",
+      );
+      const chat = { status, automationPaused: true } as ChatSummary;
+      expect(projectTaskWorkloadPresentation(stoppedTask, chat, false)).toEqual(
+        {
+          band: "running",
+          label: "Paused",
+          paused: true,
+          tone: "muted",
+        },
+      );
+      expect(
+        projectTaskWorkloadPresentation(
+          stoppedTask,
+          { ...chat, automationPaused: false },
+          false,
+        ),
+      ).toMatchObject({
+        label: status === "running" ? "Running" : "Needs approval",
+        paused: false,
+      });
+      expect(
+        projectTaskWorkloadPresentation(
+          stoppedTask,
+          { ...chat, status: "failed" },
+          false,
+        ),
+      ).toMatchObject({ label: "Failed", paused: false });
+    },
+  );
+
   it("distinguishes an unqueued draft from a queued Task", () => {
     const draft = task({
       chatId: "draft",
