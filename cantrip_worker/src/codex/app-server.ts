@@ -4647,7 +4647,6 @@ export class CodexAppServer implements CodexRuntime {
     string,
     { epoch: number; fingerprint: string }
   >();
-  readonly #readyMcpConfigFingerprintsByThread = new Map<string, string>();
   readonly #permissionProfilesByThread = new Map<string, string>();
   // Semantic ownership survives an idle unsubscribe of the same durable thread;
   // unlike an applied profile cache it never supplies a security value.
@@ -7818,7 +7817,6 @@ export class CodexAppServer implements CodexRuntime {
     this.#mcpConfigFingerprintsByThread.clear();
     this.#managedConfigApplications.clear();
     this.#managedThreadOverlays.clear();
-    this.#readyMcpConfigFingerprintsByThread.clear();
     this.#permissionProfilesByThread.clear();
     this.#confirmedManagedPermissions.clear();
     this.#managedSecurityOwners.clear();
@@ -8069,7 +8067,6 @@ export class CodexAppServer implements CodexRuntime {
     this.#mcpConfigFingerprintsByThread.clear();
     this.#managedConfigApplications.clear();
     this.#managedThreadOverlays.clear();
-    this.#readyMcpConfigFingerprintsByThread.clear();
     this.#permissionProfilesByThread.clear();
     this.#confirmedManagedPermissions.clear();
     this.#managedSecurityOwners.clear();
@@ -8081,96 +8078,6 @@ export class CodexAppServer implements CodexRuntime {
     this.#skillRoots = [];
     socket?.close();
     child?.kill("SIGINT");
-  }
-
-  private async ensureManagedMcpReady(
-    threadId: string,
-    servers: NonNullable<RunAgentTurnOptions["mcpServers"]>,
-    fingerprint: string,
-    assertCurrent: () => void = () => {},
-  ): Promise<void> {
-    assertCurrent();
-    const requirements = managedMcpToolRequirements(servers);
-    if (!requirements.length) return;
-    if (
-      this.#readyMcpConfigFingerprintsByThread.get(threadId) === fingerprint
-    ) {
-      return;
-    }
-
-    const startedAtMs = Date.now();
-    const deadline = startedAtMs + 10_000;
-    let lastError: unknown = null;
-    do {
-      assertCurrent();
-      try {
-        let cursor: string | null = null;
-        const seenCursors = new Set<string>();
-        const available = new Map<string, Set<string>>();
-        do {
-          const page = parseMcpServerPage(
-            await this.request("mcpServerStatus/list", {
-              cursor,
-              detail: "toolsAndAuthOnly",
-              limit: 100,
-              threadId,
-            }),
-          );
-          assertCurrent();
-          for (const status of page.servers) {
-            const key = status.name.trim().toLowerCase();
-            if (!available.has(key)) available.set(key, new Set());
-            for (const tool of status.tools) {
-              available.get(key)!.add(tool.name);
-            }
-          }
-          if (
-            requirements.every(({ name, tool }) =>
-              available.get(name)?.has(tool),
-            )
-          ) {
-            this.#readyMcpConfigFingerprintsByThread.set(threadId, fingerprint);
-            workerLogger.event("info", "Managed MCP servers are ready", {
-              event: "codex.mcp.ready",
-              subsystem: "codex",
-              operation: "prepare-managed-mcp",
-              status: "ready",
-              threadId,
-              durationMs: Date.now() - startedAtMs,
-              counts: { tools: requirements.length },
-            });
-            return;
-          }
-          cursor = page.nextCursor;
-          if (cursor && seenCursors.has(cursor)) break;
-          if (cursor) seenCursors.add(cursor);
-        } while (cursor);
-      } catch (error) {
-        assertCurrent();
-        lastError = error;
-      }
-      if (Date.now() < deadline) {
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      }
-    } while (Date.now() < deadline);
-
-    assertCurrent();
-    workerLogger.event("error", "Managed MCP servers did not become ready", {
-      event: "codex.mcp.ready",
-      subsystem: "codex",
-      operation: "prepare-managed-mcp",
-      reasonCode: "managed-mcp-unavailable",
-      status: "failed",
-      threadId,
-      durationMs: Date.now() - startedAtMs,
-      error: lastError ? workerLogError(lastError) : undefined,
-    });
-    throw new Error(
-      `Required managed MCP tools did not become ready: ${requirements
-        .map(({ name, tool }) => `${name}/${tool}`)
-        .join(", ")}.`,
-      lastError ? { cause: lastError } : undefined,
-    );
   }
 
   private async loadThread(
@@ -8415,7 +8322,6 @@ export class CodexAppServer implements CodexRuntime {
     ) {
       this.#managedConfigApplications.delete(options.threadId);
     }
-    const mcpConfigFingerprint = mcpConfig ? JSON.stringify(mcpConfig) : null;
     const hasGitMetadata = await workspaceHasGitMetadata(options.cwd);
     assertCurrent();
     let threadId = options.threadId;
@@ -8445,12 +8351,11 @@ export class CodexAppServer implements CodexRuntime {
             threadConfigFingerprint
         ) {
           // Once unsubscribe is attempted, an uncertain reply cannot justify
-          // trusting the previous attachment or its MCP readiness.
+          // trusting the previous attachment or its configuration.
           assertCurrent();
           this.#loadedThreads.delete(threadId);
           this.#mcpConfigFingerprintsByThread.delete(threadId);
           this.#managedConfigApplications.delete(threadId);
-          this.#readyMcpConfigFingerprintsByThread.delete(threadId);
           this.#permissionProfilesByThread.delete(threadId);
           this.#confirmedManagedPermissions.delete(threadId);
           replacingUnsubscribedThread = true;
@@ -8570,14 +8475,6 @@ export class CodexAppServer implements CodexRuntime {
         assertCurrent,
       );
     }
-    if (threadId && mcpConfigFingerprint !== null && options.mcpServers) {
-      await this.ensureManagedMcpReady(
-        threadId,
-        options.mcpServers,
-        mcpConfigFingerprint,
-        assertCurrent,
-      );
-    }
     return threadId;
   }
 
@@ -8609,10 +8506,10 @@ export class CodexAppServer implements CodexRuntime {
     )
       return;
     this.#managedConfigApplications.delete(threadId);
-    this.#readyMcpConfigFingerprintsByThread.delete(threadId);
     // Start/cold resume apply this overlay before native MCP initialization.
-    // The same update path also replaces configuration on a shared live engine;
-    // catalog observation below establishes readiness before caching success.
+    // The same update path also replaces configuration on a shared live engine.
+    // Native startup validates required servers on their actual connections;
+    // a separate discovery catalog must not gate configuration or user input.
     const response = (await this.request("thread/managedConfig/update", {
       threadId,
       ...config,
@@ -8638,13 +8535,6 @@ export class CodexAppServer implements CodexRuntime {
           : { canonicalHistory: options.canonicalHistory }),
       }),
     });
-    await this.ensureManagedMcpReady(
-      threadId,
-      options.mcpServers,
-      JSON.stringify(codexMcpConfigOverride(options.mcpServers)),
-      assertCurrent,
-    );
-    assertCurrent();
     this.#managedConfigApplications.set(threadId, {
       epoch: this.#preparationEpoch,
       fingerprint,
@@ -8686,11 +8576,6 @@ export class CodexAppServer implements CodexRuntime {
     this.#loadedThreads.add(threadId);
     this.#permissionProfilesByThread.set(threadId, profileKey);
     this.#mcpConfigFingerprintsByThread.set(threadId, mcpConfigFingerprint);
-    await this.ensureManagedMcpReady(
-      threadId,
-      options.mcpServers,
-      mcpConfigFingerprint,
-    );
     return threadId;
   }
 
@@ -9699,7 +9584,6 @@ export class CodexAppServer implements CodexRuntime {
     this.#mcpConfigFingerprintsByThread.delete(threadId);
     this.#managedConfigApplications.delete(threadId);
     this.#managedThreadOverlays.delete(threadId);
-    this.#readyMcpConfigFingerprintsByThread.delete(threadId);
     this.#permissionProfilesByThread.delete(threadId);
     this.#confirmedManagedPermissions.delete(threadId);
     this.#threadSettings.forget(threadId);
@@ -10029,7 +9913,6 @@ export class CodexAppServer implements CodexRuntime {
       this.#mcpConfigFingerprintsByThread.clear();
       this.#managedConfigApplications.clear();
       this.#managedThreadOverlays.clear();
-      this.#readyMcpConfigFingerprintsByThread.clear();
       this.#permissionProfilesByThread.clear();
       this.#confirmedManagedPermissions.clear();
       this.#managedSecurityOwners.clear();
@@ -10087,7 +9970,6 @@ export class CodexAppServer implements CodexRuntime {
       this.#mcpConfigFingerprintsByThread.clear();
       this.#managedConfigApplications.clear();
       this.#managedThreadOverlays.clear();
-      this.#readyMcpConfigFingerprintsByThread.clear();
       this.#permissionProfilesByThread.clear();
       this.#confirmedManagedPermissions.clear();
       this.#managedSecurityOwners.clear();

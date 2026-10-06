@@ -896,6 +896,131 @@ describe("GUI admitted native dispatch hooks", () => {
     vi.spyOn(runtime, "loadThread").mockResolvedValue("root");
     return f;
   }
+  it.each(["empty", "failed"] as const)(
+    "submits GUI input without a separate managed MCP discovery gate: %s catalog",
+    async (catalog) => {
+      const f = setup();
+      const loader = f.runtime as unknown as {
+        loadThread(): Promise<string>;
+      };
+      vi.mocked(loader.loadThread).mockRestore();
+      const clock = { now: Date.now() };
+      const now = vi.spyOn(Date, "now").mockImplementation(() => clock.now);
+      f.request.mockImplementation(async (method) => {
+        if (method === "thread/resume") return { thread: { id: "root" } };
+        if (method === "mcpServerStatus/list") {
+          // End the old polling loop immediately if the regression returns.
+          clock.now += 11_000;
+          if (catalog === "failed") throw new Error("Discovery unavailable");
+          return { data: [], nextCursor: null };
+        }
+        if (method === "turn/start") {
+          f.start();
+          f.end();
+          return { turn: { id: "turn-a" } };
+        }
+        return {};
+      });
+      try {
+        await expect(
+          f.runtime.runTurn({
+            ...guiOptions(),
+            mcpServers: ["codegraph", "cantrip", "cantrip_cua"].map((name) => ({
+              name,
+              enabled: true,
+              transport: "stdio" as const,
+              command: "synthetic-mcp",
+              args: [],
+              environment: {},
+            })),
+          }),
+        ).resolves.toMatchObject({ status: "completed", threadId: "root" });
+        expect(f.request).toHaveBeenCalledWith(
+          "thread/resume",
+          expect.objectContaining({
+            config: expect.objectContaining({
+              mcp_servers: expect.objectContaining({
+                codegraph: expect.objectContaining({ required: true }),
+                cantrip: expect.objectContaining({ required: true }),
+                cantrip_cua: expect.objectContaining({ required: true }),
+              }),
+            }),
+          }),
+        );
+        expect(f.request).toHaveBeenCalledWith(
+          "turn/start",
+          expect.objectContaining({
+            threadId: "root",
+            input: expect.arrayContaining([
+              expect.objectContaining({ type: "text", text: "GUI input" }),
+            ]),
+          }),
+        );
+        expect(
+          f.request.mock.calls.some(
+            ([method]) => method === "mcpServerStatus/list",
+          ),
+        ).toBe(false);
+      } finally {
+        now.mockRestore();
+        f.runtime.close();
+      }
+    },
+  );
+
+  it.each(["thread/resume", "turn/start"])(
+    "preserves actual native MCP startup failures from %s",
+    async (failedMethod) => {
+      const f = setup();
+      const loader = f.runtime as unknown as {
+        loadThread(): Promise<string>;
+      };
+      vi.mocked(loader.loadThread).mockRestore();
+      const error = new CodexNativeRpcError(
+        "required MCP servers failed to initialize: cantrip: connection refused",
+        {
+          code: -32603,
+          message:
+            "required MCP servers failed to initialize: cantrip: connection refused",
+        },
+        failedMethod,
+      );
+      f.request.mockImplementation(async (method) => {
+        if (method === failedMethod) throw error;
+        if (method === "thread/resume") return { thread: { id: "root" } };
+        return {};
+      });
+      try {
+        await expect(
+          f.runtime.runTurn({
+            ...guiOptions(),
+            mcpServers: [
+              {
+                name: "cantrip",
+                enabled: true,
+                transport: "stdio",
+                command: "synthetic-mcp",
+                args: [],
+                environment: {},
+              },
+            ],
+          }),
+        ).rejects.toBe(error);
+        expect(
+          f.request.mock.calls.some(
+            ([method]) => method === "mcpServerStatus/list",
+          ),
+        ).toBe(false);
+        if (failedMethod === "thread/resume")
+          expect(
+            f.request.mock.calls.some(([method]) => method === "turn/start"),
+          ).toBe(false);
+      } finally {
+        f.runtime.close();
+      }
+    },
+  );
+
   it("sends the queued native input vector unchanged through actual GUI turn/start", async () => {
     const f = setup();
     const input = [
