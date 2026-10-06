@@ -118,9 +118,11 @@ recreating its parser or graph engine.
 - The MCP launcher connects to or starts one detached daemon for the indexed
   project. This lets multiple agents share the same graph without each owning a
   complete parser process.
-- Cantrip-managed MCP launches override that upstream default with
-  `CODEGRAPH_NO_DAEMON=1` because shared-daemon attachment is unreliable for
-  canonical Windows worktree paths.
+- Cantrip-managed MCP launches explicitly set `CODEGRAPH_NO_DAEMON=0`, including
+  when the worker inherits an opt-out. Direct mode allows only one live MCP
+  writer per indexed project in CodeGraph 1.6.2; forcing it prevents concurrent
+  or restored chats from completing their MCP handshake. Runtime installation
+  verifies the same launch environment used by chats.
 - The primary MCP surface is `codegraph_explore`; CodeGraph sends its own agent
   guidance in the MCP initialize response.
 - The graph is stored beneath a directory inside the project root. The
@@ -348,8 +350,8 @@ state.
 - Auto-sync is enabled by default and is the managed baseline, not a setting a
   user must opt into.
 - Supervise one worker filesystem watcher per initialized physical worktree
-  while its replica is active. Each Cantrip-managed MCP launch runs in
-  direct/no-daemon mode against that worktree's shared index.
+  while its replica is active. Cantrip-managed MCP clients share CodeGraph's
+  project daemon rather than competing for direct-mode writer ownership.
 - Before an agent launch, run a cheap status check and request an incremental
   `sync` if the watcher reports stale or degraded state.
 - File-save bursts, branch switches, rebases, resets, and worktree moves can
@@ -391,7 +393,7 @@ worktree and before `codexMcpConfigOverride()` materializes native
   "args": ["serve", "--mcp", "--path", "<canonical worktree root>"],
   "environment": {
     "CODEGRAPH_DIR": ".codegraph-cantrip",
-    "CODEGRAPH_NO_DAEMON": "1",
+    "CODEGRAPH_NO_DAEMON": "0",
     "CODEGRAPH_TELEMETRY": "0",
     "DO_NOT_TRACK": "1",
     "CODEGRAPH_NO_UPDATE_CHECK": "1"
@@ -602,8 +604,13 @@ request rather than one broad implementation branch.
   identity, the two-index-operation concurrency bound, burst debounce, and
   filesystem watcher recovery.
 - `codegraph-mcp.test.ts` verifies the absolute launcher invocation, exact
-  canonical `--path`, privacy environment, and case-insensitive replacement of
-  any user shadow with the authoritative managed entry.
+  canonical `--path`, shared-mode and privacy environment, and case-insensitive
+  replacement of any user shadow with the authoritative managed entry.
+- `native-codegraph-shared-mcp.test.ts` is an opt-in standalone-runtime
+  regression: simultaneous clients query one indexed project, a surviving
+  client continues after the other disconnects, and a new client can read
+  alongside an older direct-mode writer without stealing its lock. It uses
+  only temporary projects and homes, not live indexes or provider accounts.
 - `codegraph-observations.test.ts` verifies serialized refresh, exact-target
   restart recovery, and active-target priority at the 128-root bound.
 - protocol tests verify old heartbeat payloads default to unavailable
@@ -616,6 +623,15 @@ request rather than one broad implementation branch.
 - A macOS arm64 native smoke on 2026-08-19 downloaded upstream v1.5.0 through
   the manager, verified telemetry disabled, completed the MCP handshake, then
   initialized and queried a one-file TypeScript graph successfully.
+
+Run the shared-mode regression against an installed managed launcher (and,
+optionally, the packaged worker Node executable):
+
+```bash
+CANTRIP_CODEGRAPH_TEST_LAUNCHER="/absolute/path/to/tools/codegraph/bin/launcher.mjs" \
+CANTRIP_CODEGRAPH_TEST_NODE="/absolute/path/to/runtime/node" \
+pnpm --filter @cantrip/worker test test/native-codegraph-shared-mcp.test.ts
+```
 
 ### Remaining release QA matrix
 

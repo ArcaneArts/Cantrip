@@ -27,13 +27,39 @@ describe("managed CodeGraph MCP", () => {
       ],
       environment: {
         CODEGRAPH_DIR: ".codegraph-cantrip",
-        CODEGRAPH_NO_DAEMON: "1",
+        CODEGRAPH_NO_DAEMON: "0",
         CODEGRAPH_NO_UPDATE_CHECK: "1",
         CODEGRAPH_TELEMETRY: "0",
         DO_NOT_TRACK: "1",
       },
     });
   });
+
+  it.each(["/worktrees/project", "C:\\Cantrip worktrees\\project"])(
+    "lets multiple chats share the indexed project at %s",
+    (root) => {
+      const first = managedCodeGraphMcpServer("/managed/node", [], root);
+      const second = managedCodeGraphMcpServer("/managed/node", [], root);
+
+      for (const server of [first, second]) {
+        expect(server.args).toEqual(["serve", "--mcp", "--path", root]);
+        expect({
+          CODEGRAPH_NO_DAEMON: "1",
+          ...server.environment,
+        }).toMatchObject({
+          CODEGRAPH_DIR: ".codegraph-cantrip",
+          CODEGRAPH_NO_DAEMON: "0",
+        });
+      }
+      expect(first.environment).not.toBe(second.environment);
+      first.environment.CODEGRAPH_NO_DAEMON = "1";
+      expect(second.environment.CODEGRAPH_NO_DAEMON).toBe("0");
+      expect(
+        managedCodeGraphMcpServer("/managed/node", [], root).environment
+          .CODEGRAPH_NO_DAEMON,
+      ).toBe("0");
+    },
+  );
 
   it("removes case-insensitive user shadows before appending the authority", () => {
     const managed = managedCodeGraphMcpServer(

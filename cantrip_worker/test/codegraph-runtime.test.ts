@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import * as tar from "tar";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { validateCodeGraphArchivePath } from "../src/codegraph/archive.js";
 import {
@@ -25,6 +25,7 @@ import {
 const directories: string[] = [];
 
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await Promise.all(
     directories
       .splice(0)
@@ -69,7 +70,7 @@ async function fakeRelease(
         : mcpResponse;
   await writeFile(
     executable,
-    `#!/bin/sh\nif [ "$1" = "--version" ]; then echo "${options.reportedVersion ?? version}"; exit 0; fi\nif [ "$1" = "telemetry" ] && [ "$2" = "off" ]; then touch "$0.telemetry-disabled"; exit 0; fi\nif [ "$1" = "serve" ]; then\n  [ -f "$0.telemetry-disabled" ] || exit 8\n  [ "$CODEGRAPH_TELEMETRY" = "0" ] || exit 8\n  [ "$DO_NOT_TRACK" = "1" ] || exit 8\n  [ "$CODEGRAPH_NO_UPDATE_CHECK" = "1" ] || exit 8\n  ${mcpBehavior}\n  exit 0\nfi\necho "fake codegraph $* dir=$CODEGRAPH_DIR"\n`,
+    `#!/bin/sh\nif [ "$1" = "--version" ]; then echo "${options.reportedVersion ?? version}"; exit 0; fi\nif [ "$1" = "telemetry" ] && [ "$2" = "off" ]; then touch "$0.telemetry-disabled"; exit 0; fi\nif [ "$1" = "serve" ]; then\n  [ -f "$0.telemetry-disabled" ] || exit 8\n  [ "$CODEGRAPH_TELEMETRY" = "0" ] || exit 8\n  [ "$DO_NOT_TRACK" = "1" ] || exit 8\n  [ "$CODEGRAPH_NO_UPDATE_CHECK" = "1" ] || exit 8\n  [ "$CODEGRAPH_NO_DAEMON" = "0" ] || exit 7\n  ${mcpBehavior}\n  exit 0\nfi\necho "fake codegraph $* dir=$CODEGRAPH_DIR"\n`,
   );
   await chmod(executable, 0o755);
   const archivePath = path.join(root, target.assetName);
@@ -214,6 +215,27 @@ describe("CodeGraph runtime targets", () => {
 describe.skipIf(process.platform === "win32")(
   "CodeGraph managed runtime",
   () => {
+    it("verifies chat-compatible shared mode despite inherited direct mode", async () => {
+      vi.stubEnv("CODEGRAPH_NO_DAEMON", "1");
+      const dataDirectory = await mkdtemp(
+        path.join(tmpdir(), "cantrip-codegraph-shared-mode-"),
+      );
+      directories.push(dataDirectory);
+      const release = await fakeRelease("1.6.2");
+      const manager = new CodeGraphRuntimeManager({
+        dataDirectory,
+        fetch: releaseFetch(() => release),
+      });
+
+      await manager.prepare();
+      await expect(manager.waitForUpdate()).resolves.toMatchObject({
+        state: "ready",
+        cliAvailable: true,
+        installedVersion: "1.6.2",
+        telemetryDisabled: true,
+      });
+    });
+
     it("installs a verified release, disables telemetry, and exposes a managed launcher", async () => {
       const dataDirectory = await mkdtemp(
         path.join(tmpdir(), "cantrip-codegraph-data-"),
