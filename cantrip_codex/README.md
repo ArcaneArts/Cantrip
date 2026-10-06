@@ -95,6 +95,10 @@ contents, native authentication plumbing, absent tools/project context, no new
 durable threads, and validation/provider failures. It does not establish live
 ChatGPT account latency or full GUI behavior. The native release verifier also
 requires this RPC in the executable's generated experimental protocol.
+Upstream production schema export uses embedded precomputed archives; patch
+`0043` includes the regenerated experimental archive as well as the RPC source.
+Native protocol tests check that the method and types are exported only with
+the experimental API and that the archive matches freshly generated schemas.
 
 ## Managed empty-thread attachment
 
