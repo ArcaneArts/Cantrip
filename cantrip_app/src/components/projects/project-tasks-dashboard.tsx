@@ -328,7 +328,7 @@ function TaskWorkloadRow({
         : "Open";
   return (
     <div
-      className="group grid cursor-pointer grid-cols-[minmax(0,1fr)_auto] gap-3 border-b px-4 py-3 transition-colors last:border-b-0 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-5"
+      className="group grid cursor-pointer grid-cols-[minmax(0,1fr)_auto] gap-3 border-b py-3 transition-colors last:border-b-0 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       role="button"
       tabIndex={0}
       onClick={onOpen}
@@ -454,7 +454,7 @@ function WorkloadList({
   if (items.length === 0) return null;
   return (
     <section aria-label={label}>
-      <div className="mb-2 flex items-center justify-between px-1">
+      <div className="mb-2 flex items-center justify-between">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           {label}
         </h2>
@@ -462,7 +462,7 @@ function WorkloadList({
           {items.length}
         </span>
       </div>
-      <div className="overflow-hidden rounded-xl border bg-card/65 shadow-sm">
+      <div>
         {items.map((item) => (
           <TaskWorkloadRow
             key={item.task.chatId}
