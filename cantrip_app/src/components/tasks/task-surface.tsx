@@ -663,7 +663,12 @@ export function TaskSurface({
           </div>
         </div>
         <div className="min-h-0 flex-1 overflow-hidden p-4 sm:p-6">
-          <AgentInspectContent active messages={messages.data ?? []} visible />
+          <AgentInspectContent
+            active
+            messages={messages.data ?? []}
+            trajectoryEventOrder="newest-first"
+            visible
+          />
         </div>
       </div>
     );

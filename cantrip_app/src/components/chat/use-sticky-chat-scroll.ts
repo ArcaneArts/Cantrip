@@ -22,37 +22,46 @@ export function chatScrollIsNearBottom(
   return chatScrollDistanceFromBottom(metrics) <= threshold;
 }
 
-export function useStickyChatScroll(
+export function useStickyScroll(
   conversationId: string,
   followThreshold = CHAT_FOLLOW_THRESHOLD_PX,
+  latestEdge: "top" | "bottom" = "bottom",
 ) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const followOutputRef = useRef(true);
-  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const [showScrollToLatest, setShowScrollToLatest] = useState(false);
+
+  const isNearLatest = useCallback(
+    (viewport: ScrollMetrics) =>
+      latestEdge === "top"
+        ? viewport.scrollTop <= followThreshold
+        : chatScrollIsNearBottom(viewport, followThreshold),
+    [followThreshold, latestEdge],
+  );
 
   const updateScrollState = useCallback(() => {
     const viewport = viewportRef.current;
     if (!viewport) return;
-    const nearBottom = chatScrollIsNearBottom(viewport, followThreshold);
-    followOutputRef.current = nearBottom;
-    setShowScrollToBottom(
-      !nearBottom && viewport.scrollHeight > viewport.clientHeight,
+    const nearLatest = isNearLatest(viewport);
+    followOutputRef.current = nearLatest;
+    setShowScrollToLatest(
+      !nearLatest && viewport.scrollHeight > viewport.clientHeight,
     );
-  }, [followThreshold]);
+  }, [isNearLatest]);
 
-  const scrollToBottom = useCallback(() => {
+  const scrollToLatest = useCallback(() => {
     const viewport = viewportRef.current;
     if (!viewport) return;
     followOutputRef.current = true;
-    viewport.scrollTop = viewport.scrollHeight;
-    setShowScrollToBottom(false);
-  }, []);
+    viewport.scrollTop = latestEdge === "top" ? 0 : viewport.scrollHeight;
+    setShowScrollToLatest(false);
+  }, [latestEdge]);
 
-  const pinToBottomIfFollowing = useCallback(() => {
+  const pinToLatestIfFollowing = useCallback(() => {
     if (!followOutputRef.current) return;
-    scrollToBottom();
-  }, [scrollToBottom]);
+    scrollToLatest();
+  }, [scrollToLatest]);
 
   const preserveScrollDuringPrepend = useCallback(
     async (action: () => Promise<unknown>) => {
@@ -61,7 +70,7 @@ export function useStickyChatScroll(
         await action();
         return;
       }
-      const wasNearBottom = chatScrollIsNearBottom(viewport, followThreshold);
+      const wasNearLatest = isNearLatest(viewport);
       const previousHeight = viewport.scrollHeight;
       const previousTop = viewport.scrollTop;
       await action();
@@ -70,8 +79,9 @@ export function useStickyChatScroll(
           window.requestAnimationFrame(() => {
             const current = viewportRef.current;
             if (current) {
-              if (wasNearBottom) {
-                current.scrollTop = current.scrollHeight;
+              if (wasNearLatest) {
+                current.scrollTop =
+                  latestEdge === "top" ? 0 : current.scrollHeight;
               } else {
                 current.scrollTop =
                   previousTop + (current.scrollHeight - previousHeight);
@@ -83,15 +93,15 @@ export function useStickyChatScroll(
         });
       });
     },
-    [followThreshold, updateScrollState],
+    [isNearLatest, latestEdge, updateScrollState],
   );
 
   useEffect(() => {
     followOutputRef.current = true;
-    setShowScrollToBottom(false);
-    const frame = window.requestAnimationFrame(scrollToBottom);
+    setShowScrollToLatest(false);
+    const frame = window.requestAnimationFrame(scrollToLatest);
     return () => window.cancelAnimationFrame(frame);
-  }, [conversationId, scrollToBottom]);
+  }, [conversationId, scrollToLatest]);
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -100,7 +110,7 @@ export function useStickyChatScroll(
 
     const contentChanged = () => {
       if (followOutputRef.current) {
-        scrollToBottom();
+        scrollToLatest();
       } else {
         updateScrollState();
       }
@@ -109,15 +119,31 @@ export function useStickyChatScroll(
     resizeObserver.observe(content);
     contentChanged();
     return () => resizeObserver.disconnect();
-  }, [conversationId, scrollToBottom, updateScrollState]);
+  }, [conversationId, scrollToLatest, updateScrollState]);
 
   return {
     contentRef,
     onScroll: updateScrollState,
-    pinToBottomIfFollowing,
+    pinToLatestIfFollowing,
     preserveScrollDuringPrepend,
-    scrollToBottom,
-    showScrollToBottom,
+    scrollToLatest,
+    showScrollToLatest,
     viewportRef,
+  };
+}
+
+export function useStickyChatScroll(
+  conversationId: string,
+  followThreshold = CHAT_FOLLOW_THRESHOLD_PX,
+) {
+  const scroll = useStickyScroll(conversationId, followThreshold);
+  return {
+    contentRef: scroll.contentRef,
+    onScroll: scroll.onScroll,
+    pinToBottomIfFollowing: scroll.pinToLatestIfFollowing,
+    preserveScrollDuringPrepend: scroll.preserveScrollDuringPrepend,
+    scrollToBottom: scroll.scrollToLatest,
+    showScrollToBottom: scroll.showScrollToLatest,
+    viewportRef: scroll.viewportRef,
   };
 }
