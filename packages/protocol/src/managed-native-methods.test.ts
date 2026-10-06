@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { managedNativeMethods } from "./managed-native-methods.js";
 
-describe("Codex 0.157 managed method inventory", () => {
+describe("Codex 0.160 managed method inventory", () => {
   it.each([
     ["thread/attachment/list", "read"],
     ["userVerification/status", "read"],

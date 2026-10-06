@@ -1,5 +1,5 @@
 diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
-index 88a84b0..1e3a939 100644
+index 0e29097..5488981 100644
 --- a/codex-rs/app-server-protocol/src/protocol/common.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/common.rs
 @@ -902,6 +902,12 @@ client_request_definitions! {
@@ -16,10 +16,10 @@ index 88a84b0..1e3a939 100644
      ThreadInjectItems => "thread/inject_items" {
          params: v2::ThreadInjectItemsParams,
 diff --git a/codex-rs/app-server-protocol/src/protocol/thread_history.rs b/codex-rs/app-server-protocol/src/protocol/thread_history.rs
-index 4146e38..92d59f3 100644
+index 6624f9f..4d8fd27 100644
 --- a/codex-rs/app-server-protocol/src/protocol/thread_history.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/thread_history.rs
-@@ -1494,8 +1494,10 @@ impl ThreadHistoryBuilder {
+@@ -1500,8 +1500,10 @@ impl ThreadHistoryBuilder {
      /// This keeps compaction-only legacy turns from being dropped by
      /// `finish_current_turn` when they have no renderable items and were not
      /// explicitly opened.
@@ -32,7 +32,7 @@ index 4146e38..92d59f3 100644
      }
  
      fn handle_thread_rollback(&mut self, payload: &ThreadRolledBackEvent) {
-@@ -4688,6 +4690,7 @@ mod tests {
+@@ -4704,6 +4706,7 @@ mod tests {
                  collaboration_mode_kind: Default::default(),
              })),
              RolloutItem::Compacted(CompactedItem {
@@ -41,10 +41,10 @@ index 4146e38..92d59f3 100644
                  replacement_history: None,
                  retained_context: None,
 diff --git a/codex-rs/app-server-protocol/src/protocol/thread_history_projection_tests.rs b/codex-rs/app-server-protocol/src/protocol/thread_history_projection_tests.rs
-index 95caa6e..2e7cb61 100644
+index 03aed11..7ba4793 100644
 --- a/codex-rs/app-server-protocol/src/protocol/thread_history_projection_tests.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/thread_history_projection_tests.rs
-@@ -208,6 +208,7 @@ fn ignores_legacy_abort_without_turn_id_and_context_only_records() {
+@@ -209,6 +209,7 @@ fn ignores_legacy_abort_without_turn_id_and_context_only_records() {
          },
      )));
      let compacted = project(RolloutItem::Compacted(CompactedItem {
@@ -53,10 +53,10 @@ index 95caa6e..2e7cb61 100644
          replacement_history: None,
          retained_context: None,
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-index ede57e9..8a5b940 100644
+index 8eb86b9..223f0b2 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-@@ -2475,3 +2475,24 @@ pub struct LiveHistorySnapshot {
+@@ -2498,3 +2498,24 @@ pub struct LiveHistorySnapshot {
      pub through_sequence: String,
      pub items: Vec<LiveHistoryItem>,
  }
@@ -98,7 +98,7 @@ index 09d0578..4452856 100644
                  self.turn_processor
                      .thread_inject_items(&request_id, params)
 diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/codex-rs/app-server/src/request_processors/turn_processor.rs
-index 5e17d1b..1e2a36c 100644
+index 732b845..41d57bb 100644
 --- a/codex-rs/app-server/src/request_processors/turn_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/turn_processor.rs
 @@ -194,6 +194,24 @@ impl TurnRequestProcessor {
@@ -137,7 +137,7 @@ index 5e17d1b..1e2a36c 100644
                      "reason": "settingsOperationNotFound",
                      "threadId": params.thread_id,
 diff --git a/codex-rs/app-server/tests/suite/v2/thread_resume.rs b/codex-rs/app-server/tests/suite/v2/thread_resume.rs
-index 62d9dd0..5c49c49 100644
+index 08df2fd..184578e 100644
 --- a/codex-rs/app-server/tests/suite/v2/thread_resume.rs
 +++ b/codex-rs/app-server/tests/suite/v2/thread_resume.rs
 @@ -309,6 +309,7 @@ async fn thread_resume_paginated_model_context_preserves_original_metadata() ->
@@ -149,10 +149,10 @@ index 62d9dd0..5c49c49 100644
              replacement_history: Some(Vec::new()),
              retained_context: None,
 diff --git a/codex-rs/core/src/agent/control_tests.rs b/codex-rs/core/src/agent/control_tests.rs
-index 2b8adb0..3dcb3b8 100644
+index 55d427b..c428e82 100644
 --- a/codex-rs/core/src/agent/control_tests.rs
 +++ b/codex-rs/core/src/agent/control_tests.rs
-@@ -1975,6 +1975,7 @@ async fn spawn_agent_fork_sanitizes_inherited_compaction_metadata(thread_context
+@@ -2051,6 +2051,7 @@ async fn spawn_agent_fork_sanitizes_inherited_compaction_metadata() {
          .session
          .persist_rollout_items(&[
              RolloutItem::Compacted(CompactedItem {
@@ -160,7 +160,7 @@ index 2b8adb0..3dcb3b8 100644
                  message: String::new(),
                  replacement_history: Some(vec![user_message("compacted parent context").into()]),
                  retained_context: None,
-@@ -2105,6 +2106,7 @@ async fn spawn_agent_numeric_fork_from_compacted_paginated_parent_clamps_to_prov
+@@ -2181,6 +2182,7 @@ async fn spawn_agent_numeric_fork_from_compacted_paginated_parent_clamps_to_prov
          .session
          .persist_rollout_items(&[
              RolloutItem::Compacted(CompactedItem {
@@ -168,7 +168,7 @@ index 2b8adb0..3dcb3b8 100644
                  message: String::new(),
                  replacement_history: Some(vec![
                      ResponseItem::Message {
-@@ -2668,6 +2670,7 @@ async fn spawn_agent_fork_strips_parent_usage_hints_from_compacted_history(
+@@ -2731,6 +2733,7 @@ async fn spawn_agent_fork_strips_parent_usage_hints_from_compacted_history() {
          .session
          .persist_rollout_items(&[
              RolloutItem::Compacted(CompactedItem {
@@ -176,7 +176,7 @@ index 2b8adb0..3dcb3b8 100644
                  message: String::new(),
                  replacement_history: Some(
                      replacement_history
-@@ -2880,6 +2883,7 @@ async fn spawn_agent_full_fork_restores_instructions_after_compaction_discards_p
+@@ -2938,6 +2941,7 @@ async fn spawn_agent_full_fork_restores_instructions_after_compaction_discards_p
                  internal_chat_message_metadata_passthrough: None,
              }),
              RolloutItem::Compacted(CompactedItem {
@@ -184,7 +184,7 @@ index 2b8adb0..3dcb3b8 100644
                  message: String::new(),
                  replacement_history: Some(
                      replacement_history.into_iter().map(Into::into).collect(),
-@@ -3040,6 +3044,7 @@ async fn spawn_agent_full_fork_legacy_compaction_rebuilds_child_instructions_onc
+@@ -3098,6 +3102,7 @@ async fn spawn_agent_full_fork_legacy_compaction_rebuilds_child_instructions_onc
          let mut rollout_items = vec![
              rollout_response_item(parent_user_message),
              RolloutItem::Compacted(CompactedItem {
@@ -193,11 +193,11 @@ index 2b8adb0..3dcb3b8 100644
                  replacement_history: None,
                  retained_context: None,
 diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
-index ddc3e7d..80e7509 100644
+index 5124ee4..e5a82ff 100644
 --- a/codex-rs/core/src/codex_thread.rs
 +++ b/codex-rs/core/src/codex_thread.rs
-@@ -862,6 +862,16 @@ impl CodexThread {
-             .await;
+@@ -931,6 +931,16 @@ impl CodexThread {
+         Ok(())
      }
  
 +    /// Recover model context in place, retaining conversation history, settings and queue.
@@ -401,10 +401,10 @@ index 0000000..ab6a047
 +    );
 +}
 diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
-index de0c0f4..f67e8e4 100644
+index de9ce05..c861661 100644
 --- a/codex-rs/core/src/session/mod.rs
 +++ b/codex-rs/core/src/session/mod.rs
-@@ -240,6 +240,7 @@ mod submission;
+@@ -242,6 +242,7 @@ mod submission;
  pub(crate) use reasoning_effort::RequestEffortUsage;
  pub(crate) use submission::Submission;
  mod input_queue;
@@ -413,10 +413,10 @@ index de0c0f4..f67e8e4 100644
  mod mcp_prewarm;
  mod mcp_refresh;
 diff --git a/codex-rs/core/src/session/rollout_reconstruction_tests.rs b/codex-rs/core/src/session/rollout_reconstruction_tests.rs
-index 78c7d70..99f317f 100644
+index 44aba40..8ca5333 100644
 --- a/codex-rs/core/src/session/rollout_reconstruction_tests.rs
 +++ b/codex-rs/core/src/session/rollout_reconstruction_tests.rs
-@@ -1264,6 +1264,7 @@ async fn record_initial_history_resumed_rollback_drops_incomplete_user_turn_comp
+@@ -1286,6 +1286,7 @@ async fn record_initial_history_resumed_rollback_drops_incomplete_user_turn_comp
              },
          )),
          RolloutItem::Compacted(CompactedItem {
@@ -424,7 +424,7 @@ index 78c7d70..99f317f 100644
              message: String::new(),
              replacement_history: Some(Vec::new()),
              retained_context: None,
-@@ -1329,6 +1330,7 @@ async fn record_initial_history_requires_surviving_full_snapshot_without_user_tu
+@@ -1352,6 +1353,7 @@ async fn record_initial_history_requires_surviving_full_snapshot_without_user_tu
          MissingContextBaseline::CompactedSnapshot => vec![
              RolloutItem::WorldState(WorldStateItem::full(object!({}))),
              RolloutItem::Compacted(CompactedItem {
@@ -432,7 +432,7 @@ index 78c7d70..99f317f 100644
                  message: String::new(),
                  replacement_history: Some(Vec::new()),
                  retained_context: None,
-@@ -1366,6 +1368,7 @@ async fn record_initial_history_resumed_does_not_seed_reference_context_item_aft
+@@ -1389,6 +1391,7 @@ async fn record_initial_history_resumed_does_not_seed_reference_context_item_aft
      let rollout_items = vec![
          RolloutItem::TurnContext(previous_context_item),
          RolloutItem::Compacted(CompactedItem {
@@ -440,7 +440,7 @@ index 78c7d70..99f317f 100644
              message: String::new(),
              replacement_history: Some(Vec::new()),
              retained_context: None,
-@@ -1441,6 +1444,7 @@ async fn reconstruct_history_prefers_compacted_window_over_session_meta() {
+@@ -1464,6 +1467,7 @@ async fn reconstruct_history_prefers_compacted_window_over_session_meta() {
              git: None,
          }),
          RolloutItem::Compacted(CompactedItem {
@@ -448,7 +448,7 @@ index 78c7d70..99f317f 100644
              message: String::new(),
              replacement_history: Some(Vec::new()),
              retained_context: None,
-@@ -1482,6 +1486,7 @@ async fn reconstruct_history_replays_world_state_from_latest_compaction_window()
+@@ -1505,6 +1509,7 @@ async fn reconstruct_history_replays_world_state_from_latest_compaction_window()
                  "environment": {"status": "old"}
              }))),
              RolloutItem::Compacted(CompactedItem {
@@ -456,7 +456,7 @@ index 78c7d70..99f317f 100644
                  message: String::new(),
                  replacement_history: Some(Vec::new()),
                  retained_context: None,
-@@ -1559,6 +1564,7 @@ async fn bounded_replay_matches_full_replay_after_empty_turn_compactions(
+@@ -1582,6 +1587,7 @@ async fn bounded_replay_matches_full_replay_after_empty_turn_compactions(
              context.clone(),
              vec![
                  RolloutItem::Compacted(CompactedItem {
@@ -464,7 +464,7 @@ index 78c7d70..99f317f 100644
                      message: String::new(),
                      replacement_history: Some(annotated(vec![object!({
                          "type": "compaction",
-@@ -1750,6 +1756,7 @@ async fn reconstruct_history_preserves_legacy_compaction_count_with_session_meta
+@@ -1776,6 +1782,7 @@ async fn reconstruct_history_preserves_legacy_compaction_count_with_session_meta
              git: None,
          }),
          RolloutItem::Compacted(CompactedItem {
@@ -472,7 +472,7 @@ index 78c7d70..99f317f 100644
              message: "legacy summary".to_string(),
              replacement_history: None,
              retained_context: None,
-@@ -1806,6 +1813,7 @@ async fn reconstruct_history_legacy_compaction_without_replacement_history_does_
+@@ -1834,6 +1841,7 @@ async fn reconstruct_history_legacy_compaction_without_replacement_history_does_
          RolloutItem::ResponseItem(assistant_message("assistant reply").into()),
          RolloutItem::RetainedContext(answer),
          RolloutItem::Compacted(CompactedItem {
@@ -480,7 +480,7 @@ index 78c7d70..99f317f 100644
              message: "legacy summary".to_string(),
              replacement_history: None,
              retained_context: None,
-@@ -1848,6 +1856,7 @@ async fn reconstruct_history_legacy_compaction_without_replacement_history_clear
+@@ -1876,6 +1884,7 @@ async fn reconstruct_history_legacy_compaction_without_replacement_history_clear
      let rollout_items = vec![
          RolloutItem::ResponseItem(user_message("before compact").into()),
          RolloutItem::Compacted(CompactedItem {
@@ -488,7 +488,7 @@ index 78c7d70..99f317f 100644
              message: "legacy summary".to_string(),
              replacement_history: None,
              retained_context: None,
-@@ -1965,6 +1974,7 @@ async fn record_initial_history_resumed_turn_context_after_compaction_reestablis
+@@ -1993,6 +2002,7 @@ async fn record_initial_history_resumed_turn_context_after_compaction_reestablis
          )),
          // Compaction clears baseline until a later TurnContextItem re-establishes it.
          RolloutItem::Compacted(CompactedItem {
@@ -496,7 +496,7 @@ index 78c7d70..99f317f 100644
              message: String::new(),
              replacement_history: Some(Vec::new()),
              retained_context: None,
-@@ -2147,6 +2157,7 @@ async fn record_initial_history_resumed_aborted_turn_without_id_clears_active_tu
+@@ -2177,6 +2187,7 @@ async fn record_initial_history_resumed_aborted_turn_without_id_clears_active_tu
              },
          )),
          RolloutItem::Compacted(CompactedItem {
@@ -504,7 +504,7 @@ index 78c7d70..99f317f 100644
              message: String::new(),
              replacement_history: Some(Vec::new()),
              retained_context: None,
-@@ -2421,6 +2432,7 @@ async fn record_initial_history_resumed_trailing_incomplete_turn_compaction_clea
+@@ -2454,6 +2465,7 @@ async fn record_initial_history_resumed_trailing_incomplete_turn_compaction_clea
              },
          )),
          RolloutItem::Compacted(CompactedItem {
@@ -512,7 +512,7 @@ index 78c7d70..99f317f 100644
              message: String::new(),
              replacement_history: Some(Vec::new()),
              retained_context: None,
-@@ -2611,6 +2623,7 @@ async fn record_initial_history_resumed_replaced_incomplete_compacted_turn_clear
+@@ -2646,6 +2658,7 @@ async fn record_initial_history_resumed_replaced_incomplete_compacted_turn_clear
              },
          )),
          RolloutItem::Compacted(CompactedItem {
@@ -521,10 +521,10 @@ index 78c7d70..99f317f 100644
              replacement_history: Some(Vec::new()),
              retained_context: None,
 diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
-index 75b7817..9dcfd05 100644
+index 42694ae..9b94df4 100644
 --- a/codex-rs/core/src/session/tests.rs
 +++ b/codex-rs/core/src/session/tests.rs
-@@ -2502,6 +2502,7 @@ async fn reconstruct_history_uses_replacement_history_verbatim() {
+@@ -2514,6 +2514,7 @@ async fn reconstruct_history_uses_replacement_history_verbatim() {
      let previous_window_id = Uuid::now_v7();
      let window_id = Uuid::now_v7();
      let rollout_items = vec![RolloutItem::Compacted(CompactedItem {
@@ -532,7 +532,7 @@ index 75b7817..9dcfd05 100644
          message: String::new(),
          replacement_history: Some(replacement_history.clone()),
          retained_context: None,
-@@ -3317,6 +3318,7 @@ fn latest_token_usage_record_stops_at_compaction_checkpoint() {
+@@ -3461,6 +3462,7 @@ fn latest_token_usage_record_stops_at_compaction_checkpoint() {
      };
      let checkpoint = |latest_token_usage_record| {
          RolloutItem::Compacted(CompactedItem {
@@ -540,7 +540,7 @@ index 75b7817..9dcfd05 100644
              message: String::new(),
              replacement_history: None,
              retained_context: None,
-@@ -4745,6 +4747,13 @@ fn success_flag_true_with_no_error_and_content_used() {
+@@ -4912,6 +4914,13 @@ fn success_flag_true_with_no_error_and_content_used() {
  }
  
  async fn open_thread_persistence(session: &mut Session) -> PathBuf {
@@ -554,7 +554,7 @@ index 75b7817..9dcfd05 100644
      let config = session.get_config().await;
      let live_thread = LiveThread::create(
          Arc::clone(&session.services.thread_store),
-@@ -4763,7 +4772,7 @@ async fn open_thread_persistence(session: &mut Session) -> PathBuf {
+@@ -4930,7 +4939,7 @@ async fn open_thread_persistence(session: &mut Session) -> PathBuf {
              dynamic_tools: Vec::new(),
              selected_capability_roots: Vec::new(),
              multi_agent_version: None,
@@ -563,7 +563,7 @@ index 75b7817..9dcfd05 100644
              subagent_history_start_ordinal: None,
              history_base: None,
              initial_window_id: Uuid::now_v7().to_string(),
-@@ -12830,6 +12839,7 @@ async fn sample_rollout(
+@@ -13134,6 +13143,7 @@ async fn sample_rollout(
      live_history.replace_annotated(rebuilt1);
      let (window_number, window_ids) = session.advance_auto_compact_window().await;
      rollout_items.push(RolloutItem::Compacted(CompactedItem {
@@ -571,7 +571,7 @@ index 75b7817..9dcfd05 100644
          message: summary1.to_string(),
          replacement_history: None,
          retained_context: None,
-@@ -12865,6 +12875,7 @@ async fn sample_rollout(
+@@ -13169,6 +13179,7 @@ async fn sample_rollout(
      live_history.replace_annotated(rebuilt2);
      let (window_number, window_ids) = session.advance_auto_compact_window().await;
      rollout_items.push(RolloutItem::Compacted(CompactedItem {
@@ -579,7 +579,7 @@ index 75b7817..9dcfd05 100644
          message: summary2.to_string(),
          replacement_history: None,
          retained_context: None,
-@@ -13382,3 +13393,6 @@ async fn exact_unset_service_tier_preserves_absence_through_native_restoration()
+@@ -13686,3 +13697,6 @@ async fn exact_unset_service_tier_preserves_absence_through_native_restoration()
          assert_eq!(session.thread_settings_snapshot().await, unset.snapshot);
      }
  }
@@ -587,10 +587,10 @@ index 75b7817..9dcfd05 100644
 +#[path = "managed_context_tests.rs"]
 +mod managed_context_tests;
 diff --git a/codex-rs/history/src/lib.rs b/codex-rs/history/src/lib.rs
-index 888b63e..893f798 100644
+index dc9ba83..1680da6 100644
 --- a/codex-rs/history/src/lib.rs
 +++ b/codex-rs/history/src/lib.rs
-@@ -240,6 +240,8 @@ pub use guardian_history::GuardianHistoryCheckpoint;
+@@ -279,6 +279,8 @@ pub use guardian_history::GuardianHistoryCheckpoint;
  
  #[derive(Clone, Debug, PartialEq)]
  pub struct CompactedItem {
@@ -600,10 +600,10 @@ index 888b63e..893f798 100644
      pub replacement_history: Option<Vec<ResponseItemEnvelope>>,
      pub guardian_history: Option<GuardianHistoryCheckpoint>,
 diff --git a/codex-rs/history/src/rollout_payload.rs b/codex-rs/history/src/rollout_payload.rs
-index a7e274e..d0efc02 100644
+index 4aaca0f..6bc2ffa 100644
 --- a/codex-rs/history/src/rollout_payload.rs
 +++ b/codex-rs/history/src/rollout_payload.rs
-@@ -176,6 +176,8 @@ pub(super) struct InterAgentCommunicationMetadataPayload {
+@@ -260,6 +260,8 @@ pub(super) struct InterAgentCommunicationMetadataPayload {
  
  #[derive(Serialize, Deserialize, JsonSchema)]
  pub(super) struct CompactedItemWire<'a> {
@@ -612,7 +612,7 @@ index a7e274e..d0efc02 100644
      message: Cow<'a, str>,
      #[serde(default, skip_serializing_if = "Option::is_none")]
      replacement_history: Option<Vec<Cow<'a, ResponseItem>>>,
-@@ -221,6 +223,7 @@ impl<'a> From<&'a CompactedItem> for CompactedItemWire<'a> {
+@@ -305,6 +307,7 @@ impl<'a> From<&'a CompactedItem> for CompactedItemWire<'a> {
              });
  
          Self {
@@ -620,7 +620,7 @@ index a7e274e..d0efc02 100644
              message: Cow::Borrowed(&item.message),
              replacement_history: item.replacement_history.as_ref().map(|items| {
                  items
-@@ -296,6 +299,7 @@ impl TryFrom<CompactedItemWire<'_>> for CompactedItem {
+@@ -380,6 +383,7 @@ impl TryFrom<CompactedItemWire<'_>> for CompactedItem {
          };
  
          Ok(Self {
@@ -629,10 +629,10 @@ index a7e274e..d0efc02 100644
              replacement_history,
              guardian_history: item.guardian_history.map(Cow::into_owned),
 diff --git a/codex-rs/history/src/tests.rs b/codex-rs/history/src/tests.rs
-index 96733b2..2199af7 100644
+index e0e46cf..7c1ad87 100644
 --- a/codex-rs/history/src/tests.rs
 +++ b/codex-rs/history/src/tests.rs
-@@ -436,6 +436,7 @@ fn compacted_replacement_history_stores_metadata_in_an_aligned_sidecar() -> Resu
+@@ -517,6 +517,7 @@ fn compacted_replacement_history_stores_metadata_in_an_aligned_sidecar() -> Resu
          internal_chat_message_metadata_passthrough: None,
      };
      let item = CompactedItem {
@@ -640,15 +640,15 @@ index 96733b2..2199af7 100644
          message: "summary".to_string(),
          replacement_history: Some(vec![
              ResponseItemEnvelope {
-@@ -585,6 +586,7 @@ fn compacted_metadata_remains_compatible_with_legacy_response_item_readers() ->
- 
-     let checkpoint = crate::GuardianHistoryCheckpoint(vec![response_item.clone()]);
+@@ -676,6 +677,7 @@ fn compacted_metadata_remains_compatible_with_legacy_response_item_readers() ->
+         crate::GuardianHistoryCheckpoint(vec![response_item.clone().into()]),
+     );
      let compacted_line = serde_json::to_value(RolloutItem::Compacted(CompactedItem {
 +        context_reset: false,
          message: "summary".to_string(),
          replacement_history: Some(vec![envelope]),
          retained_context: None,
-@@ -779,6 +781,11 @@ fn rollout_item_schema_matches_tagged_payload_and_sibling_metadata() -> Result<(
+@@ -870,6 +872,11 @@ fn rollout_item_schema_matches_tagged_payload_and_sibling_metadata() -> Result<(
      let required = compacted["required"].as_array().expect("required fields");
      assert!(!required.contains(&json!("replacement_history")));
      assert!(!required.contains(&json!("replacement_history_metadata")));
@@ -660,7 +660,7 @@ index 96733b2..2199af7 100644
      Ok(())
  }
  
-@@ -798,6 +805,7 @@ fn response_message(role: &str) -> ResponseItem {
+@@ -889,6 +896,7 @@ fn response_message(role: &str) -> ResponseItem {
  /// Preserves the stored compacted-item window metadata shape.
  fn compacted_item_serializes_window_number_and_id() -> Result<()> {
      let item = CompactedItem {
@@ -668,7 +668,7 @@ index 96733b2..2199af7 100644
          message: "summary".to_string(),
          replacement_history: None,
          retained_context: None,
-@@ -838,6 +846,7 @@ fn compacted_item_migrates_legacy_numeric_window_id() -> Result<()> {
+@@ -929,6 +937,7 @@ fn compacted_item_migrates_legacy_numeric_window_id() -> Result<()> {
      assert_eq!(
          item,
          CompactedItem {
@@ -676,7 +676,7 @@ index 96733b2..2199af7 100644
              message: "summary".to_string(),
              replacement_history: None,
              retained_context: None,
-@@ -947,3 +956,18 @@ fn multi_agent_version_uses_compaction_metadata_without_turn_context() -> Result
+@@ -1038,3 +1047,18 @@ fn multi_agent_version_uses_compaction_metadata_without_turn_context() -> Result
      );
      Ok(())
  }
@@ -760,10 +760,10 @@ index 747346a..319fbe6 100644
          replacement_history: replacement_history
              .map(|items| items.into_iter().map(Into::into).collect()),
 diff --git a/codex-rs/thread-store/src/local/rollout_migration_tests.rs b/codex-rs/thread-store/src/local/rollout_migration_tests.rs
-index 877c0b8..b6bb9c5 100644
+index c410ca1..87705ac 100644
 --- a/codex-rs/thread-store/src/local/rollout_migration_tests.rs
 +++ b/codex-rs/thread-store/src/local/rollout_migration_tests.rs
-@@ -239,6 +239,7 @@ fn started(turn_id: &str) -> RolloutItem {
+@@ -240,6 +240,7 @@ fn started(turn_id: &str) -> RolloutItem {
  
  fn compacted(replacement_history: Vec<ResponseItem>) -> RolloutItem {
      RolloutItem::Compacted(CompactedItem {
@@ -771,7 +771,7 @@ index 877c0b8..b6bb9c5 100644
          message: "checkpoint".to_string(),
          replacement_history: Some(replacement_history.into_iter().map(Into::into).collect()),
          retained_context: None,
-@@ -1775,6 +1776,7 @@ async fn migration_compacts_subagent_prefix_and_does_not_project_it() {
+@@ -2017,6 +2018,7 @@ async fn migration_compacts_subagent_prefix_and_does_not_project_it() {
          SessionSource::SubAgent(SubAgentSource::Other("test".to_string())),
          vec![
              RolloutItem::Compacted(CompactedItem {
@@ -779,7 +779,7 @@ index 877c0b8..b6bb9c5 100644
                  message: "superseded checkpoint".repeat(1024),
                  replacement_history: Some(Vec::new()),
                  retained_context: None,
-@@ -1789,6 +1791,7 @@ async fn migration_compacts_subagent_prefix_and_does_not_project_it() {
+@@ -2031,6 +2033,7 @@ async fn migration_compacts_subagent_prefix_and_does_not_project_it() {
                  resume_metadata: None,
              }),
              RolloutItem::Compacted(CompactedItem {

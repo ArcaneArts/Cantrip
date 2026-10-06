@@ -1,8 +1,8 @@
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/tests.rs b/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
-index e56f9e0..dffaec8 100644
+index dfb0ea6..d2712cf 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
-@@ -5430,3 +5430,22 @@ fn thread_settings_sparse_child_and_effort_null_are_distinct_from_omission() {
+@@ -5453,3 +5453,22 @@ fn thread_settings_sparse_child_and_effort_null_are_distinct_from_omission() {
              .contains_key("effort")
      );
  }
@@ -26,7 +26,7 @@ index e56f9e0..dffaec8 100644
 +    assert!(!value.as_object().unwrap().contains_key("serviceTier"));
 +}
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-index 17d8863..ebd17c1 100644
+index e36a992..8129c36 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 @@ -253,6 +253,12 @@ pub struct ThreadSettingsReadResponse {
@@ -55,7 +55,7 @@ index 17d8863..ebd17c1 100644
          default,
          deserialize_with = "crate::protocol::serde_helpers::deserialize_double_option",
 diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/codex-rs/app-server/src/request_processors/turn_processor.rs
-index 6740a36..ee244fd 100644
+index 8e7f903..5e8f2eb 100644
 --- a/codex-rs/app-server/src/request_processors/turn_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/turn_processor.rs
 @@ -126,6 +126,7 @@ struct ThreadEnvironmentOverride {
@@ -315,10 +315,10 @@ index dba3cd3..de2f8b8 100644
 +    Ok(())
 +}
 diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
-index 73bf26e..e934cef 100644
+index 8f4dd11..c383aeb 100644
 --- a/codex-rs/core/src/codex_thread.rs
 +++ b/codex-rs/core/src/codex_thread.rs
-@@ -140,6 +140,8 @@ impl ThreadConfigSnapshot {
+@@ -143,6 +143,8 @@ impl ThreadConfigSnapshot {
  /// Thread settings overrides that app-server validates before starting a turn.
  #[derive(Clone, Default)]
  pub struct CodexThreadSettingsOverrides {
@@ -327,7 +327,7 @@ index 73bf26e..e934cef 100644
      pub child_settings: codex_protocol::protocol::ChildSettingsPatch,
      pub collaboration_mode_kind: Option<codex_protocol::config_types::ModeKind>,
      pub environments: Option<TurnEnvironmentSelections>,
-@@ -731,6 +733,7 @@ impl CodexThread {
+@@ -790,6 +792,7 @@ impl CodexThread {
  
      fn thread_settings_update(overrides: CodexThreadSettingsOverrides) -> SessionSettingsUpdate {
          let CodexThreadSettingsOverrides {
@@ -335,7 +335,7 @@ index 73bf26e..e934cef 100644
              child_settings,
              collaboration_mode_kind,
              environments,
-@@ -751,6 +754,7 @@ impl CodexThread {
+@@ -810,6 +813,7 @@ impl CodexThread {
              disabled_plugin_ids,
          } = overrides;
          SessionSettingsUpdate {
@@ -344,10 +344,10 @@ index 73bf26e..e934cef 100644
              collaboration_mode_kind,
              step_settings: StepSettingsUpdate {
 diff --git a/codex-rs/core/src/session/session.rs b/codex-rs/core/src/session/session.rs
-index 362b700..61b71c9 100644
+index 48f5276..c6381e6 100644
 --- a/codex-rs/core/src/session/session.rs
 +++ b/codex-rs/core/src/session/session.rs
-@@ -397,7 +397,8 @@ impl SessionConfiguration {
+@@ -399,7 +399,8 @@ impl SessionConfiguration {
              active_permission_profile: self.active_permission_profile(),
              windows_sandbox_level: Some(self.windows_sandbox_level),
              summary: self.step_settings.reasoning_summary,
@@ -357,7 +357,7 @@ index 362b700..61b71c9 100644
              collaboration_mode: Some(self.step_settings.collaboration_mode.clone()),
              personality: self.step_settings.personality,
              disabled_plugin_ids: Some(self.disabled_plugin_ids.clone()),
-@@ -440,6 +441,14 @@ impl SessionConfiguration {
+@@ -442,6 +443,14 @@ impl SessionConfiguration {
          updates: &SessionSettingsUpdate,
          current_environments: &[TurnEnvironmentSelection],
      ) -> ConstraintResult<Self> {
@@ -372,7 +372,7 @@ index 362b700..61b71c9 100644
          let mut next_configuration = self.clone();
          if let Some(disabled_plugin_ids) = &updates.disabled_plugin_ids {
              next_configuration.disabled_plugin_ids = disabled_plugin_ids.clone();
-@@ -607,10 +616,14 @@ impl SessionConfiguration {
+@@ -609,10 +618,14 @@ impl SessionConfiguration {
          super::environment::validate_environment_configs(next_environments)?;
          // Apply step settings last: the proposed permissions and environment
          // selections must be complete before deriving their validation constraints.
@@ -389,7 +389,7 @@ index 362b700..61b71c9 100644
          Ok(next_configuration)
      }
  
-@@ -659,6 +672,7 @@ pub(crate) struct SessionSettingsCommit {
+@@ -661,6 +674,7 @@ pub(crate) struct SessionSettingsCommit {
  
  #[derive(Default, Clone)]
  pub(crate) struct SessionSettingsUpdate {
@@ -398,10 +398,10 @@ index 362b700..61b71c9 100644
      pub(crate) collaboration_mode_kind: Option<codex_protocol::config_types::ModeKind>,
      pub(crate) step_settings: StepSettingsUpdate,
 diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
-index c5fa17d..3de2f2b 100644
+index 208931e..f31e0bd 100644
 --- a/codex-rs/core/src/session/tests.rs
 +++ b/codex-rs/core/src/session/tests.rs
-@@ -13287,3 +13287,88 @@ async fn managed_child_settings_preserve_sparse_clear_and_mode_change() {
+@@ -13591,3 +13591,88 @@ async fn managed_child_settings_preserve_sparse_clear_and_mode_change() {
      assert_eq!(retained.child_settings.reasoning_effort, Some(None));
      assert_eq!(retained.child_settings.enabled, Some(false));
  }
@@ -491,10 +491,10 @@ index c5fa17d..3de2f2b 100644
 +    }
 +}
 diff --git a/codex-rs/core/src/session/thread_settings.rs b/codex-rs/core/src/session/thread_settings.rs
-index 4b0db61..578d288 100644
+index b03c440..1f9d3b0 100644
 --- a/codex-rs/core/src/session/thread_settings.rs
 +++ b/codex-rs/core/src/session/thread_settings.rs
-@@ -61,6 +61,7 @@ pub(super) async fn update(
+@@ -43,6 +43,7 @@ pub(super) async fn update(
  /// Converts protocol overrides into the internal settings update shape.
  pub(super) fn prepare_update(overrides: ThreadSettingsOverrides) -> SessionSettingsUpdate {
      let ThreadSettingsOverrides {
@@ -502,7 +502,7 @@ index 4b0db61..578d288 100644
          child_settings,
          collaboration_mode_kind,
          environments,
-@@ -81,6 +82,7 @@ pub(super) fn prepare_update(overrides: ThreadSettingsOverrides) -> SessionSetti
+@@ -63,6 +64,7 @@ pub(super) fn prepare_update(overrides: ThreadSettingsOverrides) -> SessionSetti
          disabled_plugin_ids,
      } = overrides;
      SessionSettingsUpdate {
@@ -511,7 +511,7 @@ index 4b0db61..578d288 100644
          collaboration_mode_kind,
          step_settings: StepSettingsUpdate {
 diff --git a/codex-rs/protocol/src/protocol.rs b/codex-rs/protocol/src/protocol.rs
-index 1c4b255..3235dc5 100644
+index 879dff1..b1450ea 100644
 --- a/codex-rs/protocol/src/protocol.rs
 +++ b/codex-rs/protocol/src/protocol.rs
 @@ -509,6 +509,8 @@ pub enum TurnSettingsUpdateOutcome {

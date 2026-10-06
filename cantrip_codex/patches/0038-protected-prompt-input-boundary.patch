@@ -1,8 +1,8 @@
 diff --git a/codex-rs/tui/src/app.rs b/codex-rs/tui/src/app.rs
-index dcb364d..111fd77 100644
+index a5bd65a..0fa07c8 100644
 --- a/codex-rs/tui/src/app.rs
 +++ b/codex-rs/tui/src/app.rs
-@@ -685,6 +685,8 @@ pub(crate) struct App {
+@@ -657,6 +657,8 @@ pub(crate) struct App {
      startup_protected_input_boundary: bool,
      /// Keeps that boundary armed while a startup approval waits for the typing-idle timer.
      startup_pending_protected_request: bool,
@@ -11,7 +11,7 @@ index dcb364d..111fd77 100644
      /// Invalidates in-flight full rate-limit reads when a newer rolling hard stop arrives.
      rate_limit_hard_stop_generation: u64,
      rate_limit_refresh_state: rate_limit_refresh::RateLimitRefreshState,
-@@ -1108,7 +1110,6 @@ impl App {
+@@ -1090,7 +1092,6 @@ impl App {
                          return Ok(AppRunControl::Continue);
                      }
                      // Allow widgets to process any pending timers before rendering.
@@ -19,7 +19,7 @@ index dcb364d..111fd77 100644
                      if let Some(owner) = self.background_voice.as_mut() {
                          owner.refresh_realtime_microphone_level();
                      }
-@@ -1121,13 +1122,6 @@ impl App {
+@@ -1103,13 +1104,6 @@ impl App {
                      {
                          self.request_owned_history(tui, app_server);
                      }
@@ -33,7 +33,7 @@ index dcb364d..111fd77 100644
                      if self.chat_widget.ambient_pet_image_enabled() {
                          let ambient_pet_area = Rect::new(
                              /*x*/ 0,
-@@ -1174,6 +1168,17 @@ impl App {
+@@ -1161,6 +1155,17 @@ impl App {
      }
  
      fn render_chat_widget_frame(&mut self, tui: &mut tui::Tui, screen_size: Size) -> Result<Rect> {
@@ -52,10 +52,10 @@ index dcb364d..111fd77 100644
          self.chat_widget
              .set_sparkle_terminal_focus(tui.is_terminal_focused());
 diff --git a/codex-rs/tui/src/app/startup.rs b/codex-rs/tui/src/app/startup.rs
-index 0755c98..a529c51 100644
+index db3d2f2..68b5029 100644
 --- a/codex-rs/tui/src/app/startup.rs
 +++ b/codex-rs/tui/src/app/startup.rs
-@@ -888,6 +888,7 @@ See the Codex keymap documentation for supported actions and examples."
+@@ -927,6 +927,7 @@ See the Codex keymap documentation for supported actions and examples."
              pending_managed_worktree_attach: None,
              startup_protected_input_boundary: true,
              startup_pending_protected_request: false,
@@ -64,10 +64,10 @@ index 0755c98..a529c51 100644
              rate_limit_refresh_state: Default::default(),
              pending_plugin_enabled_writes: HashMap::new(),
 diff --git a/codex-rs/tui/src/app/test_support.rs b/codex-rs/tui/src/app/test_support.rs
-index 2993c55..ce33457 100644
+index 2e1f8d3..fff017c 100644
 --- a/codex-rs/tui/src/app/test_support.rs
 +++ b/codex-rs/tui/src/app/test_support.rs
-@@ -118,6 +118,7 @@ pub(crate) async fn make_test_app() -> App {
+@@ -115,6 +115,7 @@ pub(crate) async fn make_test_app() -> App {
          pending_managed_worktree_attach: None,
          startup_protected_input_boundary: false,
          startup_pending_protected_request: false,
@@ -76,10 +76,10 @@ index 2993c55..ce33457 100644
          rate_limit_refresh_state: Default::default(),
          pending_plugin_enabled_writes: HashMap::new(),
 diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
-index a2af55b..3472055 100644
+index ef32fc8..20c1839 100644
 --- a/codex-rs/tui/src/app/tests.rs
 +++ b/codex-rs/tui/src/app/tests.rs
-@@ -6079,6 +6079,7 @@ async fn make_test_app() -> Box<App> {
+@@ -6095,6 +6095,7 @@ async fn make_test_app() -> Box<App> {
          pending_managed_worktree_attach: None,
          startup_protected_input_boundary: false,
          startup_pending_protected_request: false,
@@ -87,7 +87,7 @@ index a2af55b..3472055 100644
          rate_limit_hard_stop_generation: 0,
          rate_limit_refresh_state: Default::default(),
          pending_plugin_enabled_writes: HashMap::new(),
-@@ -6188,6 +6189,7 @@ pub(super) async fn make_test_app_with_channels() -> (
+@@ -6215,6 +6216,7 @@ pub(super) async fn make_test_app_with_channels() -> (
              pending_managed_worktree_attach: None,
              startup_protected_input_boundary: false,
              startup_pending_protected_request: false,
@@ -96,11 +96,11 @@ index a2af55b..3472055 100644
              rate_limit_refresh_state: Default::default(),
              pending_plugin_enabled_writes: HashMap::new(),
 diff --git a/codex-rs/tui/src/app/thread_routing.rs b/codex-rs/tui/src/app/thread_routing.rs
-index 2adf115..6ac57f5 100644
+index 609de36..6015a6f 100644
 --- a/codex-rs/tui/src/app/thread_routing.rs
 +++ b/codex-rs/tui/src/app/thread_routing.rs
-@@ -1189,7 +1189,11 @@ impl App {
-         let mut permission_change_confirmed = false;
+@@ -1192,7 +1192,11 @@ impl App {
+         let mut confirmed_profile = None;
          if let ServerNotification::ThreadSettingsUpdated(notification) = &notification {
              if self.observed_native_settings.contains_key(&thread_id)
 -                && !self.accept_native_settings_version(thread_id, &notification.thread_settings, false)
@@ -112,7 +112,7 @@ index 2adf115..6ac57f5 100644
              {
                  return Ok(());
              }
-@@ -2186,8 +2190,6 @@ impl App {
+@@ -2241,8 +2245,6 @@ impl App {
          {
              self.chat_widget.pre_draw_tick();
              self.render_chat_widget_frame(tui, tui.terminal.last_known_screen_size)?;

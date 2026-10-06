@@ -11,9 +11,9 @@ import {
 } from "../src/codex/bundled-runtime.js";
 
 const temporaryDirectories: string[] = [];
-const PINNED_CODEX_VERSION = "0.157.1";
-const PINNED_CODEX_REF = "rust-v0.157.1";
-const PINNED_CODEX_COMMIT = "36650394c5b38c2990ccf2a3457165ca3e9d9726";
+const PINNED_CODEX_VERSION = "0.160.1";
+const PINNED_CODEX_REF = "rust-v0.160.1";
+const PINNED_CODEX_COMMIT = "d27764b82f7118f674371e6d6e76271d9d606edb";
 const BUNDLED_MODELS_PATH = fileURLToPath(
   new URL(
     "../../cantrip_codex/upstream/codex-rs/models-manager/models.json",
@@ -30,7 +30,7 @@ afterEach(async () => {
 });
 
 describe("bundled Codex source", () => {
-  it("exposes GPT-6-Astra as the bundled picker default", async () => {
+  it("exposes GPT-6.1-Sol as the upstream bundled picker default", async () => {
     const catalog = JSON.parse(await readFile(BUNDLED_MODELS_PATH, "utf8")) as {
       models: Array<{
         priority: number;
@@ -49,7 +49,7 @@ describe("bundled Codex source", () => {
       supported_in_api: true,
       visibility: "list",
     });
-    expect(firstPickerModel?.slug).toBe("gpt-6-astra");
+    expect(firstPickerModel?.slug).toBe("gpt-6.1-sol");
   });
 });
 

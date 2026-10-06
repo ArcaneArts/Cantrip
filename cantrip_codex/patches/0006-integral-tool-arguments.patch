@@ -1,5 +1,5 @@
 diff --git a/codex-rs/core/src/tools/code_mode/wait_handler.rs b/codex-rs/core/src/tools/code_mode/wait_handler.rs
-index 617e412..8056d85 100644
+index b0e4479..4821c67 100644
 --- a/codex-rs/core/src/tools/code_mode/wait_handler.rs
 +++ b/codex-rs/core/src/tools/code_mode/wait_handler.rs
 @@ -5,6 +5,7 @@ use crate::tools::context::ToolInvocation;
@@ -65,7 +65,7 @@ index 01b713e..34f93d8 100644
                                      .to_string(),
                              )),
 diff --git a/codex-rs/core/src/tools/handlers/mod.rs b/codex-rs/core/src/tools/handlers/mod.rs
-index 38cc41c..3f28a79 100644
+index 2d0b617..5099142 100644
 --- a/codex-rs/core/src/tools/handlers/mod.rs
 +++ b/codex-rs/core/src/tools/handlers/mod.rs
 @@ -43,8 +43,9 @@ use codex_sandboxing::policy_transforms::normalize_additional_permissions_with_c
@@ -79,7 +79,7 @@ index 38cc41c..3f28a79 100644
  use serde_json::Value;
  
  use crate::environment_selection::TurnEnvironmentSnapshot;
-@@ -84,11 +85,71 @@ pub use wait_for_environment::WaitForEnvironmentToolConfig;
+@@ -85,11 +86,71 @@ pub use wait_for_environment::WaitForEnvironmentToolConfig;
  
  pub(crate) fn parse_arguments<T>(arguments: &str) -> Result<T, FunctionCallError>
  where
@@ -155,7 +155,7 @@ index 38cc41c..3f28a79 100644
  }
  
  fn resolve_sandbox_permissions(
-@@ -150,7 +211,7 @@ fn parse_arguments_with_base_path<T>(
+@@ -151,7 +212,7 @@ fn parse_arguments_with_base_path<T>(
      base_path: &AbsolutePathBuf,
  ) -> Result<T, FunctionCallError>
  where
@@ -164,7 +164,7 @@ index 38cc41c..3f28a79 100644
  {
      let _guard = AbsolutePathBufGuard::new(base_path);
      parse_arguments(arguments)
-@@ -384,6 +445,7 @@ mod tests {
+@@ -385,6 +446,7 @@ mod tests {
      use super::EffectiveAdditionalPermissions;
      use super::implicit_granted_permissions;
      use super::normalize_and_validate_additional_permissions;
@@ -172,7 +172,7 @@ index 38cc41c..3f28a79 100644
      use super::preapproved_permission_profile;
      use crate::sandboxing::SandboxPermissions;
      use codex_protocol::models::AdditionalPermissionProfile;
-@@ -401,8 +463,39 @@ mod tests {
+@@ -402,8 +464,39 @@ mod tests {
      use codex_utils_absolute_path::AbsolutePathBuf;
      use codex_utils_path_uri::PathUri;
      use pretty_assertions::assert_eq;
@@ -447,10 +447,10 @@ index c607ae0..51a253f 100644
                                          .to_string(),
                                  ),),
 diff --git a/codex-rs/core/src/tools/router.rs b/codex-rs/core/src/tools/router.rs
-index 7111483..17f44ac 100644
+index d9f1f63..75753e0 100644
 --- a/codex-rs/core/src/tools/router.rs
 +++ b/codex-rs/core/src/tools/router.rs
-@@ -266,11 +266,13 @@ impl ToolRouter {
+@@ -270,11 +270,13 @@ impl ToolRouter {
                  ..
              } if execution == "client" => {
                  let arguments: SearchToolCallParams =

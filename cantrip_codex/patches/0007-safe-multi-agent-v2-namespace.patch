@@ -1,8 +1,8 @@
 diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
-index 5013f50..909d941 100644
+index b2a2dc4..dce3f94 100644
 --- a/codex-rs/core/src/config/config_tests.rs
 +++ b/codex-rs/core/src/config/config_tests.rs
-@@ -12079,6 +12079,10 @@ enabled = true
+@@ -12178,6 +12178,10 @@ enabled = true
          .fallback_cwd(Some(codex_home.path().to_path_buf()))
          .build()
          .await?;
@@ -14,10 +14,10 @@ index 5013f50..909d941 100644
      assert_eq!(
          config.multi_agent_v2,
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index 9078708..d8d2fe4 100644
+index 60c6f65..937af8e 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
-@@ -255,7 +255,7 @@ pub(crate) const DEFAULT_MULTI_AGENT_V2_MAX_CONCURRENT_THREADS_PER_SESSION: usiz
+@@ -256,7 +256,7 @@ pub(crate) const DEFAULT_MULTI_AGENT_V2_MAX_CONCURRENT_THREADS_PER_SESSION: usiz
  pub(crate) const DEFAULT_MULTI_AGENT_V2_MIN_WAIT_TIMEOUT_MS: i64 = 10_000;
  pub(crate) const DEFAULT_MULTI_AGENT_V2_MAX_WAIT_TIMEOUT_MS: i64 = 3600 * 1000;
  pub(crate) const DEFAULT_MULTI_AGENT_V2_DEFAULT_WAIT_TIMEOUT_MS: i64 = 30_000;

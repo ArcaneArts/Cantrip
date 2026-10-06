@@ -37,7 +37,7 @@ versions, checksums, and revisions remain exactly as pinned upstream, and the
 tracked source snapshot is never modified. The runtime manifest fingerprints
 the ordered patch set so changing a patch invalidates cached binaries.
 
-Codex 0.157.1 continues to use Rusty V8's heap sandbox for the code-mode host.
+Codex 0.160.1 continues to use Rusty V8's heap sandbox for the code-mode host.
 Those artifacts are published on a separate official OpenAI Codex release
 rather than the upstream Rusty V8 release. The build resolves the pinned `v8`
 crate version and native Rust host target, downloads the same archive and
@@ -52,12 +52,12 @@ generated experimental protocol includes the Cantrip settings, pause, canonical
 history, and portable history/context extensions. Native release jobs also run
 this check against the worker's packaged `bin/` directory on macOS and Windows.
 
-The 0.157.1 upgrade rebases all 38 existing patches and adds `0040` for the new
-native interfaces and regenerated stable/experimental protocol exports. It
-preserves Cantrip's managed history, settings, queue, permission transitions,
-pause, account configuration, and TUI admission paths alongside upstream's new
-compaction resume metadata and URI-based workspace roots. The imported upstream
-snapshot remains unpatched; these adaptations belong only to the build copy.
+The 0.160.1 upgrade rebases all 39 existing patches and adds `0041` for native
+interface adaptations and regenerated stable/experimental protocol exports.
+It preserves Cantrip's managed history, settings, queue, permission transitions,
+pause, account configuration, and TUI admission paths alongside upstream's
+updated MCP, settings, and TUI interfaces. The imported upstream snapshot
+remains unpatched; these adaptations belong only to the build copy.
 
 ## Managed empty-thread attachment
 

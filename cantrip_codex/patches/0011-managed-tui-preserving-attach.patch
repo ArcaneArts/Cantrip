@@ -1,5 +1,5 @@
 diff --git a/codex-rs/tui/src/app/startup.rs b/codex-rs/tui/src/app/startup.rs
-index 95807f0..183c6be 100644
+index 37add4b..cd98621 100644
 --- a/codex-rs/tui/src/app/startup.rs
 +++ b/codex-rs/tui/src/app/startup.rs
 @@ -13,6 +13,31 @@ use crate::session_start::cancel_session_start;
@@ -34,7 +34,7 @@ index 95807f0..183c6be 100644
  fn spawn_startup_thread_start(
      app_server: &AppServerSession,
      local_settings: crate::local_settings::LocalSettings,
-@@ -196,6 +221,17 @@ impl App {
+@@ -216,6 +241,17 @@ impl App {
          // Adopt actual launch ownership before constructing session-local preferences.
          tui.prepare_owned_screen(config.tui_fullscreen_transcript)?;
          let mut local_settings = crate::local_settings::LocalSettings::for_tui(&config, tui);
@@ -52,7 +52,7 @@ index 95807f0..183c6be 100644
          let startup_started_at = Instant::now();
          let (app_event_tx, mut app_event_rx) = unbounded_channel();
          let app_event_tx = AppEventSender::new(app_event_tx);
-@@ -296,7 +332,7 @@ impl App {
+@@ -318,7 +354,7 @@ impl App {
              return shutdown_on_startup_error(app_server, err).await;
          }
          let exit_info =
@@ -61,7 +61,7 @@ index 95807f0..183c6be 100644
                  None
              } else {
                  handle_model_migration_prompt_if_needed(
-@@ -479,10 +515,16 @@ impl App {
+@@ -501,10 +537,16 @@ impl App {
                  if let Some(history_mode) = target_session.history_mode {
                      app_server.remember_thread_history_mode(target_session.thread_id, history_mode);
                  }

@@ -1,5 +1,5 @@
 diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
-index 9079b46..65e454d 100644
+index dc3656b..443a63c 100644
 --- a/codex-rs/app-server-protocol/src/protocol/common.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/common.rs
 @@ -1141,6 +1141,11 @@ client_request_definitions! {
@@ -104,7 +104,7 @@ index 7361910..c89d00d 100644
                  self.catalog_processor.model_list(params).await
              }
 diff --git a/codex-rs/app-server/src/request_processors.rs b/codex-rs/app-server/src/request_processors.rs
-index 5422d53..d3f946d 100644
+index 2d94ea4..cf45996 100644
 --- a/codex-rs/app-server/src/request_processors.rs
 +++ b/codex-rs/app-server/src/request_processors.rs
 @@ -107,6 +107,8 @@ use codex_app_server_protocol::LoginAccountResponse;
@@ -327,7 +327,7 @@ index 0000000..bcf1e54
 +    Ok(())
 +}
 diff --git a/codex-rs/app-server/tests/suite/v2/mod.rs b/codex-rs/app-server/tests/suite/v2/mod.rs
-index 51f3e06..c11f9cb 100644
+index d248969..9ecf31f 100644
 --- a/codex-rs/app-server/tests/suite/v2/mod.rs
 +++ b/codex-rs/app-server/tests/suite/v2/mod.rs
 @@ -79,6 +79,7 @@ mod misalignment_policy;
@@ -339,10 +339,10 @@ index 51f3e06..c11f9cb 100644
  #[path = "model_provider_enforcement_tests.rs"]
  mod model_provider_enforcement;
 diff --git a/codex-rs/models-manager/src/manager.rs b/codex-rs/models-manager/src/manager.rs
-index 7b4d613..d22c8f5 100644
+index af73444..ff2863d 100644
 --- a/codex-rs/models-manager/src/manager.rs
 +++ b/codex-rs/models-manager/src/manager.rs
-@@ -14,6 +14,7 @@ use codex_protocol::openai_models::ModelInfo;
+@@ -15,6 +15,7 @@ use codex_protocol::openai_models::ModelInfo;
  use codex_protocol::openai_models::ModelPreset;
  use codex_protocol::openai_models::ModelVisibility;
  use codex_protocol::openai_models::ModelsResponse;
@@ -350,7 +350,7 @@ index 7b4d613..d22c8f5 100644
  use std::fmt;
  use std::future::Future;
  use std::path::PathBuf;
-@@ -153,6 +154,16 @@ pub trait ModelsManager: fmt::Debug + Send + Sync {
+@@ -156,6 +157,16 @@ pub trait ModelsManager: fmt::Debug + Send + Sync {
          Box::pin(std::future::ready(()))
      }
  
@@ -367,7 +367,7 @@ index 7b4d613..d22c8f5 100644
      /// Return the current in-memory remote model catalog without refreshing or loading cache state.
      fn get_remote_models(&self) -> ModelsManagerFuture<'_, Vec<ModelInfo>>;
  
-@@ -268,10 +279,16 @@ pub struct OpenAiModelsManager {
+@@ -296,10 +307,16 @@ pub struct OpenAiModelsManager {
  /// Static model manager backed by an authoritative in-process catalog.
  #[derive(Debug)]
  pub struct StaticModelsManager {
@@ -385,7 +385,7 @@ index 7b4d613..d22c8f5 100644
  impl OpenAiModelsManager {
      /// Construct an OpenAI-compatible remote model manager.
      pub fn new(
-@@ -336,7 +353,10 @@ impl StaticModelsManager {
+@@ -372,7 +389,10 @@ impl StaticModelsManager {
      /// Construct a static model manager from an authoritative catalog.
      pub fn new(auth_manager: Option<Arc<AuthManager>>, model_catalog: ModelsResponse) -> Self {
          Self {
@@ -397,7 +397,7 @@ index 7b4d613..d22c8f5 100644
              auth_manager,
          }
      }
-@@ -694,11 +714,63 @@ impl ModelsManager for StaticModelsManager {
+@@ -804,11 +824,63 @@ impl ModelsManager for StaticModelsManager {
      }
  
      fn get_remote_models(&self) -> ModelsManagerFuture<'_, Vec<ModelInfo>> {
@@ -464,10 +464,10 @@ index 7b4d613..d22c8f5 100644
  
      fn auth_manager(&self) -> Option<&AuthManager> {
 diff --git a/codex-rs/models-manager/src/manager_tests.rs b/codex-rs/models-manager/src/manager_tests.rs
-index 4ef2971..877773b 100644
+index 04336f5..f031a3b 100644
 --- a/codex-rs/models-manager/src/manager_tests.rs
 +++ b/codex-rs/models-manager/src/manager_tests.rs
-@@ -1623,3 +1623,118 @@ fn bundled_models_json_roundtrips() {
+@@ -1701,3 +1701,118 @@ fn bundled_models_json_roundtrips() {
          "bundled models.json should contain at least one model"
      );
  }

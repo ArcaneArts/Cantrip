@@ -19,7 +19,7 @@ import {
 const execFileAsync = promisify(execFile);
 const PROBE_TIMEOUT_MS = 10_000;
 
-export const TESTED_CODEX_RANGE = ">=0.157.1 <0.158.0";
+export const TESTED_CODEX_RANGE = ">=0.160.1 <0.161.0";
 
 export function nativeSubagentCapabilityForRuntime(input: {
   compatible: boolean;
@@ -160,7 +160,7 @@ export function isTestedCodexVersion(semantic: string): boolean {
   return (
     extra === undefined &&
     major === 0 &&
-    minor === 157 &&
+    minor === 160 &&
     patch !== undefined &&
     Number.isInteger(patch) &&
     patch >= 1

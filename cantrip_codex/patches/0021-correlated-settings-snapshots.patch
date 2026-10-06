@@ -1,8 +1,8 @@
 diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
-index dd4ee2c..2860264 100644
+index 77c9205..cf8bafc 100644
 --- a/codex-rs/app-server-protocol/src/protocol/common.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/common.rs
-@@ -4536,6 +4536,8 @@ mod tests {
+@@ -4541,6 +4541,8 @@ mod tests {
      fn thread_settings_updated_notification_is_marked_experimental() {
          let notification =
              ServerNotification::ThreadSettingsUpdated(v2::ThreadSettingsUpdatedNotification {
@@ -12,7 +12,7 @@ index dd4ee2c..2860264 100644
                  thread_settings: v2::ThreadSettings {
                      disabled_plugin_ids: Vec::new(),
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-index e324ae5..62f0eef 100644
+index 8e4c9bb..8185053 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 @@ -237,6 +237,10 @@ impl ThreadStartResponse {
@@ -56,7 +56,7 @@ index e324ae5..62f0eef 100644
      pub thread_settings: ThreadSettings,
  }
 diff --git a/codex-rs/app-server/src/bespoke_event_handling.rs b/codex-rs/app-server/src/bespoke_event_handling.rs
-index c5488de..bba59cb 100644
+index 173c41e..60d6063 100644
 --- a/codex-rs/app-server/src/bespoke_event_handling.rs
 +++ b/codex-rs/app-server/src/bespoke_event_handling.rs
 @@ -1,7 +1,7 @@
@@ -95,7 +95,7 @@ index c5488de..bba59cb 100644
                              thread_settings,
                          },
 diff --git a/codex-rs/app-server/src/request_processors.rs b/codex-rs/app-server/src/request_processors.rs
-index 9bdd755..7517f01 100644
+index 143e5ec..446f89b 100644
 --- a/codex-rs/app-server/src/request_processors.rs
 +++ b/codex-rs/app-server/src/request_processors.rs
 @@ -301,11 +301,11 @@ use codex_app_server_protocol::TurnError;
@@ -112,7 +112,7 @@ index 9bdd755..7517f01 100644
  use codex_app_server_protocol::TurnStartParams;
  use codex_app_server_protocol::TurnStartResponse;
  use codex_app_server_protocol::TurnStatus;
-@@ -716,6 +716,7 @@ pub(crate) use self::thread_processor::thread_from_stored_thread;
+@@ -718,6 +718,7 @@ pub(crate) use self::thread_processor::thread_from_stored_thread;
  pub(crate) use self::thread_summary::read_summary_from_rollout;
  #[cfg(test)]
  pub(crate) use self::thread_summary::summary_to_thread;
@@ -188,10 +188,10 @@ index 42562e4..77e19e6 100644
 +    }
 +}
 diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/codex-rs/app-server/src/request_processors/turn_processor.rs
-index 1d27bc4..4d90f86 100644
+index 49a9dc6..54c730f 100644
 --- a/codex-rs/app-server/src/request_processors/turn_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/turn_processor.rs
-@@ -1002,17 +1002,32 @@ impl TurnRequestProcessor {
+@@ -1002,20 +1002,33 @@ impl TurnRequestProcessor {
              )
              .await?;
  
@@ -199,7 +199,10 @@ index 1d27bc4..4d90f86 100644
 -            self.submit_core_op(
 -                request_id,
 -                thread.as_ref(),
--                Op::ThreadSettings { thread_settings },
+-                Op::ThreadSettings {
+-                    thread_settings,
+-                    reply: None,
+-                },
 +        let correlated = params.operation_id.is_some();
 +        let submission_id = if correlated
 +            || thread_settings != codex_protocol::protocol::ThreadSettingsOverrides::default()
@@ -211,6 +214,7 @@ index 1d27bc4..4d90f86 100644
 +                    Op::ThreadSettings {
 +                        operation_id: params.operation_id.clone(),
 +                        thread_settings,
++                        reply: None,
 +                    },
 +                )
 +                .await
@@ -234,10 +238,10 @@ index 1d27bc4..4d90f86 100644
  
      async fn thread_inject_items_response_inner(
 diff --git a/codex-rs/core/src/agent/control_tests.rs b/codex-rs/core/src/agent/control_tests.rs
-index 839861d..0545520 100644
+index 9eb71be..62e59d5 100644
 --- a/codex-rs/core/src/agent/control_tests.rs
 +++ b/codex-rs/core/src/agent/control_tests.rs
-@@ -1717,6 +1717,7 @@ async fn spawn_agent_fork_from_paginated_parent_uses_model_context_prefix() {
+@@ -1798,6 +1798,7 @@ async fn spawn_agent_fork_from_paginated_parent_uses_model_context_prefix() {
              })),
              RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(
                  ThreadSettingsAppliedEvent {
@@ -246,71 +250,31 @@ index 839861d..0545520 100644
                      thread_settings: ThreadSettingsSnapshot {
                          disabled_plugin_ids: Vec::new(),
 diff --git a/codex-rs/core/src/session/handlers.rs b/codex-rs/core/src/session/handlers.rs
-index baffca6..b1aedfb 100644
+index bd1189c..62119e5 100644
 --- a/codex-rs/core/src/session/handlers.rs
 +++ b/codex-rs/core/src/session/handlers.rs
-@@ -514,8 +514,12 @@ pub(super) async fn submission_loop(
-                     let _ = reply.send(result);
+@@ -524,6 +524,7 @@ pub(super) async fn submission_loop(
                      should_exit
                  }
--                Op::ThreadSettings { thread_settings } => {
--                    thread_settings::update(&sess, sub.id.clone(), thread_settings).await;
-+                Op::ThreadSettings {
+                 Op::ThreadSettings {
 +                    operation_id,
-+                    thread_settings,
-+                } => {
-+                    thread_settings::update(&sess, sub.id.clone(), thread_settings, operation_id)
-+                        .await;
-                     false
-                 }
-                 Op::TurnSettings {
+                     thread_settings,
+                     reply,
+                 } => {
+@@ -534,7 +535,7 @@ pub(super) async fn submission_loop(
+                             if let Some(reply) = reply {
+                                 let _ = reply.send(Ok(()));
+                             }
+-                            thread_settings::emit_applied(&sess, sub.id.clone(), snapshot).await;
++                            thread_settings::emit_correlated_applied(&sess, sub.id.clone(), snapshot, operation_id).await;
+                         }
+                         Err(error) => {
+                             let message = format!("invalid thread settings override: {error}");
 diff --git a/codex-rs/core/src/session/thread_settings.rs b/codex-rs/core/src/session/thread_settings.rs
-index 36d6b86..13b629a 100644
+index 2105904..6e58460 100644
 --- a/codex-rs/core/src/session/thread_settings.rs
 +++ b/codex-rs/core/src/session/thread_settings.rs
-@@ -37,27 +37,22 @@ pub(super) async fn update(
-     session: &Arc<Session>,
-     submission_id: String,
-     overrides: ThreadSettingsOverrides,
-+    operation_id: Option<String>,
- ) {
-     let updates = prepare_update(overrides);
--    let _settings_guard = acquire_persistence_lock(session).await;
--    match session.update_settings(updates).await {
--        Ok(commit) => {
--            // Standalone settings changes supersede a pending automatic continuation.
--            session.state.lock().await.last_started_turn_id = None;
--            emit_applied(session, submission_id, commit.snapshot).await;
--        }
--        Err(error) => {
--            session
--                .send_event_raw(Event {
--                    id: submission_id,
--                    msg: EventMsg::Error(ErrorEvent {
--                        misalignment: None,
--                        message: format!("invalid thread settings override: {error}"),
--                        codex_error_info: Some(CodexErrorInfo::BadRequest),
--                    }),
--                })
--                .await;
--        }
-+    if let Err(error) =
-+        apply_correlated_update(session, submission_id.clone(), updates, operation_id, true).await
-+    {
-+        session
-+            .send_event_raw(Event {
-+                id: submission_id,
-+                msg: EventMsg::Error(ErrorEvent {
-+                    misalignment: None,
-+                    message: format!("invalid thread settings override: {error}"),
-+                    codex_error_info: Some(CodexErrorInfo::BadRequest),
-+                }),
-+            })
-+            .await;
-     }
- }
- 
-@@ -118,10 +113,23 @@ pub(super) async fn apply_update(
+@@ -97,10 +97,23 @@ pub(super) async fn apply_update(
      session: &Session,
      submission_id: String,
      updates: SessionSettingsUpdate,
@@ -335,7 +299,7 @@ index 36d6b86..13b629a 100644
      Ok(())
  }
  
-@@ -130,8 +138,18 @@ pub(super) async fn emit_applied(
+@@ -109,8 +122,18 @@ pub(super) async fn emit_applied(
      session: &Session,
      submission_id: String,
      snapshot: ThreadSettingsSnapshot,
@@ -343,7 +307,7 @@ index 36d6b86..13b629a 100644
 +    emit_correlated_applied(session, submission_id, snapshot, None).await;
 +}
 +
-+async fn emit_correlated_applied(
++pub(super) async fn emit_correlated_applied(
 +    session: &Session,
 +    submission_id: String,
 +    snapshot: ThreadSettingsSnapshot,
@@ -354,7 +318,7 @@ index 36d6b86..13b629a 100644
          thread_id: Some(session.thread_id()),
          thread_settings: snapshot,
      });
-@@ -146,6 +164,7 @@ pub(super) async fn emit_applied(
+@@ -125,6 +148,7 @@ pub(super) async fn emit_applied(
  /// Builds a current thread-owned snapshot for storage checkpoints.
  pub(super) async fn applied_event(session: &Session) -> EventMsg {
      EventMsg::ThreadSettingsApplied(ThreadSettingsAppliedEvent {
@@ -363,25 +327,19 @@ index 36d6b86..13b629a 100644
          thread_settings: session.thread_settings_snapshot().await,
      })
 diff --git a/codex-rs/core/tests/common/lib.rs b/codex-rs/core/tests/common/lib.rs
-index 424cdb0..defe733 100644
+index 0b05675..74cd7e6 100644
 --- a/codex-rs/core/tests/common/lib.rs
 +++ b/codex-rs/core/tests/common/lib.rs
-@@ -313,7 +313,12 @@ pub async fn submit_thread_settings(
-     use tokio::time::Duration;
-     use tokio::time::timeout;
+@@ -315,6 +315,7 @@ pub async fn submit_thread_settings(
  
--    let submission_id = codex.submit(Op::ThreadSettings { thread_settings }).await?;
-+    let submission_id = codex
-+        .submit(Op::ThreadSettings {
+     let submission_id = codex
+         .submit(Op::ThreadSettings {
 +            operation_id: None,
-+            thread_settings,
-+        })
-+        .await?;
-     loop {
-         let ev = timeout(Duration::from_secs(10), codex.next_event())
-             .await
+             thread_settings,
+             reply: None,
+         })
 diff --git a/codex-rs/core/tests/suite/fork_thread.rs b/codex-rs/core/tests/suite/fork_thread.rs
-index 078bfd3..7ab27b6 100644
+index 4f5708b..20c6eda 100644
 --- a/codex-rs/core/tests/suite/fork_thread.rs
 +++ b/codex-rs/core/tests/suite/fork_thread.rs
 @@ -194,6 +194,7 @@ fn thread_settings_applied_item(
@@ -393,10 +351,10 @@ index 078bfd3..7ab27b6 100644
              thread_settings: snapshot,
          },
 diff --git a/codex-rs/core/tests/suite/remote_env.rs b/codex-rs/core/tests/suite/remote_env.rs
-index a3ba5a2..0e7af4b 100644
+index e3cfd43..21db378 100644
 --- a/codex-rs/core/tests/suite/remote_env.rs
 +++ b/codex-rs/core/tests/suite/remote_env.rs
-@@ -617,6 +617,7 @@ async fn environment_permissions_follow_configuration_ownership() -> Result<()>
+@@ -622,6 +622,7 @@ async fn environment_permissions_follow_configuration_ownership() -> Result<()>
      .await?;
      test.codex
          .submit(Op::ThreadSettings {
@@ -405,48 +363,34 @@ index a3ba5a2..0e7af4b 100644
                  permission_profile: Some(PermissionProfile::workspace_write()),
                  ..Default::default()
 diff --git a/codex-rs/core/tests/suite/settings_commits.rs b/codex-rs/core/tests/suite/settings_commits.rs
-index 9c8a9db..bd869bf 100644
+index ea368e2..d4b8d2e 100644
 --- a/codex-rs/core/tests/suite/settings_commits.rs
 +++ b/codex-rs/core/tests/suite/settings_commits.rs
-@@ -226,7 +226,12 @@ async fn settings_notifications_keep_their_commit_across_postcommit_work(
-                     Ok(turn_id)
-                 }
+@@ -228,6 +228,7 @@ async fn settings_notifications_keep_their_commit_across_postcommit_work(
                  SettingsOperation::Standalone => {
--                    codex.submit(Op::ThreadSettings { thread_settings }).await
-+                    codex
-+                        .submit(Op::ThreadSettings {
+                     codex
+                         .submit(Op::ThreadSettings {
 +                            operation_id: None,
-+                            thread_settings,
-+                        })
-+                        .await
-                 }
-             }
-         }
+                             thread_settings,
+                             reply: None,
+                         })
 diff --git a/codex-rs/core/tests/suite/settings_constraints.rs b/codex-rs/core/tests/suite/settings_constraints.rs
-index ecdca64..e9abcb4 100644
+index e85d9a2..2eafb8b 100644
 --- a/codex-rs/core/tests/suite/settings_constraints.rs
 +++ b/codex-rs/core/tests/suite/settings_constraints.rs
-@@ -45,7 +45,14 @@ impl SettingsOperation {
-         thread_settings: ThreadSettingsOverrides,
-     ) -> Result<ThreadSettingsSnapshot> {
-         let id = match self {
--            Self::Standalone => codex.submit(Op::ThreadSettings { thread_settings }).await?,
-+            Self::Standalone => {
-+                codex
-+                    .submit(Op::ThreadSettings {
+@@ -50,6 +50,7 @@ impl SettingsOperation {
+             Self::Standalone => {
+                 codex
+                     .submit(Op::ThreadSettings {
 +                        operation_id: None,
-+                        thread_settings,
-+                    })
-+                    .await?
-+            }
-             Self::TurnStart => {
-                 let result = codex
-                     .start_or_steer_turn(
+                         thread_settings,
+                         reply: None,
+                     })
 diff --git a/codex-rs/core/tests/suite/step_settings.rs b/codex-rs/core/tests/suite/step_settings.rs
-index 28f0d4a..8688157 100644
+index c532200..069a728 100644
 --- a/codex-rs/core/tests/suite/step_settings.rs
 +++ b/codex-rs/core/tests/suite/step_settings.rs
-@@ -772,6 +772,7 @@ async fn settings_updates_preserve_turn_identity_and_target(target: SettingsTarg
+@@ -776,6 +776,7 @@ async fn settings_updates_preserve_turn_identity_and_target(target: SettingsTarg
          SettingsTarget::Thread => {
              test.codex
                  .submit(Op::ThreadSettings {
@@ -454,7 +398,7 @@ index 28f0d4a..8688157 100644
                      thread_settings: ThreadSettingsOverrides {
                          model: Some(MODEL_B.to_string()),
                          effort: Some(Some(ReasoningEffort::High)),
-@@ -1973,6 +1974,7 @@ async fn sparse_updates_preserve_divergent_active_and_future_models() -> Result<
+@@ -1978,6 +1979,7 @@ async fn sparse_updates_preserve_divergent_active_and_future_models() -> Result<
  
      test.codex
          .submit(Op::ThreadSettings {
@@ -463,7 +407,7 @@ index 28f0d4a..8688157 100644
                  service_tier: Some(Some(ServiceTier::Fast.request_value().to_string())),
                  ..Default::default()
 diff --git a/codex-rs/protocol/src/protocol.rs b/codex-rs/protocol/src/protocol.rs
-index 75347f3..0ac7db3 100644
+index 4537b5b..01e33fa 100644
 --- a/codex-rs/protocol/src/protocol.rs
 +++ b/codex-rs/protocol/src/protocol.rs
 @@ -650,6 +650,7 @@ pub enum Op {
@@ -473,8 +417,8 @@ index 75347f3..0ac7db3 100644
 +        operation_id: Option<String>,
          /// Sparse thread-settings overrides to apply.
          thread_settings: ThreadSettingsOverrides,
-     },
-@@ -2200,6 +2201,10 @@ pub struct TurnStartedEvent {
+         /// When present, report validation errors here instead of emitting an error event.
+@@ -2207,6 +2208,10 @@ pub struct TurnStartedEvent {
  
  #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, JsonSchema, TS)]
  pub struct ThreadSettingsAppliedEvent {
@@ -523,10 +467,10 @@ index 395d79d..a92f6f5 100644
                  thread_settings: test_thread_settings(),
              });
 diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
-index 087fca0..167eb4c 100644
+index f7e0c6a..1cce759 100644
 --- a/codex-rs/tui/src/app/tests.rs
 +++ b/codex-rs/tui/src/app/tests.rs
-@@ -9478,6 +9478,8 @@ async fn inactive_thread_settings_notification_updates_cached_collaboration_mode
+@@ -9588,6 +9588,8 @@ async fn inactive_thread_settings_notification_updates_cached_collaboration_mode
      );
  
      let notification = ThreadSettingsUpdatedNotification {
@@ -536,7 +480,7 @@ index 087fca0..167eb4c 100644
          thread_settings: ThreadSettings {
              disabled_plugin_ids: Vec::new(),
 diff --git a/codex-rs/tui/src/chatwidget/tests/app_server.rs b/codex-rs/tui/src/chatwidget/tests/app_server.rs
-index c96ce55..181d38b 100644
+index e03e997..9d08728 100644
 --- a/codex-rs/tui/src/chatwidget/tests/app_server.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/app_server.rs
 @@ -12,6 +12,8 @@ fn thread_settings_for_test(

@@ -1,8 +1,8 @@
 diff --git a/codex-rs/tui/src/app.rs b/codex-rs/tui/src/app.rs
-index 4dc4ee6..dcb364d 100644
+index d1e7ca8..a5bd65a 100644
 --- a/codex-rs/tui/src/app.rs
 +++ b/codex-rs/tui/src/app.rs
-@@ -210,6 +210,7 @@ mod agents_overview_usage;
+@@ -208,6 +208,7 @@ mod agents_overview_usage;
  mod agents_overview_view;
  pub(crate) use agents_overview::AGENTS_OVERVIEW_VIEW_ID;
  mod activity_groups;
@@ -10,8 +10,8 @@ index 4dc4ee6..dcb364d 100644
  mod app_server_event_targets;
  mod app_server_events;
  pub(crate) mod app_server_requests;
-@@ -235,9 +236,9 @@ mod new_session;
- pub(crate) use new_session::has_launch_setting;
+@@ -237,9 +238,9 @@ pub(crate) use new_session::has_launch_setting;
+ mod clipboard;
  mod native_history;
  mod owned_transcript;
 +mod managed_permission_changes;
@@ -21,7 +21,7 @@ index 4dc4ee6..dcb364d 100644
  mod pets;
  mod platform_actions;
  mod plugin_mentions;
-@@ -577,6 +578,7 @@ pub(crate) struct App {
+@@ -547,6 +548,7 @@ pub(crate) struct App {
      /// In-flight remote selections; confirmed settings live in each task's server snapshot.
      pending_server_profiles: HashMap<ThreadId, PermissionProfileSelection>,
      pending_permission_changes: HashMap<String, managed_permission_changes::PendingPermissionChange>,
@@ -184,10 +184,10 @@ index 0000000..50d2d98
 +    }
 +}
 diff --git a/codex-rs/tui/src/app/event_dispatch.rs b/codex-rs/tui/src/app/event_dispatch.rs
-index 2aa1ab1..6112fc1 100644
+index 1cfcdf3..032353d 100644
 --- a/codex-rs/tui/src/app/event_dispatch.rs
 +++ b/codex-rs/tui/src/app/event_dispatch.rs
-@@ -2906,6 +2906,10 @@ impl App {
+@@ -2942,6 +2942,10 @@ impl App {
                      self.chat_widget.add_error_message(err);
                  }
              }
@@ -199,10 +199,10 @@ index 2aa1ab1..6112fc1 100644
                  if self.reject_pending_permission_change() {
                      return Ok(AppRunControl::Continue);
 diff --git a/codex-rs/tui/src/app/startup.rs b/codex-rs/tui/src/app/startup.rs
-index b61f8fa..0755c98 100644
+index 0fbd91b..db3d2f2 100644
 --- a/codex-rs/tui/src/app/startup.rs
 +++ b/codex-rs/tui/src/app/startup.rs
-@@ -806,6 +806,7 @@ See the Codex keymap documentation for supported actions and examples."
+@@ -842,6 +842,7 @@ See the Codex keymap documentation for supported actions and examples."
              pending_server_profiles: HashMap::new(),
          pending_permission_changes: HashMap::new(),
          observed_native_settings: HashMap::new(),
@@ -211,10 +211,10 @@ index b61f8fa..0755c98 100644
              enhanced_keys_supported,
              keymap: runtime_keymap,
 diff --git a/codex-rs/tui/src/app/test_support.rs b/codex-rs/tui/src/app/test_support.rs
-index 9144970..2993c55 100644
+index 409f256..2e1f8d3 100644
 --- a/codex-rs/tui/src/app/test_support.rs
 +++ b/codex-rs/tui/src/app/test_support.rs
-@@ -49,6 +49,7 @@ pub(crate) async fn make_test_app() -> App {
+@@ -38,6 +38,7 @@ pub(crate) async fn make_test_app() -> App {
          runtime_permission_profile_override: None,
          pending_server_profiles: HashMap::new(),
          pending_permission_changes: HashMap::new(),
@@ -223,10 +223,10 @@ index 9144970..2993c55 100644
          file_search,
          transcript_cells: Vec::new(),
 diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
-index ed184a2..a2af55b 100644
+index 22f526a..ef32fc8 100644
 --- a/codex-rs/tui/src/app/tests.rs
 +++ b/codex-rs/tui/src/app/tests.rs
-@@ -41,6 +41,8 @@ mod key_chords;
+@@ -45,6 +45,8 @@ mod key_chords;
  mod local_command_scroll_tests;
  #[path = "tests/luna_reserve_recovery_tests.rs"]
  mod luna_reserve_recovery_tests;
@@ -235,7 +235,7 @@ index ed184a2..a2af55b 100644
  #[path = "tests/mcp_startup.rs"]
  mod mcp_startup;
  #[path = "tests/misalignment_policy_tests.rs"]
-@@ -61,8 +63,6 @@ mod unavailable_commands;
+@@ -67,8 +69,6 @@ mod unavailable_commands;
  mod history_hydration_tests;
  #[path = "tests/permission_shortcuts_tests.rs"]
  mod permission_shortcuts_tests;
@@ -244,16 +244,16 @@ index ed184a2..a2af55b 100644
  mod plugin_catalog;
  mod rate_limits;
  #[path = "tests/realtime_handoff_e2e.rs"]
-@@ -6009,6 +6009,7 @@ async fn make_test_app() -> Box<App> {
-         runtime_approval_policy_override: None,
+@@ -6017,6 +6017,7 @@ async fn make_test_app() -> Box<App> {
+         runtime_approvals_reviewer_override: None,
          runtime_permission_profile_override: None,
          pending_permission_changes: HashMap::new(),
 +        native_account_defaults: None,
          observed_native_settings: HashMap::new(),
          file_search,
          transcript_cells: Vec::new(),
-@@ -6117,6 +6118,7 @@ pub(super) async fn make_test_app_with_channels() -> (
-             runtime_approval_policy_override: None,
+@@ -6136,6 +6137,7 @@ pub(super) async fn make_test_app_with_channels() -> (
+             runtime_approvals_reviewer_override: None,
              runtime_permission_profile_override: None,
              pending_permission_changes: HashMap::new(),
 +            native_account_defaults: None,
@@ -261,10 +261,10 @@ index ed184a2..a2af55b 100644
              file_search,
              transcript_cells: Vec::new(),
 diff --git a/codex-rs/tui/src/app_event.rs b/codex-rs/tui/src/app_event.rs
-index 7212025..a18b75a 100644
+index 1337ebb..1085c7e 100644
 --- a/codex-rs/tui/src/app_event.rs
 +++ b/codex-rs/tui/src/app_event.rs
-@@ -1431,6 +1431,16 @@ pub(crate) enum AppEvent {
+@@ -1451,6 +1451,16 @@ pub(crate) enum AppEvent {
  
      /// Re-open the permissions presets popup.
      OpenPermissionsPopup,
@@ -282,10 +282,10 @@ index 7212025..a18b75a 100644
      /// Open the branch picker option from the review popup.
      OpenReviewBranchPicker(PathBuf),
 diff --git a/codex-rs/tui/src/app_server_session.rs b/codex-rs/tui/src/app_server_session.rs
-index a2835e5..9934a3d 100644
+index 4a004f2..99ffb11 100644
 --- a/codex-rs/tui/src/app_server_session.rs
 +++ b/codex-rs/tui/src/app_server_session.rs
-@@ -312,6 +312,7 @@ pub(crate) struct AppServerBootstrap {
+@@ -316,6 +316,7 @@ pub(crate) struct AppServerBootstrap {
  pub(crate) struct AppServerSession {
      client: AppServerClient,
      next_request_id: i64,
@@ -293,7 +293,7 @@ index a2835e5..9934a3d 100644
      history_pagination: HashMap<ThreadId, history::ThreadHistoryPagination>,
      task_tool_threads: HashSet<ThreadId>,
      task_tool_capabilities_dir: Option<AbsolutePathBuf>,
-@@ -422,6 +423,7 @@ impl AppServerSession {
+@@ -421,6 +422,7 @@ impl AppServerSession {
          Self {
              client,
              next_request_id: 1,
@@ -301,7 +301,7 @@ index a2835e5..9934a3d 100644
              history_pagination: HashMap::new(),
              task_tool_threads: HashSet::new(),
              task_tool_capabilities_dir: None,
-@@ -1692,6 +1694,10 @@ impl AppServerSession {
+@@ -1703,6 +1705,10 @@ impl AppServerSession {
          self.client.shutdown().await
      }
  
@@ -313,10 +313,10 @@ index a2835e5..9934a3d 100644
          self.client.request_handle()
      }
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index 3262d79..92bc476 100644
+index 5b8bdc2..d2eae41 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
-@@ -1137,6 +1137,33 @@ impl ChatWidget {
+@@ -1083,6 +1083,33 @@ impl ChatWidget {
          });
      }
  
@@ -373,17 +373,17 @@ index 4fe2ed0..09db66f 100644
              | SlashCommand::Goal
              | SlashCommand::Side
 diff --git a/codex-rs/tui/src/lib.rs b/codex-rs/tui/src/lib.rs
-index 10e1ad4..fa28e9e 100644
+index 9ecbe9c..a2fba39 100644
 --- a/codex-rs/tui/src/lib.rs
 +++ b/codex-rs/tui/src/lib.rs
-@@ -129,6 +129,7 @@ pub(crate) mod custom_terminal;
- mod daybreak;
+@@ -130,6 +130,7 @@ mod daybreak;
  mod experimental_features;
+ mod markdown_copy;
  mod permission_discovery;
 +mod native_account_defaults;
  mod pets;
+ mod security_setup;
  mod worktree_browser;
- pub use custom_terminal::Terminal;
 diff --git a/codex-rs/tui/src/native_account_defaults.rs b/codex-rs/tui/src/native_account_defaults.rs
 new file mode 100644
 index 0000000..46d9dd1

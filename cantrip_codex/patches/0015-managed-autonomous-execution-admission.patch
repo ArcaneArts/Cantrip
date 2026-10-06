@@ -1,5 +1,5 @@
 diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
-index 028e502..8aced0b 100644
+index b48c996..1c7b837 100644
 --- a/codex-rs/app-server-protocol/src/protocol/common.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/common.rs
 @@ -682,6 +682,21 @@ client_request_definitions! {
@@ -164,7 +164,7 @@ index 0000000..ff38d1f
 +    }
 +}
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/mod.rs b/codex-rs/app-server-protocol/src/protocol/v2/mod.rs
-index 191df7d..17074ca 100644
+index 5bc7d96..7232e37 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/mod.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/mod.rs
 @@ -18,6 +18,7 @@ mod feedback;
@@ -175,7 +175,7 @@ index 191df7d..17074ca 100644
  mod mcp;
  mod memory;
  mod model;
-@@ -58,6 +59,7 @@ pub use feedback::*;
+@@ -57,6 +58,7 @@ pub use feedback::*;
  pub use fs::*;
  pub use hook::*;
  pub use item::*;
@@ -184,7 +184,7 @@ index 191df7d..17074ca 100644
  pub use memory::*;
  pub use model::*;
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-index 0988ddd..30359fc 100644
+index 9855f4d..0c0a825 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 @@ -317,6 +317,10 @@ pub struct ThreadManagedConfigUpdateParams {
@@ -249,7 +249,7 @@ index a3bb780..dac106c 100644
  }
  
 diff --git a/codex-rs/app-server/src/outgoing_message.rs b/codex-rs/app-server/src/outgoing_message.rs
-index e6a109c..10c206b 100644
+index 961eccc..b59d2b8 100644
 --- a/codex-rs/app-server/src/outgoing_message.rs
 +++ b/codex-rs/app-server/src/outgoing_message.rs
 @@ -129,6 +129,15 @@ pub(crate) enum OutgoingEnvelope {
@@ -301,8 +301,8 @@ index e6a109c..10c206b 100644
          let mut request_contexts = self.request_contexts.lock().await;
          request_contexts.retain(|request_id, _| request_id.connection_id != connection_id);
      }
-@@ -750,6 +775,21 @@ impl OutgoingMessageSender {
-             .await;
+@@ -758,6 +783,21 @@ impl OutgoingMessageSender {
+         }
      }
  
 +    /// Managed snapshots contain model-visible input; do not log or broadcast them.
@@ -620,10 +620,10 @@ index 0000000..7d300af
 +    }
 +}
 diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
-index ddf402f..6071e9e 100644
+index 8fe95c5..bf18998 100644
 --- a/codex-rs/app-server/src/request_processors/thread_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
-@@ -1165,7 +1165,13 @@ impl ThreadRequestProcessor {
+@@ -1167,7 +1167,13 @@ impl ThreadRequestProcessor {
              environments,
          } = params;
          let managed_config = managed_config
@@ -638,7 +638,7 @@ index ddf402f..6071e9e 100644
              .transpose()?;
          if matches!(
              history_mode,
-@@ -3962,8 +3968,11 @@ impl ThreadRequestProcessor {
+@@ -4007,8 +4013,11 @@ impl ThreadRequestProcessor {
              }
          };
          if let Some(managed_config) = managed_config {
@@ -653,7 +653,7 @@ index ddf402f..6071e9e 100644
                  .apply_managed_thread_configuration(managed)
                  .map_err(|err| invalid_params(format!("managed configuration rejected: {err}")))?;
 diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/codex-rs/app-server/src/request_processors/turn_processor.rs
-index 36a1b0e..1d27bc4 100644
+index 10cb588..49a9dc6 100644
 --- a/codex-rs/app-server/src/request_processors/turn_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/turn_processor.rs
 @@ -1,3 +1,5 @@
@@ -907,10 +907,10 @@ index caaf4f7..a73eed6 100644
 +    Ok(())
 +}
 diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
-index 0585e76..bbca0a1 100644
+index c832c8d..2ed4a26 100644
 --- a/codex-rs/core/src/codex_thread.rs
 +++ b/codex-rs/core/src/codex_thread.rs
-@@ -538,6 +538,21 @@ impl CodexThread {
+@@ -558,6 +558,21 @@ impl CodexThread {
          }
      }
  
@@ -932,9 +932,9 @@ index 0585e76..bbca0a1 100644
      async fn submit_turn_input_with_mode(
          &self,
          request: TurnInputRequest,
-@@ -550,7 +565,51 @@ impl CodexThread {
-                 .ensure_execution_capacity_for_turn_start(self)
-                 .await?;
+@@ -569,7 +584,51 @@ impl CodexThread {
+             )
+             .await?;
          }
 -        self.io.submit_turn_input(request, mode).await
 +        let gate = if matches!(mode, TurnInputMode::StartIfIdle)
@@ -985,7 +985,7 @@ index 0585e76..bbca0a1 100644
      }
  
      /// Persist whether this thread is eligible for future memory generation.
-@@ -963,6 +1022,12 @@ impl CodexThread {
+@@ -1032,6 +1091,12 @@ impl CodexThread {
  
      /// Refresh MCP configuration and managed requirements without reloading unrelated settings.
      /// Applies a complete managed profile to this loaded thread without changing root settings.
@@ -999,10 +999,10 @@ index 0585e76..bbca0a1 100644
          &self,
          mcp_servers: std::collections::HashMap<String, codex_config::types::McpServerConfig>,
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index 9215d6e..aeeefc1 100644
+index 196c269..29c8e81 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
-@@ -607,6 +607,7 @@ pub enum ThreadStoreConfig {
+@@ -608,6 +608,7 @@ pub enum ThreadStoreConfig {
  /// This profile is in-memory only; credentials are never written to config or history.
  #[derive(Debug, Clone, PartialEq)]
  pub struct ManagedThreadConfiguration {
@@ -1010,7 +1010,7 @@ index 9215d6e..aeeefc1 100644
      pub mcp_servers: HashMap<String, McpServerConfig>,
      pub developer_instructions: Option<String>,
      pub multi_agent_enabled: bool,
-@@ -1895,8 +1896,14 @@ impl Config {
+@@ -1919,8 +1920,14 @@ impl Config {
      /// Validate everything against this snapshot's requirements before publishing any field.
      pub fn apply_managed_thread_configuration(
          &mut self,
@@ -1027,10 +1027,10 @@ index 9215d6e..aeeefc1 100644
          mcp_servers.set(managed.mcp_servers.clone())?;
          let mut features = self.features.clone();
 diff --git a/codex-rs/core/src/lib.rs b/codex-rs/core/src/lib.rs
-index e7a2a4a..55726bb 100644
+index 2595ce5..7a64dbe 100644
 --- a/codex-rs/core/src/lib.rs
 +++ b/codex-rs/core/src/lib.rs
-@@ -35,6 +35,7 @@ mod compact_remote_history;
+@@ -36,6 +36,7 @@ mod compact_remote_history;
  mod compact_remote_v2;
  mod compact_token_budget;
  mod thread_startup_metadata;
@@ -1478,10 +1478,10 @@ index 0000000..8bc4e8e
 +    }
 +}
 diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
-index 0b67464..f23add9 100644
+index 34172af..3bc633e 100644
 --- a/codex-rs/core/src/session/mod.rs
 +++ b/codex-rs/core/src/session/mod.rs
-@@ -962,11 +962,19 @@ impl SessionIo {
+@@ -961,11 +961,19 @@ impl SessionIo {
      /// Once queued, dropping the waiter does not retract the call. If the
      /// session loop exits before replying, the caller gets `InternalAgentDied`.
      pub(crate) async fn submit_turn_input(
@@ -1502,7 +1502,7 @@ index 0b67464..f23add9 100644
          let (reply_tx, reply_rx) = oneshot::channel();
          let trace = request.trace.take();
          self.submit_with_id(Submission {
-@@ -2064,6 +2072,20 @@ impl Session {
+@@ -2061,6 +2069,20 @@ impl Session {
          state.take_session_startup_prewarm()
      }
  
@@ -1523,7 +1523,7 @@ index 0b67464..f23add9 100644
      pub(crate) async fn get_config(&self) -> std::sync::Arc<Config> {
          let state = self.state.lock().await;
          state
-@@ -2195,6 +2217,34 @@ impl Session {
+@@ -2192,6 +2214,34 @@ impl Session {
          }
      }
  
@@ -1558,7 +1558,7 @@ index 0b67464..f23add9 100644
      pub(crate) async fn update_managed_config(
          &self,
          mcp_servers: HashMap<String, McpServerConfig>,
-@@ -2203,17 +2253,40 @@ impl Session {
+@@ -2200,17 +2250,40 @@ impl Session {
          subagent_model: Option<String>,
          subagent_reasoning_effort: Option<ReasoningEffortConfig>,
      ) -> ConstraintResult<()> {
@@ -1607,10 +1607,10 @@ index 0b67464..f23add9 100644
          state.session_configuration.original_config_do_not_use = Arc::new(config);
          self.mark_mcp_runtime_dirty();
 diff --git a/codex-rs/core/src/session/session.rs b/codex-rs/core/src/session/session.rs
-index 87b2cb4..c15aa36 100644
+index e397105..83fbf52 100644
 --- a/codex-rs/core/src/session/session.rs
 +++ b/codex-rs/core/src/session/session.rs
-@@ -748,7 +748,7 @@ impl Session {
+@@ -750,7 +750,7 @@ impl Session {
          startup: Option<Arc<super::startup::SessionStartup>>,
          mut session_configuration: SessionConfiguration,
          environment_selections: &[TurnEnvironmentSelection],
@@ -1619,7 +1619,7 @@ index 87b2cb4..c15aa36 100644
          mut instructions: SessionInstructions,
          installation_id: String,
          auth_manager: Arc<AuthManager>,
-@@ -907,6 +907,28 @@ impl Session {
+@@ -901,6 +901,28 @@ impl Session {
              | InitialHistory::Resumed(_)
              | InitialHistory::Forked(_) => None,
          };
@@ -1649,13 +1649,13 @@ index 87b2cb4..c15aa36 100644
              InitialHistory::Resumed(resumed) => {
                  resumed.history.iter().find_map(|item| match item {
 diff --git a/codex-rs/core/src/session/turn_input.rs b/codex-rs/core/src/session/turn_input.rs
-index b382878..8e2520d 100644
+index d9a5c6a..9bc1120 100644
 --- a/codex-rs/core/src/session/turn_input.rs
 +++ b/codex-rs/core/src/session/turn_input.rs
-@@ -388,6 +388,13 @@ async fn start_if_idle(
-         responsesapi_client_metadata,
+@@ -392,6 +392,13 @@ async fn start_if_idle(
          ..
      } = request;
+     let origin = UserInputOrigin::from_turn_trigger(start.turn_trigger.as_deref());
 +    if matches!(start.turn_trigger.as_deref(), Some("goal" | "queue")) {
 +        let gate = session.managed_execution_gate().await;
 +        if let Some(gate) = gate {
@@ -1667,10 +1667,10 @@ index b382878..8e2520d 100644
          return Ok(TurnInputSubmission::NotSubmitted {
              reason: NotSubmittedReason::PendingTriggerTurn,
 diff --git a/codex-rs/core/src/tasks/mod.rs b/codex-rs/core/src/tasks/mod.rs
-index 1689bc1..9be77ad 100644
+index d3242b5..b89d5eb 100644
 --- a/codex-rs/core/src/tasks/mod.rs
 +++ b/codex-rs/core/src/tasks/mod.rs
-@@ -533,6 +533,11 @@ impl Session {
+@@ -534,6 +534,11 @@ impl Session {
      }
  
      pub async fn abort_all_tasks(self: &Arc<Self>, reason: TurnAbortReason) {
@@ -1683,7 +1683,7 @@ index 1689bc1..9be77ad 100644
          let mut active_turn_to_clear = None;
          let mut turn_context = None;
 diff --git a/codex-rs/protocol/src/protocol.rs b/codex-rs/protocol/src/protocol.rs
-index 4757344..5341592 100644
+index a7e7785..f01a637 100644
 --- a/codex-rs/protocol/src/protocol.rs
 +++ b/codex-rs/protocol/src/protocol.rs
 @@ -570,14 +570,16 @@ pub struct ThreadSettingsOverrides {
@@ -1706,7 +1706,7 @@ index 4757344..5341592 100644
      pub value: String,
      pub kind: AdditionalContextKind,
 diff --git a/codex-rs/protocol/src/turn_input.rs b/codex-rs/protocol/src/turn_input.rs
-index ceece04..d997ce5 100644
+index e7c17ea..a76c735 100644
 --- a/codex-rs/protocol/src/turn_input.rs
 +++ b/codex-rs/protocol/src/turn_input.rs
 @@ -159,7 +159,8 @@ pub enum CyberAccessProgram {
@@ -1717,8 +1717,8 @@ index ceece04..d997ce5 100644
 +#[derive(Clone, Debug, Default, Serialize)]
 +#[serde(rename_all = "camelCase")]
  pub struct TurnStartOptions {
-     /// Source classification for the caller that starts a new turn.
-     /// Ignored when the submitted input steers an active turn.
+     /// Source classification for this request. Recorded on new turns and captured
+     /// as input provenance when steering, without changing the active turn's trigger.
 diff --git a/codex-rs/tui/src/app/app_server_event_targets.rs b/codex-rs/tui/src/app/app_server_event_targets.rs
 index eb5ffa6..395d79d 100644
 --- a/codex-rs/tui/src/app/app_server_event_targets.rs

@@ -1,8 +1,8 @@
 diff --git a/codex-rs/state/src/lib.rs b/codex-rs/state/src/lib.rs
-index 6d88091..8b8420e 100644
+index be969b0..7606694 100644
 --- a/codex-rs/state/src/lib.rs
 +++ b/codex-rs/state/src/lib.rs
-@@ -34,6 +34,7 @@ pub use model::RolloutMigrationSkippedRollout;
+@@ -35,6 +35,7 @@ pub use model::RolloutMigrationSkippedRollout;
  pub use model::RolloutMigrationState;
  /// Preferred entrypoint: owns configuration and metrics.
  pub use runtime::StateRuntime;
@@ -40,7 +40,7 @@ index 93d8c3f..354f761 100644
      pub thread_id: ThreadId,
      pub goal_id: String,
 diff --git a/codex-rs/state/src/runtime.rs b/codex-rs/state/src/runtime.rs
-index 376ad68..1090735 100644
+index 14fcd2d..4d48c05 100644
 --- a/codex-rs/state/src/runtime.rs
 +++ b/codex-rs/state/src/runtime.rs
 @@ -46,6 +46,7 @@ mod logs;
@@ -49,8 +49,8 @@ index 376ad68..1090735 100644
  mod projects;
 +pub(crate) mod portable_thread;
  mod queued_items;
- mod recovery;
- mod remote_control;
+ pub(crate) mod reclamation;
+ pub(crate) mod recovery;
 diff --git a/codex-rs/state/src/runtime/goals.rs b/codex-rs/state/src/runtime/goals.rs
 index 939659c..0881abf 100644
 --- a/codex-rs/state/src/runtime/goals.rs
@@ -301,7 +301,7 @@ index 0000000..acb8c99
 +    }
 +}
 diff --git a/codex-rs/state/src/runtime/threads.rs b/codex-rs/state/src/runtime/threads.rs
-index 3a96225..86613a2 100644
+index 1c8e971..782e7d8 100644
 --- a/codex-rs/state/src/runtime/threads.rs
 +++ b/codex-rs/state/src/runtime/threads.rs
 @@ -367,7 +367,7 @@ ON CONFLICT(child_thread_id) DO NOTHING

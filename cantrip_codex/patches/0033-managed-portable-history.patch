@@ -1,5 +1,5 @@
 diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
-index 1e3a939..346fb6d 100644
+index 5488981..4bf7bc8 100644
 --- a/codex-rs/app-server-protocol/src/protocol/common.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/common.rs
 @@ -902,6 +902,16 @@ client_request_definitions! {
@@ -20,10 +20,10 @@ index 1e3a939..346fb6d 100644
      ThreadManagedContextReset => "thread/managedContext/reset" {
          params: v2::ThreadManagedContextResetParams,
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-index 8a5b940..17f2a48 100644
+index 223f0b2..f02c602 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-@@ -2496,3 +2496,46 @@ pub struct ThreadManagedContextResetParams {
+@@ -2519,3 +2519,46 @@ pub struct ThreadManagedContextResetParams {
  #[serde(rename_all = "camelCase")]
  #[ts(export_to = "v2/")]
  pub struct ThreadManagedContextResetResponse {}
@@ -92,7 +92,7 @@ index 4452856..5601448 100644
                  self.turn_processor
                      .thread_managed_context_reset(&request_id, params)
 diff --git a/codex-rs/app-server/src/request_processors.rs b/codex-rs/app-server/src/request_processors.rs
-index 123b772..37261ff 100644
+index f07b149..95c8276 100644
 --- a/codex-rs/app-server/src/request_processors.rs
 +++ b/codex-rs/app-server/src/request_processors.rs
 @@ -1,4 +1,5 @@
@@ -182,10 +182,10 @@ index 0000000..3f9d1a1
 +    tokio::task::spawn_blocking(move || Ok(serde_json::from_reader(fs::File::open(path)?)?)).await?
 +}
 diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
-index b10cba3..baa6fbc 100644
+index ea2cb8b..20c4bba 100644
 --- a/codex-rs/app-server/src/request_processors/thread_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
-@@ -482,6 +482,39 @@ enum RunningThreadResumeResult {
+@@ -484,6 +484,39 @@ enum RunningThreadResumeResult {
  }
  
  impl ThreadRequestProcessor {
@@ -226,7 +226,7 @@ index b10cba3..baa6fbc 100644
      pub(crate) fn new(
          auth_manager: Arc<AuthManager>,
 diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/codex-rs/app-server/src/request_processors/turn_processor.rs
-index 1e2a36c..a60f979 100644
+index 41d57bb..5dc0ea6 100644
 --- a/codex-rs/app-server/src/request_processors/turn_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/turn_processor.rs
 @@ -194,6 +194,41 @@ impl TurnRequestProcessor {
@@ -283,11 +283,11 @@ index 1e2a36c..a60f979 100644
  
      pub(crate) async fn thread_inject_items(
 diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
-index 80e7509..0640acb 100644
+index e5a82ff..95940fa 100644
 --- a/codex-rs/core/src/codex_thread.rs
 +++ b/codex-rs/core/src/codex_thread.rs
-@@ -862,6 +862,15 @@ impl CodexThread {
-             .await;
+@@ -931,6 +931,15 @@ impl CodexThread {
+         Ok(())
      }
  
 +    pub async fn export_managed_history(
@@ -418,7 +418,7 @@ index d9d8139..0cdc4e0 100644
          &self,
          thread_id: ThreadId,
 diff --git a/codex-rs/thread-store/src/lib.rs b/codex-rs/thread-store/src/lib.rs
-index de5c6d1..02b1260 100644
+index 037c80e..bb4ca5c 100644
 --- a/codex-rs/thread-store/src/lib.rs
 +++ b/codex-rs/thread-store/src/lib.rs
 @@ -8,6 +8,7 @@ mod error;
@@ -459,7 +459,7 @@ index bad5f8f..91ea91b 100644
          &self,
          include_archived: bool,
 diff --git a/codex-rs/thread-store/src/local/mod.rs b/codex-rs/thread-store/src/local/mod.rs
-index a82840c..601497b 100644
+index 3b15752..8e79ae6 100644
 --- a/codex-rs/thread-store/src/local/mod.rs
 +++ b/codex-rs/thread-store/src/local/mod.rs
 @@ -8,6 +8,8 @@ mod model_context;
@@ -471,7 +471,7 @@ index a82840c..601497b 100644
  mod projects;
  mod read_thread;
  mod revert_thread;
-@@ -568,6 +570,21 @@ impl ThreadStore for LocalThreadStore {
+@@ -578,6 +580,21 @@ impl ThreadStore for LocalThreadStore {
          Box::pin(LocalThreadStore::load_history(self, params))
      }
  

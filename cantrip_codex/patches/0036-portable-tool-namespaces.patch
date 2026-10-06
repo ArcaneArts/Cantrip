@@ -1,8 +1,8 @@
 diff --git a/codex-rs/core/src/stream_events_utils.rs b/codex-rs/core/src/stream_events_utils.rs
-index 3e3456e..189b8e1 100644
+index 20ea780..8d0784c 100644
 --- a/codex-rs/core/src/stream_events_utils.rs
 +++ b/codex-rs/core/src/stream_events_utils.rs
-@@ -307,7 +307,10 @@ pub(crate) async fn handle_output_item_done(
+@@ -322,7 +322,10 @@ pub(crate) async fn handle_output_item_done(
  
      match ToolRouter::build_tool_call(item.clone()) {
          // The model emitted a tool call; log it, persist the item immediately, and queue the tool execution.
@@ -15,10 +15,10 @@ index 3e3456e..189b8e1 100644
                  ctx.sess.thread_id,
                  &call.tool_name,
 diff --git a/codex-rs/core/src/tools/mod.rs b/codex-rs/core/src/tools/mod.rs
-index 464996b..8eb4f5f 100644
+index 41ed018..5a97a60 100644
 --- a/codex-rs/core/src/tools/mod.rs
 +++ b/codex-rs/core/src/tools/mod.rs
-@@ -14,6 +14,7 @@ mod multi_agent_tool;
+@@ -15,6 +15,7 @@ mod multi_agent_tool;
  pub(crate) mod network_approval;
  pub(crate) mod orchestrator;
  pub(crate) mod parallel;
@@ -27,10 +27,10 @@ index 464996b..8eb4f5f 100644
  pub(crate) mod router;
  pub(crate) mod runtimes;
 diff --git a/codex-rs/core/src/tools/parallel.rs b/codex-rs/core/src/tools/parallel.rs
-index 53ddadc..05ba73e 100644
+index 0a7afc5..bad3d43 100644
 --- a/codex-rs/core/src/tools/parallel.rs
 +++ b/codex-rs/core/src/tools/parallel.rs
-@@ -63,6 +63,13 @@ impl ToolCallRuntime {
+@@ -64,6 +64,13 @@ impl ToolCallRuntime {
          }
      }
  
@@ -44,7 +44,7 @@ index 53ddadc..05ba73e 100644
      pub(crate) fn create_diff_consumer(
          &self,
          tool_name: &codex_tools::ToolName,
-@@ -79,6 +86,8 @@ impl ToolCallRuntime {
+@@ -80,6 +87,8 @@ impl ToolCallRuntime {
          cancellation_token: CancellationToken,
      ) -> impl std::future::Future<Output = Result<ResponseItemEnvelope, CodexErr>> {
          let error_call = call.clone();
@@ -262,7 +262,7 @@ index 0000000..52d4712
 +    }
 +}
 diff --git a/codex-rs/core/src/tools/router.rs b/codex-rs/core/src/tools/router.rs
-index 17f44ac..e193597 100644
+index 75753e0..af4ba76 100644
 --- a/codex-rs/core/src/tools/router.rs
 +++ b/codex-rs/core/src/tools/router.rs
 @@ -10,6 +10,7 @@ use crate::tools::context::ToolInvocation;
@@ -313,7 +313,7 @@ index 17f44ac..e193597 100644
      }
  
      pub(crate) fn tool_mode(&self) -> ToolMode {
-@@ -227,17 +245,18 @@ impl ToolRouter {
+@@ -231,17 +249,18 @@ impl ToolRouter {
          &self,
          tool_name: &ToolName,
      ) -> Option<Box<dyn ToolArgumentDiffConsumer>> {
@@ -335,7 +335,7 @@ index 17f44ac..e193597 100644
      }
  
      #[instrument(level = "trace", skip_all, err)]
-@@ -371,7 +390,7 @@ impl ToolRouter {
+@@ -375,7 +394,7 @@ impl ToolRouter {
              cancellation_token,
              tracker,
              call_id,
@@ -345,23 +345,14 @@ index 17f44ac..e193597 100644
              payload,
          };
 diff --git a/codex-rs/core/src/tools/spec_plan.rs b/codex-rs/core/src/tools/spec_plan.rs
-index 335ce59..6530a6a 100644
+index bb1474f..cae5792 100644
 --- a/codex-rs/core/src/tools/spec_plan.rs
 +++ b/codex-rs/core/src/tools/spec_plan.rs
-@@ -481,14 +481,19 @@ pub(crate) fn finalize_tool_router(
-         .filter(|info| !info.is_empty());
-     let child_management_tools = required_child_management_tool_names(turn_context, model_info);
- 
--    Ok(ToolRouter::from_parts(
-+    let router = ToolRouter::from_parts(
-         registry,
-         model_visible_specs,
-         tool_mode,
-         code_mode_tool_names,
-         tool_namespaces_info,
-         &child_management_tools,
--    ))
-+    );
+@@ -514,7 +514,11 @@ pub(crate) fn finalize_tool_router(
+             .into());
+         }
+     }
+-    Ok(router)
 +    Ok(if namespace_tools_enabled(turn_context) {
 +        router
 +    } else {
@@ -370,7 +361,7 @@ index 335ce59..6530a6a 100644
  }
  
  fn apply_direct_model_only_namespace_overrides(
-@@ -557,11 +562,6 @@ fn build_model_visible_specs(
+@@ -583,11 +587,6 @@ fn build_model_visible_specs(
      specs.extend(hosted_specs);
  
      merge_into_namespaces(specs)

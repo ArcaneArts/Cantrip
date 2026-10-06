@@ -1,8 +1,8 @@
 diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
-index ebde0eb..9f36cbe 100644
+index 6284c4e..5e41a02 100644
 --- a/codex-rs/app-server/src/request_processors/thread_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
-@@ -4594,7 +4594,39 @@ impl ThreadRequestProcessor {
+@@ -4639,7 +4639,39 @@ impl ThreadRequestProcessor {
                  include_archived: true,
                  include_history,
              };
@@ -44,7 +44,7 @@ index ebde0eb..9f36cbe 100644
  
          let stored_thread = result.map_err(thread_store_resume_read_error)?;
 diff --git a/codex-rs/app-server/tests/suite/v2/thread_resume.rs b/codex-rs/app-server/tests/suite/v2/thread_resume.rs
-index c6ea68f..86e3b6e 100644
+index 6f58231..bdbf559 100644
 --- a/codex-rs/app-server/tests/suite/v2/thread_resume.rs
 +++ b/codex-rs/app-server/tests/suite/v2/thread_resume.rs
 @@ -160,6 +160,125 @@ const DEFAULT_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs
@@ -225,10 +225,10 @@ index c6ea68f..86e3b6e 100644
      Ok(())
  }
 diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
-index 6b8a916..f6120d3 100644
+index 16f0fdf..b790735 100644
 --- a/codex-rs/core/src/codex_thread.rs
 +++ b/codex-rs/core/src/codex_thread.rs
-@@ -317,6 +317,18 @@ impl CodexThread {
+@@ -340,6 +340,18 @@ impl CodexThread {
              .await;
      }
  
@@ -272,7 +272,7 @@ index f6f57e6..5485f37 100644
          self.thread_store.flush_thread(self.thread_id).await?;
          self.flush_pending_metadata_update_for_existing_history()
 diff --git a/codex-rs/thread-store/src/local/update_thread_metadata.rs b/codex-rs/thread-store/src/local/update_thread_metadata.rs
-index 8cfb38b..499dcca 100644
+index 76bc877..6fc3ea7 100644
 --- a/codex-rs/thread-store/src/local/update_thread_metadata.rs
 +++ b/codex-rs/thread-store/src/local/update_thread_metadata.rs
 @@ -73,25 +73,25 @@ pub(super) async fn update_thread_metadata(

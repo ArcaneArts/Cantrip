@@ -1,5 +1,5 @@
 diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/codex-rs/app-server/src/request_processors/turn_processor.rs
-index a60f979..a4b51e6 100644
+index 5dc0ea6..6379d4b 100644
 --- a/codex-rs/app-server/src/request_processors/turn_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/turn_processor.rs
 @@ -426,9 +426,7 @@ impl TurnRequestProcessor {
@@ -13,7 +13,7 @@ index a60f979..a4b51e6 100644
      }
  
      pub(crate) async fn thread_realtime_start(
-@@ -1890,7 +1888,7 @@ impl TurnRequestProcessor {
+@@ -1891,7 +1889,7 @@ impl TurnRequestProcessor {
          &self,
          request_id: &ConnectionRequestId,
          params: TurnPauseParams,
@@ -22,7 +22,7 @@ index a60f979..a4b51e6 100644
          let TurnPauseParams {
              thread_id,
              turn_id,
-@@ -1913,14 +1911,35 @@ impl TurnRequestProcessor {
+@@ -1914,14 +1912,35 @@ impl TurnRequestProcessor {
              .await
              .map_err(|err| internal_error(format!("failed to update turn pause state: {err}")))?;
          if paused {

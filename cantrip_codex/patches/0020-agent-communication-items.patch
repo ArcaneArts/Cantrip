@@ -1,5 +1,5 @@
 diff --git a/codex-rs/analytics/src/reducer.rs b/codex-rs/analytics/src/reducer.rs
-index d772044..48347ad 100644
+index 7640223..3643009 100644
 --- a/codex-rs/analytics/src/reducer.rs
 +++ b/codex-rs/analytics/src/reducer.rs
 @@ -508,6 +508,7 @@ impl TurnToolCounts {
@@ -10,7 +10,7 @@ index d772044..48347ad 100644
              | ThreadItem::AgentMessage { .. }
              | ThreadItem::FunctionCallOutput { .. }
              | ThreadItem::Plan { .. }
-@@ -2659,6 +2660,7 @@ pub(crate) fn tracked_tool_item_id(item: &ThreadItem) -> Option<&str> {
+@@ -2665,6 +2666,7 @@ pub(crate) fn tracked_tool_item_id(item: &ThreadItem) -> Option<&str> {
          ThreadItem::ImageGeneration(item) => Some(&item.id),
          ThreadItem::UserMessage { .. }
          | ThreadItem::HookPrompt { .. }
@@ -19,7 +19,7 @@ index d772044..48347ad 100644
          | ThreadItem::FunctionCallOutput { .. }
          | ThreadItem::Plan { .. }
 diff --git a/codex-rs/app-server-protocol/src/protocol/thread_history.rs b/codex-rs/app-server-protocol/src/protocol/thread_history.rs
-index b5c5d44..9850f97 100644
+index d91a9b2..81f8e95 100644
 --- a/codex-rs/app-server-protocol/src/protocol/thread_history.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/thread_history.rs
 @@ -771,7 +771,8 @@ impl ThreadHistoryBuilder {
@@ -33,7 +33,7 @@ index b5c5d44..9850f97 100644
              | codex_protocol::items::TurnItem::CommandExecution(_)
              | codex_protocol::items::TurnItem::DynamicToolCall(_)
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/item.rs b/codex-rs/app-server-protocol/src/protocol/v2/item.rs
-index 06f1bc7..da959a7 100644
+index 04f68a3..3af88a8 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/item.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/item.rs
 @@ -249,6 +249,18 @@ pub enum ThreadItem {
@@ -55,7 +55,7 @@ index 06f1bc7..da959a7 100644
      AgentMessage {
          id: String,
          text: String,
-@@ -448,6 +460,7 @@ impl ThreadItem {
+@@ -452,6 +464,7 @@ impl ThreadItem {
          match self {
              ThreadItem::UserMessage { id, .. }
              | ThreadItem::HookPrompt { id, .. }
@@ -63,7 +63,7 @@ index 06f1bc7..da959a7 100644
              | ThreadItem::AgentMessage { id, .. }
              | ThreadItem::FunctionCallOutput { id, .. }
              | ThreadItem::Plan { id, .. }
-@@ -870,6 +883,25 @@ impl From<CoreTurnItem> for ThreadItem {
+@@ -874,6 +887,25 @@ impl From<CoreTurnItem> for ThreadItem {
                  client_id: user.client_id,
                  content: user.content.into_iter().map(UserInput::from).collect(),
              },
@@ -90,10 +90,10 @@ index 06f1bc7..da959a7 100644
                  id: hook_prompt.id,
                  fragments: hook_prompt
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/tests.rs b/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
-index c8ce3cc..1a01c20 100644
+index e6558ba..07384ea 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
-@@ -5339,3 +5339,50 @@ fn tool_request_user_input_params_default_legacy_missing_is_blocking_to_true() {
+@@ -5362,3 +5362,50 @@ fn tool_request_user_input_params_default_legacy_missing_is_blocking_to_true() {
          }
      );
  }
@@ -159,10 +159,10 @@ index dac106c..b6bec85 100644
          | ThreadItem::Plan { .. }
          | ThreadItem::Reasoning { .. }
 diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
-index dfe89d7..f4cd7cd 100644
+index 2225bde..16ed519 100644
 --- a/codex-rs/core/src/session/mod.rs
 +++ b/codex-rs/core/src/session/mod.rs
-@@ -4100,9 +4100,24 @@ impl Session {
+@@ -4155,9 +4155,24 @@ impl Session {
          &self,
          turn_context: &TurnContext,
          model_info: &ModelInfo,
@@ -188,9 +188,9 @@ index dfe89d7..f4cd7cd 100644
          let (items, _) = self
              .prepare_conversation_items_for_history(
                  turn_context,
-@@ -4125,6 +4140,8 @@ impl Session {
-         ])
+@@ -4208,6 +4223,8 @@ impl Session {
          .await;
+         drop(boundary);
          self.send_raw_response_items(turn_context, items).await;
 +        self.emit_turn_item_completed(turn_context, display_item)
 +            .await;
@@ -198,10 +198,10 @@ index dfe89d7..f4cd7cd 100644
  
      async fn maybe_warn_on_server_model_mismatch(
 diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
-index bbf3762..b0de75f 100644
+index d10175c..eefa9f8 100644
 --- a/codex-rs/core/src/session/tests.rs
 +++ b/codex-rs/core/src/session/tests.rs
-@@ -2696,6 +2696,22 @@ async fn record_inter_agent_communication_sets_turn_id_in_rollout_and_resume() {
+@@ -2833,6 +2833,22 @@ async fn record_inter_agent_communication_sets_turn_id_in_rollout_and_resume() {
      else {
          panic!("expected resumed rollout history");
      };
@@ -225,7 +225,7 @@ index bbf3762..b0de75f 100644
          .history
          .iter()
 diff --git a/codex-rs/protocol/src/items.rs b/codex-rs/protocol/src/items.rs
-index ccdf2f2..8bfedfd 100644
+index 0ba1330..94b26d3 100644
 --- a/codex-rs/protocol/src/items.rs
 +++ b/codex-rs/protocol/src/items.rs
 @@ -47,6 +47,7 @@ pub enum TurnItem {
@@ -249,7 +249,7 @@ index ccdf2f2..8bfedfd 100644
  #[derive(Debug, Clone, Deserialize, Serialize, TS, JsonSchema, PartialEq, Eq)]
  pub struct HookPromptItem {
      pub id: String,
-@@ -743,6 +750,7 @@ impl TurnItem {
+@@ -748,6 +755,7 @@ impl TurnItem {
              TurnItem::UserMessage(item) => item.id.clone(),
              TurnItem::FunctionCallOutput(item) => item.id.clone(),
              TurnItem::HookPrompt(item) => item.id.clone(),

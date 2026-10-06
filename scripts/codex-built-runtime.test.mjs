@@ -15,9 +15,9 @@ async function fixture(t, change = {}) {
   const expected = {
     metadata: {
       repository: "https://github.com/openai/codex",
-      ref: "rust-v0.157.1",
-      commit: "36650394c5b38c2990ccf2a3457165ca3e9d9726",
-      version: "0.157.1",
+      ref: "rust-v0.160.1",
+      commit: "d27764b82f7118f674371e6d6e76271d9d606edb",
+      version: "0.160.1",
     },
     sourceManifestSha256: "source",
     patchesSha256: "patches",
@@ -43,7 +43,7 @@ async function fixture(t, change = {}) {
   const calls = [];
   const run = async (binary, args, options) => {
     calls.push({ binary, args, options });
-    if (args[0] === "--version") return { stdout: "codex-cli 0.157.1\n" };
+    if (args[0] === "--version") return { stdout: "codex-cli 0.160.1\n" };
     const out = args.at(-1);
     await mkdir(path.join(out, "v2"), { recursive: true });
     await writeFile(
