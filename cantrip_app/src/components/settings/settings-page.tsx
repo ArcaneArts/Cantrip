@@ -1,4 +1,5 @@
 import { ComputerUseEffectsSettings } from "./computer-use-effects-settings";
+import { LabelingSettings } from "./labeling-settings";
 import { Monitor } from "lucide-react";
 import { TabDisplaySettings } from "./tab-display-settings";
 import type {
@@ -202,6 +203,13 @@ export const settingsNavigationSections: readonly SettingsNavigationSection<Sett
       description: "Permissions and behavior",
       icon: SlidersHorizontal,
       searchItems: [
+        {
+          id: "automatic-titles",
+          label: "Automatic titles",
+          description:
+            "Labeling model and automatic task, chat, and agent names.",
+          keywords: ["random generated first request short thinking effort"],
+        },
         {
           id: "workspace-layout-profile",
           label: "Project workspace profile",
@@ -1678,7 +1686,7 @@ export function SettingsPage({
     !generalSearch ||
     matchesSearch(
       generalSearch,
-      "agent chat names random generated title new agent",
+      "agent chat names random generated title new agent labeling model automatic task names thinking effort",
     );
   const computerUseMatches =
     !generalSearch ||
@@ -2137,6 +2145,14 @@ export function SettingsPage({
                         Use random names
                       </label>
                     </div>
+                    {settings.data ? (
+                      <LabelingSettings
+                        settings={settings.data.preferences}
+                        models={models}
+                        pending={preferences.isPending}
+                        update={(input) => preferences.mutate(input)}
+                      />
+                    ) : null}
                   </section>
                 ) : null}
 

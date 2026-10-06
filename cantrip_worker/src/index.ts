@@ -1,4 +1,5 @@
 import { BrowserSurfaceWebRuntime } from "./browser/surface-web-runtime.js";
+import { generatePrivateLabel } from "./automatic-labeling.js";
 import { createNativeHistoryOutputModeResolver } from "./native-history-output-mode.js";
 import { managedNativePathsMatch } from "./codex/managed-native-policy.js";
 import { completeManagedRuntimeHandoff } from "./codex/managed-runtime-handoff-completion.js";
@@ -3492,6 +3493,21 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       return runtimeProvider;
     };
     switch (command.type) {
+      case "label.generate":
+        return generatePrivateLabel(
+          command,
+          workerEncryption,
+          (instructions, input) =>
+            runtimeFor({
+              model: command.model,
+              provider: provider(),
+            }).runLabelInference({
+              model: command.model,
+              provider: provider(),
+              instructions,
+              input,
+            }),
+        );
       case "worker-link.identity.resolve":
         return workerLinkIdentityResolveResultSchema.parse({
           serverId: workerEncryption.serverIdentity(),

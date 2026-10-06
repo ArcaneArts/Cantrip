@@ -1096,6 +1096,12 @@ export const userSettings = pgTable(
       .notNull()
       .default(true),
     randomAgentNames: boolean("random_agent_names").notNull().default(false),
+    autoNameTasks: boolean("auto_name_tasks").notNull().default(true),
+    autoNameChats: boolean("auto_name_chats").notNull().default(true),
+    labelingModelId: text("labeling_model_id").references(
+      () => modelProfiles.id,
+      { onDelete: "set null" },
+    ),
     desktopFrameRate: integer("desktop_frame_rate").notNull().default(30),
     desktopStreamQuality: text("desktop_stream_quality")
       .notNull()
@@ -3229,6 +3235,8 @@ export const chats = pgTable(
       .$type<PrivateDisplayLabelOpaque>()
       .notNull(),
     experience: text("experience").notNull().default("agent"),
+    autoTitlePending: boolean("auto_title_pending").notNull().default(false),
+    autoTitleClaim: text("auto_title_claim"),
     position: integer("position").notNull().default(0),
     status: text("status").notNull().default("idle"),
     activeWorkerId: text("active_worker_id").references(() => workers.id, {

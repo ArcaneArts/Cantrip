@@ -5493,6 +5493,7 @@ export async function createChat(
   paneId?: string,
   target?: ExecutionTarget,
   githubAgentContext?: GithubAgentWorkflowContext,
+  autoTitle = false,
 ) {
   const id = crypto.randomUUID();
   return chatTitleEncryption.open(
@@ -5500,6 +5501,7 @@ export async function createChat(
       await post(`/api/projects/${encodeURIComponent(projectId)}/chats`, {
         id,
         titleProtection: await chatTitleEncryption.protect(id, title),
+        autoTitle,
         ...(worktreeId ? { worktreeId } : {}),
         ...(worktreeMode ? { worktreeMode } : {}),
         ...(paneId ? { paneId } : {}),
@@ -5510,7 +5512,10 @@ export async function createChat(
   );
 }
 
-export async function createStandaloneChat(title = "New chat") {
+export async function createStandaloneChat(
+  title?: string,
+  autoTitle = title === undefined,
+) {
   const id = crypto.randomUUID();
   return chatTitleEncryption.openStandalone(
     standaloneChatWireSummarySchema.parse(
@@ -5518,7 +5523,11 @@ export async function createStandaloneChat(title = "New chat") {
         "/api/chats",
         encryptedStandaloneChatCreateSchema.parse({
           id,
-          titleProtection: await chatTitleEncryption.protect(id, title),
+          titleProtection: await chatTitleEncryption.protect(
+            id,
+            title ?? "New chat",
+          ),
+          autoTitle,
         }),
       ),
     ),
@@ -5527,7 +5536,7 @@ export async function createStandaloneChat(title = "New chat") {
 
 export async function createTask(
   projectId: string,
-  title: string,
+  title: string | undefined,
   worktreeId?: string,
   worktreeMode?: "agent-managed" | "pinned",
   paneId?: string,
@@ -5540,7 +5549,11 @@ export async function createTask(
       chatId,
       planGoalEnabled: false,
       task,
-      titleProtection: await chatTitleEncryption.protect(chatId, title),
+      titleProtection: await chatTitleEncryption.protect(
+        chatId,
+        title ?? "New task",
+      ),
+      autoTitle: title === undefined,
       ...(worktreeId ? { worktreeId } : {}),
       ...(worktreeMode ? { worktreeMode } : {}),
       ...(paneId ? { paneId } : {}),

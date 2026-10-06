@@ -33,6 +33,7 @@ const protocolChecks = {
     '"thread/managedHistory/export"',
     '"thread/managedHistory/import"',
     '"model/managedCatalog/update"',
+    '"cantrip/inference"',
     '"thread/attachment/add"',
     '"account/gatewayOAuth/read"',
     '"rollout/compress"',

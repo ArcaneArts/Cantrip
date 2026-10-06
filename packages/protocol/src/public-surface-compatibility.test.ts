@@ -248,6 +248,17 @@ const accountCreditsExports = [
   "shouldUseChatGptCredits",
 ];
 
+const labelingExports = [
+  "generateLabelCommandSchema",
+  "generateLabelResultSchema",
+  "labelKindSchema",
+  "labelWordLimit",
+  "labelingInputSchema",
+  "labelingInstructions",
+  "lowestLabelingEffort",
+  "normalizeGeneratedLabel",
+];
+
 const browserCursorExports = [
   "browserAgentCursorSchema",
   "cantripMcpWebSessionPointerInputSchema",
@@ -279,10 +290,14 @@ describe("protocol public surface compatibility", () => {
         !cuaRuntimeExports.includes(name) &&
         !managedRuntimeExports.includes(name) &&
         !accountCreditsExports.includes(name) &&
-        !browserCursorExports.includes(name),
+        !browserCursorExports.includes(name) &&
+        !labelingExports.includes(name),
     );
 
-    expect(exportNames).toHaveLength(2_127);
+    expect(exportNames).toHaveLength(2_135);
+    expect(
+      exportNames.filter((name) => labelingExports.includes(name)),
+    ).toEqual(labelingExports);
     expect(
       exportNames.filter((name) => accountCreditsExports.includes(name)),
     ).toEqual(accountCreditsExports);
@@ -310,14 +325,18 @@ describe("protocol public surface compatibility", () => {
       (option) => option.shape.type.value,
     );
 
-    expect(commandTypes).toHaveLength(292);
+    expect(commandTypes).toHaveLength(293);
+    expect(
+      commandTypes.filter((type) => type === "label.generate"),
+    ).toHaveLength(1);
     expect(
       commandTypes
         .filter((type) => managedWorkerCommands.includes(type))
         .sort(),
     ).toEqual(managedWorkerCommands);
     const baselineCommands = commandTypes.filter(
-      (type) => !managedWorkerCommands.includes(type),
+      (type) =>
+        !managedWorkerCommands.includes(type) && type !== "label.generate",
     );
     expect(baselineCommands).toHaveLength(278);
     expect(baselineCommands[0]).toBe("computer-use.operation");
