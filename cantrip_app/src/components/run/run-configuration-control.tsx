@@ -328,7 +328,7 @@ export function RunConfigurationControl({
         configurationId: item.id,
         targetWorktreeId: target.worktree.isPrimary ? null : target.worktree.id,
       }),
-    onSuccess: async (result) => {
+    onSuccess: async (result, { operation }) => {
       if (result.runtime) {
         queryClient.setQueryData<RunConfigurationRuntime[]>(
           ["run-configuration-runtimes", projectId],
@@ -338,9 +338,9 @@ export function RunConfigurationControl({
           ],
         );
       }
-      await refresh();
-      if (result.runtime?.terminalId)
+      if (operation !== "stop" && result.runtime?.terminalId)
         onFocusTerminal(result.runtime.terminalId);
+      await refresh();
     },
   });
   const remove = useMutation({
