@@ -1,5 +1,5 @@
 import * as ContextMenu from "@radix-ui/react-context-menu";
-import { LayoutDashboard, Plus, X } from "lucide-react";
+import { Archive, LayoutDashboard, Plus, X } from "lucide-react";
 
 import { performMobileNavigationHaptic } from "@/components/mobile/mobile-navigation-haptics";
 import { ProjectSurfaceIcon } from "@/components/workspace/project-surface-icon";
@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 
 export function MobileBottomNavigation({
   activeTabKey,
+  onArchive,
   onClose,
   onOpenPicker,
   onOverview,
@@ -20,6 +21,7 @@ export function MobileBottomNavigation({
   surfaces,
 }: {
   activeTabKey: string | null;
+  onArchive(surface: ProjectSurface): void;
   onClose(surface: ProjectSurface): void;
   onOpenPicker(): void;
   onOverview(): void;
@@ -105,8 +107,22 @@ export function MobileBottomNavigation({
                 </ContextMenu.Trigger>
                 <ContextMenu.Portal>
                   <StyledContextMenuContent className="min-w-40">
-                    <StyledContextMenuItem onSelect={() => onClose(surface)}>
-                      <X className="size-4" /> Close View
+                    <StyledContextMenuItem
+                      onSelect={() =>
+                        surface.kind === "chat"
+                          ? onArchive(surface)
+                          : onClose(surface)
+                      }
+                    >
+                      {surface.kind === "chat" ? (
+                        <>
+                          <Archive className="size-4" /> Archive Resource
+                        </>
+                      ) : (
+                        <>
+                          <X className="size-4" /> Close View
+                        </>
+                      )}
                     </StyledContextMenuItem>
                   </StyledContextMenuContent>
                 </ContextMenu.Portal>

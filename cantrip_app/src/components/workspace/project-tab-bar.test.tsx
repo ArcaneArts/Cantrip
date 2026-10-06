@@ -574,6 +574,54 @@ describe("project pane tab strip", () => {
     expect(markup).not.toContain("Close file tab?");
   });
 
+  it("archives agent tabs on middle click and hides both Close View menu entries", async () => {
+    const onClose = vi.fn();
+    const onDelete = vi.fn();
+    const onSelect = vi.fn();
+    const surface = chatSurface();
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        <DndContext>
+          <ProjectPaneTabStrip
+            activeTabKey={surface.tabKey}
+            onClose={onClose}
+            onCreate={vi.fn()}
+            onDelete={onDelete}
+            onRename={vi.fn()}
+            onSelect={onSelect}
+            surfaces={[surface]}
+          />
+        </DndContext>,
+      );
+    });
+
+    const buttons = renderer.root.findAllByType("button");
+    expect(
+      buttons.filter((button) => textContent(button).trim() === "Close View"),
+    ).toHaveLength(0);
+    expect(
+      buttons.filter(
+        (button) => textContent(button).trim() === "Archive Resource",
+      ),
+    ).toHaveLength(2);
+    const frame = renderer.root.findByProps({
+      "data-project-tab-key": surface.tabKey,
+    });
+    const event = {
+      button: 1,
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    };
+    await act(async () => frame.props.onAuxClick(event));
+    expect(event.preventDefault).toHaveBeenCalledOnce();
+    expect(event.stopPropagation).toHaveBeenCalledOnce();
+    expect(onDelete).toHaveBeenCalledExactlyOnceWith(surface);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onSelect).not.toHaveBeenCalled();
+    await act(async () => renderer.unmount());
+  });
+
   it("routes middle-click and menu close through view lifecycle only", async () => {
     const onClose = vi.fn();
     const onDelete = vi.fn();

@@ -192,6 +192,7 @@ export function ProjectPaneTabStrip({
     if (title && title !== surface.title) onRename(surface, title);
   };
   const closeImmediately = (surface: ProjectSurface) => {
+    if (surface.kind === "chat") return;
     if (surface.tabKey === activeTabKey) {
       const nextTabKey = nextProjectTabAfterRemoval(surfaces, surface.tabKey);
       if (nextTabKey) onSelect(nextTabKey);
@@ -270,7 +271,9 @@ export function ProjectPaneTabStrip({
                             }}
                             onAuxClick={(event) =>
                               closeTabOnMiddleClick(event, () =>
-                                closeImmediately(surface),
+                                surface.kind === "chat"
+                                  ? onDelete(surface)
+                                  : closeImmediately(surface),
                               )
                             }
                             onMouseDown={preventMiddleMouseDefault}
@@ -311,7 +314,11 @@ export function ProjectPaneTabStrip({
                               <SurfaceActionsMenu
                                 deleteLabel={surfaceDeleteLabel(surface)}
                                 title={surface.title}
-                                onClose={() => closeImmediately(surface)}
+                                onClose={
+                                  surface.kind === "chat"
+                                    ? undefined
+                                    : () => closeImmediately(surface)
+                                }
                                 onDelete={
                                   canDelete
                                     ? () => setDeleteTarget(surface)
@@ -377,11 +384,13 @@ export function ProjectPaneTabStrip({
                                     </StyledContextMenuItem>
                                   ))
                               : null}
-                            <StyledContextMenuItem
-                              onSelect={() => closeImmediately(surface)}
-                            >
-                              <X className="size-4" /> Close View
-                            </StyledContextMenuItem>
+                            {surface.kind !== "chat" ? (
+                              <StyledContextMenuItem
+                                onSelect={() => closeImmediately(surface)}
+                              >
+                                <X className="size-4" /> Close View
+                              </StyledContextMenuItem>
+                            ) : null}
                             {canDelete ? (
                               <ContextMenu.Separator className="my-1 h-px bg-border" />
                             ) : null}
