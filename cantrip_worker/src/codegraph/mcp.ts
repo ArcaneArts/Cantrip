@@ -7,10 +7,9 @@ import { mergeManagedMcpServers } from "../mcp/managed.js";
 
 export const CODEGRAPH_MANAGED_ENVIRONMENT = Object.freeze({
   CODEGRAPH_DIR: ".codegraph-cantrip",
-  // Use the same direct MCP mode that runtime installation verifies. The
-  // shared daemon can fail to attach to canonical Windows worktree paths,
-  // leaving Codex with zero tools until Cantrip's readiness deadline expires.
-  CODEGRAPH_NO_DAEMON: "1",
+  // Direct mode permits only one live writer per indexed project. Chats must
+  // share the project daemon, including when an inherited environment opts out.
+  CODEGRAPH_NO_DAEMON: "0",
   CODEGRAPH_NO_UPDATE_CHECK: "1",
   CODEGRAPH_TELEMETRY: "0",
   DO_NOT_TRACK: "1",
