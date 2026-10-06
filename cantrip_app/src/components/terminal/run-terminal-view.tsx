@@ -252,6 +252,7 @@ export function RunTerminalView({
     return (
       <div
         className="grid min-h-0 flex-1 place-items-center overflow-auto p-6"
+        data-slot="run-terminal-view"
         data-run-terminal-output-state="empty"
       >
         <div className="flex w-full max-w-md flex-col items-center gap-4 text-center">
@@ -321,7 +322,10 @@ export function RunTerminalView({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-background">
+    <div
+      className="flex min-h-0 flex-1 flex-col bg-background"
+      data-slot="run-terminal-view"
+    >
       <div className="flex min-h-11 shrink-0 items-center gap-3 border-b px-3">
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium">{terminal.title}</div>

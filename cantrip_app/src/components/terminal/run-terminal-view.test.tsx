@@ -121,6 +121,17 @@ function renderedButton(markup: string, label: string): string {
 }
 
 describe("Run terminal surface", () => {
+  it("marks running, retained, loading, and empty surfaces for Pro Mode transparency", () => {
+    for (const markup of [
+      renderView("running", true),
+      renderView("exited", true),
+      renderView("exited", true, {}, null),
+      renderView("exited", true, {}, ""),
+    ]) {
+      expect(markup).toContain('data-slot="run-terminal-view"');
+    }
+  });
+
   it("exposes a read-only output host with no input element or editable path", () => {
     const markup = renderToStaticMarkup(
       <RunTerminalOutput output="ready\r\n" />,
