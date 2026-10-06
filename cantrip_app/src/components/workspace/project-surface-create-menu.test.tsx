@@ -119,6 +119,7 @@ describe("project surface creation menu", () => {
   it("defines every project surface once in display order", () => {
     expect(projectSurfaceCreateDefinitions).toEqual([
       { kind: "chat", label: "Agent" },
+      { kind: "tasks", label: "Tasks" },
       { kind: "terminal", label: "Terminal" },
       { kind: "explorer", label: "Explorer" },
       { kind: "code", label: "Code" },
@@ -132,11 +133,14 @@ describe("project surface creation menu", () => {
     ]);
   });
 
-  it("uses the checklist icon for Task creation", () => {
-    const markup = renderToStaticMarkup(<ProjectSurfaceIcon kind="task" />);
+  it.each(["task", "tasks"] as const)(
+    "uses the checklist icon for %s",
+    (kind) => {
+      const markup = renderToStaticMarkup(<ProjectSurfaceIcon kind={kind} />);
 
-    expect(markup).toContain("lucide-list-todo");
-  });
+      expect(markup).toContain("lucide-list-todo");
+    },
+  );
 
   it("marks only actively creating surface kinds as disabled", () => {
     const options = projectSurfaceCreateOptions(
@@ -220,6 +224,7 @@ describe("project surface creation menu", () => {
     expect(surfaceSupportsExplicitPlacement("remote-desktop")).toBe(true);
     expect(surfaceSupportsExplicitPlacement("history")).toBe(false);
     expect(surfaceSupportsExplicitPlacement("actions")).toBe(false);
+    expect(surfaceSupportsExplicitPlacement("tasks")).toBe(false);
   });
 
   it("preserves the caller-provided trigger", () => {

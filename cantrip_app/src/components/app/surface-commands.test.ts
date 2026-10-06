@@ -27,6 +27,7 @@ function operations() {
     explorer: creationMutation(),
     projectView: creationMutation(),
     remoteDesktop: creationMutation(),
+    tasks: creationMutation(),
     terminal: creationMutation(),
   } as unknown as SurfaceCreationOperations;
   const crud = {
@@ -129,6 +130,31 @@ describe("surface command controller", () => {
       2,
       { kind: "prs", projectId: "project-1", targetRegion: "bottom" },
     );
+  });
+
+  it("opens Tasks in the requested pane or dock without creating a task", () => {
+    const operationSet = operations();
+    const controller = createSurfaceCommandController(operationSet);
+
+    controller.createProjectSurface("project-1", "tasks", "right-pane");
+    controller.createProjectSurface(
+      "project-1",
+      "tasks",
+      undefined,
+      undefined,
+      "bottom",
+    );
+
+    expect(operationSet.creation.tasks.mutate).toHaveBeenNthCalledWith(1, {
+      projectId: "project-1",
+      paneId: "right-pane",
+    });
+    expect(operationSet.creation.tasks.mutate).toHaveBeenNthCalledWith(2, {
+      projectId: "project-1",
+      targetRegion: "bottom",
+    });
+    expect(operationSet.creation.chat.mutate).not.toHaveBeenCalled();
+    expect(operationSet.creation.projectView.mutate).not.toHaveBeenCalled();
   });
 
   it("keeps Close View separate from deleting an Explorer resource", () => {

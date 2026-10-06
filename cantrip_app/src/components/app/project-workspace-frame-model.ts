@@ -97,6 +97,7 @@ export const definitionIdByCreateKind = {
   actions: "project.github-actions",
   "remote-desktop": "project.remote-desktop",
   terminal: "project.terminal",
+  tasks: "project.tasks",
 } as const satisfies Record<ProjectSurfaceCreateKind, string>;
 
 export function projectWorkspaceGridModel({
