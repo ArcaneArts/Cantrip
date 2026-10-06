@@ -240,7 +240,9 @@ export function decideWorkspaceDrop(
           tabKey: drag.tabKey,
           targetPaneId: targetPane?.id ?? null,
           targetMemberPosition: requestedPosition,
-          ...(targetPane ? {} : { targetRegion: drop.region }),
+          ...(targetPane
+            ? {}
+            : { targetRegion: drop.region, targetPanePosition: 0 }),
         },
       },
     };
