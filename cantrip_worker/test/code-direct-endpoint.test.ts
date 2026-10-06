@@ -958,9 +958,27 @@ describe("CodeDirectEndpointManager", () => {
       publicSessionUrl(sessions[1]!).toString(),
     );
     expect(surviving).toBe("editor-ready");
-    const unknown = await fetch(
-      `http://${target.host}:${target.port}/sessions/${randomBytes(32).toString("base64url")}/code/`,
-    );
+    const rejectedRecords: Array<{ context?: unknown }> = [];
+    closers.push(subscribeWorkerLogs((record) => rejectedRecords.push(record)));
+    const unknownGrant = randomBytes(32).toString("base64url");
+    const unknownUrl = `http://${target.host}:${target.port}/sessions/${unknownGrant}/code/`;
+    const unknown = await fetch(unknownUrl);
     expect(unknown.status).toBe(404);
+    expect(await unknown.text()).toBe("Not found");
+    await fetch(unknownUrl);
+    const rejectedRoutes = rejectedRecords.filter(
+      (record) =>
+        (record.context as { event?: unknown })?.event ===
+        "code.direct.http-route-rejected",
+    );
+    expect(rejectedRoutes).toHaveLength(1);
+    expect(rejectedRoutes[0]?.context).toMatchObject({
+      method: "GET",
+      reasonCode: "unknown-route",
+      status: "rejected",
+      tunnelId: transportId,
+    });
+    expect(JSON.stringify(rejectedRoutes)).not.toContain(unknownGrant);
+    expect(JSON.stringify(rejectedRoutes)).not.toContain(sessions[1]!.grant);
   });
 });

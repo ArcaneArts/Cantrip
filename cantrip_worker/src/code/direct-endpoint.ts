@@ -788,7 +788,7 @@ export class CodeDirectEndpointManager {
       CodeEndpointContext
     >();
     endpoint.server.on("request", (request, response) => {
-      const requestContext = this.#requestContext(endpoint, request);
+      const requestContext = this.#requestContext(endpoint, request, true);
       if (!requestContext) {
         response
           .writeHead(404, { "cache-control": "no-store" })
@@ -1059,11 +1059,35 @@ export class CodeDirectEndpointManager {
   #requestContext(
     endpoint: Endpoint,
     request: IncomingMessage,
+    reportHttpRejection = false,
   ): CodeEndpointContext | null {
     const connection = this.#connectionContext(endpoint, request);
+    const reject = (reasonCode: string, route?: SharedSessionRoute): null => {
+      if (reportHttpRejection) {
+        workerLogger.rateLimited(
+          `code-direct:http:${connection.diagnosticTraceId ?? "untraced"}:${endpoint.tunnelId}:${route?.attachmentId ?? "unknown"}:${reasonCode}`,
+          "warn",
+          "Cantrip Code HTTP route rejected",
+          {
+            ...connection,
+            ...(route
+              ? { attachmentId: route.attachmentId, sessionId: route.sessionId }
+              : {}),
+            event: "code.direct.http-route-rejected",
+            subsystem: "code",
+            operation: "route-http",
+            reasonCode,
+            status: "rejected",
+            tunnelId: endpoint.tunnelId,
+            method: request.method ?? "GET",
+          },
+        );
+      }
+      return null;
+    };
     if (endpoint.kind === "legacy") {
       if (!endpoint.sessionId || !this.#validPath(request.url, BASE_PATH)) {
-        return null;
+        return reject("invalid-route-path");
       }
       return {
         basePath: BASE_PATH,
@@ -1073,9 +1097,10 @@ export class CodeDirectEndpointManager {
       };
     }
     const selection = parseCodeSessionRoutePath(request.url ?? "/");
-    if (!selection) return null;
+    if (!selection) return reject("invalid-route-path");
     const route = endpoint.routesByGrant.get(selection.routeGrant);
-    if (!route || selection.basePath !== route.basePath) return null;
+    if (!route || selection.basePath !== route.basePath)
+      return reject("unknown-route");
     const routeConnections = route.sockets.size + route.activeRequests.size;
     const transportConnections = [
       ...endpoint.routesByAttachmentId.values(),
@@ -1088,24 +1113,25 @@ export class CodeDirectEndpointManager {
       routeConnections >= MAX_SHARED_CONNECTIONS_PER_ROUTE ||
       transportConnections >= MAX_SHARED_CONNECTIONS_PER_TRANSPORT
     ) {
-      return null;
+      return reject("route-connection-limit", route);
     }
     if (route.expiresAtMs <= this.#now()) {
       this.#expireSharedRoute(endpoint, route);
-      return null;
+      return reject("route-expired", route);
     }
     let runtime;
     try {
       runtime = this.supervisor.status(route.sessionId);
     } catch {
       this.#retireStaleSharedRoute(endpoint, route);
-      return null;
+      return reject("session-unavailable", route);
     }
     if (runtime.sessionIncarnationId !== route.sessionIncarnationId) {
       this.#retireStaleSharedRoute(endpoint, route);
-      return null;
+      return reject("session-incarnation-changed", route);
     }
-    if (runtime.status !== "running") return null;
+    if (runtime.status !== "running")
+      return reject("session-not-running", route);
     return {
       ...connection,
       attachmentId: route.attachmentId,
