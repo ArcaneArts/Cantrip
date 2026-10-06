@@ -270,6 +270,100 @@ async function fixture() {
 }
 
 describe.skipIf(!binary)("pinned native empty-thread remote attach", () => {
+  it("retries failed startup with the same runner without stealing a live thread's runner", async () => {
+    const f = await fixture();
+    try {
+      const creator = await f.connect();
+      const peer = await f.connect();
+      const managedConfig = {
+        executionGate: { runnerGeneration: "startup-retry-runner" },
+        mcpServers: {
+          healthy_startup: {
+            command: process.execPath,
+            args: [f.mcp, f.mcpLog],
+            required: true,
+            env: {
+              CANTRIP_TEST_GENERATION: "recovered",
+              CANTRIP_TEST_TOOL_NAME: "observe_only",
+              CANTRIP_TEST_CREDENTIAL: "fixture-credential-recovered",
+            },
+          },
+        },
+        developerInstructions: null,
+        multiAgentEnabled: true,
+        subagentModel: null,
+        subagentReasoningEffort: null,
+      };
+      // Fail inside native Session initialization, after it has selected an ID.
+      // Parsing rejection would never exercise the provisional runner binding.
+      const failed = await creator.raw("thread/start", {
+        cwd: f.workspace,
+        managedConfig: {
+          ...managedConfig,
+          mcpServers: {
+            failed_startup: {
+              command: process.execPath,
+              args: ["-e", "process.exit(17)"],
+              required: true,
+              startup_timeout_sec: 1,
+            },
+          },
+        },
+      });
+      expect(failed.error?.message).toContain("failed_startup");
+      expect(failed.error?.message).not.toContain(
+        "managed runner belongs to another thread",
+      );
+      expect(failed.result).toBeUndefined();
+      expect(await creator.request("thread/loaded/list", {})).toMatchObject({
+        data: [],
+      });
+
+      const recovered = await creator.request("thread/start", {
+        cwd: f.workspace,
+        managedConfig,
+      });
+      expect(recovered.thread.id).toEqual(expect.any(String));
+      expect(await readFile(f.mcpLog, "utf8")).toContain(
+        '"method":"initialize","generation":"recovered"',
+      );
+      expect(await creator.request("thread/loaded/list", {})).toMatchObject({
+        data: [recovered.thread.id],
+      });
+      // A successful binding must remain exclusive on the same connection.
+      const stolen = await creator.raw("thread/start", {
+        cwd: f.workspace,
+        managedConfig,
+      });
+      expect(stolen.error?.message).toContain(
+        "managed runner belongs to another thread",
+      );
+      expect(stolen.result).toBeUndefined();
+      // Connection ownership is also still enforced after startup recovery.
+      const foreign = await peer.raw("thread/start", {
+        cwd: f.workspace,
+        managedConfig,
+      });
+      expect(foreign.error?.message).toContain(
+        "managed runner belongs to another connection",
+      );
+      expect(foreign.result).toBeUndefined();
+      const resumed = await creator.request("thread/resume", {
+        threadId: recovered.thread.id,
+        managedConfig,
+      });
+      expect(resumed.thread.id).toBe(recovered.thread.id);
+      expect(f.providerRequests).toEqual([]);
+      expect(
+        f.clients
+          .flatMap((client) => client.messages)
+          .filter((message) => message.method === "turn/started"),
+      ).toEqual([]);
+    } finally {
+      await f.cleanup();
+    }
+  }, 45_000);
+
   it("applies managed configuration to the bound engine while peers and sibling sessions stay intact", async () => {
     const f = await fixture();
     try {
