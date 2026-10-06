@@ -140,6 +140,7 @@ export function createSurfaceCommandController({
     }
   };
   const closeSurfaceView = (surface: ProjectSurface) => {
+    if (surface.kind === "chat") return;
     views.close.mutate(surface);
   };
   const deleteSurfaceResource = (surface: ProjectSurface) => {

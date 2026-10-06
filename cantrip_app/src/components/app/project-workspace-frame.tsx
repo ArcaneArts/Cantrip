@@ -188,7 +188,11 @@ function SortableDockRailTab({
       data-dock-rail-tab={surface.tabKey}
       data-dock-rail-tab-position={memberPosition}
       onAuxClick={(event) => {
-        if (!disabled) closeTabOnMiddleClick(event, onClose);
+        if (!disabled)
+          closeTabOnMiddleClick(
+            event,
+            surface.kind === "chat" ? onDelete : onClose,
+          );
       }}
       onMouseDown={preventMiddleMouseDefault}
       ref={sortable.setNodeRef}
@@ -267,9 +271,11 @@ function SortableDockRailTab({
                       </StyledContextMenuItem>
                     ))
                 : null}
-              <StyledContextMenuItem onSelect={onClose}>
-                <X className="size-4" /> Close View
-              </StyledContextMenuItem>
+              {surface.kind !== "chat" ? (
+                <StyledContextMenuItem onSelect={onClose}>
+                  <X className="size-4" /> Close View
+                </StyledContextMenuItem>
+              ) : null}
               {canDelete ? (
                 <ContextMenu.Separator className="my-1 h-px bg-border" />
               ) : null}

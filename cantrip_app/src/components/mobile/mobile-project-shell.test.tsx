@@ -111,6 +111,7 @@ describe("mobile project navigation", () => {
     const markup = renderToStaticMarkup(
       <MobileBottomNavigation
         activeTabKey="terminal:one"
+        onArchive={vi.fn()}
         onClose={vi.fn()}
         onOpenPicker={vi.fn()}
         onOverview={vi.fn()}
@@ -136,6 +137,7 @@ describe("mobile project navigation", () => {
     const markup = renderToStaticMarkup(
       <MobileBottomNavigation
         activeTabKey="terminal:one"
+        onArchive={vi.fn()}
         onClose={vi.fn()}
         onOpenPicker={vi.fn()}
         onOverview={vi.fn()}
@@ -155,6 +157,7 @@ describe("mobile project navigation", () => {
     const markup = renderToStaticMarkup(
       <MobileBottomNavigation
         activeTabKey={null}
+        onArchive={vi.fn()}
         onClose={vi.fn()}
         onOpenPicker={vi.fn()}
         onOverview={vi.fn()}
@@ -172,7 +175,8 @@ describe("mobile project navigation", () => {
     expect(markup.match(/min-w-\[4\.5rem\]/g)).toHaveLength(6);
   });
 
-  it("keeps tap selection and routes mobile actions through surface close", async () => {
+  it("keeps tap selection, archives agents, and closes other views", async () => {
+    const onArchive = vi.fn();
     const onClose = vi.fn();
     const onOpenPicker = vi.fn();
     const onSelect = vi.fn();
@@ -182,6 +186,7 @@ describe("mobile project navigation", () => {
       renderer = TestRenderer.create(
         <MobileBottomNavigation
           activeTabKey="terminal:one"
+          onArchive={onArchive}
           onClose={onClose}
           onOpenPicker={onOpenPicker}
           onOverview={vi.fn()}
@@ -203,8 +208,17 @@ describe("mobile project navigation", () => {
     const contextCloseItems = renderer.root
       .findAllByProps({ "data-context-menu-item": true })
       .filter((item) => textContent(item).trim() === "Close View");
-    contextCloseItems[1]!.props.onClick();
+    expect(contextCloseItems).toHaveLength(1);
+    contextCloseItems[0]!.props.onClick();
     expect(onClose).toHaveBeenCalledWith(surfaces[1]);
+
+    const archiveItems = renderer.root
+      .findAllByProps({ "data-context-menu-item": true })
+      .filter((item) => textContent(item).trim() === "Archive Resource");
+    expect(archiveItems).toHaveLength(2);
+    archiveItems[0]!.props.onClick();
+    expect(onArchive).toHaveBeenCalledWith(surfaces[0]);
+    expect(onClose).toHaveBeenCalledTimes(1);
 
     renderer.root
       .findByProps({ "aria-label": "Choose project tab" })

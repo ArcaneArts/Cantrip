@@ -174,4 +174,19 @@ describe("surface command controller", () => {
     );
     expect(operationSet.crud.explorer.delete.mutate).not.toHaveBeenCalled();
   });
+
+  it("does not close agent views and removes them only through archive", () => {
+    const operationSet = operations();
+    const controller = createSurfaceCommandController(operationSet);
+    const agent = { kind: "chat", tabId: "agent-1" } as ProjectSurface;
+
+    controller.closeSurfaceView(agent);
+    expect(operationSet.views.close.mutate).not.toHaveBeenCalled();
+    expect(operationSet.crud.chat.delete.mutate).not.toHaveBeenCalled();
+
+    controller.deleteSurfaceResource(agent);
+    expect(operationSet.crud.chat.delete.mutate).toHaveBeenCalledWith(
+      "agent-1",
+    );
+  });
 });

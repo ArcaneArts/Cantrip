@@ -1,5 +1,5 @@
 import type { ExecutionTarget, ProjectCapabilities } from "@cantrip/protocol";
-import { LayoutDashboard, Loader2, Plus, X } from "lucide-react";
+import { Archive, LayoutDashboard, Loader2, Plus, X } from "lucide-react";
 
 import { performMobileNavigationHaptic } from "@/components/mobile/mobile-navigation-haptics";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,7 @@ export function MobileSurfacePicker({
   activeTabKey,
   capabilities,
   creatingKinds,
+  onArchiveSurface,
   onCloseSurface,
   onCreate,
   onOpenChange,
@@ -44,6 +45,7 @@ export function MobileSurfacePicker({
   activeTabKey: string | null;
   capabilities?: ProjectCapabilities;
   creatingKinds: ReadonlySet<ProjectSurfaceCreateKind>;
+  onArchiveSurface(surface: ProjectSurface): void;
   onCloseSurface(surface: ProjectSurface): void;
   onCreate(kind: ProjectSurfaceCreateKind, target?: ExecutionTarget): void;
   onOpenChange(open: boolean): void;
@@ -137,6 +139,10 @@ export function MobileSurfacePicker({
                   !overviewSelected && surface.tabKey === activeTabKey;
                 const label =
                   surface.kind === "explorer" ? "Explorer" : surface.title;
+                const removeLabel =
+                  surface.kind === "chat"
+                    ? `Archive ${label}`
+                    : `Remove ${label} from project tabs`;
                 return (
                   <div
                     className={cn(
@@ -177,15 +183,23 @@ export function MobileSurfacePicker({
                       </span>
                     </button>
                     <Button
-                      aria-label={`Remove ${label} from project tabs`}
+                      aria-label={removeLabel}
                       className="mr-2 size-10"
-                      onClick={() => onCloseSurface(surface)}
+                      onClick={() =>
+                        surface.kind === "chat"
+                          ? onArchiveSurface(surface)
+                          : onCloseSurface(surface)
+                      }
                       size="icon"
-                      title={`Remove ${label} from project tabs`}
+                      title={removeLabel}
                       type="button"
                       variant="ghost"
                     >
-                      <X className="size-4" />
+                      {surface.kind === "chat" ? (
+                        <Archive className="size-4" />
+                      ) : (
+                        <X className="size-4" />
+                      )}
                     </Button>
                   </div>
                 );
