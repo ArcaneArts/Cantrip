@@ -216,6 +216,9 @@ describe("TrajectoryDetails", () => {
     expect(markup).toContain('data-language="typescript"');
     expect(markup).toContain('class="token boolean"');
     expect(markup).toContain(">true</span>");
+    expect(markup).toContain("overflow-x-auto");
+    expect(markup).not.toContain("max-h-48");
+    expect(markup).toContain("overflow-y-auto overscroll-contain");
   });
 
   it("keeps the bounded protected envelope in Raw", () => {

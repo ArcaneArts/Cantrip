@@ -93,7 +93,13 @@ function markerClass(marker: FileChangePreviewLine["marker"]): string {
   return "text-muted-foreground";
 }
 
-function ChangePreview({ change }: { change: FileChangePreviewChange }) {
+function ChangePreview({
+  change,
+  expanded,
+}: {
+  change: FileChangePreviewChange;
+  expanded: boolean;
+}) {
   const lines = fileChangePreviewLines(change);
   const language = filePreviewLanguage(change.path);
   return (
@@ -122,7 +128,10 @@ function ChangePreview({ change }: { change: FileChangePreviewChange }) {
       {lines.length > 0 ? (
         <div
           aria-label={`Preview of changes in ${change.path}`}
-          className="grid max-h-48 grid-cols-[1.75rem_minmax(0,1fr)] overflow-auto bg-background/35"
+          className={cn(
+            "grid grid-cols-[1.75rem_minmax(0,1fr)] bg-background/35",
+            expanded ? "overflow-x-auto" : "max-h-48 overflow-auto",
+          )}
           data-language={language ?? "plain-text"}
         >
           <pre
@@ -158,9 +167,11 @@ function ChangePreview({ change }: { change: FileChangePreviewChange }) {
 export function FileChangePreview({
   changes,
   className,
+  expanded = false,
 }: {
   changes: readonly FileChangePreviewChange[];
   className?: string;
+  expanded?: boolean;
 }) {
   if (changes.length === 0) return null;
   return (
@@ -169,7 +180,11 @@ export function FileChangePreview({
       data-slot="file-change-preview-list"
     >
       {changes.map((change) => (
-        <ChangePreview change={change} key={`${change.kind}:${change.path}`} />
+        <ChangePreview
+          change={change}
+          expanded={expanded}
+          key={`${change.kind}:${change.path}`}
+        />
       ))}
     </div>
   );
