@@ -1,11 +1,14 @@
 import type {
+  ProjectPaneRegion,
   ProjectSummary,
   ProjectTabLayoutSummary,
 } from "@cantrip/protocol";
+import { projectSurfaceViewId } from "@cantrip/protocol";
 import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 import * as api from "@/lib/api";
 import {
+  reconcileWorkspaceSelection,
   selectedWorkspaceTabKey,
   type WorkspaceSelection,
 } from "@/lib/workspace-selection";
@@ -138,6 +141,218 @@ describe("shell navigation commands", () => {
       lastIdeProjectId: "project-next",
       lastIdeWorkspaceId: "workspace-next",
     });
+  });
+});
+
+describe("project task selection", () => {
+  const projectId = "project-1";
+  const tasksRef = { kind: "builtin", definitionId: "project.tasks" } as const;
+  const tasksTabKey = projectSurfaceViewId({ projectId, resource: tasksRef });
+
+  function taskLayout(region: ProjectPaneRegion = "center") {
+    return {
+      projectId,
+      revision: 4,
+      panes: [
+        {
+          id: "tasks-pane",
+          projectId,
+          region,
+          anchorTabKey: "chat:agent-1",
+          members: [{ tabKey: "chat:agent-1" }, { tabKey: tasksTabKey }],
+        },
+        {
+          id: "terminal-pane",
+          projectId,
+          region: "bottom",
+          anchorTabKey: "terminal:terminal-1",
+          members: [{ tabKey: "terminal:terminal-1" }],
+        },
+      ],
+    } as unknown as ProjectTabLayoutSummary;
+  }
+
+  function harness(
+    layout: ProjectTabLayoutSummary,
+    initialTabKey = tasksTabKey,
+  ) {
+    type Options = Parameters<typeof createShellProjectNavigationCommands>[0];
+    let selection: WorkspaceSelection = {
+      activeTabByPane: {
+        "tasks-pane": initialTabKey,
+        "terminal-pane": "terminal:terminal-1",
+      },
+      destination: "surface",
+      focusedPaneId: "tasks-pane",
+      projectId,
+    };
+    let taskIds: ReadonlyMap<string, string> = new Map([
+      ["other-project", "other-task"],
+    ]);
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(["project-tab-layout", projectId], layout);
+    const surfaceOpenRequestRef = { current: 0 };
+    const options = {
+      compactShell: false,
+      getActiveProjectWorkspaceId: () => "workspace-1",
+      navigation: {
+        setAppMode: vi.fn(),
+        setProjectOverviewSection: vi.fn(),
+        setProjectSettingsSection: vi.fn(),
+        setSelectedProjectId: vi.fn(),
+        setShowImporter: vi.fn(),
+        setShowProjectSettings: vi.fn(),
+        setShowServerAdmin: vi.fn(),
+        setShowSettings: vi.fn(),
+      },
+      persistAppDestination: vi.fn().mockResolvedValue(undefined),
+      queryClient,
+      setCreatedRepositoryOnboarding: vi.fn(),
+      setDesktopSidebarDrawerOpen: vi.fn(),
+      setFolderProjectDialogMode: vi.fn(),
+      setFolderProjectDialogOpen: vi.fn(),
+      setPendingSurfaceSelection: vi.fn<Options["setPendingSurfaceSelection"]>(
+        (update) => {
+          if (update === null) surfaceOpenRequestRef.current += 1;
+        },
+      ),
+      setProjectTaskChatIds: vi.fn<Options["setProjectTaskChatIds"]>(
+        (update) => {
+          taskIds = typeof update === "function" ? update(taskIds) : update;
+        },
+      ),
+      setSidebarFilePreview: vi.fn(),
+      setWorkspaceSelection: vi.fn<Options["setWorkspaceSelection"]>(
+        (update) => {
+          selection = typeof update === "function" ? update(selection) : update;
+        },
+      ),
+      surfaceOpenRequestRef,
+    } satisfies Options;
+    return {
+      commands: createShellProjectNavigationCommands(options),
+      options,
+      selection: () => selection,
+      taskIds: () => taskIds,
+    };
+  }
+
+  it.each(["center", "right", "bottom"] as const)(
+    "keeps Tasks selected in the %s pane when opening a running task",
+    (region) => {
+      const layout = taskLayout(region);
+      const { commands, options, selection, taskIds } = harness(layout);
+      const previousSelection = selection();
+      const open = vi.spyOn(api, "openProjectSurfaceView");
+
+      commands.openProjectTask(projectId, "running-task");
+
+      expect(selection()).toEqual(previousSelection);
+      expect(
+        selectedWorkspaceTabKey(
+          reconcileWorkspaceSelection(selection(), layout, null, true),
+        ),
+      ).toBe(tasksTabKey);
+      expect(taskIds().get(projectId)).toBe("running-task");
+      expect(taskIds().get("other-project")).toBe("other-task");
+      expect(options.setPendingSurfaceSelection).toHaveBeenCalledWith(null);
+      expect(open).not.toHaveBeenCalled();
+      open.mockRestore();
+    },
+  );
+
+  it("focuses an existing Tasks tab when opening a task from another tab", () => {
+    const { commands, selection } = harness(taskLayout(), "chat:agent-1");
+
+    commands.openProjectTask(projectId, "running-task");
+
+    expect(selectedWorkspaceTabKey(selection())).toBe(tasksTabKey);
+    expect(selection().activeTabByPane["terminal-pane"]).toBe(
+      "terminal:terminal-1",
+    );
+  });
+
+  it("opens and selects Tasks if its tab is closed", async () => {
+    const reopened = taskLayout();
+    const closed = {
+      ...reopened,
+      panes: reopened.panes.map((pane) => ({
+        ...pane,
+        members: pane.members.filter((member) => member.tabKey !== tasksTabKey),
+      })),
+    };
+    const { commands, selection } = harness(closed, "chat:agent-1");
+    const open = vi.spyOn(api, "openProjectSurfaceView").mockResolvedValue({
+      disposition: "opened",
+      layout: reopened,
+      paneId: "tasks-pane",
+      viewId: tasksTabKey,
+    });
+
+    commands.openProjectTask(projectId, "running-task");
+
+    await vi.waitFor(() =>
+      expect(selectedWorkspaceTabKey(selection())).toBe(tasksTabKey),
+    );
+    expect(open).toHaveBeenCalledWith(projectId, {
+      revision: closed.revision,
+      surfaceRef: tasksRef,
+    });
+    open.mockRestore();
+  });
+
+  it("does not let an older surface-open response switch away from Tasks", async () => {
+    const layout = taskLayout();
+    const { commands, selection } = harness(layout);
+    let resolveOpen!: (
+      response: Awaited<ReturnType<typeof api.openProjectSurfaceView>>,
+    ) => void;
+    const open = vi.spyOn(api, "openProjectSurfaceView").mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveOpen = resolve;
+        }),
+    );
+    const pendingOpen = commands.openOrFocusSurface(projectId, {
+      kind: "entity",
+      definitionId: "project.agent",
+      resourceId: "agent-1",
+    });
+
+    commands.openProjectTask(projectId, "running-task");
+    resolveOpen({
+      disposition: "focused",
+      layout,
+      paneId: "tasks-pane",
+      viewId: "chat:agent-1",
+    });
+    await pendingOpen;
+
+    expect(selectedWorkspaceTabKey(selection())).toBe(tasksTabKey);
+    open.mockRestore();
+  });
+
+  it("keeps the current tab if opening a closed Tasks tab fails", async () => {
+    const layout = taskLayout();
+    const closed = {
+      ...layout,
+      panes: layout.panes.map((pane) => ({
+        ...pane,
+        members: pane.members.filter((member) => member.tabKey !== tasksTabKey),
+      })),
+    };
+    const { commands, options, selection } = harness(closed, "chat:agent-1");
+    const open = vi
+      .spyOn(api, "openProjectSurfaceView")
+      .mockRejectedValue(new Error("Surface unavailable"));
+
+    commands.openProjectTask(projectId, "running-task");
+
+    await vi.waitFor(() =>
+      expect(options.setPendingSurfaceSelection).toHaveBeenLastCalledWith(null),
+    );
+    expect(selectedWorkspaceTabKey(selection())).toBe("chat:agent-1");
+    open.mockRestore();
   });
 });
 
