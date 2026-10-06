@@ -1,0 +1,217 @@
+diff --git a/codex-rs/core/src/managed_execution.rs b/codex-rs/core/src/managed_execution.rs
+index 574cc9322..112c0c9fb 100644
+--- a/codex-rs/core/src/managed_execution.rs
++++ b/codex-rs/core/src/managed_execution.rs
+@@ -40,6 +40,8 @@ struct GateState {
+     inherited: bool,
+     rearm_expected: Option<Option<String>>,
+     thread_id: Option<ThreadId>,
++    startup_bindings: usize,
++    thread_binding_committed: bool,
+     attempts: HashMap<String, Attempt>,
+ }
+ pub struct ManagedExecutionGate {
+@@ -47,6 +49,43 @@ pub struct ManagedExecutionGate {
+     state: Mutex<GateState>,
+     events: mpsc::UnboundedSender<ManagedExecutionEvent>,
+ }
++
++/// Reserves ownership while Session initialization is fallible. Dropping an
++/// uncommitted reservation (including cancellation) releases only that startup's
++/// thread ID; a live or explicitly bound runner can never be reassigned.
++#[must_use]
++pub(crate) struct ManagedExecutionStartupBinding {
++    gate: Arc<ManagedExecutionGate>,
++    thread_id: ThreadId,
++}
++
++impl ManagedExecutionStartupBinding {
++    pub(crate) fn commit(self) {
++        let mut state = self
++            .gate
++            .state
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner);
++        state.thread_binding_committed = true;
++    }
++}
++
++impl Drop for ManagedExecutionStartupBinding {
++    fn drop(&mut self) {
++        let mut state = self
++            .gate
++            .state
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner);
++        if state.thread_id == Some(self.thread_id) {
++            state.startup_bindings -= 1;
++            if state.startup_bindings == 0 && !state.thread_binding_committed {
++                state.thread_id = None;
++            }
++        }
++    }
++}
++
+ impl std::fmt::Debug for ManagedExecutionGate {
+     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+         f.debug_struct("ManagedExecutionGate")
+@@ -79,6 +118,7 @@ impl ManagedExecutionGate {
+                 closed: true,
+                 inherited: true,
+                 thread_id: Some(thread_id),
++                thread_binding_committed: true,
+                 ..Default::default()
+             }),
+             events,
+@@ -128,8 +168,27 @@ impl ManagedExecutionGate {
+             return Err("managed runner belongs to another thread".into());
+         }
+         state.thread_id = Some(thread_id);
++        state.thread_binding_committed = true;
+         Ok(())
+     }
++    pub(crate) fn bind_thread_for_startup(
++        self: &Arc<Self>,
++        thread_id: ThreadId,
++    ) -> Result<ManagedExecutionStartupBinding, String> {
++        let mut state = self
++            .state
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner);
++        if state.thread_id.is_some_and(|id| id != thread_id) {
++            return Err("managed runner belongs to another thread".into());
++        }
++        state.thread_id = Some(thread_id);
++        state.startup_bindings += 1;
++        Ok(ManagedExecutionStartupBinding {
++            gate: Arc::clone(self),
++            thread_id,
++        })
++    }
+     pub async fn request(
+         &self,
+         thread_id: ThreadId,
+@@ -399,6 +458,89 @@ mod tests {
+     }
+ }
+ 
++#[cfg(test)]
++mod startup_binding_tests {
++    use super::*;
++
++    fn gate() -> Arc<ManagedExecutionGate> {
++        let (events, _) = mpsc::unbounded_channel();
++        ManagedExecutionGate::new("startup-runner".into(), events)
++    }
++
++    #[test]
++    fn failed_startup_can_retry_but_committed_startup_cannot_be_stolen() {
++        let gate = gate();
++        let first = ThreadId::new();
++        let retry = ThreadId::new();
++        let binding = gate.bind_thread_for_startup(first).unwrap();
++        assert!(gate.bind_thread_for_startup(retry).is_err());
++        drop(binding);
++        let binding = gate.bind_thread_for_startup(retry).unwrap();
++        binding.commit();
++        assert!(gate.bind_thread_for_startup(first).is_err());
++        assert!(gate.bind_thread(first).is_err());
++        gate.bind_thread(retry).unwrap();
++    }
++
++    #[test]
++    fn failed_resume_does_not_release_existing_ownership() {
++        let gate = gate();
++        let thread = ThreadId::new();
++        gate.bind_thread(thread).unwrap();
++        drop(gate.bind_thread_for_startup(thread).unwrap());
++        assert!(gate.bind_thread(ThreadId::new()).is_err());
++        gate.bind_thread(thread).unwrap();
++    }
++
++    #[test]
++    fn overlapping_startups_release_only_after_the_last_reservation() {
++        let gate = gate();
++        let thread = ThreadId::new();
++        let next = ThreadId::new();
++        let first = gate.bind_thread_for_startup(thread).unwrap();
++        let second = gate.bind_thread_for_startup(thread).unwrap();
++        drop(first);
++        assert!(gate.bind_thread(next).is_err());
++        drop(second);
++        gate.bind_thread(next).unwrap();
++    }
++
++    #[test]
++    fn successful_overlapping_startup_survives_another_startup_failure() {
++        let gate = gate();
++        let thread = ThreadId::new();
++        let first = gate.bind_thread_for_startup(thread).unwrap();
++        let second = gate.bind_thread_for_startup(thread).unwrap();
++        second.commit();
++        drop(first);
++        assert!(gate.bind_thread(ThreadId::new()).is_err());
++    }
++
++    #[test]
++    fn explicit_binding_during_startup_survives_startup_failure() {
++        let gate = gate();
++        let thread = ThreadId::new();
++        let binding = gate.bind_thread_for_startup(thread).unwrap();
++        gate.bind_thread(thread).unwrap();
++        drop(binding);
++        assert!(gate.bind_thread(ThreadId::new()).is_err());
++    }
++
++    #[test]
++    fn failed_startup_never_reopens_an_invalidated_or_inherited_runner() {
++        let gate = gate();
++        let binding = gate.bind_thread_for_startup(ThreadId::new()).unwrap();
++        gate.invalidate();
++        drop(binding);
++        assert!(gate.is_closed());
++        let thread = ThreadId::new();
++        let inherited = ManagedExecutionGate::inherited_closed(thread);
++        drop(inherited.bind_thread_for_startup(thread).unwrap());
++        assert!(inherited.is_closed());
++        assert!(inherited.bind_thread(ThreadId::new()).is_err());
++    }
++}
++
+ #[cfg(test)]
+ mod inheritance_tests {
+     use super::*;
+diff --git a/codex-rs/core/src/session/session.rs b/codex-rs/core/src/session/session.rs
+index 87a8bfa14..2e004467d 100644
+--- a/codex-rs/core/src/session/session.rs
++++ b/codex-rs/core/src/session/session.rs
+@@ -1002,6 +1002,7 @@ impl Session {
+             | InitialHistory::Resumed(_)
+             | InitialHistory::Forked(_) => None,
+         };
++        let mut managed_runner_startup_binding = None;
+         if parent_thread_id.is_none() {
+             if let Some(gate) = config
+                 .managed_thread_configuration
+@@ -1020,7 +1021,10 @@ impl Session {
+                     config = Arc::new(fork_config);
+                     session_configuration.original_config_do_not_use = config.clone();
+                 } else {
+-                    gate.bind_thread(thread_id).map_err(anyhow::Error::msg)?;
++                    managed_runner_startup_binding = Some(
++                        gate.bind_thread_for_startup(thread_id)
++                            .map_err(anyhow::Error::msg)?,
++                    );
+                 }
+             }
+         }
+@@ -2100,6 +2104,9 @@ impl Session {
+         .await;
+         match session_result {
+             Ok(sess) => {
++                if let Some(binding) = managed_runner_startup_binding {
++                    binding.commit();
++                }
+                 live_thread_init.commit();
+                 Ok(sess)
+             }

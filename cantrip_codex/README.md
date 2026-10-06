@@ -166,8 +166,9 @@ replacement before creating a new or cold-resumed session, so excluded
 account/project MCP servers cannot initialize first. A loaded shared resume
 preserves the live engine; the update RPC then applies changes. Ordinary calls
 omit this object and retain their native configuration behavior. The worker also invokes the update operation during
-managed preparation and checks the actual MCP catalog after application. Idle eligibility
-still carries no active-turn authority. Replaced broker connections use new
+managed preparation. Native startup validates required servers on their actual
+connections; catalog discovery does not gate preparation or user input. Idle
+eligibility still carries no active-turn authority. Replaced broker connections use new
 binding-specific paths; old hosts cannot silently replay calls on a new binding.
 
 The native remote fixture in `native-empty-thread-attach.test.ts` exercises this
@@ -176,6 +177,15 @@ catalog replacement/removal and harmless synthetic credential-generation calls,
 invalid requests, unchanged root settings, peer continuity and sibling isolation.
 The implementation and fixture require a rebuilt bundle containing the patch;
 their final packaged-runtime acceptance is recorded in `docs/CODEX_AUDIT.md`.
+
+Reviewed patch `0042` makes the managed runner's thread binding provisional
+during fallible native session initialization. Failed or cancelled startup
+releases its reservation so the same connection and runner can retry with a new
+thread ID. Successful startup commits ownership; failed resumes, overlapping
+reservations, explicit bindings, and closed inherited runners cannot release or
+reopen that ownership. Required MCP startup errors still propagate normally.
+The empty-thread native fixture exercises real MCP startup failure and recovery,
+then verifies that another thread or connection cannot steal the recovered runner.
 
 ## Cold root settings recovery
 
