@@ -112,7 +112,7 @@ export function projectTaskWorkloadPresentation(
     };
   }
   if (
-    chat?.status === "waiting-for-approval" ||
+    (chat?.status === "waiting-for-approval" && !chat.automationPaused) ||
     (chat?.status === "failed" && dispatch?.state !== "queued")
   ) {
     return {
@@ -121,6 +121,17 @@ export function projectTaskWorkloadPresentation(
         chat.status === "waiting-for-approval" ? "Needs approval" : "Failed",
       paused: false,
       tone: "attention",
+    };
+  }
+  if (
+    chat?.automationPaused &&
+    (task.state === "implementing" || task.state === "paused")
+  ) {
+    return {
+      band: "running",
+      label: "Paused",
+      paused: true,
+      tone: "muted",
     };
   }
   if (dispatch?.state === "queued") {

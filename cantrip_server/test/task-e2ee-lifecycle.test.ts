@@ -1094,100 +1094,147 @@ describe.sequential("Task E2EE closure lifecycle", () => {
     expect(pauseCommands).toEqual([false]);
   });
 
-  it("pauses a Project Task turn and resumes its exact resident runtime", async () => {
-    pauseTestEnabled = true;
-    pauseTestTurnStarted = false;
-    resumePauseTestTurn = null;
-    pauseCommands.length = 0;
-    const chatId = randomUUID();
-    const initialTask = await sealTask(chatId, {
-      version: 1,
-      classification: {
-        state: "draft",
-        stableStateBeforeFailure: null,
-        activeOperationKind: null,
-        planAuthorship: "agent",
-        planningRound: 0,
-        hasPlan: false,
-        hasQuestions: false,
-        hasFinalPlan: false,
-        hasGoalPrompt: false,
+  it.each(["project", "task"] as const)(
+    "pauses through the %s control and resumes the same direct Task operation without failure",
+    async (scope) => {
+      pauseTestEnabled = true;
+      pauseTestTurnStarted = false;
+      resumePauseTestTurn = null;
+      pauseCommands.length = 0;
+      const chatId = randomUUID();
+      const initialTask = await sealTask(chatId, {
+        version: 1,
+        classification: {
+          state: "draft",
+          stableStateBeforeFailure: null,
+          activeOperationKind: null,
+          planAuthorship: "agent",
+          planningRound: 0,
+          hasPlan: false,
+          hasQuestions: false,
+          hasFinalPlan: false,
+          hasGoalPrompt: false,
+          lastError: null,
+        },
+        briefMarkdown: `${sentinel} direct pause test`,
+        planMarkdown: null,
+        currentQuestions: [],
+        currentAnswers: [],
+        additionalDirection: "",
+        finalPlanMarkdown: null,
+        goalPrompt: null,
         lastError: null,
-      },
-      briefMarkdown: `${sentinel} direct pause test`,
-      planMarkdown: null,
-      currentQuestions: [],
-      currentAnswers: [],
-      additionalDirection: "",
-      finalPlanMarkdown: null,
-      goalPrompt: null,
-      lastError: null,
-    });
-    const createdResponse = await app!.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/tasks`,
-      payload: {
+      });
+      const createdResponse = await app!.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/tasks`,
+        payload: {
+          chatId,
+          planGoalEnabled: false,
+          titleProtection: protectedChatFields(chatId).titleProtection,
+          task: initialTask,
+        },
+      });
+      expect(createdResponse.statusCode).toBe(201);
+      const created = taskWireCreateResultSchema.parse(createdResponse.json());
+      const queued = await app!.inject({
+        method: "POST",
+        url: `/api/tasks/${chatId}/start`,
+        payload: {
+          operationId: randomUUID(),
+          rowVersion: taskOpaqueSummarySchema.parse(created.task).rowVersion,
+        },
+      });
+      expect(queued.statusCode).toBe(202);
+      for (
+        let attempt = 0;
+        attempt < 200 && !pauseTestTurnStarted;
+        attempt += 1
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(pauseTestTurnStarted).toBe(true);
+
+      const running = await waitForTask(chatId, "implementing");
+      const initialPause = await app!.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/tasks/pause`,
+      });
+      expect(initialPause.statusCode).toBe(200);
+      const pauseResponse = await app!.inject({
+        method: "PATCH",
+        url:
+          scope === "project"
+            ? `/api/projects/${projectId}/tasks/pause`
+            : `/api/chats/${chatId}/pause`,
+        payload:
+          scope === "project"
+            ? { paused: true, rowVersion: initialPause.json().rowVersion }
+            : { paused: true },
+      });
+      expect(pauseResponse.statusCode).toBe(200);
+      const paused = await waitForDispatchState(
         chatId,
-        planGoalEnabled: false,
-        titleProtection: protectedChatFields(chatId).titleProtection,
-        task: initialTask,
-      },
-    });
-    expect(createdResponse.statusCode).toBe(201);
-    const created = taskWireCreateResultSchema.parse(createdResponse.json());
-    const queued = await app!.inject({
-      method: "POST",
-      url: `/api/tasks/${chatId}/start`,
-      payload: {
-        operationId: randomUUID(),
-        rowVersion: taskOpaqueSummarySchema.parse(created.task).rowVersion,
-      },
-    });
-    expect(queued.statusCode).toBe(202);
-    for (
-      let attempt = 0;
-      attempt < 200 && !pauseTestTurnStarted;
-      attempt += 1
-    ) {
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-    expect(pauseTestTurnStarted).toBe(true);
+        scope === "project" ? "paused" : "running",
+      );
+      expect(paused).toMatchObject({
+        state: "implementing",
+        activeOperationId: running.activeOperationId,
+        activeOperationKind: "direct",
+        lastError: null,
+      });
+      if (scope === "project") {
+        expect(paused.dispatch).toMatchObject({
+          codexThreadId: threadId,
+          turnId: "turn-direct",
+        });
+        expect(
+          (await database.repository.taskScheduling.listTaskWorkers(ownerId))[0]
+            ?.activeTaskCount,
+        ).toBe(0);
+      } else {
+        expect(
+          await database.repository.getChatExecutionContext(ownerId, chatId),
+        ).toMatchObject({ automationPaused: true, status: "running" });
+        const dashboard = await app!.inject({
+          method: "GET",
+          url: `/api/tasks/${chatId}/dashboard`,
+        });
+        expect(dashboard.statusCode).toBe(200);
+        expect(dashboard.json().task).toMatchObject({
+          state: "implementing",
+          activeOperationId: running.activeOperationId,
+          lastError: null,
+        });
+      }
 
-    const initialPause = await app!.inject({
-      method: "GET",
-      url: `/api/projects/${projectId}/tasks/pause`,
-    });
-    expect(initialPause.statusCode).toBe(200);
-    const pauseResponse = await app!.inject({
-      method: "PATCH",
-      url: `/api/projects/${projectId}/tasks/pause`,
-      payload: { paused: true, rowVersion: initialPause.json().rowVersion },
-    });
-    expect(pauseResponse.statusCode).toBe(200);
-    const paused = await waitForDispatchState(chatId, "paused");
-    expect(paused.dispatch).toMatchObject({
-      codexThreadId: threadId,
-      turnId: "turn-direct",
-    });
-    expect(
-      (await database.repository.taskScheduling.listTaskWorkers(ownerId))[0]
-        ?.activeTaskCount,
-    ).toBe(0);
-
-    const resumeResponse = await app!.inject({
-      method: "PATCH",
-      url: `/api/projects/${projectId}/tasks/pause`,
-      payload: {
-        paused: false,
-        rowVersion: pauseResponse.json().rowVersion,
-      },
-    });
-    expect(resumeResponse.statusCode).toBe(202);
-    const completed = await waitForTask(chatId, "complete");
-    expect(completed.dispatch).toMatchObject({ state: "succeeded" });
-    expect(pauseCommands).toEqual([true, false]);
-    pauseTestEnabled = false;
-  });
+      const resumeResponse = await app!.inject({
+        method: "PATCH",
+        url:
+          scope === "project"
+            ? `/api/projects/${projectId}/tasks/pause`
+            : `/api/chats/${chatId}/pause`,
+        payload:
+          scope === "project"
+            ? {
+                paused: false,
+                rowVersion: pauseResponse.json().rowVersion,
+              }
+            : { paused: false },
+      });
+      expect(resumeResponse.statusCode).toBe(scope === "project" ? 202 : 200);
+      const completed = await waitForTask(chatId, "complete");
+      expect(completed.dispatch).toMatchObject({ state: "succeeded" });
+      expect(completed.lastError).toBeNull();
+      expect(
+        await database.repository.tasks.getOperationContext(ownerId, chatId, {
+          operationId: running.activeOperationId!,
+        }),
+      ).toMatchObject({ round: { status: "completed" } });
+      expect(pauseCommands).toEqual([true, false]);
+      pauseTestEnabled = false;
+    },
+  );
 
   it("completes planning and a Goal with zero Task prose in the temporary database", async () => {
     const chatId = randomUUID();
