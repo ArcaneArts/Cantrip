@@ -1,4 +1,7 @@
-import type { TaskDetail } from "@cantrip/protocol";
+import type { ChatSummary, TaskDetail } from "@cantrip/protocol";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { taskCanBeDeleted } from "../tasks/task-deletion";
@@ -6,6 +9,7 @@ import {
   projectTaskDashboardQueriesEnabled,
   projectTaskIsUnqueuedDraft,
   projectTaskWorkloadPresentation,
+  ProjectTasksDashboard,
   sortProjectTaskWorkload,
   type ProjectTaskWorkloadItem,
 } from "./project-tasks-dashboard";
@@ -96,7 +100,151 @@ function dispatch(
   return value;
 }
 
+function renderTaskList(items: ProjectTaskWorkloadItem[]): string {
+  const queryClient = new QueryClient();
+  queryClient.setQueryData(
+    ["task-workers"],
+    [{ id: "worker-1", name: "Main" }],
+  );
+  queryClient.setQueryData(["project-task-workload", "project-1"], { items });
+  queryClient.setQueryData(["project-task-pause", "project-1"], {
+    paused: false,
+    rowVersion: 1,
+  });
+  return renderToStaticMarkup(
+    createElement(
+      QueryClientProvider,
+      { client: queryClient },
+      createElement(ProjectTasksDashboard, {
+        active: true,
+        activeTaskChatId: null,
+        chats: [],
+        creatingTask: false,
+        onConfigureWorkers: () => undefined,
+        onCreateTask: () => undefined,
+        onCloseTask: () => undefined,
+        onOpenTask: () => undefined,
+        onRenameTask: () => undefined,
+        projectId: "project-1",
+        settings: undefined,
+        taskCreationError: null,
+        workers: [],
+      }),
+    ),
+  );
+}
+
+describe("flat Task list", () => {
+  it("renders tasks beneath separate headers without section cards or inner horizontal gutters", () => {
+    const markup = renderTaskList([
+      item(
+        task({
+          chatId: "active-task",
+          createdAt: "2026-08-24T12:00:00.000Z",
+          state: "implementing",
+        }),
+      ),
+      item(
+        task({
+          chatId: "completed-task",
+          createdAt: "2026-08-24T12:00:00.000Z",
+          state: "complete",
+        }),
+      ),
+    ]);
+
+    for (const label of ["Active", "Completed"]) {
+      const section = markup.match(
+        new RegExp(`<section aria-label="${label}">([\\s\\S]*?)</section>`),
+      )?.[1];
+      expect(section).toContain(`>${label}</h2>`);
+      expect(section).not.toMatch(/rounded-xl|bg-card|shadow-sm/);
+      const rowClass = section?.match(
+        /<div class="([^"]*)" role="button"/,
+      )?.[1];
+      expect(rowClass).toContain("border-b");
+      expect(rowClass).toContain("py-3");
+      expect(rowClass).not.toMatch(/(?:^|\s)(?:\w+:)*(?:p|px|pl|pr)-/);
+    }
+    expect(markup.indexOf('aria-label="Active"')).toBeLessThan(
+      markup.indexOf('aria-label="Completed"'),
+    );
+    expect(markup).toContain("active-task");
+    expect(markup).toContain("completed-task");
+  });
+
+  it.each(["implementing", "complete"] as const)(
+    "only renders the populated section for a %s task",
+    (state) => {
+      const markup = renderTaskList([
+        item(
+          task({
+            chatId: "only-task",
+            createdAt: "2026-08-24T12:00:00.000Z",
+            state,
+          }),
+        ),
+      ]);
+
+      expect(markup).toContain(
+        `aria-label="${state === "complete" ? "Completed" : "Active"}"`,
+      );
+      expect(markup).not.toContain(
+        `aria-label="${state === "complete" ? "Active" : "Completed"}"`,
+      );
+    },
+  );
+
+  it("keeps the creation suggestion without empty section cards when no tasks exist", () => {
+    const markup = renderTaskList([]);
+
+    expect(markup).toContain("Create a task");
+    expect(markup).not.toContain('aria-label="Active"');
+    expect(markup).not.toContain('aria-label="Completed"');
+  });
+});
+
 describe("project Task workload", () => {
+  it.each(["running", "waiting-for-approval"] as const)(
+    "labels a stopped direct Task as paused while its resident turn is %s",
+    (status) => {
+      const stoppedTask = dispatch(
+        task({
+          chatId: "stopped",
+          createdAt: "2026-10-06T12:00:00.000Z",
+          state: "implementing",
+        }),
+        "running",
+      );
+      const chat = { status, automationPaused: true } as ChatSummary;
+      expect(projectTaskWorkloadPresentation(stoppedTask, chat, false)).toEqual(
+        {
+          band: "running",
+          label: "Paused",
+          paused: true,
+          tone: "muted",
+        },
+      );
+      expect(
+        projectTaskWorkloadPresentation(
+          stoppedTask,
+          { ...chat, automationPaused: false },
+          false,
+        ),
+      ).toMatchObject({
+        label: status === "running" ? "Running" : "Needs approval",
+        paused: false,
+      });
+      expect(
+        projectTaskWorkloadPresentation(
+          stoppedTask,
+          { ...chat, status: "failed" },
+          false,
+        ),
+      ).toMatchObject({ label: "Failed", paused: false });
+    },
+  );
+
   it("distinguishes an unqueued draft from a queued Task", () => {
     const draft = task({
       chatId: "draft",

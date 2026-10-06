@@ -399,6 +399,12 @@
   background-color: transparent;
 }
 
+.pro-mode .cantrip-task-draft-footer {
+  background-color: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
 .pro-mode.high-contrast [data-slot="card"] {
   background: var(--card);
 }

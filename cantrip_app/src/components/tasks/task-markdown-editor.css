@@ -154,7 +154,9 @@
 }
 
 :root.pro-mode .cantrip-task-markdown-editor .cantrip-task-markdown-toolbar {
-  background: color-mix(in oklab, var(--background) 72%, transparent);
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
 :root.high-contrast .cantrip-task-markdown-editor {

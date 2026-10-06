@@ -2,6 +2,7 @@ import type {
   CodeAppearance,
   CodeProtectedAttachmentWire,
 } from "@cantrip/protocol";
+import { isTauri } from "@tauri-apps/api/core";
 import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
 import {
   useCallback,
@@ -256,6 +257,8 @@ export function ExplorerCodeEditor({
   );
   const frameRetryCountRef = useRef(0);
   const frameRetryPendingRef = useRef(false);
+  const startupAttachmentReplacedRef = useRef(false);
+  const lastReadyAttachmentIdRef = useRef<string | null>(null);
   const frameRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const frameFailureNonceRef = useRef<string | null>(null);
   const frameLoadsRef = useRef(new CodeWorkbenchFrameLoadTracker());
@@ -648,6 +651,20 @@ export function ExplorerCodeEditor({
       frameFailureNonceRef.current = null;
       setFrameFailureNonce(null);
       setError(null);
+      const preferred = preferredAttachmentRef.current;
+      if (
+        isTauri() &&
+        preferred.sharedOwnedAttachment &&
+        !startupAttachmentReplacedRef.current &&
+        lastReadyAttachmentIdRef.current !== preferred.attachment.attachmentId
+      ) {
+        // A loaded error document cannot recover by repeatedly reloading the
+        // same route. Recreate an unready attachment once, just as closing and
+        // reopening the tab would, without discarding a previously ready editor.
+        startupAttachmentReplacedRef.current = true;
+        setConnectionAttempt((attempt) => attempt + 1);
+        return true;
+      }
       setFrameDocumentVersion((version) => version + 1);
       return true;
     },
@@ -694,6 +711,8 @@ export function ExplorerCodeEditor({
     pendingConnectionWakeRef.current = false;
     frameRetryCountRef.current = 0;
     frameRetryPendingRef.current = false;
+    startupAttachmentReplacedRef.current = false;
+    lastReadyAttachmentIdRef.current = null;
     sharedTransportUnavailableRef.current = false;
     for (const timerRef of [connectionRetryTimerRef, frameRetryTimerRef]) {
       if (timerRef.current) clearTimeout(timerRef.current);
@@ -1252,7 +1271,8 @@ export function ExplorerCodeEditor({
   }, [closing, preferredAttachment]);
 
   useEffect(() => {
-    frameRetryCountRef.current = 0;
+    // Replacing a failed startup route consumes the existing retry budget.
+    if (!startupAttachmentReplacedRef.current) frameRetryCountRef.current = 0;
     frameRetryPendingRef.current = false;
     if (frameRetryTimerRef.current) {
       clearTimeout(frameRetryTimerRef.current);
@@ -1306,6 +1326,8 @@ export function ExplorerCodeEditor({
       }
       settled = true;
       frameFailureNonceRef.current = frameMount.nonce;
+      lastReadyAttachmentIdRef.current =
+        preferredAttachmentRef.current?.attachment.attachmentId ?? null;
       frameRetryCountRef.current = 0;
       frameRetryPendingRef.current = false;
       if (frameRetryTimerRef.current) {

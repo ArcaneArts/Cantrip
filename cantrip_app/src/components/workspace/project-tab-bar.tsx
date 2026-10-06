@@ -1,5 +1,5 @@
 import * as ContextMenu from "@radix-ui/react-context-menu";
-import { TabColor, TabColorMenuItem, TabIndicator } from "./tab-color";
+import { TabColor, TabIndicator } from "./tab-color";
 import { surfaceColorKey, tabColorKey } from "@/lib/tab-colors";
 import { useDroppable } from "@dnd-kit/core";
 import {
@@ -8,14 +8,7 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import {
-  FileCode2,
-  MoreHorizontal,
-  Pencil,
-  Plus,
-  Trash2,
-  X,
-} from "lucide-react";
+import { FileCode2, MoreHorizontal, Plus, X } from "lucide-react";
 import type { ExecutionTarget, ProjectPaneRegion } from "@cantrip/protocol";
 import { Fragment, useCallback, useState, type ReactNode } from "react";
 import {
@@ -30,7 +23,13 @@ import {
   type ProjectSurfaceCreateKind,
   type ProjectSurfacePlacementContext,
 } from "./project-surface-create-menu";
-import { InlineRenameLabel, SurfaceActionsMenu } from "./surface-tab-controls";
+import {
+  InlineRenameLabel,
+  SurfaceActionsMenu,
+  SurfaceMenuItems,
+  surfaceMoveTargets,
+  type SurfaceMenuActions,
+} from "./surface-tab-controls";
 import { ProjectBuiltInSurfaceIcon } from "@/components/sidebar/project-tool-launchers";
 import { ProjectSurfaceIcon } from "@/components/workspace/project-surface-icon";
 import {
@@ -39,10 +38,7 @@ import {
 } from "@/components/workspace/workspace-dnd-state";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import {
-  StyledContextMenuContent,
-  StyledContextMenuItem,
-} from "@/components/ui/styled-menu";
+import { StyledContextMenuContent } from "@/components/ui/styled-menu";
 import { nextProjectTabAfterRemoval } from "@/lib/project-pane";
 import type { ProjectSurface } from "@/lib/project-surface";
 import {
@@ -63,6 +59,7 @@ export interface ProjectPaneTabStripProps {
   allowedCreateKinds?: ReadonlySet<ProjectSurfaceCreateKind>;
   creatingKinds?: ReadonlySet<ProjectSurfaceCreateKind>;
   onCreate(kind: ProjectSurfaceCreateKind, target?: ExecutionTarget): void;
+  onOpenRunning?(terminalId: string): void;
   onClose(surface: ProjectSurface): void;
   onDelete(surface: ProjectSurface): void;
   onRename(surface: ProjectSurface, title: string): void;
@@ -120,6 +117,7 @@ export function ProjectPaneTabStrip({
   allowedCreateKinds,
   creatingKinds,
   onCreate,
+  onOpenRunning,
   onClose,
   onDelete,
   onRename,
@@ -232,6 +230,26 @@ export function ProjectPaneTabStrip({
               const editing = editingTabKey === surface.tabKey;
               const canRename = surfaceCanRename(surface);
               const canDelete = surfaceCanDelete(surface);
+              const menuActions: SurfaceMenuActions = {
+                colorKey: surfaceColorKey(surface),
+                deleteLabel: surfaceDeleteLabel(surface),
+                moveTargets: surfaceMoveTargets(
+                  surface,
+                  paneRegion,
+                  onMoveToRegion
+                    ? (region) => onMoveToRegion(surface, region)
+                    : undefined,
+                ),
+                onClose:
+                  surface.kind === "chat"
+                    ? undefined
+                    : () => closeImmediately(surface),
+                onDelete: canDelete
+                  ? () => setDeleteTarget(surface)
+                  : undefined,
+                onRename: canRename ? () => beginRename(surface) : undefined,
+                title: surface.title,
+              };
               return (
                 <Fragment key={surface.tabKey}>
                   {crossPaneDrag ? (
@@ -312,23 +330,7 @@ export function ProjectPaneTabStrip({
                             )}
                             {!editing ? (
                               <SurfaceActionsMenu
-                                deleteLabel={surfaceDeleteLabel(surface)}
-                                title={surface.title}
-                                onClose={
-                                  surface.kind === "chat"
-                                    ? undefined
-                                    : () => closeImmediately(surface)
-                                }
-                                onDelete={
-                                  canDelete
-                                    ? () => setDeleteTarget(surface)
-                                    : undefined
-                                }
-                                onRename={
-                                  canRename
-                                    ? () => beginRename(surface)
-                                    : undefined
-                                }
+                                {...menuActions}
                                 trigger={
                                   <button
                                     type="button"
@@ -345,64 +347,7 @@ export function ProjectPaneTabStrip({
                         </ContextMenu.Trigger>
                         <ContextMenu.Portal>
                           <StyledContextMenuContent className="min-w-40">
-                            <TabColorMenuItem
-                              colorKey={surfaceColorKey(surface)}
-                              title={surface.title}
-                            />
-                            {canRename ? (
-                              <StyledContextMenuItem
-                                onSelect={() => beginRename(surface)}
-                              >
-                                <Pencil className="size-4" /> Rename
-                              </StyledContextMenuItem>
-                            ) : null}
-                            {canRename ? (
-                              <ContextMenu.Separator className="my-1 h-px bg-border" />
-                            ) : null}
-                            {onMoveToRegion
-                              ? (["center", "right", "bottom"] as const)
-                                  .filter(
-                                    (region) =>
-                                      region !== paneRegion &&
-                                      surface.definition.supportedPlacements.includes(
-                                        region,
-                                      ),
-                                  )
-                                  .map((region) => (
-                                    <StyledContextMenuItem
-                                      key={region}
-                                      onSelect={() =>
-                                        onMoveToRegion(surface, region)
-                                      }
-                                    >
-                                      Move to{" "}
-                                      {region === "center"
-                                        ? "Center"
-                                        : region === "right"
-                                          ? "Right"
-                                          : "Bottom"}
-                                    </StyledContextMenuItem>
-                                  ))
-                              : null}
-                            {surface.kind !== "chat" ? (
-                              <StyledContextMenuItem
-                                onSelect={() => closeImmediately(surface)}
-                              >
-                                <X className="size-4" /> Close View
-                              </StyledContextMenuItem>
-                            ) : null}
-                            {canDelete ? (
-                              <ContextMenu.Separator className="my-1 h-px bg-border" />
-                            ) : null}
-                            {canDelete ? (
-                              <StyledContextMenuItem
-                                className="text-destructive focus:bg-destructive/10"
-                                onSelect={() => setDeleteTarget(surface)}
-                              >
-                                <Trash2 className="size-4" />
-                                {surfaceDeleteLabel(surface)}
-                              </StyledContextMenuItem>
-                            ) : null}
+                            <SurfaceMenuItems {...menuActions} kind="context" />
                           </StyledContextMenuContent>
                         </ContextMenu.Portal>
                       </ContextMenu.Root>
@@ -487,20 +432,17 @@ export function ProjectPaneTabStrip({
                 </ContextMenu.Trigger>
                 <ContextMenu.Portal>
                   <StyledContextMenuContent>
-                    <TabColorMenuItem
+                    <SurfaceMenuItems
                       colorKey={tabColorKey(
                         previewFile.projectId,
                         "",
                         previewFile.path,
                       )}
+                      kind="context"
+                      onClose={previewFile.onClose}
+                      onKeepOpen={previewFile.onPin}
                       title={previewFile.title}
                     />
-                    <StyledContextMenuItem onSelect={previewFile.onPin}>
-                      Keep Open
-                    </StyledContextMenuItem>
-                    <StyledContextMenuItem onSelect={previewFile.onClose}>
-                      Close View
-                    </StyledContextMenuItem>
                   </StyledContextMenuContent>
                 </ContextMenu.Portal>
               </ContextMenu.Root>
@@ -511,6 +453,7 @@ export function ProjectPaneTabStrip({
             allowedKinds={allowedCreateKinds}
             creatingKinds={creatingKinds}
             onCreate={onCreate}
+            onOpenRunning={onOpenRunning}
             placement={placement}
             trigger={
               <Button

@@ -35,8 +35,11 @@ import {
   getProjectTabLayout,
   getSettings,
   openProjectSurfaceView,
+  moveProjectPaneMember,
+  updateProjectPaneMemberPresentation,
   updateAppDestination,
 } from "@/lib/api";
+import { revealDockPresentation } from "@/components/app/project-dock-presentation";
 import { resolveAppStartupNavigation } from "@/lib/app-navigation";
 import { useAppLiveClientControl } from "@/lib/app-live-react";
 import { openClientNotification } from "@/lib/client-control-content-encryption";
@@ -78,43 +81,93 @@ export async function openOrFocusProjectSurface({
   surfaceRef,
   targetPaneId,
   targetRegion,
+  revealDock = false,
+  moveToTargetRegion = false,
 }: {
   projectId: string;
   queryClient: QueryClient;
   surfaceRef: ProjectSurfaceResourceRef;
   targetPaneId?: string;
   targetRegion?: ProjectPaneRegion;
+  revealDock?: boolean;
+  moveToTargetRegion?: boolean;
 }) {
   const viewId = projectSurfaceViewId({ projectId, resource: surfaceRef });
-  let layout = queryClient.getQueryData<ProjectTabLayoutSummary>([
-    "project-tab-layout",
-    projectId,
-  ]);
-  layout ??= await getProjectTabLayout(projectId);
-  try {
-    layout = (
-      await openProjectSurfaceView(projectId, {
-        revision: layout.revision,
-        surfaceRef,
-        ...(targetPaneId ? { targetPaneId } : {}),
-        ...(targetRegion ? { targetRegion } : {}),
-      })
-    ).layout;
-  } catch (error) {
-    if (!(error instanceof CantripApiError) || error.status !== 409) {
-      throw error;
+  let layout =
+    queryClient.getQueryData<ProjectTabLayoutSummary>([
+      "project-tab-layout",
+      projectId,
+    ]) ?? (await getProjectTabLayout(projectId));
+  const mutateLayout = async (
+    operation: (
+      current: ProjectTabLayoutSummary,
+    ) => Promise<ProjectTabLayoutSummary>,
+  ) => {
+    try {
+      layout = await operation(layout);
+    } catch (error) {
+      if (!(error instanceof CantripApiError) || error.status !== 409)
+        throw error;
+      layout = await getProjectTabLayout(projectId);
+      layout = await operation(layout);
     }
-    layout = await getProjectTabLayout(projectId);
-    layout = (
-      await openProjectSurfaceView(projectId, {
-        revision: layout.revision,
-        surfaceRef,
-        ...(targetPaneId ? { targetPaneId } : {}),
-        ...(targetRegion ? { targetRegion } : {}),
-      })
-    ).layout;
+    queryClient.setQueryData(["project-tab-layout", projectId], layout);
+  };
+  await mutateLayout(
+    async (current) =>
+      (
+        await openProjectSurfaceView(projectId, {
+          revision: current.revision,
+          surfaceRef,
+          ...(targetPaneId ? { targetPaneId } : {}),
+          ...(targetRegion ? { targetRegion } : {}),
+        })
+      ).layout,
+  );
+  const paneForView = () =>
+    layout.panes.find(({ members }) =>
+      members.some(({ tabKey }) => tabKey === viewId),
+    );
+  if (
+    moveToTargetRegion &&
+    targetRegion &&
+    paneForView()?.region !== targetRegion
+  ) {
+    await mutateLayout((current) => {
+      const target = current.panes.find((pane) =>
+        targetPaneId ? pane.id === targetPaneId : pane.region === targetRegion,
+      );
+      return moveProjectPaneMember(projectId, {
+        revision: current.revision,
+        tabKey: viewId,
+        targetPaneId: target?.id ?? null,
+        targetMemberPosition: target?.members.length ?? 0,
+        ...(target ? {} : { targetRegion }),
+      });
+    });
   }
-  queryClient.setQueryData(["project-tab-layout", projectId], layout);
+  const pane = paneForView();
+  const preference = pane?.members.find(
+    ({ tabKey }) => tabKey === viewId,
+  )?.dockPresentation;
+  if (
+    revealDock &&
+    (pane?.region === "bottom" || pane?.region === "right") &&
+    preference?.preferredMode === "closed"
+  ) {
+    await mutateLayout((current) => {
+      const saved =
+        current.panes
+          .flatMap(({ members }) => members)
+          .find(({ tabKey }) => tabKey === viewId)?.dockPresentation ??
+        preference;
+      return updateProjectPaneMemberPresentation(projectId, {
+        revision: current.revision,
+        tabKey: viewId,
+        ...revealDockPresentation(saved),
+      });
+    });
+  }
   return { layout, viewId } as const;
 }
 
@@ -1078,6 +1131,7 @@ export function createShellProjectNavigationCommands({
     surfaceRef: ProjectSurfaceResourceRef,
     targetPaneId?: string,
     targetRegion?: ProjectPaneRegion,
+    presentation?: { revealDock?: boolean; moveToTargetRegion?: boolean },
   ) => {
     setAppMode("ide");
     setSidebarFilePreview((current) =>
@@ -1094,6 +1148,7 @@ export function createShellProjectNavigationCommands({
       surfaceRef,
       ...(targetPaneId ? { targetPaneId } : {}),
       ...(targetRegion ? { targetRegion } : {}),
+      ...presentation,
     })
       .then(({ layout }) => {
         if (surfaceOpenRequestRef.current !== requestId) return true;
@@ -1128,19 +1183,37 @@ export function createShellProjectNavigationCommands({
     return openRequest;
   };
   const openProjectTask = (projectId: string, chatId: string) => {
-    setAppMode("ide");
-    setSidebarFilePreview((current) =>
-      current?.projectId === projectId ? { ...current, active: false } : null,
-    );
     setProjectTaskChatIds((current) => {
       const next = new Map(current);
       next.set(projectId, chatId);
       return next;
     });
+    setProjectOverviewSection("tasks");
+    const surfaceRef = {
+      kind: "builtin",
+      definitionId: "project.tasks",
+    } as const;
+    const tabKey = projectSurfaceViewId({ projectId, resource: surfaceRef });
+    const cachedLayout = queryClient.getQueryData<ProjectTabLayoutSummary>([
+      "project-tab-layout",
+      projectId,
+    ]);
+    if (
+      !cachedLayout ||
+      !projectTabLayoutContainsTab(cachedLayout, projectId, tabKey)
+    ) {
+      void openOrFocusSurface(projectId, surfaceRef);
+      return;
+    }
+    setAppMode("ide");
+    setSidebarFilePreview((current) =>
+      current?.projectId === projectId ? { ...current, active: false } : null,
+    );
     setDesktopSidebarDrawerOpen(false);
     setSelectedProjectId(projectId);
-    setProjectOverviewSection("tasks");
-    setWorkspaceSelection(emptyWorkspaceSelection(projectId));
+    setWorkspaceSelection((current) =>
+      selectWorkspaceTab(current, cachedLayout, tabKey),
+    );
     setPendingSurfaceSelection(null);
     setShowImporter(false);
     setShowSettings(false);

@@ -1,9 +1,5 @@
 import * as ContextMenu from "@radix-ui/react-context-menu";
-import {
-  TabColor,
-  TabColorMenuItem,
-  TabIndicator,
-} from "@/components/workspace/tab-color";
+import { TabColor, TabIndicator } from "@/components/workspace/tab-color";
 import { surfaceColorKey } from "@/lib/tab-colors";
 import {
   expandedTabCount,
@@ -25,7 +21,7 @@ import {
   type ProjectPaneSummary,
 } from "@cantrip/protocol";
 import { useQueries } from "@tanstack/react-query";
-import { Plus, Trash2, X } from "lucide-react";
+import { Plus } from "lucide-react";
 import {
   Fragment,
   useMemo,
@@ -86,10 +82,11 @@ import {
   WorkspaceDropPlaceholder,
 } from "@/components/workspace/workspace-dnd-state";
 import { ProjectBuiltInSurfaceIcon } from "@/components/sidebar/project-tool-launchers";
+import { StyledContextMenuContent } from "@/components/ui/styled-menu";
 import {
-  StyledContextMenuContent,
-  StyledContextMenuItem,
-} from "@/components/ui/styled-menu";
+  SurfaceMenuItems,
+  surfaceMoveTargets,
+} from "@/components/workspace/surface-tab-controls";
 import {
   Tooltip,
   TooltipButton,
@@ -244,50 +241,19 @@ function SortableDockRailTab({
           </ContextMenu.Trigger>
           <ContextMenu.Portal>
             <StyledContextMenuContent className="min-w-40">
-              <TabColorMenuItem
+              <SurfaceMenuItems
                 colorKey={surfaceColorKey(surface)}
+                deleteLabel={surfaceDeleteLabel(surface)}
+                kind="context"
+                moveTargets={surfaceMoveTargets(
+                  surface,
+                  region,
+                  onMoveToRegion,
+                )}
+                onClose={surface.kind === "chat" ? undefined : onClose}
+                onDelete={canDelete ? onDelete : undefined}
                 title={surface.title}
               />
-              {onMoveToRegion
-                ? (["center", "right", "bottom"] as const)
-                    .filter(
-                      (targetRegion) =>
-                        targetRegion !== region &&
-                        surface.definition.supportedPlacements.includes(
-                          targetRegion,
-                        ),
-                    )
-                    .map((targetRegion) => (
-                      <StyledContextMenuItem
-                        key={targetRegion}
-                        onSelect={() => onMoveToRegion(targetRegion)}
-                      >
-                        Move to{" "}
-                        {targetRegion === "center"
-                          ? "Center"
-                          : targetRegion === "right"
-                            ? "Right"
-                            : "Bottom"}
-                      </StyledContextMenuItem>
-                    ))
-                : null}
-              {surface.kind !== "chat" ? (
-                <StyledContextMenuItem onSelect={onClose}>
-                  <X className="size-4" /> Close View
-                </StyledContextMenuItem>
-              ) : null}
-              {canDelete ? (
-                <ContextMenu.Separator className="my-1 h-px bg-border" />
-              ) : null}
-              {canDelete ? (
-                <StyledContextMenuItem
-                  className="text-destructive focus:bg-destructive/10"
-                  onSelect={onDelete}
-                >
-                  <Trash2 className="size-4" />
-                  {surfaceDeleteLabel(surface)}
-                </StyledContextMenuItem>
-              ) : null}
             </StyledContextMenuContent>
           </ContextMenu.Portal>
         </ContextMenu.Root>
@@ -300,6 +266,7 @@ export function DockRail({
   activeTabKey,
   creatingKinds,
   onCreate,
+  onOpenRunning,
   onClose,
   onDelete,
   onMoveToRegion,
@@ -314,6 +281,7 @@ export function DockRail({
   activeTabKey: string | null;
   creatingKinds?: ReadonlySet<ProjectSurfaceCreateKind>;
   onCreate(kind: ProjectSurfaceCreateKind, target?: ExecutionTarget): void;
+  onOpenRunning?(terminalId: string): void;
   onClose(surface: ProjectSurface): void;
   onDelete(surface: ProjectSurface): void;
   onMoveToRegion?(
@@ -399,6 +367,7 @@ export function DockRail({
                 allowedKinds={createKindsForPaneRegion(region)}
                 creatingKinds={creatingKinds}
                 onCreate={onCreate}
+                onOpenRunning={onOpenRunning}
                 onOpenChange={(open) => {
                   setCreateMenuOpen(open);
                   if (open) setCreateTooltipOpen(false);
@@ -938,6 +907,13 @@ export function ProjectWorkspaceFrame({
             presentation.pane.region,
           )}
           creatingKinds={bindings.creatingSurfaceKinds}
+          onOpenRunning={(terminalId) =>
+            bindings.openRunTerminal(
+              terminalId,
+              presentation.pane.id,
+              presentation.pane.region,
+            )
+          }
           onCreate={(kind, target) =>
             bindings.createProjectSurface(
               presentation.pane.projectId,
@@ -1173,6 +1149,9 @@ export function ProjectWorkspaceFrame({
               activeTabKey=""
               allowedCreateKinds={createKindsForPaneRegion("center")}
               creatingKinds={bindings.creatingSurfaceKinds}
+              onOpenRunning={(terminalId) =>
+                bindings.openRunTerminal(terminalId, undefined, "center")
+              }
               onCreate={(kind, target) =>
                 bindings.createProjectSurface(
                   bindings.selectedProject.id,
@@ -1269,6 +1248,9 @@ export function ProjectWorkspaceFrame({
         <DockRail
           activeTabKey={right?.activeTabKey ?? null}
           creatingKinds={bindings.creatingSurfaceKinds}
+          onOpenRunning={(terminalId) =>
+            bindings.openRunTerminal(terminalId, right?.pane.id, "right")
+          }
           onCreate={(kind, target) =>
             bindings.createProjectSurface(
               bindings.selectedProject.id,
@@ -1294,6 +1276,9 @@ export function ProjectWorkspaceFrame({
         <DockRail
           activeTabKey={bottom?.activeTabKey ?? null}
           creatingKinds={bindings.creatingSurfaceKinds}
+          onOpenRunning={(terminalId) =>
+            bindings.openRunTerminal(terminalId, bottom?.pane.id, "bottom")
+          }
           onCreate={(kind, target) =>
             bindings.createProjectSurface(
               bindings.selectedProject.id,

@@ -112,7 +112,7 @@ export function projectTaskWorkloadPresentation(
     };
   }
   if (
-    chat?.status === "waiting-for-approval" ||
+    (chat?.status === "waiting-for-approval" && !chat.automationPaused) ||
     (chat?.status === "failed" && dispatch?.state !== "queued")
   ) {
     return {
@@ -121,6 +121,17 @@ export function projectTaskWorkloadPresentation(
         chat.status === "waiting-for-approval" ? "Needs approval" : "Failed",
       paused: false,
       tone: "attention",
+    };
+  }
+  if (
+    chat?.automationPaused &&
+    (task.state === "implementing" || task.state === "paused")
+  ) {
+    return {
+      band: "running",
+      label: "Paused",
+      paused: true,
+      tone: "muted",
     };
   }
   if (dispatch?.state === "queued") {
@@ -328,7 +339,7 @@ function TaskWorkloadRow({
         : "Open";
   return (
     <div
-      className="group grid cursor-pointer grid-cols-[minmax(0,1fr)_auto] gap-3 border-b px-4 py-3 transition-colors last:border-b-0 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-5"
+      className="group grid cursor-pointer grid-cols-[minmax(0,1fr)_auto] gap-3 border-b py-3 transition-colors last:border-b-0 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       role="button"
       tabIndex={0}
       onClick={onOpen}
@@ -451,9 +462,10 @@ function WorkloadList({
   paused: boolean;
   taskWorkers: ReadonlyMap<string, TaskWorkerSummary>;
 }) {
+  if (items.length === 0) return null;
   return (
     <section aria-label={label}>
-      <div className="mb-2 flex items-center justify-between px-1">
+      <div className="mb-2 flex items-center justify-between">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           {label}
         </h2>
@@ -461,31 +473,23 @@ function WorkloadList({
           {items.length}
         </span>
       </div>
-      <div className="overflow-hidden rounded-xl border bg-card/65 shadow-sm">
-        {items.length > 0 ? (
-          items.map((item) => (
-            <TaskWorkloadRow
-              key={item.task.chatId}
-              chat={chats.get(item.task.chatId)}
-              item={item}
-              paused={paused}
-              taskWorkers={taskWorkers}
-              onDeleteTask={() =>
-                onDeleteTask(
-                  item.task.chatId,
-                  chats.get(item.task.chatId)?.title ?? "Task",
-                )
-              }
-              onOpen={() => onOpenTask(item.task.chatId)}
-            />
-          ))
-        ) : (
-          <p className="px-5 py-7 text-center text-sm text-muted-foreground">
-            {label === "Completed"
-              ? "No completed Tasks yet."
-              : "No active Tasks."}
-          </p>
-        )}
+      <div>
+        {items.map((item) => (
+          <TaskWorkloadRow
+            key={item.task.chatId}
+            chat={chats.get(item.task.chatId)}
+            item={item}
+            paused={paused}
+            taskWorkers={taskWorkers}
+            onDeleteTask={() =>
+              onDeleteTask(
+                item.task.chatId,
+                chats.get(item.task.chatId)?.title ?? "Task",
+              )
+            }
+            onOpen={() => onOpenTask(item.task.chatId)}
+          />
+        ))}
       </div>
     </section>
   );
@@ -724,7 +728,7 @@ export function ProjectTasksDashboard({
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
       <div
-        className="w-full px-4 py-5 sm:px-6 sm:py-7"
+        className="flex min-h-full w-full flex-col px-4 py-5 sm:px-6 sm:py-7"
         data-content-gutter="standard"
       >
         <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
@@ -769,26 +773,45 @@ export function ProjectTasksDashboard({
                   : "The Task workload could not be loaded."}
           </div>
         ) : null}
-        <div className="space-y-7">
-          <WorkloadList
-            chats={chatMap}
-            items={sorted.active}
-            label="Active"
-            onDeleteTask={requestDeleteTask}
-            paused={pauseState.data?.paused ?? false}
-            taskWorkers={workerMap}
-            onOpenTask={onOpenTask}
-          />
-          <WorkloadList
-            chats={chatMap}
-            items={sorted.completed}
-            label="Completed"
-            onDeleteTask={requestDeleteTask}
-            paused={false}
-            taskWorkers={workerMap}
-            onOpenTask={onOpenTask}
-          />
-        </div>
+        {workload.isSuccess &&
+        sorted.active.length === 0 &&
+        sorted.completed.length === 0 ? (
+          <EmptyState>
+            <EmptyStateContent>
+              <EmptyStateIcon>
+                <ClipboardList className="size-5" />
+              </EmptyStateIcon>
+              <EmptyStateTitle>No tasks yet</EmptyStateTitle>
+              <EmptyStateActions>
+                <Button pending={creatingTask} onClick={onCreateTask}>
+                  <Plus className="size-4" />
+                  Create a task
+                </Button>
+              </EmptyStateActions>
+            </EmptyStateContent>
+          </EmptyState>
+        ) : (
+          <div className="space-y-7">
+            <WorkloadList
+              chats={chatMap}
+              items={sorted.active}
+              label="Active"
+              onDeleteTask={requestDeleteTask}
+              paused={pauseState.data?.paused ?? false}
+              taskWorkers={workerMap}
+              onOpenTask={onOpenTask}
+            />
+            <WorkloadList
+              chats={chatMap}
+              items={sorted.completed}
+              label="Completed"
+              onDeleteTask={requestDeleteTask}
+              paused={false}
+              taskWorkers={workerMap}
+              onOpenTask={onOpenTask}
+            />
+          </div>
+        )}
       </div>
       {deleteTaskDialog}
     </div>

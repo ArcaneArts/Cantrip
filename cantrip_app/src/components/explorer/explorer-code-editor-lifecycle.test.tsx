@@ -1534,6 +1534,153 @@ describe("ExplorerCodeEditor warm lifecycle", () => {
     await act(async () => renderer.unmount());
   });
 
+  it("replaces one unready desktop session and opens the latest file on its replacement", async () => {
+    vi.useFakeTimers();
+    tauri.enabled = true;
+    const replacementOwned = {
+      ...sharedOwned,
+      attachment: {
+        ...sharedOwned.attachment,
+        session: {
+          ...sharedOwned.attachment.session,
+          attachmentId: "replacement-attachment",
+          sessionId: "replacement-session",
+        },
+      },
+    };
+    const replacement = {
+      ...sharedPreferred("lease-two"),
+      attachment: {
+        ...sharedAttachment,
+        attachmentId: "replacement-attachment",
+        sessionId: "replacement-session",
+        url: "http://127.0.0.1:43123/sessions/replacement/code/",
+      },
+      sharedOwnedAttachment: replacementOwned,
+    };
+    api.createProtectedExplorerCodeSessionAttachment
+      .mockResolvedValueOnce(sharedOwned)
+      .mockResolvedValue(replacementOwned);
+    desktopCode.preferSharedProtectedCodeAttachment
+      .mockResolvedValueOnce(sharedPreferred("lease-one"))
+      .mockResolvedValue(replacement);
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(editor("src/first.ts"), {
+        createNodeMock: (element) =>
+          element.type === "iframe" ? { contentWindow: {} as Window } : null,
+      });
+    });
+    await flushImmediateTimers();
+    await act(async () => renderer.update(editor("src/latest.ts")));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_500);
+    });
+    await flushImmediateTimers();
+
+    expect(
+      api.createProtectedExplorerCodeSessionAttachment,
+    ).toHaveBeenCalledTimes(2);
+    expect(
+      api.createProtectedExplorerCodeSessionAttachment,
+    ).toHaveBeenLastCalledWith(
+      "explorer-1",
+      "src/latest.ts",
+      "worker-1",
+      "worktree-1",
+      "dark",
+    );
+    expect(desktopCode.stopSharedProtectedCodeAttachment).toHaveBeenCalledWith(
+      sharedOwned,
+    );
+    expect(
+      api.releaseProtectedExplorerCodeSessionAttachment,
+    ).toHaveBeenCalledWith(sharedOwned);
+    expect(renderer.root.findByType("iframe").props.src).toContain(
+      "/sessions/replacement/code/",
+    );
+
+    await act(async () => testWindow.sendMessage());
+    await flushImmediateTimers();
+    expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledWith(
+      replacement.attachment,
+      "src/latest.ts",
+      expect.any(Object),
+    );
+    expect(renderer.root.findByType("iframe").props.className).toBe(
+      "frame-ready",
+    );
+    await act(async () => renderer.unmount());
+  });
+
+  it("bounds fresh-session startup recovery without resetting the frame retry budget", async () => {
+    vi.useFakeTimers();
+    tauri.enabled = true;
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(editor(null), {
+        createNodeMock: (element) =>
+          element.type === "iframe" ? { contentWindow: {} as Window } : null,
+      });
+    });
+    await flushImmediateTimers();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_500);
+    });
+    await flushImmediateTimers();
+    expect(
+      api.createProtectedExplorerCodeSessionAttachment,
+    ).toHaveBeenCalledTimes(2);
+    for (
+      let attempt = 1;
+      attempt < EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT;
+      attempt += 1
+    ) {
+      await act(async () => renderer.root.findByType("iframe").props.onError());
+      await act(async () => renderer.update(editor(null, { active: false })));
+      await act(async () => renderer.update(editor(null, { active: true })));
+      await flushImmediateTimers();
+    }
+    const exhaustedUrl = renderer.root.findByType("iframe").props.src;
+    await act(async () => renderer.root.findByType("iframe").props.onError());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(
+      api.createProtectedExplorerCodeSessionAttachment,
+    ).toHaveBeenCalledTimes(2);
+    expect(renderer.root.findByType("iframe").props.src).toBe(exhaustedUrl);
+    await act(async () => renderer.unmount());
+  });
+
+  it("never replaces a previously ready desktop session after a frame failure", async () => {
+    vi.useFakeTimers();
+    tauri.enabled = true;
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(editor("src/warm.ts"), {
+        createNodeMock: (element) =>
+          element.type === "iframe" ? { contentWindow: {} as Window } : null,
+      });
+    });
+    await flushImmediateTimers();
+    await act(async () => testWindow.sendMessage());
+    await flushImmediateTimers();
+    await act(async () => renderer.root.findByType("iframe").props.onError());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    await flushImmediateTimers();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(16_000);
+    });
+    await flushImmediateTimers();
+    expect(
+      api.createProtectedExplorerCodeSessionAttachment,
+    ).toHaveBeenCalledOnce();
+    await act(async () => renderer.unmount());
+  });
+
   it("accepts exact workbench readiness at 14.5 seconds on the original frame", async () => {
     vi.useFakeTimers();
     frameRuntime.readyPredicate = (event, frameWindow, mount) =>

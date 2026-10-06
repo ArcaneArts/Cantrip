@@ -6,7 +6,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import TestRenderer, { act } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
 
-import type { RunConfigurationListInventory } from "@/lib/run-configuration-api";
+import {
+  operateRunConfigurationRuntime,
+  type RunConfigurationListInventory,
+} from "@/lib/run-configuration-api";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 import { MobileProjectHeader } from "../mobile/mobile-project-header";
@@ -148,6 +151,60 @@ function markup(
 }
 
 describe("Run configuration control", () => {
+  it("opens the returned Run terminal before waiting for inventory refresh", async () => {
+    const queryClient = new QueryClient();
+    const onFocusTerminal = vi.fn();
+    const refresh = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockImplementation(() => new Promise<void>(() => undefined));
+    const runtime = {
+      id: "run-1",
+      terminalId: "terminal-1",
+      configurationId,
+      worktreeId: worktree.id,
+      state: "starting",
+    } as RunConfigurationRuntime;
+    vi.mocked(operateRunConfigurationRuntime).mockResolvedValueOnce({
+      runtime,
+      operation: { outcome: "accepted" },
+      replayed: false,
+    } as Awaited<ReturnType<typeof operateRunConfigurationRuntime>>);
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        <QueryClientProvider client={queryClient}>
+          <RunConfigurationControl
+            editorConfigurationId={null}
+            inventory={inventory}
+            loading={false}
+            projectId="project"
+            renderEditor={false}
+            runtimes={[]}
+            workers={[worker]}
+            worktrees={[worktree]}
+            onEditorConfigurationChange={vi.fn()}
+            onFocusTerminal={onFocusTerminal}
+          />
+        </QueryClientProvider>,
+      );
+    });
+    await act(async () =>
+      renderer.root
+        .find(
+          (node) =>
+            node.type === "button" && node.props["aria-label"] === "Run",
+        )
+        .props.onClick({ stopPropagation: vi.fn() }),
+    );
+    expect(onFocusTerminal).toHaveBeenCalledExactlyOnceWith("terminal-1");
+    expect(
+      queryClient.getQueryData(["run-configuration-runtimes", "project"]),
+    ).toEqual([runtime]);
+    expect(refresh).toHaveBeenCalled();
+    await act(async () => renderer.unmount());
+    refresh.mockRestore();
+  });
+
   it("renders the remembered/default configuration with a green Run action", () => {
     const html = markup();
     const selector = [...html.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/gu)]

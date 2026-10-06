@@ -432,7 +432,7 @@ function Preview({ event }: { event: TrajectoryEvent }) {
   if (activity?.type === "fileChange") {
     return (
       <div className="p-3">
-        <FileChangePreview changes={activity.changes} />
+        <FileChangePreview changes={activity.changes} expanded />
       </div>
     );
   }

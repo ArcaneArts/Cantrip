@@ -41,74 +41,30 @@ function useRevealSelection(onReveal?: (localFolder: boolean) => void) {
   };
 }
 
-function ContextItems({
-  onOpenSettings,
-  onRemove,
-  onReveal,
-  revealDisabled,
-  revealLabel,
-}: ProjectMenuActions) {
-  const reveal = useRevealSelection(onReveal);
-  return (
-    <>
-      <ContextMenuPrimitive.Item
-        className={itemClass}
-        onSelect={onOpenSettings}
-      >
-        <Settings className="size-4" /> Project Settings
-      </ContextMenuPrimitive.Item>
-      {onReveal ? (
-        <ContextMenuPrimitive.Item
-          className={itemClass}
-          disabled={revealDisabled}
-          onClick={reveal.onClick}
-          onSelect={reveal.onSelect}
-        >
-          <NativeFolderRevealIcon
-            className="size-4"
-            localFolder={reveal.shiftKeyHeld}
-          />{" "}
-          {revealLabel}
-        </ContextMenuPrimitive.Item>
-      ) : null}
-      <ContextMenuPrimitive.Separator className="my-1 h-px bg-border" />
-      <ContextMenuPrimitive.Item
-        className={cn(itemClass, "text-destructive focus:bg-destructive/10")}
-        onSelect={onRemove}
-      >
-        <Trash2 className="size-4" /> Remove project
-      </ContextMenuPrimitive.Item>
-    </>
-  );
-}
-
-function DropdownItems({
+function ProjectMenuItems({
+  kind,
   onOpenOverview,
   onOpenSettings,
   onRemove,
   onReveal,
   revealDisabled,
   revealLabel,
-}: ProjectMenuActions) {
+}: ProjectMenuActions & { kind: "context" | "dropdown" }) {
+  const Menu =
+    kind === "context" ? ContextMenuPrimitive : DropdownMenuPrimitive;
   const reveal = useRevealSelection(onReveal);
   return (
     <>
       {onOpenOverview ? (
-        <DropdownMenuPrimitive.Item
-          className={itemClass}
-          onSelect={onOpenOverview}
-        >
+        <Menu.Item className={itemClass} onSelect={onOpenOverview}>
           <LayoutDashboard className="size-4" /> Overview
-        </DropdownMenuPrimitive.Item>
+        </Menu.Item>
       ) : null}
-      <DropdownMenuPrimitive.Item
-        className={itemClass}
-        onSelect={onOpenSettings}
-      >
+      <Menu.Item className={itemClass} onSelect={onOpenSettings}>
         <Settings className="size-4" /> Project Settings
-      </DropdownMenuPrimitive.Item>
+      </Menu.Item>
       {onReveal ? (
-        <DropdownMenuPrimitive.Item
+        <Menu.Item
           className={itemClass}
           disabled={revealDisabled}
           onClick={reveal.onClick}
@@ -119,15 +75,15 @@ function DropdownItems({
             localFolder={reveal.shiftKeyHeld}
           />{" "}
           {revealLabel}
-        </DropdownMenuPrimitive.Item>
+        </Menu.Item>
       ) : null}
-      <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
-      <DropdownMenuPrimitive.Item
+      <Menu.Separator className="my-1 h-px bg-border" />
+      <Menu.Item
         className={cn(itemClass, "text-destructive focus:bg-destructive/10")}
         onSelect={onRemove}
       >
         <Trash2 className="size-4" /> Remove project
-      </DropdownMenuPrimitive.Item>
+      </Menu.Item>
     </>
   );
 }
@@ -149,7 +105,7 @@ export function ProjectContextMenu({
           className={contentClass}
           data-slot="project-actions-context-menu"
         >
-          <ContextItems {...actions} />
+          <ProjectMenuItems {...actions} kind="context" />
         </ContextMenuPrimitive.Content>
       </ContextMenuPrimitive.Portal>
     </ContextMenuPrimitive.Root>
@@ -175,7 +131,7 @@ export function ProjectDropdownMenu({
           data-slot="project-actions-dropdown-menu"
           sideOffset={4}
         >
-          <DropdownItems {...actions} />
+          <ProjectMenuItems {...actions} kind="dropdown" />
         </DropdownMenuPrimitive.Content>
       </DropdownMenuPrimitive.Portal>
     </DropdownMenuPrimitive.Root>

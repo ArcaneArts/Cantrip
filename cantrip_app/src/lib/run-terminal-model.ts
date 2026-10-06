@@ -1,6 +1,7 @@
 import type {
   ProjectWorktreeSummary,
   TerminalSummary,
+  WorkerSummary,
 } from "@cantrip/protocol";
 import type { RunConfigurationRepositoryInventory } from "@cantrip/protocol/run-configuration-definitions";
 import type {
@@ -19,6 +20,57 @@ export function runConfigurationRuntimeIsActive(
   runtime: RunConfigurationRuntime | null | undefined,
 ): boolean {
   return Boolean(runtime && ACTIVE_RUNTIME_STATES.has(runtime.state));
+}
+
+export interface RunningRunConfiguration {
+  runtimeId: string;
+  terminalId: string;
+  name: string;
+  targetLabel: string;
+}
+
+export function runningRunConfigurations(
+  runtimes: readonly RunConfigurationRuntime[],
+  inventory: RunConfigurationRepositoryInventory | null | undefined,
+  worktrees: readonly ProjectWorktreeSummary[],
+  workers: readonly WorkerSummary[],
+): RunningRunConfiguration[] {
+  const names = new Map(
+    (inventory?.entries ?? []).flatMap((entry) =>
+      entry.id && entry.document ? [[entry.id, entry.document.name]] : [],
+    ),
+  );
+  const worktreeById = new Map(
+    worktrees.map((worktree) => [worktree.id, worktree]),
+  );
+  const workerNames = new Map(
+    workers.map((worker) => [worker.workerId, worker.name]),
+  );
+  return runtimes
+    .flatMap((runtime) => {
+      if (!runConfigurationRuntimeIsActive(runtime) || !runtime.terminalId)
+        return [];
+      const worktree = worktreeById.get(runtime.worktreeId);
+      const worktreeLabel = worktree
+        ? worktree.isPrimary
+          ? "Primary"
+          : (worktree.branch ?? worktree.name)
+        : "Unavailable worktree";
+      return [
+        {
+          runtimeId: runtime.id,
+          terminalId: runtime.terminalId,
+          name: names.get(runtime.configurationId) ?? "Run configuration",
+          targetLabel: `${worktreeLabel} · ${workerNames.get(runtime.workerId) ?? runtime.workerId}`,
+        },
+      ];
+    })
+    .sort(
+      (left, right) =>
+        left.name.localeCompare(right.name) ||
+        left.targetLabel.localeCompare(right.targetLabel) ||
+        left.runtimeId.localeCompare(right.runtimeId),
+    );
 }
 
 export function runTerminalIsActive(terminal: TerminalSummary): boolean {

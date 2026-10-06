@@ -151,6 +151,7 @@ import { scopedClientStorageKey } from "@/lib/client-session";
 import { useDesktopDirectTransportTelemetry } from "@/lib/direct-transport-telemetry";
 import { useAppActions } from "@/lib/use-app-actions";
 import {
+  runningRunConfigurations,
   runtimeForRunTerminal,
   runTerminalTargetLabel,
 } from "@/lib/run-terminal-model";
@@ -1845,6 +1846,26 @@ export function App() {
     }
     revealWorkspace();
   };
+  const openRunTerminal = (
+    terminalId: string,
+    targetPaneId?: string,
+    targetRegion: ProjectPaneRegion = "bottom",
+    moveToBottom = false,
+  ) => {
+    const projectId = selectedProjectId;
+    if (!projectId) return;
+    return openOrFocusSurface(
+      projectId,
+      {
+        kind: "entity",
+        definitionId: "project.terminal",
+        resourceId: terminalId,
+      },
+      targetPaneId,
+      targetRegion,
+      { revealDock: true, moveToTargetRegion: moveToBottom },
+    );
+  };
   const moveSurfaceToRegion = (
     surface: ProjectSurface,
     region: Extract<ProjectPaneRegion, "center" | "right" | "bottom">,
@@ -1998,6 +2019,12 @@ export function App() {
           capabilities: selectedProject.capabilities,
           projectId: selectedProject.id,
           replicas: selectedProject.replicas,
+          runningConfigurations: runningRunConfigurations(
+            runConfigurationRuntimes.data ?? [],
+            runConfigurations.data,
+            worktrees.data ?? [],
+            workers.data ?? [],
+          ),
           workers: workers.data ?? [],
           worktrees: worktrees.data ?? [],
         }
@@ -2035,7 +2062,7 @@ export function App() {
     newRemoteDesktop, newStandaloneChat, newTask, newTerminal,
     onlineWorker, onlineWorkerIds, openChatConsole, openChatExplorerHere, openChatFileLink,
     openChatHistoryHere, openChatTerminalHere, openCompactRootSettings, openCreatedProject, openCreatedTab,
-    openExplorerFileWindow, openExplorers, openOrFocusSurface, openProjectCreateSource, openProjectExplorerFile, openProjectNavigatorSurface, openProjectToolSection, ownedTerminals,
+    openExplorerFileWindow, openExplorers, openOrFocusSurface, openProjectCreateSource, openProjectExplorerFile, openProjectNavigatorSurface, openProjectToolSection, openRunTerminal, ownedTerminals,
     openProjectSettings, openProjectTask, openServerAdmin, openSidebarFilePreview, openSidebarFolderGraph,
     openSidebarFolderNative, openSidebarRootNative, openSidebarFolderTerminal, openTerminalLink, openTerminalLinkExternally, openTunnelOwner,
     overlayTitlebar, pendingTerminalInputs, permanentlyDeleteStandaloneChat, pinSidebarFile, pinSidebarFileMutation,

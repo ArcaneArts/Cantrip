@@ -33,7 +33,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   getTaskImplementationDashboard,
-  interruptChat,
   setChatPaused,
   updateChatGoal,
 } from "@/lib/api";
@@ -44,6 +43,7 @@ import { useChatMessageHistory } from "@/lib/use-chat-message-history";
 import { cn } from "@/lib/utils";
 
 import { taskCanBeDeleted } from "./task-deletion";
+import { TaskInteractionRequests } from "./task-interaction-requests";
 import { TaskListBackButton } from "./task-list-back-button";
 
 const goalLabels: Record<TaskGoalSnapshot["status"], string> = {
@@ -60,12 +60,15 @@ export function taskImplementationStatusLabel(
   goal: TaskGoalSnapshot | null,
   active = false,
   chatFailed = false,
+  awaitingApproval = false,
+  automationPaused = false,
 ): string {
   if (task.state === "failed" || chatFailed) return "Failed";
-  if (task.state === "paused") return "Paused";
+  if (task.state === "complete") return "Complete";
+  if (task.state === "paused" || automationPaused) return "Paused";
   if (task.state === "blocked")
     return goal ? goalLabels[goal.status] : "Blocked";
-  if (task.state === "complete") return "Complete";
+  if (awaitingApproval) return "Needs approval";
   if (!task.planGoalEnabled && active) return "Running";
   return goal ? goalLabels[goal.status] : "Starting";
 }
@@ -80,15 +83,48 @@ export function taskImplementationShowsLiveActivity(
   task: TaskDetail,
   goal: TaskGoalSnapshot | null,
   active = false,
+  automationPaused = false,
 ): boolean {
   return (
+    !automationPaused &&
     task.state === "implementing" &&
     (task.planGoalEnabled ? goal?.status === "active" : active)
   );
 }
 
+export function taskImplementationCanResume(
+  task: TaskDetail,
+  goal: TaskGoalSnapshot | null,
+  automationPaused = false,
+): boolean {
+  if (task.state === "complete" || task.state === "failed") return false;
+  return (
+    automationPaused ||
+    task.state === "paused" ||
+    (task.planGoalEnabled &&
+      (goal?.status === "paused" || goal?.status === "blocked"))
+  );
+}
+
+export async function stopTaskImplementation(chatId: string): Promise<void> {
+  // Interrupting rejects the encrypted operation and persists its failure
+  // snapshot. Pause instead so Stop preserves the resident turn for Resume.
+  await setChatPaused(chatId, true);
+}
+
+export async function resumeTaskImplementation(
+  chatId: string,
+  automationPaused: boolean,
+  goal: TaskGoalSnapshot | null,
+): Promise<void> {
+  if (automationPaused) await setChatPaused(chatId, false);
+  if (goal?.status === "paused" || goal?.status === "blocked") {
+    await updateChatGoal(chatId, { status: "active" });
+  }
+}
+
 export const TASK_IMPLEMENTATION_CONTENT_CLASS_NAME =
-  "flex w-full min-w-0 max-w-full flex-col px-4 py-5 sm:px-8";
+  "flex w-full min-w-0 max-w-full flex-col px-0 py-5 @min-[40rem]/task-implementation:px-8";
 
 function PullRequestRow({
   pullRequest,
@@ -202,22 +238,12 @@ export function TaskImplementationDashboard({
     onSettled: settleControls,
   });
   const resume = useMutation({
-    mutationFn: async () => {
-      if (chat.automationPaused) await setChatPaused(chat.id, false);
-      if (goal?.status === "paused" || goal?.status === "blocked") {
-        await updateChatGoal(chat.id, { status: "active" });
-      }
-    },
+    mutationFn: () =>
+      resumeTaskImplementation(chat.id, chat.automationPaused, goal),
     onSettled: settleControls,
   });
   const stop = useMutation({
-    mutationFn: async () => {
-      if (task.planGoalEnabled) await setChatPaused(chat.id, true);
-      await interruptChat(chat.id);
-      if (task.planGoalEnabled && goal?.status === "active") {
-        await updateChatGoal(chat.id, { status: "paused" });
-      }
-    },
+    mutationFn: () => stopTaskImplementation(chat.id),
     onSettled: settleControls,
   });
   const controlError = pause.error ?? resume.error ?? stop.error;
@@ -227,21 +253,23 @@ export function TaskImplementationDashboard({
     goal,
     active,
     chat.status === "failed",
+    chat.status === "waiting-for-approval",
+    chat.automationPaused,
   );
   const tokenProgress =
     goal?.tokenBudget && goal.tokenBudget > 0
       ? Math.min(100, (goal.tokensUsed / goal.tokenBudget) * 100)
       : null;
-  const showResume =
-    task.planGoalEnabled &&
-    (chat.automationPaused ||
-      task.state === "paused" ||
-      goal?.status === "paused" ||
-      goal?.status === "blocked");
+  const showResume = taskImplementationCanResume(
+    task,
+    goal,
+    chat.automationPaused,
+  );
   const showLiveActivity = taskImplementationShowsLiveActivity(
     task,
     goal,
     active,
+    chat.automationPaused,
   );
   const showPause = task.planGoalEnabled && showLiveActivity;
   const latestMessages = useMemo(() => messages.data ?? [], [messages.data]);
@@ -249,10 +277,15 @@ export function TaskImplementationDashboard({
   const directFolder = placement?.kind === "folder";
 
   return (
-    <div className="min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden overflow-y-auto">
+    <div className="@container/task-implementation min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden overflow-y-auto">
       <div className={TASK_IMPLEMENTATION_CONTENT_CLASS_NAME}>
         <header className="flex flex-wrap items-center gap-3 border-b pb-4">
-          {onClose ? <TaskListBackButton onBack={onClose} /> : null}
+          {onClose ? (
+            <TaskListBackButton
+              className="ml-0 @min-[40rem]/task-implementation:-ml-2"
+              onBack={onClose}
+            />
+          ) : null}
           <div className="grid size-9 place-items-center rounded-lg bg-violet-500/10 text-violet-500">
             <Target className="size-4" />
           </div>
@@ -328,7 +361,7 @@ export function TaskImplementationDashboard({
               Pause
             </Button>
           ) : null}
-          {active ? (
+          {active && !chat.automationPaused ? (
             <Button
               size="sm"
               variant="outline"
@@ -357,10 +390,14 @@ export function TaskImplementationDashboard({
           </p>
         ) : null}
 
+        <TaskInteractionRequests chat={chat} />
+
         <section
           className={cn(
             "grid gap-0 border-b py-4",
-            directFolder ? "sm:grid-cols-2" : "sm:grid-cols-3",
+            directFolder
+              ? "@min-[40rem]/task-implementation:grid-cols-2"
+              : "@min-[40rem]/task-implementation:grid-cols-3",
           )}
         >
           <div className="flex min-w-0 items-center gap-2 py-1 text-sm">
@@ -487,6 +524,7 @@ export function TaskImplementationDashboard({
               <AgentInspectContent
                 active={active}
                 messages={latestMessages}
+                trajectoryEventOrder="newest-first"
                 visible
               />
             </div>

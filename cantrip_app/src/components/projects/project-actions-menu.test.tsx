@@ -58,9 +58,24 @@ describe("project action menus", () => {
       expect(markup).toContain(`data-slot="${slot}"`);
       expect(markup).toContain("z-[100]");
       expect(markup).toContain("Project Settings");
-      if (_kind === "dropdown") expect(markup).toContain("Overview");
+      expect(markup).toContain("Overview");
       expect(markup).toContain("Reveal in Finder");
       expect(markup).toContain("Remove project");
     },
   );
+
+  it("omits unavailable optional actions from both menus", () => {
+    const limitedActions = { onOpenSettings: vi.fn(), onRemove: vi.fn() };
+    for (const Menu of [ProjectContextMenu, ProjectDropdownMenu]) {
+      const markup = renderToStaticMarkup(
+        <Menu actions={limitedActions}>
+          <button>Project</button>
+        </Menu>,
+      );
+      expect(markup).not.toContain("Overview");
+      expect(markup).not.toContain("Reveal in Finder");
+      expect(markup).toContain("Project Settings");
+      expect(markup).toContain("Remove project");
+    }
+  });
 });
