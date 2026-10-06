@@ -1932,7 +1932,7 @@ describe("remaining managed GUI native mutations", () => {
     },
   );
 
-  it("admits both precise revert and its actual unsupported pagination fallback", async () => {
+  it("admits precise revert and preserves native failures without a removed rollback fallback", async () => {
     const f = fixture();
     const methods: string[] = [];
     f.runtime.setManagedNativeCommandDispatcher("thread-1", async (command) => {
@@ -1953,22 +1953,19 @@ describe("remaining managed GUI native mutations", () => {
         };
       if (method === "thread/revert")
         throw new Error("paginated history not supported");
-      if (method === "thread/rollback") return {};
       throw new Error(`Unexpected ${method}`);
     });
-    await f.runtime.rollbackLatestChatTurn({
-      ...options,
-      executionProfile: "ide",
-      clientMessageId: "message",
-    });
-    expect(methods).toEqual(["thread/revert", "thread/rollback"]);
+    await expect(
+      f.runtime.rollbackLatestChatTurn({
+        ...options,
+        executionProfile: "ide",
+        clientMessageId: "message",
+      }),
+    ).rejects.toThrow("paginated history not supported");
+    expect(methods).toEqual(["thread/revert"]);
     expect(f.request).toHaveBeenCalledWith("thread/revert", {
       threadId: "thread-1",
       beforeTurnId: "native-turn",
-    });
-    expect(f.request).toHaveBeenCalledWith("thread/rollback", {
-      threadId: "thread-1",
-      numTurns: 1,
     });
     expect(f.native.ensureStarted).not.toHaveBeenCalled();
   });

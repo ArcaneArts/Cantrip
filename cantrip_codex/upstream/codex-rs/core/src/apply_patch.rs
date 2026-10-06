@@ -1,4 +1,5 @@
 use crate::function_tool::FunctionCallError;
+use crate::safety::PatchPolicyMatcher;
 use crate::safety::SafetyCheck;
 use crate::safety::assess_patch_safety;
 use crate::session::step_context::StepContext;
@@ -7,7 +8,6 @@ use crate::tools::sandboxing::ExecApprovalRequirement;
 use codex_apply_patch::ApplyPatchAction;
 use codex_apply_patch::ApplyPatchFileChange;
 use codex_protocol::protocol::FileChange;
-use codex_protocol::protocol::FileSystemSandboxPolicy;
 use codex_utils_path_uri::PathUri;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -22,17 +22,18 @@ pub(crate) struct ApplyPatchRuntimeInvocation {
 pub(crate) fn prepare_apply_patch(
     step_context: &StepContext,
     turn_environment: &TurnEnvironment,
-    file_system_sandbox_policy: &FileSystemSandboxPolicy,
+    matching: &PatchPolicyMatcher<'_>,
     action: ApplyPatchAction,
 ) -> Result<ApplyPatchRuntimeInvocation, FunctionCallError> {
     match assess_patch_safety(
         &action,
         step_context.settings.approval_policy(),
         turn_environment.permission_profile(),
-        file_system_sandbox_policy,
-        &action.cwd,
-        turn_environment.config().windows_sandbox_level,
-    ) {
+        matching,
+    )
+    .map_err(|error| {
+        FunctionCallError::RespondToModel(format!("failed to check patch permissions: {error}"))
+    })? {
         SafetyCheck::AutoApprove => Ok(ApplyPatchRuntimeInvocation {
             action,
             auto_approved: true,

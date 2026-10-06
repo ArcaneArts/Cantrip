@@ -384,9 +384,12 @@ describe.skipIf(!binary || process.platform === "win32")(
         keys("\r");
         await waitFor(() =>
           expect(
-            stripVTControlCharacters(output.slice(defaultsOffset)),
+            stripVTControlCharacters(output.slice(defaultsOffset)).replace(
+              /\s+/gu,
+              "",
+            ),
             diagnostic(),
-          ).toContain("Account defaults saved and verified"),
+          ).toContain("Accountdefaultssavedandverified"),
         );
         expect(defaultWrites).toHaveLength(defaultWritesBefore + 1);
         expect(defaultWrites[defaultWritesBefore]!.params).toMatchObject({
@@ -524,7 +527,9 @@ describe.skipIf(!binary || process.platform === "win32")(
           "first canonical draft",
           "second canonical draft",
         ].entries()) {
-          keys(text);
+          // A rapid unbracketed text+Tab stream is now treated as pasted text.
+          // Send an explicit paste so the following Tab is a queue shortcut.
+          keys(`\x1b[200~${text}\x1b[201~`);
           keys("\t");
           await waitOperation("thread/queue/add", index + 1);
           await waitFor(() =>
@@ -623,9 +628,10 @@ describe.skipIf(!binary || process.platform === "win32")(
         // A native resume receipt precedes the TUI's reconnect restoration.
         // Wait for its actual user-visible readiness before sending a new key.
         await waitFor(() =>
-          expect(stripVTControlCharacters(output), diagnostic()).toContain(
-            "Reconnected. No input was resent.",
-          ),
+          expect(
+            stripVTControlCharacters(output).replace(/\s+/gu, ""),
+            diagnostic(),
+          ).toContain("Reconnected.Noinputwasresent."),
         );
         // The real TUI retains the original operation across transport loss.
         await keyThenView("\x11", "Retry unacknowledged thread/queue/delete");

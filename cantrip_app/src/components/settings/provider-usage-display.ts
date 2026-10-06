@@ -2,7 +2,56 @@ import type {
   ModelProviderAccountSummary,
   ProviderQuotaSnapshot,
   ProviderWeeklyUsage,
+  ProviderCreditsSnapshot,
 } from "@cantrip/protocol";
+import { providerCreditBalance } from "@cantrip/protocol";
+
+const creditFormat = new Intl.NumberFormat(undefined, {
+  maximumFractionDigits: 2,
+});
+
+export function providerAccountCredits(
+  account: ModelProviderAccountSummary | null | undefined,
+  snapshot?: ProviderQuotaSnapshot | null,
+): ProviderCreditsSnapshot | null | undefined {
+  if (account?.credentialState === "signed-out") return account.credits;
+  if (!snapshot?.credits) return account?.credits;
+  const accountObservedAt = account?.creditsObservedAt
+    ? Date.parse(account.creditsObservedAt)
+    : 0;
+  return Date.parse(snapshot.observedAt) >= accountObservedAt
+    ? snapshot.credits
+    : account?.credits;
+}
+
+export function providerCreditsText(
+  credits: ProviderCreditsSnapshot | null | undefined,
+): string {
+  if (credits?.unlimited) return "Unlimited credits";
+  const balance = providerCreditBalance(credits);
+  return balance === null
+    ? "Credits unavailable"
+    : `${creditFormat.format(balance)} credits`;
+}
+
+export function providerTotalCreditsText(
+  accounts: ModelProviderAccountSummary[],
+): string {
+  const signedIn = accounts.filter(
+    (account) => account.enabled && account.credentialState === "signed-in",
+  );
+  if (signedIn.some((account) => account.credits?.unlimited))
+    return "Unlimited credits";
+  const balances = signedIn
+    .map((account) => providerCreditBalance(account.credits))
+    .filter((balance): balance is number => balance !== null);
+  if (!balances.length) return "Credits unavailable";
+  const suffix =
+    balances.length === signedIn.length
+      ? ""
+      : ` reported (${balances.length}/${signedIn.length} accounts)`;
+  return `${creditFormat.format(balances.reduce((sum, balance) => sum + balance, 0))} credits${suffix}`;
+}
 
 export interface ProviderWeeklyAvailability {
   availablePercent: number;

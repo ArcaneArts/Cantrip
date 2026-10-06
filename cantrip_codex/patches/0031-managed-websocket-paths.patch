@@ -1,15 +1,17 @@
+diff --git a/codex-rs/tui/src/lib.rs b/codex-rs/tui/src/lib.rs
+index a2fba39..f0333b2 100644
 --- a/codex-rs/tui/src/lib.rs
 +++ b/codex-rs/tui/src/lib.rs
-@@ -365,7 +365,7 @@
+@@ -429,7 +429,7 @@ fn remote_addr_has_explicit_port(addr: &str, parsed: &Url) -> bool {
+         "wss" => 443,
+         _ => return false,
+     };
 -    let expected_host = if host.contains(':') {
 +    let expected_host = if host.contains(':') && !host.starts_with('[') {
          format!("[{host}]")
      } else {
          host.to_string()
-     };
-     host_and_port == format!("{expected_host}:{explicit_default_port}")
- }
-@@ -402,7 +402,6 @@
+@@ -471,7 +471,6 @@ pub fn resolve_remote_addr(addr: &str) -> color_eyre::Result<RemoteAppServerEndp
      if matches!(parsed.scheme(), "ws" | "wss")
          && parsed.host_str().is_some()
          && remote_addr_has_explicit_port(addr, &parsed)
@@ -17,12 +19,10 @@
          && parsed.query().is_none()
          && parsed.fragment().is_none()
      {
-@@ -2493,6 +2492,48 @@
-                 auth_token: None,
-             }
+@@ -2960,6 +2959,48 @@ requires_openai_auth = {requires_openai_auth}
          );
-+    }
-+
+     }
+ 
 +    #[test]
 +    fn resolve_remote_addr_preserves_websocket_gateway_paths() {
 +        for (address, normalized) in [
@@ -63,6 +63,8 @@
 +        ] {
 +            assert!(resolve_remote_addr(address).is_err());
 +        }
-     }
- 
++    }
++
      #[test]
+     fn resolve_remote_addr_accepts_default_socket() -> color_eyre::Result<()> {
+         let codex_home = find_codex_home().wrap_err("failed to resolve CODEX_HOME")?;

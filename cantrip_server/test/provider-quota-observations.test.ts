@@ -211,6 +211,71 @@ describe("provider quota observation ledger", () => {
         { observation_trigger: "turn-completed", window_kind: "secondary" },
       ]);
 
+      const creditContext = {
+        ownerId: LOCAL_USER_ID,
+        providerId: provider.id,
+        accountId: account.id,
+        accountPlanType: null,
+        workerId: "worker-telemetry",
+        trigger: "credit-balance",
+      };
+      const creditSnapshot = {
+        snapshotId: "credits-only",
+        observedAt: "2026-08-16T12:30:00.000Z",
+        workerVersion: null,
+        codexVersion: null,
+        windows: [],
+        rateLimitResetCredits: null,
+        credits: { hasCredits: true, unlimited: false, balance: "150.25" },
+      };
+      await expect(
+        persistProviderQuotaSnapshot(repository, creditContext, creditSnapshot),
+      ).resolves.toBe(0);
+      await persistProviderQuotaSnapshot(repository, creditContext, {
+        ...creditSnapshot,
+        observedAt: "2026-08-16T12:00:00.000Z",
+        credits: { ...creditSnapshot.credits, balance: "9999" },
+      });
+      await persistProviderQuotaSnapshot(
+        repository,
+        { ...creditContext, ownerId: "another-owner" },
+        {
+          ...creditSnapshot,
+          observedAt: "2026-08-16T13:00:00.000Z",
+          credits: { ...creditSnapshot.credits, balance: "9999" },
+        },
+      );
+      await persistProviderQuotaSnapshot(repository, creditContext, {
+        ...creditSnapshot,
+        observedAt: "2026-08-16T13:00:00.000Z",
+        credits: null,
+      });
+      expect(
+        (
+          await repository.listModelProviderAccounts(LOCAL_USER_ID, provider.id)
+        )?.[0]?.credits,
+      ).toEqual(creditSnapshot.credits);
+      expect(
+        (
+          await repository.listModelProviderAccountRuntimes(
+            LOCAL_USER_ID,
+            provider.id,
+            "worker-telemetry",
+            null,
+          )
+        )[0]?.credits,
+      ).toEqual(creditSnapshot.credits);
+      await persistProviderQuotaSnapshot(repository, creditContext, {
+        ...creditSnapshot,
+        observedAt: "2026-08-16T13:01:00.000Z",
+        credits: { hasCredits: false, unlimited: false, balance: "0" },
+      });
+      expect(
+        (
+          await repository.listModelProviderAccounts(LOCAL_USER_ID, provider.id)
+        )?.[0]?.credits?.balance,
+      ).toBe("0");
+
       const analytics = await repository.getProviderTelemetryAnalytics(
         LOCAL_USER_ID,
         {

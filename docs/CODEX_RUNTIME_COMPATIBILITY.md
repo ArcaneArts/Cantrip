@@ -6,26 +6,34 @@ to Codex App Server directly.
 
 ## Tested range
 
-Cantrip currently pins and builds `codex-cli 0.153.4` from the official
-`rust-v0.153.4` source tag. Its resolved commit, imported source manifest, and
+Cantrip currently pins and builds `codex-cli 0.160.1` from the official
+`rust-v0.160.1` source tag at `d27764b82f7118f674371e6d6e76271d9d606edb`. Its imported source manifest and
 manual update workflow live under `cantrip_codex/`. The protocol validators and
 fixtures were checked against the TypeScript and JSON Schema bindings generated
-by that CLI on September 5, 2026:
+by that CLI on October 5, 2026:
 
 ```sh
 codex app-server generate-ts --experimental --out <temporary-directory>
 codex app-server generate-json-schema --experimental --out <temporary-directory>
 ```
 
-The adapter's compatibility range is `>=0.153.0 <0.154.0`, but packaged
-workers contain exactly `0.153.4`; they do not select another compatible patch
+The adapter's compatibility range is `>=0.160.1 <0.161.0`, but packaged
+workers contain exactly `0.160.1`; they do not select another compatible patch
 from the host. Advancing even within the tested range is a Cantrip source and
 worker release. Expanding the range requires regenerating the bindings,
 reviewing schema changes, and updating compatibility tests.
 
-The 0.153.4 catalog lists `gpt-6-astra` and gives it the highest priority, making
-it the bundled Codex default when no model is explicitly configured. Cantrip
+The 0.160.1 catalog lists `gpt-6-astra` and now gives `gpt-6.1-sol` the highest
+priority, making Sol the bundled Codex default when no model is explicitly configured. Cantrip
 continues to use its server-owned model configuration for managed turns.
+
+All 39 existing Cantrip source patches are rebased onto this tag. A final
+compatibility patch adapts the new native interfaces and regenerates both
+stable and experimental protocol exports. Managed TUI attachment keeps the new
+screen-reader probe read-only, preserving account preferences. The GUI's
+precise history revert uses `thread/revert`; upstream removed `thread/rollback`.
+Revert remains limited to paginated native threads, and actual native errors
+are returned without retrying the removed method.
 
 Cantrip keeps the imported snapshot pristine and applies a reviewed patch
 series from `cantrip_codex/patches/` only to the ignored build copy. The series
@@ -54,7 +62,8 @@ upstream Rust toolchain, then places the native CLI, companion processes,
 platform sandbox resources, and their SHA-256 manifest in the Worker. Before
 publishing its first heartbeat, the worker:
 
-1. validates the bundled target and every artifact hash before executing it;
+1. validates the bundled target and presence of every declared artifact (the
+   native release verifier checks their actual SHA-256 hashes);
 2. runs the bundled binary with `--version`, parses its semantic version, and
    requires it to match the package manifest;
 3. starts a short-lived App Server over its stable stdio transport;
@@ -173,9 +182,9 @@ These new methods are capability-visible but not yet product operations.
 Cantrip's existing prompt queue remains server-owned, encrypted, and portable
 across workers, while Codex's queue belongs to one runtime thread. Replacing or
 bridging those contracts requires a separate design and migration rather than a
-version-pin change. Process diagnostics and native history revert are likewise
-available for a focused observability or rollback feature without being called
-during worker startup.
+version-pin change. Process diagnostics and native history revert are not
+called during worker startup; precise GUI turn reverts use the latter through
+the existing managed-command admission path.
 
 External ChatGPT Codex history import uses the same pinned version boundary but
 runs a separate source App Server against the external data home. Discovery is
@@ -199,10 +208,10 @@ external thread. See
 
 ## Endpoint-protected ChatGPT authentication
 
-Portable ChatGPT accounts depend on an experimental Codex 0.153 App Server
+Portable ChatGPT accounts depend on an experimental Codex 0.160 App Server
 surface. Before starting a portable ChatGPT runtime, the worker requires:
 
-- semantic version `0.153.x`;
+- semantic version `>=0.160.1 <0.161.0`;
 - `initialize.capabilities.experimentalApi` support; and
 - an available `account/login/start` method.
 

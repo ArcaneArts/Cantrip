@@ -7,8 +7,8 @@ use std::process::Stdio;
 use std::time::Duration;
 
 use self::http_client::StartupSyncHttpClient;
-use self::http_client::StartupSyncRequestBuilder;
 use codex_http_client::HttpClientFactory;
+use codex_http_client::RequestBuilder;
 use codex_login::default_client::default_headers;
 use codex_otel::CURATED_PLUGINS_STARTUP_SYNC_FINAL_METRIC;
 use codex_otel::CURATED_PLUGINS_STARTUP_SYNC_METRIC;
@@ -78,14 +78,12 @@ pub fn sync_openai_plugins_repo(
     codex_home: &Path,
     http_client_factory: HttpClientFactory,
 ) -> Result<String, String> {
+    // Keep Git-only egress working without trusting workspace PATH entries.
+    let git_binary = codex_utils_path::system_executable("git");
+    // Apple's /usr/bin/git is an installer shim when developer tools are absent.
+    // The resolver prefers the real CLT/Xcode executable when installed.
     #[cfg(target_os = "macos")]
-    let git_binary = match which::which("git") {
-        Ok(git_path) => macos_git_binary_from_path(git_path, apple_developer_tools_available()),
-        Err(_) => None,
-    };
-    #[cfg(not(target_os = "macos"))]
-    let git_binary = Some(PathBuf::from("git"));
-
+    let git_binary = git_binary.filter(|path| path != Path::new("/usr/bin/git"));
     sync_openai_plugins_repo_with_transport_overrides(
         codex_home,
         git_binary.as_deref(),
@@ -106,7 +104,7 @@ fn sync_openai_plugins_repo_with_transport_overrides(
 
     let git_sync_result = match git_binary {
         Some(git_binary) => sync_openai_plugins_repo_via_git(codex_home, git_binary),
-        None => Err("git executable is unavailable".to_string()),
+        None => Err("no Git executable found in trusted installation directories".to_string()),
     };
 
     match git_sync_result {
@@ -116,11 +114,13 @@ fn sync_openai_plugins_repo_with_transport_overrides(
             Ok(remote_sha)
         }
         Err(err) => {
-            emit_curated_plugins_startup_sync_metric("git", "failure");
-            warn!(
-                error = %err,
-                "git sync failed for curated plugin sync; falling back to GitHub HTTP"
-            );
+            if git_binary.is_some() {
+                emit_curated_plugins_startup_sync_metric("git", "failure");
+                warn!(
+                    error = %err,
+                    "git sync failed for curated plugin sync; falling back to GitHub HTTP"
+                );
+            }
             match sync_openai_plugins_repo_via_http(codex_home, api_base_url, http_client_factory) {
                 Ok(remote_sha) => {
                     emit_curated_plugins_startup_sync_metric("http", "success");
@@ -266,7 +266,7 @@ fn fetch_curated_plugins_commit_from(
     context: &str,
 ) -> Result<(), String> {
     let fetch_refspec = format!("+{source_revision}:{CURATED_PLUGINS_FETCH_REF}");
-    let mut command = git_command(git_binary);
+    let mut command = git_command(git_binary)?;
     command
         .arg("-C")
         .arg(repo_path)
@@ -298,7 +298,7 @@ fn run_git_in_repo(
     args: &[&str],
     context: &str,
 ) -> Result<(), String> {
-    let mut command = git_command(git_binary);
+    let mut command = git_command(git_binary)?;
     command.arg("-C").arg(repo_path).args(args);
     let output = run_git_command_with_timeout(&mut command, context, CURATED_PLUGINS_GIT_TIMEOUT)?;
     ensure_git_success(&output, context)
@@ -608,9 +608,10 @@ fn read_local_git_or_sha_file(
 }
 
 fn git_ls_remote_head_sha(codex_home: &Path, git_binary: &Path) -> Result<String, String> {
-    let mut command = git_command(git_binary);
+    let mut command = git_command(git_binary)?;
     let _trusted_repository = crate::configure_trusted_git_repository(&mut command, codex_home)?;
     command
+        .current_dir(codex_home)
         .arg("ls-remote")
         .arg(OPENAI_PLUGINS_GIT_URL)
         .arg("HEAD");
@@ -637,7 +638,7 @@ fn git_ls_remote_head_sha(codex_home: &Path, git_binary: &Path) -> Result<String
 }
 
 fn git_head_sha(repo_path: &Path, git_binary: &Path) -> Result<String, String> {
-    let output = git_command(git_binary)
+    let output = git_command(git_binary)?
         .arg("-C")
         .arg(repo_path)
         .arg("rev-parse")
@@ -661,31 +662,22 @@ fn git_head_sha(repo_path: &Path, git_binary: &Path) -> Result<String, String> {
     Ok(sha)
 }
 
-fn git_command(git_binary: &Path) -> Command {
-    crate::PluginGitMode::Automatic.command(git_binary)
-}
-
-#[cfg(any(target_os = "macos", test))]
-fn macos_git_binary_from_path(
-    git_path: PathBuf,
-    apple_developer_tools_available: bool,
-) -> Option<PathBuf> {
-    if git_path == Path::new("/usr/bin/git") && !apple_developer_tools_available {
-        None
-    } else {
-        Some(git_path)
-    }
-}
-
-#[cfg(target_os = "macos")]
-fn apple_developer_tools_available() -> bool {
-    Command::new("/usr/bin/xcode-select")
-        .arg("-p")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|status| status.success())
+fn git_command(git_binary: &Path) -> Result<Command, String> {
+    let mut command = crate::PluginGitMode::Automatic.command(git_binary);
+    // Git launches transports and credential helpers too. Selecting a trusted
+    // main executable alone does not prevent a workspace PATH helper from running.
+    command
+        .env(
+            "PATH",
+            codex_utils_path::system_path()
+                .map_err(|err| format!("failed to construct trusted Git PATH: {err}"))?,
+        )
+        .env_remove("GIT_EXEC_PATH")
+        .env_remove("GIT_TEMPLATE_DIR")
+        .env_remove("DEVELOPER_DIR")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("NoDefaultCurrentDirectoryInExePath", "1");
+    Ok(command)
 }
 
 fn run_git_command_with_timeout(
@@ -936,7 +928,10 @@ async fn fetch_github_text(
         .await
         .map_err(|err| format!("failed to {context} from {url}: {err}"))?;
     let status = response.status();
-    let body = response.text().await.unwrap_or_default();
+    let body = response
+        .text()
+        .await
+        .map_err(|err| format!("failed to {context} from {url}: {err}"))?;
     if !status.is_success() {
         return Err(format!(
             "{context} from {url} failed with status {status}: {body}"
@@ -979,7 +974,10 @@ async fn fetch_public_text(
         .await
         .map_err(|err| format!("failed to {context} from {url}: {err}"))?;
     let status = response.status();
-    let body = response.text().await.unwrap_or_default();
+    let body = response
+        .text()
+        .await
+        .map_err(|err| format!("failed to {context} from {url}: {err}"))?;
     if !status.is_success() {
         return Err(format!(
             "{context} from {url} failed with status {status}: {body}"
@@ -1012,17 +1010,14 @@ async fn fetch_public_bytes(
     Ok(body.to_vec())
 }
 
-fn github_request(http_clients: &StartupSyncHttpClient, url: &str) -> StartupSyncRequestBuilder {
+fn github_request(http_clients: &StartupSyncHttpClient, url: &str) -> RequestBuilder {
     startup_sync_request(http_clients, url)
         .timeout(CURATED_PLUGINS_HTTP_TIMEOUT)
         .header("accept", GITHUB_API_ACCEPT_HEADER)
         .header("x-github-api-version", GITHUB_API_VERSION_HEADER)
 }
 
-fn startup_sync_request(
-    http_clients: &StartupSyncHttpClient,
-    url: &str,
-) -> StartupSyncRequestBuilder {
+fn startup_sync_request(http_clients: &StartupSyncHttpClient, url: &str) -> RequestBuilder {
     http_clients
         .request(Method::GET, url)
         .headers(default_headers())

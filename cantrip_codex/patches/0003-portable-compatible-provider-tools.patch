@@ -1,8 +1,8 @@
 diff --git a/codex-rs/model-provider/src/provider.rs b/codex-rs/model-provider/src/provider.rs
-index 6aa6941a3c..75ca76f78c 100644
+index 7d99c55..0bc7344 100644
 --- a/codex-rs/model-provider/src/provider.rs
 +++ b/codex-rs/model-provider/src/provider.rs
-@@ -339,15 +339,19 @@ impl ModelProvider for ConfiguredModelProvider {
+@@ -459,15 +459,19 @@ impl ModelProvider for ConfiguredModelProvider {
      }
  
      fn capabilities(&self) -> ProviderCapabilities {
@@ -25,7 +25,7 @@ index 6aa6941a3c..75ca76f78c 100644
              remote_compaction,
              ..ProviderCapabilities::default()
          }
-@@ -643,6 +647,28 @@ mod tests {
+@@ -768,6 +772,28 @@ mod tests {
          );
      }
  

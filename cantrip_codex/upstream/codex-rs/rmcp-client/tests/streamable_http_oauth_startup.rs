@@ -8,11 +8,15 @@ use std::time::Duration;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
+use base64::Engine;
+use codex_config::McpServerOAuthConfig;
 use codex_config::types::AuthKeyringBackendKind;
 use codex_config::types::OAuthCredentialsStoreMode;
 use codex_exec_server::Environment;
 use codex_rmcp_client::McpAuthState;
 use codex_rmcp_client::McpLoginRequirement;
+use codex_rmcp_client::McpOAuthRefreshMode;
+use codex_rmcp_client::McpProtocolMode;
 use codex_rmcp_client::OAuthDiscoveryTimeout;
 use codex_rmcp_client::RmcpClient;
 use codex_rmcp_client::StoredOAuthTokens;
@@ -43,6 +47,7 @@ use wiremock::matchers::method;
 use wiremock::matchers::path;
 
 use streamable_http_test_support::initialize_client;
+use streamable_http_test_support::initialize_client_with_timeout;
 
 const SERVER_NAME: &str = "test-streamable-http-oauth-startup";
 const EXPIRED_ACCESS_TOKEN: &str = "expired-access-token";
@@ -52,10 +57,14 @@ const RESOURCE_API_KEY: &str = "resource-api-key-secret";
 const RESOURCE_USER_AGENT: &str = "resource-only-user-agent";
 const MCP_USER_AGENT: &str = concat!("codex-mcp-client/", env!("CARGO_PKG_VERSION"));
 const CHILD_SERVER_URL_ENV: &str = "MCP_TEST_OAUTH_STARTUP_SERVER_URL";
+const CLIENT_SECRET: &str = "configured-client-secret";
+const CHILD_CONFIDENTIAL_CLIENT_ID_ENV: &str = "MCP_TEST_OAUTH_CONFIDENTIAL_CLIENT_ID";
+const CHILD_REFRESH_MODE_ENV: &str = "MCP_TEST_OAUTH_REFRESH_MODE";
 const CHILD_HELPER_COMMAND_ENV: &str = "MCP_TEST_OAUTH_STARTUP_HELPER_COMMAND";
 const CHILD_RESOURCE_API_KEY_ENV: &str = "MCP_TEST_OAUTH_STARTUP_RESOURCE_API_KEY";
 const CHILD_STORED_ISSUER_ENV: &str = "MCP_TEST_OAUTH_STARTUP_STORED_ISSUER";
 const CHILD_ACCESS_TOKEN_EXPIRY_ENV: &str = "MCP_TEST_OAUTH_STARTUP_ACCESS_TOKEN_EXPIRY";
+const CHILD_REFRESH_SUCCEEDS_ENV: &str = "MCP_TEST_REFRESH_SUCCEEDS";
 const LEGACY_REFRESHABLE_SERVER_URL: &str = "https://legacy-refreshable.example/mcp";
 const UNEXPIRED_SERVER_URL: &str = "https://unexpired.example/mcp";
 const REFRESHABLE_SERVER_URL: &str = "https://refreshable.example/mcp";
@@ -63,6 +72,9 @@ const REFRESHABLE_SERVER_URL: &str = "https://refreshable.example/mcp";
 #[derive(Clone, Copy)]
 enum OAuthStartupScenario {
     DirectAuthorizationMetadata,
+    ClientSecretBasic,
+    ClientSecretPost,
+    OidcMetadataAfter503,
     GatewayHeadersHelper,
     SameOriginGatewayHeadersHelper,
     ProtectedResourceMetadata,
@@ -75,26 +87,265 @@ enum IssuerMismatchAccessToken {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn tool_call_preserves_challenge_only_after_silent_refresh_fails() -> anyhow::Result<()> {
+    for refresh_succeeds in [true, false] {
+        let server = MockServer::start().await;
+        let server_url = format!("{}/mcp", server.uri());
+        Mock::given(method("GET"))
+            .and(path("/.well-known/oauth-authorization-server/mcp"))
+            .respond_with(ResponseTemplate::new(/*s*/ 200).set_body_json(json!({
+                "issuer": server_url,
+                "authorization_endpoint": format!("{}/authorize", server.uri()),
+                "token_endpoint": format!("{}/token", server.uri()),
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/token"))
+            .and(body_string_contains("grant_type=refresh_token"))
+            .and(body_string_contains(format!(
+                "refresh_token={REFRESH_TOKEN}"
+            )))
+            .respond_with(if refresh_succeeds {
+                ResponseTemplate::new(/*s*/ 200).set_body_json(json!({
+                    "access_token": REFRESHED_ACCESS_TOKEN,
+                    "token_type": "Bearer",
+                    "expires_in": 7200,
+                    "refresh_token": REFRESH_TOKEN,
+                }))
+            } else {
+                ResponseTemplate::new(/*s*/ 400).set_body_json(json!({"error": "invalid_grant"}))
+            })
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/mcp"))
+            .respond_with(|request: &Request| {
+                let body: Value = request.body_json().unwrap();
+                let result = match body["method"].as_str() {
+                    Some("initialize") => json!({
+                        "protocolVersion": body["params"]["protocolVersion"],
+                        "capabilities": {},
+                        "serverInfo": {"name": "oauth-tool-call-test", "version": "1"},
+                    }),
+                    Some("notifications/initialized") => {
+                        return ResponseTemplate::new(/*s*/ 202);
+                    }
+                    Some("tools/call") => {
+                        if request.headers.get("authorization").unwrap()
+                            != format!("Bearer {REFRESHED_ACCESS_TOKEN}").as_str()
+                        {
+                            return ResponseTemplate::new(/*s*/ 401).insert_header(
+                                "www-authenticate",
+                                r#"Bearer error="invalid_token""#,
+                            );
+                        }
+                        json!({"content": [{"type": "text", "text": "refreshed"}]})
+                    }
+                    _ => return ResponseTemplate::new(/*s*/ 400),
+                };
+                ResponseTemplate::new(/*s*/ 200).set_body_json(json!({
+                    "jsonrpc": "2.0", "id": body["id"], "result": result,
+                }))
+            })
+            .mount(&server)
+            .await;
+
+        // The child owns its credential store; the parallel test runner's environment is unchanged.
+        let codex_home = TempDir::new()?;
+        let status = Command::new(std::env::current_exe()?)
+            .args([
+                "oauth_tool_call_child",
+                "--exact",
+                "--ignored",
+                "--nocapture",
+            ])
+            .env("CODEX_HOME", codex_home.path())
+            .env(CHILD_SERVER_URL_ENV, server_url)
+            .env(CHILD_REFRESH_SUCCEEDS_ENV, refresh_succeeds.to_string())
+            .status()
+            .await?;
+        assert!(status.success(), "OAuth tool call child failed: {status}");
+        server.verify().await;
+        let tool_calls = server
+            .received_requests()
+            .await
+            .unwrap()
+            .into_iter()
+            .filter(|request| {
+                request
+                    .body_json::<Value>()
+                    .ok()
+                    .is_some_and(|body| body["method"] == "tools/call")
+            })
+            .count();
+        assert_eq!(tool_calls, if refresh_succeeds { 2 } else { 1 });
+    }
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+#[ignore = "spawned by tool_call_preserves_challenge_only_after_silent_refresh_fails"]
+async fn oauth_tool_call_child() -> anyhow::Result<()> {
+    let server_url = std::env::var(CHILD_SERVER_URL_ENV)?;
+    let refresh_succeeds = std::env::var(CHILD_REFRESH_SUCCEEDS_ENV)? == "true";
+    let mut response = OAuthTokenResponse::new(
+        AccessToken::new(EXPIRED_ACCESS_TOKEN.to_string()),
+        BasicTokenType::Bearer,
+        VendorExtraTokenFields::default(),
+    );
+    response.set_refresh_token(Some(RefreshToken::new(REFRESH_TOKEN.to_string())));
+    response.set_expires_in(Some(&Duration::from_secs(/*secs*/ 7200)));
+    save_oauth_tokens(
+        SERVER_NAME,
+        &StoredOAuthTokens {
+            server_name: SERVER_NAME.to_string(),
+            url: server_url.clone(),
+            issuer: Some(server_url.clone()),
+            client_id: "test-client-id".to_string(),
+            token_response: WrappedOAuthTokenResponse(response),
+            expires_at: Some(
+                (SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() + 7_200_000) as u64,
+            ),
+        },
+        OAuthCredentialsStoreMode::File,
+        AuthKeyringBackendKind::default(),
+    )
+    .await?;
+    let client = RmcpClient::new_streamable_http_client(
+        SERVER_NAME,
+        &server_url,
+        /*bearer_token*/ None,
+        /*http_headers*/ None,
+        /*env_http_headers*/ None,
+        OAuthCredentialsStoreMode::File,
+        AuthKeyringBackendKind::default(),
+        Environment::default_for_tests().get_http_client(),
+        /*auth_provider*/ None,
+    )
+    .await?;
+    initialize_client(&client).await?;
+    let result = client
+        .call_tool(
+            "probe".to_string(),
+            /*arguments*/ None,
+            /*meta*/ None,
+            Some(Duration::from_secs(/*secs*/ 5)),
+        )
+        .await?;
+    if refresh_succeeds {
+        assert_eq!(
+            serde_json::to_value(result)?,
+            json!({
+                "content": [{"type": "text", "text": "refreshed"}],
+            })
+        );
+    } else {
+        assert_eq!(result.is_error, Some(true));
+        assert_eq!(
+            serde_json::to_value(result.meta)?,
+            json!({
+                "mcp/www_authenticate": [r#"Bearer error="invalid_token""#],
+            })
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn refreshes_expired_persisted_token_before_initialize() -> anyhow::Result<()> {
-    assert_expired_token_refresh(OAuthStartupScenario::DirectAuthorizationMetadata).await
+    assert_expired_token_refresh(
+        OAuthStartupScenario::DirectAuthorizationMetadata,
+        McpOAuthRefreshMode::Coordinated,
+    )
+    .await
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn refreshes_confidential_client_without_persisting_secret() -> anyhow::Result<()> {
+    for scenario in [
+        OAuthStartupScenario::ClientSecretBasic,
+        OAuthStartupScenario::ClientSecretPost,
+    ] {
+        for refresh_mode in [
+            McpOAuthRefreshMode::Legacy,
+            McpOAuthRefreshMode::Coordinated,
+        ] {
+            assert_expired_token_refresh(scenario, refresh_mode).await?;
+        }
+    }
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn rejects_confidential_client_id_mismatch_before_contacting_provider() -> anyhow::Result<()>
+{
+    let server = MockServer::start().await;
+    let codex_home = TempDir::new()?;
+    let status = Command::new(std::env::current_exe()?)
+        .args(["oauth_startup_child", "--exact", "--ignored", "--nocapture"])
+        .env("CODEX_HOME", codex_home.path())
+        .env(CHILD_SERVER_URL_ENV, format!("{}/mcp", server.uri()))
+        .env(CHILD_STORED_ISSUER_ENV, server.uri())
+        .env(CHILD_RESOURCE_API_KEY_ENV, RESOURCE_API_KEY)
+        .env(CHILD_CONFIDENTIAL_CLIENT_ID_ENV, "different-client-id")
+        .status()
+        .await?;
+    assert!(status.success(), "OAuth startup child failed: {status}");
+    assert!(
+        server
+            .received_requests()
+            .await
+            .unwrap_or_default()
+            .is_empty()
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn refreshes_expired_persisted_token_after_oidc_fallback() -> anyhow::Result<()> {
+    for refresh_mode in [
+        McpOAuthRefreshMode::Legacy,
+        McpOAuthRefreshMode::Coordinated,
+    ] {
+        assert_expired_token_refresh(OAuthStartupScenario::OidcMetadataAfter503, refresh_mode)
+            .await?;
+    }
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn refreshes_oauth_with_gateway_headers_helper() -> anyhow::Result<()> {
-    assert_expired_token_refresh(OAuthStartupScenario::GatewayHeadersHelper).await
+    assert_expired_token_refresh(
+        OAuthStartupScenario::GatewayHeadersHelper,
+        McpOAuthRefreshMode::Legacy,
+    )
+    .await
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn refreshes_oauth_after_gateway_rejects_token_request() -> anyhow::Result<()> {
-    assert_expired_token_refresh(OAuthStartupScenario::SameOriginGatewayHeadersHelper).await
+    assert_expired_token_refresh(
+        OAuthStartupScenario::SameOriginGatewayHeadersHelper,
+        McpOAuthRefreshMode::Legacy,
+    )
+    .await
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn refresh_uses_discovered_protected_resource_audience() -> anyhow::Result<()> {
-    assert_expired_token_refresh(OAuthStartupScenario::ProtectedResourceMetadata).await
+    assert_expired_token_refresh(
+        OAuthStartupScenario::ProtectedResourceMetadata,
+        McpOAuthRefreshMode::Legacy,
+    )
+    .await
 }
 
-async fn assert_expired_token_refresh(scenario: OAuthStartupScenario) -> anyhow::Result<()> {
+async fn assert_expired_token_refresh(
+    scenario: OAuthStartupScenario,
+    refresh_mode: McpOAuthRefreshMode,
+) -> anyhow::Result<()> {
     let server = MockServer::start().await;
     let authorization_server = MockServer::start().await;
     let same_origin_gateway = matches!(
@@ -109,6 +360,8 @@ async fn assert_expired_token_refresh(scenario: OAuthStartupScenario) -> anyhow:
     let resource_url = format!("{}/mcp", server.uri());
     let (server_url, mcp_path, authorization_metadata_path) = match scenario {
         OAuthStartupScenario::DirectAuthorizationMetadata
+        | OAuthStartupScenario::ClientSecretBasic
+        | OAuthStartupScenario::ClientSecretPost
         | OAuthStartupScenario::GatewayHeadersHelper
         | OAuthStartupScenario::SameOriginGatewayHeadersHelper => (
             resource_url.clone(),
@@ -120,7 +373,21 @@ async fn assert_expired_token_refresh(scenario: OAuthStartupScenario) -> anyhow:
             "/mcp/",
             "/.well-known/oauth-authorization-server",
         ),
+        OAuthStartupScenario::OidcMetadataAfter503 => (
+            resource_url.clone(),
+            "/mcp",
+            "/mcp/.well-known/openid-configuration",
+        ),
     };
+
+    if matches!(scenario, OAuthStartupScenario::OidcMetadataAfter503) {
+        Mock::given(method("GET"))
+            .and(path("/.well-known/oauth-authorization-server/mcp"))
+            .respond_with(ResponseTemplate::new(503))
+            .expect(2)
+            .mount(&server)
+            .await;
+    }
 
     if matches!(scenario, OAuthStartupScenario::ProtectedResourceMetadata) {
         let resource_metadata_url = format!("{}/resource-metadata", server.uri());
@@ -152,6 +419,18 @@ async fn assert_expired_token_refresh(scenario: OAuthStartupScenario) -> anyhow:
     });
     if matches!(scenario, OAuthStartupScenario::ProtectedResourceMetadata) {
         authorization_metadata["issuer"] = json!(server.uri());
+    }
+    let client_auth_method = match scenario {
+        OAuthStartupScenario::ClientSecretBasic => Some("client_secret_basic"),
+        OAuthStartupScenario::ClientSecretPost => Some("client_secret_post"),
+        OAuthStartupScenario::DirectAuthorizationMetadata
+        | OAuthStartupScenario::OidcMetadataAfter503
+        | OAuthStartupScenario::GatewayHeadersHelper
+        | OAuthStartupScenario::SameOriginGatewayHeadersHelper
+        | OAuthStartupScenario::ProtectedResourceMetadata => None,
+    };
+    if let Some(method) = client_auth_method {
+        authorization_metadata["token_endpoint_auth_methods_supported"] = json!([method]);
     }
     let authorization_server_issuer = authorization_metadata["issuer"]
         .as_str()
@@ -189,6 +468,30 @@ async fn assert_expired_token_refresh(scenario: OAuthStartupScenario) -> anyhow:
                     .any(|(name, value)| name == "resource" && value == expected_resource)
             }
         })
+        .and(move |request: &Request| match client_auth_method {
+            Some("client_secret_basic") => {
+                let encoded = base64::engine::general_purpose::STANDARD
+                    .encode(format!("test-client-id:{CLIENT_SECRET}"));
+                request
+                    .headers
+                    .get("authorization")
+                    .is_some_and(|value| value.as_bytes() == format!("Basic {encoded}").as_bytes())
+                    && !request
+                        .body
+                        .windows(CLIENT_SECRET.len())
+                        .any(|value| value == CLIENT_SECRET.as_bytes())
+            }
+            Some("client_secret_post") => {
+                let form: HashMap<_, _> = url::form_urlencoded::parse(&request.body).collect();
+                form.get("client_id")
+                    .is_some_and(|value| value == "test-client-id")
+                    && form
+                        .get("client_secret")
+                        .is_some_and(|value| value == CLIENT_SECRET)
+                    && !request.headers.contains_key("authorization")
+            }
+            _ => true,
+        })
         .respond_with(move |request: &Request| {
             if same_origin_gateway
                 && request
@@ -198,12 +501,18 @@ async fn assert_expired_token_refresh(scenario: OAuthStartupScenario) -> anyhow:
             {
                 ResponseTemplate::new(/*s*/ 401)
             } else {
-                ResponseTemplate::new(/*s*/ 200).set_body_json(json!({
+                let response = ResponseTemplate::new(/*s*/ 200).set_body_json(json!({
                     "access_token": REFRESHED_ACCESS_TOKEN,
                     "token_type": "Bearer",
                     "expires_in": 7200,
                     "refresh_token": REFRESH_TOKEN,
-                }))
+                }));
+                if refresh_mode == McpOAuthRefreshMode::Coordinated {
+                    // Longer than the child's handshake timeout: refresh must finish first.
+                    response.set_delay(Duration::from_secs(/*secs*/ 2))
+                } else {
+                    response
+                }
             }
         })
         .expect(if same_origin_gateway { 2 } else { 1 })
@@ -266,7 +575,18 @@ async fn assert_expired_token_refresh(scenario: OAuthStartupScenario) -> anyhow:
         .env(CHILD_SERVER_URL_ENV, server_url)
         .env(CHILD_STORED_ISSUER_ENV, authorization_server_issuer)
         .env(CHILD_RESOURCE_API_KEY_ENV, RESOURCE_API_KEY)
+        .env(
+            CHILD_REFRESH_MODE_ENV,
+            if refresh_mode == McpOAuthRefreshMode::Coordinated {
+                "coordinated"
+            } else {
+                "legacy"
+            },
+        )
         .env("MCP_TEST_AMBIENT_SECRET", "must-not-reach-helper");
+    if client_auth_method.is_some() {
+        command.env(CHILD_CONFIDENTIAL_CLIENT_ID_ENV, "test-client-id");
+    }
     if with_headers_helper {
         command.env(
             CHILD_HELPER_COMMAND_ENV,
@@ -279,6 +599,10 @@ async fn assert_expired_token_refresh(scenario: OAuthStartupScenario) -> anyhow:
     }
     let status = command.status().await?;
     assert!(status.success(), "OAuth startup child failed: {status}");
+    let persisted_credentials =
+        std::fs::read_to_string(codex_home.path().join(".credentials.json"))?;
+    assert!(!persisted_credentials.contains(CLIENT_SECRET));
+    assert!(!persisted_credentials.contains("client_secret"));
     if with_headers_helper {
         assert_eq!(
             std::fs::read_to_string(helper_invocations)?,
@@ -632,7 +956,8 @@ async fn persisted_credentials_auth_status_child() -> anyhow::Result<()> {
         &tokens,
         OAuthCredentialsStoreMode::File,
         AuthKeyringBackendKind::default(),
-    )?;
+    )
+    .await?;
 
     let status = auth_status(LEGACY_REFRESHABLE_SERVER_URL).await?;
     assert_eq!(
@@ -662,7 +987,8 @@ async fn persisted_credentials_auth_status_child() -> anyhow::Result<()> {
         &tokens,
         OAuthCredentialsStoreMode::File,
         AuthKeyringBackendKind::default(),
-    )?;
+    )
+    .await?;
 
     let status = auth_status(UNEXPIRED_SERVER_URL).await?;
     assert_eq!(status, McpAuthState::OAuth);
@@ -686,7 +1012,8 @@ async fn persisted_credentials_auth_status_child() -> anyhow::Result<()> {
         &tokens,
         OAuthCredentialsStoreMode::File,
         AuthKeyringBackendKind::default(),
-    )?;
+    )
+    .await?;
 
     let status = auth_status(REFRESHABLE_SERVER_URL).await?;
     assert_eq!(status, McpAuthState::OAuth);
@@ -713,6 +1040,11 @@ async fn auth_status(server_url: &str) -> anyhow::Result<McpAuthState> {
 #[ignore = "spawned by refreshes_expired_persisted_token_before_initialize"]
 async fn oauth_startup_child() -> anyhow::Result<()> {
     let server_url = std::env::var(CHILD_SERVER_URL_ENV)?;
+    let refresh_mode = if std::env::var(CHILD_REFRESH_MODE_ENV).as_deref() == Ok("coordinated") {
+        McpOAuthRefreshMode::Coordinated
+    } else {
+        McpOAuthRefreshMode::Legacy
+    };
 
     // Save an expired access token with a valid refresh token so startup must
     // refresh before sending the initialize request.
@@ -736,7 +1068,8 @@ async fn oauth_startup_child() -> anyhow::Result<()> {
         &tokens,
         OAuthCredentialsStoreMode::File,
         AuthKeyringBackendKind::default(),
-    )?;
+    )
+    .await?;
 
     // This mirrors create_client's transport and initialization setup, except
     // it omits the direct bearer token. Supplying that token would bypass the
@@ -750,7 +1083,17 @@ async fn oauth_startup_child() -> anyhow::Result<()> {
             std::env::current_dir()?,
         )?;
     }
-    let client = RmcpClient::new_streamable_http_client(
+    let oauth_config = std::env::var(CHILD_CONFIDENTIAL_CLIENT_ID_ENV)
+        .ok()
+        .map(|client_id| McpServerOAuthConfig {
+            client_id: Some(client_id),
+            client_secret: Some(CLIENT_SECRET.into()),
+            ..Default::default()
+        });
+    let mismatched_client = oauth_config
+        .as_ref()
+        .is_some_and(|config| config.client_id.as_deref() != Some(tokens.client_id.as_str()));
+    let client = RmcpClient::new_streamable_http_client_with_protocol_mode_and_redirect_mode(
         SERVER_NAME,
         &server_url,
         /*bearer_token*/ None,
@@ -762,14 +1105,36 @@ async fn oauth_startup_child() -> anyhow::Result<()> {
             "X-Api-Key".to_string(),
             CHILD_RESOURCE_API_KEY_ENV.to_string(),
         )])),
+        oauth_config,
         OAuthCredentialsStoreMode::File,
         AuthKeyringBackendKind::default(),
         http_client,
         /*auth_provider*/ None,
+        McpProtocolMode::Legacy,
+        StreamableHttpRedirectMode::Legacy,
+        refresh_mode,
     )
-    .await?;
+    .await;
 
-    initialize_client(&client).await?;
+    if mismatched_client {
+        let error = client
+            .err()
+            .expect("a different client ID must be rejected");
+        assert!(is_authentication_required_error(&error));
+        assert!(
+            error
+                .to_string()
+                .contains("differs from stored credentials")
+        );
+        return Ok(());
+    }
+    let client = client?;
+
+    if refresh_mode == McpOAuthRefreshMode::Coordinated {
+        initialize_client_with_timeout(&client, Duration::from_secs(/*secs*/ 1)).await?;
+    } else {
+        initialize_client(&client).await?;
+    }
     Ok(())
 }
 
@@ -795,7 +1160,8 @@ async fn expired_unrefreshable_startup_child() -> anyhow::Result<()> {
         &tokens,
         OAuthCredentialsStoreMode::File,
         AuthKeyringBackendKind::default(),
-    )?;
+    )
+    .await?;
 
     let client = RmcpClient::new_streamable_http_client(
         SERVER_NAME,
@@ -852,7 +1218,8 @@ async fn issuer_startup_child() -> anyhow::Result<()> {
         &tokens,
         OAuthCredentialsStoreMode::File,
         AuthKeyringBackendKind::default(),
-    )?;
+    )
+    .await?;
 
     let client = RmcpClient::new_streamable_http_client(
         SERVER_NAME,

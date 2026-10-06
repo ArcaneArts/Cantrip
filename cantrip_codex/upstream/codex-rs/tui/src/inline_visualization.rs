@@ -30,6 +30,7 @@ const DIRECTIVE_PREFIX: &str = "::codex-inline-vis{";
 const CONTENT_REFERENCE_PREFIX: &str = "\u{e200}visualize\u{e202}";
 const CONTENT_REFERENCE_SUFFIX: char = '\u{e201}';
 const MAX_FRAGMENT_BYTES: u64 = 2 * 1024 * 1024;
+pub(crate) const LINK_PLACEHOLDER_PREFIX: &str = "https://codex.invalid/inline-visualization/";
 
 #[derive(Clone, Debug)]
 pub(crate) struct InlineVisualizationContext {
@@ -64,9 +65,9 @@ impl InlineVisualizationContext {
             context.viewer_dir.parent()?.parent()?.to_path_buf(),
         ];
         for viewer_cache in viewer_caches {
-            if file_system_policy.can_write_path_with_cwd(&viewer_cache, config.cwd.as_path())
+            if file_system_policy.can_write_local_path_with_cwd(&viewer_cache, config.cwd.as_path())
                 || file_system_policy
-                    .can_write_path_with_cwd(viewer_cache.parent()?, config.cwd.as_path())
+                    .can_write_local_path_with_cwd(viewer_cache.parent()?, config.cwd.as_path())
                 || writable_roots.iter().any(|root| {
                     root.is_path_writable(&viewer_cache)
                         || root.root.as_path().starts_with(&viewer_cache)
@@ -288,7 +289,7 @@ fn link_placeholder() -> String {
     let mut bytes = [0_u8; 24];
     rand::rng().fill_bytes(&mut bytes);
     let token = URL_SAFE_NO_PAD.encode(bytes);
-    format!("https://codex.invalid/inline-visualization/{token}")
+    format!("{LINK_PLACEHOLDER_PREFIX}{token}")
 }
 
 fn parse_directive_file(directive: &str) -> Option<Cow<'_, str>> {

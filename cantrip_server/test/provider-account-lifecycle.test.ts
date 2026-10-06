@@ -43,6 +43,13 @@ describe("global provider account lifecycle", () => {
       },
     });
     const account = provider.accounts[0]!;
+    await repository.recordModelProviderAccountCredits({
+      ownerId: LOCAL_USER_ID,
+      providerId: provider.id,
+      accountId: account.id,
+      observedAt: new Date("2026-08-16T00:00:00.000Z"),
+      credits: { hasCredits: true, unlimited: false, balance: "250" },
+    });
     const protectedCredential = protectedProviderCredentialFixture("K");
     await repository.storeModelProviderAccountCredential(
       LOCAL_USER_ID,
@@ -105,6 +112,12 @@ describe("global provider account lifecycle", () => {
         workersFailed: 0,
       });
       expect(invalidateCatalog).toHaveBeenCalledOnce();
+      const signedOut = (await repository.listModelProviderAccounts(
+        LOCAL_USER_ID,
+        provider.id,
+      ))![0]!;
+      expect(signedOut.credits).toBeNull();
+      expect(signedOut.creditsObservedAt).toBeNull();
       expect(commands).toEqual(
         ["worker-a", "worker-b"].map((workerId) => ({
           workerId,

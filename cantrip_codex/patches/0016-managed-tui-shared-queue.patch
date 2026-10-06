@@ -1,20 +1,20 @@
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
-index ca93c94..135db69 100644
+index 19885ae..3699a4e 100644
 --- a/codex-rs/Cargo.lock
 +++ b/codex-rs/Cargo.lock
-@@ -4393,6 +4393,7 @@ dependencies = [
+@@ -4608,6 +4608,7 @@ dependencies = [
   "scopeguard",
   "serde",
   "serde_json",
 + "sha2 0.10.9",
   "sqlx",
-  "strum 0.27.2",
-  "tokio",
+  "sqlx-macros",
+  "sqlx-sqlite",
 diff --git a/codex-rs/app-server-client/src/lib.rs b/codex-rs/app-server-client/src/lib.rs
-index d1bc438..7425309 100644
+index fc6c146..539c2db 100644
 --- a/codex-rs/app-server-client/src/lib.rs
 +++ b/codex-rs/app-server-client/src/lib.rs
-@@ -66,6 +66,7 @@ pub use crate::path::AppServerPath;
+@@ -67,6 +67,7 @@ pub use crate::path::AppServerPath;
  pub use crate::remote::RemoteAppServerClient;
  pub use crate::remote::RemoteAppServerConnectArgs;
  pub use crate::remote::RemoteAppServerEndpoint;
@@ -22,10 +22,10 @@ index d1bc438..7425309 100644
  
  /// Transitional access to core-only embedded app-server types.
  ///
-@@ -677,6 +678,10 @@ impl AppServerRequestHandle {
- }
+@@ -707,6 +708,10 @@ impl AppServerClient {
+         }
+     }
  
- impl AppServerClient {
 +    pub fn managed_queue_enabled(&self) -> bool {
 +        matches!(self, Self::Remote(client) if client.managed_queue_enabled())
 +    }
@@ -55,102 +55,38 @@ index ee833fe..4b2bd64 100644
 +    assert!(!parse_managed_queue(&serde_json::json!({"remote":true})).unwrap());
 +}
 diff --git a/codex-rs/app-server-client/src/remote.rs b/codex-rs/app-server-client/src/remote.rs
-index 2fad585..e93a7e7 100644
+index 0e64896..c218d1a 100644
 --- a/codex-rs/app-server-client/src/remote.rs
 +++ b/codex-rs/app-server-client/src/remote.rs
-@@ -157,6 +157,7 @@ pub struct RemoteAppServerClient {
-     server_version: Option<String>,
-     codex_home: Option<String>,
+@@ -159,6 +159,7 @@ struct RemoteServerMetadata {
+     platform_family: Option<String>,
+     platform_os: Option<String>,
      managed_gateway_thread_id: Option<String>,
 +    managed_queue_enabled: bool,
-     managed_reply_sequence: AtomicU64,
-     worker_handle: tokio::task::JoinHandle<()>,
  }
-@@ -197,6 +198,10 @@ impl RemoteAppServerClient {
+ 
+ pub struct RemoteAppServerClient {
+@@ -241,6 +242,10 @@ impl RemoteAppServerClient {
      }
  
      /// A gateway-scoped thread; absent on ordinary remote connections.
 +    pub fn managed_queue_enabled(&self) -> bool {
-+        self.managed_queue_enabled
++        self.metadata.managed_queue_enabled
 +    }
 +
      pub fn managed_gateway_thread_id(&self) -> Option<&str> {
-         self.managed_gateway_thread_id.as_deref()
+         self.metadata.managed_gateway_thread_id.as_deref()
      }
-@@ -246,14 +251,19 @@ impl RemoteAppServerClient {
-         S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
-     {
-         let mut stream = stream;
--        let (pending_events, server_version, codex_home, managed_gateway_thread_id) =
--            initialize_remote_connection(
--                &mut stream,
--                &endpoint,
--                initialize_params,
--                INITIALIZE_TIMEOUT,
--            )
--            .await?;
-+        let (
-+            pending_events,
-+            server_version,
-+            codex_home,
-+            managed_gateway_thread_id,
-+            managed_queue_enabled,
-+        ) = initialize_remote_connection(
-+            &mut stream,
-+            &endpoint,
-+            initialize_params,
-+            INITIALIZE_TIMEOUT,
-+        )
-+        .await?;
- 
-         let (command_tx, mut command_rx) = mpsc::channel::<RemoteClientCommand>(channel_capacity);
-         let (event_tx, event_rx) = mpsc::unbounded_channel::<AppServerEvent>();
-@@ -526,6 +536,7 @@ impl RemoteAppServerClient {
-             server_version,
-             codex_home,
-             managed_gateway_thread_id,
-+            managed_queue_enabled,
-             managed_reply_sequence: AtomicU64::new(0),
-             worker_handle,
-         })
-@@ -664,6 +675,7 @@ impl RemoteAppServerClient {
-             server_version: _server_version,
-             codex_home: _codex_home,
-             managed_gateway_thread_id: _,
-+            managed_queue_enabled: _,
-             managed_reply_sequence: _,
-             worker_handle,
-         } = self;
-@@ -864,6 +876,7 @@ async fn initialize_remote_connection<S>(
-     Option<String>,
-     Option<String>,
-     Option<String>,
-+    bool,
- )>
- where
-     S: AsyncRead + AsyncWrite + Unpin,
-@@ -873,6 +886,7 @@ where
-     let mut server_version = None;
-     let mut codex_home = None;
-     let mut managed_gateway_thread_id = None;
-+    let mut managed_queue_enabled = false;
-     write_jsonrpc_message(
-         stream,
-         JSONRPCMessage::Request(jsonrpc_request_from_client_request(
-@@ -911,6 +925,7 @@ where
-                                 .filter(|codex_home| !codex_home.is_empty())
-                                 .map(str::to_string);
-                             managed_gateway_thread_id = parse_managed_gateway(&response.result)?;
-+                            managed_queue_enabled = parse_managed_queue(&response.result)?;
+@@ -927,6 +932,7 @@ where
+                             metadata.platform_os = response.result.get("platformOs")
+                                 .and_then(serde_json::Value::as_str).map(str::to_string);
+                             metadata.managed_gateway_thread_id = parse_managed_gateway(&response.result)?;
++                            metadata.managed_queue_enabled = parse_managed_queue(&response.result)?;
                              break Ok(());
                          }
                          JSONRPCMessage::Error(error) if error.id == initialize_request_id => {
-@@ -1008,9 +1023,25 @@ where
-         server_version,
-         codex_home,
-         managed_gateway_thread_id,
-+        managed_queue_enabled,
-     ))
+@@ -1022,6 +1028,21 @@ where
+     Ok((pending_events, metadata))
  }
  
 +fn parse_managed_queue(result: &serde_json::Value) -> IoResult<bool> {
@@ -171,19 +107,11 @@ index 2fad585..e93a7e7 100644
  fn parse_managed_gateway(result: &serde_json::Value) -> IoResult<Option<String>> {
      let Some(capability) = result.get("cantripManagedGateway") else {
          return Ok(None);
-@@ -1126,6 +1157,7 @@ mod tests {
-             server_version: None,
-             codex_home: None,
-             managed_gateway_thread_id: None,
-+            managed_queue_enabled: false,
-             managed_reply_sequence: AtomicU64::new(0),
-             worker_handle,
-         };
 diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
-index de5a662..e1cf336 100644
+index 1c7b837..0e905e0 100644
 --- a/codex-rs/app-server-protocol/src/protocol/common.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/common.rs
-@@ -645,6 +645,16 @@ client_request_definitions! {
+@@ -697,6 +697,16 @@ client_request_definitions! {
          serialization: None,
          response: v2::ManagedExecutionInvalidateResponse,
      },
@@ -252,10 +180,10 @@ index ff38d1f..acee870 100644
 +    pub conflict: bool,
 +}
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-index 44a21b7..88ae2b5 100644
+index 0c0a825..685bc8b 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-@@ -913,6 +913,7 @@ pub struct ThreadGoalSetParams {
+@@ -942,6 +942,7 @@ pub struct ThreadGoalSetParams {
  #[ts(export_to = "v2/")]
  pub struct ThreadGoalSetResponse {
      pub goal: ThreadGoal,
@@ -263,7 +191,7 @@ index 44a21b7..88ae2b5 100644
  }
  
  #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
-@@ -927,6 +928,7 @@ pub struct ThreadGoalGetParams {
+@@ -956,6 +957,7 @@ pub struct ThreadGoalGetParams {
  #[ts(export_to = "v2/")]
  pub struct ThreadGoalGetResponse {
      pub goal: Option<ThreadGoal>,
@@ -272,10 +200,10 @@ index 44a21b7..88ae2b5 100644
  
  #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 diff --git a/codex-rs/app-server/src/message_processor.rs b/codex-rs/app-server/src/message_processor.rs
-index ea34328..563441b 100644
+index 4b6fc3c..38a7d2d 100644
 --- a/codex-rs/app-server/src/message_processor.rs
 +++ b/codex-rs/app-server/src/message_processor.rs
-@@ -1273,6 +1273,16 @@ impl MessageProcessor {
+@@ -1433,6 +1433,16 @@ impl MessageProcessor {
                      .managed_execution_invalidate(&request_id, params)
                      .await
              }
@@ -356,10 +284,10 @@ index 7d300af..fda8598 100644
          &self,
          request_id: &ConnectionRequestId,
 diff --git a/codex-rs/app-server/src/request_processors/thread_goal_processor.rs b/codex-rs/app-server/src/request_processors/thread_goal_processor.rs
-index c277dd9..624d547 100644
+index 6d52f5b..505fbd4 100644
 --- a/codex-rs/app-server/src/request_processors/thread_goal_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_goal_processor.rs
-@@ -212,7 +212,10 @@ impl ThreadGoalRequestProcessor {
+@@ -235,7 +235,10 @@ impl ThreadGoalRequestProcessor {
          self.outgoing
              .send_response(
                  request_id.clone(),
@@ -371,7 +299,7 @@ index c277dd9..624d547 100644
              )
              .await;
          self.emit_thread_goal_updated_ordered(thread_id, goal, listener_command_tx)
-@@ -235,11 +238,15 @@ impl ThreadGoalRequestProcessor {
+@@ -258,11 +261,15 @@ impl ThreadGoalRequestProcessor {
              .await?;
          let goal = self
              .goal_service
@@ -391,10 +319,10 @@ index c277dd9..624d547 100644
  
      async fn thread_goal_clear_inner(
 diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
-index 25ceea0..acf8e9b 100644
+index bf18998..b437227 100644
 --- a/codex-rs/app-server/src/request_processors/thread_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
-@@ -4112,9 +4112,20 @@ impl ThreadRequestProcessor {
+@@ -4280,9 +4280,20 @@ impl ThreadRequestProcessor {
                  self.thread_goal_processor
                      .emit_resume_goal_snapshot(thread_id)
                      .await;
@@ -419,10 +347,10 @@ index 25ceea0..acf8e9b 100644
              Err(err) => {
                  let error = match err.details() {
 diff --git a/codex-rs/app-server/src/request_processors/thread_queue_processor.rs b/codex-rs/app-server/src/request_processors/thread_queue_processor.rs
-index 6fe5336..3a0e0d9 100644
+index ea6ec7d..3408372 100644
 --- a/codex-rs/app-server/src/request_processors/thread_queue_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_queue_processor.rs
-@@ -69,6 +69,46 @@ impl ThreadQueueRequestProcessor {
+@@ -74,6 +74,46 @@ impl ThreadQueueRequestProcessor {
          }
      }
  
@@ -843,10 +771,10 @@ index a73eed6..2f07729 100644
 +    Ok(())
 +}
 diff --git a/codex-rs/app-server/tests/suite/v2/thread_resume.rs b/codex-rs/app-server/tests/suite/v2/thread_resume.rs
-index ad04c90..2711418 100644
+index f7fb88f..732c23a 100644
 --- a/codex-rs/app-server/tests/suite/v2/thread_resume.rs
 +++ b/codex-rs/app-server/tests/suite/v2/thread_resume.rs
-@@ -1831,6 +1831,7 @@ async fn unloaded_thread_goal_mutations_respect_parent_ownership() -> Result<()>
+@@ -2197,6 +2197,7 @@ async fn unloaded_thread_goal_mutations_respect_parent_ownership() -> Result<()>
                      retained,
                      ThreadGoalGetResponse {
                          goal: Some(original.goal.clone()),
@@ -855,10 +783,10 @@ index ad04c90..2711418 100644
                  );
              } else if method == "thread/goal/set" {
 diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
-index 2415126..4a86e9e 100644
+index 2ed4a26..59a22b1 100644
 --- a/codex-rs/core/src/codex_thread.rs
 +++ b/codex-rs/core/src/codex_thread.rs
-@@ -373,9 +373,30 @@ impl CodexThread {
+@@ -418,9 +418,30 @@ impl CodexThread {
      pub async fn start_turn_if_idle(
          &self,
          request: TurnInputRequest,
@@ -890,7 +818,7 @@ index 2415126..4a86e9e 100644
              .await?
          {
              TurnInputSubmission::Started { turn_id } => {
-@@ -517,6 +538,16 @@ impl CodexThread {
+@@ -577,6 +598,16 @@ impl CodexThread {
          &self,
          request: TurnInputRequest,
          mode: TurnInputMode,
@@ -906,8 +834,8 @@ index 2415126..4a86e9e 100644
 +        goal_epoch: Option<String>,
      ) -> CodexResult<TurnInputSubmission> {
          if !matches!(mode, TurnInputMode::Steer { .. }) {
-             self.session
-@@ -549,11 +580,12 @@ impl CodexThread {
+             self.ensure_execution_capacity_for_turn_start(
+@@ -608,11 +639,12 @@ impl CodexThread {
                  "start": request.start, "additionalContext": request.additional_context,
                  "responsesapiClientMetadata": request.responsesapi_client_metadata, "trace": request.trace });
              let attempt_id = gate
@@ -1014,10 +942,10 @@ index b414e9c..a57e31c 100644
          &self,
          state_db: &codex_state::StateRuntime,
 diff --git a/codex-rs/ext/goal/src/runtime.rs b/codex-rs/ext/goal/src/runtime.rs
-index 84fa420..17dd763 100644
+index 7d826ac..e3fe983 100644
 --- a/codex-rs/ext/goal/src/runtime.rs
 +++ b/codex-rs/ext/goal/src/runtime.rs
-@@ -227,7 +227,27 @@ impl GoalRuntimeHandle {
+@@ -238,7 +238,27 @@ impl GoalRuntimeHandle {
                      let item = objective_updated_steering_item(&protocol_goal_from_state(goal));
                      self.inject_active_turn_steering(item).await;
                  }
@@ -1046,7 +974,7 @@ index 84fa420..17dd763 100644
              }
              codex_state::ThreadGoalStatus::BudgetLimited => {
                  if self.inner.accounting_state.current_turn_id().is_none() {
-@@ -445,17 +465,19 @@ impl GoalRuntimeHandle {
+@@ -471,17 +491,19 @@ impl GoalRuntimeHandle {
              .get::<TurnStartOptions>()
              .map(|options| options.as_ref().clone())
              .unwrap_or_default();
@@ -1068,7 +996,7 @@ index 84fa420..17dd763 100644
              .await
          {
 diff --git a/codex-rs/ext/queue/src/service.rs b/codex-rs/ext/queue/src/service.rs
-index e72f0c7..737fa57 100644
+index 06aeb63..b3bbd72 100644
 --- a/codex-rs/ext/queue/src/service.rs
 +++ b/codex-rs/ext/queue/src/service.rs
 @@ -353,6 +353,29 @@ impl QueuedItemService {
@@ -1102,7 +1030,7 @@ index e72f0c7..737fa57 100644
          &self,
          thread_id: ThreadId,
 diff --git a/codex-rs/state/Cargo.toml b/codex-rs/state/Cargo.toml
-index 0d781fb..351bcc7 100644
+index c6c2215..7e1d4d9 100644
 --- a/codex-rs/state/Cargo.toml
 +++ b/codex-rs/state/Cargo.toml
 @@ -14,6 +14,7 @@ libsqlite3-sys = { workspace = true }
@@ -1111,8 +1039,8 @@ index 0d781fb..351bcc7 100644
  serde_json = { workspace = true }
 +sha2 = { workspace = true }
  sqlx = { workspace = true }
- strum = { workspace = true, features = ["derive"] }
- tokio = { workspace = true, features = ["fs", "io-util", "macros", "rt-multi-thread", "sync", "time"] }
+ sqlx-macros = { workspace = true }
+ sqlx-sqlite = { workspace = true }
 diff --git a/codex-rs/state/goals_migrations/0003_thread_goal_configuration_revision.sql b/codex-rs/state/goals_migrations/0003_thread_goal_configuration_revision.sql
 new file mode 100644
 index 0000000..b1295be
@@ -1598,34 +1526,34 @@ index 74fc2fc..a0c7eda 100644
          Box::pin(async move {
              self.queue()
 diff --git a/codex-rs/tui/src/app.rs b/codex-rs/tui/src/app.rs
-index a8650e7..bb6201e 100644
+index 37b5c78..498ef8a 100644
 --- a/codex-rs/tui/src/app.rs
 +++ b/codex-rs/tui/src/app.rs
-@@ -810,6 +810,8 @@ impl App {
-         app_server: &mut AppServerSession,
-         event: TuiEvent,
-     ) -> Result<AppRunControl> {
+@@ -865,6 +865,8 @@ impl App {
+             }
+             _ => false,
+         };
 +        let managed_thread = app_server.managed_queue_thread_for_view(self.chat_widget.thread_id());
 +        self.chat_widget.set_managed_queue_thread(managed_thread);
          if self.reconnect.offline
-             && let TuiEvent::Key(key) = &event
-             && matches!(key.kind, KeyEventKind::Press | KeyEventKind::Repeat)
+             && !transcript_owns_input
+             && !self.chat_widget.keymap_contexts().is_warnings()
 diff --git a/codex-rs/tui/src/app/app_server_events.rs b/codex-rs/tui/src/app/app_server_events.rs
-index 5783787..2e3a377 100644
+index 81e00f8..7e8b1b6 100644
 --- a/codex-rs/tui/src/app/app_server_events.rs
 +++ b/codex-rs/tui/src/app/app_server_events.rs
-@@ -70,6 +70,9 @@ impl App {
-                 self.refresh_agents_overview_threads(app_server_client);
-             }
-             AppServerEvent::ServerNotification(notification) => {
+@@ -93,6 +93,9 @@ impl App {
+                     notification.as_ref(),
+                     ServerNotification::ServerRequestResolved(_)
+                 );
 +                let managed_thread =
 +                    app_server_client.managed_queue_thread_for_view(self.chat_widget.thread_id());
 +                self.chat_widget.set_managed_queue_thread(managed_thread);
                  self.handle_server_notification_event(app_server_client, *notification)
                      .await;
-             }
-@@ -78,6 +81,7 @@ impl App {
-                     .await;
+                 if request_resolved {
+@@ -105,6 +108,7 @@ impl App {
+                 self.repaint_agents_overview();
              }
              AppServerEvent::Disconnected { message } => {
 +                self.chat_widget.managed_queue_disconnected();
@@ -1633,24 +1561,22 @@ index 5783787..2e3a377 100644
                      return;
                  }
 diff --git a/codex-rs/tui/src/app/event_dispatch.rs b/codex-rs/tui/src/app/event_dispatch.rs
-index 4530c00..e9fb52d 100644
+index 888d119..b47baa9 100644
 --- a/codex-rs/tui/src/app/event_dispatch.rs
 +++ b/codex-rs/tui/src/app/event_dispatch.rs
-@@ -33,7 +33,9 @@ impl App {
-         if self.reconnect.offline
-             && !matches!(
-                 &event,
--                AppEvent::InsertHistoryCell(_)
-+                AppEvent::ManagedQueueResult { .. }
+@@ -52,6 +52,8 @@ impl App {
+                     | AppEvent::FinishPromptRevert { .. }
+                     | AppEvent::ManagedWorktreeCreated(_)
+                     | AppEvent::AgentsOverviewWorktreeCreated(_)
++                    | AppEvent::ManagedQueueResult { .. }
 +                    | AppEvent::ManagedQueueRequest(_)
-+                    | AppEvent::InsertHistoryCell(_)
                      | AppEvent::AppendMessageHistoryEntry { .. }
                      | AppEvent::BeginInitialHistoryReplayBuffer
                      | AppEvent::BeginThreadSwitchHistoryReplayBuffer
-@@ -62,6 +64,32 @@ impl App {
-         }
- 
-         match event {
+@@ -141,6 +143,32 @@ impl App {
+                 self.continue_misalignment(app_server, review).await;
+             }
+             AppEvent::CloseMisalignmentReview => self.chat_widget.show_misalignment_policy_precaution(),
 +            AppEvent::ManagedQueueItemMenu(id) => self.chat_widget.show_managed_queue_item(id),
 +            AppEvent::ManagedQueueEdit(id) => self.chat_widget.edit_managed_queue_item(id),
 +            AppEvent::ManagedQueueResult { request, result, uncertain } => self.chat_widget.managed_queue_result(request,result,uncertain),
@@ -1678,13 +1604,13 @@ index 4530c00..e9fb52d 100644
 +                }
 +            }
              AppEvent::SkillsListLoaded { ref cwd, .. }
-             | AppEvent::PluginMentionsLoaded { ref cwd, .. }
-                 if cwds_differ(cwd, self.config.cwd.as_path()) => {}
+                 if cwds_differ(cwd, self.config.cwd.as_path()) =>
+             {
 diff --git a/codex-rs/tui/src/app/reconnect.rs b/codex-rs/tui/src/app/reconnect.rs
-index f10c135..7437581 100644
+index 2b1b875..80e24c8 100644
 --- a/codex-rs/tui/src/app/reconnect.rs
 +++ b/codex-rs/tui/src/app/reconnect.rs
-@@ -368,6 +368,10 @@ impl App {
+@@ -472,6 +472,10 @@ impl App {
              server.reconnect(app_server.request_handle(), self.app_event_tx.clone());
          }
          self.reconnect.offline = false;
@@ -1696,27 +1622,27 @@ index f10c135..7437581 100644
              bootstrap.status_account_display,
              bootstrap.plan_type,
 diff --git a/codex-rs/tui/src/app/startup.rs b/codex-rs/tui/src/app/startup.rs
-index de27533..4a9881f 100644
+index cd98621..7c40e61 100644
 --- a/codex-rs/tui/src/app/startup.rs
 +++ b/codex-rs/tui/src/app/startup.rs
-@@ -504,6 +504,9 @@ impl App {
-                 (ChatWidget::new_with_app_event(init), Some(forked))
-             }
-         };
+@@ -770,6 +770,9 @@ impl App {
+         if startup_session_cancelled {
+             start_in_agents_overview = true;
+         }
 +        chat_widget.set_managed_queue_thread(
 +            app_server.managed_queue_thread_for_view(chat_widget.thread_id()),
 +        );
          chat_widget.note_rendered_width(tui.terminal.last_known_screen_size.width);
-         chat_widget.remote_connection = remote_connection;
-         chat_widget.set_agents_navigation_enabled(matches!(
+         if pending_startup_thread_start && !start_in_agents_overview {
+             chat_widget
 diff --git a/codex-rs/tui/src/app_event.rs b/codex-rs/tui/src/app_event.rs
-index 1592aef..f6a0210 100644
+index ce30da4..1337ebb 100644
 --- a/codex-rs/tui/src/app_event.rs
 +++ b/codex-rs/tui/src/app_event.rs
-@@ -222,6 +222,14 @@ pub(crate) struct AgentsOverviewThreadRefresh {
- #[allow(clippy::large_enum_variant)]
- #[derive(Debug, IntoStaticStr)]
- pub(crate) enum AppEvent {
+@@ -289,6 +289,14 @@ pub(crate) enum AppEvent {
+     ReviewMisalignment(Arc<crate::chatwidget::MisalignmentReview>),
+     ContinueMisalignment(Arc<crate::chatwidget::MisalignmentReview>),
+     CloseMisalignmentReview,
 +    ManagedQueueRequest(crate::managed_queue::Request),
 +    ManagedQueueResult {
 +        request: crate::managed_queue::Request,
@@ -1725,14 +1651,14 @@ index 1592aef..f6a0210 100644
 +    },
 +    ManagedQueueItemMenu(String),
 +    ManagedQueueEdit(String),
-     /// Open the daemon-wide overview of recent and locally retained root sessions.
+     /// Open the live command center for recent and locally retained root sessions.
      OpenAgentsOverview,
-     /// Update the daemon-wide overview after a background thread listing finishes.
+     ShowMoreAgentsOverview,
 diff --git a/codex-rs/tui/src/app_server_session.rs b/codex-rs/tui/src/app_server_session.rs
-index f2bfa76..7fb9956 100644
+index 3942e56..f2d8735 100644
 --- a/codex-rs/tui/src/app_server_session.rs
 +++ b/codex-rs/tui/src/app_server_session.rs
-@@ -480,6 +480,28 @@ impl AppServerSession {
+@@ -519,6 +519,28 @@ impl AppServerSession {
          self.remote_cwd_override.as_deref()
      }
  
@@ -1762,10 +1688,10 @@ index f2bfa76..7fb9956 100644
          thread_id.is_some_and(|thread_id| {
              self.client.managed_gateway_thread_id() == Some(thread_id.to_string().as_str())
 diff --git a/codex-rs/tui/src/bottom_pane/chat_composer.rs b/codex-rs/tui/src/bottom_pane/chat_composer.rs
-index 953f2e9..0fe59ca 100644
+index 7272255..4cab751 100644
 --- a/codex-rs/tui/src/bottom_pane/chat_composer.rs
 +++ b/codex-rs/tui/src/bottom_pane/chat_composer.rs
-@@ -520,6 +520,7 @@ pub(crate) struct ChatComposer {
+@@ -620,6 +620,7 @@ pub(crate) struct ChatComposer {
      blocks_direct_input: bool,
      is_task_running: bool,
      queue_submissions: bool,
@@ -1773,7 +1699,7 @@ index 953f2e9..0fe59ca 100644
      /// Slash-command draft staged for local recall after application-level dispatch.
      ///
      /// This slot is intentionally separate from `ChatComposerHistory` so inline slash commands can
-@@ -699,6 +700,7 @@ impl ChatComposer {
+@@ -796,6 +797,7 @@ impl ChatComposer {
              blocks_direct_input: false,
              is_task_running: false,
              queue_submissions: false,
@@ -1781,7 +1707,7 @@ index 953f2e9..0fe59ca 100644
              pending_slash_command_history: None,
              skills: None,
              plugins: None,
-@@ -3558,9 +3560,14 @@ impl ChatComposer {
+@@ -3521,9 +3523,14 @@ impl ChatComposer {
              self.footer.mode = reset_mode_after_activity(self.footer.mode);
          }
          if self.queue_keys.is_pressed(key_event)
@@ -1798,7 +1724,7 @@ index 953f2e9..0fe59ca 100644
          }
  
          if self.submit_keys.is_pressed(key_event) {
-@@ -4410,6 +4417,10 @@ impl ChatComposer {
+@@ -4375,6 +4382,10 @@ impl ChatComposer {
          self.is_task_running = running;
      }
  
@@ -1810,10 +1736,10 @@ index 953f2e9..0fe59ca 100644
          self.queue_submissions = queue_submissions;
      }
 diff --git a/codex-rs/tui/src/bottom_pane/mod.rs b/codex-rs/tui/src/bottom_pane/mod.rs
-index f4caf92..a4dcf08 100644
+index 912880e..af3f30d 100644
 --- a/codex-rs/tui/src/bottom_pane/mod.rs
 +++ b/codex-rs/tui/src/bottom_pane/mod.rs
-@@ -1130,6 +1130,10 @@ impl BottomPane {
+@@ -1338,6 +1338,10 @@ impl BottomPane {
          }
      }
  
@@ -1825,24 +1751,24 @@ index f4caf92..a4dcf08 100644
          self.composer.set_queue_submissions(queue_submissions);
      }
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index 40eadfa..5e5c73f 100644
+index 7fafd6d..5b8bdc2 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
-@@ -354,6 +354,7 @@ mod goal_menu;
+@@ -280,6 +280,7 @@ mod goal_menu;
  mod ide_context;
  use self::ide_context::IdeContextState;
  mod input_queue;
 +mod managed_queue;
  mod reconnect;
  use self::input_queue::InputQueueState;
- mod input_flow;
+ mod image_submission;
 diff --git a/codex-rs/tui/src/chatwidget/input_flow.rs b/codex-rs/tui/src/chatwidget/input_flow.rs
-index 74d872d..cdf75c9 100644
+index b4d45da..04cccce 100644
 --- a/codex-rs/tui/src/chatwidget/input_flow.rs
 +++ b/codex-rs/tui/src/chatwidget/input_flow.rs
-@@ -113,6 +113,10 @@ impl ChatWidget {
-         if self.misalignment_policy_violation {
-             return;
+@@ -168,6 +168,10 @@ impl ChatWidget {
+         if self.has_misalignment_policy_violation() {
+             return false;
          }
 +        if self.input_queue.managed.enabled() {
 +            self.prepare_managed_queue_input(user_message, action, pending_pastes);
@@ -1851,7 +1777,7 @@ index 74d872d..cdf75c9 100644
          let should_run_now = self.is_session_configured()
              && !self.is_user_turn_pending_or_running()
              && !self.input_queue.suppress_queue_autosend
-@@ -139,6 +143,9 @@ impl ChatWidget {
+@@ -234,6 +238,9 @@ impl ChatWidget {
  
      /// If idle and there are queued inputs, submit exactly one to start the next turn.
      pub(crate) fn maybe_send_next_queued_input(&mut self) -> bool {
@@ -1859,14 +1785,12 @@ index 74d872d..cdf75c9 100644
 +            return false;
 +        }
          if !self.is_session_configured()
-             || self.misalignment_policy_violation
+             || self.has_misalignment_policy_violation()
              || self.input_queue.suppress_queue_autosend
-@@ -247,7 +254,23 @@ impl ChatWidget {
- 
-     /// Rebuild and update the bottom-pane pending-input preview.
-     pub(super) fn refresh_pending_input_preview(&mut self) {
--        let preview = self.input_queue.preview();
-+        let mut preview = self.input_queue.preview();
+@@ -357,6 +364,22 @@ impl ChatWidget {
+             questions.has_queued_messages = has_queued;
+         }
+         let mut preview = self.input_queue.preview();
 +        if self.input_queue.managed.enabled() {
 +            preview.queued_messages = self
 +                .input_queue
@@ -1883,54 +1807,55 @@ index 74d872d..cdf75c9 100644
 +            }
 +            preview.queued_messages.push("Shared queue · Ctrl+Q".into());
 +        }
-         self.bottom_pane.set_pending_input_preview(
-             preview.queued_messages,
-             preview.pending_steers,
+         if let Some(pending) = &self.pending_image_submission {
+             preview.queued_messages.insert(
+                 /*index*/ 0,
 diff --git a/codex-rs/tui/src/chatwidget/input_queue.rs b/codex-rs/tui/src/chatwidget/input_queue.rs
-index 249cade..486a06d 100644
+index 13600b2..d3c04db 100644
 --- a/codex-rs/tui/src/chatwidget/input_queue.rs
 +++ b/codex-rs/tui/src/chatwidget/input_queue.rs
-@@ -20,6 +20,7 @@ pub(super) struct PendingInputPreview {
- 
- #[derive(Debug, Default)]
+@@ -24,6 +24,7 @@ pub(super) struct PendingInputPreview {
  pub(super) struct InputQueueState {
+     /// The visible draft confirmed during startup, awaiting the protected-input handoff.
+     pub(super) startup_submission: Option<crate::bottom_pane::ComposerDraftSnapshot>,
 +    pub(super) managed: crate::managed_queue::State,
      /// User inputs queued while a turn is in progress.
      pub(super) queued_user_messages: VecDeque<QueuedUserMessage>,
      /// History records for queued user messages. Slash commands such as `/goal`
 diff --git a/codex-rs/tui/src/chatwidget/input_restore.rs b/codex-rs/tui/src/chatwidget/input_restore.rs
-index ae97d92..c58e08b 100644
+index e1a798b..1c1508d 100644
 --- a/codex-rs/tui/src/chatwidget/input_restore.rs
 +++ b/codex-rs/tui/src/chatwidget/input_restore.rs
-@@ -444,6 +444,7 @@ impl ChatWidget {
-             pending_pastes: draft.pending_pastes,
-         };
-         Some(ThreadInputState {
+@@ -571,6 +571,7 @@ impl ChatWidget {
+                 .as_deref_mut()
+                 .map(crate::bottom_pane::AsyncQuestions::capture),
+             pending_thread_settings: None,
 +            managed_queue: self.input_queue.managed.clone(),
              composer: composer.has_content().then_some(composer),
              safety_buffering_prompt: self.safety_buffering_prompt.clone(),
-             pending_steers: self
-@@ -495,6 +496,8 @@ impl ChatWidget {
-             self.input_queue.recovered_queue = input_state.recovered_queue;
+             safety_buffering_source: self.safety_buffering_source,
+@@ -612,6 +613,8 @@ impl ChatWidget {
              self.current_collaboration_mode = input_state.current_collaboration_mode;
              self.active_collaboration_mask = input_state.active_collaboration_mask;
+             self.config.plan_mode_reasoning_effort = input_state.plan_mode_reasoning_effort;
 +            self.input_queue.managed = input_state.managed_queue;
 +            self.input_queue.managed.refresh_in_flight = false;
              self.safety_buffering_prompt = input_state.safety_buffering_prompt;
+             self.safety_buffering_source = input_state.safety_buffering_source;
              self.turn_lifecycle.restore_running(
-                 preserve_in_flight_turn && input_state.agent_turn_running,
 diff --git a/codex-rs/tui/src/chatwidget/input_submission.rs b/codex-rs/tui/src/chatwidget/input_submission.rs
-index 8a4133e..4ee2cb2 100644
+index 5184f1c..27e2f83 100644
 --- a/codex-rs/tui/src/chatwidget/input_submission.rs
 +++ b/codex-rs/tui/src/chatwidget/input_submission.rs
-@@ -116,7 +116,20 @@ impl ChatWidget {
-         if self.misalignment_policy_violation {
+@@ -139,7 +139,21 @@ impl ChatWidget {
              return (false, None);
          }
--        if self.input_queue.rate_limit_recovery_pending {
+         self.empty_state_animation.borrow_mut().dismiss();
+-        if self.input_queue.rate_limit_recovery_pending || self.pending_image_submission.is_some() {
 +        if self.input_queue.rate_limit_recovery_pending
 +            && self.input_queue.managed.enabled()
 +            && self.input_queue.managed.preparing_input.is_none()
++            && self.pending_image_submission.is_none()
 +        {
 +            let action = match shell_escape_policy {
 +                ShellEscapePolicy::Allow => QueuedInputAction::Plain,
@@ -1939,13 +1864,13 @@ index 8a4133e..4ee2cb2 100644
 +            self.prepare_managed_queue_input(user_message, action, Vec::new());
 +            return (true, None);
 +        }
-+        if self.input_queue.rate_limit_recovery_pending
++        if (self.input_queue.rate_limit_recovery_pending || self.pending_image_submission.is_some())
 +            && self.input_queue.managed.preparing_input.is_none()
 +        {
-             self.input_queue
-                 .queued_user_messages
-                 .push_back(QueuedUserMessage::from(user_message));
-@@ -340,6 +353,20 @@ impl ChatWidget {
+             let model_prompt = source == UserMessageSource::Prompt
+                 && (shell_escape_policy == ShellEscapePolicy::Disallow
+                     || !user_message.text.starts_with('!'));
+@@ -414,6 +428,20 @@ impl ChatWidget {
          self.maybe_apply_ide_context(&mut items);
          crate::task_mentions::apply_task_references(&mut items, &mention_bindings, self.thread_id);
  
@@ -1967,13 +1892,13 @@ index 8a4133e..4ee2cb2 100644
              self.active_collaboration_mask
                  .as_ref()
 diff --git a/codex-rs/tui/src/chatwidget/interaction.rs b/codex-rs/tui/src/chatwidget/interaction.rs
-index 015a698..ff014d4 100644
+index 571ae8d..441197a 100644
 --- a/codex-rs/tui/src/chatwidget/interaction.rs
 +++ b/codex-rs/tui/src/chatwidget/interaction.rs
-@@ -13,6 +13,14 @@ impl ChatWidget {
-     }
- 
-     pub(crate) fn handle_key_event(&mut self, key_event: KeyEvent) {
+@@ -64,6 +64,14 @@ impl ChatWidget {
+         if self.handle_question_key(key_event) {
+             return KeyEventAction::None;
+         }
 +        if self.input_queue.managed.enabled()
 +            && key_event.kind == KeyEventKind::Press
 +            && key_event.modifiers == KeyModifiers::CONTROL
@@ -2433,10 +2358,10 @@ index 0000000..407f364
 +    }
 +}
 diff --git a/codex-rs/tui/src/chatwidget/protocol.rs b/codex-rs/tui/src/chatwidget/protocol.rs
-index db5460b..2bbf5de 100644
+index 2fbce46..f5f38a9 100644
 --- a/codex-rs/tui/src/chatwidget/protocol.rs
 +++ b/codex-rs/tui/src/chatwidget/protocol.rs
-@@ -31,6 +31,16 @@ impl ChatWidget {
+@@ -44,6 +44,16 @@ impl ChatWidget {
              self.restore_retry_status_header_if_present();
          }
          match notification {
@@ -2453,7 +2378,7 @@ index db5460b..2bbf5de 100644
              ServerNotification::ThreadTokenUsageUpdated(notification) => {
                  self.set_token_info(Some(token_usage_info_from_app_server(
                      notification.token_usage,
-@@ -221,7 +231,6 @@ impl ChatWidget {
+@@ -346,7 +356,6 @@ impl ChatWidget {
              | ServerNotification::ThreadStarted(_)
              | ServerNotification::ThreadStatusChanged(_)
              | ServerNotification::ThreadReverted(_)
@@ -2462,25 +2387,25 @@ index db5460b..2bbf5de 100644
              | ServerNotification::ManagedExecutionDeclined(_)
              | ServerNotification::ThreadArchived(_)
 diff --git a/codex-rs/tui/src/chatwidget/tests.rs b/codex-rs/tui/src/chatwidget/tests.rs
-index 1eb26d5..c0d9b55 100644
+index 6d42ca5..74716fb 100644
 --- a/codex-rs/tui/src/chatwidget/tests.rs
 +++ b/codex-rs/tui/src/chatwidget/tests.rs
-@@ -246,6 +246,7 @@ mod goal_validation;
- mod guardian;
- pub(crate) mod helpers;
- mod history_replay;
+@@ -260,6 +260,7 @@ mod history_replay;
+ mod home_cleanup_tests;
+ #[path = "tests/luna_reserve_usage_tests.rs"]
+ mod luna_reserve_usage_tests;
 +mod managed_queue;
  mod mcp_startup;
  #[path = "tests/misalignment_policy_tests.rs"]
  mod misalignment_policy;
 diff --git a/codex-rs/tui/src/chatwidget/tests/composer_submission.rs b/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
-index c6c0fd0..8f6e319 100644
+index 099806b..b7990d2 100644
 --- a/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
-@@ -1756,6 +1756,7 @@ async fn restore_thread_input_state_applies_running_state_policy() {
-         text_elements: Vec::new(),
-     });
+@@ -1811,6 +1811,7 @@ async fn restore_thread_input_state_applies_running_state_policy() {
      let input_state = ThreadInputState {
+         questions: None,
+         pending_thread_settings: None,
 +        managed_queue: Default::default(),
          composer: Some(ThreadComposerState {
              text: "composer draft".to_string(),
@@ -2703,41 +2628,41 @@ index 0000000..7a37bf6
 +    assert!(!chat.maybe_send_next_queued_input());
 +}
 diff --git a/codex-rs/tui/src/chatwidget/tests/review_mode.rs b/codex-rs/tui/src/chatwidget/tests/review_mode.rs
-index ed3853e..8d47f6c 100644
+index 710c3a9..3ebbbbb 100644
 --- a/codex-rs/tui/src/chatwidget/tests/review_mode.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/review_mode.rs
-@@ -375,6 +375,7 @@ async fn restore_thread_input_state_restores_pending_steers_without_downgrading_
- 
-     chat.restore_thread_input_state(
+@@ -380,6 +380,7 @@ async fn restore_thread_input_state_restores_pending_steers_without_downgrading_
          Some(ThreadInputState {
+             pending_thread_settings: None,
+             questions: None,
 +            managed_queue: Default::default(),
              composer: None,
              safety_buffering_prompt: None,
-             pending_steers,
+             safety_buffering_source: UserMessageSource::Prompt,
 diff --git a/codex-rs/tui/src/chatwidget/user_messages.rs b/codex-rs/tui/src/chatwidget/user_messages.rs
-index 50feb09..5e482f7 100644
+index ed99725..eb03237 100644
 --- a/codex-rs/tui/src/chatwidget/user_messages.rs
 +++ b/codex-rs/tui/src/chatwidget/user_messages.rs
-@@ -122,6 +122,7 @@ impl ThreadComposerState {
- 
- #[derive(Debug, Clone, PartialEq)]
- pub(crate) struct ThreadInputState {
+@@ -144,6 +144,7 @@ pub(crate) struct ThreadInputState {
+     pub(crate) questions: Option<crate::bottom_pane::QuestionState>,
+     pub(crate) pending_thread_settings:
+         Option<codex_app_server_protocol::ThreadSettingsUpdatedNotification>,
 +    pub(super) managed_queue: crate::managed_queue::State,
      pub(super) composer: Option<ThreadComposerState>,
      pub(super) safety_buffering_prompt: Option<UserMessage>,
-     pub(super) pending_steers: VecDeque<UserMessage>,
+     pub(super) safety_buffering_source: UserMessageSource,
 diff --git a/codex-rs/tui/src/lib.rs b/codex-rs/tui/src/lib.rs
-index 36852ab..7e496d9 100644
+index 2697cba..9ecbe9c 100644
 --- a/codex-rs/tui/src/lib.rs
 +++ b/codex-rs/tui/src/lib.rs
-@@ -210,6 +210,7 @@ pub(crate) mod update_action;
+@@ -242,6 +242,7 @@ pub use update_action::DaemonUpdateSource;
  pub use update_action::UpdateAction;
  #[cfg(not(debug_assertions))]
  pub use update_action::get_update_action;
 +mod managed_queue;
  mod update_prompt;
- #[cfg(any(not(debug_assertions), test))]
  mod update_versions;
+ mod updates;
 diff --git a/codex-rs/tui/src/managed_queue.rs b/codex-rs/tui/src/managed_queue.rs
 new file mode 100644
 index 0000000..e9683fa

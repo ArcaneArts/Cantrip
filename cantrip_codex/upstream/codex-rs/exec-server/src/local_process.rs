@@ -7,6 +7,8 @@ use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
+use crate::process_telemetry::ProcessTelemetry;
+use crate::process_telemetry::ProcessTelemetryEvent;
 use codex_exec_server_protocol::JSONRPCErrorError;
 use codex_network_proxy::NetworkPolicyAuditEvent;
 use codex_network_proxy::NetworkPolicyAuditObserver;
@@ -21,11 +23,15 @@ use codex_sandboxing::SandboxType;
 use codex_sandboxing::is_likely_sandbox_denied;
 use codex_utils_pty::ExecCommandSession;
 use codex_utils_pty::ProcessSignal as PtyProcessSignal;
+use opentelemetry::trace::SpanContext;
+use opentelemetry::trace::TraceContextExt;
 use tokio::sync::Mutex;
 use tokio::sync::Notify;
 use tokio::sync::mpsc;
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
+use tracing::Instrument;
+use tracing::instrument::WithSubscriber;
 
 use crate::ExecBackend;
 use crate::ExecBackendFuture;
@@ -34,13 +40,13 @@ use crate::ExecProcessEvent;
 use crate::ExecProcessEventReceiver;
 use crate::ExecProcessFuture;
 use crate::ExecServerError;
-use crate::ExecServerRuntimePaths;
+use crate::ExecServerRuntimeOptions;
 use crate::ProcessId;
 use crate::StartedExecProcess;
 use crate::network_policy_decisions::network_policy_decider;
 use crate::process::ExecProcessEventLog;
 use crate::process::sandbox_type_from_protocol;
-use crate::process_sandbox::prepare_exec_request;
+use crate::process_sandbox::prepare_exec_request_with_telemetry;
 use crate::protocol::EXEC_CLOSED_METHOD;
 use crate::protocol::ExecClosedNotification;
 use crate::protocol::ExecEnvPolicy;
@@ -168,7 +174,7 @@ struct Inner {
 #[derive(Clone)]
 pub(crate) struct LocalProcess {
     inner: Arc<Inner>,
-    runtime_paths: Option<ExecServerRuntimePaths>,
+    runtime_paths: Option<ExecServerRuntimeOptions>,
 }
 
 struct LocalExecProcess {
@@ -185,11 +191,11 @@ impl Default for LocalProcess {
 }
 
 impl LocalProcess {
-    pub(crate) fn with_local_runtime_paths(runtime_paths: ExecServerRuntimePaths) -> Self {
+    pub(crate) fn with_local_runtime_paths(runtime_paths: ExecServerRuntimeOptions) -> Self {
         Self::with_discarded_notifications(Some(runtime_paths))
     }
 
-    fn with_discarded_notifications(runtime_paths: Option<ExecServerRuntimePaths>) -> Self {
+    fn with_discarded_notifications(runtime_paths: Option<ExecServerRuntimeOptions>) -> Self {
         let (outgoing_tx, mut outgoing_rx) =
             mpsc::channel::<RpcServerOutboundMessage>(NOTIFICATION_CHANNEL_CAPACITY);
         tokio::spawn(async move { while outgoing_rx.recv().await.is_some() {} });
@@ -203,7 +209,7 @@ impl LocalProcess {
     pub(crate) fn new(
         notifications: RpcNotificationSender,
         telemetry: ExecServerTelemetry,
-        runtime_paths: ExecServerRuntimePaths,
+        runtime_paths: ExecServerRuntimeOptions,
     ) -> Self {
         Self::with_runtime_paths(notifications, telemetry, Some(runtime_paths))
     }
@@ -211,7 +217,7 @@ impl LocalProcess {
     fn with_runtime_paths(
         notifications: RpcNotificationSender,
         telemetry: ExecServerTelemetry,
-        runtime_paths: Option<ExecServerRuntimePaths>,
+        runtime_paths: Option<ExecServerRuntimeOptions>,
     ) -> Self {
         let requests = notifications.request_sender();
         Self {
@@ -275,7 +281,24 @@ impl LocalProcess {
     async fn start_process(
         &self,
         params: ExecParams,
+        mut telemetry: ProcessTelemetry,
     ) -> Result<(ExecResponse, watch::Sender<u64>, ExecProcessEventLog), JSONRPCErrorError> {
+        telemetry.launch_context = telemetry.launch_context.filter(SpanContext::is_valid);
+        let metadata = params.metadata.as_ref();
+        telemetry.thread_id = metadata
+            .and_then(|metadata| metadata.thread_id.as_ref())
+            .map(ToString::to_string);
+        // Correlation is controller-supplied, not authorization or arbitrary diagnostic text.
+        telemetry.tool_call_id = metadata
+            .and_then(|metadata| metadata.tool_call_id.as_ref())
+            .filter(|id| {
+                !id.is_empty()
+                    && id.len() <= 256
+                    && id
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || b"_-.:".contains(&byte))
+            })
+            .cloned();
         let process_id = params.process_id.clone();
         let policy_decision_timeout_ms = params
             .network_proxy
@@ -344,18 +367,20 @@ impl LocalProcess {
                 "shell snapshots are unsupported on this platform".to_string(),
             ));
         }
-        let prepared = prepare_exec_request(
+        let prepared = prepare_exec_request_with_telemetry(
             &params,
             child_env(&params),
             self.runtime_paths.as_ref(),
             network_policy_decider,
             network_policy_audit_observer,
+            &telemetry,
         )
         .await?;
         #[cfg(unix)]
         let mut prepared = prepared;
         #[cfg(unix)]
-        self.inner
+        let snapshot_file = self
+            .inner
             .shell_snapshots
             .prepare(
                 &params,
@@ -372,6 +397,7 @@ impl LocalProcess {
             SandboxType::MacosSeatbelt => Some(ProcessSandboxType::MacosSeatbelt),
             SandboxType::LinuxSeccomp => Some(ProcessSandboxType::LinuxSeccomp),
             SandboxType::WindowsRestrictedToken => Some(ProcessSandboxType::WindowsRestrictedToken),
+            SandboxType::WindowsMxc => Some(ProcessSandboxType::WindowsMxc),
         };
 
         let start = Arc::new(ProcessStart);
@@ -388,6 +414,13 @@ impl LocalProcess {
             );
         }
 
+        #[cfg(unix)]
+        let inherited_fds = snapshot_file
+            .iter()
+            .map(std::os::fd::AsRawFd::as_raw_fd)
+            .collect::<Vec<_>>();
+        #[cfg(not(unix))]
+        let inherited_fds = Vec::new();
         let spawned_result = codex_sandboxing::spawn_process(codex_sandboxing::SpawnRequest {
             command: &prepared.command,
             cwd: prepared.cwd.as_path(),
@@ -397,12 +430,15 @@ impl LocalProcess {
             windows_sandbox: prepared.windows_sandbox_spawn_request(),
             tty: params.tty,
             stdin_open: params.tty || params.pipe_stdin,
-            inherited_fds: &[],
+            inherited_fds: codex_utils_pty::ChildFds::Attached(&inherited_fds),
         })
         .await;
+        #[cfg(unix)]
+        drop(snapshot_file);
         let spawned = match spawned_result {
             Ok(spawned) => spawned,
             Err(err) => {
+                telemetry.log(ProcessTelemetryEvent::SpawnFailed, prepared.sandbox);
                 let mut process_map = self.inner.processes.lock().await;
                 if matches!(
                     process_map.get(&process_id),
@@ -461,6 +497,7 @@ impl LocalProcess {
                 })),
             );
         }
+        telemetry.log(ProcessTelemetryEvent::Start, prepared.sandbox);
         tokio::spawn(stream_output(
             process_id.clone(),
             if params.tty {
@@ -483,12 +520,17 @@ impl LocalProcess {
             Arc::clone(&self.inner),
             Arc::clone(&output_notify),
         ));
-        tokio::spawn(watch_exit(
-            process_id.clone(),
-            spawned.exit_rx,
-            Arc::clone(&self.inner),
-            output_notify,
-        ));
+        // Keep the subscriber, but let the request span close independently of process completion.
+        tokio::spawn(
+            watch_exit(
+                process_id.clone(),
+                spawned.exit_rx,
+                Arc::clone(&self.inner),
+                output_notify,
+                telemetry,
+            )
+            .with_current_subscriber(),
+        );
 
         Ok((
             ExecResponse {
@@ -500,8 +542,12 @@ impl LocalProcess {
         ))
     }
 
-    pub(crate) async fn exec(&self, params: ExecParams) -> Result<ExecResponse, JSONRPCErrorError> {
-        self.start_process(params)
+    pub(crate) async fn exec(
+        &self,
+        params: ExecParams,
+        telemetry: ProcessTelemetry,
+    ) -> Result<ExecResponse, JSONRPCErrorError> {
+        self.start_process(params, telemetry)
             .await
             .map(|(response, _, _)| response)
     }
@@ -740,7 +786,7 @@ pub(crate) fn shell_environment_policy(env_policy: &ExecEnvPolicy) -> ShellEnvir
 impl LocalProcess {
     async fn start(&self, params: ExecParams) -> Result<StartedExecProcess, ExecServerError> {
         let (response, wake_tx, events) = self
-            .start_process(params)
+            .start_process(params, ProcessTelemetry::default())
             .await
             .map_err(map_handler_error)?;
         let sandbox_type = sandbox_type_from_protocol(response.sandbox_type);
@@ -772,12 +818,13 @@ impl ExecBackend for LocalProcess {
                     "shell snapshot prewarming does not support managed networking".to_string(),
                 ));
             }
-            let mut prepared = prepare_exec_request(
+            let mut prepared = prepare_exec_request_with_telemetry(
                 &params,
                 child_env(&params),
                 self.runtime_paths.as_ref(),
                 /*network_policy_decider*/ None,
                 /*network_policy_audit_observer*/ None,
+                &ProcessTelemetry::default(),
             )
             .await
             .map_err(map_handler_error)?;
@@ -790,6 +837,7 @@ impl ExecBackend for LocalProcess {
                     CapturePurpose::Prewarm,
                 )
                 .await
+                .map(|_| ())
                 .map_err(map_handler_error)
         })
     }
@@ -987,93 +1035,115 @@ async fn stream_output(
     finish_output_stream(process_id, inner).await;
 }
 
-async fn watch_exit(
+fn watch_exit(
     process_id: ProcessId,
     exit_rx: tokio::sync::oneshot::Receiver<i32>,
     inner: Arc<Inner>,
     output_notify: Arc<Notify>,
-) {
-    let exit_code = exit_rx.await.unwrap_or(-1);
-    let sandboxed = {
-        let mut processes = inner.processes.lock().await;
-        match processes.get_mut(&process_id) {
-            Some(ProcessEntry::Running(process)) => {
-                let sandboxed = process.sandbox != SandboxType::None;
-                if let Some(metrics) = process.metrics.take() {
-                    metrics.finish(if process.termination_requested {
-                        "terminated"
-                    } else if exit_code == 0 {
-                        "success"
-                    } else {
-                        "error"
-                    });
-                }
-                sandboxed
-            }
-            Some(ProcessEntry::Starting(_)) | None => false,
-        }
-    };
-    if sandboxed {
-        let _ = tokio::time::timeout(Duration::from_millis(20), output_notify.notified()).await;
+    telemetry: ProcessTelemetry,
+) -> impl std::future::Future<Output = ()> + Send {
+    // Set the copied OTEL parent before entering; never retain the RPC tracing span.
+    let process_span = tracing::info_span!(parent: None, "codex.exec_server.process");
+    if let Some(launch_context) = &telemetry.launch_context {
+        codex_otel::set_parent_from_context(
+            &process_span,
+            opentelemetry::Context::new().with_remote_span_context(launch_context.clone()),
+        );
     }
-    let notification = {
-        let mut processes = inner.processes.lock().await;
-        if let Some(ProcessEntry::Running(process)) = processes.get_mut(&process_id) {
-            let seq = process.next_seq;
-            process.next_seq += 1;
-            process.exit_code = Some(exit_code);
-            if process.sandbox != SandboxType::None {
-                let mut stdout = Vec::new();
-                let mut stderr = Vec::new();
-                let mut aggregated = Vec::new();
-                for chunk in &process.output {
-                    match chunk.stream {
-                        ExecOutputStream::Stdout | ExecOutputStream::Pty => {
-                            stdout.extend_from_slice(&chunk.chunk);
-                        }
-                        ExecOutputStream::Stderr => stderr.extend_from_slice(&chunk.chunk),
+    async move {
+        let exit_code = exit_rx.await.unwrap_or(-1);
+        let sandboxed = {
+            let mut processes = inner.processes.lock().await;
+            match processes.get_mut(&process_id) {
+                Some(ProcessEntry::Running(process)) => {
+                    let sandboxed = process.sandbox != SandboxType::None;
+                    if let Some(metrics) = process.metrics.take() {
+                        metrics.finish(if process.termination_requested {
+                            "terminated"
+                        } else if exit_code == 0 {
+                            "success"
+                        } else {
+                            "error"
+                        });
                     }
-                    aggregated.extend_from_slice(&chunk.chunk);
+                    sandboxed
                 }
-                let exec_output = ExecToolCallOutput {
-                    exit_code,
-                    stdout: StreamOutput::new(String::from_utf8_lossy(&stdout).into_owned()),
-                    stderr: StreamOutput::new(String::from_utf8_lossy(&stderr).into_owned()),
-                    aggregated_output: StreamOutput::new(
-                        String::from_utf8_lossy(&aggregated).into_owned(),
-                    ),
-                    ..Default::default()
-                };
-                // Transport the classification to the caller; recording there
-                // attaches audit context once and avoids duplicate events.
-                process.sandbox_denied = is_likely_sandbox_denied(process.sandbox, &exec_output);
+                Some(ProcessEntry::Starting(_)) | None => false,
             }
-            let _ = process.wake_tx.send(seq);
-            process.events.publish(ExecProcessEvent::Exited {
-                seq,
-                exit_code,
-                sandbox_denied: Some(process.sandbox_denied),
-            });
-            Some(ExecExitedNotification {
-                process_id: process_id.clone(),
-                seq,
-                exit_code,
-                sandbox_denied: Some(process.sandbox_denied),
-            })
-        } else {
-            None
+        };
+        if sandboxed {
+            let _ = tokio::time::timeout(Duration::from_millis(20), output_notify.notified()).await;
         }
-    };
-    output_notify.notify_waiters();
-    if let Some(notification) = notification
-        && let Some(notifications) = notification_sender(&inner)
-    {
-        let _ = notifications
-            .notify(crate::protocol::EXEC_EXITED_METHOD, &notification)
-            .await;
-    }
+        let notification = {
+            let mut processes = inner.processes.lock().await;
+            if let Some(ProcessEntry::Running(process)) = processes.get_mut(&process_id) {
+                let seq = process.next_seq;
+                process.next_seq += 1;
+                process.exit_code = Some(exit_code);
+                if process.sandbox != SandboxType::None {
+                    let mut stdout = Vec::new();
+                    let mut stderr = Vec::new();
+                    let mut aggregated = Vec::new();
+                    for chunk in &process.output {
+                        match chunk.stream {
+                            ExecOutputStream::Stdout | ExecOutputStream::Pty => {
+                                stdout.extend_from_slice(&chunk.chunk);
+                            }
+                            ExecOutputStream::Stderr => stderr.extend_from_slice(&chunk.chunk),
+                        }
+                        aggregated.extend_from_slice(&chunk.chunk);
+                    }
+                    let exec_output = ExecToolCallOutput {
+                        exit_code,
+                        stdout: StreamOutput::new(String::from_utf8_lossy(&stdout).into_owned()),
+                        stderr: StreamOutput::new(String::from_utf8_lossy(&stderr).into_owned()),
+                        aggregated_output: StreamOutput::new(
+                            String::from_utf8_lossy(&aggregated).into_owned(),
+                        ),
+                        ..Default::default()
+                    };
+                    // Keep the classification in the result for caller approval/retry handling.
+                    process.sandbox_denied =
+                        is_likely_sandbox_denied(process.sandbox, &exec_output);
+                    if process.sandbox_denied {
+                        telemetry.log(ProcessTelemetryEvent::SandboxDenied, process.sandbox);
+                    }
+                }
+                telemetry.log(
+                    ProcessTelemetryEvent::Exit {
+                        exit_code,
+                        termination_requested: process.termination_requested,
+                    },
+                    process.sandbox,
+                );
+                let _ = process.wake_tx.send(seq);
+                process.events.publish(ExecProcessEvent::Exited {
+                    seq,
+                    exit_code,
+                    sandbox_denied: Some(process.sandbox_denied),
+                });
+                Some(ExecExitedNotification {
+                    process_id: process_id.clone(),
+                    seq,
+                    exit_code,
+                    sandbox_denied: Some(process.sandbox_denied),
+                })
+            } else {
+                None
+            }
+        };
+        output_notify.notify_waiters();
+        if let Some(notification) = notification
+            && let Some(notifications) = notification_sender(&inner)
+        {
+            let _ = notifications
+                .notify(crate::protocol::EXEC_EXITED_METHOD, &notification)
+                .await;
+        }
 
-    maybe_emit_closed(process_id, Arc::clone(&inner)).await;
+        maybe_emit_closed(process_id, Arc::clone(&inner)).await;
+    }
+    .instrument(process_span)
 }
 
 async fn finish_output_stream(process_id: ProcessId, inner: Arc<Inner>) {
@@ -1192,8 +1262,23 @@ mod tests {
     #[cfg(not(target_os = "windows"))]
     use crate::protocol::NetworkPolicyRequestResponse;
 
+    #[cfg(target_os = "linux")]
+    #[ctor::ctor]
+    fn initialize_spawn_helper() {
+        use std::os::unix::ffi::OsStringExt;
+        let command_line = std::fs::read("/proc/self/cmdline").expect("test command line");
+        codex_utils_pty::init_spawn_helper(
+            command_line
+                .strip_suffix(&[0])
+                .unwrap_or(&command_line)
+                .split(|byte| *byte == 0)
+                .map(|arg| std::ffi::OsString::from_vec(arg.to_vec())),
+        );
+    }
+
     fn test_exec_params(env: HashMap<String, String>) -> ExecParams {
         ExecParams {
+            metadata: None,
             process_id: ProcessId::from("env-test"),
             argv: vec!["true".to_string()],
             cwd: PathUri::from_host_native_path(std::env::current_dir().expect("cwd"))
@@ -1237,7 +1322,7 @@ mod tests {
                 .for_execution("environment-1".to_string(), "execution-1".to_string()),
         );
         backend
-            .exec(params)
+            .exec(params, ProcessTelemetry::default())
             .await
             .expect("start process with proxy");
         let output = backend
@@ -1379,7 +1464,9 @@ mod tests {
         let mut params = test_exec_params(HashMap::new());
         params.cwd = cwd;
 
-        let result = LocalProcess::default().start_process(params).await;
+        let result = LocalProcess::default()
+            .start_process(params, ProcessTelemetry::default())
+            .await;
         let Err(error) = result else {
             panic!("non-native cwd should be rejected");
         };
@@ -1406,7 +1493,7 @@ mod tests {
             params.process_id = ProcessId::from(process_id);
             params.network_proxy = Some(proxy.clone());
             let error = LocalProcess::default()
-                .start_process(params)
+                .start_process(params, ProcessTelemetry::default())
                 .await
                 .err()
                 .expect("invalid callback process ID should be rejected");
@@ -1419,7 +1506,7 @@ mod tests {
         boundary.network_proxy = Some(proxy);
         boundary.argv.clear();
         let error = LocalProcess::default()
-            .start_process(boundary)
+            .start_process(boundary, ProcessTelemetry::default())
             .await
             .err()
             .expect("valid boundary process ID should proceed to process preparation");
@@ -1440,7 +1527,7 @@ mod tests {
             ordinary.process_id = ProcessId::from(process_id);
             ordinary.argv.clear();
             let error = LocalProcess::default()
-                .start_process(ordinary)
+                .start_process(ordinary, ProcessTelemetry::default())
                 .await
                 .err()
                 .expect("empty argv should be rejected after ID validation");
@@ -1757,6 +1844,7 @@ mod tests {
             .expect("build remote network proxy config");
         let state = NetworkProxyState::from_remote_launch_config(
             RemoteNetworkProxyLaunchConfig::new(proxy_config),
+            codex_utils_path_uri::Platform::native(),
         )
         .expect("build network proxy state");
         let proxy = NetworkProxy::builder()
@@ -1965,6 +2053,7 @@ mod tests {
             exit_rx,
             Arc::clone(&backend.inner),
             output_notify,
+            ProcessTelemetry::default(),
         ));
 
         TestProcess {

@@ -72,6 +72,59 @@ import {
   workspaceHasGitMetadata,
 } from "../src/codex/app-server.js";
 
+describe("banked resets with account credits", () => {
+  it.each([100, 100.01])(
+    "checks live balance %s before consuming a reset",
+    async (balance) => {
+      const runtime = Object.create(CodexAppServer.prototype) as CodexAppServer;
+      const request = vi.fn(async () => ({ outcome: "reset" }));
+      Object.assign(runtime, {
+        ensureCatalogStarted: vi.fn(async () => {}),
+        requestWithChatGptAuthRecovery: request,
+      });
+      const read = vi.spyOn(runtime, "readQuotaSnapshot").mockResolvedValue({
+        snapshotId: "credits",
+        observedAt: new Date().toISOString(),
+        workerVersion: null,
+        codexVersion: null,
+        windows: [],
+        credits: {
+          hasCredits: true,
+          unlimited: false,
+          balance: String(balance),
+        },
+        rateLimitResetCredits: { availableCount: 2, credits: null },
+      });
+      const provider = {
+        id: "chatgpt",
+        name: "ChatGPT",
+        kind: "chatgpt",
+        baseUrl: "https://chatgpt.com/backend-api/codex",
+        apiKey: null,
+        protectedApiKey: null,
+        accountId: "account",
+        credentialHomeKey: "account",
+      } as Parameters<CodexAppServer["consumeRateLimitResetCredit"]>[0];
+      const work = runtime.consumeRateLimitResetCredit(provider, {
+        idempotencyKey: "00000000-0000-4000-8000-000000000111",
+      });
+      if (balance > 100) {
+        await expect(work).rejects.toThrow("more than 100 credits");
+        expect(request).not.toHaveBeenCalled();
+        expect(read).toHaveBeenCalledOnce();
+      } else {
+        await expect(work).resolves.toMatchObject({ outcome: "reset" });
+        expect(request).toHaveBeenCalledWith(
+          provider,
+          "account/rateLimitResetCredit/consume",
+          { idempotencyKey: "00000000-0000-4000-8000-000000000111" },
+        );
+        expect(read).toHaveBeenCalledTimes(2);
+      }
+    },
+  );
+});
+
 describe("external Codex thread change coalescing", () => {
   it("emits one bounded metadata-only revision for a noisy thread burst", () => {
     vi.useFakeTimers();
@@ -958,6 +1011,7 @@ describe("Codex rich event normalization", () => {
             limitId: "codex",
             limitName: "Codex",
             planType: "plus",
+            credits: { hasCredits: true, unlimited: false, balance: "120.50" },
             primary: {
               usedPercent: 42,
               windowDurationMins: 300,
@@ -974,6 +1028,7 @@ describe("Codex rich event normalization", () => {
       type: "rateLimit",
       limitId: "codex",
       primary: { usedPercent: 42 },
+      credits: { hasCredits: true, unlimited: false, balance: "120.50" },
     });
 
     expect(
@@ -2290,6 +2345,12 @@ describe("parseCodexRpcMessage", () => {
     expect(isKnownCodexNotificationMethod("turn/plan/updated")).toBe(true);
     expect(isKnownCodexNotificationMethod("project/changed")).toBe(true);
     expect(isKnownCodexNotificationMethod("thread/project/updated")).toBe(true);
+    expect(isKnownCodexNotificationMethod("thread/attachment/updated")).toBe(
+      true,
+    );
+    expect(isKnownCodexNotificationMethod("account/gatewayOAuth/changed")).toBe(
+      true,
+    );
     expect(
       isKnownCodexNotificationMethod("autoApprovalReview/strictReviewRequired"),
     ).toBe(true);
@@ -2601,7 +2662,7 @@ describe("Codex runtime compatibility enforcement", () => {
         worktreeMode: "agent-managed",
         worktreePolicy: "required-for-writes",
       }),
-    ).rejects.toThrow(/Codex runtime is missing.*expected >=0\.153\.0/u);
+    ).rejects.toThrow(/Codex runtime is missing.*expected >=0\.160\.1/u);
   });
 
   it("uses the dedicated agent operation entry point for unavailable runtimes", async () => {
@@ -2639,7 +2700,7 @@ describe("Codex runtime compatibility enforcement", () => {
         },
         mcpServers: [],
       }),
-    ).rejects.toThrow(/Codex runtime is missing.*expected >=0\.153\.0/u);
+    ).rejects.toThrow(/Codex runtime is missing.*expected >=0\.160\.1/u);
   });
 });
 

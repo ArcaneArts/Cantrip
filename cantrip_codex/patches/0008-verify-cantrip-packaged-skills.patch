@@ -1,8 +1,8 @@
 diff --git a/codex-rs/app-server/tests/suite/v2/skills_list.rs b/codex-rs/app-server/tests/suite/v2/skills_list.rs
-index c6880fb0e..f3cbb826d 100644
+index 1b3d294..f4bf92c 100644
 --- a/codex-rs/app-server/tests/suite/v2/skills_list.rs
 +++ b/codex-rs/app-server/tests/suite/v2/skills_list.rs
-@@ -152,6 +152,13 @@ async fn skills_list_disabled_bundled_skills_preserves_shared_system_skill_cache
+@@ -154,6 +154,13 @@ async fn skills_list_disabled_bundled_skills_preserves_shared_system_skill_cache
      .await??;
      assert_eq!(data.len(), 1);
      assert_eq!(data[0].errors, Vec::new());
@@ -17,7 +17,7 @@ index c6880fb0e..f3cbb826d 100644
          .skills
          .iter()
 diff --git a/codex-rs/skills/src/lib.rs b/codex-rs/skills/src/lib.rs
-index 7b19d3278..d703ce3c4 100644
+index 7b19d32..d703ce3 100644
 --- a/codex-rs/skills/src/lib.rs
 +++ b/codex-rs/skills/src/lib.rs
 @@ -200,6 +200,11 @@ mod tests {

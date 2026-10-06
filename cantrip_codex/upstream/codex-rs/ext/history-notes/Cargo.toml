@@ -13,10 +13,11 @@ doctest = false
 workspace = true
 
 [dependencies]
-codex-api = { workspace = true }
+codex-analytics = { workspace = true }
 codex-client = { workspace = true }
 codex-core = { workspace = true }
 codex-extension-api = { workspace = true }
+codex-http-client = { workspace = true }
 codex-login = { workspace = true }
 codex-model-provider = { workspace = true }
 codex-protocol = { workspace = true }

@@ -31,12 +31,16 @@ thread IDs were supplied or inferred.
 
 ## Evidence boundary
 
-Native acceptance uses the actual pinned Codex 0.153.4 with reviewed Cantrip
+The recorded native acceptance used Codex 0.153.4 with reviewed Cantrip
 patches, isolated homes, local synthetic providers and MCP peers. Where named,
 the fixtures include a real PTY, worker controllers, server admission and
 encrypted durable history. Mounted React tests use simulated server responses;
 they do not establish rendered desktop behavior. Fake CUA tests exercise
 authority and transport without operating the user's computer.
+
+The current runtime pin is documented in
+[CODEX_RUNTIME_COMPATIBILITY.md](CODEX_RUNTIME_COMPATIBILITY.md). A later runtime
+upgrade does not change the version used for this historical user acceptance.
 
 The four completed 150-second cases from pass 62 remain evidence for request
 lifetime. They do not prove macOS input delivery, piano audio or a human duet.

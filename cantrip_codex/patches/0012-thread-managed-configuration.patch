@@ -1,8 +1,8 @@
 diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
-index df93ee2..bed8e5d 100644
+index 576853f..b48c996 100644
 --- a/codex-rs/app-server-protocol/src/protocol/common.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/common.rs
-@@ -630,6 +630,11 @@ client_request_definitions! {
+@@ -682,6 +682,11 @@ client_request_definitions! {
          serialization: thread_id(params.thread_id),
          response: v2::ThreadSectionMoveResponse,
      },
@@ -15,7 +15,7 @@ index df93ee2..bed8e5d 100644
      ThreadSettingsUpdate => "thread/settings/update" {
          params: v2::ThreadSettingsUpdateParams,
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-index 2ecc8e6..c81b4b1 100644
+index 3fd4bf3..9855f4d 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 @@ -98,6 +98,9 @@ pub struct ThreadStartParams {
@@ -28,7 +28,7 @@ index 2ecc8e6..c81b4b1 100644
      #[ts(optional = nullable)]
      pub service_name: Option<String>,
      #[ts(optional = nullable)]
-@@ -283,6 +286,63 @@ pub struct ThreadSettingsUpdateParams {
+@@ -298,6 +301,63 @@ pub struct ThreadSettingsUpdateParams {
  #[ts(export_to = "v2/")]
  pub struct ThreadSettingsUpdateResponse {}
  
@@ -92,7 +92,7 @@ index 2ecc8e6..c81b4b1 100644
  #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS, ExperimentalApi)]
  #[serde(rename_all = "camelCase")]
  #[ts(export_to = "v2/")]
-@@ -389,6 +449,10 @@ pub struct ThreadResumeParams {
+@@ -408,6 +468,10 @@ pub struct ThreadResumeParams {
      pub permissions: Option<String>,
      #[ts(optional = nullable)]
      pub config: Option<HashMap<String, serde_json::Value>>,
@@ -103,7 +103,7 @@ index 2ecc8e6..c81b4b1 100644
      #[ts(optional = nullable)]
      pub base_instructions: Option<String>,
      #[ts(optional = nullable)]
-@@ -2021,3 +2085,90 @@ pub struct ContextCompactedNotification {
+@@ -2065,3 +2129,90 @@ pub struct ContextCompactedNotification {
      pub thread_id: String,
      pub turn_id: String,
  }
@@ -194,11 +194,50 @@ index 2ecc8e6..c81b4b1 100644
 +        assert!(serde_json::from_value::<crate::ClientRequest>(request(unknown)).is_err());
 +    }
 +}
+diff --git a/codex-rs/app-server/src/config_manager.rs b/codex-rs/app-server/src/config_manager.rs
+index 2467d4d..c965c86 100644
+--- a/codex-rs/app-server/src/config_manager.rs
++++ b/codex-rs/app-server/src/config_manager.rs
+@@ -207,6 +207,22 @@ impl ConfigManager {
+         manager.load_latest_config(/*fallback_cwd*/ None).await
+     }
+ 
++    pub(crate) async fn load_latest_config_for_thread(
++        &self,
++        thread_config: &Config,
++    ) -> std::io::Result<Config> {
++        let mut config = self
++            .load_latest_config_with_session_layers(
++                &thread_config.config_layer_stack,
++                &thread_config.cwd,
++            )
++            .await?;
++        if let Some(managed) = &thread_config.managed_thread_configuration {
++            config.apply_managed_thread_configuration(managed.clone())?;
++        }
++        Ok(config)
++    }
++
+     pub(crate) async fn load_latest_config_with_session_layers(
+         &self,
+         session_layers: &ConfigLayerStack,
 diff --git a/codex-rs/app-server/src/mcp_refresh.rs b/codex-rs/app-server/src/mcp_refresh.rs
-index 148ea6a..c7866e3 100644
+index b654ad6..9248e56 100644
 --- a/codex-rs/app-server/src/mcp_refresh.rs
 +++ b/codex-rs/app-server/src/mcp_refresh.rs
-@@ -237,6 +237,125 @@ enabled = false
+@@ -57,10 +57,7 @@ async fn load_refresh_config(
+ ) -> io::Result<Config> {
+     let thread_config = thread.config().await;
+     config_manager
+-        .load_latest_config_with_session_layers(
+-            &thread_config.config_layer_stack,
+-            &thread_config.cwd,
+-        )
++        .load_latest_config_for_thread(&thread_config)
+         .await
+ }
+ 
+@@ -239,6 +236,125 @@ enabled = false
          Ok(())
      }
  
@@ -325,10 +364,10 @@ index 148ea6a..c7866e3 100644
      async fn strict_refresh_installs_refreshed_thread_mcp_config() -> anyhow::Result<()> {
          let (temp_dir, thread_manager, config_manager, _loader) = refresh_test_state().await?;
 diff --git a/codex-rs/app-server/src/message_processor.rs b/codex-rs/app-server/src/message_processor.rs
-index 3742463..d689424 100644
+index 45192e0..1a71f55 100644
 --- a/codex-rs/app-server/src/message_processor.rs
 +++ b/codex-rs/app-server/src/message_processor.rs
-@@ -1256,6 +1256,11 @@ impl MessageProcessor {
+@@ -1416,6 +1416,11 @@ impl MessageProcessor {
              ClientRequest::ThreadSectionDelete { params, .. } => {
                  self.thread_processor.thread_section_delete(params).await
              }
@@ -341,7 +380,7 @@ index 3742463..d689424 100644
                  self.turn_processor
                      .thread_settings_update(&request_id, params)
 diff --git a/codex-rs/app-server/src/request_processors.rs b/codex-rs/app-server/src/request_processors.rs
-index 81773cd..92380c0 100644
+index 2ff22ed..143e5ec 100644
 --- a/codex-rs/app-server/src/request_processors.rs
 +++ b/codex-rs/app-server/src/request_processors.rs
 @@ -1,3 +1,5 @@
@@ -350,6 +389,54 @@ index 81773cd..92380c0 100644
  use crate::bespoke_event_handling::apply_bespoke_event_handling;
  use crate::command_exec::CommandExecManager;
  use crate::command_exec::StartCommandExecParams;
+diff --git a/codex-rs/app-server/src/request_processors/apps_processor.rs b/codex-rs/app-server/src/request_processors/apps_processor.rs
+index be74a8f..ecf3d35 100644
+--- a/codex-rs/app-server/src/request_processors/apps_processor.rs
++++ b/codex-rs/app-server/src/request_processors/apps_processor.rs
+@@ -361,10 +361,7 @@ impl AppsRequestProcessor {
+         let (_, thread) = self.load_thread(thread_id).await?;
+         let thread_config = thread.config().await;
+         self.config_manager
+-            .load_latest_config_with_session_layers(
+-                &thread_config.config_layer_stack,
+-                &thread_config.cwd,
+-            )
++            .load_latest_config_for_thread(&thread_config)
+             .await
+             .map_err(|err| internal_error(format!("failed to reload config: {err}")))
+     }
+diff --git a/codex-rs/app-server/src/request_processors/catalog_processor.rs b/codex-rs/app-server/src/request_processors/catalog_processor.rs
+index 01fce38..ab1fb5e 100644
+--- a/codex-rs/app-server/src/request_processors/catalog_processor.rs
++++ b/codex-rs/app-server/src/request_processors/catalog_processor.rs
+@@ -363,10 +363,7 @@ impl CatalogRequestProcessor {
+                     .map_err(|_| invalid_request(format!("thread not found: {thread_id}")))?;
+                 let thread_config = thread.config().await;
+                 self.config_manager
+-                    .load_latest_config_with_session_layers(
+-                        &thread_config.config_layer_stack,
+-                        &thread_config.cwd,
+-                    )
++                    .load_latest_config_for_thread(&thread_config)
+                     .await
+                     .map_err(|err| internal_error(format!("failed to reload config: {err}")))?
+             }
+diff --git a/codex-rs/app-server/src/request_processors/config_processor.rs b/codex-rs/app-server/src/request_processors/config_processor.rs
+index 4176a55..4cbe373 100644
+--- a/codex-rs/app-server/src/request_processors/config_processor.rs
++++ b/codex-rs/app-server/src/request_processors/config_processor.rs
+@@ -371,10 +371,7 @@ pub(super) async fn reload_user_config(
+         };
+         let current_config = thread.config().await;
+         let next_config = match config_manager
+-            .load_latest_config_with_session_layers(
+-                &current_config.config_layer_stack,
+-                &current_config.cwd,
+-            )
++            .load_latest_config_for_thread(&current_config)
+             .await
+         {
+             Ok(config) => config,
 diff --git a/codex-rs/app-server/src/request_processors/managed_configuration.rs b/codex-rs/app-server/src/request_processors/managed_configuration.rs
 new file mode 100644
 index 0000000..386a41e
@@ -382,11 +469,27 @@ index 0000000..386a41e
 +        subagent_reasoning_effort: params.subagent_reasoning_effort,
 +    })
 +}
+diff --git a/codex-rs/app-server/src/request_processors/mcp_processor.rs b/codex-rs/app-server/src/request_processors/mcp_processor.rs
+index 120e891..f26f7db 100644
+--- a/codex-rs/app-server/src/request_processors/mcp_processor.rs
++++ b/codex-rs/app-server/src/request_processors/mcp_processor.rs
+@@ -310,10 +310,7 @@ impl McpRequestProcessor {
+                 Some(thread) => {
+                     let thread_config = thread.config().await;
+                     self.config_manager
+-                        .load_latest_config_with_session_layers(
+-                            &thread_config.config_layer_stack,
+-                            &thread_config.cwd,
+-                        )
++                        .load_latest_config_for_thread(&thread_config)
+                         .await
+                         .map_err(|err| internal_error(format!("failed to reload config: {err}")))?
+                 }
 diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
-index f87e06a..407aeb1 100644
+index 5e41a02..0ab00bc 100644
 --- a/codex-rs/app-server/src/request_processors/thread_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
-@@ -1125,6 +1125,7 @@ impl ThreadRequestProcessor {
+@@ -1145,6 +1145,7 @@ impl ThreadRequestProcessor {
              sandbox,
              permissions,
              config,
@@ -394,8 +497,8 @@ index f87e06a..407aeb1 100644
              service_name,
              base_instructions,
              developer_instructions,
-@@ -1141,6 +1142,9 @@ impl ThreadRequestProcessor {
-             project_id,
+@@ -1162,6 +1163,9 @@ impl ThreadRequestProcessor {
+             daybreak_enabled,
              environments,
          } = params;
 +        let managed_config = managed_config
@@ -404,7 +507,7 @@ index f87e06a..407aeb1 100644
          if matches!(
              history_mode,
              Some(codex_app_server_protocol::ThreadHistoryMode::Paginated)
-@@ -1219,6 +1223,7 @@ impl ThreadRequestProcessor {
+@@ -1239,6 +1243,7 @@ impl ThreadRequestProcessor {
                  app_server_client_version,
                  client_mcp_extensions,
                  config,
@@ -412,7 +515,7 @@ index f87e06a..407aeb1 100644
                  typesafe_overrides,
                  dynamic_tools,
                  selected_capability_roots.unwrap_or_default(),
-@@ -1298,6 +1303,7 @@ impl ThreadRequestProcessor {
+@@ -1321,6 +1326,7 @@ impl ThreadRequestProcessor {
          app_server_client_version: Option<String>,
          client_mcp_extensions: ClientMcpExtensions,
          config_overrides: Option<HashMap<String, serde_json::Value>>,
@@ -420,7 +523,7 @@ index f87e06a..407aeb1 100644
          typesafe_overrides: ConfigOverrides,
          dynamic_tools: Option<Vec<DynamicToolSpec>>,
          selected_capability_roots: Vec<SelectedCapabilityRoot>,
-@@ -1424,6 +1430,11 @@ impl ThreadRequestProcessor {
+@@ -1467,6 +1473,11 @@ impl ThreadRequestProcessor {
          if !selected_capability_roots.is_empty() {
              thread_extension_init.insert(selected_capability_roots);
          }
@@ -432,7 +535,7 @@ index f87e06a..407aeb1 100644
          let mut start_options = StartThreadOptions::new(config);
          let reserved_thread_id = if start_options.config.ephemeral {
              None
-@@ -3646,6 +3657,7 @@ impl ThreadRequestProcessor {
+@@ -3716,6 +3727,7 @@ impl ThreadRequestProcessor {
              sandbox,
              permissions,
              config: mut request_overrides,
@@ -440,8 +543,8 @@ index f87e06a..407aeb1 100644
              base_instructions,
              developer_instructions,
              personality,
-@@ -3821,6 +3833,14 @@ impl ThreadRequestProcessor {
-                 return Ok(());
+@@ -3968,6 +3980,13 @@ impl ThreadRequestProcessor {
+                 return Ok(ControlFlow::Continue(()));
              }
          };
 +        if let Some(managed_config) = managed_config {
@@ -451,15 +554,14 @@ index f87e06a..407aeb1 100644
 +                .apply_managed_thread_configuration(managed)
 +                .map_err(|err| invalid_params(format!("managed configuration rejected: {err}")))?;
 +        }
-+
-         if !has_explicit_model_resume_override
-             && persisted_metadata
-                 .as_ref()
+         if clear_reasoning_effort {
+             config.model_reasoning_effort = None;
+         }
 diff --git a/codex-rs/app-server/src/request_processors/thread_processor_tests.rs b/codex-rs/app-server/src/request_processors/thread_processor_tests.rs
-index 7d2b5cd..8f28120 100644
+index 1271a64..728c66b 100644
 --- a/codex-rs/app-server/src/request_processors/thread_processor_tests.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_processor_tests.rs
-@@ -669,6 +669,7 @@ mod thread_processor_behavior_tests {
+@@ -674,6 +674,7 @@ mod thread_processor_behavior_tests {
              approvals_reviewer: None,
              sandbox: None,
              permissions: None,
@@ -468,10 +570,10 @@ index 7d2b5cd..8f28120 100644
              base_instructions: None,
              developer_instructions: None,
 diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/codex-rs/app-server/src/request_processors/turn_processor.rs
-index d2f547a..9b8866d 100644
+index bd17753..10cb588 100644
 --- a/codex-rs/app-server/src/request_processors/turn_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/turn_processor.rs
-@@ -191,6 +191,35 @@ impl TurnRequestProcessor {
+@@ -199,6 +199,35 @@ impl TurnRequestProcessor {
              .map(|response| Some(response.into()))
      }
  
@@ -508,10 +610,10 @@ index d2f547a..9b8866d 100644
          &self,
          request_id: &ConnectionRequestId,
 diff --git a/codex-rs/app-server/tests/suite/v2/skills_list.rs b/codex-rs/app-server/tests/suite/v2/skills_list.rs
-index f3cbb82..c4acae4 100644
+index f4bf92c..b4e76f7 100644
 --- a/codex-rs/app-server/tests/suite/v2/skills_list.rs
 +++ b/codex-rs/app-server/tests/suite/v2/skills_list.rs
-@@ -1299,6 +1299,7 @@ async fn skills_changed_notification_is_emitted_after_skill_change() -> Result<(
+@@ -1390,6 +1390,7 @@ async fn skills_changed_notification_is_emitted_after_skill_change() -> Result<(
              sandbox: None,
              permissions: None,
              config: None,
@@ -520,10 +622,10 @@ index f3cbb82..c4acae4 100644
              base_instructions: None,
              developer_instructions: None,
 diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
-index cb1d15d..f81434a 100644
+index b790735..c832c8d 100644
 --- a/codex-rs/core/src/codex_thread.rs
 +++ b/codex-rs/core/src/codex_thread.rs
-@@ -881,6 +881,26 @@ impl CodexThread {
+@@ -1031,6 +1031,26 @@ impl CodexThread {
      }
  
      /// Refresh MCP configuration and managed requirements without reloading unrelated settings.
@@ -551,10 +653,10 @@ index cb1d15d..f81434a 100644
          self.session.refresh_mcp_config(next_config).await;
      }
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index 5356a96..afc0fc4 100644
+index 937af8e..69219ba 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
-@@ -602,6 +602,17 @@ pub enum ThreadStoreConfig {
+@@ -604,6 +604,17 @@ pub enum ThreadStoreConfig {
      InMemory { id: String },
  }
  
@@ -572,7 +674,7 @@ index 5356a96..afc0fc4 100644
  /// Application configuration loaded from disk and merged with overrides.
  #[derive(Debug, Clone, PartialEq)]
  pub struct Config {
-@@ -609,6 +620,9 @@ pub struct Config {
+@@ -615,6 +626,9 @@ pub struct Config {
      /// requirements).
      pub config_layer_stack: ConfigLayerStack,
  
@@ -582,7 +684,7 @@ index 5356a96..afc0fc4 100644
      /// Warnings collected during config load that should be shown on startup.
      pub startup_warnings: Vec<String>,
  
-@@ -1803,6 +1817,25 @@ impl Config {
+@@ -1893,6 +1907,25 @@ impl Config {
          }
      }
  
@@ -605,32 +707,10 @@ index 5356a96..afc0fc4 100644
 +        Ok(())
 +    }
 +
-     pub async fn rebuild_preserving_session_layers(
-         &self,
-         refreshed_config: &Config,
-@@ -1844,7 +1877,7 @@ impl Config {
-             .map(AbsolutePathBuf::try_from)
-             .transpose()?;
- 
--        Self::load_config_with_layer_stack(
-+        let mut config = Self::load_config_with_layer_stack(
-             LOCAL_FS.as_ref(),
-             cfg,
-             ConfigOverrides {
-@@ -1855,7 +1888,11 @@ impl Config {
-             refreshed_config.codex_home.clone(),
-             config_layer_stack,
-         )
--        .await
-+        .await?;
-+        if let Some(managed) = &self.managed_thread_configuration {
-+            config.apply_managed_thread_configuration(managed.clone())?;
-+        }
-+        Ok(config)
-     }
- 
-     /// This is the preferred way to create an instance of [Config].
-@@ -4164,6 +4201,7 @@ impl Config {
+     pub fn workspace_routing_context(&self) -> codex_model_provider::WorkspaceRoutingContext {
+         codex_model_provider::WorkspaceRoutingContext::new(self.chatgpt_base_url.clone())
+             .with_session(codex_login::WorkspaceRoutingSession {
+@@ -4311,6 +4344,7 @@ impl Config {
              base_instructions_provenance,
              personality,
              developer_instructions,
@@ -639,19 +719,19 @@ index 5356a96..afc0fc4 100644
              include_permissions_instructions,
              include_apps_instructions,
 diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
-index b5cee67..91dcc8a 100644
+index 0caffc2..f7923a1 100644
 --- a/codex-rs/core/src/session/mod.rs
 +++ b/codex-rs/core/src/session/mod.rs
-@@ -1881,7 +1881,7 @@ impl Session {
-         state.session_configuration.provider.info().clone()
+@@ -2068,7 +2068,7 @@ impl Session {
+             .await;
      }
  
--    pub(crate) async fn refresh_runtime_config(&self, next_config: Config) {
-+    pub(crate) async fn refresh_runtime_config(&self, mut next_config: Config) {
+-    async fn refresh_runtime_config_inner(&self, next_config: Config, refresh_recording: bool) {
++    async fn refresh_runtime_config_inner(&self, mut next_config: Config, refresh_recording: bool) {
          // Refresh only the user layer from the incoming snapshot. Preserve thread-local
          // layers such as request/session overrides that were present when this session
          // was created.
-@@ -1891,6 +1891,14 @@ impl Session {
+@@ -2078,6 +2078,14 @@ impl Session {
              let previous_config = notify_config_contributors
                  .then(|| self.build_effective_session_config(&state.session_configuration));
              let mut config = (*state.session_configuration.original_config_do_not_use).clone();
@@ -666,7 +746,7 @@ index b5cee67..91dcc8a 100644
              config.active_project = next_config.active_project.clone();
              config.config_layer_stack = config
                  .config_layer_stack
-@@ -1947,9 +1955,44 @@ impl Session {
+@@ -2156,9 +2164,44 @@ impl Session {
          }
      }
  
@@ -713,10 +793,10 @@ index b5cee67..91dcc8a 100644
              .config_layer_stack
              .with_user_layer_from(&config.config_layer_stack);
 diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
-index 54d9911..54daef0 100644
+index 7302b0c..fdd887c 100644
 --- a/codex-rs/core/src/session/tests.rs
 +++ b/codex-rs/core/src/session/tests.rs
-@@ -2046,6 +2046,218 @@ disabled_tools = [
+@@ -2120,6 +2120,218 @@ disabled_tools = [
      );
  }
  
@@ -936,13 +1016,13 @@ index 54d9911..54daef0 100644
  async fn refresh_mcp_config_replaces_managed_server_and_plugin_requirements() {
      let (session, _turn_context) = make_session_and_context().await;
 diff --git a/codex-rs/thread-manager-sample/src/main.rs b/codex-rs/thread-manager-sample/src/main.rs
-index 2781624..1701879 100644
+index b137e6b..86d424b 100644
 --- a/codex-rs/thread-manager-sample/src/main.rs
 +++ b/codex-rs/thread-manager-sample/src/main.rs
-@@ -186,6 +186,7 @@ fn new_config(model: Option<String>, arg0_paths: Arg0DispatchPaths) -> anyhow::R
- 
-     let mut config = Config {
-         config_layer_stack: ConfigLayerStack::default(),
+@@ -239,6 +239,7 @@ async fn new_config(
+         application_network_policy: Default::default(),
+         application_auth_route_config: Some(auth_config.auth_route_config.clone()),
+         config_layer_stack,
 +        managed_thread_configuration: None,
          startup_warnings: Vec::new(),
          bypass_hook_trust: false,

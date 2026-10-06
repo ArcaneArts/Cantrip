@@ -9,6 +9,7 @@ import type {
   ModelRouteSummary,
   ProviderModelAvailability,
   ProviderModelCatalogEntry,
+  ProviderCreditsSnapshot,
   ReasoningEffort,
   SettingsBundleWire,
   TokenUsageTotals,
@@ -50,6 +51,7 @@ export interface ModelRuntime {
     accountId: string | null;
     credentialHomeKey: string | null;
     weeklyUsageReservePercent: number;
+    credits?: ProviderCreditsSnapshot | null;
   };
 }
 
@@ -518,6 +520,7 @@ export class ModelRepository {
       }
     }
     return accounts.map(({ account, binding }) => ({
+      credits: account.credits,
       accountId: account.id,
       credentialState:
         account.credentialState as ModelProviderAccountRuntime["credentialState"],

@@ -1,0 +1,2352 @@
+diff --git a/codex-rs/app-server-protocol/src/export.rs b/codex-rs/app-server-protocol/src/export.rs
+index db5ff71..299568a 100644
+--- a/codex-rs/app-server-protocol/src/export.rs
++++ b/codex-rs/app-server-protocol/src/export.rs
+@@ -2261,6 +2261,20 @@ mod tests {
+                                 | "CollabCloseEndEvent"
+                                 | "CollabResumeBeginEvent"
+                                 | "CollabResumeEndEvent"
++                                // Cantrip's managed catalog transports upstream ModelInfo,
++                                // whose configuration metadata intentionally distinguishes
++                                // absent fields from explicit nulls. These are not RPC results.
++                                | "ModelInfo"
++                                | "ModelMessages"
++                                | "AutoReviewMessages"
++                                | "CodeModeToolMessages"
++                                | "ConfirmationPolicies"
++                                | "GuardianModelPolicy"
++                                | "GuardianV2ModelConfig"
++                                | "GuardianV2TranscriptModelConfig"
++                                | "MultiAgentToolMessages"
++                                | "ToolMessage"
++                                | "ToolMessages"
+                         )
+                 });
+ 
+diff --git a/codex-rs/app-server-protocol/src/protocol/thread_history.rs b/codex-rs/app-server-protocol/src/protocol/thread_history.rs
+index 4d8fd27..38ca488 100644
+--- a/codex-rs/app-server-protocol/src/protocol/thread_history.rs
++++ b/codex-rs/app-server-protocol/src/protocol/thread_history.rs
+@@ -103,7 +103,7 @@ pub struct ThreadHistoryItemChange {
+ 
+ /// Turn metadata for history projection and snapshots that do not need items.
+ #[derive(Debug, Clone, PartialEq)]
+-pub struct ThreadHistoryTurnMetadata {
++pub struct ThreadHistoryTurnChange {
+     pub turn_id: String,
+     pub root_turn_id: Option<String>,
+     pub status: TurnStatus,
+@@ -117,7 +117,7 @@ pub struct ThreadHistoryTurnMetadata {
+ #[derive(Debug, Default, Clone, PartialEq)]
+ pub struct ThreadHistoryChangeSet {
+     pub changed_items: Vec<ThreadHistoryItemChange>,
+-    pub changed_turns: Vec<ThreadHistoryTurnMetadata>,
++    pub changed_turns: Vec<ThreadHistoryTurnChange>,
+     pub removed_turn_ids: Vec<String>,
+ }
+ 
+@@ -129,9 +129,9 @@ impl ThreadHistoryChangeSet {
+     }
+ }
+ 
+-impl From<ThreadHistoryTurnMetadata> for Turn {
++impl From<ThreadHistoryTurnChange> for Turn {
+     /// Builds a wire turn whose items have not been loaded.
+-    fn from(value: ThreadHistoryTurnMetadata) -> Self {
++    fn from(value: ThreadHistoryTurnChange) -> Self {
+         Self {
+             id: value.turn_id,
+             items: Vec::new(),
+@@ -145,7 +145,7 @@ impl From<ThreadHistoryTurnMetadata> for Turn {
+     }
+ }
+ 
+-impl ThreadHistoryTurnMetadata {
++impl ThreadHistoryTurnChange {
+     fn from_pending_turn(turn: &PendingTurn) -> Self {
+         Self {
+             turn_id: turn.id.clone(),
+@@ -166,7 +166,7 @@ impl ThreadHistoryTurnMetadata {
+ struct ThreadHistoryChangeAccumulator {
+     changed_items: Vec<Option<ThreadHistoryItemChange>>,
+     changed_item_indexes: HashMap<(String, String), usize>,
+-    changed_turns: Vec<Option<ThreadHistoryTurnMetadata>>,
++    changed_turns: Vec<Option<ThreadHistoryTurnChange>>,
+     changed_turn_indexes: HashMap<String, usize>,
+     removed_turn_ids: Vec<String>,
+     removed_turn_indexes: HashMap<String, usize>,
+@@ -205,7 +205,7 @@ impl ThreadHistoryChangeAccumulator {
+         self.changed_items.push(Some(change));
+     }
+ 
+-    fn push_turn_change(&mut self, change: ThreadHistoryTurnMetadata) {
++    fn push_turn_change(&mut self, change: ThreadHistoryTurnChange) {
+         if let Some(index) = self.changed_turn_indexes.get(&change.turn_id).copied() {
+             self.changed_turns[index] = Some(change);
+             return;
+@@ -298,6 +298,7 @@ impl ThreadHistoryBuilder {
+     fn observe_canonical_status(&mut self, event: &EventMsg) {
+         let change = match event {
+             EventMsg::TurnStarted(turn) if turn.canonical_items => ThreadHistoryTurnChange {
++                root_turn_id: turn.root_turn_id.clone(),
+                 turn_id: turn.turn_id.clone(),
+                 status: TurnStatus::InProgress,
+                 error: None,
+@@ -308,6 +309,10 @@ impl ThreadHistoryBuilder {
+             EventMsg::TurnComplete(turn) if self.canonical_items.contains_key(&turn.turn_id) => {
+                 ThreadHistoryTurnChange {
+                     turn_id: turn.turn_id.clone(),
++                    root_turn_id: self
++                        .canonical_status
++                        .get(&turn.turn_id)
++                        .and_then(|status| status.root_turn_id.clone()),
+                     status: if turn.error.is_some() {
+                         TurnStatus::Failed
+                     } else {
+@@ -334,6 +339,10 @@ impl ThreadHistoryBuilder {
+                 };
+                 ThreadHistoryTurnChange {
+                     turn_id: id.clone(),
++                    root_turn_id: self
++                        .canonical_status
++                        .get(id)
++                        .and_then(|status| status.root_turn_id.clone()),
+                     status: TurnStatus::Interrupted,
+                     error: None,
+                     started_at: turn.started_at,
+@@ -392,12 +401,12 @@ impl ThreadHistoryBuilder {
+ 
+     /// Snapshots active turn metadata without cloning its items.
+     /// Like the full snapshot, falls back to the last finished turn.
+-    pub fn active_turn_metadata_snapshot(&self) -> Option<ThreadHistoryTurnMetadata> {
++    pub fn active_turn_metadata_snapshot(&self) -> Option<ThreadHistoryTurnChange> {
+         self.current_turn
+             .as_ref()
+             .or_else(|| self.turns.last())
+             .map(|turn| {
+-                let mut metadata = ThreadHistoryTurnMetadata::from_pending_turn(turn);
++                let mut metadata = ThreadHistoryTurnChange::from_pending_turn(turn);
+                 if let Some(status) = self.canonical_status.get(&turn.id) {
+                     metadata.status = status.status.clone();
+                     metadata.error = status.error.clone();
+@@ -1379,7 +1388,7 @@ impl ThreadHistoryBuilder {
+                 codex_error_info: payload.codex_error_info.clone().map(Into::into),
+                 additional_details: None,
+             });
+-            tracking_changes.then(|| ThreadHistoryTurnMetadata::from_pending_turn(turn))
++            tracking_changes.then(|| ThreadHistoryTurnChange::from_pending_turn(turn))
+         } else {
+             None
+         };
+@@ -1402,7 +1411,7 @@ impl ThreadHistoryBuilder {
+             }
+             turn.completed_at = payload.completed_at;
+             turn.duration_ms = payload.duration_ms;
+-            ThreadHistoryTurnMetadata::from_pending_turn(turn)
++            ThreadHistoryTurnChange::from_pending_turn(turn)
+         };
+         if let Some(turn_id) = payload.turn_id.as_deref() {
+             // Prefer an exact ID match so we interrupt the turn explicitly targeted by the event.
+@@ -1454,7 +1463,7 @@ impl ThreadHistoryBuilder {
+             }
+             turn.completed_at = payload.completed_at;
+             turn.duration_ms = payload.duration_ms;
+-            ThreadHistoryTurnMetadata::from_pending_turn(turn)
++            ThreadHistoryTurnChange::from_pending_turn(turn)
+         };
+ 
+         // Prefer an exact ID match from the active turn and then close it.
+@@ -1482,7 +1491,7 @@ impl ThreadHistoryBuilder {
+             }
+             turn.completed_at = payload.completed_at;
+             turn.duration_ms = payload.duration_ms;
+-            let changed_turn = ThreadHistoryTurnMetadata::from_pending_turn(turn);
++            let changed_turn = ThreadHistoryTurnChange::from_pending_turn(turn);
+             self.record_changed_turn(changed_turn);
+             return;
+         }
+@@ -1654,11 +1663,11 @@ impl ThreadHistoryBuilder {
+ 
+     fn record_changed_pending_turn(&mut self, turn: &PendingTurn) {
+         if self.is_tracking_changes() {
+-            self.record_changed_turn(ThreadHistoryTurnMetadata::from_pending_turn(turn));
++            self.record_changed_turn(ThreadHistoryTurnChange::from_pending_turn(turn));
+         }
+     }
+ 
+-    fn record_changed_turn(&mut self, turn: ThreadHistoryTurnMetadata) {
++    fn record_changed_turn(&mut self, turn: ThreadHistoryTurnChange) {
+         if let Some(change_set) = self.active_change_set.as_mut() {
+             change_set.changed_turns.push(turn);
+         }
+@@ -3884,6 +3893,8 @@ mod tests {
+         let events = vec![
+             EventMsg::TurnStarted(TurnStartedEvent {
+                 turn_id: "turn-a".into(),
++                canonical_items: false,
++                initial_settings: None,
+                 root_turn_id: None,
+                 trace_id: None,
+                 started_at: None,
+@@ -3905,6 +3916,8 @@ mod tests {
+             }),
+             EventMsg::TurnStarted(TurnStartedEvent {
+                 turn_id: "turn-b".into(),
++                canonical_items: false,
++                initial_settings: None,
+                 root_turn_id: None,
+                 trace_id: None,
+                 started_at: None,
+@@ -4172,6 +4185,8 @@ mod tests {
+             started_at: Some(100),
+             model_context_window: None,
+             collaboration_mode_kind: Default::default(),
++            canonical_items: false,
++            initial_settings: None,
+         }));
+         builder.handle_event(&EventMsg::UserMessage(UserMessageEvent {
+             message: "first".into(),
+@@ -4237,6 +4252,8 @@ mod tests {
+         builder.handle_event(&EventMsg::TurnStarted(TurnStartedEvent {
+             turn_id: "turn-1".into(),
+             root_turn_id: Some("root-turn".into()),
++            canonical_items: false,
++            initial_settings: None,
+             trace_id: None,
+             started_at: Some(100),
+             model_context_window: None,
+@@ -4246,7 +4263,7 @@ mod tests {
+             message: "hello".into(),
+             ..Default::default()
+         }));
+-        let mut expected = ThreadHistoryTurnMetadata {
++        let mut expected = ThreadHistoryTurnChange {
+             turn_id: "turn-1".into(),
+             root_turn_id: Some("root-turn".into()),
+             error: None,
+@@ -5421,7 +5438,7 @@ mod tests {
+                     started_at_ms: None,
+                     completed_at_ms: None,
+                 }],
+-                changed_turns: vec![ThreadHistoryTurnMetadata {
++                changed_turns: vec![ThreadHistoryTurnChange {
+                     turn_id: "rollout-0".into(),
+                     root_turn_id: None,
+                     status: TurnStatus::Completed,
+@@ -5531,7 +5548,7 @@ mod tests {
+             start_changes,
+             ThreadHistoryChangeSet {
+                 changed_items: Vec::new(),
+-                changed_turns: vec![ThreadHistoryTurnMetadata {
++                changed_turns: vec![ThreadHistoryTurnChange {
+                     turn_id: "turn-a".into(),
+                     root_turn_id: Some("root-turn".into()),
+                     status: TurnStatus::InProgress,
+@@ -5570,7 +5587,7 @@ mod tests {
+             complete_changes,
+             ThreadHistoryChangeSet {
+                 changed_items: Vec::new(),
+-                changed_turns: vec![ThreadHistoryTurnMetadata {
++                changed_turns: vec![ThreadHistoryTurnChange {
+                     turn_id: "turn-a".into(),
+                     root_turn_id: Some("root-turn".into()),
+                     status: TurnStatus::Completed,
+@@ -5618,7 +5635,7 @@ mod tests {
+                     started_at_ms: None,
+                     completed_at_ms: None,
+                 }],
+-                changed_turns: vec![ThreadHistoryTurnMetadata {
++                changed_turns: vec![ThreadHistoryTurnChange {
+                     turn_id: "rollout-0".into(),
+                     root_turn_id: None,
+                     status: TurnStatus::Completed,
+@@ -5661,7 +5678,7 @@ mod tests {
+             changes,
+             ThreadHistoryChangeSet {
+                 changed_items: Vec::new(),
+-                changed_turns: vec![ThreadHistoryTurnMetadata {
++                changed_turns: vec![ThreadHistoryTurnChange {
+                     turn_id: "turn-a".into(),
+                     root_turn_id: Some("root-turn".into()),
+                     status: TurnStatus::Completed,
+diff --git a/codex-rs/app-server-protocol/src/protocol/thread_history_canonical_tests.rs b/codex-rs/app-server-protocol/src/protocol/thread_history_canonical_tests.rs
+index 04d2deb..8876278 100644
+--- a/codex-rs/app-server-protocol/src/protocol/thread_history_canonical_tests.rs
++++ b/codex-rs/app-server-protocol/src/protocol/thread_history_canonical_tests.rs
+@@ -5,6 +5,7 @@ use codex_protocol::protocol::{ErrorEvent, UserMessageEvent};
+ fn start(id: &str, canonical: bool) -> RolloutItem {
+     RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
+         initial_settings: None,
++        root_turn_id: None,
+         canonical_items: canonical,
+         turn_id: id.into(),
+         trace_id: None,
+@@ -157,3 +158,27 @@ fn late_started_snapshot_cannot_replace_completed_item_content() {
+         matches!(&turns[0].items[0], ThreadItem::UserMessage { client_id: Some(id), .. } if id == "completed-client")
+     );
+ }
++
++#[test]
++fn canonical_completion_preserves_root_turn_identity() {
++    let mut started = start("child", true);
++    if let RolloutItem::EventMsg(EventMsg::TurnStarted(turn)) = &mut started {
++        turn.root_turn_id = Some("root".into());
++    }
++    let mut builder = ThreadHistoryBuilder::new();
++    builder.handle_rollout_item(&started);
++    builder.handle_rollout_item(&user());
++    builder.handle_rollout_item(&end("child"));
++    assert_eq!(
++        builder.canonical_status["child"].root_turn_id.as_deref(),
++        Some("root")
++    );
++    assert_eq!(
++        builder
++            .active_turn_metadata_snapshot()
++            .unwrap()
++            .root_turn_id
++            .as_deref(),
++        Some("root")
++    );
++}
+diff --git a/codex-rs/app-server-protocol/src/protocol/thread_history_metadata.rs b/codex-rs/app-server-protocol/src/protocol/thread_history_metadata.rs
+index 8d25192..7dca4a1 100644
+--- a/codex-rs/app-server-protocol/src/protocol/thread_history_metadata.rs
++++ b/codex-rs/app-server-protocol/src/protocol/thread_history_metadata.rs
+@@ -351,6 +351,7 @@ mod tests {
+     fn started(turn_id: &str) -> EventMsg {
+         EventMsg::TurnStarted(TurnStartedEvent {
+             initial_settings: None,
++            root_turn_id: None,
+             canonical_items: true,
+             turn_id: turn_id.into(),
+             trace_id: None,
+diff --git a/codex-rs/app-server-protocol/src/protocol/thread_history_projection.rs b/codex-rs/app-server-protocol/src/protocol/thread_history_projection.rs
+index 6ff0d4d..584b66e 100644
+--- a/codex-rs/app-server-protocol/src/protocol/thread_history_projection.rs
++++ b/codex-rs/app-server-protocol/src/protocol/thread_history_projection.rs
+@@ -9,7 +9,7 @@ use codex_rollout::RolloutLine;
+ 
+ use crate::protocol::thread_history::ThreadHistoryChangeSet;
+ use crate::protocol::thread_history::ThreadHistoryItemChange;
+-use crate::protocol::thread_history::ThreadHistoryTurnMetadata;
++use crate::protocol::thread_history::ThreadHistoryTurnChange;
+ use crate::protocol::v2::ThreadItem;
+ use crate::protocol::v2::TurnError;
+ use crate::protocol::v2::TurnStatus;
+@@ -21,7 +21,7 @@ use crate::protocol::v2::TurnStatus;
+ pub fn project_rollout_line(line: &RolloutLine) -> ThreadHistoryChangeSet {
+     match &line.item {
+         RolloutItem::EventMsg(EventMsg::TurnStarted(event)) => ThreadHistoryChangeSet {
+-            changed_turns: vec![ThreadHistoryTurnMetadata {
++            changed_turns: vec![ThreadHistoryTurnChange {
+                 turn_id: event.turn_id.clone(),
+                 root_turn_id: event.root_turn_id.clone(),
+                 status: TurnStatus::InProgress,
+@@ -33,7 +33,7 @@ pub fn project_rollout_line(line: &RolloutLine) -> ThreadHistoryChangeSet {
+             ..Default::default()
+         },
+         RolloutItem::EventMsg(EventMsg::TurnComplete(event)) => ThreadHistoryChangeSet {
+-            changed_turns: vec![ThreadHistoryTurnMetadata {
++            changed_turns: vec![ThreadHistoryTurnChange {
+                 turn_id: event.turn_id.clone(),
+                 root_turn_id: None,
+                 status: if event.error.is_some() {
+@@ -58,7 +58,7 @@ pub fn project_rollout_line(line: &RolloutLine) -> ThreadHistoryChangeSet {
+                 return ThreadHistoryChangeSet::default();
+             };
+             ThreadHistoryChangeSet {
+-                changed_turns: vec![ThreadHistoryTurnMetadata {
++                changed_turns: vec![ThreadHistoryTurnChange {
+                     turn_id: turn_id.clone(),
+                     root_turn_id: None,
+                     status: TurnStatus::Interrupted,
+diff --git a/codex-rs/app-server-protocol/src/protocol/thread_history_projection_tests.rs b/codex-rs/app-server-protocol/src/protocol/thread_history_projection_tests.rs
+index 7ba4793..0d364ce 100644
+--- a/codex-rs/app-server-protocol/src/protocol/thread_history_projection_tests.rs
++++ b/codex-rs/app-server-protocol/src/protocol/thread_history_projection_tests.rs
+@@ -59,7 +59,7 @@ fn projects_turn_lifecycle_without_prior_builder_state() {
+     assert_eq!(
+         completed,
+         ThreadHistoryChangeSet {
+-            changed_turns: vec![ThreadHistoryTurnMetadata {
++            changed_turns: vec![ThreadHistoryTurnChange {
+                 turn_id: "turn-1".to_string(),
+                 root_turn_id: None,
+                 status: TurnStatus::Completed,
+@@ -96,7 +96,7 @@ fn projects_failed_turn_completion_as_snapshot() {
+     assert_eq!(
+         changes,
+         ThreadHistoryChangeSet {
+-            changed_turns: vec![ThreadHistoryTurnMetadata {
++            changed_turns: vec![ThreadHistoryTurnChange {
+                 turn_id: "turn-1".to_string(),
+                 root_turn_id: None,
+                 status: TurnStatus::Failed,
+@@ -251,7 +251,7 @@ fn projects_identified_turn_aborts() {
+     assert_eq!(
+         changes,
+         ThreadHistoryChangeSet {
+-            changed_turns: vec![ThreadHistoryTurnMetadata {
++            changed_turns: vec![ThreadHistoryTurnChange {
+                 turn_id: "turn-1".to_string(),
+                 root_turn_id: None,
+                 status: TurnStatus::Interrupted,
+diff --git a/codex-rs/app-server/src/bespoke_event_handling.rs b/codex-rs/app-server/src/bespoke_event_handling.rs
+index 983ecc3..fb9b928 100644
+--- a/codex-rs/app-server/src/bespoke_event_handling.rs
++++ b/codex-rs/app-server/src/bespoke_event_handling.rs
+@@ -1029,11 +1029,12 @@ pub(crate) async fn apply_bespoke_event_handling(
+                 .await;
+         }
+         EventMsg::Error(ev) => {
+-
+             if !ev.affects_turn_status() {
+                 if matches!(
+                     ev.codex_error_info,
+-                    Some(CoreCodexErrorInfo::ThreadSettingsUpdateFailed { .. })
++                    Some(
++                        codex_protocol::protocol::CodexErrorInfo::ThreadSettingsUpdateFailed { .. }
++                    )
+                 ) {
+                     // Correlate the rejected operation without changing the active
+                     // turn summary, status or input/approval authority.
+@@ -3068,6 +3069,7 @@ mod tests {
+     #[tokio::test]
+     async fn queued_settings_rejection_preserves_a_running_turn() -> Result<()> {
+         use codex_core::config::Constrained;
++        use codex_protocol::protocol::AskForApproval;
+         use codex_protocol::protocol::ThreadSettingsOverrides;
+         use core_test_support::responses;
+         use core_test_support::streaming_sse::StreamingSseChunk;
+@@ -3120,8 +3122,6 @@ mod tests {
+                 outgoing.clone(),
+                 thread_state.clone(),
+                 thread_watch_manager.clone(),
+-                Arc::new(tokio::sync::Semaphore::new(1)),
+-                "test-provider".to_string(),
+             )
+             .await;
+         };
+diff --git a/codex-rs/app-server/src/request_processors/persisted_resume_settings.rs b/codex-rs/app-server/src/request_processors/persisted_resume_settings.rs
+index 3e35fef..4abef79 100644
+--- a/codex-rs/app-server/src/request_processors/persisted_resume_settings.rs
++++ b/codex-rs/app-server/src/request_processors/persisted_resume_settings.rs
+@@ -171,7 +171,10 @@ pub(super) fn merge_owned_resume_settings(
+         overrides.cwd = Some(snapshot.cwd.to_path_buf());
+     }
+     if overrides.workspace_roots.is_none() && !contains("workspace_roots") {
+-        overrides.workspace_roots = snapshot.runtime_workspace_roots.clone().or_else(|| snapshot.workspace_roots.clone());
++        overrides.workspace_roots = snapshot
++            .runtime_workspace_roots
++            .clone()
++            .or_else(|| snapshot.workspace_roots.clone());
+     }
+     if overrides.approval_policy.is_none() && !contains("approval_policy") {
+         overrides.approval_policy = Some(snapshot.approval_policy);
+@@ -258,7 +261,15 @@ impl OwnedResumeSettings {
+                 Some(active) => PermissionProfileSnapshot::active_with_profile_workspace_roots(
+                     profile,
+                     active,
+-                    self.snapshot.profile_workspace_roots.unwrap_or_default(),
++                    self.snapshot
++                        .profile_workspace_roots
++                        .unwrap_or_default()
++                        .into_iter()
++                        .map(|root| codex_utils_path_uri::PathUri::try_from(root).map(Into::into))
++                        .collect::<Result<Vec<_>, _>>()
++                        .map_err(|error| {
++                            std::io::Error::new(std::io::ErrorKind::InvalidInput, error)
++                        })?,
+                 ),
+                 None => PermissionProfileSnapshot::legacy(profile),
+             };
+diff --git a/codex-rs/app-server/src/request_processors/persisted_resume_settings_tests.rs b/codex-rs/app-server/src/request_processors/persisted_resume_settings_tests.rs
+index 713e5e6..3873352 100644
+--- a/codex-rs/app-server/src/request_processors/persisted_resume_settings_tests.rs
++++ b/codex-rs/app-server/src/request_processors/persisted_resume_settings_tests.rs
+@@ -187,7 +187,7 @@ fn full_snapshot() -> ThreadSettingsSnapshot {
+     snapshot.reasoning_effort = Some(codex_protocol::openai_models::ReasoningEffort::High);
+     snapshot.reasoning_summary = Some(codex_protocol::config_types::ReasoningSummary::Detailed);
+     snapshot.workspace_roots = Some(vec![cwd()]);
+-    snapshot.profile_workspace_roots = Some(vec![cwd()]);
++    snapshot.profile_workspace_roots = Some(vec![cwd().into()]);
+     snapshot.collaboration_mode.mode = ModeKind::Plan;
+     snapshot
+ }
+diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
+index 20c4bba..13e18b4 100644
+--- a/codex-rs/app-server/src/request_processors/thread_processor.rs
++++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
+@@ -4147,6 +4147,11 @@ impl ThreadRequestProcessor {
+             .as_ref()
+             .is_none_or(|managed| managed.preserve_subagent_settings.unwrap_or(false));
+         if let Some(managed_config) = managed_config {
++            let ThreadResumeTarget::Client(request_id) = target else {
++                return Err(invalid_request(
++                    "managed configuration requires an owning client connection",
++                ));
++            };
+             let mut managed = super::managed_configuration::parse_managed_configuration(
+                 managed_config,
+                 &self.outgoing,
+diff --git a/codex-rs/app-server/src/request_processors/thread_queue_processor.rs b/codex-rs/app-server/src/request_processors/thread_queue_processor.rs
+index ae88fbf..b93b23e 100644
+--- a/codex-rs/app-server/src/request_processors/thread_queue_processor.rs
++++ b/codex-rs/app-server/src/request_processors/thread_queue_processor.rs
+@@ -251,7 +251,10 @@ impl ThreadQueueRequestProcessor {
+                 reason: NotSubmittedReason::ServerDraining,
+             } => return Err(crate::error_code::server_draining_error()),
+             StartIfIdleSubmission::NotSubmitted {
+-                reason: NotSubmittedReason::NotIdle | NotSubmittedReason::PendingTriggerTurn | NotSubmittedReason::PendingSettings,
++                reason:
++                    NotSubmittedReason::NotIdle
++                    | NotSubmittedReason::PendingTriggerTurn
++                    | NotSubmittedReason::PendingSettings,
+             } => {
+                 return Err(invalid_request(
+                     "thread already has an active or pending turn",
+diff --git a/codex-rs/app-server/src/request_processors/thread_summary.rs b/codex-rs/app-server/src/request_processors/thread_summary.rs
+index 45a9beb..1567abd 100644
+--- a/codex-rs/app-server/src/request_processors/thread_summary.rs
++++ b/codex-rs/app-server/src/request_processors/thread_summary.rs
+@@ -172,29 +172,6 @@ pub(crate) fn thread_response_active_permission_profile(
+     active_permission_profile.map(Into::into)
+ }
+ 
+-pub(crate) fn thread_settings_from_config_snapshot(
+-    config_snapshot: &ThreadConfigSnapshot,
+-) -> ThreadSettings {
+-    ThreadSettings {
+-        settings_version: None,
+-        disabled_plugin_ids: config_snapshot.disabled_plugin_ids.clone(),
+-        cwd: config_snapshot.cwd().clone(),
+-        approval_policy: config_snapshot.approval_policy.into(),
+-        approvals_reviewer: config_snapshot.approvals_reviewer.into(),
+-        sandbox_policy: config_snapshot.sandbox_policy().into(),
+-        active_permission_profile: thread_response_active_permission_profile(
+-            config_snapshot.active_permission_profile.clone(),
+-        ),
+-        model: config_snapshot.model.clone(),
+-        model_provider: config_snapshot.model_provider_id.clone(),
+-        service_tier: config_snapshot.service_tier.clone(),
+-        effort: config_snapshot.reasoning_effort.clone(),
+-        summary: config_snapshot.reasoning_summary,
+-        collaboration_mode: config_snapshot.collaboration_mode.clone(),
+-        multi_agent_mode: MultiAgentMode::ExplicitRequestOnly,
+-        personality: config_snapshot.personality,
+-    }
+-}
+ #[cfg(test)]
+ fn parse_datetime(timestamp: Option<&str>) -> Option<DateTime<Utc>> {
+     timestamp.and_then(|ts| {
+@@ -304,6 +281,7 @@ pub(crate) fn thread_settings_from_applied_snapshot(
+     snapshot: &codex_protocol::protocol::ThreadSettingsSnapshot,
+ ) -> ThreadSettings {
+     ThreadSettings {
++        disabled_plugin_ids: snapshot.disabled_plugin_ids.clone(),
+         permission_profile: Some(snapshot.permission_profile.clone()),
+         multi_agent_enabled: snapshot
+             .child_settings
+diff --git a/codex-rs/app-server/src/thread_state.rs b/codex-rs/app-server/src/thread_state.rs
+index 7c147ee..6928c81 100644
+--- a/codex-rs/app-server/src/thread_state.rs
++++ b/codex-rs/app-server/src/thread_state.rs
+@@ -3,7 +3,7 @@ use crate::outgoing_message::ConnectionRequestId;
+ use codex_app_server_protocol::RequestId;
+ use codex_app_server_protocol::ThreadGoal;
+ use codex_app_server_protocol::ThreadHistoryBuilder;
+-use codex_app_server_protocol::ThreadHistoryTurnMetadata;
++use codex_app_server_protocol::ThreadHistoryTurnChange;
+ use codex_app_server_protocol::ThreadItem;
+ use codex_app_server_protocol::ThreadSettings;
+ use codex_app_server_protocol::Turn;
+@@ -180,7 +180,7 @@ impl ThreadState {
+             .active_turn_snapshot_with_items_view(items_view)
+     }
+ 
+-    pub(crate) fn active_turn_metadata_snapshot(&self) -> Option<ThreadHistoryTurnMetadata> {
++    pub(crate) fn active_turn_metadata_snapshot(&self) -> Option<ThreadHistoryTurnChange> {
+         self.current_turn_history.active_turn_metadata_snapshot()
+     }
+ 
+diff --git a/codex-rs/app-server/tests/suite/v2/cyber_access_program.rs b/codex-rs/app-server/tests/suite/v2/cyber_access_program.rs
+index fea72f3..b405b13 100644
+--- a/codex-rs/app-server/tests/suite/v2/cyber_access_program.rs
++++ b/codex-rs/app-server/tests/suite/v2/cyber_access_program.rs
+@@ -61,6 +61,7 @@ async fn thread_start_stages_daybreak_until_persistence() -> Result<()> {
+             .request(|request_id| ClientRequest::ThreadRead {
+                 request_id,
+                 params: ThreadReadParams {
++                    include_history_metadata: false,
+                     thread_id: started.thread.id.clone(),
+                     include_turns: false,
+                 },
+@@ -88,6 +89,7 @@ async fn thread_start_stages_daybreak_until_persistence() -> Result<()> {
+             .request(|request_id| ClientRequest::ThreadRead {
+                 request_id,
+                 params: ThreadReadParams {
++                    include_history_metadata: false,
+                     thread_id: thread_id.clone(),
+                     include_turns: false,
+                 },
+@@ -263,6 +265,7 @@ async fn daybreak_thread_metadata_persists_independently_across_restart_and_fork
+             .request(|request_id| ClientRequest::ThreadRead {
+                 request_id,
+                 params: ThreadReadParams {
++                    include_history_metadata: false,
+                     thread_id: thread_id.clone(),
+                     include_turns: false,
+                 },
+diff --git a/codex-rs/app-server/tests/suite/v2/guardian_sync_session_tests.rs b/codex-rs/app-server/tests/suite/v2/guardian_sync_session_tests.rs
+index 0830c48..d9e438a 100644
+--- a/codex-rs/app-server/tests/suite/v2/guardian_sync_session_tests.rs
++++ b/codex-rs/app-server/tests/suite/v2/guardian_sync_session_tests.rs
+@@ -425,6 +425,7 @@ async fn managed_reviewers_reuse_fork_and_resume_after_parent_shutdown(
+         .request(|request_id| ClientRequest::ThreadRead {
+             request_id,
+             params: ThreadReadParams {
++                include_history_metadata: false,
+                 thread_id: reviewer_id.clone(),
+                 include_turns: true,
+             },
+diff --git a/codex-rs/app-server/tests/suite/v2/mcp_resource.rs b/codex-rs/app-server/tests/suite/v2/mcp_resource.rs
+index f3b87e7..92a0dd3 100644
+--- a/codex-rs/app-server/tests/suite/v2/mcp_resource.rs
++++ b/codex-rs/app-server/tests/suite/v2/mcp_resource.rs
+@@ -706,6 +706,7 @@ async fn metadata_and_mcp_requests_complete_while_unrelated_resume_loads_config(
+         sender.request(ClientRequest::ThreadRead {
+             request_id: RequestId::Integer(9),
+             params: ThreadReadParams {
++                include_history_metadata: false,
+                 thread_id: thread.id,
+                 include_turns: false,
+             },
+@@ -989,6 +990,7 @@ async fn resume_revalidates_persisted_thread_after_config_load(
+                 reader.request(ClientRequest::ThreadRead {
+                     request_id: RequestId::Integer(1),
+                     params: ThreadReadParams {
++                        include_history_metadata: false,
+                         thread_id,
+                         include_turns: false,
+                     },
+diff --git a/codex-rs/app-server/tests/suite/v2/mod.rs b/codex-rs/app-server/tests/suite/v2/mod.rs
+index 9ecf31f..4e4c2ef 100644
+--- a/codex-rs/app-server/tests/suite/v2/mod.rs
++++ b/codex-rs/app-server/tests/suite/v2/mod.rs
+@@ -63,6 +63,7 @@ mod host_skills;
+ mod imagegen_extension;
+ mod initialize;
+ mod luna_reserve;
++mod managed_model_catalog;
+ mod marketplace_add;
+ mod marketplace_remove;
+ mod marketplace_upgrade;
+@@ -79,7 +80,6 @@ mod misalignment_policy;
+ mod model_auto_review;
+ mod model_list;
+ mod model_list_requirements_tests;
+-mod managed_model_catalog;
+ mod model_provider_capabilities_read;
+ #[path = "model_provider_enforcement_tests.rs"]
+ mod model_provider_enforcement;
+diff --git a/codex-rs/app-server/tests/suite/v2/thread_environments.rs b/codex-rs/app-server/tests/suite/v2/thread_environments.rs
+index c9bc999..455192c 100644
+--- a/codex-rs/app-server/tests/suite/v2/thread_environments.rs
++++ b/codex-rs/app-server/tests/suite/v2/thread_environments.rs
+@@ -140,6 +140,7 @@ async fn assert_read_and_list_environments(
+ ) -> Result<()> {
+     let request = server
+         .send_thread_read_request(ThreadReadParams {
++            include_history_metadata: false,
+             thread_id: thread_id.to_owned(),
+             include_turns: false,
+         })
+diff --git a/codex-rs/app-server/tests/suite/v2/thread_list.rs b/codex-rs/app-server/tests/suite/v2/thread_list.rs
+index ce71714..15541ce 100644
+--- a/codex-rs/app-server/tests/suite/v2/thread_list.rs
++++ b/codex-rs/app-server/tests/suite/v2/thread_list.rs
+@@ -2785,6 +2785,7 @@ async fn thread_originator_is_preserved_in_list_read_and_resume(originator: &str
+             .request(|request_id| ClientRequest::ThreadRead {
+                 request_id,
+                 params: ThreadReadParams {
++                    include_history_metadata: false,
+                     thread_id: thread_id.clone(),
+                     include_turns: false,
+                 },
+diff --git a/codex-rs/app-server/tests/suite/v2/thread_read.rs b/codex-rs/app-server/tests/suite/v2/thread_read.rs
+index 0c929ea..67a009f 100644
+--- a/codex-rs/app-server/tests/suite/v2/thread_read.rs
++++ b/codex-rs/app-server/tests/suite/v2/thread_read.rs
+@@ -278,12 +278,14 @@ async fn thread_read_preserves_file_id_from_completed_turn() -> Result<()> {
+ 
+     let read_id = mcp
+         .send_thread_read_request(ThreadReadParams {
++            include_history_metadata: false,
+             thread_id: thread.id.clone(),
+             include_turns: true,
+         })
+         .await?;
+     let ThreadReadResponse {
+         thread: loaded_thread,
++        ..
+     } = timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(read_id)).await??;
+     let ThreadItem::UserMessage { content, .. } = &loaded_thread.turns[0].items[0] else {
+         panic!("expected completed turn to start with a user message");
+@@ -299,12 +301,14 @@ async fn thread_read_preserves_file_id_from_completed_turn() -> Result<()> {
+         .await?;
+     let read_id = mcp
+         .send_thread_read_request(ThreadReadParams {
++            include_history_metadata: false,
+             thread_id: thread.id,
+             include_turns: true,
+         })
+         .await?;
+     let ThreadReadResponse {
+         thread: restarted_thread,
++        ..
+     } = timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(read_id)).await??;
+     let ThreadItem::UserMessage { content, .. } = &restarted_thread.turns[0].items[0] else {
+         panic!("expected persisted turn to start with a user message");
+diff --git a/codex-rs/app-server/tests/suite/v2/thread_settings_update.rs b/codex-rs/app-server/tests/suite/v2/thread_settings_update.rs
+index 078369c..7bddda7 100644
+--- a/codex-rs/app-server/tests/suite/v2/thread_settings_update.rs
++++ b/codex-rs/app-server/tests/suite/v2/thread_settings_update.rs
+@@ -768,6 +768,7 @@ async fn thread_settings_update_preserves_session_profiles() -> Result<()> {
+             );
+         }
+     }
++    Ok(())
+ }
+ 
+ #[tokio::test]
+@@ -1100,8 +1101,17 @@ async fn quiescent_security_ack_is_pending_until_actual_turn_finishes() -> Resul
+     let updated = read_thread_settings_updated(&mut app).await?;
+     assert_eq!(updated.operation_id.as_deref(), Some("pending-security"));
+     assert_eq!(updated.resolved_security, receipt.resolved_security);
+-    assert_eq!(updated.thread_settings.permission_profile.as_ref(), updated.resolved_security.as_ref().map(|security| &security.permission_profile));
+-    println!("CANTRIP_SECURITY_EVIDENCE:{}", json!({ "settings": updated.thread_settings, "resolvedSecurity": updated.resolved_security }));
++    assert_eq!(
++        updated.thread_settings.permission_profile.as_ref(),
++        updated
++            .resolved_security
++            .as_ref()
++            .map(|security| &security.permission_profile)
++    );
++    println!(
++        "CANTRIP_SECURITY_EVIDENCE:{}",
++        json!({ "settings": updated.thread_settings, "resolvedSecurity": updated.resolved_security })
++    );
+     assert_eq!(
+         updated.thread_settings.approval_policy,
+         AskForApproval::OnRequest
+@@ -1161,8 +1171,11 @@ async fn quiescent_security_pending_operation_recovers_after_process_restart() -
+         ThreadSettingsOperationPhase::Pending
+     );
+     timeout(DEFAULT_TIMEOUT, async {
+-        while _requests.requests().is_empty() { tokio::time::sleep(Duration::from_millis(10)).await; }
+-    }).await?;
++        while _requests.requests().is_empty() {
++            tokio::time::sleep(Duration::from_millis(10)).await;
++        }
++    })
++    .await?;
+     app.crash_for_recovery_test().await?;
+     drop(app);
+     let mut app = TestAppServer::builder()
+@@ -1194,7 +1207,10 @@ async fn quiescent_security_pending_operation_recovers_after_process_restart() -
+         current.thread_settings.approval_policy,
+         AskForApproval::OnRequest
+     );
+-    assert_eq!(current.thread_settings.permission_profile.as_ref(), Some(&recovered.resolved_security.permission_profile));
++    assert_eq!(
++        current.thread_settings.permission_profile.as_ref(),
++        Some(&recovered.resolved_security.permission_profile)
++    );
+     assert_eq!(recovered.thread_settings, Some(current.thread_settings));
+     Ok(())
+ }
+@@ -1204,17 +1220,40 @@ async fn quiescent_security_operation_absence_has_typed_proof() -> Result<()> {
+     let server = responses::start_mock_server().await;
+     let home = TempDir::new()?;
+     create_config_toml(home.path(), &server.uri())?;
+-    let mut app = TestAppServer::builder().with_codex_home(home.path()).build_initialized().await?;
++    let mut app = TestAppServer::builder()
++        .with_codex_home(home.path())
++        .build_initialized()
++        .await?;
+     let thread = start_thread(&mut app).await?.thread;
+     for (thread_id, expected_absence) in [(thread.id.as_str(), true), ("not-a-thread-id", false)] {
+-        let id = app.send_request("thread/settings/operation/read", Some(json!({ "threadId": thread_id, "operationId": "not-admitted" }))).await?;
+-        let error = app.read_stream_until_error_message(RequestId::Integer(id)).await?.error;
++        let id = app
++            .send_request(
++                "thread/settings/operation/read",
++                Some(json!({ "threadId": thread_id, "operationId": "not-admitted" })),
++            )
++            .await?;
++        let error = app
++            .read_stream_until_error_message(RequestId::Integer(id))
++            .await?
++            .error;
+         if expected_absence {
+             assert_eq!(error.code, -32004);
+-            assert_eq!(error.data, Some(json!({ "reason": "settingsOperationNotFound", "threadId": thread_id, "operationId": "not-admitted" })));
++            assert_eq!(
++                error.data,
++                Some(
++                    json!({ "reason": "settingsOperationNotFound", "threadId": thread_id, "operationId": "not-admitted" })
++                )
++            );
+         } else {
+             assert_ne!(error.code, -32004);
+-            assert_ne!(error.data.as_ref().and_then(|data| data.get("reason")).and_then(Value::as_str), Some("settingsOperationNotFound"));
++            assert_ne!(
++                error
++                    .data
++                    .as_ref()
++                    .and_then(|data| data.get("reason"))
++                    .and_then(Value::as_str),
++                Some("settingsOperationNotFound")
++            );
+         }
+     }
+     Ok(())
+diff --git a/codex-rs/core/src/agent/control.rs b/codex-rs/core/src/agent/control.rs
+index cc0ffad..fa0ed33 100644
+--- a/codex-rs/core/src/agent/control.rs
++++ b/codex-rs/core/src/agent/control.rs
+@@ -111,10 +111,11 @@ impl LocalAgentControl {
+         thread_id_generator: ThreadIdGenerator,
+         rollout_budget: Option<RolloutBudgetConfig>,
+     ) -> Self {
++        let runtime = LocalAgentRuntime::new(manager, thread_id_generator, rollout_budget);
+         Self {
+-            security_transitions: Arc::default(),
++            security_transitions: Arc::clone(&runtime.security_transitions),
+             session_id: SessionId::default(),
+-            runtime: LocalAgentRuntime::new(manager, thread_id_generator, rollout_budget),
++            runtime,
+         }
+     }
+ 
+diff --git a/codex-rs/core/src/agent/control/runtime.rs b/codex-rs/core/src/agent/control/runtime.rs
+index 2878837..a6d1350 100644
+--- a/codex-rs/core/src/agent/control/runtime.rs
++++ b/codex-rs/core/src/agent/control/runtime.rs
+@@ -21,6 +21,7 @@ use std::sync::Weak;
+ /// Local tree state, kept separate from the shared agent operation interface.
+ #[derive(Clone)]
+ pub(crate) struct LocalAgentRuntime {
++    pub(super) security_transitions: Arc<crate::session::security_transitions::SecurityTransitions>,
+     /// Weak handle back to the global thread registry/state.
+     /// This is `Weak` to avoid reference cycles and shadow persistence of the form
+     /// `ThreadManagerState -> CodexThread -> Session -> SessionServices -> ThreadManagerState`.
+@@ -46,6 +47,7 @@ impl LocalAgentRuntime {
+         rollout_budget: Option<RolloutBudgetConfig>,
+     ) -> Self {
+         let runtime = Self {
++            security_transitions: Arc::default(),
+             manager,
+             thread_id_generator,
+             registry: Arc::default(),
+@@ -64,6 +66,7 @@ impl LocalAgentRuntime {
+     /// Bind local startup to the same tree state with this session's identity.
+     pub(crate) fn control(&self, session_id: SessionId) -> LocalAgentControl {
+         LocalAgentControl {
++            security_transitions: Arc::clone(&self.security_transitions),
+             session_id,
+             runtime: self.clone(),
+         }
+diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
+index 95940fa..71b759f 100644
+--- a/codex-rs/core/src/codex_thread.rs
++++ b/codex-rs/core/src/codex_thread.rs
+@@ -644,7 +644,7 @@ impl CodexThread {
+                 "responsesapiClientMetadata": request.responsesapi_client_metadata, "trace": request.trace });
+             let attempt_id = gate
+                 .request_with_goal_epoch(
+-                    self.session_configured().thread_id,
++                    self.session.thread_id(),
+                     turn_id.clone(),
+                     request.start.turn_trigger.clone().unwrap(),
+                     snapshot,
+diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
+index e40dc94..af7a67c 100644
+--- a/codex-rs/core/src/config/mod.rs
++++ b/codex-rs/core/src/config/mod.rs
+@@ -4852,22 +4852,26 @@ impl Config {
+                     .map_err(|error| std::io::Error::new(ErrorKind::InvalidInput, error))?;
+                 let profiles =
+                     merge_managed_permission_profiles(cfg.permissions.as_ref(), requirements)?;
+-                let (filesystem, network) = compile_permission_profile_selection(
++                let context = ConfigPathContext::new(
++                    PathConvention::native(),
++                    Some(PathUri::from_abs_path(&self.cwd)),
++                    AbsolutePathBufGuard::home_directory()
++                        .and_then(|home| PathUri::from_host_native_path(home).ok()),
++                );
++                let CompiledPermissionProfile {
++                    permission_profile,
++                    workspace_roots,
++                } = compile_permission_profile(
+                     profiles.as_ref(),
+                     &active.id,
++                    &context,
+                     None,
+                     &mut Vec::new(),
+                 )?;
+-                let roots = compile_permission_profile_workspace_roots(
+-                    profiles.as_ref(),
+-                    &active.id,
+-                    self.cwd.as_path(),
+-                )?;
+-                let current = PermissionProfile::from_runtime_permissions(
+-                    &filesystem.with_materialized_project_roots_for_workspace_roots(&roots),
+-                    network,
+-                )
+-                .materialize_project_roots_with_workspace_roots(&self.workspace_roots);
++                let roots: Vec<ProfileWorkspaceRoot> =
++                    workspace_roots.into_iter().map(Into::into).collect();
++                let current = permission_profile
++                    .materialize_project_roots_with_workspace_roots(&self.workspace_roots);
+                 let restored = snapshot
+                     .permission_profile()
+                     .clone()
+diff --git a/codex-rs/core/src/lib.rs b/codex-rs/core/src/lib.rs
+index 7a64dbe..f03673e 100644
+--- a/codex-rs/core/src/lib.rs
++++ b/codex-rs/core/src/lib.rs
+@@ -35,8 +35,8 @@ mod compact_model_fallback;
+ mod compact_remote_history;
+ mod compact_remote_v2;
+ mod compact_token_budget;
+-mod thread_startup_metadata;
+ pub mod managed_execution;
++mod thread_startup_metadata;
+ pub use codex_network_proxy::EnvironmentNetworkPolicy;
+ pub use codex_network_proxy::NetworkDomainPermission;
+ pub use codex_network_proxy::NetworkDomainPermissionEntry;
+diff --git a/codex-rs/core/src/session/canonical_history_failure_tests.rs b/codex-rs/core/src/session/canonical_history_failure_tests.rs
+index 9cb801e..e5d4690 100644
+--- a/codex-rs/core/src/session/canonical_history_failure_tests.rs
++++ b/codex-rs/core/src/session/canonical_history_failure_tests.rs
+@@ -11,6 +11,7 @@ async fn failed_native_append_remains_a_visible_gap_after_writer_recovery() {
+         .send_event_raw(Event {
+             id: "retained-turn".into(),
+             msg: EventMsg::TurnStarted(TurnStartedEvent {
++                root_turn_id: None,
+                 initial_settings: None,
+                 turn_id: "retained-turn".into(),
+                 canonical_items: true,
+diff --git a/codex-rs/core/src/session/canonical_history_tests.rs b/codex-rs/core/src/session/canonical_history_tests.rs
+index ddc5e00..56444a4 100644
+--- a/codex-rs/core/src/session/canonical_history_tests.rs
++++ b/codex-rs/core/src/session/canonical_history_tests.rs
+@@ -13,6 +13,7 @@ async fn raw_late_items_keep_their_original_turn_retention() {
+             .send_event_raw(Event {
+                 id: id.into(),
+                 msg: EventMsg::TurnStarted(TurnStartedEvent {
++                    root_turn_id: None,
+                     initial_settings: None,
+                     turn_id: id.into(),
+                     canonical_items: canonical,
+@@ -112,7 +113,7 @@ async fn committed_start_retains_initial_settings_after_thread_and_step_change()
+     selected.service_tier = None;
+     model.slug = "later-model".into();
+     context
+-        .current_settings
++        .next_step_settings
+         .store(Arc::new(ResolvedStepSettings::new(
+             Arc::new(selected.clone()),
+             Arc::new(model),
+@@ -128,6 +129,7 @@ async fn committed_start_retains_initial_settings_after_thread_and_step_change()
+         .send_event(
+             &context,
+             EventMsg::TurnStarted(TurnStartedEvent {
++                root_turn_id: None,
+                 initial_settings: None,
+                 canonical_items: false,
+                 turn_id: context.sub_id.clone(),
+diff --git a/codex-rs/core/src/session/guardian_checkpoint.rs b/codex-rs/core/src/session/guardian_checkpoint.rs
+index 918e005..09250e6 100644
+--- a/codex-rs/core/src/session/guardian_checkpoint.rs
++++ b/codex-rs/core/src/session/guardian_checkpoint.rs
+@@ -13,6 +13,7 @@ impl Session {
+         let history = &state.history;
+         let window_ids = state.auto_compact_window_ids();
+         let mut items = vec![RolloutItem::Compacted(CompactedItem {
++            context_reset: false,
+             message: String::new(),
+             replacement_history: Some(history.annotated_items().to_vec()),
+             guardian_history: history.guardian_history_checkpoint(),
+diff --git a/codex-rs/core/src/session/managed_context.rs b/codex-rs/core/src/session/managed_context.rs
+index 02fe92e..04df442 100644
+--- a/codex-rs/core/src/session/managed_context.rs
++++ b/codex-rs/core/src/session/managed_context.rs
+@@ -77,12 +77,18 @@ impl Session {
+             window_id: Uuid::now_v7(),
+         };
+         let mut retained_history = state.clone_history();
+-        retained_history.replace_compacted(Vec::new());
++        retained_history.replace_compacted(Vec::new(), None);
+         let checkpoint = CompactedItem {
+             context_reset: true,
+             message: "Managed model context recovery".to_string(),
+             replacement_history: Some(Vec::new()),
+             guardian_history: retained_history.guardian_history_checkpoint(),
++            retained_context: Some(retained_history.retained_context().clone()),
++            resume_metadata: Some(CompactionResumeMetadata {
++                multi_agent_version: self.multi_agent_version(),
++                last_started_turn_id: state.last_started_turn_id.clone(),
++                previous_turn_settings: state.previous_turn_settings(),
++            }),
+             mcp_resource_origins: None,
+             window_number: Some(number),
+             first_window_id: Some(ids.first_window_id.to_string()),
+@@ -102,7 +108,13 @@ impl Session {
+         live.flush()
+             .await
+             .map_err(|err| CodexErr::Io(std::io::Error::other(err)))?;
+-        state.replace_annotated_history(Vec::new(), None, HistoryReplacement::Compaction);
++        state.replace_annotated_history(
++            Vec::new(),
++            None,
++            HistoryReplacement::Compaction {
++                reviewer_compaction_hash: None,
++            },
++        );
+         state.restore_auto_compact_window(number, ids);
+         Ok(())
+     }
+diff --git a/codex-rs/core/src/session/managed_context_tests.rs b/codex-rs/core/src/session/managed_context_tests.rs
+index ab6a047..e29c892 100644
+--- a/codex-rs/core/src/session/managed_context_tests.rs
++++ b/codex-rs/core/src/session/managed_context_tests.rs
+@@ -28,6 +28,7 @@ async fn managed_context_reset_preserves_history_and_requires_current_idle_bound
+             .send_event_raw(Event {
+                 id: "last-turn".into(),
+                 msg: EventMsg::TurnStarted(TurnStartedEvent {
++                    root_turn_id: None,
+                     initial_settings: None,
+                     turn_id: "last-turn".into(),
+                     canonical_items: true,
+@@ -40,7 +41,7 @@ async fn managed_context_reset_preserves_history_and_requires_current_idle_bound
+             .await;
+         session.flush_rollout().await.unwrap();
+         let original = session.clone_history().await;
+-        let retained_authorization = original.clone().into_raw_items();
++        let retained_authorization = original.clone().raw_items().cloned().collect::<Vec<_>>();
+         assert!(
+             session
+                 .reset_managed_model_context(Some("stale-turn"))
+@@ -48,8 +49,13 @@ async fn managed_context_reset_preserves_history_and_requires_current_idle_bound
+                 .is_err()
+         );
+         assert_eq!(
+-            session.clone_history().await.into_raw_items(),
+-            original.into_raw_items()
++            session
++                .clone_history()
++                .await
++                .raw_items()
++                .cloned()
++                .collect::<Vec<_>>(),
++            original.raw_items().cloned().collect::<Vec<_>>()
+         );
+         *session.active_turn.lock().await = Some(crate::state::ActiveTurn::default());
+         assert!(
+@@ -69,7 +75,13 @@ async fn managed_context_reset_preserves_history_and_requires_current_idle_bound
+             recovered.guardian_history_checkpoint().unwrap().0,
+             retained_authorization
+         );
+-        assert!(recovered.into_raw_items().is_empty());
++        assert!(
++            recovered
++                .raw_items()
++                .cloned()
++                .collect::<Vec<_>>()
++                .is_empty()
++        );
+         let after = RolloutRecorder::load_rollout_items(&path).await.unwrap().0;
+         assert_eq!(
+             serde_json::to_value(&after[..before.len()]).unwrap(),
+@@ -91,7 +103,12 @@ async fn managed_context_reset_keeps_live_context_on_actual_persistence_failure(
+     session.live_thread().unwrap().shutdown().await.unwrap();
+     assert!(session.reset_managed_model_context(None).await.is_err());
+     assert_eq!(
+-        session.clone_history().await.into_raw_items(),
+-        before.into_raw_items()
++        session
++            .clone_history()
++            .await
++            .raw_items()
++            .cloned()
++            .collect::<Vec<_>>(),
++        before.raw_items().cloned().collect::<Vec<_>>()
+     );
+ }
+diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
+index c861661..9891c0d 100644
+--- a/codex-rs/core/src/session/mod.rs
++++ b/codex-rs/core/src/session/mod.rs
+@@ -1072,16 +1072,23 @@ fn initial_collaboration_mode(
+     // yet contain a complete owned snapshot. Never inherit a parent's root mode.
+     let preserved = preserved.or_else(|| match history {
+         InitialHistory::Resumed(resumed) if !source.is_non_root_agent() => resumed
+-            .history.iter().rev().find_map(|item| match item {
++            .history
++            .iter()
++            .rev()
++            .find_map(|item| match item {
+                 RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(event))
+                     if event.thread_id == Some(resumed.conversation_id) =>
+-                    Some(event.thread_settings.collaboration_mode.clone()),
++                {
++                    Some(event.thread_settings.collaboration_mode.clone())
++                }
+                 _ => None,
+             })
+-            .or_else(|| resumed.history.iter().rev().find_map(|item| match item {
+-                RolloutItem::TurnContext(context) => context.collaboration_mode.clone(),
+-                _ => None,
+-            })),
++            .or_else(|| {
++                resumed.history.iter().rev().find_map(|item| match item {
++                    RolloutItem::TurnContext(context) => context.collaboration_mode.clone(),
++                    _ => None,
++                })
++            }),
+         _ => None,
+     });
+     let mut mode = preserved.unwrap_or_else(|| CollaborationMode {
+@@ -4419,6 +4426,7 @@ impl Session {
+                 state.history.set_world_state_baseline(snapshot);
+             }
+             CompactedItem {
++                context_reset: false,
+                 message: metadata.message,
+                 replacement_history: Some(replacement_history),
+                 guardian_history: state.history.guardian_history_checkpoint(),
+diff --git a/codex-rs/core/src/session/rollout_reconstruction.rs b/codex-rs/core/src/session/rollout_reconstruction.rs
+index 9657bef..e383aaf 100644
+--- a/codex-rs/core/src/session/rollout_reconstruction.rs
++++ b/codex-rs/core/src/session/rollout_reconstruction.rs
+@@ -209,6 +209,7 @@ impl Session {
+                 | RolloutItem::TurnContext(_)
+                 | RolloutItem::WorldState(_)
+                 | RolloutItem::RetainedContext(_)
++                | RolloutItem::CanonicalHistory { .. }
+                 | RolloutItem::SecurityRiskScore(_)
+                 | RolloutItem::TokenUsageRecord(_)
+                 | RolloutItem::RealtimeItem(_)
+diff --git a/codex-rs/core/src/session/security_transitions.rs b/codex-rs/core/src/session/security_transitions.rs
+index 1813510..9a1ead3 100644
+--- a/codex-rs/core/src/session/security_transitions.rs
++++ b/codex-rs/core/src/session/security_transitions.rs
+@@ -20,7 +20,8 @@ struct SecurityPatch {
+     sandbox_policy: Option<codex_protocol::protocol::SandboxPolicy>,
+     permission_profile: Option<codex_protocol::models::PermissionProfile>,
+     active_permission_profile: Option<codex_protocol::models::ActivePermissionProfile>,
+-    profile_workspace_roots: Option<Vec<codex_utils_absolute_path::AbsolutePathBuf>>,
++    #[serde(default, deserialize_with = "deserialize_profile_roots")]
++    profile_workspace_roots: Option<Vec<codex_utils_path_uri::PathUri>>,
+     windows_sandbox_level: Option<codex_protocol::config_types::WindowsSandboxLevel>,
+ }
+ impl SecurityPatch {
+@@ -41,7 +42,12 @@ impl SecurityPatch {
+             sandbox_policy,
+             permission_profile,
+             active_permission_profile,
+-            profile_workspace_roots,
++            profile_workspace_roots: profile_workspace_roots.map(|roots| {
++                roots
++                    .into_iter()
++                    .map(|root| root.as_uri().clone())
++                    .collect()
++            }),
+             windows_sandbox_level,
+         };
+         if security.clone().overrides() != overrides {
+@@ -56,12 +62,35 @@ impl SecurityPatch {
+             sandbox_policy: self.sandbox_policy,
+             permission_profile: self.permission_profile,
+             active_permission_profile: self.active_permission_profile,
+-            profile_workspace_roots: self.profile_workspace_roots,
++            profile_workspace_roots: self
++                .profile_workspace_roots
++                .map(|roots| roots.into_iter().map(Into::into).collect()),
+             windows_sandbox_level: self.windows_sandbox_level,
+             ..Default::default()
+         }
+     }
+ }
++
++// Pending operations written by older Cantrip runtimes contain native paths.
++// New checkpoints retain URI roots, including remote executor roots.
++fn deserialize_profile_roots<'de, D>(
++    deserializer: D,
++) -> Result<Option<Vec<codex_utils_path_uri::PathUri>>, D::Error>
++where
++    D: serde::Deserializer<'de>,
++{
++    use serde::Deserialize;
++    Option::<Vec<codex_utils_path_uri::LegacyAppPathString>>::deserialize(deserializer)?
++        .map(|roots| {
++            roots
++                .into_iter()
++                .map(|root| {
++                    codex_utils_path_uri::PathUri::try_from(root).map_err(serde::de::Error::custom)
++                })
++                .collect()
++        })
++        .transpose()
++}
+ #[derive(Default)]
+ pub(crate) struct SecurityTransitions {
+     pub(crate) mutation_gate: Mutex<()>,
+diff --git a/codex-rs/core/src/session/session.rs b/codex-rs/core/src/session/session.rs
+index 9c0c67f..75bb154 100644
+--- a/codex-rs/core/src/session/session.rs
++++ b/codex-rs/core/src/session/session.rs
+@@ -352,7 +352,9 @@ impl SessionConfiguration {
+             profile_workspace_roots: Some(
+                 self.permission_profile_state
+                     .profile_workspace_roots()
+-                    .to_vec(),
++                    .iter()
++                    .map(|root| root.as_uri().clone().into())
++                    .collect(),
+             ),
+             reasoning_effort: self.step_settings.collaboration_mode.reasoning_effort(),
+             reasoning_summary: self.step_settings.reasoning_summary,
+diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
+index 9b94df4..e8978a7 100644
+--- a/codex-rs/core/src/session/tests.rs
++++ b/codex-rs/core/src/session/tests.rs
+@@ -16,6 +16,7 @@ use crate::agents_md_manager::SessionInstructions;
+ use crate::compact::InitialContextInjection;
+ use crate::config::ConfigBuilder;
+ use crate::config::ConfigOverrides;
++use crate::config::test_config;
+ use crate::context::ContextualUserFragment;
+ use crate::context::DeveloperInstructions;
+ use crate::context::TurnAborted;
+@@ -6139,6 +6140,8 @@ async fn standalone_settings_invalidate_continuation_before_delivering_acceptanc
+             id: "occupied".into(),
+             msg: EventMsg::ThreadSettingsApplied(
+                 codex_protocol::protocol::ThreadSettingsAppliedEvent {
++                    operation_id: None,
++                    resolved_security: None,
+                     thread_id: Some(session.thread_id()),
+                     thread_settings: session.thread_settings_snapshot().await,
+                 },
+@@ -6153,6 +6156,7 @@ async fn standalone_settings_invalidate_continuation_before_delivering_acceptanc
+         .send(Submission {
+             id: "settings".into(),
+             op: Op::ThreadSettings {
++                operation_id: None,
+                 thread_settings: codex_protocol::protocol::ThreadSettingsOverrides::default(),
+                 reply: Some(reply),
+             },
+@@ -6212,6 +6216,8 @@ async fn compaction_persists_resume_metadata_and_companion_records() {
+         previous_turn_settings: Some(previous_turn_settings),
+     };
+     let expected_settings = codex_protocol::protocol::ThreadSettingsAppliedEvent {
++        operation_id: None,
++        resolved_security: None,
+         thread_id: Some(session.thread_id()),
+         thread_settings: session.thread_settings_snapshot().await,
+     };
+diff --git a/codex-rs/core/src/tools/executed_tool_calls/mcp_attribution_tests.rs b/codex-rs/core/src/tools/executed_tool_calls/mcp_attribution_tests.rs
+index 8d90927..be4b1a5 100644
+--- a/codex-rs/core/src/tools/executed_tool_calls/mcp_attribution_tests.rs
++++ b/codex-rs/core/src/tools/executed_tool_calls/mcp_attribution_tests.rs
+@@ -65,6 +65,7 @@ fn restores_cumulative_item_and_compaction_checkpoints() {
+     let history = InitialHistory::Forked(vec![
+         RolloutItem::ResponseItem(envelope(Some(initial))),
+         RolloutItem::Compacted(CompactedItem {
++            context_reset: false,
+             message: "summary".to_string(),
+             replacement_history: Some(vec![envelope(Some(cumulative.clone()))]),
+             guardian_history: None,
+diff --git a/codex-rs/core/tests/suite/agent_eviction_tests.rs b/codex-rs/core/tests/suite/agent_eviction_tests.rs
+index ae7c6e2..53472d7 100644
+--- a/codex-rs/core/tests/suite/agent_eviction_tests.rs
++++ b/codex-rs/core/tests/suite/agent_eviction_tests.rs
+@@ -125,6 +125,7 @@ async fn queued_mail_and_cancelled_eviction_keep_worker_ownership() -> Result<()
+     // Reuse the settings fixture to pause the submission loop without starting a turn.
+     first
+         .submit(Op::ThreadSettings {
++            operation_id: None,
+             thread_settings: ThreadSettingsOverrides {
+                 model: Some(COMMITTED_MODEL.to_string()),
+                 ..Default::default()
+diff --git a/codex-rs/core/tests/suite/override_updates.rs b/codex-rs/core/tests/suite/override_updates.rs
+index 8550c07..54bcdd6 100644
+--- a/codex-rs/core/tests/suite/override_updates.rs
++++ b/codex-rs/core/tests/suite/override_updates.rs
+@@ -35,7 +35,7 @@ async fn assert_settings_only_rollout(test: &TestCodex) -> Result<()> {
+     let contents = tokio::fs::read_to_string(rollout_path).await?;
+     let mut latest = None;
+     for line in contents.lines() {
+-        let line: RolloutLine = serde_json::from_str(line)?;
++        let line: RolloutLine = codex_rollout::parse_rollout_line(line)?;
+         if let RolloutItem::EventMsg(event) = line.item {
+             assert!(
+                 !matches!(
+diff --git a/codex-rs/core/tests/suite/step_settings.rs b/codex-rs/core/tests/suite/step_settings.rs
+index 512ecbc..f843be5 100644
+--- a/codex-rs/core/tests/suite/step_settings.rs
++++ b/codex-rs/core/tests/suite/step_settings.rs
+@@ -487,6 +487,7 @@ async fn tool_result_history_keeps_originating_model_across_switch_and_replay()
+     for model in [MODEL_B, MODEL_A, MODEL_C, MODEL_B] {
+         test.codex
+             .submit(Op::ThreadSettings {
++                operation_id: None,
+                 thread_settings: ThreadSettingsOverrides {
+                     model: Some(model.to_string()),
+                     ..Default::default()
+@@ -598,6 +599,7 @@ async fn tool_result_history_keeps_originating_model_across_switch_and_replay()
+             let replay = mount_sse_once(&server, sse_completed("resp-replay")).await;
+             thread
+                 .submit(Op::ThreadSettings {
++                    operation_id: None,
+                     thread_settings: ThreadSettingsOverrides {
+                         model: Some(model.to_string()),
+                         ..Default::default()
+diff --git a/codex-rs/exec/src/worktree.rs b/codex-rs/exec/src/worktree.rs
+index a61d173..92b6f4c 100644
+--- a/codex-rs/exec/src/worktree.rs
++++ b/codex-rs/exec/src/worktree.rs
+@@ -69,6 +69,7 @@ pub(super) async fn fork_source(
+             ClientRequest::ThreadRead {
+                 request_id: RequestId::Integer(1),
+                 params: ThreadReadParams {
++                    include_history_metadata: false,
+                     thread_id: thread_id.clone(),
+                     include_turns: false,
+                 },
+diff --git a/codex-rs/ext/goal/src/accounting.rs b/codex-rs/ext/goal/src/accounting.rs
+index b2a89ce..753e455 100644
+--- a/codex-rs/ext/goal/src/accounting.rs
++++ b/codex-rs/ext/goal/src/accounting.rs
+@@ -196,7 +196,8 @@ impl GoalAccountingState {
+             | TurnItem::ExitedReviewMode(_)
+             | TurnItem::FileChange(_)
+             | TurnItem::McpToolCall(_)
+-            | TurnItem::ContextCompaction(_) => turn.has_activity = true,
++            | TurnItem::ContextCompaction(_)
++            | TurnItem::InterAgentCommunication(_) => turn.has_activity = true,
+         }
+         if turn.has_activity {
+             inner.consecutive_empty_turns = 0;
+diff --git a/codex-rs/ext/guardian-reviewer/src/retry.rs b/codex-rs/ext/guardian-reviewer/src/retry.rs
+index 3adcb4d..69b85c4 100644
+--- a/codex-rs/ext/guardian-reviewer/src/retry.rs
++++ b/codex-rs/ext/guardian-reviewer/src/retry.rs
+@@ -123,6 +123,7 @@ fn should_retry_guardian_review(outcome: &GuardianReviewOutcome) -> bool {
+             | CodexErrorInfo::SandboxError
+             | CodexErrorInfo::ActiveTurnNotSteerable { .. }
+             | CodexErrorInfo::ThreadRollbackFailed
++            | CodexErrorInfo::ThreadSettingsUpdateFailed { .. }
+             | CodexErrorInfo::Other => false,
+         },
+         GuardianReviewOutcome::Completed(_)
+diff --git a/codex-rs/memories/write/src/rollout_input.rs b/codex-rs/memories/write/src/rollout_input.rs
+index 7a1d1d9..e89a222 100644
+--- a/codex-rs/memories/write/src/rollout_input.rs
++++ b/codex-rs/memories/write/src/rollout_input.rs
+@@ -55,6 +55,7 @@ pub(crate) fn serialize_tiered_input(
+             | RolloutItem::TokenUsageRecord(_)
+             | RolloutItem::RetainedContext(_)
+             | RolloutItem::EventMsg(_) => None,
++            RolloutItem::CanonicalHistory { .. } => None,
+         };
+         let Some(mut item) = item else { continue };
+         if let ResponseItem::Message { content, .. } = &mut item {
+diff --git a/codex-rs/protocol/src/codex_error_info.rs b/codex-rs/protocol/src/codex_error_info.rs
+index 10928a4..5033a50 100644
+--- a/codex-rs/protocol/src/codex_error_info.rs
++++ b/codex-rs/protocol/src/codex_error_info.rs
+@@ -48,6 +48,9 @@ enum CodexErrorInfoWire {
+         turn_kind: NonSteerableTurnKind,
+     },
+     ThreadRollbackFailed,
++    ThreadSettingsUpdateFailed {
++        operation_id: Option<String>,
++    },
+     #[serde(other)]
+     Other,
+ }
+diff --git a/codex-rs/protocol/src/protocol.rs b/codex-rs/protocol/src/protocol.rs
+index 077b671..189daef 100644
+--- a/codex-rs/protocol/src/protocol.rs
++++ b/codex-rs/protocol/src/protocol.rs
+@@ -2355,7 +2355,7 @@ pub struct ThreadSettingsSnapshot {
+     pub workspace_roots: Option<Vec<AbsolutePathBuf>>,
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     #[ts(optional)]
+-    pub profile_workspace_roots: Option<Vec<AbsolutePathBuf>>,
++    pub profile_workspace_roots: Option<Vec<codex_utils_path_uri::LegacyAppPathString>>,
+     #[serde(skip_serializing_if = "Option::is_none")]
+     pub reasoning_effort: Option<ReasoningEffortConfig>,
+     #[serde(skip_serializing_if = "Option::is_none")]
+diff --git a/codex-rs/state/src/extract.rs b/codex-rs/state/src/extract.rs
+index 1200d37..a42239b 100644
+--- a/codex-rs/state/src/extract.rs
++++ b/codex-rs/state/src/extract.rs
+@@ -40,7 +40,8 @@ pub fn apply_rollout_item(
+         RolloutItem::Compacted(_) => {}
+         RolloutItem::WorldState(_) => {}
+         RolloutItem::RetainedContext(_)
+-        | RolloutItem::CanonicalHistory { .. } | RolloutItem::SecurityRiskScore(_) => {}
++        | RolloutItem::CanonicalHistory { .. }
++        | RolloutItem::SecurityRiskScore(_) => {}
+         RolloutItem::RealtimeItem(_) => {}
+         RolloutItem::TokenUsageRecord(_) => {}
+     }
+diff --git a/codex-rs/state/src/runtime.rs b/codex-rs/state/src/runtime.rs
+index 4d48c05..b0de8d9 100644
+--- a/codex-rs/state/src/runtime.rs
++++ b/codex-rs/state/src/runtime.rs
+@@ -45,8 +45,8 @@ mod goals;
+ mod logs;
+ mod memories;
+ mod memory_versions;
+-mod projects;
+ pub(crate) mod portable_thread;
++mod projects;
+ mod queued_items;
+ pub(crate) mod reclamation;
+ pub(crate) mod recovery;
+diff --git a/codex-rs/thread-store/src/live_thread.rs b/codex-rs/thread-store/src/live_thread.rs
+index 91ea91b..22c72d3 100644
+--- a/codex-rs/thread-store/src/live_thread.rs
++++ b/codex-rs/thread-store/src/live_thread.rs
+@@ -315,7 +315,8 @@ impl LiveThread {
+             .lock()
+             .await
+             .take_pending_update_for_attachment();
+-        self.apply_pending_metadata_update(update).await
++        self.apply_pending_metadata_update(update, PersistContext::Standard)
++            .await
+     }
+ 
+     pub async fn flush(&self) -> ThreadStoreResult<()> {
+diff --git a/codex-rs/thread-store/src/local/portable_history.rs b/codex-rs/thread-store/src/local/portable_history.rs
+index 8332f89..7915a12 100644
+--- a/codex-rs/thread-store/src/local/portable_history.rs
++++ b/codex-rs/thread-store/src/local/portable_history.rs
+@@ -74,8 +74,9 @@ pub(super) async fn export(
+         let root = output
+             .last()
+             .ok_or_else(|| storage_error("empty lineage"))?;
+-        let head: RolloutLine = serde_json::from_str(root.content.lines().next().unwrap_or(""))
+-            .map_err(storage_error)?;
++        let head: RolloutLine =
++            codex_rollout::parse_rollout_line(root.content.lines().next().unwrap_or(""))
++                .map_err(storage_error)?;
+         if !matches!(head.item, RolloutItem::SessionMeta(meta) if meta.meta.id == thread_id) {
+             return Err(storage_error("selected rollout belongs to another thread"));
+         }
+@@ -124,7 +125,7 @@ fn read_segment(path: &Path, end: Option<u64>) -> ThreadStoreResult<String> {
+     // Do not reserialize: HistoryPosition includes exact byte offsets. Reject
+     // malformed input rather than acknowledging an incomplete conversation.
+     for line in content.lines().filter(|line| !line.trim().is_empty()) {
+-        serde_json::from_str::<RolloutLine>(line).map_err(storage_error)?;
++        codex_rollout::parse_rollout_line(line).map_err(storage_error)?;
+     }
+     Ok(content)
+ }
+diff --git a/codex-rs/thread-store/src/local/portable_history_import.rs b/codex-rs/thread-store/src/local/portable_history_import.rs
+index 36e611e..b68bed8 100644
+--- a/codex-rs/thread-store/src/local/portable_history_import.rs
++++ b/codex-rs/thread-store/src/local/portable_history_import.rs
+@@ -198,7 +198,8 @@ fn validate(snapshot: &PortableThreadHistory) -> ThreadStoreResult<Vec<String>>
+             .content
+             .lines()
+             .filter(|line| !line.trim().is_empty());
+-        let first: RolloutLine = serde_json::from_str(lines.next().unwrap_or("")).map_err(error)?;
++        let first: RolloutLine =
++            codex_rollout::parse_rollout_line(lines.next().unwrap_or("")).map_err(error)?;
+         let RolloutItem::SessionMeta(meta) = first.item else {
+             return Err(conflict("portable history segment has no session metadata"));
+         };
+@@ -219,7 +220,7 @@ fn validate(snapshot: &PortableThreadHistory) -> ThreadStoreResult<Vec<String>>
+             // and can retain metadata copied from fork history. As in native
+             // replay, the first record alone owns this segment's identity and
+             // ancestry; preserve later records as ordinary history items.
+-            let _: RolloutLine = serde_json::from_str(line).map_err(error)?;
++            let _: RolloutLine = codex_rollout::parse_rollout_line(line).map_err(error)?;
+         }
+         let suffix = if meta.meta.id == segment.rollout_id {
+             String::new()
+@@ -235,7 +236,7 @@ fn validate(snapshot: &PortableThreadHistory) -> ThreadStoreResult<Vec<String>>
+         ));
+         previous = Some((segment.rollout_id, segment.content.len() as u64));
+     }
+-    let root: RolloutLine = serde_json::from_str(
++    let root: RolloutLine = codex_rollout::parse_rollout_line(
+         snapshot
+             .segments
+             .last()
+diff --git a/codex-rs/tui/src/app.rs b/codex-rs/tui/src/app.rs
+index 0fa07c8..72257ca 100644
+--- a/codex-rs/tui/src/app.rs
++++ b/codex-rs/tui/src/app.rs
+@@ -207,8 +207,8 @@ mod agents_overview_threads;
+ mod agents_overview_usage;
+ mod agents_overview_view;
+ pub(crate) use agents_overview::AGENTS_OVERVIEW_VIEW_ID;
+-mod activity_groups;
+ mod account_defaults;
++mod activity_groups;
+ mod app_server_event_targets;
+ mod app_server_events;
+ pub(crate) mod app_server_requests;
+@@ -236,9 +236,9 @@ mod new_session;
+ mod turn_tips;
+ pub(crate) use new_session::has_launch_setting;
+ mod clipboard;
++mod managed_permission_changes;
+ mod native_history;
+ mod owned_transcript;
+-mod managed_permission_changes;
+ mod pending_interactive_replay;
+ mod permission_shortcuts;
+ mod pets;
+@@ -547,7 +547,8 @@ pub(crate) struct App {
+     runtime_permission_profile_override: Option<RuntimePermissionProfileOverride>,
+     /// In-flight remote selections; confirmed settings live in each task's server snapshot.
+     pending_server_profiles: HashMap<ThreadId, PermissionProfileSelection>,
+-    pending_permission_changes: HashMap<String, managed_permission_changes::PendingPermissionChange>,
++    pending_permission_changes:
++        HashMap<String, managed_permission_changes::PendingPermissionChange>,
+     native_account_defaults: Option<account_defaults::Pending>,
+     observed_native_settings: HashMap<ThreadId, codex_app_server_protocol::ThreadSettings>,
+ 
+diff --git a/codex-rs/tui/src/app/agents_overview_tests.rs b/codex-rs/tui/src/app/agents_overview_tests.rs
+index b5f4d88..e828163 100644
+--- a/codex-rs/tui/src/app/agents_overview_tests.rs
++++ b/codex-rs/tui/src/app/agents_overview_tests.rs
+@@ -2293,6 +2293,7 @@ async fn resume_picker_round_trip_preserves_each_threads_input() -> Result<()> {
+             app.chat_widget.handle_server_notification(
+                 ServerNotification::TurnStarted(
+                     codex_app_server_protocol::TurnStartedNotification {
++                        initial_settings: None,
+                         thread_id: target.thread_id.to_string(),
+                         turn: codex_app_server_protocol::Turn {
+                             id: "turn-with-follow-up".to_string(),
+diff --git a/codex-rs/tui/src/app/app_server_events.rs b/codex-rs/tui/src/app/app_server_events.rs
+index 72aa787..96b5a0a 100644
+--- a/codex-rs/tui/src/app/app_server_events.rs
++++ b/codex-rs/tui/src/app/app_server_events.rs
+@@ -86,7 +86,8 @@ impl App {
+                 self.agents_overview.pending_usage = None;
+                 self.agents_overview.usage_disabled = false;
+                 self.repaint_agents_overview();
+-                self.reconcile_managed_permission_changes(app_server_client).await;
++                self.reconcile_managed_permission_changes(app_server_client)
++                    .await;
+                 self.refresh_agents_overview_threads(app_server_client);
+             }
+             AppServerEvent::ServerNotification(notification) => {
+@@ -143,6 +144,7 @@ impl App {
+                                 "thread-closed-{thread_id}-{attempt}"
+                             )),
+                             params: ThreadReadParams {
++                                include_history_metadata: false,
+                                 thread_id: closed.thread_id.clone(),
+                                 include_turns: false,
+                             },
+@@ -188,17 +190,28 @@ impl App {
+         {
+             // A native engine can be replaced without replacing its app-server
+             // connection. Only a current read can establish that new epoch.
+-            if update.thread_settings.settings_version.as_ref().zip(
+-                self.observed_native_settings.get(&thread_id).and_then(|settings| settings.settings_version.as_ref()),
+-            ).is_some_and(|(incoming, current)| incoming.epoch != current.epoch) {
+-                self.refresh_current_managed_settings(app_server_client, thread_id).await;
++            if update
++                .thread_settings
++                .settings_version
++                .as_ref()
++                .zip(
++                    self.observed_native_settings
++                        .get(&thread_id)
++                        .and_then(|settings| settings.settings_version.as_ref()),
++                )
++                .is_some_and(|(incoming, current)| incoming.epoch != current.epoch)
++            {
++                self.refresh_current_managed_settings(app_server_client, thread_id)
++                    .await;
+             }
+             // An older applied notification may still settle our pending intent.
+             // Recover its receipt without replacing the newer confirmed settings.
+-            self.reconcile_managed_permission_changes(app_server_client).await;
++            self.reconcile_managed_permission_changes(app_server_client)
++                .await;
+             return;
+         }
+-        self.observe_managed_permission_notification(app_server_client, &notification).await;
++        self.observe_managed_permission_notification(app_server_client, &notification)
++            .await;
+         if let ServerNotification::ThreadStatusChanged(status) = &notification {
+             let _ = self.dynamic_tool_status_updates.send(status.clone());
+         }
+diff --git a/codex-rs/tui/src/app/backend_banner_fallback.rs b/codex-rs/tui/src/app/backend_banner_fallback.rs
+index d792f62..0a766d7 100644
+--- a/codex-rs/tui/src/app/backend_banner_fallback.rs
++++ b/codex-rs/tui/src/app/backend_banner_fallback.rs
+@@ -31,7 +31,7 @@ impl App {
+         mode.settings.reasoning_effort = effort.clone();
+         let params = ThreadSettingsUpdateParams {
+             thread_id: thread_id.to_string(),
+-            effort: effort.clone(),
++            effort: Some(effort.clone()),
+             collaboration_mode: Some(mode.clone()),
+             ..ThreadSettingsUpdateParams::default()
+         };
+diff --git a/codex-rs/tui/src/app/misalignment_policy.rs b/codex-rs/tui/src/app/misalignment_policy.rs
+index 97554a0..ac104c2 100644
+--- a/codex-rs/tui/src/app/misalignment_policy.rs
++++ b/codex-rs/tui/src/app/misalignment_policy.rs
+@@ -173,6 +173,7 @@ impl App {
+                 self.chat_widget.handle_server_notification(
+                     ServerNotification::TurnStarted(
+                         codex_app_server_protocol::TurnStartedNotification {
++                            initial_settings: None,
+                             thread_id: review.thread_id.to_string(),
+                             turn: response.turn,
+                         },
+diff --git a/codex-rs/tui/src/app/owned_transcript_follow_tests.rs b/codex-rs/tui/src/app/owned_transcript_follow_tests.rs
+index 6f05c02..e57a540 100644
+--- a/codex-rs/tui/src/app/owned_transcript_follow_tests.rs
++++ b/codex-rs/tui/src/app/owned_transcript_follow_tests.rs
+@@ -26,6 +26,7 @@ async fn follow_control_click_preserves_draft_caret_and_composer_geometry() -> R
+             app.chat_widget.handle_server_notification(
+                 codex_app_server_protocol::ServerNotification::TurnStarted(
+                     codex_app_server_protocol::TurnStartedNotification {
++                        initial_settings: None,
+                         thread_id: ThreadId::new().to_string(),
+                         turn: codex_app_server_protocol::Turn {
+                             id: "turn".into(),
+diff --git a/codex-rs/tui/src/app/owned_transcript_tests.rs b/codex-rs/tui/src/app/owned_transcript_tests.rs
+index 46c0da6..3f50edf 100644
+--- a/codex-rs/tui/src/app/owned_transcript_tests.rs
++++ b/codex-rs/tui/src/app/owned_transcript_tests.rs
+@@ -595,6 +595,7 @@ async fn owned_details_escape_interrupts_work_without_starting_backtrack() -> Re
+     app.open_transcript_overlay(&mut tui);
+     app.chat_widget.handle_server_notification(
+         ServerNotification::TurnStarted(codex_app_server_protocol::TurnStartedNotification {
++            initial_settings: None,
+             thread_id: thread_id.to_string(),
+             turn: codex_app_server_protocol::Turn {
+                 id: "active-turn".to_string(),
+diff --git a/codex-rs/tui/src/app/permission_shortcuts.rs b/codex-rs/tui/src/app/permission_shortcuts.rs
+index 7502b83..8d0b4cf 100644
+--- a/codex-rs/tui/src/app/permission_shortcuts.rs
++++ b/codex-rs/tui/src/app/permission_shortcuts.rs
+@@ -15,13 +15,17 @@ impl App {
+             self.chat_widget.complete_permission_shortcut(thread_id);
+             return;
+         }
+-        if app_server.has_managed_gateway() && !app_server.is_managed_gateway_thread(Some(thread_id)) {
+-            self.chat_widget.add_error_message(managed_permission_changes::MANAGED_PERMISSION_ROOT_ONLY.into());
++        if app_server.has_managed_gateway()
++            && !app_server.is_managed_gateway_thread(Some(thread_id))
++        {
++            self.chat_widget
++                .add_error_message(managed_permission_changes::MANAGED_PERMISSION_ROOT_ONLY.into());
+             self.chat_widget.complete_permission_shortcut(thread_id);
+             return;
+         }
+         if app_server.is_managed_gateway_thread(Some(thread_id)) {
+-            self.submit_managed_permission_change(app_server, thread_id, selection).await;
++            self.submit_managed_permission_change(app_server, thread_id, selection)
++                .await;
+             self.chat_widget.complete_permission_shortcut(thread_id);
+             return;
+         }
+diff --git a/codex-rs/tui/src/app/reconnect.rs b/codex-rs/tui/src/app/reconnect.rs
+index 72d6c5d..a4ba8cb 100644
+--- a/codex-rs/tui/src/app/reconnect.rs
++++ b/codex-rs/tui/src/app/reconnect.rs
+@@ -503,7 +503,8 @@ impl App {
+         if app_server.is_managed_gateway_thread(self.chat_widget.thread_id())
+             && let Some(thread_id) = self.chat_widget.thread_id()
+         {
+-            self.refresh_current_managed_settings(app_server, thread_id).await;
++            self.refresh_current_managed_settings(app_server, thread_id)
++                .await;
+         }
+         self.reconcile_managed_permission_changes(app_server).await;
+         self.chat_widget.add_info_message(
+diff --git a/codex-rs/tui/src/app/startup.rs b/codex-rs/tui/src/app/startup.rs
+index 68b5029..a73dadf 100644
+--- a/codex-rs/tui/src/app/startup.rs
++++ b/codex-rs/tui/src/app/startup.rs
+@@ -353,20 +353,21 @@ impl App {
+         if let Err(err) = startup_draft.flush_pending_events(tui).await {
+             return shutdown_on_startup_error(app_server, err).await;
+         }
+-        let exit_info =
+-            if managed_attachment || (matches!(&session_selection, SessionSelection::Fork(_)) && config.model.is_none()) {
+-                None
+-            } else {
+-                handle_model_migration_prompt_if_needed(
+-                    tui,
+-                    &mut config,
+-                    &local_settings,
+-                    model.as_str(),
+-                    &app_event_tx,
+-                    &available_models,
+-                )
+-                .await?
+-            };
++        let exit_info = if managed_attachment
++            || (matches!(&session_selection, SessionSelection::Fork(_)) && config.model.is_none())
++        {
++            None
++        } else {
++            handle_model_migration_prompt_if_needed(
++                tui,
++                &mut config,
++                &local_settings,
++                model.as_str(),
++                &app_event_tx,
++                &available_models,
++            )
++            .await?
++        };
+         if let Some(exit_info) = exit_info {
+             app_server
+                 .shutdown()
+@@ -840,8 +841,8 @@ See the Codex keymap documentation for supported actions and examples."
+             runtime_approvals_reviewer_override: None,
+             runtime_permission_profile_override: None,
+             pending_server_profiles: HashMap::new(),
+-        pending_permission_changes: HashMap::new(),
+-        observed_native_settings: HashMap::new(),
++            pending_permission_changes: HashMap::new(),
++            observed_native_settings: HashMap::new(),
+             native_account_defaults: None,
+             file_search,
+             enhanced_keys_supported,
+diff --git a/codex-rs/tui/src/app/tests/history_hydration_tests.rs b/codex-rs/tui/src/app/tests/history_hydration_tests.rs
+index 9a5d34f..9889986 100644
+--- a/codex-rs/tui/src/app/tests/history_hydration_tests.rs
++++ b/codex-rs/tui/src/app/tests/history_hydration_tests.rs
+@@ -55,6 +55,8 @@ async fn history_fixture(
+     for (index, count) in item_counts.iter().enumerate() {
+         let turn_id = format!("turn-{index}");
+         let mut events = vec![EventMsg::TurnStarted(TurnStartedEvent {
++            canonical_items: false,
++            initial_settings: None,
+             turn_id: turn_id.clone(),
+             root_turn_id: None,
+             trace_id: None,
+@@ -198,6 +200,7 @@ async fn history_hydration_metadata_tracks_missing_turns_and_stale_completions_k
+             .map(serde_json::from_value::<ThreadReadParams>)
+             .collect::<Result<Vec<_>, _>>()?,
+         vec![ThreadReadParams {
++            include_history_metadata: false,
+             thread_id: target.thread_id.to_string(),
+             include_turns: false,
+         }]
+diff --git a/codex-rs/tui/src/app/tests/luna_reserve_recovery_tests.rs b/codex-rs/tui/src/app/tests/luna_reserve_recovery_tests.rs
+index f56c31a..dbc6c0a 100644
+--- a/codex-rs/tui/src/app/tests/luna_reserve_recovery_tests.rs
++++ b/codex-rs/tui/src/app/tests/luna_reserve_recovery_tests.rs
+@@ -166,7 +166,7 @@ async fn luna_reserve_entry_dispatches_an_already_queued_turn_with_accepted_sett
+             ),
+             (
+                 settings.model,
+-                settings.effort,
++                settings.effort.flatten(),
+                 settings.service_tier,
+                 settings.collaboration_mode
+             )
+@@ -271,7 +271,7 @@ async fn luna_reserve_recovery_restores_task_and_pending_turn_after_fresh_backen
+             ThreadSettingsUpdateParams {
+                 thread_id: app.active_thread_id.unwrap().to_string(),
+                 model: Some("gpt-5.5".into()),
+-                effort: Some(ReasoningEffortConfig::High),
++                effort: Some(Some(ReasoningEffortConfig::High)),
+                 collaboration_mode: Some(original_mode),
+                 service_tier: None,
+                 ..Default::default()
+diff --git a/codex-rs/tui/src/app/tests/managed_gateway_defaults.rs b/codex-rs/tui/src/app/tests/managed_gateway_defaults.rs
+index ba750a1..49fcb06 100644
+--- a/codex-rs/tui/src/app/tests/managed_gateway_defaults.rs
++++ b/codex-rs/tui/src/app/tests/managed_gateway_defaults.rs
+@@ -94,16 +94,12 @@ async fn managed_gateway_picker_settings_keep_real_requests_without_implicit_def
+                 None,
+                 None,
+                 None,
+-                None,
+             )),
+             AppEvent::UpdateApprovalsReviewer(ApprovalsReviewer::User),
+             AppEvent::PersistModelSelection {
+                 model: "gpt-test".into(),
+                 effort: Some(ReasoningEffortConfig::Low),
+             },
+-            AppEvent::PersistPersonalitySelection {
+-                personality: Personality::Pragmatic,
+-            },
+             AppEvent::PersistServiceTierSelection {
+                 service_tier: Some("flex".into()),
+             },
+@@ -124,7 +120,7 @@ async fn managed_gateway_picker_settings_keep_real_requests_without_implicit_def
+             .iter()
+             .filter(|request| request["method"] == "config/batchWrite")
+             .count();
+-        assert_eq!(default_writes, if managed { 0 } else { 5 });
++        assert_eq!(default_writes, if managed { 0 } else { 4 });
+         assert_eq!(app.config.service_tier.as_deref(), Some("flex"));
+         // A negotiated managed gateway must surface rejected settings. Ordinary
+         // older remote servers retain their existing capability downgrade.
+diff --git a/codex-rs/tui/src/app/tests/managed_permissions.rs b/codex-rs/tui/src/app/tests/managed_permissions.rs
+index 8f17c42..5d22378 100644
+--- a/codex-rs/tui/src/app/tests/managed_permissions.rs
++++ b/codex-rs/tui/src/app/tests/managed_permissions.rs
+@@ -27,6 +27,7 @@ async fn managed_permissions_fixture(
+     let mut collaboration = app.chat_widget.effective_collaboration_mode();
+     collaboration.settings.model = "applied-model".into();
+     let settings = api::ThreadSettings {
++        disabled_plugin_ids: Vec::new(),
+         permission_profile: Some(PermissionProfile::read_only()),
+         multi_agent_enabled: false,
+         subagent_model: None,
+@@ -160,7 +161,7 @@ async fn attached_app() -> (App, ThreadId) {
+     app.primary_thread_id = Some(thread_id);
+     app.chat_widget
+         .handle_thread_session_quiet(test_thread_session(thread_id, app.config.cwd.to_path_buf()));
+-    (app, thread_id)
++    (*app, thread_id)
+ }
+ 
+ fn operation_id(fixture: &Fixture) -> String {
+@@ -185,7 +186,7 @@ async fn managed_permissions_queued_shortcut_and_picker_wait_for_correlated_appl
+         let (mut server, fixture) = managed_permissions_fixture(&app, thread_id, false).await?;
+         let mut tui = crate::tui::test_support::make_test_tui()?;
+         if shortcut {
+-            app.apply_permission_shortcut(&mut server, &mut tui, thread_id, selection())
++            app.apply_permission_shortcut(&mut server, thread_id, selection())
+                 .await;
+         } else {
+             app.handle_event(
+@@ -563,7 +564,7 @@ async fn managed_permissions_child_view_never_falls_back_to_legacy_profile_updat
+         AppEvent::SelectPermissionProfile(selection()),
+     )
+     .await?;
+-    app.apply_permission_shortcut(&mut server, &mut tui, child_id, selection())
++    app.apply_permission_shortcut(&mut server, child_id, selection())
+         .await;
+     assert!(app.pending_permission_changes.is_empty());
+     assert_eq!(
+diff --git a/codex-rs/tui/src/app/tests/pagination_completion_tests.rs b/codex-rs/tui/src/app/tests/pagination_completion_tests.rs
+index d3d9849..dade82e 100644
+--- a/codex-rs/tui/src/app/tests/pagination_completion_tests.rs
++++ b/codex-rs/tui/src/app/tests/pagination_completion_tests.rs
+@@ -57,6 +57,8 @@ pub(super) async fn completed_history_app(
+         let turn_id = format!("turn-{index}");
+         let finished = completed_at.timestamp() + index as i64 * 60;
+         let mut events = vec![EventMsg::TurnStarted(TurnStartedEvent {
++            canonical_items: false,
++            initial_settings: None,
+             turn_id: turn_id.clone(),
+             root_turn_id: None,
+             trace_id: None,
+diff --git a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
+index 229b64e..2fc2150 100644
+--- a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
++++ b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
+@@ -4675,6 +4675,8 @@ async fn command_center_read_only_open_requests_and_failure_preservation() -> Re
+                 let first_ordinal = contents.lines().count();
+                 let events = [
+                     EventMsg::TurnStarted(TurnStartedEvent {
++                        canonical_items: false,
++                        initial_settings: None,
+                         turn_id: format!("saved-turn-{index}"),
+                         root_turn_id: None,
+                         trace_id: None,
+diff --git a/codex-rs/tui/src/app_server_session.rs b/codex-rs/tui/src/app_server_session.rs
+index 99ffb11..1681868 100644
+--- a/codex-rs/tui/src/app_server_session.rs
++++ b/codex-rs/tui/src/app_server_session.rs
+@@ -1349,7 +1349,11 @@ impl AppServerSession {
+                 params: TurnStartParams {
+                     disabled_plugin_ids: None,
+                     thread_id: thread_id.to_string(),
+-                    turn_trigger: if self.is_managed_gateway_thread(Some(thread_id)) { None } else { Some("user".to_string()) },
++                    turn_trigger: if self.is_managed_gateway_thread(Some(thread_id)) {
++                        None
++                    } else {
++                        Some("user".to_string())
++                    },
+                     client_user_message_id: Some(client_user_message_id),
+                     input: items,
+                     tool_output: None,
+diff --git a/codex-rs/tui/src/app_server_session/rollout_history.rs b/codex-rs/tui/src/app_server_session/rollout_history.rs
+index 861d655..dab4aa9 100644
+--- a/codex-rs/tui/src/app_server_session/rollout_history.rs
++++ b/codex-rs/tui/src/app_server_session/rollout_history.rs
+@@ -17,12 +17,11 @@ use codex_app_server_protocol::ClientRequest;
+ use codex_app_server_protocol::SortDirection;
+ use codex_app_server_protocol::ThreadHistoryMode;
+ use codex_app_server_protocol::ThreadResumeResponse;
++use codex_app_server_protocol::ThreadSettingsReadParams;
++use codex_app_server_protocol::ThreadSettingsReadResponse;
+ use codex_app_server_protocol::ThreadTurnsListParams;
+ use codex_app_server_protocol::ThreadTurnsListResponse;
+ use codex_app_server_protocol::TurnItemsView;
+-use codex_app_server_protocol::ThreadSettingsReadParams;
+-use codex_app_server_protocol::ThreadSettingsReadResponse;
+-use codex_features::Feature;
+ use codex_protocol::ThreadId;
+ use codex_utils_absolute_path::AbsolutePathBuf;
+ use color_eyre::eyre::Result;
+diff --git a/codex-rs/tui/src/chatwidget/input_flow.rs b/codex-rs/tui/src/chatwidget/input_flow.rs
+index 04cccce..d0ee783 100644
+--- a/codex-rs/tui/src/chatwidget/input_flow.rs
++++ b/codex-rs/tui/src/chatwidget/input_flow.rs
+@@ -170,7 +170,7 @@ impl ChatWidget {
+         }
+         if self.input_queue.managed.enabled() {
+             self.prepare_managed_queue_input(user_message, action, pending_pastes);
+-            return;
++            return true;
+         }
+         let should_run_now = self.is_session_configured()
+             && !self.is_user_turn_pending_or_running()
+diff --git a/codex-rs/tui/src/chatwidget/managed_queue.rs b/codex-rs/tui/src/chatwidget/managed_queue.rs
+index fba99c0..66bbdf9 100644
+--- a/codex-rs/tui/src/chatwidget/managed_queue.rs
++++ b/codex-rs/tui/src/chatwidget/managed_queue.rs
+@@ -244,7 +244,13 @@ impl ChatWidget {
+                 ..Default::default()
+             });
+         }
+-        for backup in self.input_queue.managed.uncertain_turn_inputs.iter().filter(|backup| backup.thread_id == thread_id) {
++        for backup in self
++            .input_queue
++            .managed
++            .uncertain_turn_inputs
++            .iter()
++            .filter(|backup| backup.thread_id == thread_id)
++        {
+             items.push(SelectionItem {
+                 name: "[Unconfirmed retention] Input preserved locally".into(),
+                 description: Some(backup.input.text.clone()),
+diff --git a/codex-rs/tui/src/chatwidget/permission_popups.rs b/codex-rs/tui/src/chatwidget/permission_popups.rs
+index 0a342e2..060a2d4 100644
+--- a/codex-rs/tui/src/chatwidget/permission_popups.rs
++++ b/codex-rs/tui/src/chatwidget/permission_popups.rs
+@@ -322,12 +322,15 @@ impl ChatWidget {
+         // A managed picker submits one named intent; it must not emit the legacy
+         // optimistic cache updates or the success message before native application.
+         let profile_selection = profile_selection.or_else(|| {
+-            self.input_queue.managed.thread_id.map(|_| PermissionProfileSelection {
+-                profile_id: preset.active_permission_profile.id.clone(),
+-                approval_policy: Some(AskForApproval::from(preset.approval)),
+-                approvals_reviewer: Some(approvals_reviewer),
+-                display_label: label.clone(),
+-            })
++            self.input_queue
++                .managed
++                .thread_id
++                .map(|_| PermissionProfileSelection {
++                    profile_id: preset.active_permission_profile.id.clone(),
++                    approval_policy: Some(AskForApproval::from(preset.approval)),
++                    approvals_reviewer: Some(approvals_reviewer),
++                    display_label: label.clone(),
++                })
+         });
+         let apply_actions = || {
+             profile_selection.clone().map_or_else(
+@@ -438,12 +441,15 @@ impl ChatWidget {
+         let selected_name = preset.label.to_string();
+         let approval = AskForApproval::from(preset.approval);
+         let profile_selection = profile_selection.or_else(|| {
+-            self.input_queue.managed.thread_id.map(|_| PermissionProfileSelection {
+-                profile_id: preset.active_permission_profile.id.clone(),
+-                approval_policy: Some(approval),
+-                approvals_reviewer: Some(ApprovalsReviewer::User),
+-                display_label: selected_name.clone(),
+-            })
++            self.input_queue
++                .managed
++                .thread_id
++                .map(|_| PermissionProfileSelection {
++                    profile_id: preset.active_permission_profile.id.clone(),
++                    approval_policy: Some(approval),
++                    approvals_reviewer: Some(ApprovalsReviewer::User),
++                    display_label: selected_name.clone(),
++                })
+         });
+         let is_cyber_model = self.model_catalog.try_list_models().is_ok_and(|models| {
+             models.iter().any(|model| {
+diff --git a/codex-rs/tui/src/chatwidget/settings.rs b/codex-rs/tui/src/chatwidget/settings.rs
+index 2a13c8c..31f76d3 100644
+--- a/codex-rs/tui/src/chatwidget/settings.rs
++++ b/codex-rs/tui/src/chatwidget/settings.rs
+@@ -455,7 +455,8 @@ impl ChatWidget {
+ 
+         let permission_profile = settings.permission_profile.take().unwrap_or_else(|| {
+             PermissionProfile::from_legacy_sandbox_policy_for_cwd(
+-                &settings.sandbox_policy.to_core(), settings.cwd.as_path(),
++                &settings.sandbox_policy.to_core(),
++                settings.cwd.as_path(),
+             )
+         });
+         let permission_snapshot = PermissionProfileSnapshot::from_session_snapshot(
+diff --git a/codex-rs/tui/src/chatwidget/tests/managed_queue.rs b/codex-rs/tui/src/chatwidget/tests/managed_queue.rs
+index f02b157..eb23b34 100644
+--- a/codex-rs/tui/src/chatwidget/tests/managed_queue.rs
++++ b/codex-rs/tui/src/chatwidget/tests/managed_queue.rs
+@@ -225,34 +225,70 @@ async fn managed_permissions_uncertain_input_requires_positive_same_thread_queue
+     chat.input_queue.user_turn_pending_start = true;
+     while events.try_recv().is_ok() {}
+     while operations.try_recv().is_ok() {}
+-    assert!(chat.handle_pending_settings_turn(PendingSettingsInputDisposition::Uncertain {
+-        client_user_message_id: Some("native-client-id".into()),
+-    }));
+-    assert_eq!(chat.input_queue.managed.uncertain_turn_inputs[0].input, input);
++    assert!(
++        chat.handle_pending_settings_turn(PendingSettingsInputDisposition::Uncertain {
++            client_user_message_id: Some("native-client-id".into()),
++        })
++    );
++    assert_eq!(
++        chat.input_queue.managed.uncertain_turn_inputs[0].input,
++        input
++    );
+     assert!(chat.composer_text_with_pending().is_empty());
+     assert!(operations.try_recv().is_err());
+-    let snapshot = |revision: &str, id: Option<&str>| serde_json::from_value::<crate::managed_queue::Snapshot>(json!({
++    let snapshot = |revision: &str, id: Option<&str>| {
++        serde_json::from_value::<crate::managed_queue::Snapshot>(json!({
+         "data": id.map(|id| vec![json!({"id":"queue-item","clientUserMessageId":id,"input":[],"managed":{"frozen":false}})]).unwrap_or_default(),
+         "nextCursor":null,"managedQueue":{"revision":revision,"paused":false}
+-    })).unwrap();
++    })).unwrap()
++    };
+     chat.input_queue.managed.apply(snapshot("1", None)).unwrap();
+-    assert_eq!(chat.input_queue.managed.uncertain_turn_inputs.len(), 1, "absence cannot establish non-retention");
+-    chat.input_queue.managed.apply(snapshot("2", Some("another-input"))).unwrap();
++    assert_eq!(
++        chat.input_queue.managed.uncertain_turn_inputs.len(),
++        1,
++        "absence cannot establish non-retention"
++    );
++    chat.input_queue
++        .managed
++        .apply(snapshot("2", Some("another-input")))
++        .unwrap();
+     assert_eq!(chat.input_queue.managed.uncertain_turn_inputs.len(), 1);
+     chat.set_managed_queue_thread(Some(ThreadId::new()));
+-    chat.input_queue.managed.apply(snapshot("3", Some("native-client-id"))).unwrap();
+-    assert_eq!(chat.input_queue.managed.uncertain_turn_inputs.len(), 1, "another thread cannot acknowledge input");
++    chat.input_queue
++        .managed
++        .apply(snapshot("3", Some("native-client-id")))
++        .unwrap();
++    assert_eq!(
++        chat.input_queue.managed.uncertain_turn_inputs.len(),
++        1,
++        "another thread cannot acknowledge input"
++    );
+     chat.set_managed_queue_thread(Some(thread_id));
+-    chat.input_queue.managed.apply(snapshot("4", Some("native-client-id"))).unwrap();
++    chat.input_queue
++        .managed
++        .apply(snapshot("4", Some("native-client-id")))
++        .unwrap();
+     assert!(chat.input_queue.managed.uncertain_turn_inputs.is_empty());
+     chat.safety_buffering_prompt = Some(input.clone());
+     chat.input_queue.user_turn_pending_start = true;
+-    assert!(chat.handle_pending_settings_turn(PendingSettingsInputDisposition::Uncertain {
+-        client_user_message_id: None,
+-    }));
+-    chat.input_queue.managed.apply(snapshot("5", Some("native-client-id"))).unwrap();
+-    assert_eq!(chat.input_queue.managed.uncertain_turn_inputs.len(), 1, "missing identity cannot be guessed from content or another input");
+-    assert_eq!(chat.input_queue.managed.uncertain_turn_inputs[0].input, input);
++    assert!(
++        chat.handle_pending_settings_turn(PendingSettingsInputDisposition::Uncertain {
++            client_user_message_id: None,
++        })
++    );
++    chat.input_queue
++        .managed
++        .apply(snapshot("5", Some("native-client-id")))
++        .unwrap();
++    assert_eq!(
++        chat.input_queue.managed.uncertain_turn_inputs.len(),
++        1,
++        "missing identity cannot be guessed from content or another input"
++    );
++    assert_eq!(
++        chat.input_queue.managed.uncertain_turn_inputs[0].input,
++        input
++    );
+     assert!(chat.composer_text_with_pending().is_empty());
+     assert!(operations.try_recv().is_err());
+ }
+diff --git a/codex-rs/tui/src/chatwidget/tests/permission_shortcuts_tests.rs b/codex-rs/tui/src/chatwidget/tests/permission_shortcuts_tests.rs
+index 1b1d5fc..fb85db9 100644
+--- a/codex-rs/tui/src/chatwidget/tests/permission_shortcuts_tests.rs
++++ b/codex-rs/tui/src/chatwidget/tests/permission_shortcuts_tests.rs
+@@ -151,21 +151,30 @@ async fn managed_permissions_popup_emits_one_named_intent_without_optimistic_eve
+     chat.set_managed_queue_thread(Some(thread_id));
+     while rx.try_recv().is_ok() {}
+     let presets = builtin_approval_presets();
+-    let read_only = presets.iter().find(|preset| preset.id == "read-only").unwrap();
++    let read_only = presets
++        .iter()
++        .find(|preset| preset.id == "read-only")
++        .unwrap();
+     let original = chat.config.permissions.active_permission_profile();
+     let actions = chat.permission_mode_actions(read_only, "Read Only".into(), User, None, true);
+     for action in actions {
+         action(&chat.app_event_tx);
+     }
+-    let AppEvent::SelectPermissionProfile(selection) = rx.try_recv().expect("named native intent") else {
++    let AppEvent::SelectPermissionProfile(selection) = rx.try_recv().expect("named native intent")
++    else {
+         panic!("managed permission menus must submit one explicit named selection")
+     };
+     assert_eq!(selection.profile_id, ":read-only");
+-    assert_eq!(chat.config.permissions.active_permission_profile(), original);
+-    assert!(rx.try_recv().is_err(), "no optimistic profile, approval, config write, or success events");
++    assert_eq!(
++        chat.config.permissions.active_permission_profile(),
++        original
++    );
++    assert!(
++        rx.try_recv().is_err(),
++        "no optimistic profile, approval, config write, or success events"
++    );
+ }
+ 
+-
+ #[tokio::test]
+ async fn managed_permissions_parent_owned_child_cannot_open_the_legacy_permissions_menu() {
+     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(None).await;
+@@ -174,8 +183,14 @@ async fn managed_permissions_parent_owned_child_cannot_open_the_legacy_permissio
+     let original = chat.config.permissions.active_permission_profile();
+     chat.open_permissions_popup();
+     assert!(chat.bottom_pane.no_modal_or_popup_active());
+-    assert_eq!(chat.config.permissions.active_permission_profile(), original);
+-    let AppEvent::InsertHistoryCell(cell) = rx.try_recv().expect("parent-owned input explanation") else { panic!("must explain why this child cannot change permissions") };
++    assert_eq!(
++        chat.config.permissions.active_permission_profile(),
++        original
++    );
++    let AppEvent::InsertHistoryCell(cell) = rx.try_recv().expect("parent-owned input explanation")
++    else {
++        panic!("must explain why this child cannot change permissions")
++    };
+     assert!(lines_to_single_string(&cell.display_lines(2000)).contains(PARENT_OWNED_INPUT_MESSAGE));
+     assert!(rx.try_recv().is_err());
+ }
+diff --git a/codex-rs/tui/src/chatwidget/turn_runtime.rs b/codex-rs/tui/src/chatwidget/turn_runtime.rs
+index 7259743..ab675ca 100644
+--- a/codex-rs/tui/src/chatwidget/turn_runtime.rs
++++ b/codex-rs/tui/src/chatwidget/turn_runtime.rs
+@@ -384,29 +384,45 @@ impl ChatWidget {
+     }
+ 
+     /// Only explicit native no-consumption evidence permits input recovery.
+-    pub(crate) fn handle_pending_settings_turn(&mut self, disposition: crate::managed_queue::PendingSettingsInputDisposition) -> bool {
++    pub(crate) fn handle_pending_settings_turn(
++        &mut self,
++        disposition: crate::managed_queue::PendingSettingsInputDisposition,
++    ) -> bool {
+         use crate::managed_queue::PendingSettingsInputDisposition;
+-        if !self.input_queue.user_turn_pending_start { return false; }
++        if !self.input_queue.user_turn_pending_start {
++            return false;
++        }
+         let prompt = self.safety_buffering_prompt.take();
+         self.input_queue.submit_pending_steers_after_interrupt = false;
+         self.finalize_turn();
+         match disposition {
+             PendingSettingsInputDisposition::Retained => {
+-                self.add_info_message("Input is queued until the pending permissions settle.".into(), None);
++                self.add_info_message(
++                    "Input is queued until the pending permissions settle.".into(),
++                    None,
++                );
+                 self.refresh_managed_queue(false);
+             }
+             PendingSettingsInputDisposition::NotRetained => {
+                 // Preserve followups while allowing an explicit manual send of the draft.
+                 self.input_queue.recovered_queue = self.input_queue.has_queued_follow_up_messages();
+-                if let Some(prompt) = prompt { self.restore_user_message_to_composer(prompt); }
++                if let Some(prompt) = prompt {
++                    self.restore_user_message_to_composer(prompt);
++                }
+                 self.add_info_message("Pending permissions prevented this turn from starting. Your input is restored for editing; send it again after permissions settle.".into(), None);
+             }
+-            PendingSettingsInputDisposition::Uncertain { client_user_message_id } => {
++            PendingSettingsInputDisposition::Uncertain {
++                client_user_message_id,
++            } => {
+                 self.input_queue.recovered_queue = self.input_queue.has_queued_follow_up_messages();
+                 if let (Some(thread_id), Some(input)) = (self.thread_id(), prompt) {
+-                    self.input_queue.managed.uncertain_turn_inputs.push(crate::managed_queue::UncertainTurnInput {
+-                        thread_id, client_user_message_id, input,
+-                    });
++                    self.input_queue.managed.uncertain_turn_inputs.push(
++                        crate::managed_queue::UncertainTurnInput {
++                            thread_id,
++                            client_user_message_id,
++                            input,
++                        },
++                    );
+                 }
+                 self.add_info_message("Queue retention is unconfirmed. Your full input is preserved locally without resending it. Refresh the shared queue to reconcile; an empty queue does not prove it was never submitted.".into(), None);
+                 self.refresh_managed_queue(false);
+@@ -503,7 +519,10 @@ impl ChatWidget {
+         message: String,
+         codex_error_info: Option<AppServerCodexErrorInfo>,
+     ) {
+-        if matches!(codex_error_info, Some(AppServerCodexErrorInfo::ThreadSettingsUpdateFailed { .. })) {
++        if matches!(
++            codex_error_info,
++            Some(AppServerCodexErrorInfo::ThreadSettingsUpdateFailed { .. })
++        ) {
+             self.on_warning(message);
+             return;
+         }
+diff --git a/codex-rs/tui/src/lib.rs b/codex-rs/tui/src/lib.rs
+index f0333b2..ea11893 100644
+--- a/codex-rs/tui/src/lib.rs
++++ b/codex-rs/tui/src/lib.rs
+@@ -129,8 +129,8 @@ pub(crate) mod custom_terminal;
+ mod daybreak;
+ mod experimental_features;
+ mod markdown_copy;
+-mod permission_discovery;
+ mod native_account_defaults;
++mod permission_discovery;
+ mod pets;
+ mod security_setup;
+ mod worktree_browser;
+diff --git a/codex-rs/tui/src/onboarding/directory_trust.rs b/codex-rs/tui/src/onboarding/directory_trust.rs
+index fde87b6..0a0917d 100644
+--- a/codex-rs/tui/src/onboarding/directory_trust.rs
++++ b/codex-rs/tui/src/onboarding/directory_trust.rs
+@@ -140,6 +140,7 @@ pub(crate) async fn check_directory_trust(
+             let recheck = request_handle.request_typed(ClientRequest::ThreadRead {
+                 request_id: RequestId::String(format!("tui-trust-recheck-{}", Uuid::new_v4())),
+                 params: ThreadReadParams {
++                    include_history_metadata: false,
+                     thread_id: thread.id.clone(),
+                     include_turns: false,
+                 },
+diff --git a/codex-rs/tui/src/screen_reader.rs b/codex-rs/tui/src/screen_reader.rs
+index e4bc391..2d5cf23 100644
+--- a/codex-rs/tui/src/screen_reader.rs
++++ b/codex-rs/tui/src/screen_reader.rs
+@@ -23,6 +23,16 @@ pub(crate) async fn initialize(stack: &ConfigLayerStack) -> anyhow::Result<()> {
+     result
+ }
+ 
++// Managed remote views may use host accessibility defaults, but cannot silently
++// rewrite the account config owned by Cantrip during attachment.
++pub(crate) async fn initialize_read_only() -> anyhow::Result<()> {
++    let detected = tokio::time::timeout(DETECTION_TIMEOUT, detect())
++        .await
++        .unwrap_or(false);
++    let _ = ANIMATION_DEFAULT.set(MotionMode::from_animations_enabled(!detected));
++    Ok(())
++}
++
+ pub(crate) fn animation_default() -> MotionMode {
+     ANIMATION_DEFAULT
+         .get()
+diff --git a/codex-rs/tui/src/startup_orchestration.rs b/codex-rs/tui/src/startup_orchestration.rs
+index a0ff9cb..bd7f6cc 100644
+--- a/codex-rs/tui/src/startup_orchestration.rs
++++ b/codex-rs/tui/src/startup_orchestration.rs
+@@ -324,7 +324,18 @@ pub(super) async fn run_main_inner(
+     )?;
+     // The pre-paint bootstrap used these same local/remote config inputs. Reuse it here;
+     // implicit daemon discovery above changes transport, not the client configuration cwd.
+-    let screen_reader_result = if !loader_overrides.ignore_user_config {
++    let managed_attachment = app_server_target.uses_remote_workspace()
++        && cli.resume_session_id.as_deref().is_some_and(|thread_id| {
++            std::env::var("CANTRIP_CODEX_ATTACH_THREAD_ID")
++                .ok()
++                .as_deref()
++                == Some(thread_id)
++        });
++    let screen_reader_result = if managed_attachment {
++        startup_draft
++            .run_until(screen_reader::initialize_read_only())
++            .await?
++    } else if !loader_overrides.ignore_user_config {
+         startup_draft
+             .run_until(screen_reader::initialize(
+                 &bootstrap_config.config_layer_stack,
+diff --git a/codex-rs/tui/src/thread_transcript.rs b/codex-rs/tui/src/thread_transcript.rs
+index b3aa239..8050fe1 100644
+--- a/codex-rs/tui/src/thread_transcript.rs
++++ b/codex-rs/tui/src/thread_transcript.rs
+@@ -305,14 +305,25 @@ fn item_to_cells(
+             }
+         }
+         ThreadItem::InterAgentCommunication {
+-            author, recipient, other_recipients, text, encrypted_content, trigger_turn, ..
++            author,
++            recipient,
++            other_recipients,
++            text,
++            encrypted_content,
++            trigger_turn,
++            ..
+         } => {
+             cells.push(Arc::new(PrefixedWrappedHistoryCell::new(
+                 agent_communication_text(
+-                    &author, &recipient, &other_recipients, text.as_deref(),
+-                    encrypted_content.is_some(), trigger_turn,
++                    &author,
++                    &recipient,
++                    &other_recipients,
++                    text.as_deref(),
++                    encrypted_content.is_some(),
++                    trigger_turn,
+                 ),
+-                "• ".dim(), "  ",
++                "• ".dim(),
++                "  ",
+             )));
+         }
+         ThreadItem::Reasoning {
+diff --git a/codex-rs/tui/src/thread_transcript/other_items.rs b/codex-rs/tui/src/thread_transcript/other_items.rs
+index 6811613..f5fae2d 100644
+--- a/codex-rs/tui/src/thread_transcript/other_items.rs
++++ b/codex-rs/tui/src/thread_transcript/other_items.rs
+@@ -132,6 +132,7 @@ pub(super) fn cells(item: ThreadItem, cwd: &AbsolutePathBuf) -> TranscriptCells
+             }
+         }
+         ThreadItem::UserMessage { .. }
++        | ThreadItem::InterAgentCommunication { .. }
+         | ThreadItem::AgentMessage { .. }
+         | ThreadItem::FunctionCallOutput { .. }
+         | ThreadItem::Plan { .. }
+diff --git a/codex-rs/tui/src/worktree_browser.rs b/codex-rs/tui/src/worktree_browser.rs
+index aa3664d..43be04f 100644
+--- a/codex-rs/tui/src/worktree_browser.rs
++++ b/codex-rs/tui/src/worktree_browser.rs
+@@ -64,6 +64,7 @@ pub(crate) fn fetch(
+                     .request_typed::<ThreadReadResponse>(ClientRequest::ThreadRead {
+                         request_id: RequestId::String(uuid::Uuid::new_v4().to_string()),
+                         params: ThreadReadParams {
++                            include_history_metadata: false,
+                             thread_id: id.to_string(),
+                             include_turns: false,
+                         },

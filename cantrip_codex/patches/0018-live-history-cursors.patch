@@ -1,8 +1,8 @@
 diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
-index e1cf336..b7a2f76 100644
+index 0e905e0..77c9205 100644
 --- a/codex-rs/app-server-protocol/src/protocol/common.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/common.rs
-@@ -2006,6 +2006,10 @@ server_notification_definitions! {
+@@ -2083,6 +2083,10 @@ server_notification_definitions! {
  #[derive(Serialize, Deserialize, Debug, Clone, TS)]
  #[serde(rename_all = "camelCase")]
  pub struct ServerNotificationEnvelope {
@@ -26,10 +26,10 @@ index de9a2ee..db01ef1 100644
          current_turn_id,
          current_turn_state: if live { "live" } else { "notLoaded" }.into(),
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-index edcf656..e8a70b2 100644
+index b9487a8..794449f 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-@@ -2193,6 +2193,9 @@ mod managed_config_tests {
+@@ -2237,6 +2237,9 @@ mod managed_config_tests {
  #[serde(rename_all = "camelCase")]
  #[ts(export_to = "v2/")]
  pub struct ThreadHistoryMetadata {
@@ -39,7 +39,7 @@ index edcf656..e8a70b2 100644
      pub version: u32,
      pub current_turn_id: Option<String>,
      /// `live` observes the engine; `notLoaded` has no live execution authority.
-@@ -2248,3 +2251,34 @@ pub struct ThreadHistoryResponseUsage {
+@@ -2292,3 +2295,34 @@ pub struct ThreadHistoryResponseUsage {
      pub root_turn_id: String,
      pub usage: TokenUsageBreakdown,
  }
@@ -75,10 +75,10 @@ index edcf656..e8a70b2 100644
 +    pub items: Vec<LiveHistoryItem>,
 +}
 diff --git a/codex-rs/app-server-transport/src/transport/mod.rs b/codex-rs/app-server-transport/src/transport/mod.rs
-index c8b0e57..7c0d642 100644
+index 232ce94..8ab51bf 100644
 --- a/codex-rs/app-server-transport/src/transport/mod.rs
 +++ b/codex-rs/app-server-transport/src/transport/mod.rs
-@@ -315,6 +315,7 @@ mod tests {
+@@ -324,6 +324,7 @@ mod tests {
      #[test]
      fn serialize_outgoing_message_preserves_wire_shape() {
          let message = OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
@@ -86,7 +86,7 @@ index c8b0e57..7c0d642 100644
              notification: ServerNotification::ConfigWarning(ConfigWarningNotification {
                  summary: "summary".to_string(),
                  details: None,
-@@ -542,6 +543,7 @@ mod tests {
+@@ -551,6 +552,7 @@ mod tests {
          writer_tx
              .send(QueuedOutgoingMessage::new(
                  OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
@@ -95,10 +95,10 @@ index c8b0e57..7c0d642 100644
                          summary: "queued".to_string(),
                          details: None,
 diff --git a/codex-rs/app-server-transport/src/transport/remote_control/client_tracker.rs b/codex-rs/app-server-transport/src/transport/remote_control/client_tracker.rs
-index 891a7f7..9508c5e 100644
+index 7c46632..4d08e97 100644
 --- a/codex-rs/app-server-transport/src/transport/remote_control/client_tracker.rs
 +++ b/codex-rs/app-server-transport/src/transport/remote_control/client_tracker.rs
-@@ -590,6 +590,7 @@ mod tests {
+@@ -594,6 +594,7 @@ mod tests {
          writer
              .send(QueuedOutgoingMessage::new(
                  OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
@@ -119,10 +119,10 @@ index 3b2406b..62f0721 100644
                          summary: "x".repeat(REMOTE_CONTROL_SEGMENT_MAX_BYTES),
                          details: None,
 diff --git a/codex-rs/app-server-transport/src/transport/remote_control/tests.rs b/codex-rs/app-server-transport/src/transport/remote_control/tests.rs
-index 0114a0b..aea1f9a 100644
+index 2337b2a..d4fb7d3 100644
 --- a/codex-rs/app-server-transport/src/transport/remote_control/tests.rs
 +++ b/codex-rs/app-server-transport/src/transport/remote_control/tests.rs
-@@ -743,6 +743,7 @@ async fn remote_control_transport_manages_virtual_clients_and_routes_messages()
+@@ -1005,6 +1005,7 @@ async fn remote_control_transport_manages_virtual_clients_and_routes_messages()
      writer
          .send(QueuedOutgoingMessage::new(
              OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
@@ -130,7 +130,7 @@ index 0114a0b..aea1f9a 100644
                  notification: ServerNotification::ConfigWarning(ConfigWarningNotification {
                      summary: "test".to_string(),
                      details: None,
-@@ -1353,6 +1354,7 @@ async fn remote_control_transport_clears_outgoing_buffer_when_backend_acks() {
+@@ -1615,6 +1616,7 @@ async fn remote_control_transport_clears_outgoing_buffer_when_backend_acks() {
      writer
          .send(QueuedOutgoingMessage::new(
              OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
@@ -138,7 +138,7 @@ index 0114a0b..aea1f9a 100644
                  notification: ServerNotification::ConfigWarning(ConfigWarningNotification {
                      summary: "stale".to_string(),
                      details: None,
-@@ -1655,6 +1657,7 @@ async fn remote_control_http_mode_enrolls_before_connecting() {
+@@ -1917,6 +1919,7 @@ async fn remote_control_http_mode_enrolls_before_connecting() {
      writer
          .send(QueuedOutgoingMessage::new(
              OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
@@ -147,10 +147,10 @@ index 0114a0b..aea1f9a 100644
                      summary: "backend".to_string(),
                      details: None,
 diff --git a/codex-rs/app-server-transport/src/transport/remote_control/websocket.rs b/codex-rs/app-server-transport/src/transport/remote_control/websocket.rs
-index 6803b99..4d1a246 100644
+index 588756d..99db0dd 100644
 --- a/codex-rs/app-server-transport/src/transport/remote_control/websocket.rs
 +++ b/codex-rs/app-server-transport/src/transport/remote_control/websocket.rs
-@@ -3379,6 +3379,7 @@ mod tests {
+@@ -3421,6 +3421,7 @@ mod tests {
              event: ServerEvent::ServerMessage {
                  message: Box::new(OutgoingMessage::AppServerNotification(
                      ServerNotificationEnvelope {
@@ -159,17 +159,17 @@ index 6803b99..4d1a246 100644
                              ConfigWarningNotification {
                                  summary: summary.to_string(),
 diff --git a/codex-rs/app-server/src/lib.rs b/codex-rs/app-server/src/lib.rs
-index 0b4fe17..8f11f58 100644
+index d1a622c..b9cd28c 100644
 --- a/codex-rs/app-server/src/lib.rs
 +++ b/codex-rs/app-server/src/lib.rs
-@@ -116,6 +116,7 @@ mod fs_watch;
- mod fuzzy_file_search;
+@@ -122,6 +122,7 @@ mod gateway_oauth_notifications;
  mod image_url;
  pub mod in_process;
+ mod log_write_warning;
 +mod live_history;
  mod mcp_refresh;
  mod message_processor;
- mod models;
+ mod model_catalog;
 diff --git a/codex-rs/app-server/src/live_history.rs b/codex-rs/app-server/src/live_history.rs
 new file mode 100644
 index 0000000..6b25969
@@ -500,10 +500,10 @@ index 0000000..6b25969
 +    }
 +}
 diff --git a/codex-rs/app-server/src/outgoing_message.rs b/codex-rs/app-server/src/outgoing_message.rs
-index ecb758f..0e47acb 100644
+index b59d2b8..f398737 100644
 --- a/codex-rs/app-server/src/outgoing_message.rs
 +++ b/codex-rs/app-server/src/outgoing_message.rs
-@@ -112,6 +112,7 @@ pub(crate) struct OutgoingMessageSender {
+@@ -139,6 +139,7 @@ pub(crate) struct OutgoingMessageSender {
          >,
      >,
      next_server_request_id: AtomicI64,
@@ -511,7 +511,7 @@ index ecb758f..0e47acb 100644
      sender: mpsc::Sender<OutgoingEnvelope>,
      request_id_to_callback: Mutex<HashMap<RequestId, PendingCallbackEntry>>,
      /// Incoming requests that are still waiting on a final response or error.
-@@ -180,6 +181,11 @@ impl ThreadScopedOutgoingMessageSender {
+@@ -210,6 +211,11 @@ impl ThreadScopedOutgoingMessageSender {
              .analytics_events_client
              .track_notification(&notification);
          if self.connection_ids.is_empty() {
@@ -523,7 +523,7 @@ index ecb758f..0e47acb 100644
              return;
          }
          self.outgoing
-@@ -225,6 +231,22 @@ impl ThreadScopedOutgoingMessageSender {
+@@ -247,6 +253,22 @@ impl ThreadScopedOutgoingMessageSender {
  }
  
  impl OutgoingMessageSender {
@@ -546,15 +546,15 @@ index ecb758f..0e47acb 100644
      pub(crate) fn new(
          sender: mpsc::Sender<OutgoingEnvelope>,
          analytics_events_client: AnalyticsEventsClient,
-@@ -232,6 +254,7 @@ impl OutgoingMessageSender {
-         Self {
+@@ -256,6 +278,7 @@ impl OutgoingMessageSender {
+             verification_connections: Mutex::new(HashSet::new()),
              managed_execution_gates: std::sync::Mutex::new(HashMap::new()),
              next_server_request_id: AtomicI64::new(0),
 +            live_history: Mutex::new(Default::default()),
              sender,
              request_id_to_callback: Mutex::new(HashMap::new()),
              request_contexts: Mutex::new(HashMap::new()),
-@@ -643,7 +666,11 @@ impl OutgoingMessageSender {
+@@ -807,7 +830,11 @@ impl OutgoingMessageSender {
              targeted_connections = connection_ids.len(),
              "app-server event: {notification}"
          );
@@ -567,7 +567,7 @@ index ecb758f..0e47acb 100644
          if connection_ids.is_empty() {
              if let Err(err) = self
                  .sender
-@@ -677,7 +704,11 @@ impl OutgoingMessageSender {
+@@ -841,7 +868,11 @@ impl OutgoingMessageSender {
          notification: ServerNotification,
      ) -> bool {
          tracing::trace!("app-server event: {notification}");
@@ -580,7 +580,7 @@ index ecb758f..0e47acb 100644
          let (write_complete_tx, write_complete_rx) = oneshot::channel();
          if let Err(err) = self
              .sender
-@@ -773,6 +804,7 @@ fn now_unix_timestamp_ms() -> u64 {
+@@ -937,6 +968,7 @@ fn now_unix_timestamp_ms() -> u64 {
  
  fn timestamped_server_notification(notification: ServerNotification) -> OutgoingMessage {
      OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
@@ -588,7 +588,7 @@ index ecb758f..0e47acb 100644
          notification,
          emitted_at_ms: Some(now_unix_timestamp_ms().try_into().unwrap_or_default()),
      })
-@@ -823,6 +855,7 @@ mod tests {
+@@ -995,6 +1027,7 @@ mod tests {
  
          let jsonrpc_notification =
              OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
@@ -597,10 +597,10 @@ index ecb758f..0e47acb 100644
                  emitted_at_ms: Some(1_234),
              });
 diff --git a/codex-rs/app-server/src/request_processors/thread_lifecycle.rs b/codex-rs/app-server/src/request_processors/thread_lifecycle.rs
-index 8354a4e..75baf45 100644
+index b0fa49b..18d402e 100644
 --- a/codex-rs/app-server/src/request_processors/thread_lifecycle.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_lifecycle.rs
-@@ -322,6 +322,14 @@ pub(super) async fn ensure_listener_task_running(
+@@ -317,6 +317,14 @@ pub(super) async fn ensure_listener_task_running(
                          );
                      }
  
@@ -615,7 +615,7 @@ index 8354a4e..75baf45 100644
                      // Track the event before emitting any typed translations
                      // so thread-local state such as raw event opt-in stays
                      // synchronized with the conversation.
-@@ -406,6 +414,9 @@ pub(super) async fn ensure_listener_task_running(
+@@ -399,6 +407,9 @@ pub(super) async fn ensure_listener_task_running(
          let mut thread_state = thread_state.lock().await;
          if thread_state.listener_generation == listener_generation {
              thread_state_manager.unregister_listener_command_tx(conversation_id);
@@ -626,10 +626,10 @@ index 8354a4e..75baf45 100644
          }
      });
 diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
-index 5e69683..a4808c3 100644
+index 1e5956b..c704bef 100644
 --- a/codex-rs/app-server/src/request_processors/thread_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
-@@ -2905,12 +2905,16 @@ impl ThreadRequestProcessor {
+@@ -2939,12 +2939,16 @@ impl ThreadRequestProcessor {
              } else {
                  None
              };

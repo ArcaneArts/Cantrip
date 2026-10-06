@@ -98,6 +98,7 @@ async fn get_account_rate_limits_requires_chatgpt_auth() -> Result<()> {
 }
 
 #[test_case("enterprise_cbp_automation", AccountPlanType::EnterpriseCbpAutomation; "enterprise_automation")]
+#[test_case("promax", AccountPlanType::ProMax; "pro_max")]
 #[test_case("edu_plus", AccountPlanType::EduPlus; "edu_plus")]
 #[test_case("edu_pro", AccountPlanType::EduPro; "edu_pro")]
 #[tokio::test]
@@ -249,11 +250,13 @@ async fn get_account_rate_limits_returns_snapshot(
         timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(request_id)).await??;
 
     let expected = GetAccountRateLimitsResponse {
+        ordinary_usage_allowed: Some(true),
         account_id: Some("account-123".to_string()),
         rate_limit_upsell: Some(banner),
         rate_limits: RateLimitSnapshot {
             limit_id: Some("codex".to_string()),
             limit_name: None,
+            normal_model_slug: None,
             primary: Some(RateLimitWindow {
                 used_percent: 42,
                 window_duration_mins: Some(60),
@@ -282,6 +285,7 @@ async fn get_account_rate_limits_returns_snapshot(
                     RateLimitSnapshot {
                         limit_id: Some("codex".to_string()),
                         limit_name: None,
+                        normal_model_slug: None,
                         primary: Some(RateLimitWindow {
                             used_percent: 42,
                             window_duration_mins: Some(60),
@@ -311,6 +315,7 @@ async fn get_account_rate_limits_returns_snapshot(
                     RateLimitSnapshot {
                         limit_id: Some("codex_other".to_string()),
                         limit_name: Some("codex_other".to_string()),
+                        normal_model_slug: None,
                         primary: Some(RateLimitWindow {
                             used_percent: 88,
                             window_duration_mins: Some(30),
@@ -427,6 +432,7 @@ async fn get_account_rate_limits_filters_banner_by_identity(
         "primary": {"usedPercent": 42, "windowDurationMins": 60, "resetsAt": 2000000000}
     });
     let expected: GetAccountRateLimitsResponse = serde_json::from_value(json!({
+        "ordinaryUsageAllowed": if permitted { Some(true) } else { None },
         "accountId": account, "rateLimitUpsell": if permitted { Some(banner) } else { None },
         "rateLimits": snapshot, "rateLimitsByLimitId": {"codex": snapshot},
         "rateLimitResetCredits": {"availableCount": 0, "credits": []}

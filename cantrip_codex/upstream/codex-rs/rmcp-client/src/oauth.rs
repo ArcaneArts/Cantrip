@@ -16,11 +16,14 @@
 //!
 //! If the keyring is not available or fails, we fall back to CODEX_HOME/.credentials.json which is consistent with other coding CLI agents.
 
+mod credential_store;
 mod ema_identity;
+mod enterprise_generation;
 mod issuer_binding;
 mod refresh_lock;
 mod refresh_transaction;
 mod resolved_store;
+mod runtime;
 mod store_lock;
 
 #[cfg(test)]
@@ -65,6 +68,7 @@ use self::store_lock::OAuthStore;
 use self::store_lock::OAuthStoreLock;
 use self::store_lock::OAuthStoreLockFailure;
 
+use codex_config::McpServerOAuthConfig;
 use codex_keyring_store::DefaultKeyringStore;
 use codex_keyring_store::KeyringStore;
 use rmcp::transport::auth::AuthorizationManager;
@@ -72,7 +76,10 @@ use tokio::sync::Mutex;
 
 use codex_utils_home_dir::find_codex_home;
 
+pub(crate) use self::credential_store::OAuthCredentialStore;
 pub(crate) use self::ema_identity::stored_oidc_identity;
+pub(crate) use self::enterprise_generation::EnterpriseOAuthGeneration;
+pub(crate) use self::enterprise_generation::EnterpriseOAuthGenerationFile;
 pub(crate) use self::issuer_binding::validate_authorization_server_endpoints;
 pub(crate) use self::issuer_binding::validate_refresh_token_issuer;
 pub(crate) use self::refresh_lock::RefreshCredentialLock;
@@ -81,6 +88,7 @@ pub(crate) use self::resolved_store::ResolvedOAuthCredentialStore;
 pub(crate) use self::resolved_store::ResolvedOAuthTokens;
 pub(crate) use self::resolved_store::resolve_oauth_tokens_from_store_policy;
 use self::resolved_store::try_resolve_oauth_tokens_from_store_policy;
+pub(crate) use self::runtime::OAuthRuntime;
 
 const KEYRING_SERVICE: &str = "Codex MCP Credentials";
 const MCP_OAUTH_SECRET_PREFIX: &str = "MCP_OAUTH";
@@ -436,7 +444,19 @@ enum OAuthKeyringLoadError {
     Backend(#[from] anyhow::Error),
 }
 
-pub fn save_oauth_tokens(
+pub async fn save_oauth_tokens(
+    server_name: &str,
+    tokens: &StoredOAuthTokens,
+    store_mode: OAuthCredentialsStoreMode,
+    keyring_backend_kind: AuthKeyringBackendKind,
+) -> Result<()> {
+    let lock = RefreshCredentialLock::acquire_for_server(server_name, &tokens.url).await?;
+    save_oauth_tokens_with_lock_held(&lock, server_name, tokens, store_mode, keyring_backend_kind)
+}
+
+/// Save while retaining the matching credential lock acquired by the caller.
+pub(crate) fn save_oauth_tokens_with_lock_held(
+    _lock: &RefreshCredentialLock,
     server_name: &str,
     tokens: &StoredOAuthTokens,
     store_mode: OAuthCredentialsStoreMode,
@@ -581,7 +601,19 @@ fn save_oauth_tokens_with_keyring_with_fallback_to_file<K: KeyringStore + Clone 
     }
 }
 
-pub fn delete_oauth_tokens(
+pub async fn delete_oauth_tokens(
+    server_name: &str,
+    url: &str,
+    store_mode: OAuthCredentialsStoreMode,
+    keyring_backend_kind: AuthKeyringBackendKind,
+) -> Result<bool> {
+    let lock = RefreshCredentialLock::acquire_for_server(server_name, url).await?;
+    delete_oauth_tokens_with_lock_held(&lock, server_name, url, store_mode, keyring_backend_kind)
+}
+
+/// Delete while retaining the matching credential lock acquired by the caller.
+pub(crate) fn delete_oauth_tokens_with_lock_held(
+    _lock: &RefreshCredentialLock,
     server_name: &str,
     url: &str,
     store_mode: OAuthCredentialsStoreMode,
@@ -686,6 +718,7 @@ struct OAuthPersistorInner {
     url: String,
     authorization_manager: Arc<Mutex<AuthorizationManager>>,
     credential_store: ResolvedOAuthCredentialStore,
+    oauth_config: Option<McpServerOAuthConfig>,
     last_credentials: Mutex<Option<StoredOAuthTokens>>,
 }
 
@@ -696,6 +729,7 @@ impl OAuthPersistor {
         authorization_manager: Arc<Mutex<AuthorizationManager>>,
         credential_store: ResolvedOAuthCredentialStore,
         initial_credentials: Option<StoredOAuthTokens>,
+        oauth_config: Option<McpServerOAuthConfig>,
     ) -> Self {
         Self {
             inner: Arc::new(OAuthPersistorInner {
@@ -704,6 +738,7 @@ impl OAuthPersistor {
                 authorization_manager,
                 credential_store,
                 last_credentials: Mutex::new(initial_credentials),
+                oauth_config,
             }),
         }
     }
@@ -1121,6 +1156,8 @@ mod tests {
     use keyring::Error as KeyringError;
     use pretty_assertions::assert_eq;
     use std::sync::Arc;
+    #[path = "credential_store_tests.rs"]
+    mod credential_store_tests;
     #[path = "persistor_tests.rs"]
     mod persistor_tests;
 
@@ -1493,7 +1530,7 @@ mod tests {
         let env = TempCodexHome::new();
         let store = MockKeyringStore::default();
         store.set_error(
-            &compute_keyring_account(env.path()),
+            &compute_keyring_account(env.path(), LocalSecretsNamespace::McpOAuth),
             KeyringError::Invalid("error".into(), "save".into()),
         );
         let tokens = sample_tokens();

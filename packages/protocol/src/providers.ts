@@ -39,6 +39,35 @@ export const providerWeeklyUsageSchema = z.object({
   resetsAt: z.number().int().nullable(),
 });
 
+export const providerCreditsSnapshotSchema = z.object({
+  hasCredits: z.boolean(),
+  unlimited: z.boolean(),
+  balance: z.string().max(200).nullable(),
+});
+
+export type ProviderCreditsSnapshot = z.infer<
+  typeof providerCreditsSnapshotSchema
+>;
+
+/** Codex reports a decimal string; absent or malformed balances are unknown. */
+export function providerCreditBalance(
+  credits: ProviderCreditsSnapshot | null | undefined,
+): number | null {
+  const balance = credits?.balance?.trim();
+  if (!balance || !/^\d+(?:\.\d+)?$/u.test(balance)) return null;
+  const amount = Number(balance);
+  return Number.isFinite(amount) ? amount : null;
+}
+
+export function shouldUseChatGptCredits(
+  credits: ProviderCreditsSnapshot | null | undefined,
+): boolean {
+  return Boolean(
+    credits?.hasCredits &&
+    (credits.unlimited || (providerCreditBalance(credits) ?? 0) > 100),
+  );
+}
+
 export const codexAuthStatusSchema = z.object({
   authenticated: z.boolean(),
   authMode: z.enum(["chatgpt", "grok", "apiKey", "other"]).nullable(),
@@ -408,6 +437,8 @@ export const modelProviderAccountSummarySchema = z.object({
   position: z.number().int().nonnegative(),
   enabled: z.boolean(),
   credentialState: providerCredentialStateSchema.default("signed-out"),
+  credits: providerCreditsSnapshotSchema.nullable().optional(),
+  creditsObservedAt: z.string().datetime().nullable().optional(),
   weeklyUsageUsedPercent: z.number().min(0).max(100).nullable().default(null),
   weeklyUsageResetsAt: z.string().datetime().nullable().default(null),
   authLastSyncedAt: z.string().datetime().nullable().default(null),

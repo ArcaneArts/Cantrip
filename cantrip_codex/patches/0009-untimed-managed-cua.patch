@@ -1,23 +1,27 @@
---- a/codex-rs/codex-mcp/src/connection_manager.rs
-+++ b/codex-rs/codex-mcp/src/connection_manager.rs
-@@ -945,6 +945,9 @@
-         };
- 
-         let effective_timeout = match (view.tool_timeout, requested_timeout) {
-+            // Cantrip managed CUA: zero opts into the existing untimed client
-+            // path. Execution cancellation still drops the in-flight call.
-+            (Some(server_timeout), _) if server_timeout.is_zero() => None,
-             (Some(server_timeout), Some(requested_timeout)) => {
-                 Some(server_timeout.min(requested_timeout))
-             }
+diff --git a/codex-rs/codex-mcp/src/binding.rs b/codex-rs/codex-mcp/src/binding.rs
+index f0a95b9..3906413 100644
 --- a/codex-rs/codex-mcp/src/binding.rs
 +++ b/codex-rs/codex-mcp/src/binding.rs
-@@ -318,6 +318,9 @@
+@@ -311,6 +311,9 @@ impl PreparedMcpCall {
          Fut: Future<Output = Result<(Option<JsonValue>, Option<JsonValue>)>>,
      {
          let effective_timeout = match (self.client.tool_timeout, requested_timeout) {
 +            // Model-initiated calls use the frozen binding rather than the
 +            // direct RPC path. Preserve the same managed untimed convention.
++            (Some(server_timeout), _) if server_timeout.is_zero() => None,
+             (Some(server_timeout), Some(requested_timeout)) => {
+                 Some(server_timeout.min(requested_timeout))
+             }
+diff --git a/codex-rs/codex-mcp/src/connection_manager.rs b/codex-rs/codex-mcp/src/connection_manager.rs
+index ad4fbf4..c2ce6f7 100644
+--- a/codex-rs/codex-mcp/src/connection_manager.rs
++++ b/codex-rs/codex-mcp/src/connection_manager.rs
+@@ -1012,6 +1012,9 @@ impl McpConnectionSet {
+         };
+ 
+         let effective_timeout = match (view.tool_timeout, requested_timeout) {
++            // Cantrip managed CUA: zero opts into the existing untimed client
++            // path. Execution cancellation still drops the in-flight call.
 +            (Some(server_timeout), _) if server_timeout.is_zero() => None,
              (Some(server_timeout), Some(requested_timeout)) => {
                  Some(server_timeout.min(requested_timeout))

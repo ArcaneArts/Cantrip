@@ -1,4 +1,5 @@
 use super::*;
+use crate::safety::PatchSandboxRoute;
 use crate::session::tests::make_session_and_context;
 use crate::session::tests::update_selected_settings_for_test;
 use codex_protocol::models::PermissionProfile;
@@ -58,9 +59,18 @@ async fn prepare_apply_patch_uses_action_policy_before_turn_policy() {
         .clone();
     environment.config_mut().permission_profile =
         PermissionProfileSnapshot::legacy(permission_profile);
+    let sandbox = environment.sandbox_context(/*additional_permissions*/ None);
+    let context = sandbox.policy_context();
 
-    let prepared = prepare_apply_patch(&step, &environment, &file_system_policy, action)
-        .expect("issuing action policy should request approval");
+    let prepared = prepare_apply_patch(
+        &step,
+        &environment,
+        &PatchSandboxRoute::Platform(codex_protocol::config_types::WindowsSandboxLevel::Disabled)
+            .prepare_matching(&file_system_policy, &context)
+            .expect("prepare patch matching"),
+        action,
+    )
+    .expect("issuing action policy should request approval");
 
     assert!(!prepared.auto_approved);
     assert!(matches!(

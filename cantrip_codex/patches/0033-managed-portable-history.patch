@@ -1,7 +1,80 @@
+diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
+index 5488981..4bf7bc8 100644
+--- a/codex-rs/app-server-protocol/src/protocol/common.rs
++++ b/codex-rs/app-server-protocol/src/protocol/common.rs
+@@ -902,6 +902,16 @@ client_request_definitions! {
+         serialization: None,
+         response: v2::ThreadItemsListResponse,
+     },
++    ThreadManagedHistoryExport => "thread/managedHistory/export" {
++        params: v2::ThreadManagedHistoryExportParams,
++        serialization: thread_id(params.thread_id),
++        response: v2::ThreadManagedHistoryExportResponse,
++    },
++    ThreadManagedHistoryImport => "thread/managedHistory/import" {
++        params: v2::ThreadManagedHistoryImportParams,
++        serialization: thread_id(params.thread_id),
++        response: v2::ThreadManagedHistoryImportResponse,
++    },
+     /// Reset rejected model context without removing conversation history or starting work.
+     ThreadManagedContextReset => "thread/managedContext/reset" {
+         params: v2::ThreadManagedContextResetParams,
+diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
+index 223f0b2..f02c602 100644
+--- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
++++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
+@@ -2519,3 +2519,46 @@ pub struct ThreadManagedContextResetParams {
+ #[serde(rename_all = "camelCase")]
+ #[ts(export_to = "v2/")]
+ pub struct ThreadManagedContextResetResponse {}
++
++/// Worker-private portable history capture. No model turn is started.
++#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
++#[serde(rename_all = "camelCase", deny_unknown_fields)]
++#[ts(export_to = "v2/")]
++pub struct ThreadManagedHistoryExportParams {
++    pub thread_id: String,
++    pub transfer_id: String,
++    #[serde(deserialize_with = "Option::deserialize")]
++    #[schemars(
++        required,
++        schema_with = "crate::protocol::serde_helpers::nullable_string_schema"
++    )]
++    #[ts(type = "string | null")]
++    pub expected_last_turn_id: Option<String>,
++}
++
++/// Import an owned export into an unused destination conversation. The caller
++/// must coordinate account credentials and native ownership before resuming it.
++#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
++#[serde(rename_all = "camelCase", deny_unknown_fields)]
++#[ts(export_to = "v2/")]
++pub struct ThreadManagedHistoryImportParams {
++    pub thread_id: String,
++    pub transfer_id: String,
++    pub path: String,
++}
++
++#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
++#[serde(rename_all = "camelCase")]
++#[ts(export_to = "v2/")]
++pub struct ThreadManagedHistoryExportResponse {
++    pub thread_id: String,
++    pub path: String,
++}
++
++#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
++#[serde(rename_all = "camelCase")]
++#[ts(export_to = "v2/")]
++pub struct ThreadManagedHistoryImportResponse {
++    pub thread_id: String,
++    pub path: String,
++}
 diff --git a/codex-rs/app-server/src/message_processor.rs b/codex-rs/app-server/src/message_processor.rs
+index 4452856..5601448 100644
 --- a/codex-rs/app-server/src/message_processor.rs
 +++ b/codex-rs/app-server/src/message_processor.rs
-@@ -1513,6 +1513,16 @@
+@@ -1672,6 +1672,16 @@ impl MessageProcessor {
                      )
                      .await
              }
@@ -18,8 +91,19 @@ diff --git a/codex-rs/app-server/src/message_processor.rs b/codex-rs/app-server/
              ClientRequest::ThreadManagedContextReset { params, .. } => {
                  self.turn_processor
                      .thread_managed_context_reset(&request_id, params)
+diff --git a/codex-rs/app-server/src/request_processors.rs b/codex-rs/app-server/src/request_processors.rs
+index f07b149..95c8276 100644
+--- a/codex-rs/app-server/src/request_processors.rs
++++ b/codex-rs/app-server/src/request_processors.rs
+@@ -1,4 +1,5 @@
+ mod managed_configuration;
++mod managed_history_transfer;
+ 
+ use crate::bespoke_event_handling::apply_bespoke_event_handling;
+ use crate::command_exec::CommandExecManager;
 diff --git a/codex-rs/app-server/src/request_processors/managed_history_transfer.rs b/codex-rs/app-server/src/request_processors/managed_history_transfer.rs
 new file mode 100644
+index 0000000..3f9d1a1
 --- /dev/null
 +++ b/codex-rs/app-server/src/request_processors/managed_history_transfer.rs
 @@ -0,0 +1,74 @@
@@ -98,9 +182,10 @@ new file mode 100644
 +    tokio::task::spawn_blocking(move || Ok(serde_json::from_reader(fs::File::open(path)?)?)).await?
 +}
 diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
+index ea2cb8b..20c4bba 100644
 --- a/codex-rs/app-server/src/request_processors/thread_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
-@@ -463,6 +463,39 @@
+@@ -484,6 +484,39 @@ enum RunningThreadResumeResult {
  }
  
  impl ThreadRequestProcessor {
@@ -141,9 +226,10 @@ diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/co
      pub(crate) fn new(
          auth_manager: Arc<AuthManager>,
 diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/codex-rs/app-server/src/request_processors/turn_processor.rs
+index 41d57bb..5dc0ea6 100644
 --- a/codex-rs/app-server/src/request_processors/turn_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/turn_processor.rs
-@@ -186,6 +186,41 @@
+@@ -194,6 +194,41 @@ impl TurnRequestProcessor {
          .map(|response| Some(response.into()))
      }
  
@@ -185,7 +271,7 @@ diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/code
      pub(crate) async fn thread_managed_context_reset(
          &self,
          request_id: &ConnectionRequestId,
-@@ -201,7 +236,9 @@
+@@ -209,7 +244,9 @@ impl TurnRequestProcessor {
                  CodexErrorDetails::InvalidRequest(message) => invalid_request(message.clone()),
                  _ => internal_error(format!("failed to reset managed model context: {err}")),
              })?;
@@ -196,90 +282,12 @@ diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/code
      }
  
      pub(crate) async fn thread_inject_items(
-diff --git a/codex-rs/app-server/src/request_processors.rs b/codex-rs/app-server/src/request_processors.rs
---- a/codex-rs/app-server/src/request_processors.rs
-+++ b/codex-rs/app-server/src/request_processors.rs
-@@ -1,4 +1,5 @@
- mod managed_configuration;
-+mod managed_history_transfer;
- 
- use crate::bespoke_event_handling::apply_bespoke_event_handling;
- use crate::command_exec::CommandExecManager;
-diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
---- a/codex-rs/app-server-protocol/src/protocol/common.rs
-+++ b/codex-rs/app-server-protocol/src/protocol/common.rs
-@@ -841,6 +841,16 @@
-         // Explicitly concurrent: this primarily reads append-only rollout storage.
-         serialization: None,
-         response: v2::ThreadItemsListResponse,
-+    },
-+    ThreadManagedHistoryExport => "thread/managedHistory/export" {
-+        params: v2::ThreadManagedHistoryExportParams,
-+        serialization: thread_id(params.thread_id),
-+        response: v2::ThreadManagedHistoryExportResponse,
-+    },
-+    ThreadManagedHistoryImport => "thread/managedHistory/import" {
-+        params: v2::ThreadManagedHistoryImportParams,
-+        serialization: thread_id(params.thread_id),
-+        response: v2::ThreadManagedHistoryImportResponse,
-     },
-     /// Reset rejected model context without removing conversation history or starting work.
-     ThreadManagedContextReset => "thread/managedContext/reset" {
-diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
---- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-+++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-@@ -2475,3 +2475,46 @@
- #[serde(rename_all = "camelCase")]
- #[ts(export_to = "v2/")]
- pub struct ThreadManagedContextResetResponse {}
-+
-+/// Worker-private portable history capture. No model turn is started.
-+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
-+#[serde(rename_all = "camelCase", deny_unknown_fields)]
-+#[ts(export_to = "v2/")]
-+pub struct ThreadManagedHistoryExportParams {
-+    pub thread_id: String,
-+    pub transfer_id: String,
-+    #[serde(deserialize_with = "Option::deserialize")]
-+    #[schemars(
-+        required,
-+        schema_with = "crate::protocol::serde_helpers::nullable_string_schema"
-+    )]
-+    #[ts(type = "string | null")]
-+    pub expected_last_turn_id: Option<String>,
-+}
-+
-+/// Import an owned export into an unused destination conversation. The caller
-+/// must coordinate account credentials and native ownership before resuming it.
-+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
-+#[serde(rename_all = "camelCase", deny_unknown_fields)]
-+#[ts(export_to = "v2/")]
-+pub struct ThreadManagedHistoryImportParams {
-+    pub thread_id: String,
-+    pub transfer_id: String,
-+    pub path: String,
-+}
-+
-+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
-+#[serde(rename_all = "camelCase")]
-+#[ts(export_to = "v2/")]
-+pub struct ThreadManagedHistoryExportResponse {
-+    pub thread_id: String,
-+    pub path: String,
-+}
-+
-+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
-+#[serde(rename_all = "camelCase")]
-+#[ts(export_to = "v2/")]
-+pub struct ThreadManagedHistoryImportResponse {
-+    pub thread_id: String,
-+    pub path: String,
-+}
 diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
+index e5a82ff..95940fa 100644
 --- a/codex-rs/core/src/codex_thread.rs
 +++ b/codex-rs/core/src/codex_thread.rs
-@@ -796,6 +796,15 @@
-             .await;
+@@ -931,6 +931,15 @@ impl CodexThread {
+         Ok(())
      }
  
 +    pub async fn export_managed_history(
@@ -295,6 +303,7 @@ diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.
      pub async fn reset_managed_model_context(
          &self,
 diff --git a/codex-rs/core/src/session/managed_context.rs b/codex-rs/core/src/session/managed_context.rs
+index be6cf38..02fe92e 100644
 --- a/codex-rs/core/src/session/managed_context.rs
 +++ b/codex-rs/core/src/session/managed_context.rs
 @@ -3,6 +3,37 @@
@@ -336,9 +345,10 @@ diff --git a/codex-rs/core/src/session/managed_context.rs b/codex-rs/core/src/se
          &self,
          expected_last_turn_id: Option<&str>,
 diff --git a/codex-rs/state/src/model/queued_item.rs b/codex-rs/state/src/model/queued_item.rs
+index ae7ec0c..221b4c8 100644
 --- a/codex-rs/state/src/model/queued_item.rs
 +++ b/codex-rs/state/src/model/queued_item.rs
-@@ -4,7 +4,7 @@
+@@ -4,7 +4,7 @@ use sqlx::Row;
  use sqlx::sqlite::SqliteRow;
  
  /// One durable, ordered user submission for a thread.
@@ -348,26 +358,26 @@ diff --git a/codex-rs/state/src/model/queued_item.rs b/codex-rs/state/src/model/
      pub id: String,
      pub thread_id: ThreadId,
 diff --git a/codex-rs/state/src/model/thread_metadata.rs b/codex-rs/state/src/model/thread_metadata.rs
+index a1b900a..71edf80 100644
 --- a/codex-rs/state/src/model/thread_metadata.rs
 +++ b/codex-rs/state/src/model/thread_metadata.rs
-@@ -121,7 +121,7 @@
+@@ -121,7 +121,7 @@ pub struct ExtractionOutcome {
  }
  
  /// Canonical persisted thread metadata.
 -#[derive(Debug, Clone, PartialEq, Eq)]
 +#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
  pub struct ThreadMetadata {
-     /// The thread identifier.
-     pub id: ThreadId,
+     /// Originator recorded at creation, if available.
+     pub originator: Option<String>,
 diff --git a/codex-rs/state/src/runtime/queued_items.rs b/codex-rs/state/src/runtime/queued_items.rs
+index d9d8139..0cdc4e0 100644
 --- a/codex-rs/state/src/runtime/queued_items.rs
 +++ b/codex-rs/state/src/runtime/queued_items.rs
-@@ -72,6 +72,42 @@
-         rows.into_iter()
-             .map(|(thread_id, revision)| Ok((ThreadId::try_from(thread_id)?, revision)))
+@@ -74,6 +74,42 @@ impl SqliteQueueStore {
              .collect()
-+    }
-+
+     }
+ 
 +    /// Restore the exact ordered queue for a new migration destination. An exact
 +    /// retry is harmless; a pre-existing different queue is never replaced.
 +    pub async fn restore_into_empty(
@@ -402,13 +412,16 @@ diff --git a/codex-rs/state/src/runtime/queued_items.rs b/codex-rs/state/src/run
 +        }
 +        transaction.commit().await?;
 +        Ok(())
-     }
- 
++    }
++
      pub async fn enqueue(
+         &self,
+         thread_id: ThreadId,
 diff --git a/codex-rs/thread-store/src/lib.rs b/codex-rs/thread-store/src/lib.rs
+index 037c80e..bb4ca5c 100644
 --- a/codex-rs/thread-store/src/lib.rs
 +++ b/codex-rs/thread-store/src/lib.rs
-@@ -8,6 +8,7 @@
+@@ -8,6 +8,7 @@ mod error;
  mod in_memory;
  mod live_thread;
  mod local;
@@ -416,7 +429,7 @@ diff --git a/codex-rs/thread-store/src/lib.rs b/codex-rs/thread-store/src/lib.rs
  mod projects;
  mod queue_store;
  mod store;
-@@ -33,6 +34,8 @@
+@@ -39,6 +40,8 @@ pub use local::RolloutMigrationOutcome;
  pub use local::RolloutMigrationProgress;
  pub use local::RolloutMigrationReport;
  pub use local::RolloutMigrationStatus;
@@ -426,9 +439,10 @@ diff --git a/codex-rs/thread-store/src/lib.rs b/codex-rs/thread-store/src/lib.rs
  pub use projects::CreatedProject;
  pub use projects::DeletedProject;
 diff --git a/codex-rs/thread-store/src/live_thread.rs b/codex-rs/thread-store/src/live_thread.rs
+index bad5f8f..91ea91b 100644
 --- a/codex-rs/thread-store/src/live_thread.rs
 +++ b/codex-rs/thread-store/src/live_thread.rs
-@@ -333,6 +333,15 @@
+@@ -373,6 +373,15 @@ impl LiveThread {
          }))
      }
  
@@ -445,9 +459,10 @@ diff --git a/codex-rs/thread-store/src/live_thread.rs b/codex-rs/thread-store/sr
          &self,
          include_archived: bool,
 diff --git a/codex-rs/thread-store/src/local/mod.rs b/codex-rs/thread-store/src/local/mod.rs
+index 3b15752..8e79ae6 100644
 --- a/codex-rs/thread-store/src/local/mod.rs
 +++ b/codex-rs/thread-store/src/local/mod.rs
-@@ -8,6 +8,8 @@
+@@ -8,6 +8,8 @@ mod model_context;
  mod move_thread_to_section;
  mod paginated_fork;
  mod pending_thread_metadata;
@@ -456,7 +471,7 @@ diff --git a/codex-rs/thread-store/src/local/mod.rs b/codex-rs/thread-store/src/
  mod projects;
  mod read_thread;
  mod revert_thread;
-@@ -501,6 +503,21 @@
+@@ -578,6 +580,21 @@ impl ThreadStore for LocalThreadStore {
          Box::pin(LocalThreadStore::load_history(self, params))
      }
  
@@ -480,6 +495,7 @@ diff --git a/codex-rs/thread-store/src/local/mod.rs b/codex-rs/thread-store/src/
          params: LoadThreadHistoryParams,
 diff --git a/codex-rs/thread-store/src/local/portable_history.rs b/codex-rs/thread-store/src/local/portable_history.rs
 new file mode 100644
+index 0000000..1e6d0c8
 --- /dev/null
 +++ b/codex-rs/thread-store/src/local/portable_history.rs
 @@ -0,0 +1,125 @@
@@ -610,6 +626,7 @@ new file mode 100644
 +}
 diff --git a/codex-rs/thread-store/src/local/portable_history_import.rs b/codex-rs/thread-store/src/local/portable_history_import.rs
 new file mode 100644
+index 0000000..baf6960
 --- /dev/null
 +++ b/codex-rs/thread-store/src/local/portable_history_import.rs
 @@ -0,0 +1,306 @@
@@ -921,6 +938,7 @@ new file mode 100644
 +}
 diff --git a/codex-rs/thread-store/src/local/portable_history_tests.rs b/codex-rs/thread-store/src/local/portable_history_tests.rs
 new file mode 100644
+index 0000000..4df43ee
 --- /dev/null
 +++ b/codex-rs/thread-store/src/local/portable_history_tests.rs
 @@ -0,0 +1,297 @@
@@ -1222,9 +1240,10 @@ new file mode 100644
 +    }
 +}
 diff --git a/codex-rs/thread-store/src/local/thread_history_materialization_tests.rs b/codex-rs/thread-store/src/local/thread_history_materialization_tests.rs
+index c042a04..29a9210 100644
 --- a/codex-rs/thread-store/src/local/thread_history_materialization_tests.rs
 +++ b/codex-rs/thread-store/src/local/thread_history_materialization_tests.rs
-@@ -2744,3 +2744,6 @@
+@@ -2796,3 +2796,6 @@ fn append_suffix(rollout_path: &std::path::Path, suffix: &str) {
  
  #[path = "history_snapshot_tests.rs"]
  mod history_snapshot_tests;
@@ -1233,6 +1252,7 @@ diff --git a/codex-rs/thread-store/src/local/thread_history_materialization_test
 +mod portable_history_tests;
 diff --git a/codex-rs/thread-store/src/portable_history.rs b/codex-rs/thread-store/src/portable_history.rs
 new file mode 100644
+index 0000000..7e5d55d
 --- /dev/null
 +++ b/codex-rs/thread-store/src/portable_history.rs
 @@ -0,0 +1,27 @@
@@ -1264,9 +1284,10 @@ new file mode 100644
 +    pub content: String,
 +}
 diff --git a/codex-rs/thread-store/src/store.rs b/codex-rs/thread-store/src/store.rs
+index b05a931..4694b60 100644
 --- a/codex-rs/thread-store/src/store.rs
 +++ b/codex-rs/thread-store/src/store.rs
-@@ -156,6 +156,34 @@
+@@ -204,6 +204,34 @@ pub trait ThreadStore: Any + Send + Sync {
          })
      }
  

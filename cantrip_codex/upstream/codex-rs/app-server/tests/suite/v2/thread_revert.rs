@@ -5,6 +5,7 @@ use app_test_support::create_final_assistant_message_sse_response;
 use app_test_support::create_mock_responses_server_repeating_assistant;
 use app_test_support::create_mock_responses_server_sequence;
 use app_test_support::create_request_user_input_sse_response;
+use app_test_support::write_models_cache_with_models;
 use codex_app_server_protocol::AskForApproval;
 use codex_app_server_protocol::ClientInfo;
 use codex_app_server_protocol::ClientRequest;
@@ -16,6 +17,7 @@ use codex_app_server_protocol::SortDirection;
 use codex_app_server_protocol::ThreadForkParams;
 use codex_app_server_protocol::ThreadForkResponse;
 use codex_app_server_protocol::ThreadHistoryMode;
+use codex_app_server_protocol::ThreadItemsListCursor;
 use codex_app_server_protocol::ThreadItemsListParams;
 use codex_app_server_protocol::ThreadItemsListResponse;
 use codex_app_server_protocol::ThreadResumeParams;
@@ -32,21 +34,205 @@ use codex_app_server_protocol::TurnStartParams;
 use codex_app_server_protocol::TurnStartResponse;
 use codex_app_server_protocol::TurnStatus;
 use codex_app_server_protocol::UserInput;
+use codex_features::Feature;
 use codex_protocol::config_types::CollaborationMode;
 use codex_protocol::config_types::ModeKind;
 use codex_protocol::config_types::Settings;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::EventMsg;
+use codex_protocol::protocol::MultiAgentVersion;
 use codex_rollout::RolloutItem;
-use codex_rollout::RolloutLine;
 use codex_rollout::read_session_meta_line;
 use codex_utils_absolute_path::AbsolutePathBuf;
+use core_test_support::load_default_config_for_test;
 use pretty_assertions::assert_eq;
 use serde_json::Value;
 use tempfile::TempDir;
 use tokio::time::timeout;
 
 const DEFAULT_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+#[test_case::test_case(None; "default_paginated")]
+#[test_case::test_case(Some(ThreadHistoryMode::Legacy); "explicit_legacy")]
+#[tokio::test]
+async fn thread_revert_rejects_ephemeral_without_losing_context(
+    history_mode: Option<ThreadHistoryMode>,
+) -> Result<()> {
+    let server = create_mock_responses_server_repeating_assistant("Remembered answer").await;
+    let codex_home = TempDir::new()?;
+    MockResponsesConfig::new(&server.uri()).write(codex_home.path())?;
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .build()
+        .await?;
+    initialize_experimental(&mut mcp).await?;
+    let ThreadStartResponse { thread, .. } = mcp
+        .start_thread(ThreadStartParams {
+            ephemeral: Some(true),
+            history_mode,
+            ..Default::default()
+        })
+        .await?;
+    let completed = mcp
+        .start_turn_and_wait_for_completion(TurnStartParams {
+            thread_id: thread.id.clone(),
+            input: vec![UserInput::Text {
+                text: "Remember this task".to_string(),
+                text_elements: Vec::new(),
+            }],
+            ..Default::default()
+        })
+        .await?;
+    let request_id = mcp
+        .send_request(
+            "thread/revert",
+            Some(serde_json::to_value(ThreadRevertParams {
+                thread_id: thread.id.clone(),
+                before_turn_id: completed.turn.id,
+            })?),
+        )
+        .await?;
+    let error = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_error_message(RequestId::Integer(request_id)),
+    )
+    .await??;
+    assert_eq!(
+        error.error,
+        codex_app_server_protocol::JSONRPCErrorError {
+            code: -32600,
+            message: "ephemeral threads do not support thread/revert".to_string(),
+            data: None,
+        }
+    );
+    mcp.start_turn_and_wait_for_completion(TurnStartParams {
+        thread_id: thread.id,
+        input: vec![UserInput::Text {
+            text: "Continue".to_string(),
+            text_elements: Vec::new(),
+        }],
+        ..Default::default()
+    })
+    .await?;
+    let requests = server.received_requests().await.expect("response requests");
+    let followup = requests
+        .iter()
+        .rev()
+        .find(|request| request.url.path().ends_with("/responses"))
+        .expect("followup request")
+        .body_json::<Value>()?;
+    let input = followup["input"].as_array().expect("model input");
+    for (role, text) in [
+        ("user", "Remember this task"),
+        ("assistant", "Remembered answer"),
+    ] {
+        assert!(
+            input.iter().any(|item| item["role"] == role
+                && item["content"]
+                    .as_array()
+                    .is_some_and(|content| content.iter().any(|part| part["text"] == text))),
+            "missing prior {role} message from followup: {followup}"
+        );
+    }
+    Ok(())
+}
+
+#[test_case::test_case(false; "live_reload")]
+#[test_case::test_case(true; "cold_resume")]
+#[tokio::test]
+async fn thread_revert_preserves_model_selected_multi_agent_version(restart: bool) -> Result<()> {
+    let server = create_mock_responses_server_repeating_assistant("Done").await;
+    let codex_home = TempDir::new()?;
+    MockResponsesConfig::new(&server.uri())
+        .disable_feature(Feature::MultiAgentV2)
+        .write(codex_home.path())?;
+    let config = load_default_config_for_test(&codex_home).await;
+    let mut model = codex_core::test_support::construct_model_info_offline("mock-model", &config);
+    model.multi_agent_version = Some(MultiAgentVersion::V2);
+    write_models_cache_with_models(codex_home.path(), vec![model]).await?;
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .build()
+        .await?;
+    initialize_experimental(&mut mcp).await?;
+    let ThreadStartResponse { thread, .. } = mcp
+        .start_thread(ThreadStartParams {
+            history_mode: Some(ThreadHistoryMode::Paginated),
+            ..Default::default()
+        })
+        .await?;
+    let completed = mcp
+        .start_turn_and_wait_for_completion(TurnStartParams {
+            thread_id: thread.id.clone(),
+            input: vec![UserInput::Text {
+                text: "First message".to_string(),
+                text_elements: Vec::new(),
+            }],
+            ..Default::default()
+        })
+        .await?;
+    let _: ThreadRevertResponse = mcp
+        .request(|request_id| ClientRequest::ThreadRevert {
+            request_id,
+            params: ThreadRevertParams {
+                thread_id: thread.id.clone(),
+                before_turn_id: completed.turn.id,
+            },
+        })
+        .await?;
+    if restart {
+        // Restart before another turn can persist a replacement TurnContext.
+        mcp.shutdown_gracefully().await?;
+        mcp = TestAppServer::builder()
+            .with_codex_home(codex_home.path())
+            .build()
+            .await?;
+        initialize_experimental(&mut mcp).await?;
+        let _: ThreadResumeResponse = mcp
+            .request(|request_id| ClientRequest::ThreadResume {
+                request_id,
+                params: ThreadResumeParams {
+                    thread_id: thread.id.clone(),
+                    exclude_turns: true,
+                    ..Default::default()
+                },
+            })
+            .await?;
+    }
+    mcp.start_turn_and_wait_for_completion(TurnStartParams {
+        thread_id: thread.id,
+        input: vec![UserInput::Text {
+            text: "Edited first message".to_string(),
+            text_elements: Vec::new(),
+        }],
+        ..Default::default()
+    })
+    .await?;
+
+    let requests = server.received_requests().await.expect("response requests");
+    let mut multi_agent_namespaces = Vec::new();
+    for request in requests
+        .iter()
+        .filter(|request| request.url.path().ends_with("/responses"))
+    {
+        let body = request.body_json::<Value>()?;
+        multi_agent_namespaces.push(
+            body["tools"]
+                .as_array()
+                .expect("tools")
+                .iter()
+                .filter_map(|tool| tool["name"].as_str())
+                .filter(|name| matches!(*name, "collaboration" | "multi_agent_v1"))
+                .map(str::to_owned)
+                .collect::<Vec<_>>(),
+        );
+    }
+    assert_eq!(
+        multi_agent_namespaces,
+        vec![vec!["collaboration"], vec!["collaboration"]]
+    );
+    Ok(())
+}
 
 #[tokio::test]
 async fn thread_revert_preserves_fork_cutoff_after_cold_resume() -> Result<()> {
@@ -55,8 +241,13 @@ async fn thread_revert_preserves_fork_cutoff_after_cold_resume() -> Result<()> {
     let updated_workspace = TempDir::new()?;
     let saved_cwd = AbsolutePathBuf::from_absolute_path(updated_workspace.path().canonicalize()?)?
         .into_path_buf();
+    let extra_workspace = TempDir::new()?;
+    let saved_roots = vec![
+        AbsolutePathBuf::from_absolute_path(&saved_cwd)?,
+        AbsolutePathBuf::from_absolute_path(extra_workspace.path().canonicalize()?)?,
+    ];
     MockResponsesConfig::new(&server.uri()).write(codex_home.path())?;
-    // This fixture checks host-native cwd restoration across fork and revert.
+    // This fixture checks host-native cwd and workspace restoration across fork and revert.
     let mut mcp = TestAppServer::builder()
         .with_codex_home(codex_home.path())
         .without_auto_env()
@@ -108,7 +299,7 @@ async fn thread_revert_preserves_fork_cutoff_after_cold_resume() -> Result<()> {
     let inherited_revert_cutoff =
         std::fs::read_to_string(parent.path.as_ref().expect("parent rollout"))?
             .lines()
-            .map(serde_json::from_str::<RolloutLine>)
+            .map(codex_rollout::parse_rollout_line)
             .collect::<Result<Vec<_>, _>>()?
             .into_iter()
             .find_map(|line| match line.item {
@@ -121,11 +312,15 @@ async fn thread_revert_preserves_fork_cutoff_after_cold_resume() -> Result<()> {
             })
             .expect("inherited turn start ordinal");
     let mut child_turns = Vec::new();
-    for text in ["child first", "child second"] {
+    for (text, runtime_workspace_roots) in [
+        ("child first", None),
+        ("child second", Some(saved_roots.clone())),
+    ] {
         let completed = mcp
             .start_turn_and_wait_for_completion(TurnStartParams {
                 thread_id: child.id.clone(),
                 cwd: Some(saved_cwd.clone()),
+                runtime_workspace_roots,
                 input: vec![UserInput::Text {
                     text: text.to_string(),
                     text_elements: Vec::new(),
@@ -172,7 +367,11 @@ async fn thread_revert_preserves_fork_cutoff_after_cold_resume() -> Result<()> {
             .build()
             .await?;
         initialize_experimental(&mut mcp).await?;
-        let ThreadResumeResponse { cwd, .. } = mcp
+        let ThreadResumeResponse {
+            cwd,
+            runtime_workspace_roots,
+            ..
+        } = mcp
             .request(|request_id| ClientRequest::ThreadResume {
                 request_id,
                 params: ThreadResumeParams {
@@ -181,12 +380,10 @@ async fn thread_revert_preserves_fork_cutoff_after_cold_resume() -> Result<()> {
                 },
             })
             .await?;
-        if expected_cutoff == fork_cutoff {
-            assert_eq!(cwd.as_path(), saved_cwd);
-        } else {
-            // Only parent-owned snapshots remain after reverting into inherited history.
-            assert_eq!(cwd.as_path(), child_meta.cwd);
-        }
+        assert_eq!(
+            (cwd.as_path(), runtime_workspace_roots),
+            (saved_cwd.as_path(), saved_roots.clone())
+        );
         mcp.start_turn_and_wait_for_completion(TurnStartParams {
             thread_id: child.id.clone(),
             input: vec![UserInput::Text {
@@ -294,7 +491,7 @@ async fn thread_revert_replaces_paginated_history_before_turn() -> Result<()> {
             params: ThreadItemsListParams {
                 thread_id: thread.id.clone(),
                 turn_id: None,
-                cursor: items_backwards_cursor,
+                cursor: items_backwards_cursor.map(ThreadItemsListCursor::Opaque),
                 limit: None,
                 sort_direction: None,
             },
@@ -544,6 +741,7 @@ async fn initialize_experimental(mcp: &mut TestAppServer) -> Result<()> {
                 version: "0.1.0".to_string(),
             },
             Some(InitializeCapabilities {
+                explicit_gateway_oauth: false,
                 experimental_api: true,
                 request_attestation: false,
                 opt_out_notification_methods: None,

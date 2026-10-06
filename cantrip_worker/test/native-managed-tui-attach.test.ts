@@ -357,6 +357,17 @@ describe.skipIf(!binary || process.platform === "win32")(
             modelList.data.find((model: JsonObject) => model.model === "gpt-5")
               ?.upgrade,
           ).toBeTruthy();
+          // Ordinary CLI keeps upstream's persistent accessibility probe. Seed
+          // its marker so this case isolates model migration; managed cases
+          // deliberately omit it to verify attachment never writes preferences.
+          if (!managed) {
+            const configPath = path.join(f.home, "config.toml");
+            await writeFile(
+              configPath,
+              (await readFile(configPath, "utf8")) +
+                "\n[tui]\nscreen_reader_detection_done = true\n",
+            );
+          }
           const configBefore = await readFile(
             path.join(f.home, "config.toml"),
             "utf8",

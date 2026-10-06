@@ -1,3 +1,7 @@
+#[cfg(target_os = "linux")]
+#[path = "exec_server/pid_namespace_tests.rs"]
+mod pid_namespace_tests;
+
 use std::collections::HashMap;
 #[cfg(unix)]
 use std::io::BufRead as _;
@@ -19,6 +23,7 @@ use std::time::Instant;
 
 use anyhow::Context;
 use anyhow::Result;
+use codex_exec_server::EnvironmentInfo;
 use codex_exec_server::ExecParams;
 use codex_exec_server::ExecServerClient;
 use codex_exec_server::NoiseChannelIdentity;
@@ -28,10 +33,12 @@ use codex_exec_server::NoiseRendezvousConnectBundle;
 use codex_exec_server::ProcessId;
 use codex_http_client::HttpClientFactory;
 use codex_http_client::OutboundProxyPolicy;
+use codex_utils_cargo_bin::copy_executable;
 use futures::SinkExt;
 use futures::StreamExt;
 use predicates::prelude::PredicateBooleanExt;
 use predicates::str::contains;
+use pretty_assertions::assert_eq;
 use tempfile::TempDir;
 use tokio::io::AsyncBufReadExt;
 use tokio::io::AsyncReadExt;
@@ -175,7 +182,15 @@ metrics_exporter = {{ otlp-http = {{ endpoint = "{collector_url}/v1/metrics", pr
 "#
         ),
     )?;
-    let mut command = tokio::process::Command::new(codex_utils_cargo_bin::cargo_bin("codex")?);
+    let package = TempDir::new()?;
+    let bin_dir = package.path().join("bin");
+    std::fs::create_dir(&bin_dir)?;
+    let executable = bin_dir.join(format!("codex{}", std::env::consts::EXE_SUFFIX));
+    copy_executable(&codex_utils_cargo_bin::cargo_bin("codex")?, &executable)?;
+    let manifest = package.path().join("codex-package.json");
+    std::fs::write(&manifest, r#"{"version":"1.2.3-alpha.4"}"#)?;
+
+    let mut command = tokio::process::Command::new(executable);
     command
         .env("CODEX_HOME", codex_home.path())
         .env("CODEX_API_KEY", "test-api-key")
@@ -205,6 +220,8 @@ metrics_exporter = {{ otlp-http = {{ endpoint = "{collector_url}/v1/metrics", pr
         .ok_or_else(|| anyhow::anyhow!("remote exec-server stdin was not piped"))?;
 
     let environment_websocket = accept_parent_lifetime_websocket(&listener, TEST_TIMEOUT).await?;
+    // Remote startup must capture the version before registration, not on the first initialize.
+    std::fs::write(&manifest, r#"{"version":"9.9.9"}"#)?;
     let executor_public_key = registered_parent_lifetime_executor_public_key(&registry).await?;
     let harness_args = NoiseRendezvousConnectArgs {
         bundle: NoiseRendezvousConnectBundle {
@@ -232,6 +249,17 @@ metrics_exporter = {{ otlp-http = {{ endpoint = "{collector_url}/v1/metrics", pr
         .await
         .context("remote harness did not connect")???;
 
+    let environment_info = client.environment_info().await?;
+    let expected_info = EnvironmentInfo {
+        executor_version: "1.2.3-alpha.4".to_string(),
+        // The build identity belongs to the spawned CLI, not this test process.
+        provider_id: environment_info.provider_id.clone(),
+        ..EnvironmentInfo::local()
+    };
+    assert_eq!(environment_info, expected_info);
+    std::fs::remove_file(&manifest)?;
+    assert_eq!(client.force_environment_info().await?, expected_info);
+
     #[cfg(windows)]
     let argv = vec![
         "cmd.exe",
@@ -248,6 +276,7 @@ metrics_exporter = {{ otlp-http = {{ endpoint = "{collector_url}/v1/metrics", pr
         .map_err(|()| anyhow::anyhow!("could not convert cwd to file URL"))?;
     client
         .exec(ExecParams {
+            metadata: Default::default(),
             process_id: ProcessId::from("parent-lifetime-process"),
             argv: argv.into_iter().map(str::to_string).collect(),
             cwd: cwd.as_str().parse()?,

@@ -25,8 +25,8 @@ lockfile and pinned Rust toolchain. Output is cached below
 committed. Worker packages copy the resulting native CLI, code-mode host,
 responses proxy, platform sandbox helpers, and a hash-checked runtime manifest
 into `bin/`. The bundle also carries the upstream Apache-2.0 `LICENSE` and
-`NOTICE`, and the Worker verifies every listed executable and notice before it
-starts Codex.
+`NOTICE`. The native release verifier checks every listed artifact's bytes;
+the Worker requires the manifest and declared artifacts before starting Codex.
 
 Upstream release tags update their workspace manifests from development
 version `0.0.0` without updating those same local-package version fields in
@@ -37,7 +37,7 @@ versions, checksums, and revisions remain exactly as pinned upstream, and the
 tracked source snapshot is never modified. The runtime manifest fingerprints
 the ordered patch set so changing a patch invalidates cached binaries.
 
-Codex 0.153.4 continues to use Rusty V8's heap sandbox for the code-mode host.
+Codex 0.160.1 continues to use Rusty V8's heap sandbox for the code-mode host.
 Those artifacts are published on a separate official OpenAI Codex release
 rather than the upstream Rusty V8 release. The build resolves the pinned `v8`
 crate version and native Rust host target, downloads the same archive and
@@ -45,6 +45,19 @@ generated binding used by Codex's release workflow, verifies both against
 OpenAI's two-entry SHA-256 manifest, and supplies them to Cargo. This preserves
 the upstream V8 sandbox without compiling V8 from source on every Cantrip
 target.
+
+After building, `pnpm codex:verify:runtime` runs the actual CLI in an isolated
+home, checks its exact version and every artifact hash, and verifies that its
+generated experimental protocol includes the Cantrip settings, pause, canonical
+history, and portable history/context extensions. Native release jobs also run
+this check against the worker's packaged `bin/` directory on macOS and Windows.
+
+The 0.160.1 upgrade rebases all 39 existing patches and adds `0041` for native
+interface adaptations and regenerated stable/experimental protocol exports.
+It preserves Cantrip's managed history, settings, queue, permission transitions,
+pause, account configuration, and TUI admission paths alongside upstream's
+updated MCP, settings, and TUI interfaces. The imported upstream snapshot
+remains unpatched; these adaptations belong only to the build copy.
 
 ## Managed empty-thread attachment
 

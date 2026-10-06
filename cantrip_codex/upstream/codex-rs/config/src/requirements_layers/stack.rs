@@ -218,6 +218,8 @@ fn populate_merged_regular_fields_with_sources(
         sqlite_home,
         log_dir,
         model_catalog_json,
+        model_provider,
+        model_providers,
         check_for_update_on_startup,
         allow_login_shell,
         feedback,
@@ -245,11 +247,13 @@ fn populate_merged_regular_fields_with_sources(
         rules: _,
         enforce_residency,
         network,
+        application,
         permissions,
         auto_review,
         models,
         additional_developer_instructions,
         guardian_policy_config,
+        guardian_extra_policy,
     } = requirements;
 
     set_sourced!(allowed_login_methods, &["allowed_login_methods"]);
@@ -259,6 +263,8 @@ fn populate_merged_regular_fields_with_sources(
     set_sourced!(sqlite_home, &["sqlite_home"]);
     set_sourced!(log_dir, &["log_dir"]);
     set_sourced!(model_catalog_json, &["model_catalog_json"]);
+    set_sourced!(model_provider, &["model_provider"]);
+    set_sourced!(model_providers, &["model_providers"]);
     set_sourced!(
         check_for_update_on_startup,
         &["check_for_update_on_startup"]
@@ -296,6 +302,7 @@ fn populate_merged_regular_fields_with_sources(
     set_sourced!(apps, &["apps"]);
     set_sourced!(enforce_residency, &["enforce_residency"]);
     set_sourced!(network, &["experimental_network"]);
+    set_sourced!(application, &["application"]);
     set_sourced!(permissions, &["permissions"]);
     set_sourced!(models, &["models"]);
     set_sourced!(
@@ -309,6 +316,14 @@ fn populate_merged_regular_fields_with_sources(
         output.guardian_policy_config = Some(Sourced::new(
             guardian_policy_config,
             source_for_top_level_keys(layers, &["guardian_policy_config"]),
+        ));
+    }
+    if let Some(guardian_extra_policy) =
+        guardian_extra_policy.filter(|value| !value.trim().is_empty())
+    {
+        output.guardian_extra_policy = Some(Sourced::new(
+            guardian_extra_policy,
+            source_for_top_level_keys(layers, &["guardian_extra_policy"]),
         ));
     }
 }

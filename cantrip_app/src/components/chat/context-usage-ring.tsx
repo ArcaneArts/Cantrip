@@ -23,6 +23,7 @@ import {
 import {
   providerWeeklyAvailability,
   providerWeeklyRemainingPercent,
+  providerCreditsText,
 } from "@/components/settings/provider-usage-display";
 import { cn } from "@/lib/utils";
 
@@ -128,9 +129,8 @@ export function selectedQuotaAccount(
   provider: ModelProviderSummary,
   providerAccountId: string | null,
 ): ModelProviderAccountSummary | null {
-  if (!providerAccountId) return null;
   const accounts = signedInQuotaAccounts(provider);
-  if (accounts.length < 2) return null;
+  if (!providerAccountId) return accounts.length === 1 ? accounts[0]! : null;
   return accounts.find(({ id }) => id === providerAccountId) ?? null;
 }
 
@@ -232,14 +232,21 @@ function QuotaSummary({
           </span>
         </div>
       ) : null}
+      {provider.kind === "chatgpt" && selectedAccount ? (
+        <p className="pt-1 text-xs font-medium tabular-nums">
+          {providerCreditsText(selectedAccount.credits)}
+        </p>
+      ) : null}
     </div>
   );
 }
 
 function AccountQuotaRow({
   account,
+  showCredits,
 }: {
   account: ModelProviderAccountSummary;
+  showCredits: boolean;
 }) {
   const remainingPercent =
     account.weeklyUsageUsedPercent === null
@@ -250,6 +257,11 @@ function AccountQuotaRow({
       <div className="flex min-w-0 items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-sm font-medium">{account.label}</p>
+          {showCredits ? (
+            <p className="text-xs tabular-nums text-muted-foreground">
+              {providerCreditsText(account.credits)}
+            </p>
+          ) : null}
         </div>
         <span className="shrink-0 text-xs font-medium tabular-nums">
           {remainingPercent === null
@@ -329,7 +341,11 @@ function QuotaDialog({
           {accounts.length ? (
             <div className="grid gap-2">
               {accounts.map((account) => (
-                <AccountQuotaRow key={account.id} account={account} />
+                <AccountQuotaRow
+                  key={account.id}
+                  account={account}
+                  showCredits={provider.kind === "chatgpt"}
+                />
               ))}
             </div>
           ) : (
@@ -403,7 +419,7 @@ export function ContextUsageRing({
     ? `, ${quotaAvailabilityText(quotaProvider, availableResetCredits)}`
     : "";
   const accountLabel = quotaAccount
-    ? `, current account ${quotaAccount.label}`
+    ? `, current account ${quotaAccount.label}${quotaProvider?.kind === "chatgpt" ? `, ${providerCreditsText(quotaAccount.credits)}` : ""}`
     : "";
 
   const handlePointerEnter = (event: PointerEvent<HTMLElement>) => {

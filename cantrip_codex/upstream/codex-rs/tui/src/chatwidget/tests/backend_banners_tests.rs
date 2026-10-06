@@ -16,6 +16,7 @@ fn banner_response(
         banner["presentation"] = json!(presentation);
     }
     GetAccountRateLimitsResponse {
+        ordinary_usage_allowed: None,
         account_id: Some("workspace-a".into()),
         rate_limit_upsell: Some(banner),
         rate_limits: snapshot(/*percent*/ 25.0),
@@ -28,10 +29,25 @@ fn banner_response(
 async fn backend_banner_presentation_and_cta_do_not_imply_recovery() {
     for presentation in [None, Some("inline"), Some("dismissible")] {
         let (mut chat, mut rx, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
-        let response = banner_response(
+        let mut response = banner_response(
             presentation,
             json!([{"action":"notify_owner","label":"Notify owner"}]),
         );
+        if presentation == Some("inline") {
+            use chrono::Timelike;
+            chat.clock_format = crate::clock_format::ClockFormat::TwelveHour;
+            let banner = response.rate_limit_upsell.as_mut().unwrap();
+            banner["description"] =
+                json!("Your usage resets at {time}. Ask your owner for credits.");
+            banner["reset_at"] = json!(
+                chrono::Local::now()
+                    .with_hour(17)
+                    .unwrap()
+                    .with_minute(30)
+                    .unwrap()
+                    .timestamp()
+            );
+        }
         chat.update_backend_banner(&response);
         let initial = render_bottom_popup(&chat, /*width*/ 70);
         assert!(initial.contains("Selected model usage exhausted"));
@@ -318,11 +334,14 @@ async fn backend_banner_fallback_candidates_and_notice_follow_selected_model() {
     response.rate_limit_upsell.as_mut().unwrap()["fallback_model_slugs"] =
         json!(["hidden-model", "test-model-c", "test-model-b"]);
     chat.update_backend_banner(&response);
-    assert_eq!(chat.backend_banner_fallback(), Some(models[2].clone()));
-    // A retained ChatGPT login must not change a task using a custom provider.
-    chat.config.model_provider.requires_openai_auth = false;
+    assert_eq!(
+        chat.backend_banner_fallback().map(|switch| switch.model),
+        Some(models[2].clone())
+    );
+    // A retained ChatGPT login must not change a task whose server does not require auth.
+    chat.requires_openai_auth = false;
     assert_eq!(chat.backend_banner_fallback(), None);
-    chat.config.model_provider.requires_openai_auth = true;
+    chat.requires_openai_auth = true;
     let mut mode = chat.effective_collaboration_mode();
     mode.settings.model = "test-model-c".into();
     chat.finish_backend_banner_fallback(mode);

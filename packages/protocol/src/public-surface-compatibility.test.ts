@@ -242,6 +242,12 @@ const managedRuntimeExports = [
   "workerComputerUseEffectsCommandSchema",
 ];
 
+const accountCreditsExports = [
+  "providerCreditBalance",
+  "providerCreditsSnapshotSchema",
+  "shouldUseChatGptCredits",
+];
+
 const browserCursorExports = [
   "browserAgentCursorSchema",
   "cantripMcpWebSessionPointerInputSchema",
@@ -272,10 +278,14 @@ describe("protocol public surface compatibility", () => {
       (name) =>
         !cuaRuntimeExports.includes(name) &&
         !managedRuntimeExports.includes(name) &&
+        !accountCreditsExports.includes(name) &&
         !browserCursorExports.includes(name),
     );
 
-    expect(exportNames).toHaveLength(2_124);
+    expect(exportNames).toHaveLength(2_127);
+    expect(
+      exportNames.filter((name) => accountCreditsExports.includes(name)),
+    ).toEqual(accountCreditsExports);
     expect(
       exportNames.filter((name) => browserCursorExports.includes(name)),
     ).toEqual(browserCursorExports);

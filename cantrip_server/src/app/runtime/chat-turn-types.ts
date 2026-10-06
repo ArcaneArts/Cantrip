@@ -122,6 +122,7 @@ interface ChatTurnModelRoutingDependencies extends Pick<
   ModelRoutingRuntime,
   | "captureRuntimeQuota"
   | "recordRuntimeModelBehavior"
+  | "recordRuntimeRateLimitActivity"
   | "recordRuntimeTokenUsage"
   | "resolveModelId"
   | "routePairsForConfiguration"
