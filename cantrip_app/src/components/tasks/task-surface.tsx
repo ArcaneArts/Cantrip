@@ -82,6 +82,7 @@ import {
 import { cn } from "@/lib/utils";
 
 import { TaskImplementationDashboard } from "./task-implementation-dashboard";
+import { TaskInteractionRequests } from "./task-interaction-requests";
 import { taskCanBeDeleted } from "./task-deletion";
 import { TaskListBackButton } from "./task-list-back-button";
 import { TaskPlanReview } from "./task-plan-review";
@@ -661,6 +662,9 @@ export function TaskSurface({
               Read-only investigation · round {task.data.planningRound}
             </p>
           </div>
+        </div>
+        <div className="shrink-0 px-4 sm:px-6">
+          <TaskInteractionRequests chat={chat} />
         </div>
         <div className="min-h-0 flex-1 overflow-hidden p-4 sm:p-6">
           <AgentInspectContent

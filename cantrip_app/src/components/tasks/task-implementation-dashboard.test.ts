@@ -90,4 +90,31 @@ describe("Task implementation dashboard presentation", () => {
       "Failed",
     );
   });
+
+  it("labels approval-blocked execution rather than claiming it is running", () => {
+    expect(taskImplementationStatusLabel(task, goal, true, false, true)).toBe(
+      "Needs approval",
+    );
+    expect(
+      taskImplementationStatusLabel(
+        { ...task, planGoalEnabled: false },
+        null,
+        true,
+        false,
+        true,
+      ),
+    ).toBe("Needs approval");
+    expect(
+      taskImplementationStatusLabel(
+        { ...task, state: "complete" },
+        goal,
+        false,
+        false,
+        true,
+      ),
+    ).toBe("Complete");
+    expect(taskImplementationStatusLabel(task, goal, false, true, true)).toBe(
+      "Failed",
+    );
+  });
 });

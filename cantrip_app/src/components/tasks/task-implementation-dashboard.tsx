@@ -44,6 +44,7 @@ import { useChatMessageHistory } from "@/lib/use-chat-message-history";
 import { cn } from "@/lib/utils";
 
 import { taskCanBeDeleted } from "./task-deletion";
+import { TaskInteractionRequests } from "./task-interaction-requests";
 import { TaskListBackButton } from "./task-list-back-button";
 
 const goalLabels: Record<TaskGoalSnapshot["status"], string> = {
@@ -60,12 +61,14 @@ export function taskImplementationStatusLabel(
   goal: TaskGoalSnapshot | null,
   active = false,
   chatFailed = false,
+  awaitingApproval = false,
 ): string {
   if (task.state === "failed" || chatFailed) return "Failed";
   if (task.state === "paused") return "Paused";
   if (task.state === "blocked")
     return goal ? goalLabels[goal.status] : "Blocked";
   if (task.state === "complete") return "Complete";
+  if (awaitingApproval) return "Needs approval";
   if (!task.planGoalEnabled && active) return "Running";
   return goal ? goalLabels[goal.status] : "Starting";
 }
@@ -227,6 +230,7 @@ export function TaskImplementationDashboard({
     goal,
     active,
     chat.status === "failed",
+    chat.status === "waiting-for-approval",
   );
   const tokenProgress =
     goal?.tokenBudget && goal.tokenBudget > 0
@@ -356,6 +360,8 @@ export function TaskImplementationDashboard({
             {errorMessage(dashboard.error)}
           </p>
         ) : null}
+
+        <TaskInteractionRequests chat={chat} />
 
         <section
           className={cn(
