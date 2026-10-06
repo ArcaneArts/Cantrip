@@ -125,7 +125,7 @@ vi.mock("@/components/ui/tooltip", () => ({
 }));
 
 function surface(
-  kind: "browser" | "terminal" | "history",
+  kind: "browser" | "terminal" | "history" | "chat",
   id: string,
   title: string,
   position: number,
@@ -380,6 +380,42 @@ describe("dock rail tabs", () => {
     expect(onSelect).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalledWith(browser);
 
+    await act(async () => renderer.unmount());
+  });
+
+  it("archives agent rail tabs on middle click and never offers Close View", async () => {
+    const agent = surface("chat", "agent", "Agent", 0);
+    const onClose = vi.fn();
+    const onDelete = vi.fn();
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = renderRail({
+        activeTabKey: agent.tabKey,
+        onClose,
+        onDelete,
+        surfaces: [agent],
+      });
+    });
+
+    const items = renderer.root.findAllByProps({ "data-menu-item": true });
+    expect(items.some((item) => textContent(item).includes("Close View"))).toBe(
+      false,
+    );
+    expect(
+      items.some((item) => textContent(item).includes("Archive Resource")),
+    ).toBe(true);
+    const tab = renderer.root.findByProps({
+      "data-dock-rail-tab": agent.tabKey,
+    });
+    await act(async () =>
+      tab.props.onAuxClick({
+        button: 1,
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      }),
+    );
+    expect(onDelete).toHaveBeenCalledExactlyOnceWith(agent);
+    expect(onClose).not.toHaveBeenCalled();
     await act(async () => renderer.unmount());
   });
 

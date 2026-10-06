@@ -129,6 +129,7 @@ export function GlobalContentHost({
     creatingSurfaceKinds,
     currentRelocation,
     closeSurfaceView,
+    deleteSurfaceResource,
     deleteChatMutation,
     desktopRuntime,
     displayTerminals,
@@ -1100,6 +1101,7 @@ export function GlobalContentHost({
       !showProjectSettings ? (
         <MobileBottomNavigation
           activeTabKey={selectedTabKey}
+          onArchive={deleteSurfaceResource}
           onClose={closeSurfaceView}
           onOpenPicker={() => setMobileSurfacePickerOpen(true)}
           onOverview={returnToCompactProjectOverview}

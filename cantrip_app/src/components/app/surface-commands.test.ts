@@ -27,6 +27,7 @@ function operations() {
     explorer: creationMutation(),
     projectView: creationMutation(),
     remoteDesktop: creationMutation(),
+    tasks: creationMutation(),
     terminal: creationMutation(),
   } as unknown as SurfaceCreationOperations;
   const crud = {
@@ -131,6 +132,31 @@ describe("surface command controller", () => {
     );
   });
 
+  it("opens Tasks in the requested pane or dock without creating a task", () => {
+    const operationSet = operations();
+    const controller = createSurfaceCommandController(operationSet);
+
+    controller.createProjectSurface("project-1", "tasks", "right-pane");
+    controller.createProjectSurface(
+      "project-1",
+      "tasks",
+      undefined,
+      undefined,
+      "bottom",
+    );
+
+    expect(operationSet.creation.tasks.mutate).toHaveBeenNthCalledWith(1, {
+      projectId: "project-1",
+      paneId: "right-pane",
+    });
+    expect(operationSet.creation.tasks.mutate).toHaveBeenNthCalledWith(2, {
+      projectId: "project-1",
+      targetRegion: "bottom",
+    });
+    expect(operationSet.creation.chat.mutate).not.toHaveBeenCalled();
+    expect(operationSet.creation.projectView.mutate).not.toHaveBeenCalled();
+  });
+
   it("keeps Close View separate from deleting an Explorer resource", () => {
     const operationSet = operations();
     const controller = createSurfaceCommandController(operationSet);
@@ -147,5 +173,20 @@ describe("surface command controller", () => {
       "explorer-1",
     );
     expect(operationSet.crud.explorer.delete.mutate).not.toHaveBeenCalled();
+  });
+
+  it("does not close agent views and removes them only through archive", () => {
+    const operationSet = operations();
+    const controller = createSurfaceCommandController(operationSet);
+    const agent = { kind: "chat", tabId: "agent-1" } as ProjectSurface;
+
+    controller.closeSurfaceView(agent);
+    expect(operationSet.views.close.mutate).not.toHaveBeenCalled();
+    expect(operationSet.crud.chat.delete.mutate).not.toHaveBeenCalled();
+
+    controller.deleteSurfaceResource(agent);
+    expect(operationSet.crud.chat.delete.mutate).toHaveBeenCalledWith(
+      "agent-1",
+    );
   });
 });

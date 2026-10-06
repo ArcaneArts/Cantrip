@@ -45,6 +45,7 @@ function picker(overrides: Record<string, unknown> = {}) {
     <MobileSurfacePicker
       activeTabKey="chat:one"
       creatingKinds={new Set()}
+      onArchiveSurface={vi.fn()}
       onCloseSurface={vi.fn()}
       onCreate={vi.fn()}
       onOpenChange={vi.fn()}
@@ -67,12 +68,16 @@ describe("MobileSurfacePicker", () => {
     expect(markup).toContain("Open views");
     expect(markup).toContain("Add a view");
     expect(markup).toContain('aria-label="Open Agent One"');
-    expect(markup).toContain('aria-label="Remove Agent One from project tabs"');
+    expect(markup).toContain('aria-label="Archive Agent One"');
+    expect(markup).not.toContain(
+      'aria-label="Remove Agent One from project tabs"',
+    );
     expect(markup.match(/>Overview</g)).toHaveLength(1);
     expect(markup).not.toContain("Automatic");
   });
 
-  it("selects and removes surfaces through separate tap targets", async () => {
+  it("selects and archives agents through separate tap targets", async () => {
+    const onArchiveSurface = vi.fn();
     const onCloseSurface = vi.fn();
     const onOpenChange = vi.fn();
     const onSelect = vi.fn();
@@ -80,7 +85,7 @@ describe("MobileSurfacePicker", () => {
 
     await act(async () => {
       renderer = TestRenderer.create(
-        picker({ onCloseSurface, onOpenChange, onSelect }),
+        picker({ onArchiveSurface, onCloseSurface, onOpenChange, onSelect }),
       );
     });
 
@@ -91,9 +96,10 @@ describe("MobileSurfacePicker", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
 
     renderer.root
-      .findByProps({ "aria-label": "Remove Agent One from project tabs" })
+      .findByProps({ "aria-label": "Archive Agent One" })
       .props.onClick();
-    expect(onCloseSurface).toHaveBeenCalledWith(chat);
+    expect(onArchiveSurface).toHaveBeenCalledWith(chat);
+    expect(onCloseSurface).not.toHaveBeenCalled();
 
     await act(async () => renderer.unmount());
   });

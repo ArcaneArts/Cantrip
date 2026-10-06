@@ -1,6 +1,10 @@
-import type { ProjectTabLayoutSummary } from "@cantrip/protocol";
+import {
+  type ProjectTabLayoutSummary,
+  projectPaneMemberMoveSchema,
+} from "@cantrip/protocol";
 import { describe, expect, it } from "vitest";
 
+import { applyOptimisticTabLayoutCommand } from "./project-tab-layout-optimistic";
 import {
   decideWorkspaceDrop,
   workspaceSurfaceDropPreview,
@@ -348,6 +352,7 @@ describe("workspace pane drag legality", () => {
           targetPaneId: null,
           targetRegion: "center",
           targetMemberPosition: 0,
+          targetPanePosition: 0,
         },
       },
     });
@@ -369,6 +374,82 @@ describe("workspace pane drag legality", () => {
       ).status,
     ).toBe("invalid");
   });
+
+  it.each(["bottom", "right"] as const)(
+    "moves a run terminal from the %s rail into an empty center with a valid request",
+    (region) => {
+      const sourcePane = layout.panes.find((pane) => pane.region === region)!;
+      const runMember = {
+        ...sourcePane.members[0]!,
+        tabKind: "terminal" as const,
+        tabId: "run-client",
+        tabKey: "terminal:run-client",
+        title: "Run Client",
+        position: sourcePane.members.length,
+      };
+      const runLayout = {
+        ...layout,
+        panes: layout.panes
+          .filter((pane) => pane.region !== "center")
+          .map((pane) =>
+            pane.id === sourcePane.id
+              ? { ...pane, members: [...pane.members, runMember] }
+              : pane,
+          ),
+      };
+      const decision = decideWorkspaceDrop(
+        runLayout,
+        {
+          ...drag,
+          paneId: sourcePane.id,
+          tabKey: runMember.tabKey,
+          label: runMember.title,
+          position: runMember.position,
+          supportedRegions: ["center", "right", "bottom"],
+          visualKind: "terminal",
+        },
+        {
+          type: "region",
+          projectId: layout.projectId,
+          region: "center",
+          paneId: null,
+        },
+      );
+      if (
+        decision.status !== "valid" ||
+        decision.operation.type !== "tab-layout" ||
+        decision.operation.command.type !== "move-member"
+      ) {
+        throw new Error("Expected a valid run terminal move.");
+      }
+      const { command } = decision.operation;
+      expect(
+        projectPaneMemberMoveSchema.parse({
+          revision: runLayout.revision,
+          ...command,
+        }),
+      ).toEqual({
+        revision: runLayout.revision,
+        tabKey: runMember.tabKey,
+        targetPaneId: null,
+        targetRegion: "center",
+        targetMemberPosition: 0,
+        targetPanePosition: 0,
+      });
+
+      const moved = applyOptimisticTabLayoutCommand(runLayout, command);
+      expect(
+        moved.panes.find((pane) => pane.region === "center"),
+      ).toMatchObject({
+        position: 0,
+        anchorTabKey: runMember.tabKey,
+        members: [{ tabKey: runMember.tabKey, tabId: runMember.tabId }],
+      });
+      expect(
+        moved.panes.find((pane) => pane.id === sourcePane.id)?.members,
+      ).toEqual(sourcePane.members);
+    },
+  );
 
   it("projects a cross-container insertion only while the drop is valid", () => {
     const bottomDrag = {

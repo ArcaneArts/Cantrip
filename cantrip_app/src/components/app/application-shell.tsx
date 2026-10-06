@@ -784,6 +784,26 @@ export function App() {
     },
     [newProjectToolSurface, selectedProjectId],
   );
+  const newTasksSurface = useMutation({
+    mutationFn: async ({
+      projectId,
+      paneId,
+      targetRegion,
+    }: {
+      projectId: string;
+      paneId?: string;
+      targetRegion?: ProjectPaneRegion;
+    }) => {
+      closeProjectTask(projectId);
+      const opened = await openOrFocusSurface(
+        projectId,
+        projectBuiltInSurfaceResourceRef("project.tasks"),
+        paneId,
+        targetRegion,
+      );
+      if (opened === false) throw new Error("Could not open the Tasks tab.");
+    },
+  });
   const projectToolBridgeAttemptRef = useRef<string | null>(null);
   useEffect(() => {
     if (
@@ -1945,6 +1965,7 @@ export function App() {
       explorer: newExplorer,
       projectView: newProjectToolSurface,
       remoteDesktop: newRemoteDesktop,
+      tasks: newTasksSurface,
       terminal: newTerminal,
     },
     crud: {

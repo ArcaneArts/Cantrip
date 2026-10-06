@@ -30,6 +30,7 @@ export function ShellOverlays({
     compactShell,
     createProjectSurface,
     creatingSurfaceKinds,
+    deleteSurfaceResource,
     createWorktreeMutation,
     dismissedLongPathFailure,
     executeAppAction,
@@ -92,6 +93,7 @@ export function ShellOverlays({
           activeTabKey={selectedTabKey}
           capabilities={selectedProject.capabilities}
           creatingKinds={creatingSurfaceKinds}
+          onArchiveSurface={deleteSurfaceResource}
           onCloseSurface={closeSurfaceView}
           onCreate={(kind, target) =>
             createProjectSurface(selectedProject.id, kind, undefined, target)

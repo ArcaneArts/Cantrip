@@ -400,6 +400,7 @@ function SidebarDirectoryNode({
   onRenameCancel,
   onRenameSubmit,
   onRenameValueChange,
+  onExpand,
   onToggle,
   projectId,
   queryEnabled,
@@ -429,6 +430,7 @@ function SidebarDirectoryNode({
   onRenameCancel(): void;
   onRenameSubmit(): void;
   onRenameValueChange(value: string): void;
+  onExpand(parentPath: string, path: string): void;
   onToggle(path: string): void;
   projectId: string;
   queryEnabled: boolean;
@@ -451,6 +453,40 @@ function SidebarDirectoryNode({
     worktreeId,
   });
   const visibleEntries = visibleSidebarEntries(entries);
+  const expansionHandled = useRef(false);
+  useEffect(() => {
+    expansionHandled.current = false;
+  }, [expanded, projectId, worktreeId]);
+  useEffect(() => {
+    if (
+      !expanded ||
+      !queryEnabled ||
+      !directory.data ||
+      directory.isPlaceholderData ||
+      directory.isError ||
+      expansionHandled.current
+    ) {
+      return;
+    }
+    // Handle each expansion once so a manually collapsed child stays closed.
+    // Use the same entries as the UI: hidden OS metadata is not a choice.
+    expansionHandled.current = true;
+    const child = visibleEntries.length === 1 ? visibleEntries[0] : undefined;
+    if (child?.kind === "directory" && !child.symbolicLink) {
+      onExpand(entry.path, child.path);
+    }
+  }, [
+    directory.data,
+    directory.isError,
+    directory.isPlaceholderData,
+    entry.path,
+    expanded,
+    onExpand,
+    projectId,
+    queryEnabled,
+    visibleEntries,
+    worktreeId,
+  ]);
   return (
     <>
       <SidebarFileRow
@@ -528,6 +564,7 @@ function SidebarDirectoryNode({
                   onRenameCancel={onRenameCancel}
                   onRenameSubmit={onRenameSubmit}
                   onRenameValueChange={onRenameValueChange}
+                  onExpand={onExpand}
                   onToggle={onToggle}
                   projectId={projectId}
                   queryEnabled={queryEnabled}
@@ -785,6 +822,14 @@ export function ProjectSidebarFileTree({
     });
   };
 
+  const expandChild = useCallback((parentPath: string, path: string) => {
+    setExpandedPaths((current) =>
+      current.has(parentPath) && !current.has(path)
+        ? new Set([...current, path])
+        : current,
+    );
+  }, []);
+
   const beginRename = (entry: ExplorerEntry) => {
     setRenameError(null);
     setRenameTarget(entry);
@@ -993,6 +1038,7 @@ export function ProjectSidebarFileTree({
                       onRenameCancel={cancelRename}
                       onRenameSubmit={submitRename}
                       onRenameValueChange={setRenameValue}
+                      onExpand={expandChild}
                       onToggle={toggle}
                       projectId={explorer.projectId}
                       queryEnabled={streamEncryption.ready}

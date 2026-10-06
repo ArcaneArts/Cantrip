@@ -164,6 +164,7 @@ import {
   providerWeeklyRemainingPercent,
 } from "./provider-usage-display";
 import { ProviderAccountPriorityChips } from "./provider-account-priority";
+import { ProviderAvailabilitySummary } from "./provider-availability-summary";
 import { cacheProviderModelCatalog } from "./provider-catalog-cache";
 import { ProviderTelemetryDialog } from "./provider-telemetry-dialog";
 import {
@@ -1236,14 +1237,6 @@ export function SettingsPage({
     editingProvider && isAccountProviderKind(editingProvider.kind)
       ? editingProvider
       : null;
-  const accountWeeklyAvailability = accountProvider
-    ? providerWeeklyAvailability(
-        accountProvider.accounts,
-        accountProvider.kind === "chatgpt"
-          ? chatGptAvailableResetCredits
-          : undefined,
-      )
-    : null;
   const selectedAccount =
     accountProvider?.accounts.find(({ id }) => id === selectedAccountId) ??
     accountProvider?.accounts[0] ??
@@ -1314,6 +1307,18 @@ export function SettingsPage({
     ) ?? selectedAccount,
     rateLimitResets.data,
   );
+  const displayedProviderAccounts =
+    accountProvider?.accounts.map((account) => ({
+      ...account,
+      credits:
+        account.id === selectedAccount?.id
+          ? selectedCredits
+          : (
+              currentAccountProvider?.accounts.find(
+                (current) => current.id === account.id,
+              ) ?? account
+            ).credits,
+    })) ?? [];
   const useAccountCredits = shouldUseChatGptCredits(selectedCredits);
   const availableResetCredit =
     resetCredits?.credits?.find((credit) => credit.status === "available") ??
@@ -2907,41 +2912,13 @@ export function SettingsPage({
                     Account
                   </Button>
                 </div>
-                {accountWeeklyAvailability ? (
-                  <div className="flex items-center justify-between gap-4 rounded-lg border bg-muted/30 px-3 py-2.5">
-                    <div>
-                      <p className="text-sm font-medium">
-                        {accountProvider.kind === "chatgpt"
-                          ? "Total maximum 7-day available"
-                          : "Total 7-day available"}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {accountWeeklyAvailability.reportedAccountCount ===
-                        accountWeeklyAvailability.signedInAccountCount
-                          ? `Across ${accountWeeklyAvailability.signedInAccountCount} signed-in ${accountWeeklyAvailability.signedInAccountCount === 1 ? "account" : "accounts"}`
-                          : `${accountWeeklyAvailability.reportedAccountCount} of ${accountWeeklyAvailability.signedInAccountCount} signed-in accounts reporting`}
-                        {accountWeeklyAvailability.bankedResetCount
-                          ? ` · Includes ${accountWeeklyAvailability.bankedResetCount} banked ${accountWeeklyAvailability.bankedResetCount === 1 ? "reset" : "resets"}`
-                          : ""}
-                      </p>
-                    </div>
-                    <span className="text-xl font-semibold tabular-nums">
-                      {Math.round(accountWeeklyAvailability.availablePercent)}%
-                    </span>
-                  </div>
-                ) : null}
+                <ProviderAvailabilitySummary
+                  accounts={displayedProviderAccounts}
+                  availableResetCredits={chatGptAvailableResetCredits}
+                  kind={accountProvider.kind}
+                />
                 <ProviderAccountPriorityChips
-                  accounts={accountProvider.accounts.map((account) => ({
-                    ...account,
-                    credits:
-                      account.id === selectedAccount?.id
-                        ? selectedCredits
-                        : (
-                            currentAccountProvider?.accounts.find(
-                              (current) => current.id === account.id,
-                            ) ?? account
-                          ).credits,
-                  }))}
+                  accounts={displayedProviderAccounts}
                   showCredits={accountProvider.kind === "chatgpt"}
                   disabled={reorderProviderAccounts.isPending}
                   selectedAccountId={selectedAccount?.id ?? null}
