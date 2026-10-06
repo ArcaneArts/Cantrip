@@ -487,6 +487,7 @@ export function TaskImplementationDashboard({
               <AgentInspectContent
                 active={active}
                 messages={latestMessages}
+                trajectoryEventOrder="newest-first"
                 visible
               />
             </div>

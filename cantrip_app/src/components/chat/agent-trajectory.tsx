@@ -4,6 +4,7 @@ import type { ChatMessage, InferenceProgressSnapshot } from "@cantrip/protocol";
 import {
   ArrowDown,
   ArrowLeft,
+  ArrowUp,
   Check,
   ChevronDown,
   CircleX,
@@ -51,7 +52,7 @@ import {
   TrajectoryTimeline,
   trajectoryEventAtTime,
 } from "./trajectory-timeline";
-import { useStickyChatScroll } from "./use-sticky-chat-scroll";
+import { useStickyScroll } from "./use-sticky-chat-scroll";
 
 const TRAJECTORY_CLOCK_INTERVAL_MS = 500;
 export const TRAJECTORY_FOLLOW_THRESHOLD_PX = 128;
@@ -221,10 +222,13 @@ function TrajectoryEventRow({
   );
 }
 
+export type TrajectoryEventOrder = "oldest-first" | "newest-first";
+
 interface AgentTrajectoryProps {
   nativeTurnSettings?: readonly NativeTurnSettingsEvidence[];
   active: boolean;
   agentProjection?: AgentTurnProjection;
+  eventOrder?: TrajectoryEventOrder;
   inferenceProgress?: InferenceProgressSnapshot | null;
   inferenceProgressHistory?: readonly InferenceProgressTrace[];
   messages: ChatMessage[];
@@ -313,6 +317,7 @@ function AgentTrajectoryVisible({
   nativeTurnSettings,
   active,
   agentProjection,
+  eventOrder = "oldest-first",
   followingLive,
   hiddenAgents,
   hiddenKinds,
@@ -386,13 +391,14 @@ function AgentTrajectoryVisible({
   const {
     contentRef: eventListContentRef,
     onScroll: updateEventListScrollState,
-    pinToBottomIfFollowing: pinEventsToBottomIfFollowing,
-    scrollToBottom: scrollEventsToBottom,
-    showScrollToBottom: showScrollToLatestEvent,
+    pinToLatestIfFollowing: pinEventsToLatestIfFollowing,
+    scrollToLatest: scrollEventsToLatest,
+    showScrollToLatest: showScrollToLatestEvent,
     viewportRef: eventListViewportRef,
-  } = useStickyChatScroll(
+  } = useStickyScroll(
     turn?.key ?? targetTurnKey ?? "trajectory-empty",
     TRAJECTORY_FOLLOW_THRESHOLD_PX,
+    eventOrder === "newest-first" ? "top" : "bottom",
   );
   const trajectoryRunning = Boolean(turn?.nextTransitionAtMs);
 
@@ -441,6 +447,10 @@ function AgentTrajectoryVisible({
     hiddenStatuses.size +
     hiddenTimingQualities.size +
     (query.trim() ? 1 : 0);
+  const displayedEvents = useMemo(
+    () => (eventOrder === "newest-first" ? [...events].reverse() : events),
+    [eventOrder, events],
+  );
   const selectedEvent = useMemo(
     () =>
       selectedEventId
@@ -452,14 +462,14 @@ function AgentTrajectoryVisible({
 
   useLayoutEffect(() => {
     if (selectedEvent) return;
-    pinEventsToBottomIfFollowing();
+    pinEventsToLatestIfFollowing();
   }, [
     events.length,
     latestVisibleEvent?.id,
     latestVisibleEvent?.preview,
     latestVisibleEvent?.status,
     latestVisibleEvent?.updatedAtMs,
-    pinEventsToBottomIfFollowing,
+    pinEventsToLatestIfFollowing,
     selectedEvent,
   ]);
 
@@ -636,7 +646,7 @@ function AgentTrajectoryVisible({
                 setFollowingLive(true);
                 setSelectedEventId(null);
                 setPlayheadMs(turn.timelineEndMs);
-                scrollEventsToBottom();
+                scrollEventsToLatest();
               }}
               size="sm"
               type="button"
@@ -884,7 +894,7 @@ function AgentTrajectoryVisible({
               <TrajectoryDetails event={selectedEvent} onBack={closeDetails} />
             ) : events.length > 0 ? (
               <ol aria-label="Trajectory events">
-                {events.map((event) => (
+                {displayedEvents.map((event) => (
                   <TrajectoryEventRow
                     event={event}
                     key={event.id}
@@ -910,13 +920,17 @@ function AgentTrajectoryVisible({
           <Button
             aria-label="Scroll to latest trajectory event"
             className="absolute bottom-3 left-1/2 z-10 size-9 -translate-x-1/2 rounded-full bg-popover text-popover-foreground shadow-lg backdrop-blur-xl"
-            onClick={scrollEventsToBottom}
+            onClick={scrollEventsToLatest}
             size="icon"
             title="Scroll to latest trajectory event"
             type="button"
             variant="outline"
           >
-            <ArrowDown className="size-4" />
+            {eventOrder === "newest-first" ? (
+              <ArrowUp className="size-4" />
+            ) : (
+              <ArrowDown className="size-4" />
+            )}
           </Button>
         ) : null}
       </div>

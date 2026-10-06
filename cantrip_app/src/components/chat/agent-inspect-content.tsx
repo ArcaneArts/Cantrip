@@ -18,7 +18,7 @@ import { NavigationTabBar } from "@/components/ui/navigation-tab-bar";
 import type { InferenceProgressTrace } from "@/lib/inference-progress-history";
 import { cn } from "@/lib/utils";
 
-import { AgentTrajectory } from "./agent-trajectory";
+import { AgentTrajectory, type TrajectoryEventOrder } from "./agent-trajectory";
 import type { AgentTurnProjection } from "./agent-turn-projection";
 import { displayCommand } from "./command-display";
 import { FileChangePreview } from "./file-change-preview";
@@ -422,6 +422,7 @@ export function AgentInspectContent({
   onOpenSubagent,
   onTabChange,
   tab,
+  trajectoryEventOrder,
   trajectoryTargetKey,
   visible,
 }: {
@@ -437,6 +438,7 @@ export function AgentInspectContent({
   onOpenSubagent?(agentKey: string, focusItemKey: string | null): void;
   onTabChange?(tab: AgentInspectTab): void;
   tab?: AgentInspectTab;
+  trajectoryEventOrder?: TrajectoryEventOrder;
   trajectoryTargetKey?: string | null;
   visible: boolean;
 }) {
@@ -474,6 +476,7 @@ export function AgentInspectContent({
             nativeTurnSettings={nativeTurnSettings}
             active={active}
             agentProjection={agentProjection}
+            eventOrder={trajectoryEventOrder}
             inferenceProgress={inferenceProgress}
             inferenceProgressHistory={inferenceProgressHistory}
             messages={messages}

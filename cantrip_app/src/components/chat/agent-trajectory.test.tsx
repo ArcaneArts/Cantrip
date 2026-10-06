@@ -7,8 +7,10 @@ import {
   AgentTrajectory,
   TRAJECTORY_FOLLOW_THRESHOLD_PX,
   trajectorySubagentTarget,
+  type TrajectoryEventOrder,
 } from "./agent-trajectory";
 import { buildAgentTurnProjection } from "./agent-turn-projection";
+import { AgentInspectContent } from "./agent-inspect-content";
 import { projectTrajectory } from "./trajectory-model";
 import { chatScrollIsNearBottom } from "./use-sticky-chat-scroll";
 
@@ -112,6 +114,134 @@ function message(
 }
 
 describe("AgentTrajectory", () => {
+  it.each([
+    { order: undefined, expected: ["input", "command", "commentary"] },
+    {
+      order: "newest-first" as const,
+      expected: ["commentary", "command", "input"],
+    },
+  ])(
+    "renders inspector events in $order order without changing the timeline",
+    ({ order, expected }) => {
+      const messages = [
+        message("user-order", 1, "user", 1_000, [
+          { type: "text", text: "Order this turn" },
+        ]),
+        message("command-order", 2, "assistant", 1_200, [
+          {
+            type: "activity",
+            activity: {
+              type: "command",
+              id: "command-order",
+              command: "git status",
+              cwd: "/workspace",
+              status: "completed",
+              exitCode: 0,
+              output: null,
+            },
+          },
+        ]),
+        message("commentary-order", 3, "assistant", 1_200, [
+          { type: "text", text: "Latest update", phase: "commentary" },
+        ]),
+      ];
+      const render = (
+        trajectoryEventOrder: TrajectoryEventOrder | undefined = order,
+      ) =>
+        renderToStaticMarkup(
+          <AgentInspectContent
+            active={false}
+            messages={messages}
+            trajectoryEventOrder={trajectoryEventOrder}
+            visible
+          />,
+        );
+      const markup = render();
+      const list = markup.slice(markup.indexOf("<ol"), markup.indexOf("</ol>"));
+      expect(
+        [...list.matchAll(/data-event-kind="([^"]+)"/gu)].map(
+          (match) => match[1],
+        ),
+      ).toEqual(expected);
+      const timeline = (html: string) =>
+        html.match(
+          /<svg[^>]*aria-label="[^"]*trajectory[^"]*"[^>]*>[\s\S]*?<\/svg>/iu,
+        )?.[0];
+      // The action list changes direction; the timeline and source messages retain their order.
+      expect(timeline(markup)).toBeDefined();
+      expect(timeline(markup)).toBe(timeline(render("oldest-first")));
+      expect(messages.map(({ id }) => id)).toEqual([
+        "user-order",
+        "command-order",
+        "commentary-order",
+      ]);
+    },
+  );
+
+  it("keeps newest-first rows ordered as live events arrive and filters change", async () => {
+    const messages = [
+      message("live-user", 1, "user", 1_000, [
+        { type: "text", text: "Live request" },
+      ]),
+      message("live-first", 2, "assistant", 1_200, [
+        { type: "text", text: "First update", phase: "commentary" },
+      ]),
+    ];
+    vi.stubGlobal("window", {
+      cancelAnimationFrame: vi.fn(),
+      clearInterval: vi.fn(),
+      requestAnimationFrame: vi.fn(() => 1),
+      setInterval: vi.fn(() => 1),
+    });
+    let renderer!: TestRenderer.ReactTestRenderer;
+    try {
+      const render = () => (
+        <AgentTrajectory
+          active
+          eventOrder="newest-first"
+          messages={[...messages]}
+          visible
+        />
+      );
+      await act(async () => {
+        renderer = TestRenderer.create(render());
+      });
+      const rows = () =>
+        renderer.root
+          .findAllByType("li")
+          .filter((node) => node.props["data-event-kind"])
+          .map((node) => node.props["data-event-id"]);
+      const firstOrder = rows();
+      messages.push(
+        message("live-newest", 3, "assistant", 1_400, [
+          { type: "text", text: "Newest update", phase: "commentary" },
+        ]),
+      );
+      await act(async () => renderer.update(render()));
+      expect(rows().slice(1)).toEqual(firstOrder);
+      const newest = rows()[0];
+      await act(async () =>
+        renderer.root
+          .findByProps({
+            "aria-label": "Search trajectory events",
+          })
+          .props.onChange({ target: { value: "Newest update" } }),
+      );
+      expect(rows()).toEqual([newest]);
+      await act(async () =>
+        renderer.root
+          .findByProps({
+            "aria-label": "Search trajectory events",
+          })
+          .props.onChange({ target: { value: "" } }),
+      );
+      expect(rows()).toEqual([newest, ...firstOrder]);
+      await act(async () => renderer.unmount());
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("skips hidden trajectory work across parent and live updates while preserving filters", async () => {
     const messages: ChatMessage[] = [
       message("user-1", 1, "user", 1_000, [
