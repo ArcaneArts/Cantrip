@@ -23,14 +23,14 @@ current DigitalOcean Droplet as a native, self-contained Linux x64 Server behind
 host Caddy. It does not install Docker, Node.js, pnpm, Git, or Infisical on the
 Droplet. The release workstation needs:
 
-- a clean `main` checkout equal to `origin/main`;
+- a clean `main` checkout equal to `origin/main` for branch promotion;
 - Docker Engine with Buildx and Linux AMD64 build support;
 - an authenticated `doctl` CLI session authorized to update the Cantrip App
   Platform app;
 - authenticated Infisical CLI access to the project in `.infisical.json`;
 - OpenSSH, SCP, and tar; and
-- the production API DNS name resolving to the `sshHost` in
-  `deploy/production/deploy.json`.
+- working SSH access to the `sshHost` in `deploy/production/deploy.json` and
+  HTTPS routing for the production API name.
 
 The Infisical environment named by that file must define the administrator,
 allowed application origins, API domain and public origin, database URL, the
@@ -61,6 +61,14 @@ but the Droplet deployment failed, retry only the host phase:
 ```bash
 pnpm deploy:server
 ```
+
+The host phase builds an isolated checkout of the exact promoted commit,
+including its commit-count version and deployment files. A reconciliation or
+CI-trigger commit does not need the same SHA as `main`. The standalone retry
+fetches the current remote `release` snapshot without changing the local branch
+or including uncommitted work. SSH connection errors and the actual API readiness
+response determine deployment success; there is no preliminary DNS-to-host-IP
+equality gate.
 
 The host layout is:
 

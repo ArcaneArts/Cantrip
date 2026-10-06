@@ -1,13 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { promises as dns } from "node:dns";
-import {
-  chmod,
-  mkdtemp,
-  readFile,
-  realpath,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -17,8 +9,6 @@ const scriptRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
-const deploymentDirectory = path.join(scriptRoot, "deploy", "production");
-const deploymentConfigPath = path.join(deploymentDirectory, "deploy.json");
 
 const requiredSecretNames = [
   "CANTRIP_ACTIVE_SECRET_ENCRYPTION_KEY_ID",
@@ -310,9 +300,10 @@ export function validateDeploymentConfig(config) {
   return config;
 }
 
-async function loadDeploymentConfig() {
+async function loadDeploymentConfig(root) {
+  const deploymentDirectory = path.join(root, "deploy", "production");
   const [source, caddyfile] = await Promise.all([
-    readFile(deploymentConfigPath, "utf8"),
+    readFile(path.join(deploymentDirectory, "deploy.json"), "utf8"),
     readFile(path.join(deploymentDirectory, "Caddyfile"), "utf8"),
   ]);
   const config = validateDeploymentConfig(JSON.parse(source));
@@ -331,63 +322,40 @@ async function loadDeploymentConfig() {
   return config;
 }
 
-async function validateProductionSource(root, expectedCommit) {
-  const topLevel = await realpath(git(root, ["rev-parse", "--show-toplevel"]));
-  if (topLevel !== (await realpath(root))) {
-    throw new Error(`Deployment must run from the repository root: ${root}`);
+export async function withProductionSource(
+  { root = scriptRoot, commit },
+  deploy,
+) {
+  if (!commit) {
+    // Standalone deploy: use the actual remote release, not whichever branch
+    // happens to be checked out locally.
+    git(root, ["fetch", "origin", "refs/heads/release"]);
+    commit = git(root, ["rev-parse", "FETCH_HEAD^{commit}"]);
   }
-  const branch = git(root, ["branch", "--show-current"]);
-  if (branch !== "main") {
-    throw new Error(
-      `Production deployment must run from main; the current branch is ${branch || "detached"}.`,
-    );
-  }
-  if (git(root, ["status", "--porcelain"])) {
-    throw new Error(
-      "Production deployment requires a clean main working tree.",
-    );
-  }
-  const commit = git(root, ["rev-parse", "refs/heads/main"]);
-  const remoteRefs = git(root, [
-    "ls-remote",
-    "--heads",
-    "origin",
-    "main",
-    "release",
-  ]);
-  const remoteCommits = new Map(
-    remoteRefs.split("\n").map((line) => {
-      const [sha, ref] = line.trim().split(/\s+/u);
-      return [ref, sha];
-    }),
+  const temporaryDirectory = await mkdtemp(
+    path.join(os.tmpdir(), "cantrip-production-source-"),
   );
-  if (commit !== remoteCommits.get("refs/heads/main")) {
-    throw new Error(
-      "Production deployment requires main to equal origin/main.",
-    );
-  }
-  if (commit !== remoteCommits.get("refs/heads/release")) {
-    throw new Error(
-      "Production deployment requires origin/release to point at main. Run pnpm release first.",
-    );
-  }
-  if (expectedCommit && commit !== expectedCommit) {
-    throw new Error("The release commit changed before deployment began.");
-  }
-  return commit;
-}
-
-async function validateProductionDns(config) {
-  for (const domain of [config.apiDomain]) {
-    let addresses;
+  const sourceRoot = path.join(temporaryDirectory, "source");
+  let checkedOut = false;
+  try {
+    // Promotion and CI-trigger commits deliberately differ from main's SHA.
+    // Build their real snapshot instead of guessing equivalence from refs.
+    git(root, ["worktree", "add", "--detach", sourceRoot, commit]);
+    checkedOut = true;
+    return await deploy({
+      root: sourceRoot,
+      commit: git(sourceRoot, ["rev-parse", "HEAD"]),
+      versionPatch: git(sourceRoot, ["rev-list", "--count", "HEAD"]),
+    });
+  } finally {
     try {
-      addresses = await dns.resolve4(domain);
-    } catch {
-      throw new Error(`${domain} does not have a resolvable IPv4 address.`);
-    }
-    if (!addresses.includes(config.sshHost)) {
-      throw new Error(
-        `${domain} must resolve to ${config.sshHost} before deployment (resolved: ${addresses.join(", ")}).`,
+      if (checkedOut) git(root, ["worktree", "remove", "--force", sourceRoot]);
+      await rm(temporaryDirectory, { force: true, recursive: true });
+    } catch (error) {
+      // A temporary-checkout cleanup problem must not disguise the actual
+      // deployment result (or replace a Docker/SSH failure).
+      console.warn(
+        `Could not remove temporary production source ${sourceRoot}: ${error.message}`,
       );
     }
   }
@@ -463,14 +431,14 @@ export function productionServerBuildArguments(
   ];
 }
 
-function buildServerBundle(config, temporaryDirectory, versionPatch) {
+function buildServerBundle(config, temporaryDirectory, versionPatch, root) {
   const outputDirectory = path.join(temporaryDirectory, "server");
   const artifactPath = path.join(temporaryDirectory, "cantrip-server.tar.gz");
   console.log(`Building the production server bundle for ${config.platform}…`);
   command(
     "docker",
     productionServerBuildArguments(config, outputDirectory, versionPatch),
-    { inherit: true },
+    { cwd: root, inherit: true },
   );
   createProductionServerArchive(outputDirectory, artifactPath);
   return artifactPath;
@@ -486,7 +454,13 @@ export function createProductionServerArchive(outputDirectory, artifactPath) {
   );
 }
 
-function uploadAndInstall(config, keyPath, commit, artifactPath) {
+function uploadAndInstall(
+  config,
+  keyPath,
+  commit,
+  artifactPath,
+  deploymentDirectory,
+) {
   const remoteDirectory = `/tmp/cantrip-deploy-${commit}`;
   const destination = `${config.sshUser}@${config.sshHost}:${remoteDirectory}/`;
   runSsh(
@@ -545,21 +519,24 @@ async function waitForPublicEndpoint(url, label) {
   throw new Error(`${label} did not become publicly ready (${lastStatus}).`);
 }
 
-export async function deployProduction({
-  root = scriptRoot,
-  commit: expectedCommit,
-} = {}) {
-  const config = await loadDeploymentConfig();
-  const commit = await validateProductionSource(root, expectedCommit);
-  const versionPatch = git(root, ["rev-list", "--count", commit]);
-  await validateProductionDns(config);
+export async function deployProduction({ root = scriptRoot, commit } = {}) {
+  return withProductionSource({ root, commit }, deployProductionSource);
+}
 
-  const secretOutput = secretCommand("infisical", [
-    "secrets",
-    `--env=${config.infisicalEnvironment}`,
-    "--output=json",
-    "--silent",
-  ]);
+async function deployProductionSource({ root, commit, versionPatch }) {
+  const config = await loadDeploymentConfig(root);
+  const deploymentDirectory = path.join(root, "deploy", "production");
+
+  const secretOutput = secretCommand(
+    "infisical",
+    [
+      "secrets",
+      `--env=${config.infisicalEnvironment}`,
+      "--output=json",
+      "--silent",
+    ],
+    { cwd: root },
+  );
   const secrets = parseInfisicalSecrets(secretOutput);
   const privateKey = secrets.get(config.sshPrivateKeySecret);
   if (!privateKey?.trim()) {
@@ -587,9 +564,16 @@ export async function deployProduction({
       config,
       temporaryDirectory,
       versionPatch,
+      root,
     );
     writeRemoteEnvironment(config, keyPath, environmentFile);
-    uploadAndInstall(config, keyPath, commit, artifactPath);
+    uploadAndInstall(
+      config,
+      keyPath,
+      commit,
+      artifactPath,
+      deploymentDirectory,
+    );
     await waitForPublicEndpoint(
       `https://${config.apiDomain}/readyz`,
       "Cantrip API",
