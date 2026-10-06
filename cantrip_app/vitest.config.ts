@@ -7,6 +7,7 @@ export default mergeConfig(
   defineConfig({
     test: {
       include: ["src/**/*.test.{ts,tsx}"],
+      css: { include: [/\.css\?raw(?:&|$)/] },
     },
   }),
 );

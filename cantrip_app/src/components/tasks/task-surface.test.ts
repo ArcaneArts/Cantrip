@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import appStyles from "../../index.css?raw";
 import {
   TASK_DRAFT_FOOTER_CLASS_NAME,
   TASK_DRAFT_OPTIONS_CLASS_NAME,
@@ -40,6 +41,24 @@ const baseTask = {
 };
 
 describe("Task draft presentation", () => {
+  it("lets the Pro Mode shell show through the footer without extra blur", () => {
+    expect(TASK_DRAFT_FOOTER_CLASS_NAME.split(" ")).toContain(
+      "cantrip-task-draft-footer",
+    );
+    const rule = appStyles.match(
+      /\.pro-mode \.cantrip-task-draft-footer\s*\{([^}]+)\}/,
+    )?.[1];
+    expect(rule).toContain("background-color: transparent;");
+    expect(rule).toContain("-webkit-backdrop-filter: none;");
+    expect(rule).toContain("backdrop-filter: none;");
+  });
+
+  it("retains the footer background and blur in standard mode", () => {
+    const classes = TASK_DRAFT_FOOTER_CLASS_NAME.split(" ");
+    expect(classes).toContain("bg-background/95");
+    expect(classes).toContain("backdrop-blur");
+  });
+
   it("keeps mobile primary actions compact and moves options below them", () => {
     expect(TASK_DRAFT_FOOTER_CLASS_NAME).toContain("px-3");
     expect(TASK_DRAFT_FOOTER_CLASS_NAME).toContain("sm:px-6");

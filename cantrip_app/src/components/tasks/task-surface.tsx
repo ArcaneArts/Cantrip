@@ -95,7 +95,7 @@ const TaskMarkdownEditor = lazy(() =>
 const TASK_AUTOSAVE_DELAY_MS = 700;
 
 export const TASK_DRAFT_FOOTER_CLASS_NAME =
-  "shrink-0 border-t bg-background/95 px-3 py-2 backdrop-blur sm:px-6 sm:py-3";
+  "cantrip-task-draft-footer shrink-0 border-t bg-background/95 px-3 py-2 backdrop-blur sm:px-6 sm:py-3";
 export const TASK_DRAFT_OPTIONS_CLASS_NAME =
   "order-last grid w-full grid-cols-2 gap-3 rounded-lg border bg-muted/20 p-3 sm:contents";
 
