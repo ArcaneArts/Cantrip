@@ -91,7 +91,7 @@ export function taskImplementationShowsLiveActivity(
 }
 
 export const TASK_IMPLEMENTATION_CONTENT_CLASS_NAME =
-  "flex w-full min-w-0 max-w-full flex-col px-4 py-5 sm:px-8";
+  "flex w-full min-w-0 max-w-full flex-col px-0 py-5 @min-[40rem]/task-implementation:px-8";
 
 function PullRequestRow({
   pullRequest,
@@ -253,10 +253,15 @@ export function TaskImplementationDashboard({
   const directFolder = placement?.kind === "folder";
 
   return (
-    <div className="min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden overflow-y-auto">
+    <div className="@container/task-implementation min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden overflow-y-auto">
       <div className={TASK_IMPLEMENTATION_CONTENT_CLASS_NAME}>
         <header className="flex flex-wrap items-center gap-3 border-b pb-4">
-          {onClose ? <TaskListBackButton onBack={onClose} /> : null}
+          {onClose ? (
+            <TaskListBackButton
+              className="ml-0 @min-[40rem]/task-implementation:-ml-2"
+              onBack={onClose}
+            />
+          ) : null}
           <div className="grid size-9 place-items-center rounded-lg bg-violet-500/10 text-violet-500">
             <Target className="size-4" />
           </div>
@@ -366,7 +371,9 @@ export function TaskImplementationDashboard({
         <section
           className={cn(
             "grid gap-0 border-b py-4",
-            directFolder ? "sm:grid-cols-2" : "sm:grid-cols-3",
+            directFolder
+              ? "@min-[40rem]/task-implementation:grid-cols-2"
+              : "@min-[40rem]/task-implementation:grid-cols-3",
           )}
         >
           <div className="flex min-w-0 items-center gap-2 py-1 text-sm">
