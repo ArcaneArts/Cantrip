@@ -30,6 +30,7 @@ const runtime = vi.hoisted(() => {
     directoryEntry,
     entry,
     entriesByPath: new Map<string, ExplorerEntry[]>(),
+    pendingPaths: new Set<string>(),
     gate: {
       bindingKey: "binding-a" as string | null,
       continuityKey: "worker-authorization" as string | null,
@@ -124,16 +125,18 @@ vi.mock("@/components/ui/confirm-dialog", async () => {
 vi.mock("@/components/explorer/use-explorer-directory", () => ({
   useExplorerDirectory: (input: { enabled: boolean; path: string }) => {
     runtime.directory(input);
-    const entries = input.enabled
-      ? (runtime.entriesByPath.get(input.path) ?? [])
-      : [];
+    const loading = input.enabled && runtime.pendingPaths.has(input.path);
+    const entries =
+      input.enabled && !loading
+        ? (runtime.entriesByPath.get(input.path) ?? [])
+        : [];
     return {
       commitByPath: new Map(),
       commits: { data: undefined, isError: false, isLoading: false },
       directory: {
-        data: input.enabled ? { entries } : undefined,
+        data: input.enabled && !loading ? { entries } : undefined,
         isError: false,
-        isLoading: false,
+        isLoading: loading,
       },
       entries,
     };
@@ -227,16 +230,144 @@ function buttonWithAriaLabel(
   return button;
 }
 
+function folder(path: string): ExplorerEntry {
+  return { ...runtime.directoryEntry, name: path.split("/").at(-1)!, path };
+}
+
+function fileRow(renderer: TestRenderer.ReactTestRenderer, name: string) {
+  return renderer.root
+    .findAllByProps({ role: "treeitem" })
+    .find((row) => textContent(row.props.children) === name)!;
+}
+
+async function clickFolder(
+  renderer: TestRenderer.ReactTestRenderer,
+  name: string,
+) {
+  const target = {};
+  await act(async () =>
+    fileRow(renderer, name).props.onClick({ currentTarget: target, target }),
+  );
+}
+
 describe("project sidebar file tree encryption gate", () => {
   beforeEach(() => {
     runtime.directory.mockClear();
     runtime.entriesByPath.clear();
+    runtime.pendingPaths.clear();
     runtime.entriesByPath.set("", [runtime.entry]);
     runtime.workerEncryption.mockClear();
     runtime.gate.bindingKey = "binding-a";
     runtime.gate.error = null;
     runtime.gate.ready = true;
     runtime.gate.retry.mockClear();
+  });
+
+  it("expands an entire package chain and keeps manual collapse usable", async () => {
+    const paths = [
+      "com",
+      "com/company",
+      "com/company/package",
+      "com/company/package/feature",
+    ];
+    runtime.entriesByPath.set("", [folder(paths[0]!)]);
+    paths
+      .slice(0, -1)
+      .forEach((path, index) =>
+        runtime.entriesByPath.set(path, [folder(paths[index + 1]!)]),
+      );
+    runtime.entriesByPath.set(paths.at(-1)!, [
+      {
+        ...runtime.entry,
+        name: "file.java",
+        path: `${paths.at(-1)}/file.java`,
+      },
+    ]);
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(tree());
+    });
+    expect(renderer.root.findAllByProps({ role: "treeitem" })).toHaveLength(1);
+    await clickFolder(renderer, "com");
+    expect(fileRow(renderer, "file.java")).toBeDefined();
+    for (const name of ["com", "company", "package", "feature"])
+      expect(fileRow(renderer, name).props["aria-expanded"]).toBe(true);
+    await clickFolder(renderer, "package");
+    expect(fileRow(renderer, "package").props["aria-expanded"]).toBe(false);
+    expect(fileRow(renderer, "file.java")).toBeUndefined();
+    await clickFolder(renderer, "package");
+    expect(fileRow(renderer, "file.java")).toBeDefined();
+    await act(async () => renderer.unmount());
+  });
+
+  it.each(["empty", "file", "two folders", "folder and file", "symlink"])(
+    "stops the expansion chain at %s",
+    async (kind) => {
+      const child = folder("src/child");
+      const leaf = { ...runtime.entry, path: "src/example.ts" };
+      const entries =
+        kind === "empty"
+          ? []
+          : kind === "file"
+            ? [leaf]
+            : kind === "two folders"
+              ? [child, folder("src/other")]
+              : kind === "folder and file"
+                ? [child, leaf]
+                : [{ ...child, symbolicLink: true }];
+      runtime.entriesByPath.set("", [runtime.directoryEntry]);
+      runtime.entriesByPath.set("src", entries);
+      let renderer!: TestRenderer.ReactTestRenderer;
+      await act(async () => {
+        renderer = TestRenderer.create(tree());
+      });
+      await clickFolder(renderer, "src");
+      expect(fileRow(renderer, "src").props["aria-expanded"]).toBe(true);
+      for (const entry of entries.filter((entry) => entry.kind === "directory"))
+        expect(fileRow(renderer, entry.name).props["aria-expanded"]).toBe(
+          false,
+        );
+      expect(runtime.directory).not.toHaveBeenCalledWith(
+        expect.objectContaining({ enabled: true, path: "src/child" }),
+      );
+      await act(async () => renderer.unmount());
+    },
+  );
+
+  it("continues after delayed loading and ignores hidden OS metadata", async () => {
+    runtime.entriesByPath.set("", [runtime.directoryEntry]);
+    runtime.entriesByPath.set("src", [
+      folder("src/child"),
+      { ...runtime.entry, name: ".DS_Store", path: "src/.DS_Store" },
+    ]);
+    runtime.pendingPaths.add("src");
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(tree());
+    });
+    await clickFolder(renderer, "src");
+    expect(fileRow(renderer, "child")).toBeUndefined();
+    runtime.pendingPaths.delete("src");
+    await act(async () => renderer.update(tree()));
+    expect(fileRow(renderer, "child").props["aria-expanded"]).toBe(true);
+    await act(async () => renderer.unmount());
+  });
+
+  it("does not expand a chain if the parent is collapsed before loading finishes", async () => {
+    runtime.entriesByPath.set("", [runtime.directoryEntry]);
+    runtime.entriesByPath.set("src", [folder("src/child")]);
+    runtime.pendingPaths.add("src");
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(tree());
+    });
+    await clickFolder(renderer, "src");
+    await clickFolder(renderer, "src");
+    runtime.pendingPaths.delete("src");
+    await act(async () => renderer.update(tree()));
+    expect(fileRow(renderer, "src").props["aria-expanded"]).toBe(false);
+    expect(fileRow(renderer, "child")).toBeUndefined();
+    await act(async () => renderer.unmount());
   });
 
   it("retries a failed encryption gate once when its worker returns online", async () => {
