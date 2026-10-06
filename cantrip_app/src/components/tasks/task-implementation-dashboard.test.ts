@@ -24,6 +24,15 @@ describe("Task implementation dashboard presentation", () => {
     expect(TASK_IMPLEMENTATION_CONTENT_CLASS_NAME).not.toContain("mx-auto");
   });
 
+  it("removes narrow-pane gutters regardless of the application viewport", () => {
+    const classes = TASK_IMPLEMENTATION_CONTENT_CLASS_NAME.split(" ");
+    expect(classes).toContain("px-0");
+    expect(classes).toContain("@min-[40rem]/task-implementation:px-8");
+    expect(
+      classes.some((className) => /^(sm|md|lg|xl):px-/.test(className)),
+    ).toBe(false);
+  });
+
   it("labels managed folder placement without Git terminology", () => {
     expect(
       taskImplementationPlacementLabel({
