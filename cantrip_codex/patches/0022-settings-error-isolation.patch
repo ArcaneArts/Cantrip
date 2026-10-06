@@ -1,8 +1,8 @@
 diff --git a/codex-rs/app-server-protocol/src/protocol/thread_history.rs b/codex-rs/app-server-protocol/src/protocol/thread_history.rs
-index 9850f97..298b77e 100644
+index 81f8e95..5c24d9e 100644
 --- a/codex-rs/app-server-protocol/src/protocol/thread_history.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/thread_history.rs
-@@ -4924,6 +4924,43 @@ mod tests {
+@@ -4940,6 +4940,43 @@ mod tests {
          assert_eq!(turns[0].error, None);
      }
  
@@ -47,10 +47,10 @@ index 9850f97..298b77e 100644
      fn out_of_turn_error_does_not_create_or_fail_a_turn() {
          let events = vec![
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/shared.rs b/codex-rs/app-server-protocol/src/protocol/v2/shared.rs
-index a1ba74b..f526a30 100644
+index 7b20419..2b2e7cb 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/shared.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/shared.rs
-@@ -97,6 +97,12 @@ pub enum CodexErrorInfo {
+@@ -99,6 +99,12 @@ pub enum CodexErrorInfo {
      Unauthorized,
      BadRequest,
      ThreadRollbackFailed,
@@ -63,7 +63,7 @@ index a1ba74b..f526a30 100644
      SandboxError,
      /// The response SSE stream disconnected in the middle of a turn before completion.
      ResponseStreamDisconnected {
-@@ -144,6 +150,9 @@ impl From<CoreCodexErrorInfo> for CodexErrorInfo {
+@@ -148,6 +154,9 @@ impl From<CoreCodexErrorInfo> for CodexErrorInfo {
              CoreCodexErrorInfo::BadRequest => CodexErrorInfo::BadRequest,
              CoreCodexErrorInfo::InvalidPrompt => CodexErrorInfo::Other,
              CoreCodexErrorInfo::ThreadRollbackFailed => CodexErrorInfo::ThreadRollbackFailed,
@@ -74,10 +74,10 @@ index a1ba74b..f526a30 100644
              CoreCodexErrorInfo::ResponseStreamDisconnected { http_status_code } => {
                  CodexErrorInfo::ResponseStreamDisconnected { http_status_code }
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/tests.rs b/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
-index 1a01c20..f984441 100644
+index 07384ea..ae43ca8 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
-@@ -5386,3 +5386,23 @@ fn inter_agent_communication_items_preserve_identity_and_encrypted_payload_bound
+@@ -5409,3 +5409,23 @@ fn inter_agent_communication_items_preserve_identity_and_encrypted_payload_bound
          assert_eq!(serde_json::from_value::<ThreadItem>(value).unwrap(), item);
      }
  }
@@ -102,7 +102,7 @@ index 1a01c20..f984441 100644
 +    }
 +}
 diff --git a/codex-rs/app-server/src/bespoke_event_handling.rs b/codex-rs/app-server/src/bespoke_event_handling.rs
-index bba59cb..e55f154 100644
+index 60d6063..78c58ad 100644
 --- a/codex-rs/app-server/src/bespoke_event_handling.rs
 +++ b/codex-rs/app-server/src/bespoke_event_handling.rs
 @@ -1028,14 +1028,35 @@ pub(crate) async fn apply_bespoke_event_handling(
@@ -144,7 +144,7 @@ index bba59cb..e55f154 100644
              let turn_error = TurnError {
                  misalignment: ev.misalignment.map(Into::into),
                  message: ev.message,
-@@ -3029,6 +3050,163 @@ mod tests {
+@@ -3038,6 +3059,163 @@ mod tests {
          assert!(response.strict_auto_review);
      }
  
@@ -309,10 +309,10 @@ index bba59cb..e55f154 100644
      async fn test_handle_error_records_message() -> Result<()> {
          let conversation_id = ThreadId::new();
 diff --git a/codex-rs/core/src/agent/control_tests.rs b/codex-rs/core/src/agent/control_tests.rs
-index 0545520..03c1f70 100644
+index 62e59d5..805f2c5 100644
 --- a/codex-rs/core/src/agent/control_tests.rs
 +++ b/codex-rs/core/src/agent/control_tests.rs
-@@ -626,6 +626,29 @@ async fn on_event_updates_status_from_error() {
+@@ -612,6 +612,29 @@ async fn on_event_updates_status_from_error() {
      assert_eq!(status, Some(expected));
  }
  
@@ -357,35 +357,24 @@ index 0ec7e96..4781ab4 100644
          EventMsg::ShutdownComplete => Some(AgentStatus::Shutdown),
          _ => None,
      }
-diff --git a/codex-rs/core/src/session/thread_settings.rs b/codex-rs/core/src/session/thread_settings.rs
-index 13b629a..49ce09b 100644
---- a/codex-rs/core/src/session/thread_settings.rs
-+++ b/codex-rs/core/src/session/thread_settings.rs
-@@ -41,7 +41,7 @@ pub(super) async fn update(
- ) {
-     let updates = prepare_update(overrides);
-     if let Err(error) =
--        apply_correlated_update(session, submission_id.clone(), updates, operation_id, true).await
-+        apply_correlated_update(session, submission_id.clone(), updates, operation_id.clone(), true).await
-     {
-         session
-             .send_event_raw(Event {
-@@ -49,7 +49,9 @@ pub(super) async fn update(
-                 msg: EventMsg::Error(ErrorEvent {
-                     misalignment: None,
-                     message: format!("invalid thread settings override: {error}"),
--                    codex_error_info: Some(CodexErrorInfo::BadRequest),
-+                    codex_error_info: Some(CodexErrorInfo::ThreadSettingsUpdateFailed {
-+                        operation_id,
-+                    }),
-                 }),
-             })
-             .await;
+diff --git a/codex-rs/core/src/session/handlers.rs b/codex-rs/core/src/session/handlers.rs
+index 62119e5..f26412d 100644
+--- a/codex-rs/core/src/session/handlers.rs
++++ b/codex-rs/core/src/session/handlers.rs
+@@ -547,7 +547,7 @@ pub(super) async fn submission_loop(
+                                     msg: EventMsg::Error(ErrorEvent {
+                                         misalignment: None,
+                                         message,
+-                                        codex_error_info: Some(CodexErrorInfo::BadRequest),
++                                        codex_error_info: Some(CodexErrorInfo::ThreadSettingsUpdateFailed { operation_id }),
+                                     }),
+                                 })
+                                 .await;
 diff --git a/codex-rs/core/tests/suite/client.rs b/codex-rs/core/tests/suite/client.rs
-index 7221fcf..67000d2 100644
+index a2efbaa..059f777 100644
 --- a/codex-rs/core/tests/suite/client.rs
 +++ b/codex-rs/core/tests/suite/client.rs
-@@ -2631,16 +2631,10 @@ async fn model_without_reasoning_configuration_omits_reasoning() -> anyhow::Resu
+@@ -2684,16 +2684,10 @@ async fn model_without_reasoning_configuration_omits_reasoning() -> anyhow::Resu
          .await?;
  
      codex
@@ -535,10 +524,10 @@ index beb553e..8550c07 100644
  
      Ok(())
 diff --git a/codex-rs/core/tests/suite/settings_constraints.rs b/codex-rs/core/tests/suite/settings_constraints.rs
-index e9abcb4..459edb7 100644
+index 2eafb8b..c614cde 100644
 --- a/codex-rs/core/tests/suite/settings_constraints.rs
 +++ b/codex-rs/core/tests/suite/settings_constraints.rs
-@@ -78,7 +78,13 @@ impl SettingsOperation {
+@@ -102,7 +102,13 @@ impl SettingsOperation {
                  match event.msg {
                      EventMsg::ThreadSettingsApplied(applied) => return Ok(applied.thread_settings),
                      EventMsg::Error(error) => {
@@ -553,7 +542,7 @@ index e9abcb4..459edb7 100644
                          anyhow::bail!(error.message);
                      }
                      _ => {}
-@@ -170,6 +176,7 @@ async fn protected_model_settings_use_the_proposed_permissions(
+@@ -195,6 +201,7 @@ async fn protected_model_settings_use_the_proposed_permissions(
          ),
          approvals_reviewer: ApprovalsReviewer::AutoReview,
          permission_profile: PermissionProfile::read_only(),
@@ -562,10 +551,10 @@ index e9abcb4..459edb7 100644
          ..initial
      };
 diff --git a/codex-rs/protocol/src/protocol.rs b/codex-rs/protocol/src/protocol.rs
-index 0ac7db3..58f187b 100644
+index 01e33fa..b183a09 100644
 --- a/codex-rs/protocol/src/protocol.rs
 +++ b/codex-rs/protocol/src/protocol.rs
-@@ -1891,6 +1891,10 @@ pub enum CodexErrorInfo {
+@@ -1896,6 +1896,10 @@ pub enum CodexErrorInfo {
      },
      // Retained to deserialize errors recorded in legacy rollouts.
      ThreadRollbackFailed,
@@ -576,7 +565,7 @@ index 0ac7db3..58f187b 100644
      Other,
  }
  
-@@ -1898,7 +1902,9 @@ impl CodexErrorInfo {
+@@ -1903,7 +1907,9 @@ impl CodexErrorInfo {
      /// Whether this error should mark the current turn as failed when replaying history.
      pub fn affects_turn_status(&self) -> bool {
          match self {
@@ -587,7 +576,7 @@ index 0ac7db3..58f187b 100644
              Self::ContextWindowExceeded
              | Self::SessionBudgetExceeded
              | Self::UsageLimitExceeded
-@@ -5883,6 +5889,25 @@ mod tests {
+@@ -5896,6 +5902,25 @@ mod tests {
          assert!(!event.affects_turn_status());
      }
  
@@ -632,10 +621,10 @@ index f5f38a9..f868196 100644
                          self.on_stream_error(
                              notification.error.message,
 diff --git a/codex-rs/tui/src/chatwidget/tests/app_server.rs b/codex-rs/tui/src/chatwidget/tests/app_server.rs
-index 181d38b..6214b9f 100644
+index 9d08728..3c4e2ca 100644
 --- a/codex-rs/tui/src/chatwidget/tests/app_server.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/app_server.rs
-@@ -1431,6 +1431,76 @@ async fn live_app_server_collab_spawn_completed_renders_requested_model_and_effo
+@@ -1508,6 +1508,76 @@ async fn live_app_server_collab_spawn_completed_renders_requested_model_and_effo
      );
  }
  
@@ -713,7 +702,7 @@ index 181d38b..6214b9f 100644
  async fn live_app_server_failed_turn_does_not_duplicate_error_history() {
      let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
 diff --git a/codex-rs/tui/src/chatwidget/turn_runtime.rs b/codex-rs/tui/src/chatwidget/turn_runtime.rs
-index bad721b..c8549d7 100644
+index 1372205..7a6dd7e 100644
 --- a/codex-rs/tui/src/chatwidget/turn_runtime.rs
 +++ b/codex-rs/tui/src/chatwidget/turn_runtime.rs
 @@ -470,6 +470,10 @@ impl ChatWidget {

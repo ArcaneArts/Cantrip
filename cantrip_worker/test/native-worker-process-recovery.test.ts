@@ -31,6 +31,7 @@ import { WorkerBridge } from "../../cantrip_server/src/workers/bridge.js";
 
 const binary = process.env.CANTRIP_CODEX_TEST_BINARY?.trim();
 const helper = process.env.CANTRIP_CUA_TEST_BINARY?.trim();
+const modelDisplayName = "Restart model";
 const workerRoot = fileURLToPath(new URL("../", import.meta.url));
 
 // This launches dist/index.js, not a subset of worker components. Build the
@@ -522,7 +523,7 @@ it.skipIf(!binary || !helper || process.platform === "win32").each(
             {
               nativeModelId: "gpt-5",
               canonicalModelId: "gpt-5",
-              displayName: "Restart model",
+              displayName: modelDisplayName,
               description: null,
               contextWindow: 128000,
               maxOutputTokens: null,
@@ -658,7 +659,7 @@ it.skipIf(!binary || !helper || process.platform === "win32").each(
             ok: true,
             result: { status: "running" },
           });
-          expect(frame.result.data).toContain("gpt-5");
+          expect(frame.result.data).toContain(modelDisplayName);
         },
         { timeout: 10000 },
       );
@@ -972,7 +973,7 @@ it.skipIf(!binary || !helper || process.platform === "win32").each(
             ok: true,
             result: { status: "running" },
           });
-          expect(frame.result.data).toContain("gpt-5");
+          expect(frame.result.data).toContain(modelDisplayName);
         },
         { timeout: 10000 },
       );

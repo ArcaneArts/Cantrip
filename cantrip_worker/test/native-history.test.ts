@@ -265,7 +265,7 @@ describe("worker-local native history", () => {
           experimentalApi: true,
           platformFamily: "unix",
           platformOs: "macos",
-          userAgent: "codex_cli_rs/0.157.1",
+          userAgent: "codex_cli_rs/0.160.1",
         },
       },
       undefined,

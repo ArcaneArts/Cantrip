@@ -1,8 +1,8 @@
 diff --git a/codex-rs/tui/src/lib.rs b/codex-rs/tui/src/lib.rs
-index fa28e9e..6e9b69f 100644
+index a2fba39..f0333b2 100644
 --- a/codex-rs/tui/src/lib.rs
 +++ b/codex-rs/tui/src/lib.rs
-@@ -423,7 +423,7 @@ fn remote_addr_has_explicit_port(addr: &str, parsed: &Url) -> bool {
+@@ -429,7 +429,7 @@ fn remote_addr_has_explicit_port(addr: &str, parsed: &Url) -> bool {
          "wss" => 443,
          _ => return false,
      };
@@ -11,7 +11,7 @@ index fa28e9e..6e9b69f 100644
          format!("[{host}]")
      } else {
          host.to_string()
-@@ -465,7 +465,6 @@ pub fn resolve_remote_addr(addr: &str) -> color_eyre::Result<RemoteAppServerEndp
+@@ -471,7 +471,6 @@ pub fn resolve_remote_addr(addr: &str) -> color_eyre::Result<RemoteAppServerEndp
      if matches!(parsed.scheme(), "ws" | "wss")
          && parsed.host_str().is_some()
          && remote_addr_has_explicit_port(addr, &parsed)

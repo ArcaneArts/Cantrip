@@ -6,28 +6,28 @@ to Codex App Server directly.
 
 ## Tested range
 
-Cantrip currently pins and builds `codex-cli 0.157.1` from the official
-`rust-v0.157.1` source tag at `36650394c5b38c2990ccf2a3457165ca3e9d9726`. Its imported source manifest and
+Cantrip currently pins and builds `codex-cli 0.160.1` from the official
+`rust-v0.160.1` source tag at `d27764b82f7118f674371e6d6e76271d9d606edb`. Its imported source manifest and
 manual update workflow live under `cantrip_codex/`. The protocol validators and
 fixtures were checked against the TypeScript and JSON Schema bindings generated
-by that CLI on September 26, 2026:
+by that CLI on October 5, 2026:
 
 ```sh
 codex app-server generate-ts --experimental --out <temporary-directory>
 codex app-server generate-json-schema --experimental --out <temporary-directory>
 ```
 
-The adapter's compatibility range is `>=0.157.1 <0.158.0`, but packaged
-workers contain exactly `0.157.1`; they do not select another compatible patch
+The adapter's compatibility range is `>=0.160.1 <0.161.0`, but packaged
+workers contain exactly `0.160.1`; they do not select another compatible patch
 from the host. Advancing even within the tested range is a Cantrip source and
 worker release. Expanding the range requires regenerating the bindings,
 reviewing schema changes, and updating compatibility tests.
 
-The 0.157.1 catalog lists `gpt-6-astra` and gives it the highest priority, making
-it the bundled Codex default when no model is explicitly configured. Cantrip
+The 0.160.1 catalog lists `gpt-6-astra` and now gives `gpt-6.1-sol` the highest
+priority, making Sol the bundled Codex default when no model is explicitly configured. Cantrip
 continues to use its server-owned model configuration for managed turns.
 
-All 38 existing Cantrip source patches are rebased onto this tag. A final
+All 39 existing Cantrip source patches are rebased onto this tag. A final
 compatibility patch adapts the new native interfaces and regenerates both
 stable and experimental protocol exports. Managed TUI attachment keeps the new
 screen-reader probe read-only, preserving account preferences. The GUI's
@@ -208,10 +208,10 @@ external thread. See
 
 ## Endpoint-protected ChatGPT authentication
 
-Portable ChatGPT accounts depend on an experimental Codex 0.157 App Server
+Portable ChatGPT accounts depend on an experimental Codex 0.160 App Server
 surface. Before starting a portable ChatGPT runtime, the worker requires:
 
-- semantic version `>=0.157.1 <0.158.0`;
+- semantic version `>=0.160.1 <0.161.0`;
 - `initialize.capabilities.experimentalApi` support; and
 - an available `account/login/start` method.
 

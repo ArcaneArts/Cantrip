@@ -1,8 +1,8 @@
 diff --git a/codex-rs/app-server/src/lib.rs b/codex-rs/app-server/src/lib.rs
-index 4ef6a9c..deac48d 100644
+index b9cd28c..c0dccde 100644
 --- a/codex-rs/app-server/src/lib.rs
 +++ b/codex-rs/app-server/src/lib.rs
-@@ -505,6 +505,12 @@ pub async fn run_main_with_transport_options(
+@@ -509,6 +509,12 @@ pub async fn run_main_with_transport_options(
          loader_overrides,
          test_user_config_file_from_env(),
      )?;
@@ -15,7 +15,7 @@ index 4ef6a9c..deac48d 100644
      let (transport_event_tx, mut transport_event_rx) =
          mpsc::channel::<TransportEvent>(CHANNEL_CAPACITY);
      let (outgoing_tx, mut outgoing_rx) = mpsc::channel::<OutgoingEnvelope>(CHANNEL_CAPACITY);
-@@ -1473,6 +1479,32 @@ fn emit_state_db_backup_warning(message: &str) {
+@@ -1487,6 +1493,32 @@ fn emit_state_db_backup_warning(message: &str) {
      }
  }
  

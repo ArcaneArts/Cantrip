@@ -1,5 +1,5 @@
 diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
-index e0e8be7..dd4ee2c 100644
+index 0e905e0..77c9205 100644
 --- a/codex-rs/app-server-protocol/src/protocol/common.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/common.rs
 @@ -2083,6 +2083,10 @@ server_notification_definitions! {
@@ -26,10 +26,10 @@ index de9a2ee..db01ef1 100644
          current_turn_id,
          current_turn_state: if live { "live" } else { "notLoaded" }.into(),
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-index 10a1ad3..2ca2122 100644
+index b9487a8..794449f 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-@@ -2214,6 +2214,9 @@ mod managed_config_tests {
+@@ -2237,6 +2237,9 @@ mod managed_config_tests {
  #[serde(rename_all = "camelCase")]
  #[ts(export_to = "v2/")]
  pub struct ThreadHistoryMetadata {
@@ -39,7 +39,7 @@ index 10a1ad3..2ca2122 100644
      pub version: u32,
      pub current_turn_id: Option<String>,
      /// `live` observes the engine; `notLoaded` has no live execution authority.
-@@ -2269,3 +2272,34 @@ pub struct ThreadHistoryResponseUsage {
+@@ -2292,3 +2295,34 @@ pub struct ThreadHistoryResponseUsage {
      pub root_turn_id: String,
      pub usage: TokenUsageBreakdown,
  }
@@ -75,10 +75,10 @@ index 10a1ad3..2ca2122 100644
 +    pub items: Vec<LiveHistoryItem>,
 +}
 diff --git a/codex-rs/app-server-transport/src/transport/mod.rs b/codex-rs/app-server-transport/src/transport/mod.rs
-index 8931fdf..9ed2a72 100644
+index 232ce94..8ab51bf 100644
 --- a/codex-rs/app-server-transport/src/transport/mod.rs
 +++ b/codex-rs/app-server-transport/src/transport/mod.rs
-@@ -326,6 +326,7 @@ mod tests {
+@@ -324,6 +324,7 @@ mod tests {
      #[test]
      fn serialize_outgoing_message_preserves_wire_shape() {
          let message = OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
@@ -86,7 +86,7 @@ index 8931fdf..9ed2a72 100644
              notification: ServerNotification::ConfigWarning(ConfigWarningNotification {
                  summary: "summary".to_string(),
                  details: None,
-@@ -553,6 +554,7 @@ mod tests {
+@@ -551,6 +552,7 @@ mod tests {
          writer_tx
              .send(QueuedOutgoingMessage::new(
                  OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
@@ -147,10 +147,10 @@ index 2337b2a..d4fb7d3 100644
                      summary: "backend".to_string(),
                      details: None,
 diff --git a/codex-rs/app-server-transport/src/transport/remote_control/websocket.rs b/codex-rs/app-server-transport/src/transport/remote_control/websocket.rs
-index 716270d..39fc6f3 100644
+index 588756d..99db0dd 100644
 --- a/codex-rs/app-server-transport/src/transport/remote_control/websocket.rs
 +++ b/codex-rs/app-server-transport/src/transport/remote_control/websocket.rs
-@@ -3425,6 +3425,7 @@ mod tests {
+@@ -3421,6 +3421,7 @@ mod tests {
              event: ServerEvent::ServerMessage {
                  message: Box::new(OutgoingMessage::AppServerNotification(
                      ServerNotificationEnvelope {
@@ -159,13 +159,13 @@ index 716270d..39fc6f3 100644
                              ConfigWarningNotification {
                                  summary: summary.to_string(),
 diff --git a/codex-rs/app-server/src/lib.rs b/codex-rs/app-server/src/lib.rs
-index fc0fb1d..4ef6a9c 100644
+index d1a622c..b9cd28c 100644
 --- a/codex-rs/app-server/src/lib.rs
 +++ b/codex-rs/app-server/src/lib.rs
-@@ -119,6 +119,7 @@ mod fuzzy_file_search;
- mod gateway_oauth_notifications;
+@@ -122,6 +122,7 @@ mod gateway_oauth_notifications;
  mod image_url;
  pub mod in_process;
+ mod log_write_warning;
 +mod live_history;
  mod mcp_refresh;
  mod message_processor;
@@ -500,7 +500,7 @@ index 0000000..6b25969
 +    }
 +}
 diff --git a/codex-rs/app-server/src/outgoing_message.rs b/codex-rs/app-server/src/outgoing_message.rs
-index 10c206b..21bdf86 100644
+index b59d2b8..f398737 100644
 --- a/codex-rs/app-server/src/outgoing_message.rs
 +++ b/codex-rs/app-server/src/outgoing_message.rs
 @@ -139,6 +139,7 @@ pub(crate) struct OutgoingMessageSender {
@@ -554,7 +554,7 @@ index 10c206b..21bdf86 100644
              sender,
              request_id_to_callback: Mutex::new(HashMap::new()),
              request_contexts: Mutex::new(HashMap::new()),
-@@ -799,7 +822,11 @@ impl OutgoingMessageSender {
+@@ -807,7 +830,11 @@ impl OutgoingMessageSender {
              targeted_connections = connection_ids.len(),
              "app-server event: {notification}"
          );
@@ -567,7 +567,7 @@ index 10c206b..21bdf86 100644
          if connection_ids.is_empty() {
              if let Err(err) = self
                  .sender
-@@ -833,7 +860,11 @@ impl OutgoingMessageSender {
+@@ -841,7 +868,11 @@ impl OutgoingMessageSender {
          notification: ServerNotification,
      ) -> bool {
          tracing::trace!("app-server event: {notification}");
@@ -580,7 +580,7 @@ index 10c206b..21bdf86 100644
          let (write_complete_tx, write_complete_rx) = oneshot::channel();
          if let Err(err) = self
              .sender
-@@ -929,6 +960,7 @@ fn now_unix_timestamp_ms() -> u64 {
+@@ -937,6 +968,7 @@ fn now_unix_timestamp_ms() -> u64 {
  
  fn timestamped_server_notification(notification: ServerNotification) -> OutgoingMessage {
      OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
@@ -588,7 +588,7 @@ index 10c206b..21bdf86 100644
          notification,
          emitted_at_ms: Some(now_unix_timestamp_ms().try_into().unwrap_or_default()),
      })
-@@ -987,6 +1019,7 @@ mod tests {
+@@ -995,6 +1027,7 @@ mod tests {
  
          let jsonrpc_notification =
              OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
@@ -626,10 +626,10 @@ index b0fa49b..18d402e 100644
          }
      });
 diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
-index 8135200..b4d2e2f 100644
+index 1e5956b..c704bef 100644
 --- a/codex-rs/app-server/src/request_processors/thread_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
-@@ -2909,12 +2909,16 @@ impl ThreadRequestProcessor {
+@@ -2939,12 +2939,16 @@ impl ThreadRequestProcessor {
              } else {
                  None
              };

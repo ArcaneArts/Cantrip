@@ -1,4 +1,4 @@
-/** Explicit inventory for pinned Codex 0.157.1 + the reviewed Cantrip patches.
+/** Explicit inventory for pinned Codex 0.160.1 + the reviewed Cantrip patches.
  * Unknown methods fail closed; a known mutation still requires admission.
  * Read labels describe authority, not whether native discovery allocates clients.
  */

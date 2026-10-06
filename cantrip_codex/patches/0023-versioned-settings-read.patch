@@ -1,5 +1,5 @@
 diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
-index 2860264..9079b46 100644
+index cf8bafc..dc3656b 100644
 --- a/codex-rs/app-server-protocol/src/protocol/common.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/common.rs
 @@ -712,6 +712,12 @@ client_request_definitions! {
@@ -15,7 +15,7 @@ index 2860264..9079b46 100644
      #[experimental("thread/settings/update")]
      ThreadSettingsUpdate => "thread/settings/update" {
          params: v2::ThreadSettingsUpdateParams,
-@@ -4541,6 +4547,7 @@ mod tests {
+@@ -4546,6 +4552,7 @@ mod tests {
                  thread_id: "thr_123".to_string(),
                  thread_settings: v2::ThreadSettings {
                      disabled_plugin_ids: Vec::new(),
@@ -24,7 +24,7 @@ index 2860264..9079b46 100644
                      approval_policy: v2::AskForApproval::Never,
                      approvals_reviewer: v2::ApprovalsReviewer::User,
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-index 62f0eef..d793e98 100644
+index 8185053..48d54ff 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 @@ -231,6 +231,22 @@ impl ThreadStartResponse {
@@ -76,10 +76,10 @@ index 38a7d2d..7361910 100644
                  self.turn_processor
                      .thread_settings_update(&request_id, params)
 diff --git a/codex-rs/app-server/src/request_processors.rs b/codex-rs/app-server/src/request_processors.rs
-index 7517f01..5422d53 100644
+index 446f89b..2d94ea4 100644
 --- a/codex-rs/app-server/src/request_processors.rs
 +++ b/codex-rs/app-server/src/request_processors.rs
-@@ -717,7 +717,6 @@ pub(crate) use self::thread_summary::read_summary_from_rollout;
+@@ -719,7 +719,6 @@ pub(crate) use self::thread_summary::read_summary_from_rollout;
  #[cfg(test)]
  pub(crate) use self::thread_summary::summary_to_thread;
  pub(crate) use self::thread_summary::thread_settings_from_applied_snapshot;
@@ -143,7 +143,7 @@ index 77e19e6..5c22180 100644
          approval_policy: snapshot.approval_policy.into(),
          approvals_reviewer: snapshot.approvals_reviewer.into(),
 diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/codex-rs/app-server/src/request_processors/turn_processor.rs
-index 4d90f86..d7e6ae5 100644
+index 54c730f..6b97d9b 100644
 --- a/codex-rs/app-server/src/request_processors/turn_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/turn_processor.rs
 @@ -236,6 +236,21 @@ impl TurnRequestProcessor {
@@ -181,10 +181,10 @@ index 8cfbc00..41fb209 100644
              approval_policy: AskForApproval::OnRequest,
              approvals_reviewer: ApprovalsReviewer::User,
 diff --git a/codex-rs/core/src/agent/control_tests.rs b/codex-rs/core/src/agent/control_tests.rs
-index 03c1f70..98849dc 100644
+index 805f2c5..f112e83 100644
 --- a/codex-rs/core/src/agent/control_tests.rs
 +++ b/codex-rs/core/src/agent/control_tests.rs
-@@ -1744,6 +1744,7 @@ async fn spawn_agent_fork_from_paginated_parent_uses_model_context_prefix() {
+@@ -1825,6 +1825,7 @@ async fn spawn_agent_fork_from_paginated_parent_uses_model_context_prefix() {
                      thread_id: Some(parent_thread_id),
                      thread_settings: ThreadSettingsSnapshot {
                          disabled_plugin_ids: Vec::new(),
@@ -193,10 +193,10 @@ index 03c1f70..98849dc 100644
                          model_provider_id: "parent-only-provider".to_string(),
                          service_tier: None,
 diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
-index f4cd7cd..e6ce160 100644
+index 16ed519..4687be6 100644
 --- a/codex-rs/core/src/session/mod.rs
 +++ b/codex-rs/core/src/session/mod.rs
-@@ -1947,6 +1947,9 @@ impl Session {
+@@ -1941,6 +1941,9 @@ impl Session {
                  return Ok(None);
              }
  
@@ -206,7 +206,7 @@ index f4cd7cd..e6ce160 100644
              let previous_config = notify_config_contributors
                  .then(|| self.build_effective_session_config(&state.session_configuration));
              let previous_permission_profile = state.session_configuration.permission_profile();
-@@ -1973,11 +1976,19 @@ impl Session {
+@@ -1969,11 +1972,19 @@ impl Session {
              }
              let new_config = notify_config_contributors
                  .then(|| self.build_effective_session_config(&state.session_configuration));
@@ -229,7 +229,7 @@ index f4cd7cd..e6ce160 100644
              };
              (
                  commit,
-@@ -2021,9 +2032,11 @@ impl Session {
+@@ -2017,9 +2028,11 @@ impl Session {
  
      pub(crate) async fn thread_settings_snapshot(&self) -> ThreadSettingsSnapshot {
          let state = self.state.lock().await;
@@ -244,10 +244,10 @@ index f4cd7cd..e6ce160 100644
  
      pub(crate) async fn restorable_thread_settings(&self) -> CodexThreadSettingsOverrides {
 diff --git a/codex-rs/core/src/session/session.rs b/codex-rs/core/src/session/session.rs
-index f8c1b6b..ea76706 100644
+index 81a3610..48ef2f1 100644
 --- a/codex-rs/core/src/session/session.rs
 +++ b/codex-rs/core/src/session/session.rs
-@@ -316,6 +316,7 @@ impl SessionConfiguration {
+@@ -318,6 +318,7 @@ impl SessionConfiguration {
          environment_selections: &[TurnEnvironmentSelection],
      ) -> ThreadSettingsSnapshot {
          ThreadSettingsSnapshot {
@@ -256,7 +256,7 @@ index f8c1b6b..ea76706 100644
              model_provider_id: self.original_config_do_not_use.model_provider_id.clone(),
              service_tier: self.step_settings.service_tier.clone(),
 diff --git a/codex-rs/core/src/state/session.rs b/codex-rs/core/src/state/session.rs
-index e3ddd2c..2cd8f90 100644
+index 5f8d2d8..e1cc521 100644
 --- a/codex-rs/core/src/state/session.rs
 +++ b/codex-rs/core/src/state/session.rs
 @@ -70,6 +70,8 @@ pub(crate) struct SessionState {
@@ -268,7 +268,7 @@ index e3ddd2c..2cd8f90 100644
      /// Persisted origin of the session base instructions, when known.
      pub(crate) base_instructions_provenance: Option<BaseInstructionsProvenance>,
      pub(crate) history: ContextManager,
-@@ -121,6 +123,8 @@ impl SessionState {
+@@ -123,6 +125,8 @@ impl SessionState {
          Self {
              active_disabled_plugin_ids: Vec::new(),
              session_configuration,
@@ -277,7 +277,7 @@ index e3ddd2c..2cd8f90 100644
              base_instructions_provenance: None,
              history,
              history_reset: CancellationToken::new(),
-@@ -143,6 +147,13 @@ impl SessionState {
+@@ -146,6 +150,13 @@ impl SessionState {
          }
      }
  
@@ -288,14 +288,14 @@ index e3ddd2c..2cd8f90 100644
 +        }
 +    }
 +
-     // History helpers
-     pub(crate) fn record_items<I>(&mut self, items: I, policy: TruncationPolicy)
-     where
+     pub(crate) fn previous_turn_settings(&self) -> Option<PreviousTurnSettings> {
+         self.previous_turn_settings.clone()
+     }
 diff --git a/codex-rs/core/tests/suite/settings_constraints.rs b/codex-rs/core/tests/suite/settings_constraints.rs
-index 459edb7..4d78e25 100644
+index c614cde..13ec8b0 100644
 --- a/codex-rs/core/tests/suite/settings_constraints.rs
 +++ b/codex-rs/core/tests/suite/settings_constraints.rs
-@@ -167,7 +167,12 @@ async fn protected_model_settings_use_the_proposed_permissions(
+@@ -192,7 +192,12 @@ async fn protected_model_settings_use_the_proposed_permissions(
      assert_eq!(test.codex.thread_settings_snapshot().await, initial);
      assert!(response.requests().is_empty());
  
@@ -309,7 +309,7 @@ index 459edb7..4d78e25 100644
          model: PROTECTED_MODEL.to_string(),
          collaboration_mode: initial.collaboration_mode.with_updates(
              Some(PROTECTED_MODEL.to_string()),
-@@ -189,6 +194,13 @@ async fn protected_model_settings_use_the_proposed_permissions(
+@@ -214,6 +219,13 @@ async fn protected_model_settings_use_the_proposed_permissions(
              },
          )
          .await?;
@@ -324,10 +324,10 @@ index 459edb7..4d78e25 100644
      assert_eq!(test.codex.thread_settings_snapshot().await, expected);
      if let SettingsOperation::TurnStart = operation {
 diff --git a/codex-rs/core/tests/suite/step_settings.rs b/codex-rs/core/tests/suite/step_settings.rs
-index 8688157..ea32bd7 100644
+index 069a728..512ecbc 100644
 --- a/codex-rs/core/tests/suite/step_settings.rs
 +++ b/codex-rs/core/tests/suite/step_settings.rs
-@@ -840,6 +840,11 @@ async fn settings_updates_preserve_turn_identity_and_target(target: SettingsTarg
+@@ -845,6 +845,11 @@ async fn settings_updates_preserve_turn_identity_and_target(target: SettingsTarg
              original_settings
          }
          SettingsTarget::Thread => {
@@ -356,10 +356,10 @@ index 1bcae87..69f9834 100644
      expected.reasoning_effort = Some(ReasoningEffort::High);
      expected.reasoning_summary = Some(ReasoningSummary::Detailed);
 diff --git a/codex-rs/protocol/src/protocol.rs b/codex-rs/protocol/src/protocol.rs
-index 58f187b..31416e6 100644
+index b183a09..2d6bd07 100644
 --- a/codex-rs/protocol/src/protocol.rs
 +++ b/codex-rs/protocol/src/protocol.rs
-@@ -2219,8 +2219,22 @@ pub struct ThreadSettingsAppliedEvent {
+@@ -2226,8 +2226,22 @@ pub struct ThreadSettingsAppliedEvent {
      pub thread_settings: ThreadSettingsSnapshot,
  }
  
@@ -419,10 +419,10 @@ index a92f6f5..1cf2d5b 100644
              approval_policy: codex_app_server_protocol::AskForApproval::Never,
              approvals_reviewer: codex_app_server_protocol::ApprovalsReviewer::User,
 diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
-index 167eb4c..f531c33 100644
+index 1cce759..956b44f 100644
 --- a/codex-rs/tui/src/app/tests.rs
 +++ b/codex-rs/tui/src/app/tests.rs
-@@ -9483,6 +9483,7 @@ async fn inactive_thread_settings_notification_updates_cached_collaboration_mode
+@@ -9593,6 +9593,7 @@ async fn inactive_thread_settings_notification_updates_cached_collaboration_mode
          thread_id: inactive_thread_id.to_string(),
          thread_settings: ThreadSettings {
              disabled_plugin_ids: Vec::new(),
@@ -431,7 +431,7 @@ index 167eb4c..f531c33 100644
              approval_policy: AskForApproval::OnRequest,
              approvals_reviewer: codex_app_server_protocol::ApprovalsReviewer::AutoReview,
 diff --git a/codex-rs/tui/src/chatwidget/tests/app_server.rs b/codex-rs/tui/src/chatwidget/tests/app_server.rs
-index 6214b9f..97b218c 100644
+index 3c4e2ca..1166395 100644
 --- a/codex-rs/tui/src/chatwidget/tests/app_server.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/app_server.rs
 @@ -17,6 +17,7 @@ fn thread_settings_for_test(

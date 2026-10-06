@@ -1,8 +1,8 @@
 diff --git a/codex-rs/analytics/src/client.rs b/codex-rs/analytics/src/client.rs
-index a00c76d..26b8639 100644
+index ef310ac..1e9ea18 100644
 --- a/codex-rs/analytics/src/client.rs
 +++ b/codex-rs/analytics/src/client.rs
-@@ -786,6 +786,7 @@ fn session_event_to_analytics_notification(
+@@ -859,6 +859,7 @@ fn session_event_to_analytics_notification(
          ),
          EventMsg::TurnStarted(started) => {
              ServerNotification::TurnStarted(TurnStartedNotification {
@@ -23,10 +23,10 @@ index fb21193..733bc5f 100644
              turn_id: turn_id.into(),
              root_turn_id: None,
 diff --git a/codex-rs/app-server-protocol/src/protocol/thread_history.rs b/codex-rs/app-server-protocol/src/protocol/thread_history.rs
-index 298b77e..4146e38 100644
+index 5c24d9e..6624f9f 100644
 --- a/codex-rs/app-server-protocol/src/protocol/thread_history.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/thread_history.rs
-@@ -2317,6 +2317,7 @@ mod tests {
+@@ -2323,6 +2323,7 @@ mod tests {
          let thread_id = ThreadId::new();
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
@@ -34,7 +34,7 @@ index 298b77e..4146e38 100644
                  canonical_items: false,
                  turn_id: turn_id.to_string(),
                  root_turn_id: None,
-@@ -2384,6 +2385,7 @@ mod tests {
+@@ -2390,6 +2391,7 @@ mod tests {
          }));
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
@@ -42,7 +42,7 @@ index 298b77e..4146e38 100644
                  canonical_items: false,
                  turn_id: turn_id.to_string(),
                  root_turn_id: None,
-@@ -2454,6 +2456,7 @@ mod tests {
+@@ -2460,6 +2462,7 @@ mod tests {
          let saved_path = test_path_buf("/tmp/image-1.png").abs();
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
@@ -50,7 +50,7 @@ index 298b77e..4146e38 100644
                  canonical_items: false,
                  turn_id: turn_id.to_string(),
                  root_turn_id: None,
-@@ -2550,6 +2553,7 @@ mod tests {
+@@ -2557,6 +2560,7 @@ mod tests {
          });
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
@@ -58,7 +58,7 @@ index 298b77e..4146e38 100644
                  canonical_items: false,
                  turn_id: turn_id.to_string(),
                  root_turn_id: None,
-@@ -2671,6 +2675,7 @@ mod tests {
+@@ -2680,6 +2684,7 @@ mod tests {
          let thread_id = ThreadId::new();
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
@@ -66,7 +66,7 @@ index 298b77e..4146e38 100644
                  canonical_items: false,
                  turn_id: turn_id.to_string(),
                  root_turn_id: None,
-@@ -2773,6 +2778,7 @@ mod tests {
+@@ -2782,6 +2787,7 @@ mod tests {
      fn replays_image_generation_end_events_into_turn_history() {
          let items = vec![
              RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
@@ -74,7 +74,7 @@ index 298b77e..4146e38 100644
              canonical_items: false,
                  turn_id: "turn-image".into(),
                  root_turn_id: None,
-@@ -3168,6 +3174,7 @@ mod tests {
+@@ -3178,6 +3184,7 @@ mod tests {
      fn uses_explicit_turn_boundaries_for_mid_turn_steering() {
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
@@ -82,7 +82,7 @@ index 298b77e..4146e38 100644
                  canonical_items: false,
                  turn_id: "turn-a".into(),
                  root_turn_id: None,
-@@ -3237,6 +3244,7 @@ mod tests {
+@@ -3247,6 +3254,7 @@ mod tests {
      fn reconstructs_tool_items_from_persisted_completion_events() {
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
@@ -90,7 +90,7 @@ index 298b77e..4146e38 100644
                  canonical_items: false,
                  turn_id: "turn-1".into(),
                  root_turn_id: None,
-@@ -3378,6 +3386,7 @@ mod tests {
+@@ -3389,6 +3397,7 @@ mod tests {
      fn reconstructs_mcp_tool_result_meta_from_persisted_completion_events() {
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
@@ -98,7 +98,7 @@ index 298b77e..4146e38 100644
                  canonical_items: false,
                  turn_id: "turn-1".into(),
                  root_turn_id: None,
-@@ -3462,6 +3471,7 @@ mod tests {
+@@ -3473,6 +3482,7 @@ mod tests {
      fn reconstructs_dynamic_tool_items_from_request_and_response_events() {
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
@@ -106,7 +106,7 @@ index 298b77e..4146e38 100644
                  canonical_items: false,
                  turn_id: "turn-1".into(),
                  root_turn_id: None,
-@@ -3548,6 +3558,7 @@ mod tests {
+@@ -3559,6 +3569,7 @@ mod tests {
      fn reconstructs_declined_exec_and_patch_items() {
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
@@ -114,7 +114,7 @@ index 298b77e..4146e38 100644
                  canonical_items: false,
                  turn_id: "turn-1".into(),
                  root_turn_id: None,
-@@ -3647,6 +3658,7 @@ mod tests {
+@@ -3659,6 +3670,7 @@ mod tests {
      fn reconstructs_declined_guardian_command_item() {
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
@@ -122,7 +122,7 @@ index 298b77e..4146e38 100644
                  canonical_items: false,
                  turn_id: "turn-1".into(),
                  root_turn_id: None,
-@@ -3746,6 +3758,7 @@ mod tests {
+@@ -3759,6 +3771,7 @@ mod tests {
      fn reconstructs_in_progress_guardian_execve_item() {
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
@@ -130,7 +130,7 @@ index 298b77e..4146e38 100644
                  canonical_items: false,
                  turn_id: "turn-1".into(),
                  root_turn_id: None,
-@@ -3915,6 +3928,7 @@ mod tests {
+@@ -3929,6 +3942,7 @@ mod tests {
      fn assigns_late_exec_completion_to_original_turn() {
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
@@ -138,7 +138,7 @@ index 298b77e..4146e38 100644
                  canonical_items: false,
                  turn_id: "turn-a".into(),
                  root_turn_id: None,
-@@ -3941,6 +3955,7 @@ mod tests {
+@@ -3955,6 +3969,7 @@ mod tests {
                  time_to_first_token_ms: None,
              }),
              EventMsg::TurnStarted(TurnStartedEvent {
@@ -146,7 +146,7 @@ index 298b77e..4146e38 100644
                  canonical_items: false,
                  turn_id: "turn-b".into(),
                  root_turn_id: None,
-@@ -4026,6 +4041,7 @@ mod tests {
+@@ -4041,6 +4056,7 @@ mod tests {
      fn drops_late_turn_scoped_item_for_unknown_turn_id() {
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
@@ -154,7 +154,7 @@ index 298b77e..4146e38 100644
                  canonical_items: false,
                  turn_id: "turn-a".into(),
                  root_turn_id: None,
-@@ -4052,6 +4068,7 @@ mod tests {
+@@ -4067,6 +4083,7 @@ mod tests {
                  time_to_first_token_ms: None,
              }),
              EventMsg::TurnStarted(TurnStartedEvent {
@@ -162,7 +162,7 @@ index 298b77e..4146e38 100644
                  canonical_items: false,
                  turn_id: "turn-b".into(),
                  root_turn_id: None,
-@@ -4249,6 +4266,7 @@ mod tests {
+@@ -4264,6 +4281,7 @@ mod tests {
          let mut builder = ThreadHistoryBuilder::new();
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
@@ -170,7 +170,7 @@ index 298b77e..4146e38 100644
                  canonical_items: false,
                  turn_id: turn_id.to_string(),
                  root_turn_id: None,
-@@ -4319,6 +4337,7 @@ mod tests {
+@@ -4334,6 +4352,7 @@ mod tests {
          let mut builder = ThreadHistoryBuilder::new();
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
@@ -178,7 +178,7 @@ index 298b77e..4146e38 100644
                  canonical_items: false,
                  turn_id: turn_id.to_string(),
                  root_turn_id: None,
-@@ -4389,6 +4408,7 @@ mod tests {
+@@ -4404,6 +4423,7 @@ mod tests {
      fn late_turn_complete_does_not_close_active_turn() {
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
@@ -186,7 +186,7 @@ index 298b77e..4146e38 100644
                  canonical_items: false,
                  turn_id: "turn-a".into(),
                  root_turn_id: None,
-@@ -4415,6 +4435,7 @@ mod tests {
+@@ -4430,6 +4450,7 @@ mod tests {
                  time_to_first_token_ms: None,
              }),
              EventMsg::TurnStarted(TurnStartedEvent {
@@ -194,7 +194,7 @@ index 298b77e..4146e38 100644
                  canonical_items: false,
                  turn_id: "turn-b".into(),
                  root_turn_id: None,
-@@ -4473,6 +4494,7 @@ mod tests {
+@@ -4488,6 +4509,7 @@ mod tests {
      fn late_turn_complete_with_embedded_error_preserves_active_turn() {
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
@@ -202,7 +202,7 @@ index 298b77e..4146e38 100644
                  canonical_items: false,
                  turn_id: "turn-a".into(),
                  root_turn_id: None,
-@@ -4490,6 +4512,7 @@ mod tests {
+@@ -4505,6 +4527,7 @@ mod tests {
                  ..Default::default()
              }),
              EventMsg::TurnStarted(TurnStartedEvent {
@@ -210,7 +210,7 @@ index 298b77e..4146e38 100644
                  canonical_items: false,
                  turn_id: "turn-b".into(),
                  root_turn_id: None,
-@@ -4579,6 +4602,7 @@ mod tests {
+@@ -4594,6 +4617,7 @@ mod tests {
      fn late_turn_aborted_does_not_interrupt_active_turn() {
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
@@ -218,7 +218,7 @@ index 298b77e..4146e38 100644
                  canonical_items: false,
                  turn_id: "turn-a".into(),
                  root_turn_id: None,
-@@ -4605,6 +4629,7 @@ mod tests {
+@@ -4620,6 +4644,7 @@ mod tests {
                  time_to_first_token_ms: None,
              }),
              EventMsg::TurnStarted(TurnStartedEvent {
@@ -226,7 +226,7 @@ index 298b77e..4146e38 100644
                  canonical_items: false,
                  turn_id: "turn-b".into(),
                  root_turn_id: None,
-@@ -4653,6 +4678,7 @@ mod tests {
+@@ -4669,6 +4694,7 @@ mod tests {
      fn preserves_compaction_only_turn() {
          let items = vec![
              RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
@@ -234,7 +234,7 @@ index 298b77e..4146e38 100644
                  canonical_items: false,
                  turn_id: "turn-compact".into(),
                  root_turn_id: None,
-@@ -4965,6 +4991,7 @@ mod tests {
+@@ -4981,6 +5007,7 @@ mod tests {
      fn out_of_turn_error_does_not_create_or_fail_a_turn() {
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
@@ -242,7 +242,7 @@ index 298b77e..4146e38 100644
                  canonical_items: false,
                  turn_id: "turn-a".into(),
                  root_turn_id: None,
-@@ -5029,6 +5056,7 @@ mod tests {
+@@ -5045,6 +5072,7 @@ mod tests {
      fn error_then_turn_complete_preserves_failed_status() {
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
@@ -250,7 +250,7 @@ index 298b77e..4146e38 100644
                  canonical_items: false,
                  turn_id: "turn-a".into(),
                  root_turn_id: None,
-@@ -5090,6 +5118,7 @@ mod tests {
+@@ -5106,6 +5134,7 @@ mod tests {
      fn turn_complete_with_embedded_error_marks_turn_failed() {
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
@@ -258,7 +258,7 @@ index 298b77e..4146e38 100644
                  canonical_items: false,
                  turn_id: "turn-a".into(),
                  root_turn_id: None,
-@@ -5162,6 +5191,7 @@ mod tests {
+@@ -5178,6 +5207,7 @@ mod tests {
          .expect("hook prompt message");
          let items = vec![
              RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
@@ -266,7 +266,7 @@ index 298b77e..4146e38 100644
                  canonical_items: false,
                  turn_id: "turn-a".into(),
                  root_turn_id: None,
-@@ -5224,6 +5254,7 @@ mod tests {
+@@ -5240,6 +5270,7 @@ mod tests {
          let expected_item = ThreadItem::from(hook_prompt.clone());
          let mut builder = ThreadHistoryBuilder::new();
          builder.handle_event(&EventMsg::TurnStarted(TurnStartedEvent {
@@ -274,7 +274,7 @@ index 298b77e..4146e38 100644
              canonical_items: false,
              turn_id: "turn-a".into(),
              root_turn_id: None,
-@@ -5254,6 +5285,7 @@ mod tests {
+@@ -5270,6 +5301,7 @@ mod tests {
              .expect("worker path");
          let items = vec![
              RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
@@ -282,7 +282,7 @@ index 298b77e..4146e38 100644
                  canonical_items: false,
                  turn_id: "turn-a".into(),
                  root_turn_id: None,
-@@ -5303,6 +5335,7 @@ mod tests {
+@@ -5319,6 +5351,7 @@ mod tests {
      fn ignores_plain_user_response_items_in_rollout_replay() {
          let items = vec![
              RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
@@ -290,7 +290,7 @@ index 298b77e..4146e38 100644
                  canonical_items: false,
                  turn_id: "turn-a".into(),
                  root_turn_id: None,
-@@ -5465,6 +5498,7 @@ mod tests {
+@@ -5481,6 +5514,7 @@ mod tests {
  
          let start_changes = builder.handle_rollout_item_with_changes(&RolloutItem::EventMsg(
              EventMsg::TurnStarted(TurnStartedEvent {
@@ -298,7 +298,7 @@ index 298b77e..4146e38 100644
                  canonical_items: false,
                  turn_id: "turn-a".into(),
                  root_turn_id: Some("root-turn".into()),
-@@ -5584,6 +5618,7 @@ mod tests {
+@@ -5600,6 +5634,7 @@ mod tests {
          let mut builder = ThreadHistoryBuilder::new();
          let changes = builder.handle_rollout_items_with_changes(&[
              RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
@@ -306,7 +306,7 @@ index 298b77e..4146e38 100644
                  canonical_items: false,
                  turn_id: "turn-a".into(),
                  root_turn_id: Some("root-turn".into()),
-@@ -5626,6 +5661,7 @@ mod tests {
+@@ -5642,6 +5677,7 @@ mod tests {
          let mut builder = ThreadHistoryBuilder::new();
          let changes = builder.handle_rollout_items_with_changes(&[
              RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
@@ -503,7 +503,7 @@ index 2ea196b..8d25192 100644
 +    }
 +}
 diff --git a/codex-rs/app-server-protocol/src/protocol/thread_history_projection_tests.rs b/codex-rs/app-server-protocol/src/protocol/thread_history_projection_tests.rs
-index 662d8c5..95caa6e 100644
+index 59327b7..03aed11 100644
 --- a/codex-rs/app-server-protocol/src/protocol/thread_history_projection_tests.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/thread_history_projection_tests.rs
 @@ -26,6 +26,7 @@ use crate::protocol::v2::TurnError;
@@ -515,10 +515,10 @@ index 662d8c5..95caa6e 100644
              turn_id: "turn-1".to_string(),
              root_turn_id: Some("root-turn".into()),
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-index d793e98..2998fff 100644
+index 48d54ff..2a335bd 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-@@ -2264,6 +2264,14 @@ pub struct ThreadHistoryMetadata {
+@@ -2287,6 +2287,14 @@ pub struct ThreadHistoryMetadata {
  #[serde(rename_all = "camelCase")]
  #[ts(export_to = "v2/")]
  pub struct ThreadHistoryTurnMetadata {
@@ -549,7 +549,7 @@ index b05221c..b38b657 100644
      pub turn: Turn,
  }
 diff --git a/codex-rs/app-server/src/bespoke_event_handling.rs b/codex-rs/app-server/src/bespoke_event_handling.rs
-index e55f154..aa35b1a 100644
+index 78c58ad..f6cce0c 100644
 --- a/codex-rs/app-server/src/bespoke_event_handling.rs
 +++ b/codex-rs/app-server/src/bespoke_event_handling.rs
 @@ -175,6 +175,7 @@ pub(crate) async fn apply_bespoke_event_handling(
@@ -560,7 +560,7 @@ index e55f154..aa35b1a 100644
                  thread_id: conversation_id.to_string(),
                  turn,
              };
-@@ -3262,6 +3263,7 @@ mod tests {
+@@ -3271,6 +3272,7 @@ mod tests {
              state.track_current_turn_event(
                  "turn-1",
                  &EventMsg::TurnStarted(codex_protocol::protocol::TurnStartedEvent {
@@ -568,7 +568,7 @@ index e55f154..aa35b1a 100644
                      canonical_items: false,
                      turn_id: "turn-1".to_string(),
                      root_turn_id: None,
-@@ -3295,10 +3297,20 @@ mod tests {
+@@ -3304,10 +3306,20 @@ mod tests {
              conversation_id,
          );
  
@@ -589,7 +589,7 @@ index e55f154..aa35b1a 100644
                      canonical_items: false,
                      turn_id: "turn-1".to_string(),
                      root_turn_id: None,
-@@ -3320,6 +3332,7 @@ mod tests {
+@@ -3329,6 +3341,7 @@ mod tests {
          let msg = recv_broadcast_notification(&mut rx).await?;
          match msg {
              ServerNotification::TurnStarted(n) => {
@@ -597,7 +597,7 @@ index e55f154..aa35b1a 100644
                  assert_eq!(n.turn.id, "turn-1");
                  assert_eq!(n.turn.items_view, TurnItemsView::NotLoaded);
                  assert!(n.turn.items.is_empty());
-@@ -3570,6 +3583,7 @@ mod tests {
+@@ -3579,6 +3592,7 @@ mod tests {
              state.track_current_turn_event(
                  &event_turn_id,
                  &EventMsg::TurnStarted(codex_protocol::protocol::TurnStartedEvent {
@@ -606,10 +606,10 @@ index e55f154..aa35b1a 100644
                      turn_id: event_turn_id.clone(),
                      root_turn_id: None,
 diff --git a/codex-rs/app-server/src/request_processors/thread_processor_tests.rs b/codex-rs/app-server/src/request_processors/thread_processor_tests.rs
-index 3cf6bde..a475bc7 100644
+index cae9e2f..f394a7a 100644
 --- a/codex-rs/app-server/src/request_processors/thread_processor_tests.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_processor_tests.rs
-@@ -1198,6 +1198,7 @@ mod thread_processor_behavior_tests {
+@@ -1199,6 +1199,7 @@ mod thread_processor_behavior_tests {
              state.track_current_turn_event(
                  "turn-1",
                  &EventMsg::TurnStarted(codex_protocol::protocol::TurnStartedEvent {
@@ -658,10 +658,10 @@ index 468326b..cfdd894 100644
              turn_id: "active-turn".to_string(),
              root_turn_id: None,
 diff --git a/codex-rs/app-server/tests/suite/v2/thread_read.rs b/codex-rs/app-server/tests/suite/v2/thread_read.rs
-index 3df8892..2c1a240 100644
+index 7a8eb8b..0c929ea 100644
 --- a/codex-rs/app-server/tests/suite/v2/thread_read.rs
 +++ b/codex-rs/app-server/tests/suite/v2/thread_read.rs
-@@ -2329,6 +2329,7 @@ async fn read_items_page(
+@@ -2409,6 +2409,7 @@ async fn read_items_page(
  
  fn paginated_turn_started(turn_id: &str) -> RolloutItem {
      RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
@@ -670,7 +670,7 @@ index 3df8892..2c1a240 100644
          turn_id: turn_id.to_string(),
          root_turn_id: None,
 diff --git a/codex-rs/app-server/tests/suite/v2/thread_resume.rs b/codex-rs/app-server/tests/suite/v2/thread_resume.rs
-index 975880c..94cf55c 100644
+index 79c5854..d6a6095 100644
 --- a/codex-rs/app-server/tests/suite/v2/thread_resume.rs
 +++ b/codex-rs/app-server/tests/suite/v2/thread_resume.rs
 @@ -4039,6 +4039,7 @@ async fn cold_paginated_resume_restores_usage_without_loading_turns() -> Result<
@@ -705,7 +705,7 @@ index 975880c..94cf55c 100644
              canonical_items: false,
                  turn_id: interrupted_turn_id.to_string(),
                  root_turn_id: None,
-@@ -4703,6 +4707,7 @@ async fn thread_resume_and_read_interrupt_incomplete_rollout_turn_when_thread_is
+@@ -4704,6 +4708,7 @@ async fn thread_resume_and_read_interrupt_incomplete_rollout_turn_when_thread_is
              "timestamp": meta_rfc3339,
              "type": "event_msg",
              "payload": serde_json::to_value(EventMsg::TurnStarted(TurnStartedEvent {
@@ -726,10 +726,10 @@ index 19f8848..7bf4af7 100644
                      turn_id: "turn-1".to_string(),
                      root_turn_id: None,
 diff --git a/codex-rs/core/src/agent/control_tests.rs b/codex-rs/core/src/agent/control_tests.rs
-index 98849dc..2e75cac 100644
+index f112e83..398538e 100644
 --- a/codex-rs/core/src/agent/control_tests.rs
 +++ b/codex-rs/core/src/agent/control_tests.rs
-@@ -577,6 +577,7 @@ async fn get_status_returns_not_found_without_manager() {
+@@ -563,6 +563,7 @@ async fn get_status_returns_not_found_without_manager() {
  #[tokio::test]
  async fn on_event_updates_status_from_task_started() {
      let status = agent_status_from_event(&EventMsg::TurnStarted(TurnStartedEvent {
@@ -738,7 +738,7 @@ index 98849dc..2e75cac 100644
          turn_id: "turn-1".to_string(),
          root_turn_id: None,
 diff --git a/codex-rs/core/src/realtime_history_tests.rs b/codex-rs/core/src/realtime_history_tests.rs
-index 444837b..0f215dc 100644
+index c8967aa..ca1a1de 100644
 --- a/codex-rs/core/src/realtime_history_tests.rs
 +++ b/codex-rs/core/src/realtime_history_tests.rs
 @@ -28,6 +28,7 @@ fn started_state() -> RealtimeHistoryState {
@@ -866,10 +866,10 @@ index a73a85c..ddc5e00 100644
 +    assert_eq!(initial.collaboration_mode, ModeKind::Plan);
 +}
 diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
-index e6ce160..d6fd776 100644
+index 4687be6..9170967 100644
 --- a/codex-rs/core/src/session/mod.rs
 +++ b/codex-rs/core/src/session/mod.rs
-@@ -2488,6 +2488,7 @@ impl Session {
+@@ -2485,6 +2485,7 @@ impl Session {
  
      pub(crate) async fn emit_turn_started(&self, turn_context: &TurnContext) {
          let event = TurnStartedEvent {
@@ -877,7 +877,7 @@ index e6ce160..d6fd776 100644
              canonical_items: false,
              turn_id: turn_context.sub_id.clone(),
              root_turn_id: Some(
-@@ -2515,6 +2516,7 @@ impl Session {
+@@ -2512,6 +2513,7 @@ impl Session {
              .unwrap_or(false);
          if let EventMsg::TurnStarted(started) = &mut msg {
              started.canonical_items = canonical;
@@ -886,10 +886,10 @@ index e6ce160..d6fd776 100644
          let legacy_source = msg.clone();
          if let EventMsg::Error(error) = &legacy_source
 diff --git a/codex-rs/core/src/session/rollout_reconstruction_tests.rs b/codex-rs/core/src/session/rollout_reconstruction_tests.rs
-index e489137..78c7d70 100644
+index a64ebf5..44aba40 100644
 --- a/codex-rs/core/src/session/rollout_reconstruction_tests.rs
 +++ b/codex-rs/core/src/session/rollout_reconstruction_tests.rs
-@@ -248,6 +248,7 @@ fn completed_user_turn_rollout(
+@@ -259,6 +259,7 @@ fn completed_user_turn_rollout(
      let mut rollout_items = vec![
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
@@ -897,7 +897,7 @@ index e489137..78c7d70 100644
                  canonical_items: false,
                  turn_id: turn_id.clone(),
                  root_turn_id: None,
-@@ -507,6 +508,7 @@ async fn record_initial_history_resumed_hydrates_previous_turn_settings_from_lif
+@@ -519,6 +520,7 @@ async fn record_initial_history_resumed_hydrates_previous_turn_settings_from_lif
      let rollout_items = vec![
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
@@ -905,7 +905,7 @@ index e489137..78c7d70 100644
                  canonical_items: false,
                  turn_id: turn_id.clone(),
                  root_turn_id: None,
-@@ -581,6 +583,7 @@ async fn reconstruct_history_rollback_keeps_history_and_metadata_in_sync_for_com
+@@ -596,6 +598,7 @@ async fn reconstruct_history_rollback_keeps_history_and_metadata_in_sync_for_com
      let rollout_items = vec![
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
@@ -913,7 +913,7 @@ index e489137..78c7d70 100644
                  canonical_items: false,
                  turn_id: first_turn_id.clone(),
                  root_turn_id: None,
-@@ -619,6 +622,7 @@ async fn reconstruct_history_rollback_keeps_history_and_metadata_in_sync_for_com
+@@ -634,6 +637,7 @@ async fn reconstruct_history_rollback_keeps_history_and_metadata_in_sync_for_com
          )),
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
@@ -921,7 +921,7 @@ index e489137..78c7d70 100644
                  canonical_items: false,
                  turn_id: rolled_back_turn_id.clone(),
                  root_turn_id: None,
-@@ -705,6 +709,7 @@ async fn reconstruct_history_rollback_keeps_history_and_metadata_in_sync_for_inc
+@@ -723,6 +727,7 @@ async fn reconstruct_history_rollback_keeps_history_and_metadata_in_sync_for_inc
      let rollout_items = vec![
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
@@ -929,7 +929,7 @@ index e489137..78c7d70 100644
                  canonical_items: false,
                  turn_id: first_turn_id.clone(),
                  root_turn_id: None,
-@@ -740,6 +745,7 @@ async fn reconstruct_history_rollback_keeps_history_and_metadata_in_sync_for_inc
+@@ -758,6 +763,7 @@ async fn reconstruct_history_rollback_keeps_history_and_metadata_in_sync_for_inc
          )),
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
@@ -937,7 +937,7 @@ index e489137..78c7d70 100644
                  canonical_items: false,
                  turn_id: incomplete_turn_id,
                  root_turn_id: None,
-@@ -808,6 +814,7 @@ async fn reconstruct_history_rollback_skips_non_user_turns_for_history_and_metad
+@@ -828,6 +834,7 @@ async fn reconstruct_history_rollback_skips_non_user_turns_for_history_and_metad
      let rollout_items = vec![
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
@@ -945,7 +945,7 @@ index e489137..78c7d70 100644
                  canonical_items: false,
                  turn_id: first_turn_id.clone(),
                  root_turn_id: None,
-@@ -843,6 +850,7 @@ async fn reconstruct_history_rollback_skips_non_user_turns_for_history_and_metad
+@@ -863,6 +870,7 @@ async fn reconstruct_history_rollback_skips_non_user_turns_for_history_and_metad
          )),
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
@@ -953,7 +953,7 @@ index e489137..78c7d70 100644
                  canonical_items: false,
                  turn_id: second_turn_id.clone(),
                  root_turn_id: None,
-@@ -877,6 +885,7 @@ async fn reconstruct_history_rollback_skips_non_user_turns_for_history_and_metad
+@@ -897,6 +905,7 @@ async fn reconstruct_history_rollback_skips_non_user_turns_for_history_and_metad
          )),
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
@@ -961,7 +961,7 @@ index e489137..78c7d70 100644
                  canonical_items: false,
                  turn_id: standalone_turn_id.clone(),
                  root_turn_id: None,
-@@ -951,6 +960,7 @@ async fn reconstruct_history_rollback_counts_inter_agent_assistant_turns() {
+@@ -972,6 +981,7 @@ async fn reconstruct_history_rollback_counts_inter_agent_assistant_turns() {
      let rollout_items = vec![
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
@@ -969,7 +969,7 @@ index e489137..78c7d70 100644
                  canonical_items: false,
                  turn_id: first_turn_id.clone(),
                  root_turn_id: None,
-@@ -986,6 +996,7 @@ async fn reconstruct_history_rollback_counts_inter_agent_assistant_turns() {
+@@ -1007,6 +1017,7 @@ async fn reconstruct_history_rollback_counts_inter_agent_assistant_turns() {
          )),
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
@@ -977,7 +977,7 @@ index e489137..78c7d70 100644
                  canonical_items: false,
                  turn_id: assistant_turn_id.clone(),
                  root_turn_id: None,
-@@ -1052,6 +1063,7 @@ async fn reconstruct_history_rollback_clears_history_and_metadata_when_exceeding
+@@ -1074,6 +1085,7 @@ async fn reconstruct_history_rollback_clears_history_and_metadata_when_exceeding
      let rollout_items = vec![
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
@@ -985,7 +985,7 @@ index e489137..78c7d70 100644
                  canonical_items: false,
                  turn_id: only_turn_id.clone(),
                  root_turn_id: None,
-@@ -1111,6 +1123,7 @@ async fn record_initial_history_resumed_rollback_skips_only_user_turns() {
+@@ -1133,6 +1145,7 @@ async fn record_initial_history_resumed_rollback_skips_only_user_turns() {
      let rollout_items = vec![
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
@@ -993,7 +993,7 @@ index e489137..78c7d70 100644
                  canonical_items: false,
                  turn_id: user_turn_id.clone(),
                  root_turn_id: None,
-@@ -1145,6 +1158,7 @@ async fn record_initial_history_resumed_rollback_skips_only_user_turns() {
+@@ -1167,6 +1180,7 @@ async fn record_initial_history_resumed_rollback_skips_only_user_turns() {
          // Standalone task turn (no UserMessage) should not consume rollback skips.
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
@@ -1001,7 +1001,7 @@ index e489137..78c7d70 100644
                  canonical_items: false,
                  turn_id: standalone_turn_id.clone(),
                  root_turn_id: None,
-@@ -1195,6 +1209,7 @@ async fn record_initial_history_resumed_rollback_drops_incomplete_user_turn_comp
+@@ -1217,6 +1231,7 @@ async fn record_initial_history_resumed_rollback_drops_incomplete_user_turn_comp
      let rollout_items = vec![
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
@@ -1009,7 +1009,7 @@ index e489137..78c7d70 100644
                  canonical_items: false,
                  turn_id: previous_turn_id.clone(),
                  root_turn_id: None,
-@@ -1228,6 +1243,7 @@ async fn record_initial_history_resumed_rollback_drops_incomplete_user_turn_comp
+@@ -1250,6 +1265,7 @@ async fn record_initial_history_resumed_rollback_drops_incomplete_user_turn_comp
          )),
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
@@ -1017,7 +1017,7 @@ index e489137..78c7d70 100644
                  canonical_items: false,
                  turn_id: incomplete_turn_id,
                  root_turn_id: None,
-@@ -1847,6 +1863,7 @@ async fn reconstruct_history_legacy_compaction_without_replacement_history_clear
+@@ -1875,6 +1891,7 @@ async fn reconstruct_history_legacy_compaction_without_replacement_history_clear
          }),
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
@@ -1025,7 +1025,7 @@ index e489137..78c7d70 100644
                  canonical_items: false,
                  turn_id: current_turn_id.clone(),
                  root_turn_id: None,
-@@ -1926,6 +1943,7 @@ async fn record_initial_history_resumed_turn_context_after_compaction_reestablis
+@@ -1954,6 +1971,7 @@ async fn record_initial_history_resumed_turn_context_after_compaction_reestablis
      let rollout_items = vec![
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
@@ -1033,7 +1033,7 @@ index e489137..78c7d70 100644
                  canonical_items: false,
                  turn_id: previous_turn_id.clone(),
                  root_turn_id: None,
-@@ -2065,6 +2083,7 @@ async fn record_initial_history_resumed_aborted_turn_without_id_clears_active_tu
+@@ -2094,6 +2112,7 @@ async fn record_initial_history_resumed_aborted_turn_without_id_clears_active_tu
      let rollout_items = vec![
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
@@ -1041,7 +1041,7 @@ index e489137..78c7d70 100644
                  canonical_items: false,
                  turn_id: previous_turn_id.clone(),
                  root_turn_id: None,
-@@ -2098,6 +2117,7 @@ async fn record_initial_history_resumed_aborted_turn_without_id_clears_active_tu
+@@ -2127,6 +2146,7 @@ async fn record_initial_history_resumed_aborted_turn_without_id_clears_active_tu
          )),
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
@@ -1049,7 +1049,7 @@ index e489137..78c7d70 100644
                  canonical_items: false,
                  turn_id: aborted_turn_id,
                  root_turn_id: None,
-@@ -2204,6 +2224,7 @@ async fn record_initial_history_resumed_unmatched_abort_preserves_active_turn_fo
+@@ -2235,6 +2255,7 @@ async fn record_initial_history_resumed_unmatched_abort_preserves_active_turn_fo
      let rollout_items = vec![
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
@@ -1057,7 +1057,7 @@ index e489137..78c7d70 100644
                  canonical_items: false,
                  turn_id: previous_turn_id.clone(),
                  root_turn_id: None,
-@@ -2237,6 +2258,7 @@ async fn record_initial_history_resumed_unmatched_abort_preserves_active_turn_fo
+@@ -2268,6 +2289,7 @@ async fn record_initial_history_resumed_unmatched_abort_preserves_active_turn_fo
          )),
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
@@ -1065,7 +1065,7 @@ index e489137..78c7d70 100644
                  canonical_items: false,
                  turn_id: current_turn_id.clone(),
                  root_turn_id: None,
-@@ -2344,6 +2366,7 @@ async fn record_initial_history_resumed_trailing_incomplete_turn_compaction_clea
+@@ -2377,6 +2399,7 @@ async fn record_initial_history_resumed_trailing_incomplete_turn_compaction_clea
      let rollout_items = vec![
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
@@ -1073,7 +1073,7 @@ index e489137..78c7d70 100644
                  canonical_items: false,
                  turn_id: previous_turn_id.clone(),
                  root_turn_id: None,
-@@ -2377,6 +2400,7 @@ async fn record_initial_history_resumed_trailing_incomplete_turn_compaction_clea
+@@ -2410,6 +2433,7 @@ async fn record_initial_history_resumed_trailing_incomplete_turn_compaction_clea
          )),
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
@@ -1081,7 +1081,7 @@ index e489137..78c7d70 100644
                  canonical_items: false,
                  turn_id: incomplete_turn_id,
                  root_turn_id: None,
-@@ -2443,6 +2467,7 @@ async fn record_initial_history_resumed_trailing_incomplete_turn_preserves_turn_
+@@ -2477,6 +2501,7 @@ async fn record_initial_history_resumed_trailing_incomplete_turn_preserves_turn_
      let rollout_items = vec![
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
@@ -1089,7 +1089,7 @@ index e489137..78c7d70 100644
                  canonical_items: false,
                  turn_id: current_turn_id,
                  root_turn_id: None,
-@@ -2531,6 +2556,7 @@ async fn record_initial_history_resumed_replaced_incomplete_compacted_turn_clear
+@@ -2566,6 +2591,7 @@ async fn record_initial_history_resumed_replaced_incomplete_compacted_turn_clear
      let rollout_items = vec![
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
@@ -1097,7 +1097,7 @@ index e489137..78c7d70 100644
                  canonical_items: false,
                  turn_id: previous_turn_id.clone(),
                  root_turn_id: None,
-@@ -2564,6 +2590,7 @@ async fn record_initial_history_resumed_replaced_incomplete_compacted_turn_clear
+@@ -2599,6 +2625,7 @@ async fn record_initial_history_resumed_replaced_incomplete_compacted_turn_clear
          )),
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
@@ -1105,7 +1105,7 @@ index e489137..78c7d70 100644
                  canonical_items: false,
                  turn_id: compacted_incomplete_turn_id,
                  root_turn_id: None,
-@@ -2601,6 +2628,7 @@ async fn record_initial_history_resumed_replaced_incomplete_compacted_turn_clear
+@@ -2636,6 +2663,7 @@ async fn record_initial_history_resumed_replaced_incomplete_compacted_turn_clear
          // completion/abort for the old one.
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
@@ -1114,10 +1114,10 @@ index e489137..78c7d70 100644
                  turn_id: replacing_turn_id,
                  root_turn_id: None,
 diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
-index b0de75f..12cb774 100644
+index eefa9f8..1208fc9 100644
 --- a/codex-rs/core/src/session/tests.rs
 +++ b/codex-rs/core/src/session/tests.rs
-@@ -4221,6 +4221,7 @@ async fn record_initial_history_forked_hydrates_previous_turn_settings() {
+@@ -4387,6 +4387,7 @@ async fn record_initial_history_forked_hydrates_previous_turn_settings() {
      let rollout_items = vec![
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
@@ -1126,10 +1126,10 @@ index b0de75f..12cb774 100644
                  turn_id: turn_id.clone(),
                  root_turn_id: None,
 diff --git a/codex-rs/core/src/session/turn_context.rs b/codex-rs/core/src/session/turn_context.rs
-index 76befa4..7721bc6 100644
+index 0d7b59d..06496a9 100644
 --- a/codex-rs/core/src/session/turn_context.rs
 +++ b/codex-rs/core/src/session/turn_context.rs
-@@ -383,6 +383,22 @@ impl TurnContext {
+@@ -384,6 +384,22 @@ impl TurnContext {
          Arc::clone(&self.next_step_settings.load().model_info)
      }
  
@@ -1153,10 +1153,10 @@ index 76befa4..7721bc6 100644
      /// Step-scoped consumers should use their captured `StepContext::settings`.
      pub(crate) fn model_info(&self) -> &Arc<ModelInfo> {
 diff --git a/codex-rs/core/src/thread_manager_tests.rs b/codex-rs/core/src/thread_manager_tests.rs
-index bc33422..a677a7b 100644
+index 65847d6..65f9eec 100644
 --- a/codex-rs/core/src/thread_manager_tests.rs
 +++ b/codex-rs/core/src/thread_manager_tests.rs
-@@ -789,6 +789,7 @@ fn out_of_range_truncation_drops_pre_user_active_turn_prefix() {
+@@ -797,6 +797,7 @@ fn out_of_range_truncation_drops_pre_user_active_turn_prefix() {
          RolloutItem::ResponseItem(user_msg("u1").into()),
          RolloutItem::ResponseItem(assistant_msg("a1").into()),
          RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
@@ -1164,9 +1164,9 @@ index bc33422..a677a7b 100644
              canonical_items: false,
              turn_id: "turn-2".to_string(),
              root_turn_id: None,
-@@ -3041,6 +3042,7 @@ async fn interrupted_fork_snapshot_preserves_explicit_turn_id() {
-             config.clone(),
-             InitialHistory::Forked(vec![
+@@ -3107,6 +3108,7 @@ async fn interrupted_fork_snapshot_preserves_explicit_turn_id() {
+             history_mode: Some(ThreadHistoryMode::Legacy),
+             initial_history: InitialHistory::Forked(vec![
                  RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
 +                    initial_settings: None,
                      canonical_items: false,
@@ -1197,7 +1197,7 @@ index 94a4583..b0c3546 100644
                  turn_id: turn_id.clone(),
                  root_turn_id: None,
 diff --git a/codex-rs/exec/src/lib.rs b/codex-rs/exec/src/lib.rs
-index 08bf7a1..b77e814 100644
+index 5e0c730..4197a1a 100644
 --- a/codex-rs/exec/src/lib.rs
 +++ b/codex-rs/exec/src/lib.rs
 @@ -1204,6 +1204,7 @@ async fn run_exec_session(args: ExecRunArgs) -> anyhow::Result<()> {
@@ -1209,7 +1209,7 @@ index 08bf7a1..b77e814 100644
                      turn: response.turn.clone(),
                  },
 diff --git a/codex-rs/exec/tests/event_processor_with_json_output.rs b/codex-rs/exec/tests/event_processor_with_json_output.rs
-index ca49011..690a527 100644
+index 15a0015..25ebcd8 100644
 --- a/codex-rs/exec/tests/event_processor_with_json_output.rs
 +++ b/codex-rs/exec/tests/event_processor_with_json_output.rs
 @@ -143,6 +143,7 @@ fn turn_started_emits_turn_started_event() {
@@ -1233,10 +1233,10 @@ index aa813cc..0cd074f 100644
                          turn_id: turn_id.clone(),
                          root_turn_id: None,
 diff --git a/codex-rs/protocol/src/protocol.rs b/codex-rs/protocol/src/protocol.rs
-index 31416e6..d12f29c 100644
+index 2d6bd07..aa929a7 100644
 --- a/codex-rs/protocol/src/protocol.rs
 +++ b/codex-rs/protocol/src/protocol.rs
-@@ -2181,8 +2181,29 @@ pub struct TurnCompleteEvent {
+@@ -2188,8 +2188,29 @@ pub struct TurnCompleteEvent {
      pub time_to_first_token_ms: Option<i64>,
  }
  
@@ -1268,7 +1268,7 @@ index 31416e6..d12f29c 100644
      #[serde(default, skip_serializing_if = "std::ops::Not::not")]
      pub canonical_items: bool,
 diff --git a/codex-rs/rollout/src/persistence_metrics_tests.rs b/codex-rs/rollout/src/persistence_metrics_tests.rs
-index 06d5964..7a4b926 100644
+index 8701bd5..0d3353e 100644
 --- a/codex-rs/rollout/src/persistence_metrics_tests.rs
 +++ b/codex-rs/rollout/src/persistence_metrics_tests.rs
 @@ -41,6 +41,7 @@ fn retained_message(text: &str) -> RolloutItem {
@@ -1280,10 +1280,10 @@ index 06d5964..7a4b926 100644
          turn_id: turn_id.to_string(),
          root_turn_id: None,
 diff --git a/codex-rs/thread-store/src/local/mod.rs b/codex-rs/thread-store/src/local/mod.rs
-index f25336a..a82840c 100644
+index 3724630..3b15752 100644
 --- a/codex-rs/thread-store/src/local/mod.rs
 +++ b/codex-rs/thread-store/src/local/mod.rs
-@@ -1140,6 +1140,7 @@ mod tests {
+@@ -1150,6 +1150,7 @@ mod tests {
          live_thread
              .append_items(&[RolloutItem::EventMsg(EventMsg::TurnStarted(
                  TurnStartedEvent {
@@ -1328,10 +1328,10 @@ index b182da4..f7692fd 100644
                  turn_id,
                  root_turn_id: None,
 diff --git a/codex-rs/thread-store/src/local/rollout_migration_tests.rs b/codex-rs/thread-store/src/local/rollout_migration_tests.rs
-index 9cd10cf..877c0b8 100644
+index 8437b6d..c410ca1 100644
 --- a/codex-rs/thread-store/src/local/rollout_migration_tests.rs
 +++ b/codex-rs/thread-store/src/local/rollout_migration_tests.rs
-@@ -226,6 +226,7 @@ fn item_completed(turn_id: &str, item_id: &str) -> RolloutItem {
+@@ -227,6 +227,7 @@ fn item_completed(turn_id: &str, item_id: &str) -> RolloutItem {
  
  fn started(turn_id: &str) -> RolloutItem {
      RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
@@ -1364,10 +1364,10 @@ index 8457b5d..c086b69 100644
                      turn_id: "turn-1".to_string(),
                      root_turn_id: None,
 diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
-index f531c33..a6a08a2 100644
+index 956b44f..764f864 100644
 --- a/codex-rs/tui/src/app/tests.rs
 +++ b/codex-rs/tui/src/app/tests.rs
-@@ -7068,6 +7068,7 @@ fn test_turn(turn_id: &str, status: TurnStatus, items: Vec<ThreadItem>) -> Turn
+@@ -7096,6 +7096,7 @@ fn test_turn(turn_id: &str, status: TurnStatus, items: Vec<ThreadItem>) -> Turn
  
  fn turn_started_notification(thread_id: ThreadId, turn_id: &str) -> ServerNotification {
      ServerNotification::TurnStarted(TurnStartedNotification {
@@ -1375,7 +1375,7 @@ index f531c33..a6a08a2 100644
          thread_id: thread_id.to_string(),
          turn: Turn {
              started_at: Some(0),
-@@ -8156,6 +8157,7 @@ async fn prompt_edit_reverts_earlier_and_first_visible_prompts_in_place() -> Res
+@@ -8266,6 +8267,7 @@ async fn prompt_edit_reverts_earlier_and_first_visible_prompts_in_place() -> Res
          );
          for item in [
              RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
@@ -1384,10 +1384,10 @@ index f531c33..a6a08a2 100644
                  turn_id: turn_id.to_string(),
                  root_turn_id: None,
 diff --git a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-index 02a596b..914dfe3 100644
+index 284c1d0..229b64e 100644
 --- a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
 +++ b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-@@ -2012,6 +2012,7 @@ async fn older_pagination_reconciles_review_prompts_across_page_boundaries() ->
+@@ -2030,6 +2030,7 @@ async fn older_pagination_reconciles_review_prompts_across_page_boundaries() ->
          user_item("newer-visible-prompt", "newer visible prompt"),
      ]);
      let events = std::iter::once(EventMsg::TurnStarted(TurnStartedEvent {
@@ -1395,7 +1395,7 @@ index 02a596b..914dfe3 100644
          canonical_items: false,
          turn_id: "cross-page-review-turn".to_string(),
          root_turn_id: None,
-@@ -2176,6 +2177,7 @@ async fn transcript_alt_beginning_loads_every_older_history_page() -> Result<()>
+@@ -2194,6 +2195,7 @@ async fn transcript_alt_beginning_loads_every_older_history_page() -> Result<()>
          .map(serde_json::from_str::<serde_json::Value>)
          .collect::<Result<Vec<_>, _>>()?;
      let events = std::iter::once(EventMsg::TurnStarted(TurnStartedEvent {
@@ -1403,7 +1403,7 @@ index 02a596b..914dfe3 100644
          canonical_items: false,
          turn_id: "multi-page-turn".to_string(),
          root_turn_id: None,
-@@ -2589,6 +2591,7 @@ async fn underfilled_scrollback_fetches_older_pages_without_opening_the_transcri
+@@ -2607,6 +2609,7 @@ async fn underfilled_scrollback_fetches_older_pages_without_opening_the_transcri
          .map(serde_json::from_str::<serde_json::Value>)
          .collect::<Result<Vec<_>, _>>()?;
      let events = std::iter::once(EventMsg::TurnStarted(TurnStartedEvent {
@@ -1436,7 +1436,7 @@ index b7d34f6..b170e9c 100644
              turn: Turn {
                  started_at: Some(0),
 diff --git a/codex-rs/tui/src/chatwidget/tests/app_server.rs b/codex-rs/tui/src/chatwidget/tests/app_server.rs
-index 97b218c..c711d12 100644
+index 1166395..1ece2b5 100644
 --- a/codex-rs/tui/src/chatwidget/tests/app_server.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/app_server.rs
 @@ -162,6 +162,7 @@ fn start_safety_buffering_test_turn(
@@ -1447,7 +1447,7 @@ index 97b218c..c711d12 100644
              thread_id: thread_id.to_string(),
              turn: AppServerTurn {
                  id: turn_id.to_string(),
-@@ -801,6 +802,7 @@ async fn live_app_server_turn_completed_clears_working_status_after_answer_item(
+@@ -873,6 +874,7 @@ async fn live_app_server_turn_completed_clears_working_status_after_answer_item(
  
      chat.handle_server_notification(
          ServerNotification::TurnStarted(TurnStartedNotification {
@@ -1455,7 +1455,7 @@ index 97b218c..c711d12 100644
              thread_id: "thread-1".to_string(),
              turn: AppServerTurn {
                  id: "turn-1".to_string(),
-@@ -882,6 +884,7 @@ async fn live_app_server_turn_started_sets_feedback_turn_id() {
+@@ -957,6 +959,7 @@ async fn live_app_server_turn_started_sets_feedback_turn_id() {
  
      chat.handle_server_notification(
          ServerNotification::TurnStarted(TurnStartedNotification {
@@ -1463,7 +1463,7 @@ index 97b218c..c711d12 100644
              thread_id: "thread-1".to_string(),
              turn: AppServerTurn {
                  id: "turn-1".to_string(),
-@@ -1437,6 +1440,7 @@ async fn live_app_server_settings_rejection_preserves_running_turn() {
+@@ -1514,6 +1517,7 @@ async fn live_app_server_settings_rejection_preserves_running_turn() {
      let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
      chat.handle_server_notification(
          ServerNotification::TurnStarted(TurnStartedNotification {
@@ -1471,7 +1471,7 @@ index 97b218c..c711d12 100644
              thread_id: "thread-1".into(),
              turn: AppServerTurn {
                  id: "turn-1".into(),
-@@ -1508,6 +1512,7 @@ async fn live_app_server_failed_turn_does_not_duplicate_error_history() {
+@@ -1585,6 +1589,7 @@ async fn live_app_server_failed_turn_does_not_duplicate_error_history() {
  
      chat.handle_server_notification(
          ServerNotification::TurnStarted(TurnStartedNotification {
@@ -1479,7 +1479,7 @@ index 97b218c..c711d12 100644
              thread_id: "thread-1".to_string(),
              turn: AppServerTurn {
                  id: "turn-1".to_string(),
-@@ -1675,6 +1680,7 @@ async fn live_app_server_stream_recovery_restores_previous_status_header() {
+@@ -1752,6 +1757,7 @@ async fn live_app_server_stream_recovery_restores_previous_status_header() {
  
      chat.handle_server_notification(
          ServerNotification::TurnStarted(TurnStartedNotification {
@@ -1487,7 +1487,7 @@ index 97b218c..c711d12 100644
              thread_id: "thread-1".to_string(),
              turn: AppServerTurn {
                  id: "turn-1".to_string(),
-@@ -1752,6 +1758,7 @@ async fn live_app_server_server_overloaded_error_renders_error() {
+@@ -1829,6 +1835,7 @@ async fn live_app_server_server_overloaded_error_renders_error() {
  
      chat.handle_server_notification(
          ServerNotification::TurnStarted(TurnStartedNotification {
@@ -1495,7 +1495,7 @@ index 97b218c..c711d12 100644
              thread_id: "thread-1".to_string(),
              turn: AppServerTurn {
                  id: "turn-1".to_string(),
-@@ -1795,6 +1802,7 @@ async fn live_app_server_cyber_policy_error_renders_dedicated_notice() {
+@@ -1872,6 +1879,7 @@ async fn live_app_server_cyber_policy_error_renders_dedicated_notice() {
  
      chat.handle_server_notification(
          ServerNotification::TurnStarted(TurnStartedNotification {
@@ -1504,10 +1504,10 @@ index 97b218c..c711d12 100644
              turn: AppServerTurn {
                  id: "turn-1".to_string(),
 diff --git a/codex-rs/tui/src/chatwidget/tests/helpers.rs b/codex-rs/tui/src/chatwidget/tests/helpers.rs
-index 0414e60..aabfe75 100644
+index 6565e1e..90369cc 100644
 --- a/codex-rs/tui/src/chatwidget/tests/helpers.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/helpers.rs
-@@ -922,6 +922,7 @@ pub(super) fn replay_agent_message(
+@@ -923,6 +923,7 @@ pub(super) fn replay_agent_message(
  pub(super) fn replay_turn_started(chat: &mut ChatWidget, replay_kind: ReplayKind) {
      chat.handle_server_notification(
          ServerNotification::TurnStarted(TurnStartedNotification {
@@ -1515,7 +1515,7 @@ index 0414e60..aabfe75 100644
              thread_id: thread_id(chat),
              turn: app_server_turn(
                  "turn-1",
-@@ -1140,6 +1141,7 @@ pub(super) fn app_server_turn(
+@@ -1143,6 +1144,7 @@ pub(super) fn app_server_turn(
  pub(super) fn handle_turn_started(chat: &mut ChatWidget, turn_id: &str) {
      chat.handle_server_notification(
          ServerNotification::TurnStarted(TurnStartedNotification {
@@ -1564,10 +1564,10 @@ index e0e2fbc..e5e6532 100644
              turn: AppServerTurn {
                  id: "turn-1".to_string(),
 diff --git a/codex-rs/tui/src/chatwidget/tests/review_mode.rs b/codex-rs/tui/src/chatwidget/tests/review_mode.rs
-index f4f1fb9..19c63e6 100644
+index 3ebbbbb..6788d35 100644
 --- a/codex-rs/tui/src/chatwidget/tests/review_mode.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/review_mode.rs
-@@ -1247,6 +1247,7 @@ async fn interrupted_turn_after_goal_budget_limited_uses_budget_message_snapshot
+@@ -1258,6 +1258,7 @@ async fn interrupted_turn_after_goal_budget_limited_uses_budget_message_snapshot
      chat.handle_server_notification(
          codex_app_server_protocol::ServerNotification::TurnStarted(
              codex_app_server_protocol::TurnStartedNotification {

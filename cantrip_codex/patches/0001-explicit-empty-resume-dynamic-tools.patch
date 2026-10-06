@@ -1,5 +1,5 @@
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/tests.rs b/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
-index 7b8f791..c8ce3cc 100644
+index 5bc5405..e6558ba 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
 @@ -191,6 +191,22 @@ fn thread_sources_round_trip_as_scalar_labels() {
@@ -26,7 +26,7 @@ index 7b8f791..c8ce3cc 100644
  fn approvals_reviewer_serializes_auto_review_and_accepts_legacy_guardian_subagent() {
      assert_eq!(
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-index a137684..230d91b 100644
+index 2e166d5..3fd4bf3 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 @@ -416,6 +416,15 @@ pub struct ThreadResumeParams {
@@ -46,10 +46,10 @@ index a137684..230d91b 100644
      /// populating `thread.turns`. This is useful when the client plans to call
      /// `thread/turns/list` immediately after resuming. Full-history hydration
 diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
-index 57c10fe..ebde0eb 100644
+index 289cb63..6284c4e 100644
 --- a/codex-rs/app-server/src/request_processors/thread_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
-@@ -3674,6 +3674,7 @@ impl ThreadRequestProcessor {
+@@ -3719,6 +3719,7 @@ impl ThreadRequestProcessor {
              base_instructions,
              developer_instructions,
              personality,
@@ -57,7 +57,7 @@ index 57c10fe..ebde0eb 100644
              exclude_turns,
              initial_turns_page,
          } = params.clone();
-@@ -3703,7 +3704,7 @@ impl ThreadRequestProcessor {
+@@ -3748,7 +3749,7 @@ impl ThreadRequestProcessor {
                  Err(error) => Err(error),
              }
          };
@@ -66,7 +66,7 @@ index 57c10fe..ebde0eb 100644
          if let InitialHistory::Resumed(resumed) = &thread_history
              && self
                  .pending_thread_unloads
-@@ -3716,6 +3717,10 @@ impl ThreadRequestProcessor {
+@@ -3761,6 +3762,10 @@ impl ThreadRequestProcessor {
                  resumed.conversation_id
              )));
          }
@@ -78,10 +78,10 @@ index 57c10fe..ebde0eb 100644
              matches!(thread.history_mode, ThreadHistoryMode::Paginated).then_some(thread.thread_id)
          });
 diff --git a/codex-rs/app-server/src/request_processors/thread_processor_tests.rs b/codex-rs/app-server/src/request_processors/thread_processor_tests.rs
-index 44c29bd..54b35e2 100644
+index 237c58e..1271a64 100644
 --- a/codex-rs/app-server/src/request_processors/thread_processor_tests.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_processor_tests.rs
-@@ -677,6 +677,7 @@ mod thread_processor_behavior_tests {
+@@ -678,6 +678,7 @@ mod thread_processor_behavior_tests {
              base_instructions: None,
              developer_instructions: None,
              personality: None,
@@ -90,10 +90,10 @@ index 44c29bd..54b35e2 100644
              initial_turns_page: None,
          };
 diff --git a/codex-rs/history/src/lib.rs b/codex-rs/history/src/lib.rs
-index 9da17e4..1219b73 100644
+index 090ca91..1f8ec4c 100644
 --- a/codex-rs/history/src/lib.rs
 +++ b/codex-rs/history/src/lib.rs
-@@ -332,6 +332,23 @@ pub enum InitialHistory {
+@@ -371,6 +371,23 @@ pub enum InitialHistory {
  }
  
  impl InitialHistory {

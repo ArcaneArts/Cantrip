@@ -1,8 +1,8 @@
 diff --git a/codex-rs/app-server-client/src/lib.rs b/codex-rs/app-server-client/src/lib.rs
-index f1f93a1..c6a425a 100644
+index 079d1bd..fc6c146 100644
 --- a/codex-rs/app-server-client/src/lib.rs
 +++ b/codex-rs/app-server-client/src/lib.rs
-@@ -711,6 +711,13 @@ impl AppServerClient {
+@@ -707,6 +707,13 @@ impl AppServerClient {
          }
      }
  
@@ -173,7 +173,7 @@ index 0000000..ee833fe
 +    }
 +}
 diff --git a/codex-rs/app-server-client/src/remote.rs b/codex-rs/app-server-client/src/remote.rs
-index 78d6272..931cc98 100644
+index 6b5571b..0e64896 100644
 --- a/codex-rs/app-server-client/src/remote.rs
 +++ b/codex-rs/app-server-client/src/remote.rs
 @@ -15,6 +15,8 @@ use std::collections::VecDeque;
@@ -185,7 +185,7 @@ index 78d6272..931cc98 100644
  use std::time::Duration;
  
  use crate::AppServerEvent;
-@@ -155,6 +157,7 @@ struct RemoteServerMetadata {
+@@ -156,6 +158,7 @@ struct RemoteServerMetadata {
      codex_home: Option<String>,
      platform_family: Option<String>,
      platform_os: Option<String>,
@@ -193,7 +193,7 @@ index 78d6272..931cc98 100644
  }
  
  pub struct RemoteAppServerClient {
-@@ -162,6 +165,7 @@ pub struct RemoteAppServerClient {
+@@ -163,6 +166,7 @@ pub struct RemoteAppServerClient {
      event_rx: mpsc::UnboundedReceiver<AppServerEvent>,
      pending_events: VecDeque<AppServerEvent>,
      metadata: RemoteServerMetadata,
@@ -201,7 +201,7 @@ index 78d6272..931cc98 100644
      worker_handle: tokio::task::JoinHandle<()>,
  }
  
-@@ -235,6 +239,46 @@ impl RemoteAppServerClient {
+@@ -236,6 +240,46 @@ impl RemoteAppServerClient {
          self.metadata.platform_os.as_deref()
      }
  
@@ -248,7 +248,7 @@ index 78d6272..931cc98 100644
      async fn connect_with_stream<S>(
          channel_capacity: usize,
          endpoint: String,
-@@ -522,6 +566,7 @@ impl RemoteAppServerClient {
+@@ -523,6 +567,7 @@ impl RemoteAppServerClient {
              event_rx,
              pending_events: pending_events.into(),
              metadata,
@@ -256,7 +256,7 @@ index 78d6272..931cc98 100644
              worker_handle,
          })
      }
-@@ -585,6 +630,11 @@ impl RemoteAppServerClient {
+@@ -573,6 +618,11 @@ impl RemoteAppServerClient {
          request_id: RequestId,
          result: JsonRpcResult,
      ) -> IoResult<()> {
@@ -268,7 +268,7 @@ index 78d6272..931cc98 100644
          let (response_tx, response_rx) = oneshot::channel();
          self.command_tx
              .send(RemoteClientCommand::ResolveServerRequest {
-@@ -612,6 +662,11 @@ impl RemoteAppServerClient {
+@@ -600,6 +650,11 @@ impl RemoteAppServerClient {
          request_id: RequestId,
          error: JSONRPCErrorError,
      ) -> IoResult<()> {
@@ -280,7 +280,7 @@ index 78d6272..931cc98 100644
          let (response_tx, response_rx) = oneshot::channel();
          self.command_tx
              .send(RemoteClientCommand::RejectServerRequest {
-@@ -647,6 +702,7 @@ impl RemoteAppServerClient {
+@@ -635,6 +690,7 @@ impl RemoteAppServerClient {
              event_rx,
              pending_events: _pending_events,
              metadata: _,
@@ -288,7 +288,7 @@ index 78d6272..931cc98 100644
              worker_handle,
          } = self;
          let mut worker_handle = worker_handle;
-@@ -895,6 +951,7 @@ where
+@@ -870,6 +926,7 @@ where
                                  .and_then(serde_json::Value::as_str).map(str::to_string);
                              metadata.platform_os = response.result.get("platformOs")
                                  .and_then(serde_json::Value::as_str).map(str::to_string);
@@ -296,7 +296,7 @@ index 78d6272..931cc98 100644
                              break Ok(());
                          }
                          JSONRPCMessage::Error(error) if error.id == initialize_request_id => {
-@@ -990,6 +1047,31 @@ where
+@@ -965,6 +1022,31 @@ where
      Ok((pending_events, metadata))
  }
  
@@ -328,7 +328,7 @@ index 78d6272..931cc98 100644
  fn app_server_event_from_notification(notification: JSONRPCNotification) -> Option<AppServerEvent> {
      match ServerNotification::try_from(notification) {
          Ok(notification) => Some(AppServerEvent::ServerNotification(Box::new(notification))),
-@@ -1078,6 +1160,7 @@ mod tests {
+@@ -1053,6 +1135,7 @@ mod tests {
              event_rx,
              pending_events: VecDeque::new(),
              metadata: RemoteServerMetadata::default(),
@@ -336,7 +336,7 @@ index 78d6272..931cc98 100644
              worker_handle,
          };
  
-@@ -1087,3 +1170,7 @@ mod tests {
+@@ -1062,3 +1145,7 @@ mod tests {
              .expect("shutdown should complete when worker exits first");
      }
  }
@@ -345,10 +345,10 @@ index 78d6272..931cc98 100644
 +#[path = "managed_gateway_tests.rs"]
 +mod managed_gateway_tests;
 diff --git a/codex-rs/tui/src/app/event_dispatch.rs b/codex-rs/tui/src/app/event_dispatch.rs
-index 7fc9161..6c08e85 100644
+index da28bf2..888d119 100644
 --- a/codex-rs/tui/src/app/event_dispatch.rs
 +++ b/codex-rs/tui/src/app/event_dispatch.rs
-@@ -2063,6 +2063,9 @@ impl App {
+@@ -2099,6 +2099,9 @@ impl App {
                  self.sync_active_thread_service_tier_to_cached_session()
                      .await;
  
@@ -358,7 +358,7 @@ index 7fc9161..6c08e85 100644
                  if let Some(default_effort) = default_effort.as_ref()
                      && let Err(err) = self.persist_model_defaults(
                          app_server.request_handle(),
-@@ -2273,6 +2276,11 @@ impl App {
+@@ -2309,6 +2312,11 @@ impl App {
              }
              AppEvent::PersistModelSelection { model, effort } => {
                  self.app_event_tx.send(AppEvent::FollowTranscript);
@@ -370,7 +370,7 @@ index 7fc9161..6c08e85 100644
                  match self.persist_model_defaults(
                      app_server.request_handle(),
                      crate::config_update::build_model_selection_edits(
-@@ -2357,6 +2365,11 @@ impl App {
+@@ -2393,6 +2401,11 @@ impl App {
                  self.config.service_tier = service_tier.clone();
                  self.sync_active_thread_service_tier_to_cached_session()
                      .await;
@@ -382,8 +382,8 @@ index 7fc9161..6c08e85 100644
                  let edits = crate::config_update::build_service_tier_selection_edits(
                      service_tier.as_deref(),
                  );
-@@ -2453,6 +2466,10 @@ impl App {
-                 }
+@@ -2488,6 +2501,10 @@ impl App {
+                 self.chat_widget.set_approvals_reviewer(policy);
                  self.sync_active_thread_permission_settings_to_cached_session()
                      .await;
 +                // Permission selection submits the thread override before this cache update.
@@ -393,7 +393,7 @@ index 7fc9161..6c08e85 100644
                  if let Err(err) = crate::config_update::write_config_batch(
                      app_server.request_handle(),
                      vec![crate::config_update::replace_config_value(
-@@ -2525,6 +2542,9 @@ impl App {
+@@ -2560,6 +2577,9 @@ impl App {
              }
              AppEvent::PersistPlanModeReasoningEffort(effort) => {
                  self.app_event_tx.send(AppEvent::FollowTranscript);
@@ -404,10 +404,10 @@ index 7fc9161..6c08e85 100644
                  let edit = if let Some(effort) = effort {
                      crate::config_update::replace_config_value(
 diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
-index 4e17f2d..02e343e 100644
+index 9c1af27..9535647 100644
 --- a/codex-rs/tui/src/app/tests.rs
 +++ b/codex-rs/tui/src/app/tests.rs
-@@ -9714,3 +9714,6 @@ mod active_reconnect;
+@@ -9825,3 +9825,6 @@ mod active_reconnect;
  #[cfg(unix)]
  #[path = "tests/navigation_reconnect_tests.rs"]
  mod navigation_reconnect;
@@ -575,7 +575,7 @@ index 0000000..ba750a1
 +    Ok(())
 +}
 diff --git a/codex-rs/tui/src/app_server_session.rs b/codex-rs/tui/src/app_server_session.rs
-index 84df511..961048f 100644
+index f45e2b1..3942e56 100644
 --- a/codex-rs/tui/src/app_server_session.rs
 +++ b/codex-rs/tui/src/app_server_session.rs
 @@ -519,6 +519,12 @@ impl AppServerSession {
@@ -591,7 +591,7 @@ index 84df511..961048f 100644
      pub(crate) fn uses_remote_workspace(&self) -> bool {
          matches!(self.thread_params_mode, ThreadParamsMode::Remote)
      }
-@@ -1221,7 +1227,8 @@ impl AppServerSession {
+@@ -1232,7 +1238,8 @@ impl AppServerSession {
          &mut self,
          params: ThreadSettingsUpdateParams,
      ) -> Result<bool> {
@@ -601,7 +601,7 @@ index 84df511..961048f 100644
              return Ok(false);
          }
          let request_id = self.next_request_id();
-@@ -1235,7 +1242,7 @@ impl AppServerSession {
+@@ -1246,7 +1253,7 @@ impl AppServerSession {
          {
              Ok(_) => Ok(true),
              Err(TypedRequestError::Server { source, .. })
