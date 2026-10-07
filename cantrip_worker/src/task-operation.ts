@@ -77,6 +77,12 @@ export class EncryptedTaskEventSealer {
   readonly #ids = new Map<string, string>();
   readonly #mode: "default" | "goal" | "plan";
   readonly #service: WorkerEncryptionService;
+  #completedRootMessage: {
+    threadId: string;
+    turnId: string;
+    text: string;
+    message: TaskMessageOpaqueContent;
+  } | null = null;
 
   constructor(
     service: WorkerEncryptionService,
@@ -146,7 +152,7 @@ export class EncryptedTaskEventSealer {
       attachmentIds: [],
     };
     try {
-      return {
+      const event = {
         type: "agent.protected-task-message" as const,
         message: taskMessageOpaqueContentSchema.parse({
           id,
@@ -183,9 +189,41 @@ export class EncryptedTaskEventSealer {
           turnId,
         },
       };
+      if (
+        message.phase !== "commentary" &&
+        !message.streaming &&
+        message.agentScope?.isRoot !== false &&
+        message.correlation?.threadId &&
+        turnId
+      ) {
+        this.#completedRootMessage = {
+          threadId: message.correlation.threadId,
+          turnId,
+          text: message.text,
+          message: event.message,
+        };
+      }
+      return event;
     } finally {
       clearSensitiveBytes(component.key);
     }
+  }
+
+  /** Reuse the exact published ciphertext, not a second encryption of its text.
+   * The sealer is scoped to one worker command and its event queue is drained
+   * before the result is sealed. Child, partial and unrelated answers cannot
+   * become the direct Task's completion message. */
+  finalMessageForResult(
+    result: AgentTurnResult,
+  ): TaskMessageOpaqueContent | null {
+    const completed = this.#completedRootMessage;
+    return this.#mode === "default" &&
+      completed &&
+      completed.threadId === result.threadId &&
+      completed.turnId === result.turnId &&
+      completed.text === result.text
+      ? structuredClone(completed.message)
+      : null;
   }
 
   async #protectActivity(
@@ -825,6 +863,7 @@ export async function executeEncryptedTaskOperation(input: {
   getComponentKey(): { key: Uint8Array; keyRevision: number };
   ownerId: string;
   request: TaskOperationRelayRequest;
+  eventSealer?: EncryptedTaskEventSealer;
   run(input: {
     outputSchema?: JsonObject;
     prompt: string;
@@ -946,19 +985,21 @@ export async function executeEncryptedTaskOperation(input: {
           status: "active" as const,
         }
       : null;
-    const assistantMessage = await encryptedMessage({
-      componentKey: component.key,
-      content: finalizerResult
-        ? finalizerResult.finalPlanMarkdown
-        : direct
-          ? rawResult.text || "The Task completed without a message."
-          : plannerMessage(plannerResult!),
-      idempotencyKey: `task-result:${request.operationId}`,
-      keyRevision: component.keyRevision,
-      mode: direct ? "default" : "plan",
-      ownerId: input.ownerId,
-      role: "assistant",
-    });
+    const assistantMessage =
+      (direct ? input.eventSealer?.finalMessageForResult(rawResult) : null) ??
+      (await encryptedMessage({
+        componentKey: component.key,
+        content: finalizerResult
+          ? finalizerResult.finalPlanMarkdown
+          : direct
+            ? rawResult.text || "The Task completed without a message."
+            : plannerMessage(plannerResult!),
+        idempotencyKey: `task-result:${request.operationId}`,
+        keyRevision: component.keyRevision,
+        mode: direct ? "default" : "plan",
+        ownerId: input.ownerId,
+        role: "assistant",
+      }));
     const goal =
       objective && goalClassification
         ? {

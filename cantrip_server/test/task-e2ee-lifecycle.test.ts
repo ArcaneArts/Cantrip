@@ -27,12 +27,14 @@ import {
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
+  EncryptedTaskEventSealer,
   executeEncryptedTaskOperation,
   encryptTaskTurnResult,
   openEncryptedTaskGoalObjective,
   prepareEncryptedTaskOperation,
   protectTaskGoalResult,
 } from "../../cantrip_worker/src/task-operation.js";
+import type { WorkerEncryptionService } from "../../cantrip_worker/src/worker-encryption.js";
 import {
   createTaskOperationRelayRequest,
   decryptTaskGoalObjective,
@@ -54,6 +56,7 @@ import {
   ExecutionLaneBusyError,
 } from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
+import type { WorkerRequestOptions } from "../src/workers/bridge.js";
 
 import {
   protectedChatFields,
@@ -325,10 +328,19 @@ async function prepareOperation(
 
 async function encryptedTaskTurn(
   command: Extract<WorkerCommand, { type: "chat.turn" }>,
+  onEvent?: WorkerRequestOptions["onEvent"],
 ) {
   serverObservedPayloads.push(JSON.stringify(command));
   if (command.resultMode.kind === "task-encrypted") {
+    const sealer = new EncryptedTaskEventSealer(
+      {
+        ownerId: () => ownerId,
+        componentKey: workerComponentKey,
+      } as unknown as WorkerEncryptionService,
+      "default",
+    );
     return executeEncryptedTaskOperation({
+      eventSealer: sealer,
       getComponentKey: workerComponentKey,
       ownerId,
       request: command.resultMode.operation,
@@ -377,6 +389,32 @@ async function encryptedTaskTurn(
                   finalPlanMarkdown: `# ${sentinel} final plan`,
                   goalPrompt: `${sentinel} implementation direction`,
                 };
+        if (kind === "direct" && onEvent) {
+          const correlation = {
+            sourceMethod: "item/completed",
+            diagnosticId: null,
+            threadId,
+            turnId: "turn-direct",
+            itemId: "direct-final",
+          };
+          await onEvent(
+            await sealer.message({
+              id: "direct-final",
+              text: `${sentinel} raw worker`,
+              phase: "commentary",
+              streaming: true,
+              correlation,
+            }),
+          );
+          await onEvent(
+            await sealer.message({
+              id: "direct-final",
+              text: `${sentinel} raw worker output`,
+              phase: "final_answer",
+              correlation,
+            }),
+          );
+        }
         return {
           threadId,
           turnId: `turn-${kind}`,
@@ -501,7 +539,7 @@ const workerBridge: WorkerCommandBus = {
     }
     if (command.type === "chat.turn") {
       try {
-        return await encryptedTaskTurn(command);
+        return await encryptedTaskTurn(command, options?.onEvent);
       } catch (error) {
         workerErrors.push(
           error instanceof Error ? error.message : String(error),
@@ -730,6 +768,116 @@ afterAll(async () => {
 });
 
 describe.sequential("Task E2EE closure lifecycle", () => {
+  it("stores and attaches only one final answer after a streamed direct Task completes", async () => {
+    const chatId = randomUUID();
+    const task = await sealTask(chatId, {
+      version: 1,
+      classification: {
+        state: "draft",
+        stableStateBeforeFailure: null,
+        activeOperationKind: null,
+        planAuthorship: "agent",
+        planningRound: 0,
+        hasPlan: false,
+        hasQuestions: false,
+        hasFinalPlan: false,
+        hasGoalPrompt: false,
+        lastError: null,
+      },
+      briefMarkdown: `${sentinel} direct completion`,
+      planMarkdown: null,
+      currentQuestions: [],
+      currentAnswers: [],
+      additionalDirection: "",
+      finalPlanMarkdown: null,
+      goalPrompt: null,
+      lastError: null,
+    });
+    const created = await app!.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/tasks`,
+      payload: {
+        chatId,
+        planGoalEnabled: false,
+        priority: -1,
+        titleProtection: protectedChatFields(chatId).titleProtection,
+        task,
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    const initial = taskWireCreateResultSchema.parse(created.json());
+    const operationId = randomUUID();
+    const start = await app!.inject({
+      method: "POST",
+      url: `/api/tasks/${chatId}/start`,
+      payload: { operationId, rowVersion: initial.task.rowVersion },
+    });
+    expect(start.statusCode).toBe(202);
+    await waitForTaskCycle(chatId, operationId, "complete");
+    const messages = await database.repository.listTaskMessages(
+      ownerId,
+      chatId,
+    );
+    const answers = messages.filter(({ role }) => role === "assistant");
+    expect(answers).toHaveLength(1);
+    expect(answers[0]!.idempotencyKey).toBe(
+      "agent-message:root:turn-direct:direct-final",
+    );
+    expect(
+      messages.some(
+        ({ idempotencyKey }) => idempotencyKey === `task-result:${operationId}`,
+      ),
+    ).toBe(false);
+    await vi.waitFor(async () => {
+      const rounds = await database.repository.tasks.listRounds(
+        ownerId,
+        chatId,
+      );
+      expect(rounds[0]!.assistantMessageId).toBe(answers[0]!.id);
+    });
+    // Repeat completion delivery as recovery would: no second row or new ID.
+    const again = await database.repository.appendTaskMessage(ownerId, chatId, {
+      id: answers[0]!.id,
+      classification: {
+        role: "assistant",
+        mode: answers[0]!.mode,
+        attachmentIds: answers[0]!.attachmentIds,
+      },
+      protectedContent: answers[0]!.protectedContent,
+      reasoningEffort: answers[0]!.reasoningEffort,
+      idempotencyKey: answers[0]!.idempotencyKey!,
+    });
+    expect(again?.id).toBe(answers[0]!.id);
+    await expect(
+      database.repository.appendTaskMessage(ownerId, chatId, {
+        id: answers[0]!.id,
+        classification: {
+          role: "assistant",
+          mode: answers[0]!.mode,
+          attachmentIds: answers[0]!.attachmentIds,
+        },
+        protectedContent: {
+          ...answers[0]!.protectedContent,
+          envelope: {
+            ...answers[0]!.protectedContent.envelope,
+            ciphertext:
+              (answers[0]!.protectedContent.envelope.ciphertext[0] === "A"
+                ? "B"
+                : "A") +
+              answers[0]!.protectedContent.envelope.ciphertext.slice(1),
+          },
+        },
+        reasoningEffort: answers[0]!.reasoningEffort,
+        idempotencyKey: answers[0]!.idempotencyKey!,
+      }),
+    ).rejects.toThrow(
+      "Encrypted Task message idempotency metadata is inconsistent.",
+    );
+    expect(
+      await database.repository.listTaskMessages(ownerId, chatId),
+    ).toHaveLength(2);
+  });
+
   it("retries the same encrypted operation after an admission race without failing or duplicating input", async () => {
     taskOperationPrepareTimeouts.length = 0;
     const chatId = randomUUID();
