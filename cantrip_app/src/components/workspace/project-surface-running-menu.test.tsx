@@ -82,7 +82,7 @@ describe("running configuration submenu", () => {
     expect(renderer.root.findAllByType("hr")).toHaveLength(1);
     const submenu = renderer.root.findByProps({ "data-submenu": true });
     expect(submenu.props.children).toContain("Running");
-    expect(submenu.props.disabled).toBe(false);
+    expect(submenu.props.disabled).toBeFalsy();
     const items = renderer.root.findByType("section").findAllByType("button");
     expect(items).toHaveLength(2);
     expect(JSON.stringify(renderer.toJSON())).toContain(
@@ -94,23 +94,32 @@ describe("running configuration submenu", () => {
     await act(async () => renderer.unmount());
   });
 
-  it("disables Running when no active instances exist", async () => {
-    let renderer!: TestRenderer.ReactTestRenderer;
-    await act(async () => {
-      renderer = TestRenderer.create(
-        <ProjectSurfaceCreateMenu
-          onCreate={vi.fn()}
-          onOpenRunning={vi.fn()}
-          trigger={<button>+</button>}
-        />,
-      );
-    });
-    expect(
-      renderer.root.findByProps({ "data-submenu": true }).props.disabled,
-    ).toBe(true);
-    expect(
-      renderer.root.findByType("section").findAllByType("button"),
-    ).toHaveLength(0);
-    await act(async () => renderer.unmount());
-  });
+  it.each([undefined, []])(
+    "hides Running when no active instances exist (%s)",
+    async (runningConfigurations) => {
+      let renderer!: TestRenderer.ReactTestRenderer;
+      await act(async () => {
+        renderer = TestRenderer.create(
+          <ProjectSurfaceCreateMenu
+            onCreate={vi.fn()}
+            onOpenRunning={vi.fn()}
+            placement={{
+              projectId: "project-1",
+              replicas: [],
+              workers: [],
+              worktrees: [],
+              runningConfigurations,
+            }}
+            trigger={<button>+</button>}
+          />,
+        );
+      });
+      expect(
+        renderer.root.findAllByProps({ "data-submenu": true }),
+      ).toHaveLength(0);
+      expect(renderer.root.findAllByType("section")).toHaveLength(0);
+      expect(renderer.root.findAllByType("hr")).toHaveLength(0);
+      await act(async () => renderer.unmount());
+    },
+  );
 });
