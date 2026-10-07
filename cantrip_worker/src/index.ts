@@ -7710,6 +7710,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         };
         if (command.resultMode.kind === "task-encrypted") {
           const result = await executeEncryptedTaskOperation({
+            eventSealer: encryptedTaskSealer ?? undefined,
             getComponentKey: () =>
               workerEncryption.componentKey("task-content"),
             ownerId: workerEncryption.ownerId(),

@@ -14,6 +14,10 @@ import {
   type TaskPlanningRoundProtectedContent,
   type TaskProtectedContent,
 } from "@cantrip/protocol/tasks";
+import type {
+  AgentTurnResult,
+  NormalizedAgentMessage,
+} from "@cantrip/protocol";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -498,6 +502,195 @@ describe("worker encrypted Task operations", () => {
       classification: { role: "assistant", mode: "default" },
       content: [{ type: "text", text: "SENTINEL direct response" }],
     });
+  });
+
+  it("reuses the streamed final answer when completing a direct Task", async () => {
+    const componentKey = randomBytes(32);
+    const sealer = new EncryptedTaskEventSealer(
+      {
+        ownerId: () => ownerId,
+        componentKey: () => ({
+          key: new Uint8Array(componentKey),
+          keyRevision,
+        }),
+      } as unknown as WorkerEncryptionService,
+      "default",
+    );
+    const request = await createTaskOperationRelayRequest({
+      ownerId,
+      chatId,
+      operationId,
+      keyRevision,
+      componentKey,
+      content: protectedInput("direct"),
+      taskContent: taskContent("direct"),
+      userMessage: await userMessage(componentKey, "default"),
+    });
+    const rawResult = {
+      threadId: "thread-direct",
+      turnId: "turn-direct",
+      text: "SENTINEL direct response",
+      status: "completed" as const,
+    };
+    const streamed = await sealer.message({
+      id: "final-item",
+      text: rawResult.text,
+      phase: "final_answer",
+      correlation: {
+        sourceMethod: "item/completed",
+        diagnosticId: null,
+        threadId: rawResult.threadId,
+        turnId: rawResult.turnId,
+        itemId: "final-item",
+      },
+    });
+    const result = await executeEncryptedTaskOperation({
+      getComponentKey: () => ({
+        key: new Uint8Array(componentKey),
+        keyRevision,
+      }),
+      ownerId,
+      request,
+      eventSealer: sealer,
+      run: async () => rawResult,
+    });
+    const relay = taskOperationRelayResultSchema.parse(result.structuredResult);
+    // The server append is idempotent only when ID, key and ciphertext all match.
+    expect(relay.assistantMessage).toEqual(streamed.message);
+    expect(result.text).toBe("");
+    expect(JSON.stringify(result)).not.toContain("SENTINEL");
+    const opened = await openTaskOperationRelayResult({
+      ownerId,
+      keyRevision,
+      componentKey,
+      request,
+      result: relay,
+    });
+    expect(opened.assistantMessage.content).toMatchObject([
+      { type: "text", text: rawResult.text, phase: "final_answer" },
+    ]);
+  });
+
+  it.each([
+    ["partial answer", { streaming: true }, {}],
+    ["commentary", { phase: "commentary" }, {}],
+    ["another thread", {}, { threadId: "other-thread" }],
+    ["another turn with identical text", {}, { turnId: "other-turn" }],
+    ["different result text", {}, { text: "A different final response" }],
+    ["unbound result", {}, { turnId: undefined }],
+    ["missing native correlation", { correlation: null }, {}],
+    ["Plan Mode answer", {}, {}],
+    [
+      "child answer",
+      {
+        agentScope: {
+          rootThreadId: "thread-direct",
+          rootTurnId: "turn-direct",
+          agentThreadId: "child-thread",
+          parentThreadId: "thread-direct",
+          agentPath: ["child"],
+          nickname: null,
+          role: null,
+          depth: 1,
+          isRoot: false,
+        },
+      },
+      {},
+    ],
+  ] as Array<
+    [string, Partial<NormalizedAgentMessage>, Partial<AgentTurnResult>]
+  >)(
+    "does not reuse a %s as the direct Task completion",
+    async (scenario, messageChanges, resultChanges) => {
+      const componentKey = randomBytes(32);
+      const sealer = new EncryptedTaskEventSealer(
+        {
+          ownerId: () => ownerId,
+          componentKey: () => ({
+            key: new Uint8Array(componentKey),
+            keyRevision,
+          }),
+        } as unknown as WorkerEncryptionService,
+        scenario === "Plan Mode answer" ? "plan" : "default",
+      );
+      const result: AgentTurnResult = {
+        threadId: "thread-direct",
+        turnId: "turn-direct",
+        text: "Repeated answer",
+        status: "completed",
+        ...resultChanges,
+      };
+      await sealer.message({
+        id: "final-item",
+        text: "Repeated answer",
+        phase: "final_answer",
+        correlation: {
+          sourceMethod: "item/completed",
+          diagnosticId: null,
+          threadId: "thread-direct",
+          turnId: "turn-direct",
+          itemId: "final-item",
+        },
+        ...messageChanges,
+      });
+      expect(sealer.finalMessageForResult(result)).toBeNull();
+    },
+  );
+
+  it("retains the completed root answer when child output follows it", async () => {
+    const componentKey = randomBytes(32);
+    const sealer = new EncryptedTaskEventSealer(
+      {
+        ownerId: () => ownerId,
+        componentKey: () => ({
+          key: new Uint8Array(componentKey),
+          keyRevision,
+        }),
+      } as unknown as WorkerEncryptionService,
+      "default",
+    );
+    const result: AgentTurnResult = {
+      threadId: "root-thread",
+      turnId: "root-turn",
+      text: "Root answer",
+      status: "completed",
+    };
+    const root = await sealer.message({
+      id: "root-item",
+      text: result.text,
+      phase: null,
+      correlation: {
+        sourceMethod: "item/completed",
+        diagnosticId: null,
+        threadId: result.threadId,
+        turnId: result.turnId!,
+        itemId: "root-item",
+      },
+    });
+    await sealer.message({
+      id: "child-item",
+      text: "Child answer",
+      phase: "final_answer",
+      agentScope: {
+        rootThreadId: result.threadId,
+        rootTurnId: result.turnId!,
+        agentThreadId: "child-thread",
+        parentThreadId: result.threadId,
+        agentPath: ["child"],
+        nickname: null,
+        role: null,
+        depth: 1,
+        isRoot: false,
+      },
+      correlation: {
+        sourceMethod: "item/completed",
+        diagnosticId: null,
+        threadId: "child-thread",
+        turnId: "child-turn",
+        itemId: "child-item",
+      },
+    });
+    expect(sealer.finalMessageForResult(result)).toEqual(root.message);
   });
 
   it("encrypts the combined finalization Goal and opens it only for the bound thread", async () => {
