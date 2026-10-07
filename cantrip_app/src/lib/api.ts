@@ -426,6 +426,8 @@ import {
   type ProjectTaskPauseUpdate,
 } from "@cantrip/protocol/task-scheduling";
 import {
+  chatFileReferencesRequestContentSchema,
+  chatFileReferencesResultContentSchema,
   explorerOperationRequestContentSchema,
   explorerOperationResultContentSchema,
   standaloneChatFileOperationRequestContentSchema,
@@ -7097,6 +7099,42 @@ async function executeStandaloneChatFileOperation(
   });
   if (!outcome.ok) throw new Error(outcome.error);
   return standaloneChatFileOperationResultContentSchema.parse(outcome.result);
+}
+
+export async function getChatFileReferences(
+  chatId: string,
+  references: string[],
+) {
+  const operationId = crypto.randomUUID();
+  const context = {
+    surfaceKind: "chat-files" as const,
+    surfaceId: chatId,
+    operationId,
+    direction: "request" as const,
+    sequence: 0,
+  };
+  const protectedRequest = await protectSurfaceStreamContent({
+    context,
+    content: { type: "chat.files.references", references },
+    schema: chatFileReferencesRequestContentSchema,
+  });
+  const wire = surfaceStreamWireResponseSchema.parse(
+    await request(`/api/chats/${encodeURIComponent(chatId)}/file-references`, {
+      method: "POST",
+      body: JSON.stringify({ operationId, sequence: 0, protectedRequest }),
+    }),
+  );
+  if (wire.operationId !== operationId || wire.sequence !== 0)
+    throw new Error("Chat returned stale reference metadata.");
+  const outcome = await openSurfaceStreamContent({
+    context: { ...context, direction: "response" },
+    opaque: wire.protectedResponse,
+    schema: surfaceOperationOutcomeContentSchema,
+  });
+  if (!outcome.ok) throw new Error(outcome.error);
+  if (outcome.result.type !== "chat.files.references")
+    throw new Error("Chat returned unexpected reference metadata.");
+  return chatFileReferencesResultContentSchema.parse(outcome.result.value);
 }
 
 export async function getStandaloneChatFileDirectory(

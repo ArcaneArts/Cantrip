@@ -7,6 +7,7 @@ import {
 } from "@cantrip/protocol";
 import {
   standaloneChatFileWireRequestSchema,
+  surfaceStreamWireRequestSchema,
   surfaceStreamWireResponseSchema,
 } from "@cantrip/protocol/surface-stream";
 import type { FastifyInstance } from "fastify";
@@ -78,6 +79,33 @@ export function installChatBasicRoutes(
       return chat
         ? reply.send(contextualChatWireSummarySchema.parse(chat))
         : reply.code(404).send({ error: "Chat not found." });
+    },
+  );
+
+  app.post<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/file-references",
+    { bodyLimit: 4 * 1_024 * 1_024 },
+    async (request, reply) => {
+      const input = surfaceStreamWireRequestSchema.safeParse(request.body);
+      if (!input.success)
+        return reply.code(400).send(invalidBody(input.error.issues));
+      const context = await repository.getChatExecutionContext(
+        applicationOwnerId(),
+        request.params.chatId,
+      );
+      if (!context) return reply.code(404).send({ error: "Chat not found." });
+      try {
+        const result = await bridge.request(context.workerId, {
+          type: "chat.files.references",
+          chatId: context.chatId,
+          serverId,
+          root: context.cwd,
+          ...input.data,
+        });
+        return reply.send(surfaceStreamWireResponseSchema.parse(result));
+      } catch (error) {
+        return sendWorkerRequestFailure(reply, error);
+      }
     },
   );
 

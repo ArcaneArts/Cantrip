@@ -12,6 +12,7 @@ import {
   editableMessageText,
 } from "@/components/chat/latest-message-edit";
 import { MessageContent } from "@/components/chat/message-content";
+import { ChatMessageFileSummary } from "./chat-message-file-summary";
 import {
   editedFilesByAssistantMessage,
   messageFileSummary,
@@ -105,6 +106,7 @@ function completedTurnWorkSegments(
 }
 
 export interface ChatTranscriptEntriesProps {
+  chatId?: string;
   copiedMessageId: string | null;
   editedMessageRef: RefObject<HTMLTextAreaElement | null>;
   editingSentMessage: EditingSentMessage | null;
@@ -125,6 +127,7 @@ export interface ChatTranscriptEntriesProps {
 }
 
 export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
+  chatId,
   copiedMessageId,
   editedMessageRef,
   editingSentMessage,
@@ -361,7 +364,15 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
             <MessageContent message={message} onOpenFile={onOpenFile} />
           )}
           {fileSummary ? (
-            <MessageFileSummary model={fileSummary} onOpenFile={onOpenFile} />
+            chatId ? (
+              <ChatMessageFileSummary
+                chatId={chatId}
+                model={fileSummary}
+                onOpenFile={onOpenFile}
+              />
+            ) : (
+              <MessageFileSummary model={fileSummary} onOpenFile={onOpenFile} />
+            )
           ) : null}
           {user && message.providerName ? (
             <p className="mt-1.5 truncate text-[10px] text-muted-foreground">
