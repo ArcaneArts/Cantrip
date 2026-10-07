@@ -366,13 +366,11 @@ export function ProjectSurfaceCreateMenu({
               );
             },
           )}
-          {onOpenRunning ? (
+          {onOpenRunning && placement?.runningConfigurations?.length ? (
             <>
               <DropdownMenu.Separator className="my-1 h-px bg-border" />
               <DropdownMenu.Sub>
-                <StyledDropdownMenuSubTrigger
-                  disabled={!placement?.runningConfigurations?.length}
-                >
+                <StyledDropdownMenuSubTrigger>
                   <Play className="size-4" />
                   Running
                   <ChevronRight className="ml-auto size-3.5" />
