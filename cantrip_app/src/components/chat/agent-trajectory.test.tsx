@@ -14,9 +14,25 @@ import { AgentInspectContent } from "./agent-inspect-content";
 import { projectTrajectory } from "./trajectory-model";
 import { chatScrollIsNearBottom } from "./use-sticky-chat-scroll";
 
-const { buildAgentTurnProjectionSpy } = vi.hoisted(() => ({
-  buildAgentTurnProjectionSpy: vi.fn(),
-}));
+const { buildAgentTurnProjectionSpy, projectTrajectorySpy } = vi.hoisted(
+  () => ({
+    buildAgentTurnProjectionSpy: vi.fn(),
+    projectTrajectorySpy: vi.fn(),
+  }),
+);
+
+vi.mock("./trajectory-model", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./trajectory-model")>();
+  return {
+    ...actual,
+    projectTrajectory: (
+      ...args: Parameters<typeof actual.projectTrajectory>
+    ) => {
+      projectTrajectorySpy();
+      return actual.projectTrajectory(...args);
+    },
+  };
+});
 
 it("retains each native tool output part in Trajectory rather than collapsing by native item ID", () => {
   const result = projectTrajectory({
@@ -114,6 +130,64 @@ function message(
 }
 
 describe("AgentTrajectory", () => {
+  it("reuses the trajectory across filter and parent renders but still advances its live clock", async () => {
+    const messages = [
+      message("clock-user", 1, "user", 1_000, [
+        { type: "text", text: "Run a command" },
+      ]),
+      message("clock-command", 2, "assistant", 1_200, [
+        {
+          type: "activity",
+          activity: {
+            type: "command",
+            id: "clock-command",
+            command: "git status",
+            cwd: "/workspace",
+            status: "running",
+            exitCode: null,
+            output: null,
+          },
+        },
+      ]),
+    ];
+    const now = vi.spyOn(Date, "now").mockReturnValue(2_000);
+    const interval = vi.fn((_callback: () => void, _delayMs: number) => 1);
+    vi.stubGlobal("window", {
+      cancelAnimationFrame: vi.fn(),
+      clearInterval: vi.fn(),
+      requestAnimationFrame: vi.fn(() => 1),
+      setInterval: interval,
+    });
+    let renderer: TestRenderer.ReactTestRenderer | undefined;
+    try {
+      const render = () => (
+        <AgentTrajectory active messages={messages} visible />
+      );
+      await act(async () => {
+        renderer = TestRenderer.create(render());
+      });
+      const initial = projectTrajectorySpy.mock.calls.length;
+      now.mockReturnValue(3_000);
+      await act(async () => {
+        renderer!.root
+          .findByProps({ "aria-label": "Search trajectory events" })
+          .props.onChange({ target: { value: "git" } });
+        renderer!.update(render());
+      });
+      expect(projectTrajectorySpy).toHaveBeenCalledTimes(initial);
+      expect(interval).toHaveBeenCalled();
+      await act(async () => {
+        const tick = interval.mock.calls.at(-1)![0];
+        tick();
+      });
+      expect(projectTrajectorySpy).toHaveBeenCalledTimes(initial + 1);
+    } finally {
+      await act(async () => renderer?.unmount());
+      now.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it.each([
     { order: undefined, expected: ["input", "command", "commentary"] },
     {

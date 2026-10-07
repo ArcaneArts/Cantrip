@@ -193,6 +193,7 @@ export function TaskSurface({
   onRename,
   settings,
   surfaceRef,
+  visible = true,
   worker,
 }: {
   chat: ChatSummary;
@@ -202,6 +203,7 @@ export function TaskSurface({
   onRename(title: string): void;
   settings: SettingsBundle | undefined;
   surfaceRef?: Ref<TaskSurfaceHandle>;
+  visible?: boolean;
   worker?: WorkerSummary;
 }) {
   const queryClient = useQueryClient();
@@ -262,6 +264,7 @@ export function TaskSurface({
   useEffect(() => setTitleDraft(chat.title), [chat.title]);
 
   const task = useQuery({
+    enabled: visible,
     queryFn: () => getTask(chat.id),
     queryKey: ["task", chat.id],
     refetchInterval: liveResourceRefreshInterval(
@@ -270,11 +273,12 @@ export function TaskSurface({
     ),
   });
   const taskAttachments = useQuery({
-    enabled: Boolean(task.data),
+    enabled: visible && Boolean(task.data),
     queryFn: () => getTaskAttachments(chat.id),
     queryKey: ["task-attachments", chat.id],
   });
   const taskWorkers = useQuery({
+    enabled: visible,
     queryFn: getTaskWorkers,
     queryKey: ["task-workers"],
     staleTime: 30_000,
@@ -283,7 +287,8 @@ export function TaskSurface({
     autoLoadOlder: true,
     chatId: chat.id,
     enabled:
-      task.data?.state === "planning" || task.data?.state === "finalizing",
+      visible &&
+      (task.data?.state === "planning" || task.data?.state === "finalizing"),
     refetchInterval: liveResourceRefreshInterval(
       taskResourcesLive,
       chat.status === "running" ? 1_000 : false,
@@ -320,7 +325,7 @@ export function TaskSurface({
   const selectedModelId =
     chat.modelId ?? settings?.preferences.defaultModelId ?? "";
   const permissionProfiles = useQuery({
-    enabled: Boolean(selectedModelId),
+    enabled: visible && Boolean(selectedModelId),
     queryFn: () => getChatPermissionProfiles(chat.id),
     queryKey: ["permission-profiles", chat.id, selectedModelId],
     retry: false,
@@ -718,14 +723,14 @@ export function TaskSurface({
           </div>
         </div>
         <div className="shrink-0 px-4 sm:px-6">
-          <TaskInteractionRequests chat={chat} />
+          <TaskInteractionRequests chat={chat} visible={visible} />
         </div>
         <div className="min-h-0 flex-1 overflow-hidden p-4 sm:p-6">
           <AgentInspectContent
             active
             messages={messages.data ?? []}
             trajectoryEventOrder="newest-first"
-            visible
+            visible={visible}
           />
         </div>
       </div>
@@ -749,6 +754,7 @@ export function TaskSurface({
   if (mode === "implementation") {
     return (
       <TaskImplementationDashboard
+        visible={visible}
         chat={chat}
         deleting={deleting}
         initialTask={task.data}

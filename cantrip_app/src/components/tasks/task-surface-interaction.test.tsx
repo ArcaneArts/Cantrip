@@ -1,6 +1,6 @@
 import type { ChatSummary, TaskDetail } from "@cantrip/protocol";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { createElement, createRef } from "react";
+import { createElement, createRef, type ComponentProps } from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -106,7 +106,7 @@ const retryButton = () =>
         .some((span) => span.children.includes("Retry Task")),
     )!;
 const editor = () => renderer!.root.findByType("textarea");
-async function mount(status: ChatSummary["status"] = "idle") {
+async function mount(status: ChatSummary["status"] = "idle", visible = true) {
   client = new QueryClient({
     defaultOptions: {
       queries: { retry: false, staleTime: Infinity },
@@ -120,6 +120,7 @@ async function mount(status: ChatSummary["status"] = "idle") {
         QueryClientProvider,
         { client },
         createElement(TaskSurface, {
+          visible,
           chat: { ...chat, status },
           onRename: vi.fn(),
           settings: undefined,
@@ -157,6 +158,37 @@ afterEach(async () => {
 });
 
 describe("failed Task recovery", () => {
+  it("keeps a hidden Task's local editor but suspends reads until it is visible again", async () => {
+    await mount("running", false);
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: ["task", "task"] });
+      await client.invalidateQueries({
+        queryKey: ["task-attachments", "task"],
+      });
+      await client.invalidateQueries({ queryKey: ["task-workers"] });
+    });
+    expect(api.getTask).not.toHaveBeenCalled();
+    expect(api.getTaskAttachments).not.toHaveBeenCalled();
+    expect(api.getTaskWorkers).not.toHaveBeenCalled();
+    expect(editor().props.value).toBe("Support Forge");
+    const props = renderer!.root.findByType(TaskSurface)
+      .props as ComponentProps<typeof TaskSurface>;
+    await act(async () => {
+      renderer!.update(
+        createElement(
+          QueryClientProvider,
+          { client },
+          createElement(TaskSurface, { ...props, visible: true }),
+        ),
+      );
+    });
+    await settle();
+    expect(api.getTask).toHaveBeenCalledTimes(1);
+    expect(api.getTaskAttachments).toHaveBeenCalledTimes(1);
+    expect(api.getTaskWorkers).toHaveBeenCalledTimes(1);
+    expect(editor().props.value).toBe("Support Forge");
+  });
+
   it("flushes unsaved draft edits before a dialog dismissal", async () => {
     await mount();
     await act(async () => editor().props.onChange("Save before dismissing"));

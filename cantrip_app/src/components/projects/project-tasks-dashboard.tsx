@@ -20,7 +20,7 @@ import {
   Settings2,
   Trash2,
 } from "lucide-react";
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { memo, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { summarizePlanProgress } from "@/components/chat/chat-plan-progress";
 import {
@@ -285,28 +285,38 @@ function promptSummary(markdown: string): string {
   return line?.replace(/^#{1,6}\s+/u, "") ?? "No Task prompt yet";
 }
 
-function TaskTrajectoryBar({ item }: { item: ProjectTaskWorkloadItem }) {
+const TaskTrajectoryBar = memo(function TaskTrajectoryBar({
+  item,
+}: {
+  item: ProjectTaskWorkloadItem;
+}) {
   const active =
     item.task.dispatch?.state === "running" ||
     item.task.dispatch?.state === "claimed";
-  const trajectory = projectTrajectory({
-    active,
-    messages: item.messages,
-    nowMs: Date.now(),
-  });
-  const rootEvents = trajectory?.events.filter((event) => event.agentIsRoot);
-  if (!rootEvents || rootEvents.length === 0) return null;
-  const lanes = (["input", "model", "tools", "changes"] as const)
-    .map((lane) => ({
-      count: rootEvents.filter((event) => event.lane === lane).length,
-      lane,
-    }))
-    .filter(({ count }) => count > 0);
+  const { count, lanes } = useMemo(() => {
+    const trajectory = projectTrajectory({
+      active,
+      messages: item.messages,
+      nowMs: Date.now(),
+    });
+    const rootEvents =
+      trajectory?.events.filter((event) => event.agentIsRoot) ?? [];
+    return {
+      count: rootEvents.length,
+      lanes: (["input", "model", "tools", "changes"] as const)
+        .map((lane) => ({
+          count: rootEvents.filter((event) => event.lane === lane).length,
+          lane,
+        }))
+        .filter(({ count }) => count > 0),
+    };
+  }, [active, item.messages]);
+  if (count === 0) return null;
   return (
     <div
       aria-label="Root agent trajectory"
       className="flex h-1.5 w-28 overflow-hidden rounded-full bg-muted"
-      title={`${rootEvents.length} root agent trajectory event${rootEvents.length === 1 ? "" : "s"}`}
+      title={`${count} root agent trajectory event${count === 1 ? "" : "s"}`}
     >
       {lanes.map(({ count, lane }) => (
         <span
@@ -317,7 +327,7 @@ function TaskTrajectoryBar({ item }: { item: ProjectTaskWorkloadItem }) {
       ))}
     </div>
   );
-}
+});
 
 function TaskWorkloadRow({
   chat,
@@ -513,9 +523,11 @@ function WorkloadList({
 
 export function projectTaskDashboardQueriesEnabled(
   active: boolean,
-  _activeTaskChatId: string | null,
+  activeTaskChatId: string | null,
 ): boolean {
-  return active;
+  // Keep the cached list behind the dialog, but do not repeatedly decrypt every
+  // Task's history while the user is looking at only one Task.
+  return active && activeTaskChatId === null;
 }
 
 export function ProjectTasksDashboard({
@@ -690,6 +702,7 @@ export function ProjectTasksDashboard({
           aria-hidden={Boolean(taskChatContent)}
         >
           <PersistentTaskViews
+            visible={active && !taskChatContent}
             activeTask={
               activeTask ? { chat: activeTask, worker: activeTaskWorker } : null
             }

@@ -35,6 +35,7 @@ export function PersistentTaskViews({
   onRename,
   settings,
   surfaceRef,
+  visible = true,
 }: {
   activeTask: ActiveTaskView | null;
   deleting?: boolean;
@@ -43,6 +44,7 @@ export function PersistentTaskViews({
   onRename(chatId: string, title: string): void;
   settings: SettingsBundle | undefined;
   surfaceRef?: Ref<TaskSurfaceHandle>;
+  visible?: boolean;
 }) {
   const [retainedTasks, setRetainedTasks] = useState<ActiveTaskView[]>([]);
 
@@ -68,6 +70,7 @@ export function PersistentTaskViews({
         className={cn("min-h-0 flex-1 flex-col", active ? "flex" : "hidden")}
       >
         <TaskSurface
+          visible={active && visible}
           chat={retained.chat}
           deleting={active ? deleting : false}
           onClose={active ? onClose : undefined}

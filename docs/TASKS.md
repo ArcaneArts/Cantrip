@@ -564,6 +564,15 @@ needed for client-side Steps x of y and trajectory projection.
 Reuse the existing client decryption cache and plan/trajectory derivation.
 Invalidate cached projections when their encrypted source revision changes.
 
+Live Task invalidations must not cancel and restart an in-flight snapshot read.
+Coalesce overlapping Chat and Project hints into one trailing refresh so the
+latest revision is still read after a burst. Retained hidden Task surfaces and
+the list covered by a Task dialog suspend query polling, message-cache
+subscriptions, older-history loading, and trajectory clocks; they keep local
+edits and cached data, then refresh stale queries when shown again. Filter and
+unrelated parent renders reuse trajectory projections until the messages,
+projection inputs, or live clock change.
+
 ## Failure, recovery, and fairness
 
 - Duplicate scheduler wakeups and worker completions are idempotent.

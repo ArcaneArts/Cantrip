@@ -358,7 +358,7 @@ function AgentTrajectoryVisible({
     setClockMs(Date.now());
   }, [active, messages, targetTurnKey, visible]);
 
-  const nowMs = visible ? Math.max(clockMs, Date.now()) : clockMs;
+  const nowMs = clockMs;
   const projectedAgents = useMemo(
     () =>
       deferredInput.agentProjection ??

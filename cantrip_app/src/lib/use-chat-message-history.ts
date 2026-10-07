@@ -37,6 +37,7 @@ export function useChatMessageHistory({
   const autoLoadedChatRef = useRef<string | null>(null);
   const live = useQuery({
     enabled: false,
+    subscribed: enabled,
     gcTime: CHAT_MESSAGE_CACHE_GC_MS,
     initialData: EMPTY_CHAT_MESSAGE_LIVE_OVERLAY,
     queryKey: chatMessageLiveQueryKey(chatId),
@@ -44,6 +45,7 @@ export function useChatMessageHistory({
   });
   const provisional = useQuery({
     enabled: false,
+    subscribed: enabled,
     gcTime: CHAT_MESSAGE_CACHE_GC_MS,
     initialData: EMPTY_CHAT_MESSAGE_LIVE_OVERLAY,
     queryKey: chatMessageProvisionalQueryKey(chatId),
@@ -51,6 +53,7 @@ export function useChatMessageHistory({
   });
   const head = useQuery({
     enabled,
+    subscribed: enabled,
     gcTime: CHAT_MESSAGE_CACHE_GC_MS,
     queryFn: ({ signal }) => getMessagePage(chatId, { signal }),
     queryKey: chatMessagePagesQueryKey(chatId),
@@ -62,6 +65,7 @@ export function useChatMessageHistory({
   const historyCursor = head.data?.page.nextBeforeSequence ?? null;
   const older = useInfiniteQuery({
     enabled: false,
+    subscribed: enabled,
     gcTime: CHAT_MESSAGE_CACHE_GC_MS,
     initialPageParam: historyCursor ?? undefined,
     queryKey: chatMessageOlderPagesQueryKey(chatId, historyCursor ?? 0),
@@ -119,6 +123,7 @@ export function useChatMessageHistory({
 
   useEffect(() => {
     if (
+      !enabled ||
       !autoLoadOlder ||
       !hasOlder ||
       older.isFetching ||
@@ -130,7 +135,7 @@ export function useChatMessageHistory({
       autoLoadedChatRef.current = chatId;
       void fetchOlder();
     });
-  }, [autoLoadOlder, chatId, fetchOlder, hasOlder, older.isFetching]);
+  }, [autoLoadOlder, chatId, enabled, fetchOlder, hasOlder, older.isFetching]);
 
   return {
     data,

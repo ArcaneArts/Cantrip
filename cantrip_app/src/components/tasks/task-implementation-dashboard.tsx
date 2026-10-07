@@ -180,6 +180,7 @@ export function TaskImplementationDashboard({
   initialTask,
   onClose,
   onDelete,
+  visible = true,
   workerName,
 }: {
   chat: ChatSummary;
@@ -187,12 +188,14 @@ export function TaskImplementationDashboard({
   initialTask: TaskDetail;
   onClose?(): void;
   onDelete?(): void;
+  visible?: boolean;
   workerName?: string;
 }) {
   const queryClient = useQueryClient();
   const taskResourcesLive = useAppLiveStatus() === "live";
   const [copied, setCopied] = useState(false);
   const dashboard = useQuery({
+    enabled: visible,
     queryFn: () => getTaskImplementationDashboard(chat.id),
     queryKey: ["task-dashboard", chat.id],
     refetchInterval: liveResourceRefreshInterval(
@@ -208,6 +211,7 @@ export function TaskImplementationDashboard({
   const active =
     chat.status === "running" || chat.status === "waiting-for-approval";
   const messages = useChatMessageHistory({
+    enabled: visible,
     autoLoadOlder: true,
     chatId: chat.id,
     refetchInterval: liveResourceRefreshInterval(
@@ -391,7 +395,7 @@ export function TaskImplementationDashboard({
           </p>
         ) : null}
 
-        <TaskInteractionRequests chat={chat} />
+        <TaskInteractionRequests chat={chat} visible={visible} />
 
         <section
           className={cn(
@@ -526,7 +530,7 @@ export function TaskImplementationDashboard({
                 active={active}
                 messages={latestMessages}
                 trajectoryEventOrder="newest-first"
-                visible
+                visible={visible}
               />
             </div>
           </section>
