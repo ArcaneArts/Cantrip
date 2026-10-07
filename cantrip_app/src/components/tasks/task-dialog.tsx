@@ -7,7 +7,7 @@ import { errorMessage } from "@/lib/error-message";
 
 export const TASK_DIALOG_POSITIONER_CLASS_NAME = "p-0 md:p-6";
 export const TASK_DIALOG_CONTENT_CLASS_NAME =
-  "flex h-full min-h-0 max-w-none flex-col gap-0 overflow-hidden rounded-none border-0 p-0 md:rounded-xl md:border";
+  "flex h-full min-h-0 max-w-none flex-col gap-0 overflow-hidden rounded-none border-0 bg-background p-0 text-foreground md:rounded-xl md:border";
 
 export function TaskDialog({
   beforeClose,
