@@ -12,6 +12,7 @@ type RepositoryTransaction = Parameters<
 >[0];
 
 export class LogicalBranchLeaseConflictError extends Error {}
+export class LogicalBranchLeaseBusyError extends LogicalBranchLeaseConflictError {}
 
 function isUniqueViolation(error: unknown): boolean {
   const visited = new Set<unknown>();
@@ -43,8 +44,14 @@ function isUniqueViolation(error: unknown): boolean {
   return false;
 }
 
-function conflict(branchName: string): LogicalBranchLeaseConflictError {
-  return new LogicalBranchLeaseConflictError(
+function conflict(
+  branchName: string,
+  busy = true,
+): LogicalBranchLeaseConflictError {
+  const Conflict = busy
+    ? LogicalBranchLeaseBusyError
+    : LogicalBranchLeaseConflictError;
+  return new Conflict(
     `Logical branch ${branchName} is already leased by another agent in this project.`,
   );
 }
@@ -91,7 +98,7 @@ export async function acquireChatLogicalBranchLease(
       existing[0].projectId !== input.projectId ||
       existing[0].branchName !== input.branchName
     ) {
-      throw conflict(input.branchName);
+      throw conflict(input.branchName, false);
     }
     if (existing[0].state === "active") return;
   }

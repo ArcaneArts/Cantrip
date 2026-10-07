@@ -18,6 +18,7 @@ import {
 import {
   DEFAULT_MODEL_ID,
   DEFAULT_MODEL_ROUTE_ID,
+  ExecutionLaneBusyError,
   LOCAL_USER_ID,
   ServerRepository,
 } from "../src/db/repository.js";
@@ -156,6 +157,143 @@ const eligible = async () => ({
 });
 
 describe("Task dispatch scheduling", () => {
+  it("keeps a negative-priority Task queued behind the actual branch lease, then runs it", async () => {
+    const value = await fixture();
+    try {
+      await value.repository.taskScheduling.createTaskWorker(
+        LOCAL_USER_ID,
+        workerInput("Two slots", { maxConcurrency: 2 }),
+      );
+      const first = await addTask(value, {
+        createdAt: new Date("2026-08-24T10:00:00Z"),
+      });
+      const second = await addTask(value, {
+        createdAt: new Date("2026-08-24T10:01:00Z"),
+        priority: -1,
+      });
+      await value.database
+        .update(schema.projectWorktrees)
+        .set({ branch: "main" })
+        .where(eq(schema.projectWorktrees.id, first.worktreeId));
+      await value.database
+        .update(schema.chats)
+        .set({ projectId: first.projectId, activeWorktreeId: first.worktreeId })
+        .where(eq(schema.chats.id, second.chatId));
+      await value.repository.taskDispatch.enqueue(
+        LOCAL_USER_ID,
+        first.chatId,
+        "first",
+        "direct",
+        1,
+      );
+      const running = await value.repository.taskDispatch.claimNext(
+        LOCAL_USER_ID,
+        "scheduler",
+        eligible,
+      );
+      await value.repository.taskDispatch.markRunning(running!.lease);
+      const execution = await value.repository.startChatExecutionLane(
+        LOCAL_USER_ID,
+        first.chatId,
+        "user",
+        "First Task",
+      );
+      await value.repository.taskDispatch.enqueue(
+        LOCAL_USER_ID,
+        second.chatId,
+        "second",
+        "direct",
+        1,
+      );
+      expect(
+        await value.repository.taskDispatch.claimNext(
+          LOCAL_USER_ID,
+          "scheduler",
+          eligible,
+        ),
+      ).toBeNull();
+      expect(
+        (await value.repository.tasks.get(LOCAL_USER_ID, second.chatId))
+          ?.dispatch,
+      ).toMatchObject({
+        state: "queued",
+        eligibilityCode: "capacity-unavailable",
+      });
+      await expect(
+        value.repository.startChatExecutionLane(
+          LOCAL_USER_ID,
+          second.chatId,
+          "user",
+          "Competing Task",
+        ),
+      ).rejects.toBeInstanceOf(ExecutionLaneBusyError);
+      await value.repository.finishChatExecutionLane(
+        first.chatId,
+        execution!.executionLaneId!,
+        "idle",
+      );
+      await value.repository.taskDispatch.settle(running!.lease, "succeeded");
+      const next = await value.repository.taskDispatch.claimNext(
+        LOCAL_USER_ID,
+        "scheduler",
+        eligible,
+      );
+      expect(next?.cycle).toMatchObject({
+        chatId: second.chatId,
+        state: "claimed",
+        operationId: "second",
+      });
+    } finally {
+      await value.client.close();
+    }
+  });
+
+  it("defers a competing launch without losing its operation or FIFO age and fences the old claimant", async () => {
+    const value = await fixture();
+    try {
+      await value.repository.taskScheduling.createTaskWorker(
+        LOCAL_USER_ID,
+        workerInput("One slot"),
+      );
+      const task = await addTask(value, {
+        createdAt: new Date("2026-08-24T10:00:00Z"),
+      });
+      const queued = await value.repository.taskDispatch.enqueue(
+        LOCAL_USER_ID,
+        task.chatId,
+        "race",
+        "direct",
+        1,
+      );
+      const claim = await value.repository.taskDispatch.claimNext(
+        LOCAL_USER_ID,
+        "scheduler",
+        eligible,
+      );
+      await value.repository.taskDispatch.markRunning(claim!.lease);
+      const deferred = await value.repository.taskDispatch.deferForCapacity(
+        claim!.lease,
+      );
+      expect(deferred).toMatchObject({
+        state: "queued",
+        operationId: "race",
+        fifoCreatedAt: queued.fifoCreatedAt,
+        selectedTaskWorkerId: null,
+        fencingToken: claim!.lease.fencingToken + 1,
+      });
+      await expect(
+        value.repository.taskDispatch.settle(claim!.lease, "failed"),
+      ).rejects.toMatchObject({ code: "stale-lease" });
+      const retried = await value.repository.taskDispatch.claimNext(
+        LOCAL_USER_ID,
+        "scheduler",
+        eligible,
+      );
+      expect(retried?.cycle.operationId).toBe("race");
+    } finally {
+      await value.client.close();
+    }
+  });
   it("summarizes active owner states into scheduler stage gates", async () => {
     const value = await fixture();
     try {

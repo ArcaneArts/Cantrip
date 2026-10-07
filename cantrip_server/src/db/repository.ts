@@ -190,6 +190,7 @@ export type {
 export type { RunConfigurationRuntimeOperationRequest } from "./repository/run-configuration-state.js";
 export type { WorktreeRemovalBlockers } from "./repository/worktree-lifecycle.js";
 export {
+  ExecutionLaneBusyError,
   ExecutionLaneConflictError,
   type ChatExecutionContext,
   type ChatExecutionLaneContext,

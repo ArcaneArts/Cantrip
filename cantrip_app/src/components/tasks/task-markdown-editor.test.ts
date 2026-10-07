@@ -7,6 +7,13 @@ import {
 import editorStyles from "./task-markdown-editor.css?raw";
 
 describe("Task Markdown editor state", () => {
+  it("keeps read-only brief and plan text selectable", () => {
+    const rule = editorStyles.match(
+      /\.cantrip-task-markdown-content,\s*\.cantrip-task-markdown-content \*\s*\{([^}]+)\}/,
+    )?.[1];
+    expect(rule).toContain("-webkit-user-select: text;");
+    expect(rule).toContain("user-select: text;");
+  });
   it("does not dirty a Task when the editor only normalizes initial Markdown", () => {
     expect(shouldEmitTaskMarkdownChange(true)).toBe(false);
     expect(shouldEmitTaskMarkdownChange(false)).toBe(true);

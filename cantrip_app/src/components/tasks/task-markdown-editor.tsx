@@ -142,11 +142,11 @@ export function TaskMarkdownEditor({
 
   useEffect(() => {
     const contentEditable = containerRef.current?.querySelector<HTMLElement>(
-      '.mdxeditor-root-contenteditable [contenteditable="true"]',
+      ".mdxeditor-root-contenteditable [contenteditable]",
     );
     contentEditable?.setAttribute("aria-label", ariaLabel);
     contentEditable?.setAttribute("aria-multiline", "true");
-  }, [ariaLabel]);
+  }, [ariaLabel, readOnly]);
 
   useEffect(() => {
     if (!shouldSyncTaskMarkdown(value, latestEditorMarkdownRef.current)) return;
@@ -174,7 +174,7 @@ export function TaskMarkdownEditor({
       <MDXEditor
         ref={editorRef}
         className="cantrip-task-markdown-editor mdxeditor-full-height h-full"
-        contentEditableClassName="cantrip-task-markdown-content"
+        contentEditableClassName="cantrip-task-markdown-content select-text"
         markdown={value}
         placeholder={placeholder}
         plugins={plugins}

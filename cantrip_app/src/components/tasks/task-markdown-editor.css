@@ -169,3 +169,8 @@
     padding-block: 1.25rem 7rem;
   }
 }
+.cantrip-task-markdown-content,
+.cantrip-task-markdown-content * {
+  -webkit-user-select: text;
+  user-select: text;
+}

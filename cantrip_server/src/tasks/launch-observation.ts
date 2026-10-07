@@ -79,6 +79,7 @@ export async function observeTaskLaunchStage<T>(
       cycleId: cycle.id,
       serverVersion: cantripVersion.version,
       stage,
+      phase: stage,
     },
     "Scheduled Task launch stage started",
   );
@@ -98,6 +99,7 @@ export async function observeTaskLaunchStage<T>(
           durationMs: Date.now() - startedAt,
           serverVersion: cantripVersion.version,
           stage,
+          phase: stage,
         },
         "Scheduled Task launch stage is still waiting",
       );
@@ -121,6 +123,7 @@ export async function observeTaskLaunchStage<T>(
         durationMs: Date.now() - startedAt,
         serverVersion: cantripVersion.version,
         stage,
+        phase: stage,
       },
       "Scheduled Task launch stage completed",
     );
@@ -141,7 +144,9 @@ export async function observeTaskLaunchStage<T>(
         durationMs: Date.now() - startedAt,
         serverVersion: cantripVersion.version,
         stage,
+        phase: stage,
         err: error,
+        errorClass: error instanceof Error ? error.name : "Error",
       },
       "Scheduled Task launch stage failed",
     );

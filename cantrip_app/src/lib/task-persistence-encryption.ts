@@ -378,8 +378,7 @@ export async function prepareTaskEncryptedOperation(
   const occurredAt = new Date().toISOString();
   const error: TaskLastError = {
     code: "task-operation-failed",
-    message:
-      "The encrypted Task operation failed. Retry when the worker is ready.",
+    message: "The Task operation failed. You can retry it.",
     operationKind: input.kind,
     occurredAt,
   };
