@@ -45,6 +45,7 @@ import {
   type ChatMessageLiveOverlay,
 } from "./chat-message-history";
 import { openTaskMessageOpaqueSummary } from "./task-message-encryption";
+import { TaskQueryInvalidation } from "./task-query-invalidation";
 
 type AppLiveEvent = Extract<AppLiveServerMessage, { type: "event" }>;
 
@@ -693,6 +694,7 @@ export class AppLiveQueryBridge {
   readonly #provisionalMessages = new Map<string, ProvisionalMessageState>();
   readonly #pendingKeys = new Map<string, QueryKey>();
   readonly #queryClient: QueryClient;
+  readonly #taskInvalidation: TaskQueryInvalidation;
   readonly #workerObservationKeys = new Map<
     string,
     { queryKey: QueryKey; workerId: string }
@@ -707,6 +709,7 @@ export class AppLiveQueryBridge {
 
   constructor(queryClient: QueryClient) {
     this.#queryClient = queryClient;
+    this.#taskInvalidation = new TaskQueryInvalidation(queryClient);
   }
 
   async handleWorkerObservation(
@@ -1651,7 +1654,7 @@ export class AppLiveQueryBridge {
     this.#invalidationFlushCount += 1;
     this.#invalidatedQueryCount += keys.length;
     await Promise.all(
-      keys.map((queryKey) => this.#queryClient.invalidateQueries({ queryKey })),
+      keys.map((queryKey) => this.#taskInvalidation.invalidate(queryKey)),
     );
   }
 }

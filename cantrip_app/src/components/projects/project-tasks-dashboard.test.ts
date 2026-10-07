@@ -517,10 +517,13 @@ describe("project Task workload", () => {
     expect(taskCanBeDeleted(undefined)).toBe(false);
   });
 
-  it("keeps the task list refreshed behind its dialog but disables hidden surfaces", () => {
+  it("suspends the covered task list until its dialog closes and disables hidden surfaces", () => {
     expect(projectTaskDashboardQueriesEnabled(true, null)).toBe(true);
     expect(projectTaskDashboardQueriesEnabled(false, null)).toBe(false);
-    expect(projectTaskDashboardQueriesEnabled(true, "active-task")).toBe(true);
+    expect(projectTaskDashboardQueriesEnabled(true, "active-task")).toBe(false);
+    expect(projectTaskDashboardQueriesEnabled(false, "active-task")).toBe(
+      false,
+    );
   });
 
   it("puts attention before running and queued while sorting each band by priority then newest creation", () => {
