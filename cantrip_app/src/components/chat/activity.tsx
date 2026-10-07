@@ -860,7 +860,7 @@ export function ActivityGroup({
         </div>
       ) : null}
       {open ? (
-        <div className="ml-2 max-h-64 min-w-0 overflow-y-auto overscroll-contain border-l pl-4 pr-2">
+        <div className="ml-2 min-w-0 border-l pl-4 pr-2">
           {activities.map((activity) => (
             <Activity key={activity.id} activity={activity} />
           ))}
