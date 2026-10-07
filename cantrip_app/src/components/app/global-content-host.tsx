@@ -37,6 +37,7 @@ import { ProjectSettingsPage } from "@/components/projects/project-settings-page
 import { ProjectOverview } from "@/components/projects/project-overview";
 import { ProjectOverviewWorkspace } from "./project-overview-workspace";
 import { ProjectTasksDashboard } from "@/components/projects/project-tasks-dashboard";
+import { ContentHeaderActions } from "@/components/workspace/content-header-actions";
 import { ProjectCreateMenu } from "@/components/projects/project-create-menu";
 import { RepositoryImporter } from "@/components/projects/repository-importer";
 import { SettingsPage } from "@/components/settings/settings-page";
@@ -173,7 +174,6 @@ export function GlobalContentHost({
     projectSettingsSection,
     projectSetupJobs,
     projectSurfaces,
-    projectTaskChatIds,
     projectTokenUsage,
     projectViews,
     projectWorkspaces,
@@ -921,20 +921,14 @@ export function GlobalContentHost({
                   <div
                     className={cn(
                       "min-h-0 flex-1 flex-col",
-                      activeProjectOverviewSection === "tasks" &&
-                        activeProjectTaskView === "task"
+                      activeProjectOverviewSection === "tasks"
                         ? "flex"
                         : "hidden",
                     )}
                   >
                     <ProjectTasksDashboard
-                      active={
-                        activeProjectOverviewSection === "tasks" &&
-                        activeProjectTaskView === "task"
-                      }
-                      activeTaskChatId={
-                        projectTaskChatIds.get(selectedProject.id) ?? null
-                      }
+                      active={activeProjectOverviewSection === "tasks"}
+                      activeTaskChatId={activeProjectTaskChatId ?? null}
                       chats={chats.data ?? []}
                       creatingTask={newTask.isPending}
                       projectId={selectedProject.id}
@@ -954,61 +948,85 @@ export function GlobalContentHost({
                       onRenameTask={(chatId, title) =>
                         renameChatMutation.mutate({ chatId, title })
                       }
+                      taskDialogActions={
+                        activeProjectTaskChat ? (
+                          <ContentHeaderActions
+                            compact
+                            task={{
+                              view: activeProjectTaskView,
+                              change: bindings.setActiveProjectTaskView,
+                            }}
+                          />
+                        ) : null
+                      }
+                      taskChatContent={
+                        activeProjectTaskView === "chat" &&
+                        activeProjectTaskChat ? (
+                          <ChatTranscript
+                            key={`task-chat-${activeProjectTaskChat.id}`}
+                            capabilities={IDE_CHAT_SURFACE_CAPABILITIES}
+                            chat={activeProjectTaskChat}
+                            githubEnabled={
+                              selectedProject?.capabilities.github ?? false
+                            }
+                            inspectOnly
+                            inspectOpen={agentInspectOpenChats.has(
+                              activeProjectTaskChat.id,
+                            )}
+                            inspectOverlay={narrowViewport}
+                            settings={settings.data}
+                            syncEnabled
+                            onCreateChat={() =>
+                              newChat.mutate({
+                                projectId: activeProjectTaskChat.projectId,
+                              })
+                            }
+                            onDelete={() => {
+                              setAgentInspectOpen(
+                                activeProjectTaskChat.id,
+                                false,
+                              );
+                              deleteChatMutation.mutate(
+                                activeProjectTaskChat.id,
+                              );
+                            }}
+                            onForked={(forked) => {
+                              if (forked.contextKind !== "standalone") {
+                                openCreatedTab(
+                                  forked.projectId,
+                                  "chat",
+                                  forked.id,
+                                );
+                              }
+                            }}
+                            onInspectOpenChange={(open) =>
+                              setAgentInspectOpen(
+                                activeProjectTaskChat.id,
+                                open,
+                              )
+                            }
+                            onOpenFile={(reference) =>
+                              openChatFileLink(activeProjectTaskChat, reference)
+                            }
+                            onOpenRelocation={() => setChatRelocationOpen(true)}
+                            onToast={showAppToast}
+                            onRename={(title) =>
+                              renameChatMutation.mutate({
+                                chatId: activeProjectTaskChat.id,
+                                title,
+                              })
+                            }
+                            relocationJob={
+                              selectedProject?.capabilities.relocation
+                                ? currentRelocation
+                                : null
+                            }
+                            refocusOnWindowActivation={desktopRuntime}
+                          />
+                        ) : null
+                      }
                     />
                   </div>
-                  {activeProjectOverviewSection === "tasks" &&
-                  activeProjectTaskView === "chat" &&
-                  activeProjectTaskChat ? (
-                    <ChatTranscript
-                      key={`task-chat-${activeProjectTaskChat.id}`}
-                      capabilities={IDE_CHAT_SURFACE_CAPABILITIES}
-                      chat={activeProjectTaskChat}
-                      githubEnabled={
-                        selectedProject?.capabilities.github ?? false
-                      }
-                      inspectOnly
-                      inspectOpen={agentInspectOpenChats.has(
-                        activeProjectTaskChat.id,
-                      )}
-                      inspectOverlay={narrowViewport}
-                      settings={settings.data}
-                      syncEnabled
-                      onCreateChat={() =>
-                        newChat.mutate({
-                          projectId: activeProjectTaskChat.projectId,
-                        })
-                      }
-                      onDelete={() => {
-                        setAgentInspectOpen(activeProjectTaskChat.id, false);
-                        deleteChatMutation.mutate(activeProjectTaskChat.id);
-                      }}
-                      onForked={(forked) => {
-                        if (forked.contextKind !== "standalone") {
-                          openCreatedTab(forked.projectId, "chat", forked.id);
-                        }
-                      }}
-                      onInspectOpenChange={(open) =>
-                        setAgentInspectOpen(activeProjectTaskChat.id, open)
-                      }
-                      onOpenFile={(reference) =>
-                        openChatFileLink(activeProjectTaskChat, reference)
-                      }
-                      onOpenRelocation={() => setChatRelocationOpen(true)}
-                      onToast={showAppToast}
-                      onRename={(title) =>
-                        renameChatMutation.mutate({
-                          chatId: activeProjectTaskChat.id,
-                          title,
-                        })
-                      }
-                      relocationJob={
-                        selectedProject?.capabilities.relocation
-                          ? currentRelocation
-                          : null
-                      }
-                      refocusOnWindowActivation={desktopRuntime}
-                    />
-                  ) : null}
                   {activeProjectOverviewSection !== "tasks" ? (
                     <ProjectOverview
                       compact={compactShell}

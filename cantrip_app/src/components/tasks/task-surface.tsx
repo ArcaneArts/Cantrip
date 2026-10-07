@@ -27,12 +27,14 @@ import {
   lazy,
   Suspense,
   useEffect,
+  useImperativeHandle,
   useMemo,
   useRef,
   useState,
   useSyncExternalStore,
   type ClipboardEvent,
   type DragEvent,
+  type Ref,
 } from "react";
 
 import {
@@ -80,6 +82,7 @@ import {
   taskWorkerEncryptionReadiness,
 } from "@/lib/task-worker-encryption";
 import { cn } from "@/lib/utils";
+import { SerialTaskQueue } from "@/lib/serial-task-queue";
 
 import { TaskImplementationDashboard } from "./task-implementation-dashboard";
 import { TaskInteractionRequests } from "./task-interaction-requests";
@@ -178,6 +181,10 @@ export function taskAutosaveLabel(input: {
   return input.dirty ? "Unsaved changes" : "Saved";
 }
 
+export interface TaskSurfaceHandle {
+  prepareClose(): Promise<void>;
+}
+
 export function TaskSurface({
   chat,
   deleting = false,
@@ -185,6 +192,7 @@ export function TaskSurface({
   onDelete,
   onRename,
   settings,
+  surfaceRef,
   worker,
 }: {
   chat: ChatSummary;
@@ -193,6 +201,7 @@ export function TaskSurface({
   onDelete?(): void;
   onRename(title: string): void;
   settings: SettingsBundle | undefined;
+  surfaceRef?: Ref<TaskSurfaceHandle>;
   worker?: WorkerSummary;
 }) {
   const queryClient = useQueryClient();
@@ -237,6 +246,7 @@ export function TaskSurface({
   const pendingDeletionIdsRef = useRef(new Set<string>());
   const failedDraftSignatureRef = useRef<string | null>(null);
   const savedSignatureRef = useRef(taskDraftSignature("", []));
+  const draftSaveQueueRef = useRef(new SerialTaskQueue());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const briefRef = useRef(brief);
   const planGoalEnabledRef = useRef(planGoalEnabled);
@@ -346,14 +356,20 @@ export function TaskSurface({
       requestedTaskWorkerId: string | null;
       signature: string;
     }) =>
-      updateTaskDraft(chat.id, {
-        briefMarkdown: snapshot.briefMarkdown,
-        draftAttachmentIds: snapshot.attachmentIds,
-        planGoalEnabled: snapshot.planGoalEnabled,
-        priority: snapshot.priority,
-        requestedTaskWorkerId: snapshot.requestedTaskWorkerId,
-        rowVersion: rowVersionRef.current,
-      }).then((updated) => ({ snapshot, updated })),
+      draftSaveQueueRef.current.run(async () => {
+        const updated = await updateTaskDraft(chat.id, {
+          briefMarkdown: snapshot.briefMarkdown,
+          draftAttachmentIds: snapshot.attachmentIds,
+          planGoalEnabled: snapshot.planGoalEnabled,
+          priority: snapshot.priority,
+          requestedTaskWorkerId: snapshot.requestedTaskWorkerId,
+          rowVersion: rowVersionRef.current,
+        });
+        // A dialog dismissal may flush while an autosave is in flight. Keep
+        // those writes ordered and use the revision returned by the prior save.
+        rowVersionRef.current = updated.rowVersion;
+        return { snapshot, updated };
+      }),
     onSuccess: ({ snapshot, updated }) => {
       failedDraftSignatureRef.current = null;
       rowVersionRef.current = updated.rowVersion;
@@ -431,6 +447,18 @@ export function TaskSurface({
     savedSignatureRef.current = signature;
     return result.updated;
   };
+
+  useImperativeHandle(surfaceRef, () => ({
+    async prepareClose() {
+      if (initialized && task.data && taskDraftEditable(task.data)) {
+        if (conflict)
+          throw new Error(
+            "Reload the Task or copy your unsaved edits before closing.",
+          );
+        await saveCurrentDraft();
+      }
+    },
+  }));
 
   useEffect(() => {
     if (

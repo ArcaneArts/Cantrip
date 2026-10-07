@@ -1,6 +1,6 @@
 import type { ChatSummary, TaskDetail } from "@cantrip/protocol";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { createElement } from "react";
+import { createElement, createRef } from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -48,7 +48,7 @@ vi.mock("./task-markdown-editor", () => ({
     createElement("textarea", { ...props, "aria-label": props.ariaLabel }),
 }));
 
-import { TaskSurface } from "./task-surface";
+import { TaskSurface, type TaskSurfaceHandle } from "./task-surface";
 
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -56,6 +56,7 @@ import { TaskSurface } from "./task-surface";
 let renderer: TestRenderer.ReactTestRenderer | undefined;
 let client: QueryClient;
 let current: TaskDetail;
+let surfaceRef = createRef<TaskSurfaceHandle>();
 const chat = {
   id: "task",
   projectId: "project",
@@ -122,6 +123,7 @@ async function mount(status: ChatSummary["status"] = "idle") {
           chat: { ...chat, status },
           onRename: vi.fn(),
           settings: undefined,
+          surfaceRef,
         }),
       ),
     );
@@ -129,6 +131,7 @@ async function mount(status: ChatSummary["status"] = "idle") {
   await settle();
 }
 beforeEach(() => {
+  surfaceRef = createRef<TaskSurfaceHandle>();
   vi.clearAllMocks();
   vi.stubGlobal("window", { setTimeout, clearTimeout });
   vi.stubGlobal("navigator", {
@@ -154,6 +157,63 @@ afterEach(async () => {
 });
 
 describe("failed Task recovery", () => {
+  it("flushes unsaved draft edits before a dialog dismissal", async () => {
+    await mount();
+    await act(async () => editor().props.onChange("Save before dismissing"));
+    await act(async () => surfaceRef.current!.prepareClose());
+    expect(api.updateTaskDraft).toHaveBeenCalledWith(
+      "task",
+      expect.objectContaining({
+        briefMarkdown: "Save before dismissing",
+        rowVersion: 10,
+      }),
+    );
+  });
+
+  it("reports save failures to the dialog so it can retain unsaved edits", async () => {
+    await mount();
+    const failure = new Error("Task save failed");
+    api.updateTaskDraft.mockRejectedValueOnce(failure);
+    await act(async () => editor().props.onChange("Keep these unsaved edits"));
+    await act(async () => {
+      await expect(surfaceRef.current!.prepareClose()).rejects.toBe(failure);
+    });
+    expect(editor().props.value).toBe("Keep these unsaved edits");
+  });
+
+  it("serializes a dismissal save behind an in-flight autosave using the returned revision", async () => {
+    await mount();
+    let finish!: () => void;
+    api.updateTaskDraft.mockImplementationOnce(
+      (_id, input) =>
+        new Promise<TaskDetail>((resolve) => {
+          finish = () => resolve({ ...current, ...input, rowVersion: 11 });
+        }),
+    );
+    await act(async () => editor().props.onChange("Autosaving"));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 750));
+    });
+    expect(api.updateTaskDraft).toHaveBeenCalledTimes(1);
+    await act(async () => editor().props.onChange("Latest edits at dismissal"));
+    let closing!: Promise<void>;
+    await act(async () => {
+      closing = surfaceRef.current!.prepareClose();
+    });
+    expect(api.updateTaskDraft).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      finish();
+      await closing;
+    });
+    expect(api.updateTaskDraft).toHaveBeenLastCalledWith(
+      "task",
+      expect.objectContaining({
+        briefMarkdown: "Latest edits at dismissal",
+        rowVersion: 11,
+      }),
+    );
+  });
+
   it("allows retry with priority -1 despite cached worker unavailability and stale chat status", async () => {
     await mount("running");
     expect(editor().props.readOnly).toBe(false);

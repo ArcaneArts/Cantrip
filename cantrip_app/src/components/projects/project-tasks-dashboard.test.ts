@@ -105,6 +105,7 @@ function dispatch(
 function renderTaskList(
   items: ProjectTaskWorkloadItem[],
   options: {
+    activeTaskChatId?: string | null;
     creatingTask?: boolean;
     paused?: boolean;
     taskCreationError?: unknown;
@@ -129,8 +130,15 @@ function renderTaskList(
         { client: queryClient },
         createElement(ProjectTasksDashboard, {
           active: true,
-          activeTaskChatId: null,
-          chats: [],
+          activeTaskChatId: options.activeTaskChatId ?? null,
+          chats: items.map(
+            ({ task }) =>
+              ({
+                id: task.chatId,
+                title: task.chatId,
+                status: "idle",
+              }) as ChatSummary,
+          ),
           creatingTask: options.creatingTask ?? false,
           onConfigureWorkers: () => undefined,
           onCreateTask: () => undefined,
@@ -192,6 +200,25 @@ describe("flat Task list", () => {
     });
     expect(markup).toContain("Could not create this task");
     expect(markup).not.toContain("workers claim eligible queued Tasks FIFO");
+  });
+
+  it("keeps the list underneath the portaled task dialog rather than replacing it", () => {
+    const markup = renderTaskList(
+      [
+        item(
+          task({
+            chatId: "opened-task",
+            state: "implementing",
+            createdAt: "2026-10-06T00:00:00Z",
+          }),
+        ),
+      ],
+      { activeTaskChatId: "opened-task" },
+    );
+    expect(markup).toContain('aria-label="Active"');
+    expect(markup).toContain("opened-task");
+    expect(markup).toContain("Add Task");
+    expect(markup).not.toContain('aria-label="Task title"');
   });
 
   it("renders tasks beneath separate headers without section cards or inner horizontal gutters", () => {
@@ -374,10 +401,10 @@ describe("project Task workload", () => {
     expect(taskCanBeDeleted(undefined)).toBe(false);
   });
 
-  it("loads dashboard-only queries only while the task list is visible", () => {
+  it("keeps the task list refreshed behind its dialog but disables hidden surfaces", () => {
     expect(projectTaskDashboardQueriesEnabled(true, null)).toBe(true);
     expect(projectTaskDashboardQueriesEnabled(false, null)).toBe(false);
-    expect(projectTaskDashboardQueriesEnabled(true, "active-task")).toBe(false);
+    expect(projectTaskDashboardQueriesEnabled(true, "active-task")).toBe(true);
   });
 
   it("puts attention before running and queued while sorting each band by priority then newest creation", () => {
