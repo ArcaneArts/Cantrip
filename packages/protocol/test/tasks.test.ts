@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  TASK_FINALIZER_GOAL_PROMPT_LIMIT,
   TASK_MARKDOWN_LIMIT,
   taskDetailSchema,
   taskDraftUpdateSchema,
   taskFinalizerResultSchema,
+  taskFinalizerOutputJsonSchema,
   taskImplementationDashboardSchema,
   taskOperationStartSchema,
   taskPlanUpdateSchema,
@@ -31,6 +33,29 @@ const question = {
 };
 
 describe("Task protocol", () => {
+  it("bounds new Goal directions without limiting the full implementation plan", () => {
+    const finalPlanMarkdown = "milestone\n".repeat(2_000);
+    for (const character of ["x", "😀"]) {
+      const goalPrompt = character.repeat(TASK_FINALIZER_GOAL_PROMPT_LIMIT);
+      expect(
+        taskFinalizerResultSchema.parse({ finalPlanMarkdown, goalPrompt }),
+      ).toEqual({ finalPlanMarkdown, goalPrompt });
+      expect(
+        taskFinalizerResultSchema.safeParse({
+          finalPlanMarkdown,
+          goalPrompt: goalPrompt + character,
+        }).success,
+      ).toBe(false);
+    }
+    expect(
+      taskFinalizerResultSchema.safeParse({ finalPlanMarkdown, goalPrompt: "" })
+        .success,
+    ).toBe(false);
+    expect(taskFinalizerOutputJsonSchema.properties.goalPrompt.maxLength).toBe(
+      TASK_FINALIZER_GOAL_PROMPT_LIMIT,
+    );
+  });
+
   it("validates bounded structured questions and recommendations", () => {
     expect(taskQuestionSchema.parse(question)).toEqual(question);
     expect(

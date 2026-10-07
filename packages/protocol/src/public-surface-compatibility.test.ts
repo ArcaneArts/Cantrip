@@ -265,6 +265,11 @@ const browserCursorExports = [
   "remoteCursorSpriteSchema",
 ];
 
+const taskGoalHandoffExports = [
+  "TASK_FINALIZER_GOAL_PROMPT_LIMIT",
+  "TASK_NATIVE_GOAL_OBJECTIVE_LIMIT",
+];
+
 const managedWorkerCommands = [
   "chat.account-defaults",
   "chat.automation.resume",
@@ -291,10 +296,14 @@ describe("protocol public surface compatibility", () => {
         !managedRuntimeExports.includes(name) &&
         !accountCreditsExports.includes(name) &&
         !browserCursorExports.includes(name) &&
+        !taskGoalHandoffExports.includes(name) &&
         !labelingExports.includes(name),
     );
 
-    expect(exportNames).toHaveLength(2_135);
+    expect(exportNames).toHaveLength(2_137);
+    expect(
+      exportNames.filter((name) => taskGoalHandoffExports.includes(name)),
+    ).toEqual(taskGoalHandoffExports);
     expect(
       exportNames.filter((name) => labelingExports.includes(name)),
     ).toEqual(labelingExports);

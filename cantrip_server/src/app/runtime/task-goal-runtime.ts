@@ -22,6 +22,7 @@ import {
   type TaskOperationRelayGoal,
   type TaskOperationRelayResult,
   type TaskOpaqueSummary,
+  type TaskOpaqueContent,
 } from "@cantrip/protocol/tasks";
 import type { FastifyInstance } from "fastify";
 
@@ -83,6 +84,12 @@ export interface TaskGoalRuntimeDependencies
   bridge: LimitedWorkerCommandBus;
   queueTaskScheduleTick: () => void;
   repository: ServerRepository;
+}
+
+class TaskGoalLaunchError extends Error {
+  constructor(readonly failureTask: TaskOpaqueContent) {
+    super("Task Goal startup failed.");
+  }
 }
 
 /**
@@ -165,6 +172,12 @@ export function createTaskGoalRuntime({
         },
       }),
     );
+    if (
+      !result.goal &&
+      result.task.classification.lastError?.code === "task-goal-start-failed"
+    ) {
+      throw new TaskGoalLaunchError(result.task);
+    }
     if (result.goal?.chatId !== context.chatId) {
       throw new Error("The encrypted Goal belongs to another Task.");
     }
@@ -284,6 +297,19 @@ export function createTaskGoalRuntime({
       applicationOwnerId(),
       chatId,
       operationId,
+      error instanceof TaskGoalLaunchError ? error.failureTask : undefined,
+    );
+    app.log.warn(
+      {
+        event: "task.goal.start-failed",
+        subsystem: "task-scheduler",
+        operation: "start-goal",
+        status: "failed",
+        reasonCode: "task-goal-start-failed",
+        chatId,
+        operationId,
+      },
+      "Task Goal startup failed; the finalized plan is retained for retry",
     );
     publishChatInvalidation(chatId, "task");
   }

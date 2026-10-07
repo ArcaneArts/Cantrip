@@ -347,6 +347,7 @@ import {
   openTaskRelocationPayload,
   openEncryptedTaskGoalObjective,
   protectTaskGoalResult,
+  protectTaskGoalLaunchFailure,
 } from "./task-operation.js";
 import { discoverOllamaModels } from "./ollama.js";
 import {
@@ -8064,46 +8065,59 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       }
       case "chat.goal.create": {
         const encryptedTaskGoal = typeof command.objective !== "string";
-        const objective =
-          typeof command.objective === "string"
-            ? command.objective
-            : await openEncryptedTaskGoalObjective({
+        try {
+          const prepared = await prepareManagedMutation(command, provider());
+          const runtime =
+            prepared?.runtime ??
+            currentManagedRuntime(command.chatId, command.threadId) ??
+            runtimeFor({
+              ...managedRuntimeTarget(command),
+              model: command.model,
+              provider: provider(),
+            });
+          const objective =
+            typeof command.objective === "string"
+              ? command.objective
+              : await openEncryptedTaskGoalObjective({
+                  chatId: command.chatId,
+                  getComponentKey: () =>
+                    workerEncryption.componentKey("task-content"),
+                  goal: command.objective,
+                  ownerId: workerEncryption.ownerId(),
+                  threadId: command.threadId,
+                  codexHome: runtime.managedHistoryHome,
+                });
+          const result = await runtime.createGoal({
+            operationId: command.operationId,
+            cwd: command.cwd,
+            model: command.model,
+            objective,
+            permissionProfileId: command.permissionProfileId,
+            provider: provider(),
+            threadId: prepared?.threadId ?? command.threadId,
+            tokenBudget: command.tokenBudget,
+          });
+          return encryptedTaskGoal
+            ? protectTaskGoalResult({
                 chatId: command.chatId,
+                context: command.taskContext!,
                 getComponentKey: () =>
                   workerEncryption.componentKey("task-content"),
-                goal: command.objective,
                 ownerId: workerEncryption.ownerId(),
-                threadId: command.threadId,
-              });
-        const prepared = await prepareManagedMutation(command, provider());
-        const result = await (
-          prepared?.runtime ??
-          currentManagedRuntime(command.chatId, command.threadId) ??
-          runtimeFor({
-            ...managedRuntimeTarget(command),
-            model: command.model,
-            provider: provider(),
-          })
-        ).createGoal({
-          operationId: command.operationId,
-          cwd: command.cwd,
-          model: command.model,
-          objective,
-          permissionProfileId: command.permissionProfileId,
-          provider: provider(),
-          threadId: prepared?.threadId ?? command.threadId,
-          tokenBudget: command.tokenBudget,
-        });
-        return encryptedTaskGoal
-          ? protectTaskGoalResult({
-              chatId: command.chatId,
-              context: command.taskContext!,
-              getComponentKey: () =>
-                workerEncryption.componentKey("task-content"),
-              ownerId: workerEncryption.ownerId(),
-              rawResult: result,
-            })
-          : result;
+                rawResult: result,
+              })
+            : result;
+        } catch (error) {
+          if (!encryptedTaskGoal || !command.taskContext) throw error;
+          return protectTaskGoalLaunchFailure({
+            chatId: command.chatId,
+            task: command.taskContext.task,
+            error,
+            getComponentKey: () =>
+              workerEncryption.componentKey("task-content"),
+            ownerId: workerEncryption.ownerId(),
+          });
+        }
       }
       case "chat.goal.update": {
         const prepared = await prepareManagedMutation(command, provider());
