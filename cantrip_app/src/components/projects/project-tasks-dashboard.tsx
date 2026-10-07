@@ -59,7 +59,7 @@ export type ProjectTaskWorkloadItem = Awaited<
 >["items"][number];
 
 export type ProjectTaskWorkloadBand =
-  "attention" | "running" | "queued" | "completed";
+  "attention" | "running" | "queued" | "failed" | "completed";
 
 export interface ProjectTaskWorkloadPresentation {
   band: ProjectTaskWorkloadBand;
@@ -76,6 +76,7 @@ export function projectTaskIsUnqueuedDraft(
 
 const activeBandOrder: Record<ProjectTaskWorkloadBand, number> = {
   attention: 0,
+  failed: 0,
   running: 1,
   queued: 2,
   completed: 3,
@@ -119,7 +120,7 @@ export function projectTaskWorkloadPresentation(
     (chat?.status === "failed" && dispatch?.state !== "queued")
   ) {
     return {
-      band: "attention",
+      band: chat.status === "failed" ? "failed" : "attention",
       label:
         chat.status === "waiting-for-approval" ? "Needs approval" : "Failed",
       paused: false,
@@ -172,7 +173,10 @@ export function projectTaskWorkloadPresentation(
     dispatch?.state === "expired"
   ) {
     return {
-      band: "attention",
+      band:
+        task.state === "failed" || dispatch?.state === "failed"
+          ? "failed"
+          : "attention",
       label:
         task.state === "failed" || dispatch?.state === "failed"
           ? "Failed"
@@ -225,9 +229,11 @@ export function sortProjectTaskWorkload(
   projectPaused: boolean,
 ): {
   active: ProjectTaskWorkloadItem[];
+  failed: ProjectTaskWorkloadItem[];
   completed: ProjectTaskWorkloadItem[];
 } {
   const active: ProjectTaskWorkloadItem[] = [];
+  const failed: ProjectTaskWorkloadItem[] = [];
   const completed: ProjectTaskWorkloadItem[] = [];
   for (const item of items) {
     const presentation = projectTaskWorkloadPresentation(
@@ -235,9 +241,14 @@ export function sortProjectTaskWorkload(
       chats.get(item.task.chatId),
       projectPaused,
     );
-    (presentation.band === "completed" ? completed : active).push(item);
+    if (presentation.band === "completed") completed.push(item);
+    else if (presentation.band === "failed") failed.push(item);
+    else active.push(item);
   }
-  active.sort((left, right) => {
+  const compareActive = (
+    left: ProjectTaskWorkloadItem,
+    right: ProjectTaskWorkloadItem,
+  ) => {
     const leftBand = projectTaskWorkloadPresentation(
       left.task,
       chats.get(left.task.chatId),
@@ -254,14 +265,16 @@ export function sortProjectTaskWorkload(
       Date.parse(right.task.createdAt) - Date.parse(left.task.createdAt) ||
       left.task.chatId.localeCompare(right.task.chatId)
     );
-  });
+  };
+  active.sort(compareActive);
+  failed.sort(compareActive);
   completed.sort(
     (left, right) =>
       Date.parse(right.task.completedAt ?? right.task.updatedAt) -
         Date.parse(left.task.completedAt ?? left.task.updatedAt) ||
       left.task.chatId.localeCompare(right.task.chatId),
   );
-  return { active, completed };
+  return { active, failed, completed };
 }
 
 function promptSummary(markdown: string): string {
@@ -809,6 +822,7 @@ export function ProjectTasksDashboard({
         ) : null}
         {workload.isSuccess &&
         sorted.active.length === 0 &&
+        sorted.failed.length === 0 &&
         sorted.completed.length === 0 ? (
           <EmptyState>
             <EmptyStateContent>
@@ -832,6 +846,15 @@ export function ProjectTasksDashboard({
               label="Active"
               onDeleteTask={requestDeleteTask}
               paused={pauseState.data?.paused ?? false}
+              taskWorkers={workerMap}
+              onOpenTask={onOpenTask}
+            />
+            <WorkloadList
+              chats={chatMap}
+              items={sorted.failed}
+              label="Failed"
+              onDeleteTask={requestDeleteTask}
+              paused={false}
               taskWorkers={workerMap}
               onOpenTask={onOpenTask}
             />

@@ -45,7 +45,7 @@ names must not leak into the UI or user-visible errors.
 - Task Worker concurrency is enforced globally across every Project in the
   account.
 - Execution is oldest-eligible-first FIFO and never uses display priority.
-- The Project Tasks tab has one active list and one Completed list.
+- The Project Tasks tab has separate Active, Failed, and Completed lists.
 - Task prompts, plans, answers, and messages remain end-to-end encrypted.
 - No Task Worker is created automatically. Task execution remains inert until
   the user explicitly configures at least one.
@@ -142,11 +142,12 @@ and folder Projects. It must not be hidden merely because Git or GitHub is
 unavailable.
 
 The tab contains a header action for pausing or resuming Project Task work and
-exactly two lists:
+up to three flat lists, each hidden when empty:
 
 1. one active Tasks list containing Needs Attention/Input, Running, and Queued
-   Tasks; and
-2. one Completed list below it.
+   Tasks;
+2. one Failed list below it; and
+3. one Completed list below Failed.
 
 Avoid separate sections for each active state. Status is expressed by each row
 and by row ordering.
@@ -163,7 +164,7 @@ Sort the active list by:
 Priority is display-only. It does not change scheduling order.
 
 Paused is an overlay on the Task's underlying active status rather than a
-third list. When the Project queue is paused, rows retain their underlying
+separate list. When the Project queue is paused, rows retain their underlying
 ordering and show a Paused badge or queue-level paused treatment.
 
 The Needs Attention/Input display rank includes:
@@ -171,16 +172,24 @@ The Needs Attention/Input display rank includes:
 - a Plan + Goal Task waiting for plan review, answers, Continue Planning, or
   Begin Implementation;
 - a Task waiting for an approval or agent interaction;
-- a blocked Task; and
-- a failed Task that can be retried or needs configuration changes.
+- a blocked Task.
 
 A Task waiting for plan review has released its Task Worker slot. A live turn
 waiting for approval still owns its slot unless the Project or Task is
 cooperatively paused.
 
+### Failed-list ordering
+
+Tasks labeled Failed, whether reported by the Task, its execution cycle, or
+the Chat, appear only in Failed. Preserve their existing ordering: priority
+descending, then Task `createdAt` descending, with Task ID as a stable final
+tie-breaker. Requeued retries return to Active even while the previous failure
+is still reflected in the Chat status. Review, approval, blocked, cancelled,
+and recovery rows remain in Active.
+
 ### Completed-list ordering
 
-Completed Tasks are separated below the active list and ordered by
+Completed Tasks are separated below the Active and Failed lists and ordered by
 `completedAt` descending, with Task ID as a stable tie-breaker. Archived Tasks
 are excluded.
 
@@ -210,7 +219,7 @@ model.
 
 Selecting a row opens the existing Task-backed Chat surface. Queued rows expose
 editing actions. Needs Attention rows expose their relevant review, approval,
-retry, or resume action.
+or resume action; Failed rows retain their retry actions.
 
 ## Task assignment
 
@@ -565,7 +574,7 @@ Invalidate cached projections when their encrypted source revision changes.
 - A recovered finalization cannot create two Goals.
 - Worker or provider unavailability leaves the Task queued or paused with an
   actionable eligibility reason.
-- A failed Task appears in Needs Attention and never silently loses its
+- A failed Task appears in Failed and never silently loses its
   original FIFO timestamp.
 - Archived or completed Tasks cannot be claimed.
 - Per-profile global FIFO may skip Tasks ineligible for that profile, but must
@@ -579,7 +588,8 @@ The migration must preserve current encrypted Tasks and avoid duplicate turns:
 - backfill completed Task `completedAt` from the strongest available durable
   completion timestamp, falling back to Task `updatedAt` when necessary;
 - map existing Direct and Plan + Goal drafts to Queued cycles;
-- map existing review, blocked, and retryable failed Tasks to Needs Attention;
+- map existing review and blocked Tasks to Needs Attention and retryable failed
+  Tasks to Failed;
 - leave all queued work inert until the user creates an eligible Task Worker;
 - allow operations already active during deployment to finish through their
   existing execution ownership, then reconcile them into the new lifecycle;
@@ -687,6 +697,7 @@ with squash auto-merge, following the repository manual-change protocol.
 - Tasks tab appears for Git and folder Projects;
 - no-worker empty state routes to Settings > Tasks;
 - active rows sort by status, priority, then newest creation time;
+- Failed rows appear only in their own section and return to Active on retry;
 - Completed sorts by newest completion time and excludes archived Tasks;
 - queued edit actions disappear or conflict cleanly after claim;
 - Needs Attention actions open the correct review or interaction surface;
@@ -713,7 +724,9 @@ with squash auto-merge, following the repository manual-change protocol.
 - Scheduler execution is oldest eligible Task first and ignores priority.
 - Display order is Needs Attention/Input, Running, Queued; then priority
   descending and creation time descending within each status.
-- Completed is the only separate list and is ordered by completion time.
+- Failed and Completed have separate lists; empty sections stay hidden.
+- Failed preserves priority and creation-time ordering; Completed is ordered by
+  completion time.
 - Each planning cycle releases capacity for user review.
 - Continue Planning and Begin Implementation requeue using the original Task
   creation timestamp.

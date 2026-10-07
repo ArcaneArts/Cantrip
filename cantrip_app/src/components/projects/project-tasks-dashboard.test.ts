@@ -232,6 +232,13 @@ describe("flat Task list", () => {
       ),
       item(
         task({
+          chatId: "failed-task",
+          createdAt: "2026-08-24T12:00:00.000Z",
+          state: "failed",
+        }),
+      ),
+      item(
+        task({
           chatId: "completed-task",
           createdAt: "2026-08-24T12:00:00.000Z",
           state: "complete",
@@ -239,7 +246,7 @@ describe("flat Task list", () => {
       ),
     ]);
 
-    for (const label of ["Active", "Completed"]) {
+    for (const label of ["Active", "Failed", "Completed"]) {
       const section = markup.match(
         new RegExp(`<section aria-label="${label}">([\\s\\S]*?)</section>`),
       )?.[1];
@@ -253,15 +260,33 @@ describe("flat Task list", () => {
       expect(rowClass).not.toMatch(/(?:^|\s)(?:\w+:)*(?:p|px|pl|pr)-/);
     }
     expect(markup.indexOf('aria-label="Active"')).toBeLessThan(
+      markup.indexOf('aria-label="Failed"'),
+    );
+    expect(markup.indexOf('aria-label="Failed"')).toBeLessThan(
       markup.indexOf('aria-label="Completed"'),
     );
-    expect(markup).toContain("active-task");
-    expect(markup).toContain("completed-task");
+    for (const [label, chatId] of [
+      ["Active", "active-task"],
+      ["Failed", "failed-task"],
+      ["Completed", "completed-task"],
+    ]) {
+      const section = markup.match(
+        new RegExp(`<section aria-label="${label}">([\\s\\S]*?)</section>`),
+      )?.[1];
+      expect(section).toContain(chatId);
+      for (const otherId of ["active-task", "failed-task", "completed-task"]) {
+        if (otherId !== chatId) expect(section).not.toContain(otherId);
+      }
+    }
   });
 
-  it.each(["implementing", "complete"] as const)(
+  it.each([
+    ["implementing", "Active"],
+    ["failed", "Failed"],
+    ["complete", "Completed"],
+  ] as const)(
     "only renders the populated section for a %s task",
-    (state) => {
+    (state, label) => {
       const markup = renderTaskList([
         item(
           task({
@@ -272,12 +297,13 @@ describe("flat Task list", () => {
         ),
       ]);
 
-      expect(markup).toContain(
-        `aria-label="${state === "complete" ? "Completed" : "Active"}"`,
-      );
-      expect(markup).not.toContain(
-        `aria-label="${state === "complete" ? "Active" : "Completed"}"`,
-      );
+      expect(markup).toContain(`aria-label="${label}"`);
+      for (const otherLabel of ["Active", "Failed", "Completed"]) {
+        if (otherLabel !== label) {
+          expect(markup).not.toContain(`aria-label="${otherLabel}"`);
+        }
+      }
+      expect(markup).not.toContain("Create a task");
     },
   );
 
@@ -286,11 +312,101 @@ describe("flat Task list", () => {
 
     expect(markup).toContain("Create a task");
     expect(markup).not.toContain('aria-label="Active"');
+    expect(markup).not.toContain('aria-label="Failed"');
     expect(markup).not.toContain('aria-label="Completed"');
   });
 });
 
 describe("project Task workload", () => {
+  it.each(["task", "dispatch", "chat"] as const)(
+    "separates failures reported by the %s without duplicating tasks",
+    (source) => {
+      const failedTask = task({
+        chatId: "failed",
+        createdAt: "2026-10-07T00:00:00Z",
+        state: source === "task" ? "failed" : "implementing",
+      });
+      if (source === "dispatch") dispatch(failedTask, "failed");
+      const chats = new Map<string, ChatSummary>();
+      if (source === "chat") {
+        chats.set("failed", { status: "failed" } as ChatSummary);
+      }
+      const activeTask = task({
+        chatId: "active",
+        createdAt: failedTask.createdAt,
+        state: "review",
+      });
+      const completedTask = task({
+        chatId: "completed",
+        createdAt: failedTask.createdAt,
+        state: "complete",
+      });
+      const sorted = sortProjectTaskWorkload(
+        [item(failedTask), item(activeTask), item(completedTask)],
+        chats,
+        false,
+      );
+
+      expect(
+        projectTaskWorkloadPresentation(failedTask, chats.get("failed"), false),
+      ).toMatchObject({ band: "failed", label: "Failed" });
+      expect(sorted.active.map(({ task }) => task.chatId)).toEqual(["active"]);
+      expect(sorted.failed.map(({ task }) => task.chatId)).toEqual(["failed"]);
+      expect(sorted.completed.map(({ task }) => task.chatId)).toEqual([
+        "completed",
+      ]);
+    },
+  );
+
+  it("returns a retried failure to Active when queued despite stale chat status", () => {
+    const value = task({
+      chatId: "retry",
+      createdAt: "2026-10-07T00:00:00Z",
+      state: "failed",
+    });
+    const chats = new Map([
+      [value.chatId, { status: "failed" } as ChatSummary],
+    ]);
+    expect(
+      sortProjectTaskWorkload([item(value)], chats, false).failed,
+    ).toHaveLength(1);
+
+    dispatch(value, "queued");
+    const sorted = sortProjectTaskWorkload([item(value)], chats, false);
+
+    expect(sorted.active.map(({ task }) => task.chatId)).toEqual(["retry"]);
+    expect(sorted.failed).toEqual([]);
+    expect(sorted.completed).toEqual([]);
+    expect(
+      projectTaskWorkloadPresentation(value, chats.get("retry"), false),
+    ).toMatchObject({ band: "queued", label: "Queued" });
+  });
+
+  it("preserves priority, creation time, and stable ID ordering within Failed", () => {
+    const values = [
+      ["failed-old", "2026-10-06T00:00:00Z", 0],
+      ["failed-b", "2026-10-07T00:00:00Z", 0],
+      ["failed-high", "2026-10-05T00:00:00Z", 10],
+      ["failed-a", "2026-10-07T00:00:00Z", 0],
+    ] as const;
+    const sorted = sortProjectTaskWorkload(
+      values.map(([chatId, createdAt, priority]) =>
+        item(task({ chatId, createdAt, priority, state: "failed" })),
+      ),
+      new Map(),
+      false,
+    );
+
+    expect(sorted.active).toEqual([]);
+    expect(sorted.completed).toEqual([]);
+    expect(sorted.failed.map(({ task }) => task.chatId)).toEqual([
+      "failed-high",
+      "failed-a",
+      "failed-b",
+      "failed-old",
+    ]);
+  });
+
   it.each(["running", "waiting-for-approval"] as const)(
     "labels a stopped direct Task as paused while its resident turn is %s",
     (status) => {
