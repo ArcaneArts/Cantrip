@@ -4,6 +4,8 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
+import { TooltipProvider } from "@/components/ui/tooltip";
+
 import { taskCanBeDeleted } from "../tasks/task-deletion";
 import {
   projectTaskDashboardQueriesEnabled,
@@ -100,7 +102,14 @@ function dispatch(
   return value;
 }
 
-function renderTaskList(items: ProjectTaskWorkloadItem[]): string {
+function renderTaskList(
+  items: ProjectTaskWorkloadItem[],
+  options: {
+    creatingTask?: boolean;
+    paused?: boolean;
+    taskCreationError?: unknown;
+  } = {},
+): string {
   const queryClient = new QueryClient();
   queryClient.setQueryData(
     ["task-workers"],
@@ -108,33 +117,83 @@ function renderTaskList(items: ProjectTaskWorkloadItem[]): string {
   );
   queryClient.setQueryData(["project-task-workload", "project-1"], { items });
   queryClient.setQueryData(["project-task-pause", "project-1"], {
-    paused: false,
+    paused: options.paused ?? false,
     rowVersion: 1,
   });
   return renderToStaticMarkup(
     createElement(
-      QueryClientProvider,
-      { client: queryClient },
-      createElement(ProjectTasksDashboard, {
-        active: true,
-        activeTaskChatId: null,
-        chats: [],
-        creatingTask: false,
-        onConfigureWorkers: () => undefined,
-        onCreateTask: () => undefined,
-        onCloseTask: () => undefined,
-        onOpenTask: () => undefined,
-        onRenameTask: () => undefined,
-        projectId: "project-1",
-        settings: undefined,
-        taskCreationError: null,
-        workers: [],
-      }),
+      TooltipProvider,
+      null,
+      createElement(
+        QueryClientProvider,
+        { client: queryClient },
+        createElement(ProjectTasksDashboard, {
+          active: true,
+          activeTaskChatId: null,
+          chats: [],
+          creatingTask: options.creatingTask ?? false,
+          onConfigureWorkers: () => undefined,
+          onCreateTask: () => undefined,
+          onCloseTask: () => undefined,
+          onOpenTask: () => undefined,
+          onRenameTask: () => undefined,
+          projectId: "project-1",
+          settings: undefined,
+          taskCreationError: options.taskCreationError ?? null,
+          workers: [],
+        }),
+      ),
     ),
   );
 }
 
 describe("flat Task list", () => {
+  it.each([false, true])(
+    "keeps icon-only actions alongside the title when paused=%s",
+    (paused) => {
+      const markup = renderTaskList([], { paused });
+      const header = markup.match(/<header\b[^>]*>[\s\S]*?<\/header>/)?.[0];
+      expect(header).toContain(">Tasks</h1>");
+      expect(header).toContain("ml-auto");
+      expect(header).not.toContain("flex-wrap");
+      expect(header).not.toMatch(/<p(?:\s|>)/);
+      expect(header).not.toContain("FIFO");
+      expect(header).not.toContain("capacity is released");
+      const buttons = [
+        ...header!.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g),
+      ].map((match) => match[0]);
+      expect(buttons).toHaveLength(2);
+      expect(buttons[0]).toContain('aria-label="Add Task"');
+      expect(buttons[1]).toContain(
+        `aria-label="${paused ? "Resume Tasks" : "Pause Tasks"}"`,
+      );
+      expect(buttons[1]).toContain(paused ? "lucide-play" : "lucide-pause");
+      for (const button of buttons) {
+        expect(button).toContain("size-8");
+        expect(button.replace(/<[^>]+>/g, "").trim()).toBe("");
+      }
+    },
+  );
+
+  it("keeps the Add icon accessible and disabled during task creation", () => {
+    const markup = renderTaskList([], { creatingTask: true });
+    const header = markup.match(/<header\b[^>]*>[\s\S]*?<\/header>/)?.[0];
+    const addButton = header?.match(
+      /<button\b[^>]*aria-label="Add Task"[^>]*>/,
+    )?.[0];
+    expect(addButton).toContain('aria-busy="true"');
+    expect(addButton).toContain('disabled=""');
+    expect(header).toContain("lucide-loader-circle");
+  });
+
+  it("retains actionable errors without restoring the header description", () => {
+    const markup = renderTaskList([], {
+      taskCreationError: new Error("Could not create this task"),
+    });
+    expect(markup).toContain("Could not create this task");
+    expect(markup).not.toContain("workers claim eligible queued Tasks FIFO");
+  });
+
   it("renders tasks beneath separate headers without section cards or inner horizontal gutters", () => {
     const markup = renderTaskList([
       item(

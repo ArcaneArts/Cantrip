@@ -30,6 +30,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { TooltipButton } from "@/components/ui/tooltip";
 import { PersistentTaskViews } from "@/components/tasks/persistent-task-views";
 import { taskCanBeDeleted } from "@/components/tasks/task-deletion";
 import {
@@ -731,35 +732,38 @@ export function ProjectTasksDashboard({
         className="flex min-h-full w-full flex-col px-4 py-5 sm:px-6 sm:py-7"
         data-content-gutter="standard"
       >
-        <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <ClipboardList className="size-5 text-muted-foreground" />
-              <h1 className="text-lg font-semibold tracking-tight">Tasks</h1>
-            </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {pauseState.data?.paused
-                ? "This project workload is paused. Running turns are parked and capacity is released."
-                : "Needs-attention Tasks are first; workers claim eligible queued Tasks FIFO."}
-            </p>
+        <header className="mb-5 flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <ClipboardList className="size-5 shrink-0 text-muted-foreground" />
+            <h1 className="truncate text-lg font-semibold tracking-tight">
+              Tasks
+            </h1>
           </div>
-          <div className="flex items-center gap-2">
-            <Button pending={creatingTask} onClick={onCreateTask}>
-              <Plus className="size-4" />
-              Add Task
-            </Button>
-            <Button
+          <div className="ml-auto flex shrink-0 items-center gap-1">
+            <TooltipButton
+              className="size-8"
+              pending={creatingTask}
+              size="icon"
+              tooltip="Add Task"
+              variant="ghost"
+              onClick={onCreateTask}
+            >
+              <Plus aria-hidden="true" className="size-4" />
+            </TooltipButton>
+            <TooltipButton
+              className="size-8"
               pending={pauseMutation.isPending}
-              variant="outline"
+              size="icon"
+              tooltip={pauseState.data?.paused ? "Resume Tasks" : "Pause Tasks"}
+              variant="ghost"
               onClick={() => pauseMutation.mutate(!pauseState.data?.paused)}
             >
               {pauseState.data?.paused ? (
-                <Play className="size-4" />
+                <Play aria-hidden="true" className="size-4" />
               ) : (
-                <Pause className="size-4" />
+                <Pause aria-hidden="true" className="size-4" />
               )}
-              {pauseState.data?.paused ? "Resume Tasks" : "Pause Tasks"}
-            </Button>
+            </TooltipButton>
           </div>
         </header>
         {error || pauseMutation.isError || taskCreationError ? (
