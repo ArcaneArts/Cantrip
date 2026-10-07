@@ -24,7 +24,7 @@ import {
   type TaskProtectedContent,
   type TaskQuestionAnswer,
 } from "@cantrip/protocol/tasks";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
   executeEncryptedTaskOperation,
@@ -48,7 +48,11 @@ import { buildApp } from "../src/app.js";
 import { TASK_LAUNCH_PREFLIGHT_TIMEOUT_MS } from "../src/app/shared/constants.js";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
-import { DEFAULT_MODEL_ID, LOCAL_USER_ID } from "../src/db/repository.js";
+import {
+  DEFAULT_MODEL_ID,
+  LOCAL_USER_ID,
+  ExecutionLaneBusyError,
+} from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
 import {
@@ -726,6 +730,111 @@ afterAll(async () => {
 });
 
 describe.sequential("Task E2EE closure lifecycle", () => {
+  it("retries the same encrypted operation after an admission race without failing or duplicating input", async () => {
+    taskOperationPrepareTimeouts.length = 0;
+    const chatId = randomUUID();
+    const task = await sealTask(chatId, {
+      version: 1,
+      classification: {
+        state: "draft",
+        stableStateBeforeFailure: null,
+        activeOperationKind: null,
+        planAuthorship: "agent",
+        planningRound: 0,
+        hasPlan: false,
+        hasQuestions: false,
+        hasFinalPlan: false,
+        hasGoalPrompt: false,
+        lastError: null,
+      },
+      briefMarkdown: `${sentinel} deferred launch`,
+      planMarkdown: null,
+      currentQuestions: [],
+      currentAnswers: [],
+      additionalDirection: "",
+      finalPlanMarkdown: null,
+      goalPrompt: null,
+      lastError: null,
+    });
+    const created = await app!.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/tasks`,
+      payload: {
+        chatId,
+        planGoalEnabled: false,
+        priority: -1,
+        titleProtection: protectedChatFields(chatId).titleProtection,
+        task,
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    const initial = taskWireCreateResultSchema.parse(created.json());
+    const original = database.repository.startChatExecutionLane.bind(
+      database.repository,
+    );
+    let occupied = true;
+    const admission = vi
+      .spyOn(database.repository, "startChatExecutionLane")
+      .mockImplementation((...args) => {
+        if (args[1] === chatId && occupied)
+          return Promise.reject(
+            new ExecutionLaneBusyError(
+              "A competing execution acquired the branch.",
+            ),
+          );
+        return original(...args);
+      });
+    const operationId = randomUUID();
+    try {
+      const start = await app!.inject({
+        method: "POST",
+        url: `/api/tasks/${chatId}/start`,
+        payload: { operationId, rowVersion: initial.task.rowVersion },
+      });
+      expect(start.statusCode).toBe(202);
+      const deferred = await waitForDispatchState(chatId, "queued");
+      // Wait for the queue state that follows admission, rather than initial enqueue.
+      for (
+        let attempt = 0;
+        attempt < 200 &&
+        (await taskSummary(chatId)).dispatch?.eligibilityCode !==
+          "capacity-unavailable";
+        attempt++
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      const waiting = await taskSummary(chatId);
+      expect(waiting).toMatchObject({
+        state: "implementing",
+        lastError: null,
+        dispatch: {
+          state: "queued",
+          eligibilityCode: "capacity-unavailable",
+          operationId,
+        },
+      });
+      expect(
+        await database.repository.listTaskMessages(ownerId, chatId),
+      ).toHaveLength(0);
+      occupied = false;
+      const completed = await waitForTask(chatId, "complete");
+      expect(completed.dispatch).toMatchObject({
+        state: "succeeded",
+        operationId,
+      });
+      expect(taskOperationPrepareTimeouts).toHaveLength(1);
+      const messages = await database.repository.listTaskMessages(
+        ownerId,
+        chatId,
+      );
+      expect(
+        messages.filter((message) => message.role === "user"),
+      ).toHaveLength(1);
+      expect(deferred.dispatch?.operationId).toBe(operationId);
+    } finally {
+      admission.mockRestore();
+    }
+  });
   it("does not report launch success before the worker turn dispatch begins", async () => {
     holdNextAgentTurnState = true;
     heldAgentTurnStateStarted = false;
@@ -1003,6 +1112,38 @@ describe.sequential("Task E2EE closure lifecycle", () => {
       TASK_LAUNCH_PREFLIGHT_TIMEOUT_MS,
       TASK_LAUNCH_PREFLIGHT_TIMEOUT_MS,
     ]);
+    const failedDraft = await openTask(await taskSummary(blockedChatId));
+    const edited = await app!.inject({
+      method: "PATCH",
+      url: `/api/tasks/${blockedChatId}/draft`,
+      payload: {
+        rowVersion: failedDraft.rowVersion,
+        priority: -1,
+        task: await sealTask(blockedChatId, {
+          ...contentFromTask(failedDraft),
+          briefMarkdown: `${sentinel} edited failed draft`,
+        }),
+      },
+    });
+    expect(edited.statusCode, edited.body).toBe(200);
+    const editedDraft = taskOpaqueSummarySchema.parse(edited.json());
+    const retry = await app!.inject({
+      method: "POST",
+      url: `/api/tasks/${blockedChatId}/start`,
+      payload: {
+        operationId: randomUUID(),
+        rowVersion: editedDraft.rowVersion,
+      },
+    });
+    expect(retry.statusCode).toBe(202);
+    const recovered = await openTask(
+      await waitForTask(blockedChatId, "complete"),
+    );
+    expect(recovered).toMatchObject({
+      priority: -1,
+      briefMarkdown: `${sentinel} edited failed draft`,
+      lastError: null,
+    });
   });
 
   it("pauses a claimed Task while launch preflight has no runtime", async () => {

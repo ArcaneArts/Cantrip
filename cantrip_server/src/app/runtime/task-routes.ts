@@ -30,6 +30,7 @@ import { cantripVersion } from "@cantrip/version";
 
 import { chatIsExecuting } from "../../chats/execution-helpers.js";
 import {
+  ExecutionLaneBusyError,
   ExecutionLaneConflictError,
   ExecutionPlacementUnavailableError,
   type ChatExecutionContext,
@@ -1036,6 +1037,17 @@ export function installTaskRouteRuntime(
           { timeoutMs: TASK_LAUNCH_PREFLIGHT_TIMEOUT_MS },
         );
       } catch (error) {
+        if (
+          launchStage === "begin-turn" &&
+          error instanceof ExecutionLaneBusyError
+        ) {
+          await repository.taskDispatch.deferForCapacity(claim.lease);
+          publishChatInvalidation(claim.cycle.chatId, "task", null, {
+            experience: "task",
+            projectId: claim.projectId,
+          });
+          return;
+        }
         app.log.warn(
           {
             event: "task.operation.launch-failed",

@@ -47,6 +47,7 @@ export function createTaskTurnBootstrapObserver(
         operationId: lease.operationId,
         serverVersion: cantripVersion.version,
         stage,
+        phase: stage,
       },
       "Scheduled Task turn bootstrap stage started",
     );
@@ -71,6 +72,7 @@ export function createTaskTurnBootstrapObserver(
           operationId: lease.operationId,
           serverVersion: cantripVersion.version,
           stage,
+          phase: stage,
           durationMs: Date.now() - startedAt,
         },
         "Scheduled Task turn bootstrap stage completed",
@@ -88,8 +90,10 @@ export function createTaskTurnBootstrapObserver(
           operationId: lease.operationId,
           serverVersion: cantripVersion.version,
           stage,
+          phase: stage,
           durationMs: Date.now() - startedAt,
           err: error,
+          errorClass: error instanceof Error ? error.name : "Error",
         },
         "Scheduled Task turn bootstrap stage failed",
       );

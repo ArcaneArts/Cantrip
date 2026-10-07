@@ -30,6 +30,17 @@ const goal = {
 } as TaskGoalSnapshot;
 
 describe("Task implementation dashboard presentation", () => {
+  it("shows a deferred launch as queued instead of still starting", () => {
+    expect(
+      taskImplementationStatusLabel(
+        {
+          ...task,
+          dispatch: { state: "queued" } as TaskDetail["dispatch"],
+        },
+        null,
+      ),
+    ).toBe("Queued");
+  });
   it("uses the full Task surface width without centered gutters", () => {
     expect(TASK_IMPLEMENTATION_CONTENT_CLASS_NAME).toContain("w-full");
     expect(TASK_IMPLEMENTATION_CONTENT_CLASS_NAME).toContain("min-w-0");

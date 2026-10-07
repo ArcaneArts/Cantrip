@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { TaskDetail } from "@cantrip/protocol";
 
 import appStyles from "../../index.css?raw";
 import {
@@ -6,6 +7,7 @@ import {
   TASK_DRAFT_OPTIONS_CLASS_NAME,
   taskAutosaveLabel,
   taskDraftSignature,
+  taskDraftEditable,
   taskSurfaceMode,
 } from "./task-surface";
 
@@ -41,6 +43,29 @@ const baseTask = {
 };
 
 describe("Task draft presentation", () => {
+  it("keeps failed drafts editable but protects started operations and review plans", () => {
+    expect(
+      taskDraftEditable({
+        ...baseTask,
+        state: "failed",
+        stableStateBeforeFailure: "draft",
+      }),
+    ).toBe(true);
+    expect(
+      taskDraftEditable({
+        ...baseTask,
+        state: "failed",
+        stableStateBeforeFailure: "review",
+      }),
+    ).toBe(false);
+    expect(taskDraftEditable({ ...baseTask, state: "planning" })).toBe(false);
+    expect(
+      taskDraftEditable({
+        ...baseTask,
+        dispatch: { state: "running" } as TaskDetail["dispatch"],
+      }),
+    ).toBe(false);
+  });
   it("lets the Pro Mode shell show through the footer without extra blur", () => {
     expect(TASK_DRAFT_FOOTER_CLASS_NAME.split(" ")).toContain(
       "cantrip-task-draft-footer",
