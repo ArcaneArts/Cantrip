@@ -2,6 +2,7 @@ import {
   createTaskOperationRelayRequest,
   decryptTaskMessageProtectedContent,
   decryptTaskGoalObjective,
+  decryptTaskProtectedContent,
   encryptTaskMessageProtectedContent,
   encryptTaskProtectedContent,
   openTaskOperationRelayRequest,
@@ -27,6 +28,7 @@ import {
   openEncryptedTaskGoalObjective,
   prepareEncryptedTaskOperation,
   protectTaskGoalResult,
+  protectTaskGoalLaunchFailure,
 } from "./task-operation.js";
 import type { WorkerEncryptionService } from "./worker-encryption.js";
 
@@ -693,8 +695,10 @@ describe("worker encrypted Task operations", () => {
     expect(sealer.finalMessageForResult(result)).toEqual(root.message);
   });
 
-  it("encrypts the combined finalization Goal and opens it only for the bound thread", async () => {
+  it("keeps long finalized plans separate from the bounded native Goal direction", async () => {
     const componentKey = randomBytes(32);
+    const finalPlanMarkdown =
+      "# SENTINEL final plan\n" + "milestone\n".repeat(2_000);
     const request = await createTaskOperationRelayRequest({
       ownerId,
       chatId,
@@ -722,7 +726,7 @@ describe("worker encrypted Task operations", () => {
           turnId: "turn-finalizer",
           text: "SENTINEL raw finalizer text",
           structuredResult: {
-            finalPlanMarkdown: "# SENTINEL final plan",
+            finalPlanMarkdown,
             goalPrompt: "SENTINEL implementation direction",
           },
           status: "completed",
@@ -733,6 +737,18 @@ describe("worker encrypted Task operations", () => {
     expect(relay.goal).not.toBeNull();
     expect(JSON.stringify(relay)).not.toContain("SENTINEL");
     if (!relay.goal) throw new Error("Expected an encrypted Goal.");
+    expect(relay.goal.failureTask).toBeDefined();
+    const fallbackFailure = relay.goal.failureTask!;
+    const fallbackTask = await decryptTaskProtectedContent({
+      ownerId,
+      chatId,
+      keyRevision,
+      componentKey,
+      encrypted: fallbackFailure.protectedContent,
+      publicClassification: fallbackFailure.classification,
+    });
+    expect(fallbackTask.finalPlanMarkdown).toBe(finalPlanMarkdown);
+    expect(fallbackTask.lastError?.message).toContain("retry implementation");
     const direct = await decryptTaskGoalObjective({
       ownerId,
       chatId,
@@ -742,7 +758,69 @@ describe("worker encrypted Task operations", () => {
       encrypted: relay.goal.protectedObjective,
       publicClassification: relay.goal.classification,
     });
-    expect(direct.objective).toContain("SENTINEL final plan");
+    expect(direct.objective).not.toContain("SENTINEL final plan");
+    expect(Array.from(direct.objective).length).toBeLessThanOrEqual(4_000);
+    const startMessage = await decryptTaskMessageProtectedContent({
+      ownerId,
+      messageId: relay.goal.startMessage.id,
+      keyRevision,
+      componentKey,
+      encrypted: relay.goal.startMessage.protectedContent,
+      publicClassification: relay.goal.startMessage.classification,
+    });
+    expect(startMessage.content).toMatchObject([
+      {
+        type: "text",
+        text: `${direct.objective}\n\n## Final implementation plan\n\n${finalPlanMarkdown}`,
+      },
+    ]);
+    const failure = await protectTaskGoalLaunchFailure({
+      ownerId,
+      chatId,
+      task: relay.task,
+      getComponentKey: () => ({
+        key: new Uint8Array(componentKey),
+        keyRevision,
+      }),
+      error: new Error("SENTINEL native rejection"),
+    });
+    expect(JSON.stringify(failure)).not.toContain("SENTINEL");
+    const failedTask = await decryptTaskProtectedContent({
+      ownerId,
+      chatId,
+      keyRevision,
+      componentKey,
+      encrypted: failure.task.protectedContent,
+      publicClassification: failure.task.classification,
+    });
+    expect(failedTask.finalPlanMarkdown).toBe(finalPlanMarkdown);
+    expect(failedTask.goalPrompt).toBe(direct.objective);
+    expect(failedTask.lastError).toMatchObject({
+      code: "task-goal-start-failed",
+      operationKind: "finalize",
+      message: expect.stringContaining("SENTINEL native rejection"),
+    });
+    expect(failedTask.classification).toMatchObject({
+      state: "failed",
+      stableStateBeforeFailure: "review",
+      hasFinalPlan: true,
+      hasGoalPrompt: true,
+    });
+    expect(
+      taskOperationRelayResultSchema.safeParse({
+        ...relay,
+        goal: {
+          ...relay.goal,
+          failureTask: {
+            ...failure.task,
+            classification: {
+              ...failure.task.classification,
+              planningRound: 99,
+            },
+          },
+        },
+      }).success,
+    ).toBe(false);
     await expect(
       openEncryptedTaskGoalObjective({
         ownerId,

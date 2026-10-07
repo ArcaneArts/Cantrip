@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -33,6 +33,7 @@ import {
   openEncryptedTaskGoalObjective,
   prepareEncryptedTaskOperation,
   protectTaskGoalResult,
+  protectTaskGoalLaunchFailure,
 } from "../../cantrip_worker/src/task-operation.js";
 import type { WorkerEncryptionService } from "../../cantrip_worker/src/worker-encryption.js";
 import {
@@ -67,6 +68,8 @@ const ownerId = LOCAL_USER_ID;
 const workerId = "task-lifecycle-worker";
 const threadId = "thread-task-e2ee-lifecycle";
 const sentinel = "TASK-E2EE-SENTINEL-closure-audit";
+const finalPlanMarkdown =
+  `# ${sentinel} final plan\n` + "milestone\n".repeat(2_000);
 const questionId = "scope-question";
 const optionId = "full-scope";
 
@@ -90,6 +93,8 @@ const config: ServerConfig = {
 let workerTaskKey = new Uint8Array();
 let goalObjective = `${sentinel} goal not initialized`;
 let goalCompleted = false;
+let failNextGoalCreation = false;
+let finalizerTurnCount = 0;
 let continuedPromptSawAnswer = false;
 let pauseTestEnabled = false;
 let pauseTestTurnStarted = false;
@@ -347,6 +352,7 @@ async function encryptedTaskTurn(
       async run({ prompt }) {
         expect(prompt).toContain(sentinel);
         const kind = command.resultMode.operation.classification.kind;
+        if (kind === "finalize") finalizerTurnCount += 1;
         if (kind === "direct" && pauseTestEnabled) {
           pauseTestTurnStarted = true;
           await new Promise<void>((resolve) => {
@@ -386,7 +392,7 @@ async function encryptedTaskTurn(
                   questions: [],
                 }
               : {
-                  finalPlanMarkdown: `# ${sentinel} final plan`,
+                  finalPlanMarkdown,
                   goalPrompt: `${sentinel} implementation direction`,
                 };
         if (kind === "direct" && onEvent) {
@@ -559,8 +565,29 @@ const workerBridge: WorkerCommandBus = {
           goal: command.objective,
           ownerId,
           threadId: command.threadId,
+          codexHome: dataDirectory,
         });
         expect(goalObjective).toContain(sentinel);
+        if (Array.from(goalObjective).length > 4_000) {
+          throw new Error("goal objective must be at most 4000 characters");
+        }
+        const reference = /plan at (".*") before making changes/u.exec(
+          goalObjective,
+        )?.[1];
+        expect(reference).toBeDefined();
+        expect(
+          await readFile(JSON.parse(reference!) as string, "utf8"),
+        ).toContain(finalPlanMarkdown);
+        if (failNextGoalCreation) {
+          failNextGoalCreation = false;
+          return protectTaskGoalLaunchFailure({
+            chatId: command.chatId,
+            ownerId,
+            getComponentKey: workerComponentKey,
+            task: command.taskContext.task,
+            error: new Error(`${sentinel} native Goal startup rejection`),
+          });
+        }
         return await protectTaskGoalResult({
           chatId: command.chatId,
           context: command.taskContext,
@@ -1664,6 +1691,9 @@ describe.sequential("Task E2EE closure lifecycle", () => {
     expect(task.currentQuestions).toEqual([]);
 
     const finalOperationId = randomUUID();
+    const finalizersBeforeImplementation = finalizerTurnCount;
+    failNextGoalCreation = true;
+    goalCompleted = false;
     const finalResponse = await app!.inject({
       method: "POST",
       url: `/api/tasks/${chatId}/begin-implementation`,
@@ -1673,9 +1703,30 @@ describe.sequential("Task E2EE closure lifecycle", () => {
       },
     });
     expect(finalResponse.statusCode).toBe(202);
-    task = await openTask(await waitForTask(chatId, "implementing"));
-    expect(task.finalPlanMarkdown).toContain(`${sentinel} final plan`);
+    task = await openTask(await waitForDispatchState(chatId, "failed"));
+    expect(task.state).toBe("failed");
+    expect(task.finalPlanMarkdown).toBe(finalPlanMarkdown);
     expect(task.goalPrompt).toContain(sentinel);
+    expect(task.lastError).toMatchObject({
+      code: "task-goal-start-failed",
+      operationKind: "finalize",
+      message: expect.stringContaining(
+        `${sentinel} native Goal startup rejection`,
+      ),
+    });
+    const finalizationRound = task.planningRound;
+    const retryResponse = await app!.inject({
+      method: "POST",
+      url: `/api/tasks/${chatId}/retry`,
+      payload: { operationId: randomUUID(), rowVersion: task.rowVersion },
+    });
+    expect(retryResponse.statusCode).toBe(202);
+    task = await openTask(await waitForTask(chatId, "implementing"));
+    expect(task.finalPlanMarkdown).toBe(finalPlanMarkdown);
+    expect(task.goalPrompt).toContain(sentinel);
+    expect(task.planningRound).toBe(finalizationRound);
+    expect(finalizerTurnCount).toBe(finalizersBeforeImplementation + 1);
+    expect(task.lastError).toBeNull();
 
     for (let attempt = 0; attempt < 200 && !goalCompleted; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 10));
@@ -1712,7 +1763,11 @@ describe.sequential("Task E2EE closure lifecycle", () => {
         status: goal.status,
       },
     });
-    expect(openedGoal.objective).toContain(`${sentinel} final plan`);
+    expect(openedGoal.objective).not.toContain(`${sentinel} final plan`);
+    expect(openedGoal.objective).toContain(
+      `${sentinel} implementation direction`,
+    );
+    expect(Array.from(openedGoal.objective).length).toBeLessThanOrEqual(4_000);
     task = await openTask(await waitForTask(chatId, "complete"));
     expect(task.state).toBe("complete");
 

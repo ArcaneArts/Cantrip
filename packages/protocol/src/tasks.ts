@@ -24,6 +24,9 @@ export const TASK_QUESTION_OPTION_DESCRIPTION_LIMIT = 1_000;
 export const TASK_ANSWER_FREEFORM_LIMIT = 10_000;
 export const TASK_ADDITIONAL_DIRECTION_LIMIT = 10_000;
 export const TASK_GOAL_PROMPT_LIMIT = 100_000;
+// Keep the larger persisted limit readable for pre-existing encrypted Tasks.
+export const TASK_NATIVE_GOAL_OBJECTIVE_LIMIT = 4_000;
+export const TASK_FINALIZER_GOAL_PROMPT_LIMIT = 2_000;
 export const TASK_ERROR_MESSAGE_LIMIT = 4_000;
 export const TASK_PROTECTED_CONTENT_BYTES_LIMIT = 4 * 1_024 * 1_024;
 export const TASK_PLANNING_ROUND_PROTECTED_CONTENT_BYTES_LIMIT =
@@ -351,7 +354,13 @@ export const taskPlannerResultSchema = z.object({
 
 export const taskFinalizerResultSchema = z.object({
   finalPlanMarkdown: z.string().min(1).max(TASK_MARKDOWN_LIMIT),
-  goalPrompt: z.string().min(1).max(TASK_GOAL_PROMPT_LIMIT),
+  goalPrompt: z
+    .string()
+    .min(1)
+    .refine(
+      (value) => Array.from(value).length <= TASK_FINALIZER_GOAL_PROMPT_LIMIT,
+      { message: "The Task Goal prompt must be at most 2000 characters." },
+    ),
 });
 
 export const taskOperationStartSchema = z.object({
@@ -449,7 +458,7 @@ export const taskFinalizerOutputJsonSchema: JsonObject = {
     goalPrompt: {
       type: "string",
       minLength: 1,
-      maxLength: TASK_GOAL_PROMPT_LIMIT,
+      maxLength: TASK_FINALIZER_GOAL_PROMPT_LIMIT,
     },
   },
 };
@@ -776,6 +785,8 @@ export const taskOperationRelayGoalSchema = z
     classification: taskGoalObjectiveProtectedClassificationSchema,
     protectedObjective: encryptedTaskGoalObjectiveSchema,
     startMessage: taskMessageOpaqueContentSchema,
+    // Optional for compatibility with already-finalized encrypted Tasks.
+    failureTask: taskOpaqueContentSchema.optional(),
   })
   .strict()
   .superRefine((value, context) => {
@@ -829,6 +840,30 @@ export const taskOperationRelayResultSchema = z
         code: "custom",
         message: "Encrypted Task Goal metadata does not match its operation.",
         path: ["goal", "classification"],
+      });
+    }
+    const failedGoal = value.goal?.failureTask?.classification;
+    if (
+      failedGoal &&
+      (failedGoal.state !== "failed" ||
+        failedGoal.stableStateBeforeFailure !== "review" ||
+        failedGoal.activeOperationKind !== null ||
+        failedGoal.planningRound !== value.classification.ordinal ||
+        failedGoal.planAuthorship !==
+          value.task.classification.planAuthorship ||
+        !failedGoal.hasPlan ||
+        failedGoal.hasQuestions ||
+        !failedGoal.hasFinalPlan ||
+        !failedGoal.hasGoalPrompt ||
+        failedGoal.lastError?.code !== "task-goal-start-failed" ||
+        failedGoal.lastError.operationKind !== "finalize" ||
+        value.goal!.failureTask!.protectedContent.keyRevision !==
+          value.task.protectedContent.keyRevision)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Encrypted Task Goal startup failure is inconsistent.",
+        path: ["goal", "failureTask"],
       });
     }
     const expectedState = direct
