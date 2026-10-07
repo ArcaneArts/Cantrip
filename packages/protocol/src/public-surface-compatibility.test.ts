@@ -15,6 +15,7 @@ import type {
   ChatRelocationJobSummary,
   ChatSummary,
   ChatTurnCreate,
+  ChatFileReferencesResult,
   CodeTabSummary,
   CodexCustomizationInventory,
   DatabaseEngine,
@@ -270,6 +271,12 @@ const taskGoalHandoffExports = [
   "TASK_NATIVE_GOAL_OBJECTIVE_LIMIT",
 ];
 
+// Reviewed file-tree additions from #1992; preserve the legacy fingerprints.
+const chatFileReferencesExports = [
+  "chatFileReferencesRequestContentSchema",
+  "chatFileReferencesResultContentSchema",
+];
+
 const managedWorkerCommands = [
   "chat.account-defaults",
   "chat.automation.resume",
@@ -297,10 +304,14 @@ describe("protocol public surface compatibility", () => {
         !accountCreditsExports.includes(name) &&
         !browserCursorExports.includes(name) &&
         !taskGoalHandoffExports.includes(name) &&
+        !chatFileReferencesExports.includes(name) &&
         !labelingExports.includes(name),
     );
 
-    expect(exportNames).toHaveLength(2_137);
+    expect(exportNames).toHaveLength(2_139);
+    expect(
+      exportNames.filter((name) => chatFileReferencesExports.includes(name)),
+    ).toEqual(chatFileReferencesExports);
     expect(
       exportNames.filter((name) => taskGoalHandoffExports.includes(name)),
     ).toEqual(taskGoalHandoffExports);
@@ -334,7 +345,10 @@ describe("protocol public surface compatibility", () => {
       (option) => option.shape.type.value,
     );
 
-    expect(commandTypes).toHaveLength(293);
+    expect(commandTypes).toHaveLength(294);
+    expect(
+      commandTypes.filter((type) => type === "chat.files.references"),
+    ).toHaveLength(1);
     expect(
       commandTypes.filter((type) => type === "label.generate"),
     ).toHaveLength(1);
@@ -345,7 +359,9 @@ describe("protocol public surface compatibility", () => {
     ).toEqual(managedWorkerCommands);
     const baselineCommands = commandTypes.filter(
       (type) =>
-        !managedWorkerCommands.includes(type) && type !== "label.generate",
+        !managedWorkerCommands.includes(type) &&
+        type !== "chat.files.references" &&
+        type !== "label.generate",
     );
     expect(baselineCommands).toHaveLength(278);
     expect(baselineCommands[0]).toBe("computer-use.operation");
@@ -379,7 +395,41 @@ describe("protocol public surface compatibility", () => {
     );
   });
 
+  it("validates the reviewed file-reference schemas from the public root", () => {
+    const request = {
+      type: "chat.files.references",
+      references: ["src/file.ts", "x".repeat(8_192)],
+    };
+    expect(
+      protocol.chatFileReferencesRequestContentSchema.parse(request),
+    ).toEqual(request);
+    for (const reference of ["", "x".repeat(8_193)]) {
+      expect(
+        protocol.chatFileReferencesRequestContentSchema.safeParse({
+          ...request,
+          references: [reference],
+        }).success,
+      ).toBe(false);
+    }
+    const result = {
+      root: "/repository",
+      entries: [
+        { reference: "src/file.ts", path: "src/file.ts", kind: "file" },
+      ],
+    };
+    expect(
+      protocol.chatFileReferencesResultContentSchema.parse(result),
+    ).toEqual(result);
+    expect(
+      protocol.chatFileReferencesResultContentSchema.safeParse({
+        ...result,
+        entries: [{ ...result.entries[0], kind: "unknown" }],
+      }).success,
+    ).toBe(false);
+  });
+
   it("keeps representative type-only exports available from the root", () => {
+    expectTypeOf<ChatFileReferencesResult>().not.toBeNever();
     expectTypeOf<DatabaseEngine>().not.toBeNever();
     expectTypeOf<RemoteSurfaceCapabilities>().not.toBeNever();
     expectTypeOf<CantripVersion>().not.toBeNever();
