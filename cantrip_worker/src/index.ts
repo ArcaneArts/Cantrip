@@ -107,6 +107,8 @@ import {
   runConfigurationRuntimeOutputContentSchema,
 } from "@cantrip/protocol/run-configuration-runtime";
 import {
+  chatFileReferencesRequestContentSchema,
+  chatFileReferencesResultContentSchema,
   explorerOperationRequestContentSchema,
   explorerOperationResultContentSchema,
   standaloneChatFileOperationRequestContentSchema,
@@ -143,6 +145,7 @@ import {
 } from "./attachment-encryption.js";
 import { ExternalChatAttachmentStagingStore } from "./external-chat-attachments.js";
 import { ChatRelocationHydrationStore } from "./chat-relocation-store.js";
+import { chatFileReferences } from "./chat-file-references.js";
 import { ProjectExportManager } from "./project-export-manager.js";
 import { ProjectAutomationScheduler } from "./automation-scheduler.js";
 import { protectProjectAutomationDispatch } from "./automation-encryption.js";
@@ -4118,6 +4121,55 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return chatScratch.delete(command);
       case "chat.scratch.reconcile":
         return chatScratch.reconcile(command.roots);
+      case "chat.files.references": {
+        const context = {
+          serverId: command.serverId,
+          surfaceKind: "chat-files" as const,
+          surfaceId: command.chatId,
+          operationId: command.operationId,
+          direction: "request" as const,
+          sequence: command.sequence,
+        };
+        surfaceStreamReplay.reserve(context);
+        const request = await openWorkerSurfaceStreamContent({
+          context,
+          opaque: command.protectedRequest,
+          schema: chatFileReferencesRequestContentSchema,
+          service: workerEncryption,
+        });
+        let outcome: SurfaceOperationOutcomeContent;
+        try {
+          outcome = {
+            ok: true,
+            result: {
+              type: "chat.files.references",
+              value: chatFileReferencesResultContentSchema.parse(
+                await chatFileReferences(command.root, request.references),
+              ),
+            },
+          };
+        } catch (error) {
+          outcome = {
+            ok: false,
+            error:
+              error instanceof Error
+                ? error.message.slice(0, 2_000)
+                : "Could not resolve referenced paths.",
+          };
+        }
+        const protectedResponse = await protectWorkerSurfaceStreamContent({
+          context: { ...context, direction: "response" },
+          content: outcome,
+          schema: surfaceOperationOutcomeContentSchema,
+          service: workerEncryption,
+        });
+        surfaceStreamReplay.accept(context, true);
+        return surfaceStreamWireResponseSchema.parse({
+          operationId: command.operationId,
+          sequence: command.sequence,
+          protectedResponse,
+        });
+      }
       case "chat.scratch.files.operation": {
         const resolvedRoot = await chatScratch.resolve(command);
         if (resolvedRoot.path !== command.root) {

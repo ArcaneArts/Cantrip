@@ -1,5 +1,13 @@
 import type { AgentActivity, ChatMessage } from "@cantrip/protocol";
-import { ChevronDown, ChevronUp, FileDiff, FileText } from "lucide-react";
+import type { ChatFileReferencesResult } from "@cantrip/protocol/surface-stream";
+import {
+  ChevronDown,
+  ChevronRight,
+  FileDiff,
+  FileText,
+  Folder,
+  FolderOpen,
+} from "lucide-react";
 import { useState } from "react";
 
 import type { AgentTranscriptEntry } from "@/components/chat/agent-turn-projection";
@@ -7,8 +15,11 @@ import {
   displayMarkdownFileReference,
   markdownFileReferences,
 } from "@/components/chat/markdown-file-link";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import {
+  messageFileTree,
+  messageFileTreeCounts,
+  type MessageFileTreeNode,
+} from "./message-file-tree";
 
 type FileChange = Extract<
   AgentActivity,
@@ -191,27 +202,97 @@ export function messageFileSummary(
   };
 }
 
-const INITIAL_VISIBLE_FILES = 3;
+function MessageFileTreeItem({
+  depth = 0,
+  node,
+  onOpenFile,
+}: {
+  depth?: number;
+  node: MessageFileTreeNode;
+  onOpenFile(path: string): void;
+}) {
+  const [expanded, setExpanded] = useState(depth === 0);
+  const folder = node.kind === "directory";
+  const Icon = folder ? (expanded ? FolderOpen : Folder) : FileText;
+  const entry = node.entry;
+  return (
+    <li>
+      <button
+        aria-expanded={folder ? expanded : undefined}
+        className="flex w-full min-w-0 items-center gap-2 border-t px-3 py-2 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50"
+        data-file-kind={node.kind}
+        onClick={() => {
+          if (folder) setExpanded((current) => !current);
+          else if (entry) onOpenFile(entry.reference);
+        }}
+        style={{ paddingLeft: 12 + depth * 16 }}
+        title={node.path}
+        type="button"
+      >
+        {folder ? (
+          expanded ? (
+            <ChevronDown className="size-3.5 shrink-0" />
+          ) : (
+            <ChevronRight className="size-3.5 shrink-0" />
+          )
+        ) : (
+          <span className="size-3.5 shrink-0" />
+        )}
+        <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+        <code className="min-w-0 flex-1 truncate font-mono text-xs">
+          {node.name}
+        </code>
+        {entry && (entry.additions !== null || entry.deletions !== null) ? (
+          <span className="shrink-0 text-xs tabular-nums">
+            <span className="text-emerald-500">+{entry.additions ?? 0}</span>{" "}
+            <span className="text-destructive">-{entry.deletions ?? 0}</span>
+          </span>
+        ) : null}
+      </button>
+      {folder && expanded ? (
+        node.children.length > 0 ? (
+          <ul aria-label={node.path || node.name}>
+            {node.children.map((child) => (
+              <MessageFileTreeItem
+                depth={depth + 1}
+                key={child.path}
+                node={child}
+                onOpenFile={onOpenFile}
+              />
+            ))}
+          </ul>
+        ) : (
+          <p
+            className="py-2 pr-3 text-xs text-muted-foreground"
+            style={{ paddingLeft: 44 + depth * 16 }}
+          >
+            No referenced files in this folder.
+          </p>
+        )
+      ) : null}
+    </li>
+  );
+}
 
 export function MessageFileSummary({
+  metadata,
   model,
   onOpenFile,
 }: {
+  metadata?: ChatFileReferencesResult;
   model: MessageFileSummaryModel;
   onOpenFile(path: string): void;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const visibleEntries = expanded
-    ? model.entries
-    : model.entries.slice(0, INITIAL_VISIBLE_FILES);
-  const hiddenCount = model.entries.length - visibleEntries.length;
+  const root = messageFileTree(model.entries, metadata);
+  if (!root) return null;
+  const counts = messageFileTreeCounts(root);
   return (
     <section
       aria-label={model.title}
       className="mt-4 overflow-hidden rounded-xl border bg-card/40 text-sm"
       data-slot="message-file-summary"
     >
-      <header className="flex min-w-0 items-center gap-3 border-b px-3 py-2.5">
+      <header className="flex min-w-0 items-center gap-3 px-3 py-2.5">
         <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted/60">
           <FileDiff className="size-4" />
         </span>
@@ -224,58 +305,21 @@ export function MessageFileSummary({
             </p>
           ) : (
             <p className="text-xs text-muted-foreground">
-              {model.entries.length}{" "}
-              {model.entries.length === 1 ? "file" : "files"}
+              {counts.files} {counts.files === 1 ? "file" : "files"}
+              {counts.folders > 0
+                ? ` · ${counts.folders} ${counts.folders === 1 ? "folder" : "folders"}`
+                : null}
             </p>
           )}
         </div>
       </header>
-      <div className="divide-y">
-        {visibleEntries.map((entry) => (
-          <button
-            className="flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50"
-            key={`${entry.reference}:${entry.edited ? "edited" : "referenced"}`}
-            onClick={() => onOpenFile(entry.reference)}
-            title={entry.path}
-            type="button"
-          >
-            <FileText className="size-3.5 shrink-0 text-muted-foreground" />
-            <code className="min-w-0 flex-1 truncate font-mono text-xs">
-              {entry.path}
-            </code>
-            {entry.additions !== null || entry.deletions !== null ? (
-              <span className="shrink-0 text-xs tabular-nums">
-                <span className="text-emerald-500">
-                  +{entry.additions ?? 0}
-                </span>{" "}
-                <span className="text-destructive">
-                  -{entry.deletions ?? 0}
-                </span>
-              </span>
-            ) : null}
-          </button>
-        ))}
-      </div>
-      {hiddenCount > 0 || expanded ? (
-        <Button
-          className={cn("h-9 w-full justify-start rounded-none border-t px-3")}
-          onClick={() => setExpanded((current) => !current)}
-          size="sm"
-          type="button"
-          variant="ghost"
-        >
-          {expanded ? (
-            <>
-              Show fewer files <ChevronUp className="size-3.5" />
-            </>
-          ) : (
-            <>
-              Show {hiddenCount} more {hiddenCount === 1 ? "file" : "files"}{" "}
-              <ChevronDown className="size-3.5" />
-            </>
-          )}
-        </Button>
-      ) : null}
+      <ul aria-label="Referenced file tree">
+        <MessageFileTreeItem
+          key={root.path}
+          node={root}
+          onOpenFile={onOpenFile}
+        />
+      </ul>
     </section>
   );
 }

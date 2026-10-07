@@ -67,6 +67,32 @@ export const surfaceStreamWireResponseSchema = z
   })
   .strict();
 
+export const chatFileReferencesRequestContentSchema = z
+  .object({
+    type: z.literal("chat.files.references"),
+    references: z.array(z.string().min(1).max(8_192)),
+  })
+  .strict();
+
+export const chatFileReferencesResultContentSchema = z
+  .object({
+    root: z.string(),
+    entries: z.array(
+      z
+        .object({
+          reference: z.string(),
+          path: z.string(),
+          kind: z.enum(["file", "directory"]).nullable(),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+
+export type ChatFileReferencesResult = z.infer<
+  typeof chatFileReferencesResultContentSchema
+>;
+
 export const terminalInputContentSchema = z
   .object({ type: z.literal("terminal.input"), data: z.string().max(100_000) })
   .strict();
@@ -384,6 +410,12 @@ export const surfaceOperationOutcomeContentSchema = z.discriminatedUnion("ok", [
         explorerOperationResultContentSchema,
         standaloneChatFileOperationResultContentSchema,
         terminalSnapshotContentSchema,
+        z
+          .object({
+            type: z.literal("chat.files.references"),
+            value: chatFileReferencesResultContentSchema,
+          })
+          .strict(),
         z.object({ type: z.literal("terminal.input.accepted") }).strict(),
       ]),
     })

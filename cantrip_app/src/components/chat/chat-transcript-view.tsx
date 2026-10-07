@@ -342,6 +342,7 @@ export function ChatTranscriptView({
           ) : null}
 
           <ChatTranscriptEntries
+            chatId={chat.id}
             copiedMessageId={copiedMessageId}
             editedMessageRef={editedMessageRef}
             editingSentMessage={editingSentMessage}

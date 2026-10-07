@@ -99,3 +99,13 @@ export const standaloneChatFileOperationCommandSchema = z
   })
   .extend(surfaceStreamWireRequestSchema.shape)
   .strict();
+
+export const chatFileReferencesCommandSchema = z
+  .object({
+    type: z.literal("chat.files.references"),
+    chatId: standaloneChatIdentitySchema,
+    serverId: z.string().min(1).max(2_000),
+    root: z.string().min(1).max(32_768),
+  })
+  .extend(surfaceStreamWireRequestSchema.shape)
+  .strict();
