@@ -20,7 +20,7 @@ import {
   Settings2,
   Trash2,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 
 import { summarizePlanProgress } from "@/components/chat/chat-plan-progress";
 import {
@@ -32,6 +32,8 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { TooltipButton } from "@/components/ui/tooltip";
 import { PersistentTaskViews } from "@/components/tasks/persistent-task-views";
+import { TaskDialog } from "@/components/tasks/task-dialog";
+import type { TaskSurfaceHandle } from "@/components/tasks/task-surface";
 import { taskCanBeDeleted } from "@/components/tasks/task-deletion";
 import {
   EmptyState,
@@ -498,9 +500,9 @@ function WorkloadList({
 
 export function projectTaskDashboardQueriesEnabled(
   active: boolean,
-  activeTaskChatId: string | null,
+  _activeTaskChatId: string | null,
 ): boolean {
-  return active && activeTaskChatId === null;
+  return active;
 }
 
 export function ProjectTasksDashboard({
@@ -516,6 +518,8 @@ export function ProjectTasksDashboard({
   projectId,
   settings,
   taskCreationError,
+  taskChatContent,
+  taskDialogActions,
   workers,
 }: {
   active: boolean;
@@ -530,9 +534,12 @@ export function ProjectTasksDashboard({
   projectId: string;
   settings: SettingsBundle | undefined;
   taskCreationError: unknown;
+  taskChatContent?: ReactNode;
+  taskDialogActions?: ReactNode;
   workers: WorkerSummary[];
 }) {
   const queryClient = useQueryClient();
+  const taskSurfaceRef = useRef<TaskSurfaceHandle>(null);
   const [deleteTarget, setDeleteTarget] = useState<{
     chatId: string;
     title: string;
@@ -651,31 +658,54 @@ export function ProjectTasksDashboard({
     />
   );
 
-  if (activeTask) {
-    return (
-      <div className="flex min-h-0 flex-1 flex-col">
-        <PersistentTaskViews
-          activeTask={{ chat: activeTask, worker: activeTaskWorker }}
-          deleting={deleteTaskMutation.isPending}
-          settings={settings}
-          onClose={onCloseTask}
-          onDelete={() => requestDeleteTask(activeTask.id, activeTask.title)}
-          onRename={onRenameTask}
-        />
-        {deleteTaskDialog}
-      </div>
-    );
-  }
+  const renderDashboard = (list: ReactNode) => (
+    <>
+      {list}
+      <TaskDialog
+        key={activeTask?.id}
+        beforeClose={() => taskSurfaceRef.current?.prepareClose()}
+        headerActions={taskDialogActions}
+        onClose={onCloseTask}
+        open={active && Boolean(activeTask)}
+        title={activeTask?.title ?? "Task"}
+      >
+        <div
+          className={cn(
+            "min-h-0 flex-1 flex-col",
+            taskChatContent ? "hidden" : "flex",
+          )}
+          aria-hidden={Boolean(taskChatContent)}
+        >
+          <PersistentTaskViews
+            activeTask={
+              activeTask ? { chat: activeTask, worker: activeTaskWorker } : null
+            }
+            deleting={deleteTaskMutation.isPending}
+            settings={settings}
+            surfaceRef={taskSurfaceRef}
+            onDelete={
+              activeTask
+                ? () => requestDeleteTask(activeTask.id, activeTask.title)
+                : undefined
+            }
+            onRename={onRenameTask}
+          />
+        </div>
+        {taskChatContent}
+      </TaskDialog>
+      {deleteTaskDialog}
+    </>
+  );
 
   if (taskWorkers.isLoading) {
-    return (
+    return renderDashboard(
       <div className="grid min-h-0 flex-1 place-items-center text-muted-foreground">
         <Loader2 className="size-5 animate-spin" />
-      </div>
+      </div>,
     );
   }
   if (taskWorkers.isError) {
-    return (
+    return renderDashboard(
       <EmptyState>
         <EmptyStateContent>
           <EmptyStateIcon>
@@ -696,11 +726,11 @@ export function ProjectTasksDashboard({
             </Button>
           </EmptyStateActions>
         </EmptyStateContent>
-      </EmptyState>
+      </EmptyState>,
     );
   }
   if ((taskWorkers.data?.length ?? 0) === 0) {
-    return (
+    return renderDashboard(
       <EmptyState>
         <EmptyStateContent>
           <EmptyStateIcon>
@@ -715,18 +745,18 @@ export function ProjectTasksDashboard({
             <Button onClick={onConfigureWorkers}>Configure Task Workers</Button>
           </EmptyStateActions>
         </EmptyStateContent>
-      </EmptyState>
+      </EmptyState>,
     );
   }
   if (workload.isLoading || pauseState.isLoading) {
-    return (
+    return renderDashboard(
       <div className="grid min-h-0 flex-1 place-items-center text-muted-foreground">
         <Loader2 className="size-5 animate-spin" />
-      </div>
+      </div>,
     );
   }
   const error = workload.error ?? pauseState.error ?? taskWorkers.error;
-  return (
+  return renderDashboard(
     <div className="min-h-0 flex-1 overflow-y-auto">
       <div
         className="flex min-h-full w-full flex-col px-4 py-5 sm:px-6 sm:py-7"
@@ -817,7 +847,6 @@ export function ProjectTasksDashboard({
           </div>
         )}
       </div>
-      {deleteTaskDialog}
-    </div>
+    </div>,
   );
 }
