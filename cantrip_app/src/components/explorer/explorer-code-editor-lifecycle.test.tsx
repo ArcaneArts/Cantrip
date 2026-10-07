@@ -144,6 +144,7 @@ vi.mock("@/lib/client-log-relay", () => ({
 
 import {
   EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT,
+  EXPLORER_CODE_SESSION_RECOVERY_LIMIT,
   ExplorerCodeEditor,
   type ExplorerCodeEditorLifecycleActions,
 } from "./explorer-code-editor";
@@ -352,6 +353,51 @@ async function flushImmediateTimers() {
   }
 }
 
+function mockFreshSharedSessions() {
+  let sequence = 0;
+  api.createProtectedExplorerCodeSessionAttachment.mockImplementation(() => {
+    sequence += 1;
+    return Promise.resolve({
+      ...sharedOwned,
+      attachment: {
+        ...sharedOwned.attachment,
+        session: {
+          ...sharedOwned.attachment.session,
+          attachmentId: `attachment-${sequence}`,
+          sessionId: `session-${sequence}`,
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        },
+      },
+    });
+  });
+  desktopCode.preferSharedProtectedCodeAttachment.mockImplementation(
+    async (owned) => ({
+      ...sharedPreferred(`lease-${sequence}`),
+      sharedOwnedAttachment: owned,
+      attachment: {
+        ...sharedAttachment,
+        attachmentId: owned.attachment.session.attachmentId,
+        sessionId: owned.attachment.session.sessionId,
+        url: `http://127.0.0.1:43123/sessions/${owned.attachment.session.sessionId}/code/`,
+      },
+    }),
+  );
+}
+
+async function mountReadySharedEditor(path: string) {
+  let renderer!: TestRenderer.ReactTestRenderer;
+  await act(async () => {
+    renderer = TestRenderer.create(editor(path), {
+      createNodeMock: (element) =>
+        element.type === "iframe" ? { contentWindow: {} as Window } : null,
+    });
+  });
+  await flushImmediateTimers();
+  await act(async () => testWindow.sendMessage());
+  await flushImmediateTimers();
+  return renderer;
+}
+
 function emitBrowserUnavailable(tunnelId: string) {
   for (const listener of [...browserCode.unavailableListeners]) {
     listener({ reason: "Relay disconnected.", tunnelId });
@@ -437,6 +483,165 @@ afterEach(() => {
 });
 
 describe("ExplorerCodeEditor warm lifecycle", () => {
+  it("reacquires a missing session lease and opens the latest file without manual Retry", async () => {
+    vi.useFakeTimers();
+    tauri.enabled = true;
+    mockFreshSharedSessions();
+    api.renewProtectedExplorerCodeSessionAttachment.mockRejectedValueOnce(
+      new api.CantripApiError("Code session attachment not found.", 404),
+    );
+    const renderer = await mountReadySharedEditor("src/first.ts");
+    const initialUrl = renderer.root.findByType("iframe").props.src;
+    const initialOwned =
+      desktopCode.preferSharedProtectedCodeAttachment.mock.calls[0]![0];
+    await act(async () => renderer.update(editor("src/latest.ts")));
+    await flushImmediateTimers();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    await flushImmediateTimers();
+    expect(
+      api.createProtectedExplorerCodeSessionAttachment,
+    ).toHaveBeenCalledTimes(2);
+    expect(
+      api.createProtectedExplorerCodeSessionAttachment,
+    ).toHaveBeenLastCalledWith(
+      "explorer-1",
+      "src/latest.ts",
+      "worker-1",
+      "worktree-1",
+      "dark",
+    );
+    expect(desktopCode.stopSharedProtectedCodeAttachment).toHaveBeenCalledWith(
+      initialOwned,
+    );
+    expect(
+      api.releaseProtectedExplorerCodeSessionAttachment,
+    ).toHaveBeenCalledWith(initialOwned);
+    expect(renderer.root.findByType("iframe").props.src).not.toBe(initialUrl);
+
+    await act(async () => testWindow.sendMessage());
+    await flushImmediateTimers();
+    expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenLastCalledWith(
+      expect.objectContaining({ attachmentId: "attachment-2" }),
+      "src/latest.ts",
+      expect.any(Object),
+    );
+    expect(renderer.root.findByType("iframe").props.className).toBe(
+      "frame-ready",
+    );
+    await act(async () => renderer.unmount());
+  });
+
+  it("limits lost-session recovery to three replacements and lets manual Retry start again", async () => {
+    vi.useFakeTimers();
+    tauri.enabled = true;
+    mockFreshSharedSessions();
+    api.renewProtectedExplorerCodeSessionAttachment.mockRejectedValue(
+      new api.CantripApiError("Code session attachment not found.", 404),
+    );
+    const renderer = await mountReadySharedEditor("src/first.ts");
+    for (
+      let attempt = 0;
+      attempt <= EXPLORER_CODE_SESSION_RECOVERY_LIMIT;
+      attempt += 1
+    ) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30_000);
+      });
+      await flushImmediateTimers();
+      if (attempt < EXPLORER_CODE_SESSION_RECOVERY_LIMIT) {
+        await act(async () => testWindow.sendMessage());
+        await flushImmediateTimers();
+      }
+    }
+    expect(
+      api.createProtectedExplorerCodeSessionAttachment,
+    ).toHaveBeenCalledTimes(4);
+    expect(renderer.root.findAllByType("iframe")).toHaveLength(0);
+    expect(JSON.stringify(renderer.toJSON())).toContain(
+      "three recovery attempts",
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    await flushImmediateTimers();
+    expect(
+      api.createProtectedExplorerCodeSessionAttachment,
+    ).toHaveBeenCalledTimes(4);
+
+    await act(async () => renderer.root.findByType("button").props.onClick());
+    await flushImmediateTimers();
+    expect(
+      api.createProtectedExplorerCodeSessionAttachment,
+    ).toHaveBeenCalledTimes(5);
+    await act(async () => testWindow.sendMessage());
+    await flushImmediateTimers();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    await flushImmediateTimers();
+    expect(
+      api.createProtectedExplorerCodeSessionAttachment,
+    ).toHaveBeenCalledTimes(6);
+    await act(async () => renderer.unmount());
+  });
+
+  it.each([401, 403, 404, 409, 410])(
+    "does not reacquire a session for unrelated HTTP %s lease errors",
+    async (status) => {
+      vi.useFakeTimers();
+      tauri.enabled = true;
+      mockFreshSharedSessions();
+      api.renewProtectedExplorerCodeSessionAttachment.mockRejectedValue(
+        new api.CantripApiError("A different error.", status),
+      );
+      const renderer = await mountReadySharedEditor("src/first.ts");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30_000);
+      });
+      await flushImmediateTimers();
+      expect(
+        api.createProtectedExplorerCodeSessionAttachment,
+      ).toHaveBeenCalledOnce();
+      await act(async () => renderer.unmount());
+    },
+  );
+
+  it("ignores a missing lease response from a superseded worktree", async () => {
+    vi.useFakeTimers();
+    tauri.enabled = true;
+    mockFreshSharedSessions();
+    let rejectRenewal!: (error: unknown) => void;
+    api.renewProtectedExplorerCodeSessionAttachment.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectRenewal = reject;
+        }),
+    );
+    const renderer = await mountReadySharedEditor("src/first.ts");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    await act(async () =>
+      renderer.update(editor("src/latest.ts", { worktreeId: "worktree-2" })),
+    );
+    await flushImmediateTimers();
+    const replacementUrl = renderer.root.findByType("iframe").props.src;
+    await act(async () =>
+      rejectRenewal(
+        new api.CantripApiError("Code session attachment not found.", 404),
+      ),
+    );
+    await flushImmediateTimers();
+    expect(
+      api.createProtectedExplorerCodeSessionAttachment,
+    ).toHaveBeenCalledTimes(2);
+    expect(renderer.root.findByType("iframe").props.src).toBe(replacementUrl);
+    await act(async () => renderer.unmount());
+  });
+
   it("keeps one committed attachment through Strict Mode effect replay", async () => {
     tauri.enabled = true;
     const frameWindow = {} as Window;
