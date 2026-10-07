@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { generateLabelCommandSchema } from "./labeling.js";
 import { workerCoreCommandSchemas } from "./worker-command-core.js";
 import { workerGithubProjectCommandSchemas } from "./worker-command-github-project.js";
 import { workerGitCommandSchemas } from "./worker-command-git.js";
@@ -27,6 +28,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   ...workerWorktreeCodeCommandSchemas,
   ...workerSurfaceCommandSchemas,
   ...workerChatCommandSchemas,
+  generateLabelCommandSchema,
 ]);
 
 export type WorkerCommand = z.infer<typeof workerCommandSchema>;

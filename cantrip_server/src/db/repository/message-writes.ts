@@ -560,7 +560,9 @@ export class MessageWriteRepository {
         existing[0].reasoningEffort !== message.reasoningEffort ||
         JSON.stringify(existing[0].taskAttachmentIds) !==
           JSON.stringify(message.classification.attachmentIds) ||
-        JSON.stringify(existing[0].taskProtectedContent) !==
+        // JSONB storage can reorder envelope fields. Compare the parsed wire
+        // shape so an identical protected message remains idempotent.
+        JSON.stringify(toTaskMessage(existing[0]).protectedContent) !==
           JSON.stringify(message.protectedContent)
       ) {
         throw new Error(

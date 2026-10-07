@@ -4656,6 +4656,9 @@ export class CodexAppServer implements CodexRuntime {
     { generation: string; profileId: string }
   >();
   readonly #pending = new Map<number, PendingRpcRequest>();
+  // Retain timed-out IDs until their response arrives so late private labels
+  // cannot fall through into the unmatched-response diagnostic buffer.
+  readonly #privateInferenceRequests = new Set<number>();
   readonly #pendingAgentInteractions = new Map<
     string,
     NativePendingAgentInteraction
@@ -7854,6 +7857,28 @@ export class CodexAppServer implements CodexRuntime {
     ];
   }
 
+  async runLabelInference(options: {
+    model: RunAgentTurnOptions["model"];
+    provider: RunAgentTurnOptions["provider"];
+    instructions: string;
+    input: string;
+  }): Promise<string> {
+    await this.ensureStarted(options.model, options.provider);
+    const result = (await this.request(
+      "cantrip/inference",
+      {
+        model: options.model.name,
+        reasoningEffort: options.model.reasoningEffort,
+        instructions: options.instructions,
+        input: options.input,
+      },
+      27_000,
+    )) as { text?: unknown };
+    if (typeof result.text !== "string")
+      throw new Error("Invalid labeling response.");
+    return result.text;
+  }
+
   private async modelSupportsImages(
     model: RunAgentTurnOptions["model"],
     provider: RunAgentTurnOptions["provider"],
@@ -10076,6 +10101,7 @@ export class CodexAppServer implements CodexRuntime {
     }
     const id = this.#nextId;
     this.#nextId += 1;
+    if (method === "cantrip/inference") this.#privateInferenceRequests.add(id);
     return new Promise((resolve, reject) => {
       const startedAtMs = Date.now();
       const timeout = setTimeout(() => {
@@ -10151,12 +10177,22 @@ export class CodexAppServer implements CodexRuntime {
       return;
     }
 
+    const diagnosticPayload =
+      !message.method &&
+      message.id !== undefined &&
+      this.#privateInferenceRequests.delete(Number(message.id))
+        ? {
+            id: message.id,
+            privateInference: true,
+            status: message.error ? "failed" : "completed",
+          }
+        : message;
     const diagnosticId = this.recordDiagnostic({
       at: new Date().toISOString(),
       direction: "from-runtime",
       kind: "message",
       method: typeof message.method === "string" ? message.method : null,
-      payload: message,
+      payload: diagnosticPayload,
     });
 
     if (message.id !== undefined && !message.method) {
@@ -10169,7 +10205,7 @@ export class CodexAppServer implements CodexRuntime {
             direction: "from-runtime",
             kind: "unmatched-response",
             method: null,
-            payload: message,
+            payload: diagnosticPayload,
           },
           `Unmatched App Server response ${String(message.id)}`,
         );
@@ -12209,6 +12245,7 @@ export class CodexAppServer implements CodexRuntime {
       pending.reject(error);
     }
     this.#pending.clear();
+    this.#privateInferenceRequests.clear();
     for (const pending of [...this.#pendingAgentInteractions.values()]) {
       this.releaseAgentInteraction(pending);
       pending.active.onInteractionCleared?.(pending.request.requestKey);

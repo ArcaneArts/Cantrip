@@ -35,6 +35,7 @@ import {
   workerLogStreamSubscriptionIdSchema,
 } from "./worker-runtime-support.js";
 import {
+  chatFileReferencesCommandSchema,
   standaloneChatScratchProvisionCommandSchema,
   standaloneChatScratchResolveCommandSchema,
   standaloneChatScratchArchiveCommandSchema,
@@ -71,6 +72,7 @@ export const workerCoreCommandSchemas = [
   standaloneChatScratchDeleteCommandSchema,
   standaloneChatScratchReconcileCommandSchema,
   standaloneChatFileOperationCommandSchema,
+  chatFileReferencesCommandSchema,
   workspaceRepositoryDiscoveryCommandSchema,
   workspaceRepositoryImportValidateCommandSchema,
   z.object({ type: z.literal("worker.version") }),

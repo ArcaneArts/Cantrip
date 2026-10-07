@@ -65,6 +65,7 @@ export function taskImplementationStatusLabel(
 ): string {
   if (task.state === "failed" || chatFailed) return "Failed";
   if (task.state === "complete") return "Complete";
+  if (task.dispatch?.state === "queued") return "Queued";
   if (task.state === "paused" || automationPaused) return "Paused";
   if (task.state === "blocked")
     return goal ? goalLabels[goal.status] : "Blocked";

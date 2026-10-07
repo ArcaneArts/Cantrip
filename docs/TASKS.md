@@ -417,10 +417,24 @@ returns to Needs Attention and releases capacity again.
 **Begin Implementation** creates a queued `finalize` cycle. It does not
 immediately finalize the plan or start Goal mode.
 
-When claimed, finalization incorporates the reviewed plan and answers into the
-Goal prompt. Goal creation must remain idempotent. Once the Goal is durably
-accepted, the same claim and Task Worker continue to own implementation until
-the Goal:
+When claimed, finalization produces the complete implementation plan and a
+separate, concise Goal direction (at most 2,000 Unicode characters). The native
+Goal objective is bounded to 4,000 characters, not the length of the full plan.
+The worker materializes the complete approved context as a private attachment
+in the selected native runtime home before creating the Goal. The objective
+references that durable file so implementation and context-compacted resumes
+can recover every milestone. The complete plan also remains in the encrypted
+Task snapshot and Goal-start message; the server never receives plaintext.
+
+If Goal startup fails, preserve the finalized plan and direction. Native error
+details are encrypted on the worker and displayed as a Goal startup failure,
+not an unexplained planning failure. **Retry Implementation** retries the saved
+finalization without sending another finalization/planning turn. Older saved
+Goals with oversized objectives use the same durable-file handoff without
+truncating their approved context.
+
+Goal creation must remain idempotent. Once the Goal is durably accepted, the
+same claim and Task Worker continue to own implementation until the Goal:
 
 - completes;
 - blocks or needs user attention;

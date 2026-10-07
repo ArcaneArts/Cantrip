@@ -3,11 +3,11 @@ import type {
   SettingsBundle,
   WorkerSummary,
 } from "@cantrip/protocol";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type Ref } from "react";
 
 import { cn } from "@/lib/utils";
 
-import { TaskSurface } from "./task-surface";
+import { TaskSurface, type TaskSurfaceHandle } from "./task-surface";
 
 export const MAX_RETAINED_TASK_VIEWS = 8;
 
@@ -34,6 +34,7 @@ export function PersistentTaskViews({
   onDelete,
   onRename,
   settings,
+  surfaceRef,
 }: {
   activeTask: ActiveTaskView | null;
   deleting?: boolean;
@@ -41,6 +42,7 @@ export function PersistentTaskViews({
   onDelete?(): void;
   onRename(chatId: string, title: string): void;
   settings: SettingsBundle | undefined;
+  surfaceRef?: Ref<TaskSurfaceHandle>;
 }) {
   const [retainedTasks, setRetainedTasks] = useState<ActiveTaskView[]>([]);
 
@@ -71,6 +73,7 @@ export function PersistentTaskViews({
           onClose={active ? onClose : undefined}
           onDelete={active ? onDelete : undefined}
           settings={settings}
+          surfaceRef={active ? surfaceRef : undefined}
           worker={retained.worker}
           onRename={(title) => onRename(retained.chat.id, title)}
         />

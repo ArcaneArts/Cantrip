@@ -906,6 +906,7 @@ export class TaskRepository {
             protectedContent: result.protectedResult,
           }),
           relayResult: result,
+          failureTask: result.goal?.failureTask ?? round.failureTask,
           turnId,
           completedAt: now,
         })
@@ -995,7 +996,7 @@ export class TaskRepository {
     ownerId: string,
     chatId: string,
     operationId: string,
-    _legacyInput?: unknown,
+    goalLaunchFailure?: TaskOpaqueContent,
   ): Promise<TaskOperationContext | null> {
     if (!(await this.get(ownerId, chatId))) return null;
     return this.database.transaction(async (transaction) => {
@@ -1020,6 +1021,36 @@ export class TaskRepository {
         .limit(1);
       const task = taskRows[0];
       if (!task) return null;
+      if (goalLaunchFailure) {
+        const failed = taskOpaqueContentSchema.parse(goalLaunchFailure);
+        const expected = round.relayResult?.task;
+        const classification = failed.classification;
+        if (
+          round.kind !== "finalize" ||
+          !expected ||
+          classification.state !== "failed" ||
+          classification.stableStateBeforeFailure !== "review" ||
+          classification.activeOperationKind !== null ||
+          classification.planningRound !== round.ordinal ||
+          classification.lastError?.code !== "task-goal-start-failed" ||
+          classification.lastError.operationKind !== "finalize" ||
+          classification.planAuthorship !==
+            expected.classification.planAuthorship ||
+          classification.hasPlan !== expected.classification.hasPlan ||
+          classification.hasQuestions !==
+            expected.classification.hasQuestions ||
+          classification.hasFinalPlan !==
+            expected.classification.hasFinalPlan ||
+          classification.hasGoalPrompt !==
+            expected.classification.hasGoalPrompt ||
+          failed.protectedContent.keyRevision !==
+            expected.protectedContent.keyRevision
+        )
+          throw new TaskConflictError(
+            "The encrypted Goal startup failure does not match finalization.",
+            "idempotency-conflict",
+          );
+      }
       if (task.state === "failed" && task.planningRound === round.ordinal) {
         return context(task, round);
       }
@@ -1037,7 +1068,7 @@ export class TaskRepository {
         const updatedTasks = await transaction
           .update(schema.tasks)
           .set({
-            ...taskOpaqueColumns(round.failureTask),
+            ...taskOpaqueColumns(goalLaunchFailure ?? round.failureTask),
             activeOperationId: null,
             rowVersion: task.rowVersion + 1,
             updatedAt: now,

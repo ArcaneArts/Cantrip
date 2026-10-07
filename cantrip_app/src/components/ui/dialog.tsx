@@ -18,10 +18,12 @@ export const DIALOG_CONTENT_CLASS_NAME =
 export function DialogContent({
   children,
   className,
+  positionerClassName,
   showClose = true,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showClose?: boolean;
+  positionerClassName?: string;
 }) {
   return (
     <DialogPrimitive.Portal>
@@ -31,7 +33,7 @@ export function DialogContent({
         pointer-active layer after a window focus or compositor transition.
       */}
       <DialogPrimitive.Overlay className={DIALOG_OVERLAY_CLASS_NAME} />
-      <div className={DIALOG_POSITIONER_CLASS_NAME}>
+      <div className={cn(DIALOG_POSITIONER_CLASS_NAME, positionerClassName)}>
         <DialogPrimitive.Content
           data-slot="dialog-content"
           className={cn(DIALOG_CONTENT_CLASS_NAME, className)}

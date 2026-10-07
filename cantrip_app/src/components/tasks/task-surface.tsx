@@ -27,12 +27,14 @@ import {
   lazy,
   Suspense,
   useEffect,
+  useImperativeHandle,
   useMemo,
   useRef,
   useState,
   useSyncExternalStore,
   type ClipboardEvent,
   type DragEvent,
+  type Ref,
 } from "react";
 
 import {
@@ -80,6 +82,7 @@ import {
   taskWorkerEncryptionReadiness,
 } from "@/lib/task-worker-encryption";
 import { cn } from "@/lib/utils";
+import { SerialTaskQueue } from "@/lib/serial-task-queue";
 
 import { TaskImplementationDashboard } from "./task-implementation-dashboard";
 import { TaskInteractionRequests } from "./task-interaction-requests";
@@ -142,6 +145,14 @@ export function taskSurfaceMode(task: TaskDetail): TaskSurfaceMode {
   return "draft";
 }
 
+export function taskDraftEditable(task: TaskDetail): boolean {
+  return (
+    (task.state === "draft" ||
+      (task.state === "failed" && task.stableStateBeforeFailure === "draft")) &&
+    !["claimed", "running", "paused"].includes(task.dispatch?.state ?? "")
+  );
+}
+
 export function taskDraftSignature(
   briefMarkdown: string,
   attachmentIds: readonly string[],
@@ -170,6 +181,10 @@ export function taskAutosaveLabel(input: {
   return input.dirty ? "Unsaved changes" : "Saved";
 }
 
+export interface TaskSurfaceHandle {
+  prepareClose(): Promise<void>;
+}
+
 export function TaskSurface({
   chat,
   deleting = false,
@@ -177,6 +192,7 @@ export function TaskSurface({
   onDelete,
   onRename,
   settings,
+  surfaceRef,
   worker,
 }: {
   chat: ChatSummary;
@@ -185,6 +201,7 @@ export function TaskSurface({
   onDelete?(): void;
   onRename(title: string): void;
   settings: SettingsBundle | undefined;
+  surfaceRef?: Ref<TaskSurfaceHandle>;
   worker?: WorkerSummary;
 }) {
   const queryClient = useQueryClient();
@@ -224,10 +241,12 @@ export function TaskSurface({
   const [conflict, setConflict] = useState(false);
   const [initialized, setInitialized] = useState(false);
   const [titleDraft, setTitleDraft] = useState(chat.title);
+  const [copyNotice, setCopyNotice] = useState<string | null>(null);
   const rowVersionRef = useRef(1);
   const pendingDeletionIdsRef = useRef(new Set<string>());
   const failedDraftSignatureRef = useRef<string | null>(null);
   const savedSignatureRef = useRef(taskDraftSignature("", []));
+  const draftSaveQueueRef = useRef(new SerialTaskQueue());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const briefRef = useRef(brief);
   const planGoalEnabledRef = useRef(planGoalEnabled);
@@ -337,14 +356,20 @@ export function TaskSurface({
       requestedTaskWorkerId: string | null;
       signature: string;
     }) =>
-      updateTaskDraft(chat.id, {
-        briefMarkdown: snapshot.briefMarkdown,
-        draftAttachmentIds: snapshot.attachmentIds,
-        planGoalEnabled: snapshot.planGoalEnabled,
-        priority: snapshot.priority,
-        requestedTaskWorkerId: snapshot.requestedTaskWorkerId,
-        rowVersion: rowVersionRef.current,
-      }).then((updated) => ({ snapshot, updated })),
+      draftSaveQueueRef.current.run(async () => {
+        const updated = await updateTaskDraft(chat.id, {
+          briefMarkdown: snapshot.briefMarkdown,
+          draftAttachmentIds: snapshot.attachmentIds,
+          planGoalEnabled: snapshot.planGoalEnabled,
+          priority: snapshot.priority,
+          requestedTaskWorkerId: snapshot.requestedTaskWorkerId,
+          rowVersion: rowVersionRef.current,
+        });
+        // A dialog dismissal may flush while an autosave is in flight. Keep
+        // those writes ordered and use the revision returned by the prior save.
+        rowVersionRef.current = updated.rowVersion;
+        return { snapshot, updated };
+      }),
     onSuccess: ({ snapshot, updated }) => {
       failedDraftSignatureRef.current = null;
       rowVersionRef.current = updated.rowVersion;
@@ -383,6 +408,22 @@ export function TaskSurface({
   });
   const mutateDraft = saveDraft.mutate;
 
+  useEffect(() => {
+    if (!initialized || !task.data) return;
+    const serverSignature = taskDraftSignature(
+      task.data.briefMarkdown,
+      task.data.draftAttachmentIds,
+      task.data.planGoalEnabled,
+      task.data.priority,
+      task.data.requestedTaskWorkerId,
+    );
+    // Launch/failure changes the row version without changing the saved brief.
+    // Keep local edits, while using that current version when saving a retry.
+    if (serverSignature === savedSignatureRef.current) {
+      rowVersionRef.current = task.data.rowVersion;
+    }
+  }, [initialized, task.data]);
+
   const saveCurrentDraft = async (): Promise<TaskDetail> => {
     const signature = taskDraftSignature(
       briefRef.current,
@@ -407,6 +448,18 @@ export function TaskSurface({
     return result.updated;
   };
 
+  useImperativeHandle(surfaceRef, () => ({
+    async prepareClose() {
+      if (initialized && task.data && taskDraftEditable(task.data)) {
+        if (conflict)
+          throw new Error(
+            "Reload the Task or copy your unsaved edits before closing.",
+          );
+        await saveCurrentDraft();
+      }
+    },
+  }));
+
   useEffect(() => {
     if (
       !initialized ||
@@ -414,8 +467,8 @@ export function TaskSurface({
       conflict ||
       saveDraft.isPending ||
       failedDraftSignatureRef.current === currentSignature ||
-      task.data?.state !== "draft" ||
-      (task.data.dispatch !== null && task.data.dispatch.state !== "queued")
+      !task.data ||
+      !taskDraftEditable(task.data)
     ) {
       return;
     }
@@ -443,6 +496,7 @@ export function TaskSurface({
     initialized,
     saveDraft.isPending,
     task.data?.dispatch,
+    task.data?.stableStateBeforeFailure,
     task.data?.state,
     mutateDraft,
   ]);
@@ -734,19 +788,24 @@ export function TaskSurface({
       )
     : eligibleTaskWorkers.length > 0;
   const dispatchQueued = task.data.dispatch?.state === "queued";
-  const draftEditable =
-    task.data.state === "draft" &&
-    !["claimed", "running", "paused"].includes(task.data.dispatch?.state ?? "");
+  const draftEditable = taskDraftEditable(task.data);
   const canStart =
     brief.trim().length > 0 &&
-    hasEligibleTaskWorker &&
     pendingAttachments.length === 0 &&
     !conflict &&
     !saveDraft.isPending &&
     !starting.isPending &&
     !dispatchQueued &&
-    draftEditable &&
-    chat.status !== "running";
+    draftEditable;
+
+  const copyBrief = async () => {
+    try {
+      await navigator.clipboard.writeText(briefRef.current);
+      setCopyNotice("Brief copied");
+    } catch {
+      setCopyNotice("Could not copy. Select the brief and copy it manually.");
+    }
+  };
 
   return (
     <div
@@ -815,6 +874,16 @@ export function TaskSurface({
         >
           {autosaveLabel}
         </span>
+        <Button
+          aria-label="Copy Task brief"
+          className="size-7"
+          size="icon"
+          title="Copy Task brief"
+          variant="ghost"
+          onClick={() => void copyBrief()}
+        >
+          <ClipboardCopy className="size-4" />
+        </Button>
         {taskCanBeDeleted(task.data) && onDelete ? (
           <Button
             aria-label="Delete Task"
@@ -834,10 +903,19 @@ export function TaskSurface({
         ) : null}
       </div>
 
+      {copyNotice ? (
+        <p
+          className="shrink-0 px-5 py-2 text-xs text-muted-foreground"
+          role="status"
+        >
+          {copyNotice}
+        </p>
+      ) : null}
+
       {mode === "failed" && task.data.lastError ? (
         <div className="flex shrink-0 items-start gap-3 border-b border-destructive/30 bg-destructive/5 px-5 py-3 text-sm text-destructive">
           <CircleAlert className="mt-0.5 size-4 shrink-0" />
-          <span>{task.data.lastError.message}</span>
+          <span data-selectable-text>{task.data.lastError.message}</span>
         </div>
       ) : null}
 
@@ -868,11 +946,7 @@ export function TaskSurface({
             This Task changed elsewhere. Reload the server copy or copy your
             unsaved brief first.
           </span>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => void navigator.clipboard.writeText(brief)}
-          >
+          <Button size="sm" variant="ghost" onClick={() => void copyBrief()}>
             <ClipboardCopy className="size-3.5" /> Copy unsaved
           </Button>
           <Button
@@ -1135,8 +1209,8 @@ export function TaskSurface({
         </p>
         {!taskWorkers.isLoading && configuredTaskWorkers.length === 0 ? (
           <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
-            Configure and enable a Task Worker in Settings before adding this
-            Task to the queue.
+            This Task can be queued now and will wait for an enabled Task
+            Worker.
           </p>
         ) : null}
         {requestedTaskWorkerId && !hasEligibleTaskWorker ? (

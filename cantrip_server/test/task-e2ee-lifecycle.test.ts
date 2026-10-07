@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -24,15 +24,18 @@ import {
   type TaskProtectedContent,
   type TaskQuestionAnswer,
 } from "@cantrip/protocol/tasks";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
+  EncryptedTaskEventSealer,
   executeEncryptedTaskOperation,
   encryptTaskTurnResult,
   openEncryptedTaskGoalObjective,
   prepareEncryptedTaskOperation,
   protectTaskGoalResult,
+  protectTaskGoalLaunchFailure,
 } from "../../cantrip_worker/src/task-operation.js";
+import type { WorkerEncryptionService } from "../../cantrip_worker/src/worker-encryption.js";
 import {
   createTaskOperationRelayRequest,
   decryptTaskGoalObjective,
@@ -48,8 +51,13 @@ import { buildApp } from "../src/app.js";
 import { TASK_LAUNCH_PREFLIGHT_TIMEOUT_MS } from "../src/app/shared/constants.js";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
-import { DEFAULT_MODEL_ID, LOCAL_USER_ID } from "../src/db/repository.js";
+import {
+  DEFAULT_MODEL_ID,
+  LOCAL_USER_ID,
+  ExecutionLaneBusyError,
+} from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
+import type { WorkerRequestOptions } from "../src/workers/bridge.js";
 
 import {
   protectedChatFields,
@@ -60,6 +68,8 @@ const ownerId = LOCAL_USER_ID;
 const workerId = "task-lifecycle-worker";
 const threadId = "thread-task-e2ee-lifecycle";
 const sentinel = "TASK-E2EE-SENTINEL-closure-audit";
+const finalPlanMarkdown =
+  `# ${sentinel} final plan\n` + "milestone\n".repeat(2_000);
 const questionId = "scope-question";
 const optionId = "full-scope";
 
@@ -83,6 +93,8 @@ const config: ServerConfig = {
 let workerTaskKey = new Uint8Array();
 let goalObjective = `${sentinel} goal not initialized`;
 let goalCompleted = false;
+let failNextGoalCreation = false;
+let finalizerTurnCount = 0;
 let continuedPromptSawAnswer = false;
 let pauseTestEnabled = false;
 let pauseTestTurnStarted = false;
@@ -321,16 +333,26 @@ async function prepareOperation(
 
 async function encryptedTaskTurn(
   command: Extract<WorkerCommand, { type: "chat.turn" }>,
+  onEvent?: WorkerRequestOptions["onEvent"],
 ) {
   serverObservedPayloads.push(JSON.stringify(command));
   if (command.resultMode.kind === "task-encrypted") {
+    const sealer = new EncryptedTaskEventSealer(
+      {
+        ownerId: () => ownerId,
+        componentKey: workerComponentKey,
+      } as unknown as WorkerEncryptionService,
+      "default",
+    );
     return executeEncryptedTaskOperation({
+      eventSealer: sealer,
       getComponentKey: workerComponentKey,
       ownerId,
       request: command.resultMode.operation,
       async run({ prompt }) {
         expect(prompt).toContain(sentinel);
         const kind = command.resultMode.operation.classification.kind;
+        if (kind === "finalize") finalizerTurnCount += 1;
         if (kind === "direct" && pauseTestEnabled) {
           pauseTestTurnStarted = true;
           await new Promise<void>((resolve) => {
@@ -370,9 +392,35 @@ async function encryptedTaskTurn(
                   questions: [],
                 }
               : {
-                  finalPlanMarkdown: `# ${sentinel} final plan`,
+                  finalPlanMarkdown,
                   goalPrompt: `${sentinel} implementation direction`,
                 };
+        if (kind === "direct" && onEvent) {
+          const correlation = {
+            sourceMethod: "item/completed",
+            diagnosticId: null,
+            threadId,
+            turnId: "turn-direct",
+            itemId: "direct-final",
+          };
+          await onEvent(
+            await sealer.message({
+              id: "direct-final",
+              text: `${sentinel} raw worker`,
+              phase: "commentary",
+              streaming: true,
+              correlation,
+            }),
+          );
+          await onEvent(
+            await sealer.message({
+              id: "direct-final",
+              text: `${sentinel} raw worker output`,
+              phase: "final_answer",
+              correlation,
+            }),
+          );
+        }
         return {
           threadId,
           turnId: `turn-${kind}`,
@@ -497,7 +545,7 @@ const workerBridge: WorkerCommandBus = {
     }
     if (command.type === "chat.turn") {
       try {
-        return await encryptedTaskTurn(command);
+        return await encryptedTaskTurn(command, options?.onEvent);
       } catch (error) {
         workerErrors.push(
           error instanceof Error ? error.message : String(error),
@@ -517,8 +565,29 @@ const workerBridge: WorkerCommandBus = {
           goal: command.objective,
           ownerId,
           threadId: command.threadId,
+          codexHome: dataDirectory,
         });
         expect(goalObjective).toContain(sentinel);
+        if (Array.from(goalObjective).length > 4_000) {
+          throw new Error("goal objective must be at most 4000 characters");
+        }
+        const reference = /plan at (".*") before making changes/u.exec(
+          goalObjective,
+        )?.[1];
+        expect(reference).toBeDefined();
+        expect(
+          await readFile(JSON.parse(reference!) as string, "utf8"),
+        ).toContain(finalPlanMarkdown);
+        if (failNextGoalCreation) {
+          failNextGoalCreation = false;
+          return protectTaskGoalLaunchFailure({
+            chatId: command.chatId,
+            ownerId,
+            getComponentKey: workerComponentKey,
+            task: command.taskContext.task,
+            error: new Error(`${sentinel} native Goal startup rejection`),
+          });
+        }
         return await protectTaskGoalResult({
           chatId: command.chatId,
           context: command.taskContext,
@@ -726,6 +795,221 @@ afterAll(async () => {
 });
 
 describe.sequential("Task E2EE closure lifecycle", () => {
+  it("stores and attaches only one final answer after a streamed direct Task completes", async () => {
+    const chatId = randomUUID();
+    const task = await sealTask(chatId, {
+      version: 1,
+      classification: {
+        state: "draft",
+        stableStateBeforeFailure: null,
+        activeOperationKind: null,
+        planAuthorship: "agent",
+        planningRound: 0,
+        hasPlan: false,
+        hasQuestions: false,
+        hasFinalPlan: false,
+        hasGoalPrompt: false,
+        lastError: null,
+      },
+      briefMarkdown: `${sentinel} direct completion`,
+      planMarkdown: null,
+      currentQuestions: [],
+      currentAnswers: [],
+      additionalDirection: "",
+      finalPlanMarkdown: null,
+      goalPrompt: null,
+      lastError: null,
+    });
+    const created = await app!.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/tasks`,
+      payload: {
+        chatId,
+        planGoalEnabled: false,
+        priority: -1,
+        titleProtection: protectedChatFields(chatId).titleProtection,
+        task,
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    const initial = taskWireCreateResultSchema.parse(created.json());
+    const operationId = randomUUID();
+    const start = await app!.inject({
+      method: "POST",
+      url: `/api/tasks/${chatId}/start`,
+      payload: { operationId, rowVersion: initial.task.rowVersion },
+    });
+    expect(start.statusCode).toBe(202);
+    await waitForTaskCycle(chatId, operationId, "complete");
+    const messages = await database.repository.listTaskMessages(
+      ownerId,
+      chatId,
+    );
+    const answers = messages.filter(({ role }) => role === "assistant");
+    expect(answers).toHaveLength(1);
+    expect(answers[0]!.idempotencyKey).toBe(
+      "agent-message:root:turn-direct:direct-final",
+    );
+    expect(
+      messages.some(
+        ({ idempotencyKey }) => idempotencyKey === `task-result:${operationId}`,
+      ),
+    ).toBe(false);
+    await vi.waitFor(async () => {
+      const rounds = await database.repository.tasks.listRounds(
+        ownerId,
+        chatId,
+      );
+      expect(rounds[0]!.assistantMessageId).toBe(answers[0]!.id);
+    });
+    // Repeat completion delivery as recovery would: no second row or new ID.
+    const again = await database.repository.appendTaskMessage(ownerId, chatId, {
+      id: answers[0]!.id,
+      classification: {
+        role: "assistant",
+        mode: answers[0]!.mode,
+        attachmentIds: answers[0]!.attachmentIds,
+      },
+      protectedContent: answers[0]!.protectedContent,
+      reasoningEffort: answers[0]!.reasoningEffort,
+      idempotencyKey: answers[0]!.idempotencyKey!,
+    });
+    expect(again?.id).toBe(answers[0]!.id);
+    await expect(
+      database.repository.appendTaskMessage(ownerId, chatId, {
+        id: answers[0]!.id,
+        classification: {
+          role: "assistant",
+          mode: answers[0]!.mode,
+          attachmentIds: answers[0]!.attachmentIds,
+        },
+        protectedContent: {
+          ...answers[0]!.protectedContent,
+          envelope: {
+            ...answers[0]!.protectedContent.envelope,
+            ciphertext:
+              (answers[0]!.protectedContent.envelope.ciphertext[0] === "A"
+                ? "B"
+                : "A") +
+              answers[0]!.protectedContent.envelope.ciphertext.slice(1),
+          },
+        },
+        reasoningEffort: answers[0]!.reasoningEffort,
+        idempotencyKey: answers[0]!.idempotencyKey!,
+      }),
+    ).rejects.toThrow(
+      "Encrypted Task message idempotency metadata is inconsistent.",
+    );
+    expect(
+      await database.repository.listTaskMessages(ownerId, chatId),
+    ).toHaveLength(2);
+  });
+
+  it("retries the same encrypted operation after an admission race without failing or duplicating input", async () => {
+    taskOperationPrepareTimeouts.length = 0;
+    const chatId = randomUUID();
+    const task = await sealTask(chatId, {
+      version: 1,
+      classification: {
+        state: "draft",
+        stableStateBeforeFailure: null,
+        activeOperationKind: null,
+        planAuthorship: "agent",
+        planningRound: 0,
+        hasPlan: false,
+        hasQuestions: false,
+        hasFinalPlan: false,
+        hasGoalPrompt: false,
+        lastError: null,
+      },
+      briefMarkdown: `${sentinel} deferred launch`,
+      planMarkdown: null,
+      currentQuestions: [],
+      currentAnswers: [],
+      additionalDirection: "",
+      finalPlanMarkdown: null,
+      goalPrompt: null,
+      lastError: null,
+    });
+    const created = await app!.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/tasks`,
+      payload: {
+        chatId,
+        planGoalEnabled: false,
+        priority: -1,
+        titleProtection: protectedChatFields(chatId).titleProtection,
+        task,
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    const initial = taskWireCreateResultSchema.parse(created.json());
+    const original = database.repository.startChatExecutionLane.bind(
+      database.repository,
+    );
+    let occupied = true;
+    const admission = vi
+      .spyOn(database.repository, "startChatExecutionLane")
+      .mockImplementation((...args) => {
+        if (args[1] === chatId && occupied)
+          return Promise.reject(
+            new ExecutionLaneBusyError(
+              "A competing execution acquired the branch.",
+            ),
+          );
+        return original(...args);
+      });
+    const operationId = randomUUID();
+    try {
+      const start = await app!.inject({
+        method: "POST",
+        url: `/api/tasks/${chatId}/start`,
+        payload: { operationId, rowVersion: initial.task.rowVersion },
+      });
+      expect(start.statusCode).toBe(202);
+      const deferred = await waitForDispatchState(chatId, "queued");
+      // Wait for the queue state that follows admission, rather than initial enqueue.
+      for (
+        let attempt = 0;
+        attempt < 200 &&
+        (await taskSummary(chatId)).dispatch?.eligibilityCode !==
+          "capacity-unavailable";
+        attempt++
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      const waiting = await taskSummary(chatId);
+      expect(waiting).toMatchObject({
+        state: "implementing",
+        lastError: null,
+        dispatch: {
+          state: "queued",
+          eligibilityCode: "capacity-unavailable",
+          operationId,
+        },
+      });
+      expect(
+        await database.repository.listTaskMessages(ownerId, chatId),
+      ).toHaveLength(0);
+      occupied = false;
+      const completed = await waitForTask(chatId, "complete");
+      expect(completed.dispatch).toMatchObject({
+        state: "succeeded",
+        operationId,
+      });
+      expect(taskOperationPrepareTimeouts).toHaveLength(1);
+      const messages = await database.repository.listTaskMessages(
+        ownerId,
+        chatId,
+      );
+      expect(
+        messages.filter((message) => message.role === "user"),
+      ).toHaveLength(1);
+      expect(deferred.dispatch?.operationId).toBe(operationId);
+    } finally {
+      admission.mockRestore();
+    }
+  });
   it("does not report launch success before the worker turn dispatch begins", async () => {
     holdNextAgentTurnState = true;
     heldAgentTurnStateStarted = false;
@@ -1003,6 +1287,38 @@ describe.sequential("Task E2EE closure lifecycle", () => {
       TASK_LAUNCH_PREFLIGHT_TIMEOUT_MS,
       TASK_LAUNCH_PREFLIGHT_TIMEOUT_MS,
     ]);
+    const failedDraft = await openTask(await taskSummary(blockedChatId));
+    const edited = await app!.inject({
+      method: "PATCH",
+      url: `/api/tasks/${blockedChatId}/draft`,
+      payload: {
+        rowVersion: failedDraft.rowVersion,
+        priority: -1,
+        task: await sealTask(blockedChatId, {
+          ...contentFromTask(failedDraft),
+          briefMarkdown: `${sentinel} edited failed draft`,
+        }),
+      },
+    });
+    expect(edited.statusCode, edited.body).toBe(200);
+    const editedDraft = taskOpaqueSummarySchema.parse(edited.json());
+    const retry = await app!.inject({
+      method: "POST",
+      url: `/api/tasks/${blockedChatId}/start`,
+      payload: {
+        operationId: randomUUID(),
+        rowVersion: editedDraft.rowVersion,
+      },
+    });
+    expect(retry.statusCode).toBe(202);
+    const recovered = await openTask(
+      await waitForTask(blockedChatId, "complete"),
+    );
+    expect(recovered).toMatchObject({
+      priority: -1,
+      briefMarkdown: `${sentinel} edited failed draft`,
+      lastError: null,
+    });
   });
 
   it("pauses a claimed Task while launch preflight has no runtime", async () => {
@@ -1375,6 +1691,9 @@ describe.sequential("Task E2EE closure lifecycle", () => {
     expect(task.currentQuestions).toEqual([]);
 
     const finalOperationId = randomUUID();
+    const finalizersBeforeImplementation = finalizerTurnCount;
+    failNextGoalCreation = true;
+    goalCompleted = false;
     const finalResponse = await app!.inject({
       method: "POST",
       url: `/api/tasks/${chatId}/begin-implementation`,
@@ -1384,9 +1703,30 @@ describe.sequential("Task E2EE closure lifecycle", () => {
       },
     });
     expect(finalResponse.statusCode).toBe(202);
-    task = await openTask(await waitForTask(chatId, "implementing"));
-    expect(task.finalPlanMarkdown).toContain(`${sentinel} final plan`);
+    task = await openTask(await waitForDispatchState(chatId, "failed"));
+    expect(task.state).toBe("failed");
+    expect(task.finalPlanMarkdown).toBe(finalPlanMarkdown);
     expect(task.goalPrompt).toContain(sentinel);
+    expect(task.lastError).toMatchObject({
+      code: "task-goal-start-failed",
+      operationKind: "finalize",
+      message: expect.stringContaining(
+        `${sentinel} native Goal startup rejection`,
+      ),
+    });
+    const finalizationRound = task.planningRound;
+    const retryResponse = await app!.inject({
+      method: "POST",
+      url: `/api/tasks/${chatId}/retry`,
+      payload: { operationId: randomUUID(), rowVersion: task.rowVersion },
+    });
+    expect(retryResponse.statusCode).toBe(202);
+    task = await openTask(await waitForTask(chatId, "implementing"));
+    expect(task.finalPlanMarkdown).toBe(finalPlanMarkdown);
+    expect(task.goalPrompt).toContain(sentinel);
+    expect(task.planningRound).toBe(finalizationRound);
+    expect(finalizerTurnCount).toBe(finalizersBeforeImplementation + 1);
+    expect(task.lastError).toBeNull();
 
     for (let attempt = 0; attempt < 200 && !goalCompleted; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 10));
@@ -1423,7 +1763,11 @@ describe.sequential("Task E2EE closure lifecycle", () => {
         status: goal.status,
       },
     });
-    expect(openedGoal.objective).toContain(`${sentinel} final plan`);
+    expect(openedGoal.objective).not.toContain(`${sentinel} final plan`);
+    expect(openedGoal.objective).toContain(
+      `${sentinel} implementation direction`,
+    );
+    expect(Array.from(openedGoal.objective).length).toBeLessThanOrEqual(4_000);
     task = await openTask(await waitForTask(chatId, "complete"));
     expect(task.state).toBe("complete");
 

@@ -469,104 +469,128 @@ export class TaskDispatchRepository {
         .limit(1);
       if (!ownerRows[0]) return null;
 
-      const [workerRows, activeCounts, candidateRows, activeLanes] =
-        await Promise.all([
-          transaction
-            .select()
-            .from(schema.taskWorkers)
-            .where(
-              and(
-                eq(schema.taskWorkers.ownerId, ownerId),
-                eq(schema.taskWorkers.enabled, true),
-                isNull(schema.taskWorkers.deletedAt),
-              ),
-            )
-            .orderBy(
-              asc(schema.taskWorkers.position),
-              asc(schema.taskWorkers.id),
+      const [
+        workerRows,
+        activeCounts,
+        candidateRows,
+        activeLanes,
+        branchLeases,
+      ] = await Promise.all([
+        transaction
+          .select()
+          .from(schema.taskWorkers)
+          .where(
+            and(
+              eq(schema.taskWorkers.ownerId, ownerId),
+              eq(schema.taskWorkers.enabled, true),
+              isNull(schema.taskWorkers.deletedAt),
             ),
-          transaction
-            .select({
-              taskWorkerId: schema.taskDispatchCycles.selectedTaskWorkerId,
-              count: sql<number>`count(*)::int`,
-            })
-            .from(schema.taskDispatchCycles)
-            .where(
-              and(
-                eq(schema.taskDispatchCycles.ownerId, ownerId),
-                inArray(schema.taskDispatchCycles.state, [
-                  "claimed",
-                  "running",
-                ]),
-              ),
-            )
-            .groupBy(schema.taskDispatchCycles.selectedTaskWorkerId),
-          transaction
-            .select({
-              cycle: schema.taskDispatchCycles,
-              task: schema.tasks,
-              projectId: schema.projects.id,
-              projectPaused: schema.projects.taskSchedulingPaused,
-              archivedAt: schema.chats.archivedAt,
-              worktreeId: schema.projectWorktrees.id,
-              worktreeState: schema.projectWorktrees.lifecycleState,
-              physicalWorkerId: schema.projectWorktrees.workerId,
-              physicalWorkerUnlinkedAt: schema.workers.unlinkedAt,
-            })
-            .from(schema.taskDispatchCycles)
-            .innerJoin(
-              schema.tasks,
-              eq(schema.tasks.chatId, schema.taskDispatchCycles.chatId),
-            )
-            .innerJoin(schema.chats, eq(schema.chats.id, schema.tasks.chatId))
-            .innerJoin(
-              schema.projects,
-              and(
-                eq(schema.projects.id, schema.chats.projectId),
-                eq(schema.projects.ownerId, ownerId),
-              ),
-            )
-            .innerJoin(
-              schema.projectWorktrees,
-              eq(schema.projectWorktrees.id, schema.chats.activeWorktreeId),
-            )
-            .innerJoin(
-              schema.workers,
-              eq(schema.workers.id, schema.projectWorktrees.workerId),
-            )
-            .where(
-              and(
-                eq(schema.taskDispatchCycles.ownerId, ownerId),
-                eq(schema.taskDispatchCycles.state, "queued"),
-                isNull(schema.chats.archivedAt),
-                ne(schema.tasks.state, "complete"),
-              ),
-            )
-            .orderBy(
-              asc(schema.taskDispatchCycles.fifoCreatedAt),
-              asc(schema.taskDispatchCycles.id),
+          )
+          .orderBy(
+            asc(schema.taskWorkers.position),
+            asc(schema.taskWorkers.id),
+          ),
+        transaction
+          .select({
+            taskWorkerId: schema.taskDispatchCycles.selectedTaskWorkerId,
+            count: sql<number>`count(*)::int`,
+          })
+          .from(schema.taskDispatchCycles)
+          .where(
+            and(
+              eq(schema.taskDispatchCycles.ownerId, ownerId),
+              inArray(schema.taskDispatchCycles.state, ["claimed", "running"]),
             ),
-          transaction
-            .selectDistinct({ chatId: schema.chatExecutionLanes.chatId })
-            .from(schema.chatExecutionLanes)
-            .innerJoin(
-              schema.taskDispatchCycles,
-              and(
-                eq(
-                  schema.taskDispatchCycles.chatId,
-                  schema.chatExecutionLanes.chatId,
-                ),
-                eq(schema.taskDispatchCycles.ownerId, ownerId),
-                eq(schema.taskDispatchCycles.state, "queued"),
-              ),
-            )
-            .where(
-              inArray(schema.chatExecutionLanes.state, [
-                "active",
-                "delivering",
-              ]),
+          )
+          .groupBy(schema.taskDispatchCycles.selectedTaskWorkerId),
+        transaction
+          .select({
+            cycle: schema.taskDispatchCycles,
+            task: schema.tasks,
+            projectId: schema.projects.id,
+            projectPaused: schema.projects.taskSchedulingPaused,
+            archivedAt: schema.chats.archivedAt,
+            worktreeId: schema.projectWorktrees.id,
+            worktreeState: schema.projectWorktrees.lifecycleState,
+            branch: schema.projectWorktrees.branch,
+            physicalWorkerId: schema.projectWorktrees.workerId,
+            physicalWorkerUnlinkedAt: schema.workers.unlinkedAt,
+          })
+          .from(schema.taskDispatchCycles)
+          .innerJoin(
+            schema.tasks,
+            eq(schema.tasks.chatId, schema.taskDispatchCycles.chatId),
+          )
+          .innerJoin(schema.chats, eq(schema.chats.id, schema.tasks.chatId))
+          .innerJoin(
+            schema.projects,
+            and(
+              eq(schema.projects.id, schema.chats.projectId),
+              eq(schema.projects.ownerId, ownerId),
             ),
-        ]);
+          )
+          .innerJoin(
+            schema.projectWorktrees,
+            eq(schema.projectWorktrees.id, schema.chats.activeWorktreeId),
+          )
+          .innerJoin(
+            schema.workers,
+            eq(schema.workers.id, schema.projectWorktrees.workerId),
+          )
+          .where(
+            and(
+              eq(schema.taskDispatchCycles.ownerId, ownerId),
+              eq(schema.taskDispatchCycles.state, "queued"),
+              isNull(schema.chats.archivedAt),
+              ne(schema.tasks.state, "complete"),
+            ),
+          )
+          .orderBy(
+            asc(schema.taskDispatchCycles.fifoCreatedAt),
+            asc(schema.taskDispatchCycles.id),
+          ),
+        transaction
+          .selectDistinct({ chatId: schema.chatExecutionLanes.chatId })
+          .from(schema.chatExecutionLanes)
+          .innerJoin(
+            schema.taskDispatchCycles,
+            and(
+              eq(
+                schema.taskDispatchCycles.chatId,
+                schema.chatExecutionLanes.chatId,
+              ),
+              eq(schema.taskDispatchCycles.ownerId, ownerId),
+              eq(schema.taskDispatchCycles.state, "queued"),
+            ),
+          )
+          .where(
+            inArray(schema.chatExecutionLanes.state, ["active", "delivering"]),
+          ),
+        transaction
+          .select({
+            projectId: schema.projectBranchLeases.projectId,
+            branch: schema.projectBranchLeases.branchName,
+            chatId: schema.chatExecutionLanes.chatId,
+          })
+          .from(schema.projectBranchLeases)
+          .innerJoin(
+            schema.projects,
+            eq(schema.projects.id, schema.projectBranchLeases.projectId),
+          )
+          .leftJoin(
+            schema.chatExecutionLanes,
+            eq(
+              schema.chatExecutionLanes.id,
+              schema.projectBranchLeases.chatExecutionLaneId,
+            ),
+          )
+          .where(
+            and(
+              eq(schema.projects.ownerId, ownerId),
+              eq(schema.projectBranchLeases.state, "active"),
+            ),
+          ),
+      ]);
 
       const activeByWorker = new Map(
         activeCounts.flatMap(({ taskWorkerId, count }) =>
@@ -598,6 +622,18 @@ export class TaskDispatchRepository {
             continue;
           }
           if (candidate.archivedAt || activeChatIds.has(cycle.chatId)) continue;
+          if (
+            candidate.branch &&
+            branchLeases.some(
+              (lease) =>
+                lease.projectId === candidate.projectId &&
+                lease.branch === candidate.branch &&
+                lease.chatId !== cycle.chatId,
+            )
+          ) {
+            reasons.set(cycle.id, "capacity-unavailable");
+            continue;
+          }
           if (
             cycle.requestedTaskWorkerId !== null &&
             cycle.requestedTaskWorkerId !== worker.id
@@ -988,6 +1024,47 @@ export class TaskDispatchRepository {
             "running",
             "paused",
           ]),
+        ),
+      )
+      .returning();
+    if (!rows[0]) throw this.staleLease();
+    return toTaskDispatchCycleSummary(rows[0]);
+  }
+
+  /** A competing execution won admission; no input has been dispatched. */
+  async deferForCapacity(
+    fence: TaskDispatchFence,
+    now = new Date(),
+  ): Promise<TaskDispatchCycleSummary> {
+    const rows = await this.database
+      .update(schema.taskDispatchCycles)
+      .set({
+        state: "queued",
+        selectedTaskWorkerId: null,
+        taskWorkerRevision: null,
+        continuityFamily: null,
+        modelConfiguration: null,
+        modelRouteId: null,
+        providerAccountId: null,
+        physicalWorkerId: null,
+        worktreeId: null,
+        codexThreadId: null,
+        turnId: null,
+        leaseOwner: null,
+        leaseExpiresAt: null,
+        lastHeartbeatAt: null,
+        fencingToken: sql`${schema.taskDispatchCycles.fencingToken} + 1`,
+        eligibilityCode: "capacity-unavailable",
+        claimedAt: null,
+        startedAt: null,
+        completedAt: null,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          fenceWhere(fence, now),
+          inArray(schema.taskDispatchCycles.state, ["claimed", "running"]),
+          isNull(schema.taskDispatchCycles.turnId),
         ),
       )
       .returning();

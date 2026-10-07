@@ -11,6 +11,7 @@ import type {
   ContextualChatWireSummary,
   EncryptedChatComposerDraftWireState,
   EncryptedChatUpdate,
+  PrivateDisplayLabelOpaque,
 } from "@cantrip/protocol";
 import { and, desc, eq, isNull, ne, sql } from "drizzle-orm";
 
@@ -45,6 +46,59 @@ export class ChatStateRepository {
     private readonly collaborators: ChatStateRepositoryCollaborators,
   ) {}
 
+  async claimAutomaticTitle(
+    ownerId: string,
+    chatId: string,
+    messageId?: string,
+  ) {
+    const claimId = randomUUID();
+    const rows = await this.database
+      .update(schema.chats)
+      .set({ autoTitlePending: false, autoTitleClaim: claimId })
+      .where(
+        and(
+          eq(schema.chats.id, chatId),
+          eq(schema.chats.ownerId, ownerId),
+          isNull(schema.chats.archivedAt),
+          eq(schema.chats.autoTitlePending, true),
+          isNull(schema.chats.autoTitleClaim),
+          ...(messageId
+            ? [
+                sql`not exists (select 1 from ${schema.chatMessages} where ${schema.chatMessages.chatId} = ${chatId} and ${schema.chatMessages.role} = 'user' and ${schema.chatMessages.id} <> ${messageId})`,
+              ]
+            : []),
+        ),
+      )
+      .returning();
+    return rows[0] ? { chat: rows[0], claimId } : null;
+  }
+
+  async finishAutomaticTitle(
+    ownerId: string,
+    chatId: string,
+    claimId: string,
+    title: PrivateDisplayLabelOpaque | null,
+    emptyInput = false,
+  ) {
+    const rows = await this.database
+      .update(schema.chats)
+      .set({
+        autoTitleClaim: null,
+        autoTitlePending: emptyInput,
+        ...(title ? { protectedLabel: title, updatedAt: new Date() } : {}),
+      })
+      .where(
+        and(
+          eq(schema.chats.id, chatId),
+          eq(schema.chats.ownerId, ownerId),
+          eq(schema.chats.autoTitleClaim, claimId),
+          isNull(schema.chats.archivedAt),
+        ),
+      )
+      .returning();
+    return rows[0] ? toContextualChatWireSummary(rows[0]) : null;
+  }
+
   async updateChat(
     ownerId: string,
     chatId: string,
@@ -64,7 +118,12 @@ export class ChatStateRepository {
     if (!owned[0]) return null;
     const result = await this.database
       .update(schema.chats)
-      .set({ protectedLabel: input.titleProtection, updatedAt: new Date() })
+      .set({
+        protectedLabel: input.titleProtection,
+        autoTitlePending: false,
+        autoTitleClaim: null,
+        updatedAt: new Date(),
+      })
       .where(and(eq(schema.chats.id, chatId), isNull(schema.chats.archivedAt)))
       .returning();
     return result[0] ? toContextualChatWireSummary(result[0]) : null;

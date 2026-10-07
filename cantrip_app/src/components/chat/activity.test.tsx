@@ -490,7 +490,7 @@ describe("rich Codex activity", () => {
     await act(async () => renderer.unmount());
   });
 
-  it("expands a tool group into a bounded scrollable activity list", async () => {
+  it("expands a tool group fully within the outer chat scroll", async () => {
     const activities: AgentActivity[] = [
       {
         type: "command",
@@ -525,13 +525,12 @@ describe("rich Codex activity", () => {
     const disclosure = renderer.root.findByProps({ "aria-expanded": false });
     await act(async () => disclosure.props.onClick());
     expect(renderer.root.findByProps({ "aria-expanded": true })).toBeDefined();
-    const scrollRegion = renderer.root.find(
-      (node) =>
-        typeof node.props.className === "string" &&
-        node.props.className.includes("max-h-64") &&
-        node.props.className.includes("overflow-y-auto"),
+    const renderedActivities = renderer.root.findAllByType(Activity);
+    expect(renderedActivities).toHaveLength(activities.length);
+    const activityList = renderedActivities[0]!.parent!;
+    expect(activityList.props.className).not.toMatch(
+      /max-h-|overflow-y-auto|overscroll-contain/,
     );
-    expect(scrollRegion).toBeDefined();
     expect(JSON.stringify(renderer.toJSON())).toContain("git status --short");
     expect(JSON.stringify(renderer.toJSON())).toContain("pnpm test");
     await act(async () => renderer.unmount());

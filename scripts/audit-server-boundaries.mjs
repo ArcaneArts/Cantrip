@@ -3511,6 +3511,13 @@ function applicationRouteContentClassification(route) {
 }
 
 function workerCommandContentClassification(command) {
+  if (command === "label.generate") {
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "existing owner-bound encrypted chat/task input; worker-only stateless inference; generated title uses row-bound private display-label ciphertext and a rename-cancelling claim",
+    };
+  }
   const native = nativeWorkerCommandContentClassification(command);
   if (native) return native;
   if (command.startsWith("computer-use.preview.")) {

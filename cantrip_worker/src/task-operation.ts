@@ -37,7 +37,9 @@ import {
   taskOperationPrepareRequestSchema,
   taskPlannerOutputJsonSchema,
   taskPlannerResultSchema,
-  TASK_GOAL_PROMPT_LIMIT,
+  TASK_ERROR_MESSAGE_LIMIT,
+  TASK_FINALIZER_GOAL_PROMPT_LIMIT,
+  TASK_NATIVE_GOAL_OBJECTIVE_LIMIT,
   type TaskFinalizerResult,
   type TaskEncryptedOperationStart,
   type TaskGoalSyncContext,
@@ -49,11 +51,13 @@ import {
   type TaskPlanningRoundProtectedContent,
   type TaskProtectedClassification,
   type TaskProtectedContent,
+  type TaskOpaqueContent,
   type TaskStableState,
   type TaskState,
 } from "@cantrip/protocol/tasks";
 
 import type { WorkerEncryptionService } from "./worker-encryption.js";
+import { materializeTaskGoalContext } from "./task-goal-context.js";
 import { protectedAgentRuntimeTelemetry } from "./agent-runtime-telemetry.js";
 
 const PLANNER_RULES = `You are planning a Cantrip Task. Investigate the repository and its effective Policies before proposing architecture. This turn is strictly read-only: do not edit files, mutate Git or GitHub, call side-effecting tools, or implement any part of the plan.
@@ -66,7 +70,7 @@ const FINALIZER_RULES = `You are finalizing a Cantrip Task for implementation. T
 
 Return a complete final implementation plan and a Goal prompt through the supplied structured output. Incorporate every supplied answer and the additional direction, remove unresolved questions, make acceptance criteria explicit, and direct the Goal Agent to finish the whole plan rather than only its first milestone.
 
-Keep the final plan and Goal prompt concise enough that Cantrip can combine them into one objective of at most ${TASK_GOAL_PROMPT_LIMIT.toLocaleString()} characters.
+Keep the Goal prompt at most ${TASK_FINALIZER_GOAL_PROMPT_LIMIT.toLocaleString()} characters. Summarize the objective, constraints, and success criteria; do not copy the full plan into it. Cantrip supplies the complete final plan separately as durable implementation context.
 
 Effective Cantrip Policy summaries are supplied as application context. Prefer the managed Cantrip MCP \`policy_list\` and \`policy_read\` tools when available; otherwise run \`cantrip policy list\` and \`cantrip policy read <policy-key>\`. Read every summary that requires its full current body. Policies may constrain the implementation, but do not copy policy bodies or revision identifiers into the result.`;
 
@@ -77,6 +81,12 @@ export class EncryptedTaskEventSealer {
   readonly #ids = new Map<string, string>();
   readonly #mode: "default" | "goal" | "plan";
   readonly #service: WorkerEncryptionService;
+  #completedRootMessage: {
+    threadId: string;
+    turnId: string;
+    text: string;
+    message: TaskMessageOpaqueContent;
+  } | null = null;
 
   constructor(
     service: WorkerEncryptionService,
@@ -146,7 +156,7 @@ export class EncryptedTaskEventSealer {
       attachmentIds: [],
     };
     try {
-      return {
+      const event = {
         type: "agent.protected-task-message" as const,
         message: taskMessageOpaqueContentSchema.parse({
           id,
@@ -183,9 +193,41 @@ export class EncryptedTaskEventSealer {
           turnId,
         },
       };
+      if (
+        message.phase !== "commentary" &&
+        !message.streaming &&
+        message.agentScope?.isRoot !== false &&
+        message.correlation?.threadId &&
+        turnId
+      ) {
+        this.#completedRootMessage = {
+          threadId: message.correlation.threadId,
+          turnId,
+          text: message.text,
+          message: event.message,
+        };
+      }
+      return event;
     } finally {
       clearSensitiveBytes(component.key);
     }
+  }
+
+  /** Reuse the exact published ciphertext, not a second encryption of its text.
+   * The sealer is scoped to one worker command and its event queue is drained
+   * before the result is sealed. Child, partial and unrelated answers cannot
+   * become the direct Task's completion message. */
+  finalMessageForResult(
+    result: AgentTurnResult,
+  ): TaskMessageOpaqueContent | null {
+    const completed = this.#completedRootMessage;
+    return this.#mode === "default" &&
+      completed &&
+      completed.threadId === result.threadId &&
+      completed.turnId === result.turnId &&
+      completed.text === result.text
+      ? structuredClone(completed.message)
+      : null;
   }
 
   async #protectActivity(
@@ -340,18 +382,14 @@ function parseFinalizerResult(
 function goalObjective(result: TaskFinalizerResult): string {
   const objective = `# Cantrip Task implementation objective
 
-Implement the complete Task plan below. Before making changes, inspect the effective Cantrip Policies supplied by the application. Prefer the managed Cantrip MCP \`policy_list\` and \`policy_read\` tools; use \`cantrip policy list\` and \`cantrip policy read <policy-key>\` as the CLI fallback. Read every policy whose summary requires the full body and follow the current policies throughout implementation.
+Implement the complete approved Task plan supplied as implementation context. Before making changes, inspect the effective Cantrip Policies supplied by the application. Prefer the managed Cantrip MCP \`policy_list\` and \`policy_read\` tools; use \`cantrip policy list\` and \`cantrip policy read <policy-key>\` as the CLI fallback. Read every policy whose summary requires the full body and follow the current policies throughout implementation.
 
 Continue until every acceptance criterion is satisfied or the Goal is genuinely blocked. Keep progress recoverable, validate each completed change, and report the final outcome. Do not stop after only the first milestone.
 
 ## Agent-generated implementation direction
 
-${result.goalPrompt}
-
-## Final implementation plan
-
-${result.finalPlanMarkdown}`;
-  if (objective.length > TASK_GOAL_PROMPT_LIMIT) {
+${result.goalPrompt}`;
+  if (Array.from(objective).length > TASK_NATIVE_GOAL_OBJECTIVE_LIMIT) {
     throw new Error("The encrypted Task Goal objective is too large.");
   }
   return objective;
@@ -512,8 +550,7 @@ export async function prepareEncryptedTaskOperation(input: {
     const occurredAt = new Date().toISOString();
     const error = {
       code: "task-operation-failed",
-      message:
-        "The encrypted Task operation failed. Retry when the worker is ready.",
+      message: "The Task operation failed. You can retry it.",
       operationKind: kind,
       occurredAt,
     };
@@ -826,6 +863,7 @@ export async function executeEncryptedTaskOperation(input: {
   getComponentKey(): { key: Uint8Array; keyRevision: number };
   ownerId: string;
   request: TaskOperationRelayRequest;
+  eventSealer?: EncryptedTaskEventSealer;
   run(input: {
     outputSchema?: JsonObject;
     prompt: string;
@@ -940,6 +978,17 @@ export async function executeEncryptedTaskOperation(input: {
       goalPrompt: objective,
       lastError: null,
     };
+    const failureTask = finalizing
+      ? await protectTaskGoalLaunchFailure({
+          chatId: request.chatId,
+          ownerId: input.ownerId,
+          getComponentKey: () => ({
+            key: new Uint8Array(component.key),
+            keyRevision: component.keyRevision,
+          }),
+          taskContent: taskResult,
+        })
+      : null;
     const goalClassification = objective
       ? {
           chatId: request.chatId,
@@ -947,23 +996,26 @@ export async function executeEncryptedTaskOperation(input: {
           status: "active" as const,
         }
       : null;
-    const assistantMessage = await encryptedMessage({
-      componentKey: component.key,
-      content: finalizerResult
-        ? finalizerResult.finalPlanMarkdown
-        : direct
-          ? rawResult.text || "The Task completed without a message."
-          : plannerMessage(plannerResult!),
-      idempotencyKey: `task-result:${request.operationId}`,
-      keyRevision: component.keyRevision,
-      mode: direct ? "default" : "plan",
-      ownerId: input.ownerId,
-      role: "assistant",
-    });
+    const assistantMessage =
+      (direct ? input.eventSealer?.finalMessageForResult(rawResult) : null) ??
+      (await encryptedMessage({
+        componentKey: component.key,
+        content: finalizerResult
+          ? finalizerResult.finalPlanMarkdown
+          : direct
+            ? rawResult.text || "The Task completed without a message."
+            : plannerMessage(plannerResult!),
+        idempotencyKey: `task-result:${request.operationId}`,
+        keyRevision: component.keyRevision,
+        mode: direct ? "default" : "plan",
+        ownerId: input.ownerId,
+        role: "assistant",
+      }));
     const goal =
       objective && goalClassification
         ? {
             classification: goalClassification,
+            failureTask: failureTask!.task,
             protectedObjective: await encryptTaskGoalObjective({
               ownerId: input.ownerId,
               chatId: request.chatId,
@@ -978,7 +1030,7 @@ export async function executeEncryptedTaskOperation(input: {
             }),
             startMessage: await encryptedMessage({
               componentKey: component.key,
-              content: objective,
+              content: `${objective}\n\n## Final implementation plan\n\n${finalizerResult!.finalPlanMarkdown}`,
               idempotencyKey: `task-goal:${request.operationId}`,
               keyRevision: component.keyRevision,
               mode: "goal",
@@ -1009,12 +1061,78 @@ export async function executeEncryptedTaskOperation(input: {
   }
 }
 
+/** Seal runtime diagnostics on the worker: no plan or error text crosses the server in plaintext. */
+export async function protectTaskGoalLaunchFailure(input: {
+  chatId: string;
+  ownerId: string;
+  getComponentKey(): { key: Uint8Array; keyRevision: number };
+  task?: TaskOpaqueContent;
+  taskContent?: TaskProtectedContent;
+  error?: unknown;
+}) {
+  const component = input.getComponentKey();
+  try {
+    const current =
+      input.taskContent ??
+      (input.task &&
+        (await decryptTaskProtectedContent({
+          ownerId: input.ownerId,
+          chatId: input.chatId,
+          keyRevision: component.keyRevision,
+          componentKey: component.key,
+          encrypted: input.task.protectedContent,
+          publicClassification: input.task.classification,
+        })));
+    if (!current) throw new Error("The finalized Task is unavailable.");
+    const reason =
+      input.error instanceof Error ? input.error.message.trim() : "";
+    const lastError = {
+      code: "task-goal-start-failed",
+      message:
+        `Goal startup failed${reason ? `: ${reason}` : ". Implementation has not started."} You can retry implementation without regenerating the saved plan.`.slice(
+          0,
+          TASK_ERROR_MESSAGE_LIMIT,
+        ),
+      operationKind: "finalize" as const,
+      occurredAt: new Date().toISOString(),
+    };
+    const classification: TaskProtectedClassification = {
+      ...current.classification,
+      state: "failed",
+      stableStateBeforeFailure: "review",
+      activeOperationKind: null,
+      lastError: {
+        code: lastError.code,
+        operationKind: lastError.operationKind,
+        occurredAt: lastError.occurredAt,
+      },
+    };
+    return taskGoalWorkerResultSchema.parse({
+      goal: null,
+      message: null,
+      task: {
+        classification,
+        protectedContent: await encryptTaskProtectedContent({
+          ownerId: input.ownerId,
+          chatId: input.chatId,
+          keyRevision: component.keyRevision,
+          componentKey: component.key,
+          content: { ...current, classification, lastError },
+        }),
+      },
+    });
+  } finally {
+    clearSensitiveBytes(component.key);
+  }
+}
+
 export async function openEncryptedTaskGoalObjective(input: {
   chatId: string;
   getComponentKey(): { key: Uint8Array; keyRevision: number };
   goal: TaskOperationRelayGoal;
   ownerId: string;
   threadId: string | null;
+  codexHome?: string;
 }): Promise<string> {
   if (
     !input.threadId ||
@@ -1029,7 +1147,7 @@ export async function openEncryptedTaskGoalObjective(input: {
     if (component.keyRevision !== input.goal.protectedObjective.keyRevision) {
       throw new Error("The Task encryption key revision is unavailable.");
     }
-    return (
+    const objective = (
       await decryptTaskGoalObjective({
         ownerId: input.ownerId,
         chatId: input.chatId,
@@ -1040,6 +1158,36 @@ export async function openEncryptedTaskGoalObjective(input: {
         publicClassification: input.goal.classification,
       })
     ).objective;
+    if (!input.codexHome) return objective;
+    const message = await decryptTaskMessageProtectedContent({
+      ownerId: input.ownerId,
+      messageId: input.goal.startMessage.id,
+      keyRevision: component.keyRevision,
+      componentKey: component.key,
+      encrypted: input.goal.startMessage.protectedContent,
+      publicClassification: input.goal.startMessage.classification,
+    });
+    const implementationContext = message.content
+      .flatMap((item) =>
+        item &&
+        typeof item === "object" &&
+        "type" in item &&
+        item.type === "text" &&
+        "text" in item &&
+        typeof item.text === "string"
+          ? [item.text]
+          : [],
+      )
+      .join("\n");
+    if (!implementationContext.trim())
+      throw new Error("The Task implementation context is empty.");
+    return await materializeTaskGoalContext({
+      chatId: input.chatId,
+      threadId: input.threadId,
+      codexHome: input.codexHome,
+      objective,
+      implementationContext,
+    });
   } catch {
     throw new Error("Encrypted Task Goal could not be opened.");
   } finally {

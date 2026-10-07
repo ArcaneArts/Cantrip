@@ -426,6 +426,8 @@ import {
   type ProjectTaskPauseUpdate,
 } from "@cantrip/protocol/task-scheduling";
 import {
+  chatFileReferencesRequestContentSchema,
+  chatFileReferencesResultContentSchema,
   explorerOperationRequestContentSchema,
   explorerOperationResultContentSchema,
   standaloneChatFileOperationRequestContentSchema,
@@ -5493,6 +5495,7 @@ export async function createChat(
   paneId?: string,
   target?: ExecutionTarget,
   githubAgentContext?: GithubAgentWorkflowContext,
+  autoTitle = false,
 ) {
   const id = crypto.randomUUID();
   return chatTitleEncryption.open(
@@ -5500,6 +5503,7 @@ export async function createChat(
       await post(`/api/projects/${encodeURIComponent(projectId)}/chats`, {
         id,
         titleProtection: await chatTitleEncryption.protect(id, title),
+        autoTitle,
         ...(worktreeId ? { worktreeId } : {}),
         ...(worktreeMode ? { worktreeMode } : {}),
         ...(paneId ? { paneId } : {}),
@@ -5510,7 +5514,10 @@ export async function createChat(
   );
 }
 
-export async function createStandaloneChat(title = "New chat") {
+export async function createStandaloneChat(
+  title?: string,
+  autoTitle = title === undefined,
+) {
   const id = crypto.randomUUID();
   return chatTitleEncryption.openStandalone(
     standaloneChatWireSummarySchema.parse(
@@ -5518,7 +5525,11 @@ export async function createStandaloneChat(title = "New chat") {
         "/api/chats",
         encryptedStandaloneChatCreateSchema.parse({
           id,
-          titleProtection: await chatTitleEncryption.protect(id, title),
+          titleProtection: await chatTitleEncryption.protect(
+            id,
+            title ?? "New chat",
+          ),
+          autoTitle,
         }),
       ),
     ),
@@ -5527,7 +5538,7 @@ export async function createStandaloneChat(title = "New chat") {
 
 export async function createTask(
   projectId: string,
-  title: string,
+  title: string | undefined,
   worktreeId?: string,
   worktreeMode?: "agent-managed" | "pinned",
   paneId?: string,
@@ -5540,7 +5551,11 @@ export async function createTask(
       chatId,
       planGoalEnabled: false,
       task,
-      titleProtection: await chatTitleEncryption.protect(chatId, title),
+      titleProtection: await chatTitleEncryption.protect(
+        chatId,
+        title ?? "New task",
+      ),
+      autoTitle: title === undefined,
       ...(worktreeId ? { worktreeId } : {}),
       ...(worktreeMode ? { worktreeMode } : {}),
       ...(paneId ? { paneId } : {}),
@@ -7084,6 +7099,42 @@ async function executeStandaloneChatFileOperation(
   });
   if (!outcome.ok) throw new Error(outcome.error);
   return standaloneChatFileOperationResultContentSchema.parse(outcome.result);
+}
+
+export async function getChatFileReferences(
+  chatId: string,
+  references: string[],
+) {
+  const operationId = crypto.randomUUID();
+  const context = {
+    surfaceKind: "chat-files" as const,
+    surfaceId: chatId,
+    operationId,
+    direction: "request" as const,
+    sequence: 0,
+  };
+  const protectedRequest = await protectSurfaceStreamContent({
+    context,
+    content: { type: "chat.files.references", references },
+    schema: chatFileReferencesRequestContentSchema,
+  });
+  const wire = surfaceStreamWireResponseSchema.parse(
+    await request(`/api/chats/${encodeURIComponent(chatId)}/file-references`, {
+      method: "POST",
+      body: JSON.stringify({ operationId, sequence: 0, protectedRequest }),
+    }),
+  );
+  if (wire.operationId !== operationId || wire.sequence !== 0)
+    throw new Error("Chat returned stale reference metadata.");
+  const outcome = await openSurfaceStreamContent({
+    context: { ...context, direction: "response" },
+    opaque: wire.protectedResponse,
+    schema: surfaceOperationOutcomeContentSchema,
+  });
+  if (!outcome.ok) throw new Error(outcome.error);
+  if (outcome.result.type !== "chat.files.references")
+    throw new Error("Chat returned unexpected reference metadata.");
+  return chatFileReferencesResultContentSchema.parse(outcome.result.value);
 }
 
 export async function getStandaloneChatFileDirectory(

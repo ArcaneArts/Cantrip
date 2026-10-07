@@ -28,6 +28,7 @@ import {
 
 import {
   acquireChatLogicalBranchLease,
+  LogicalBranchLeaseBusyError,
   LogicalBranchLeaseConflictError,
   releaseChatLogicalBranchLease,
 } from "../logical-branch-leases.js";
@@ -136,6 +137,12 @@ export interface ChatWorktreeTransitionResult {
 }
 
 export class ExecutionLaneConflictError extends Error {}
+export class ExecutionLaneBusyError extends ExecutionLaneConflictError {
+  constructor(message: string) {
+    super(message);
+    this.name = "ExecutionLaneBusyError";
+  }
+}
 
 export interface ChatExecutionLaneRepositoryCollaborators {
   getChatExecutionContext(
@@ -506,7 +513,7 @@ export class ChatExecutionLaneRepository {
           )
           .returning({ id: schema.chats.id });
         if (!claimed[0]) {
-          throw new ExecutionLaneConflictError(
+          throw new ExecutionLaneBusyError(
             "This chat already has an active execution.",
           );
         }
@@ -621,6 +628,9 @@ export class ChatExecutionLaneRepository {
       });
     } catch (error) {
       if (error instanceof ExecutionLaneConflictError) throw error;
+      if (error instanceof LogicalBranchLeaseBusyError) {
+        throw new ExecutionLaneBusyError(error.message);
+      }
       if (error instanceof LogicalBranchLeaseConflictError) {
         throw new ExecutionLaneConflictError(error.message);
       }

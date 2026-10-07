@@ -48,6 +48,7 @@ export const encryptedChatCreateSchema = chatPlacementCreateSchema
   .safeExtend({
     id: z.string().uuid(),
     titleProtection: privateDisplayLabelOpaqueSchema,
+    autoTitle: z.boolean().optional(),
     githubAgentContext: githubAgentWorkflowContextSchema.optional(),
   })
   .strict()
@@ -102,7 +103,10 @@ export const taskCreateSchema = taskCreateBaseSchema
   .superRefine(refineInitialTask);
 
 export const encryptedTaskCreateSchema = taskCreateBaseSchema
-  .safeExtend({ titleProtection: privateDisplayLabelOpaqueSchema })
+  .safeExtend({
+    titleProtection: privateDisplayLabelOpaqueSchema,
+    autoTitle: z.boolean().optional(),
+  })
   .strict()
   .superRefine((input, context) => {
     refineInitialTask(input, context);
@@ -216,6 +220,7 @@ export const encryptedStandaloneChatCreateSchema = z
   .object({
     id: standaloneChatIdentitySchema,
     titleProtection: privateDisplayLabelOpaqueSchema,
+    autoTitle: z.boolean().optional(),
   })
   .strict()
   .refine(

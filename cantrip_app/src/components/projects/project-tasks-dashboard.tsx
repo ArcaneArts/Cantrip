@@ -20,7 +20,7 @@ import {
   Settings2,
   Trash2,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 
 import { summarizePlanProgress } from "@/components/chat/chat-plan-progress";
 import {
@@ -30,7 +30,10 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { TooltipButton } from "@/components/ui/tooltip";
 import { PersistentTaskViews } from "@/components/tasks/persistent-task-views";
+import { TaskDialog } from "@/components/tasks/task-dialog";
+import type { TaskSurfaceHandle } from "@/components/tasks/task-surface";
 import { taskCanBeDeleted } from "@/components/tasks/task-deletion";
 import {
   EmptyState,
@@ -497,9 +500,9 @@ function WorkloadList({
 
 export function projectTaskDashboardQueriesEnabled(
   active: boolean,
-  activeTaskChatId: string | null,
+  _activeTaskChatId: string | null,
 ): boolean {
-  return active && activeTaskChatId === null;
+  return active;
 }
 
 export function ProjectTasksDashboard({
@@ -515,6 +518,8 @@ export function ProjectTasksDashboard({
   projectId,
   settings,
   taskCreationError,
+  taskChatContent,
+  taskDialogActions,
   workers,
 }: {
   active: boolean;
@@ -529,9 +534,12 @@ export function ProjectTasksDashboard({
   projectId: string;
   settings: SettingsBundle | undefined;
   taskCreationError: unknown;
+  taskChatContent?: ReactNode;
+  taskDialogActions?: ReactNode;
   workers: WorkerSummary[];
 }) {
   const queryClient = useQueryClient();
+  const taskSurfaceRef = useRef<TaskSurfaceHandle>(null);
   const [deleteTarget, setDeleteTarget] = useState<{
     chatId: string;
     title: string;
@@ -650,31 +658,54 @@ export function ProjectTasksDashboard({
     />
   );
 
-  if (activeTask) {
-    return (
-      <div className="flex min-h-0 flex-1 flex-col">
-        <PersistentTaskViews
-          activeTask={{ chat: activeTask, worker: activeTaskWorker }}
-          deleting={deleteTaskMutation.isPending}
-          settings={settings}
-          onClose={onCloseTask}
-          onDelete={() => requestDeleteTask(activeTask.id, activeTask.title)}
-          onRename={onRenameTask}
-        />
-        {deleteTaskDialog}
-      </div>
-    );
-  }
+  const renderDashboard = (list: ReactNode) => (
+    <>
+      {list}
+      <TaskDialog
+        key={activeTask?.id}
+        beforeClose={() => taskSurfaceRef.current?.prepareClose()}
+        headerActions={taskDialogActions}
+        onClose={onCloseTask}
+        open={active && Boolean(activeTask)}
+        title={activeTask?.title ?? "Task"}
+      >
+        <div
+          className={cn(
+            "min-h-0 flex-1 flex-col",
+            taskChatContent ? "hidden" : "flex",
+          )}
+          aria-hidden={Boolean(taskChatContent)}
+        >
+          <PersistentTaskViews
+            activeTask={
+              activeTask ? { chat: activeTask, worker: activeTaskWorker } : null
+            }
+            deleting={deleteTaskMutation.isPending}
+            settings={settings}
+            surfaceRef={taskSurfaceRef}
+            onDelete={
+              activeTask
+                ? () => requestDeleteTask(activeTask.id, activeTask.title)
+                : undefined
+            }
+            onRename={onRenameTask}
+          />
+        </div>
+        {taskChatContent}
+      </TaskDialog>
+      {deleteTaskDialog}
+    </>
+  );
 
   if (taskWorkers.isLoading) {
-    return (
+    return renderDashboard(
       <div className="grid min-h-0 flex-1 place-items-center text-muted-foreground">
         <Loader2 className="size-5 animate-spin" />
-      </div>
+      </div>,
     );
   }
   if (taskWorkers.isError) {
-    return (
+    return renderDashboard(
       <EmptyState>
         <EmptyStateContent>
           <EmptyStateIcon>
@@ -695,11 +726,11 @@ export function ProjectTasksDashboard({
             </Button>
           </EmptyStateActions>
         </EmptyStateContent>
-      </EmptyState>
+      </EmptyState>,
     );
   }
   if ((taskWorkers.data?.length ?? 0) === 0) {
-    return (
+    return renderDashboard(
       <EmptyState>
         <EmptyStateContent>
           <EmptyStateIcon>
@@ -714,52 +745,55 @@ export function ProjectTasksDashboard({
             <Button onClick={onConfigureWorkers}>Configure Task Workers</Button>
           </EmptyStateActions>
         </EmptyStateContent>
-      </EmptyState>
+      </EmptyState>,
     );
   }
   if (workload.isLoading || pauseState.isLoading) {
-    return (
+    return renderDashboard(
       <div className="grid min-h-0 flex-1 place-items-center text-muted-foreground">
         <Loader2 className="size-5 animate-spin" />
-      </div>
+      </div>,
     );
   }
   const error = workload.error ?? pauseState.error ?? taskWorkers.error;
-  return (
+  return renderDashboard(
     <div className="min-h-0 flex-1 overflow-y-auto">
       <div
         className="flex min-h-full w-full flex-col px-4 py-5 sm:px-6 sm:py-7"
         data-content-gutter="standard"
       >
-        <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <ClipboardList className="size-5 text-muted-foreground" />
-              <h1 className="text-lg font-semibold tracking-tight">Tasks</h1>
-            </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {pauseState.data?.paused
-                ? "This project workload is paused. Running turns are parked and capacity is released."
-                : "Needs-attention Tasks are first; workers claim eligible queued Tasks FIFO."}
-            </p>
+        <header className="mb-5 flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <ClipboardList className="size-5 shrink-0 text-muted-foreground" />
+            <h1 className="truncate text-lg font-semibold tracking-tight">
+              Tasks
+            </h1>
           </div>
-          <div className="flex items-center gap-2">
-            <Button pending={creatingTask} onClick={onCreateTask}>
-              <Plus className="size-4" />
-              Add Task
-            </Button>
-            <Button
+          <div className="ml-auto flex shrink-0 items-center gap-1">
+            <TooltipButton
+              className="size-8"
+              pending={creatingTask}
+              size="icon"
+              tooltip="Add Task"
+              variant="ghost"
+              onClick={onCreateTask}
+            >
+              <Plus aria-hidden="true" className="size-4" />
+            </TooltipButton>
+            <TooltipButton
+              className="size-8"
               pending={pauseMutation.isPending}
-              variant="outline"
+              size="icon"
+              tooltip={pauseState.data?.paused ? "Resume Tasks" : "Pause Tasks"}
+              variant="ghost"
               onClick={() => pauseMutation.mutate(!pauseState.data?.paused)}
             >
               {pauseState.data?.paused ? (
-                <Play className="size-4" />
+                <Play aria-hidden="true" className="size-4" />
               ) : (
-                <Pause className="size-4" />
+                <Pause aria-hidden="true" className="size-4" />
               )}
-              {pauseState.data?.paused ? "Resume Tasks" : "Pause Tasks"}
-            </Button>
+            </TooltipButton>
           </div>
         </header>
         {error || pauseMutation.isError || taskCreationError ? (
@@ -813,7 +847,6 @@ export function ProjectTasksDashboard({
           </div>
         )}
       </div>
-      {deleteTaskDialog}
-    </div>
+    </div>,
   );
 }

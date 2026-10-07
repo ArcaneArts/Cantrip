@@ -1,4 +1,5 @@
 import { BrowserSurfaceWebRuntime } from "./browser/surface-web-runtime.js";
+import { generatePrivateLabel } from "./automatic-labeling.js";
 import { createNativeHistoryOutputModeResolver } from "./native-history-output-mode.js";
 import { managedNativePathsMatch } from "./codex/managed-native-policy.js";
 import { completeManagedRuntimeHandoff } from "./codex/managed-runtime-handoff-completion.js";
@@ -106,6 +107,8 @@ import {
   runConfigurationRuntimeOutputContentSchema,
 } from "@cantrip/protocol/run-configuration-runtime";
 import {
+  chatFileReferencesRequestContentSchema,
+  chatFileReferencesResultContentSchema,
   explorerOperationRequestContentSchema,
   explorerOperationResultContentSchema,
   standaloneChatFileOperationRequestContentSchema,
@@ -142,6 +145,7 @@ import {
 } from "./attachment-encryption.js";
 import { ExternalChatAttachmentStagingStore } from "./external-chat-attachments.js";
 import { ChatRelocationHydrationStore } from "./chat-relocation-store.js";
+import { chatFileReferences } from "./chat-file-references.js";
 import { ProjectExportManager } from "./project-export-manager.js";
 import { ProjectAutomationScheduler } from "./automation-scheduler.js";
 import { protectProjectAutomationDispatch } from "./automation-encryption.js";
@@ -343,6 +347,7 @@ import {
   openTaskRelocationPayload,
   openEncryptedTaskGoalObjective,
   protectTaskGoalResult,
+  protectTaskGoalLaunchFailure,
 } from "./task-operation.js";
 import { discoverOllamaModels } from "./ollama.js";
 import {
@@ -3492,6 +3497,21 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       return runtimeProvider;
     };
     switch (command.type) {
+      case "label.generate":
+        return generatePrivateLabel(
+          command,
+          workerEncryption,
+          (instructions, input) =>
+            runtimeFor({
+              model: command.model,
+              provider: provider(),
+            }).runLabelInference({
+              model: command.model,
+              provider: provider(),
+              instructions,
+              input,
+            }),
+        );
       case "worker-link.identity.resolve":
         return workerLinkIdentityResolveResultSchema.parse({
           serverId: workerEncryption.serverIdentity(),
@@ -4102,6 +4122,55 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return chatScratch.delete(command);
       case "chat.scratch.reconcile":
         return chatScratch.reconcile(command.roots);
+      case "chat.files.references": {
+        const context = {
+          serverId: command.serverId,
+          surfaceKind: "chat-files" as const,
+          surfaceId: command.chatId,
+          operationId: command.operationId,
+          direction: "request" as const,
+          sequence: command.sequence,
+        };
+        surfaceStreamReplay.reserve(context);
+        const request = await openWorkerSurfaceStreamContent({
+          context,
+          opaque: command.protectedRequest,
+          schema: chatFileReferencesRequestContentSchema,
+          service: workerEncryption,
+        });
+        let outcome: SurfaceOperationOutcomeContent;
+        try {
+          outcome = {
+            ok: true,
+            result: {
+              type: "chat.files.references",
+              value: chatFileReferencesResultContentSchema.parse(
+                await chatFileReferences(command.root, request.references),
+              ),
+            },
+          };
+        } catch (error) {
+          outcome = {
+            ok: false,
+            error:
+              error instanceof Error
+                ? error.message.slice(0, 2_000)
+                : "Could not resolve referenced paths.",
+          };
+        }
+        const protectedResponse = await protectWorkerSurfaceStreamContent({
+          context: { ...context, direction: "response" },
+          content: outcome,
+          schema: surfaceOperationOutcomeContentSchema,
+          service: workerEncryption,
+        });
+        surfaceStreamReplay.accept(context, true);
+        return surfaceStreamWireResponseSchema.parse({
+          operationId: command.operationId,
+          sequence: command.sequence,
+          protectedResponse,
+        });
+      }
       case "chat.scratch.files.operation": {
         const resolvedRoot = await chatScratch.resolve(command);
         if (resolvedRoot.path !== command.root) {
@@ -7642,6 +7711,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         };
         if (command.resultMode.kind === "task-encrypted") {
           const result = await executeEncryptedTaskOperation({
+            eventSealer: encryptedTaskSealer ?? undefined,
             getComponentKey: () =>
               workerEncryption.componentKey("task-content"),
             ownerId: workerEncryption.ownerId(),
@@ -7995,46 +8065,59 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       }
       case "chat.goal.create": {
         const encryptedTaskGoal = typeof command.objective !== "string";
-        const objective =
-          typeof command.objective === "string"
-            ? command.objective
-            : await openEncryptedTaskGoalObjective({
+        try {
+          const prepared = await prepareManagedMutation(command, provider());
+          const runtime =
+            prepared?.runtime ??
+            currentManagedRuntime(command.chatId, command.threadId) ??
+            runtimeFor({
+              ...managedRuntimeTarget(command),
+              model: command.model,
+              provider: provider(),
+            });
+          const objective =
+            typeof command.objective === "string"
+              ? command.objective
+              : await openEncryptedTaskGoalObjective({
+                  chatId: command.chatId,
+                  getComponentKey: () =>
+                    workerEncryption.componentKey("task-content"),
+                  goal: command.objective,
+                  ownerId: workerEncryption.ownerId(),
+                  threadId: command.threadId,
+                  codexHome: runtime.managedHistoryHome,
+                });
+          const result = await runtime.createGoal({
+            operationId: command.operationId,
+            cwd: command.cwd,
+            model: command.model,
+            objective,
+            permissionProfileId: command.permissionProfileId,
+            provider: provider(),
+            threadId: prepared?.threadId ?? command.threadId,
+            tokenBudget: command.tokenBudget,
+          });
+          return encryptedTaskGoal
+            ? protectTaskGoalResult({
                 chatId: command.chatId,
+                context: command.taskContext!,
                 getComponentKey: () =>
                   workerEncryption.componentKey("task-content"),
-                goal: command.objective,
                 ownerId: workerEncryption.ownerId(),
-                threadId: command.threadId,
-              });
-        const prepared = await prepareManagedMutation(command, provider());
-        const result = await (
-          prepared?.runtime ??
-          currentManagedRuntime(command.chatId, command.threadId) ??
-          runtimeFor({
-            ...managedRuntimeTarget(command),
-            model: command.model,
-            provider: provider(),
-          })
-        ).createGoal({
-          operationId: command.operationId,
-          cwd: command.cwd,
-          model: command.model,
-          objective,
-          permissionProfileId: command.permissionProfileId,
-          provider: provider(),
-          threadId: prepared?.threadId ?? command.threadId,
-          tokenBudget: command.tokenBudget,
-        });
-        return encryptedTaskGoal
-          ? protectTaskGoalResult({
-              chatId: command.chatId,
-              context: command.taskContext!,
-              getComponentKey: () =>
-                workerEncryption.componentKey("task-content"),
-              ownerId: workerEncryption.ownerId(),
-              rawResult: result,
-            })
-          : result;
+                rawResult: result,
+              })
+            : result;
+        } catch (error) {
+          if (!encryptedTaskGoal || !command.taskContext) throw error;
+          return protectTaskGoalLaunchFailure({
+            chatId: command.chatId,
+            task: command.taskContext.task,
+            error,
+            getComponentKey: () =>
+              workerEncryption.componentKey("task-content"),
+            ownerId: workerEncryption.ownerId(),
+          });
+        }
       }
       case "chat.goal.update": {
         const prepared = await prepareManagedMutation(command, provider());
