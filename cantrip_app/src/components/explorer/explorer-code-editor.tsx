@@ -73,6 +73,7 @@ const SHARED_TRANSPORT_RECOVERY_FAILED_MESSAGE =
 export const EXPLORER_CODE_RETRY_BASE_DELAY_MS = 500;
 export const EXPLORER_CODE_RETRY_MAX_DELAY_MS = 15_000;
 export const EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT = 6;
+export const EXPLORER_CODE_SESSION_RECOVERY_LIMIT = 3;
 export const EXPLORER_CODE_EDITOR_CLASS_NAME =
   "relative flex min-h-0 flex-1 overflow-hidden";
 export const EXPLORER_CODE_LOADING_COVER_CLASS_NAME =
@@ -250,6 +251,7 @@ export function ExplorerCodeEditor({
   const appearanceRef = useRef(appearance);
   const connectionInFlightRef = useRef(false);
   const connectionRetryCountRef = useRef(0);
+  const sessionRecoveryCountRef = useRef(0);
   const connectionRetryableRef = useRef(false);
   const connectionStartedRef = useRef(false);
   const connectionRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -705,6 +707,7 @@ export function ExplorerCodeEditor({
 
   useEffect(() => {
     connectionRetryCountRef.current = 0;
+    sessionRecoveryCountRef.current = 0;
     connectionRetryableRef.current = false;
     connectionStartedRef.current = false;
     connectionInFlightRef.current = false;
@@ -1237,9 +1240,36 @@ export function ExplorerCodeEditor({
         current = await renewProtectedExplorerCodeSessionAttachment(current, {
           signal: AbortSignal.timeout(10_000),
         });
+        if (cancelled) return;
+        sessionRecoveryCountRef.current = 0;
         schedule();
       } catch (renewalError) {
         if (cancelled) return;
+        const missingSession =
+          renewalError instanceof CantripApiError &&
+          renewalError.status === 404 &&
+          renewalError.message === "Code session attachment not found.";
+        if (missingSession) {
+          // A lost server lease cannot be revived by reloading its old route.
+          // Retire it through the serialized lifecycle and acquire a fresh
+          // session, just as Retry does, while retaining the latest file intent.
+          setReadyKey(null);
+          setPreferredAttachment(null);
+          const canRecover =
+            sessionRecoveryCountRef.current <
+            EXPLORER_CODE_SESSION_RECOVERY_LIMIT;
+          connectionRetryableRef.current = canRecover;
+          if (canRecover) {
+            sessionRecoveryCountRef.current += 1;
+            setError(null);
+            requestConnectionRetry(bindingKey);
+          } else {
+            setError(
+              "Cantrip Code lost its session after three recovery attempts. Retry to reconnect this editor.",
+            );
+          }
+          return;
+        }
         const authoritative =
           renewalError instanceof CantripApiError &&
           [401, 403, 404, 409, 410].includes(renewalError.status);
@@ -1268,7 +1298,7 @@ export function ExplorerCodeEditor({
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [closing, preferredAttachment]);
+  }, [bindingKey, closing, preferredAttachment, requestConnectionRetry]);
 
   useEffect(() => {
     // Replacing a failed startup route consumes the existing retry budget.
