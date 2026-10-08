@@ -1,9 +1,87 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import TestRenderer, { act } from "react-test-renderer";
+import { describe, expect, it, vi } from "vitest";
 
 import { ChatRunStatus } from "./chat-run-status";
 
 describe("ChatRunStatus", () => {
+  it.each([
+    { automationPaused: false, staleActivity: false },
+    { automationPaused: true, staleActivity: false },
+    { automationPaused: false, staleActivity: true },
+    { automationPaused: true, staleActivity: true },
+  ])(
+    "shows failure with safe guidance for %j",
+    ({ automationPaused, staleActivity }) => {
+      const markup = renderToStaticMarkup(
+        <ChatRunStatus
+          automationPaused={automationPaused}
+          hasLiveActivity={staleActivity}
+          hasStreamingResponse={staleActivity}
+          inferenceProgress={null}
+          syncingCodeGraph={staleActivity}
+          status="failed"
+          waitingForPlanAnswer={staleActivity}
+        />,
+      );
+      expect(markup).toContain('role="alert"');
+      expect(markup).toContain("Last turn failed");
+      expect(markup).toContain("Review the conversation");
+      expect(markup).toContain("before sending a follow-up");
+      expect(markup).not.toContain("Working...");
+      expect(markup).not.toContain("Responding...");
+      expect(markup).not.toContain("<button");
+    },
+  );
+
+  it("tracks canonical status across recovery and remount without resending", async () => {
+    (
+      globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = true;
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    let renderer: TestRenderer.ReactTestRenderer | undefined;
+    const view = (status: "failed" | "idle" | "running") => (
+      <ChatRunStatus
+        automationPaused={false}
+        hasLiveActivity={false}
+        hasStreamingResponse={false}
+        inferenceProgress={null}
+        syncingCodeGraph={false}
+        status={status}
+        waitingForPlanAnswer={false}
+      />
+    );
+    try {
+      await act(async () => {
+        renderer = TestRenderer.create(view("failed"));
+      });
+      expect(renderer!.root.findByProps({ role: "alert" })).toBeDefined();
+      await act(async () => {
+        renderer!.update(view("running"));
+      });
+      expect(renderer!.root.findAllByProps({ role: "alert" })).toHaveLength(0);
+      expect(JSON.stringify(renderer!.toJSON())).toContain("Working...");
+      await act(async () => {
+        renderer!.update(view("idle"));
+      });
+      expect(renderer!.toJSON()).toBeNull();
+      await act(async () => {
+        renderer!.unmount();
+      });
+      await act(async () => {
+        renderer = TestRenderer.create(view("failed"));
+      });
+      expect(renderer!.root.findByProps({ role: "alert" })).toBeDefined();
+      expect(fetch).not.toHaveBeenCalled();
+    } finally {
+      await act(async () => {
+        renderer?.unmount();
+      });
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("renders active work as a spinner-free shimmering label", () => {
     const markup = renderToStaticMarkup(
       <ChatRunStatus
