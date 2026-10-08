@@ -1,6 +1,6 @@
 import type { AgentActivity, ChatMessage } from "@cantrip/protocol";
 import { Bot, Check, Copy, GitFork, Loader2, Pencil, User } from "lucide-react";
-import { memo, type FormEvent, type RefObject } from "react";
+import { memo, useMemo, type FormEvent, type RefObject } from "react";
 
 import {
   ActivityGroup,
@@ -23,6 +23,10 @@ import { formatTurnMetadata } from "@/components/chat/timeline";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import type { NativeTurnSettingsEvidence } from "@/lib/native-turn-settings-evidence";
+import { transcriptModelLabels } from "./transcript-model-labels";
+
+const noNativeTurnSettings: readonly NativeTurnSettingsEvidence[] = [];
 
 export interface EditingSentMessage {
   error: string | null;
@@ -111,6 +115,7 @@ export interface ChatTranscriptEntriesProps {
   editedMessageRef: RefObject<HTMLTextAreaElement | null>;
   editingSentMessage: EditingSentMessage | null;
   entries: readonly AgentTranscriptEntry[];
+  nativeTurnSettings?: readonly NativeTurnSettingsEvidence[];
   forkPending: boolean;
   latestEditableMessageId: string | null;
   latestLiveActivityGroupKey: string | null;
@@ -132,6 +137,7 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
   editedMessageRef,
   editingSentMessage,
   entries,
+  nativeTurnSettings = noNativeTurnSettings,
   forkPending,
   latestEditableMessageId,
   latestLiveActivityGroupKey,
@@ -147,6 +153,10 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
   onViewTrajectory,
 }: ChatTranscriptEntriesProps) {
   const editedFiles = editedFilesByAssistantMessage(entries);
+  const modelLabels = useMemo(
+    () => transcriptModelLabels(entries, nativeTurnSettings),
+    [entries, nativeTurnSettings],
+  );
   return entries.map((transcriptEntry) => {
     if (transcriptEntry.type === "agent") {
       if (!onViewSubagent) return null;
@@ -374,12 +384,12 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
               <MessageFileSummary model={fileSummary} onOpenFile={onOpenFile} />
             )
           ) : null}
-          {user && message.providerName ? (
-            <p className="mt-1.5 truncate text-[10px] text-muted-foreground">
-              {message.providerName}
-              {message.providerModelName
-                ? " · " + message.providerModelName
-                : ""}
+          {user && modelLabels.has(message.id) ? (
+            <p
+              data-slot="turn-model-label"
+              className="mt-1.5 truncate text-[10px] text-muted-foreground"
+            >
+              {modelLabels.get(message.id)}
             </p>
           ) : null}
           {assistantText ? (

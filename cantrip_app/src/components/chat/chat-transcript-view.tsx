@@ -367,6 +367,7 @@ export function ChatTranscriptView({
             editedMessageRef={editedMessageRef}
             editingSentMessage={editingSentMessage}
             entries={transcriptEntries}
+            nativeTurnSettings={messages.nativeTurnSettings}
             forkPending={fork.isPending}
             latestEditableMessageId={latestEditableMessage?.id ?? null}
             latestLiveActivityGroupKey={latestLiveActivityGroupKey}
