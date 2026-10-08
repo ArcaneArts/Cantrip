@@ -267,6 +267,7 @@ export function installChatCustomizationRoutes(
             scope,
             protectedRequest: input.data.protectedRequest,
             cwd: context.cwd,
+            threadId: context.threadId,
             model: runtime.model,
             provider: runtime.provider,
           }),
