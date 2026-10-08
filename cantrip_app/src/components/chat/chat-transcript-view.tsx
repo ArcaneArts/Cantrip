@@ -7,6 +7,7 @@ import {
   Plus,
   WandSparkles,
 } from "lucide-react";
+import { useLayoutEffect, useRef, useState } from "react";
 import {
   AttachmentPreview,
   AttachmentViewerDialog,
@@ -224,6 +225,18 @@ export function ChatTranscriptView({
     viewTurnTrajectory,
     viewingAttachment,
   } = controller;
+  const composerContainerRef = useRef<HTMLFormElement>(null);
+  const [composerHeight, setComposerHeight] = useState(0);
+  useLayoutEffect(() => {
+    const composer = composerContainerRef.current;
+    if (!composer) return;
+    const measure = () =>
+      setComposerHeight(Math.ceil(composer.getBoundingClientRect().height));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(composer, { box: "border-box" });
+    return () => observer.disconnect();
+  }, []);
   return (
     <div
       className="relative flex min-h-0 flex-1 flex-col overflow-visible transition-[padding-right] duration-150 ease-out motion-reduce:transition-none"
@@ -296,7 +309,7 @@ export function ChatTranscriptView({
         ref={transcriptViewportRef}
         className={cn(
           "chat-message-scroll flex-1 overflow-y-auto px-4 pt-6 sm:px-8 md:px-10",
-          effectiveInspectOnly ? "pb-10" : "pb-60",
+          effectiveInspectOnly && "pb-10",
         )}
         onScroll={handleChatTranscriptScroll}
       >
@@ -304,6 +317,13 @@ export function ChatTranscriptView({
           ref={transcriptContentRef}
           className="flex w-full flex-col gap-5"
           data-content-gutter="chat"
+          // Keep this inset inside the observed content so sticky scrolling
+          // follows height changes in the Goal card and other composer panels.
+          style={{
+            paddingBottom: effectiveInspectOnly
+              ? undefined
+              : `max(15rem, calc(${composerHeight}px + 1.5rem))`,
+          }}
         >
           {messages.hasOlder ? (
             <div className="flex justify-center">
@@ -394,6 +414,7 @@ export function ChatTranscriptView({
         style={{ right: sidePanelWidth }}
       />
       <form
+        ref={composerContainerRef}
         onSubmit={submit}
         className={cn(
           "pointer-events-none absolute bottom-0 left-0 z-20 px-4 pb-3 transition-[right] duration-150 ease-out motion-reduce:transition-none sm:px-8 sm:pb-4 md:px-10",
