@@ -706,6 +706,7 @@ export function GitPatchView({
           disabled={!hunkCount}
           onClick={() => navigateHunk(-1)}
           size="icon"
+          aria-label="Previous change"
           title="Previous change"
           variant="ghost"
         >
@@ -716,6 +717,7 @@ export function GitPatchView({
           disabled={!hunkCount}
           onClick={() => navigateHunk(1)}
           size="icon"
+          aria-label="Next change"
           title="Next change"
           variant="ghost"
         >
@@ -762,6 +764,7 @@ export function GitPatchView({
             className="size-7"
             onClick={openFile}
             size="icon"
+            aria-label={onOpenFile ? "Open file" : "Open file on GitHub"}
             title={onOpenFile ? "Open file" : "Open file on GitHub"}
             variant="ghost"
           >
@@ -772,6 +775,7 @@ export function GitPatchView({
           className="size-7"
           onClick={() => void copy("path", path)}
           size="icon"
+          aria-label="Copy path"
           title="Copy path"
           variant="ghost"
         >
@@ -786,6 +790,7 @@ export function GitPatchView({
           disabled={!patch}
           onClick={() => void copy("patch", patch ?? "")}
           size="icon"
+          aria-label="Copy patch"
           title="Copy patch"
           variant="ghost"
         >
