@@ -2713,6 +2713,7 @@ describe("Cantrip Code supervisor", () => {
       }),
     );
     await expect(themeUpdate).resolves.toMatchObject({ status: "running" });
+    expect(supervisor.proxyTarget(sessionId).appearance).toBe("light");
     expect(
       JSON.parse(await readFile(new URL(target.workspaceUri), "utf8")).settings,
     ).toMatchObject({

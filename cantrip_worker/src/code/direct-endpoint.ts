@@ -1690,6 +1690,7 @@ export class CodeDirectEndpointManager {
             target,
             publicBasePath(request, basePath),
             proxy.connectionToken,
+            proxy.appearance,
           ),
         },
         (incoming) => {
@@ -2394,6 +2395,7 @@ export class CodeDirectEndpointManager {
           target,
           publicBasePath(request, basePath),
           proxy.connectionToken,
+          proxy.appearance,
         ),
         maxPayload: CODE_MAX_WEBSOCKET_MESSAGE_BYTES,
       });

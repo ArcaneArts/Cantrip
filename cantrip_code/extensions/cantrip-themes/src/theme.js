@@ -27,9 +27,7 @@ async function syncConfiguredColorTheme(
   );
   if (!theme) return false;
   const current = workbenchConfiguration.inspect("colorTheme")?.workspaceValue;
-  if (current === theme) {
-    await workbenchConfiguration.update("colorTheme", undefined, target);
-  }
+  if (current === theme) return true;
   await workbenchConfiguration.update("colorTheme", theme, target);
   return true;
 }
