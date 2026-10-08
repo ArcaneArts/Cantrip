@@ -176,6 +176,19 @@ export const encryptedChatPromptSubmitResultSchema = z.discriminatedUnion(
   ],
 );
 
+/** Task conversations use the same composer transport, but persist Task-domain
+ * ciphertext and return that domain explicitly to the trusted client. */
+export const encryptedConversationPromptSubmitResultSchema = z.union([
+  z
+    .object({
+      status: z.literal("started"),
+      kind: z.literal("task-encrypted"),
+      message: taskMessageOpaqueSummarySchema,
+    })
+    .strict(),
+  encryptedChatPromptSubmitResultSchema,
+]);
+
 export const chatTurnCreateSchema = z
   .object({
     text: z.string().trim().max(100_000).default(""),

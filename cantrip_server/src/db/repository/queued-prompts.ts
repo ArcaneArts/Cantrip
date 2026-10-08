@@ -152,7 +152,9 @@ export class QueuedPromptRepository {
         and(eq(schema.chats.id, chatId), eq(schema.chats.ownerId, ownerId)),
       )
       .limit(1);
-    if (!chat[0] || chat[0].experience !== "agent") return null;
+    // Both agent and Task composers submit opaque Chat-domain queue input.
+    // Task dispatch re-encrypts the pending message before persisting it.
+    if (!chat[0]) return null;
     if (
       chat[0].contextKind === "standalone" &&
       (prompt.classification.mode !== "default" ||

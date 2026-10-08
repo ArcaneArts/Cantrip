@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   encryptedChatPromptSubmitResultSchema,
+  encryptedConversationPromptSubmitResultSchema,
   encryptedChatTurnCreateSchema,
 } from "@cantrip/protocol";
 import type { FastifyInstance, FastifyReply } from "fastify";
@@ -33,6 +34,7 @@ export interface ChatTurnSubmissionRouteDependencies {
     | "getEncryptedQueuedPrompt"
     | "getChatExecutionContext"
     | "getEncryptedMessageByIdempotencyKey"
+    | "getTaskMessageByIdempotencyKey"
     | "getLatestEncryptedUserMessage"
     | "listEncryptedQueuedPrompts"
   >;
@@ -82,20 +84,20 @@ export function installChatTurnSubmissionRoutes(
       if (!context) {
         return reply.code(404).send({ error: "Chat source not found" });
       }
-      if (context.experience === "task") {
-        return reply.code(409).send({
-          error: "Task turns must use the encrypted Task operation flow.",
-        });
-      }
-      const existing = await repository.getEncryptedMessageByIdempotencyKey(
+      const taskConversation = context.experience === "task";
+      const getMessage = taskConversation
+        ? repository.getTaskMessageByIdempotencyKey.bind(repository)
+        : repository.getEncryptedMessageByIdempotencyKey.bind(repository);
+      const existing = await getMessage(
         applicationOwnerId(),
         context.chatId,
         input.data.message.idempotencyKey,
       );
       if (existing) {
         return reply.send(
-          encryptedChatPromptSubmitResultSchema.parse({
+          encryptedConversationPromptSubmitResultSchema.parse({
             status: "started",
+            ...(taskConversation ? { kind: "task-encrypted" } : {}),
             message: existing,
           }),
         );
@@ -221,15 +223,16 @@ export function installChatTurnSubmissionRoutes(
             },
           },
         );
-        const message = await repository.getEncryptedMessageByIdempotencyKey(
+        const message = await getMessage(
           applicationOwnerId(),
           context.chatId,
           input.data.message.idempotencyKey,
         );
         if (!message) throw new Error("Encrypted chat message was not saved.");
         return reply.code(202).send(
-          encryptedChatPromptSubmitResultSchema.parse({
+          encryptedConversationPromptSubmitResultSchema.parse({
             status: "started",
+            ...(taskConversation ? { kind: "task-encrypted" } : {}),
             message,
           }),
         );

@@ -649,6 +649,7 @@ export {
   projectAutomationProtectedDispatchResultSchema,
   encryptedQueuedPromptUpdateSchema,
   encryptedChatPromptSubmitResultSchema,
+  encryptedConversationPromptSubmitResultSchema,
   chatTurnCreateSchema,
   queuedPromptSchema,
   queuedPromptListSchema,
