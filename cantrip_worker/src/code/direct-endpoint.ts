@@ -40,7 +40,7 @@ import {
   workerLogErrorIdentity,
   workerLogger,
 } from "../logger.js";
-import type { CodeSupervisor } from "./supervisor.js";
+import type { CodeSessionRetention, CodeSupervisor } from "./supervisor.js";
 import {
   codeEditorPublicAuthority,
   codeEditorPublicStartupSelection,
@@ -60,6 +60,7 @@ interface SharedSessionRoute {
   readonly routeGrant: string;
   readonly sessionId: string;
   readonly sessionIncarnationId: string;
+  readonly retention: CodeSessionRetention;
   readonly sockets: Set<WebSocket>;
   readonly activeRequests: Set<() => void>;
   bufferedWebSocketBytes: number;
@@ -457,6 +458,7 @@ export class CodeDirectEndpointManager {
             "The shared Code attachment is already bound to another route.",
           );
         }
+        existing.retention.renew(expiresAtMs);
         existing.expiresAtMs = expiresAtMs;
         this.#scheduleSharedRouteExpiry(endpoint, existing);
       } else {
@@ -481,6 +483,11 @@ export class CodeDirectEndpointManager {
           routeGrant: command.routeGrant,
           sessionId: command.sessionId,
           sessionIncarnationId: command.expectedSessionIncarnationId,
+          retention: this.supervisor.retainSessionAttachment(
+            command.sessionId,
+            command.expectedSessionIncarnationId,
+            expiresAtMs,
+          ),
           sockets: new Set(),
           webSocketTeardowns: new Set(),
         };
@@ -1395,6 +1402,7 @@ export class CodeDirectEndpointManager {
       route.expiryTimer = null;
     }
     route.expiryGeneration = Symbol(route.attachmentId);
+    route.retention.release();
     for (const close of [...route.activeRequests]) close();
     for (const teardown of [...route.webSocketTeardowns]) teardown();
     for (const socket of [...route.sockets])
