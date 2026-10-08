@@ -1,5 +1,9 @@
 import { nativeTurnSettingsForMessages } from "./native-turn-settings-evidence";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import { getMessagePage } from "./api";
@@ -11,7 +15,9 @@ import {
   chatMessageProvisionalQueryKey,
   chatMessageOlderPagesQueryKey,
   chatMessagePagesQueryKey,
+  chatMessageLoadedHeadQueryKey,
   mergeChatMessageHistory,
+  retainLoadedChatMessageHead,
   scheduleWhenIdle,
   type ChatMessagePage,
 } from "./chat-message-history";
@@ -34,7 +40,18 @@ export function useChatMessageHistory({
   maxCachedMessages = CHAT_MESSAGE_MEMORY_LIMIT,
   refetchInterval = false,
 }: UseChatMessageHistoryOptions) {
+  const queryClient = useQueryClient();
+  const loadedHeadKey = chatMessageLoadedHeadQueryKey(chatId);
   const autoLoadedChatRef = useRef<string | null>(null);
+  // Keep retention subscribed for the same lifetime as the transcript. The
+  // existing message-history scope reset also clears this cache on recovery.
+  useQuery<ChatMessagePage>({
+    enabled: false,
+    subscribed: enabled,
+    gcTime: CHAT_MESSAGE_CACHE_GC_MS,
+    queryKey: loadedHeadKey,
+    staleTime: Number.POSITIVE_INFINITY,
+  });
   const live = useQuery({
     enabled: false,
     subscribed: enabled,
@@ -55,7 +72,40 @@ export function useChatMessageHistory({
     enabled,
     subscribed: enabled,
     gcTime: CHAT_MESSAGE_CACHE_GC_MS,
-    queryFn: ({ signal }) => getMessagePage(chatId, { signal }),
+    queryFn: async ({ signal }) => {
+      let previous = queryClient.getQueryData<ChatMessagePage>(loadedHeadKey);
+      let page = await getMessagePage(chatId, { signal });
+      // A long gap between refreshes can move the server window beyond the
+      // retained head. Read the actual intervening pages before joining it.
+      while (
+        previous?.page.newestSequence != null &&
+        page.page.oldestSequence != null &&
+        page.page.oldestSequence > previous.page.newestSequence + 1 &&
+        page.page.hasMore &&
+        page.messages.length < maxCachedMessages
+      ) {
+        const beforeSequence = page.page.oldestSequence;
+        const bridge = await getMessagePage(chatId, { beforeSequence, signal });
+        if (!bridge.messages.length) {
+          previous = undefined;
+          break;
+        }
+        if (
+          bridge.page.oldestSequence == null ||
+          bridge.page.oldestSequence >= beforeSequence
+        )
+          throw new Error("Chat history pagination did not advance.");
+        page = retainLoadedChatMessageHead(bridge, page, maxCachedMessages);
+      }
+      signal.throwIfAborted();
+      const retained = retainLoadedChatMessageHead(
+        previous,
+        page,
+        maxCachedMessages,
+      );
+      queryClient.setQueryData(loadedHeadKey, retained);
+      return retained;
+    },
     queryKey: chatMessagePagesQueryKey(chatId),
     refetchInterval:
       typeof refetchInterval === "function"

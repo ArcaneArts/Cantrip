@@ -71,20 +71,44 @@ export function useStickyScroll(
         return;
       }
       const wasNearLatest = isNearLatest(viewport);
-      const previousHeight = viewport.scrollHeight;
       const previousTop = viewport.scrollTop;
+      const content = contentRef.current;
+      const viewportRect = viewport.getBoundingClientRect();
+      const anchor =
+        content &&
+        [...content.children].find((element) => {
+          const rect = element.getBoundingClientRect();
+          return (
+            rect.bottom > viewportRect.top && rect.top < viewportRect.bottom
+          );
+        });
+      const previousAnchorTop = anchor
+        ? anchor.getBoundingClientRect().top - viewportRect.top
+        : undefined;
       await action();
       await new Promise<void>((resolve) => {
         window.requestAnimationFrame(() => {
           window.requestAnimationFrame(() => {
             const current = viewportRef.current;
-            if (current) {
+            if (current === viewport) {
               if (wasNearLatest) {
                 current.scrollTop =
                   latestEdge === "top" ? 0 : current.scrollHeight;
+              } else if (
+                anchor &&
+                previousAnchorTop !== undefined &&
+                contentRef.current === content &&
+                content?.contains(anchor)
+              ) {
+                // A height delta also counts simultaneous appended output.
+                // Measure the retained visible row; native browser anchoring
+                // may already have compensated part or all of the prepend.
+                current.scrollTop +=
+                  anchor.getBoundingClientRect().top -
+                  current.getBoundingClientRect().top -
+                  previousAnchorTop;
               } else {
-                current.scrollTop =
-                  previousTop + (current.scrollHeight - previousHeight);
+                current.scrollTop = previousTop;
               }
               updateScrollState();
             }

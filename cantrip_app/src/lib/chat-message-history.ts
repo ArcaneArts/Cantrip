@@ -1,4 +1,5 @@
 import type { NativeTurnSettingsEvidence } from "./native-history-turn-settings";
+import { nativeTurnSettingsForMessages } from "./native-turn-settings-evidence";
 import type { ChatMessage, ChatMessagePageInfo } from "@cantrip/protocol";
 
 export const CHAT_MESSAGE_DECRYPT_CONCURRENCY = 6;
@@ -39,6 +40,56 @@ export function chatMessageOlderPagesQueryKey(
   headCursor: number,
 ) {
   return ["message-history", chatId, headCursor] as const;
+}
+
+export function chatMessageLoadedHeadQueryKey(chatId: string) {
+  // Scope recovery already removes this prefix, including retained head rows.
+  return ["message-history", chatId, "loaded-head"] as const;
+}
+
+/** A moving latest page must not evict rows already being read or change the
+ * older-page cursor. Incoming rows remain authoritative over their own range. */
+export function retainLoadedChatMessageHead(
+  previous: ChatMessagePage | undefined,
+  incoming: ChatMessagePage,
+  limit = CHAT_MESSAGE_MEMORY_LIMIT,
+): ChatMessagePage {
+  const first = incoming.messages[0];
+  if (!first) return incoming;
+  const retain =
+    previous &&
+    incoming.page.hasMore &&
+    previous.messages[0]?.chatId === first.chatId &&
+    (previous.page.newestSequence ?? Infinity) <=
+      (incoming.page.newestSequence ?? 0);
+  const earlier = retain
+    ? previous.messages.filter((message) => message.sequence < first.sequence)
+    : [];
+  const messages = [...earlier, ...incoming.messages].slice(
+    -Math.max(1, limit),
+  );
+  const oldest = messages[0]!;
+  const boundary = earlier.length ? previous!.page : incoming.page;
+  const truncated =
+    oldest.sequence !== (earlier[0]?.sequence ?? first.sequence);
+  return {
+    ...incoming,
+    messages,
+    page: {
+      ...boundary,
+      oldestSequence: oldest.sequence,
+      newestSequence: messages.at(-1)!.sequence,
+      hasMore: truncated || boundary.hasMore,
+      nextBeforeSequence: truncated
+        ? oldest.sequence
+        : boundary.nextBeforeSequence,
+      startsAtUserTurn: oldest.role === "user",
+    },
+    nativeTurnSettings: nativeTurnSettingsForMessages(messages, [
+      ...(earlier.length ? (previous?.nativeTurnSettings ?? []) : []),
+      ...(incoming.nativeTurnSettings ?? []),
+    ]),
+  };
 }
 
 export async function mapWithConcurrency<T, R>(

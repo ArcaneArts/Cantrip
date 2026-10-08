@@ -5,6 +5,7 @@ import { expect, it, vi } from "vitest";
 
 import {
   chatMessageLiveQueryKey,
+  chatMessageLoadedHeadQueryKey,
   chatMessagePagesQueryKey,
   chatMessageProvisionalQueryKey,
   upsertChatMessageLiveOverlay,
@@ -116,4 +117,228 @@ it("suspends hidden history subscriptions and older loading, then rejoins the la
     client.clear();
     vi.unstubAllGlobals();
   }
+});
+
+function fixturePage(sequences: number[], hasMore = true): ChatMessagePage {
+  return {
+    messages: sequences.map((sequence) => ({
+      id: `message-${sequence}`,
+      chatId: "reader",
+      contextKind: "project",
+      worktreeId: "primary",
+      scratchRootId: null,
+      executionLaneId: null,
+      sequence,
+      role: sequence % 2 ? "user" : "assistant",
+      mode: "default",
+      content: [{ type: "text", text: `Message ${sequence}` }],
+      modelId: null,
+      modelRouteId: null,
+      providerId: null,
+      providerName: null,
+      providerModelName: null,
+      reasoningEffort: null,
+      appliedReasoningEffort: null,
+      reasoningAdjusted: false,
+      createdAt: "2026-10-08T00:00:00Z",
+    })),
+    page: {
+      hasMore,
+      nextBeforeSequence: hasMore ? sequences[0]! : null,
+      oldestSequence: sequences[0]!,
+      newestSequence: sequences.at(-1)!,
+      startsAtUserTurn: true,
+    },
+  };
+}
+
+async function readingHistory(
+  run: (input: {
+    client: QueryClient;
+    history(): ReturnType<typeof useChatMessageHistory>;
+    advance(page: ChatMessagePage): void;
+  }) => Promise<void>,
+) {
+  getMessagePage.mockReset();
+  let current = fixturePage([5, 6]);
+  getMessagePage.mockImplementation(async (_chatId, options) =>
+    options.beforeSequence ? fixturePage([1, 2, 3, 4], false) : current,
+  );
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  let history!: ReturnType<typeof useChatMessageHistory>;
+  function Probe() {
+    history = useChatMessageHistory({ chatId: "reader" });
+    return null;
+  }
+  let renderer!: TestRenderer.ReactTestRenderer;
+  try {
+    await act(async () => {
+      renderer = TestRenderer.create(
+        <QueryClientProvider client={client}>
+          <Probe />
+        </QueryClientProvider>,
+      );
+    });
+    await act(async () => {
+      await history.refetch();
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    await run({
+      client,
+      history: () => history,
+      advance: (page) => {
+        current = page;
+      },
+    });
+  } finally {
+    await act(async () => renderer.unmount());
+    client.clear();
+  }
+}
+
+it("retains loaded older pages and the head boundary while a new turn arrives", async () => {
+  await readingHistory(async ({ history, advance }) => {
+    await act(async () => {
+      await history().fetchOlder();
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    advance(fixturePage([7, 8]));
+    await act(async () => {
+      await history().refetch();
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(history().data.map((m) => m.sequence)).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8,
+    ]);
+    expect(history().hasOlder).toBe(false);
+  });
+});
+
+it("joins an in-flight older page once even if the head advances", async () => {
+  await readingHistory(async ({ history, advance }) => {
+    let resolve!: (page: ChatMessagePage) => void;
+    const older = new Promise<ChatMessagePage>((done) => {
+      resolve = done;
+    });
+    getMessagePage.mockImplementation(async (_chatId, options) =>
+      options.beforeSequence ? older : fixturePage([7, 8]),
+    );
+    let loading!: Promise<void>;
+    await act(async () => {
+      loading = history().fetchOlder();
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    advance(fixturePage([7, 8]));
+    await act(async () => {
+      await history().refetch();
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    await act(async () => {
+      resolve(fixturePage([1, 2, 3, 4], false));
+      await loading;
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(history().data.map((m) => m.sequence)).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8,
+    ]);
+  });
+});
+
+it("backfills a forward gap without dropping the already loaded reading range", async () => {
+  await readingHistory(async ({ history }) => {
+    await act(async () => {
+      await history().fetchOlder();
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    getMessagePage.mockImplementation(async (_chatId, options) =>
+      options.beforeSequence === 11
+        ? fixturePage([7, 8, 9, 10])
+        : fixturePage([11, 12]),
+    );
+    await act(async () => {
+      await history().refetch();
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(history().data.map((m) => m.sequence)).toEqual(
+      Array.from({ length: 12 }, (_, i) => i + 1),
+    );
+  });
+});
+
+it("discards retained ranges on live scope recovery", async () => {
+  await readingHistory(async ({ history, client, advance }) => {
+    await act(async () => {
+      await history().fetchOlder();
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    advance(fixturePage([7, 8]));
+    await act(async () => {
+      await history().refetch();
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    await act(async () => {
+      client.removeQueries({ queryKey: ["message-history", "reader"] });
+      advance(fixturePage([11, 12]));
+      await history().refetch();
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(history().data.map((m) => m.sequence)).toEqual([11, 12]);
+  });
+});
+
+it("keeps the loaded range when a bridge response fails to advance", async () => {
+  await readingHistory(async ({ history }) => {
+    await act(async () => {
+      await history().fetchOlder();
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    getMessagePage.mockResolvedValue(fixturePage([11, 12]));
+    await act(async () => {
+      const result = await history().refetch();
+      expect(result.error?.message).toBe(
+        "Chat history pagination did not advance.",
+      );
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(history().data.map((m) => m.sequence)).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+});
+
+it("does not restore a cancelled retained range after scope recovery", async () => {
+  await readingHistory(async ({ history, client }) => {
+    let resolveBridge!: (page: ChatMessagePage) => void;
+    const bridge = new Promise<ChatMessagePage>((resolve) => {
+      resolveBridge = resolve;
+    });
+    getMessagePage.mockImplementation(async (_chatId, options) =>
+      options.beforeSequence ? bridge : fixturePage([11, 12]),
+    );
+    let refreshing!: ReturnType<
+      ReturnType<typeof useChatMessageHistory>["refetch"]
+    >;
+    await act(async () => {
+      refreshing = history().refetch();
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    await act(async () => {
+      await client.cancelQueries({
+        queryKey: chatMessagePagesQueryKey("reader"),
+      });
+      client.removeQueries({ queryKey: ["message-history", "reader"] });
+      resolveBridge(fixturePage([7, 8, 9, 10]));
+      await refreshing;
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(
+      client.getQueryData(chatMessageLoadedHeadQueryKey("reader")),
+    ).toBeUndefined();
+    getMessagePage.mockResolvedValue(fixturePage([11, 12]));
+    await act(async () => {
+      await history().refetch();
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(history().data.map((m) => m.sequence)).toEqual([11, 12]);
+  });
 });
