@@ -29,6 +29,7 @@ import type { FastifyInstance } from "fastify";
 import {
   chatIsExecuting,
   effectivePermissionProfile,
+  taskGoalWorkerInterrupted,
 } from "../../chats/execution-helpers.js";
 import {
   TASK_DISPATCH_LEASE_MS,
@@ -649,6 +650,7 @@ export function createTaskGoalRuntime({
     chatId: string,
     lease: TaskDispatchWorkerLease,
     turnFailed: boolean,
+    turnError?: unknown,
   ) => {
     const context = await repository.getChatExecutionContext(
       applicationOwnerId(),
@@ -656,6 +658,25 @@ export function createTaskGoalRuntime({
     );
     const task = await repository.tasks.get(applicationOwnerId(), chatId);
     if (!context || context.experience !== "task" || !task) return;
+    if (
+      context.automationPaused &&
+      taskGoalWorkerInterrupted(context.experience, "goal", turnError)
+    ) {
+      releaseTaskGoalLease(lease.cycleId);
+      try {
+        await repository.taskDispatch.pause(lease, {
+          threadId: context.threadId,
+          // The lost worker cannot attest that the previous native turn survived.
+          // Resume the Goal from history, not an assumed resident turn.
+          turnId: null,
+        });
+      } catch (error) {
+        if (!(error instanceof TaskDispatchConflictError)) throw error;
+      }
+      publishChatInvalidation(chatId, "task", null, context);
+      queueTaskScheduleTick();
+      return;
+    }
     try {
       await readEncryptedTaskGoal(context, task);
     } catch (error) {
@@ -682,8 +703,14 @@ export function createTaskGoalRuntime({
     }) {
       await synchronizeScheduledTaskGoal(execution.chatId, lease, false);
     },
-    async afterTurnFailed({ execution }: { execution: ChatExecutionContext }) {
-      await synchronizeScheduledTaskGoal(execution.chatId, lease, true);
+    async afterTurnFailed({
+      execution,
+      error,
+    }: {
+      execution: ChatExecutionContext;
+      error: unknown;
+    }) {
+      await synchronizeScheduledTaskGoal(execution.chatId, lease, true, error);
     },
     taskDispatchLease: lease,
   });

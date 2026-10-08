@@ -25,6 +25,7 @@ import { WorkerLinkRelay } from "../src/worker-links/relay.js";
 import { CoordinatedWorkerBridge } from "../src/workers/coordinated-bridge.js";
 import {
   WorkerCommandError,
+  WorkerUnavailableError,
   type WorkerConnectionContinuityIdentity,
 } from "../src/workers/bridge.js";
 
@@ -1090,6 +1091,7 @@ describe("shared relay coordination", () => {
       await settle();
       expect(replacementSocket.sent).toHaveLength(0);
       await expect(response).rejects.toThrow("Worker is unavailable");
+      await expect(response).rejects.toBeInstanceOf(WorkerUnavailableError);
     } finally {
       releaseOwnerLookup();
       await Promise.all([bridgeA.close(), bridgeB.close()]);

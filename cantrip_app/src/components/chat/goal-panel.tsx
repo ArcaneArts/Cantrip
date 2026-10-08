@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
 const STATUS_LABELS: Record<
-  Exclude<ThreadGoal["status"], "complete">,
+  Exclude<ThreadGoal["status"], "complete"> | "failed",
   string
 > = {
   active: "Running",
@@ -13,6 +13,7 @@ const STATUS_LABELS: Record<
   blocked: "Blocked",
   usageLimited: "Usage limited",
   budgetLimited: "Budget reached",
+  failed: "Failed",
 };
 
 export function formatGoalElapsed(seconds: number): string {
@@ -25,12 +26,16 @@ export function formatGoalElapsed(seconds: number): string {
 }
 
 export function GoalPanel({
+  automationPaused = false,
+  executionFailed = false,
   error,
   goal,
   onClear,
   onUpdate,
   pending,
 }: {
+  automationPaused?: boolean;
+  executionFailed?: boolean;
   error?: string | null;
   goal: ThreadGoal | null;
   onClear(): void;
@@ -38,6 +43,11 @@ export function GoalPanel({
   pending: boolean;
 }) {
   if (!goal || goal.status === "complete") return null;
+  const status = executionFailed
+    ? "failed"
+    : automationPaused && goal.status === "active"
+      ? "paused"
+      : goal.status;
   const progress =
     goal.tokenBudget && goal.tokenBudget > 0
       ? Math.min(100, (goal.tokensUsed / goal.tokenBudget) * 100)
@@ -58,7 +68,7 @@ export function GoalPanel({
             <span className="text-xs font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-400">
               Goal
             </span>
-            <Badge variant="outline">{STATUS_LABELS[goal.status]}</Badge>
+            <Badge variant="outline">{STATUS_LABELS[status]}</Badge>
           </div>
           <p className="mt-1 line-clamp-2 text-sm leading-5">
             {goal.objective}
@@ -85,7 +95,7 @@ export function GoalPanel({
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          {goal.status === "active" ? (
+          {status === "active" ? (
             <Button
               type="button"
               size="icon"
@@ -102,7 +112,9 @@ export function GoalPanel({
               )}
               <span className="sr-only">Pause goal</span>
             </Button>
-          ) : goal.status === "paused" || goal.status === "blocked" ? (
+          ) : status === "paused" ||
+            status === "blocked" ||
+            status === "failed" ? (
             <Button
               type="button"
               size="icon"

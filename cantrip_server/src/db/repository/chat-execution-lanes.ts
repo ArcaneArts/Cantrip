@@ -61,6 +61,8 @@ interface ChatExecutionContextBase {
   experience: ChatWireSummary["experience"];
   defaultPermissionProfileId?: UserSettings["defaultPermissionProfileId"];
   executionLaneId: string | null;
+  /** Captured on acquisition; a lane ID is reused by subsequent turns. */
+  executionLaneActivatedAt?: string;
   isPrimary: boolean;
   status: ChatWireSummary["status"];
   modelId: string | null;
@@ -544,7 +546,9 @@ export class ChatExecutionLaneRepository {
           )
           .orderBy(desc(schema.chatExecutionLanes.createdAt))
           .limit(1);
-        const now = new Date();
+        const now = new Date(
+          Math.max(Date.now(), (existing[0]?.activatedAt?.getTime() ?? 0) + 1),
+        );
         let lane: typeof schema.chatExecutionLanes.$inferSelect;
         if (existing[0]) {
           const activated = await transaction
@@ -606,6 +610,7 @@ export class ChatExecutionLaneRepository {
               UserSettings["defaultPermissionProfileId"] | undefined) ??
             DEFAULT_PERMISSION_PROFILE_ID,
           executionLaneId: lane.id,
+          executionLaneActivatedAt: toISOString(now),
           isPrimary: row.worktree.isPrimary,
           status: "running",
           modelId: row.chat.modelId,
@@ -845,6 +850,7 @@ export class ChatExecutionLaneRepository {
     chatId: string,
     laneId: string,
     status: ChatWireSummary["status"],
+    options: { pauseAutomation?: boolean; expectedActivatedAt?: string } = {},
   ): Promise<boolean> {
     const now = new Date();
     return this.database.transaction(async (transaction) => {
@@ -873,6 +879,12 @@ export class ChatExecutionLaneRepository {
             eq(schema.chatExecutionLanes.id, laneId),
             eq(schema.chatExecutionLanes.chatId, chatId),
             eq(schema.chatExecutionLanes.state, "active"),
+            options.expectedActivatedAt
+              ? eq(
+                  schema.chatExecutionLanes.activatedAt,
+                  new Date(options.expectedActivatedAt),
+                )
+              : undefined,
           ),
         )
         .returning({ id: schema.chatExecutionLanes.id });
@@ -884,12 +896,19 @@ export class ChatExecutionLaneRepository {
         .update(schema.chats)
         .set({
           status,
+          ...(options.pauseAutomation ? { automationPaused: true } : {}),
           ...(status === "idle" || status === "failed"
             ? { hasUnreadCompletion: true }
             : {}),
           updatedAt: now,
         })
         .where(eq(schema.chats.id, chatId));
+      if (options.pauseAutomation) {
+        await transaction
+          .update(schema.managedQueueStates)
+          .set({ revision: sql`${schema.managedQueueStates.revision}+1` })
+          .where(eq(schema.managedQueueStates.chatId, chatId));
+      }
       return true;
     });
   }
