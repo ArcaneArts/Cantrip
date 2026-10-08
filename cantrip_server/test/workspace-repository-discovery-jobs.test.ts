@@ -64,6 +64,125 @@ async function fixture() {
 }
 
 describe("workspace repository discovery jobs", () => {
+  it("retains local candidates through a mixed-origin rescan and imports only the explicit selection", async () => {
+    const { client, database, repository } = await fixture();
+    const jobs = repository.workspaceRepositoryDiscoveryJobs;
+    const local = {
+      pathHandle: `ctrr_${"c".repeat(43)}`,
+      displayHandle: `ctrr_${"d".repeat(43)}`,
+      originUrlHandle: null,
+      github: null,
+      repositoryFingerprint: "1".repeat(64),
+      classification: "local-git" as const,
+      diagnosticCode: null,
+    };
+    const accessible = {
+      pathHandle: `ctrr_${"e".repeat(43)}`,
+      displayHandle: `ctrr_${"f".repeat(43)}`,
+      originUrlHandle: `ctrr_${"g".repeat(43)}`,
+      github: {
+        repositoryId: `ctrr_${"h".repeat(43)}`,
+        nameWithOwner: `ctrr_${"i".repeat(43)}`,
+        url: `ctrr_${"j".repeat(43)}`,
+      },
+      repositoryFingerprint: "2".repeat(64),
+      classification: "github-accessible" as const,
+      diagnosticCode: null,
+    };
+    const unavailable = {
+      pathHandle: `ctrr_${"k".repeat(43)}`,
+      displayHandle: `ctrr_${"l".repeat(43)}`,
+      originUrlHandle: `ctrr_${"m".repeat(43)}`,
+      github: null,
+      repositoryFingerprint: "3".repeat(64),
+      classification: "github-unavailable" as const,
+      diagnosticCode: "github-api-unavailable" as const,
+    };
+    const scanCounts = {
+      candidates: 1,
+      collapsedRepositories: 1,
+      rejectedRepositories: 1,
+      scannedDirectories: 4,
+      scannedEntries: 5,
+      skippedSymlinks: 0,
+      unreadableDirectories: 0,
+    };
+    try {
+      await jobs.queue(LOCAL_USER_ID, workspaceId);
+      const first = (await jobs.claimNext())!;
+      const initial = await jobs.complete(first.job.id, first.commandId, {
+        attempt: first.job.attempt,
+        candidates: [local],
+        counts: scanCounts,
+        truncated: false,
+      });
+      await jobs.queue(LOCAL_USER_ID, workspaceId, {
+        expectedStateRevision: initial.job.stateRevision,
+      });
+      const second = (await jobs.claimNext())!;
+      expect(second.job.attempt).toBe(2);
+      const rescan = await jobs.complete(second.job.id, second.commandId, {
+        attempt: second.job.attempt,
+        candidates: [local, accessible, unavailable],
+        counts: { ...scanCounts, candidates: 3 },
+        truncated: false,
+      });
+      expect(rescan.job.state).toBe("succeeded");
+      expect(rescan.candidates).toHaveLength(3);
+      const retained = rescan.candidates.find(
+        ({ repositoryFingerprint }) =>
+          repositoryFingerprint === local.repositoryFingerprint,
+      )!;
+      expect(retained.id).toBe(initial.candidates[0]!.id);
+      expect(
+        rescan.candidates.map(({ classification }) => classification).sort(),
+      ).toEqual(["github-accessible", "github-unavailable", "local-git"]);
+      expect(await database.select().from(schema.projects)).toEqual([]);
+      const projectId = "09dd9169-04ca-41c1-a473-250b5716bf7c";
+      await jobs.queueImports(LOCAL_USER_ID, workspaceId, {
+        expectedStateRevision: rescan.job.stateRevision,
+        candidates: [
+          {
+            candidateId: retained.id,
+            projectId,
+            nameProtection: protectedProjectFields(projectId).nameProtection,
+            repositoryBlindIndex: null,
+          },
+        ],
+      });
+      const selected = (await jobs.claimNextImport())!;
+      expect(selected.candidateId).toBe(retained.id);
+      await jobs.completeImport(selected, {
+        candidateId: selected.candidateId,
+        attempt: selected.attempt,
+        path: local.pathHandle,
+        displayPath: local.displayHandle,
+        originUrl: null,
+        github: null,
+        repositoryFingerprint: local.repositoryFingerprint,
+        classification: "local-git",
+        diagnosticCode: null,
+        branch: null,
+        head: null,
+      });
+      const snapshot = (await jobs.getSnapshot(LOCAL_USER_ID, workspaceId))!;
+      expect(
+        snapshot.candidates.find(({ id }) => id === retained.id)?.importState,
+      ).toBe("imported");
+      expect(
+        snapshot.candidates
+          .filter(({ id }) => id !== retained.id)
+          .map(({ importState }) => importState),
+      ).toEqual(["pending", "pending"]);
+      expect(await jobs.claimNextImport()).toBeNull();
+      expect(
+        await database.select({ id: schema.projects.id }).from(schema.projects),
+      ).toEqual([{ id: projectId }]);
+    } finally {
+      await client.close();
+    }
+  });
+
   it("deletes only the empty attached workspace and its discovery metadata", async () => {
     const { client, database, repository } = await fixture();
     try {

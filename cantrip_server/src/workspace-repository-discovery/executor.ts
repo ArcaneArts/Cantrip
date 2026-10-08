@@ -1,6 +1,7 @@
 import {
   workspaceRepositoryDiscoveryWorkerResultSchema,
   workspaceRepositoryImportValidationResultSchema,
+  type WorkerCommand,
   type WorkspaceRepositoryDiscoveryJobSummary,
   type WorkspaceRepositoryDiscoveryProgress,
 } from "@cantrip/protocol";
@@ -13,8 +14,10 @@ import {
   type ClaimedWorkspaceRepositoryDiscoveryJob,
 } from "../db/workspace-repository-discovery-jobs.js";
 import type { ServerRepository } from "../db/repository.js";
+import { RelayLimitError } from "../security/abuse-limits.js";
 import {
   type WorkerCommandBus,
+  type WorkerRequestOptions,
   WorkerCommandError,
   WorkerUnavailableError,
 } from "../workers/bridge.js";
@@ -30,6 +33,8 @@ export interface WorkspaceRepositoryDiscoveryLiveChange {
   progress?: WorkspaceRepositoryDiscoveryProgress;
 }
 
+const COMMAND_QUOTA_RETRIES = 2;
+const MAX_COMMAND_QUOTA_DELAY_MS = 60_000;
 const LEASE_RENEWAL_INTERVAL_MS = 30_000;
 const RECOVERY_SWEEP_INTERVAL_MS = 30_000;
 export const WORKSPACE_REPOSITORY_DISCOVERY_TIMEOUT_MS = 60_000;
@@ -164,6 +169,44 @@ export class WorkspaceRepositoryDiscoveryJobExecutor {
     }
   }
 
+  async #requestWithQuotaRetry(
+    workerId: string,
+    command: Extract<
+      WorkerCommand,
+      {
+        type:
+          | "workspace.repositories.discover"
+          | "workspace.repository-import.validate";
+      }
+    >,
+    options: WorkerRequestOptions,
+  ): Promise<unknown> {
+    for (let retry = 0; ; retry += 1) {
+      try {
+        return await this.bridge.request(workerId, command, options);
+      } catch (error) {
+        if (
+          !(error instanceof RelayLimitError) ||
+          retry >= COMMAND_QUOTA_RETRIES
+        ) {
+          throw error;
+        }
+        // Both commands only inspect repositories. Keep their durable lease
+        // alive while waiting for an actual quota rejection to clear; never
+        // bypass the limiter or retry unrelated worker failures.
+        const retryDelayMs = Math.min(
+          MAX_COMMAND_QUOTA_DELAY_MS,
+          Math.max(1_000, error.retryAfterSeconds * 1_000),
+        );
+        this.logger.warn(
+          { workerId, operation: command.type, retry: retry + 1, retryDelayMs },
+          "Workspace repository work is waiting for worker command quota",
+        );
+        await new Promise<void>((resolve) => setTimeout(resolve, retryDelayMs));
+      }
+    }
+  }
+
   async #execute(
     claimed: ClaimedWorkspaceRepositoryDiscoveryJob,
   ): Promise<void> {
@@ -223,7 +266,7 @@ export class WorkspaceRepositoryDiscoveryJobExecutor {
         return;
       }
       const result = workspaceRepositoryDiscoveryWorkerResultSchema.parse(
-        await this.bridge.request(
+        await this.#requestWithQuotaRetry(
           job.workerId,
           {
             type: "workspace.repositories.discover",
@@ -385,7 +428,7 @@ export class WorkspaceRepositoryDiscoveryJobExecutor {
         return;
       }
       const result = workspaceRepositoryImportValidationResultSchema.parse(
-        await this.bridge.request(
+        await this.#requestWithQuotaRetry(
           claimed.workerId,
           {
             type: "workspace.repository-import.validate",
