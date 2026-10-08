@@ -48,6 +48,7 @@ import { projectSelectionAction } from "@/lib/mobile-navigation";
 import type { ProjectOverviewSection } from "@/lib/project-overview-section";
 import { projectSurfaceTabKey } from "@/lib/project-surface";
 import { resolveProjectWorkspaceForSelection } from "@/lib/project-workspaces";
+import { recordProjectAccess } from "@/lib/project-recency";
 import type { SidebarFilePreviewState } from "@/lib/sidebar-file-tabs";
 import {
   emptyWorkspaceSelection,
@@ -251,6 +252,11 @@ export function useShellNavigationState(
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
     popoutProjectId,
   );
+  useEffect(() => {
+    if (appMode === "ide" && selectedProjectId) {
+      recordProjectAccess(selectedProjectId);
+    }
+  }, [appMode, selectedProjectId]);
   const [projectOverviewSection, setProjectOverviewSection] =
     useState<ProjectOverviewSection>(
       () =>

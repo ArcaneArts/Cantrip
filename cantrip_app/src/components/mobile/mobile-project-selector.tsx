@@ -27,6 +27,10 @@ import { Input } from "@/components/ui/input";
 import { WorkspaceSwitcher } from "@/components/workspaces/workspace-switcher";
 import type { ProjectCreateSource } from "@/components/projects/project-create-menu";
 import { searchProjects } from "@/lib/project-workspaces";
+import {
+  recordProjectAccess,
+  useRecentProjectIds,
+} from "@/lib/project-recency";
 
 function projectStatus(
   project: ProjectSummary,
@@ -109,9 +113,17 @@ export function MobileProjectSelector({
   workspaces: ProjectWorkspaceSummary[];
 }) {
   const [query, setQuery] = useState("");
+  const recentProjectIds = useRecentProjectIds();
   const results = useMemo(
-    () => searchProjects(projects, workspaces, activeWorkspace, query),
-    [activeWorkspace, projects, query, workspaces],
+    () =>
+      searchProjects(
+        projects,
+        workspaces,
+        activeWorkspace,
+        query,
+        recentProjectIds,
+      ),
+    [activeWorkspace, projects, query, recentProjectIds, workspaces],
   );
   const searchingEverywhere = Boolean(query.trim());
   const onlineWorker = workers.find(({ online }) => online) ?? null;
@@ -196,7 +208,10 @@ export function MobileProjectSelector({
                 <button
                   key={project.id}
                   className="flex w-full items-start gap-3 rounded-xl px-3 py-3 text-left outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
-                  onClick={() => onSelectProject(project.id)}
+                  onClick={() => {
+                    recordProjectAccess(project.id);
+                    onSelectProject(project.id);
+                  }}
                   type="button"
                 >
                   <div className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-lg border bg-card">

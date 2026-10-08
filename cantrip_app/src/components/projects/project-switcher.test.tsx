@@ -4,9 +4,18 @@ import type {
 } from "@cantrip/protocol";
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProjectSwitcher } from "./project-switcher";
+
+const recency = vi.hoisted(() => ({ ids: [] as string[] }));
+vi.mock("@/lib/project-recency", () => ({
+  useRecentProjectIds: () => recency.ids,
+  recordProjectAccess: vi.fn(),
+}));
+beforeEach(() => {
+  recency.ids = [];
+});
 
 vi.mock("@/components/ui/popover", () => ({
   Popover: ({ children }: { children: ReactNode }) => <>{children}</>,
@@ -36,6 +45,30 @@ const workspaces = [
 ] as ProjectWorkspaceSummary[];
 
 describe("project switcher", () => {
+  it("renders the most recently accessed project at the top of the picker", () => {
+    recency.ids = ["project-2", "project-1"];
+    const markup = renderToStaticMarkup(
+      <ProjectSwitcher
+        activeWorkspaceId="default"
+        projects={projects}
+        selectedProjectId={null}
+        workspaces={[
+          { ...workspaces[0]!, projectIds: ["project-1", "project-2"] },
+        ]}
+        onAddProject={vi.fn()}
+        onManageWorkspaces={vi.fn()}
+        onOpenProjectSettings={vi.fn()}
+        onRemoveProject={vi.fn()}
+        onSelectProject={vi.fn()}
+        onSelectWorkspace={vi.fn()}
+      />,
+    );
+    expect(markup.indexOf(">CareMap<")).toBeGreaterThan(-1);
+    expect(markup.indexOf(">CareMap<")).toBeLessThan(
+      markup.indexOf(">Cantrip<"),
+    );
+  });
+
   it("shows the remembered workspace above the selected project", () => {
     const markup = renderToStaticMarkup(
       <ProjectSwitcher
