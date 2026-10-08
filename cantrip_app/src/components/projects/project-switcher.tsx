@@ -48,15 +48,11 @@ function projectContext(
   workspace: ProjectWorkspaceSummary | null,
   showWorkspace: boolean,
 ): string {
-  if (showWorkspace && workspace) {
-    return workspace.name;
+  const source = project.github?.nameWithOwner || project.source?.displayPath;
+  if (showWorkspace && workspace && source) {
+    return `${workspace.name} · ${source}`;
   }
-  return (
-    project.github?.nameWithOwner ||
-    project.source?.displayPath ||
-    workspace?.name ||
-    "Project"
-  );
+  return source || workspace?.name || "Project";
 }
 
 export function ProjectSwitcher({
@@ -244,7 +240,14 @@ export function ProjectSwitcher({
                               <span className="block truncate font-medium">
                                 {project.name}
                               </span>
-                              <span className="block truncate text-[11px] text-muted-foreground">
+                              <span
+                                className={cn(
+                                  "block text-[11px] text-muted-foreground",
+                                  searchingEverywhere
+                                    ? "break-all"
+                                    : "truncate",
+                                )}
+                              >
                                 {projectContext(
                                   project,
                                   workspace,
