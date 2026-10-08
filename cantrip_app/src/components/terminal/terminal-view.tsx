@@ -102,9 +102,10 @@ export function TerminalView({
   const onPendingInputSentRef = useRef(onPendingInputSent);
   const pendingInputRef = useRef(pendingInput);
   const [connectionKey, setConnectionKey] = useState(0);
-  const [state, setState] = useState<"connecting" | "reconnecting" | "ready">(
-    "connecting",
-  );
+  const [state, setState] = useState<
+    "connecting" | "reconnecting" | "ready" | "exited"
+  >("connecting");
+  const [exitCode, setExitCode] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [recoveryError, setRecoveryError] = useState<string | null>(null);
   const [loadedTerminalId, setLoadedTerminalId] = useState<string | null>(null);
@@ -128,6 +129,7 @@ export function TerminalView({
       reconnectAttemptRef.current = 0;
     }
     setState(reconnectAttemptRef.current === 0 ? "connecting" : "reconnecting");
+    setExitCode(null);
     setError(null);
     setRecoveryError(null);
     const connectionStartedAt = performance.now();
@@ -193,7 +195,7 @@ export function TerminalView({
     let hydrationStartedAt: number | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     const scheduleReconnect = () => {
-      if (disposed || reconnectTimer) return;
+      if (disposed || exited || reconnectTimer) return;
       const delay = Math.min(500 * 2 ** reconnectAttemptRef.current, 5_000);
       reconnectAttemptRef.current += 1;
       setState("reconnecting");
@@ -401,7 +403,7 @@ export function TerminalView({
         // xterm can answer capability queries while parsing scrollback. Keep
         // input closed until every replay write ahead of ready has finished.
         outputQueue = outputQueue.then(() => {
-          if (disposed || !connection) return;
+          if (disposed || exited || !connection) return;
           ready = true;
           reconnectAttemptRef.current = 0;
           setLoadedTerminalId(terminal.id);
@@ -503,16 +505,31 @@ export function TerminalView({
           subsystem: "terminal",
           surfaceId: terminal.id,
         });
-        if (onExitRef.current) {
-          onExitRef.current();
-          connection?.close("normal");
-          return Promise.resolve();
+        if (reconnectTimer) {
+          clearTimeout(reconnectTimer);
+          reconnectTimer = null;
         }
-        xterm.write(
-          `\r\n\x1b[90m[Process exited ${message.exitCode}]\x1b[0m\r\n`,
-        );
-        scheduleReconnect();
-        connection?.close("normal");
+        // Exit is a process lifecycle event, not a broken live transport.
+        // Keep the renderer and drain protected output before closing or
+        // allowing a linked console's owner to unmount it.
+        outputQueue = outputQueue.then(async () => {
+          if (disposed) return;
+          if (onExitRef.current) {
+            onExitRef.current();
+          } else {
+            await new Promise<void>((resolve) => {
+              xterm.write(
+                `\r\n\x1b[90m[Process exited ${message.exitCode}]\x1b[0m\r\n`,
+                resolve,
+              );
+            });
+            if (disposed) return;
+            setLoadedTerminalId(terminal.id);
+            setExitCode(message.exitCode);
+            setState("exited");
+          }
+          connection?.close("normal");
+        });
       } else {
         ready = false;
         setError(message.message);
@@ -743,7 +760,14 @@ export function TerminalView({
           }
           visible={!hasLoaded}
         />
-        {hasLoaded && state !== "ready" ? (
+        {hasLoaded && state === "exited" ? (
+          <div
+            className="pointer-events-none absolute right-4 top-3 rounded-md bg-muted/90 px-2 py-1 text-xs text-muted-foreground"
+            role="status"
+          >
+            Process exited {exitCode}
+          </div>
+        ) : hasLoaded && state !== "ready" ? (
           <div className="pointer-events-none absolute right-4 top-3 flex items-center gap-2 rounded-md bg-muted/90 px-2 py-1 text-xs text-muted-foreground">
             <Loader2 className="size-3 animate-spin" />
             {state === "connecting"

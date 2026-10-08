@@ -349,3 +349,112 @@ describe("Terminal WorkerLink client", () => {
     expect(fixture.release).toHaveBeenCalledOnce();
   });
 });
+
+describe("Terminal WorkerLink final messages", () => {
+  it.each([true, false])(
+    "drains accepted output and exit before a normal close (activated=%s)",
+    async (activated) => {
+      const fixture = setup();
+      const events: string[] = [];
+      let releaseOutput!: () => void;
+      const pendingOutput = new Promise<void>((resolve) => {
+        releaseOutput = resolve;
+      });
+      const connection = await openTerminalWorkerLink(
+        {
+          onClose: (code) => events.push(`close:${code}`),
+          onMessage: async (message) => {
+            events.push(message.type);
+            if (message.type === "output") await pendingOutput;
+          },
+          operationId,
+          terminalId: "terminal-1",
+          workerId: "worker-1",
+        },
+        fixture.dependencies,
+      );
+      if (activated) connection.activate();
+      fixture.stream.receive({
+        type: "output",
+        operationId,
+        sequence: 0,
+        protectedData: opaque,
+      });
+      fixture.stream.receive({ type: "exit", exitCode: 0, signal: null });
+      fixture.stream.close("normal");
+      expect(events).not.toContain("close:normal");
+      expect(fixture.release).not.toHaveBeenCalled();
+      expect(connection.send({ type: "resize", cols: 80, rows: 24 })).toBe(
+        false,
+      );
+      if (!activated) connection.activate();
+      releaseOutput();
+      await vi.waitFor(() =>
+        expect(events).toEqual(["output", "exit", "close:normal"]),
+      );
+      expect(fixture.release).toHaveBeenCalledOnce();
+      expect(fixture.dependencies.revokeGrant).toHaveBeenCalledOnce();
+      expect(fixture.stream.acknowledgements).toEqual([]);
+    },
+  );
+  it.each(["revoked", "protocol-error"] as const)(
+    "still discards queued messages immediately on %s",
+    async (code) => {
+      const fixture = setup();
+      const events: string[] = [];
+      let releaseOutput!: () => void;
+      const pendingOutput = new Promise<void>((resolve) => {
+        releaseOutput = resolve;
+      });
+      const connection = await openTerminalWorkerLink(
+        {
+          onClose: (value) => events.push(`close:${value}`),
+          onMessage: async (message) => {
+            events.push(message.type);
+            if (message.type === "output") await pendingOutput;
+          },
+          operationId,
+          terminalId: "terminal-1",
+          workerId: "worker-1",
+        },
+        fixture.dependencies,
+      );
+      connection.activate();
+      fixture.stream.receive({
+        type: "output",
+        operationId,
+        sequence: 0,
+        protectedData: opaque,
+      });
+      fixture.stream.receive({ type: "exit", exitCode: 7, signal: null });
+      fixture.stream.close(code);
+      expect(events).toEqual(["output", `close:${code}`]);
+      expect(fixture.release).toHaveBeenCalledOnce();
+      releaseOutput();
+      await Promise.resolve();
+      expect(events).not.toContain("exit");
+    },
+  );
+  it("rejects malformed final messages while draining a normal close", async () => {
+    const fixture = setup();
+    const onClose = vi.fn();
+    const onMessage = vi.fn();
+    const connection = await openTerminalWorkerLink(
+      {
+        onClose,
+        onMessage,
+        operationId,
+        terminalId: "terminal-1",
+        workerId: "worker-1",
+      },
+      fixture.dependencies,
+    );
+    fixture.stream.receive({ type: "exit", exitCode: "invalid" });
+    fixture.stream.close("normal");
+    connection.activate();
+    await vi.waitFor(() =>
+      expect(onClose).toHaveBeenCalledWith("protocol-error"),
+    );
+    expect(onMessage).not.toHaveBeenCalled();
+  });
+});
