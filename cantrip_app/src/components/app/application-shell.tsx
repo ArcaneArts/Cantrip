@@ -1,3 +1,4 @@
+import { useProjectToolNavigationBridge } from "./project-tool-navigation-bridge";
 import {
   projectBuiltInDefinitionIdFromViewId,
   type ProjectBuiltInSurfaceDefinitionId,
@@ -805,42 +806,24 @@ export function App() {
       if (opened === false) throw new Error("Could not open the Tasks tab.");
     },
   });
-  const projectToolBridgeAttemptRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (
-      isPopout ||
-      projectOverviewSection === "overview" ||
-      !selectedProjectId ||
-      !tabLayout.isSuccess ||
-      workspaceSelection.destination !== "overview" ||
-      selectedBuiltInDefinitionId
-    ) {
-      return;
-    }
-    const attempt = `${selectedProjectId}:${tabLayout.data.revision}:${projectOverviewSection}:${projectOverviewWorktreeId ?? ""}`;
-    if (projectToolBridgeAttemptRef.current === attempt) return;
-    projectToolBridgeAttemptRef.current = attempt;
-    if (projectOverviewSection === "tasks") {
-      void openProjectBuiltinSurface(selectedProjectId, projectOverviewSection);
-      return;
-    }
-    newProjectToolSurface.mutate({
-      kind: projectOverviewSection,
-      projectId: selectedProjectId,
-      worktreeId: projectOverviewWorktreeId ?? undefined,
-    });
-  }, [
+  useProjectToolNavigationBridge({
     isPopout,
-    newProjectToolSurface,
-    openProjectBuiltinSurface,
-    projectOverviewSection,
-    projectOverviewWorktreeId,
-    selectedBuiltInDefinitionId,
     selectedProjectId,
-    tabLayout.data,
-    tabLayout.isSuccess,
-    workspaceSelection.destination,
-  ]);
+    selectedBuiltInDefinitionId,
+    destination: workspaceSelection.destination,
+    section: projectOverviewSection,
+    worktreeId: projectOverviewWorktreeId,
+    layout: tabLayout.data,
+    layoutReady: tabLayout.isSuccess,
+    views: projectViews.data,
+    viewsReady: projectViews.isSuccess,
+    openBuiltInSurface: openProjectBuiltinSurface,
+    openSurface: (projectId, surfaceRef) =>
+      openOrFocusSurface(projectId, surfaceRef, undefined, undefined, {
+        revealDock: true,
+      }),
+    createSurface: newProjectToolSurface.mutate,
+  });
   const newRemoteDesktop = useRemoteDesktopCreationOperation({
     openCreatedTab,
     queryClient,
