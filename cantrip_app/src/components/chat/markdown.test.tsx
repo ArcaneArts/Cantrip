@@ -14,6 +14,19 @@ describe("Markdown", () => {
     expect(markup).toContain('data-selectable-text="true"');
   });
 
+  it("adds unique heading anchors only when requested by a file preview", () => {
+    const content =
+      "## **Unicode Ü** heading\n\n## Unicode Ü heading\n\n## Unicode Ü heading-1";
+    const markup = renderToStaticMarkup(
+      <Markdown headingAnchors>{content}</Markdown>,
+    );
+    expect(markup).toContain('id="unicode-ü-heading"');
+    expect(markup).toContain('id="unicode-ü-heading-1"');
+    expect(markup).toContain('id="unicode-ü-heading-1-1"');
+    expect(renderToStaticMarkup(<Markdown>{content}</Markdown>)).not.toContain(
+      'id="unicode',
+    );
+  });
   it("adds color previews to plain and inline-code hexadecimal colors", () => {
     const markup = renderToStaticMarkup(
       <Markdown onOpenFile={vi.fn()}>
