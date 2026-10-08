@@ -7,8 +7,11 @@ import {
 } from "@cantrip/protocol";
 import type { FastifyInstance } from "fastify";
 
-import type { ServerRepository } from "../../db/repository.js";
-import { errorMessage, invalidBody } from "../../http/request-helpers.js";
+import {
+  ExecutionLaneConflictError,
+  type ServerRepository,
+} from "../../db/repository.js";
+import { invalidBody } from "../../http/request-helpers.js";
 import { sendWorkerConflictFailure } from "../../http/worker-request-failures.js";
 import {
   WorkerUnavailableError,
@@ -70,7 +73,18 @@ export function installChatWorktreeAndExecutionLaneRoutes(
           ? reply.send(chatWireSummarySchema.parse(chat))
           : reply.code(404).send({ error: "Chat or worktree not found." });
       } catch (error) {
-        return reply.code(409).send({ error: errorMessage(error) });
+        if (error instanceof ExecutionLaneConflictError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        request.log.error({
+          event: "chat.worktree.update.failed",
+          chatId: request.params.chatId,
+          errorClass: error instanceof Error ? error.name : "UnknownError",
+        });
+        return reply.code(500).send({
+          error:
+            "Could not update the agent worktree. Try again or reload the agent.",
+        });
       }
     },
   );
