@@ -102,6 +102,7 @@ export async function openChatComposerDraft(
       text: opened.text,
       mode: opened.mode,
       reasoningEffort: opened.reasoningEffort,
+      ...(opened.attachments ? { attachments: opened.attachments } : {}),
     });
   } finally {
     clearSensitiveBytes(componentKey);
