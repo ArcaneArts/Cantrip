@@ -34,6 +34,23 @@ import { BrowserFramePipeline } from "./frame-pipeline.js";
 import { BrowserCdpSession } from "./browser-session.js";
 import { findChromiumExecutable } from "./chromium.js";
 
+const controlKeyCodes = new Map<string, number>([
+  ["Backspace", 8],
+  ["Tab", 9],
+  ["Enter", 13],
+  ["Escape", 27],
+  [" ", 32],
+  ["PageUp", 33],
+  ["PageDown", 34],
+  ["End", 35],
+  ["Home", 36],
+  ["ArrowLeft", 37],
+  ["ArrowUp", 38],
+  ["ArrowRight", 39],
+  ["ArrowDown", 40],
+  ["Delete", 46],
+]);
+
 interface BrowserAdapterOptions {
   dataDirectory: string;
   executable?: string | null;
@@ -830,14 +847,26 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
       { type: "key" }
     >,
   ): Promise<void> {
-    const printable = message.text && message.event === "down";
+    const enter = message.key === "Enter";
+    // CDP needs Enter's carriage-return text for editing, but not for shortcuts.
+    const text =
+      message.event === "down"
+        ? enter
+          ? message.modifiers & ~8
+            ? undefined
+            : "\r"
+          : message.text
+        : undefined;
+    const keypad = enter && message.code === "NumpadEnter";
     await this.command("Input.dispatchKeyEvent", {
-      type:
-        message.event === "up" ? "keyUp" : printable ? "keyDown" : "rawKeyDown",
+      type: message.event === "up" ? "keyUp" : text ? "keyDown" : "rawKeyDown",
       key: message.key,
       code: message.code,
-      text: printable ? message.text : undefined,
-      unmodifiedText: printable ? message.text : undefined,
+      text: text || undefined,
+      unmodifiedText: text || undefined,
+      windowsVirtualKeyCode: controlKeyCodes.get(message.key),
+      isKeypad: keypad ? true : undefined,
+      location: keypad ? 3 : undefined,
       modifiers: message.modifiers,
     });
   }

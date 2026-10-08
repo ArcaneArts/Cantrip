@@ -33,6 +33,7 @@ import {
   encodeSurfacePrivateStateForWorker,
 } from "../src/surface-private-state-encryption.js";
 import { WorkerEncryptionService } from "../src/worker-encryption.js";
+import { remoteSurfaceKeyInput } from "../../cantrip_app/src/lib/remote-surface-input.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -222,6 +223,191 @@ afterEach(async () => {
 });
 
 describe("BrowserRemoteSurfaceAdapter", () => {
+  async function keyboardBrowser(
+    run: (fixture: {
+      cdp: BrowserCdpSession;
+      paste(text: string): Promise<void>;
+      key(
+        key: string,
+        code: string,
+        event: "down" | "up",
+        modifiers?: number,
+      ): Promise<void>;
+      press(key: string, code: string, modifiers?: number): Promise<void>;
+    }) => Promise<void>,
+  ) {
+    const server = createServer((_request, response) => {
+      response.setHeader("content-type", "text/html; charset=utf-8");
+      response.end(`<title>Keyboard fixture</title>
+        <input id="name" autofocus><button id="add" type="button">Add</button><output id="clicks">0</output>
+        <form id="form"><input id="form-name"><button type="submit">Submit</button></form><output id="submits">0</output>
+        <textarea id="notes"></textarea>
+        <script>
+        document.querySelector('#add').onclick = () => document.querySelector('#clicks').textContent++;
+        document.querySelector('#form').onsubmit = event => { event.preventDefault(); document.querySelector('#submits').textContent++; };
+        </script>`);
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("Missing fixture address");
+    const dataDirectory = await mkdtemp(
+      path.join(os.tmpdir(), "cantrip-browser-keys-"),
+    );
+    temporaryDirectories.push(dataDirectory);
+    const adapter = new BrowserRemoteSurfaceAdapter({ dataDirectory });
+    let session: Awaited<
+      ReturnType<BrowserRemoteSurfaceAdapter["open"]>
+    > | null = null;
+    try {
+      const service = await encryptionService(dataDirectory);
+      adapter.setSurfacePrivateStateService(service);
+      const surfaceId = "browser-keyboard-test";
+      const attachmentId = "keyboard-attachment";
+      const viewport = { width: 640, height: 480, devicePixelRatio: 1 };
+      session = await adapter.open(
+        {
+          type: "surface.attach",
+          surfaceId,
+          attachmentId,
+          projectId: "project-test",
+          serverId,
+          configuration: { kind: "browser", profileId: null },
+          stateResource: "browser-row",
+          stateRevision: 1,
+          stateProtection: await persistentBrowserState({
+            revision: 1,
+            service,
+            surfaceId,
+            url: `http://127.0.0.1:${address.port}/`,
+          }),
+          preferredTransport: "websocket",
+          viewport,
+          desktopStream: null,
+        },
+        () => true,
+      );
+      await session.attach({ id: attachmentId, viewport });
+      const cdp = adapter.session(surfaceId)!;
+      await eventually(
+        async () =>
+          (await cdp.evaluate("document.activeElement?.id")) === "name",
+      );
+      const send = (message: unknown) =>
+        session!.handleFrame(
+          attachmentId,
+          "control",
+          new TextEncoder().encode(JSON.stringify(message)),
+        );
+      const key = (
+        key: string,
+        code: string,
+        event: "down" | "up",
+        modifiers = 0,
+      ) =>
+        send(
+          remoteSurfaceKeyInput(
+            {
+              key,
+              code,
+              shiftKey: Boolean(modifiers & 8),
+              altKey: Boolean(modifiers & 1),
+              ctrlKey: Boolean(modifiers & 2),
+              metaKey: Boolean(modifiers & 4),
+            },
+            event,
+            { allowAltModifiedText: true },
+          ),
+        );
+      await run({
+        cdp,
+        key,
+        paste: (text) =>
+          send({ type: "clipboard", operation: "paste-text", text }),
+        press: async (name, code, modifiers) => {
+          await key(name, code, "down", modifiers);
+          await key(name, code, "up", modifiers);
+        },
+      });
+    } finally {
+      await session?.close();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  }
+
+  it("activates focused buttons exactly once for streamed Enter and Space", async () => {
+    await keyboardBrowser(async ({ cdp, paste, press, key }) => {
+      await paste("WQA_NAME_42");
+      await press("Tab", "Tab");
+      expect(await cdp.evaluate("document.activeElement.id")).toBe("add");
+      for (let count = 1; count <= 3; count++) {
+        await key("Enter", "Enter", "down");
+        expect(
+          await cdp.evaluate("document.querySelector('#clicks').textContent"),
+        ).toBe(String(count));
+        await key("Enter", "Enter", "up");
+        expect(
+          await cdp.evaluate("document.querySelector('#clicks').textContent"),
+        ).toBe(String(count));
+      }
+      await press("Enter", "NumpadEnter");
+      expect(
+        await cdp.evaluate("document.querySelector('#clicks').textContent"),
+      ).toBe("4");
+      await key(" ", "Space", "down");
+      expect(
+        await cdp.evaluate("document.querySelector('#clicks').textContent"),
+      ).toBe("4");
+      await key(" ", "Space", "up");
+      expect(
+        await cdp.evaluate("document.querySelector('#clicks').textContent"),
+      ).toBe("5");
+      expect(await cdp.evaluate("document.querySelector('#name').value")).toBe(
+        "WQA_NAME_42",
+      );
+    });
+  }, 30_000);
+
+  it("submits forms and edits text with streamed Enter, Tab, Backspace and arrows", async () => {
+    await keyboardBrowser(async ({ cdp, paste, press }) => {
+      await press("Tab", "Tab");
+      await press("Tab", "Tab");
+      expect(await cdp.evaluate("document.activeElement.id")).toBe("form-name");
+      await paste("WQA_FORM_42");
+      await press("Enter", "Enter");
+      expect(
+        await cdp.evaluate("document.querySelector('#submits').textContent"),
+      ).toBe("1");
+      await press("Tab", "Tab");
+      await press("Tab", "Tab");
+      expect(await cdp.evaluate("document.activeElement.id")).toBe("notes");
+      await paste("ab");
+      await press("ArrowLeft", "ArrowLeft");
+      await press("Backspace", "Backspace");
+      expect(await cdp.evaluate("document.querySelector('#notes').value")).toBe(
+        "b",
+      );
+      await press("ArrowRight", "ArrowRight");
+      await press("Enter", "Enter");
+      await press("Enter", "Enter", 8);
+      await press("é", "KeyE");
+      expect(await cdp.evaluate("document.querySelector('#notes').value")).toBe(
+        "b\n\né",
+      );
+      for (const modifier of [1, 2, 4]) {
+        await press("Enter", "Enter", modifier);
+        expect(
+          await cdp.evaluate("document.querySelector('#notes').value"),
+        ).toBe("b\n\né");
+      }
+      expect(
+        await cdp.evaluate("document.querySelector('#submits').textContent"),
+      ).toBe("1");
+    });
+  }, 30_000);
+
   it.skipIf(!findChromiumExecutable())(
     "adopts an active Cantrip browser profile instead of relaunching it",
     async () => {
