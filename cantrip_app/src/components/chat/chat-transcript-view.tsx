@@ -614,17 +614,37 @@ export function ChatTranscriptView({
           ) : null}
           {capabilities.modes === "agent-modes" ? (
             <GoalPanel
+              automationPaused={chat.automationPaused}
+              executionFailed={chat.status === "failed"}
               error={
                 updateGoal.isError
                   ? errorText(updateGoal.error)
                   : clearGoal.isError
                     ? errorText(clearGoal.error)
-                    : null
+                    : setAutomationPaused.isError
+                      ? errorText(setAutomationPaused.error)
+                      : null
               }
               goal={goalState.data?.goal ?? null}
-              pending={updateGoal.isPending || clearGoal.isPending}
+              pending={
+                updateGoal.isPending ||
+                clearGoal.isPending ||
+                setAutomationPaused.isPending
+              }
               onClear={() => clearGoal.mutate()}
-              onUpdate={(status) => updateGoal.mutate(status)}
+              onUpdate={(status) => {
+                if (status === "active" && chat.automationPaused) {
+                  setAutomationPaused.mutate(false, {
+                    onSuccess: () => {
+                      if (goalState.data?.goal?.status !== "active") {
+                        updateGoal.mutate("active");
+                      }
+                    },
+                  });
+                } else {
+                  updateGoal.mutate(status);
+                }
+              }}
             />
           ) : null}
           <AgentInteractionPanel

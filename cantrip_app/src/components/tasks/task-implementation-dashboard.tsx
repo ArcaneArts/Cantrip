@@ -98,7 +98,16 @@ export function taskImplementationCanResume(
   goal: TaskGoalSnapshot | null,
   automationPaused = false,
 ): boolean {
-  if (task.state === "complete" || task.state === "failed") return false;
+  if (task.state === "complete") return false;
+  if (task.state === "failed") {
+    return (
+      task.planGoalEnabled &&
+      task.lastError?.code === "implementation-runtime-failed" &&
+      (goal?.status === "active" ||
+        goal?.status === "paused" ||
+        goal?.status === "blocked")
+    );
+  }
   return (
     automationPaused ||
     task.state === "paused" ||
@@ -119,7 +128,11 @@ export async function resumeTaskImplementation(
   goal: TaskGoalSnapshot | null,
 ): Promise<void> {
   if (automationPaused) await setChatPaused(chatId, false);
-  if (goal?.status === "paused" || goal?.status === "blocked") {
+  if (
+    goal?.status === "paused" ||
+    goal?.status === "blocked" ||
+    (!automationPaused && goal?.status === "active")
+  ) {
     await updateChatGoal(chatId, { status: "active" });
   }
 }

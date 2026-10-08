@@ -116,6 +116,79 @@ afterAll(async () => {
 });
 
 describe("latest encrypted chat turn trimming", () => {
+  it("pauses automation atomically with its owning lane and cannot pause a newer turn", async () => {
+    const existing = await database.repository.getChatExecutionContext(
+      LOCAL_USER_ID,
+      chatId,
+    );
+    if (!existing?.projectId) throw new Error("Missing project");
+    const chat = await database.repository.createChat(
+      LOCAL_USER_ID,
+      existing.projectId,
+      {
+        ...protectedChatFields(),
+        worktreeMode: "agent-managed",
+      },
+    );
+    if (!chat) throw new Error("Missing chat");
+    const lane = await database.repository.startChatExecutionLane(
+      LOCAL_USER_ID,
+      chat.id,
+      "user",
+      "Interrupted Goal",
+    );
+    if (!lane?.executionLaneId) throw new Error("Missing lane");
+    expect(
+      await database.repository.finishChatExecutionLane(
+        chat.id,
+        lane.executionLaneId,
+        "idle",
+        {
+          pauseAutomation: true,
+          expectedActivatedAt: lane.executionLaneActivatedAt,
+        },
+      ),
+    ).toBe(true);
+    expect(
+      await database.repository.getChatExecutionContext(LOCAL_USER_ID, chat.id),
+    ).toMatchObject({ status: "idle", automationPaused: true });
+    await database.repository.setChatAutomationPaused(
+      LOCAL_USER_ID,
+      chat.id,
+      false,
+    );
+    const resumed = await database.repository.startChatExecutionLane(
+      LOCAL_USER_ID,
+      chat.id,
+      "user",
+      "Resume Goal",
+    );
+    if (!resumed?.executionLaneId) throw new Error("Missing resumed lane");
+    expect(resumed.executionLaneId).toBe(lane.executionLaneId);
+    expect(resumed.executionLaneActivatedAt).not.toBe(
+      lane.executionLaneActivatedAt,
+    );
+    expect(
+      await database.repository.finishChatExecutionLane(
+        chat.id,
+        lane.executionLaneId,
+        "idle",
+        {
+          pauseAutomation: true,
+          expectedActivatedAt: lane.executionLaneActivatedAt,
+        },
+      ),
+    ).toBe(false);
+    expect(
+      await database.repository.getChatExecutionContext(LOCAL_USER_ID, chat.id),
+    ).toMatchObject({ status: "running", automationPaused: false });
+    await database.repository.finishChatExecutionLane(
+      chat.id,
+      resumed.executionLaneId,
+      "idle",
+    );
+  });
+
   it("reconciles a recovered protected child event into one opaque row", async () => {
     const recovered = opaqueMessage("assistant");
     recovered.idempotencyKey = "activity:root-turn:child-thread:child-item";
@@ -130,8 +203,8 @@ describe("latest encrypted chat turn trimming", () => {
         ...recovered.protectedContent,
         envelope: {
           ...recovered.protectedContent.envelope,
-            nonce: "AQEBAQEBAQEBAQEB",
-            ciphertext: "AQEBAQEBAQEBAQEBAQEBAQ",
+          nonce: "AQEBAQEBAQEBAQEB",
+          ciphertext: "AQEBAQEBAQEBAQEBAQEBAQ",
         },
       },
     });

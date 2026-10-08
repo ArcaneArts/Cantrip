@@ -44,6 +44,7 @@ import {
   canFailOverRoute,
   continuationPrompt,
   effectivePermissionProfile,
+  taskGoalWorkerInterrupted,
 } from "../../chats/execution-helpers.js";
 import {
   TASK_DISPATCH_LEASE_MS,
@@ -83,6 +84,7 @@ import type {
 } from "./chat-turn-types.js";
 import { createTaskTurnBootstrapObserver } from "./task-turn-bootstrap-observer.js";
 import { acquireChatTurnExecution } from "./chat-turn-admission.js";
+import { settleChatTurnFailure } from "./chat-turn-failure.js";
 
 /**
  * Owns the complete lifecycle of one chat turn, including execution-lane
@@ -280,7 +282,10 @@ export function createChatTurnRuntime({
     const executionLaneId = execution.executionLaneId;
     const clearExecutionRequests = () =>
       interruptLiveAgentInteractionRequests(execution.chatId, executionLaneId);
-    const finishExecution = (status: "idle" | "failed") =>
+    const finishExecution = (
+      status: "idle" | "failed",
+      pauseAutomation = false,
+    ) =>
       nativeCommandReceipt
         ? finishManagedGui({
             repository,
@@ -303,6 +308,12 @@ export function createChatTurnRuntime({
             execution.chatId,
             executionLaneId,
             status,
+            {
+              pauseAutomation,
+              ...(pauseAutomation
+                ? { expectedActivatedAt: execution.executionLaneActivatedAt }
+                : {}),
+            },
           );
 
     const attribution: ChatExecutionAttribution =
@@ -1783,12 +1794,19 @@ export function createChatTurnRuntime({
             }
             const failedAt = new Date();
             const failureText = errorMessage(error).toLowerCase();
-            const attemptStatus = failureText.includes("interrupt")
-              ? "interrupted"
-              : failureText.includes("cancel")
-                ? "cancelled"
-                : "failed";
+            const workerInterrupted = taskGoalWorkerInterrupted(
+              execution.experience,
+              userMessage.mode,
+              error,
+            );
+            const attemptStatus =
+              workerInterrupted || failureText.includes("interrupt")
+                ? "interrupted"
+                : failureText.includes("cancel")
+                  ? "cancelled"
+                  : "failed";
             const canRetry =
+              !workerInterrupted &&
               canAutomaticallySwitchProviderAccount(runtime) &&
               (!nativeCommandReceipt ||
                 (
@@ -1893,112 +1911,31 @@ export function createChatTurnRuntime({
         }
       } catch (error: unknown) {
         markTaskWorkerDispatchFailed(error);
-        if (options.structuredResult) {
-          try {
-            await options.structuredResult.onFailed({
-              error,
-              execution,
-              userMessage,
-            });
-          } catch (taskError) {
-            app.log.error(
-              { chatId: execution.chatId, err: taskError },
-              "Could not persist a failed Task planning operation",
-            );
-          }
-        }
-        if (execution.contextKind === "project") {
-          await notifyCodeAgentState(
-            execution,
-            "failed",
-            changedPaths,
-            options.preflightWorkerCommandTimeoutMs,
-          );
-        }
-        if (!anyActivity && execution.modelRouteId) {
-          await repository.updateChatRuntime(
-            execution.chatId,
-            execution.workerId,
-            execution.worktreeId,
-            execution.threadId,
-            execution.modelRouteId,
-            "ready",
-            execution.providerAccountId,
-            execution.scratchRootId,
-          );
-        }
-        const interrupted = /interrupted/i.test(errorMessage(error));
-        app.log.error(
-          {
-            event: interrupted ? "chat.turn.interrupted" : "chat.turn.failed",
-            subsystem: "chat-execution",
-            operation: "turn",
-            status: interrupted ? "interrupted" : "failed",
-            reasonCode: interrupted ? "interrupted" : "execution-failed",
-            chatId: execution.chatId,
-            projectId: execution.projectId,
-            workerId: execution.workerId,
-            requestId: userMessage.id,
-            runId: executionLaneId,
-            durationMs: Date.now() - turnStartedAtMs,
-            err: encryptedTaskMessages
-              ? new Error("Encrypted Task turn failed.")
-              : error,
+        await settleChatTurnFailure({
+          dependencies: {
+            app,
+            repository,
+            notifyCodeAgentState,
+            appendLiveChatMessage,
+            cancelChatTurnOutcomeRecovery,
+            publishChatTurnBoundary,
+            continuePendingWorktreeTransition,
+            dispatchNextQueuedPrompt,
           },
-          "Agent turn failed",
-        );
-        if (!encryptedTaskMessages && !encryptedChatMessages) {
-          await appendLiveChatMessage(
-            ownerId,
-            execution.chatId,
-            {
-              role: "system",
-              content: [
-                {
-                  type: "text",
-                  text: interrupted
-                    ? "Turn interrupted."
-                    : `Agent failed: ${errorMessage(error)}`,
-                },
-              ],
-              idempotencyKey: `error:${userMessage.id}`,
-            },
-            attribution,
-          );
-        }
-        await clearExecutionRequests();
-        const finished = await finishExecution(
-          interrupted || execution.contextKind === "standalone"
-            ? "idle"
-            : "failed",
-        );
-        cancelChatTurnOutcomeRecovery(
-          execution.workerId,
-          execution.chatId,
-          userMessage.id,
-        );
-        publishChatTurnBoundary(
-          execution.chatId,
-          execution.projectId,
+          error,
           execution,
-        );
-        if (options.afterTurnFailed) {
-          try {
-            await options.afterTurnFailed({ error, execution, userMessage });
-          } catch (taskError) {
-            app.log.error(
-              { chatId: execution.chatId, err: taskError },
-              "Task post-processing failed after its turn failed",
-            );
-          }
-        }
-        if (
-          finished &&
-          (execution.contextKind === "standalone" ||
-            !(await continuePendingWorktreeTransition(execution.chatId)))
-        ) {
-          void dispatchNextQueuedPrompt(execution.chatId);
-        }
+          userMessage,
+          options,
+          anyActivity,
+          changedPaths,
+          encryptedTaskMessages: Boolean(encryptedTaskMessages),
+          encryptedChatMessages: Boolean(encryptedChatMessages),
+          ownerId,
+          attribution,
+          turnStartedAtMs,
+          clearExecutionRequests,
+          finishExecution,
+        });
       } finally {
         if (!taskWorkerDispatchSettled && options.taskDispatchLease) {
           markTaskWorkerDispatchFailed(

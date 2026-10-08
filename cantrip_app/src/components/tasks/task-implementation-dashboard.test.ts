@@ -30,6 +30,26 @@ const goal = {
 } as TaskGoalSnapshot;
 
 describe("Task implementation dashboard presentation", () => {
+  it("allows explicit Resume for retained implementation Goals, but not failed planning or completed Goals", () => {
+    const failed = {
+      ...task,
+      state: "failed",
+      lastError: { code: "implementation-runtime-failed" },
+    } as TaskDetail;
+    expect(taskImplementationCanResume(failed, goal)).toBe(true);
+    expect(
+      taskImplementationCanResume(failed, { ...goal, status: "complete" }),
+    ).toBe(false);
+    expect(
+      taskImplementationCanResume({ ...failed, planGoalEnabled: false }, goal),
+    ).toBe(false);
+    expect(
+      taskImplementationCanResume(
+        { ...failed, lastError: { code: "planning-failed" } } as TaskDetail,
+        goal,
+      ),
+    ).toBe(false);
+  });
   it("shows a deferred launch as queued instead of still starting", () => {
     expect(
       taskImplementationStatusLabel(
@@ -245,6 +265,18 @@ describe("Task implementation dashboard presentation", () => {
 
 describe("Task execution controls", () => {
   afterEach(() => vi.restoreAllMocks());
+
+  it("restarts a retained active Goal only when Resume is explicitly requested on an unpaused failed Task", async () => {
+    const pause = vi.spyOn(api, "setChatPaused");
+    const updateGoal = vi
+      .spyOn(api, "updateChatGoal")
+      .mockResolvedValue({ goal: null });
+    await resumeTaskImplementation("task-chat", false, goal);
+    expect(pause).not.toHaveBeenCalled();
+    expect(updateGoal).toHaveBeenCalledExactlyOnceWith("task-chat", {
+      status: "active",
+    });
+  });
 
   it("stops at a resumable boundary without interrupting or cancelling the encrypted operation", async () => {
     const pause = vi

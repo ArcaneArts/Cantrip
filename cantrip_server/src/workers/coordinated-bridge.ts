@@ -789,15 +789,19 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
             workerId: pending.workerId,
           });
           pending.reject(
-            new WorkerCommandError(
-              message.error ?? "Remote worker command failed.",
-              errorCode,
-              {
-                operation: pending.commandType,
-                requestId: message.requestId,
-                workerId: pending.workerId,
-              },
-            ),
+            errorCode === "worker-unavailable"
+              ? new WorkerUnavailableError(
+                  message.error ?? "Remote worker is unavailable.",
+                )
+              : new WorkerCommandError(
+                  message.error ?? "Remote worker command failed.",
+                  errorCode,
+                  {
+                    operation: pending.commandType,
+                    requestId: message.requestId,
+                    workerId: pending.workerId,
+                  },
+                ),
           );
         }
         return;
@@ -964,7 +968,13 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
       local.ownerId !== message.ownerId ||
       ownerId !== message.ownerId
     ) {
-      await this.#respond(message, false, undefined, "Worker is unavailable.");
+      await this.#respond(
+        message,
+        false,
+        undefined,
+        "Worker is unavailable.",
+        "worker-unavailable",
+      );
       return;
     }
     this.#incomingRequests += 1;
@@ -991,9 +1001,11 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
         false,
         undefined,
         errorMessage(error),
-        error instanceof WorkerCommandError
-          ? (error.code ?? undefined)
-          : undefined,
+        error instanceof WorkerUnavailableError
+          ? "worker-unavailable"
+          : error instanceof WorkerCommandError
+            ? (error.code ?? undefined)
+            : undefined,
       );
     } finally {
       this.#incomingRequests -= 1;
