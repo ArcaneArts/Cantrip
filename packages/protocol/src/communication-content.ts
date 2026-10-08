@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { chatAttachmentSummarySchema } from "./attachment-content.js";
 
 import {
   encryptedPayloadEnvelopeSchema,
@@ -8,7 +9,9 @@ import {
 
 export const CHAT_MESSAGE_PROTECTED_CONTENT_BYTES_LIMIT = 2 * 1_024 * 1_024;
 export const QUEUED_PROMPT_PROTECTED_CONTENT_BYTES_LIMIT = 512 * 1_024;
-export const CHAT_COMPOSER_DRAFT_PROTECTED_CONTENT_BYTES_LIMIT = 512 * 1_024;
+// Includes up to 20 attachment previews as well as the unfinished text.
+export const CHAT_COMPOSER_DRAFT_PROTECTED_CONTENT_BYTES_LIMIT =
+  2 * 1_024 * 1_024;
 export const CHAT_PLAN_PROTECTED_CONTENT_BYTES_LIMIT = 1 * 1_024 * 1_024;
 export const INTERACTION_PROTECTED_CONTENT_BYTES_LIMIT = 1 * 1_024 * 1_024;
 
@@ -325,6 +328,7 @@ export const chatComposerDraftProtectedContentSchema = z
     text: z.string().max(100_000),
     mode: communicationTurnModeSchema,
     reasoningEffort: z.string().min(1).max(100).nullable(),
+    attachments: z.array(chatAttachmentSummarySchema).max(20).optional(),
   })
   .strict();
 

@@ -5,6 +5,7 @@ import {
   encryptedChatComposerDraftWireStateSchema,
   encryptedChatUpdateSchema,
 } from "@cantrip/protocol";
+import { CHAT_COMPOSER_DRAFT_PROTECTED_CONTENT_BYTES_LIMIT } from "@cantrip/protocol/communication-content";
 import {
   standaloneChatFileWireRequestSchema,
   surfaceStreamWireRequestSchema,
@@ -193,6 +194,12 @@ export function installChatBasicRoutes(
 
   app.put<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/composer-draft",
+    {
+      bodyLimit:
+        Math.ceil(
+          ((CHAT_COMPOSER_DRAFT_PROTECTED_CONTENT_BYTES_LIMIT + 16) * 4) / 3,
+        ) + 1024,
+    },
     async (request, reply) => {
       const input = encryptedChatComposerDraftUpdateSchema.safeParse(
         request.body,

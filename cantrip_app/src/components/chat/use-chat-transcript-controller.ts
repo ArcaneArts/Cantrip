@@ -1,3 +1,8 @@
+import {
+  composerDraftWithAttachments,
+  restoreComposerDraftAttachments,
+  type ComposerAttachmentState,
+} from "./composer-draft-attachments";
 import { useChatExecutionControls } from "./use-chat-execution-controls";
 import { nativePermissionControlState } from "./native-permission-control-state";
 import type {
@@ -163,14 +168,6 @@ import {
 } from "@/lib/api";
 import { watchDesktopWindowFocus } from "@/lib/desktop-popout";
 
-interface ComposerAttachmentState {
-  attachment: ChatAttachmentSummary;
-  contentUrl: string;
-  error: string | null;
-  localPreview: boolean;
-  uploading: boolean;
-}
-
 export function useChatTranscriptController({
   capabilities,
   chat,
@@ -313,7 +310,13 @@ export function useChatTranscriptController({
   const [composerScrollTop, setComposerScrollTop] = useState(0);
   const [draftAttachments, setDraftAttachments] = useState<
     ComposerAttachmentState[]
-  >([]);
+  >(() =>
+    restoreComposerDraftAttachments(
+      chat.id,
+      initialComposerDraft.draft,
+      chatAttachmentContentUrl,
+    ),
+  );
   const [attachmentNotice, setAttachmentNotice] = useState<string | null>(null);
   const [draggingFiles, setDraggingFiles] = useState(false);
   const [inspectWidth, setInspectWidth] = useState(readAgentInspectWidth);
@@ -736,6 +739,13 @@ export function useChatTranscriptController({
       composerDraftPersistence.markPersisted(restored);
       if (restored) {
         setDraft(restored.text);
+        setDraftAttachments(
+          restoreComposerDraftAttachments(
+            chat.id,
+            restored,
+            chatAttachmentContentUrl,
+          ),
+        );
         setComposerMode(
           capabilities.modes === "default-only" ? "default" : restored.mode,
         );
@@ -744,6 +754,7 @@ export function useChatTranscriptController({
     }
     setComposerDraftHydrated(true);
   }, [
+    chat.id,
     composerDraftHydrated,
     composerDraftPersistence,
     composerDraftState.data,
@@ -762,16 +773,17 @@ export function useChatTranscriptController({
 
   useEffect(() => {
     if (!composerDraftHydrated || editingPrompt) return;
-    const nextDraft: ChatComposerDraft | null = draft
-      ? {
-          text: draft,
-          mode:
-            capabilities.modes === "default-only"
-              ? "default"
-              : effectiveComposerMode,
-          reasoningEffort: composerReasoningEffort,
-        }
-      : null;
+    const nextDraft = composerDraftWithAttachments(
+      {
+        text: draft,
+        mode:
+          capabilities.modes === "default-only"
+            ? "default"
+            : effectiveComposerMode,
+        reasoningEffort: composerReasoningEffort,
+      },
+      draftAttachments,
+    );
     stagePersistedComposerDraft(nextDraft);
   }, [
     composerDraftHydrated,
@@ -779,6 +791,7 @@ export function useChatTranscriptController({
     effectiveComposerMode,
     composerReasoningEffort,
     draft,
+    draftAttachments,
     editingPrompt,
     stagePersistedComposerDraft,
   ]);
@@ -972,6 +985,7 @@ export function useChatTranscriptController({
     source: "file" | "paste" = "file",
   ) => {
     if (relocationActive) return;
+    composerDraftEditedRef.current = true;
     setAttachmentNotice(null);
     const slots = Math.max(
       0,
@@ -1057,6 +1071,7 @@ export function useChatTranscriptController({
     );
   };
   const removeDraftAttachment = (item: ComposerAttachmentState) => {
+    composerDraftEditedRef.current = true;
     setDraftAttachments((current) =>
       current.filter(({ attachment }) => attachment.id !== item.attachment.id),
     );
