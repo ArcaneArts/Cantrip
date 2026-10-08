@@ -1,5 +1,6 @@
 import { Cpu, Network, SlidersHorizontal } from "lucide-react";
 import { renderToStaticMarkup } from "react-dom/server";
+import TestRenderer, { act } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -53,6 +54,44 @@ const sections: readonly SettingsNavigationSection<Section>[] = [
 ];
 
 describe("settings navigation", () => {
+  it("passes the selected result to nested navigation and clears search", async () => {
+    const selected = vi.fn();
+    const section = vi.fn();
+    const query = vi.fn();
+    let view!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      view = TestRenderer.create(
+        <SettingsNavigationLayout
+          activeSection="general"
+          ariaLabel="Settings"
+          searchQuery="API credentials"
+          sections={sections}
+          title="Settings"
+          onSearchQueryChange={query}
+          onSectionChange={section}
+          onSearchResultSelect={selected}
+        >
+          <div>Content</div>
+        </SettingsNavigationLayout>,
+      );
+    });
+    const result = view.root
+      .findAllByType("button")
+      .find(
+        (button) =>
+          button.props.onClick &&
+          button
+            .findAllByType("span")
+            .some((span) => span.children.includes("Model providers")),
+      );
+    await act(async () => result!.props.onClick());
+    expect(selected).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "providers", sectionId: "models" }),
+    );
+    expect(section).toHaveBeenCalledWith("models");
+    expect(query).toHaveBeenCalledWith("");
+    await act(async () => view.unmount());
+  });
   it("searches setting metadata across inactive categories", () => {
     expect(settingsSearchResults("API credentials", sections)).toEqual([
       expect.objectContaining({

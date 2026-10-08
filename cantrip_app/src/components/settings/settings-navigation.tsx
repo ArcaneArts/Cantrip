@@ -174,6 +174,7 @@ export function SettingsNavigationLayout<SectionId extends string>({
   onMobileSectionOpenChange,
   onSearchQueryChange,
   onSectionChange,
+  onSearchResultSelect,
   searchPlaceholder = "Search all settings",
   searchQuery,
   sections,
@@ -187,6 +188,7 @@ export function SettingsNavigationLayout<SectionId extends string>({
   onMobileSectionOpenChange?(open: boolean): void;
   onSearchQueryChange(query: string): void;
   onSectionChange(section: SectionId): void;
+  onSearchResultSelect?(result: SettingsSearchResult<SectionId>): void;
   searchPlaceholder?: string;
   searchQuery: string;
   sections: readonly SettingsNavigationSection<SectionId>[];
@@ -213,8 +215,10 @@ export function SettingsNavigationLayout<SectionId extends string>({
     onSectionChange(section);
     setMobileSectionOpen(true);
   };
-  const selectSearchResult = (result: SettingsSearchResult<SectionId>) =>
+  const selectSearchResult = (result: SettingsSearchResult<SectionId>) => {
+    onSearchResultSelect?.(result);
     selectSection(result.sectionId);
+  };
 
   return (
     <div
