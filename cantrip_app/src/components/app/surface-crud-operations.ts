@@ -30,6 +30,7 @@ import {
   deleteProjectView,
   deleteTerminal,
   forkChat,
+  getBrowsers,
   renameChat,
   renameExplorer,
   renameProjectView,
@@ -37,6 +38,11 @@ import {
   updateBrowser,
   updateCodeTab,
 } from "@/lib/api";
+import { CantripApiError } from "@/lib/api-client";
+import {
+  browserUpdateForPageState,
+  type BrowserPageStateUpdate,
+} from "@/lib/browser-page-state";
 import { operateRunConfigurationRuntime } from "@/lib/run-configuration-api";
 
 function withImmediateClose<TData, TError, TVariables, TContext>(
@@ -413,28 +419,93 @@ export function useBrowserSurfaceOperations({
   selectedProjectId: string | null;
   surfaceClose: ProjectSurfaceCloseCoordinator;
 }) {
+  const updateChains = useRef(new Map<string, Promise<BrowserSummary>>());
+  const acknowledgedPageTitles = useRef(new Map<string, string | null>());
   const updateBrowserMutation = useMutation({
-    mutationFn: ({
-      browserId,
-      input,
-    }: {
-      browserId: string;
-      input: { title?: string; url?: string; stateRevision?: number };
-    }) => updateBrowser(browserId, input),
-    onSuccess: (updated) =>
-      queryClient.setQueryData<BrowserSummary[]>(
-        ["browsers", updated.projectId],
-        (current = []) =>
-          current.map((browser) =>
-            browser.id === updated.id ? updated : browser,
-          ),
+    mutationFn: (
+      variables: { browserId: string } & (
+        | { input: { title?: string; url?: string; stateRevision?: number } }
+        | { pageState: BrowserPageStateUpdate; projectId: string }
       ),
+    ) => {
+      const { browserId } = variables;
+      const previous = updateChains.current.get(browserId) ?? Promise.resolve();
+      const next = previous
+        .catch(() => undefined)
+        .then(async () => {
+          const persist = async (input: {
+            title?: string;
+            url?: string;
+            stateRevision?: number;
+          }) => {
+            const updated = await updateBrowser(browserId, input);
+            queryClient.setQueryData<BrowserSummary[]>(
+              ["browsers", updated.projectId],
+              (current = []) =>
+                current.map((browser) =>
+                  browser.id === updated.id ? updated : browser,
+                ),
+            );
+            return updated;
+          };
+          if ("input" in variables) return persist(variables.input);
+          const { pageState, projectId } = variables;
+          if (!acknowledgedPageTitles.current.has(browserId)) {
+            acknowledgedPageTitles.current.set(
+              browserId,
+              pageState.previousTitle,
+            );
+          }
+          const page = {
+            ...pageState,
+            previousTitle: acknowledgedPageTitles.current.get(browserId)!,
+          };
+          for (let attempt = 0; ; attempt += 1) {
+            const browser = queryClient
+              .getQueryData<BrowserSummary[]>(["browsers", projectId])
+              ?.find((browser) => browser.id === browserId);
+            if (!browser) throw new Error("Browser is no longer available.");
+            const input = browserUpdateForPageState(browser, page);
+            try {
+              const updated = input
+                ? await persist({
+                    ...input,
+                    stateRevision: browser.stateRevision,
+                  })
+                : browser;
+              // Only acknowledged page titles may establish automatic ownership.
+              // Observed frames can advance while an earlier update is pending.
+              acknowledgedPageTitles.current.set(browserId, pageState.title);
+              return updated;
+            } catch (error) {
+              if (
+                !(error instanceof CantripApiError) ||
+                error.status !== 409 ||
+                error.code !== "stale-state" ||
+                attempt > 0
+              )
+                throw error;
+              const browsers = await getBrowsers(projectId);
+              queryClient.setQueryData(["browsers", projectId], browsers);
+            }
+          }
+        });
+      updateChains.current.set(browserId, next);
+      void next
+        .finally(() => {
+          if (updateChains.current.get(browserId) === next)
+            updateChains.current.delete(browserId);
+        })
+        .catch(() => undefined);
+      return next;
+    },
   });
   const deleteBrowserMutation = useImmediateProjectSurfaceDelete({
     getTabId: (browserId: string) => browserId,
     kind: "browser",
     mutationFn: deleteBrowser,
-    onSuccess: async (_value, _deletedId, projectId) => {
+    onSuccess: async (_value, deletedId, projectId) => {
+      acknowledgedPageTitles.current.delete(deletedId);
       await queryClient.invalidateQueries({
         queryKey: ["browsers", projectId],
       });
