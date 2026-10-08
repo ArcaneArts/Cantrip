@@ -57,7 +57,6 @@ import {
   saveChatComposerDraft,
 } from "@/lib/api";
 import { revealProjectInNativeFileManager } from "@/lib/desktop-project-share";
-import { browserUpdateForPageState } from "@/lib/browser-page-state";
 import { cn } from "@/lib/utils";
 import { projectSetupPercent } from "@/lib/project-setup-progress";
 import {
@@ -706,20 +705,12 @@ export function GlobalContentHost({
                     url: service.url,
                   })
                 }
-                onPageState={(state) => {
-                  const input = browserUpdateForPageState(
-                    selectedBrowser,
-                    state,
-                  );
-                  if (input) {
-                    updateBrowserMutation.mutate({
-                      browserId: selectedBrowser.id,
-                      input: {
-                        ...input,
-                        stateRevision: selectedBrowser.stateRevision,
-                      },
-                    });
-                  }
+                onPageState={(pageState) => {
+                  updateBrowserMutation.mutate({
+                    browserId: selectedBrowser.id,
+                    projectId: selectedBrowser.projectId,
+                    pageState,
+                  });
                 }}
               />
             </Suspense>
