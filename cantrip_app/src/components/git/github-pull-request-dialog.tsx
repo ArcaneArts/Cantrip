@@ -1227,7 +1227,7 @@ export function GithubPullRequestDialog({
                 <Badge variant={overview.data.merged ? "default" : "secondary"}>
                   {overview.data.merged
                     ? "merged"
-                    : overview.data.draft
+                    : overview.data.state === "open" && overview.data.draft
                       ? "draft"
                       : overview.data.state}
                 </Badge>
