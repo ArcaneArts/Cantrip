@@ -54,7 +54,11 @@ import {
   providerRouteLabel,
   providerSupportsCatalog,
 } from "./provider-catalog-display";
-import { providerSetupOptions, type ProviderSetupKind } from "./provider-setup";
+import {
+  providerSetupOptions,
+  providerSetupUnavailableReason,
+  type ProviderSetupKind,
+} from "./provider-setup";
 
 function ModelList({
   models,
@@ -309,14 +313,33 @@ export function ModelsSettings({
           </DropdownMenu.Trigger>
           <DropdownMenu.Portal>
             <StyledDropdownMenuContent align="end" sideOffset={4}>
-              {providerSetupOptions.map((setup) => (
-                <StyledDropdownMenuItem
-                  key={setup.id}
-                  onSelect={() => onAddProvider(setup.id)}
-                >
-                  {setup.label}
-                </StyledDropdownMenuItem>
-              ))}
+              {providerSetupOptions.map((setup) => {
+                const unavailableReason = providerSetupUnavailableReason(
+                  setup.kind,
+                  providers,
+                );
+                return (
+                  <StyledDropdownMenuItem
+                    key={setup.id}
+                    disabled={Boolean(unavailableReason)}
+                    onSelect={() => {
+                      if (!unavailableReason) onAddProvider(setup.id);
+                    }}
+                    title={unavailableReason ?? undefined}
+                  >
+                    {unavailableReason ? (
+                      <span className="grid gap-0.5">
+                        <span>{setup.label}</span>
+                        <span className="text-xs">
+                          Already added · manage sign-ins in its tab
+                        </span>
+                      </span>
+                    ) : (
+                      setup.label
+                    )}
+                  </StyledDropdownMenuItem>
+                );
+              })}
             </StyledDropdownMenuContent>
           </DropdownMenu.Portal>
         </DropdownMenu.Root>

@@ -77,6 +77,23 @@ export function providerSetupDefaults(setup: ProviderSetupKind) {
   return providerSetupOptions.find(({ id }) => id === setup)!;
 }
 
+export function providerSetupUnavailableReason(
+  kind: ModelProviderKind,
+  providers: readonly Pick<ModelProviderSummary, "id" | "kind">[],
+  editingProviderId?: string,
+): string | null {
+  if (kind !== "chatgpt" && kind !== "grok") return null;
+  if (
+    !providers.some(
+      (provider) => provider.kind === kind && provider.id !== editingProviderId,
+    )
+  ) {
+    return null;
+  }
+  const name = kind === "chatgpt" ? "ChatGPT" : "SuperGrok";
+  return `A ${name} provider already exists. Add sign-ins to that provider instead.`;
+}
+
 export function providerSetupFor(
   provider: ModelProviderSummary,
 ): ProviderSetupKind {

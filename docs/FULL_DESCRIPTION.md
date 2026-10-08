@@ -868,7 +868,10 @@ Settings → Models has a General tab for IDE and standalone Chat model defaults
 followed by one tab per configured provider. The + menu offers all supported
 provider setups and opens the corresponding configuration dialog; saving a new
 provider selects its tab. Right-click a provider tab and choose Edit to change
-its configuration or manage its accounts.
+its configuration or manage its accounts. ChatGPT and Grok / SuperGrok each allow
+one provider; after creation, their + menu and provider-type choices are disabled.
+Add further sign-ins by editing the existing provider instead. Ollama and
+OpenAI-compatible provider setups can still be added more than once.
 
 Each provider tab shows usage, connection/catalog status, and the provider's
 logical models. Models with failover routes appear in every provider tab they
