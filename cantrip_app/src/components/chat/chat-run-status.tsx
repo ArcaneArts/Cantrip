@@ -1,5 +1,5 @@
 import type { ChatSummary, InferenceProgressSnapshot } from "@cantrip/protocol";
-import { Bot, Pause } from "lucide-react";
+import { Bot, CircleAlert, Pause } from "lucide-react";
 import {
   useEffect,
   useRef,
@@ -197,6 +197,28 @@ export function ChatRunStatus({
   status,
   waitingForPlanAnswer,
 }: ChatRunStatusProps) {
+  if (status === "failed") {
+    return (
+      <div
+        role="alert"
+        aria-label="Last turn failed"
+        className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm"
+        data-elite-ignore=""
+      >
+        <CircleAlert
+          aria-hidden="true"
+          className="mt-0.5 size-4 shrink-0 text-destructive"
+        />
+        <div className="space-y-1">
+          <p className="font-medium">Last turn failed</p>
+          <p className="text-muted-foreground">
+            Review the conversation and any error details before sending a
+            follow-up. The agent may have completed some steps.
+          </p>
+        </div>
+      </div>
+    );
+  }
   if (status !== "running" && status !== "waiting-for-approval") return null;
 
   if (status === "running" && !automationPaused && !waitingForPlanAnswer) {
