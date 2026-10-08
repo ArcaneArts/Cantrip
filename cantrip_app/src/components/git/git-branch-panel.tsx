@@ -222,6 +222,7 @@ function actionFromEditor(editor: EditorState): GitBranchAction {
 function BranchActions({
   branch,
   disabled,
+  worktreesEnabled,
   inventory,
   onEdit,
   onCreateWorktree,
@@ -232,6 +233,7 @@ function BranchActions({
 }: {
   branch: GitManagedBranch;
   disabled: boolean;
+  worktreesEnabled: boolean;
   inventory: GitBranchList;
   onEdit(editor: EditorState): void;
   onCreateWorktree(branch: GitManagedBranch): void;
@@ -306,6 +308,12 @@ function BranchActions({
           ) : null}
           <DropdownMenuPrimitive.Item
             className={itemClass}
+            disabled={!worktreesEnabled}
+            aria-description={
+              worktreesEnabled
+                ? undefined
+                : "This project does not support managed worktrees."
+            }
             onSelect={() => onCreateWorktree(branch)}
           >
             <GitBranchPlus className="size-3.5" /> Create worktree…
@@ -387,6 +395,7 @@ export function GitBranchPanel({
   projectId,
   worktrees,
   worktreeId,
+  worktreesEnabled,
 }: {
   onClose(): void;
   onOperation(action: GitMergeRebaseAction): void;
@@ -394,6 +403,7 @@ export function GitBranchPanel({
   onSelectWorktree(worktreeId: string): void;
   projectId: string;
   worktreeId: string;
+  worktreesEnabled: boolean;
   worktrees: readonly ProjectWorktreeSummary[];
 }) {
   const queryClient = useQueryClient();
@@ -521,7 +531,12 @@ export function GitBranchPanel({
           size="sm"
           variant="ghost"
           className="h-7 gap-1 px-2 text-xs"
-          disabled={!primaryWorktree || busy}
+          disabled={!worktreesEnabled || !primaryWorktree || busy}
+          aria-description={
+            worktreesEnabled
+              ? undefined
+              : "This project does not support managed worktrees."
+          }
           onClick={() => setCleanupOpen(true)}
         >
           <ScanLine className="size-3.5" /> Clean up…
@@ -624,6 +639,7 @@ export function GitBranchPanel({
               </div>
               <BranchActions
                 branch={branch}
+                worktreesEnabled={worktreesEnabled}
                 disabled={busy}
                 inventory={branches.data!}
                 onEdit={setEditor}
@@ -845,7 +861,7 @@ export function GitBranchPanel({
           </div>
         )}
       </ReviewedOperationDialog>
-      {primaryWorktree ? (
+      {primaryWorktree && worktreesEnabled ? (
         <GitWorktreeCleanupDialog
           open={cleanupOpen}
           primaryWorktreeId={primaryWorktree.id}

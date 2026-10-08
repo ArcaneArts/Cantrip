@@ -840,6 +840,10 @@ export function GitHistoryView({
   ]);
 
   const selectedWorktree = worktrees.find(({ id }) => id === worktreeId);
+  const worktreesEnabled = project.capabilities.worktrees;
+  const worktreeDisabledReason = worktreesEnabled
+    ? undefined
+    : "This project does not support managed worktrees.";
   const commitActionWorktrees = useMemo(
     () => eligibleCommitActionWorktrees(worktreeId, worktrees),
     [worktreeId, worktrees],
@@ -1348,6 +1352,19 @@ export function GitHistoryView({
     return issues.data.pages.flatMap((page) => page.items);
   }, [issues.data]);
   const githubTotal = issues.data?.pages[0]?.total ?? null;
+  const refreshHistory = useCallback(() => {
+    if (worktreesEnabled) reconcile.mutate();
+    else void history.refetch();
+    void queryClient.invalidateQueries({
+      queryKey: ["worktree-status", project.id],
+    });
+  }, [
+    worktreesEnabled,
+    reconcile.mutate,
+    history.refetch,
+    queryClient,
+    project.id,
+  ]);
   const issuesRefreshing =
     issues.isFetching && !issues.isFetchingNextPage && !issues.isLoading;
 
@@ -1386,10 +1403,7 @@ export function GitHistoryView({
       push: requestPush,
       refresh: () => {
         if (section === "history") {
-          reconcile.mutate();
-          void queryClient.invalidateQueries({
-            queryKey: ["worktree-status", project.id],
-          });
+          refreshHistory();
         } else if (section === "graph") {
           setGraphRefreshEpoch((epoch) => epoch + 1);
         } else if (section === "actions") {
@@ -1419,6 +1433,7 @@ export function GitHistoryView({
     project.id,
     queryClient,
     requestPush,
+    refreshHistory,
     refreshIssues,
     reconcile.isPending,
     reconcile.mutate,
@@ -1520,6 +1535,7 @@ export function GitHistoryView({
       {drawer.kind === "branches" ? (
         <GitBranchPanel
           projectId={project.id}
+          worktreesEnabled={worktreesEnabled}
           worktreeId={worktreeId}
           worktrees={worktrees}
           onClose={closeDrawer}
@@ -1580,7 +1596,7 @@ export function GitHistoryView({
         <div className="ml-auto flex min-w-0 items-center gap-1 max-md:w-full max-md:justify-end">
           {section === "history" && standalone ? (
             <>
-              {selectedWorktree ? (
+              {selectedWorktree && worktreesEnabled ? (
                 <WorktreeControl
                   currentWorktreeId={worktreeId}
                   projectId={project.id}
@@ -1705,7 +1721,7 @@ export function GitHistoryView({
               }
               onClick={() =>
                 section === "history"
-                  ? reconcile.mutate()
+                  ? refreshHistory()
                   : section === "graph"
                     ? setGraphRefreshEpoch((epoch) => epoch + 1)
                     : section === "actions"
@@ -1981,21 +1997,28 @@ export function GitHistoryView({
                     <span>Graph / worktrees</span>
                     <button
                       type="button"
-                      className="ml-auto rounded p-1 hover:bg-background/70 hover:text-foreground"
+                      aria-description={worktreeDisabledReason}
+                      disabled={!worktreesEnabled}
+                      className="ml-auto rounded p-1 hover:bg-background/70 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
                       onClick={() => {
                         setCreateInput(null);
                         setCreateOpen(true);
                       }}
-                      title="Create worktree"
+                      title={worktreeDisabledReason ?? "Create worktree"}
                     >
                       <Plus className="size-3" />
                       <span className="sr-only">Create worktree</span>
                     </button>
                     <button
                       type="button"
-                      className="rounded p-1 hover:bg-background/70 hover:text-foreground"
+                      aria-description={worktreeDisabledReason}
+                      disabled={!worktreesEnabled}
+                      className="rounded p-1 hover:bg-background/70 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
                       onClick={() => setPruneOpen(true)}
-                      title="Prune stale worktree metadata"
+                      title={
+                        worktreeDisabledReason ??
+                        "Prune stale worktree metadata"
+                      }
                     >
                       <ScanLine className="size-3" />
                       <span className="sr-only">Prune worktrees</span>
@@ -2453,7 +2476,7 @@ export function GitHistoryView({
 
       <WorktreeCreateDialog
         initialInput={createInput}
-        open={createOpen}
+        open={worktreesEnabled && createOpen}
         pending={createWorktree.isPending}
         projectId={project.id}
         sourceWorktreeId={worktreeId}
@@ -2467,7 +2490,7 @@ export function GitHistoryView({
       />
 
       <Dialog
-        open={pruneOpen}
+        open={worktreesEnabled && pruneOpen}
         onOpenChange={(open) => {
           if (confirmDialogAllowsOpenChange(open, pruneWorktrees.isPending)) {
             setPruneOpen(open);
