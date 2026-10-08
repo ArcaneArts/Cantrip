@@ -3355,6 +3355,32 @@ function boundedFilePreview(value: string): string {
     : value.slice(-agentFilePreviewLimitCharacters);
 }
 
+function nativeFileChangePreview(change: FileUpdateChange): {
+  latestLine?: string;
+  diffPreview?: string;
+} {
+  if (!change.diff) return {};
+  if (change.kind.type === "update") {
+    const latestLine = latestChangedLine(change.diff);
+    const diffPreview = changedLinesPreview(change.diff);
+    return {
+      ...(latestLine === null ? {} : { latestLine }),
+      ...(diffPreview === null ? {} : { diffPreview }),
+    };
+  }
+  // Native additions/deletions contain the file content, not a unified diff.
+  const lines = boundedFilePreview(change.diff)
+    .replace(/\r?\n$/u, "")
+    .split(/\r?\n/u);
+  const marker = change.kind.type === "add" ? "+" : "-";
+  return {
+    latestLine: lines[lines.length - 1]!,
+    diffPreview: boundedFilePreview(
+      lines.map((line) => `${marker}${line}`).join("\n"),
+    ),
+  };
+}
+
 export function latestChangedLine(
   diff: string | null | undefined,
 ): string | null {
@@ -3787,13 +3813,10 @@ export function normalizeCodexThreadItem(
     const changes =
       telemetry.fileChanges ??
       item.changes.map((change) => {
-        const latestLine = latestChangedLine(change.diff);
-        const diffPreview = changedLinesPreview(change.diff);
         return {
           path: displayPath(cwd, change.path),
           kind: change.kind.type,
-          ...(latestLine === null ? {} : { latestLine }),
-          ...(diffPreview === null ? {} : { diffPreview }),
+          ...nativeFileChangePreview(change),
           ...(telemetry.updatedAtMs === undefined
             ? {}
             : { lastActivityAtMs: telemetry.updatedAtMs }),
