@@ -248,6 +248,7 @@ export function ExplorerCodeEditor({
   const [sharedTransportRecoveryAttempt, setSharedTransportRecoveryAttempt] =
     useState(0);
   const startupEligibleRef = useRef(startupEligible);
+  const activeRef = useRef(active);
   const appearanceRef = useRef(appearance);
   const connectionInFlightRef = useRef(false);
   const connectionRetryCountRef = useRef(0);
@@ -293,6 +294,7 @@ export function ExplorerCodeEditor({
   } | null>(null);
   const previousWorkerOnlineRef = useRef(workerOnline);
   const previousStartupEligibleRef = useRef(startupEligible);
+  const previousActiveRef = useRef(active);
   const previousPathRef = useRef(path);
   const onReadyRef = useRef(onReady);
   const workerOnlineRef = useRef(workerOnline);
@@ -383,6 +385,7 @@ export function ExplorerCodeEditor({
   const preferredAttachmentRef = useRef(preferredAttachment);
   const frameMountRef = useRef(frameMount);
   useLayoutEffect(() => {
+    activeRef.current = active;
     startupEligibleRef.current = startupEligible;
     appearanceRef.current = appearance;
     bindingKeyRef.current = bindingKey;
@@ -392,6 +395,7 @@ export function ExplorerCodeEditor({
     preferredAttachmentRef.current = preferredAttachment;
     workerOnlineRef.current = workerOnline;
   }, [
+    active,
     startupEligible,
     appearance,
     bindingKey,
@@ -630,7 +634,7 @@ export function ExplorerCodeEditor({
     (expectedBindingKey: string, expectedNonce: string | null): boolean => {
       if (
         closingRef.current ||
-        !startupEligibleRef.current ||
+        !activeRef.current ||
         bindingKeyRef.current !== expectedBindingKey ||
         expectedNonce === null ||
         frameMountRef.current?.nonce !== expectedNonce ||
@@ -689,7 +693,7 @@ export function ExplorerCodeEditor({
       frameRetryPendingRef.current = true;
       if (
         frameRetryTimerRef.current ||
-        !startupEligibleRef.current ||
+        !activeRef.current ||
         !workerOnlineRef.current
       ) {
         return;
@@ -1022,7 +1026,9 @@ export function ExplorerCodeEditor({
     if (closingRef.current) return;
     const wasStartupEligible = previousStartupEligibleRef.current;
     previousStartupEligibleRef.current = startupEligible;
-    if (wasStartupEligible || !startupEligible) return;
+    const becameActive = !previousActiveRef.current && active;
+    previousActiveRef.current = active;
+    if ((!becameActive && wasStartupEligible) || !startupEligible) return;
     if (
       sharedTransportUnavailableRef.current &&
       preferredAttachment?.sharedOwnedAttachment
@@ -1036,6 +1042,7 @@ export function ExplorerCodeEditor({
     }
     requestFrameRetry(bindingKey, frameMount?.nonce ?? null);
   }, [
+    active,
     bindingKey,
     frameMount?.nonce,
     preferredAttachment,
@@ -1337,7 +1344,7 @@ export function ExplorerCodeEditor({
   }, [frameMount]);
 
   useLayoutEffect(() => {
-    if (!frameMount || frameFailureNonce === frameMount.nonce) return;
+    if (!frameMount) return;
     if (frameFailureNonceRef.current !== frameMount.nonce) {
       frameFailureNonceRef.current = null;
     }
@@ -1364,6 +1371,7 @@ export function ExplorerCodeEditor({
         clearTimeout(frameRetryTimerRef.current);
         frameRetryTimerRef.current = null;
       }
+      setFrameFailureNonce(null);
       setError(null);
       clientLogger.info("Explorer Code workbench ready message received", {
         ...explorerFileIntentContext(explorerId),
@@ -1396,10 +1404,13 @@ export function ExplorerCodeEditor({
     };
     window.addEventListener("message", receiveReady);
     let timeout: ReturnType<typeof setTimeout> | null = null;
-    if (startupEligible && !settled) {
+    // WebKit may suspend an invisible prewarmed frame. Preparing its endpoint
+    // is useful, but only a visible editor should spend the frame retry budget.
+    // A timeout is not a document failure: keep listening for a verified ready
+    // signal until this frame is actually replaced.
+    if (active && !settled && frameFailureNonce !== frameMount.nonce) {
       timeout = setTimeout(() => {
         if (settled) return;
-        settled = true;
         const timeoutError = codeWorkbenchStageError(
           "workbench",
           "The embedded editor timed out after its endpoint loaded.",
@@ -1421,6 +1432,7 @@ export function ExplorerCodeEditor({
       window.removeEventListener("message", receiveReady);
     };
   }, [
+    active,
     bindingKey,
     editorInstanceId,
     explorerId,
@@ -1428,7 +1440,6 @@ export function ExplorerCodeEditor({
     frameMount,
     frameReadyNonce,
     scheduleFrameRetry,
-    startupEligible,
     workerId,
     worktreeId,
   ]);
@@ -1670,7 +1681,7 @@ export function ExplorerCodeEditor({
             frameFailureNonceRef.current = null;
             setReadyKey(null);
             setError(null);
-            if (!startupEligibleRef.current) {
+            if (!activeRef.current) {
               frameRetryPendingRef.current = true;
               return;
             }
