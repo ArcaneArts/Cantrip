@@ -72,6 +72,7 @@ describe("CodeDirectEndpointManager", () => {
       beginTunnelStream: vi.fn(),
       endTunnelStream: vi.fn(),
       proxyTarget: vi.fn(() => ({
+        appearance: "pro-high-contrast-dark",
         codeTabId: "code-1",
         connectionToken: "worker-local-secret",
         editorOrigin: `http://127.0.0.1:${port}`,
@@ -118,6 +119,7 @@ describe("CodeDirectEndpointManager", () => {
         "x-forwarded-host": "attacker.example",
         "x-forwarded-port": "666",
         "x-original-host": "attacker.example",
+        "x-cantrip-appearance": "light",
       },
     });
     expect(await response.text()).toBe("editor-ready");
@@ -154,6 +156,9 @@ describe("CodeDirectEndpointManager", () => {
     );
     expect(observed?.headers["x-forwarded-port"]).toBeUndefined();
     expect(observed?.headers["x-original-host"]).toBeUndefined();
+    expect(observed?.headers["x-cantrip-appearance"]).toBe(
+      "pro-high-contrast-dark",
+    );
     expect(response.headers.get("set-cookie")).toBeNull();
     expect(response.headers.get("x-frame-options")).toBeNull();
     expect(response.headers.get("content-security-policy")).toContain(

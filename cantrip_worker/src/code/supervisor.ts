@@ -97,6 +97,7 @@ interface ProfileProcess {
 }
 
 export interface CodeProxyTarget {
+  appearance: CodeAppearance;
   codeTabId: string;
   connectionToken: string;
   editorOrigin: string;
@@ -1245,6 +1246,7 @@ export class CodeSupervisor {
       throw new Error("Cantrip Code session is not running.");
     }
     return {
+      appearance: session.appearance,
       codeTabId: session.codeTabId,
       connectionToken: profile.connectionToken,
       editorOrigin: `http://127.0.0.1:${profile.port}`,

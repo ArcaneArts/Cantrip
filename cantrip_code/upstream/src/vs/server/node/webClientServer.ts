@@ -28,6 +28,7 @@ import { isString, Mutable } from '../../base/common/types.js';
 import { CharCode } from '../../base/common/charCode.js';
 import { IExtensionManifest } from '../../platform/extensions/common/extensions.js';
 import { ICSSDevelopmentService } from '../../platform/cssDev/node/cssDevService.js';
+import { getCantripInitialColorTheme } from './cantripTheme.js';
 
 const textMimeType: { [ext: string]: string | undefined } = {
 	'.html': 'text/html',
@@ -358,6 +359,7 @@ export class WebClientServer {
 		}
 
 		const workbenchWebConfiguration = {
+			initialColorTheme: getCantripInitialColorTheme(getFirstHeader('x-cantrip-appearance')),
 			remoteAuthority,
 			serverBasePath: basePath,
 			_wrapWebWorkerExtHostInIframe,

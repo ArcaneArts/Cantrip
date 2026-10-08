@@ -219,13 +219,31 @@ describe("Cantrip Code proxy authority binding", () => {
       ["X-Original-Host", "attacker.example"],
       ["X-Forwarded-Host", "attacker.example"],
       ["X-Forwarded-Port", "666"],
+      ["X-Cantrip-Appearance", "light"],
     ];
     const target = new URL("http://127.0.0.1:54321/");
-    const headers = codeEditorRequestHeaders(input, target, "/code", "secret");
+    const headers = codeEditorRequestHeaders(
+      input,
+      target,
+      "/code",
+      "secret",
+      "pro-high-contrast-dark",
+    );
 
     expect(codeEditorPublicAuthority(input)).toBe("cantrip.example:8443");
     expect(headers["x-original-host"]).toBeUndefined();
     expect(headers["x-forwarded-host"]).toBe("cantrip.example:8443");
     expect(headers["x-forwarded-port"]).toBeUndefined();
+    expect(headers["x-cantrip-appearance"]).toBe("pro-high-contrast-dark");
+  });
+
+  it("defaults missing startup appearance to Cantrip dark, not a renderer header", () => {
+    const headers = codeEditorRequestHeaders(
+      [["X-Cantrip-Appearance", "light"]],
+      new URL("http://127.0.0.1:54321/"),
+      "/code",
+      "secret",
+    );
+    expect(headers["x-cantrip-appearance"]).toBe("dark");
   });
 });

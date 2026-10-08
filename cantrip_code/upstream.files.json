@@ -27297,6 +27297,11 @@
       "gitHash": "787b8784d9a5c84d608058d9cda612644a08bdf8"
     },
     {
+      "path": "src/vs/server/node/cantripTheme.ts",
+      "type": "file",
+      "gitHash": "259bf2fdc664fb6eee6f6b9e04041df79b9a7eb1"
+    },
+    {
       "path": "src/vs/server/node/extensionHostConnection.ts",
       "type": "file",
       "gitHash": "6ae4edd84b97064efbd1a53582483de043aa4038"
@@ -27379,7 +27384,7 @@
     {
       "path": "src/vs/server/node/webClientServer.ts",
       "type": "file",
-      "gitHash": "2b033da0f1c06b41420b0e4cfa97f7d2e1576196"
+      "gitHash": "d9d444535e7a56ab685807eea6c9e7077f0e34b9"
     },
     {
       "path": "src/vs/server/test/node/serverConnectionToken.test.ts",
@@ -43439,7 +43444,7 @@
     {
       "path": "src/vs/workbench/services/themes/browser/workbenchThemeService.ts",
       "type": "file",
-      "gitHash": "e286ec94d86162fcea1244b0ca6ccebe11eb3ace"
+      "gitHash": "4c17faa889ba22726650d2ede20874e5e56b7a8b"
     },
     {
       "path": "src/vs/workbench/services/themes/common/colorExtensionPoint.ts",
