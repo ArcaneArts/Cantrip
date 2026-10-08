@@ -5,6 +5,7 @@ import {
   deleteFromChatMessageLiveOverlay,
   mapWithConcurrency,
   mergeChatMessageHistory,
+  retainLoadedChatMessageHead,
   upsertChatMessageLiveOverlay,
   type ChatMessagePage,
 } from "./chat-message-history";
@@ -47,6 +48,45 @@ function page(sequences: number[]): ChatMessagePage {
 }
 
 describe("chat message history", () => {
+  it("retains earlier loaded rows while making the refreshed window authoritative", () => {
+    const result = retainLoadedChatMessageHead(
+      page([3, 4, 5, 6]),
+      page([5, 7, 8]),
+    );
+    expect(result.messages.map((m) => m.sequence)).toEqual([3, 4, 5, 7, 8]);
+    expect(result.page.nextBeforeSequence).toBe(3);
+  });
+  it("bounds retained rows and moves the older cursor to the actual retained boundary", () => {
+    const result = retainLoadedChatMessageHead(
+      page([3, 4, 5, 6]),
+      page([5, 7, 8]),
+      3,
+    );
+    expect(result.messages.map((m) => m.sequence)).toEqual([5, 7, 8]);
+    expect(result.page).toMatchObject({
+      oldestSequence: 5,
+      nextBeforeSequence: 5,
+      hasMore: true,
+    });
+  });
+  it("drops retained rows after an authoritative rewind or another chat's response", () => {
+    expect(
+      retainLoadedChatMessageHead(
+        page([3, 4, 5, 6]),
+        page([4, 5]),
+      ).messages.map((m) => m.sequence),
+    ).toEqual([4, 5]);
+    const other = page([7, 8]);
+    other.messages = other.messages.map((m) => ({
+      ...m,
+      chatId: "other-chat",
+    }));
+    expect(
+      retainLoadedChatMessageHead(page([3, 4]), other).messages.map(
+        (m) => m.sequence,
+      ),
+    ).toEqual([7, 8]);
+  });
   it("merges newest-first pages into one ascending deduplicated timeline", () => {
     expect(
       mergeChatMessageHistory([page([5, 6]), page([3, 4, 5])]).map(
