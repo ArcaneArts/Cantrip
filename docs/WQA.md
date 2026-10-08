@@ -1199,7 +1199,7 @@ Cleanup only resources owned by this run:
    protocol for any later documentation/code edits; never clean/reset another
    user's checkout or worktree.
 
-
 ## Campaign results
 
 - [2026-10-08 Wide QA campaign](WQA-2026-10-08.md): 394 dispositions, section counts, defect-to-test mapping, skipped coverage and fixture cleanup.
+- [2026-10-08 fix results](WQA-FIXES-2026-10-08.md): 36 merged fixes, issue/PR/revision mapping, verification limits, known failing checks and retained fixtures.
