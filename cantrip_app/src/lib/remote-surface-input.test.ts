@@ -298,25 +298,64 @@ describe("remote surface input messages", () => {
 });
 
 describe("forwardRemoteSurfaceClipboard", () => {
-  it("forwards non-empty and empty clipboard text", async () => {
-    const forwarded: string[] = [];
+  it("reports sent only when dispatch is accepted", async () => {
+    const forward = vi.fn(() => true);
+    await expect(
+      forwardRemoteSurfaceClipboard(forward, async () => "hello"),
+    ).resolves.toBe("Clipboard sent");
+    expect(forward).toHaveBeenCalledWith("hello");
+  });
+  it("does not send an empty clipboard", async () => {
+    const forward = vi.fn(() => true);
+    await expect(
+      forwardRemoteSurfaceClipboard(forward, async () => ""),
+    ).resolves.toBe("Clipboard is empty");
+    expect(forward).not.toHaveBeenCalled();
+  });
+  it("reports rejected dispatch without claiming success", async () => {
+    const forward = vi.fn(() => false);
     await expect(
       forwardRemoteSurfaceClipboard(
-        (text) => forwarded.push(text),
+        forward,
+        async () => "WQA_DESKTOP_PASTE_42",
+      ),
+    ).resolves.toBe("Clipboard was not sent. Remote input is unavailable.");
+    expect(forward).toHaveBeenCalledWith("WQA_DESKTOP_PASTE_42");
+  });
+  it("waits for asynchronous dispatch acceptance", async () => {
+    await expect(
+      forwardRemoteSurfaceClipboard(
+        async () => false,
         async () => "hello",
       ),
-    ).resolves.toBe("Clipboard pasted");
+    ).resolves.toBe("Clipboard was not sent. Remote input is unavailable.");
     await expect(
       forwardRemoteSurfaceClipboard(
-        (text) => forwarded.push(text),
-        async () => "",
+        async () => true,
+        async () => "hello",
       ),
-    ).resolves.toBe("Clipboard is empty");
-    expect(forwarded).toEqual(["hello", ""]);
+    ).resolves.toBe("Clipboard sent");
   });
-
+  it("distinguishes sender failures from clipboard read denial", async () => {
+    await expect(
+      forwardRemoteSurfaceClipboard(
+        () => {
+          throw new Error("sender failed");
+        },
+        async () => "hello",
+      ),
+    ).resolves.toBe("Clipboard could not be sent.");
+    await expect(
+      forwardRemoteSurfaceClipboard(
+        async () => {
+          throw new Error("sender failed");
+        },
+        async () => "hello",
+      ),
+    ).resolves.toBe("Clipboard could not be sent.");
+  });
   it("reports denied clipboard access without forwarding", async () => {
-    const forward = vi.fn();
+    const forward = vi.fn(() => true);
     await expect(
       forwardRemoteSurfaceClipboard(forward, async () => {
         throw new Error("denied");

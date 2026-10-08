@@ -231,14 +231,21 @@ export function remoteSurfaceTouchInput(
 }
 
 export async function forwardRemoteSurfaceClipboard(
-  forward: (text: string) => void,
+  forward: (text: string) => boolean | Promise<boolean>,
   readText: () => Promise<string> = () => navigator.clipboard.readText(),
 ): Promise<string> {
+  let text: string;
   try {
-    const text = await readText();
-    forward(text);
-    return text ? "Clipboard pasted" : "Clipboard is empty";
+    text = await readText();
   } catch {
     return "Clipboard access was denied by this app environment.";
+  }
+  if (!text) return "Clipboard is empty";
+  try {
+    return (await forward(text))
+      ? "Clipboard sent"
+      : "Clipboard was not sent. Remote input is unavailable.";
+  } catch {
+    return "Clipboard could not be sent.";
   }
 }
