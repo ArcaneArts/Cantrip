@@ -51,7 +51,48 @@ stop unrelated sections. Attempt real actions where exposed and record actual
 outcomes. Do not replace execution with a capability flag, installation-path
 check, process-name check or other proxy that could falsely prevent a test.
 
-### Start the baseline stack
+### Use the intended configured installation
+
+When the user authorizes existing providers, models and settings, identify the
+working installation before provisioning another runtime. `pnpm dev` uses
+`.cantrip/browser-dev/`; desktop development uses `.cantrip/dev/`, and an
+installed desktop app has its own application-data directory. Their encrypted
+profiles and worker identities are separate. Starting an old browser-dev
+database does not connect to the user's working desktop profile.
+
+For an existing desktop installation, use the supported browser connection:
+
+1. Open that client and read its actual Local server origin from the user/server
+   menu. Its loopback port can change on startup; do not guess it from the
+   browser development defaults.
+2. Start only the development browser frontend with
+   `pnpm --filter @cantrip/app dev`, without `VITE_CANTRIP_LOCAL_ONLY=true`.
+   In its server switcher, add the origin observed in the desktop client and
+   use **Test connection**, then **Save and switch**.
+3. If the browser requests anonymous recovery, use **Settings → General →
+   Anonymous recovery → Save recovery file** in the working desktop client.
+   Import that exported file with the browser's **Import recovery file** action.
+   Keep this bearer artifact private and out of logs, source control and issue
+   attachments. Do not reset keys or replace encrypted data.
+4. Observe the existing project inventory, worker-backed file tree and model
+   settings in the browser. Then perform a disposable fixture operation to
+   establish execution readiness. A successful connection test alone does not
+   prove that the profile is unlocked or the worker can execute.
+5. Record the actual client/server/worker versions separately. A development
+   frontend connected to an installed release is a mixed-version environment;
+   confirm an observed failure against the applicable contract before filing
+   a defect. Do not stop or restart the user's runtime for recovery tests;
+   those tests require an owned disposable stack.
+
+A recovery screen on the first candidate database is not evidence that the
+working installation or its providers are unavailable. Try the actual supported
+export/import flow from the working client. If it fails, retain that failure
+and apply the bounded recovery/skip rules to the affected cases.
+
+### Start a new disposable baseline stack
+
+Use this path when a new isolated installation is intended. It does not import
+the user's existing configuration automatically.
 
 1. Create a separate checkout/worktree at the chosen merged revision using the
    repository workflow. Record its absolute path and `git rev-parse HEAD`.
