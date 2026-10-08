@@ -138,6 +138,8 @@ export function GlobalContentHost({
     explorers,
     focusDetachedPane,
     folderSetupJobs,
+    gitHistoryNavigation,
+    gitHistoryNavigationActive = true,
     selectedPaneOwnedElsewhere,
     isPopout,
     mobileNavigationSurfaces,
@@ -545,6 +547,9 @@ export function GlobalContentHost({
               chats={chats.data ?? []}
               contentScrolled={contentScrolled}
               includeOverviewTab={false}
+              navigationActive={gitHistoryNavigationActive}
+              navigationRequest={gitHistoryNavigation.request}
+              onNavigationHandled={gitHistoryNavigation.complete}
               activeSection={
                 projectOverviewGitSection ??
                 (selectedProjectView?.kind !== "remote-desktop"
