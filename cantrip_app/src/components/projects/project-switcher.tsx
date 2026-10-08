@@ -37,6 +37,10 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { searchProjects } from "@/lib/project-workspaces";
+import {
+  recordProjectAccess,
+  useRecentProjectIds,
+} from "@/lib/project-recency";
 import { cn } from "@/lib/utils";
 
 function projectContext(
@@ -102,9 +106,17 @@ export function ProjectSwitcher({
     null,
   );
   const [revealError, setRevealError] = useState<string | null>(null);
+  const recentProjectIds = useRecentProjectIds();
   const results = useMemo(
-    () => searchProjects(projects, workspaces, activeWorkspace, query),
-    [activeWorkspace, projects, query, workspaces],
+    () =>
+      searchProjects(
+        projects,
+        workspaces,
+        activeWorkspace,
+        query,
+        recentProjectIds,
+      ),
+    [activeWorkspace, projects, query, recentProjectIds, workspaces],
   );
   const searchingEverywhere = Boolean(query.trim());
 
@@ -221,6 +233,7 @@ export function ProjectSwitcher({
                             className="py-2"
                             data-slot="project-switcher-project"
                             onSelect={() => {
+                              recordProjectAccess(project.id);
                               onSelectProject(project.id);
                               setOpen(false);
                             }}
