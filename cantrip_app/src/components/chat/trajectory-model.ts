@@ -184,7 +184,7 @@ function correlationTurnId(
   return null;
 }
 
-function turnSlices(messages: readonly ChatMessage[]): TurnSlice[] {
+export function turnSlices(messages: readonly ChatMessage[]): TurnSlice[] {
   const { agentMessages, previewGroups } = splitPreviewMessages(messages);
   const ordered = [...agentMessages].sort(
     (left, right) =>
