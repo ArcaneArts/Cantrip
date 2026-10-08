@@ -502,23 +502,29 @@ export function installChatQueueRoutes(
                 )
               ).status === "applied"
             : false;
+        const queueIdentity = queueClaim
+          ? {
+              operationId: request.body.operationId,
+              queueClaim: {
+                id: queueClaim.id,
+                promptRevision: queueClaim.promptRevision,
+              },
+              nativeClientUserMessageId:
+                queued.nativeClientUserMessageId ??
+                `cantrip:${queued.pendingMessage.id}`,
+            }
+          : {};
         if (!alreadyApplied)
           await bridge.request(
             context.workerId,
             control.activationGeneration
               ? {
                   type: "chat.native-control",
+                  ...queueIdentity,
                   ...(queueClaim
                     ? {
-                        operationId: request.body.operationId,
-                        queueClaim: {
-                          id: queueClaim.id,
-                          promptRevision: queueClaim.promptRevision,
-                        },
                         protectedNativeInput: queued.protectedNativeInput,
                         queuedPromptId: queued.id,
-                        nativeClientUserMessageId:
-                          queued.nativeClientUserMessageId,
                       }
                     : {}),
                   chatId: context.chatId,
@@ -535,6 +541,7 @@ export function installChatQueueRoutes(
                 }
               : {
                   type: "chat.steer",
+                  ...queueIdentity,
                   executionProfile:
                     context.contextKind === "standalone"
                       ? "standalone-chat"
