@@ -1806,6 +1806,7 @@ export function App() {
     activeProjectWorkspaceStorageKey,
     chats: chats.data,
     openCreatedTab,
+    openOrFocusSurface,
     openProjectTask,
     projectWorkspaces: projectWorkspaces.data,
     projects: projects.data,
