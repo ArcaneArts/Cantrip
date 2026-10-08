@@ -39,6 +39,7 @@ import { useAppLiveStatus } from "@/lib/app-live-react";
 import {
   CODE_WORKBENCH_READY_TIMEOUT_MS,
   CodeWorkbenchFrameLoadTracker,
+  codeWorkbenchFrameFailure,
   createCodeWorkbenchFrameMount,
   isCodeWorkbenchReadyEvent,
 } from "@/lib/code-workbench-frame";
@@ -314,8 +315,19 @@ export function CodeSettings({
     setFrameReadyNonce(null);
     setOpenedFrameNonce(null);
     const receiveReady = (event: MessageEvent<unknown>) => {
+      if (settled) return;
+      const failure = codeWorkbenchFrameFailure(
+        event,
+        frameRef.current?.contentWindow ?? null,
+        frameMount,
+      );
+      if (failure) {
+        settled = true;
+        clearTimeout(timeout);
+        setFrameError(failure.message);
+        return;
+      }
       if (
-        settled ||
         !isCodeWorkbenchReadyEvent(
           event,
           frameRef.current?.contentWindow ?? null,

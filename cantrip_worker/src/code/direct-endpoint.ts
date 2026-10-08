@@ -41,6 +41,7 @@ import {
   workerLogger,
 } from "../logger.js";
 import type { CodeSessionRetention, CodeSupervisor } from "./supervisor.js";
+import { writeCodeWorkbenchFrameFailure } from "./frame-failure.js";
 import {
   codeEditorPublicAuthority,
   codeEditorPublicStartupSelection,
@@ -797,6 +798,13 @@ export class CodeDirectEndpointManager {
     endpoint.server.on("request", (request, response) => {
       const requestContext = this.#requestContext(endpoint, request, true);
       if (!requestContext) {
+        const basePath =
+          endpoint.kind === "legacy"
+            ? BASE_PATH
+            : parseCodeSessionRoutePath(request.url ?? "/")?.basePath;
+        if (writeCodeWorkbenchFrameFailure(request, response, basePath, 404)) {
+          return;
+        }
         response
           .writeHead(404, { "cache-control": "no-store" })
           .end("Not found");
@@ -1616,6 +1624,9 @@ export class CodeDirectEndpointManager {
       if (!startupSelection.authorized) {
         endStream();
         releaseStream = null;
+        if (writeCodeWorkbenchFrameFailure(request, response, basePath, 400)) {
+          return;
+        }
         response
           .writeHead(400, {
             "cache-control": "no-store",
@@ -1634,6 +1645,11 @@ export class CodeDirectEndpointManager {
         } catch {
           endStream();
           releaseStream = null;
+          if (
+            writeCodeWorkbenchFrameFailure(request, response, basePath, 400)
+          ) {
+            return;
+          }
           response
             .writeHead(400, {
               "cache-control": "no-store",
@@ -1699,6 +1715,18 @@ export class CodeDirectEndpointManager {
               },
             );
           }
+          if (
+            writeCodeWorkbenchFrameFailure(
+              request,
+              response,
+              basePath,
+              incoming.statusCode ?? 502,
+            )
+          ) {
+            incoming.destroy();
+            endStream();
+            return;
+          }
           writeResponseHeaders(response, incoming);
           incoming.pipe(response);
           incoming.once("end", endStream);
@@ -1740,6 +1768,9 @@ export class CodeDirectEndpointManager {
             ...workerLogErrorIdentity(error),
           },
         );
+        if (writeCodeWorkbenchFrameFailure(request, response, basePath, 502)) {
+          return;
+        }
         if (!response.headersSent) response.writeHead(502);
         response.end("Cantrip Code is unavailable.");
       });
@@ -1771,6 +1802,9 @@ export class CodeDirectEndpointManager {
           ...workerLogErrorIdentity(error),
         },
       );
+      if (writeCodeWorkbenchFrameFailure(request, response, basePath, 503)) {
+        return;
+      }
       response
         .writeHead(503, {
           "cache-control": "no-store",
