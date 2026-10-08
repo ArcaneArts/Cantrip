@@ -525,7 +525,7 @@ export function TaskImplementationDashboard({
             >
               Latest activity
             </h3>
-            <div className="min-h-48 overflow-hidden">
+            <div className="min-h-48 overflow-hidden [&_[data-slot=trajectory-event-viewport]]:overscroll-y-auto">
               <AgentInspectContent
                 active={active}
                 messages={latestMessages}
