@@ -177,6 +177,7 @@ import {
   providerSetupDefaults,
   providerSetupFor,
   providerSetupOptions,
+  providerSetupUnavailableReason,
   type ProviderSetupKind,
 } from "./provider-setup";
 
@@ -1203,6 +1204,11 @@ export function SettingsPage({
     editingProvider && isAccountProviderKind(editingProvider.kind)
       ? editingProvider
       : null;
+  const providerUnavailableReason = providerSetupUnavailableReason(
+    providerKind,
+    settings.data?.providers ?? [],
+    editingProvider?.id,
+  );
   const selectedAccount =
     accountProvider?.accounts.find(({ id }) => id === selectedAccountId) ??
     accountProvider?.accounts[0] ??
@@ -1322,6 +1328,7 @@ export function SettingsPage({
   }, [proModeOpacityDialogOpen, proModeOpacityDraft, savedProModeOpacity]);
   const saveProvider = useMutation({
     mutationFn: async () => {
+      if (providerUnavailableReason) throw new Error(providerUnavailableReason);
       const input = {
         name: providerName,
         kind: providerKind,
@@ -2395,6 +2402,14 @@ export function SettingsPage({
                   onChange={(event) => {
                     const setup = event.target.value as ProviderSetupKind;
                     const preset = providerSetupDefaults(setup);
+                    if (
+                      providerSetupUnavailableReason(
+                        preset.kind,
+                        settings.data?.providers ?? [],
+                        editingProvider?.id,
+                      )
+                    )
+                      return;
                     setProviderSetup(setup);
                     setProviderKind(preset.kind);
                     if (setup !== "openai-compatible" || !editingProvider) {
@@ -2411,11 +2426,23 @@ export function SettingsPage({
                   }}
                   className={inputClass}
                 >
-                  {providerSetupOptions.map((setup) => (
-                    <option key={setup.id} value={setup.id}>
-                      {setup.label}
-                    </option>
-                  ))}
+                  {providerSetupOptions.map((setup) => {
+                    const unavailableReason = providerSetupUnavailableReason(
+                      setup.kind,
+                      settings.data?.providers ?? [],
+                      editingProvider?.id,
+                    );
+                    return (
+                      <option
+                        key={setup.id}
+                        value={setup.id}
+                        disabled={Boolean(unavailableReason)}
+                      >
+                        {setup.label}
+                        {unavailableReason ? " (already added)" : ""}
+                      </option>
+                    );
+                  })}
                 </NativeSelect>
               </Field>
               {!isAccountProviderKind(providerKind) &&
@@ -2944,7 +2971,11 @@ export function SettingsPage({
                 )}
               </p>
             ) : null}
-            {saveProvider.isError ? (
+            {providerUnavailableReason ? (
+              <p role="alert" className="text-sm text-destructive">
+                {providerUnavailableReason}
+              </p>
+            ) : saveProvider.isError ? (
               <p className="text-sm text-destructive">
                 {errorText(saveProvider.error)}
               </p>
@@ -2955,7 +2986,12 @@ export function SettingsPage({
                   Cancel
                 </Button>
               </DialogClose>
-              <Button type="submit" disabled={saveProvider.isPending}>
+              <Button
+                type="submit"
+                disabled={
+                  saveProvider.isPending || Boolean(providerUnavailableReason)
+                }
+              >
                 {saveProvider.isPending ? (
                   <Loader2 className="size-4 animate-spin" />
                 ) : null}

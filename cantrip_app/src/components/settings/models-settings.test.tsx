@@ -48,10 +48,17 @@ vi.mock("@/components/ui/styled-menu", () => ({
   StyledDropdownMenuItem: ({
     children,
     onSelect,
+    ...props
   }: {
     children: ReactNode;
     onSelect(): void;
-  }) => <button onClick={onSelect}>{children}</button>,
+    disabled?: boolean;
+    title?: string;
+  }) => (
+    <button {...props} onClick={onSelect}>
+      {children}
+    </button>
+  ),
 }));
 
 const now = "2026-10-07T12:00:00.000Z";
@@ -284,6 +291,60 @@ describe("Models provider navigation", () => {
     expect(inputs.onAddModel).toHaveBeenCalledWith("local");
     await act(async () => view.unmount());
   });
+
+  it.each(["chatgpt", "grok"] as const)(
+    "disables adding a second %s provider but permits other types and re-enables after removal",
+    async (kind) => {
+      const accountProvider = { ...providers[0]!, id: kind, kind, name: kind };
+      const inputs = props({ providers: [...providers, accountProvider] });
+      let view!: TestRenderer.ReactTestRenderer;
+      await act(async () => {
+        view = TestRenderer.create(<ModelsSettings {...inputs} />);
+      });
+      const disabled = view.root
+        .findAllByType("button")
+        .filter((button) => button.props.disabled);
+      expect(disabled).toHaveLength(1);
+      expect(disabled[0]!.props.title).toContain(
+        "Add sign-ins to that provider instead",
+      );
+      expect(
+        disabled[0]!
+          .findAllByType("span")
+          .some(
+            (span) =>
+              typeof span.props.children === "string" &&
+              span.props.children.includes("Already added"),
+          ),
+      ).toBe(true);
+      // Even a direct callback invocation must not bypass the disabled primitive.
+      await act(async () => disabled[0]!.props.onClick());
+      expect(inputs.onAddProvider).not.toHaveBeenCalled();
+      for (const setup of providerSetupOptions.filter(
+        (setup) => setup.kind !== kind,
+      )) {
+        const item = view.root
+          .findAllByType("button")
+          .find((button) => button.props.children === setup.label)!;
+        expect(item.props.disabled).toBe(false);
+        await act(async () => item.props.onClick());
+        expect(inputs.onAddProvider).toHaveBeenLastCalledWith(setup.id);
+      }
+      await act(async () =>
+        view.update(<ModelsSettings {...inputs} providers={providers} />),
+      );
+      const item = view.root
+        .findAllByType("button")
+        .find(
+          (button) =>
+            button.props.children === providerSetupDefaults(kind).label,
+        )!;
+      expect(item.props.disabled).toBe(false);
+      await act(async () => item.props.onClick());
+      expect(inputs.onAddProvider).toHaveBeenLastCalledWith(kind);
+      await act(async () => view.unmount());
+    },
+  );
 
   it("supports arrow/Home/End tab navigation with activation and prevents page scrolling", async () => {
     let view!: TestRenderer.ReactTestRenderer;
