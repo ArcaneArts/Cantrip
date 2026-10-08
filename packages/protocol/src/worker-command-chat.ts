@@ -630,6 +630,15 @@ export const workerChatCommandSchemas = [
   z
     .object({
       type: z.literal("chat.steer"),
+      operationId: z.string().min(1).max(255).optional(),
+      queueClaim: z
+        .object({
+          id: z.string().min(1),
+          promptRevision: z.number().int().nonnegative(),
+        })
+        .strict()
+        .optional(),
+      nativeClientUserMessageId: z.string().min(1).max(255).optional(),
       nativeActivationGeneration: z.string().min(1).nullable().optional(),
       executionProfile: z.enum(["ide", "standalone-chat"]).default("ide"),
       chatId: z.string().min(1),

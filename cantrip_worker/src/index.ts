@@ -8446,6 +8446,15 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           })),
           command.model,
           provider(),
+          {
+            operationId: command.operationId,
+            queueClaim: command.queueClaim,
+            clientUserMessageId:
+              command.nativeClientUserMessageId ??
+              (command.protectedPrompt
+                ? `cantrip:${command.protectedPrompt.id}`
+                : undefined),
+          },
         );
       }
       case "chat.sync": {
