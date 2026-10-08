@@ -505,9 +505,6 @@ export function ExplorerView({
   const mutateSaveFile = saveFile.mutateAsync;
   const resetSaveFile = saveFile.reset;
   const displayedSelectedPath = transientFilePath ?? selectedPath;
-  const displayedFileMode = transientFilePath
-    ? defaultExplorerFileMode(transientFilePath)
-    : fileMode;
   const editableLanguage = displayedSelectedPath
     ? explorerMediaTypeForPath(displayedSelectedPath) === null
       ? monacoLanguageForPath(displayedSelectedPath)
@@ -522,7 +519,7 @@ export function ExplorerView({
     ? explorerMediaTypeForPath(displayedSelectedPath)
     : null;
   const codeEditorVisible = displayedSelectedPath
-    ? usesCantripCodeEditor(displayedSelectedPath, displayedFileMode)
+    ? usesCantripCodeEditor(displayedSelectedPath, fileMode)
     : false;
   const graphVisible = graphRootPath !== undefined;
   const codeEditorPath =
@@ -727,6 +724,8 @@ export function ExplorerView({
     const previousTransientPath = previousTransientPathRef.current;
     previousTransientPathRef.current = transientFilePath;
     if (!transientFilePath && !previousTransientPath) return;
+    if (transientFilePath && transientFilePath === previousTransientPath)
+      return;
     if (transientFilePath && !previousTransientPath) {
       transientRestoreRef.current = {
         fileMode: fileModeRef.current,
