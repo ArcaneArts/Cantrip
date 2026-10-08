@@ -70,14 +70,27 @@ export function projectReplicaJobMessage(
 
 export function projectFolderSetupErrorMessage(
   code: ProjectFolderSetupJobError["code"],
+  mode: "create" | "existing" = "create",
 ): string {
   switch (code) {
     case "worker-offline":
       return "The owning worker is offline. Folder setup will resume after it reconnects.";
     case "capability-missing":
-      return "The owning worker does not support managed folder creation.";
+      return mode === "existing"
+        ? "The owning worker does not support existing folder attachment."
+        : "The owning worker does not support managed folder creation.";
     case "materialization-failed":
-      return "The worker could not create the managed folder.";
+      return mode === "existing"
+        ? "The owning worker could not attach the existing folder. Check the path and access permissions, then add the folder again."
+        : "The worker could not create the managed folder.";
+    case "attachment-failed":
+      return "The owning worker could not attach the existing folder. Check the path and access permissions, then add the folder again.";
+    case "existing-path-missing":
+      return "The existing folder does not exist on the owning worker. Check the path or create the directory there, then add the folder again.";
+    case "existing-path-not-directory":
+      return "The selected existing path is not a directory on the owning worker. Choose a directory and add the folder again.";
+    case "existing-path-permission-denied":
+      return "The owning worker does not have permission to access the existing folder. Check its access permissions, then add the folder again.";
   }
 }
 
@@ -211,4 +224,8 @@ const projectFolderErrorCodeSet: Record<
   "worker-offline": true,
   "capability-missing": true,
   "materialization-failed": true,
+  "attachment-failed": true,
+  "existing-path-missing": true,
+  "existing-path-not-directory": true,
+  "existing-path-permission-denied": true,
 };
