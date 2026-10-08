@@ -179,6 +179,7 @@ import {
   pushGitHistoryRoute,
   type OpenGitFileHistoryRequest,
 } from "@/lib/git-history-navigation";
+import { useGitHistoryNavigation } from "@/lib/use-git-history-navigation";
 import { workspaceWorkerObservationDemands } from "@/lib/workspace-worker-observation";
 import { ChatTranscript } from "@/components/chat/chat-transcript";
 export { ChatTranscript };
@@ -259,6 +260,7 @@ export function App() {
     setWorkspaceSelection,
     workspaceSelection,
   } = useProjectWorkspaceSelectionState({ popoutProjectId, popoutTarget });
+  const gitHistoryNavigation = useGitHistoryNavigation();
   const surfaceOpenRequestRef = useRef(0);
   const setPendingSurfaceSelectionWithOpenCancellation = useCallback<
     typeof setPendingSurfaceSelection
@@ -2038,7 +2040,7 @@ export function App() {
     desktopSidebarDrawerOpen, dismissedLongPathFailure, displayTerminals, displayedGitProject, executeAppAction,
     explorerDisplayPath, explorerFileTarget, explorerGraphRequest, explorers, finishSidebarResize,
     focusDetachedPane, folderProjectDialogMode, folderProjectDialogOpen, folderRevealLabel, folderSetupJobs,
-    forkChatMutation, forkStandaloneChat, gitHistoryHeader, gitHistoryProject, selectedPaneOwnedElsewhere, paneOwnedElsewhere,
+    forkChatMutation, forkStandaloneChat, gitHistoryNavigation, gitHistoryHeader, gitHistoryProject, selectedPaneOwnedElsewhere, paneOwnedElsewhere,
     handleExplorerChanged, handleExplorerLifecycleChange, handleSidebarFilePreviewLifecycleChange, handleWorkspaceDrop, isPopout,
     linkedConsoleChat, mobileNavigationSurfaces, mobileProjectSelectorOpen, moveSidebarResize, moveSurfaceToRegion,
     narrowViewport, newBrowser, newChat, newCodeTab, newExplorer,

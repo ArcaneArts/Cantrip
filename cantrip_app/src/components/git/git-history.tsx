@@ -106,6 +106,7 @@ import {
   defaultGitHistoryOptions,
   parseGitHistoryRoute,
   replaceGitHistoryRoute,
+  type GitHistoryRouteState,
 } from "@/lib/git-history-navigation";
 import { useCompactLayout, useNarrowViewport } from "@/lib/use-compact-layout";
 import { ProjectOverviewNavigation } from "@/components/projects/project-overview-navigation";
@@ -548,6 +549,9 @@ export function GitHistoryView({
   chats,
   contentScrolled = false,
   includeOverviewTab = false,
+  navigationActive = true,
+  navigationRequest,
+  onNavigationHandled,
   onCreateChat,
   onCreateAgentChat,
   onCreateExplorer,
@@ -572,6 +576,9 @@ export function GitHistoryView({
   chats: ChatSummary[];
   contentScrolled?: boolean;
   includeOverviewTab?: boolean;
+  navigationActive?: boolean;
+  navigationRequest: GitHistoryRouteState | null;
+  onNavigationHandled(route: GitHistoryRouteState): void;
   onCreateChat(worktreeId: string, draft?: GitAgentDraft): Promise<void> | void;
   onCreateAgentChat(input: {
     githubAgentContext: GithubAgentWorkflowContext;
@@ -609,6 +616,7 @@ export function GitHistoryView({
     [],
   );
   const initialRouteMatches =
+    navigationActive &&
     initialRoute.projectId === project.id &&
     initialRoute.worktreeId === worktreeId;
   const setSection = useCallback(
@@ -732,7 +740,77 @@ export function GitHistoryView({
   );
 
   useEffect(() => {
-    if (section !== "history") return;
+    const route = parseGitHistoryRoute(window.location.search);
+    const matches =
+      navigationActive &&
+      route.projectId === project.id &&
+      route.worktreeId === worktreeId;
+    setActiveDrawer(
+      matches && route.comparison
+        ? { kind: "compare" }
+        : matches && route.commit
+          ? { kind: "commit", revision: route.commit }
+          : null,
+    );
+    setGraphStatus(null);
+    setGraphRevision(null);
+    setForcePushOpen(false);
+    setOperationPreset(null);
+    setCommitActionRequest(null);
+    setCompareLeft(matches ? (route.comparison?.left ?? null) : null);
+    setCompareRight(matches ? (route.comparison?.right ?? null) : null);
+    setCompareMode(matches ? (route.comparison?.mode ?? "direct") : "direct");
+    setFileHistoryPath(matches ? route.filePath : null);
+    setFileHistoryOpen(matches && Boolean(route.filePath));
+    setHistoryOptions(matches ? route.options : defaultGitHistoryOptions);
+    setSelectedRevisions(new Set(matches ? route.selectedCommits : undefined));
+  }, [project.id, worktreeId]);
+
+  // Only the focused pane consumes a navigation. Ordinary focus changes keep
+  // each pane's local filters/drawers instead of copying the previous owner's.
+  const restoringRoute = useRef(false);
+  useEffect(() => {
+    if (!navigationActive) {
+      setFileHistoryOpen(false);
+      setFileHistoryPath(null);
+      return;
+    }
+    const route = navigationRequest;
+    if (
+      !route ||
+      route.projectId !== project.id ||
+      route.worktreeId !== worktreeId
+    )
+      return;
+    restoringRoute.current = true;
+    setHistoryOptions(route.options);
+    setSelectedRevisions(new Set(route.selectedCommits));
+    setFileHistoryPath(route.filePath);
+    setFileHistoryOpen(Boolean(route.filePath));
+    if (route.comparison) {
+      setCompareLeft(route.comparison.left);
+      setCompareRight(route.comparison.right);
+      setCompareMode(route.comparison.mode);
+      setActiveDrawer({ kind: "compare" });
+    } else if (route.commit) {
+      setActiveDrawer({ kind: "commit", revision: route.commit });
+    } else {
+      setActiveDrawer(null);
+    }
+    onNavigationHandled(route);
+  }, [
+    navigationActive,
+    navigationRequest,
+    onNavigationHandled,
+    project.id,
+    worktreeId,
+  ]);
+  useEffect(() => {
+    if (!navigationActive || section !== "history") return;
+    if (restoringRoute.current) {
+      restoringRoute.current = false;
+      return;
+    }
     replaceGitHistoryRoute({
       projectId: project.id,
       worktreeId,
@@ -753,6 +831,7 @@ export function GitHistoryView({
     fileHistoryOpen,
     fileHistoryPath,
     historyOptions,
+    navigationActive,
     project.id,
     section,
     selectedCommit,
@@ -760,29 +839,6 @@ export function GitHistoryView({
     worktreeId,
   ]);
 
-  useEffect(() => {
-    const restoreRoute = () => {
-      const route = parseGitHistoryRoute(window.location.search);
-      if (route.projectId !== project.id || route.worktreeId !== worktreeId)
-        return;
-      setHistoryOptions(route.options);
-      setSelectedRevisions(new Set(route.selectedCommits));
-      setFileHistoryPath(route.filePath);
-      setFileHistoryOpen(Boolean(route.filePath));
-      if (route.comparison) {
-        setCompareLeft(route.comparison.left);
-        setCompareRight(route.comparison.right);
-        setCompareMode(route.comparison.mode);
-        setActiveDrawer({ kind: "compare" });
-      } else if (route.commit) {
-        setActiveDrawer({ kind: "commit", revision: route.commit });
-      } else {
-        setActiveDrawer(null);
-      }
-    };
-    window.addEventListener("popstate", restoreRoute);
-    return () => window.removeEventListener("popstate", restoreRoute);
-  }, [project.id, worktreeId]);
   const selectedWorktree = worktrees.find(({ id }) => id === worktreeId);
   const commitActionWorktrees = useMemo(
     () => eligibleCommitActionWorktrees(worktreeId, worktrees),
@@ -1379,31 +1435,6 @@ export function GitHistoryView({
   useEffect(() => {
     setInternalSection(view);
   }, [project.id, view]);
-
-  useEffect(() => {
-    const route = parseGitHistoryRoute(window.location.search);
-    const matches =
-      route.projectId === project.id && route.worktreeId === worktreeId;
-    setActiveDrawer(
-      matches && route.comparison
-        ? { kind: "compare" }
-        : matches && route.commit
-          ? { kind: "commit", revision: route.commit }
-          : null,
-    );
-    setGraphStatus(null);
-    setGraphRevision(null);
-    setForcePushOpen(false);
-    setOperationPreset(null);
-    setCommitActionRequest(null);
-    setCompareLeft(matches ? (route.comparison?.left ?? null) : null);
-    setCompareRight(matches ? (route.comparison?.right ?? null) : null);
-    setCompareMode(matches ? (route.comparison?.mode ?? "direct") : "direct");
-    setFileHistoryPath(matches ? route.filePath : null);
-    setFileHistoryOpen(matches && Boolean(route.filePath));
-    setHistoryOptions(matches ? route.options : defaultGitHistoryOptions);
-    setSelectedRevisions(new Set(matches ? route.selectedCommits : undefined));
-  }, [project.id, worktreeId]);
 
   useEffect(() => {
     return () => onHeaderChange(null);
@@ -2572,7 +2603,7 @@ export function GitHistoryView({
       />
       <GitFileHistoryDialog
         initialPath={fileHistoryPath}
-        open={fileHistoryOpen}
+        open={navigationActive && fileHistoryOpen}
         onOpenChange={(open) => {
           setFileHistoryOpen(open);
           if (!open) setFileHistoryPath(null);

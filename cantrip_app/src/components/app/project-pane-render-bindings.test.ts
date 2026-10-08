@@ -109,11 +109,13 @@ describe("project pane render bindings", () => {
     const shell = bindings();
 
     const focused = projectPaneRenderBindings(shell, presentation(true));
+    expect(focused.gitHistoryNavigationActive).toBe(true);
     expect(focused.setCodeHeader).toBe(shell.setCodeHeader);
     expect(focused.setExplorerHeader).toBe(shell.setExplorerHeader);
     expect(focused.setGitHistoryHeader).toBe(shell.setGitHistoryHeader);
 
     const unfocused = projectPaneRenderBindings(shell, presentation(false));
+    expect(unfocused.gitHistoryNavigationActive).toBe(false);
     expect(unfocused.setCodeHeader).toBeUndefined();
     expect(unfocused.setExplorerHeader).toBeUndefined();
     expect(unfocused.setGitHistoryHeader).toBeTypeOf("function");
