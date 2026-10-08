@@ -753,12 +753,19 @@ export function PullRequestFiles({
         </div>
         {selected ? (
           <GitPatchView
-            binary={selected.patch === null}
             commentTargets={reviewThreads.flatMap((thread) =>
               thread.path === selected.path && thread.line && thread.side
                 ? [{ line: thread.line, side: thread.side }]
                 : [],
             )}
+            emptyMessage={
+              selected.patch === null &&
+              (selected.status !== "renamed" ||
+                selected.additions !== 0 ||
+                selected.deletions !== 0)
+                ? "GitHub did not provide a text patch for this file. Open the file on GitHub to review its content."
+                : undefined
+            }
             error={null}
             focusCommentTarget={
               focusedThread?.line && focusedThread.side
@@ -766,18 +773,7 @@ export function PullRequestFiles({
                 : null
             }
             loading={false}
-            newFile={
-              gitDiffImagePreviewFromUrl(selected.path, selected.rawUrl) ??
-              (selected.patch === null
-                ? {
-                    kind: "binary",
-                    size: null,
-                    mimeType: null,
-                    base64: null,
-                    truncated: false,
-                  }
-                : undefined)
-            }
+            newFile={gitDiffImagePreviewFromUrl(selected.path, selected.rawUrl)}
             newLabel={selected.path}
             oldLabel={selected.previousPath ?? selected.path}
             onClose={() => setFilePickerOpen(true)}
