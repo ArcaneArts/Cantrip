@@ -227,6 +227,7 @@ export function ChatTranscriptView({
   } = controller;
   const composerContainerRef = useRef<HTMLFormElement>(null);
   const [composerHeight, setComposerHeight] = useState(0);
+  const reservedSidePanelWidth = `min(${sidePanelWidth}px, 100%)`;
   useLayoutEffect(() => {
     const composer = composerContainerRef.current;
     if (!composer) return;
@@ -239,9 +240,9 @@ export function ChatTranscriptView({
   }, []);
   return (
     <div
-      className="relative flex min-h-0 flex-1 flex-col overflow-visible transition-[padding-right] duration-150 ease-out motion-reduce:transition-none"
+      className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-visible transition-[padding-right] duration-150 ease-out motion-reduce:transition-none"
       style={{
-        paddingRight: sidePanelWidth,
+        paddingRight: reservedSidePanelWidth,
       }}
       onDragEnter={(event) => {
         if (
@@ -412,7 +413,7 @@ export function ChatTranscriptView({
           "chat-composer-fade pointer-events-none absolute bottom-0 left-0 z-10 h-48 transition-[right] duration-150 ease-out motion-reduce:transition-none",
           effectiveInspectOnly && "hidden",
         )}
-        style={{ right: sidePanelWidth }}
+        style={{ right: reservedSidePanelWidth }}
       />
       <form
         ref={composerContainerRef}
@@ -421,7 +422,7 @@ export function ChatTranscriptView({
           "pointer-events-none absolute bottom-0 left-0 z-20 px-4 pb-3 transition-[right] duration-150 ease-out motion-reduce:transition-none sm:px-8 sm:pb-4 md:px-10",
           effectiveInspectOnly && "hidden",
         )}
-        style={{ right: sidePanelWidth }}
+        style={{ right: reservedSidePanelWidth }}
       >
         <div
           className="pointer-events-auto relative w-full"
@@ -1169,7 +1170,6 @@ export function ChatTranscriptView({
               : "Agent activity inspector"
           }
           className="absolute bottom-0 right-0 z-30"
-          extendIntoProjectTabBar
           onOpenChange={handleInspectOpenChange}
           onWidthChange={setInspectWidth}
           open={inspectOpen}
