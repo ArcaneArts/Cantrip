@@ -8,6 +8,7 @@ import {
   normalizeHexColor,
   remarkMarkdownColors,
 } from "@/components/chat/markdown-color";
+import { remarkMarkdownAnchors } from "@/components/chat/markdown-anchors";
 import { MarkdownColorPreview } from "@/components/chat/markdown-color-preview";
 import {
   markdownFileLinkUrlTransform,
@@ -40,11 +41,15 @@ export const Markdown = memo(function Markdown({
   inverse = false,
   onOpenFile,
   onOpenLink,
+  onNavigateLink,
+  headingAnchors = false,
 }: {
   children: string;
   inverse?: boolean;
   onOpenFile?(path: string): void;
   onOpenLink?(url: string): void;
+  onNavigateLink?(href: string): boolean;
+  headingAnchors?: boolean;
 }) {
   const components = useMemo<Components>(
     () => ({
@@ -69,9 +74,18 @@ export const Markdown = memo(function Markdown({
             )}
             rel="noreferrer"
             target={filePath ? undefined : "_blank"}
-            onClick={(event) =>
-              handleMarkdownLinkClick(event, props.href, onOpenLink, onOpenFile)
-            }
+            onClick={(event) => {
+              if (props.href && onNavigateLink?.(props.href)) {
+                event.preventDefault();
+                return;
+              }
+              handleMarkdownLinkClick(
+                event,
+                props.href,
+                onOpenLink,
+                onOpenFile,
+              );
+            }}
           >
             {linkChildren}
           </a>
@@ -123,18 +137,24 @@ export const Markdown = memo(function Markdown({
         }
         return inlineCode;
       },
-      h1: ({ children: headingChildren }) => (
-        <h1 className="mb-3 mt-6 text-xl font-semibold leading-tight first:mt-0">
+      h1: ({ children: headingChildren, id }) => (
+        <h1
+          id={id}
+          className="mb-3 mt-6 text-xl font-semibold leading-tight first:mt-0"
+        >
           {headingChildren}
         </h1>
       ),
-      h2: ({ children: headingChildren }) => (
-        <h2 className="mb-2 mt-5 text-lg font-semibold leading-tight first:mt-0">
+      h2: ({ children: headingChildren, id }) => (
+        <h2
+          id={id}
+          className="mb-2 mt-5 text-lg font-semibold leading-tight first:mt-0"
+        >
           {headingChildren}
         </h2>
       ),
-      h3: ({ children: headingChildren }) => (
-        <h3 className="mb-2 mt-4 font-semibold first:mt-0">
+      h3: ({ children: headingChildren, id }) => (
+        <h3 id={id} className="mb-2 mt-4 font-semibold first:mt-0">
           {headingChildren}
         </h3>
       ),
@@ -179,7 +199,7 @@ export const Markdown = memo(function Markdown({
         <ul className="my-3 list-disc space-y-1 pl-6">{listChildren}</ul>
       ),
     }),
-    [inverse, onOpenFile, onOpenLink],
+    [inverse, onOpenFile, onOpenLink, onNavigateLink],
   );
 
   return (
@@ -191,7 +211,11 @@ export const Markdown = memo(function Markdown({
       )}
     >
       <MarkdownRenderer
-        remarkPlugins={MARKDOWN_REMARK_PLUGINS}
+        remarkPlugins={
+          headingAnchors
+            ? [...MARKDOWN_REMARK_PLUGINS, remarkMarkdownAnchors]
+            : MARKDOWN_REMARK_PLUGINS
+        }
         urlTransform={onOpenFile ? markdownFileLinkUrlTransform : undefined}
         components={components}
       >

@@ -25,7 +25,7 @@ import {
   useState,
 } from "react";
 
-import { Markdown } from "@/components/chat/markdown";
+import { ExplorerMarkdown } from "@/components/explorer/explorer-markdown";
 import { ExplorerFileBrowser } from "@/components/explorer/explorer-file-browser";
 import { explorerSurfaceSelectedPath } from "@/components/explorer/explorer-file-routing";
 import { explorerFileEntryForGraphPath } from "@/components/explorer/explorer-graph-routing";
@@ -1311,13 +1311,17 @@ export function ExplorerView({
                       {draft}
                     </pre>
                   ) : file.data.markdown ? (
-                    <article
-                      className="px-4"
-                      data-content-gutter="markdown"
-                      data-elite-ignore=""
+                    <ExplorerMarkdown
+                      path={file.data.path}
+                      onOpenFile={(path) => {
+                        setViewStateError(null);
+                        if (onOpenGraphFile) onOpenGraphFile(explorer, path);
+                        else openEntry(explorerFileEntryForGraphPath(path));
+                      }}
+                      onError={setViewStateError}
                     >
-                      <Markdown>{draft}</Markdown>
-                    </article>
+                      {draft}
+                    </ExplorerMarkdown>
                   ) : (
                     <SourceView code={draft} path={file.data.path} />
                   )}
