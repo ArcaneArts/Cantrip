@@ -95,6 +95,10 @@ type ScheduleMode = ProjectAutomationSchedule["kind"];
 type ConditionMode = "none" | ProjectAutomationCondition["type"];
 type AutomationDialogTab = "details" | "schedule" | "condition";
 
+function hasAutomationExecutionContext(chat: ChatSummary): boolean {
+  return Boolean(chat.activeWorktreeId && chat.activeWorkerId);
+}
+
 const conditionModeLabels: Record<ConditionMode, string> = {
   none: "No condition",
   script: "Script exit code",
@@ -155,7 +159,9 @@ function AutomationDialog({
     if (!open) return;
     setName(automation?.name ?? "");
     setActiveTab("details");
-    setChatId(automation?.chatId ?? chats[0]?.id ?? "");
+    setChatId(
+      automation?.chatId ?? chats.find(hasAutomationExecutionContext)?.id ?? "",
+    );
     setPrompt(automation?.prompt ?? "");
     const condition = automation?.condition;
     setConditionMode(condition?.type ?? "none");
@@ -190,6 +196,11 @@ function AutomationDialog({
       setTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
     }
   }, [automation, chats, open]);
+
+  const selectedTarget = chats.find((chat) => chat.id === chatId);
+  const targetAvailable = Boolean(
+    selectedTarget && hasAutomationExecutionContext(selectedTarget),
+  );
 
   const save = useMutation({
     mutationFn: async () => {
@@ -287,14 +298,35 @@ function AutomationDialog({
                     value={chatId}
                     onChange={(event) => setChatId(event.target.value)}
                   >
+                    {!selectedTarget ? (
+                      <option value={chatId} disabled>
+                        {chatId
+                          ? "Target unavailable — choose an Agent"
+                          : "Choose an Agent"}
+                      </option>
+                    ) : null}
                     {chats.map((chat) => (
-                      <option key={chat.id} value={chat.id}>
+                      <option
+                        key={chat.id}
+                        value={chat.id}
+                        disabled={!hasAutomationExecutionContext(chat)}
+                      >
                         {chat.title}
+                        {!hasAutomationExecutionContext(chat)
+                          ? " (execution context unavailable)"
+                          : ""}
                       </option>
                     ))}
                   </NativeSelect>
                 </label>
               </div>
+
+              {chats.some((chat) => !hasAutomationExecutionContext(chat)) ? (
+                <p className="text-sm text-muted-foreground">
+                  An Agent needs a project worktree and assigned worker before
+                  it can receive scheduled prompts.
+                </p>
+              ) : null}
 
               <label className="grid gap-1.5 text-sm">
                 <span className="font-medium">Prompt</span>
@@ -524,7 +556,7 @@ function AutomationDialog({
             Cancel
           </Button>
           <Button
-            disabled={!chats.length}
+            disabled={!targetAvailable}
             onClick={() => save.mutate()}
             pending={save.isPending}
             pendingLabel={automation ? "Saving…" : "Creating…"}
@@ -555,6 +587,14 @@ export function ProjectAutomationsSettings({
   const [deleteTarget, setDeleteTarget] = useState<ProjectAutomation | null>(
     null,
   );
+  const targetChats = useMemo(
+    () =>
+      chats.filter(
+        (chat) => chat.projectId === projectId && chat.experience === "agent",
+      ),
+    [chats, projectId],
+  );
+  const hasTarget = targetChats.some(hasAutomationExecutionContext);
   const automations = useQuery({
     queryKey: ["project-automations", projectId],
     queryFn: () => getProjectAutomations(projectId),
@@ -619,7 +659,7 @@ export function ProjectAutomationsSettings({
           </div>
         </div>
         <Button
-          disabled={!chats.length}
+          disabled={!hasTarget}
           onClick={() => {
             setEditing(null);
             setEditorOpen(true);
@@ -629,9 +669,11 @@ export function ProjectAutomationsSettings({
         </Button>
       </div>
 
-      {!chats.length ? (
+      {!hasTarget ? (
         <div className="border-y px-4 py-10 text-center text-sm text-muted-foreground">
-          Create an agent in this project before adding an automation.
+          {targetChats.length
+            ? "An Agent needs a project worktree and assigned worker before it can receive scheduled prompts."
+            : "Create an Agent in this project before adding an automation. Tasks cannot receive scheduled prompts."}
         </div>
       ) : null}
 
@@ -751,7 +793,7 @@ export function ProjectAutomationsSettings({
             ))}
           </div>
         </div>
-      ) : chats.length ? (
+      ) : hasTarget ? (
         <div className="border-y px-4 py-12 text-center">
           <CalendarClock className="mx-auto size-7 text-muted-foreground" />
           <p className="mt-3 text-sm font-medium">No automations yet</p>
@@ -763,7 +805,7 @@ export function ProjectAutomationsSettings({
 
       <AutomationDialog
         automation={editing}
-        chats={chats}
+        chats={targetChats}
         githubAvailable={githubAvailable}
         onOpenChange={setEditorOpen}
         open={editorOpen}
