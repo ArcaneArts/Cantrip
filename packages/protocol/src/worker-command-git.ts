@@ -50,6 +50,9 @@ import {
 } from "./worker-runtime-support.js";
 import { workerRepositoryNameSchema } from "./worker-command-shared.js";
 
+// The worker resolves user-entered refs to verified commit hashes before diffing.
+const gitRevisionInputSchema = z.string().trim().min(1).max(1_024);
+
 export const workerGitCommandSchemas = [
   z.object({
     type: z.literal("git.history"),
@@ -162,11 +165,8 @@ export const workerGitCommandSchemas = [
   z.object({
     type: z.literal("git.revision.diff"),
     cwd: z.string().min(1).max(8_192),
-    revision: z.string().regex(/^[0-9a-f]{40,64}$/u),
-    baseRevision: z
-      .string()
-      .regex(/^[0-9a-f]{40,64}$/u)
-      .nullable(),
+    revision: gitRevisionInputSchema,
+    baseRevision: gitRevisionInputSchema.nullable(),
     path: gitRelativePathSchema,
     contextLines: gitDiffContextLinesSchema.default(3),
   }),
