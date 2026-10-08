@@ -126,7 +126,7 @@ function CommandOutput({ command }: { command: AgentInspectorCommand }) {
   return (
     <pre
       aria-label={`Output from ${displayCommand(command.command)}`}
-      className="min-h-0 flex-1 overflow-auto overscroll-contain p-2 font-mono text-[10px] leading-4 text-foreground/80 outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
+      className="min-h-0 flex-1 overflow-auto p-2 font-mono text-[10px] leading-4 text-foreground/80 outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
       onScroll={handleScroll}
       ref={outputRef}
       tabIndex={0}
@@ -321,7 +321,7 @@ export function AgentInspectPresentation({
           aria-label="Running commands"
           className={cn(
             "flex min-h-0 flex-1 flex-col gap-2 p-3",
-            layout.scrollable && "overflow-y-auto overscroll-contain",
+            layout.scrollable && "overflow-y-auto",
           )}
           data-command-layout={layout.scrollable ? "scroll" : "equal"}
         >
