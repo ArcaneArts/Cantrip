@@ -466,6 +466,14 @@ describe("CodeDirectEndpointManager shared transport routes", () => {
         `http://${address.host}:${address.port}/sessions/${active.routeGrant}/code/_cantrip/health`,
       );
       expect(stale.status).toBe(404);
+      const failedFrame = await fetch(
+        `http://${address.host}:${address.port}/sessions/${active.routeGrant}/code/?cantripFrameNonce=stale_frame_nonce_123456`,
+      );
+      expect(failedFrame.status).toBe(404);
+      expect(failedFrame.headers.get("content-type")).toBe(
+        "text/html; charset=utf-8",
+      );
+      expect(await failedFrame.text()).toContain('"statusCode":404');
       await expect(
         manager.authorizeSharedRoute(active, security),
       ).rejects.toThrow(/already been revoked/u);

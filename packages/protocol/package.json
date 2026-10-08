@@ -116,6 +116,10 @@
       "types": "./src/code-settings.ts",
       "import": "./dist/code-settings.js"
     },
+    "./code-workbench-frame": {
+      "types": "./src/code-workbench-frame.ts",
+      "import": "./dist/code-workbench-frame.js"
+    },
     "./resource-usage": {
       "types": "./src/resource-usage.ts",
       "import": "./dist/resource-usage.js"

@@ -31,6 +31,7 @@ import { errorMessage } from "@/lib/error-message";
 import {
   CODE_WORKBENCH_READY_TIMEOUT_MS,
   CodeWorkbenchFrameLoadTracker,
+  codeWorkbenchFrameFailure,
   codeWorkbenchStageError,
   createCodeWorkbenchFrameMount,
   isCodeWorkbenchReadyEvent,
@@ -374,9 +375,21 @@ export function CodeView({
     }
     let settled = false;
     const receiveReady = (event: MessageEvent<unknown>) => {
+      if (settled || frameFailureNonceRef.current === frameMount.nonce) return;
+      const failure = codeWorkbenchFrameFailure(
+        event,
+        frameRef.current?.contentWindow ?? null,
+        frameMount,
+      );
+      if (failure) {
+        settled = true;
+        clearTimeout(timeout);
+        frameFailureNonceRef.current = frameMount.nonce;
+        setFrameFailureNonce(frameMount.nonce);
+        setFrameError(failure.message);
+        return;
+      }
       if (
-        settled ||
-        frameFailureNonceRef.current === frameMount.nonce ||
         !isCodeWorkbenchReadyEvent(
           event,
           frameRef.current?.contentWindow ?? null,

@@ -28,6 +28,7 @@ import { bindBrowserCodeAttachmentFrame } from "@/lib/browser-code-tunnel";
 import {
   CODE_WORKBENCH_READY_TIMEOUT_MS,
   CodeWorkbenchFrameLoadTracker,
+  codeWorkbenchFrameFailure,
   codeWorkbenchStageError,
   createCodeWorkbenchFrameMount,
   isCodeWorkbenchReadyEvent,
@@ -1350,9 +1351,33 @@ export function ExplorerCodeEditor({
     }
     let settled = frameReadyNonce === frameMount.nonce;
     const receiveReady = (event: MessageEvent<unknown>) => {
+      if (settled || frameFailureNonceRef.current === frameMount.nonce) return;
+      const failure = codeWorkbenchFrameFailure(
+        event,
+        frameRef.current?.contentWindow ?? null,
+        frameMount,
+      );
+      if (failure) {
+        settled = true;
+        if (timeout) clearTimeout(timeout);
+        frameFailureNonceRef.current = frameMount.nonce;
+        if (frameDocumentTimingRef.current?.nonce === frameMount.nonce) {
+          frameDocumentTimingRef.current.timing.fail(failure, {
+            retryScheduled: true,
+          });
+          frameDocumentTimingRef.current = null;
+        }
+        if (workbenchReadyTimingRef.current?.nonce === frameMount.nonce) {
+          workbenchReadyTimingRef.current.timing.cancel("frame-load-failed");
+          workbenchReadyTimingRef.current = null;
+        }
+        setFrameReadyNonce(null);
+        setFrameFailureNonce(frameMount.nonce);
+        setError(failure.message);
+        scheduleFrameRetry(bindingKey, frameMount.nonce);
+        return;
+      }
       if (
-        settled ||
-        frameFailureNonceRef.current === frameMount.nonce ||
         !isCodeWorkbenchReadyEvent(
           event,
           frameRef.current?.contentWindow ?? null,

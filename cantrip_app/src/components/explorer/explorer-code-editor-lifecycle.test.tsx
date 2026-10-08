@@ -104,7 +104,8 @@ vi.mock("@/lib/browser-code-tunnel", () => ({
     return () => browserCode.unavailableListeners.delete(listener);
   },
 }));
-vi.mock("@/lib/code-workbench-frame", () => ({
+vi.mock("@/lib/code-workbench-frame", async () => ({
+  ...(await vi.importActual("@/lib/code-workbench-frame")),
   CODE_WORKBENCH_READY_TIMEOUT_MS: 15_000,
   CodeWorkbenchFrameLoadTracker: class {
     observe() {
@@ -1845,6 +1846,60 @@ describe("ExplorerCodeEditor warm lifecycle", () => {
 
     await act(async () => renderer.unmount());
   });
+
+  it.each([404, 503])(
+    "recovers an HTTP %s error document without waiting for workbench readiness",
+    async (statusCode) => {
+      vi.useFakeTimers();
+      tauri.enabled = true;
+      mockFreshSharedSessions();
+      frameRuntime.readyPredicate = (event) =>
+        (event.data as { type?: unknown } | undefined)?.type ===
+        "cantrip-code.workbench-ready";
+      const frameWindow = {} as Window;
+      let renderer!: TestRenderer.ReactTestRenderer;
+      await act(async () => {
+        renderer = TestRenderer.create(editor(null), {
+          createNodeMock: (element) =>
+            element.type === "iframe" ? { contentWindow: frameWindow } : null,
+        });
+      });
+      await flushImmediateTimers();
+      const url = new URL(renderer.root.findByType("iframe").props.src);
+      const failure = {
+        data: {
+          type: "cantrip-code.frame-load-failed",
+          version: 1,
+          nonce: url.searchParams.get("cantripFrameNonce"),
+          statusCode,
+        },
+        origin: url.origin,
+        source: frameWindow,
+      };
+      await act(async () => testWindow.sendMessage(failure));
+      expect(JSON.stringify(renderer.toJSON())).toContain(`HTTP ${statusCode}`);
+      expect(JSON.stringify(renderer.toJSON())).not.toContain("timed out");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+      await flushImmediateTimers();
+      expect(
+        api.createProtectedExplorerCodeSessionAttachment,
+      ).toHaveBeenCalledTimes(2);
+      const replacementUrl = renderer.root.findByType("iframe").props.src;
+      expect(replacementUrl).not.toBe(url.toString());
+      // A late failure from the replaced document cannot fail its successor.
+      await act(async () => testWindow.sendMessage(failure));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+      expect(
+        api.createProtectedExplorerCodeSessionAttachment,
+      ).toHaveBeenCalledTimes(2);
+      expect(renderer.root.findByType("iframe").props.src).toBe(replacementUrl);
+      await act(async () => renderer.unmount());
+    },
+  );
 
   it("replaces one unready desktop session and opens the latest file on its replacement", async () => {
     vi.useFakeTimers();

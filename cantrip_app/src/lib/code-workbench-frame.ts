@@ -1,9 +1,13 @@
-export const CODE_WORKBENCH_FRAME_NONCE_PARAMETER = "cantripFrameNonce";
+import {
+  CODE_WORKBENCH_FRAME_NONCE_PARAMETER,
+  codeWorkbenchFrameFailureMessageSchema,
+  codeWorkbenchFrameNonceSchema,
+} from "@cantrip/protocol/code-workbench-frame";
+
+export { CODE_WORKBENCH_FRAME_NONCE_PARAMETER };
 export const CODE_WORKBENCH_READY_MESSAGE_TYPE = "cantrip-code.workbench-ready";
 export const CODE_WORKBENCH_READY_MESSAGE_VERSION = 1;
 export const CODE_WORKBENCH_READY_TIMEOUT_MS = 15_000;
-
-const frameNoncePattern = /^[A-Za-z0-9_-]{16,128}$/u;
 
 export interface CodeWorkbenchFrameMount {
   nonce: string;
@@ -38,7 +42,7 @@ export function createCodeWorkbenchFrameMount(
   attachmentUrl: string,
   nonce = crypto.randomUUID().replaceAll("-", ""),
 ): CodeWorkbenchFrameMount {
-  if (!frameNoncePattern.test(nonce)) {
+  if (!codeWorkbenchFrameNonceSchema.safeParse(nonce).success) {
     throw new Error("Cantrip Code frame nonce is invalid.");
   }
   const url = new URL(attachmentUrl);
@@ -96,5 +100,25 @@ export function codeWorkbenchStageError(
     stage,
     detail ? `${prefix}: ${detail}` : `${prefix}.`,
     reason,
+  );
+}
+
+export function codeWorkbenchFrameFailure(
+  event: Pick<MessageEvent<unknown>, "data" | "origin" | "source">,
+  frameWindow: Window | null,
+  mount: CodeWorkbenchFrameMount,
+): CodeWorkbenchStageError | null {
+  if (
+    frameWindow === null ||
+    event.source !== frameWindow ||
+    event.origin !== mount.origin
+  ) {
+    return null;
+  }
+  const parsed = codeWorkbenchFrameFailureMessageSchema.safeParse(event.data);
+  if (!parsed.success || parsed.data.nonce !== mount.nonce) return null;
+  return codeWorkbenchStageError(
+    "frame",
+    `The embedded editor endpoint returned HTTP ${parsed.data.statusCode}.`,
   );
 }
