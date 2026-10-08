@@ -1198,3 +1198,8 @@ Cleanup only resources owned by this run:
 6. Preserve evidence outside any worktree to be archived. Follow the manual
    protocol for any later documentation/code edits; never clean/reset another
    user's checkout or worktree.
+
+
+## Campaign results
+
+- [2026-10-08 Wide QA campaign](WQA-2026-10-08.md): 394 dispositions, section counts, defect-to-test mapping, skipped coverage and fixture cleanup.
