@@ -348,6 +348,8 @@ import {
   openEncryptedTaskGoalObjective,
   protectTaskGoalResult,
   protectTaskGoalLaunchFailure,
+  protectTaskConversationMessage,
+  openTaskConversationPrompt,
 } from "./task-operation.js";
 import { discoverOllamaModels } from "./ollama.js";
 import {
@@ -6738,6 +6740,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       }
       case "chat.turn.protect":
         return protectChatTurn({ ...command, service: workerEncryption });
+      case "task.message.protect":
+        return protectTaskConversationMessage({
+          message: command.message,
+          service: workerEncryption,
+        });
       case "task.operation.prepare":
         return prepareEncryptedTaskOperation({
           getComponentKey: () => workerEncryption.componentKey("task-content"),
@@ -6906,7 +6913,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                 ? "default"
                 : encryptedTaskOperation
                   ? "plan"
-                  : "goal",
+                  : (command.protectedTaskPrompt?.classification.mode ??
+                    "goal"),
             )
           : null;
         const policyContext = command.policyProjectId
@@ -7729,7 +7737,13 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           return result;
         }
         if (command.resultMode.kind === "task-message-encrypted") {
-          const result = await runTurn(command.prompt!, { kind: "visible" });
+          const prompt = command.protectedTaskPrompt
+            ? await openTaskConversationPrompt({
+                message: command.protectedTaskPrompt,
+                service: workerEncryption,
+              })
+            : command.prompt!;
+          const result = await runTurn(prompt, { kind: "visible" });
           await protectedEventQueue;
           if (protectedEventFailure) throw protectedEventFailure;
           return encryptTaskTurnResult({
@@ -7739,6 +7753,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             messageId: command.resultMode.messageId,
             ownerId: workerEncryption.ownerId(),
             result,
+            mode: command.protectedTaskPrompt?.classification.mode,
           });
         }
         if (command.resultMode.kind === "chat-message-encrypted") {
@@ -8088,6 +8103,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                   codexHome: runtime.managedHistoryHome,
                 });
           const result = await runtime.createGoal({
+            configureTaskPermissions: encryptedTaskGoal,
             operationId: command.operationId,
             cwd: command.cwd,
             model: command.model,
@@ -8130,6 +8146,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             provider: provider(),
           })
         ).updateGoal({
+          configureTaskPermissions:
+            Boolean(command.taskContext) && command.status === "active",
           cwd: command.cwd,
           model: command.model,
           permissionProfileId: command.permissionProfileId,

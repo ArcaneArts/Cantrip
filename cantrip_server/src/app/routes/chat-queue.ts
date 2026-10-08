@@ -112,11 +112,6 @@ export function installChatQueueRoutes(
         applicationOwnerId(),
         request.params.chatId,
       );
-      if (context?.experience === "task") {
-        return reply.code(409).send({
-          error: "Queued prompts are unavailable for encrypted Tasks.",
-        });
-      }
       if (context && managedConsoleSessionContext(context)) {
         const { revision, items, pendingImports, claims } =
           await repository.managedQueue.snapshot(
@@ -148,11 +143,6 @@ export function installChatQueueRoutes(
         request.params.chatId,
       );
       if (!context) return reply.code(404).send({ error: "Chat not found." });
-      if (context.experience === "task") {
-        return reply.code(409).send({
-          error: "Queued prompts are unavailable for encrypted Tasks.",
-        });
-      }
       let modelId: string;
       let attachments: Awaited<ReturnType<typeof resolvePromptAttachments>>;
       try {
@@ -281,11 +271,6 @@ export function installChatQueueRoutes(
       );
       if (!promptContext) {
         return reply.code(404).send({ error: "Chat not found." });
-      }
-      if (promptContext?.experience === "task") {
-        return reply.code(409).send({
-          error: "Queued prompts are unavailable for encrypted Tasks.",
-        });
       }
       let attachments: Awaited<ReturnType<typeof resolvePromptAttachments>>;
       try {

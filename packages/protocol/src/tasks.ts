@@ -899,14 +899,10 @@ export const taskMessageRelayResultSchema = z
   .object({ message: taskMessageOpaqueContentSchema })
   .strict()
   .superRefine((value, context) => {
-    if (
-      value.message.classification.role !== "assistant" ||
-      value.message.classification.mode !== "goal"
-    ) {
+    if (value.message.classification.role !== "assistant") {
       context.addIssue({
         code: "custom",
-        message:
-          "An encrypted Task turn must return an assistant Goal message.",
+        message: "An encrypted Task turn must return an assistant message.",
         path: ["message", "classification"],
       });
     }

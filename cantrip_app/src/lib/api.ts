@@ -89,6 +89,7 @@ import {
   chatPromptSubmitResultSchema,
   encryptedChatPromptSubmitResultSchema,
   encryptedChatTurnCreateSchema,
+  encryptedConversationPromptSubmitResultSchema,
   encryptedStandaloneChatCreateSchema,
   encryptedQueuedPromptQueueSchema,
   encryptedQueuedPromptSchema,
@@ -8434,7 +8435,7 @@ export async function startTurn(
     subagentReasoningEffort: configuration.subagentReasoningEffort,
     text,
   });
-  const result = encryptedChatPromptSubmitResultSchema.parse(
+  const result = encryptedConversationPromptSubmitResultSchema.parse(
     await post(
       `/api/chats/${encodeURIComponent(chatId)}/turns`,
       encryptedChatTurnCreateSchema.parse(input),
@@ -8443,7 +8444,9 @@ export async function startTurn(
   return result.status === "started"
     ? {
         status: "started" as const,
-        message: await openChatMessageOpaqueSummary(result.message),
+        message: await ("kind" in result && result.kind === "task-encrypted"
+          ? openTaskMessageOpaqueSummary(result.message)
+          : openChatMessageOpaqueSummary(result.message)),
       }
     : {
         status: "queued" as const,

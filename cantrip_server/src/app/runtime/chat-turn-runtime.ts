@@ -30,7 +30,10 @@ import {
   type WorkerEvent,
   type WorkerObservationEventIdentity,
 } from "@cantrip/protocol";
-import { taskMessageRelayResultSchema } from "@cantrip/protocol/tasks";
+import {
+  taskMessageOpaqueContentSchema,
+  taskMessageRelayResultSchema,
+} from "@cantrip/protocol/tasks";
 
 import { cantripVersion } from "@cantrip/version";
 
@@ -142,8 +145,32 @@ export function createChatTurnRuntime({
       : null;
     const directTaskOperation =
       options.structuredResult?.taskOperation?.classification.kind === "direct";
-    const encryptedTaskMessages = options.encryptedTaskMessages ?? null;
+    let encryptedTaskMessages = options.encryptedTaskMessages ?? null;
     let encryptedChatMessages = options.encryptedChatMessages ?? null;
+    const taskConversation =
+      context.experience === "task" && Boolean(encryptedChatMessages);
+    if (taskConversation && encryptedChatMessages) {
+      const userMessage = taskMessageOpaqueContentSchema.parse(
+        await bridge.request(context.workerId, {
+          type: "task.message.protect",
+          message: encryptedChatMessages.userMessage,
+        }),
+      );
+      if (
+        userMessage.id !== encryptedChatMessages.userMessage.id ||
+        userMessage.idempotencyKey !==
+          encryptedChatMessages.userMessage.idempotencyKey
+      ) {
+        throw new Error(
+          "The protected Task message belongs to another submission.",
+        );
+      }
+      encryptedTaskMessages = {
+        userMessage,
+        response: encryptedChatMessages.response,
+      };
+      encryptedChatMessages = null;
+    }
     const modelId = await observeTaskTurnBootstrapStage("resolve-model", () =>
       resolveModelId(context, input.modelId),
     );
@@ -817,11 +844,17 @@ export function createChatTurnRuntime({
                       protectedHistory,
                       protectedPlan,
                     }
-                  : {
-                      prompt: workerPrompt,
-                      protectedHistory: [],
-                      protectedPlan: null,
-                    }),
+                  : taskConversation && encryptedTaskMessages
+                    ? {
+                        protectedTaskPrompt: encryptedTaskMessages.userMessage,
+                        protectedHistory: [],
+                        protectedPlan: null,
+                      }
+                    : {
+                        prompt: workerPrompt,
+                        protectedHistory: [],
+                        protectedPlan: null,
+                      }),
                 attachments: attachments.map((attachment) =>
                   toChatAttachmentOpaqueSummary(attachment),
                 ),
@@ -1582,7 +1615,9 @@ export function createChatTurnRuntime({
                 encryptedResult.message.id !==
                   encryptedTaskMessages.response.id ||
                 encryptedResult.message.idempotencyKey !==
-                  encryptedTaskMessages.response.idempotencyKey
+                  encryptedTaskMessages.response.idempotencyKey ||
+                encryptedResult.message.classification.mode !==
+                  encryptedTaskMessages.userMessage.classification.mode
               ) {
                 throw new Error(
                   "The encrypted Task message result metadata is invalid.",

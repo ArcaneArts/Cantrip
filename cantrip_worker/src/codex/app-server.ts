@@ -6710,12 +6710,17 @@ export class CodexAppServer implements CodexRuntime {
       objective: string;
       tokenBudget?: number | null;
       operationId?: string;
+      configureTaskPermissions?: boolean;
     },
   ): Promise<ChatGoalResponse> {
     let threadId = this.managedGuiThread(options.threadId);
     if (!threadId) {
       await this.ensureStarted(options.model, options.provider);
-      threadId = await this.loadThread(options, true, "preserve");
+      threadId = await this.loadThread(
+        options,
+        true,
+        options.configureTaskPermissions ? "configure" : "preserve",
+      );
     }
     if (!threadId) {
       throw new Error("Could not start a Codex thread for the goal.");
@@ -6754,12 +6759,17 @@ export class CodexAppServer implements CodexRuntime {
     options: GoalRuntimeOptions & {
       status: "active" | "paused";
       threadId: string;
+      configureTaskPermissions?: boolean;
     },
   ): Promise<ChatGoalResponse> {
     let threadId = this.managedGuiThread(options.threadId);
     if (!threadId) {
       await this.ensureStarted(options.model, options.provider);
-      threadId = await this.loadThread(options, false, "preserve");
+      threadId = await this.loadThread(
+        options,
+        false,
+        options.configureTaskPermissions ? "configure" : "preserve",
+      );
     }
     if (!threadId) {
       throw new Error(
@@ -8372,9 +8382,14 @@ export class CodexAppServer implements CodexRuntime {
         if (
           !options.managedConfiguration &&
           this.#loadedThreads.has(threadId) &&
-          this.#mcpConfigFingerprintsByThread.get(threadId) !==
-            threadConfigFingerprint
+          ((!inheritManagedSecurity &&
+            this.#permissionProfilesByThread.get(threadId) !== permissionKey) ||
+            this.#mcpConfigFingerprintsByThread.get(threadId) !==
+              threadConfigFingerprint)
         ) {
+          // Native resume inherits a subscribed Core's security and ignores
+          // overrides. Retire the planning Core before restoring implementation
+          // permissions, even when its MCP configuration did not change.
           // Once unsubscribe is attempted, an uncertain reply cannot justify
           // trusting the previous attachment or its configuration.
           assertCurrent();

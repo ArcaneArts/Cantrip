@@ -27,6 +27,7 @@ import {
   taskGoalSyncContextSchema,
   taskOperationPrepareRequestSchema,
   taskOperationRelayGoalSchema,
+  taskMessageOpaqueContentSchema,
 } from "./tasks.js";
 import { taskDispatchWorkerLeaseSchema } from "./task-scheduling.js";
 import { encryptionKeyBytesSchema } from "./encryption.js";
@@ -84,6 +85,10 @@ export const workerChatCommandSchemas = [
   }),
   taskOperationPrepareRequestSchema.extend({
     type: z.literal("task.operation.prepare"),
+  }),
+  z.object({
+    type: z.literal("task.message.protect"),
+    message: chatMessageOpaqueContentSchema,
   }),
   z.object({
     type: z.literal("chat.messages.protect"),
@@ -154,6 +159,7 @@ export const workerChatCommandSchemas = [
       threadId: z.string().min(1).nullable(),
       prompt: z.string().min(1).optional(),
       protectedPrompt: chatMessageOpaqueContentSchema.optional(),
+      protectedTaskPrompt: taskMessageOpaqueContentSchema.optional(),
       protectedHistory: z
         .array(chatMessageOpaqueSummarySchema)
         .max(100_000)
@@ -230,12 +236,28 @@ export const workerChatCommandSchemas = [
           path: ["standalonePolicies"],
         });
       }
-      if (Boolean(command.prompt) === Boolean(command.protectedPrompt)) {
+      if (
+        [
+          command.prompt,
+          command.protectedPrompt,
+          command.protectedTaskPrompt,
+        ].filter(Boolean).length !== 1
+      ) {
         context.addIssue({
           code: "custom",
           message:
             "Chat turns require exactly one visible or protected prompt.",
           path: ["protectedPrompt"],
+        });
+      }
+      if (
+        command.protectedTaskPrompt &&
+        command.resultMode.kind !== "task-message-encrypted"
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "Protected Task prompts require protected Task results.",
+          path: ["resultMode"],
         });
       }
       if (

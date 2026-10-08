@@ -8,6 +8,7 @@ import {
   taskWorkerCreateSchema,
   taskWireCreateResultSchema,
   unprobedCodexRuntimeReport,
+  encryptedConversationPromptSubmitResultSchema,
   type WorkerCommand,
 } from "@cantrip/protocol";
 import {
@@ -34,11 +35,15 @@ import {
   prepareEncryptedTaskOperation,
   protectTaskGoalResult,
   protectTaskGoalLaunchFailure,
+  protectTaskConversationMessage,
+  openTaskConversationPrompt,
 } from "../../cantrip_worker/src/task-operation.js";
+import { protectChatTurn } from "../../cantrip_worker/src/chat-message-encryption.js";
 import type { WorkerEncryptionService } from "../../cantrip_worker/src/worker-encryption.js";
 import {
   createTaskOperationRelayRequest,
   decryptTaskGoalObjective,
+  decryptTaskMessageProtectedContent,
   decryptTaskProtectedContent,
   deriveComponentKey,
   encryptTaskMessageProtectedContent,
@@ -91,6 +96,18 @@ const config: ServerConfig = {
 };
 
 let workerTaskKey = new Uint8Array();
+const workerChatKey = new Uint8Array(32).fill(6);
+const blockedConversationChats = new Set<string>();
+const conversationPrompts: string[] = [];
+const conversationService = {
+  ownerId: () => ownerId,
+  componentKey: (component: string) => ({
+    key: new Uint8Array(
+      component === "task-content" ? workerTaskKey : workerChatKey,
+    ),
+    keyRevision: 1,
+  }),
+} as unknown as WorkerEncryptionService;
 let goalObjective = `${sentinel} goal not initialized`;
 let goalCompleted = false;
 let failNextGoalCreation = false;
@@ -432,6 +449,28 @@ async function encryptedTaskTurn(
     });
   }
   if (command.resultMode.kind === "task-message-encrypted") {
+    if (command.protectedTaskPrompt) {
+      conversationPrompts.push(
+        await openTaskConversationPrompt({
+          message: command.protectedTaskPrompt,
+          service: conversationService,
+        }),
+      );
+      expect(command.prompt).toBeUndefined();
+      return encryptTaskTurnResult({
+        getComponentKey: workerComponentKey,
+        ownerId,
+        messageId: command.resultMode.messageId,
+        idempotencyKey: command.resultMode.idempotencyKey,
+        mode: command.protectedTaskPrompt.classification.mode,
+        result: {
+          threadId,
+          turnId: `conversation:${command.clientMessageId}`,
+          text: `${sentinel} blocker explanation`,
+          status: "completed",
+        },
+      });
+    }
     const result = await encryptTaskTurnResult({
       getComponentKey: workerComponentKey,
       idempotencyKey: command.resultMode.idempotencyKey,
@@ -466,6 +505,13 @@ const workerBridge: WorkerCommandBus = {
     return () => undefined;
   },
   async request(_workerId, command, options) {
+    if (command.type === "task.message.protect") {
+      serverObservedPayloads.push(JSON.stringify(command));
+      return protectTaskConversationMessage({
+        message: command.message,
+        service: conversationService,
+      });
+    }
     if (command.type === "project.folder.materialize") {
       return {
         status: "ready",
@@ -627,7 +673,11 @@ const workerBridge: WorkerCommandBus = {
           goal: {
             threadId,
             objective: goalObjective,
-            status: goalCompleted ? "complete" : "active",
+            status: blockedConversationChats.has(command.chatId)
+              ? "blocked"
+              : goalCompleted
+                ? "complete"
+                : "active",
             tokenBudget: null,
             tokensUsed: 3,
             timeUsedSeconds: 2,
@@ -1551,6 +1601,180 @@ describe.sequential("Task E2EE closure lifecycle", () => {
       pauseTestEnabled = false;
     },
   );
+
+  it("allows encrypted conversation and editable queued follow-ups with a blocked Task", async () => {
+    const chatId = randomUUID();
+    blockedConversationChats.add(chatId);
+    const task = await sealTask(chatId, {
+      version: 1,
+      classification: {
+        state: "blocked",
+        stableStateBeforeFailure: null,
+        activeOperationKind: null,
+        planAuthorship: "agent",
+        planningRound: 1,
+        hasPlan: true,
+        hasQuestions: false,
+        hasFinalPlan: true,
+        hasGoalPrompt: true,
+        lastError: null,
+      },
+      briefMarkdown: `${sentinel} blocked implementation`,
+      planMarkdown: "Plan",
+      currentQuestions: [],
+      currentAnswers: [],
+      additionalDirection: "",
+      finalPlanMarkdown: "Final plan",
+      goalPrompt: "Implement plan",
+      lastError: null,
+    });
+    // Seed the persisted state of a Goal that blocked in an earlier worker run.
+    const created = await database.repository.chatCatalog.createTask(
+      ownerId,
+      projectId,
+      {
+        chatId,
+        task,
+        planGoalEnabled: true,
+        priority: 0,
+        requestedTaskWorkerId: null,
+        worktreeMode: "agent-managed",
+        titleProtection: protectedChatFields(chatId).titleProtection,
+      },
+    );
+    expect(created).not.toBeNull();
+    await database.repository.updateChatRuntime(
+      chatId,
+      workerId,
+      created!.chat.activeWorktreeId!,
+      threadId,
+      (await database.repository.getModelRuntime(ownerId, DEFAULT_MODEL_ID))!
+        .routeId,
+      "ready",
+    );
+    const submit = (text: string, promptId = randomUUID()) =>
+      protectChatTurn({
+        service: conversationService,
+        text,
+        mode: "default",
+        modelId: DEFAULT_MODEL_ID,
+        reasoningEffort: null,
+        idempotencyKey: randomUUID(),
+        messageId: randomUUID(),
+        promptId,
+      });
+    const first = await submit(`${sentinel} what is blocking you?`);
+    const response = await app!.inject({
+      method: "POST",
+      url: `/api/chats/${chatId}/turns`,
+      payload: first,
+    });
+    expect(response.statusCode, response.body).toBe(202);
+    const result = encryptedConversationPromptSubmitResultSchema.parse(
+      response.json(),
+    );
+    expect(result).toMatchObject({
+      status: "started",
+      kind: "task-encrypted",
+      message: { id: first.message.id, mode: "default" },
+    });
+    const repeated = await app!.inject({
+      method: "POST",
+      url: `/api/chats/${chatId}/turns`,
+      payload: first,
+    });
+    expect(repeated.statusCode).toBe(200);
+    for (let i = 0; i < 200; i++) {
+      const messages = await database.repository.listTaskMessages(
+        ownerId,
+        chatId,
+      );
+      if (
+        messages.some(
+          ({ idempotencyKey }) =>
+            idempotencyKey === `assistant:${first.message.id}`,
+        )
+      )
+        break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    const messages = await database.repository.listTaskMessages(
+      ownerId,
+      chatId,
+    );
+    expect(messages.filter(({ role }) => role === "user")).toHaveLength(1);
+    const assistant = messages.find(({ role }) => role === "assistant")!;
+    expect(assistant.mode).toBe("default");
+    const opened = await decryptTaskMessageProtectedContent({
+      ownerId,
+      messageId: assistant.id,
+      keyRevision: 1,
+      componentKey: workerTaskKey,
+      encrypted: assistant.protectedContent,
+      publicClassification: {
+        role: assistant.role,
+        mode: assistant.mode,
+        attachmentIds: assistant.attachmentIds,
+      },
+    });
+    expect(opened.content).toEqual([
+      {
+        type: "text",
+        text: `${sentinel} blocker explanation`,
+        phase: "final_answer",
+      },
+    ]);
+    expect(conversationPrompts).toContain(`${sentinel} what is blocking you?`);
+    expect((await database.repository.tasks.get(ownerId, chatId)).state).toBe(
+      "blocked",
+    );
+
+    await database.repository.setChatAutomationPaused(ownerId, chatId, true);
+    const followUp = await submit(`${sentinel} queued follow-up`);
+    const queued = await app!.inject({
+      method: "POST",
+      url: `/api/chats/${chatId}/turns`,
+      payload: followUp,
+    });
+    expect(queued.statusCode, queued.body).toBe(202);
+    expect(queued.json().status).toBe("queued");
+    const list = await app!.inject({
+      method: "GET",
+      url: `/api/chats/${chatId}/queue`,
+    });
+    expect(list.statusCode).toBe(200);
+    expect(list.json()).toHaveLength(1);
+    const edited = await submit(
+      `${sentinel} edited follow-up`,
+      followUp.queuedPrompt.id,
+    );
+    const update = await app!.inject({
+      method: "PATCH",
+      url: `/api/queued-prompts/${followUp.queuedPrompt.id}`,
+      payload: { prompt: edited.queuedPrompt },
+    });
+    expect(update.statusCode, update.body).toBe(200);
+    await database.repository.setChatAutomationPaused(ownerId, chatId, false);
+    // A subsequent ordinary turn wakes the saved queue on completion.
+    const wake = await submit(`${sentinel} explain next steps`);
+    const waking = await app!.inject({
+      method: "POST",
+      url: `/api/chats/${chatId}/turns`,
+      payload: wake,
+    });
+    expect(waking.statusCode, waking.body).toBe(202);
+    for (
+      let i = 0;
+      i < 200 && !conversationPrompts.includes(`${sentinel} edited follow-up`);
+      i++
+    )
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(conversationPrompts).toContain(`${sentinel} edited follow-up`);
+    expect(
+      await database.repository.listEncryptedQueuedPrompts(ownerId, chatId),
+    ).toEqual([]);
+    expect(JSON.stringify(messages)).not.toContain(sentinel);
+  });
 
   it("completes planning and a Goal with zero Task prose in the temporary database", async () => {
     const chatId = randomUUID();
