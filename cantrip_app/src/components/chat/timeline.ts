@@ -84,9 +84,19 @@ function precedingTurnStart(messages: ChatMessage[], index: number): string {
   return messages[index]?.createdAt ?? new Date(0).toISOString();
 }
 
+export function isWorkspaceSnapshot(
+  content: ChatMessage["content"][number],
+): boolean {
+  return (
+    content.type === "activity" &&
+    content.activity.correlation?.sourceMethod === "cantrip/workspaceSnapshot"
+  );
+}
+
 function messageTurnId(message: ChatMessage | null | undefined): string | null {
   if (!message) return null;
   for (const content of message.content) {
+    if (isWorkspaceSnapshot(content)) continue;
     const turnId =
       content.type === "activity"
         ? content.activity.correlation?.turnId
@@ -124,9 +134,9 @@ export function resolveChatTurnIdentity(input: {
   }
   const openingMessage = precedingTurnAnchor(input.messages, input.startIndex);
   const turnId =
+    messageTurnId(openingMessage) ??
     input.turnMessages.map(messageTurnId).find(Boolean) ??
-    messageTurnId(input.terminalMessage) ??
-    messageTurnId(openingMessage);
+    messageTurnId(input.terminalMessage);
   if (turnId) return { turnId, turnKey: `runtime:${turnId}` };
 
   const anchorId =
