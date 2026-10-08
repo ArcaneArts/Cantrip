@@ -414,6 +414,10 @@ describe("CodeDirectEndpointManager", () => {
       authorizeStartupFileUri,
       beginTunnelStream: vi.fn(),
       endTunnelStream,
+      retainSessionAttachment: vi.fn(() => ({
+        renew: vi.fn(),
+        release: vi.fn(),
+      })),
       status: vi.fn((sessionId: string) => ({
         sessionIncarnationId: bySession.get(sessionId)?.incarnationId,
         status: "running",
@@ -741,6 +745,10 @@ describe("CodeDirectEndpointManager", () => {
       sessions.map((session) => [session.sessionId, session]),
     );
     const supervisor = {
+      retainSessionAttachment: vi.fn(() => ({
+        renew: vi.fn(),
+        release: vi.fn(),
+      })),
       authorizeStartupFileUri: vi.fn(
         async (_sessionId: string, requestedFileUri: string) =>
           requestedFileUri,
