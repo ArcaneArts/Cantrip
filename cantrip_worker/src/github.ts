@@ -5935,13 +5935,44 @@ export class GithubClient {
       }
       throw error;
     }
-    const [resolvedRoot, resolvedTarget] = await Promise.all([
-      canonicalProjectSourcePath(root),
+    const [resolvedDataDirectory, resolvedTarget] = await Promise.all([
+      canonicalProjectSourcePath(this.dataDirectory),
       canonicalProjectSourcePath(target),
     ]);
+    const segments = path
+      .relative(resolvedDataDirectory, resolvedTarget)
+      .split(path.sep);
+    let workspaceTarget: string | null = null;
     if (
-      !pathIsWithin(resolvedRoot, resolvedTarget) ||
-      pathsEqual(resolvedTarget, resolvedRoot)
+      segments.length === 5 &&
+      segments[0] === "workspaces" &&
+      segments[2] === "repositories"
+    ) {
+      try {
+        const [owner, repository] = repositorySegments(nameWithOwner);
+        workspaceTarget = deriveManagedRepositoryTarget(
+          resolvedDataDirectory,
+          { kind: "managed", workspaceId: segments[1]! },
+          owner,
+          repository,
+        );
+      } catch {
+        // Invalid workspace IDs cannot establish a managed storage location.
+      }
+    }
+    const inWorkspaceStorage =
+      workspaceTarget !== null && pathsEqual(resolvedTarget, workspaceTarget);
+    const resolvedRoot = inWorkspaceStorage
+      ? null
+      : await canonicalProjectSourcePath(root).catch((error: unknown) => {
+          if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+          throw error;
+        });
+    if (
+      !inWorkspaceStorage &&
+      (!resolvedRoot ||
+        !pathIsWithin(resolvedRoot, resolvedTarget) ||
+        pathsEqual(resolvedTarget, resolvedRoot))
     ) {
       return {
         ok: false,
