@@ -554,6 +554,7 @@ export function RunConfigurationControl({
                             aria-label={`More options for ${item.name}`}
                             className="grid size-8 shrink-0 place-items-center rounded hover:bg-muted"
                             onClick={(event) => event.stopPropagation()}
+                            onKeyDown={(event) => event.stopPropagation()}
                             type="button"
                           >
                             <MoreHorizontal className="size-4" />
@@ -563,6 +564,9 @@ export function RunConfigurationControl({
                           <StyledDropdownMenuContent
                             align="end"
                             className="z-[70]"
+                            // Portal events still bubble through the selectable Run row.
+                            onClick={(event) => event.stopPropagation()}
+                            onKeyDown={(event) => event.stopPropagation()}
                             sideOffset={4}
                           >
                             <StyledDropdownMenuItem
