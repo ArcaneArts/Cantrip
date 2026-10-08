@@ -752,7 +752,6 @@ export function GitHistoryView({
           ? { kind: "commit", revision: route.commit }
           : null,
     );
-    setGraphStatus(null);
     setGraphRevision(null);
     setForcePushOpen(false);
     setOperationPreset(null);
