@@ -862,6 +862,21 @@ This is an explicit no-Git operating mode, not an emulated worktree.
 
 ## Models, providers, authentication, and routing
 
+### Models settings navigation
+
+Settings → Models has a General tab for IDE and standalone Chat model defaults,
+followed by one tab per configured provider. The + menu offers all supported
+provider setups and opens the corresponding configuration dialog; saving a new
+provider selects its tab. Right-click a provider tab and choose Edit to change
+its configuration or manage its accounts.
+
+Each provider tab shows usage, connection/catalog status, and the provider's
+logical models. Models with failover routes appear in every provider tab they
+use, including disabled routes so they remain editable. Profiles whose providers
+have been removed stay accessible under Unassigned models in General. Global
+settings search opens the matching provider/model tab. The tab bar scrolls when
+necessary while the + menu remains reachable on narrow screens.
+
 ### Provider types
 
 Cantrip separates a user-facing logical model from the concrete provider route.
