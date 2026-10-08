@@ -9,6 +9,21 @@ import {
 
 import type { ChatExecutionContext } from "../db/repository.js";
 import { errorMessage } from "../http/request-helpers.js";
+import { WorkerUnavailableError } from "../workers/bridge.js";
+
+/** A lost worker is not proof that a Task's native implementation failed.
+ * Pause instead of replaying an uncertain submission or discarding its Goal. */
+export function taskGoalWorkerInterrupted(
+  experience: ChatExecutionContext["experience"],
+  mode: ChatMessage["mode"],
+  error: unknown,
+): boolean {
+  return (
+    experience === "task" &&
+    mode === "goal" &&
+    error instanceof WorkerUnavailableError
+  );
+}
 
 export function chatIsExecuting(status: ChatWireSummary["status"]): boolean {
   return status === "running" || status === "waiting-for-approval";

@@ -5,6 +5,7 @@ import path from "node:path";
 import { and, eq, sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  chatMessageSchema,
   nativeCommandAdmissionSchema,
   nativeHistoryIngestSchema,
   nativeHistoryResolveSchema,
@@ -28,6 +29,11 @@ import {
   openNativeHistoryItemEvidence,
 } from "../../cantrip_worker/src/native-history-item-content.js";
 import type { NativeHistoryStateItem } from "../../cantrip_worker/src/native-history-state.js";
+import {
+  buildAgentTurnProjection,
+  mergeAgentCardsIntoTimeline,
+} from "../../cantrip_app/src/components/chat/agent-turn-projection.js";
+import { buildChatTimeline } from "../../cantrip_app/src/components/chat/timeline.js";
 
 let f: Awaited<ReturnType<typeof createNativeCommandWorkerFixture>>;
 let binding: NativeHistoryBinding;
@@ -1664,7 +1670,11 @@ describe("existing encrypted native output aliases", () => {
   });
 });
 
-async function prepareQueuedInput(steer = false, goal = false) {
+async function prepareQueuedInput(
+  steer = false,
+  goal = false,
+  customClientId = true,
+) {
   const root = steer ? await guiInput() : null;
   if (root) await root.observe();
   const context = (await f.repository.getChatExecutionContext(
@@ -1706,7 +1716,9 @@ async function prepareQueuedInput(steer = false, goal = false) {
       protectedContent: { formatVersion: 1, keyRevision: 1, envelope },
       reasoningEffort: null,
     },
-    nativeClientUserMessageId: `custom-native-client:${randomUUID()}`,
+    ...(customClientId
+      ? { nativeClientUserMessageId: `custom-native-client:${randomUUID()}` }
+      : {}),
     nativeAction: "literal",
     executionMethod: goal ? "thread/goal/set" : "turn/start",
   });
@@ -1859,7 +1871,9 @@ async function prepareQueuedInput(steer = false, goal = false) {
       association: {
         kind: "queue-input" as const,
         ...association,
-        clientUserMessageId: prompt.nativeClientUserMessageId!,
+        clientUserMessageId:
+          prompt.nativeClientUserMessageId ??
+          `cantrip:${prompt.pendingMessage.id}`,
       },
     };
   };
@@ -1867,6 +1881,131 @@ async function prepareQueuedInput(steer = false, goal = false) {
 }
 
 describe("durable queued input history", () => {
+  it("reconciles a GUI steer with its promoted input and preserves a later identical input", async () => {
+    const queued = await prepareQueuedInput(true, false, false);
+    await f.repository.appendEncryptedMessage(
+      f.ownerId,
+      f.chatId,
+      queued.prompt.pendingMessage,
+    );
+    const item = await queued.accept(await queued.claim("item"));
+    const [mapping] = await f.repository.nativeHistoryItems.resolve(
+      f.ownerId,
+      request([observedInput(item)]),
+    );
+    expect(mapping?.messageId).toBe(queued.prompt.pendingMessage.id);
+    expect(mapping?.preservedInput).toEqual(queued.prompt.pendingMessage);
+    const [assistant] = await f.repository.nativeHistoryItems.resolve(
+      f.ownerId,
+      request([
+        {
+          identity: {
+            ...identity(randomUUID(), queued.root!.turnId),
+            component: "assistant",
+          },
+          association: { kind: "native" },
+        },
+      ]),
+    );
+    const firstBatch = ingestInput([
+      preparedItem(mapping!),
+      preparedItem(assistant!, 1),
+    ]);
+    await f.repository.nativeHistoryIngestion.ingest(f.ownerId, firstBatch);
+    expect(
+      await f.repository.nativeHistoryItems.resolve(
+        f.ownerId,
+        request([observedInput(item)]),
+      ),
+    ).toEqual([mapping]);
+    await queued.root!.observe(true);
+    const later = await prepareQueuedInput(false, false, false);
+    expect(later.prompt.pendingMessage.protectedContent).toEqual(
+      queued.prompt.pendingMessage.protectedContent,
+    );
+    const laterItem = await later.accept(await later.claim());
+    const [laterMapping] = await f.repository.nativeHistoryItems.resolve(
+      f.ownerId,
+      request([observedInput(laterItem)]),
+    );
+    expect(laterMapping?.messageId).toBe(later.prompt.pendingMessage.id);
+    expect(laterMapping?.messageId).not.toBe(mapping?.messageId);
+    await f.repository.nativeHistoryIngestion.ingest(f.ownerId, {
+      ...ingestInput([preparedItem(laterMapping!, 2)]),
+      streamId: firstBatch.streamId,
+      sequence: 2,
+      previousDigest: firstBatch.digest,
+      digest: "b".repeat(64),
+    });
+    const messages = await transact((tx) =>
+      tx
+        .select()
+        .from(schema.chatMessages)
+        .where(eq(schema.chatMessages.chatId, f.chatId)),
+    );
+    expect(
+      messages.filter(
+        (message) => message.id === queued.prompt.pendingMessage.id,
+      ),
+    ).toHaveLength(1);
+    expect(
+      messages.filter((message) => message.id === assistant!.messageId),
+    ).toHaveLength(1);
+    expect(
+      messages.filter(
+        (message) => message.id === later.prompt.pendingMessage.id,
+      ),
+    ).toHaveLength(1);
+    expect(messages).toHaveLength(4);
+    // The opaque fixture deliberately reuses identical encrypted content. Feed
+    // its reconciled identities through the real browser transcript projection
+    // with equivalent plaintext to ensure later repeated input stays visible.
+    const plaintext = messages
+      .sort((a, b) => a.sequence - b.sequence)
+      .map((row) =>
+        chatMessageSchema.parse({
+          ...row,
+          contextKind: "project",
+          scratchRootId: null,
+          createdAt: "2026-10-08T12:00:00.000Z",
+          content: [
+            {
+              type: "text",
+              text:
+                row.id === queued.root!.message.id
+                  ? "Start"
+                  : row.role === "assistant"
+                    ? "Done"
+                    : "Repeated steering",
+            },
+          ],
+        }),
+      );
+    const projection = buildAgentTurnProjection(plaintext);
+    const entries = mergeAgentCardsIntoTimeline(
+      buildChatTimeline(projection.rootMessages),
+      projection.agents,
+    );
+    const renderedMessages = entries.flatMap((entry) =>
+      entry.type === "timeline" && entry.entry.type === "message"
+        ? [entry.entry.message]
+        : [],
+    );
+    expect(renderedMessages.map((message) => message.id)).toEqual([
+      queued.root!.message.id,
+      queued.prompt.pendingMessage.id,
+      assistant!.messageId,
+      later.prompt.pendingMessage.id,
+    ]);
+    expect(
+      renderedMessages.filter(
+        (message) => message.id === queued.prompt.pendingMessage.id,
+      ),
+    ).toHaveLength(1);
+    expect(
+      renderedMessages.filter((message) => message.role === "assistant"),
+    ).toHaveLength(1);
+  });
   it.each([false, true])(
     "selects retained queued input by its custom native client ID (steer=%s)",
     async (steer) => {

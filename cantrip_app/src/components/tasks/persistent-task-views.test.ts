@@ -1,11 +1,21 @@
 import type { ChatSummary } from "@cantrip/protocol";
-import { describe, expect, it } from "vitest";
+import { createElement } from "react";
+import TestRenderer, { act } from "react-test-renderer";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   MAX_RETAINED_TASK_VIEWS,
+  PersistentTaskViews,
   retainTaskSurfaceTabs,
   type ActiveTaskView,
 } from "./persistent-task-views";
+import { TaskSurface } from "./task-surface";
+
+vi.mock("./task-surface", () => ({ TaskSurface: () => null }));
+
+(
+  globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
 function task(id: string): ActiveTaskView {
   return {
@@ -34,6 +44,43 @@ function task(id: string): ActiveTaskView {
 }
 
 describe("persistent Task views", () => {
+  it("keeps retained surfaces mounted but only enables the visible active Task", async () => {
+    let renderer: TestRenderer.ReactTestRenderer | undefined;
+    const render = (activeTask: ActiveTaskView, visible = true) =>
+      createElement(PersistentTaskViews, {
+        activeTask,
+        visible,
+        onRename: vi.fn(),
+        settings: undefined,
+      });
+    const surfaces = () =>
+      renderer!.root.findAllByType(TaskSurface).map((surface) => ({
+        id: surface.props.chat.id,
+        visible: surface.props.visible,
+      }));
+    try {
+      const first = task("one");
+      const second = task("two");
+      await act(async () => {
+        renderer = TestRenderer.create(render(first));
+      });
+      await act(async () => renderer!.update(render(second)));
+      expect(surfaces()).toEqual([
+        { id: "one", visible: false },
+        { id: "two", visible: true },
+      ]);
+      await act(async () => renderer!.update(render(second, false)));
+      expect(surfaces().every((surface) => !surface.visible)).toBe(true);
+      await act(async () => renderer!.update(render(first)));
+      expect(surfaces()).toEqual([
+        { id: "two", visible: false },
+        { id: "one", visible: true },
+      ]);
+    } finally {
+      await act(async () => renderer?.unmount());
+    }
+  });
+
   it("retains local Task surfaces while updating the active summary", () => {
     const first = task("one");
     const updated = {

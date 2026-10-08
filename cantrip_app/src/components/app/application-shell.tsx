@@ -1,3 +1,4 @@
+import { useProjectToolNavigationBridge } from "./project-tool-navigation-bridge";
 import {
   projectBuiltInDefinitionIdFromViewId,
   type ProjectBuiltInSurfaceDefinitionId,
@@ -178,6 +179,7 @@ import {
   pushGitHistoryRoute,
   type OpenGitFileHistoryRequest,
 } from "@/lib/git-history-navigation";
+import { useGitHistoryNavigation } from "@/lib/use-git-history-navigation";
 import { workspaceWorkerObservationDemands } from "@/lib/workspace-worker-observation";
 import { ChatTranscript } from "@/components/chat/chat-transcript";
 export { ChatTranscript };
@@ -258,6 +260,7 @@ export function App() {
     setWorkspaceSelection,
     workspaceSelection,
   } = useProjectWorkspaceSelectionState({ popoutProjectId, popoutTarget });
+  const gitHistoryNavigation = useGitHistoryNavigation();
   const surfaceOpenRequestRef = useRef(0);
   const setPendingSurfaceSelectionWithOpenCancellation = useCallback<
     typeof setPendingSurfaceSelection
@@ -805,42 +808,24 @@ export function App() {
       if (opened === false) throw new Error("Could not open the Tasks tab.");
     },
   });
-  const projectToolBridgeAttemptRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (
-      isPopout ||
-      projectOverviewSection === "overview" ||
-      !selectedProjectId ||
-      !tabLayout.isSuccess ||
-      workspaceSelection.destination !== "overview" ||
-      selectedBuiltInDefinitionId
-    ) {
-      return;
-    }
-    const attempt = `${selectedProjectId}:${tabLayout.data.revision}:${projectOverviewSection}:${projectOverviewWorktreeId ?? ""}`;
-    if (projectToolBridgeAttemptRef.current === attempt) return;
-    projectToolBridgeAttemptRef.current = attempt;
-    if (projectOverviewSection === "tasks") {
-      void openProjectBuiltinSurface(selectedProjectId, projectOverviewSection);
-      return;
-    }
-    newProjectToolSurface.mutate({
-      kind: projectOverviewSection,
-      projectId: selectedProjectId,
-      worktreeId: projectOverviewWorktreeId ?? undefined,
-    });
-  }, [
+  useProjectToolNavigationBridge({
     isPopout,
-    newProjectToolSurface,
-    openProjectBuiltinSurface,
-    projectOverviewSection,
-    projectOverviewWorktreeId,
-    selectedBuiltInDefinitionId,
     selectedProjectId,
-    tabLayout.data,
-    tabLayout.isSuccess,
-    workspaceSelection.destination,
-  ]);
+    selectedBuiltInDefinitionId,
+    destination: workspaceSelection.destination,
+    section: projectOverviewSection,
+    worktreeId: projectOverviewWorktreeId,
+    layout: tabLayout.data,
+    layoutReady: tabLayout.isSuccess,
+    views: projectViews.data,
+    viewsReady: projectViews.isSuccess,
+    openBuiltInSurface: openProjectBuiltinSurface,
+    openSurface: (projectId, surfaceRef) =>
+      openOrFocusSurface(projectId, surfaceRef, undefined, undefined, {
+        revealDock: true,
+      }),
+    createSurface: newProjectToolSurface.mutate,
+  });
   const newRemoteDesktop = useRemoteDesktopCreationOperation({
     openCreatedTab,
     queryClient,
@@ -1821,6 +1806,7 @@ export function App() {
     activeProjectWorkspaceStorageKey,
     chats: chats.data,
     openCreatedTab,
+    openOrFocusSurface,
     openProjectTask,
     projectWorkspaces: projectWorkspaces.data,
     projects: projects.data,
@@ -2055,7 +2041,7 @@ export function App() {
     desktopSidebarDrawerOpen, dismissedLongPathFailure, displayTerminals, displayedGitProject, executeAppAction,
     explorerDisplayPath, explorerFileTarget, explorerGraphRequest, explorers, finishSidebarResize,
     focusDetachedPane, folderProjectDialogMode, folderProjectDialogOpen, folderRevealLabel, folderSetupJobs,
-    forkChatMutation, forkStandaloneChat, gitHistoryHeader, gitHistoryProject, selectedPaneOwnedElsewhere, paneOwnedElsewhere,
+    forkChatMutation, forkStandaloneChat, gitHistoryNavigation, gitHistoryHeader, gitHistoryProject, selectedPaneOwnedElsewhere, paneOwnedElsewhere,
     handleExplorerChanged, handleExplorerLifecycleChange, handleSidebarFilePreviewLifecycleChange, handleWorkspaceDrop, isPopout,
     linkedConsoleChat, mobileNavigationSurfaces, mobileProjectSelectorOpen, moveSidebarResize, moveSurfaceToRegion,
     narrowViewport, newBrowser, newChat, newCodeTab, newExplorer,

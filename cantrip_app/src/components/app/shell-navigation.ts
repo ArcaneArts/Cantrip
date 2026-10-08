@@ -48,6 +48,7 @@ import { projectSelectionAction } from "@/lib/mobile-navigation";
 import type { ProjectOverviewSection } from "@/lib/project-overview-section";
 import { projectSurfaceTabKey } from "@/lib/project-surface";
 import { resolveProjectWorkspaceForSelection } from "@/lib/project-workspaces";
+import { recordProjectAccess } from "@/lib/project-recency";
 import type { SidebarFilePreviewState } from "@/lib/sidebar-file-tabs";
 import {
   emptyWorkspaceSelection,
@@ -251,6 +252,11 @@ export function useShellNavigationState(
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
     popoutProjectId,
   );
+  useEffect(() => {
+    if (appMode === "ide" && selectedProjectId) {
+      recordProjectAccess(selectedProjectId);
+    }
+  }, [appMode, selectedProjectId]);
   const [projectOverviewSection, setProjectOverviewSection] =
     useState<ProjectOverviewSection>(
       () =>
@@ -632,6 +638,7 @@ export function useShellClientControlNavigation({
   activeProjectWorkspaceStorageKey,
   chats,
   openCreatedTab,
+  openOrFocusSurface,
   openProjectTask,
   projectWorkspaces,
   projects,
@@ -647,6 +654,9 @@ export function useShellClientControlNavigation({
     kind: "browser" | "chat" | "code" | "explorer" | "terminal" | "view",
     tabId: string,
   ): void;
+  openOrFocusSurface: ReturnType<
+    typeof createShellProjectNavigationCommands
+  >["openOrFocusSurface"];
   openProjectTask(projectId: string, chatId: string): void;
   projectWorkspaces: ProjectWorkspaceSummary[] | undefined;
   projects: ProjectSummary[] | undefined;
@@ -681,14 +691,39 @@ export function useShellClientControlNavigation({
         case "focus-project":
           selectProjectFromCommandBar(command.projectId);
           return { status: "applied" as const };
-        case "focus-surface":
-          selectProjectFromCommandBar(command.projectId);
-          openCreatedTab(
+        case "focus-surface": {
+          if (!selectProjectFromCommandBar(command.projectId)) {
+            return {
+              status: "declined" as const,
+              detail: "The requested project could not be selected.",
+            };
+          }
+          const definitionId = {
+            browser: "project.browser",
+            chat: "project.agent",
+            code: "project.code",
+            explorer: "project.explorer",
+            terminal: "project.terminal",
+          } as const;
+          const focused = await openOrFocusSurface(
             command.projectId,
-            command.surfaceKind,
-            command.surfaceId,
+            {
+              kind: "entity",
+              definitionId: definitionId[command.surfaceKind],
+              resourceId: command.surfaceId,
+            },
+            undefined,
+            undefined,
+            { revealDock: true },
           );
-          return { status: "applied" as const };
+          return focused
+            ? { status: "applied" as const }
+            : {
+                status: "declined" as const,
+                detail:
+                  "The requested surface could not be opened and focused.",
+              };
+        }
         case "show-interaction":
           selectProjectFromCommandBar(command.projectId);
           if (
@@ -709,9 +744,13 @@ export function useShellClientControlNavigation({
       activeProjectWorkspace,
       activeProjectWorkspaceStorageKey,
       chats,
+      openCreatedTab,
+      openOrFocusSurface,
+      openProjectTask,
       projectWorkspaces,
       projects,
       queryClient,
+      selectProjectFromCommandBar,
       showAppToast,
     ],
   );
@@ -1151,7 +1190,7 @@ export function createShellProjectNavigationCommands({
       ...presentation,
     })
       .then(({ layout }) => {
-        if (surfaceOpenRequestRef.current !== requestId) return true;
+        if (surfaceOpenRequestRef.current !== requestId) return false;
         setWorkspaceSelection((current) =>
           selectWorkspaceTab(current, layout, viewId),
         );
@@ -1159,7 +1198,7 @@ export function createShellProjectNavigationCommands({
         return true;
       })
       .catch((error: unknown) => {
-        if (surfaceOpenRequestRef.current !== requestId) return;
+        if (surfaceOpenRequestRef.current !== requestId) return false;
         setPendingSurfaceSelection(null);
         clientLogger.warn("Could not open project surface view", {
           ...operationalErrorMetadata(error),

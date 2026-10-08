@@ -957,6 +957,52 @@ describe("worker encrypted Task operations", () => {
       },
     });
     expect(JSON.stringify(protectedGoal)).not.toContain("SENTINEL");
+    for (const [automationPaused, chatStatus, state] of [
+      [true, "idle", "paused"],
+      [false, "running", "implementing"],
+      [false, "failed", "failed"],
+    ] as const) {
+      const synchronized = await protectTaskGoalResult({
+        chatId,
+        ownerId,
+        context: {
+          task: protectedGoal.task,
+          automationPaused,
+          chatStatus,
+          message: null,
+        },
+        getComponentKey: () => ({
+          key: new Uint8Array(componentKey),
+          keyRevision,
+        }),
+        rawResult: {
+          goal: {
+            threadId: "thread-protected-goal",
+            objective: "SENTINEL dashboard Goal objective",
+            status: "active",
+            tokenBudget: null,
+            tokensUsed: 2,
+            timeUsedSeconds: 3,
+            createdAt: 4,
+            updatedAt: 5,
+          },
+        },
+      });
+      const opened = await decryptTaskProtectedContent({
+        ownerId,
+        chatId,
+        keyRevision,
+        componentKey,
+        encrypted: synchronized.task.protectedContent,
+        publicClassification: synchronized.task.classification,
+      });
+      expect(opened.classification.state).toBe(state);
+      expect(opened.finalPlanMarkdown).toBe(current.finalPlanMarkdown);
+      expect(opened.goalPrompt).toBe(current.goalPrompt);
+      expect(opened.lastError?.code ?? null).toBe(
+        chatStatus === "failed" ? "implementation-runtime-failed" : null,
+      );
+    }
     if (!protectedGoal.goal) throw new Error("Expected a protected Goal.");
     await expect(
       decryptTaskGoalObjective({

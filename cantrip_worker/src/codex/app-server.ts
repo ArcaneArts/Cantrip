@@ -3355,6 +3355,32 @@ function boundedFilePreview(value: string): string {
     : value.slice(-agentFilePreviewLimitCharacters);
 }
 
+function nativeFileChangePreview(change: FileUpdateChange): {
+  latestLine?: string;
+  diffPreview?: string;
+} {
+  if (!change.diff) return {};
+  if (change.kind.type === "update") {
+    const latestLine = latestChangedLine(change.diff);
+    const diffPreview = changedLinesPreview(change.diff);
+    return {
+      ...(latestLine === null ? {} : { latestLine }),
+      ...(diffPreview === null ? {} : { diffPreview }),
+    };
+  }
+  // Native additions/deletions contain the file content, not a unified diff.
+  const lines = boundedFilePreview(change.diff)
+    .replace(/\r?\n$/u, "")
+    .split(/\r?\n/u);
+  const marker = change.kind.type === "add" ? "+" : "-";
+  return {
+    latestLine: lines[lines.length - 1]!,
+    diffPreview: boundedFilePreview(
+      lines.map((line) => `${marker}${line}`).join("\n"),
+    ),
+  };
+}
+
 export function latestChangedLine(
   diff: string | null | undefined,
 ): string | null {
@@ -3787,13 +3813,10 @@ export function normalizeCodexThreadItem(
     const changes =
       telemetry.fileChanges ??
       item.changes.map((change) => {
-        const latestLine = latestChangedLine(change.diff);
-        const diffPreview = changedLinesPreview(change.diff);
         return {
           path: displayPath(cwd, change.path),
           kind: change.kind.type,
-          ...(latestLine === null ? {} : { latestLine }),
-          ...(diffPreview === null ? {} : { diffPreview }),
+          ...nativeFileChangePreview(change),
           ...(telemetry.updatedAtMs === undefined
             ? {}
             : { lastActivityAtMs: telemetry.updatedAtMs }),
@@ -6160,7 +6183,10 @@ export class CodexAppServer implements CodexRuntime {
   }
 
   async readMcpResource(
-    options: Pick<RunAgentTurnOptions, "cwd" | "model" | "provider"> & {
+    options: Pick<
+      RunAgentTurnOptions,
+      "cwd" | "model" | "provider" | "threadId"
+    > & {
       server: string;
       uri: string;
     },
@@ -6173,7 +6199,7 @@ export class CodexAppServer implements CodexRuntime {
     await this.ensureStarted(options.model, options.provider);
     return parseMcpResourceRead(
       await this.request("mcpServer/resource/read", {
-        threadId: null,
+        threadId: options.threadId,
         server: options.server,
         uri: options.uri,
       }),
@@ -6710,12 +6736,17 @@ export class CodexAppServer implements CodexRuntime {
       objective: string;
       tokenBudget?: number | null;
       operationId?: string;
+      configureTaskPermissions?: boolean;
     },
   ): Promise<ChatGoalResponse> {
     let threadId = this.managedGuiThread(options.threadId);
     if (!threadId) {
       await this.ensureStarted(options.model, options.provider);
-      threadId = await this.loadThread(options, true, "preserve");
+      threadId = await this.loadThread(
+        options,
+        true,
+        options.configureTaskPermissions ? "configure" : "preserve",
+      );
     }
     if (!threadId) {
       throw new Error("Could not start a Codex thread for the goal.");
@@ -6754,12 +6785,17 @@ export class CodexAppServer implements CodexRuntime {
     options: GoalRuntimeOptions & {
       status: "active" | "paused";
       threadId: string;
+      configureTaskPermissions?: boolean;
     },
   ): Promise<ChatGoalResponse> {
     let threadId = this.managedGuiThread(options.threadId);
     if (!threadId) {
       await this.ensureStarted(options.model, options.provider);
-      threadId = await this.loadThread(options, false, "preserve");
+      threadId = await this.loadThread(
+        options,
+        false,
+        options.configureTaskPermissions ? "configure" : "preserve",
+      );
     }
     if (!threadId) {
       throw new Error(
@@ -8372,9 +8408,14 @@ export class CodexAppServer implements CodexRuntime {
         if (
           !options.managedConfiguration &&
           this.#loadedThreads.has(threadId) &&
-          this.#mcpConfigFingerprintsByThread.get(threadId) !==
-            threadConfigFingerprint
+          ((!inheritManagedSecurity &&
+            this.#permissionProfilesByThread.get(threadId) !== permissionKey) ||
+            this.#mcpConfigFingerprintsByThread.get(threadId) !==
+              threadConfigFingerprint)
         ) {
+          // Native resume inherits a subscribed Core's security and ignores
+          // overrides. Retire the planning Core before restoring implementation
+          // permissions, even when its MCP configuration did not change.
           // Once unsubscribe is attempted, an uncertain reply cannot justify
           // trusting the previous attachment or its configuration.
           assertCurrent();

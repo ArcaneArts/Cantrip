@@ -248,6 +248,7 @@ export function GitPatchView({
   binary = false,
   commentTargets = [],
   contextLines = 3,
+  emptyMessage = "No textual line changes to display.",
   error,
   focusCommentTarget,
   lineSelection,
@@ -271,6 +272,7 @@ export function GitPatchView({
   binary?: boolean;
   commentTargets?: readonly GitDiffCommentTarget[];
   contextLines?: number;
+  emptyMessage?: string;
   error: unknown;
   focusCommentTarget?: GitDiffCommentTarget | null;
   lineSelection?: GitDiffLineSelection;
@@ -706,6 +708,7 @@ export function GitPatchView({
           disabled={!hunkCount}
           onClick={() => navigateHunk(-1)}
           size="icon"
+          aria-label="Previous change"
           title="Previous change"
           variant="ghost"
         >
@@ -716,6 +719,7 @@ export function GitPatchView({
           disabled={!hunkCount}
           onClick={() => navigateHunk(1)}
           size="icon"
+          aria-label="Next change"
           title="Next change"
           variant="ghost"
         >
@@ -762,6 +766,7 @@ export function GitPatchView({
             className="size-7"
             onClick={openFile}
             size="icon"
+            aria-label={onOpenFile ? "Open file" : "Open file on GitHub"}
             title={onOpenFile ? "Open file" : "Open file on GitHub"}
             variant="ghost"
           >
@@ -772,6 +777,7 @@ export function GitPatchView({
           className="size-7"
           onClick={() => void copy("path", path)}
           size="icon"
+          aria-label="Copy path"
           title="Copy path"
           variant="ghost"
         >
@@ -786,6 +792,7 @@ export function GitPatchView({
           disabled={!patch}
           onClick={() => void copy("patch", patch ?? "")}
           size="icon"
+          aria-label="Copy patch"
           title="Copy patch"
           variant="ghost"
         >
@@ -825,7 +832,7 @@ export function GitPatchView({
           ) : null}
           {rows.length === 0 ? (
             <div className="grid min-h-48 place-items-center p-6 text-center text-sm text-muted-foreground">
-              No textual line changes to display.
+              {emptyMessage}
             </div>
           ) : layout === "unified" ? (
             <div

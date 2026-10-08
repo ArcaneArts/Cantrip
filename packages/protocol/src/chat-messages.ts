@@ -41,6 +41,7 @@ export const chatComposerDraftSchema = z
     text: z.string().max(100_000),
     mode: chatTurnModeSchema,
     reasoningEffort: reasoningEffortSchema.nullable(),
+    attachments: z.array(chatAttachmentSummarySchema).max(20).optional(),
   })
   .strict();
 

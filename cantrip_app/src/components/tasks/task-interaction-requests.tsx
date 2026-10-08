@@ -17,12 +17,19 @@ import { useAppLiveStatus } from "@/lib/app-live-react";
 import { errorMessage } from "@/lib/error-message";
 import { liveResourceRefreshInterval } from "@/lib/live-resource-refresh";
 
-export function TaskInteractionRequests({ chat }: { chat: ChatSummary }) {
+export function TaskInteractionRequests({
+  chat,
+  visible = true,
+}: {
+  chat: ChatSummary;
+  visible?: boolean;
+}) {
   const queryClient = useQueryClient();
   const resourcesLive = useAppLiveStatus() === "live";
   const idempotencyKeys = useRef(new Map<string, string>());
   const responding = useRef(false);
   const requests = useQuery({
+    enabled: visible,
     queryKey: ["agent-requests", chat.id, "pending"],
     queryFn: () =>
       getAgentInteractionRequests({ chatId: chat.id, status: "pending" }),

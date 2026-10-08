@@ -20,7 +20,7 @@ import {
   Settings2,
   Trash2,
 } from "lucide-react";
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { memo, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { summarizePlanProgress } from "@/components/chat/chat-plan-progress";
 import {
@@ -59,7 +59,7 @@ export type ProjectTaskWorkloadItem = Awaited<
 >["items"][number];
 
 export type ProjectTaskWorkloadBand =
-  "attention" | "running" | "queued" | "completed";
+  "attention" | "running" | "queued" | "failed" | "completed";
 
 export interface ProjectTaskWorkloadPresentation {
   band: ProjectTaskWorkloadBand;
@@ -76,6 +76,7 @@ export function projectTaskIsUnqueuedDraft(
 
 const activeBandOrder: Record<ProjectTaskWorkloadBand, number> = {
   attention: 0,
+  failed: 0,
   running: 1,
   queued: 2,
   completed: 3,
@@ -119,7 +120,7 @@ export function projectTaskWorkloadPresentation(
     (chat?.status === "failed" && dispatch?.state !== "queued")
   ) {
     return {
-      band: "attention",
+      band: chat.status === "failed" ? "failed" : "attention",
       label:
         chat.status === "waiting-for-approval" ? "Needs approval" : "Failed",
       paused: false,
@@ -172,7 +173,10 @@ export function projectTaskWorkloadPresentation(
     dispatch?.state === "expired"
   ) {
     return {
-      band: "attention",
+      band:
+        task.state === "failed" || dispatch?.state === "failed"
+          ? "failed"
+          : "attention",
       label:
         task.state === "failed" || dispatch?.state === "failed"
           ? "Failed"
@@ -225,9 +229,11 @@ export function sortProjectTaskWorkload(
   projectPaused: boolean,
 ): {
   active: ProjectTaskWorkloadItem[];
+  failed: ProjectTaskWorkloadItem[];
   completed: ProjectTaskWorkloadItem[];
 } {
   const active: ProjectTaskWorkloadItem[] = [];
+  const failed: ProjectTaskWorkloadItem[] = [];
   const completed: ProjectTaskWorkloadItem[] = [];
   for (const item of items) {
     const presentation = projectTaskWorkloadPresentation(
@@ -235,9 +241,14 @@ export function sortProjectTaskWorkload(
       chats.get(item.task.chatId),
       projectPaused,
     );
-    (presentation.band === "completed" ? completed : active).push(item);
+    if (presentation.band === "completed") completed.push(item);
+    else if (presentation.band === "failed") failed.push(item);
+    else active.push(item);
   }
-  active.sort((left, right) => {
+  const compareActive = (
+    left: ProjectTaskWorkloadItem,
+    right: ProjectTaskWorkloadItem,
+  ) => {
     const leftBand = projectTaskWorkloadPresentation(
       left.task,
       chats.get(left.task.chatId),
@@ -254,14 +265,16 @@ export function sortProjectTaskWorkload(
       Date.parse(right.task.createdAt) - Date.parse(left.task.createdAt) ||
       left.task.chatId.localeCompare(right.task.chatId)
     );
-  });
+  };
+  active.sort(compareActive);
+  failed.sort(compareActive);
   completed.sort(
     (left, right) =>
       Date.parse(right.task.completedAt ?? right.task.updatedAt) -
         Date.parse(left.task.completedAt ?? left.task.updatedAt) ||
       left.task.chatId.localeCompare(right.task.chatId),
   );
-  return { active, completed };
+  return { active, failed, completed };
 }
 
 function promptSummary(markdown: string): string {
@@ -272,28 +285,38 @@ function promptSummary(markdown: string): string {
   return line?.replace(/^#{1,6}\s+/u, "") ?? "No Task prompt yet";
 }
 
-function TaskTrajectoryBar({ item }: { item: ProjectTaskWorkloadItem }) {
+const TaskTrajectoryBar = memo(function TaskTrajectoryBar({
+  item,
+}: {
+  item: ProjectTaskWorkloadItem;
+}) {
   const active =
     item.task.dispatch?.state === "running" ||
     item.task.dispatch?.state === "claimed";
-  const trajectory = projectTrajectory({
-    active,
-    messages: item.messages,
-    nowMs: Date.now(),
-  });
-  const rootEvents = trajectory?.events.filter((event) => event.agentIsRoot);
-  if (!rootEvents || rootEvents.length === 0) return null;
-  const lanes = (["input", "model", "tools", "changes"] as const)
-    .map((lane) => ({
-      count: rootEvents.filter((event) => event.lane === lane).length,
-      lane,
-    }))
-    .filter(({ count }) => count > 0);
+  const { count, lanes } = useMemo(() => {
+    const trajectory = projectTrajectory({
+      active,
+      messages: item.messages,
+      nowMs: Date.now(),
+    });
+    const rootEvents =
+      trajectory?.events.filter((event) => event.agentIsRoot) ?? [];
+    return {
+      count: rootEvents.length,
+      lanes: (["input", "model", "tools", "changes"] as const)
+        .map((lane) => ({
+          count: rootEvents.filter((event) => event.lane === lane).length,
+          lane,
+        }))
+        .filter(({ count }) => count > 0),
+    };
+  }, [active, item.messages]);
+  if (count === 0) return null;
   return (
     <div
       aria-label="Root agent trajectory"
       className="flex h-1.5 w-28 overflow-hidden rounded-full bg-muted"
-      title={`${rootEvents.length} root agent trajectory event${rootEvents.length === 1 ? "" : "s"}`}
+      title={`${count} root agent trajectory event${count === 1 ? "" : "s"}`}
     >
       {lanes.map(({ count, lane }) => (
         <span
@@ -304,7 +327,7 @@ function TaskTrajectoryBar({ item }: { item: ProjectTaskWorkloadItem }) {
       ))}
     </div>
   );
-}
+});
 
 function TaskWorkloadRow({
   chat,
@@ -500,9 +523,11 @@ function WorkloadList({
 
 export function projectTaskDashboardQueriesEnabled(
   active: boolean,
-  _activeTaskChatId: string | null,
+  activeTaskChatId: string | null,
 ): boolean {
-  return active;
+  // Keep the cached list behind the dialog, but do not repeatedly decrypt every
+  // Task's history while the user is looking at only one Task.
+  return active && activeTaskChatId === null;
 }
 
 export function ProjectTasksDashboard({
@@ -677,6 +702,7 @@ export function ProjectTasksDashboard({
           aria-hidden={Boolean(taskChatContent)}
         >
           <PersistentTaskViews
+            visible={active && !taskChatContent}
             activeTask={
               activeTask ? { chat: activeTask, worker: activeTaskWorker } : null
             }
@@ -809,6 +835,7 @@ export function ProjectTasksDashboard({
         ) : null}
         {workload.isSuccess &&
         sorted.active.length === 0 &&
+        sorted.failed.length === 0 &&
         sorted.completed.length === 0 ? (
           <EmptyState>
             <EmptyStateContent>
@@ -832,6 +859,15 @@ export function ProjectTasksDashboard({
               label="Active"
               onDeleteTask={requestDeleteTask}
               paused={pauseState.data?.paused ?? false}
+              taskWorkers={workerMap}
+              onOpenTask={onOpenTask}
+            />
+            <WorkloadList
+              chats={chatMap}
+              items={sorted.failed}
+              label="Failed"
+              onDeleteTask={requestDeleteTask}
+              paused={false}
               taskWorkers={workerMap}
               onOpenTask={onOpenTask}
             />

@@ -651,6 +651,16 @@ surface reconnects. This makes a late extension startup or transient bridge
 disconnect converge on the current Cantrip theme instead of retaining a stale
 editor appearance.
 
+Applying an already-configured Cantrip theme is a no-op: neither theme handler
+clears `workbench.colorTheme` to force a configuration change. For each web
+startup, the worker supplies its current session appearance in a worker-owned
+`x-cantrip-appearance` upstream header, replacing any client-supplied value. The
+web server seeds `initialColorTheme` with the matching light/dark/high-contrast
+scheme, foregrounds, and transparent structural surfaces before asynchronous
+theme loading. Valid cached colors retain their existing precedence; missing
+or unknown appearance hints and the last-resort startup fallback use Cantrip
+Dark instead of the upstream web default of Light.
+
 ## 16. Protocol and persistence additions
 
 Worker capability negotiation should report at least:

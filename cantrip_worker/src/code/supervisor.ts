@@ -48,6 +48,7 @@ type CodeSettingsWorkbenchOpenCommand = Extract<
 interface CodeSession {
   activeTunnelStreams: Set<string>;
   activityRevision: number;
+  attachmentLeases: Map<symbol, number>;
   appearance: CodeAppearance;
   bridgeToken: string;
   bridgeUrl: string;
@@ -96,6 +97,7 @@ interface ProfileProcess {
 }
 
 export interface CodeProxyTarget {
+  appearance: CodeAppearance;
   codeTabId: string;
   connectionToken: string;
   editorOrigin: string;
@@ -103,6 +105,11 @@ export interface CodeProxyTarget {
   processInstanceId: string;
   workspaceRootUri: string;
   workspaceUri: string;
+}
+
+export interface CodeSessionRetention {
+  renew(expiresAtMs: number): void;
+  release(): void;
 }
 
 export type CodeStopClaim =
@@ -712,6 +719,7 @@ export class CodeSupervisor {
         session = {
           activeTunnelStreams: new Set(),
           activityRevision: 0,
+          attachmentLeases: new Map(),
           appearance: command.appearance,
           bridgeToken,
           bridgeUrl,
@@ -1193,6 +1201,7 @@ export class CodeSupervisor {
     if (this.#sessions.get(sessionId) !== session) return;
     this.#retiringSessions.add(session);
     session.status = "stopping";
+    session.attachmentLeases.clear();
     this.#touch(session);
     this.#bridge.unregister(sessionId);
     const cleanup = await Promise.allSettled([
@@ -1237,6 +1246,7 @@ export class CodeSupervisor {
       throw new Error("Cantrip Code session is not running.");
     }
     return {
+      appearance: session.appearance,
       codeTabId: session.codeTabId,
       connectionToken: profile.connectionToken,
       editorOrigin: `http://127.0.0.1:${profile.port}`,
@@ -1248,6 +1258,40 @@ export class CodeSupervisor {
       processInstanceId: profile.instanceId,
       workspaceRootUri: session.workspaceRootUri,
       workspaceUri: session.workspaceUri,
+    };
+  }
+
+  retainSessionAttachment(
+    sessionId: string,
+    expectedSessionIncarnationId: string,
+    expiresAtMs: number,
+  ): CodeSessionRetention {
+    const session = this.#requireSession(sessionId);
+    const token = Symbol(sessionId);
+    let released = false;
+    const renew = (expiry: number) => {
+      if (
+        this.#closed ||
+        released ||
+        this.#sessions.get(sessionId) !== session ||
+        session.workspaceIncarnation !== expectedSessionIncarnationId ||
+        session.status !== "running"
+      ) {
+        throw new Error("Cantrip Code attachment no longer owns this session.");
+      }
+      if (!Number.isFinite(expiry) || expiry <= Date.now()) {
+        throw new Error("Cantrip Code attachment retention has expired.");
+      }
+      session.attachmentLeases.set(token, expiry);
+      this.#touch(session);
+    };
+    renew(expiresAtMs);
+    return {
+      renew,
+      release: () => {
+        released = true;
+        if (session.attachmentLeases.delete(token)) this.#touch(session);
+      },
     };
   }
 
@@ -1327,6 +1371,9 @@ export class CodeSupervisor {
       session.status !== "starting" &&
       session.status !== "stopping" &&
       session.activeTunnelStreams.size === 0 &&
+      // A hidden editor can have no sockets while still owning a live route.
+      // Check the deadline too, so a delayed route timer cannot retain it forever.
+      ![...session.attachmentLeases.values()].some((expiry) => expiry > now) &&
       now - Date.parse(session.lastActivityAt) >= idleTimeoutMs
     );
   }
@@ -2397,6 +2444,7 @@ export class CodeSupervisor {
         session = {
           activeTunnelStreams: new Set(),
           activityRevision: 0,
+          attachmentLeases: new Map(),
           appearance: appearance.data,
           bridgeToken,
           bridgeUrl,

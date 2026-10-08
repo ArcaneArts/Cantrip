@@ -1,5 +1,6 @@
 import type { IncomingMessage } from "node:http";
 import type { RawData } from "ws";
+import type { CodeAppearance } from "@cantrip/protocol";
 
 const BLOCKED_REQUEST_HEADERS = new Set([
   "authorization",
@@ -17,6 +18,7 @@ const BLOCKED_REQUEST_HEADERS = new Set([
   "x-forwarded-prefix",
   "x-original-host",
   "x-cantrip-code-base-path",
+  "x-cantrip-appearance",
 ]);
 const BLOCKED_RESPONSE_HEADERS = new Set([
   "connection",
@@ -92,6 +94,7 @@ export function codeEditorRequestHeaders(
   target: URL,
   basePath: string,
   connectionToken: string,
+  appearance: CodeAppearance = "dark",
 ): Record<string, string | string[]> {
   const output = new Map<string, string[]>();
   for (const [rawName, value] of headers) {
@@ -108,6 +111,7 @@ export function codeEditorRequestHeaders(
   output.set("cookie", [`vscode-tkn=${encodeURIComponent(connectionToken)}`]);
   output.set("host", [target.host]);
   output.set("x-forwarded-prefix", [basePath]);
+  output.set("x-cantrip-appearance", [appearance]);
   return Object.fromEntries(
     [...output].map(([name, values]) => [
       name,

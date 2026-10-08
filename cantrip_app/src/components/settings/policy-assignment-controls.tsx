@@ -175,7 +175,7 @@ export function PolicyAssignmentControls({
           </p>
         </div>
         {onManagePolicies ? (
-          <Button size="sm" variant="ghost" onClick={onManagePolicies}>
+          <Button size="sm" variant="ghost" onClick={() => onManagePolicies()}>
             <Settings2 className="size-4" /> Manage policy content
           </Button>
         ) : null}

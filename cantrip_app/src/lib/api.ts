@@ -89,6 +89,7 @@ import {
   chatPromptSubmitResultSchema,
   encryptedChatPromptSubmitResultSchema,
   encryptedChatTurnCreateSchema,
+  encryptedConversationPromptSubmitResultSchema,
   encryptedStandaloneChatCreateSchema,
   encryptedQueuedPromptQueueSchema,
   encryptedQueuedPromptSchema,
@@ -2991,6 +2992,25 @@ export async function getProjectWorktrees(
         };
       }
       try {
+        if (worktree.rootKind === "folder-root") {
+          const resolved = await resolveWorkerRepositoryMetadata({
+            workerId: worktree.workerId,
+            scopeId: projectId,
+            values: { path: worktree.path, displayPath: worktree.displayPath },
+          });
+          if (
+            typeof resolved.values.path !== "string" ||
+            typeof resolved.values.displayPath !== "string"
+          ) {
+            throw new Error("The folder root metadata is unavailable.");
+          }
+          return projectWorktreeSummarySchema.parse({
+            ...worktree,
+            name: worktree.isPrimary ? "Primary" : "Folder",
+            path: resolved.values.path,
+            displayPath: resolved.values.displayPath,
+          });
+        }
         const status = await getProtectedWorktreeStatus({
           projectId,
           worktreeId: worktree.id,
@@ -8434,7 +8454,7 @@ export async function startTurn(
     subagentReasoningEffort: configuration.subagentReasoningEffort,
     text,
   });
-  const result = encryptedChatPromptSubmitResultSchema.parse(
+  const result = encryptedConversationPromptSubmitResultSchema.parse(
     await post(
       `/api/chats/${encodeURIComponent(chatId)}/turns`,
       encryptedChatTurnCreateSchema.parse(input),
@@ -8443,7 +8463,9 @@ export async function startTurn(
   return result.status === "started"
     ? {
         status: "started" as const,
-        message: await openChatMessageOpaqueSummary(result.message),
+        message: await ("kind" in result && result.kind === "task-encrypted"
+          ? openTaskMessageOpaqueSummary(result.message)
+          : openChatMessageOpaqueSummary(result.message)),
       }
     : {
         status: "queued" as const,

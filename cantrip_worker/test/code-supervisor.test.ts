@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { EventEmitter } from "node:events";
 import {
   chmod,
@@ -2713,6 +2713,7 @@ describe("Cantrip Code supervisor", () => {
       }),
     );
     await expect(themeUpdate).resolves.toMatchObject({ status: "running" });
+    expect(supervisor.proxyTarget(sessionId).appearance).toBe("light");
     expect(
       JSON.parse(await readFile(new URL(target.workspaceUri), "utf8")).settings,
     ).toMatchObject({
@@ -2837,5 +2838,211 @@ describe("Cantrip Code supervisor", () => {
       supervisor.evictIdleSessions(Date.now() + 2_000),
     ).resolves.toEqual(["idle"]);
     expect(() => supervisor.status("idle")).toThrow("is not open");
+  });
+
+  async function retainedEditorFixture() {
+    const { repository, supervisor } = await fixture({
+      editorIdleTimeoutMs: 1_000,
+      idleSweepIntervalMs: 60 * 60_000,
+    });
+    await supervisor.prewarmProfile("default");
+    const opened = await supervisor.open({
+      ...openCommand("retained-editor", repository, "primary"),
+      presentation: "editor",
+    });
+    const lifecycle = {
+      ownerId: "owner",
+      authSessionId: "auth-session",
+      serverId: "server",
+      serverControlPlaneGeneration: crypto.randomUUID(),
+      protectedKeyRevision: 1,
+      workerProcessGeneration: crypto.randomUUID(),
+    };
+    const endpoints = new CodeDirectEndpointManager(supervisor, lifecycle);
+    endpointManagers.push(endpoints);
+    const now = Date.now();
+    const route = {
+      type: "code.transport.route.authorize" as const,
+      ...lifecycle,
+      transportId: crypto.randomUUID(),
+      attachmentId: crypto.randomUUID(),
+      sessionId: opened.sessionId,
+      expectedSessionIncarnationId: opened.sessionIncarnationId!,
+      routeGrant: randomBytes(32).toString("base64url"),
+      expiresAt: new Date(now + 15 * 60_000).toISOString(),
+    };
+    await endpoints.authorizeSharedRoute(route, lifecycle);
+    return { endpoints, lifecycle, now, opened, repository, route, supervisor };
+  }
+
+  it("keeps a hidden editor alive through attachment renewal without tunnel streams", async () => {
+    const { endpoints, lifecycle, now, opened, route, supervisor } =
+      await retainedEditorFixture();
+
+    await expect(
+      supervisor.evictIdleSessions(now + 5 * 60_000),
+    ).resolves.toEqual([]);
+    await endpoints.authorizeSharedRoute(
+      { ...route, expiresAt: new Date(now + 20 * 60_000).toISOString() },
+      lifecycle,
+    );
+    await expect(
+      supervisor.evictIdleSessions(now + 15 * 60_000),
+    ).resolves.toEqual([]);
+    expect(supervisor.status(opened.sessionId)).toMatchObject({
+      processInstanceId: opened.processInstanceId,
+      sessionIncarnationId: opened.sessionIncarnationId,
+      status: "running",
+    });
+    // The lease itself must bound retention even before its expiry timer runs.
+    await expect(
+      supervisor.evictIdleSessions(now + 20 * 60_000),
+    ).resolves.toEqual([opened.sessionId]);
+  });
+
+  it.each([
+    "tab close",
+    "transport revocation",
+    "security invalidation",
+    "control-plane change",
+    "terminal disconnect",
+    "worker shutdown",
+  ])("releases idle session retention on %s", async (reason) => {
+    const { endpoints, lifecycle, now, opened, route, supervisor } =
+      await retainedEditorFixture();
+    switch (reason) {
+      case "tab close":
+        await endpoints.revokeSharedRoute(
+          { ...route, type: "code.transport.route.revoke" },
+          lifecycle,
+        );
+        break;
+      case "transport revocation":
+        await endpoints.revokeSharedTransport(
+          { ...route, type: "code.transport.revoke" },
+          lifecycle,
+        );
+        break;
+      case "security invalidation":
+        endpoints.invalidateSecurityIdentity();
+        break;
+      case "control-plane change":
+        endpoints.synchronizeControlPlaneGeneration(crypto.randomUUID());
+        break;
+      case "terminal disconnect":
+        endpoints.disconnect();
+        break;
+      case "worker shutdown":
+        endpoints.close();
+        break;
+    }
+    await expect(
+      supervisor.evictIdleSessions(now + 5 * 60_000),
+    ).resolves.toEqual([opened.sessionId]);
+  });
+
+  it("retains a session until its last independently owned route is released", async () => {
+    const { endpoints, lifecycle, now, opened, route, supervisor } =
+      await retainedEditorFixture();
+    const sibling = { ...route, transportId: crypto.randomUUID() };
+    await endpoints.authorizeSharedRoute(sibling, lifecycle);
+    await endpoints.revokeSharedRoute(
+      { ...route, type: "code.transport.route.revoke" },
+      lifecycle,
+    );
+    await expect(
+      supervisor.evictIdleSessions(now + 5 * 60_000),
+    ).resolves.toEqual([]);
+    await endpoints.revokeSharedRoute(
+      { ...sibling, type: "code.transport.route.revoke" },
+      lifecycle,
+    );
+    await expect(
+      supervisor.evictIdleSessions(now + 5 * 60_000),
+    ).resolves.toEqual([opened.sessionId]);
+  });
+
+  it("does not let old attachment retention affect a stopped and reopened session", async () => {
+    const { endpoints, lifecycle, now, opened, repository, route, supervisor } =
+      await retainedEditorFixture();
+    const oldRetention = supervisor.retainSessionAttachment(
+      opened.sessionId,
+      opened.sessionIncarnationId!,
+      now + 15 * 60_000,
+    );
+    await supervisor.stop(opened.sessionId);
+    const replacement = await supervisor.open({
+      ...openCommand(opened.sessionId, repository, "primary"),
+      presentation: "editor",
+    });
+    const replacementRoute = {
+      ...route,
+      attachmentId: crypto.randomUUID(),
+      routeGrant: randomBytes(32).toString("base64url"),
+      expectedSessionIncarnationId: replacement.sessionIncarnationId!,
+    };
+    await endpoints.authorizeSharedRoute(replacementRoute, lifecycle);
+    expect(() => oldRetention.renew(now + 20 * 60_000)).toThrow(
+      "no longer owns this session",
+    );
+    oldRetention.release();
+    oldRetention.release();
+    await endpoints.revokeSharedRoute(
+      { ...route, type: "code.transport.route.revoke" },
+      lifecycle,
+    );
+    await expect(
+      supervisor.evictIdleSessions(now + 5 * 60_000),
+    ).resolves.toEqual([]);
+    expect(supervisor.status(opened.sessionId).sessionIncarnationId).toBe(
+      replacement.sessionIncarnationId,
+    );
+    await endpoints.revokeSharedRoute(
+      { ...replacementRoute, type: "code.transport.route.revoke" },
+      lifecycle,
+    );
+    await expect(
+      supervisor.evictIdleSessions(now + 5 * 60_000),
+    ).resolves.toEqual([opened.sessionId]);
+  });
+
+  it("rejects invalid attachment retention without preserving an unowned editor", async () => {
+    const { repository, supervisor } = await fixture({
+      editorIdleTimeoutMs: 1_000,
+      idleSweepIntervalMs: 60 * 60_000,
+    });
+    const opened = await supervisor.open({
+      ...openCommand("unowned-editor", repository, "primary"),
+      presentation: "editor",
+    });
+    const now = Date.now();
+    expect(() =>
+      supervisor.retainSessionAttachment(
+        opened.sessionId,
+        crypto.randomUUID(),
+        now + 15 * 60_000,
+      ),
+    ).toThrow("no longer owns this session");
+    for (const expiry of [now - 1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() =>
+        supervisor.retainSessionAttachment(
+          opened.sessionId,
+          opened.sessionIncarnationId!,
+          expiry,
+        ),
+      ).toThrow("retention has expired");
+    }
+    const retention = supervisor.retainSessionAttachment(
+      opened.sessionId,
+      opened.sessionIncarnationId!,
+      now + 15 * 60_000,
+    );
+    retention.release();
+    expect(() => retention.renew(now + 20 * 60_000)).toThrow(
+      "no longer owns this session",
+    );
+    await expect(
+      supervisor.evictIdleSessions(now + 5 * 60_000),
+    ).resolves.toEqual([opened.sessionId]);
   });
 });

@@ -129,4 +129,34 @@ describe("project workspace filtering", () => {
       searchProjects(projects, workspaces, workspaces[0]!, "missing"),
     ).toEqual([]);
   });
+
+  it("puts recently accessed projects first without changing workspace filtering or the input", () => {
+    const results = searchProjects(projects, workspaces, workspaces[0]!, "", [
+      "project-3",
+      "project-2",
+    ]);
+    expect(results.map(({ project }) => project.id)).toEqual([
+      "project-2",
+      "project-1",
+    ]);
+    expect(projects.map(({ id }) => id)).toEqual([
+      "project-1",
+      "project-2",
+      "project-3",
+    ]);
+  });
+
+  it("orders global search matches by access history and keeps unvisited projects in their existing order", () => {
+    expect(
+      searchProjects(projects, workspaces, workspaces[0]!, "ca", [
+        "deleted",
+        "project-3",
+      ]).map(({ project }) => project.id),
+    ).toEqual(["project-3", "project-1"]);
+    expect(
+      searchProjects(projects, workspaces, null, "", ["project-3"]).map(
+        ({ project }) => project.id,
+      ),
+    ).toEqual(["project-3", "project-1", "project-2"]);
+  });
 });

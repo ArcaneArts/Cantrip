@@ -6,7 +6,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { ServerRepository } from "../src/db/repository.js";
 import { ProjectFolderSetupJobExecutor } from "../src/project-folders/executor.js";
-import type { WorkerCommandBus } from "../src/workers/bridge.js";
+import {
+  WorkerCommandError,
+  type WorkerCommandBus,
+} from "../src/workers/bridge.js";
 
 const now = "2026-08-18T12:00:00.000Z";
 
@@ -196,4 +199,57 @@ describe("project folder setup executor", () => {
       expect.objectContaining({ jobId: active.id, attempt: active.attempt }),
     );
   });
+  it.each([
+    ["/qa/missing", "existing-path-missing", "existing-path-missing"],
+    ["/qa/file", "existing-path-not-directory", "existing-path-not-directory"],
+    [
+      "/qa/denied",
+      "existing-path-permission-denied",
+      "existing-path-permission-denied",
+    ],
+    ["/qa/other", "unrecognized-code", "attachment-failed"],
+    [undefined, "existing-path-missing", "materialization-failed"],
+  ] as const)(
+    "persists only safe setup reasons for %s (%s)",
+    async (existingPath, code, expected) => {
+      const active = job();
+      const fail = vi.fn().mockResolvedValue({ ...active, state: "failed" });
+      const repository = {
+        getWorker: vi.fn().mockResolvedValue(worker()),
+        getProjectWorkspaceStorageContext: vi
+          .fn()
+          .mockResolvedValue({ kind: "system" }),
+        projectFolderSetupJobs: {
+          claimNext: vi
+            .fn()
+            .mockResolvedValueOnce({
+              ownerId: "owner-one",
+              commandId: "command-one",
+              job: active,
+              existingPath,
+            })
+            .mockResolvedValue(null),
+          fail,
+        },
+      } as unknown as ServerRepository;
+      const bridge = {
+        isConnected: () => true,
+        request: vi
+          .fn()
+          .mockRejectedValue(
+            new WorkerCommandError("Private raw path must not propagate", code),
+          ),
+      } as unknown as WorkerCommandBus;
+      const executor = new ProjectFolderSetupJobExecutor(repository, bridge, {
+        error: vi.fn(),
+        warn: vi.fn(),
+      });
+      executor.queueAvailable();
+      await executor.drain();
+      expect(fail).toHaveBeenCalledWith(active.id, "command-one", {
+        code: expected,
+        retryable: false,
+      });
+    },
+  );
 });

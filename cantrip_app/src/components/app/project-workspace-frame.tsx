@@ -349,6 +349,7 @@ export function DockRail({
           drop.isOver && "bg-primary/10",
         )}
         data-dock-rail={region}
+        data-dock-region={region}
         ref={railRef}
         style={
           region === "right"
@@ -546,6 +547,7 @@ function PaneBodyHost({
   return (
     <div
       className="relative flex min-h-0 min-w-0 overflow-hidden"
+      data-dock-region={presentation.pane.region}
       data-project-pane-body={presentation.pane.id}
       data-project-pane-id={presentation.pane.id}
       ref={attachPortalTarget}
@@ -1107,7 +1109,7 @@ export function ProjectWorkspaceFrame({
 
   return (
     <div
-      className="grid min-h-0 min-w-0 flex-1 overflow-hidden"
+      className="group/workspace-docks grid min-h-0 min-w-0 flex-1 overflow-hidden"
       data-docked={docked ? "true" : "false"}
       data-rails-visible={railsVisible ? "true" : "false"}
       style={{

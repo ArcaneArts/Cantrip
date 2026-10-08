@@ -112,11 +112,6 @@ export function installChatQueueRoutes(
         applicationOwnerId(),
         request.params.chatId,
       );
-      if (context?.experience === "task") {
-        return reply.code(409).send({
-          error: "Queued prompts are unavailable for encrypted Tasks.",
-        });
-      }
       if (context && managedConsoleSessionContext(context)) {
         const { revision, items, pendingImports, claims } =
           await repository.managedQueue.snapshot(
@@ -148,11 +143,6 @@ export function installChatQueueRoutes(
         request.params.chatId,
       );
       if (!context) return reply.code(404).send({ error: "Chat not found." });
-      if (context.experience === "task") {
-        return reply.code(409).send({
-          error: "Queued prompts are unavailable for encrypted Tasks.",
-        });
-      }
       let modelId: string;
       let attachments: Awaited<ReturnType<typeof resolvePromptAttachments>>;
       try {
@@ -281,11 +271,6 @@ export function installChatQueueRoutes(
       );
       if (!promptContext) {
         return reply.code(404).send({ error: "Chat not found." });
-      }
-      if (promptContext?.experience === "task") {
-        return reply.code(409).send({
-          error: "Queued prompts are unavailable for encrypted Tasks.",
-        });
       }
       let attachments: Awaited<ReturnType<typeof resolvePromptAttachments>>;
       try {
@@ -517,23 +502,29 @@ export function installChatQueueRoutes(
                 )
               ).status === "applied"
             : false;
+        const queueIdentity = queueClaim
+          ? {
+              operationId: request.body.operationId,
+              queueClaim: {
+                id: queueClaim.id,
+                promptRevision: queueClaim.promptRevision,
+              },
+              nativeClientUserMessageId:
+                queued.nativeClientUserMessageId ??
+                `cantrip:${queued.pendingMessage.id}`,
+            }
+          : {};
         if (!alreadyApplied)
           await bridge.request(
             context.workerId,
             control.activationGeneration
               ? {
                   type: "chat.native-control",
+                  ...queueIdentity,
                   ...(queueClaim
                     ? {
-                        operationId: request.body.operationId,
-                        queueClaim: {
-                          id: queueClaim.id,
-                          promptRevision: queueClaim.promptRevision,
-                        },
                         protectedNativeInput: queued.protectedNativeInput,
                         queuedPromptId: queued.id,
-                        nativeClientUserMessageId:
-                          queued.nativeClientUserMessageId,
                       }
                     : {}),
                   chatId: context.chatId,
@@ -550,6 +541,7 @@ export function installChatQueueRoutes(
                 }
               : {
                   type: "chat.steer",
+                  ...queueIdentity,
                   executionProfile:
                     context.contextKind === "standalone"
                       ? "standalone-chat"

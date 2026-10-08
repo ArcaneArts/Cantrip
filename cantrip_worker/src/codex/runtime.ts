@@ -260,12 +260,14 @@ export interface CodexRuntime {
       objective: string;
       tokenBudget?: number | null;
       operationId?: string;
+      configureTaskPermissions?: boolean;
     },
   ): Promise<ChatGoalResponse>;
   updateGoal(
     options: GoalRuntimeOptions & {
       status: "active" | "paused";
       threadId: string;
+      configureTaskPermissions?: boolean;
     },
   ): Promise<ChatGoalResponse>;
   clearGoal(

@@ -98,7 +98,16 @@ export function taskImplementationCanResume(
   goal: TaskGoalSnapshot | null,
   automationPaused = false,
 ): boolean {
-  if (task.state === "complete" || task.state === "failed") return false;
+  if (task.state === "complete") return false;
+  if (task.state === "failed") {
+    return (
+      task.planGoalEnabled &&
+      task.lastError?.code === "implementation-runtime-failed" &&
+      (goal?.status === "active" ||
+        goal?.status === "paused" ||
+        goal?.status === "blocked")
+    );
+  }
   return (
     automationPaused ||
     task.state === "paused" ||
@@ -119,7 +128,11 @@ export async function resumeTaskImplementation(
   goal: TaskGoalSnapshot | null,
 ): Promise<void> {
   if (automationPaused) await setChatPaused(chatId, false);
-  if (goal?.status === "paused" || goal?.status === "blocked") {
+  if (
+    goal?.status === "paused" ||
+    goal?.status === "blocked" ||
+    (!automationPaused && goal?.status === "active")
+  ) {
     await updateChatGoal(chatId, { status: "active" });
   }
 }
@@ -180,6 +193,7 @@ export function TaskImplementationDashboard({
   initialTask,
   onClose,
   onDelete,
+  visible = true,
   workerName,
 }: {
   chat: ChatSummary;
@@ -187,12 +201,14 @@ export function TaskImplementationDashboard({
   initialTask: TaskDetail;
   onClose?(): void;
   onDelete?(): void;
+  visible?: boolean;
   workerName?: string;
 }) {
   const queryClient = useQueryClient();
   const taskResourcesLive = useAppLiveStatus() === "live";
   const [copied, setCopied] = useState(false);
   const dashboard = useQuery({
+    enabled: visible,
     queryFn: () => getTaskImplementationDashboard(chat.id),
     queryKey: ["task-dashboard", chat.id],
     refetchInterval: liveResourceRefreshInterval(
@@ -208,6 +224,7 @@ export function TaskImplementationDashboard({
   const active =
     chat.status === "running" || chat.status === "waiting-for-approval";
   const messages = useChatMessageHistory({
+    enabled: visible,
     autoLoadOlder: true,
     chatId: chat.id,
     refetchInterval: liveResourceRefreshInterval(
@@ -391,7 +408,7 @@ export function TaskImplementationDashboard({
           </p>
         ) : null}
 
-        <TaskInteractionRequests chat={chat} />
+        <TaskInteractionRequests chat={chat} visible={visible} />
 
         <section
           className={cn(
@@ -521,12 +538,12 @@ export function TaskImplementationDashboard({
             >
               Latest activity
             </h3>
-            <div className="min-h-48 overflow-hidden">
+            <div className="min-h-48 overflow-hidden [&_[data-slot=trajectory-event-viewport]]:overscroll-y-auto">
               <AgentInspectContent
                 active={active}
                 messages={latestMessages}
                 trajectoryEventOrder="newest-first"
-                visible
+                visible={visible}
               />
             </div>
           </section>

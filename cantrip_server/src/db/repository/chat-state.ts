@@ -13,7 +13,7 @@ import type {
   EncryptedChatUpdate,
   PrivateDisplayLabelOpaque,
 } from "@cantrip/protocol";
-import { and, desc, eq, isNull, ne, sql } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull, ne, sql } from "drizzle-orm";
 
 import * as schema from "../schema.js";
 import {
@@ -316,6 +316,7 @@ export class ChatStateRepository {
             schema.chatRuntimeSessions.workerId,
             schema.chatRuntimeSessions.worktreeId,
           ],
+          where: isNotNull(schema.chatRuntimeSessions.worktreeId),
         });
       const runtimes = await transaction
         .select()

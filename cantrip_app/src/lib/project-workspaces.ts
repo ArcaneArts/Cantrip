@@ -43,6 +43,7 @@ export function searchProjects(
   workspaces: ProjectWorkspaceSummary[],
   activeWorkspace: ProjectWorkspaceSummary | null,
   query: string,
+  recentProjectIds: readonly string[] = [],
 ): ProjectSearchResult[] {
   const workspaceByProjectId = new Map<string, ProjectWorkspaceSummary>();
   for (const workspace of workspaces) {
@@ -52,6 +53,9 @@ export function searchProjects(
   }
 
   const needle = query.trim().toLocaleLowerCase();
+  const recentPositions = new Map(
+    recentProjectIds.map((id, index) => [id, index]),
+  );
   const candidates = needle
     ? projects
     : projectsInWorkspace(projects, activeWorkspace);
@@ -71,5 +75,10 @@ export function searchProjects(
     .map((project) => ({
       project,
       workspace: workspaceByProjectId.get(project.id) ?? null,
-    }));
+    }))
+    .sort(
+      (left, right) =>
+        (recentPositions.get(left.project.id) ?? Number.MAX_SAFE_INTEGER) -
+        (recentPositions.get(right.project.id) ?? Number.MAX_SAFE_INTEGER),
+    );
 }

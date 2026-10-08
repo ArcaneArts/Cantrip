@@ -17,7 +17,6 @@ import type {
   TunnelSummary,
 } from "@cantrip/protocol";
 import {
-  isZaiCodingPlanBaseUrl,
   shouldUseChatGptCredits,
   PROVIDER_REAUTH_REQUIRED_ERROR_CODE,
   ZAI_CODING_PLAN_BASE_URL,
@@ -65,13 +64,6 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  defaultModelConfiguration,
-  defaultStandaloneChatModelConfiguration,
-  ModelReasoningPicker,
-  modelConfigurationSettingsUpdate,
-  standaloneChatModelConfigurationSettingsUpdate,
-} from "@/components/chat/model-reasoning-picker";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { InlineAlert } from "@/components/ui/inline-alert";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -104,7 +96,6 @@ import {
   deleteModelProvider,
   getSettings,
   getCodexAuthStatus,
-  getModelReasoningOptions,
   getProviderRateLimitResets,
   getWorkers,
   logoutCodex,
@@ -176,6 +167,19 @@ import {
   providerRateLimitResetQueryKey,
   useChatGptAvailableResetCredits,
 } from "./use-provider-reset-credits";
+import { ModelsSettings } from "./models-settings";
+import {
+  modelsSettingsSearchTab,
+  providerModelsTab,
+  type ModelsSettingsTab,
+} from "./models-settings-state";
+import {
+  providerSetupDefaults,
+  providerSetupFor,
+  providerSetupOptions,
+  providerSetupUnavailableReason,
+  type ProviderSetupKind,
+} from "./provider-setup";
 
 export type SettingsSection =
   | "general"
@@ -551,59 +555,10 @@ export function settingsNavigationSectionsForResources(
   );
 }
 
-type ProviderSetupKind =
-  ModelProviderKind | "openai" | "openrouter" | "xai" | "zai";
-
-const providerSetups: Record<
-  Exclude<ProviderSetupKind, "chatgpt" | "grok" | "openai-compatible">,
-  { baseUrl: string; kind: ModelProviderKind; label: string }
-> = {
-  ollama: {
-    baseUrl: "http://127.0.0.1:11434/v1",
-    kind: "ollama",
-    label: "Ollama",
-  },
-  openrouter: {
-    baseUrl: "https://openrouter.ai/api/v1",
-    kind: "openai-compatible",
-    label: "OpenRouter",
-  },
-  zai: {
-    baseUrl: ZAI_CODING_PLAN_BASE_URL,
-    kind: "openai-compatible",
-    label: "Z.ai Coding Plan",
-  },
-  xai: {
-    baseUrl: "https://api.x.ai/v1",
-    kind: "openai-compatible",
-    label: "xAI API",
-  },
-  openai: {
-    baseUrl: "https://api.openai.com/v1",
-    kind: "openai-compatible",
-    label: "OpenAI API",
-  },
-};
-
-function providerSetupFor(provider: ModelProviderSummary): ProviderSetupKind {
-  if (
-    provider.kind === "chatgpt" ||
-    provider.kind === "grok" ||
-    provider.kind === "ollama"
-  ) {
-    return provider.kind;
-  }
-  if (isZaiCodingPlanBaseUrl(provider.baseUrl)) return "zai";
-  const match = Object.entries(providerSetups).find(
-    ([key, setup]) => key !== "ollama" && setup.baseUrl === provider.baseUrl,
-  );
-  return (match?.[0] as ProviderSetupKind | undefined) ?? "openai-compatible";
-}
-
 export function initialProviderName(
   provider: Pick<ModelProviderSummary, "name"> | null,
 ): string {
-  return provider?.name ?? providerSetups.ollama.label;
+  return provider?.name ?? providerSetupDefaults("ollama").name;
 }
 
 type AccountProviderKind = Extract<ModelProviderKind, "chatgpt" | "grok">;
@@ -927,9 +882,11 @@ function ProviderRow({
       onClick={onEdit}
       onKeyDown={(event) => editSettingsRowFromKeyboard(event, onEdit)}
     >
-      <div className="flex min-w-0 items-center gap-2.5">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
         <Server className="size-4 shrink-0 text-muted-foreground" />
-        <p className="truncate text-sm font-medium">{provider.name}</p>
+        <p className="min-w-0 flex-1 basis-[calc(100%-2rem)] truncate text-sm font-medium">
+          {provider.name}
+        </p>
         <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
           {formatTokenCount(provider.tokenUsage.totalTokens)} tokens
         </span>
@@ -968,7 +925,7 @@ function ProviderRow({
           </p>
         )}
       </div>
-      <div className="hidden min-w-0 sm:block">
+      <div className="col-span-2 flex min-w-0 flex-wrap items-center gap-x-2 pl-6 sm:col-span-1 sm:block sm:pl-0">
         <p className={`truncate text-xs font-medium ${statusTone}`}>
           {statusLabel}
           {supportsCatalog ? ` · ${availableModelCount} available` : ""}
@@ -1180,6 +1137,8 @@ export function SettingsPage({
   onOpenTunnelOwner?(tunnel: TunnelSummary): void;
 }) {
   const [section, setSection] = useState<SettingsSection>(initialSection);
+  const [activeModelsTab, setActiveModelsTab] =
+    useState<ModelsSettingsTab>("general");
   const [codeActivated, setCodeActivated] = useState(initialSection === "code");
   const [policyEditorId, setPolicyEditorId] = useState<string | null>(
     initialPolicyId,
@@ -1245,6 +1204,11 @@ export function SettingsPage({
     editingProvider && isAccountProviderKind(editingProvider.kind)
       ? editingProvider
       : null;
+  const providerUnavailableReason = providerSetupUnavailableReason(
+    providerKind,
+    settings.data?.providers ?? [],
+    editingProvider?.id,
+  );
   const selectedAccount =
     accountProvider?.accounts.find(({ id }) => id === selectedAccountId) ??
     accountProvider?.accounts[0] ??
@@ -1364,6 +1328,7 @@ export function SettingsPage({
   }, [proModeOpacityDialogOpen, proModeOpacityDraft, savedProModeOpacity]);
   const saveProvider = useMutation({
     mutationFn: async () => {
+      if (providerUnavailableReason) throw new Error(providerUnavailableReason);
       const input = {
         name: providerName,
         kind: providerKind,
@@ -1403,6 +1368,7 @@ export function SettingsPage({
     },
     onSuccess: async (provider) => {
       await refresh();
+      setActiveModelsTab(providerModelsTab(provider.id));
       if (
         isAccountProviderKind(provider.kind) &&
         editingProvider?.kind !== provider.kind
@@ -1421,7 +1387,11 @@ export function SettingsPage({
   });
   const removeProvider = useMutation({
     mutationFn: deleteModelProvider,
-    onSuccess: refresh,
+    onSuccess: async (_result, providerId) => {
+      if (activeModelsTab === providerModelsTab(providerId))
+        setActiveModelsTab("general");
+      await refresh();
+    },
   });
   const testProviderConnection = useMutation({
     mutationFn: () =>
@@ -1443,9 +1413,12 @@ export function SettingsPage({
         ? updateModelProfile(editingModel.id, input)
         : createModelProfile(input);
     },
-    onSuccess: async () => {
+    onSuccess: async (model) => {
       setModelDialogOpen(false);
       await refresh();
+      if (!editingModel && model.routes[0]) {
+        setActiveModelsTab(providerModelsTab(model.routes[0].providerId));
+      }
     },
   });
   const removeModel = useMutation({
@@ -1594,7 +1567,11 @@ export function SettingsPage({
     },
   });
 
-  const openProviderDialog = (provider: ModelProviderSummary | null) => {
+  const openProviderDialog = (
+    provider: ModelProviderSummary | null,
+    setup: ProviderSetupKind = "ollama",
+  ) => {
+    const defaults = providerSetupDefaults(setup);
     saveProvider.reset();
     testProviderConnection.reset();
     setConnectionTestResult(null);
@@ -1602,10 +1579,10 @@ export function SettingsPage({
     signOutCodex.reset();
     consumeRateLimitReset.reset();
     setEditingProvider(provider);
-    setProviderName(initialProviderName(provider));
-    setProviderKind(provider?.kind ?? "ollama");
-    setProviderSetup(provider ? providerSetupFor(provider) : "ollama");
-    setBaseUrl(provider?.baseUrl ?? "http://127.0.0.1:11434/v1");
+    setProviderName(provider?.name ?? defaults.name);
+    setProviderKind(provider?.kind ?? defaults.kind);
+    setProviderSetup(provider ? providerSetupFor(provider) : setup);
+    setBaseUrl(provider?.baseUrl ?? defaults.baseUrl);
     setApiKey("");
     setRemoveApiKey(false);
     setSelectedAccountId(provider?.accounts[0]?.id ?? null);
@@ -1619,8 +1596,11 @@ export function SettingsPage({
     setProviderDialogOpen(true);
   };
 
-  const openModelDialog = (model: ModelProfileSummary | null) => {
-    const firstProviderId = settings.data?.providers[0]?.id ?? "";
+  const openModelDialog = (
+    model: ModelProfileSummary | null,
+    providerId?: string,
+  ) => {
+    const firstProviderId = providerId ?? settings.data?.providers[0]?.id ?? "";
     saveModel.reset();
     setEditingModel(model);
     setModelName(model?.name ?? "");
@@ -1647,7 +1627,6 @@ export function SettingsPage({
   };
 
   const generalSearch = settingsSearchQuery.trim().toLowerCase();
-  const modelSearch = generalSearch;
   const providers = settings.data?.providers ?? [];
   const models = settings.data?.models ?? [];
   const navigationSections = useMemo(
@@ -1713,61 +1692,19 @@ export function SettingsPage({
       generalSearch,
       "anonymous recovery encryption key backup export restore file",
     );
-  const providerSectionMatches =
-    !modelSearch ||
-    matchesSearch(
-      modelSearch,
-      "providers provider ollama api chatgpt grok supergrok oauth xai account endpoint key",
-    );
-  const visibleProviders = providerSectionMatches
-    ? providers
-    : providers.filter((provider) =>
-        matchesSearch(
-          modelSearch,
-          provider.name,
-          provider.kind,
-          provider.baseUrl,
-          provider.hasApiKey ? "api key" : null,
-        ),
-      );
-  const modelSectionMatches =
-    !modelSearch ||
-    matchesSearch(
-      modelSearch,
-      "models model default provider routes priority failover new agents",
-    );
-  const visibleModels = modelSectionMatches
-    ? models
-    : models.filter((model) =>
-        matchesSearch(
-          modelSearch,
-          model.name,
-          ...model.routes.flatMap((route) => [
-            route.providerName,
-            route.modelName,
-          ]),
-          settings.data?.preferences.defaultModelId === model.id
-            ? "default"
-            : null,
-        ),
-      );
-  const providersMatch = providerSectionMatches || visibleProviders.length > 0;
-  const modelsMatch = modelSectionMatches || visibleModels.length > 0;
   const hasSearchResults =
-    section === "models"
-      ? providersMatch || modelsMatch
-      : section === "appearance"
-        ? appearanceMatches
-        : section === "computer-use"
-          ? computerUseMatches
-          : section === "remote-desktop"
-            ? desktopStreamingMatches
-            : workspaceLayoutProfileMatches ||
-              permissionDefaultsMatch ||
-              agentNamingMatches ||
-              chatDisplayMatches ||
-              encryptionRecoveryMatches ||
-              desktopUpdateMatches;
+    section === "appearance"
+      ? appearanceMatches
+      : section === "computer-use"
+        ? computerUseMatches
+        : section === "remote-desktop"
+          ? desktopStreamingMatches
+          : workspaceLayoutProfileMatches ||
+            permissionDefaultsMatch ||
+            agentNamingMatches ||
+            chatDisplayMatches ||
+            encryptionRecoveryMatches ||
+            desktopUpdateMatches;
 
   useEffect(() => {
     setSection(initialSection);
@@ -1794,6 +1731,12 @@ export function SettingsPage({
           if (next === "code") setCodeActivated(true);
           setSection(next);
         }}
+        onSearchResultSelect={(result) => {
+          if (result.sectionId === "models")
+            setActiveModelsTab(
+              modelsSettingsSearchTab(result.id, models, providers),
+            );
+        }}
       >
         <div
           data-content-gutter={
@@ -1808,7 +1751,7 @@ export function SettingsPage({
           className={`min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden ${section === "code" ? "overflow-hidden" : section === "logs" || section === "elite" ? "overflow-hidden p-3 sm:p-4" : "overflow-y-auto p-4 sm:p-6"}`}
         >
           <div
-            className={`${section === "general" || section === "appearance" || section === "models" || section === "computer-use" || section === "remote-desktop" ? "grid" : "hidden"} w-full min-w-0 gap-4`}
+            className={`${section === "general" || section === "appearance" || section === "computer-use" || section === "remote-desktop" ? "grid" : "hidden"} w-full min-w-0 gap-4`}
           >
             {settings.isError ? (
               <p className="text-sm text-destructive">
@@ -2228,310 +2171,57 @@ export function SettingsPage({
                     capability={desktopUpdateCapability.data!}
                   />
                 ) : null}
-
-                {section === "models" && providersMatch ? (
-                  <section>
-                    <div className="flex items-center justify-between gap-3 px-3 py-3">
-                      <div className="flex min-w-0 items-center gap-2.5">
-                        <Server className="size-4 shrink-0 text-muted-foreground" />
-                        <div className="min-w-0">
-                          <div className="flex items-baseline gap-2">
-                            <h2 className="text-sm font-semibold">Providers</h2>
-                            <span className="text-xs text-muted-foreground">
-                              {visibleProviders.length}
-                              {modelSearch &&
-                              visibleProviders.length !== providers.length
-                                ? ` of ${providers.length}`
-                                : ""}
-                            </span>
-                          </div>
-                          <p className="truncate text-xs text-muted-foreground">
-                            Ollama, compatible APIs, and portable ChatGPT or
-                            Grok accounts.
-                          </p>
-                        </div>
-                      </div>
-                      <Button
-                        className="size-8"
-                        size="icon"
-                        variant="outline"
-                        onClick={() => openProviderDialog(null)}
-                      >
-                        <Plus className="size-3.5" />
-                        <span className="sr-only">Add provider</span>
-                      </Button>
-                    </div>
-                    <div className="hidden grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_minmax(8rem,0.75fr)_minmax(7rem,0.65fr)_96px] gap-3 border-y px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:grid">
-                      <span>Provider</span>
-                      <span>Connection</span>
-                      <span>Catalog</span>
-                      <span>Scope</span>
-                      <span className="text-right">Actions</span>
-                    </div>
-                    <div className="divide-y border-t sm:border-t-0">
-                      {visibleProviders.map((provider) => (
-                        <ProviderRow
-                          availableResetCredits={chatGptAvailableResetCredits}
-                          key={provider.id}
-                          provider={provider}
-                          workerId={worker?.workerId ?? null}
-                          removing={removeProvider.isPending}
-                          onEdit={() => openProviderDialog(provider)}
-                          onAnalytics={() => setAnalyticsProvider(provider)}
-                          onRemove={() => removeProvider.mutate(provider.id)}
-                        />
-                      ))}
-                      {!visibleProviders.length ? (
-                        <p className="px-3 py-5 text-center text-sm text-muted-foreground">
-                          No providers match “{settingsSearchQuery.trim()}”.
-                        </p>
-                      ) : null}
-                    </div>
-                    {removeProvider.isError ? (
-                      <p className="border-t px-3 py-3 text-sm text-destructive">
-                        {errorText(removeProvider.error)}
-                      </p>
-                    ) : null}
-                  </section>
-                ) : null}
-
-                {section === "models" && modelsMatch ? (
-                  <section>
-                    <div className="flex items-center justify-between gap-3 px-3 py-3">
-                      <div className="flex min-w-0 items-center gap-2.5">
-                        <Cpu className="size-4 shrink-0 text-muted-foreground" />
-                        <div className="min-w-0">
-                          <div className="flex items-baseline gap-2">
-                            <h2 className="text-sm font-semibold">Models</h2>
-                            <span className="text-xs text-muted-foreground">
-                              {visibleModels.length}
-                              {modelSearch &&
-                              visibleModels.length !== models.length
-                                ? ` of ${models.length}`
-                                : ""}
-                            </span>
-                          </div>
-                          <p className="truncate text-xs text-muted-foreground">
-                            Logical models with ordered provider failover
-                            routes.
-                          </p>
-                        </div>
-                      </div>
-                      <Button
-                        className="size-8"
-                        size="icon"
-                        variant="outline"
-                        disabled={!providers.length}
-                        onClick={() => openModelDialog(null)}
-                      >
-                        <Plus className="size-3.5" />
-                        <span className="sr-only">Add model</span>
-                      </Button>
-                    </div>
-
-                    {settings.data ? (
-                      <div className="flex flex-wrap items-center justify-between gap-3 border-t px-3 py-2.5">
-                        <div className="min-w-0">
-                          <p className="text-xs font-medium">
-                            Default model configuration
-                          </p>
-                          <p className="text-[11px] text-muted-foreground">
-                            Root and subagent defaults for newly created IDE
-                            Agent chats.
-                          </p>
-                        </div>
-                        <ModelReasoningPicker
-                          configuration={defaultModelConfiguration(
-                            settings.data.preferences,
-                          )}
-                          disabled={preferences.isPending}
-                          loadReasoningState={getModelReasoningOptions}
-                          mode="settings"
-                          models={models}
-                          pending={preferences.isPending}
-                          onSave={(configuration) =>
-                            preferences.mutateAsync(
-                              modelConfigurationSettingsUpdate(configuration),
-                            )
-                          }
-                        />
-                      </div>
-                    ) : null}
-
-                    {settings.data ? (
-                      <div className="flex flex-wrap items-center justify-between gap-3 border-t px-3 py-2.5">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <p className="text-xs font-medium">
-                              Standalone Chat defaults
-                            </p>
-                            {settings.data.preferences.defaultChatModelId ===
-                              null &&
-                            settings.data.preferences
-                              .defaultChatReasoningEffort === null ? (
-                              <Badge variant="outline">Inherits IDE</Badge>
-                            ) : null}
-                          </div>
-                          <p className="text-[11px] text-muted-foreground">
-                            Model and reasoning for newly created standalone
-                            Chats.
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          {settings.data.preferences.defaultChatModelId !==
-                            null ||
-                          settings.data.preferences
-                            .defaultChatReasoningEffort !== null ? (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              disabled={preferences.isPending}
-                              onClick={() =>
-                                preferences.mutate({
-                                  defaultChatModelId: null,
-                                  defaultChatReasoningEffort: null,
-                                })
-                              }
-                            >
-                              Use IDE defaults
-                            </Button>
-                          ) : null}
-                          <ModelReasoningPicker
-                            configuration={defaultStandaloneChatModelConfiguration(
-                              settings.data.preferences,
-                            )}
-                            disabled={preferences.isPending}
-                            loadReasoningState={getModelReasoningOptions}
-                            mode="settings"
-                            models={models}
-                            pending={preferences.isPending}
-                            onSave={(configuration) =>
-                              preferences.mutateAsync(
-                                standaloneChatModelConfigurationSettingsUpdate(
-                                  configuration,
-                                ),
-                              )
-                            }
-                          />
-                        </div>
-                      </div>
-                    ) : null}
-
-                    <div className="hidden grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto_40px] gap-3 border-y px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:grid">
-                      <span>Model</span>
-                      <span>Routes</span>
-                      <span>Configuration</span>
-                      <span className="text-right">Actions</span>
-                    </div>
-                    <div className="divide-y border-t sm:border-t-0">
-                      {visibleModels.map((model) => (
-                        <div
-                          key={model.id}
-                          data-high-contrast-row
-                          role="button"
-                          tabIndex={0}
-                          aria-label={`Edit ${model.name}`}
-                          title={`Edit ${model.name}`}
-                          className="grid min-w-0 cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-3 py-1.5 outline-none transition-colors hover:bg-muted/30 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto_40px]"
-                          onClick={() => openModelDialog(model)}
-                          onKeyDown={(event) =>
-                            editSettingsRowFromKeyboard(event, () =>
-                              openModelDialog(model),
-                            )
-                          }
-                        >
-                          <div className="flex min-w-0 items-center gap-2.5">
-                            <Cpu className="size-4 shrink-0 text-muted-foreground" />
-                            <p className="truncate text-sm font-medium">
-                              {model.name}
-                            </p>
-                            <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
-                              {formatTokenCount(model.tokenUsage.totalTokens)}{" "}
-                              tokens
-                            </span>
-                            <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
-                              {formatAgentTime(model.agentTime.agentTimeMs)} AI
-                              · {formatConcurrency(model.agentTime)}
-                            </span>
-                            {settings.data?.preferences.defaultModelId ===
-                            model.id ? (
-                              <Badge className="sm:hidden" variant="secondary">
-                                Default
-                              </Badge>
-                            ) : null}
-                          </div>
-                          <p className="col-span-2 truncate pl-6 text-xs text-muted-foreground sm:col-span-1 sm:pl-0">
-                            {model.routes
-                              .filter((route) => route.enabled)
-                              .map((route) => {
-                                const provider = providers.find(
-                                  ({ id }) => id === route.providerId,
-                                );
-                                return provider
-                                  ? providerRouteLabel(provider)
-                                  : route.providerName;
-                              })
-                              .join(" → ")}
-                            <span className="sm:hidden">
-                              {` · ${model.routes.filter((route) => route.enabled).length} enabled`}
-                            </span>
-                          </p>
-                          <div className="hidden items-center justify-end gap-2 text-xs text-muted-foreground sm:flex">
-                            <span>
-                              {
-                                model.routes.filter((route) => route.enabled)
-                                  .length
-                              }{" "}
-                              enabled
-                            </span>
-                            {settings.data?.preferences.defaultModelId ===
-                            model.id ? (
-                              <Badge variant="secondary">Default</Badge>
-                            ) : null}
-                          </div>
-                          <div
-                            className="col-start-2 row-start-1 flex items-center justify-end sm:col-auto sm:row-auto"
-                            onClick={(event) => event.stopPropagation()}
-                          >
-                            <Button
-                              className="size-7"
-                              size="icon"
-                              variant="ghost"
-                              disabled={removeModel.isPending}
-                              onClick={() => removeModel.mutate(model.id)}
-                            >
-                              <Trash2 className="size-3.5" />
-                              <span className="sr-only">
-                                Delete {model.name}
-                              </span>
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                      {!visibleModels.length ? (
-                        <p className="px-3 py-5 text-center text-sm text-muted-foreground">
-                          No models match “{settingsSearchQuery.trim()}”.
-                        </p>
-                      ) : null}
-                    </div>
-                    {removeModel.isError ? (
-                      <p className="border-t px-3 py-3 text-sm text-destructive">
-                        {errorText(removeModel.error)}
-                      </p>
-                    ) : null}
-                  </section>
-                ) : null}
               </div>
             ) : null}
-
-            {section === "models" ? (
-              <p className="pb-2 text-xs text-muted-foreground">
-                The default initializes new agents. An agent’s selected model
-                applies to its next message.
-              </p>
-            ) : null}
           </div>
+          {section === "models" && settings.isError ? (
+            <p role="alert" className="text-sm text-destructive">
+              {errorText(settings.error)}
+            </p>
+          ) : null}
+          {section === "models" && !settings.data && settings.isPending ? (
+            <p role="status" className="text-sm text-muted-foreground">
+              Loading model settings…
+            </p>
+          ) : null}
+          {section === "models" && settings.data ? (
+            <ModelsSettings
+              activeTab={activeModelsTab}
+              models={models}
+              providers={providers}
+              preferences={settings.data.preferences}
+              preferencesPending={preferences.isPending}
+              preferencesError={
+                preferences.isError ? errorText(preferences.error) : null
+              }
+              removingModel={removeModel.isPending}
+              modelError={
+                removeModel.isError ? errorText(removeModel.error) : null
+              }
+              providerError={
+                removeProvider.isError ? errorText(removeProvider.error) : null
+              }
+              onTabChange={setActiveModelsTab}
+              onAddProvider={(setup) => openProviderDialog(null, setup)}
+              onEditProvider={(provider) => openProviderDialog(provider)}
+              onAddModel={(providerId) => openModelDialog(null, providerId)}
+              onEditModel={(model) => openModelDialog(model)}
+              onRemoveModel={(model) => removeModel.mutate(model.id)}
+              onPreferencesChange={preferences.mutateAsync}
+              renderProviderOverview={(provider) => (
+                <ProviderRow
+                  key={provider.id}
+                  availableResetCredits={chatGptAvailableResetCredits}
+                  provider={provider}
+                  workerId={worker?.workerId ?? null}
+                  removing={removeProvider.isPending}
+                  onEdit={() => openProviderDialog(provider)}
+                  onAnalytics={() => setAnalyticsProvider(provider)}
+                  onRemove={() => removeProvider.mutate(provider.id)}
+                />
+              )}
+            />
+          ) : null}
           {section === "workspaces" ? (
             <div className="w-full min-w-0">
               <WorkspaceSettings
@@ -2686,7 +2376,9 @@ export function SettingsPage({
           <form onSubmit={submitProvider} className="grid gap-5">
             <DialogHeader>
               <DialogTitle>
-                {editingProvider ? "Edit provider" : "Add provider"}
+                {editingProvider
+                  ? "Edit provider"
+                  : `Add ${providerSetupDefaults(providerSetup).name} provider`}
               </DialogTitle>
               <DialogDescription>
                 Configure an API endpoint or a subscription account used through
@@ -2709,39 +2401,48 @@ export function SettingsPage({
                   value={providerSetup}
                   onChange={(event) => {
                     const setup = event.target.value as ProviderSetupKind;
+                    const preset = providerSetupDefaults(setup);
+                    if (
+                      providerSetupUnavailableReason(
+                        preset.kind,
+                        settings.data?.providers ?? [],
+                        editingProvider?.id,
+                      )
+                    )
+                      return;
                     setProviderSetup(setup);
-                    if (setup === "chatgpt" || setup === "grok") {
-                      setProviderKind(setup);
-                      setBaseUrl(
-                        setup === "grok"
-                          ? "https://cli-chat-proxy.grok.com/v1"
-                          : "https://api.openai.com/v1",
-                      );
-                      if (!providerName.trim()) {
-                        setProviderName(accountProviderName(setup));
-                      }
-                    } else if (setup === "openai-compatible") {
-                      setProviderKind("openai-compatible");
-                      if (!editingProvider) setBaseUrl("https://");
-                    } else {
-                      const preset = providerSetups[setup];
-                      setProviderKind(preset.kind);
+                    setProviderKind(preset.kind);
+                    if (setup !== "openai-compatible" || !editingProvider) {
                       setBaseUrl(preset.baseUrl);
-                      if (!providerName.trim()) setProviderName(preset.label);
+                    }
+                    if (
+                      !providerName.trim() ||
+                      (!editingProvider &&
+                        providerName ===
+                          providerSetupDefaults(providerSetup).name)
+                    ) {
+                      setProviderName(preset.name);
                     }
                   }}
                   className={inputClass}
                 >
-                  <option value="ollama">Ollama</option>
-                  <option value="openrouter">OpenRouter</option>
-                  <option value="zai">Z.ai Coding Plan</option>
-                  <option value="xai">xAI API key</option>
-                  <option value="openai">OpenAI API</option>
-                  <option value="openai-compatible">
-                    Custom OpenAI compatible
-                  </option>
-                  <option value="chatgpt">ChatGPT Account</option>
-                  <option value="grok">Grok / SuperGrok Account</option>
+                  {providerSetupOptions.map((setup) => {
+                    const unavailableReason = providerSetupUnavailableReason(
+                      setup.kind,
+                      settings.data?.providers ?? [],
+                      editingProvider?.id,
+                    );
+                    return (
+                      <option
+                        key={setup.id}
+                        value={setup.id}
+                        disabled={Boolean(unavailableReason)}
+                      >
+                        {setup.label}
+                        {unavailableReason ? " (already added)" : ""}
+                      </option>
+                    );
+                  })}
                 </NativeSelect>
               </Field>
               {!isAccountProviderKind(providerKind) &&
@@ -3270,7 +2971,11 @@ export function SettingsPage({
                 )}
               </p>
             ) : null}
-            {saveProvider.isError ? (
+            {providerUnavailableReason ? (
+              <p role="alert" className="text-sm text-destructive">
+                {providerUnavailableReason}
+              </p>
+            ) : saveProvider.isError ? (
               <p className="text-sm text-destructive">
                 {errorText(saveProvider.error)}
               </p>
@@ -3281,7 +2986,12 @@ export function SettingsPage({
                   Cancel
                 </Button>
               </DialogClose>
-              <Button type="submit" disabled={saveProvider.isPending}>
+              <Button
+                type="submit"
+                disabled={
+                  saveProvider.isPending || Boolean(providerUnavailableReason)
+                }
+              >
                 {saveProvider.isPending ? (
                   <Loader2 className="size-4 animate-spin" />
                 ) : null}

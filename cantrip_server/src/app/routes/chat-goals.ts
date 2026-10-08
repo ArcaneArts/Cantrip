@@ -56,6 +56,7 @@ interface GoalResumeTurnOptions {
   }) => Promise<void>;
   afterTurnFailed?: (input: {
     execution: ChatExecutionContext;
+    error: unknown;
   }) => Promise<void>;
   encryptedTaskMessages?: {
     userMessage: TaskMessageOpaqueContent;

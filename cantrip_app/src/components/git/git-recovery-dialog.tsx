@@ -196,7 +196,7 @@ export function GitRecoveryDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[85vh] max-w-4xl flex-col overflow-hidden">
-        <DialogHeader>
+        <DialogHeader className="shrink-0">
           <DialogTitle>Recovery</DialogTitle>
           <DialogDescription>
             Recover reference movements and unreachable commits in this explicit
@@ -204,8 +204,8 @@ export function GitRecoveryDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-3 md:flex-row">
-          <div className="flex min-h-64 flex-1 flex-col overflow-hidden rounded-md border">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto md:flex-row">
+          <div className="flex min-h-64 shrink-0 flex-1 flex-col overflow-hidden rounded-md border md:min-h-0">
             <div className="flex items-center gap-1 border-b p-1">
               {(["reflog", "dangling"] as const).map((candidate) => (
                 <Button
@@ -270,7 +270,7 @@ export function GitRecoveryDialog({
             </div>
           </div>
 
-          <div className="w-full space-y-3 md:w-80">
+          <div className="w-full shrink-0 space-y-3 md:w-80">
             {selected ? (
               <>
                 <div className="rounded-md bg-muted/40 p-3 text-xs">
@@ -382,7 +382,7 @@ export function GitRecoveryDialog({
           </div>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="shrink-0">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Close
           </Button>

@@ -1913,7 +1913,11 @@ describe("Git history", () => {
       (await readGitTags(directory)).tags.find(
         ({ name }) => name === "v-signed",
       )?.signature,
-    ).toMatchObject({ status: "unverifiable", format: "ssh" });
+    ).toMatchObject({
+      status: "valid",
+      format: "ssh",
+      verification: "available",
+    });
     expect(
       (await readGitTagDetail(directory, "v-signed")).signature,
     ).toMatchObject({

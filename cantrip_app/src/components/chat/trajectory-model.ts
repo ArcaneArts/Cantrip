@@ -29,7 +29,7 @@ import {
   resolveTrajectoryTiming,
   type TrajectoryTimingQuality,
 } from "./trajectory-timing";
-import { settleRunningActivity } from "./timeline";
+import { isWorkspaceSnapshot, settleRunningActivity } from "./timeline";
 
 export type TrajectoryLane = "input" | "model" | "tools" | "changes";
 
@@ -147,8 +147,14 @@ function timestamp(value: string): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function correlationTurnId(message: ChatMessage): string | null {
-  for (const content of message.content) {
+function correlationTurnId(
+  message: ChatMessage,
+  includeWorkspaceSnapshot = true,
+): string | null {
+  const contents = includeWorkspaceSnapshot
+    ? message.content
+    : message.content.filter((content) => !isWorkspaceSnapshot(content));
+  for (const content of contents) {
     const scope =
       content.type === "activity"
         ? content.activity.agentScope
@@ -157,7 +163,7 @@ function correlationTurnId(message: ChatMessage): string | null {
           : null;
     if (scope?.isRoot) return scope.rootTurnId;
   }
-  for (const content of message.content) {
+  for (const content of contents) {
     const scope =
       content.type === "activity"
         ? content.activity.agentScope
@@ -166,7 +172,7 @@ function correlationTurnId(message: ChatMessage): string | null {
           : null;
     if (scope) return scope.rootTurnId;
   }
-  for (const content of message.content) {
+  for (const content of contents) {
     const turnId =
       content.type === "activity"
         ? content.activity.correlation?.turnId
@@ -178,7 +184,7 @@ function correlationTurnId(message: ChatMessage): string | null {
   return null;
 }
 
-function turnSlices(messages: readonly ChatMessage[]): TurnSlice[] {
+export function turnSlices(messages: readonly ChatMessage[]): TurnSlice[] {
   const { agentMessages, previewGroups } = splitPreviewMessages(messages);
   const ordered = [...agentMessages].sort(
     (left, right) =>
@@ -191,9 +197,19 @@ function turnSlices(messages: readonly ChatMessage[]): TurnSlice[] {
     if (message.role === "user" || slices.length === 0) slices.push([]);
     slices.at(-1)!.push(message);
   }
+  const claimedTurns = new Set<string>();
   const projected = slices.map((turnMessages) => {
+    // A delayed workspace snapshot must not lend an earlier turn's identity
+    // to a newly submitted prompt that has no native evidence yet.
     const runtimeTurnId =
-      turnMessages.map(correlationTurnId).find(Boolean) ?? null;
+      turnMessages
+        .map((message) => correlationTurnId(message, false))
+        .find(Boolean) ??
+      turnMessages
+        .map((message) => correlationTurnId(message))
+        .find((id) => id && !claimedTurns.has(id)) ??
+      null;
+    if (runtimeTurnId) claimedTurns.add(runtimeTurnId);
     const opening =
       turnMessages.find((message) => message.role === "user") ??
       turnMessages[0]!;
@@ -215,6 +231,22 @@ function turnSlices(messages: readonly ChatMessage[]): TurnSlice[] {
     }
     merged.push(slice);
   }
+  const owners = new Map(
+    merged
+      .filter((slice) => slice.runtimeTurnId)
+      .map((slice) => [slice.runtimeTurnId, slice]),
+  );
+  // Native correlation owns late evidence, regardless of delivery sequence.
+  for (const slice of merged) {
+    slice.messages = slice.messages.filter((message) => {
+      if (message.role === "user") return true;
+      const turnId = correlationTurnId(message);
+      const owner = turnId ? owners.get(turnId) : null;
+      if (!owner || owner === slice) return true;
+      owner.messages.push(message);
+      return false;
+    });
+  }
   const previewSlices: TurnSlice[] = [...previewGroups].map(
     ([key, messages]) => ({
       key,
@@ -225,8 +257,12 @@ function turnSlices(messages: readonly ChatMessage[]): TurnSlice[] {
   );
   return [...merged, ...previewSlices].sort(
     (a, b) =>
-      Math.max(...a.messages.map((message) => message.sequence)) -
-        Math.max(...b.messages.map((message) => message.sequence)) ||
+      (a.preview
+        ? Math.max(...a.messages.map((message) => message.sequence))
+        : a.messages[0]!.sequence) -
+        (b.preview
+          ? Math.max(...b.messages.map((message) => message.sequence))
+          : b.messages[0]!.sequence) ||
       timestamp(a.messages[0]!.createdAt) - timestamp(b.messages[0]!.createdAt),
   );
 }
@@ -938,7 +974,15 @@ export function projectTrajectory(input: {
 }): TrajectoryTurn | null {
   const slices = turnSlices(input.messages);
   const selected = input.targetTurnKey
-    ? slices.find((slice) => slice.key === input.targetTurnKey)
+    ? slices.find(
+        (slice) =>
+          slice.key === input.targetTurnKey ||
+          slice.messages.some(
+            (message) =>
+              message.role === "user" &&
+              `legacy:${message.id}` === input.targetTurnKey,
+          ),
+      )
     : slices.at(-1);
   if (!selected || selected.messages.length === 0) return null;
 
@@ -966,7 +1010,8 @@ export function projectTrajectory(input: {
     )
     .find((value): value is number => value !== null);
   const terminal = [...selected.messages].reverse().find(terminalMessage);
-  const followingCurrent = !input.targetTurnKey && selected === slices.at(-1);
+  const followingCurrent =
+    selected === slices.filter((slice) => !slice.preview).at(-1);
   const completed = selected.preview
     ? !selected.messages.some((message) =>
         message.content.some(

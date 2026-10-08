@@ -217,10 +217,12 @@ export function AgentInspectPanelShell({
     <ResizablePanel
       ariaLabel={`Resize ${panelTitle} sidebar`}
       className={cn(
+        "max-w-full",
         className,
         extendIntoProjectTabBar && "top-[-2.5rem] h-auto",
       )}
       defaultWidth={DEFAULT_AGENT_INSPECT_WIDTH}
+      handleClassName="left-0"
       handleDataSlot="agent-inspect-resize-handle"
       maxWidth={MAX_AGENT_INSPECT_WIDTH}
       minWidth={MIN_AGENT_INSPECT_WIDTH}
@@ -233,7 +235,7 @@ export function AgentInspectPanelShell({
           ? "true"
           : undefined,
       }}
-      surfaceClassName="bg-background"
+      surfaceClassName="max-w-full bg-background"
       surfaceDataSlot="agent-inspect-panel-surface"
       title={`Drag to resize ${panelTitle} sidebar`}
     >

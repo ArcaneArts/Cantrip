@@ -7,6 +7,7 @@ import {
   Plus,
   WandSparkles,
 } from "lucide-react";
+import { useLayoutEffect, useRef, useState } from "react";
 import {
   AttachmentPreview,
   AttachmentViewerDialog,
@@ -224,11 +225,24 @@ export function ChatTranscriptView({
     viewTurnTrajectory,
     viewingAttachment,
   } = controller;
+  const composerContainerRef = useRef<HTMLFormElement>(null);
+  const [composerHeight, setComposerHeight] = useState(0);
+  const reservedSidePanelWidth = `min(${sidePanelWidth}px, 100%)`;
+  useLayoutEffect(() => {
+    const composer = composerContainerRef.current;
+    if (!composer) return;
+    const measure = () =>
+      setComposerHeight(Math.ceil(composer.getBoundingClientRect().height));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(composer, { box: "border-box" });
+    return () => observer.disconnect();
+  }, []);
   return (
     <div
-      className="relative flex min-h-0 flex-1 flex-col overflow-visible transition-[padding-right] duration-150 ease-out motion-reduce:transition-none"
+      className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-visible transition-[padding-right] duration-150 ease-out motion-reduce:transition-none"
       style={{
-        paddingRight: sidePanelWidth,
+        paddingRight: reservedSidePanelWidth,
       }}
       onDragEnter={(event) => {
         if (
@@ -296,7 +310,7 @@ export function ChatTranscriptView({
         ref={transcriptViewportRef}
         className={cn(
           "chat-message-scroll flex-1 overflow-y-auto px-4 pt-6 sm:px-8 md:px-10",
-          effectiveInspectOnly ? "pb-10" : "pb-60",
+          effectiveInspectOnly && "pb-10",
         )}
         onScroll={handleChatTranscriptScroll}
       >
@@ -304,6 +318,13 @@ export function ChatTranscriptView({
           ref={transcriptContentRef}
           className="flex w-full flex-col gap-5"
           data-content-gutter="chat"
+          // Keep this inset inside the observed content so sticky scrolling
+          // follows height changes in the Goal card and other composer panels.
+          style={{
+            paddingBottom: effectiveInspectOnly
+              ? undefined
+              : `max(15rem, calc(${composerHeight}px + 1.5rem))`,
+          }}
         >
           {messages.hasOlder ? (
             <div className="flex justify-center">
@@ -347,6 +368,7 @@ export function ChatTranscriptView({
             editedMessageRef={editedMessageRef}
             editingSentMessage={editingSentMessage}
             entries={transcriptEntries}
+            nativeTurnSettings={messages.nativeTurnSettings}
             forkPending={fork.isPending}
             latestEditableMessageId={latestEditableMessage?.id ?? null}
             latestLiveActivityGroupKey={latestLiveActivityGroupKey}
@@ -391,15 +413,16 @@ export function ChatTranscriptView({
           "chat-composer-fade pointer-events-none absolute bottom-0 left-0 z-10 h-48 transition-[right] duration-150 ease-out motion-reduce:transition-none",
           effectiveInspectOnly && "hidden",
         )}
-        style={{ right: sidePanelWidth }}
+        style={{ right: reservedSidePanelWidth }}
       />
       <form
+        ref={composerContainerRef}
         onSubmit={submit}
         className={cn(
           "pointer-events-none absolute bottom-0 left-0 z-20 px-4 pb-3 transition-[right] duration-150 ease-out motion-reduce:transition-none sm:px-8 sm:pb-4 md:px-10",
           effectiveInspectOnly && "hidden",
         )}
-        style={{ right: sidePanelWidth }}
+        style={{ right: reservedSidePanelWidth }}
       >
         <div
           className="pointer-events-auto relative w-full"
@@ -593,17 +616,37 @@ export function ChatTranscriptView({
           ) : null}
           {capabilities.modes === "agent-modes" ? (
             <GoalPanel
+              automationPaused={chat.automationPaused}
+              executionFailed={chat.status === "failed"}
               error={
                 updateGoal.isError
                   ? errorText(updateGoal.error)
                   : clearGoal.isError
                     ? errorText(clearGoal.error)
-                    : null
+                    : setAutomationPaused.isError
+                      ? errorText(setAutomationPaused.error)
+                      : null
               }
               goal={goalState.data?.goal ?? null}
-              pending={updateGoal.isPending || clearGoal.isPending}
+              pending={
+                updateGoal.isPending ||
+                clearGoal.isPending ||
+                setAutomationPaused.isPending
+              }
               onClear={() => clearGoal.mutate()}
-              onUpdate={(status) => updateGoal.mutate(status)}
+              onUpdate={(status) => {
+                if (status === "active" && chat.automationPaused) {
+                  setAutomationPaused.mutate(false, {
+                    onSuccess: () => {
+                      if (goalState.data?.goal?.status !== "active") {
+                        updateGoal.mutate("active");
+                      }
+                    },
+                  });
+                } else {
+                  updateGoal.mutate(status);
+                }
+              }}
             />
           ) : null}
           <AgentInteractionPanel
@@ -1127,7 +1170,6 @@ export function ChatTranscriptView({
               : "Agent activity inspector"
           }
           className="absolute bottom-0 right-0 z-30"
-          extendIntoProjectTabBar
           onOpenChange={handleInspectOpenChange}
           onWidthChange={setInspectWidth}
           open={inspectOpen}

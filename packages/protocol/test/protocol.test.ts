@@ -5010,6 +5010,41 @@ describe("Cantrip protocol", () => {
       },
     });
     expect(taskTurn.taskDispatchLease?.fencingToken).toBe(1);
+    const protectedTaskPrompt = {
+      id: "33333333-3333-4333-8333-333333333333",
+      classification: { role: "user", mode: "default", attachmentIds: [] },
+      protectedContent: {
+        formatVersion: 1,
+        keyRevision: 1,
+        envelope: {
+          version: 1,
+          algorithm: "AES-256-GCM",
+          keyRevision: 1,
+          nonce: "AAAAAAAAAAAAAAAA",
+          ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+        },
+      },
+      reasoningEffort: null,
+      idempotencyKey: "task-conversation",
+    };
+    const conversation = {
+      ...taskTurn,
+      prompt: undefined,
+      protectedTaskPrompt,
+    };
+    expect(workerCommandSchema.safeParse(conversation).success).toBe(true);
+    expect(
+      workerCommandSchema.safeParse({
+        ...conversation,
+        prompt: "duplicate plaintext",
+      }).success,
+    ).toBe(false);
+    expect(
+      workerCommandSchema.safeParse({
+        ...conversation,
+        resultMode: { kind: "visible" },
+      }).success,
+    ).toBe(false);
     expect(
       workerNotificationSchema.parse({
         type: "chat.turn.outcome",

@@ -72,6 +72,7 @@ describe("CodeDirectEndpointManager", () => {
       beginTunnelStream: vi.fn(),
       endTunnelStream: vi.fn(),
       proxyTarget: vi.fn(() => ({
+        appearance: "pro-high-contrast-dark",
         codeTabId: "code-1",
         connectionToken: "worker-local-secret",
         editorOrigin: `http://127.0.0.1:${port}`,
@@ -118,6 +119,7 @@ describe("CodeDirectEndpointManager", () => {
         "x-forwarded-host": "attacker.example",
         "x-forwarded-port": "666",
         "x-original-host": "attacker.example",
+        "x-cantrip-appearance": "light",
       },
     });
     expect(await response.text()).toBe("editor-ready");
@@ -154,6 +156,9 @@ describe("CodeDirectEndpointManager", () => {
     );
     expect(observed?.headers["x-forwarded-port"]).toBeUndefined();
     expect(observed?.headers["x-original-host"]).toBeUndefined();
+    expect(observed?.headers["x-cantrip-appearance"]).toBe(
+      "pro-high-contrast-dark",
+    );
     expect(response.headers.get("set-cookie")).toBeNull();
     expect(response.headers.get("x-frame-options")).toBeNull();
     expect(response.headers.get("content-security-policy")).toContain(
@@ -270,6 +275,20 @@ describe("CodeDirectEndpointManager", () => {
     expect(responses.map((response) => response.status)).toEqual([
       502, 502, 502, 502,
     ]);
+    const failedFrame = await fetch(
+      `http://${target.host}:${target.port}/code/?cantripFrameNonce=failed_frame_nonce_123456`,
+    );
+    expect(failedFrame.status).toBe(502);
+    expect(failedFrame.headers.get("content-type")).toBe(
+      "text/html; charset=utf-8",
+    );
+    const failureDocument = await failedFrame.text();
+    expect(failureDocument).toContain(
+      '"type":"cantrip-code.frame-load-failed"',
+    );
+    expect(failureDocument).toContain('"nonce":"failed_frame_nonce_123456"');
+    expect(failureDocument).toContain('"statusCode":502');
+    expect(failureDocument).not.toContain("must-not-be-logged");
     await vi.waitFor(() =>
       expect(records).toEqual(
         expect.arrayContaining([
@@ -295,6 +314,74 @@ describe("CodeDirectEndpointManager", () => {
           "code.direct.http-upstream-failed",
       ),
     ).toHaveLength(1);
+  });
+
+  it("reports a failing root response while preserving successful documents and asset errors", async () => {
+    let statusCode = 503;
+    const editor = createServer((_request, response) => {
+      response.writeHead(statusCode, { "content-type": "text/plain" });
+      response.end("original-upstream-body");
+    });
+    await new Promise<void>((resolve) =>
+      editor.listen(0, "127.0.0.1", resolve),
+    );
+    closers.push(
+      () => new Promise<void>((resolve) => editor.close(() => resolve())),
+    );
+    const port = (editor.address() as AddressInfo).port;
+    const endpoints = new CodeDirectEndpointManager({
+      beginTunnelStream: vi.fn(),
+      endTunnelStream: vi.fn(),
+      proxyTarget: () => ({
+        connectionToken: "worker-local-secret",
+        editorOrigin: `http://127.0.0.1:${port}`,
+        initialFileUri: null,
+        workspaceUri: "file:///worker/project.code-workspace",
+      }),
+    } as unknown as CodeSupervisor);
+    closers.push(() => endpoints.close());
+    const target = await endpoints.prepareProtected(
+      randomUUID(),
+      "root-http-failure",
+    );
+    const root = `http://${target.host}:${target.port}/code/`;
+    const query = "?cantripFrameNonce=upstream_frame_nonce_123456";
+    const failed = await fetch(root + query);
+    expect(failed.status).toBe(503);
+    const body = await failed.text();
+    expect(body).toContain('"statusCode":503');
+    expect(body).not.toContain("original-upstream-body");
+    expect(body).not.toContain("worker-local-secret");
+
+    for (const url of [root, `${root}asset.js${query}`]) {
+      const unchanged = await fetch(url);
+      expect(unchanged.status).toBe(503);
+      expect(await unchanged.text()).toBe("original-upstream-body");
+    }
+    statusCode = 200;
+    const success = await fetch(root + query);
+    expect(success.status).toBe(200);
+    expect(await success.text()).toBe("original-upstream-body");
+  });
+
+  it("reports an unavailable session without exposing its private error", async () => {
+    const endpoints = new CodeDirectEndpointManager({
+      proxyTarget: () => {
+        throw new Error("private-session-path");
+      },
+    } as unknown as CodeSupervisor);
+    closers.push(() => endpoints.close());
+    const target = await endpoints.prepareProtected(
+      randomUUID(),
+      "missing-session",
+    );
+    const response = await fetch(
+      `http://${target.host}:${target.port}/code/?cantripFrameNonce=missing_session_nonce_123456`,
+    );
+    expect(response.status).toBe(503);
+    const body = await response.text();
+    expect(body).toContain('"statusCode":503');
+    expect(body).not.toContain("private-session-path");
   });
 
   it("rejects canonical startup-file failures before an HTTP request reaches OpenVSCode", async () => {
@@ -414,6 +501,10 @@ describe("CodeDirectEndpointManager", () => {
       authorizeStartupFileUri,
       beginTunnelStream: vi.fn(),
       endTunnelStream,
+      retainSessionAttachment: vi.fn(() => ({
+        renew: vi.fn(),
+        release: vi.fn(),
+      })),
       status: vi.fn((sessionId: string) => ({
         sessionIncarnationId: bySession.get(sessionId)?.incarnationId,
         status: "running",
@@ -741,6 +832,10 @@ describe("CodeDirectEndpointManager", () => {
       sessions.map((session) => [session.sessionId, session]),
     );
     const supervisor = {
+      retainSessionAttachment: vi.fn(() => ({
+        renew: vi.fn(),
+        release: vi.fn(),
+      })),
       authorizeStartupFileUri: vi.fn(
         async (_sessionId: string, requestedFileUri: string) =>
           requestedFileUri,

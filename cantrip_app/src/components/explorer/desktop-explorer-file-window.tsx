@@ -30,6 +30,7 @@ import { clientLogger } from "@/lib/client-log-relay";
 import {
   CODE_WORKBENCH_READY_TIMEOUT_MS,
   CodeWorkbenchFrameLoadTracker,
+  codeWorkbenchFrameFailure,
   codeWorkbenchStageError,
   createCodeWorkbenchFrameMount,
   isCodeWorkbenchReadyEvent,
@@ -264,9 +265,21 @@ function EditorPane({
       onWorkbenchFailed(mount.nonce, failure.message, "workbench");
     };
     const receiveReady = (event: MessageEvent<unknown>) => {
+      if (settled || frameFailureNonceRef.current === mount.nonce) return;
+      const failure = codeWorkbenchFrameFailure(
+        event,
+        frameRef.current?.contentWindow ?? null,
+        mount,
+      );
+      if (failure) {
+        settled = true;
+        clearTimeout(timeout);
+        frameFailureNonceRef.current = mount.nonce;
+        setFrameFailureNonce(mount.nonce);
+        onWorkbenchFailed(mount.nonce, failure.message, "frame");
+        return;
+      }
       if (
-        settled ||
-        frameFailureNonceRef.current === mount.nonce ||
         !isCodeWorkbenchReadyEvent(
           event,
           frameRef.current?.contentWindow ?? null,

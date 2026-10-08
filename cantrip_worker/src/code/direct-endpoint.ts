@@ -40,7 +40,8 @@ import {
   workerLogErrorIdentity,
   workerLogger,
 } from "../logger.js";
-import type { CodeSupervisor } from "./supervisor.js";
+import type { CodeSessionRetention, CodeSupervisor } from "./supervisor.js";
+import { writeCodeWorkbenchFrameFailure } from "./frame-failure.js";
 import {
   codeEditorPublicAuthority,
   codeEditorPublicStartupSelection,
@@ -60,6 +61,7 @@ interface SharedSessionRoute {
   readonly routeGrant: string;
   readonly sessionId: string;
   readonly sessionIncarnationId: string;
+  readonly retention: CodeSessionRetention;
   readonly sockets: Set<WebSocket>;
   readonly activeRequests: Set<() => void>;
   bufferedWebSocketBytes: number;
@@ -457,6 +459,7 @@ export class CodeDirectEndpointManager {
             "The shared Code attachment is already bound to another route.",
           );
         }
+        existing.retention.renew(expiresAtMs);
         existing.expiresAtMs = expiresAtMs;
         this.#scheduleSharedRouteExpiry(endpoint, existing);
       } else {
@@ -481,6 +484,11 @@ export class CodeDirectEndpointManager {
           routeGrant: command.routeGrant,
           sessionId: command.sessionId,
           sessionIncarnationId: command.expectedSessionIncarnationId,
+          retention: this.supervisor.retainSessionAttachment(
+            command.sessionId,
+            command.expectedSessionIncarnationId,
+            expiresAtMs,
+          ),
           sockets: new Set(),
           webSocketTeardowns: new Set(),
         };
@@ -790,6 +798,13 @@ export class CodeDirectEndpointManager {
     endpoint.server.on("request", (request, response) => {
       const requestContext = this.#requestContext(endpoint, request, true);
       if (!requestContext) {
+        const basePath =
+          endpoint.kind === "legacy"
+            ? BASE_PATH
+            : parseCodeSessionRoutePath(request.url ?? "/")?.basePath;
+        if (writeCodeWorkbenchFrameFailure(request, response, basePath, 404)) {
+          return;
+        }
         response
           .writeHead(404, { "cache-control": "no-store" })
           .end("Not found");
@@ -1395,6 +1410,7 @@ export class CodeDirectEndpointManager {
       route.expiryTimer = null;
     }
     route.expiryGeneration = Symbol(route.attachmentId);
+    route.retention.release();
     for (const close of [...route.activeRequests]) close();
     for (const teardown of [...route.webSocketTeardowns]) teardown();
     for (const socket of [...route.sockets])
@@ -1608,6 +1624,9 @@ export class CodeDirectEndpointManager {
       if (!startupSelection.authorized) {
         endStream();
         releaseStream = null;
+        if (writeCodeWorkbenchFrameFailure(request, response, basePath, 400)) {
+          return;
+        }
         response
           .writeHead(400, {
             "cache-control": "no-store",
@@ -1626,6 +1645,11 @@ export class CodeDirectEndpointManager {
         } catch {
           endStream();
           releaseStream = null;
+          if (
+            writeCodeWorkbenchFrameFailure(request, response, basePath, 400)
+          ) {
+            return;
+          }
           response
             .writeHead(400, {
               "cache-control": "no-store",
@@ -1666,6 +1690,7 @@ export class CodeDirectEndpointManager {
             target,
             publicBasePath(request, basePath),
             proxy.connectionToken,
+            proxy.appearance,
           ),
         },
         (incoming) => {
@@ -1690,6 +1715,18 @@ export class CodeDirectEndpointManager {
                 durationMs: Date.now() - startedAtMs,
               },
             );
+          }
+          if (
+            writeCodeWorkbenchFrameFailure(
+              request,
+              response,
+              basePath,
+              incoming.statusCode ?? 502,
+            )
+          ) {
+            incoming.destroy();
+            endStream();
+            return;
           }
           writeResponseHeaders(response, incoming);
           incoming.pipe(response);
@@ -1732,6 +1769,9 @@ export class CodeDirectEndpointManager {
             ...workerLogErrorIdentity(error),
           },
         );
+        if (writeCodeWorkbenchFrameFailure(request, response, basePath, 502)) {
+          return;
+        }
         if (!response.headersSent) response.writeHead(502);
         response.end("Cantrip Code is unavailable.");
       });
@@ -1763,6 +1803,9 @@ export class CodeDirectEndpointManager {
           ...workerLogErrorIdentity(error),
         },
       );
+      if (writeCodeWorkbenchFrameFailure(request, response, basePath, 503)) {
+        return;
+      }
       response
         .writeHead(503, {
           "cache-control": "no-store",
@@ -2352,6 +2395,7 @@ export class CodeDirectEndpointManager {
           target,
           publicBasePath(request, basePath),
           proxy.connectionToken,
+          proxy.appearance,
         ),
         maxPayload: CODE_MAX_WEBSOCKET_MESSAGE_BYTES,
       });

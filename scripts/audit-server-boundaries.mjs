@@ -107,17 +107,17 @@ const CONTENT_CLASSIFICATIONS = new Set([
 // digest; regenerating the inventory alone cannot silently accept it.
 const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
-    "e3d9fd44d7f99028b28fd217e76c9010826c1839b2f9579021bbce25691236dc",
+    "601cfa1ef62b1fe37e7779ace69d80961404ad97ddc2089da85eef315183f9d9",
   applicationRoutes:
-    "6a1032e2c7efe616c23c9e49e14048ec287e042ed1b38a11fee294d71df23889",
+    "8c2887f3fcae7532df6199424e2920cb030d32ce5c582655852c7274fe7bc5e3",
   clientControlCommands:
     "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
   cliCommands:
     "dac89683226ba9ee6f6211eba252fb0b83a5a022aa9150f107315733a4e44251",
   liveResources:
-    "a42c3383061dec85ceca8d416ab0cf4822ee618c2f3d5d140554584c00f505e8",
+    "60a4250f1562ae48ad8b931cc0324b2e1653b9cb59bc5cc31cb357349a4063a1",
   workerCommands:
-    "69c3fe703b1a3d4a21d33616d9a698795ac6b3f7bcb7e8df59671fce02f85d06",
+    "273b424c6d0265a5efe73c2153b85f41ee9e18b885c32ce9366ae7dc9e14982a",
   tunnelFrameKinds:
     "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8",
 };
@@ -1043,17 +1043,37 @@ function taskRouteBoundaryAudit(routes) {
       "listTaskMessages",
       "opaque-task-history",
     ],
+    [
+      "POST",
+      "/api/chats/:chatId/turns",
+      "encryptedChatTurnCreateSchema",
+      "opaque-task-conversation",
+    ],
+    [
+      "GET",
+      "/api/chats/:chatId/queue",
+      "encryptedQueuedPromptListSchema",
+      "opaque-task-queue",
+    ],
+    [
+      "POST",
+      "/api/chats/:chatId/queue",
+      "queuedPromptOpaqueContentSchema",
+      "opaque-task-queue",
+    ],
+    [
+      "PATCH",
+      "/api/queued-prompts/:promptId",
+      "encryptedQueuedPromptUpdateSchema",
+      "opaque-task-queue",
+    ],
   ];
   const plaintextGuardedRoutes = [
     ["POST", "/api/chats/:chatId/console"],
     ["POST", "/api/chats/:chatId/fork"],
     ["POST", "/api/chats/:chatId/goal"],
     ["POST", "/api/chats/:chatId/messages"],
-    ["GET", "/api/chats/:chatId/queue"],
-    ["POST", "/api/chats/:chatId/queue"],
     ["POST", "/api/chats/:chatId/sync"],
-    ["POST", "/api/chats/:chatId/turns"],
-    ["PATCH", "/api/queued-prompts/:promptId"],
     ["POST", "/api/queued-prompts/:promptId/steer"],
   ];
   const contracts = [];
@@ -3494,6 +3514,8 @@ function applicationRouteContentClassification(route) {
     };
   }
   if (
+    (route.method === "PATCH" &&
+      route.path === "/api/queued-prompts/:promptId") ||
     /(?:\/encryption(?:\/|$)|\/code-settings(?:\/|$)|\/attachments(?:\/|$)|\/chats(?:\/|$)|\/tasks(?:\/|$)|\/policies(?:\/|$)|\/mcp-servers(?:\/|$)|\/repository-operation(?:\/|$))/u.test(
       route.path,
     ) ||

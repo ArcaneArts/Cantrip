@@ -1,6 +1,7 @@
 import {
   managedFolderMaterializeReadySchema,
   type ProjectFolderSetupJobSummary,
+  type ProjectFolderSetupJobError,
 } from "@cantrip/protocol";
 
 import {
@@ -11,6 +12,7 @@ import type { ServerRepository } from "../db/repository.js";
 import {
   type WorkerCommandBus,
   WorkerUnavailableError,
+  WorkerCommandError,
 } from "../workers/bridge.js";
 
 interface Logger {
@@ -27,6 +29,22 @@ const MAX_CONCURRENT_FOLDER_SETUP_JOBS = 4;
 const LEASE_RENEWAL_INTERVAL_MS = 30_000;
 const RECOVERY_SWEEP_INTERVAL_MS = 30_000;
 export const PROJECT_FOLDER_SETUP_TIMEOUT_MS = 60_000;
+
+function folderSetupFailureCode(
+  error: unknown,
+  existingPath: string | null | undefined,
+): ProjectFolderSetupJobError["code"] {
+  if (!existingPath) return "materialization-failed";
+  if (error instanceof WorkerCommandError) {
+    switch (error.code) {
+      case "existing-path-missing":
+      case "existing-path-not-directory":
+      case "existing-path-permission-denied":
+        return error.code;
+    }
+  }
+  return "attachment-failed";
+}
 
 export class ProjectFolderSetupJobExecutor {
   readonly #active = new Set<Promise<void>>();
@@ -239,7 +257,7 @@ export class ProjectFolderSetupJobExecutor {
                 job.id,
                 claimed.commandId,
                 {
-                  code: "materialization-failed",
+                  code: folderSetupFailureCode(error, claimed.existingPath),
                   retryable: false,
                 },
               );

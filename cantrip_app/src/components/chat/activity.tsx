@@ -572,7 +572,11 @@ export function Activity({ activity }: { activity: AgentActivity }) {
           </span>
           <ActivityState activity={activity} />
         </div>
-        <FileChangePreview changes={activity.changes} className="mt-2" />
+        <FileChangePreview
+          changes={activity.changes}
+          className="mt-2"
+          expanded
+        />
         <div className="mt-1 pl-6">
           <CorrelationDetails activity={activity} />
         </div>
@@ -856,7 +860,7 @@ export function ActivityGroup({
       </div>
       {active && !open && latestFileChange?.type === "fileChange" ? (
         <div className="ml-6 pb-2 pr-2" data-slot="live-file-change-preview">
-          <FileChangePreview changes={latestFileChange.changes} />
+          <FileChangePreview changes={latestFileChange.changes} expanded />
         </div>
       ) : null}
       {open ? (

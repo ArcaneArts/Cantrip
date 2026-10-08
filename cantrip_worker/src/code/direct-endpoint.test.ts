@@ -286,6 +286,10 @@ describe("CodeDirectEndpointManager shared transport routes", () => {
     );
     const supervisor = {
       openFile,
+      retainSessionAttachment: vi.fn(() => ({
+        renew: vi.fn(),
+        release: vi.fn(),
+      })),
       status: vi.fn((sessionId: string) => ({
         status: "running",
         sessionIncarnationId: runtimes.get(sessionId),
@@ -379,6 +383,10 @@ describe("CodeDirectEndpointManager shared transport routes", () => {
     let currentIncarnation = sessionIncarnationId;
     const manager = new CodeDirectEndpointManager(
       {
+        retainSessionAttachment: vi.fn(() => ({
+          renew: vi.fn(),
+          release: vi.fn(),
+        })),
         status: vi.fn(() => ({
           status: "running",
           sessionIncarnationId: currentIncarnation,
@@ -458,6 +466,14 @@ describe("CodeDirectEndpointManager shared transport routes", () => {
         `http://${address.host}:${address.port}/sessions/${active.routeGrant}/code/_cantrip/health`,
       );
       expect(stale.status).toBe(404);
+      const failedFrame = await fetch(
+        `http://${address.host}:${address.port}/sessions/${active.routeGrant}/code/?cantripFrameNonce=stale_frame_nonce_123456`,
+      );
+      expect(failedFrame.status).toBe(404);
+      expect(failedFrame.headers.get("content-type")).toBe(
+        "text/html; charset=utf-8",
+      );
+      expect(await failedFrame.text()).toContain('"statusCode":404');
       await expect(
         manager.authorizeSharedRoute(active, security),
       ).rejects.toThrow(/already been revoked/u);
@@ -486,6 +502,10 @@ describe("CodeDirectEndpointManager shared transport routes", () => {
     let now = 1_000;
     const runtimes = new Map<string, string>();
     const supervisor = {
+      retainSessionAttachment: vi.fn(() => ({
+        renew: vi.fn(),
+        release: vi.fn(),
+      })),
       status: vi.fn((sessionId: string) => ({
         status: "running",
         sessionIncarnationId: runtimes.get(sessionId),
@@ -522,6 +542,14 @@ describe("CodeDirectEndpointManager shared transport routes", () => {
     try {
       await manager.authorizeSharedRoute(renewed, security);
       await manager.authorizeSharedRoute(sibling, security);
+      const retention = vi.mocked(supervisor.retainSessionAttachment).mock
+        .results[0]!.value;
+      expect(supervisor.retainSessionAttachment).toHaveBeenNthCalledWith(
+        1,
+        renewedSessionId,
+        renewedIncarnationId,
+        1_100,
+      );
 
       now = 1_050;
       await vi.advanceTimersByTimeAsync(50);
@@ -529,6 +557,7 @@ describe("CodeDirectEndpointManager shared transport routes", () => {
         { ...renewed, expiresAt: new Date(1_300).toISOString() },
         security,
       );
+      expect(retention.renew).toHaveBeenCalledWith(1_300);
 
       now = 1_101;
       await vi.advanceTimersByTimeAsync(51);
@@ -538,9 +567,11 @@ describe("CodeDirectEndpointManager shared transport routes", () => {
           security,
         ),
       ).resolves.toMatchObject({ authorized: true });
+      expect(retention.release).not.toHaveBeenCalled();
 
       now = 1_301;
       await vi.advanceTimersByTimeAsync(200);
+      expect(retention.release).toHaveBeenCalledOnce();
       await expect(
         manager.authorizeSharedRoute(
           { ...renewed, expiresAt: new Date(1_400).toISOString() },
@@ -559,6 +590,10 @@ describe("CodeDirectEndpointManager shared transport routes", () => {
   it("retires shared transports across a terminal control disconnect", async () => {
     const runtimes = new Map<string, string>();
     const supervisor = {
+      retainSessionAttachment: vi.fn(() => ({
+        renew: vi.fn(),
+        release: vi.fn(),
+      })),
       status: vi.fn((sessionId: string) => ({
         status: "running",
         sessionIncarnationId: runtimes.get(sessionId),
@@ -631,6 +666,10 @@ describe("CodeDirectEndpointManager shared transport routes", () => {
     const sessionId = randomUUID();
     const incarnationId = randomUUID();
     const supervisor = {
+      retainSessionAttachment: vi.fn(() => ({
+        renew: vi.fn(),
+        release: vi.fn(),
+      })),
       status: vi.fn(() => ({
         status: "running",
         sessionIncarnationId: incarnationId,
@@ -669,6 +708,10 @@ describe("CodeDirectEndpointManager shared transport routes", () => {
     const sessionId = randomUUID();
     const incarnationId = randomUUID();
     const supervisor = {
+      retainSessionAttachment: vi.fn(() => ({
+        renew: vi.fn(),
+        release: vi.fn(),
+      })),
       status: vi.fn(() => ({
         status: "running",
         sessionIncarnationId: incarnationId,
@@ -730,6 +773,10 @@ describe("CodeDirectEndpointManager shared transport routes", () => {
     const sessionId = randomUUID();
     const incarnationId = randomUUID();
     const supervisor = {
+      retainSessionAttachment: vi.fn(() => ({
+        renew: vi.fn(),
+        release: vi.fn(),
+      })),
       status: vi.fn(() => {
         authorizationStarted();
         return {
@@ -785,6 +832,10 @@ describe("CodeDirectEndpointManager shared transport routes", () => {
     const sessionId = randomUUID();
     const incarnationId = randomUUID();
     const supervisor = {
+      retainSessionAttachment: vi.fn(() => ({
+        renew: vi.fn(),
+        release: vi.fn(),
+      })),
       status: vi.fn(() => ({
         status: "running",
         sessionIncarnationId: incarnationId,
@@ -844,6 +895,10 @@ describe("CodeDirectEndpointManager shared transport routes", () => {
     const incarnationId = randomUUID();
     let status: "offline" | "running" = "running";
     const supervisor = {
+      retainSessionAttachment: vi.fn(() => ({
+        renew: vi.fn(),
+        release: vi.fn(),
+      })),
       status: vi.fn(() => ({
         status,
         sessionIncarnationId: incarnationId,

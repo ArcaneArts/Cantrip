@@ -240,6 +240,7 @@ export const workerWorktreeCodeCommandSchemas = [
     type: z.literal("customization.mcp.resource.read"),
     ...protectedCustomizationWorkerRequestFields,
     cwd: z.string().min(1),
+    threadId: z.string().min(1).nullable(),
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
   }),

@@ -104,7 +104,8 @@ vi.mock("@/lib/browser-code-tunnel", () => ({
     return () => browserCode.unavailableListeners.delete(listener);
   },
 }));
-vi.mock("@/lib/code-workbench-frame", () => ({
+vi.mock("@/lib/code-workbench-frame", async () => ({
+  ...(await vi.importActual("@/lib/code-workbench-frame")),
   CODE_WORKBENCH_READY_TIMEOUT_MS: 15_000,
   CodeWorkbenchFrameLoadTracker: class {
     observe() {
@@ -1309,6 +1310,113 @@ describe("ExplorerCodeEditor warm lifecycle", () => {
     await act(async () => renderer.unmount());
   });
 
+  it("does not exhaust a hidden prewarmed editor before opening its first related file", async () => {
+    vi.useFakeTimers();
+    tauri.enabled = true;
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        editor(null, { active: false, backgroundWarmup: true }),
+        {
+          createNodeMock: (element) =>
+            element.type === "iframe" ? { contentWindow: {} as Window } : null,
+        },
+      );
+    });
+    await flushImmediateTimers();
+    const initialFrame = renderer.root.findByType("iframe");
+    const initialUrl = initialFrame.props.src;
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+    });
+    await flushImmediateTimers();
+
+    expect(renderer.root.findByType("iframe").props.src).toBe(initialUrl);
+    expect(renderer.root.findByType("iframe") === initialFrame).toBe(true);
+    expect(
+      api.createProtectedExplorerCodeSessionAttachment,
+    ).toHaveBeenCalledOnce();
+    expect(
+      desktopCode.stopSharedProtectedCodeAttachment,
+    ).not.toHaveBeenCalled();
+    expect(renderer.root.findAllByType("button")).toHaveLength(0);
+
+    await act(async () => {
+      renderer.update(
+        editor("src/related.ts", { active: true, backgroundWarmup: true }),
+      );
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(14_500);
+      testWindow.sendMessage();
+    });
+    await flushImmediateTimers();
+
+    expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledOnce();
+    expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledWith(
+      sharedAttachment,
+      "src/related.ts",
+      expect.any(Object),
+    );
+    expect(renderer.root.findByType("iframe").props.className).toBe(
+      "frame-ready",
+    );
+    expect(renderer.root.findByType("iframe").props.src).toBe(initialUrl);
+    await act(async () => renderer.unmount());
+  });
+
+  it("defers a hidden prewarm document failure and recovers when its tab becomes active", async () => {
+    vi.useFakeTimers();
+    tauri.enabled = true;
+    mockFreshSharedSessions();
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        editor(null, { active: false, backgroundWarmup: true }),
+        {
+          createNodeMock: (element) =>
+            element.type === "iframe" ? { contentWindow: {} as Window } : null,
+        },
+      );
+    });
+    await flushImmediateTimers();
+    const initialUrl = renderer.root.findByType("iframe").props.src;
+    await act(async () => renderer.root.findByType("iframe").props.onError());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20_000);
+    });
+
+    expect(renderer.root.findByType("iframe").props.src).toBe(initialUrl);
+    expect(
+      api.createProtectedExplorerCodeSessionAttachment,
+    ).toHaveBeenCalledOnce();
+    await act(async () => {
+      renderer.update(
+        editor("src/related.ts", { active: true, backgroundWarmup: true }),
+      );
+    });
+    await flushImmediateTimers();
+    expect(
+      api.createProtectedExplorerCodeSessionAttachment,
+    ).toHaveBeenCalledTimes(2);
+    expect(renderer.root.findByType("iframe").props.src).not.toBe(initialUrl);
+    await act(async () => testWindow.sendMessage());
+    await flushImmediateTimers();
+
+    expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledOnce();
+    expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledWith(
+      expect.objectContaining({ attachmentId: "attachment-2" }),
+      "src/related.ts",
+      expect.any(Object),
+    );
+    expect(renderer.root.findByType("iframe").props.className).toBe(
+      "frame-ready",
+    );
+    expect(renderer.root.findAllByType("button")).toHaveLength(0);
+    await act(async () => renderer.unmount());
+  });
+
   it("prewarms without a path, then reuses the attachment and frame for two files", async () => {
     const frameWindow = {} as Window;
     let renderer!: TestRenderer.ReactTestRenderer;
@@ -1739,6 +1847,60 @@ describe("ExplorerCodeEditor warm lifecycle", () => {
     await act(async () => renderer.unmount());
   });
 
+  it.each([404, 503])(
+    "recovers an HTTP %s error document without waiting for workbench readiness",
+    async (statusCode) => {
+      vi.useFakeTimers();
+      tauri.enabled = true;
+      mockFreshSharedSessions();
+      frameRuntime.readyPredicate = (event) =>
+        (event.data as { type?: unknown } | undefined)?.type ===
+        "cantrip-code.workbench-ready";
+      const frameWindow = {} as Window;
+      let renderer!: TestRenderer.ReactTestRenderer;
+      await act(async () => {
+        renderer = TestRenderer.create(editor(null), {
+          createNodeMock: (element) =>
+            element.type === "iframe" ? { contentWindow: frameWindow } : null,
+        });
+      });
+      await flushImmediateTimers();
+      const url = new URL(renderer.root.findByType("iframe").props.src);
+      const failure = {
+        data: {
+          type: "cantrip-code.frame-load-failed",
+          version: 1,
+          nonce: url.searchParams.get("cantripFrameNonce"),
+          statusCode,
+        },
+        origin: url.origin,
+        source: frameWindow,
+      };
+      await act(async () => testWindow.sendMessage(failure));
+      expect(JSON.stringify(renderer.toJSON())).toContain(`HTTP ${statusCode}`);
+      expect(JSON.stringify(renderer.toJSON())).not.toContain("timed out");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+      await flushImmediateTimers();
+      expect(
+        api.createProtectedExplorerCodeSessionAttachment,
+      ).toHaveBeenCalledTimes(2);
+      const replacementUrl = renderer.root.findByType("iframe").props.src;
+      expect(replacementUrl).not.toBe(url.toString());
+      // A late failure from the replaced document cannot fail its successor.
+      await act(async () => testWindow.sendMessage(failure));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+      expect(
+        api.createProtectedExplorerCodeSessionAttachment,
+      ).toHaveBeenCalledTimes(2);
+      expect(renderer.root.findByType("iframe").props.src).toBe(replacementUrl);
+      await act(async () => renderer.unmount());
+    },
+  );
+
   it("replaces one unready desktop session and opens the latest file on its replacement", async () => {
     vi.useFakeTimers();
     tauri.enabled = true;
@@ -1926,7 +2088,58 @@ describe("ExplorerCodeEditor warm lifecycle", () => {
     await act(async () => renderer.unmount());
   });
 
-  it("ignores readiness at 15.1 seconds and accepts only the replacement nonce", async () => {
+  it.each(["before", "after"] as const)(
+    "accepts a late exact ready signal %s rendering the timeout",
+    async (timeoutRender) => {
+      vi.useFakeTimers();
+      frameRuntime.readyPredicate = (event, frameWindow, mount) =>
+        frameWindow !== null &&
+        event.source === frameWindow &&
+        event.origin === mount.origin &&
+        (event.data as { nonce?: string } | null)?.nonce === mount.nonce;
+      const frameWindow = {} as Window;
+      let renderer!: TestRenderer.ReactTestRenderer;
+      await act(async () => {
+        renderer = TestRenderer.create(editor("src/late.ts"), {
+          createNodeMock: (element) =>
+            element.type === "iframe" ? { contentWindow: frameWindow } : null,
+        });
+      });
+      await flushImmediateTimers();
+      const initialUrl = renderer.root.findByType("iframe").props.src as string;
+      const initialMount = new URL(initialUrl);
+
+      if (timeoutRender === "after") {
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(15_100);
+        });
+        expect(renderer.root.findAllByType("button")).toHaveLength(1);
+      }
+      await act(async () => {
+        if (timeoutRender === "before") vi.advanceTimersByTime(15_100);
+        testWindow.sendMessage({
+          data: { nonce: initialMount.searchParams.get("cantripFrameNonce") },
+          origin: initialMount.origin,
+          source: frameWindow,
+        });
+      });
+      await flushImmediateTimers();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(20_000);
+      });
+
+      expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledOnce();
+      expect(renderer.root.findByType("iframe").props.className).toBe(
+        "frame-ready",
+      );
+      expect(renderer.root.findByType("iframe").props.src).toBe(initialUrl);
+      expect(renderer.root.findAllByType("button")).toHaveLength(0);
+      expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledOnce();
+      await act(async () => renderer.unmount());
+    },
+  );
+
+  it("ignores a replaced frame's readiness and accepts only the replacement nonce", async () => {
     vi.useFakeTimers();
     frameRuntime.readyPredicate = (event, frameWindow, mount) =>
       frameWindow !== null &&
@@ -1952,7 +2165,7 @@ describe("ExplorerCodeEditor warm lifecycle", () => {
     };
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(15_100);
+      await vi.advanceTimersByTimeAsync(15_500);
       testWindow.sendMessage(staleReadyEvent);
       await Promise.resolve();
     });
@@ -1961,7 +2174,7 @@ describe("ExplorerCodeEditor warm lifecycle", () => {
     ).not.toHaveBeenCalled();
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(400);
+      await vi.advanceTimersByTimeAsync(0);
       await Promise.resolve();
     });
     const replacementFrameUrl = renderer.root.findByType("iframe").props

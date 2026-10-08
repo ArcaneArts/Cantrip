@@ -447,18 +447,15 @@ describe("account settings", () => {
     expect(appearance).toContain('aria-label="Brightness"');
     expect(appearance).not.toContain("Default agent permissions");
 
-    const models = renderSettings("models");
+    const models = renderSettings("models", settingsWithContentGutters(false));
     expect(models).toContain("Search all settings");
-    expect(models).toContain(
-      "Logical models with ordered provider failover routes.",
-    );
-    expect(models).toContain(
-      "Ollama, compatible APIs, and portable ChatGPT or Grok accounts.",
-    );
+    expect(models).toContain('aria-label="Model providers"');
+    expect(models).toContain("Default model configuration");
+    expect(models).toContain('aria-label="Add provider"');
     expect(models).not.toContain("System follows the operating system.");
   });
 
-  it("uses compact provider and model rows as the edit targets", () => {
+  it("starts Models on General and indexes provider/model tab destinations", () => {
     const settings = settingsBundleSchema.parse({
       preferences: {
         theme: "system",
@@ -508,9 +505,9 @@ describe("account settings", () => {
       settings.models,
     );
 
-    expect(markup).toContain('role="button"');
-    expect(markup).toContain('aria-label="Edit Ollama"');
-    expect(markup).toContain('aria-label="Edit gemma4:26b"');
+    expect(markup).toContain('role="tab"');
+    expect(markup).toContain('title="Ollama"');
+    expect(markup).not.toContain('aria-label="Edit gemma4:26b"');
     expect(markup).toContain("Default model configuration");
     expect(markup).toContain("Standalone Chat defaults");
     expect(markup).toContain(
@@ -519,7 +516,6 @@ describe("account settings", () => {
     expect(markup).toContain('aria-label="Configure default models"');
     expect(markup).toContain("Subagents inherit root");
     expect(markup).not.toContain("Default for new agents");
-    expect(markup).toContain("py-1.5");
     expect(markup).not.toContain("lucide-pencil");
     expect(settingsSearchResults("gemma4:26b", navigationSections)).toEqual([
       expect.objectContaining({ id: "model:model-1", sectionId: "models" }),

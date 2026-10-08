@@ -503,7 +503,7 @@ function DesktopDownloadButton({
   const download = release ? platformDownload(platform, release) : null;
   if (download) {
     return (
-      <a className={className} href={download.href}>
+      <a aria-label={download.label} className={className} href={download.href}>
         <Download size={compact ? 16 : 18} />
         <span>{compact ? "Download" : download.label}</span>
         {!compact && <ArrowRight size={16} />}
@@ -513,6 +513,7 @@ function DesktopDownloadButton({
   if (platform === "other" || failed) {
     return (
       <a
+        aria-label="View downloads on GitHub"
         className={className}
         href={LATEST_RELEASE_URL}
         rel="noreferrer"
@@ -914,6 +915,7 @@ function App() {
           <div className="header-actions">
             <ThemeSettings mode={mode} setMode={setMode} />
             <a
+              aria-label="GitHub"
               className="github-link"
               href={GITHUB_URL}
               rel="noreferrer"

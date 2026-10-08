@@ -10,6 +10,83 @@ import {
 } from "./use-sticky-chat-scroll";
 
 describe("sticky chat scrolling", () => {
+  it.each([false, true])(
+    "preserves the visible row during overlapping prepend and append (browser anchoring %s)",
+    async (browserAnchors) => {
+      (
+        globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+      ).IS_REACT_ACT_ENVIRONMENT = true;
+      const viewport = {
+        clientHeight: 100,
+        scrollHeight: 1000,
+        scrollTop: 0,
+        getBoundingClientRect: () => ({ top: 0, bottom: 100 }),
+      };
+      let offset = 220;
+      const content = {
+        children: [] as unknown[],
+        contains: (node: unknown) => node === anchor,
+      };
+      const anchor = {
+        isConnected: true,
+        getBoundingClientRect: () => ({
+          top: offset - viewport.scrollTop,
+          bottom: offset - viewport.scrollTop + 50,
+        }),
+      };
+      content.children.push(anchor);
+      vi.stubGlobal("window", {
+        requestAnimationFrame: (callback: () => void) => {
+          callback();
+          return 1;
+        },
+        cancelAnimationFrame: vi.fn(),
+      });
+      vi.stubGlobal(
+        "ResizeObserver",
+        class {
+          observe = vi.fn();
+          disconnect = vi.fn();
+        },
+      );
+      let scroll!: ReturnType<typeof useStickyScroll>;
+      function Probe() {
+        scroll = useStickyScroll("reader");
+        return createElement(
+          "div",
+          { ref: scroll.viewportRef, onScroll: scroll.onScroll },
+          createElement("div", { ref: scroll.contentRef }),
+        );
+      }
+      let renderer!: TestRenderer.ReactTestRenderer;
+      try {
+        await act(async () => {
+          renderer = TestRenderer.create(createElement(Probe), {
+            createNodeMock: (element) =>
+              (element.props as { onScroll?: unknown }).onScroll
+                ? viewport
+                : content,
+          });
+        });
+        viewport.scrollTop = 200;
+        await act(async () => scroll.onScroll());
+        await act(async () =>
+          scroll.preserveScrollDuringPrepend(async () => {
+            offset += 80;
+            viewport.scrollHeight += 200;
+            if (browserAnchors) viewport.scrollTop += 80;
+          }),
+        );
+        expect(anchor.getBoundingClientRect().top).toBe(20);
+        expect(viewport.scrollTop).toBe(280);
+        expect(scroll.showScrollToLatest).toBe(true);
+      } finally {
+        await act(async () => renderer.unmount());
+        vi.unstubAllGlobals();
+      }
+    },
+  );
+
   it.each(["top", "bottom"] as const)(
     "follows the %s edge and leaves older activity readable after scrolling away",
     async (edge) => {

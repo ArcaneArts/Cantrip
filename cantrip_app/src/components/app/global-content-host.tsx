@@ -1,5 +1,6 @@
 import type {
   BrowserFleetService,
+  WorkerSummary,
   ProjectViewSummary,
   RemoteDesktopTarget,
 } from "@cantrip/protocol";
@@ -57,7 +58,6 @@ import {
   saveChatComposerDraft,
 } from "@/lib/api";
 import { revealProjectInNativeFileManager } from "@/lib/desktop-project-share";
-import { browserUpdateForPageState } from "@/lib/browser-page-state";
 import { cn } from "@/lib/utils";
 import { projectSetupPercent } from "@/lib/project-setup-progress";
 import {
@@ -138,6 +138,8 @@ export function GlobalContentHost({
     explorers,
     focusDetachedPane,
     folderSetupJobs,
+    gitHistoryNavigation,
+    gitHistoryNavigationActive = true,
     selectedPaneOwnedElsewhere,
     isPopout,
     mobileNavigationSurfaces,
@@ -545,6 +547,9 @@ export function GlobalContentHost({
               chats={chats.data ?? []}
               contentScrolled={contentScrolled}
               includeOverviewTab={false}
+              navigationActive={gitHistoryNavigationActive}
+              navigationRequest={gitHistoryNavigation.request}
+              onNavigationHandled={gitHistoryNavigation.complete}
               activeSection={
                 projectOverviewGitSection ??
                 (selectedProjectView?.kind !== "remote-desktop"
@@ -701,20 +706,12 @@ export function GlobalContentHost({
                     url: service.url,
                   })
                 }
-                onPageState={(state) => {
-                  const input = browserUpdateForPageState(
-                    selectedBrowser,
-                    state,
-                  );
-                  if (input) {
-                    updateBrowserMutation.mutate({
-                      browserId: selectedBrowser.id,
-                      input: {
-                        ...input,
-                        stateRevision: selectedBrowser.stateRevision,
-                      },
-                    });
-                  }
+                onPageState={(pageState) => {
+                  updateBrowserMutation.mutate({
+                    browserId: selectedBrowser.id,
+                    projectId: selectedBrowser.projectId,
+                    pageState,
+                  });
                 }}
               />
             </Suspense>
@@ -834,6 +831,10 @@ export function GlobalContentHost({
                             : selectedFolderSetupJob?.error
                               ? projectFolderSetupErrorMessage(
                                   selectedFolderSetupJob.error.code,
+                                  selectedProject.folderManagement ===
+                                    "external"
+                                    ? "existing"
+                                    : "create",
                                 )
                               : (projectSetupErrorMessage(
                                   selectedProject.setupError,
@@ -880,6 +881,18 @@ export function GlobalContentHost({
                     ) : selectedProject.originKind === "managed-folder" &&
                       selectedFolderSetupNeedsAttention ? (
                       <div className="mx-auto mt-4 max-w-md space-y-3">
+                        <p className="text-xs font-medium">
+                          Owning worker:{" "}
+                          {workers.data?.find(
+                            ({ workerId }: WorkerSummary) =>
+                              workerId ===
+                              (selectedFolderSetupJob?.workerId ??
+                                selectedProject.preferredWorkerId),
+                          )?.name ??
+                            selectedFolderSetupJob?.workerId ??
+                            selectedProject.preferredWorkerId ??
+                            "Unavailable"}
+                        </p>
                         <p className="text-xs leading-5 text-muted-foreground">
                           This folder is worker-bound. Cantrip will not move it
                           to another worker;{" "}

@@ -4810,6 +4810,59 @@ async function tagRefOutput(cwd: string): Promise<string> {
   }
 }
 
+export function tagSignatureVerificationResult(
+  signature: GitSignature,
+  outcome: { code: number; output: string },
+): GitSignature {
+  const message = outcome.output;
+  const gpgStatus = (status: string) =>
+    new RegExp(`^\\[GNUPG:\\] (?:${status})(?: |$)`, "mu").test(message);
+  let code = "E";
+  if (
+    gpgStatus("BADSIG") ||
+    (signature.format === "ssh" &&
+      /signature verification failed: incorrect signature/iu.test(message))
+  ) {
+    code = "B";
+  } else if (gpgStatus("REVKEYSIG")) {
+    code = "R";
+  } else if (gpgStatus("EXPSIG|EXPKEYSIG")) {
+    code = "X";
+  } else if (outcome.code === 0) {
+    code = gpgStatus("TRUST_UNDEFINED|TRUST_NEVER") ? "U" : "G";
+  } else if (
+    signature.format === "ssh" &&
+    /^Good "git" signature /mu.test(message) &&
+    /No principal matched/iu.test(message)
+  ) {
+    code = "U";
+  }
+  return {
+    ...signature,
+    status: signatureStatus(code),
+    verification: gpgStatus("NO_PUBKEY")
+      ? "missing-key"
+      : signatureVerification(code, message),
+    verificationMessage: message.slice(0, 10_000) || null,
+  };
+}
+
+async function verifyGitTagSignature(
+  cwd: string,
+  hash: string,
+  signature: GitSignature,
+): Promise<GitSignature> {
+  if (signature.status === "unsigned") return signature;
+  // for-each-ref's signature atoms describe commits, not annotated tag
+  // objects. Verify the immutable tag itself for both list and detail.
+  const outcome = await runGitOutcomeBounded(cwd, [
+    "verify-tag",
+    "--raw",
+    hash,
+  ]);
+  return tagSignatureVerificationResult(signature, outcome);
+}
+
 export async function readGitTags(cwd: string): Promise<GitTagList> {
   const [refOutput, remotes] = await Promise.all([
     tagRefOutput(cwd),
@@ -4850,13 +4903,15 @@ export async function readGitTags(cwd: string): Promise<GitTagList> {
           subject,
           taggerName: taggerName || null,
           createdAt: createdAt || null,
-          signature: signatureDetails(
-            signatureCode,
-            signatureSigner,
-            signatureKey,
-            signatureFingerprint,
-            signatureBlock,
-          ),
+          signature: annotated
+            ? signatureDetails(
+                signatureCode,
+                signatureSigner,
+                signatureKey,
+                signatureFingerprint,
+                signatureBlock,
+              )
+            : signatureDetails("N", "", "", "", ""),
           publishedRemotes: [...(remoteTags.tags.get(name) ?? [])].sort(),
         },
       ];
@@ -4866,8 +4921,26 @@ export async function readGitTags(cwd: string): Promise<GitTagList> {
         (right.createdAt ?? "").localeCompare(left.createdAt ?? "") ||
         left.name.localeCompare(right.name),
     );
+  const tags = parsed.slice(0, TAG_LIMIT);
+  let nextTag = 0;
+  // Bound verifier processes even in repositories with thousands of tags.
+  await Promise.all(
+    Array.from({ length: Math.min(4, tags.length) }, async () => {
+      for (;;) {
+        const tag = tags[nextTag++];
+        if (!tag) return;
+        if (tag.annotated) {
+          tag.signature = await verifyGitTagSignature(
+            cwd,
+            tag.hash,
+            tag.signature,
+          );
+        }
+      }
+    }),
+  );
   return gitTagListSchema.parse({
-    tags: parsed.slice(0, TAG_LIMIT),
+    tags,
     truncated: parsed.length > TAG_LIMIT,
     remoteChecks: remoteTags.checks,
     generatedAt: new Date().toISOString(),
@@ -4882,32 +4955,15 @@ export async function readGitTagDetail(
   const list = await readGitTags(cwd);
   const tag = list.tags.find((candidate) => candidate.name === name);
   if (!tag) throw new Error(`Tag ${name} does not exist.`);
-  const [message, verification] = tag.annotated
-    ? await Promise.all([
-        gitRaw(cwd, [
-          "for-each-ref",
-          "--format=%(contents:subject)%0a%0a%(contents:body)",
-          `refs/tags/${name}`,
-        ]),
-        runGitOutcomeBounded(cwd, ["verify-tag", "--raw", name]),
+  const message = tag.annotated
+    ? await gitRaw(cwd, [
+        "for-each-ref",
+        "--format=%(contents:subject)%0a%0a%(contents:body)",
+        `refs/tags/${name}`,
       ])
-    : ["", null];
-  const verificationMessage = verification?.output.slice(0, 10_000) ?? null;
-  const verificationState =
-    tag.signature.status === "unsigned"
-      ? "not-applicable"
-      : ["invalid", "expired", "revoked"].includes(tag.signature.status) ||
-          verification?.code === 0
-        ? "available"
-        : signatureVerification("E", verificationMessage ?? "");
+    : "";
   return gitTagDetailSchema.parse({
     ...tag,
-    signature: {
-      ...tag.signature,
-      status: verification?.code === 0 ? "valid" : tag.signature.status,
-      verification: verificationState,
-      verificationMessage,
-    },
     message: message.slice(0, COMMIT_MESSAGE_CHARACTER_LIMIT),
     messageTruncated: message.length > COMMIT_MESSAGE_CHARACTER_LIMIT,
   });

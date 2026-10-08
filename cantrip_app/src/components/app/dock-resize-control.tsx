@@ -75,8 +75,8 @@ export function DockResizeControl({
         className={cn(
           "absolute bg-border opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-active:opacity-100 motion-reduce:transition-none",
           direction === "vertical"
-            ? "inset-y-0 left-1/2 w-px -translate-x-1/2"
-            : "inset-x-0 top-1/2 h-px -translate-y-1/2",
+            ? "inset-y-0 left-1/2 w-px -translate-x-1/2 group-has-[[data-dock-region=right]:hover]/workspace-docks:opacity-100"
+            : "inset-x-0 top-1/2 h-px -translate-y-1/2 group-has-[[data-dock-region=bottom]:hover]/workspace-docks:opacity-100",
         )}
       />
     </div>

@@ -23,6 +23,7 @@ import {
   type AgentTurnResult,
   type ChatRelocationContextPayload,
   type NormalizedAgentMessage,
+  type ChatMessageOpaqueContent,
 } from "@cantrip/protocol";
 import type { JsonObject } from "@cantrip/protocol/bounded-json";
 import {
@@ -610,12 +611,72 @@ export async function prepareEncryptedTaskOperation(input: {
   }
 }
 
+/** Move a composer's encrypted Chat input into the Task domain at the trusted
+ * worker. The server never receives the opened message. */
+export async function protectTaskConversationMessage(input: {
+  message: ChatMessageOpaqueContent;
+  service: WorkerEncryptionService;
+}): Promise<TaskMessageOpaqueContent> {
+  const chat = input.service.componentKey("chat-content");
+  const task = input.service.componentKey("task-content");
+  try {
+    const content = await decryptChatMessageProtectedContent({
+      ownerId: input.service.ownerId(),
+      messageId: input.message.id,
+      keyRevision: input.message.protectedContent.keyRevision,
+      componentKey: chat.key,
+      encrypted: input.message.protectedContent,
+      publicClassification: input.message.classification,
+    });
+    return taskMessageOpaqueContentSchema.parse({
+      ...input.message,
+      protectedContent: await encryptTaskMessageProtectedContent({
+        ownerId: input.service.ownerId(),
+        messageId: input.message.id,
+        keyRevision: task.keyRevision,
+        componentKey: task.key,
+        content,
+      }),
+    });
+  } finally {
+    clearSensitiveBytes(chat.key);
+    clearSensitiveBytes(task.key);
+  }
+}
+
+export async function openTaskConversationPrompt(input: {
+  message: TaskMessageOpaqueContent;
+  service: WorkerEncryptionService;
+}): Promise<string> {
+  const component = input.service.componentKey("task-content");
+  try {
+    const opened = await decryptTaskMessageProtectedContent({
+      ownerId: input.service.ownerId(),
+      messageId: input.message.id,
+      keyRevision: input.message.protectedContent.keyRevision,
+      componentKey: component.key,
+      encrypted: input.message.protectedContent,
+      publicClassification: input.message.classification,
+    });
+    return (
+      chatMessageContentSchema
+        .parse(opened.content)
+        .flatMap((item) => (item.type === "text" ? [item.text] : []))
+        .join("\n\n")
+        .trim() || "Review the attached files and respond to the user."
+    );
+  } finally {
+    clearSensitiveBytes(component.key);
+  }
+}
+
 export async function encryptTaskTurnResult(input: {
   getComponentKey(): { key: Uint8Array; keyRevision: number };
   idempotencyKey: string;
   messageId: string;
   ownerId: string;
   result: AgentTurnResult;
+  mode?: "default" | "goal" | "plan";
 }): Promise<AgentTurnResult> {
   const result = agentTurnResultSchema.parse(input.result);
   const component = input.getComponentKey();
@@ -626,7 +687,7 @@ export async function encryptTaskTurnResult(input: {
       id: input.messageId,
       idempotencyKey: input.idempotencyKey,
       keyRevision: component.keyRevision,
-      mode: "goal",
+      mode: input.mode ?? "goal",
       ownerId: input.ownerId,
       role: "assistant",
     });

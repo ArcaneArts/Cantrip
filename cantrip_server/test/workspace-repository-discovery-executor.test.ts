@@ -2,9 +2,11 @@ import type {
   WorkerEvent,
   WorkspaceRepositoryDiscoveryJobSummary,
 } from "@cantrip/protocol";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ServerRepository } from "../src/db/repository.js";
+import { RelayLimitError } from "../src/security/abuse-limits.js";
+import { LimitedWorkerCommandBus } from "../src/workers/limited-command-bus.js";
 import {
   WorkerCommandError,
   type WorkerCommandBus,
@@ -50,6 +52,145 @@ const counts = {
 };
 
 describe("workspace repository discovery executor", () => {
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  function limitedScanFixture(
+    request: ReturnType<typeof vi.fn>,
+    active = job(),
+  ) {
+    const complete = vi.fn().mockResolvedValue({
+      job: { ...active, state: "succeeded", counts },
+      candidates: [],
+    });
+    const fail = vi.fn().mockResolvedValue({
+      ...active,
+      state: "failed",
+      error: { code: "discovery-failed", retryable: false },
+    });
+    const renewLease = vi.fn().mockResolvedValue(true);
+    const repository = {
+      getWorker: vi.fn().mockResolvedValue({
+        managedFolders: { discoverWorkspaceRepositories: true },
+      }),
+      workspaceRepositoryDiscoveryJobs: {
+        claimNext: vi
+          .fn()
+          .mockResolvedValueOnce({
+            ownerId: "owner-one",
+            commandId: "command-one",
+            rootPathHandle: pathHandle,
+            job: active,
+          })
+          .mockResolvedValue(null),
+        claimNextImport: vi.fn().mockResolvedValue(null),
+        complete,
+        fail,
+        renewLease,
+      },
+    } as unknown as ServerRepository;
+    const bridge = {
+      isConnected: vi.fn().mockReturnValue(true),
+      request,
+    } as unknown as WorkerCommandBus;
+    return { active, repository, bridge, complete, fail, renewLease };
+  }
+
+  it.each(["account", "worker"])(
+    "waits for the actual %s command-rate window before completing a rescan",
+    async (limitedScope) => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(now));
+      const active = { ...job(), attempt: 2 };
+      const request = vi.fn().mockResolvedValue({
+        jobId: active.id,
+        attempt: active.attempt,
+        candidates: [],
+        counts: { ...counts, candidates: 0 },
+        diagnosticCode: null,
+        truncated: false,
+      });
+      const fixture = limitedScanFixture(request, active);
+      const bridge = new LimitedWorkerCommandBus(fixture.bridge, {
+        accountConcurrency: 2,
+        workerConcurrency: 2,
+        accountRatePerMinute: limitedScope === "account" ? 1 : 10,
+        workerRatePerMinute: limitedScope === "worker" ? 1 : 10,
+        resolveOwnerId: async () => "owner-one",
+      });
+      await bridge.request("worker-one", {
+        type: "workspace.repositories.discover",
+        jobId: active.id,
+        attempt: 1,
+        rootPath: pathHandle,
+        depth: 3,
+      });
+      request.mockClear();
+      const executor = new WorkspaceRepositoryDiscoveryJobExecutor(
+        fixture.repository,
+        bridge,
+        { error: vi.fn(), warn: vi.fn() },
+      );
+      executor.queueAvailable();
+      await vi.advanceTimersByTimeAsync(59_999);
+      expect(fixture.fail).not.toHaveBeenCalled();
+      expect(request).not.toHaveBeenCalled();
+      expect(fixture.renewLease).toHaveBeenCalledWith(
+        active.id,
+        "command-one",
+        2,
+      );
+      await vi.advanceTimersByTimeAsync(1);
+      await executor.drain();
+      expect(request).toHaveBeenCalledTimes(1);
+      expect(request).toHaveBeenCalledWith(
+        "worker-one",
+        expect.objectContaining({ attempt: 2 }),
+        expect.anything(),
+      );
+      expect(fixture.complete).toHaveBeenCalledTimes(1);
+      expect(fixture.fail).not.toHaveBeenCalled();
+      executor.stop();
+      expect(vi.getTimerCount()).toBe(0);
+    },
+  );
+
+  it("bounds repeated quota rejection and settles the job without a retry loop", async () => {
+    vi.useFakeTimers();
+    const request = vi
+      .fn()
+      .mockRejectedValue(new RelayLimitError("Temporary quota", 2));
+    const fixture = limitedScanFixture(request);
+    const executor = new WorkspaceRepositoryDiscoveryJobExecutor(
+      fixture.repository,
+      fixture.bridge,
+      { error: vi.fn(), warn: vi.fn() },
+    );
+    executor.queueAvailable();
+    await vi.advanceTimersByTimeAsync(1_999);
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(fixture.fail).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(fixture.fail).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(2_000);
+    await executor.drain();
+    expect(request).toHaveBeenCalledTimes(3);
+    expect(fixture.fail).toHaveBeenCalledExactlyOnceWith(
+      fixture.active.id,
+      "command-one",
+      {
+        code: "discovery-failed",
+        retryable: false,
+      },
+    );
+    expect(fixture.complete).not.toHaveBeenCalled();
+    executor.stop();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("recovers interrupted scans and imports together after restart", async () => {
     const recoverInterrupted = vi.fn().mockResolvedValue(2);
     const recoverInterruptedImports = vi.fn().mockResolvedValue(3);
@@ -305,110 +446,124 @@ describe("workspace repository discovery executor", () => {
       code: "root-unavailable",
       retryable: false,
     });
+    expect(bridge.request).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(fail.mock.calls)).not.toContain("/Users/");
   });
 
-  it("revalidates and completes one durable import candidate", async () => {
-    const succeeded = {
-      ...job(),
-      state: "succeeded" as const,
-      stateRevision: 6,
-      counts,
-    };
-    const importClaim = {
-      attempt: 1,
-      candidateId: "fe47e031-8924-44c0-9b51-677fc23397ca",
-      commandId: "import-command-one",
-      expectedRepositoryFingerprint: "c".repeat(64),
-      nameProtection: {
-        classification: { recordKind: "project" as const },
-        protectedLabel: {
-          formatVersion: 1 as const,
-          keyRevision: 1,
-          envelope: {
-            version: 1 as const,
-            algorithm: "AES-256-GCM" as const,
+  it.each([false, true])(
+    "revalidates and completes one durable import candidate (quota rejection: %s)",
+    async (rateLimited) => {
+      vi.useFakeTimers();
+      const succeeded = {
+        ...job(),
+        state: "succeeded" as const,
+        stateRevision: 6,
+        counts,
+      };
+      const importClaim = {
+        attempt: 1,
+        candidateId: "fe47e031-8924-44c0-9b51-677fc23397ca",
+        commandId: "import-command-one",
+        expectedRepositoryFingerprint: "c".repeat(64),
+        nameProtection: {
+          classification: { recordKind: "project" as const },
+          protectedLabel: {
+            formatVersion: 1 as const,
             keyRevision: 1,
-            nonce: "a".repeat(16),
-            ciphertext: "b".repeat(22),
+            envelope: {
+              version: 1 as const,
+              algorithm: "AES-256-GCM" as const,
+              keyRevision: 1,
+              nonce: "a".repeat(16),
+              ciphertext: "b".repeat(22),
+            },
           },
         },
-      },
-      ownerId: "owner-one",
-      pathHandle,
-      projectId: "95ed0d89-a1d5-48ac-a1b7-67a2037f8373",
-      repositoryBlindIndex: null,
-      rootPathHandle: `ctrr_${"r".repeat(43)}`,
-      workerId: "worker-one",
-      workspaceId: "workspace-one",
-    };
-    const completeImport = vi.fn().mockResolvedValue(succeeded);
-    const request = vi.fn().mockResolvedValue({
-      candidateId: importClaim.candidateId,
-      attempt: 1,
-      path: pathHandle,
-      displayPath: displayHandle,
-      originUrl: null,
-      github: null,
-      repositoryFingerprint: "c".repeat(64),
-      classification: "local-git",
-      diagnosticCode: null,
-      branch: null,
-      head: null,
-    });
-    const repository = {
-      getWorker: vi.fn().mockResolvedValue({
+        ownerId: "owner-one",
+        pathHandle,
+        projectId: "95ed0d89-a1d5-48ac-a1b7-67a2037f8373",
+        repositoryBlindIndex: null,
+        rootPathHandle: `ctrr_${"r".repeat(43)}`,
         workerId: "worker-one",
-        managedFolders: { discoverWorkspaceRepositories: true },
-      }),
-      workspaceRepositoryDiscoveryJobs: {
-        claimNext: vi.fn().mockResolvedValue(null),
-        claimNextImport: vi
-          .fn()
-          .mockResolvedValueOnce(importClaim)
-          .mockResolvedValue(null),
-        completeImport,
-        getSnapshot: vi.fn().mockResolvedValue({
-          job: succeeded,
-          candidates: [],
-        }),
-        renewImportLease: vi.fn(),
-      },
-    } as unknown as ServerRepository;
-    const bridge = {
-      isConnected: vi.fn().mockReturnValue(true),
-      request,
-    } as unknown as WorkerCommandBus;
-    const changed = vi.fn();
-    const executor = new WorkspaceRepositoryDiscoveryJobExecutor(
-      repository,
-      bridge,
-      { error: vi.fn(), warn: vi.fn() },
-      changed,
-    );
-
-    executor.queueAvailable();
-    await executor.drain();
-
-    expect(request).toHaveBeenCalledWith(
-      "worker-one",
-      {
-        type: "workspace.repository-import.validate",
+        workspaceId: "workspace-one",
+      };
+      const completeImport = vi.fn().mockResolvedValue(succeeded);
+      const request = vi.fn().mockResolvedValue({
         candidateId: importClaim.candidateId,
         attempt: 1,
-        rootPath: importClaim.rootPathHandle,
         path: pathHandle,
-        expectedRepositoryFingerprint: "c".repeat(64),
-      },
-      { ownerId: "owner-one", timeoutMs: 60_000 },
-    );
-    expect(completeImport).toHaveBeenCalledWith(
-      importClaim,
-      expect.objectContaining({ classification: "local-git" }),
-    );
-    expect(changed).toHaveBeenLastCalledWith({
-      ownerId: "owner-one",
-      job: succeeded,
-    });
-  });
+        displayPath: displayHandle,
+        originUrl: null,
+        github: null,
+        repositoryFingerprint: "c".repeat(64),
+        classification: "local-git",
+        diagnosticCode: null,
+        branch: null,
+        head: null,
+      });
+      if (rateLimited)
+        request.mockRejectedValueOnce(
+          new RelayLimitError("Temporary quota", 1),
+        );
+      const failImport = vi.fn().mockResolvedValue(succeeded);
+      const repository = {
+        getWorker: vi.fn().mockResolvedValue({
+          workerId: "worker-one",
+          managedFolders: { discoverWorkspaceRepositories: true },
+        }),
+        workspaceRepositoryDiscoveryJobs: {
+          failImport,
+          claimNext: vi.fn().mockResolvedValue(null),
+          claimNextImport: vi
+            .fn()
+            .mockResolvedValueOnce(importClaim)
+            .mockResolvedValue(null),
+          completeImport,
+          getSnapshot: vi.fn().mockResolvedValue({
+            job: succeeded,
+            candidates: [],
+          }),
+          renewImportLease: vi.fn(),
+        },
+      } as unknown as ServerRepository;
+      const bridge = {
+        isConnected: vi.fn().mockReturnValue(true),
+        request,
+      } as unknown as WorkerCommandBus;
+      const changed = vi.fn();
+      const executor = new WorkspaceRepositoryDiscoveryJobExecutor(
+        repository,
+        bridge,
+        { error: vi.fn(), warn: vi.fn() },
+        changed,
+      );
+
+      executor.queueAvailable();
+      await vi.advanceTimersByTimeAsync(1_000);
+      await executor.drain();
+      expect(failImport).not.toHaveBeenCalled();
+      expect(request).toHaveBeenCalledTimes(rateLimited ? 2 : 1);
+
+      expect(request).toHaveBeenCalledWith(
+        "worker-one",
+        {
+          type: "workspace.repository-import.validate",
+          candidateId: importClaim.candidateId,
+          attempt: 1,
+          rootPath: importClaim.rootPathHandle,
+          path: pathHandle,
+          expectedRepositoryFingerprint: "c".repeat(64),
+        },
+        { ownerId: "owner-one", timeoutMs: 60_000 },
+      );
+      expect(completeImport).toHaveBeenCalledWith(
+        importClaim,
+        expect.objectContaining({ classification: "local-git" }),
+      );
+      expect(changed).toHaveBeenLastCalledWith({
+        ownerId: "owner-one",
+        job: succeeded,
+      });
+    },
+  );
 });
