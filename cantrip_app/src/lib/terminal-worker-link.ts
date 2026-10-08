@@ -98,6 +98,7 @@ export async function openTerminalWorkerLink(
 class ActiveTerminalWorkerLink implements TerminalWorkerLinkConnection {
   #activated = false;
   #closed = false;
+  #remoteClosed = false;
   #drainingInbound = false;
   #drainingOutbound = false;
   #inboundBytes = 0;
@@ -122,7 +123,7 @@ class ActiveTerminalWorkerLink implements TerminalWorkerLinkConnection {
       stream.onData((payload) => this.#receive(payload)),
       stream.onWritable(() => this.#drainOutbound()),
       stream.onError(() => this.#retire("protocol-error", false)),
-      stream.onClose((code) => this.#retire(code, false)),
+      stream.onClose((code) => this.#onStreamClose(code)),
     ];
     this.#scheduleRenewal(grant.binding.lease);
   }
@@ -138,7 +139,7 @@ class ActiveTerminalWorkerLink implements TerminalWorkerLinkConnection {
   }
 
   send(message: TerminalClientMessage): boolean {
-    if (this.#closed) return false;
+    if (this.#closed || this.#remoteClosed) return false;
     const payload = encoder.encode(
       JSON.stringify(terminalClientMessageSchema.parse(message)),
     );
@@ -159,7 +160,7 @@ class ActiveTerminalWorkerLink implements TerminalWorkerLinkConnection {
   }
 
   #receive(payload: Uint8Array): void {
-    if (this.#closed) return;
+    if (this.#closed || this.#remoteClosed) return;
     if (
       this.#inbound.length >= MAX_PENDING_FRAMES ||
       this.#inboundBytes + payload.byteLength > MAX_PENDING_BYTES
@@ -198,7 +199,11 @@ class ActiveTerminalWorkerLink implements TerminalWorkerLinkConnection {
             return;
           }
           await this.options.onMessage(message);
-          if (!this.#closed && !this.stream.acknowledge(payload.byteLength)) {
+          if (
+            !this.#closed &&
+            !this.#remoteClosed &&
+            !this.stream.acknowledge(payload.byteLength)
+          ) {
             this.#retire("protocol-error", true);
             return;
           }
@@ -208,12 +213,13 @@ class ActiveTerminalWorkerLink implements TerminalWorkerLinkConnection {
       } finally {
         this.#drainingInbound = false;
         if (!this.#closed && this.#inbound.length > 0) this.#drainInbound();
+        else if (this.#remoteClosed) this.#retire("normal", false);
       }
     })();
   }
 
   #drainOutbound(): void {
-    if (this.#closed || this.#drainingOutbound) return;
+    if (this.#closed || this.#remoteClosed || this.#drainingOutbound) return;
     this.#drainingOutbound = true;
     try {
       while (this.#outbound.length > 0) {
@@ -228,7 +234,7 @@ class ActiveTerminalWorkerLink implements TerminalWorkerLinkConnection {
   }
 
   #scheduleRenewal(lease: WorkerLinkLease): void {
-    if (this.#closed) return;
+    if (this.#closed || this.#remoteClosed) return;
     if (this.#renewTimer) clearTimeout(this.#renewTimer);
     const delay = Math.max(
       MIN_RENEW_DELAY_MS,
@@ -241,6 +247,25 @@ class ActiveTerminalWorkerLink implements TerminalWorkerLinkConnection {
         .then((renewed) => this.#scheduleRenewal(renewed))
         .catch(() => this.#retire("revoked", true));
     }, delay);
+  }
+
+  #onStreamClose(code: WorkerLinkChannelCloseCode): void {
+    if (this.#closed) return;
+    if (code !== "normal") {
+      this.#retire(code, false);
+      return;
+    }
+    // The final exit can be queued behind protected output being rendered.
+    // Stop sending, but deliver already accepted frames before notifying the
+    // view that the transport closed. Errors and revocation still fail closed.
+    this.#remoteClosed = true;
+    if (this.#renewTimer) clearTimeout(this.#renewTimer);
+    this.#renewTimer = null;
+    if (!this.#drainingInbound && this.#inbound.length === 0) {
+      this.#retire(code, false);
+    } else {
+      this.#drainInbound();
+    }
   }
 
   #retire(code: WorkerLinkChannelCloseCode, closeStream: boolean): void {
