@@ -1,4 +1,4 @@
-import { chmod, lstat, mkdir, rm } from "node:fs/promises";
+import { chmod, lstat, mkdir, realpath, rm } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -10,7 +10,10 @@ import {
   type ProjectWorkspaceStorageContext,
 } from "@cantrip/protocol";
 
-import { canonicalProjectSourcePath } from "./project-source-path.js";
+import {
+  canonicalProjectSourcePath,
+  normalizeProjectSourcePath,
+} from "./project-source-path.js";
 import {
   deriveProjectWorkspaceRoot,
   ensureManagedWorkspaceDirectory,
@@ -51,6 +54,19 @@ async function directoryEntry(target: string) {
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw error;
+  }
+}
+
+class ExistingFolderAttachmentError extends Error {
+  constructor(
+    readonly code:
+      | "existing-path-missing"
+      | "existing-path-not-directory"
+      | "existing-path-permission-denied"
+      | "attachment-failed",
+  ) {
+    super("The existing folder could not be attached on its owning worker.");
+    this.name = "ExistingFolderAttachmentError";
   }
 }
 
@@ -139,12 +155,28 @@ export class ManagedFolderManager {
     workspaceStorage?: ProjectWorkspaceStorageContext;
   }): Promise<ManagedFolderMaterializeReady> {
     if (input.existingPath) {
-      const canonicalTarget = await canonicalProjectSourcePath(
-        input.existingPath,
-      );
-      const targetEntry = await lstat(canonicalTarget);
-      if (!targetEntry.isDirectory()) {
-        throw new Error("The existing folder path is not a directory.");
+      let canonicalTarget: string;
+      try {
+        canonicalTarget = normalizeProjectSourcePath(
+          await realpath(normalizeProjectSourcePath(input.existingPath)),
+        );
+        if (!(await lstat(canonicalTarget)).isDirectory()) {
+          throw new ExistingFolderAttachmentError(
+            "existing-path-not-directory",
+          );
+        }
+      } catch (error) {
+        if (error instanceof ExistingFolderAttachmentError) throw error;
+        const code = (error as NodeJS.ErrnoException).code;
+        throw new ExistingFolderAttachmentError(
+          code === "ENOENT"
+            ? "existing-path-missing"
+            : code === "ENOTDIR"
+              ? "existing-path-not-directory"
+              : code === "EACCES" || code === "EPERM"
+                ? "existing-path-permission-denied"
+                : "attachment-failed",
+        );
       }
       const repository = await this.inspectRepository(canonicalTarget);
       return managedFolderMaterializeReadySchema.parse({

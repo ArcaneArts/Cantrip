@@ -1,5 +1,6 @@
 import type {
   BrowserFleetService,
+  WorkerSummary,
   ProjectViewSummary,
   RemoteDesktopTarget,
 } from "@cantrip/protocol";
@@ -830,6 +831,10 @@ export function GlobalContentHost({
                             : selectedFolderSetupJob?.error
                               ? projectFolderSetupErrorMessage(
                                   selectedFolderSetupJob.error.code,
+                                  selectedProject.folderManagement ===
+                                    "external"
+                                    ? "existing"
+                                    : "create",
                                 )
                               : (projectSetupErrorMessage(
                                   selectedProject.setupError,
@@ -876,6 +881,18 @@ export function GlobalContentHost({
                     ) : selectedProject.originKind === "managed-folder" &&
                       selectedFolderSetupNeedsAttention ? (
                       <div className="mx-auto mt-4 max-w-md space-y-3">
+                        <p className="text-xs font-medium">
+                          Owning worker:{" "}
+                          {workers.data?.find(
+                            ({ workerId }: WorkerSummary) =>
+                              workerId ===
+                              (selectedFolderSetupJob?.workerId ??
+                                selectedProject.preferredWorkerId),
+                          )?.name ??
+                            selectedFolderSetupJob?.workerId ??
+                            selectedProject.preferredWorkerId ??
+                            "Unavailable"}
+                        </p>
                         <p className="text-xs leading-5 text-muted-foreground">
                           This folder is worker-bound. Cantrip will not move it
                           to another worker;{" "}

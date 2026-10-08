@@ -3,6 +3,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  realpath,
   rm,
   symlink,
   writeFile,
@@ -232,6 +233,53 @@ describe("managed folders", () => {
     if (process.platform !== "win32") {
       expect((await lstat(first.path)).mode & 0o777).toBe(0o700);
     }
+  });
+
+  it.each([
+    ["missing", "existing-path-missing"],
+    ["regular-file", "existing-path-not-directory"],
+  ])("returns a safe typed attachment failure for %s", async (kind, code) => {
+    const test = await manager();
+    const existingPath = path.join(test.directory, kind);
+    if (kind === "regular-file")
+      await writeFile(existingPath, "keep this file");
+    await expect(
+      test.manager.materialize({ projectId, jobId, attempt: 1, existingPath }),
+    ).rejects.toMatchObject({ code });
+    if (kind === "regular-file")
+      expect(await readFile(existingPath, "utf8")).toBe("keep this file");
+    else
+      await expect(lstat(existingPath)).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+  });
+
+  it("attaches a corrected missing path without creating a managed substitute", async () => {
+    const test = await manager();
+    const existingPath = path.join(test.directory, "corrected");
+    await expect(
+      test.manager.materialize({ projectId, jobId, attempt: 1, existingPath }),
+    ).rejects.toMatchObject({ code: "existing-path-missing" });
+    await mkdir(existingPath);
+    await writeFile(path.join(existingPath, "kept.txt"), "preserved");
+    expect(
+      await test.manager.materialize({
+        projectId,
+        jobId,
+        attempt: 2,
+        existingPath,
+      }),
+    ).toMatchObject({
+      path: await realpath(existingPath),
+      displayPath: existingPath,
+      reused: true,
+    });
+    expect(await readFile(path.join(existingPath, "kept.txt"), "utf8")).toBe(
+      "preserved",
+    );
+    await expect(
+      lstat(path.join(test.directory, "folders", projectId)),
+    ).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("rejects traversal-shaped identifiers before touching another path", async () => {

@@ -61,6 +61,10 @@ export const projectFolderSetupJobErrorSchema = z.object({
     "worker-offline",
     "capability-missing",
     "materialization-failed",
+    "attachment-failed",
+    "existing-path-missing",
+    "existing-path-not-directory",
+    "existing-path-permission-denied",
   ]),
   retryable: z.boolean(),
 });
