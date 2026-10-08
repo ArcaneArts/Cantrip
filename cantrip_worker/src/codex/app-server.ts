@@ -6160,7 +6160,10 @@ export class CodexAppServer implements CodexRuntime {
   }
 
   async readMcpResource(
-    options: Pick<RunAgentTurnOptions, "cwd" | "model" | "provider"> & {
+    options: Pick<
+      RunAgentTurnOptions,
+      "cwd" | "model" | "provider" | "threadId"
+    > & {
       server: string;
       uri: string;
     },
@@ -6173,7 +6176,7 @@ export class CodexAppServer implements CodexRuntime {
     await this.ensureStarted(options.model, options.provider);
     return parseMcpResourceRead(
       await this.request("mcpServer/resource/read", {
-        threadId: null,
+        threadId: options.threadId,
         server: options.server,
         uri: options.uri,
       }),

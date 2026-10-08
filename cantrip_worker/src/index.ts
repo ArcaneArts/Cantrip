@@ -5848,6 +5848,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               provider: provider(),
             }).readMcpResource({
               cwd: command.cwd,
+              threadId: command.threadId,
               model: command.model,
               provider: provider(),
               server: input.server,
