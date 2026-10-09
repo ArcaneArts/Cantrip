@@ -271,6 +271,11 @@ const taskGoalHandoffExports = [
   "TASK_NATIVE_GOAL_OBJECTIVE_LIMIT",
 ];
 
+// Reviewed encrypted Task conversation additions from #2001.
+const taskConversationExports = [
+  "encryptedConversationPromptSubmitResultSchema",
+];
+
 // Reviewed file-tree additions from #1992; preserve the legacy fingerprints.
 const chatFileReferencesExports = [
   "chatFileReferencesRequestContentSchema",
@@ -291,6 +296,7 @@ const managedWorkerCommands = [
   "chat.settings.read",
   "chat.settings.update",
   "computer-use.effects.sync",
+  "task.message.protect",
   "terminal.prepare-state",
 ];
 
@@ -304,11 +310,15 @@ describe("protocol public surface compatibility", () => {
         !accountCreditsExports.includes(name) &&
         !browserCursorExports.includes(name) &&
         !taskGoalHandoffExports.includes(name) &&
+        !taskConversationExports.includes(name) &&
         !chatFileReferencesExports.includes(name) &&
         !labelingExports.includes(name),
     );
 
-    expect(exportNames).toHaveLength(2_139);
+    expect(exportNames).toHaveLength(2_140);
+    expect(
+      exportNames.filter((name) => taskConversationExports.includes(name)),
+    ).toEqual(taskConversationExports);
     expect(
       exportNames.filter((name) => chatFileReferencesExports.includes(name)),
     ).toEqual(chatFileReferencesExports);
@@ -345,7 +355,7 @@ describe("protocol public surface compatibility", () => {
       (option) => option.shape.type.value,
     );
 
-    expect(commandTypes).toHaveLength(294);
+    expect(commandTypes).toHaveLength(295);
     expect(
       commandTypes.filter((type) => type === "chat.files.references"),
     ).toHaveLength(1);
@@ -425,6 +435,41 @@ describe("protocol public surface compatibility", () => {
         ...result,
         entries: [{ ...result.entries[0], kind: "unknown" }],
       }).success,
+    ).toBe(false);
+  });
+
+  it("validates the reviewed Task message protection command", () => {
+    const command = {
+      type: "task.message.protect",
+      message: {
+        id: "c8381010-e259-49e9-8035-e14ffaf97a79",
+        classification: { role: "user", mode: "default", attachmentIds: [] },
+        protectedContent: {
+          formatVersion: 1,
+          keyRevision: 1,
+          envelope: {
+            version: 1,
+            algorithm: "AES-256-GCM",
+            keyRevision: 1,
+            nonce: "A".repeat(16),
+            ciphertext: "A".repeat(22),
+          },
+        },
+        reasoningEffort: null,
+        idempotencyKey: "x".repeat(200),
+      },
+    };
+    expect(workerCommandSchema.parse(command)).toEqual(command);
+    for (const idempotencyKey of ["", "x".repeat(201)]) {
+      expect(
+        workerCommandSchema.safeParse({
+          ...command,
+          message: { ...command.message, idempotencyKey },
+        }).success,
+      ).toBe(false);
+    }
+    expect(
+      workerCommandSchema.safeParse({ ...command, message: undefined }).success,
     ).toBe(false);
   });
 
