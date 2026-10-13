@@ -81,7 +81,8 @@ three skipped, and the same baseline settings-search failure (#2091).
 
 The default native build failed on the host's unaccepted Xcode license. The
 Command Line Tools build (`DEVELOPER_DIR=/Library/Developer/CommandLineTools
-pnpm code:build`) succeeded. Formatting patch metadata during that build
-changed its input fingerprint; final-source verification detected the stale
-artifact and a rebuild from the final formatted inputs is in progress. No
-final-artifact verification or browser acceptance is claimed yet.
+pnpm code:build`) succeeded. A metadata-formatting fingerprint change was caught
+by verification and rebuilt from the final inputs. The final darwin-arm64 build
+is `b909e773184ac84af0c9b527ff7c78980f938feb7f90d93bb9572eecfd62885b`; `pnpm code:verify`
+passes against the current source and manifest. Patched behavior and component
+CI passed on Windows, macOS, and Linux. Browser acceptance remains milestone 3.
