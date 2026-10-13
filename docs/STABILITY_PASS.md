@@ -4,15 +4,15 @@ Started 2026-10-13 from `692f05dcd`. Each milestone uses an isolated
 `codex/` branch and worktree, a squash auto-merge PR, observed merge, and cleanup.
 Tests run independently of metadata audits. A skipped check is never a pass.
 
-| Milestone                                 | Status                 | Branch / PR                      | Evidence                                                                                            |
-| ----------------------------------------- | ---------------------- | -------------------------------- | --------------------------------------------------------------------------------------------------- |
-| 1. Lease renewal and reconnect scheduling | Validation in progress | `codex/stability-lease-recovery` | Three disconnect regressions reproduced; focused app and worker suites pass.                        |
-| 2. Shared editor lifecycle and readiness  | Not started            | —                                | Late readiness, retained frames, startup stages, and cancellation.                                  |
-| 3. Browser recovery harness               | Not started            | —                                | Actual bundled editor, isolated services, automated failure injection and usable-editor assertions. |
-| 4. Measured editor loading                | Not started            | —                                | Comparable cold/warm/recovery measurements; implement only demonstrated improvements.               |
-| 5. Worker command dispatch                | Not started            | —                                | Typed feature handlers with explicit ownership and dependencies.                                    |
-| 6. App API modularization                 | Not started            | —                                | Domain clients with compatible public exports and shared security infrastructure.                   |
-| 7. Codex runtime decomposition            | Not started            | —                                | Separate transport, turn lifecycle, subagents, normalization, and interactions incrementally.       |
+| Milestone                                 | Status        | Branch / PR                                                                                 | Evidence                                                                                            |
+| ----------------------------------------- | ------------- | ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| 1. Lease renewal and reconnect scheduling | PR validation | `codex/stability-lease-recovery` / [#2092](https://github.com/ArcaneArts/Cantrip/pull/2092) | Three disconnect regressions reproduced; focused app and worker suites pass.                        |
+| 2. Shared editor lifecycle and readiness  | Not started   | —                                                                                           | Late readiness, retained frames, startup stages, and cancellation.                                  |
+| 3. Browser recovery harness               | Not started   | —                                                                                           | Actual bundled editor, isolated services, automated failure injection and usable-editor assertions. |
+| 4. Measured editor loading                | Not started   | —                                                                                           | Comparable cold/warm/recovery measurements; implement only demonstrated improvements.               |
+| 5. Worker command dispatch                | Not started   | —                                                                                           | Typed feature handlers with explicit ownership and dependencies.                                    |
+| 6. App API modularization                 | Not started   | —                                                                                           | Domain clients with compatible public exports and shared security infrastructure.                   |
+| 7. Codex runtime decomposition            | Not started   | —                                                                                           | Separate transport, turn lifecycle, subagents, normalization, and interactions incrementally.       |
 
 ## Milestone 1
 
@@ -45,6 +45,7 @@ Validation:
 - App and worker typechecks passed.
 - Full app suite: 2,995 passed, three skipped, one existing settings-search failure.
   The same settings test fails against unmodified main (22 passed, one failed).
+  Tracked in [#2091](https://github.com/ArcaneArts/Cantrip/issues/2091) for milestone 3 baseline repair.
 - Workflow-removal audit and diff/format checks passed.
 - `pnpm check` stops at the existing decomposition budget described below.
 
