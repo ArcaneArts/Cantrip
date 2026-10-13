@@ -29,12 +29,9 @@ import {
 } from "@/lib/api";
 import { errorMessage } from "@/lib/error-message";
 import {
-  CODE_WORKBENCH_READY_TIMEOUT_MS,
   CodeWorkbenchFrameLoadTracker,
-  codeWorkbenchFrameFailure,
   codeWorkbenchStageError,
   createCodeWorkbenchFrameMount,
-  isCodeWorkbenchReadyEvent,
 } from "@/lib/code-workbench-frame";
 import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
 import {
@@ -47,6 +44,11 @@ import {
   retireAttachmentBestEffort,
   SerializedAttachmentLifecycle,
 } from "@/lib/serialized-attachment-lifecycle";
+
+import {
+  codeWorkbenchRetryDelayMs,
+  watchCodeWorkbenchReadiness,
+} from "@/lib/code-workbench-lifecycle";
 
 const MAX_RECONNECT_DELAY_MS = 15_000;
 const CODE_RUNTIME_POLL_DELAY_MS = 500;
@@ -67,7 +69,7 @@ export interface CodeHeaderState {
 }
 
 export function codeReconnectDelayMs(attempt: number): number {
-  return Math.min(MAX_RECONNECT_DELAY_MS, 1_000 * 2 ** Math.max(0, attempt));
+  return codeWorkbenchRetryDelayMs(attempt, 1_000, MAX_RECONNECT_DELAY_MS);
 }
 
 export function isCodeSessionUnavailableError(error: unknown): boolean {
@@ -369,70 +371,55 @@ export function CodeView({
 
   useLayoutEffect(() => {
     setFrameReadyNonce(null);
-    if (!frameMount || frameFailureNonce === frameMount.nonce) return;
-    if (frameFailureNonceRef.current !== frameMount.nonce) {
+  }, [frameMount]);
+
+  useLayoutEffect(() => {
+    if (!frameMount) return;
+    if (frameFailureNonceRef.current !== frameMount.nonce)
       frameFailureNonceRef.current = null;
-    }
-    let settled = false;
-    const receiveReady = (event: MessageEvent<unknown>) => {
-      if (settled || frameFailureNonceRef.current === frameMount.nonce) return;
-      const failure = codeWorkbenchFrameFailure(
-        event,
-        frameRef.current?.contentWindow ?? null,
-        frameMount,
-      );
-      if (failure) {
-        settled = true;
-        clearTimeout(timeout);
+    return watchCodeWorkbenchReadiness({
+      mount: frameMount,
+      frameWindow: () => frameRef.current?.contentWindow ?? null,
+      ready: frameReadyNonce === frameMount.nonce,
+      failed: frameFailureNonceRef.current === frameMount.nonce,
+      timeoutEnabled: active && frameFailureNonce !== frameMount.nonce,
+      onFailure: (failure) => {
         frameFailureNonceRef.current = frameMount.nonce;
         setFrameFailureNonce(frameMount.nonce);
         setFrameError(failure.message);
-        return;
-      }
-      if (
-        !isCodeWorkbenchReadyEvent(
-          event,
-          frameRef.current?.contentWindow ?? null,
-          frameMount,
-        )
-      ) {
-        return;
-      }
-      settled = true;
-      frameFailureNonceRef.current = frameMount.nonce;
-      setFrameError(null);
-      setFrameReadyNonce(frameMount.nonce);
-      logCodeEvent("info", "workbench frame confirmed", {
-        attachmentId: attachment?.attachmentId,
-        sessionId: attachment?.sessionId,
-      });
-    };
-    window.addEventListener("message", receiveReady);
-    const timeout = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      const failure = codeWorkbenchStageError(
-        "workbench",
-        "The embedded editor timed out after its endpoint loaded.",
-      );
-      setFrameFailureNonce(frameMount.nonce);
-      setFrameError(failure.message);
-      logCodeEvent("error", "workbench frame readiness failed", {
-        attachmentId: attachment?.attachmentId,
-        error: failure.message,
-        sessionId: attachment?.sessionId,
-      });
-    }, CODE_WORKBENCH_READY_TIMEOUT_MS);
-    return () => {
-      settled = true;
-      clearTimeout(timeout);
-      window.removeEventListener("message", receiveReady);
-    };
+      },
+      onReady: () => {
+        setFrameFailureNonce(null);
+        setFrameError(null);
+        setFrameReadyNonce(frameMount.nonce);
+        logCodeEvent("info", "workbench frame confirmed", {
+          attachmentId: attachment?.attachmentId,
+          sessionId: attachment?.sessionId,
+        });
+      },
+      onTimeout: (failure) => {
+        setFrameFailureNonce(frameMount.nonce);
+        setFrameError(failure.message);
+        logCodeEvent("error", "workbench frame readiness failed", {
+          attachmentId: attachment?.attachmentId,
+          error: failure.message,
+          sessionId: attachment?.sessionId,
+        });
+      },
+      onStage: (stage) =>
+        logCodeEvent("info", "workbench startup stage", {
+          stage,
+          attachmentId: attachment?.attachmentId,
+          sessionId: attachment?.sessionId,
+        }),
+    });
   }, [
+    active,
     attachment?.attachmentId,
     attachment?.sessionId,
     frameFailureNonce,
     frameMount,
+    frameReadyNonce,
   ]);
 
   useEffect(() => {
@@ -841,7 +828,9 @@ export function CodeView({
                 )}
                 <h2 className="mt-4 font-semibold">
                   {frameError
-                    ? "Cantrip Code did not render"
+                    ? frameFailureNonceRef.current === frameMount?.nonce
+                      ? "Cantrip Code could not load"
+                      : "Cantrip Code is taking longer than expected"
                     : "Starting Cantrip Code"}
                 </h2>
                 <p

@@ -1,36 +1,61 @@
 --- a/src/vs/workbench/browser/workbench.ts
 +++ b/src/vs/workbench/browser/workbench.ts
-@@ -62,6 +62,25 @@
- 	 * Whether to reset the workbench parts layout on startup.
- 	 */
+@@ -64,6 +64,42 @@
  	resetLayout?: boolean;
-+}
-+
+ }
+ 
 +const CANTRIP_FRAME_NONCE_PATTERN = /^[A-Za-z0-9_-]{16,128}$/;
++let cantripWorkbenchStage: 'bootstrapping' | 'restoring' | 'restored' = 'bootstrapping';
 +
-+function signalCantripWorkbenchReady(): void {
-+	if (mainWindow.parent === mainWindow || !mainWindow.document.querySelector('.part.editor')) {
++function signalCantripWorkbenchState(targetOrigin = '*'): void {
++	if (mainWindow.parent === mainWindow) {
 +		return;
 +	}
-+
 +	const nonce = new URL(mainWindow.location.href).searchParams.get('cantripFrameNonce');
 +	if (!nonce || !CANTRIP_FRAME_NONCE_PATTERN.test(nonce)) {
 +		return;
 +	}
++	mainWindow.parent.postMessage({ type: 'cantrip-code.workbench-stage', version: 1, nonce, stage: cantripWorkbenchStage }, targetOrigin);
++	if (cantripWorkbenchStage === 'restored' && mainWindow.document.querySelector('.part.editor')) {
++		mainWindow.parent.postMessage({ type: 'cantrip-code.workbench-ready', version: 1, nonce }, targetOrigin);
++	}
++}
 +
-+	mainWindow.parent.postMessage({
-+		type: 'cantrip-code.workbench-ready',
-+		version: 1,
-+		nonce,
-+	}, '*');
- }
- 
++function setCantripWorkbenchStage(stage: typeof cantripWorkbenchStage): void {
++	cantripWorkbenchStage = stage;
++	signalCantripWorkbenchState();
++}
++
++mainWindow.addEventListener('message', event => {
++	if (event.source !== mainWindow.parent || mainWindow.parent === mainWindow) {
++		return;
++	}
++	const message = event.data;
++	const nonce = new URL(mainWindow.location.href).searchParams.get('cantripFrameNonce');
++	if (!nonce || !CANTRIP_FRAME_NONCE_PATTERN.test(nonce) || !message || typeof message !== 'object' ||
++		message.type !== 'cantrip-code.workbench-query' || message.version !== 1 || message.nonce !== nonce) {
++		return;
++	}
++	signalCantripWorkbenchState(event.origin === 'null' ? '*' : event.origin);
++});
++signalCantripWorkbenchState();
++
  export class Workbench extends Layout {
-@@ -450,6 +469,7 @@
+ 
+ 	private readonly _onWillShutdown = this._register(new Emitter<WillShutdownEvent>());
+@@ -410,6 +446,7 @@
+ 	}
+ 
+ 	private restore(lifecycleService: ILifecycleService): void {
++		setCantripWorkbenchStage('restoring');
+ 
+ 		// Ask each part to restore
+ 		try {
+@@ -450,6 +487,7 @@
  
  				// Set lifecycle phase to `Restored`
  				lifecycleService.phase = LifecyclePhase.Restored;
-+				signalCantripWorkbenchReady();
++				setCantripWorkbenchStage('restored');
  
  				// Set lifecycle phase to `Eventually` after a short delay and when idle (min 2.5sec, max 5sec)
  				const eventuallyPhaseScheduler = this._register(new RunOnceScheduler(() => {
