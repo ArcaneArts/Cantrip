@@ -945,9 +945,16 @@ export async function createWorkerLinkSession(
   );
 }
 
-export async function renewWorkerLinkSession(sessionId: string) {
+export async function renewWorkerLinkSession(
+  sessionId: string,
+  signal?: AbortSignal,
+) {
   return workerLinkSessionSchema.parse(
-    await post(`/api/worker-links/${encodeURIComponent(sessionId)}/renew`, {}),
+    await request(`/api/worker-links/${encodeURIComponent(sessionId)}/renew`, {
+      method: "POST",
+      body: "{}",
+      signal,
+    }),
   );
 }
 
@@ -1088,11 +1095,15 @@ export async function createTunnelWorkerLinkGrant(
   );
 }
 
-export async function renewWorkerLinkGrant(sessionId: string, grantId: string) {
+export async function renewWorkerLinkGrant(
+  sessionId: string,
+  grantId: string,
+  signal?: AbortSignal,
+) {
   return workerLinkLeaseSchema.parse(
-    await post(
+    await request(
       `/api/worker-links/${encodeURIComponent(sessionId)}/grants/${encodeURIComponent(grantId)}/renew`,
-      {},
+      { method: "POST", body: "{}", signal },
     ),
   );
 }

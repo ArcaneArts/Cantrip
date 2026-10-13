@@ -49,11 +49,13 @@ import {
 } from "@/lib/worker-link-carriers";
 import { openWorkerLinkPeerCarrier } from "@/lib/worker-link-peer-carrier";
 
+import { LeaseRenewal, jitterRetryDelay } from "./lease-renewal";
+
 const EMPTY_PAYLOAD = new Uint8Array();
 const INITIAL_CREDIT_BYTES = 256 * 1_024;
 const OPEN_TIMEOUT_MS = 10_000;
+
 const RENEW_AHEAD_MS = 30_000;
-const MIN_RENEW_DELAY_MS = 1_000;
 const MAX_RECONNECT_ATTEMPTS = 4;
 const RECONNECT_DELAYS_MS = [0, 250, 1_000, 3_000] as const;
 const SCHEDULER_MAX_FRAMES_PER_LANE = 128;
@@ -217,7 +219,10 @@ export interface WorkerLinkManagerDependencies {
     routeGeneration: number,
     samples: WorkerLinkTelemetrySample[],
   ): Promise<void>;
-  renewSession(sessionId: string): Promise<WorkerLinkSession>;
+  renewSession(
+    sessionId: string,
+    signal?: AbortSignal,
+  ): Promise<WorkerLinkSession>;
   setRoute(
     sessionId: string,
     route: WorkerLinkRoute,
@@ -760,7 +765,7 @@ class ClientWorkerLink implements WorkerLink {
     WorkerLinkRouteStatus["fallbackReason"]
   >();
   readonly #routeListeners = new Set<(status: WorkerLinkRouteStatus) => void>();
-  #renewTimer: ReturnType<typeof setTimeout> | null = null;
+  #leaseRenewal: LeaseRenewal<WorkerLinkSession> | null = null;
   #routeStatus: WorkerLinkRouteStatus;
   #selectedRoute: WorkerLinkRoute | null = null;
   #session: WorkerLinkSession;
@@ -986,8 +991,8 @@ class ClientWorkerLink implements WorkerLink {
     if (this.#closed) return;
     this.#closed = true;
     this.#statusEnabled = false;
-    if (this.#renewTimer) clearTimeout(this.#renewTimer);
-    this.#renewTimer = null;
+    this.#leaseRenewal?.stop();
+    this.#leaseRenewal = null;
     this.#recordTelemetry("session-closed", 1, code);
     this.#detachAllCarriers(code);
     await this.#telemetry.close();
@@ -1181,7 +1186,9 @@ class ClientWorkerLink implements WorkerLink {
         attempt += 1
       ) {
         await delay(
-          RECONNECT_DELAYS_MS[attempt] ?? RECONNECT_DELAYS_MS.at(-1)!,
+          jitterRetryDelay(
+            RECONNECT_DELAYS_MS[attempt] ?? RECONNECT_DELAYS_MS.at(-1)!,
+          ),
         );
         if (this.#closed) return;
         this.#recordTelemetry(
@@ -1215,11 +1222,19 @@ class ClientWorkerLink implements WorkerLink {
   }
 
   async #replaceSession(): Promise<void> {
+    this.#leaseRenewal?.stop();
+    this.#leaseRenewal = null;
     const previousSessionId = this.#session.sessionId;
     const replacement = await this.dependencies.createSession(
       this.workerId,
       this.clientInstanceId,
     );
+    if (this.#closed) {
+      await this.dependencies
+        .deleteSession(replacement.sessionId)
+        .catch(() => undefined);
+      throw new Error("WorkerLink was retired while replacing its authority.");
+    }
     validateSessionAuthority(
       replacement,
       this.workerId,
@@ -1445,63 +1460,59 @@ class ClientWorkerLink implements WorkerLink {
 
   #scheduleRenewal(): void {
     if (this.#closed) return;
-    if (this.#renewTimer) clearTimeout(this.#renewTimer);
-    const delayMs = Math.max(
-      MIN_RENEW_DELAY_MS,
-      Date.parse(this.#session.lease.expiresAt) -
-        this.dependencies.now() -
-        RENEW_AHEAD_MS,
-    );
-    this.#renewTimer = setTimeout(() => {
-      this.#renewTimer = null;
-      const expectedSession = this.#session;
-      void this.dependencies
-        .renewSession(expectedSession.sessionId)
-        .then((session) => {
-          if (this.#closed) return;
-          validateSessionAuthority(
-            session,
-            this.workerId,
-            this.clientInstanceId,
-            this.clientIdentity,
-          );
-          if (
-            session.sessionId !== expectedSession.sessionId ||
-            session.routeGeneration < expectedSession.routeGeneration ||
-            JSON.stringify(session.identity) !==
-              JSON.stringify(expectedSession.identity)
-          ) {
-            this.#detachAllCarriers("route-replaced");
-            void this.#recover(true);
-            return;
-          }
-          if (session.routeGeneration !== expectedSession.routeGeneration) {
-            this.#detachAllCarriers("route-replaced");
-            this.#routeFailures.clear();
-            this.#session = session;
-            this.#routeStatus = {
-              preferredRoute: session.preferredRoute,
-              effectiveRoute: session.preferredRoute,
-              routeGeneration: session.routeGeneration,
-              latencyMs: null,
-              fallbackReason: null,
-              changedAt: new Date(this.dependencies.now()).toISOString(),
-            };
-            this.#markTransition("authority-replaced");
-            this.#transition("reconnecting");
-            this.#scheduleRenewal();
-            void this.#recover();
-            return;
-          }
+    this.#leaseRenewal?.stop();
+    const expectedSession = this.#session;
+    this.#leaseRenewal = new LeaseRenewal({
+      lease: expectedSession.lease,
+      now: this.dependencies.now,
+      renewAheadMs: RENEW_AHEAD_MS,
+      renew: (signal) =>
+        this.dependencies.renewSession(expectedSession.sessionId, signal),
+      accept: (session) => {
+        validateSessionAuthority(
+          session,
+          this.workerId,
+          this.clientInstanceId,
+          this.clientIdentity,
+        );
+        if (
+          session.sessionId !== this.#session.sessionId ||
+          JSON.stringify(session.identity) !==
+            JSON.stringify(this.#session.identity)
+        ) {
+          throw new Error("WorkerLink renewal changed its authority.");
+        }
+        if (session.routeGeneration < this.#session.routeGeneration)
+          return this.#session.lease;
+        if (session.routeGeneration !== this.#session.routeGeneration) {
+          this.#detachAllCarriers("route-replaced");
+          this.#routeFailures.clear();
+          this.#session = session;
+          this.#routeStatus = {
+            preferredRoute: session.preferredRoute,
+            effectiveRoute: session.preferredRoute,
+            routeGeneration: session.routeGeneration,
+            latencyMs: null,
+            fallbackReason: null,
+            changedAt: new Date(this.dependencies.now()).toISOString(),
+          };
+          this.#markTransition("authority-replaced");
+          this.#transition("reconnecting");
+          void this.#recover();
+        } else {
           this.#session = session;
           this.#emitStatus();
-          this.#scheduleRenewal();
-        })
-        .catch(() => {
-          this.#detachAllCarriers("endpoint-disconnected");
-          void this.#recover();
-        });
-    }, delayMs);
+        }
+        return session.lease;
+      },
+      onEnded: (reason) => {
+        this.#detachAllCarriers(
+          reason === "expired" ? "lifetime-expired" : "revoked",
+        );
+        void this.#recover(true);
+      },
+    });
+    this.#leaseRenewal.start();
   }
 
   #transition(
@@ -2258,13 +2269,17 @@ const defaultDependencies: WorkerLinkManagerDependencies = {
       activateCapability: activateWorkerLinkDirectTicket,
       createTicket: createWorkerLinkDirectTicket,
       createWebSocket: (url) => new WebSocket(url),
-      recordActivity: (capabilityId) =>
-        recordDirectAttachmentTelemetry(capabilityId, {
-          bytesFromLocal: 0,
-          bytesToLocal: 0,
-          connectionsClosed: 0,
-          connectionsOpened: 0,
-        }),
+      recordActivity: (capabilityId, signal) =>
+        recordDirectAttachmentTelemetry(
+          capabilityId,
+          {
+            bytesFromLocal: 0,
+            bytesToLocal: 0,
+            connectionsClosed: 0,
+            connectionsOpened: 0,
+          },
+          { signal },
+        ),
       releaseCapability: deleteDirectAttachment,
       session,
     }),

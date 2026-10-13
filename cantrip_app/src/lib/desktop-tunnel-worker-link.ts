@@ -11,6 +11,8 @@ import {
   type TunnelWorkerLinkConnection,
 } from "@/lib/tunnel-worker-link";
 
+import { jitterRetryDelay } from "./lease-renewal";
+
 const BRIDGE_SEND_HIGH_WATER_BYTES = 8 * 1_024 * 1_024;
 const BRIDGE_SEND_TIMEOUT_MS = 10_000;
 const BRIDGE_HANDSHAKE_TIMEOUT_MS = 10_000;
@@ -342,7 +344,7 @@ class DesktopTunnelWorkerLinkController {
 
   #scheduleReconnect(): void {
     if (this.#stopped || this.#reconnectTimer) return;
-    const delay = this.#reconnectDelayMs;
+    const delay = jitterRetryDelay(this.#reconnectDelayMs);
     this.#reconnectDelayMs = Math.min(
       this.#reconnectDelayMs * 2,
       MAX_RECONNECT_DELAY_MS,
