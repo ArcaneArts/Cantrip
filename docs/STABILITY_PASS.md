@@ -65,3 +65,23 @@ actionable, and an explicit ledger entry before unaffected work continues.
 ## Milestone 2
 
 Working from merged milestone 1 (`6bf1c7b7d`). CodeView readiness and hidden-frame regressions are being reproduced before extracting common frame lifecycle behavior. Existing serialized attachment retirement and generation fencing remain shared.
+
+The CodeView component regressions reproduced late-ready rejection and a hidden
+frame consuming its readiness timeout (two failed, one passed before the fix).
+The shared watcher now keeps a timed-out mount recoverable, validates exact
+frame identity, bounds replay queries, and cancels all listeners/timers on
+retirement. Code/Explorer share retry-delay calculation and continue using the
+existing serialized attachment lifecycle. The pinned editor patch reports
+bootstrap/restoring/restored stages and replays version-one readiness on a
+parent query.
+
+Current validation: 107 editor/ownership tests and all 18 Code build-script
+tests pass; app typecheck and all 11 patch checks pass. Full app: 3,005 passed,
+three skipped, and the same baseline settings-search failure (#2091).
+
+The default native build failed on the host's unaccepted Xcode license. The
+Command Line Tools build (`DEVELOPER_DIR=/Library/Developer/CommandLineTools
+pnpm code:build`) succeeded. Formatting patch metadata during that build
+changed its input fingerprint; final-source verification detected the stale
+artifact and a rebuild from the final formatted inputs is in progress. No
+final-artifact verification or browser acceptance is claimed yet.
