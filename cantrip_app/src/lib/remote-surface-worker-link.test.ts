@@ -403,6 +403,36 @@ describe("Remote Surface WorkerLink client", () => {
     fixture.client.close();
   });
 
+  it("preserves both healthy channels through a transient grant renewal failure", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+    const fixture = setup();
+    fixture.dependencies.now = Date.now;
+    vi.mocked(fixture.dependencies.renewGrant)
+      .mockRejectedValueOnce(
+        Object.assign(new Error("unavailable"), { status: 503 }),
+      )
+      .mockImplementation(async () => ({
+        ...fixture.grants[0]!.binding.lease,
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      }));
+    fixture.client.start();
+    await vi.waitFor(() => expect(fixture.readyRoutes).toHaveLength(1));
+    await vi.advanceTimersByTimeAsync(40_000);
+    expect(fixture.release).not.toHaveBeenCalled();
+    expect(fixture.dependencies.createGrant).toHaveBeenCalledOnce();
+    expect(
+      fixture.streamSets[0]!.interactive.closeListeners.size,
+    ).toBeGreaterThan(0);
+    expect(fixture.streamSets[0]!.realtime.closeListeners.size).toBeGreaterThan(
+      0,
+    );
+    await vi.advanceTimersByTimeAsync(250);
+    expect(fixture.dependencies.renewGrant).toHaveBeenCalledTimes(2);
+    expect(fixture.release).not.toHaveBeenCalled();
+    fixture.client.close();
+  });
+
   it("renews the exact attachment grant before its lease expires", async () => {
     vi.useFakeTimers();
     const fixture = setup();
@@ -412,6 +442,7 @@ describe("Remote Surface WorkerLink client", () => {
     expect(fixture.dependencies.renewGrant).toHaveBeenCalledWith(
       fixture.grants[0]!.binding.sessionId,
       fixture.grants[0]!.binding.grantId,
+      expect.any(AbortSignal),
     );
     fixture.client.close();
   });

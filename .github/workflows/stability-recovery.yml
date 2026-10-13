@@ -1,0 +1,46 @@
+name: Stability recovery
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/stability-recovery.yml"
+      - "cantrip_app/src/lib/lease-renewal*"
+      - "cantrip_app/src/lib/worker-link*"
+      - "cantrip_app/src/lib/terminal-worker-link*"
+      - "cantrip_app/src/lib/remote-surface-worker-link*"
+      - "cantrip_app/src/lib/browser-code-tunnel*"
+      - "cantrip_app/src/lib/desktop-tunnel-worker-link*"
+      - "cantrip_worker/src/transport.ts"
+      - "cantrip_worker/test/tunnel-data-transport.test.ts"
+      - "cantrip_worker/test/project-share-transport.test.ts"
+      - "pnpm-lock.yaml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stability-recovery-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  recovery:
+    name: Recovery (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
+      - name: App authorization and transport recovery
+        run: pnpm --filter @cantrip/app exec vitest run src/lib/lease-renewal.test.ts src/lib/worker-link.test.ts src/lib/terminal-worker-link.test.ts src/lib/remote-surface-worker-link.test.ts src/lib/worker-link-carriers.test.ts src/lib/browser-code-tunnel.test.ts src/lib/desktop-tunnel-worker-link.test.ts --maxWorkers=2
+      - name: Worker reconnect and authentication
+        if: ${{ !cancelled() }}
+        run: pnpm --filter @cantrip/worker exec vitest run test/tunnel-data-transport.test.ts test/project-share-transport.test.ts --maxWorkers=2

@@ -21,12 +21,12 @@ import {
   type WorkerLinkStream,
 } from "@/lib/worker-link";
 
+import { LeaseRenewal } from "./lease-renewal";
+
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const MAX_PENDING_FRAMES = 256;
 const MAX_PENDING_BYTES = 4 * 1_024 * 1_024;
-const RENEW_AHEAD_MS = 20_000;
-const MIN_RENEW_DELAY_MS = 1_000;
 
 export interface TerminalWorkerLinkConnection {
   readonly route: WorkerLinkRoute;
@@ -51,7 +51,11 @@ export interface TerminalWorkerLinkDependencies {
   ): Promise<WorkerLinkResourceGrant>;
   manager: Pick<WorkerLinkManager, "acquire">;
   now(): number;
-  renewGrant(sessionId: string, grantId: string): Promise<WorkerLinkLease>;
+  renewGrant(
+    sessionId: string,
+    grantId: string,
+    signal?: AbortSignal,
+  ): Promise<WorkerLinkLease>;
   revokeGrant(sessionId: string, grantId: string): Promise<void>;
 }
 
@@ -105,7 +109,7 @@ class ActiveTerminalWorkerLink implements TerminalWorkerLinkConnection {
   readonly #inbound: Uint8Array[] = [];
   #outboundBytes = 0;
   readonly #outbound: Uint8Array[] = [];
-  #renewTimer: ReturnType<typeof setTimeout> | null = null;
+  #leaseRenewal: LeaseRenewal<WorkerLinkLease> | null = null;
   readonly #route: WorkerLinkRoute;
   readonly #sessionId: string;
   readonly #unsubscribe: Array<() => void>;
@@ -234,19 +238,25 @@ class ActiveTerminalWorkerLink implements TerminalWorkerLinkConnection {
   }
 
   #scheduleRenewal(lease: WorkerLinkLease): void {
-    if (this.#closed || this.#remoteClosed) return;
-    if (this.#renewTimer) clearTimeout(this.#renewTimer);
-    const delay = Math.max(
-      MIN_RENEW_DELAY_MS,
-      Date.parse(lease.expiresAt) - this.dependencies.now() - RENEW_AHEAD_MS,
-    );
-    this.#renewTimer = setTimeout(() => {
-      this.#renewTimer = null;
-      void this.dependencies
-        .renewGrant(this.#sessionId, this.grant.binding.grantId)
-        .then((renewed) => this.#scheduleRenewal(renewed))
-        .catch(() => this.#retire("revoked", true));
-    }, delay);
+    this.#leaseRenewal?.stop();
+    this.#leaseRenewal = new LeaseRenewal({
+      lease,
+      now: this.dependencies.now,
+      renewAheadMs: 20_000,
+      renew: (signal) =>
+        this.dependencies.renewGrant(
+          this.#sessionId,
+          this.grant.binding.grantId,
+          signal,
+        ),
+      accept: (renewed) => renewed,
+      onEnded: (reason) =>
+        this.#retire(
+          reason === "expired" ? "lifetime-expired" : "revoked",
+          true,
+        ),
+    });
+    this.#leaseRenewal.start();
   }
 
   #onStreamClose(code: WorkerLinkChannelCloseCode): void {
@@ -259,8 +269,8 @@ class ActiveTerminalWorkerLink implements TerminalWorkerLinkConnection {
     // Stop sending, but deliver already accepted frames before notifying the
     // view that the transport closed. Errors and revocation still fail closed.
     this.#remoteClosed = true;
-    if (this.#renewTimer) clearTimeout(this.#renewTimer);
-    this.#renewTimer = null;
+    this.#leaseRenewal?.stop();
+    this.#leaseRenewal = null;
     if (!this.#drainingInbound && this.#inbound.length === 0) {
       this.#retire(code, false);
     } else {
@@ -271,8 +281,8 @@ class ActiveTerminalWorkerLink implements TerminalWorkerLinkConnection {
   #retire(code: WorkerLinkChannelCloseCode, closeStream: boolean): void {
     if (this.#closed) return;
     this.#closed = true;
-    if (this.#renewTimer) clearTimeout(this.#renewTimer);
-    this.#renewTimer = null;
+    this.#leaseRenewal?.stop();
+    this.#leaseRenewal = null;
     for (const unsubscribe of this.#unsubscribe) unsubscribe();
     this.#inbound.length = 0;
     this.#outbound.length = 0;

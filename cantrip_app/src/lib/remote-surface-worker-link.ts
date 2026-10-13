@@ -34,12 +34,12 @@ import {
   type WorkerLinkStream,
 } from "@/lib/worker-link";
 
+import { LeaseRenewal, jitterRetryDelay } from "./lease-renewal";
+
 const MAX_PENDING_OUTBOUND_FRAMES = 128;
 const MAX_PENDING_OUTBOUND_BYTES = 4 * 1_024 * 1_024;
 const MAX_PENDING_INBOUND_FRAMES = 128;
 const MAX_PENDING_INBOUND_BYTES = 12 * 1_024 * 1_024;
-const RENEW_AHEAD_MS = 20_000;
-const MIN_RENEW_DELAY_MS = 1_000;
 
 export type RemoteSurfaceWorkerLinkConnectionState =
   "connecting" | "ready" | "reconnecting";
@@ -99,7 +99,11 @@ export interface RemoteSurfaceWorkerLinkDependencies {
     context: Omit<RemoteSurfaceStreamContext, "serverId">;
     payload: Uint8Array;
   }): Promise<Uint8Array>;
-  renewGrant(sessionId: string, grantId: string): Promise<WorkerLinkLease>;
+  renewGrant(
+    sessionId: string,
+    grantId: string,
+    signal?: AbortSignal,
+  ): Promise<WorkerLinkLease>;
   revokeGrant(sessionId: string, grantId: string): Promise<void>;
 }
 
@@ -114,7 +118,7 @@ const defaultDependencies: RemoteSurfaceWorkerLinkDependencies = {
 };
 
 export function remoteSurfaceWorkerLinkReconnectDelay(attempt: number): number {
-  return Math.min(500 * 2 ** Math.max(0, attempt), 5_000);
+  return jitterRetryDelay(Math.min(500 * 2 ** Math.max(0, attempt), 5_000));
 }
 
 export function remoteSurfaceWorkerLinkRouteLabel(
@@ -364,7 +368,7 @@ class ActiveRemoteSurfaceWorkerLink {
   readonly #outbound: PendingOutboundFrame[] = [];
   #outboundBytes = 0;
   readonly #outboundSequences = new Map<RemoteSurfaceChannel, number>();
-  #renewTimer: ReturnType<typeof setTimeout> | null = null;
+  #leaseRenewal: LeaseRenewal<WorkerLinkLease> | null = null;
   readonly #unsubscribers: Array<() => void>;
   readonly routes: RemoteSurfaceWorkerLinkRoutes;
 
@@ -608,19 +612,25 @@ class ActiveRemoteSurfaceWorkerLink {
   }
 
   #scheduleRenewal(lease: WorkerLinkLease): void {
-    if (this.#closed) return;
-    if (this.#renewTimer) clearTimeout(this.#renewTimer);
-    const delay = Math.max(
-      MIN_RENEW_DELAY_MS,
-      Date.parse(lease.expiresAt) - this.dependencies.now() - RENEW_AHEAD_MS,
-    );
-    this.#renewTimer = setTimeout(() => {
-      this.#renewTimer = null;
-      void this.dependencies
-        .renewGrant(this.grant.binding.sessionId, this.grant.binding.grantId)
-        .then((renewed) => this.#scheduleRenewal(renewed))
-        .catch(() => this.#retire("revoked", true));
-    }, delay);
+    this.#leaseRenewal?.stop();
+    this.#leaseRenewal = new LeaseRenewal({
+      lease,
+      now: this.dependencies.now,
+      renewAheadMs: 20_000,
+      renew: (signal) =>
+        this.dependencies.renewGrant(
+          this.grant.binding.sessionId,
+          this.grant.binding.grantId,
+          signal,
+        ),
+      accept: (renewed) => renewed,
+      onEnded: (reason) =>
+        this.#retire(
+          reason === "expired" ? "lifetime-expired" : "revoked",
+          true,
+        ),
+    });
+    this.#leaseRenewal.start();
   }
 
   #retire(
@@ -630,8 +640,8 @@ class ActiveRemoteSurfaceWorkerLink {
   ): void {
     if (this.#closed) return;
     this.#closed = true;
-    if (this.#renewTimer) clearTimeout(this.#renewTimer);
-    this.#renewTimer = null;
+    this.#leaseRenewal?.stop();
+    this.#leaseRenewal = null;
     for (const unsubscribe of this.#unsubscribers) unsubscribe();
     this.#inboundAssemblers.interactive.reset();
     this.#inboundAssemblers.realtime.reset();

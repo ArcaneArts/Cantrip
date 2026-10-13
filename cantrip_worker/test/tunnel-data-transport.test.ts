@@ -21,7 +21,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import WebSocket, { WebSocketServer } from "ws";
 
 import type { WorkerConfig } from "../src/config.js";
-import { WorkerConnection } from "../src/transport.js";
+import { WorkerConnection, workerReconnectDelayMs } from "../src/transport.js";
+
+it("bounds reconnect jitter and exponential backoff without delaying the first attempt", () => {
+  expect(workerReconnectDelayMs(1_000, 1, () => 0)).toBe(750);
+  expect(workerReconnectDelayMs(1_000, 1, () => 1)).toBe(1_000);
+  expect(workerReconnectDelayMs(1_000, 2, () => 1)).toBe(2_000);
+  expect(workerReconnectDelayMs(1_000, 100, () => 1)).toBe(15_000);
+});
 
 const closers: Array<() => Promise<void> | void> = [];
 
