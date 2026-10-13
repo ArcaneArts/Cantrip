@@ -4,15 +4,15 @@ Started 2026-10-13 from `692f05dcd`. Each milestone uses an isolated
 `codex/` branch and worktree, a squash auto-merge PR, observed merge, and cleanup.
 Tests run independently of metadata audits. A skipped check is never a pass.
 
-| Milestone                                 | Status        | Branch / PR                                                                                 | Evidence                                                                                            |
-| ----------------------------------------- | ------------- | ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| 1. Lease renewal and reconnect scheduling | PR validation | `codex/stability-lease-recovery` / [#2092](https://github.com/ArcaneArts/Cantrip/pull/2092) | Three disconnect regressions reproduced; focused app and worker suites pass.                        |
-| 2. Shared editor lifecycle and readiness  | Not started   | —                                                                                           | Late readiness, retained frames, startup stages, and cancellation.                                  |
-| 3. Browser recovery harness               | Not started   | —                                                                                           | Actual bundled editor, isolated services, automated failure injection and usable-editor assertions. |
-| 4. Measured editor loading                | Not started   | —                                                                                           | Comparable cold/warm/recovery measurements; implement only demonstrated improvements.               |
-| 5. Worker command dispatch                | Not started   | —                                                                                           | Typed feature handlers with explicit ownership and dependencies.                                    |
-| 6. App API modularization                 | Not started   | —                                                                                           | Domain clients with compatible public exports and shared security infrastructure.                   |
-| 7. Codex runtime decomposition            | Not started   | —                                                                                           | Separate transport, turn lifecycle, subagents, normalization, and interactions incrementally.       |
+| Milestone                                 | Status      | Branch / PR                                                                                 | Evidence                                                                                            |
+| ----------------------------------------- | ----------- | ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| 1. Lease renewal and reconnect scheduling | Merged      | `codex/stability-lease-recovery` / [#2092](https://github.com/ArcaneArts/Cantrip/pull/2092) | Three regressions fixed; 135 app + 25 worker tests pass; Windows/macOS/Linux CI passed.             |
+| 2. Shared editor lifecycle and readiness  | Not started | —                                                                                           | Late readiness, retained frames, startup stages, and cancellation.                                  |
+| 3. Browser recovery harness               | Not started | —                                                                                           | Actual bundled editor, isolated services, automated failure injection and usable-editor assertions. |
+| 4. Measured editor loading                | Not started | —                                                                                           | Comparable cold/warm/recovery measurements; implement only demonstrated improvements.               |
+| 5. Worker command dispatch                | Not started | —                                                                                           | Typed feature handlers with explicit ownership and dependencies.                                    |
+| 6. App API modularization                 | Not started | —                                                                                           | Domain clients with compatible public exports and shared security infrastructure.                   |
+| 7. Codex runtime decomposition            | Not started | —                                                                                           | Separate transport, turn lifecycle, subagents, normalization, and interactions incrementally.       |
 
 ## Milestone 1
 
@@ -61,3 +61,28 @@ decomposition budget. This does not suppress focused behavioral tests.
 No milestone is currently blocked or skipped. Concrete blockers receive bounded
 resolution attempts, an evidence-backed tracker issue when independently
 actionable, and an explicit ledger entry before unaffected work continues.
+
+## Milestone 2
+
+Working from merged milestone 1 (`6bf1c7b7d`). CodeView readiness and hidden-frame regressions are being reproduced before extracting common frame lifecycle behavior. Existing serialized attachment retirement and generation fencing remain shared.
+
+The CodeView component regressions reproduced late-ready rejection and a hidden
+frame consuming its readiness timeout (two failed, one passed before the fix).
+The shared watcher now keeps a timed-out mount recoverable, validates exact
+frame identity, bounds replay queries, and cancels all listeners/timers on
+retirement. Code/Explorer share retry-delay calculation and continue using the
+existing serialized attachment lifecycle. The pinned editor patch reports
+bootstrap/restoring/restored stages and replays version-one readiness on a
+parent query.
+
+Current validation: 107 editor/ownership tests and all 18 Code build-script
+tests pass; app typecheck and all 11 patch checks pass. Full app: 3,005 passed,
+three skipped, and the same baseline settings-search failure (#2091).
+
+The default native build failed on the host's unaccepted Xcode license. The
+Command Line Tools build (`DEVELOPER_DIR=/Library/Developer/CommandLineTools
+pnpm code:build`) succeeded. A metadata-formatting fingerprint change was caught
+by verification and rebuilt from the final inputs. The final darwin-arm64 build
+is `b909e773184ac84af0c9b527ff7c78980f938feb7f90d93bb9572eecfd62885b`; `pnpm code:verify`
+passes against the current source and manifest. Patched behavior and component
+CI passed on Windows, macOS, and Linux. Browser acceptance remains milestone 3.

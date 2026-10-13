@@ -836,6 +836,16 @@ pin handoff; only the existing path-level pin indicator changes. A whole-tree
 loading replacement remains reserved for genuine initial Explorer or directory
 loading.
 
+Code tabs and Explorer use the same frame-readiness watcher and retry-delay
+calculation, alongside the existing serialized attachment lifecycle. The
+readiness deadline applies only to visible frames. Its timeout remains
+advisory: an exact, authorized late ready message can reveal the retained
+workbench without replacing its iframe or attachment. An actual document
+failure remains terminal for that mount. Bounded nonce-correlated queries can
+replay a missed version-one ready notification; additive bootstrap, restoring,
+and restored stages appear in correlated logs. Every received message still
+requires the current frame source, origin, version, and nonce.
+
 The workbench bridge carries a generation and uses bounded ping/ack liveness.
 A stale bridge reconnects beneath the retained profile, session, attachment,
 route, and iframe when those owners are still valid. File-open, presentation,

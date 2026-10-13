@@ -26,12 +26,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { bindBrowserCodeAttachmentFrame } from "@/lib/browser-code-tunnel";
 import {
-  CODE_WORKBENCH_READY_TIMEOUT_MS,
   CodeWorkbenchFrameLoadTracker,
-  codeWorkbenchFrameFailure,
   codeWorkbenchStageError,
   createCodeWorkbenchFrameMount,
-  isCodeWorkbenchReadyEvent,
 } from "@/lib/code-workbench-frame";
 import {
   CantripApiError,
@@ -66,6 +63,11 @@ import {
   SerializedAttachmentLifecycle,
 } from "@/lib/serialized-attachment-lifecycle";
 
+import {
+  codeWorkbenchRetryDelayMs,
+  watchCodeWorkbenchReadiness,
+} from "@/lib/code-workbench-lifecycle";
+
 const THEME_UPDATE_RETRY_DELAY_MS = 500;
 const SHARED_SESSION_RENEWAL_MAX_DELAY_MS = 5 * 60_000;
 const SHARED_SESSION_RENEWAL_MIN_DELAY_MS = 30_000;
@@ -81,9 +83,10 @@ export const EXPLORER_CODE_LOADING_COVER_CLASS_NAME =
   "absolute inset-0 grid place-items-center p-6";
 
 export function explorerCodeEditorRetryDelayMs(attempt: number): number {
-  return Math.min(
+  return codeWorkbenchRetryDelayMs(
+    attempt,
+    EXPLORER_CODE_RETRY_BASE_DELAY_MS,
     EXPLORER_CODE_RETRY_MAX_DELAY_MS,
-    EXPLORER_CODE_RETRY_BASE_DELAY_MS * 2 ** Math.max(0, attempt),
   );
 }
 
@@ -1346,20 +1349,15 @@ export function ExplorerCodeEditor({
 
   useLayoutEffect(() => {
     if (!frameMount) return;
-    if (frameFailureNonceRef.current !== frameMount.nonce) {
+    if (frameFailureNonceRef.current !== frameMount.nonce)
       frameFailureNonceRef.current = null;
-    }
-    let settled = frameReadyNonce === frameMount.nonce;
-    const receiveReady = (event: MessageEvent<unknown>) => {
-      if (settled || frameFailureNonceRef.current === frameMount.nonce) return;
-      const failure = codeWorkbenchFrameFailure(
-        event,
-        frameRef.current?.contentWindow ?? null,
-        frameMount,
-      );
-      if (failure) {
-        settled = true;
-        if (timeout) clearTimeout(timeout);
+    return watchCodeWorkbenchReadiness({
+      mount: frameMount,
+      frameWindow: () => frameRef.current?.contentWindow ?? null,
+      ready: frameReadyNonce === frameMount.nonce,
+      failed: frameFailureNonceRef.current === frameMount.nonce,
+      timeoutEnabled: active && frameFailureNonce !== frameMount.nonce,
+      onFailure: (failure) => {
         frameFailureNonceRef.current = frameMount.nonce;
         if (frameDocumentTimingRef.current?.nonce === frameMount.nonce) {
           frameDocumentTimingRef.current.timing.fail(failure, {
@@ -1375,71 +1373,50 @@ export function ExplorerCodeEditor({
         setFrameFailureNonce(frameMount.nonce);
         setError(failure.message);
         scheduleFrameRetry(bindingKey, frameMount.nonce);
-        return;
-      }
-      if (
-        !isCodeWorkbenchReadyEvent(
-          event,
-          frameRef.current?.contentWindow ?? null,
-          frameMount,
-        )
-      ) {
-        return;
-      }
-      settled = true;
-      frameFailureNonceRef.current = frameMount.nonce;
-      lastReadyAttachmentIdRef.current =
-        preferredAttachmentRef.current?.attachment.attachmentId ?? null;
-      frameRetryCountRef.current = 0;
-      frameRetryPendingRef.current = false;
-      if (frameRetryTimerRef.current) {
-        clearTimeout(frameRetryTimerRef.current);
-        frameRetryTimerRef.current = null;
-      }
-      setFrameFailureNonce(null);
-      setError(null);
-      clientLogger.info("Explorer Code workbench ready message received", {
-        ...explorerFileIntentContext(explorerId),
-        attachmentId: preferredAttachmentRef.current?.attachment.attachmentId,
-        editorInstanceId,
-        event: "code.editor.workbench.ready-received",
-        explorerId,
-        operation: "receive-workbench-ready",
-        status: "completed",
-        subsystem: "code",
-        workerId,
-        worktreeId,
-      });
-      if (workbenchReadyTimingRef.current?.nonce === frameMount.nonce) {
-        workbenchReadyTimingRef.current.timing.complete({
+      },
+      onReady: () => {
+        frameFailureNonceRef.current = frameMount.nonce;
+        lastReadyAttachmentIdRef.current =
+          preferredAttachmentRef.current?.attachment.attachmentId ?? null;
+        frameRetryCountRef.current = 0;
+        frameRetryPendingRef.current = false;
+        if (frameRetryTimerRef.current) {
+          clearTimeout(frameRetryTimerRef.current);
+          frameRetryTimerRef.current = null;
+        }
+        setFrameFailureNonce(null);
+        setError(null);
+        clientLogger.info("Explorer Code workbench ready message received", {
+          ...explorerFileIntentContext(explorerId),
           attachmentId: preferredAttachmentRef.current?.attachment.attachmentId,
+          editorInstanceId,
+          event: "code.editor.workbench.ready-received",
+          explorerId,
+          operation: "receive-workbench-ready",
+          status: "completed",
+          subsystem: "code",
+          workerId,
+          worktreeId,
         });
-        workbenchReadyTimingRef.current = null;
-      }
-      setFrameReadyNonce(frameMount.nonce);
-      if (pathRef.current === null) {
-        const preferred = preferredAttachmentRef.current;
-        launchTimingRef.current?.complete({
-          attachmentId: preferred?.attachment.attachmentId,
-          prewarmed: true,
-          sessionId: preferred?.attachment.sessionId,
-          transportKind: preferred?.transportKind,
-        });
-      }
-    };
-    window.addEventListener("message", receiveReady);
-    let timeout: ReturnType<typeof setTimeout> | null = null;
-    // WebKit may suspend an invisible prewarmed frame. Preparing its endpoint
-    // is useful, but only a visible editor should spend the frame retry budget.
-    // A timeout is not a document failure: keep listening for a verified ready
-    // signal until this frame is actually replaced.
-    if (active && !settled && frameFailureNonce !== frameMount.nonce) {
-      timeout = setTimeout(() => {
-        if (settled) return;
-        const timeoutError = codeWorkbenchStageError(
-          "workbench",
-          "The embedded editor timed out after its endpoint loaded.",
-        );
+        if (workbenchReadyTimingRef.current?.nonce === frameMount.nonce) {
+          workbenchReadyTimingRef.current.timing.complete({
+            attachmentId:
+              preferredAttachmentRef.current?.attachment.attachmentId,
+          });
+          workbenchReadyTimingRef.current = null;
+        }
+        setFrameReadyNonce(frameMount.nonce);
+        if (pathRef.current === null) {
+          const preferred = preferredAttachmentRef.current;
+          launchTimingRef.current?.complete({
+            attachmentId: preferred?.attachment.attachmentId,
+            prewarmed: true,
+            sessionId: preferred?.attachment.sessionId,
+            transportKind: preferred?.transportKind,
+          });
+        }
+      },
+      onTimeout: (timeoutError) => {
         if (workbenchReadyTimingRef.current?.nonce === frameMount.nonce) {
           workbenchReadyTimingRef.current.timing.fail(timeoutError, {
             retryScheduled: true,
@@ -1449,13 +1426,19 @@ export function ExplorerCodeEditor({
         setFrameFailureNonce(frameMount.nonce);
         setError(timeoutError.message);
         scheduleFrameRetry(bindingKey, frameMount.nonce);
-      }, CODE_WORKBENCH_READY_TIMEOUT_MS);
-    }
-    return () => {
-      settled = true;
-      if (timeout) clearTimeout(timeout);
-      window.removeEventListener("message", receiveReady);
-    };
+      },
+      onStage: (stage) =>
+        clientLogger.info("Explorer Code workbench startup stage", {
+          stage,
+          editorInstanceId,
+          explorerId,
+          workerId,
+          worktreeId,
+          event: "code.editor.workbench.stage",
+          subsystem: "code",
+          operation: "launch-editor",
+        }),
+    });
   }, [
     active,
     bindingKey,
