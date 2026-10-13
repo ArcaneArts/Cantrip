@@ -30,6 +30,7 @@ before(async () => {
         "apply",
         "--no-index",
         "--unsafe-paths",
+        "--ignore-space-change",
         path.join(
           root,
           "cantrip_code/patches/0008-signal-embedded-workbench-readiness.patch",
