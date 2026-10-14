@@ -1,0 +1,42 @@
+name: Worker Codex runtime
+
+on:
+  pull_request:
+    paths:
+      - cantrip_worker/src/codex/**
+      - cantrip_worker/src/native-model-attribution.ts
+      - cantrip_worker/test/**
+      - packages/protocol/src/**
+      - .github/workflows/worker-codex-runtime.yml
+      - pnpm-lock.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: worker-codex-runtime-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  runtime:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
+      - run: pnpm --filter @cantrip/worker typecheck
+      - name: Native RPC, turn streaming, ownership, cancellation and history
+        if: ${{ !cancelled() }}
+        run: pnpm --filter @cantrip/worker exec vitest run test/app-server.test.ts test/goal-streaming.test.ts test/subagent-ownership.test.ts test/computer-use-execution-lifetime.test.ts test/thread-session-preparation.test.ts test/native-replacement-settings-integration.test.ts test/native-inherited-turn-settings.test.ts test/native-managed-queue-execution.test.ts test/native-managed-command-session.test.ts test/native-managed-queue-tui.test.ts test/provider-account-portability.test.ts test/managed-native-history.test.ts test/native-settings-correlation.test.ts test/mcp-resource-context.test.ts test/admitted-native-execution.test.ts test/managed-session-mcp.test.ts --maxWorkers=2
