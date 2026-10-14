@@ -12,7 +12,7 @@ Tests run independently of metadata audits. A skipped check is never a pass.
 | 4. Measured editor loading                | Merged      | [#2108](https://github.com/ArcaneArts/Cantrip/pull/2108)                                    | Comparable cold/warm/recovery measurements; implement only demonstrated improvements.                      |
 | 5. Worker command dispatch                | Merged      | [#2109](https://github.com/ArcaneArts/Cantrip/pull/2109)                                    | Typed feature handlers with explicit ownership and dependencies.                                           |
 | 6. App API modularization                 | Merged      | [#2110](https://github.com/ArcaneArts/Cantrip/pull/2110)                                    | Domain clients with compatible public exports and shared security infrastructure; all three OSs passed CI. |
-| 7. Codex runtime decomposition            | In progress | [#2114](https://github.com/ArcaneArts/Cantrip/pull/2114)                                    | 7A event/state boundaries; transport, turn/subagent ownership and interactions follow in separate PRs.     |
+| 7. Codex runtime decomposition            | In progress | [#2114](https://github.com/ArcaneArts/Cantrip/pull/2114)                                    | 7A events, 7B transport merged; 7C turn/subagent ownership in progress; interactions follow.               |
 
 ## Milestone 1
 
@@ -438,3 +438,68 @@ Validation:
 
 Turn lifecycle/cancellation, subagent ownership/reconciliation and clean
 interaction/authentication boundaries remain for later M7 slices.
+
+M7B merged through [#2117](https://github.com/ArcaneArts/Cantrip/pull/2117)
+as `6cd618537`; Primary synchronized and its owned worktree was archived.
+Runtime and command-handler CI passed on Windows, macOS and Linux. Native
+CUA/PostgreSQL CI passed on Linux/macOS and the PostgreSQL job. Windows hit the
+same `model-configuration-api` database-startup hook timeout on both attempts;
+this also occurred in M5. The Windows provider fixture assertions and subsequent
+native checks remain unverified on this commit. The bounded skip and automated
+follow-up are recorded in [#2118](https://github.com/ArcaneArts/Cantrip/issues/2118).
+No check was disabled or bypassed.
+
+## Milestone 7C: execution and descendant ownership
+
+Based on merged #2117 (`6cd618537`). `CodexExecutionOwnership` now owns the seven
+maps connecting active turns, roots, known/orphan descendants and early native
+child starts. Its 32 moved methods cover turn binding/release, cancellation,
+notification targeting, ancestry association, bounded history reconciliation
+and descendant completion. The runtime orchestrator retains configuration,
+authentication, transport and final result preparation.
+
+Four narrow callbacks supply RPC dispatch, method availability, current
+canonical-history policy and interaction retirement. The history policy is
+read after the awaited native snapshot, as before. Read-only map views retain
+original object identity for streaming and admission checks. Tracking and map
+mutations belong to the owner. Exit still revokes root/child authority before
+RPC rejection and interaction cleanup; active rejection/telemetry cleanup
+happens afterward. Close retains its distinct cleanup order.
+
+The root facade retains its two public ownership methods and six private
+delegates used by orchestration and existing regression barriers. Delegates
+return the original promises directly. All 107 public exports remain intact.
+Supporting AST comparison finds all 32 moved method bodies unchanged after the
+four explicit dependency substitutions, all 144 other method bodies unchanged
+after delegation substitutions, and all 65 other top-level declarations
+unchanged. The extracted runtime module graph has no cycle. The entry point
+shrinks from 9,539 to 8,547 lines; no performance improvement is claimed.
+
+Validation:
+
+- The same 94 lifetime, subagent, admitted-execution and process/goal-streaming
+  tests pass before and after extraction. Existing barriers cover stale root
+  completion, native continuation, early child starts, nested ancestry, Stop,
+  replacement and sibling authority.
+- Final full worker suite: 2,627 passed, 133 existing skips across 299 files.
+  The first run caught two GUI permission tests using a removed private query
+  seam; its thin delegate was restored, and that fixture now runs in runtime CI.
+  An unchanged outbox cross-process case also hit its 15-second timeout once.
+  All 24 tests in those two files passed in isolation, and the final full run
+  passed without changing the outbox implementation or timeout.
+- Pinned native runtime: 96 passed across eight files, with local synthetic
+  providers and disposable homes; computer-input cases were not enabled.
+- Actual bundled-editor browser: cold usability, retained reopening and
+  transient renewal passed with typing/save/worker-file assertions. One bounded
+  onboarding and mode retry each was recorded (#2096/#2102). Runner exit zero,
+  zero remaining sockets and no fixture processes. Existing shutdown defects
+  #2098/#2099 required bounded worker termination; server retirement exited one.
+  Detailed browser evidence was preserved before moving stopped disposable
+  state outside the worktree.
+- Worker source types, diff and formatting checks pass. The standard check with
+  Command Line Tools passed native checks, scripts, source types, focused
+  integration and shared packages, then reached the same full-server baseline:
+  1,409 passed, 74 failed, 70 skipped. All 81 failure/suite names match M7B
+  (#2106); no new failure name appeared. The standard check is not green.
+
+Interaction/authentication boundaries remain a separate M7 slice.
