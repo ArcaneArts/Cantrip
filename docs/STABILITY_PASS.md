@@ -10,8 +10,8 @@ Tests run independently of metadata audits. A skipped check is never a pass.
 | 2. Shared editor lifecycle and readiness  | Merged      | [#2093](https://github.com/ArcaneArts/Cantrip/pull/2093)                                    | Late readiness, retained frames, startup stages, and cancellation.                                  |
 | 3. Browser recovery harness               | Merged      | [#2107](https://github.com/ArcaneArts/Cantrip/pull/2107)                                    | Actual bundled editor, isolated services, automated failure injection and usable-editor assertions. |
 | 4. Measured editor loading                | Merged      | [#2108](https://github.com/ArcaneArts/Cantrip/pull/2108)                                    | Comparable cold/warm/recovery measurements; implement only demonstrated improvements.               |
-| 5. Worker command dispatch                | In progress | `codex/stability-worker-dispatch`                                                           | Typed feature handlers with explicit ownership and dependencies.                                    |
-| 6. App API modularization                 | Not started | —                                                                                           | Domain clients with compatible public exports and shared security infrastructure.                   |
+| 5. Worker command dispatch                | Merged      | [#2109](https://github.com/ArcaneArts/Cantrip/pull/2109)                                    | Typed feature handlers with explicit ownership and dependencies.                                    |
+| 6. App API modularization                 | In progress | [#2110](https://github.com/ArcaneArts/Cantrip/pull/2110)                                    | Domain clients with compatible public exports and shared security infrastructure.                   |
 | 7. Codex runtime decomposition            | Not started | —                                                                                           | Separate transport, turn lifecycle, subagents, normalization, and interactions incrementally.       |
 
 ## Milestone 1
@@ -216,77 +216,90 @@ launching, URI validation, and authority checks are unchanged.
 
 ## Milestone 5
 
-Based on merged M4 (`c9f2e466a`). M4's final harness contracts and stability
-recovery CI passed on Windows, macOS, and Linux. Its owned services stopped and
-217 evidence files were preserved before archiving its worktree.
+Merged in [#2109](https://github.com/ArcaneArts/Cantrip/pull/2109), based on M4
+(`c9f2e466a`). Primary synchronized to `411a20100`; owned services stopped,
+41 evidence files preserved, disposable runtime moved into a private archive,
+and the owned worktree archived.
 
 Extracted 206 commands into 14 typed feature handlers under
-`cantrip_worker/src/commands`: Code, WorkerLink/direct capabilities, GitHub,
-Git, workspace discovery, worktrees, projects, attachments, external history,
-remote surfaces, diagnostics, Explorer, skills, and customization. A small
-runtime callback type describes the existing native runtime factory. The entry
-point retains explicit command routing and owns service construction, startup,
-shutdown, provider decryption, native chat/terminal orchestration, and the
-protected repository operation authorization hub. No command registry or new
-runtime framework is introduced.
+`cantrip_worker/src/commands`. The entry point retains explicit routing,
+startup/shutdown ownership, provider decryption, native chat/terminal
+orchestration, and protected repository authorization. Mutable authorization
+and supervisor state use getters to preserve reads after awaits. The entry
+point shrank from 8,904 to 7,338 lines. Supporting AST inspection confirmed
+unchanged case bodies except those getters.
 
-The entry point shrank from 8,904 to 7,338 lines. Mutable settings/profile and
-CodeGraph supervisor state is accessed through getters, preserving reads after
-awaits. A one-off AST comparison confirmed all 206 extracted case bodies match
-the original except those live-state getters; this is supporting inspection,
-not a substitute for runtime tests.
+Final feature CI passed all 18 files on Linux/macOS (161 tests, one existing
+skip) and Windows (153 tests, nine existing skips), including 19 new command
+characterization/integration tests. Coverage includes incarnation stop claims,
+endpoint-close failures, authorization changes across awaits, route acceptance
+and revocation ordering, actual renewal authority, real Git discovery/worktrees,
+encrypted attachment round trips and clearing decrypted bytes after failed
+writes. Source types, strict new-test types, formatting and diff checks passed.
+
+Windows coverage repaired fixture launchers, PATH/drive/line-ending assumptions,
+PowerShell selection and bounded EBUSY cleanup. The long PR lifecycle scenario
+received a Windows-only 60-second budget and completed in 17.4 seconds. Native
+CUA and PostgreSQL authority CI passed on all platforms. One Windows database
+startup hook exceeded 10 seconds; its failed job passed on one bounded retry.
+Production launching, authorization checks and timeouts are unchanged.
+
+The real bundled-editor browser passed cold usability, retained reopening and
+transient renewal, including typing, saving and worker-file verification.
+Onboarding/mode races needed one bounded retry each (#2096/#2102). Cleanup
+reported zero sockets; shutdown limitations remain #2098/#2099. The full
+standard check reached the existing server baseline: 1,409 passed, 74 failed,
+70 skipped. Every failure name also appeared on unchanged main (#2106). CUA
+protocol/crypto/worker/integration/app groups passed (136 / 25 / 732 / 244 / 313;
+three skips). The full standard check is not green.
+
+## Milestone 6
+
+Based on merged M5 (`411a20100`). Split the 8,771-line app API into 33 domain
+modules and a 513-line compatibility export facade. All 450 public exports
+remain available from the original import path. Domain imports have no cycles;
+basic worker/project reads are separated from management/decryption paths.
+Shared caches retain one owner and the original server/user/key namespaces.
+Requests, errors, encryption and session identity continue using the existing
+shared infrastructure. Bound request behavior now belongs to `api-client`.
+
+Supporting AST inspection verified all 501 original declarations retain their
+bodies. The boundary and network audits now inspect the actual domain modules
+and shared request implementation, including nested domains, rather than only
+the facade. The generated route inventory remains current.
 
 Validation so far:
 
-- Feature suites: 161 passed, one existing platform skip across 18 files.
-- New command characterization/integration coverage: 19 passed, including
-  incarnation stop claims, endpoint-close failure propagation, authorization
-  changes during awaits, route acceptance/revocation ordering, direct worker
-  binding and actual renewal expiry, and observation cleanup after removal.
-- Real Git discovery/status and managed worktree create/list/remove pass.
-  Encrypted attachment upload/download uses the real crypto and store; a failed
-  store write still clears decrypted bytes.
-- Worker source typecheck and a standalone strict typecheck of the new test
-  files passed. Formatting and diff checks passed.
-- Real bundled-editor browser regression: cold usable editor, retained reopening,
-  and transient renewal all passed. The runner typed, saved and verified a real
-  worker-owned file. Existing onboarding/mode races required one bounded retry
-  each (#2096/#2102); they remain tracked. Owned fixture cleanup reported zero
-  sockets; existing worker/server shutdown behavior (#2098/#2099) remains.
-- The attachment boundary audit now reads the actual extracted attachment
-  handler. The first standard check exposed this stale source location; runtime
-  suites and browser checks ran independently. The complete check retry reached the full server suite: 1,409 passed,
-  74 failed, 70 skipped. Every failed test/suite name also appears on unchanged
-  main; server/protocol sources are unchanged from the compared baseline.
-  The full check remains red under #2106. CUA protocol/worker/integration/app
-  groups passed (136 / 732 / 244 / 313, plus 25 fixture contracts; three skips).
+- App source types passed; the original API baseline and post-extraction runs
+  each passed 57 tests across eight files.
+- Full app suite: 3,010 passed, three existing skips. Three new domain-state
+  tests passed separately, covering cross-client metadata coalescing,
+  component authorization failure isolation, fresh resolution after server or
+  owner replacement, compatible error classes and failed-target eviction.
+- The final CI selection passed 76 tests across 14 files. Two source-corpus
+  tests verify audits see nested implementations/shared requests and do not
+  silently accept missing source files.
+- Real bundled-editor browser: cold usability, retained reopening and transient
+  renewal all passed, with typing/save/worker-file assertions. One bounded
+  onboarding and mode retry each was needed (#2096/#2102). The process exited
+  zero and cleanup reported zero sockets. Vite logged caught EPIPE messages
+  while fixture sockets closed; shutdown behavior remains #2098/#2099.
+- Boundary/network audits pass. The complete standard check retry reached the full server baseline: 1,409
+  passed, 74 failed, 70 skipped. Every failure name also appears on unchanged
+  main (#2106). The full standard check is not green.
 
-A dedicated Windows/macOS/Linux command-handler workflow runs source types and
-representative behavior suites independently. Browser results above are local
-darwin-arm64 results against the verified `ba05010e28f2` bundled Code build.
+A dedicated Windows/macOS/Linux workflow runs app types, source-boundary audits
+and the API/domain/encryption suites independently. Browser results above are
+local darwin-arm64 against verified bundled Code `ba05010e28f2`.
 
-The new three-OS feature suite exposed existing Windows fixture assumptions.
-Registered fake GitHub/Git Node executables now launch directly through Node
-on Windows; the shell fixture runs through Git Bash; disposable CI runners use consistent Git
-checkout line endings. Other child processes and production code
-are unchanged. Fixtures use the host PATH delimiter, account for Git checkout
-line endings, resolve drive-qualified skills paths, honor the export test's
-explicit Darwin path semantics, and select PowerShell for PowerShell-specific
-terminal inputs. A second run passed 148 tests on Windows, including all 19 new tests. Remaining
-GitHub argument/latency problems were traced to launching Node fixtures through
-Git Bash; direct Node invocation preserves arguments and removes that overhead.
-Terminal cleanup retries actual EBUSY deletion failures while the killed PTY
-releases its working directory, with a bounded retry limit. The Windows rerun
-includes the same tests and repaired fixtures. The first native CUA workflow
-passed PostgreSQL authority and all three OS jobs.
+The first API CI run passed all 76 behavioral tests on all three platforms.
+Windows exposed an existing inventory formatter that emitted backslashes for
+repository source filenames, making the canonical route inventory appear
+stale. Repository inventory paths now normalize to forward slashes; audit
+assertions and canonical inventory contents remain intact.
 
-The third Windows run passed 152 tests, with one long PR lifecycle fixture
-exceeding its 15-second default while executing many real local subprocesses.
-That Windows-only scenario receives a bounded 60-second test budget; all
-lifecycle authorization, confirmation, changed-head and mutation assertions
-remain. Other test deadlines and production timeouts are unchanged.
-
-The fourth Windows run passed the complete lifecycle scenario and every
-behavioral assertion, but one repository-stat fixture cleanup encountered a
-transient EBUSY on its disposable directory. That fixture now retries actual
-removal failures with the same bounded limit used for terminal cleanup.
+Seven additional dependency scans emitted the same OS-specific source names.
+They now share a canonical source-path formatter with repository inventory and
+API/server source corpora. A regression checks Windows repository names and the
+existing policy-template exception against canonical paths. All content and
+owner classification checks remain enabled.

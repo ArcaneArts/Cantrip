@@ -1,5 +1,5 @@
 import { readFile, readdir } from "node:fs/promises";
-import { relative, resolve, sep } from "node:path";
+import { relative, resolve } from "node:path";
 
 async function typescriptFiles(directory) {
   const entries = await readdir(directory, { withFileTypes: true }).catch(
@@ -18,7 +18,7 @@ async function typescriptFiles(directory) {
   return nested.flat().sort();
 }
 
-const normalizePath = (path) => path.split(sep).join("/");
+export const normalizeSourcePath = (path) => path.replaceAll("\\", "/");
 
 export async function applicationSourcePaths(repositoryRoot) {
   const serverSourcePath = resolve(repositoryRoot, "cantrip_server/src");
@@ -31,7 +31,7 @@ export async function applicationSourcePaths(repositoryRoot) {
 export async function readApplicationSourceCorpus(repositoryRoot) {
   return Promise.all(
     (await applicationSourcePaths(repositoryRoot)).map(async (path) => ({
-      file: normalizePath(relative(repositoryRoot, path)),
+      file: normalizeSourcePath(relative(repositoryRoot, path)),
       sourceText: await readFile(path, "utf8"),
     })),
   );
