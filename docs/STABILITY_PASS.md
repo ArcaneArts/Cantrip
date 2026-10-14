@@ -266,12 +266,16 @@ representative behavior suites independently. Browser results above are local
 darwin-arm64 results against the verified `ba05010e28f2` bundled Code build.
 
 The new three-OS feature suite exposed existing Windows fixture assumptions.
-Registered fake GitHub/Git executables now launch through Git Bash on Windows
-with argument conversion disabled; disposable CI runners use consistent Git
+Registered fake GitHub/Git Node executables now launch directly through Node
+on Windows; the shell fixture runs through Git Bash; disposable CI runners use consistent Git
 checkout line endings. Other child processes and production code
 are unchanged. Fixtures use the host PATH delimiter, account for Git checkout
 line endings, resolve drive-qualified skills paths, honor the export test's
 explicit Darwin path semantics, and select PowerShell for PowerShell-specific
-terminal inputs. All 19 new tests passed on Linux/macOS; the Windows rerun
+terminal inputs. A second run passed 148 tests on Windows, including all 19 new tests. Remaining
+GitHub argument/latency problems were traced to launching Node fixtures through
+Git Bash; direct Node invocation preserves arguments and removes that overhead.
+Terminal cleanup retries actual EBUSY deletion failures while the killed PTY
+releases its working directory, with a bounded retry limit. The Windows rerun
 includes the same tests and repaired fixtures. The first native CUA workflow
 passed PostgreSQL authority and all three OS jobs.

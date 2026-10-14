@@ -1,8 +1,8 @@
 import { vi } from "vitest";
 
 // Windows execFile/spawn cannot execute the extensionless shebang fixtures.
-// Keep real child processes and argument boundaries; Git Bash launches only the
-// explicitly registered test executables. Ordinary Git/gh calls stay untouched.
+// Keep real child processes and argument boundaries. Registered Node fixtures
+// run with Node; the one shell fixture uses Git Bash. Other calls stay untouched.
 vi.mock("node:child_process", async (importOriginal) => {
   const actual = await importOriginal();
   const { promisify } = await import("node:util");
@@ -17,22 +17,20 @@ vi.mock("node:child_process", async (importOriginal) => {
             : undefined
         : undefined;
     if (!fixture) return [command, args, ...rest];
-    return [
-      path.join(
-        process.env.ProgramFiles ?? "C:\\Program Files",
-        "Git",
-        "bin",
-        "bash.exe",
-      ),
-      [
-        "-c",
-        'MSYS2_ARG_CONV_EXCL="*" exec "$@"',
-        "cantrip-test-cli",
-        fixture.replace(/\\/gu, "/"),
-        ...(args ?? []),
-      ],
-      ...rest,
-    ];
+    const shellFixture =
+      command === "gh" && process.env.CANTRIP_TEST_FAKE_GH_SHELL === "true";
+    return shellFixture
+      ? [
+          path.join(
+            process.env.ProgramFiles ?? "C:\\Program Files",
+            "Git",
+            "bin",
+            "bash.exe",
+          ),
+          [fixture.replace(/\\/gu, "/"), ...(args ?? [])],
+          ...rest,
+        ]
+      : [process.execPath, [fixture, ...(args ?? [])], ...rest];
   };
   const execFile = Object.assign(
     (...args) => actual.execFile(...redirect(...args)),

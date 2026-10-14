@@ -33,6 +33,7 @@ const repository = {
 afterEach(async () => {
   process.env.PATH = originalPath;
   delete process.env.CANTRIP_TEST_FAKE_GH;
+  delete process.env.CANTRIP_TEST_FAKE_GH_SHELL;
   delete process.env.CANTRIP_TEST_BARE;
   delete process.env.GIT_AUTHOR_EMAIL;
   delete process.env.GIT_AUTHOR_NAME;
@@ -85,6 +86,7 @@ exit 1
   );
   await chmod(gh, 0o700);
   process.env.CANTRIP_TEST_FAKE_GH = gh;
+  process.env.CANTRIP_TEST_FAKE_GH_SHELL = "true";
   process.env.PATH = `${binaryDirectory}${path.delimiter}${originalPath}`;
   process.env.CANTRIP_TEST_BARE = bare;
   process.env.GIT_CONFIG_COUNT = "1";
