@@ -285,3 +285,8 @@ exceeding its 15-second default while executing many real local subprocesses.
 That Windows-only scenario receives a bounded 60-second test budget; all
 lifecycle authorization, confirmation, changed-head and mutation assertions
 remain. Other test deadlines and production timeouts are unchanged.
+
+The fourth Windows run passed the complete lifecycle scenario and every
+behavioral assertion, but one repository-stat fixture cleanup encountered a
+transient EBUSY on its disposable directory. That fixture now retries actual
+removal failures with the same bounded limit used for terminal cleanup.
