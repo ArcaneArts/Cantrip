@@ -1560,9 +1560,7 @@ describe("Cantrip Code supervisor", () => {
   });
 
   it("retries a retained prewarm when its first automatic restart fails", async () => {
-    const { dataDirectory, entrypoint, supervisor } = await fixture({
-      readinessTimeoutMs: 500,
-    });
+    const { dataDirectory, entrypoint, supervisor } = await fixture();
     const processFile = path.join(
       dataDirectory,
       "code",
@@ -1573,17 +1571,18 @@ describe("Cantrip Code supervisor", () => {
     );
     await supervisor.prewarmProfile("default");
     const firstPid = await readFile(processFile, "utf8");
-    await writeFile(entrypoint, codeServerSource({ unhealthyStartup: true }));
+    // This process writes its PID and then fails explicitly. Healthy fixture
+    // startup must not depend on spawning Node within a 500ms deadline.
+    await writeFile(entrypoint, codeServerSource({ failStartup: true }));
 
     process.kill(Number(firstPid), "SIGKILL");
     const failedRestartPid = await waitForFileChange(processFile, firstPid);
-    await new Promise((resolve) => setTimeout(resolve, 600));
     await writeFile(entrypoint, codeServerSource());
 
     const recoveredPid = await waitForFileChange(
       processFile,
       failedRestartPid,
-      2_000,
+      3_000,
     );
     expect(recoveredPid).not.toBe(firstPid);
     expect(recoveredPid).not.toBe(failedRestartPid);

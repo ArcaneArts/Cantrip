@@ -1,0 +1,202 @@
+{
+  "baseline": {
+    "cold-editor-usable": {
+      "samples": [22308, 17363, 22441],
+      "median": 22308,
+      "p95": 22441,
+      "min": 17363,
+      "max": 22441
+    },
+    "warm-close-reopen": {
+      "samples": [77, 83, 85],
+      "median": 83,
+      "p95": 85,
+      "min": 77,
+      "max": 85
+    },
+    "transient-renewal": {
+      "samples": [5442, 4642, 5246],
+      "median": 5246,
+      "p95": 5442,
+      "min": 4642,
+      "max": 5442
+    },
+    "file-open-rendered": {
+      "samples": [4221, 4255, 4286],
+      "median": 4255,
+      "p95": 4286,
+      "min": 4221,
+      "max": 4286
+    },
+    "sessionCreateMs": {
+      "samples": [43.146, 40.923, 47.025],
+      "median": 43.146,
+      "p95": 47.025,
+      "min": 40.923,
+      "max": 47.025
+    },
+    "documentCompleteMs": {
+      "samples": [19.425, 27.788, 18.587],
+      "median": 19.425,
+      "p95": 27.788,
+      "min": 18.587,
+      "max": 27.788
+    },
+    "workbenchBootstrapToReadyMs": {
+      "samples": [576.199951171875, 775, 584.199951171875],
+      "median": 584.199951171875,
+      "p95": 775,
+      "min": 576.199951171875,
+      "max": 775
+    },
+    "profileEndpointReadyMs": {
+      "samples": [208, 209, 208],
+      "median": 208,
+      "p95": 209,
+      "min": 208,
+      "max": 209
+    },
+    "extensionBridgeReadyMs": {
+      "samples": [4107, 4111, 4012, 4012, 4201, 4207],
+      "median": 4109.0,
+      "p95": 4207,
+      "min": 4012,
+      "max": 4207
+    },
+    "presentationMs": {
+      "samples": [60, 53, 88],
+      "median": 60,
+      "p95": 88,
+      "min": 53,
+      "max": 88
+    },
+    "workerFirstFileOpenMs": {
+      "samples": [1882, 1931, 1878],
+      "median": 1882,
+      "p95": 1931,
+      "min": 1878,
+      "max": 1931
+    },
+    "relayHandshakeMs": {
+      "samples": [13.519999920390546, 12.66599993687123, 16.016999958083034],
+      "median": 13.519999920390546,
+      "p95": 16.016999958083034,
+      "min": 12.66599993687123,
+      "max": 16.016999958083034
+    },
+    "rendererHeapBytes": {
+      "samples": [185320812, 185186416, 220896472],
+      "median": 185320812,
+      "p95": 220896472,
+      "min": 185186416,
+      "max": 220896472
+    },
+    "visibleWorkbenchRestoredMs": {
+      "samples": [576.10009765625, 774.800048828125, 584],
+      "median": 584,
+      "p95": 774.800048828125,
+      "min": 576.10009765625,
+      "max": 774.800048828125
+    }
+  },
+  "candidate": {
+    "cold-editor-usable": {
+      "samples": [22763, 17059, 17583],
+      "median": 17583,
+      "p95": 22763,
+      "min": 17059,
+      "max": 22763
+    },
+    "warm-close-reopen": {
+      "samples": [81, 87, 80],
+      "median": 81,
+      "p95": 87,
+      "min": 80,
+      "max": 87
+    },
+    "transient-renewal": {
+      "samples": [4849, 4942, 4541],
+      "median": 4849,
+      "p95": 4942,
+      "min": 4541,
+      "max": 4942
+    },
+    "file-open-rendered": {
+      "samples": [4759, 4180, 4340],
+      "median": 4340,
+      "p95": 4759,
+      "min": 4180,
+      "max": 4759
+    },
+    "sessionCreateMs": {
+      "samples": [48.658, 38.682, 45.966],
+      "median": 45.966,
+      "p95": 48.658,
+      "min": 38.682,
+      "max": 48.658
+    },
+    "documentCompleteMs": {
+      "samples": [47.628, 19.481, 20.645],
+      "median": 20.645,
+      "p95": 47.628,
+      "min": 19.481,
+      "max": 47.628
+    },
+    "workbenchBootstrapToReadyMs": {
+      "samples": [586.39990234375, 591.60009765625, 579.400146484375],
+      "median": 586.39990234375,
+      "p95": 591.60009765625,
+      "min": 579.400146484375,
+      "max": 591.60009765625
+    },
+    "profileEndpointReadyMs": {
+      "samples": [209, 216, 221],
+      "median": 216,
+      "p95": 221,
+      "min": 209,
+      "max": 221
+    },
+    "extensionBridgeReadyMs": {
+      "samples": [4522, 4525, 3972, 3971, 4044, 4053],
+      "median": 4048.5,
+      "p95": 4525,
+      "min": 3971,
+      "max": 4525
+    },
+    "presentationMs": {
+      "samples": [66, 75, 91],
+      "median": 75,
+      "p95": 91,
+      "min": 66,
+      "max": 91
+    },
+    "workerFirstFileOpenMs": {
+      "samples": [1832, 1890, 1996],
+      "median": 1890,
+      "p95": 1996,
+      "min": 1832,
+      "max": 1996
+    },
+    "relayHandshakeMs": {
+      "samples": [23.462000070139766, 7.134999963454902, 24.61399999447167],
+      "median": 23.462000070139766,
+      "p95": 24.61399999447167,
+      "min": 7.134999963454902,
+      "max": 24.61399999447167
+    },
+    "rendererHeapBytes": {
+      "samples": [237059420, 226648336, 221177148],
+      "median": 226648336,
+      "p95": 237059420,
+      "min": 221177148,
+      "max": 237059420
+    },
+    "visibleWorkbenchRestoredMs": {
+      "samples": [586.199951171875, 591.5, 579.300048828125],
+      "median": 586.199951171875,
+      "p95": 591.5,
+      "min": 579.300048828125,
+      "max": 591.5
+    }
+  }
+}

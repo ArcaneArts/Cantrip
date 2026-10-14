@@ -34,6 +34,7 @@ interface BridgeSession {
   dirtyEditors: CodeDirtyEditor[];
   nextGeneration: number;
   pending: Map<string, PendingBridgeRequest>;
+  registeredAtMs: number;
   registrationGeneration: string;
   sockets: Map<WebSocket, BridgeSocket>;
   token: string;
@@ -441,6 +442,7 @@ export class CodeWorkbenchBridge {
       dirtyEditors: [],
       nextGeneration: 1,
       pending: new Map(),
+      registeredAtMs: performance.now(),
       registrationGeneration: randomUUID(),
       sockets: new Map(),
       token,
@@ -1064,6 +1066,7 @@ export class CodeWorkbenchBridge {
       operation: "connect",
       status: "completed",
       sessionId,
+      durationMs: Math.round(performance.now() - session.registeredAtMs),
       counts: { sockets: session.sockets.size },
     });
     socket.on("message", (data, isBinary) => {

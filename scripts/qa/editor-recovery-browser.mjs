@@ -53,6 +53,7 @@ try {
   const errors = [];
   const observedSessions = new Map();
   const renewals = [];
+  const networkTimings = [];
   browser = await chromium.launch({
     headless: true,
     chromiumSandbox: true,
@@ -64,7 +65,90 @@ try {
   const page = await context.newPage();
   const browserSockets = [];
   page.on("websocket", (socket) => browserSockets.push(socket));
+  const performanceClient = await context.newCDPSession(page);
+  await performanceClient.send("Performance.enable");
+  await performanceClient.send("Network.enable");
+  const socketStarts = new Map();
+  const socketHandshakes = [];
+  performanceClient.on("Network.webSocketCreated", ({ requestId, url }) => {
+    socketStarts.set(requestId, { path: new URL(url).pathname });
+  });
+  performanceClient.on(
+    "Network.webSocketWillSendHandshakeRequest",
+    ({ requestId, timestamp }) => {
+      const socket = socketStarts.get(requestId);
+      if (socket) socket.startedAt = timestamp;
+    },
+  );
+  performanceClient.on(
+    "Network.webSocketHandshakeResponseReceived",
+    ({ requestId, timestamp, response }) => {
+      const socket = socketStarts.get(requestId);
+      if (socket?.startedAt !== undefined && socketHandshakes.length < 256)
+        socketHandshakes.push({
+          path: socket.path,
+          durationMs: (timestamp - socket.startedAt) * 1000,
+          status: response.status,
+        });
+      socketStarts.delete(requestId);
+    },
+  );
+  performanceClient.on("Network.webSocketClosed", ({ requestId }) =>
+    socketStarts.delete(requestId),
+  );
+  page.on("requestfinished", async (request) => {
+    const url = new URL(request.url());
+    if (
+      !url.pathname.startsWith("/__cantrip_code/") &&
+      !url.pathname.includes("worker-link") &&
+      !url.pathname.includes("/code/")
+    )
+      return;
+    try {
+      const timing = request.timing();
+      const sizes = await request.sizes();
+      if (networkTimings.length < 4096)
+        networkTimings.push({
+          path: url.pathname,
+          method: request.method(),
+          ...timing,
+          responseBodyBytes: sizes.responseBodySize,
+        });
+    } catch {
+      /* Retired requests have no complete timing observation. */
+    }
+  });
   await page.addInitScript(() => {
+    window.__qaWorkbenchTimeline = [];
+    if (window.top === window)
+      window.addEventListener("message", (event) => {
+        const message = event.data;
+        if (
+          !message ||
+          message.version !== 1 ||
+          ![
+            "cantrip-code.workbench-stage",
+            "cantrip-code.workbench-ready",
+          ].includes(message.type)
+        )
+          return;
+        const frame = [...document.querySelectorAll("iframe")].find(
+          (frame) => frame.contentWindow === event.source,
+        );
+        if (!frame) return;
+        const url = new URL(frame.src, location.href);
+        if (
+          event.origin !== url.origin ||
+          message.nonce !== url.searchParams.get("cantripFrameNonce")
+        )
+          return;
+        if (window.__qaWorkbenchTimeline.length < 256)
+          window.__qaWorkbenchTimeline.push({
+            at: performance.timeOrigin + performance.now(),
+            stage: message.stage ?? "ready",
+            visible: frame.getClientRects().length > 0,
+          });
+      });
     const wrapSend = (prototype) => {
       const send = prototype.send;
       window.__qaCreditFault = {
@@ -404,10 +488,12 @@ try {
             .click();
         }
       }
+      const fileOpenStartedAt = Date.now();
       await page
         .getByRole("treeitem", { name: "qa.txt", exact: true })
         .click({ timeout: 90_000 });
       await waitForText("Cantrip editor recovery baseline");
+      const fileRenderedAt = Date.now();
       await page
         .getByRole("button", { name: "Edit mode", exact: true })
         .click();
@@ -426,6 +512,12 @@ try {
         setupRetries,
         modeRetries,
         operation: "type, save, verify worker-owned file",
+        phases: {
+          fileOpenStartedAt,
+          fileRenderedAt,
+          firstSaveVerifiedAt: Date.now(),
+          fileOpenToRenderedMs: fileRenderedAt - fileOpenStartedAt,
+        },
       };
     });
     await run("warm-close-reopen", async () => {
@@ -973,6 +1065,56 @@ try {
       path: path.join(fixture.directory, "browser-final.png"),
     });
   } finally {
+    const workbenchTimeline = await page
+      .evaluate(() => window.__qaWorkbenchTimeline ?? [])
+      .catch(() => []);
+    const rendererMetrics = await performanceClient
+      .send("Performance.getMetrics")
+      .catch(() => ({ metrics: [] }));
+    // Retained heap and an unconstrained GC-cycle snapshot answer different
+    // questions. Collect both after the timed behavior has completed.
+    const garbageCollected = await performanceClient
+      .send("HeapProfiler.collectGarbage")
+      .then(
+        () => true,
+        () => false,
+      );
+    const retainedRendererMetrics = garbageCollected
+      ? await performanceClient
+          .send("Performance.getMetrics")
+          .catch(() => ({ metrics: [] }))
+      : { metrics: [] };
+    await writeFile(
+      path.join(fixture.directory, "browser-metrics.json"),
+      JSON.stringify(
+        {
+          workbenchTimeline,
+          networkTimings,
+          socketHandshakes,
+          rendererMetrics: rendererMetrics.metrics.filter((metric) =>
+            [
+              "JSHeapUsedSize",
+              "JSHeapTotalSize",
+              "Documents",
+              "Nodes",
+            ].includes(metric.name),
+          ),
+          garbageCollected,
+          retainedRendererMetrics: retainedRendererMetrics.metrics.filter(
+            (metric) =>
+              [
+                "JSHeapUsedSize",
+                "JSHeapTotalSize",
+                "Documents",
+                "Nodes",
+              ].includes(metric.name),
+          ),
+        },
+        null,
+        2,
+      ),
+    );
+    await performanceClient.detach().catch(() => {});
     await writeFile(
       path.join(fixture.directory, "browser-results.json"),
       JSON.stringify({ origin: fixture.origin, results, errors }, null, 2),
