@@ -4,15 +4,15 @@ Started 2026-10-13 from `692f05dcd`. Each milestone uses an isolated
 `codex/` branch and worktree, a squash auto-merge PR, observed merge, and cleanup.
 Tests run independently of metadata audits. A skipped check is never a pass.
 
-| Milestone                                 | Status      | Branch / PR                                                                                 | Evidence                                                                                                   |
-| ----------------------------------------- | ----------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| 1. Lease renewal and reconnect scheduling | Merged      | `codex/stability-lease-recovery` / [#2092](https://github.com/ArcaneArts/Cantrip/pull/2092) | Three regressions fixed; 135 app + 25 worker tests pass; Windows/macOS/Linux CI passed.                    |
-| 2. Shared editor lifecycle and readiness  | Merged      | [#2093](https://github.com/ArcaneArts/Cantrip/pull/2093)                                    | Late readiness, retained frames, startup stages, and cancellation.                                         |
-| 3. Browser recovery harness               | Merged      | [#2107](https://github.com/ArcaneArts/Cantrip/pull/2107)                                    | Actual bundled editor, isolated services, automated failure injection and usable-editor assertions.        |
-| 4. Measured editor loading                | Merged      | [#2108](https://github.com/ArcaneArts/Cantrip/pull/2108)                                    | Comparable cold/warm/recovery measurements; implement only demonstrated improvements.                      |
-| 5. Worker command dispatch                | Merged      | [#2109](https://github.com/ArcaneArts/Cantrip/pull/2109)                                    | Typed feature handlers with explicit ownership and dependencies.                                           |
-| 6. App API modularization                 | Merged      | [#2110](https://github.com/ArcaneArts/Cantrip/pull/2110)                                    | Domain clients with compatible public exports and shared security infrastructure; all three OSs passed CI. |
-| 7. Codex runtime decomposition            | In progress | [#2114](https://github.com/ArcaneArts/Cantrip/pull/2114)                                    | 7A events, 7B transport merged; 7C turn/subagent ownership in progress; interactions follow.               |
+| Milestone                                 | Status    | Branch / PR                                                                                                                                                                                                                                                                                      | Evidence                                                                                                   |
+| ----------------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| 1. Lease renewal and reconnect scheduling | Merged    | `codex/stability-lease-recovery` / [#2092](https://github.com/ArcaneArts/Cantrip/pull/2092)                                                                                                                                                                                                      | Three regressions fixed; 135 app + 25 worker tests pass; Windows/macOS/Linux CI passed.                    |
+| 2. Shared editor lifecycle and readiness  | Merged    | [#2093](https://github.com/ArcaneArts/Cantrip/pull/2093)                                                                                                                                                                                                                                         | Late readiness, retained frames, startup stages, and cancellation.                                         |
+| 3. Browser recovery harness               | Merged    | [#2107](https://github.com/ArcaneArts/Cantrip/pull/2107)                                                                                                                                                                                                                                         | Actual bundled editor, isolated services, automated failure injection and usable-editor assertions.        |
+| 4. Measured editor loading                | Merged    | [#2108](https://github.com/ArcaneArts/Cantrip/pull/2108)                                                                                                                                                                                                                                         | Comparable cold/warm/recovery measurements; implement only demonstrated improvements.                      |
+| 5. Worker command dispatch                | Merged    | [#2109](https://github.com/ArcaneArts/Cantrip/pull/2109)                                                                                                                                                                                                                                         | Typed feature handlers with explicit ownership and dependencies.                                           |
+| 6. App API modularization                 | Merged    | [#2110](https://github.com/ArcaneArts/Cantrip/pull/2110)                                                                                                                                                                                                                                         | Domain clients with compatible public exports and shared security infrastructure; all three OSs passed CI. |
+| 7. Codex runtime decomposition            | Delivered | [#2114](https://github.com/ArcaneArts/Cantrip/pull/2114), [#2115](https://github.com/ArcaneArts/Cantrip/pull/2115), [#2117](https://github.com/ArcaneArts/Cantrip/pull/2117), [#2119](https://github.com/ArcaneArts/Cantrip/pull/2119); [#2120](https://github.com/ArcaneArts/Cantrip/pull/2120) | Events, transport, execution ownership and interaction/auth recovery extracted in sequential slices.       |
 
 ## Milestone 1
 
@@ -503,3 +503,105 @@ Validation:
   (#2106); no new failure name appeared. The standard check is not green.
 
 Interaction/authentication boundaries remain a separate M7 slice.
+
+M7C merged through [#2119](https://github.com/ArcaneArts/Cantrip/pull/2119)
+as `b5e5c0a19`. Runtime CI passed 272 tests on each of Windows, macOS and Linux;
+native CUA and PostgreSQL CI also passed on every platform. Primary synchronized
+and the owned worktree was archived after preserving 30 local evidence files.
+The recurring Windows database fixture from #2118 passed on this commit; the
+previous failures remain recorded rather than erased by the successful run.
+
+## Milestone 7D: interactions and authentication recovery
+
+Delivered through [#2120](https://github.com/ArcaneArts/Cantrip/pull/2120) from
+`codex/stability-codex-interactions`.
+
+Based on merged #2119 (`b5e5c0a19`). A dedicated interaction owner holds pending
+native replies, admitted reply waiters, plan questions, publication retries and
+expiry. Five explicit callbacks provide current execution lookup, notification
+ownership, transport send, GUI dispatch and runtime session identity. Native
+resolution notifications and exit cleanup use the same ledger as GUI and
+console responses. Consume-before-send, exact numeric/string request IDs,
+admission generation, object identity and callback order remain unchanged.
+
+Portable ChatGPT session state and the shared in-flight refresh/login attempt
+now belong to an authentication recovery owner. Initial login and transport
+replacement remain in the orchestrator, which installs/retires the same session
+object at the same boundaries. Expiry still permits one forced refresh and one
+request retry; unrelated failures retain their original identity. Current token
+access and diagnostic redaction use narrow callbacks. No additional retry,
+session reset or asynchronous wrapper was introduced.
+
+Interaction wire parsing/response conversion now lives in a separate protocol
+module, with all six original public names re-exported by the facade. Provider
+log context shares its existing origin-only representation from provider-config.
+All 107 facade exports remain intact. Supporting AST comparison preserves 15
+moved methods, 137 remaining methods after explicit delegation substitutions,
+61 other top-level declarations, supported-request dispatch, native-resolution
+handling and exit cleanup. No scoped runtime cycle was introduced. The entry
+point shrinks from 8,547 to 7,788 lines; no performance gain is claimed.
+
+Three new characterization cases exercise concurrent expired requests sharing
+one lease/login, refreshed-token redaction, exactly one retry, unrelated error
+identity and recovery after a failed lease request. All four tests in the
+provider portability fixture pass against the original implementation, including
+the final fixture updated to the actual typed provider/turn contract. Existing
+interaction tests cover native/GUI reply races, typed IDs, operation cancellation,
+publication retries and delayed notifications. Runtime CI also includes the
+external-auth helper and publication retry suites independently of source types.
+
+Validation:
+
+- 180 focused tests across eight files pass after extraction. Worker source and
+  strict provider-fixture typechecks pass. Formatting and diff checks pass.
+- Final full worker suite: 2,630 passed, 133 existing skips across 299 files.
+- Pinned native runtime: 96 passed across eight files, using local synthetic
+  providers and disposable homes; computer-input cases were not enabled.
+- Actual bundled-editor browser: cold usability, retained reopening and
+  transient renewal passed with typing/save/worker-file assertions. One bounded
+  onboarding and mode retry each was recorded (#2096/#2102). Runner exit zero,
+  zero remaining sockets and no matching fixture processes. Bounded worker
+  termination and server retirement exit one reproduce #2098/#2099; caught Vite
+  EPIPE messages accompanied socket shutdown. Evidence was preserved before
+  moving stopped disposable state outside the worktree.
+- The standard check with Command Line Tools passed native checks, scripts,
+  source types, focused integration and shared packages, then reached the same
+  full-server baseline: 1,409 passed, 74 failed, 70 skipped. All 81 failure/suite
+  names match M7C (#2106), with no new failure name. The standard check is not
+  green; independent worker/native/browser checks completed successfully.
+
+## Acceptance scope and remaining follow-ups
+
+The seven workstreams have implementation and executable acceptance evidence.
+Passing focused checks do not erase the failed or blocked browser cases or the
+full-server baseline. No release or deployment is part of this pass.
+
+| Requirement                  | Evidence and disposition                                                                                                                                                                                                                                                                                                                                                              |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Lease and reconnect recovery | M1 fake-clock/client/worker regressions cover transient success, original expiry, explicit denial, cancellation/replacement, concurrent consumers, jitter and sibling isolation. M3/M4 and later browser runs verify real renewal, expiry/revocation and dirty-buffer behavior.                                                                                                       |
+| Shared editor readiness      | M2 component regressions cover early/late/hidden/stale readiness, cancellation, switching and retained frames; the actual patched editor is built and verified. M3 exercises delayed readiness and service-worker/worker restarts. Actual repository worktree cycling remains #2105.                                                                                                  |
+| Real browser fault coverage  | M3's results matrix records each requested scenario, logs, durations, real input/save/disk assertions and cleanup. Carrier/preview, server/Pong and route replacement failures remain #2100/#2101/#2103. Logical congestion and repository worktree fixtures remain #2104/#2105. The browser tool's input limitation is recorded separately from successful automated Chromium input. |
+| Measured loading             | M4 commits repeatable parser and actual-browser measurements, variability and GC-controlled diagnostics. One redundant chunked-body copy is removed. No overall startup or page-heap gain is claimed; streaming and shared caching are explicitly deferred for the documented correctness/measurement reasons.                                                                        |
+| Worker commands and app API  | M5 preserves 206 command bodies through typed dependencies and adds 19 characterization/integration tests. M6 preserves 450 exports and shared request/error/encryption/identity/cache owners across 33 domains. Types, domain/integration/browser tests and three-platform CI are recorded above.                                                                                    |
+| Runtime responsibilities     | M7A/B/C/D cover event normalization/streaming, RPC/process transport, turn cancellation, subagent ownership/reconciliation and interactions/auth recovery in sequential slices. Characterization runs precede extraction; full worker, real native and browser runs validate the final implementation.                                                                                |
+
+Follow-ups require automated local or CI reproduction and acceptance:
+
+- Browser setup and settings races: [#2096](https://github.com/ArcaneArts/Cantrip/issues/2096), [#2102](https://github.com/ArcaneArts/Cantrip/issues/2102).
+- Graceful service retirement: [#2098](https://github.com/ArcaneArts/Cantrip/issues/2098), [#2099](https://github.com/ArcaneArts/Cantrip/issues/2099).
+- Editor recovery defects: [#2100](https://github.com/ArcaneArts/Cantrip/issues/2100), [#2101](https://github.com/ArcaneArts/Cantrip/issues/2101), [#2103](https://github.com/ArcaneArts/Cantrip/issues/2103).
+- Missing isolated acceptance fixtures: [#2104](https://github.com/ArcaneArts/Cantrip/issues/2104), [#2105](https://github.com/ArcaneArts/Cantrip/issues/2105).
+- Existing server failures: [#2094](https://github.com/ArcaneArts/Cantrip/issues/2094), [#2095](https://github.com/ArcaneArts/Cantrip/issues/2095), [#2106](https://github.com/ArcaneArts/Cantrip/issues/2106).
+- Intermittent local/native/Windows fixtures: [#2111](https://github.com/ArcaneArts/Cantrip/issues/2111), [#2112](https://github.com/ArcaneArts/Cantrip/issues/2112), [#2113](https://github.com/ArcaneArts/Cantrip/issues/2113), [#2116](https://github.com/ArcaneArts/Cantrip/issues/2116), [#2118](https://github.com/ArcaneArts/Cantrip/issues/2118).
+
+Settings-search baseline #2091 and early peer-ready rejection #2097 were fixed
+in M3 and are closed. Passing later runs of intermittent failures do not close
+their follow-ups or rewrite earlier failures as passes.
+
+Detailed local logs, screenshots, stopped disposable runtimes and the reusable
+Cargo build cache are intentionally retained under
+`~/.codex/stability-pass/20261013/`. Disposable runtime archives have private
+permissions; their generated account credentials and databases are not committed.
+The verified Code/native bundles in Primary are retained for repeatable QA.
+Milestone worktrees are archived after observed merge and evidence preservation;
+unrelated worktrees and user-owned services remain untouched.
