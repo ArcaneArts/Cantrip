@@ -279,3 +279,9 @@ Terminal cleanup retries actual EBUSY deletion failures while the killed PTY
 releases its working directory, with a bounded retry limit. The Windows rerun
 includes the same tests and repaired fixtures. The first native CUA workflow
 passed PostgreSQL authority and all three OS jobs.
+
+The third Windows run passed 152 tests, with one long PR lifecycle fixture
+exceeding its 15-second default while executing many real local subprocesses.
+That Windows-only scenario receives a bounded 60-second test budget; all
+lifecycle authorization, confirmation, changed-head and mutation assertions
+remain. Other test deadlines and production timeouts are unchanged.
