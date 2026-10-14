@@ -81,6 +81,7 @@ async function fakeCodexBinary(directory: string): Promise<string> {
     `const { WebSocketServer } = require(${JSON.stringify(wsEntry)});
 
 const mode = process.argv[2];
+if (mode === "startup-exit") process.exit(7);
 const threadId = "goal-thread";
 const actualTurnId = "runtime-goal-turn";
 let cleared = false;
@@ -130,7 +131,8 @@ const answer = {
 
 const server = new WebSocketServer({ host: "127.0.0.1", port: 0 }, () => {
   const address = server.address();
-  process.stdout.write("listening on: ws://127.0.0.1:" + address.port + "\\n");
+  const endpointOutput = mode === "stderr-endpoint" ? process.stderr : process.stdout;
+  endpointOutput.write("listening on: ws://127.0.0.1:" + address.port + "\\n");
 });
 
 function reply(socket, id, result) {
@@ -402,7 +404,9 @@ type FixtureMode =
   | "replace-completed"
   | "turn-id-race"
   | "stream-complete"
-  | "stream-close";
+  | "stream-close"
+  | "startup-exit"
+  | "stderr-endpoint";
 
 function launcher(mode: FixtureMode): CodexProcessLauncher {
   return (binary, arguments_, options) =>
@@ -439,6 +443,42 @@ async function fixture(
 }
 
 describe("Codex goal streaming", () => {
+  it("reports process exit before an endpoint is announced", async () => {
+    const { root, runtime } = await fixture("startup-exit");
+    try {
+      await expect(
+        runtime.getGoal({
+          cwd: root,
+          model,
+          provider,
+          permissionProfileId: YOLO_PERMISSION_PROFILE_ID,
+          threadId: "goal-thread",
+        }),
+      ).rejects.toThrow("Codex app-server exited before listening (code 7)");
+    } finally {
+      runtime.close();
+    }
+  });
+
+  it("connects and initializes when the process announces its endpoint on stderr", async () => {
+    const { root, runtime } = await fixture("stderr-endpoint");
+    try {
+      await expect(
+        runtime.getGoal({
+          cwd: root,
+          model,
+          provider,
+          permissionProfileId: YOLO_PERMISSION_PROFILE_ID,
+          threadId: "goal-thread",
+        }),
+      ).resolves.toMatchObject({
+        goal: { objective: "Active goal", status: "active" },
+      });
+    } finally {
+      runtime.close();
+    }
+  });
+
   it("coalesces provisional text and command output before authoritative completion", async () => {
     const { root, runtime } = await fixture("stream-complete");
     const messages: Array<{
