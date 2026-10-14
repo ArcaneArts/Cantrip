@@ -1,3 +1,14 @@
+import { CodexInteractions } from "./interactions.js";
+import { CodexAuthRecovery } from "./auth-recovery.js";
+import { codexProviderLogContext } from "./provider-config.js";
+export {
+  planQuestionId,
+  AGENT_INTERACTION_TIMEOUT_MS,
+  agentInteractionRequestFromServerRequest,
+  agentInteractionResponseFromNativeResult,
+  codexResultForAgentInteraction,
+  failClosedAgentInteractionReply,
+} from "./interaction-protocol.js";
 import {
   CodexExecutionOwnership,
   childThreadMetadataFromNotification,
@@ -43,8 +54,6 @@ import type {
   ManagedNativeGuiCommand,
   NativeCollaborationMode,
   NativeCollaborationModeListResponse,
-  NativePendingAgentInteraction,
-  NativePendingPlanQuestion,
   NativeReplacementSettings,
   PrepareAdmittedNativeExecutionOptions,
   PrepareImportedManagedThreadOptions,
@@ -60,7 +69,6 @@ import type {
   ThreadResponse,
   ThreadStartedParams,
   ThreadStatusChangedParams,
-  ToolRequestUserInputParams,
   TurnCompletedParams,
   TurnPlanUpdatedParams,
   TurnStartResponse,
@@ -70,9 +78,7 @@ import { isDeepStrictEqual } from "node:util";
 import path from "node:path";
 import type {
   AgentActivity,
-  AgentInteractionRequestKind,
   AgentInteractionResponse,
-  AgentInteractionRuntimeRequest,
   AgentThreadSync,
   AgentTurnResult,
   ChatGoalResponse,
@@ -106,9 +112,6 @@ import {
   MANAGED_CUA_MCP_NAME,
   YOLO_PERMISSION_PROFILE_ID,
   agentActivitySchema,
-  agentInteractionAcceptedSchema,
-  agentInteractionResponseSchema,
-  agentInteractionRuntimeRequestSchema,
   agentTurnResultSchema,
   chatGoalClearSchema,
   chatGoalResponseSchema,
@@ -119,7 +122,6 @@ import {
   isManagedCantripMcpName,
   isManagedCodeGraphMcpName,
   nativeInitialTurnSettingsSchema,
-  pendingPlanQuestionSchema,
   permissionProfileCapabilitySchema,
   providerRateLimitResetConsumeOutcomeSchema,
   providerRateLimitResetConsumeResultSchema,
@@ -166,10 +168,7 @@ import { createAgentActivityRawEnvelope } from "./raw-capture.js";
 import { boundedJsonValueSchema } from "@cantrip/protocol/bounded-json";
 import { measuredAgentUsageSchema } from "@cantrip/protocol/agent-usage";
 import { createHash, randomUUID } from "node:crypto";
-import type {
-  ExternalChatGptAuthSession,
-  RuntimeProvider,
-} from "./external-chatgpt-auth.js";
+import type { RuntimeProvider } from "./external-chatgpt-auth.js";
 import type { CodexRuntime, CodexRuntimeDiagnostic } from "./runtime.js";
 import { LiveManagedModelCatalog } from "./live-managed-model-catalog.js";
 import { nativeModelAttribution } from "../native-model-attribution.js";
@@ -233,21 +232,15 @@ import {
   writeManagedCodexModelCatalog,
 } from "./model-catalog.js";
 import type { CodexComputerUseExecution } from "./execution-lifetime.js";
-import {
-  ProviderAccountReauthenticationRequiredError,
-  isChatGptTokenExpiredError,
-  readableCodexProviderError,
-} from "./provider-errors.js";
+import { readableCodexProviderError } from "./provider-errors.js";
 import type { RawData } from "ws";
 import {
   chatGptExternalAuthCapabilityError,
   chatGptExternalAuthSession,
   chatGptExternalLoginParams,
-  chatGptExternalRefreshResponse,
-  refreshExternalChatGptAuthSession,
 } from "./external-chatgpt-auth.js";
 import { ProviderAccessTokenRequestError } from "../provider-access-tokens.js";
-import { publishPendingInteraction } from "./pending-interaction-publication.js";
+
 import { redactCodexDiagnosticPayload } from "./diagnostic-redaction.js";
 import {
   changedFiles,
@@ -561,286 +554,6 @@ export function codexWorkspaceContext(cwd: string): {
 } {
   const resolved = path.resolve(cwd);
   return { cwd: resolved, runtimeWorkspaceRoots: [resolved] };
-}
-
-export function planQuestionId(
-  params: Pick<ToolRequestUserInputParams, "threadId" | "turnId" | "itemId">,
-  rpcId: number | string,
-): string {
-  return `${params.threadId}:${params.turnId}:${params.itemId}:${String(rpcId)}`;
-}
-
-export const AGENT_INTERACTION_TIMEOUT_MS = 30 * 60_000;
-
-const AGENT_INTERACTION_METHODS = new Set([
-  "item/commandExecution/requestApproval",
-  "item/fileChange/requestApproval",
-  "item/permissions/requestApproval",
-  "item/tool/requestUserInput",
-  "mcpServer/elicitation/request",
-]);
-
-function rpcParams(params: unknown): Record<string, unknown> {
-  if (!params || typeof params !== "object" || Array.isArray(params)) {
-    throw new Error("App Server request params must be an object.");
-  }
-  return params as Record<string, unknown>;
-}
-
-function availableCommandDecisions(
-  value: unknown,
-): Array<
-  | "accept"
-  | "acceptForSession"
-  | "acceptWithExecpolicyAmendment"
-  | "applyNetworkPolicyAmendment"
-  | "decline"
-  | "cancel"
-> | null {
-  if (!Array.isArray(value)) return null;
-  const known: ReadonlySet<string> = new Set([
-    "accept",
-    "acceptForSession",
-    "acceptWithExecpolicyAmendment",
-    "applyNetworkPolicyAmendment",
-    "decline",
-    "cancel",
-  ]);
-  return value.flatMap((decision) => {
-    if (typeof decision === "string" && known.has(decision)) {
-      return [
-        decision as
-          | "accept"
-          | "acceptForSession"
-          | "acceptWithExecpolicyAmendment"
-          | "applyNetworkPolicyAmendment"
-          | "decline"
-          | "cancel",
-      ];
-    }
-    if (!decision || typeof decision !== "object") return [];
-    if ("acceptWithExecpolicyAmendment" in decision) {
-      return ["acceptWithExecpolicyAmendment"] as const;
-    }
-    if ("applyNetworkPolicyAmendment" in decision) {
-      return ["applyNetworkPolicyAmendment"] as const;
-    }
-    return [];
-  }) as ReturnType<typeof availableCommandDecisions>;
-}
-
-export function agentInteractionRequestFromServerRequest(
-  method: string,
-  params: unknown,
-  requestKey: string,
-  nowMs = Date.now(),
-): AgentInteractionRuntimeRequest | null {
-  if (!AGENT_INTERACTION_METHODS.has(method)) return null;
-  const value = rpcParams(params);
-  const requestedTimeout =
-    method === "item/tool/requestUserInput" &&
-    typeof value.autoResolutionMs === "number" &&
-    Number.isSafeInteger(value.autoResolutionMs) &&
-    value.autoResolutionMs >= 0
-      ? value.autoResolutionMs
-      : AGENT_INTERACTION_TIMEOUT_MS;
-  const expiresAt = new Date(
-    nowMs + Math.min(requestedTimeout, AGENT_INTERACTION_TIMEOUT_MS),
-  ).toISOString();
-
-  if (method === "item/commandExecution/requestApproval") {
-    return agentInteractionRuntimeRequestSchema.parse({
-      requestKey,
-      threadId: value.threadId,
-      turnId: value.turnId,
-      itemId: value.itemId,
-      expiresAt,
-      payload: {
-        kind: "commandExecution",
-        startedAtMs: value.startedAtMs,
-        approvalId: value.approvalId ?? null,
-        environmentId: value.environmentId ?? null,
-        reason: value.reason ?? null,
-        command: value.command ?? null,
-        cwd: value.cwd ?? null,
-        commandActions: value.commandActions ?? null,
-        networkApprovalContext: value.networkApprovalContext ?? null,
-        additionalPermissions: value.additionalPermissions ?? null,
-        proposedExecpolicyAmendment: value.proposedExecpolicyAmendment ?? null,
-        proposedNetworkPolicyAmendments:
-          value.proposedNetworkPolicyAmendments ?? null,
-        availableDecisions: availableCommandDecisions(value.availableDecisions),
-      },
-    });
-  }
-  if (method === "item/fileChange/requestApproval") {
-    return agentInteractionRuntimeRequestSchema.parse({
-      requestKey,
-      threadId: value.threadId,
-      turnId: value.turnId,
-      itemId: value.itemId,
-      expiresAt,
-      payload: {
-        kind: "fileChange",
-        startedAtMs: value.startedAtMs,
-        reason: value.reason ?? null,
-        grantRoot: value.grantRoot ?? null,
-      },
-    });
-  }
-  if (method === "item/permissions/requestApproval") {
-    return agentInteractionRuntimeRequestSchema.parse({
-      requestKey,
-      threadId: value.threadId,
-      turnId: value.turnId,
-      itemId: value.itemId,
-      expiresAt,
-      payload: {
-        kind: "permissions",
-        startedAtMs: value.startedAtMs,
-        environmentId: value.environmentId ?? null,
-        cwd: value.cwd,
-        reason: value.reason ?? null,
-        requestedPermissions: value.permissions,
-      },
-    });
-  }
-  if (method === "item/tool/requestUserInput") {
-    return agentInteractionRuntimeRequestSchema.parse({
-      requestKey,
-      threadId: value.threadId,
-      turnId: value.turnId,
-      itemId: value.itemId,
-      expiresAt,
-      payload: {
-        kind: "userInput",
-        questions: value.questions,
-        autoResolutionMs: value.autoResolutionMs ?? null,
-      },
-    });
-  }
-  return agentInteractionRuntimeRequestSchema.parse({
-    requestKey,
-    threadId: value.threadId,
-    turnId: value.turnId ?? null,
-    itemId: null,
-    expiresAt,
-    payload: {
-      kind: "mcpElicitation",
-      serverName: value.serverName,
-      mode: value.mode,
-      message: value.message,
-      requestedSchema: value.requestedSchema ?? null,
-      url: value.url ?? null,
-      elicitationId: value.elicitationId ?? null,
-      metadata: value._meta ?? null,
-    },
-  });
-}
-
-/** Translate the accepted native reply for durable, encrypted GUI display. */
-export function agentInteractionResponseFromNativeResult(
-  kind: AgentInteractionRequestKind,
-  result: unknown,
-): AgentInteractionResponse | undefined {
-  if (!result || typeof result !== "object" || Array.isArray(result))
-    return undefined;
-  const value = result as Record<string, unknown>;
-  const response: Record<string, unknown> = { ...value, kind };
-  if (kind === "mcpElicitation") response.metadata = value._meta ?? null;
-  if (
-    kind === "commandExecution" &&
-    value.decision &&
-    typeof value.decision === "object"
-  ) {
-    const decision = value.decision as Record<
-      string,
-      { execpolicy_amendment?: unknown; network_policy_amendment?: unknown }
-    >;
-    if (decision.acceptWithExecpolicyAmendment) {
-      response.decision = "acceptWithExecpolicyAmendment";
-      response.execpolicyAmendment =
-        decision.acceptWithExecpolicyAmendment.execpolicy_amendment;
-    } else if (decision.applyNetworkPolicyAmendment) {
-      response.decision = "applyNetworkPolicyAmendment";
-      response.networkPolicyAmendment =
-        decision.applyNetworkPolicyAmendment.network_policy_amendment;
-    }
-  }
-  const parsed = agentInteractionResponseSchema.safeParse(response);
-  return parsed.success ? parsed.data : undefined;
-}
-
-export function codexResultForAgentInteraction(
-  response: AgentInteractionResponse,
-): unknown {
-  if (response.kind === "commandExecution") {
-    if (response.decision === "acceptWithExecpolicyAmendment") {
-      if (!response.execpolicyAmendment) {
-        throw new Error("Missing execpolicy amendment.");
-      }
-      return {
-        decision: {
-          acceptWithExecpolicyAmendment: {
-            execpolicy_amendment: response.execpolicyAmendment,
-          },
-        },
-      };
-    }
-    if (response.decision === "applyNetworkPolicyAmendment") {
-      if (!response.networkPolicyAmendment) {
-        throw new Error("Missing network policy amendment.");
-      }
-      return {
-        decision: {
-          applyNetworkPolicyAmendment: {
-            network_policy_amendment: response.networkPolicyAmendment,
-          },
-        },
-      };
-    }
-    return { decision: response.decision };
-  }
-  if (response.kind === "fileChange") {
-    return { decision: response.decision };
-  }
-  if (response.kind === "permissions") {
-    return {
-      permissions: response.permissions,
-      scope: response.scope,
-      strictAutoReview: response.strictAutoReview,
-    };
-  }
-  if (response.kind === "userInput") {
-    return { answers: response.answers };
-  }
-  return {
-    action: response.action,
-    content: response.content,
-    _meta: response.metadata,
-  };
-}
-
-export function failClosedAgentInteractionReply(
-  kind: AgentInteractionRequestKind,
-  reason: string,
-): Pick<RpcMessage, "error" | "result"> {
-  if (kind === "commandExecution" || kind === "fileChange") {
-    return { result: { decision: "cancel" } };
-  }
-  if (kind === "permissions") {
-    return {
-      result: {
-        permissions: {},
-        scope: "turn",
-        strictAutoReview: false,
-      },
-    };
-  }
-  if (kind === "mcpElicitation") {
-    return { result: { action: "cancel", content: null, _meta: null } };
-  }
-  return { error: { code: -32_000, message: reason } };
 }
 
 export function reconciledRootTurnStatus(
@@ -1670,22 +1383,6 @@ export function codexRuntimeId(
   return `${provider.credentialHomeKey ?? provider.id}:${configuration}`;
 }
 
-function safeProviderOrigin(provider: RuntimeProvider): string | null {
-  try {
-    return provider.baseUrl ? new URL(provider.baseUrl).origin : null;
-  } catch {
-    return null;
-  }
-}
-
-function codexProviderLogContext(provider: RuntimeProvider) {
-  return {
-    providerId: provider.id,
-    providerKind: provider.kind,
-    providerOrigin: safeProviderOrigin(provider),
-  };
-}
-
 const CANTRIP_CAPACITY_RETRY_DELAYS_MS = [10_000, 20_000, 40_000] as const;
 
 export function cantripCapacityRetryDelayMs(attempt: number): number | null {
@@ -1928,7 +1625,7 @@ export class CodexAppServer implements CodexRuntime {
     canonicalHistory: (threadId) =>
       this.#managedThreadOverlays.get(threadId)?.options.canonicalHistory,
     clearInteractionsForTurn: (active, reason) =>
-      this.clearInteractionsForTurn(active, reason),
+      this.#interactions.clearInteractionsForTurn(active, reason),
   });
 
   readonly #threadSettings = new NativeThreadSettingsState();
@@ -2011,24 +1708,36 @@ export class CodexAppServer implements CodexRuntime {
       this.recordDiagnostic(diagnostic, warning),
   });
 
-  readonly #pendingAgentInteractions = new Map<
-    string,
-    NativePendingAgentInteraction
-  >();
-  readonly #admittedReplyWaiters = new Set<() => void>();
+  readonly #interactions = new CodexInteractions({
+    rootExecution: (threadId) =>
+      this.#executions.rootExecutionsByThread.get(threadId),
+    activeTurnForNotification: (threadId, turnId) =>
+      this.#executions.activeTurnForNotification(threadId, turnId),
+    send: (message) => this.send(message),
+    dispatchGuiNativeCommand: (threadId, command) =>
+      this.dispatchGuiNativeCommand(threadId, command),
+    sessionId: () => this.#appServerSessionId,
+  });
+
   readonly #pendingCapacityRetries = new Map<
     string,
     { controller: AbortController; threadId: string | null }
   >();
-  readonly #pendingPlanQuestions = new Map<string, NativePendingPlanQuestion>();
+
   readonly #pausedChats = new Set<string>();
   readonly #runtimeDiagnostics: CodexRuntimeDiagnostic[] = [];
   #skillRoots: string[] = [];
   #appServerSessionId = randomUUID();
   #nativeTransportGeneration: string | null = null;
   #child: ChildProcessWithoutNullStreams | null = null;
-  #externalChatGptAuth: ExternalChatGptAuthSession | null = null;
-  #externalChatGptReauthentication: Promise<void> | null = null;
+  readonly #authRecovery = new CodexAuthRecovery({
+    providerAccessTokens: () => this.providerAccessTokens,
+    request: (method, params) => this.request(method, params),
+    rememberSecret: (secret) => {
+      this.#diagnosticSecrets.add(secret);
+    },
+  });
+
   #remoteUrl: string | null = null;
   #runtimeId: string | null = null;
   #runtimeStartedAtMs: number | null = null;
@@ -4853,91 +4562,16 @@ export class CodexAppServer implements CodexRuntime {
     return { mode: options.mode, threadId };
   }
 
-  private admittedReplyPending(
-    input: AdmittedNativeReplyIdentity,
-  ): NativePendingAgentInteraction | null {
-    const execution = this.#executions.rootExecutionsByThread.get(
-      input.rootThreadId,
-    );
-    if (
-      !execution ||
-      execution.rootThreadId !== input.rootThreadId ||
-      execution.active.admission?.operationGeneration !==
-        input.operationGeneration ||
-      execution.active.admission.controller.signal.aborted
-    )
-      return null;
-    return (
-      [...this.#pendingAgentInteractions.values()].find(
-        (pending) =>
-          pending.active === execution.active &&
-          pending.rpcId === input.requestId,
-      ) ?? null
-    );
-  }
-
   pendingAdmittedNativeReply(
     input: AdmittedNativeReplyIdentity,
   ): AdmittedNativeReply | null {
-    const pending = this.admittedReplyPending(input);
-    return pending
-      ? {
-          ...input,
-          requestKey: pending.request.requestKey,
-          requestMethod: pending.requestMethod,
-          threadId: pending.request.threadId,
-          turnId: pending.request.turnId,
-          kind: pending.request.payload.kind,
-        }
-      : null;
+    return this.#interactions.pendingAdmittedNativeReply(input);
   }
 
   awaitPendingAdmittedNativeReply(
     input: AdmittedNativeReplyIdentity,
   ): Promise<AdmittedNativeReply> {
-    const known = this.pendingAdmittedNativeReply(input);
-    if (known) return Promise.resolve(known);
-    const active = this.#executions.rootExecutionsByThread.get(
-      input.rootThreadId,
-    )?.active;
-    const admission = active?.admission;
-    if (
-      !admission ||
-      admission.operationGeneration !== input.operationGeneration ||
-      admission.controller.signal.aborted ||
-      admission.resolvedRequestIds.has(
-        `${typeof input.requestId}:${input.requestId}`,
-      )
-    ) {
-      return Promise.reject(
-        new Error("The native reply operation is no longer current."),
-      );
-    }
-    return new Promise((resolve, reject) => {
-      const cleanup = () => {
-        this.#admittedReplyWaiters.delete(observed);
-        admission.controller.signal.removeEventListener("abort", aborted);
-      };
-      const aborted = () => {
-        cleanup();
-        reject(
-          new Error(
-            "The native reply operation ended before its request was observed.",
-          ),
-        );
-      };
-      const observed = () => {
-        const pending = this.pendingAdmittedNativeReply(input);
-        if (!pending) return;
-        cleanup();
-        resolve(pending);
-      };
-      this.#admittedReplyWaiters.add(observed);
-      admission.controller.signal.addEventListener("abort", aborted, {
-        once: true,
-      });
-      observed();
-    });
+    return this.#interactions.awaitPendingAdmittedNativeReply(input);
   }
 
   resolveAdmittedNativeReply(
@@ -4945,77 +4579,21 @@ export class CodexAppServer implements CodexRuntime {
       response: AdmittedNativeReplyResponse;
     },
   ): { accepted: true } {
-    const pending = this.admittedReplyPending(input);
-    if (!pending)
-      throw new Error(
-        "The native reply is no longer pending for this operation.",
-      );
-    // Consume before transport send. An uncertain failure cannot authorize replay
-    // or let a simultaneous GUI/console response win the same native request.
-    this.releaseAgentInteraction(pending);
-    this.send({ id: pending.rpcId, ...input.response });
-    pending.active.onInteractionCleared?.(
-      pending.request.requestKey,
-      "result" in input.response
-        ? agentInteractionResponseFromNativeResult(
-            pending.request.payload.kind,
-            input.response.result,
-          )
-        : undefined,
-    );
-    return { accepted: true };
+    return this.#interactions.resolveAdmittedNativeReply(input);
   }
 
-  async answerAgentInteraction(
+  answerAgentInteraction(
     requestKey: string,
     response: AgentInteractionResponse,
   ): Promise<{ accepted: true }> {
-    const pending = this.#pendingAgentInteractions.get(requestKey);
-    if (!pending) {
-      throw new Error("The agent interaction is no longer pending.");
-    }
-    if (pending.request.payload.kind !== response.kind) {
-      throw new Error("The agent interaction response kind does not match.");
-    }
-    const result = codexResultForAgentInteraction(response);
-    await this.dispatchGuiNativeCommand(pending.active.threadId, {
-      method: "serverRequest/reply",
-      params: { result },
-      reply: {
-        requestId: pending.rpcId,
-        requestMethod: pending.requestMethod,
-        turnId: pending.request.turnId,
-      },
-      dispatch: async () => {
-        if (this.#pendingAgentInteractions.get(requestKey) !== pending)
-          throw new Error("The agent interaction is no longer pending.");
-        this.releaseAgentInteraction(pending);
-        this.send({ id: pending.rpcId, result });
-        pending.active.onInteractionCleared?.(
-          pending.request.requestKey,
-          response,
-        );
-        return { accepted: true };
-      },
-    });
-    return agentInteractionAcceptedSchema.parse({ accepted: true });
+    return this.#interactions.answerAgentInteraction(requestKey, response);
   }
 
-  async cancelAgentInteraction(
+  cancelAgentInteraction(
     requestKey: string,
     reason: string,
   ): Promise<{ accepted: true }> {
-    const pending = this.#pendingAgentInteractions.get(requestKey);
-    if (!pending) {
-      return agentInteractionAcceptedSchema.parse({ accepted: true });
-    }
-    this.send({
-      id: pending.rpcId,
-      ...failClosedAgentInteractionReply(pending.request.payload.kind, reason),
-    });
-    this.releaseAgentInteraction(pending);
-    pending.active.onInteractionCleared?.(pending.request.requestKey);
-    return agentInteractionAcceptedSchema.parse({ accepted: true });
+    return this.#interactions.cancelAgentInteraction(requestKey, reason);
   }
 
   async interruptChat(
@@ -5182,7 +4760,7 @@ export class CodexAppServer implements CodexRuntime {
     this.#remoteUrl = null;
     this.#runtimeId = null;
     this.#runtimeStartedAtMs = null;
-    this.#externalChatGptAuth = null;
+    this.#authRecovery.setSession(null);
     this.#diagnosticSecrets.clear();
     this.#runtimeIsZai = false;
     this.#starting = null;
@@ -5457,7 +5035,7 @@ export class CodexAppServer implements CodexRuntime {
     this.#remoteUrl = null;
     this.#runtimeId = null;
     this.#runtimeStartedAtMs = null;
-    this.#externalChatGptAuth = null;
+    this.#authRecovery.setSession(null);
     this.#diagnosticSecrets.clear();
     this.#runtimeIsZai = false;
     this.#loadedThreads.clear();
@@ -6296,7 +5874,7 @@ export class CodexAppServer implements CodexRuntime {
       this.#remoteUrl = null;
       this.#runtimeId = null;
       this.#runtimeStartedAtMs = null;
-      this.#externalChatGptAuth = null;
+      this.#authRecovery.setSession(null);
       this.#diagnosticSecrets.clear();
       this.#runtimeIsZai = false;
       this.#starting = null;
@@ -6353,7 +5931,7 @@ export class CodexAppServer implements CodexRuntime {
       this.#remoteUrl = null;
       this.#runtimeId = null;
       this.#runtimeStartedAtMs = null;
-      this.#externalChatGptAuth = null;
+      this.#authRecovery.setSession(null);
       this.#diagnosticSecrets.clear();
       this.#runtimeIsZai = false;
       this.#starting = null;
@@ -6399,9 +5977,8 @@ export class CodexAppServer implements CodexRuntime {
       if (result.type !== "chatgptAuthTokens") {
         throw new Error("Codex rejected portable ChatGPT authentication.");
       }
-      this.#externalChatGptAuth = chatGptExternalAuthSession(
-        runtimeProvider,
-        externalChatGptLease,
+      this.#authRecovery.setSession(
+        chatGptExternalAuthSession(runtimeProvider, externalChatGptLease),
       );
     }
     workerLogger.event("info", "Codex app-server ready", {
@@ -6781,15 +6358,7 @@ export class CodexAppServer implements CodexRuntime {
 
     if (message.method === "serverRequest/resolved") {
       const params = message.params as ServerRequestResolvedParams;
-      const pending = [...this.#pendingAgentInteractions.values()].find(
-        (candidate) =>
-          candidate.request.threadId === params.threadId &&
-          candidate.rpcId === params.requestId,
-      );
-      if (pending) {
-        this.releaseAgentInteraction(pending);
-        pending.active.onInteractionCleared?.(pending.request.requestKey);
-      }
+      this.#interactions.resolveServerRequest(params);
       return;
     }
 
@@ -7660,7 +7229,7 @@ export class CodexAppServer implements CodexRuntime {
       );
       if (!target.isRoot) {
         const agent = state as AgentRuntimeState;
-        this.clearInteractionsForAgentTurn(
+        this.#interactions.clearInteractionsForAgentTurn(
           active,
           params.threadId,
           params.turn.id,
@@ -7781,7 +7350,7 @@ export class CodexAppServer implements CodexRuntime {
     }
     let released = false;
     try {
-      this.clearInteractionsForTurn(
+      this.#interactions.clearInteractionsForTurn(
         active,
         "The Codex turn completed before the interaction was answered.",
       );
@@ -8066,7 +7635,7 @@ export class CodexAppServer implements CodexRuntime {
         clearTimeout(active.timeout);
         active.timeout = null;
       }
-      this.clearInteractionsForTurn(active, error.message);
+      this.#interactions.clearInteractionsForTurn(active, error.message);
       const changes = await workspaceChanges(active);
       if (!isCurrent()) return;
       active.diffChanges = changes;
@@ -8118,55 +7687,6 @@ export class CodexAppServer implements CodexRuntime {
     }
   }
 
-  private clearInteractionsForTurn(active: ActiveTurn, reason: string): void {
-    for (const pending of [...this.#pendingAgentInteractions.values()]) {
-      if (pending.active !== active) continue;
-      try {
-        this.send({
-          id: pending.rpcId,
-          ...failClosedAgentInteractionReply(
-            pending.request.payload.kind,
-            reason,
-          ),
-        });
-      } catch {
-        // The turn or runtime may already be closed.
-      }
-      this.releaseAgentInteraction(pending);
-      active.onInteractionCleared?.(pending.request.requestKey);
-    }
-  }
-
-  private clearInteractionsForAgentTurn(
-    active: ActiveTurn,
-    threadId: string,
-    turnId: string,
-    reason: string,
-  ): void {
-    for (const pending of [...this.#pendingAgentInteractions.values()]) {
-      if (
-        pending.active !== active ||
-        pending.request.threadId !== threadId ||
-        pending.request.turnId !== turnId
-      ) {
-        continue;
-      }
-      try {
-        this.send({
-          id: pending.rpcId,
-          ...failClosedAgentInteractionReply(
-            pending.request.payload.kind,
-            reason,
-          ),
-        });
-      } catch {
-        // The child turn or runtime may already be closed.
-      }
-      this.releaseAgentInteraction(pending);
-      active.onInteractionCleared?.(pending.request.requestKey);
-    }
-  }
-
   private async handleServerRequest(message: RpcMessage): Promise<void> {
     if (message.id === undefined) {
       return;
@@ -8178,66 +7698,7 @@ export class CodexAppServer implements CodexRuntime {
       });
       return;
     }
-    const request = agentInteractionRequestFromServerRequest(
-      message.method ?? "",
-      message.params,
-      `codex:${this.#appServerSessionId}:${typeof message.id}:${String(message.id)}`,
-    );
-    if (request) {
-      const active = request.turnId
-        ? this.#executions.activeTurnForNotification(
-            request.threadId,
-            request.turnId,
-          )
-        : this.#executions.rootExecutionsByThread.get(request.threadId)?.active;
-      if (!active || (!active.onInteractionRequest && !active.admission)) {
-        this.send({
-          id: message.id,
-          ...failClosedAgentInteractionReply(
-            request.payload.kind,
-            "No active Cantrip interaction channel.",
-          ),
-        });
-        return;
-      }
-      if (active.interactionMode === "preauthorized") {
-        this.send({
-          id: message.id,
-          ...failClosedAgentInteractionReply(
-            request.payload.kind,
-            "Preauthorized agent operations cannot open interactive requests.",
-          ),
-        });
-        return;
-      }
-      this.registerAgentInteraction(
-        active,
-        message.id,
-        request,
-        message.method ?? "",
-      );
-      if (
-        request.payload.kind === "userInput" &&
-        request.turnId &&
-        request.itemId
-      ) {
-        const question = pendingPlanQuestionSchema.parse({
-          id: request.requestKey,
-          threadId: request.threadId,
-          turnId: request.turnId,
-          itemId: request.itemId,
-          questions: request.payload.questions,
-          createdAt: new Date().toISOString(),
-        });
-        this.#pendingPlanQuestions.set(question.id, {
-          active,
-          question,
-          requestKey: request.requestKey,
-        });
-        active.onPlanQuestion?.(question);
-      }
-      return;
-    }
+    if (this.#interactions.handleServerRequest(message, message.id)) return;
     this.recordDiagnostic(
       {
         at: new Date().toISOString(),
@@ -8257,237 +7718,22 @@ export class CodexAppServer implements CodexRuntime {
     });
   }
 
-  private async refreshExternalChatGptAuth(
+  private refreshExternalChatGptAuth(
     params: unknown,
   ): Promise<Record<string, unknown>> {
-    const session = this.#externalChatGptAuth;
-    if (!session || !this.providerAccessTokens) {
-      throw new Error("Portable ChatGPT authentication is not active.");
-    }
-    const refreshed = await refreshExternalChatGptAuthSession(
-      session,
-      this.providerAccessTokens,
-      params,
-    );
-    this.#diagnosticSecrets.add(refreshed.accessToken);
-    return refreshed.response;
+    return this.#authRecovery.refreshExternalChatGptAuth(params);
   }
 
-  private async requestWithChatGptAuthRecovery(
+  private requestWithChatGptAuthRecovery(
     provider: RuntimeProvider & { kind: "chatgpt" },
     method: string,
     params: unknown,
   ): Promise<unknown> {
-    try {
-      return await this.request(method, params);
-    } catch (error) {
-      if (!isChatGptTokenExpiredError(error)) throw error;
-    }
-
-    await this.reauthenticateExternalChatGptRuntime(provider);
-    try {
-      return await this.request(method, params);
-    } catch (error) {
-      if (isChatGptTokenExpiredError(error)) {
-        throw new ProviderAccountReauthenticationRequiredError();
-      }
-      throw error;
-    }
-  }
-
-  private async reauthenticateExternalChatGptRuntime(
-    provider: RuntimeProvider & { kind: "chatgpt" },
-  ): Promise<void> {
-    if (this.#externalChatGptReauthentication) {
-      return this.#externalChatGptReauthentication;
-    }
-    const pending = this.performExternalChatGptReauthentication(provider);
-    this.#externalChatGptReauthentication = pending;
-    try {
-      await pending;
-    } finally {
-      if (this.#externalChatGptReauthentication === pending) {
-        this.#externalChatGptReauthentication = null;
-      }
-    }
-  }
-
-  private async performExternalChatGptReauthentication(
-    provider: RuntimeProvider & { kind: "chatgpt" },
-  ): Promise<void> {
-    const session = this.#externalChatGptAuth;
-    if (!session || !this.providerAccessTokens) {
-      throw new ProviderAccountReauthenticationRequiredError();
-    }
-
-    let lease: ProviderAccessTokenLease;
-    try {
-      lease = await this.providerAccessTokens.get(
-        session.providerId,
-        session.providerAccountId,
-        {
-          credentialRevision: session.credentialRevision,
-          forceRefresh: true,
-          minimumValiditySeconds: 120,
-        },
-      );
-    } catch (error) {
-      if (
-        error instanceof ProviderAccessTokenRequestError &&
-        error.code === "reauth-required"
-      ) {
-        throw new ProviderAccountReauthenticationRequiredError();
-      }
-      throw new Error(
-        "Cantrip could not refresh ChatGPT authentication. Try again.",
-        {
-          cause: error,
-        },
-      );
-    }
-
-    const refreshed = chatGptExternalRefreshResponse(
-      session,
-      lease,
-      session.upstreamAccountId,
+    return this.#authRecovery.requestWithChatGptAuthRecovery(
+      provider,
+      method,
+      params,
     );
-    this.#diagnosticSecrets.add(lease.accessToken);
-    let result: { type?: unknown };
-    try {
-      result = (await this.request("account/login/start", {
-        type: "chatgptAuthTokens",
-        ...refreshed,
-      })) as { type?: unknown };
-    } catch (error) {
-      if (isChatGptTokenExpiredError(error)) {
-        throw new ProviderAccountReauthenticationRequiredError();
-      }
-      throw new Error(
-        "Codex could not accept refreshed ChatGPT authentication.",
-        {
-          cause: error,
-        },
-      );
-    }
-    if (result.type !== "chatgptAuthTokens") {
-      throw new Error("Codex rejected refreshed ChatGPT authentication.");
-    }
-    session.credentialRevision = lease.credentialRevision;
-    workerLogger.event(
-      "info",
-      "ChatGPT authentication refreshed after an expired token",
-      {
-        event: "provider.auth.refresh",
-        subsystem: "provider-auth",
-        operation: "refresh-expired-token",
-        status: "completed",
-        ...codexProviderLogContext(provider),
-      },
-    );
-  }
-
-  private registerAgentInteraction(
-    active: ActiveTurn,
-    rpcId: number | string,
-    request: AgentInteractionRuntimeRequest,
-    requestMethod = "",
-  ): void {
-    const existing = this.#pendingAgentInteractions.get(request.requestKey);
-    if (existing) {
-      if (existing.rpcId !== rpcId) {
-        throw new Error("Agent interaction request key was reused.");
-      }
-      return;
-    }
-    let pending: NativePendingAgentInteraction;
-    const timeout = setTimeout(
-      () => this.expireAgentInteraction(pending),
-      Math.max(0, Date.parse(request.expiresAt) - Date.now()),
-    );
-    timeout.unref();
-    pending = { active, request, requestMethod, rpcId, timeout };
-    this.#pendingAgentInteractions.set(request.requestKey, pending);
-    try {
-      for (const observed of [...this.#admittedReplyWaiters]) observed();
-      if (active.admission) {
-        const metadata = this.pendingAdmittedNativeReply({
-          operationGeneration: active.admission.operationGeneration,
-          rootThreadId: active.threadId,
-          requestId: rpcId,
-        });
-        const publish = active.onNativeInteractionRequest;
-        if (metadata && publish) {
-          pending.stopPublication = publishPendingInteraction({
-            publish: () => publish(metadata),
-            isCurrent: () =>
-              this.#pendingAgentInteractions.get(request.requestKey) ===
-                pending && !active.admission?.controller.signal.aborted,
-            failed: (error, attempt) =>
-              workerLogger.event(
-                "warn",
-                "Native interaction publication will retry",
-                {
-                  event: "codex.interaction.publication",
-                  subsystem: "codex",
-                  operation: "publish-pending-interaction",
-                  status: "retrying",
-                  threadId: request.threadId,
-                  turnId: request.turnId ?? undefined,
-                  counts: { attempt },
-                  error: workerLogError(error),
-                },
-              ),
-          });
-        }
-      }
-      active.onInteractionRequest?.(request);
-    } catch (error) {
-      this.releaseAgentInteraction(pending);
-      throw error;
-    }
-  }
-
-  private expireAgentInteraction(pending: NativePendingAgentInteraction): void {
-    if (
-      this.#pendingAgentInteractions.get(pending.request.requestKey) !== pending
-    ) {
-      return;
-    }
-    try {
-      this.send({
-        id: pending.rpcId,
-        ...failClosedAgentInteractionReply(
-          pending.request.payload.kind,
-          "The Cantrip interaction expired before it was answered.",
-        ),
-      });
-    } catch {
-      // The runtime may already be unavailable; the request still expires.
-    }
-    this.releaseAgentInteraction(pending);
-    pending.active.onInteractionExpired?.(pending.request.requestKey);
-  }
-
-  private releaseAgentInteraction(
-    pending: NativePendingAgentInteraction,
-  ): void {
-    clearTimeout(pending.timeout);
-    pending.stopPublication?.();
-    if (
-      this.#pendingAgentInteractions.get(pending.request.requestKey) !== pending
-    )
-      return;
-    pending.active.admission?.resolvedRequestIds.add(
-      `${typeof pending.rpcId}:${pending.rpcId}`,
-    );
-    this.#pendingAgentInteractions.delete(pending.request.requestKey);
-    const planQuestion = this.#pendingPlanQuestions.get(
-      pending.request.requestKey,
-    );
-    if (planQuestion) {
-      this.#pendingPlanQuestions.delete(planQuestion.question.id);
-      planQuestion.active.onPlanQuestionResolved?.(planQuestion.question.id);
-    }
   }
 
   private recordDiagnostic(
@@ -8535,12 +7781,7 @@ export class CodexAppServer implements CodexRuntime {
     for (const execution of this.#executions.rootExecutionsByActive.values())
       this.#executions.abortComputerUseExecution(execution);
     this.#rpcRequests.rejectAll(error);
-    for (const pending of [...this.#pendingAgentInteractions.values()]) {
-      this.releaseAgentInteraction(pending);
-      pending.active.onInteractionCleared?.(pending.request.requestKey);
-    }
-    this.#pendingAgentInteractions.clear();
-    this.#pendingPlanQuestions.clear();
+    this.#interactions.clearOnExit();
     this.#executions.failActiveTurns(error);
     this.#threadSettings.clear();
   }

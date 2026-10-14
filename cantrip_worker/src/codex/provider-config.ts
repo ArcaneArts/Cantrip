@@ -91,3 +91,19 @@ export function codexProviderConfiguration(
       : {},
   };
 }
+
+function safeProviderOrigin(provider: RuntimeProvider): string | null {
+  try {
+    return provider.baseUrl ? new URL(provider.baseUrl).origin : null;
+  } catch {
+    return null;
+  }
+}
+
+export function codexProviderLogContext(provider: RuntimeProvider) {
+  return {
+    providerId: provider.id,
+    providerKind: provider.kind,
+    providerOrigin: safeProviderOrigin(provider),
+  };
+}

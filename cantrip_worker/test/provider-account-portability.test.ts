@@ -7,15 +7,17 @@ import path from "node:path";
 import {
   unprobedCodexRuntimeReport,
   type ProviderAccessTokenLease,
-  type WorkerCommand,
+  YOLO_PERMISSION_PROFILE_ID,
 } from "@cantrip/protocol";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   CodexAppServer,
   type CodexProcessLauncher,
+  type RunAgentTurnOptions,
 } from "../src/codex/app-server.js";
 import { ProviderAccessTokenClient } from "../src/provider-access-tokens.js";
+import { ProviderAccountReauthenticationRequiredError } from "../src/codex/provider-errors.js";
 import { createServerManagedGrokClient } from "../src/server-managed-grok.js";
 
 const temporaryDirectories: string[] = [];
@@ -48,6 +50,7 @@ const compatibility = {
 const chatGptProvider = {
   accountId: "chatgpt-account",
   apiKey: null,
+  protectedApiKey: null,
   baseUrl: "https://chatgpt.com/backend-api/codex",
   credentialHomeKey: "chatgpt-home",
   id: "chatgpt-provider",
@@ -58,6 +61,7 @@ const chatGptProvider = {
 const grokProvider = {
   accountId: "grok-account",
   apiKey: null,
+  protectedApiKey: null,
   baseUrl: "https://cli-chat-proxy.grok.com/v1",
   credentialHomeKey: "grok-home",
   id: "grok-provider",
@@ -352,10 +356,17 @@ const launchFakeCodex: CodexProcessLauncher = (binary, arguments_, options) =>
 
 function turnOptions(
   cwd: string,
-  provider: Extract<WorkerCommand, { type: "chat.turn" }>["provider"],
+  provider: RunAgentTurnOptions["provider"],
   modelName: string,
-) {
+): RunAgentTurnOptions {
   return {
+    automationPaused: false,
+    captureProtectedDiagnostics: false,
+    executionProfile: "ide",
+    policyContext: null,
+    rootKind: null,
+    subagentDefaults: null,
+    subagentProtocolVersion: undefined,
     attachments: [],
     chatId: `${provider.kind}-chat`,
     clientMessageId: `${provider.kind}-message`,
@@ -368,7 +379,7 @@ function turnOptions(
       reasoningEffort: null,
       routeId: `${provider.kind}-route`,
     },
-    permissionProfileId: null,
+    permissionProfileId: YOLO_PERMISSION_PROFILE_ID,
     planMode: "default" as const,
     prompt: `Complete the ${provider.kind} portability check.`,
     provider,
@@ -588,4 +599,211 @@ describe("portable provider accounts on a brand-new worker", () => {
       grok.close();
     }
   }, 30_000);
+});
+
+describe("portable ChatGPT authentication recovery ownership", () => {
+  async function recoveryFixture(
+    refresh: () => Promise<ProviderAccessTokenLease>,
+  ) {
+    const root = await mkdtemp(path.join(tmpdir(), "cantrip-auth-recovery-"));
+    temporaryDirectories.push(root);
+    const get = vi.fn(
+      async (
+        _providerId: string,
+        _accountId: string,
+        request: { forceRefresh?: boolean } = {},
+      ) => (request.forceRefresh ? refresh() : lease("chatgpt", 1)),
+    );
+    const runtime = new CodexAppServer(
+      await fakeCodexBinary(root),
+      path.join(root, "runtime"),
+      path.join(root, "home"),
+      compatibility,
+      undefined,
+      undefined,
+      { get } as unknown as ProviderAccessTokenClient,
+      launchFakeCodex,
+    );
+    const native = runtime as unknown as {
+      ensureCatalogStarted(provider: typeof chatGptProvider): Promise<void>;
+      request(method: string, params: unknown): Promise<unknown>;
+      requestWithChatGptAuthRecovery(
+        provider: typeof chatGptProvider,
+        method: string,
+        params: unknown,
+      ): Promise<unknown>;
+      recordDiagnostic(diagnostic: {
+        at: string;
+        direction: "from-runtime";
+        kind: "notification";
+        method: string;
+        payload: unknown;
+      }): string;
+    };
+    try {
+      await native.ensureCatalogStarted(chatGptProvider);
+    } catch (error) {
+      runtime.close();
+      throw error;
+    }
+    get.mockClear();
+    return { runtime, native, get };
+  }
+
+  it("shares one forced lease/login across concurrent expired requests and redacts the refreshed token", async () => {
+    let release!: (value: ProviderAccessTokenLease) => void;
+    const refresh = new Promise<ProviderAccessTokenLease>((resolve) => {
+      release = resolve;
+    });
+    const f = await recoveryFixture(() => refresh);
+    const attempts = new Map<string, number>();
+    const completions: Promise<unknown>[] = [];
+    const request = vi
+      .spyOn(f.native, "request")
+      .mockImplementation(async (method, params) => {
+        if (method === "account/login/start") {
+          expect(params).toMatchObject({
+            accessToken: "chatgpt-access-2",
+            chatgptAccountId: "upstream-workspace",
+          });
+          return { type: "chatgptAuthTokens" };
+        }
+        const attempt = (attempts.get(method) ?? 0) + 1;
+        attempts.set(method, attempt);
+        if (attempt === 1) throw new Error("401 token_expired");
+        return { method, params };
+      });
+    try {
+      const first = f.native.requestWithChatGptAuthRecovery(
+        chatGptProvider,
+        "fixture/one",
+        { id: 1 },
+      );
+      const second = f.native.requestWithChatGptAuthRecovery(
+        chatGptProvider,
+        "fixture/two",
+        { id: 2 },
+      );
+      completions.push(first, second);
+      void Promise.allSettled(completions);
+      await vi.waitFor(() => expect(f.get).toHaveBeenCalledTimes(1));
+      expect(request).toHaveBeenCalledTimes(2);
+      expect(f.get).toHaveBeenCalledWith(
+        chatGptProvider.id,
+        chatGptProvider.accountId,
+        {
+          credentialRevision: 1,
+          forceRefresh: true,
+          minimumValiditySeconds: 120,
+        },
+      );
+      release(lease("chatgpt", 2));
+      expect(await Promise.all([first, second])).toEqual([
+        { method: "fixture/one", params: { id: 1 } },
+        { method: "fixture/two", params: { id: 2 } },
+      ]);
+      expect(
+        request.mock.calls.filter(
+          ([method]) => method === "account/login/start",
+        ),
+      ).toHaveLength(1);
+      expect([...attempts.values()]).toEqual([2, 2]);
+      f.native.recordDiagnostic({
+        at: new Date().toISOString(),
+        direction: "from-runtime",
+        kind: "notification",
+        method: "fixture/auth",
+        payload: { message: "chatgpt-access-2" },
+      });
+      expect(JSON.stringify(f.runtime.diagnostics())).not.toContain(
+        "chatgpt-access-2",
+      );
+    } finally {
+      release(lease("chatgpt", 2));
+      await Promise.allSettled(completions);
+      request.mockRestore();
+      f.runtime.close();
+    }
+  });
+
+  it("bounds expiry recovery to one retry and preserves unrelated request failures", async () => {
+    const f = await recoveryFixture(async () => lease("chatgpt", 2));
+    const unrelated = new Error("fixture upstream unavailable");
+    const request = vi
+      .spyOn(f.native, "request")
+      .mockImplementation(async (method) => {
+        if (method === "account/login/start")
+          return { type: "chatgptAuthTokens" };
+        if (method === "fixture/unrelated") throw unrelated;
+        throw new Error("401 token_expired");
+      });
+    try {
+      await expect(
+        f.native.requestWithChatGptAuthRecovery(
+          chatGptProvider,
+          "fixture/expired",
+          {},
+        ),
+      ).rejects.toBeInstanceOf(ProviderAccountReauthenticationRequiredError);
+      expect(
+        request.mock.calls.filter(([method]) => method === "fixture/expired"),
+      ).toHaveLength(2);
+      expect(f.get).toHaveBeenCalledTimes(1);
+      await expect(
+        f.native.requestWithChatGptAuthRecovery(
+          chatGptProvider,
+          "fixture/unrelated",
+          {},
+        ),
+      ).rejects.toBe(unrelated);
+      expect(f.get).toHaveBeenCalledTimes(1);
+    } finally {
+      request.mockRestore();
+      f.runtime.close();
+    }
+  });
+
+  it("releases a failed refresh so a later request can obtain a fresh lease", async () => {
+    let refreshes = 0;
+    const f = await recoveryFixture(async () => {
+      if (++refreshes === 1) throw new Error("fixture lease unavailable");
+      return lease("chatgpt", 2);
+    });
+    let authenticated = false;
+    const request = vi
+      .spyOn(f.native, "request")
+      .mockImplementation(async (method) => {
+        if (method === "account/login/start") {
+          authenticated = true;
+          return { type: "chatgptAuthTokens" };
+        }
+        if (!authenticated) throw new Error("401 token_expired");
+        return { recovered: true };
+      });
+    try {
+      await expect(
+        f.native.requestWithChatGptAuthRecovery(
+          chatGptProvider,
+          "fixture/read",
+          {},
+        ),
+      ).rejects.toThrow("could not refresh ChatGPT authentication");
+      await expect(
+        f.native.requestWithChatGptAuthRecovery(
+          chatGptProvider,
+          "fixture/read",
+          {},
+        ),
+      ).resolves.toEqual({ recovered: true });
+      expect(f.get).toHaveBeenCalledTimes(2);
+      expect(
+        request.mock.calls.filter(
+          ([method]) => method === "account/login/start",
+        ),
+      ).toHaveLength(1);
+    } finally {
+      request.mockRestore();
+      f.runtime.close();
+    }
+  });
 });
