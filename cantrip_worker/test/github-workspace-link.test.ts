@@ -132,7 +132,9 @@ describe("managed-link repair using workspace-derived storage", () => {
       expect((await lstat(request.linkPath)).isSymbolicLink()).toBe(true);
       expect(await realpath(request.linkPath)).toBe(request.sourcePath);
       expect(
-        await readFile(path.join(request.linkPath, "README.md"), "utf8"),
+        (
+          await readFile(path.join(request.linkPath, "README.md"), "utf8")
+        ).replace(/\r\n/gu, "\n"),
       ).toBe("workspace link fixture\n");
       await expect(github.repairReplicaLink(request)).resolves.toMatchObject({
         status: "ready",

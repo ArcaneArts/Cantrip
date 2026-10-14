@@ -1,3 +1,4 @@
+import "./support/fake-cli-process.mjs";
 import { execFile } from "node:child_process";
 import {
   access,
@@ -52,6 +53,8 @@ describe("GitHub Actions run links", () => {
 
 afterEach(async () => {
   process.env.PATH = originalPath;
+  delete process.env.CANTRIP_TEST_FAKE_GH;
+  delete process.env.CANTRIP_TEST_FAKE_GIT;
   delete process.env.GIT_CONFIG_COUNT;
   delete process.env.GIT_CONFIG_KEY_0;
   delete process.env.GIT_CONFIG_VALUE_0;
@@ -153,6 +156,7 @@ describe("GitHub project files", () => {
       ].join("\n"),
     );
     await chmod(fakeGh, 0o755);
+    process.env.CANTRIP_TEST_FAKE_GH = fakeGh;
     process.env.PATH = [binDirectory, originalPath ?? ""].join(path.delimiter);
 
     const github = new GithubClient(dataDirectory, "worker-direct");
@@ -1065,6 +1069,7 @@ describe("GitHub project files", () => {
       ].join("\n"),
     );
     await chmod(fakeGh, 0o755);
+    process.env.CANTRIP_TEST_FAKE_GH = fakeGh;
     process.env.PATH = [binDirectory, originalPath ?? ""].join(path.delimiter);
 
     const github = new GithubClient(dataDirectory);
@@ -1444,6 +1449,7 @@ describe("GitHub project files", () => {
       ].join("\n"),
     );
     await chmod(fakeGh, 0o755);
+    process.env.CANTRIP_TEST_FAKE_GH = fakeGh;
     process.env.PATH = [binDirectory, originalPath ?? ""].join(path.delimiter);
 
     const github = new GithubClient(dataDirectory);
@@ -1500,6 +1506,7 @@ describe("GitHub project files", () => {
       ].join("\n"),
     );
     await chmod(fakeGh, 0o755);
+    process.env.CANTRIP_TEST_FAKE_GH = fakeGh;
     process.env.PATH = [binDirectory, originalPath ?? ""].join(path.delimiter);
 
     await expect(
@@ -1572,7 +1579,8 @@ describe("GitHub project files", () => {
       ].join("\n"),
     );
     await chmod(fakeGh, 0o755);
-    process.env.PATH = `${binDirectory}:${originalPath ?? ""}`;
+    process.env.CANTRIP_TEST_FAKE_GH = fakeGh;
+    process.env.PATH = [binDirectory, originalPath ?? ""].join(path.delimiter);
 
     const github = new GithubClient(dataDirectory);
     await expect(
@@ -1672,7 +1680,8 @@ describe("GitHub project files", () => {
       ].join("\n"),
     );
     await chmod(fakeGh, 0o755);
-    process.env.PATH = `${binDirectory}:${originalPath ?? ""}`;
+    process.env.CANTRIP_TEST_FAKE_GH = fakeGh;
+    process.env.PATH = [binDirectory, originalPath ?? ""].join(path.delimiter);
 
     await expect(
       new GithubClient(dataDirectory).listPullRequests(
@@ -1776,7 +1785,8 @@ describe("GitHub project files", () => {
       ].join("\n"),
     );
     await chmod(fakeGh, 0o755);
-    process.env.PATH = `${binDirectory}:${originalPath ?? ""}`;
+    process.env.CANTRIP_TEST_FAKE_GH = fakeGh;
+    process.env.PATH = [binDirectory, originalPath ?? ""].join(path.delimiter);
 
     await expect(
       new GithubClient(dataDirectory).listPullRequests(
@@ -1860,7 +1870,8 @@ describe("GitHub project files", () => {
       ].join("\n"),
     );
     await chmod(fakeGh, 0o755);
-    process.env.PATH = `${binDirectory}:${originalPath ?? ""}`;
+    process.env.CANTRIP_TEST_FAKE_GH = fakeGh;
+    process.env.PATH = [binDirectory, originalPath ?? ""].join(path.delimiter);
 
     await expect(
       new GithubClient(dataDirectory).listInbox(
@@ -1947,7 +1958,8 @@ describe("GitHub project files", () => {
       ].join("\n"),
     );
     await chmod(fakeGh, 0o755);
-    process.env.PATH = `${binDirectory}:${originalPath ?? ""}`;
+    process.env.CANTRIP_TEST_FAKE_GH = fakeGh;
+    process.env.PATH = [binDirectory, originalPath ?? ""].join(path.delimiter);
 
     await expect(
       new GithubClient(dataDirectory).listInbox(
@@ -2026,7 +2038,8 @@ describe("GitHub project files", () => {
       ].join("\n"),
     );
     await chmod(fakeGh, 0o755);
-    process.env.PATH = `${binDirectory}:${originalPath ?? ""}`;
+    process.env.CANTRIP_TEST_FAKE_GH = fakeGh;
+    process.env.PATH = [binDirectory, originalPath ?? ""].join(path.delimiter);
 
     const github = new GithubClient(dataDirectory);
     const created = await github.createPullRequest(
@@ -2332,7 +2345,8 @@ describe("GitHub project files", () => {
       ].join("\n"),
     );
     await chmod(fakeGh, 0o755);
-    process.env.PATH = `${binDirectory}:${originalPath ?? ""}`;
+    process.env.CANTRIP_TEST_FAKE_GH = fakeGh;
+    process.env.PATH = [binDirectory, originalPath ?? ""].join(path.delimiter);
 
     const github = new GithubClient(dataDirectory);
     await expect(
@@ -2565,7 +2579,8 @@ describe("GitHub project files", () => {
       ].join("\n"),
     );
     await chmod(fakeGh, 0o755);
-    process.env.PATH = `${binDirectory}:${originalPath ?? ""}`;
+    process.env.CANTRIP_TEST_FAKE_GH = fakeGh;
+    process.env.PATH = [binDirectory, originalPath ?? ""].join(path.delimiter);
 
     const github = new GithubClient(dataDirectory);
     await expect(
@@ -2652,7 +2667,9 @@ describe("GitHub project files", () => {
       ].join("\n"),
     );
     await Promise.all([chmod(fakeGh, 0o755), chmod(fakeGit, 0o755)]);
-    process.env.PATH = `${binDirectory}:${originalPath ?? ""}`;
+    process.env.CANTRIP_TEST_FAKE_GH = fakeGh;
+    process.env.CANTRIP_TEST_FAKE_GIT = fakeGit;
+    process.env.PATH = [binDirectory, originalPath ?? ""].join(path.delimiter);
 
     const prepared = await new GithubClient(
       dataDirectory,
@@ -2734,7 +2751,8 @@ describe("GitHub project files", () => {
       ].join("\n"),
     );
     await chmod(fakeGh, 0o755);
-    process.env.PATH = `${binDirectory}:${originalPath ?? ""}`;
+    process.env.CANTRIP_TEST_FAKE_GH = fakeGh;
+    process.env.PATH = [binDirectory, originalPath ?? ""].join(path.delimiter);
     const github = new GithubClient(dataDirectory);
 
     const closePreview = await github.previewPullRequestLifecycle(
@@ -3025,6 +3043,7 @@ describe("GitHub project files", () => {
       ].join("\n"),
     );
     await chmod(fakeGh, 0o755);
+    process.env.CANTRIP_TEST_FAKE_GH = fakeGh;
     process.env.PATH = [binDirectory, originalPath ?? ""].join(path.delimiter);
 
     const github = new GithubClient(dataDirectory);
@@ -3151,6 +3170,7 @@ describe("GitHub project files", () => {
       ].join("\n"),
     );
     await chmod(fakeGh, 0o755);
+    process.env.CANTRIP_TEST_FAKE_GH = fakeGh;
     process.env.PATH = [binDirectory, originalPath ?? ""].join(path.delimiter);
     process.env.CANTRIP_FAKE_GH_CALLS = callsPath;
     process.env.CANTRIP_FAKE_GH_HEAD_SHA = headSha;

@@ -255,9 +255,23 @@ Validation so far:
   sockets; existing worker/server shutdown behavior (#2098/#2099) remains.
 - The attachment boundary audit now reads the actual extracted attachment
   handler. The first standard check exposed this stale source location; runtime
-  suites and browser checks ran independently. The complete check retry is
-  running; it is not reported green.
+  suites and browser checks ran independently. The complete check retry reached the full server suite: 1,409 passed,
+  74 failed, 70 skipped. Every failed test/suite name also appears on unchanged
+  main; server/protocol sources are unchanged from the compared baseline.
+  The full check remains red under #2106. CUA protocol/worker/integration/app
+  groups passed (136 / 732 / 244 / 313, plus 25 fixture contracts; three skips).
 
 A dedicated Windows/macOS/Linux command-handler workflow runs source types and
 representative behavior suites independently. Browser results above are local
 darwin-arm64 results against the verified `ba05010e28f2` bundled Code build.
+
+The new three-OS feature suite exposed existing Windows fixture assumptions.
+Registered fake GitHub/Git executables now launch through Git Bash on Windows
+with argument conversion disabled; disposable CI runners use consistent Git
+checkout line endings. Other child processes and production code
+are unchanged. Fixtures use the host PATH delimiter, account for Git checkout
+line endings, resolve drive-qualified skills paths, honor the export test's
+explicit Darwin path semantics, and select PowerShell for PowerShell-specific
+terminal inputs. All 19 new tests passed on Linux/macOS; the Windows rerun
+includes the same tests and repaired fixtures. The first native CUA workflow
+passed PostgreSQL authority and all three OS jobs.

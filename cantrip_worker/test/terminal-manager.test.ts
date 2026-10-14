@@ -3,7 +3,7 @@ import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { TerminalManager } from "../src/terminal-manager.js";
 import { readWorkerLogs } from "../src/logger.js";
@@ -16,8 +16,15 @@ class SnapshotFailingTerminalState extends TerminalCanonicalState {
 }
 
 const directories: string[] = [];
+const originalComspec = process.env.COMSPEC;
+beforeEach(() => {
+  // These fixtures send PowerShell syntax; COMSPEC normally selects cmd.exe.
+  if (process.platform === "win32") process.env.COMSPEC = "powershell.exe";
+});
 
 afterEach(async () => {
+  if (originalComspec === undefined) delete process.env.COMSPEC;
+  else process.env.COMSPEC = originalComspec;
   await Promise.all(
     directories
       .splice(0)

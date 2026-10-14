@@ -120,7 +120,7 @@ describe("feature command integration", () => {
       expect(created.created).toBe(true);
       expect(
         await readFile(path.join(created.worktree.path, "README.md"), "utf8"),
-      ).toBe("initial\n");
+      ).toMatch(/^initial\r?\n$/u);
       const listed = (await handleWorktreeCommand(
         { type: "worktree.list", sourcePath: cwd },
         dependencies,

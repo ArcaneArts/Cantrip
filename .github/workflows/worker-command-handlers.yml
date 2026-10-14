@@ -5,7 +5,7 @@ on:
     paths:
       - cantrip_worker/src/index.ts
       - cantrip_worker/src/commands/**
-      - cantrip_worker/test/command-handlers*.test.ts
+      - cantrip_worker/test/**
       - scripts/audit-server-boundaries.mjs
       - .github/workflows/worker-command-handlers.yml
       - packages/protocol/src/**
@@ -36,6 +36,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
+      # Fixture clones must retain their committed bytes on every disposable runner.
+      - run: git config --global core.autocrlf false
       - run: pnpm --filter @cantrip/worker typecheck
       - name: Command ordering, ownership and real feature operations
         if: ${{ !cancelled() }}
