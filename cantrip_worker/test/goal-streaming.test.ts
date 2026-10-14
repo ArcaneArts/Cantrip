@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
+  YOLO_PERMISSION_PROFILE_ID,
   unprobedCodexRuntimeReport,
   type CodexRuntimeReport,
 } from "@cantrip/protocol";
@@ -50,6 +51,9 @@ const provider = {
   kind: "openai-compatible" as const,
   baseUrl: "https://example.test/v1",
   apiKey: "test-key",
+  protectedApiKey: null,
+  accountId: null,
+  credentialHomeKey: null,
 };
 
 const model = {
@@ -57,6 +61,16 @@ const model = {
   routeId: "goal-route",
   name: "goal-model",
   reasoningEffort: null,
+};
+
+const turnDefaults = {
+  automationPaused: false,
+  captureProtectedDiagnostics: false,
+  executionProfile: "ide" as const,
+  policyContext: null,
+  rootKind: null,
+  subagentDefaults: null,
+  subagentProtocolVersion: undefined,
 };
 
 async function fakeCodexBinary(directory: string): Promise<string> {
@@ -72,6 +86,7 @@ const actualTurnId = "runtime-goal-turn";
 let cleared = false;
 let turnStartCount = 0;
 let globalSkillRootsRegistered = false;
+let completeStream = null;
 const completedTurns = [];
 const expectedGlobalSkillRoot = ${JSON.stringify(path.join(directory, "global-skills"))};
 let goal = mode === "replace-completed"
@@ -151,6 +166,9 @@ server.on("connection", (socket) => {
     }
     if (message.method === "thread/goal/get") {
       reply(socket, message.id, { goal });
+      const complete = completeStream;
+      completeStream = null;
+      complete?.();
       return;
     }
     if (message.method === "thread/goal/clear") {
@@ -182,6 +200,47 @@ server.on("connection", (socket) => {
     }
     if (message.method === "turn/start") {
       turnStartCount += 1;
+      if (mode === "stream-complete" || mode === "stream-close") {
+        reply(socket, message.id, { turn: { id: actualTurnId } });
+        socket.send(JSON.stringify({
+          method: "turn/started",
+          params: { threadId, turn: { id: actualTurnId, startedAt: 1 } }
+        }));
+        setTimeout(() => {
+          const notify = (method, params) => socket.send(JSON.stringify({
+            method, params: { threadId, turnId: actualTurnId, ...params }
+          }));
+          notify("item/started", {
+            item: { ...command, status: "inProgress", aggregatedOutput: "", exitCode: null }
+          });
+          notify("item/commandExecution/outputDelta", { itemId: command.id, delta: "first\\n" });
+          notify("item/commandExecution/outputDelta", { itemId: command.id, delta: "second\\n" });
+          notify("item/agentMessage/delta", { itemId: answer.id, delta: "Goal work " });
+          notify("item/agentMessage/delta", { itemId: answer.id, delta: "is visible." });
+          if (mode === "stream-close") {
+            notify("item/started", {
+              item: { ...command, id: "stream-barrier", status: "inProgress", aggregatedOutput: "", exitCode: null }
+            });
+            return;
+          }
+          completeStream = () => {
+            const completedCommand = { ...command, aggregatedOutput: "first\\nsecond\\n" };
+            completedTurns.push({
+              id: actualTurnId, status: "completed", error: null,
+              startedAt: 1, completedAt: 2, durationMs: 200,
+              items: [completedCommand, answer]
+            });
+            notify("item/completed", { item: completedCommand });
+            notify("item/completed", { item: answer });
+            goal = { ...goal, status: "complete", updatedAt: 4 };
+            socket.send(JSON.stringify({ method: "thread/goal/updated", params: { threadId, goal } }));
+            notify("turn/completed", {
+              turn: { id: actualTurnId, status: "completed", error: null, durationMs: 200 }
+            });
+          };
+        }, 10);
+        return;
+      }
       if (mode === "automatic-continuation") {
         if (turnStartCount > 1) {
           socket.send(JSON.stringify({
@@ -338,9 +397,14 @@ process.on("SIGINT", () => server.close(() => process.exit(0)));
   return binary;
 }
 
-function launcher(
-  mode: "automatic-continuation" | "replace-completed" | "turn-id-race",
-): CodexProcessLauncher {
+type FixtureMode =
+  | "automatic-continuation"
+  | "replace-completed"
+  | "turn-id-race"
+  | "stream-complete"
+  | "stream-close";
+
+function launcher(mode: FixtureMode): CodexProcessLauncher {
   return (binary, arguments_, options) =>
     spawn(process.execPath, [binary, mode, ...arguments_], {
       ...options,
@@ -349,7 +413,7 @@ function launcher(
 }
 
 async function fixture(
-  mode: "automatic-continuation" | "replace-completed" | "turn-id-race",
+  mode: FixtureMode,
   options: {
     compatibility?: CodexRuntimeReport;
     registerGlobalSkills?: boolean;
@@ -375,6 +439,155 @@ async function fixture(
 }
 
 describe("Codex goal streaming", () => {
+  it("coalesces provisional text and command output before authoritative completion", async () => {
+    const { root, runtime } = await fixture("stream-complete");
+    const messages: Array<{
+      text: string;
+      phase: string | null;
+      streaming?: boolean;
+    }> = [];
+    const commands: Array<{
+      status: string;
+      output: string | null;
+      outputTail?: string | null;
+    }> = [];
+    let observeStream!: () => void;
+    const streamed = new Promise<void>((resolve) => {
+      observeStream = resolve;
+    });
+    try {
+      const turn = runtime.runTurn({
+        ...turnDefaults,
+        attachments: [],
+        chatId: "goal-chat",
+        clientMessageId: "goal-message",
+        cwd: root,
+        isPrimary: true,
+        mcpServers: [],
+        model,
+        permissionProfileId: YOLO_PERMISSION_PROFILE_ID,
+        planMode: "default",
+        prompt: "Stream a result.",
+        provider,
+        skillNames: [],
+        threadId: "goal-thread",
+        worktreeMode: "agent-managed",
+        worktreePolicy: "required-for-writes",
+        onMessage: (message) => {
+          messages.push(message);
+          if (message.streaming) observeStream();
+        },
+        onActivity: (activity) => {
+          if (activity.type === "command") commands.push(activity);
+        },
+      });
+      await streamed;
+      await runtime.getGoal({
+        cwd: root,
+        model,
+        provider,
+        permissionProfileId: YOLO_PERMISSION_PROFILE_ID,
+        threadId: "goal-thread",
+      });
+      const result = await turn;
+      expect(result).toMatchObject({
+        status: "completed",
+        text: "Goal work is visible.",
+      });
+      expect(messages).toEqual([
+        expect.objectContaining({
+          text: "Goal work is visible.",
+          phase: "commentary",
+          streaming: true,
+        }),
+        expect.objectContaining({
+          text: "Goal work is visible.",
+          phase: "commentary",
+        }),
+        expect.objectContaining({
+          text: "Goal work is visible.",
+          phase: "final_answer",
+        }),
+      ]);
+      expect(commands).toEqual([
+        expect.objectContaining({
+          status: "running",
+          output: "",
+          outputTail: null,
+        }),
+        expect.objectContaining({
+          status: "running",
+          output: "",
+          outputTail: "first\nsecond\n",
+        }),
+        expect.objectContaining({
+          status: "completed",
+          output: "first\nsecond\n",
+        }),
+        expect.objectContaining({
+          status: "completed",
+          output: "first\nsecond\n",
+        }),
+      ]);
+    } finally {
+      runtime.close();
+    }
+  });
+
+  it("flushes provisional text and retires command timers when the runtime closes mid-turn", async () => {
+    const { root, runtime } = await fixture("stream-close");
+    const messages: Array<{
+      text: string;
+      phase: string | null;
+      streaming?: boolean;
+    }> = [];
+    const commands: string[] = [];
+    try {
+      const turn = runtime.runTurn({
+        ...turnDefaults,
+        attachments: [],
+        chatId: "goal-chat",
+        clientMessageId: "goal-message",
+        cwd: root,
+        isPrimary: true,
+        mcpServers: [],
+        model,
+        permissionProfileId: YOLO_PERMISSION_PROFILE_ID,
+        planMode: "default",
+        prompt: "Buffer a result.",
+        provider,
+        skillNames: [],
+        threadId: "goal-thread",
+        worktreeMode: "agent-managed",
+        worktreePolicy: "required-for-writes",
+        onMessage: (message) => messages.push(message),
+        onActivity: (activity) => {
+          if (activity.type !== "command") return;
+          commands.push(activity.id);
+          if (activity.id === "stream-barrier") runtime.close();
+        },
+      });
+      await expect(turn).rejects.toThrow("Codex app-server stopped.");
+      expect(commands).toEqual(["goal-command", "stream-barrier"]);
+      expect(messages).toEqual([
+        expect.objectContaining({
+          text: "Goal work is visible.",
+          phase: "commentary",
+          streaming: true,
+        }),
+        expect.objectContaining({
+          text: "Goal work is visible.",
+          phase: "commentary",
+        }),
+      ]);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(messages).toHaveLength(2);
+      expect(commands).toEqual(["goal-command", "stream-barrier"]);
+    } finally {
+      runtime.close();
+    }
+  });
+
   it("keeps the standalone runtime identity while reloading skills", async () => {
     const standaloneCompatibility = {
       ...compatibility,
@@ -399,6 +612,7 @@ describe("Codex goal streaming", () => {
 
       await expect(
         runtime.runTurn({
+          ...turnDefaults,
           attachments: [],
           automationPaused: false,
           captureProtectedDiagnostics: false,
@@ -409,7 +623,7 @@ describe("Codex goal streaming", () => {
           isPrimary: true,
           mcpServers: [],
           model,
-          permissionProfileId: null,
+          permissionProfileId: YOLO_PERMISSION_PROFILE_ID,
           planMode: "default",
           policyContext: null,
           prompt: "Complete the standalone turn.",
@@ -460,7 +674,7 @@ describe("Codex goal streaming", () => {
           cwd: root,
           model,
           objective: "Replacement goal",
-          permissionProfileId: null,
+          permissionProfileId: YOLO_PERMISSION_PROFILE_ID,
           provider,
           threadId: "goal-thread",
           tokenBudget: null,
@@ -479,6 +693,7 @@ describe("Codex goal streaming", () => {
     const commands: string[] = [];
     try {
       const result = await runtime.runTurn({
+        ...turnDefaults,
         attachments: [],
         chatId: "goal-chat",
         clientMessageId: "goal-message",
@@ -486,7 +701,7 @@ describe("Codex goal streaming", () => {
         isPrimary: true,
         mcpServers: [],
         model,
-        permissionProfileId: null,
+        permissionProfileId: YOLO_PERMISSION_PROFILE_ID,
         planMode: "default",
         prompt: "Continue the active goal.",
         provider,
@@ -519,6 +734,7 @@ describe("Codex goal streaming", () => {
     const checkpoints: string[] = [];
     try {
       const result = await runtime.runTurn({
+        ...turnDefaults,
         attachments: [],
         chatId: "goal-chat",
         clientMessageId: "goal-message",
@@ -526,7 +742,7 @@ describe("Codex goal streaming", () => {
         isPrimary: true,
         mcpServers: [],
         model,
-        permissionProfileId: null,
+        permissionProfileId: YOLO_PERMISSION_PROFILE_ID,
         planMode: "default",
         prompt: "Continue the active goal.",
         provider,

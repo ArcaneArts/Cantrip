@@ -4,15 +4,15 @@ Started 2026-10-13 from `692f05dcd`. Each milestone uses an isolated
 `codex/` branch and worktree, a squash auto-merge PR, observed merge, and cleanup.
 Tests run independently of metadata audits. A skipped check is never a pass.
 
-| Milestone                                 | Status      | Branch / PR                                                                                 | Evidence                                                                                            |
-| ----------------------------------------- | ----------- | ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| 1. Lease renewal and reconnect scheduling | Merged      | `codex/stability-lease-recovery` / [#2092](https://github.com/ArcaneArts/Cantrip/pull/2092) | Three regressions fixed; 135 app + 25 worker tests pass; Windows/macOS/Linux CI passed.             |
-| 2. Shared editor lifecycle and readiness  | Merged      | [#2093](https://github.com/ArcaneArts/Cantrip/pull/2093)                                    | Late readiness, retained frames, startup stages, and cancellation.                                  |
-| 3. Browser recovery harness               | Merged      | [#2107](https://github.com/ArcaneArts/Cantrip/pull/2107)                                    | Actual bundled editor, isolated services, automated failure injection and usable-editor assertions. |
-| 4. Measured editor loading                | Merged      | [#2108](https://github.com/ArcaneArts/Cantrip/pull/2108)                                    | Comparable cold/warm/recovery measurements; implement only demonstrated improvements.               |
-| 5. Worker command dispatch                | Merged      | [#2109](https://github.com/ArcaneArts/Cantrip/pull/2109)                                    | Typed feature handlers with explicit ownership and dependencies.                                    |
-| 6. App API modularization                 | In progress | [#2110](https://github.com/ArcaneArts/Cantrip/pull/2110)                                    | Domain clients with compatible public exports and shared security infrastructure.                   |
-| 7. Codex runtime decomposition            | Not started | —                                                                                           | Separate transport, turn lifecycle, subagents, normalization, and interactions incrementally.       |
+| Milestone                                 | Status      | Branch / PR                                                                                 | Evidence                                                                                                   |
+| ----------------------------------------- | ----------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| 1. Lease renewal and reconnect scheduling | Merged      | `codex/stability-lease-recovery` / [#2092](https://github.com/ArcaneArts/Cantrip/pull/2092) | Three regressions fixed; 135 app + 25 worker tests pass; Windows/macOS/Linux CI passed.                    |
+| 2. Shared editor lifecycle and readiness  | Merged      | [#2093](https://github.com/ArcaneArts/Cantrip/pull/2093)                                    | Late readiness, retained frames, startup stages, and cancellation.                                         |
+| 3. Browser recovery harness               | Merged      | [#2107](https://github.com/ArcaneArts/Cantrip/pull/2107)                                    | Actual bundled editor, isolated services, automated failure injection and usable-editor assertions.        |
+| 4. Measured editor loading                | Merged      | [#2108](https://github.com/ArcaneArts/Cantrip/pull/2108)                                    | Comparable cold/warm/recovery measurements; implement only demonstrated improvements.                      |
+| 5. Worker command dispatch                | Merged      | [#2109](https://github.com/ArcaneArts/Cantrip/pull/2109)                                    | Typed feature handlers with explicit ownership and dependencies.                                           |
+| 6. App API modularization                 | Merged      | [#2110](https://github.com/ArcaneArts/Cantrip/pull/2110)                                    | Domain clients with compatible public exports and shared security infrastructure; all three OSs passed CI. |
+| 7. Codex runtime decomposition            | In progress | `codex/stability-codex-events`                                                              | 7A event/state boundaries; transport, turn/subagent ownership and interactions follow in separate PRs.     |
 
 ## Milestone 1
 
@@ -268,7 +268,7 @@ bodies. The boundary and network audits now inspect the actual domain modules
 and shared request implementation, including nested domains, rather than only
 the facade. The generated route inventory remains current.
 
-Validation so far:
+Validation:
 
 - App source types passed; the original API baseline and post-extraction runs
   each passed 57 tests across eight files.
@@ -276,7 +276,7 @@ Validation so far:
   tests passed separately, covering cross-client metadata coalescing,
   component authorization failure isolation, fresh resolution after server or
   owner replacement, compatible error classes and failed-target eviction.
-- The final CI selection passed 76 tests across 14 files. Two source-corpus
+- The final CI selection passed 76 tests across 14 files. Five source/path
   tests verify audits see nested implementations/shared requests and do not
   silently accept missing source files.
 - Real bundled-editor browser: cold usability, retained reopening and transient
@@ -303,3 +303,73 @@ They now share a canonical source-path formatter with repository inventory and
 API/server source corpora. A regression checks Windows repository names and the
 existing policy-template exception against canonical paths. All content and
 owner classification checks remain enabled.
+
+M6 merged as `8210ab05f`. API domains (run 38589380948), worker commands
+(38589380915), and native CUA/PostgreSQL (38589381072) all passed their final
+Windows/macOS/Linux jobs. Primary synchronized; the owned worktree was archived
+after preserving 43 evidence files and moving the stopped disposable runtime to
+private storage outside the checkout.
+
+## Milestone 7A: Event and state boundaries
+
+Based on merged M6 (`8210ab05f`). This is the first independently mergeable
+runtime slice; milestone 7 remains in progress.
+
+Eight focused modules now own event DTOs, runtime state/options, existing
+resource limits, shared event values, bounded command output, event/history
+normalization, streaming/coalescing, and workspace snapshots. The original
+`app-server` path retains all 107 public export names. Supporting AST comparison
+finds all 261 original declarations unchanged, including the complete runtime
+class. Active state objects, callbacks, timers, resource limits and notification
+ownership retain their original identities and order.
+
+Two live fake-runtime RPC characterizations exercise burst text/command output
+through authoritative completion and shutdown with pending coalescing timers.
+Completion waits for an observed provisional message before the fixture releases
+the native turn boundary. Shutdown preserves the existing immediate commentary
+flush and prevents subsequent timer emissions. Fixture options now satisfy the
+actual typed runtime contract.
+
+Validation:
+
+- Original full worker baseline: 2,615 passed, 133 existing skips.
+- Both new characterizations passed before extraction (seven goal tests total),
+  including the final typed, observation-gated fixture against original source.
+- Worker source and strict goal-test typechecks pass. All original declaration
+  bodies and facade export names match.
+- Focused runtime selection: 259 passed, 19 existing native-bundle opt-in skips
+  across 16 files. With the existing pinned `codex-cli 0.160.1` executable,
+  all 96 tests across eight opt-in files passed: actual queue/GUI/TUI execution,
+  Stop and fresh successor authority, preparation, replacement and inherited
+  settings, MCP sessions, history and thread observation. These tests used local
+  synthetic model providers and disposable native homes; computer-input cases
+  were not enabled.
+- First full post-extraction run: 2,615 passed, 133 skipped, two failures outside
+  the extracted code (Chromium configuration recovery timeout and a missing
+  permission journal event). A separate rerun passed all 21 tests in those two
+  files and the goal fixture. The final full rerun passed 2,616, skipped 133 and
+  failed one Code supervisor child-PID fixture wait. Its separate rerun passed
+  all 76 tests. These full runs are not passes. Reproduction, uncertainty and
+  automated acceptance are recorded in [#2111](https://github.com/ArcaneArts/Cantrip/issues/2111),
+  [#2112](https://github.com/ArcaneArts/Cantrip/issues/2112) and
+  [#2113](https://github.com/ArcaneArts/Cantrip/issues/2113); no causal link to this
+  unchanged-body refactor is established.
+- Actual bundled-editor browser: cold usability, retained reopening and transient
+  renewal passed, including typing/save/worker-file assertions. One onboarding
+  and mode retry each was needed (#2096/#2102). Runner exit zero, zero remaining
+  sockets. Existing shutdown defects #2098/#2099 remain: the worker needed the
+  fixture's bounded kill fallback and the server exited one during retirement.
+- Standard `pnpm check`: the default Xcode linker rejected the unaccepted host
+  license. The Command Line Tools retry ran through the full server suite:
+  1,409 passed, 74 failed, 70 skipped. All 81 failure/suite names match the
+  previous M6 baseline (#2106); no new failure name appeared. The full standard
+  check is not green. Diff and formatting checks pass.
+
+A dedicated Windows/macOS/Linux workflow runs native RPC, turn streaming,
+subagent ownership, cancellation, preparation, interactions and history suites
+independently of the typecheck. The CUA workflow now follows the extracted
+Codex module tree as well as the original entry point.
+
+RPC/process transport, turn lifecycle/cancellation, subagent reconciliation, and
+cleanly separable interaction/authentication ownership are the remaining M7
+slices. No new product behavior or performance improvement is claimed by 7A.

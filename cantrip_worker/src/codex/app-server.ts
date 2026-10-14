@@ -1,168 +1,187 @@
-import { nativeModelAttribution } from "../native-model-attribution.js";
-import {
-  requestManagedHistoryTransfer,
-  type ManagedHistoryExport,
-  type ManagedHistoryImport,
-} from "./managed-history-transfer.js";
-import {
-  readNativeAccountDefaults,
-  writeNativeAccountDefaults,
-  nativeAccountDefaultsParams,
-} from "./native-account-defaults.js";
+import { spawnGuardedProcess } from "../code/process-guard.js";
 import type {
-  NativeAccountDefaultsWrite,
+  ActiveCommandTelemetry,
+  ActiveTurn,
+  AdmittedNativeExecution,
+  AdmittedNativeReply,
+  AdmittedNativeReplyIdentity,
+  AdmittedNativeReplyResponse,
+  AgentNotificationTarget,
+  AgentOperationResult,
+  AgentRuntimeState,
+  AgentRuntimeStatus,
+  ChildThreadMetadata,
+  CodexExternalThreadChange,
+  CodexExternalThreadChangeKind,
+  CodexProcessLauncher,
+  CodexSkill,
+  CompactAgentThreadOptions,
+  GoalRuntimeOptions,
+  HydrateChatRelocationOptions,
+  ManagedExecutionGateHandler,
+  ManagedExecutionResolution,
+  ManagedNativeCommandDispatcher,
+  ManagedNativeGuiCommand,
+  NativeCollaborationMode,
+  NativeCollaborationModeListResponse,
+  NativePendingAgentInteraction,
+  NativePendingPlanQuestion,
+  NativeReplacementSettings,
+  PendingRpcRequest,
+  PrepareAdmittedNativeExecutionOptions,
+  PrepareImportedManagedThreadOptions,
+  PrepareManagedThreadOptions,
+  RootExecution,
+  RpcMessage,
+  RunAgentOperationOptions,
+  RunAgentTurnOptions,
+  RunAgentTurnRetry,
+  RuntimeChatAttachment,
+  RuntimeSubagentDefaults,
+  ServerRequestResolvedParams,
+  ThreadResponse,
+  ThreadStartedParams,
+  ThreadStatusChangedParams,
+  ToolRequestUserInputParams,
+  TurnCompletedParams,
+  TurnPlanUpdatedParams,
+  TurnStartResponse,
+  TurnStartedParams,
+} from "./runtime-types.js";
+import { isDeepStrictEqual, stripVTControlCharacters } from "node:util";
+import path from "node:path";
+import type {
+  AgentActivity,
+  AgentCommunicationKind,
+  AgentInteractionRequestKind,
+  AgentInteractionResponse,
+  AgentInteractionRuntimeRequest,
+  AgentScope,
+  AgentThreadSync,
+  AgentTurnResult,
+  ChatGoalResponse,
+  ChatGptModelInventory,
+  ChatMessageContent,
+  ChatRelocationContextPayload,
+  CodexCustomizationInventory,
+  CodexExternalImportPreview,
+  CodexExternalImportStatus,
+  CodexMcpOauthStartResult,
+  CodexMcpOauthStatus,
+  CodexMcpReloadResult,
+  CodexMcpResourceRead,
+  CodexRuntimeReport,
+  CodexSkillConfigResult,
+  CodexSkillRootsResult,
+  McpServerConfiguration,
   NativeAccountDefaultsResult,
+  NativeAccountDefaultsWrite,
+  PermissionProfileCapability,
+  PermissionTransition,
+  PlanMode,
+  ProviderAccessTokenLease,
+  ProviderQuotaSnapshot,
+  ProviderRateLimitResetConsumeInput,
+  ProviderRateLimitResetConsumeResult,
+  ThreadGoal,
 } from "@cantrip/protocol";
 import {
-  isNativePermissionDeferred,
-  NativePermissionDeferredError,
-} from "./native-permission-deferred.js";
-import {
-  NativeThreadSettingsState,
-  type NativeSettingsRequest,
-  type NativeThreadSettings,
-} from "./native-thread-settings.js";
-import { z } from "zod";
-import { publishPendingInteraction } from "./pending-interaction-publication.js";
-import {
-  describeAgentCommunication,
-  type InterAgentCommunicationItem,
-} from "./agent-communication.js";
-import {
-  CUA_DISCOVERY_GUIDANCE,
-  CUA_START_GUIDANCE,
-} from "../mcp/cua-guidance.js";
-import { createHash, randomUUID } from "node:crypto";
-import {
-  execFile,
-  type ChildProcessWithoutNullStreams,
-  type ProcessEnvOptions,
-} from "node:child_process";
-import { lstat, mkdir } from "node:fs/promises";
-import path from "node:path";
-import readline from "node:readline";
-import {
-  isDeepStrictEqual,
-  promisify,
-  stripVTControlCharacters,
-} from "node:util";
-
-import {
-  agentActivitySchema,
-  nativeInitialTurnSettingsSchema,
-  type NativeInitialTurnSettings,
-  agentCommandOutputLimitBytes,
-  agentFilePreviewLimitCharacters,
   CANTRIP_MCP_TOOL_NAMES,
   MANAGED_CUA_MCP_NAME,
+  YOLO_PERMISSION_PROFILE_ID,
+  agentActivitySchema,
   agentInteractionAcceptedSchema,
   agentInteractionResponseSchema,
   agentInteractionRuntimeRequestSchema,
-  agentThreadSyncSchema,
   agentTurnResultSchema,
-  chatGptModelInventorySchema,
   chatGoalClearSchema,
   chatGoalResponseSchema,
+  chatGptModelInventorySchema,
   codexExternalImportStatusSchema,
   codexMcpOauthStatusSchema,
   codexMcpReloadResultSchema,
   isManagedCantripMcpName,
   isManagedCodeGraphMcpName,
+  nativeInitialTurnSettingsSchema,
+  normalizedAgentMessageSchema,
   pendingPlanQuestionSchema,
   permissionProfileCapabilitySchema,
   providerRateLimitResetConsumeOutcomeSchema,
   providerRateLimitResetConsumeResultSchema,
   shouldUseChatGptCredits,
-  YOLO_PERMISSION_PROFILE_ID,
-  normalizedAgentMessageSchema,
   threadGoalSchema,
-  type AgentActivity,
-  type AgentCommunicationKind,
-  type AgentScope,
-  type AgentInteractionRequestKind,
-  type AgentInteractionResponse,
-  type AgentInteractionRuntimeRequest,
-  type AgentThreadSync,
-  type AgentThreadSyncItem,
-  type AgentTurnResult,
-  type ChatGptModelInventory,
-  type ChatGoalResponse,
-  type ChatRelocationContextPayload,
-  type ChatMessageContent,
-  type CodexCustomizationInventory,
-  type CodexExternalImportPreview,
-  type CodexExternalImportStatus,
-  type CodexMcpOauthStartResult,
-  type CodexMcpOauthStatus,
-  type CodexMcpReloadResult,
-  type CodexRuntimeReport,
-  type CodexEventCorrelation,
-  type CodexMcpResourceRead,
-  type CodexSkillConfigResult,
-  type CodexSkillRootsResult,
-  type NormalizedAgentMessage,
-  type PendingPlanQuestion,
-  type PermissionProfileCapability,
-  type PermissionTransition,
-  type PlanMode,
-  type PlanStep,
-  type McpServerConfiguration,
-  type ProviderAccessTokenLease,
-  type ProviderQuotaSnapshot,
-  type ProviderRateLimitResetConsumeInput,
-  type ProviderRateLimitResetConsumeResult,
-  type ThreadGoal,
-  type ChatAttachmentSummary,
-  type WorkerCommand,
 } from "@cantrip/protocol";
-import { cantripVersion } from "@cantrip/version";
+import {
+  agentMessageFingerprint,
+  boundedMapSet,
+  boundedText,
+  codexErrorReasonCode,
+  completedActivityTimestamps,
+  eventCorrelation,
+  objectRecord,
+  optionalDepth,
+  optionalString,
+} from "./event-values.js";
+import type {
+  AccountRateLimitsUpdatedParams,
+  ActiveAgentContextWindow,
+  ActiveAgentContextWindowSource,
+  AgentMessageDeltaParams,
+  CodexThreadItem,
+  CodexThreadListResponse,
+  CodexThreadReadResponse,
+  CodexThreadTurn,
+  CommandExecutionOutputDeltaParams,
+  ConfigWarningParams,
+  ErrorNotificationParams,
+  FileChangePatchUpdatedParams,
+  ItemLifecycleParams,
+  ReasoningSummaryPartAddedParams,
+  ReasoningSummaryTextDeltaParams,
+  ThreadGoalClearedParams,
+  ThreadGoalUpdatedParams,
+  ThreadTokenUsageUpdatedParams,
+  TokenUsageBreakdown,
+  TurnDiffUpdatedParams,
+  WarningParams,
+  WorkspaceSnapshot,
+} from "./event-types.js";
+import { lstat, mkdir } from "node:fs/promises";
+import {
+  CUA_DISCOVERY_GUIDANCE,
+  CUA_START_GUIDANCE,
+} from "../mcp/cua-guidance.js";
+import { createAgentActivityRawEnvelope } from "./raw-capture.js";
 import { boundedJsonValueSchema } from "@cantrip/protocol/bounded-json";
-import {
-  measuredAgentUsageSchema,
-  type MeasuredAgentUsage,
-} from "@cantrip/protocol/agent-usage";
-
-import { spawnGuardedProcess } from "../code/process-guard.js";
-import { workerLogError, workerLogger } from "../logger.js";
-import {
-  CodexExecutionLifetime,
-  type CodexComputerUseExecution,
-} from "./execution-lifetime.js";
-import {
-  ProviderAccessTokenRequestError,
-  type ProviderAccessTokenClient,
-} from "../provider-access-tokens.js";
-import WebSocket, { type RawData } from "ws";
-
+import { measuredAgentUsageSchema } from "@cantrip/protocol/agent-usage";
+import { createHash, randomUUID } from "node:crypto";
+import type {
+  ExternalChatGptAuthSession,
+  RuntimeProvider,
+} from "./external-chatgpt-auth.js";
 import type { CodexRuntime, CodexRuntimeDiagnostic } from "./runtime.js";
-import {
-  readCodexNativeHistory,
-  type CodexNativeHistorySnapshot,
-} from "./native-history.js";
-import {
-  NativeHistoryObservations,
-  type NativeHistoryObserver,
-  type NativeHistorySubscription,
-} from "./native-history-observation.js";
-import { attachmentPromptText } from "./attachment-inputs.js";
-import {
-  codexModelProviderName,
-  codexProviderConfiguration,
-  isZaiRuntimeProvider,
-} from "./provider-config.js";
-import {
-  createAgentActivityRawEnvelope,
-  redactAgentActivityText,
-} from "./raw-capture.js";
-import {
-  runtimeModelSupportsImages,
-  writeManagedCodexModelCatalog,
-} from "./model-catalog.js";
 import { LiveManagedModelCatalog } from "./live-managed-model-catalog.js";
+import { nativeModelAttribution } from "../native-model-attribution.js";
+import { workerLogError, workerLogger } from "../logger.js";
+import { NativeHistoryObservations } from "./native-history-observation.js";
+import { CodexExecutionLifetime } from "./execution-lifetime.js";
+import { NativeThreadSettingsState } from "./native-thread-settings.js";
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
+import WebSocket from "ws";
+import type { ProviderAccessTokenClient } from "../provider-access-tokens.js";
+import { mergeCodexSkillRoots } from "./global-skills.js";
+import { z } from "zod";
+import { quotaSnapshotFromRateLimits } from "./rate-limits.js";
+import type { AccountRateLimitsResult } from "./rate-limits.js";
+import { cantripVersion } from "@cantrip/version";
+import {
+  NativePermissionDeferredError,
+  isNativePermissionDeferred,
+} from "./native-permission-deferred.js";
 import {
   customizationInventory,
-  parseExternalImportStatus,
   parseExternalImportPreview,
+  parseExternalImportStatus,
   parseMcpOauthCompletion,
   parseMcpOauthStart,
   parseMcpResourceRead,
@@ -173,32 +192,176 @@ import {
   selectExternalImportItems,
   skillPathForConfiguration,
 } from "./customization.js";
-import { redactCodexDiagnosticPayload } from "./diagnostic-redaction.js";
+import type { CodexNativeHistorySnapshot } from "./native-history.js";
+import { readCodexNativeHistory } from "./native-history.js";
+import type {
+  ManagedHistoryExport,
+  ManagedHistoryImport,
+} from "./managed-history-transfer.js";
+import { requestManagedHistoryTransfer } from "./managed-history-transfer.js";
+import type {
+  NativeHistoryObserver,
+  NativeHistorySubscription,
+} from "./native-history-observation.js";
+import type {
+  NativeSettingsRequest,
+  NativeThreadSettings,
+} from "./native-thread-settings.js";
 import {
-  isChatGptTokenExpiredError,
+  nativeAccountDefaultsParams,
+  readNativeAccountDefaults,
+  writeNativeAccountDefaults,
+} from "./native-account-defaults.js";
+import {
+  codexModelProviderName,
+  codexProviderConfiguration,
+  isZaiRuntimeProvider,
+} from "./provider-config.js";
+import { attachmentPromptText } from "./attachment-inputs.js";
+import {
+  runtimeModelSupportsImages,
+  writeManagedCodexModelCatalog,
+} from "./model-catalog.js";
+import type { CodexComputerUseExecution } from "./execution-lifetime.js";
+import readline from "node:readline";
+import {
   ProviderAccountReauthenticationRequiredError,
+  isChatGptTokenExpiredError,
   readableCodexProviderError,
 } from "./provider-errors.js";
+import type { RawData } from "ws";
 import {
   chatGptExternalAuthCapabilityError,
-  chatGptExternalRefreshResponse,
   chatGptExternalAuthSession,
   chatGptExternalLoginParams,
+  chatGptExternalRefreshResponse,
   refreshExternalChatGptAuthSession,
-  type ExternalChatGptAuthSession,
-  type RuntimeProvider,
 } from "./external-chatgpt-auth.js";
-import { mergeCodexSkillRoots } from "./global-skills.js";
+import { ProviderAccessTokenRequestError } from "../provider-access-tokens.js";
+import { publishPendingInteraction } from "./pending-interaction-publication.js";
+import { redactCodexDiagnosticPayload } from "./diagnostic-redaction.js";
 import {
-  quotaSnapshotFromRateLimits,
-  type AccountRateLimitsResult,
-} from "./rate-limits.js";
+  changedFiles,
+  completedCodexThreadTurnFromRead,
+  normalizeAgentMessage,
+  normalizeCodexThreadItem,
+  normalizeCodexThreadReadResponse,
+  normalizeCodexThreadTurn,
+  normalizeNoticeActivity,
+  normalizeRateLimitActivity,
+  normalizeTokenUsageActivity,
+  turnSummaryActivity,
+} from "./event-normalization.js";
+import { workspaceChanges, workspaceSnapshot } from "./workspace-snapshots.js";
+import {
+  agentActivityDeliveryFingerprint,
+  appendStreamingAgentMessageDelta,
+  boundedCommandTelemetrySet,
+  clearCommandFlush,
+  clearStreamingAgentMessage,
+  clearTurnInspectionTelemetry,
+  emitCommandTelemetry,
+  emitFileActivity,
+  emitStreamingAgentMessage,
+  emitTurnActivity,
+  flushActiveAgentMessage,
+  publishGoalCheckpoint,
+  publishStagedAgentMessages,
+  rememberCompletedCommand,
+  resetGoalSegment,
+  scheduleCommandTelemetry,
+  scopedAgentActivity,
+  settlePendingTurnActivities,
+  settleStreamingAgentMessage,
+  stageAgentMessage,
+} from "./turn-streaming.js";
+import {
+  MAX_AGENT_THREADS_PER_EXECUTION,
+  MAX_KNOWN_AGENT_THREADS,
+  MAX_ORPHAN_AGENT_THREADS,
+  MAX_RECOVERED_AGENT_THREADS,
+  MAX_RECOVERED_ITEMS_PER_TURN,
+  MAX_RECOVERED_TURNS_PER_AGENT,
+  MAX_TURN_FILE_ITEMS,
+  MAX_TURN_ITEM_TIMESTAMPS,
+  RECOVERY_TURN_CLOCK_SLOP_MS,
+} from "./runtime-limits.js";
+import {
+  commandTelemetryFromCompletion,
+  commandTelemetryFromDelta,
+  commandTelemetryFromStart,
+} from "./command-output.js";
 
-export type CodexProcessLauncher = (
-  binary: string,
-  arguments_: string[],
-  options: ProcessEnvOptions,
-) => ChildProcessWithoutNullStreams;
+export type {
+  CodexProcessLauncher,
+  RpcError,
+  RpcMessage,
+  CommandOutputBuffer,
+  CommandTelemetryValue,
+  CodexExternalThreadChangeKind,
+  CodexExternalThreadChange,
+  RunAgentTurnRetry,
+  RunAgentTurnOptions,
+  PrepareAdmittedNativeExecutionOptions,
+  ManagedExecutionAttempt,
+  ManagedExecutionDeclined,
+  ManagedExecutionResolution,
+  ManagedExecutionGateHandler,
+  ManagedNativeGuiCommand,
+  ManagedNativeCommandDispatcher,
+  AdmittedNativeReplyIdentity,
+  AdmittedNativeReply,
+  AdmittedNativeReplyResponse,
+  AdmittedNativeExecution,
+  RuntimeSubagentDefaults,
+  RunAgentOperationOptions,
+  AgentOperationResult,
+  RuntimeChatAttachment,
+  GoalRuntimeOptions,
+  NativeReplacementSettings,
+  PrepareManagedThreadOptions,
+  PrepareImportedManagedThreadOptions,
+  HydrateChatRelocationOptions,
+  CodexSkill,
+  CompactAgentThreadOptions,
+} from "./runtime-types.js";
+export {
+  completedActivityTimestamps,
+  codexErrorReasonCode,
+} from "./event-values.js";
+export {
+  normalizeStreamingAgentMessage,
+  stageAgentMessage,
+  flushStagedAgentMessage,
+} from "./turn-streaming.js";
+export type {
+  CodexThreadTurn,
+  CodexThreadReadResponse,
+  ActiveAgentContextWindow,
+  ActiveAgentContextWindowSource,
+  StagedAgentMessageResult,
+} from "./event-types.js";
+export { workspaceSnapshotFromPorcelainRecords } from "./workspace-snapshots.js";
+export {
+  latestChangedLine,
+  changedLinesPreview,
+  changedFiles,
+  normalizeCodexThreadItem,
+  normalizeAgentMessage,
+  normalizeTokenUsageActivity,
+  normalizeRateLimitActivity,
+  normalizeNoticeActivity,
+  normalizeCodexThreadTurn,
+  normalizeCodexThreadReadResponse,
+  completedCodexThreadTurnFromRead,
+} from "./event-normalization.js";
+export {
+  appendBoundedCommandOutput,
+  boundedCommandOutput,
+  commandTelemetryFromDelta,
+  commandTelemetryFromStart,
+  commandTelemetryFromCompletion,
+} from "./command-output.js";
 
 const launchCodexProcess: CodexProcessLauncher = (
   binary,
@@ -210,546 +373,6 @@ const launchCodexProcess: CodexProcessLauncher = (
     env: options.env ?? process.env,
     stdin: "pipe",
   });
-
-export interface RpcError {
-  code: number;
-  message: string;
-}
-
-export interface RpcMessage {
-  historyCursor?: unknown;
-  error?: RpcError;
-  id?: number | string;
-  method?: string;
-  params?: unknown;
-  result?: unknown;
-}
-
-interface PendingRpcRequest {
-  method: string;
-  reject(error: Error): void;
-  resolve(result: unknown): void;
-  startedAtMs: number;
-  timeout: ReturnType<typeof setTimeout>;
-}
-
-interface ActiveTurn {
-  goalCompletion?: {
-    turnId: string;
-    text: string;
-    checkpointPublished: boolean;
-  };
-  nativeModelAttribution?: import("@cantrip/protocol").NativeTurnModelAttribution;
-  initialSettings?: NativeInitialTurnSettings;
-  inheritThreadSettings?: boolean;
-  admission?: {
-    operationGeneration: string;
-    controller: AbortController;
-    initialTurnId: string | null;
-    resolvedRequestIds: Set<string>;
-  };
-  agentScope: AgentScope | null;
-  baseline: WorkspaceSnapshot;
-  chatId: string | null;
-  collaborationMode: NativeCollaborationMode | null;
-  contextCompactionRequestedAtMs: number | null;
-  contextUsage: ThreadTokenUsageUpdatedParams["tokenUsage"] | null;
-  contextUsageUpdatedAtMs: number | null;
-  captureProtectedDiagnostics: boolean;
-  commandTelemetry: Map<string, ActiveCommandTelemetry>;
-  completedCommandIds: Set<string>;
-  cwd: string;
-  delta: string;
-  diffChanges: FileActivityChange[];
-  durationMs: number | null;
-  executionKind: "chat" | "operation";
-  executionLaneId: string | null;
-  fileStartedAtMs: Map<string, number>;
-  finalText: string | null;
-  interactionMode: "interactive" | "preauthorized";
-  interruptionRequestedAtMs: number | null;
-  itemStartedAtMs: Map<string, number>;
-  latestUsage: TokenUsageBreakdown | null;
-  liveAgentMessageFingerprints: Set<string>;
-  observedActivityFingerprints: Set<string>;
-  model: RunAgentTurnOptions["model"];
-  providerId: string;
-  providerKind: string;
-  onActivity?: (activity: AgentActivity) => void;
-  onMessage?: (message: NormalizedAgentMessage) => void;
-  onInteractionCleared?: (
-    requestKey: string,
-    response?: AgentInteractionResponse,
-  ) => void;
-  onInteractionExpired?: (requestKey: string) => void;
-  onInteractionRequest?: (request: AgentInteractionRuntimeRequest) => void;
-  onNativeInteractionRequest?: (
-    request: AdmittedNativeReply,
-  ) => void | Promise<void>;
-  onCheckpoint?: (checkpoint: { text: string; turnId: string }) => void;
-  onPlan?: (plan: {
-    explanation: string | null;
-    steps: PlanStep[];
-    turnId: string;
-  }) => void;
-  onPlanQuestion?: (question: PendingPlanQuestion) => void;
-  onPlanQuestionResolved?: (questionId: string) => void;
-  pendingActivities: Map<string, AgentActivity>;
-  pendingAgentMessage: NormalizedAgentMessage | null;
-  reasoningSummaries: Map<string, string[]>;
-  reject(error: Error): void;
-  resolve(result: AgentTurnResult | AgentOperationResult): void;
-  startedAtMs: number;
-  streamingAgentMessage: StreamingAgentMessage | null;
-  structuredChat: boolean;
-  threadId: string;
-  timeout: ReturnType<typeof setTimeout> | null;
-  structuredOutputSchema: Record<string, unknown> | null;
-}
-
-type AgentEventState = Pick<
-  ActiveTurn,
-  | "agentScope"
-  | "initialSettings"
-  | "nativeModelAttribution"
-  | "captureProtectedDiagnostics"
-  | "commandTelemetry"
-  | "completedCommandIds"
-  | "cwd"
-  | "delta"
-  | "diffChanges"
-  | "fileStartedAtMs"
-  | "finalText"
-  | "itemStartedAtMs"
-  | "latestUsage"
-  | "liveAgentMessageFingerprints"
-  | "observedActivityFingerprints"
-  | "onActivity"
-  | "onMessage"
-  | "pendingActivities"
-  | "pendingAgentMessage"
-  | "reasoningSummaries"
-  | "startedAtMs"
-  | "streamingAgentMessage"
-  | "structuredChat"
->;
-
-type AgentRuntimeStatus =
-  "starting" | "running" | "idle" | "completed" | "failed" | "interrupted";
-
-interface AgentRuntimeState extends AgentEventState {
-  computerUseLifetime: CodexExecutionLifetime;
-  agentPath: string[];
-  currentTurnId: string | null;
-  depth: number;
-  lastActiveAtMs: number;
-  nickname: string | null;
-  parentThreadId: string;
-  role: string | null;
-  segmentTurnIds: Set<string>;
-  status: AgentRuntimeStatus;
-  threadId: string;
-}
-
-interface RootExecution {
-  computerUseLifetime: CodexExecutionLifetime;
-  active: ActiveTurn;
-  agents: Map<string, AgentRuntimeState>;
-  rootThreadId: string;
-  rootTurnId: string | null;
-}
-
-interface ChildThreadMetadata {
-  agentPath?: string | null;
-  depth?: number | null;
-  nickname?: string | null;
-  parentThreadId: string;
-  role?: string | null;
-  threadId: string;
-}
-
-interface AgentNotificationTarget {
-  active: ActiveTurn;
-  execution: RootExecution;
-  isRoot: boolean;
-  state: AgentEventState;
-}
-
-type FileActivityChange = Extract<
-  AgentActivity,
-  { type: "fileChange" }
->["changes"][number];
-
-export interface CommandOutputBuffer {
-  output: string | null;
-  truncated: boolean;
-}
-
-export interface CommandTelemetryValue extends CommandOutputBuffer {
-  startedAtMs: number;
-  updatedAtMs: number;
-}
-
-interface ActiveCommandTelemetry extends CommandTelemetryValue {
-  correlation: CodexEventCorrelation;
-  flushTimer: ReturnType<typeof setTimeout> | null;
-  item: CommandExecutionItem | null;
-}
-
-interface StreamingAgentMessage {
-  correlation: CodexEventCorrelation;
-  flushTimer: ReturnType<typeof setTimeout> | null;
-  id: string;
-  lastEmittedText: string;
-  phase: NormalizedAgentMessage["phase"];
-  text: string;
-}
-
-const AGENT_MESSAGE_DELTA_COALESCE_MS = 100;
-const COMMAND_OUTPUT_COALESCE_MS = 100;
-const MAX_TURN_COMMAND_TELEMETRY = 200;
-const MAX_COMPLETED_COMMAND_IDS = 1_000;
-const MAX_TURN_FILE_ITEMS = 1_000;
-const MAX_TURN_ITEM_TIMESTAMPS = 1_000;
-const MAX_AGENT_THREADS_PER_EXECUTION = 256;
-const MAX_ORPHAN_AGENT_THREADS = 256;
-const MAX_KNOWN_AGENT_THREADS = 512;
-const MAX_OBSERVED_ACTIVITY_FINGERPRINTS = 2_000;
-const MAX_RECOVERED_AGENT_THREADS = 64;
-const MAX_RECOVERED_TURNS_PER_AGENT = 8;
-const MAX_RECOVERED_ITEMS_PER_TURN = 1_000;
-const RECOVERY_TURN_CLOCK_SLOP_MS = 5_000;
-
-function boundedMapSet<K, V>(map: Map<K, V>, key: K, value: V, limit: number) {
-  if (!map.has(key) && map.size >= limit) {
-    const oldest = map.keys().next().value as K | undefined;
-    if (oldest !== undefined) map.delete(oldest);
-  }
-  map.set(key, value);
-}
-
-function settleRunningActivityAtTurnBoundary(
-  activity: AgentActivity,
-  status: Exclude<AgentActivity["status"], "running">,
-  completedAtMs: number | null,
-  correlation: CodexEventCorrelation,
-): AgentActivity {
-  if (activity.status !== "running") return activity;
-  return agentActivitySchema.parse({
-    ...activity,
-    status,
-    ...(completedAtMs === null
-      ? {}
-      : {
-          updatedAtMs: Math.max(activity.updatedAtMs ?? 0, completedAtMs),
-          completedAtMs,
-        }),
-    correlation,
-  });
-}
-
-function scopedAgentActivity(
-  state: AgentEventState,
-  activity: AgentActivity,
-): AgentActivity {
-  return state.agentScope
-    ? agentActivitySchema.parse({ ...activity, agentScope: state.agentScope })
-    : activity;
-}
-
-function agentActivityDeliveryFingerprint(activity: AgentActivity): string {
-  return JSON.stringify([
-    activity.agentScope?.agentThreadId ??
-      activity.correlation?.threadId ??
-      null,
-    activity.correlation?.turnId ?? null,
-    activity.correlation?.itemId ?? activity.id,
-    activity.type,
-    activity.status,
-  ]);
-}
-
-function rememberObservedActivity(
-  state: AgentEventState,
-  activity: AgentActivity,
-): void {
-  if (
-    state.observedActivityFingerprints.size >=
-    MAX_OBSERVED_ACTIVITY_FINGERPRINTS
-  ) {
-    const oldest = state.observedActivityFingerprints.values().next().value;
-    if (oldest !== undefined) state.observedActivityFingerprints.delete(oldest);
-  }
-  state.observedActivityFingerprints.add(
-    agentActivityDeliveryFingerprint(activity),
-  );
-}
-
-function emitTurnActivity(
-  state: AgentEventState,
-  activity: AgentActivity,
-): void {
-  const capture = state.nativeModelAttribution;
-  const scoped = scopedAgentActivity(
-    state,
-    capture &&
-      (activity.type === "usage" || activity.type === "turnSummary") &&
-      capture.threadId === activity.correlation?.threadId &&
-      capture.turnId === activity.correlation?.turnId
-      ? { ...activity, nativeModelAttribution: capture }
-      : activity,
-  );
-  rememberObservedActivity(state, scoped);
-  const itemId = scoped.correlation?.itemId;
-  if (itemId) {
-    if (scoped.status === "running") {
-      boundedMapSet(
-        state.pendingActivities,
-        itemId,
-        scoped,
-        MAX_TURN_ITEM_TIMESTAMPS,
-      );
-    } else {
-      state.pendingActivities.delete(itemId);
-    }
-  }
-  state.onActivity?.(scoped);
-}
-
-function settlePendingTurnActivities(
-  active: AgentEventState,
-  status: "completed" | "failed",
-  completedAtMs: number,
-  correlation: CodexEventCorrelation,
-): void {
-  for (const activity of [...active.pendingActivities.values()]) {
-    emitTurnActivity(
-      active,
-      settleRunningActivityAtTurnBoundary(activity, status, completedAtMs, {
-        ...correlation,
-        itemId: activity.correlation?.itemId ?? null,
-      }),
-    );
-  }
-}
-
-function rememberCompletedCommand(
-  active: AgentEventState,
-  itemId: string,
-): void {
-  if (active.completedCommandIds.size >= MAX_COMPLETED_COMMAND_IDS) {
-    const oldest = active.completedCommandIds.values().next().value;
-    if (oldest !== undefined) active.completedCommandIds.delete(oldest);
-  }
-  active.completedCommandIds.add(itemId);
-}
-
-function boundedCommandTelemetrySet(
-  active: AgentEventState,
-  itemId: string,
-  telemetry: ActiveCommandTelemetry,
-): void {
-  if (
-    !active.commandTelemetry.has(itemId) &&
-    active.commandTelemetry.size >= MAX_TURN_COMMAND_TELEMETRY
-  ) {
-    const oldestId = active.commandTelemetry.keys().next().value;
-    if (oldestId !== undefined) {
-      const oldest = active.commandTelemetry.get(oldestId);
-      if (oldest) clearCommandFlush(oldest);
-      active.commandTelemetry.delete(oldestId);
-    }
-  }
-  active.commandTelemetry.set(itemId, telemetry);
-}
-
-function emitCommandTelemetry(
-  active: AgentEventState,
-  telemetry: ActiveCommandTelemetry,
-  completedAtMs?: number | null,
-  status?: AgentActivity["status"],
-): void {
-  if (!telemetry.item) return;
-  const activity = normalizeCodexThreadItem(
-    telemetry.item,
-    active.cwd,
-    completedAtMs === undefined ? "started" : "completed",
-    telemetry.correlation,
-    {
-      captureRaw: active.captureProtectedDiagnostics,
-      commandOutput: {
-        output: telemetry.output,
-        truncated: telemetry.truncated,
-      },
-      startedAtMs: telemetry.startedAtMs,
-      updatedAtMs: telemetry.updatedAtMs,
-      ...(completedAtMs === undefined ? {} : { completedAtMs }),
-      ...(status === undefined ? {} : { status }),
-    },
-  );
-  if (activity) emitTurnActivity(active, activity);
-}
-
-function clearCommandFlush(telemetry: ActiveCommandTelemetry): void {
-  if (!telemetry.flushTimer) return;
-  clearTimeout(telemetry.flushTimer);
-  telemetry.flushTimer = null;
-}
-
-function scheduleCommandTelemetry(
-  active: AgentEventState,
-  telemetry: ActiveCommandTelemetry,
-): void {
-  if (!telemetry.item || telemetry.flushTimer) return;
-  telemetry.flushTimer = setTimeout(() => {
-    telemetry.flushTimer = null;
-    if (active.commandTelemetry.get(telemetry.item!.id) !== telemetry) return;
-    emitCommandTelemetry(active, telemetry);
-  }, COMMAND_OUTPUT_COALESCE_MS);
-  telemetry.flushTimer.unref();
-}
-
-function clearStreamingAgentMessage(active: AgentEventState): void {
-  const streaming = active.streamingAgentMessage;
-  if (streaming?.flushTimer) clearTimeout(streaming.flushTimer);
-  active.streamingAgentMessage = null;
-}
-
-export function normalizeStreamingAgentMessage(
-  message: Omit<NormalizedAgentMessage, "phase" | "streaming">,
-): NormalizedAgentMessage {
-  return normalizedAgentMessageSchema.parse({
-    ...message,
-    // An agent message item can be followed by more tools or messages. Keep
-    // streamed text provisional until the authoritative turn boundary decides
-    // whether it was commentary or the final answer.
-    phase: "commentary",
-    streaming: true,
-  });
-}
-
-function emitStreamingAgentMessage(active: AgentEventState): void {
-  const streaming = active.streamingAgentMessage;
-  if (!streaming) return;
-  if (streaming.flushTimer) {
-    clearTimeout(streaming.flushTimer);
-    streaming.flushTimer = null;
-  }
-  const text = streaming.text.trim();
-  if (
-    !text ||
-    text === streaming.lastEmittedText ||
-    streaming.phase === "commentary" ||
-    active.structuredChat
-  ) {
-    return;
-  }
-  streaming.lastEmittedText = text;
-  active.onMessage?.(
-    normalizeStreamingAgentMessage({
-      id: streaming.id,
-      text,
-      correlation: streaming.correlation,
-      ...(active.agentScope ? { agentScope: active.agentScope } : {}),
-    }),
-  );
-}
-
-function scheduleStreamingAgentMessage(active: AgentEventState): void {
-  const streaming = active.streamingAgentMessage;
-  if (!streaming || streaming.flushTimer) return;
-  streaming.flushTimer = setTimeout(() => {
-    if (active.streamingAgentMessage !== streaming) return;
-    streaming.flushTimer = null;
-    emitStreamingAgentMessage(active);
-  }, AGENT_MESSAGE_DELTA_COALESCE_MS);
-  streaming.flushTimer.unref();
-}
-
-function settleStreamingAgentMessage(
-  active: AgentEventState,
-  completed: boolean,
-): void {
-  const streaming = active.streamingAgentMessage;
-  if (!streaming) return;
-  emitStreamingAgentMessage(active);
-  const text = streaming.text.trim();
-  clearStreamingAgentMessage(active);
-  if (!text || active.structuredChat) return;
-  active.onMessage?.(
-    normalizedAgentMessageSchema.parse({
-      id: streaming.id,
-      text,
-      phase:
-        streaming.phase === "commentary" || !completed
-          ? "commentary"
-          : "final_answer",
-      correlation: streaming.correlation,
-      ...(active.agentScope ? { agentScope: active.agentScope } : {}),
-    }),
-  );
-}
-
-function appendStreamingAgentMessageDelta(
-  active: AgentEventState,
-  itemId: string,
-  delta: string,
-  correlation: CodexEventCorrelation,
-): void {
-  if (active.streamingAgentMessage?.id !== itemId) {
-    settleStreamingAgentMessage(active, false);
-    active.streamingAgentMessage = {
-      correlation,
-      flushTimer: null,
-      id: itemId,
-      lastEmittedText: "",
-      phase: null,
-      text: "",
-    };
-  }
-  active.streamingAgentMessage.text += delta;
-  active.streamingAgentMessage.correlation = correlation;
-  scheduleStreamingAgentMessage(active);
-}
-
-function clearTurnInspectionTelemetry(active: AgentEventState): void {
-  clearStreamingAgentMessage(active);
-  for (const telemetry of active.commandTelemetry.values()) {
-    clearCommandFlush(telemetry);
-  }
-  active.commandTelemetry.clear();
-  active.completedCommandIds.clear();
-  active.fileStartedAtMs.clear();
-  active.itemStartedAtMs.clear();
-  active.pendingActivities.clear();
-}
-
-/** Reset segment-local output only; the surrounding legacy goal stays alive. */
-function resetGoalSegment(active: ActiveTurn): void {
-  clearTurnInspectionTelemetry(active);
-  active.delta = "";
-  active.diffChanges = [];
-  active.finalText = null;
-  active.durationMs = null;
-  active.latestUsage = null;
-  active.pendingAgentMessage = null;
-  active.interruptionRequestedAtMs = null;
-  active.liveAgentMessageFingerprints.clear();
-  active.reasoningSummaries.clear();
-  active.startedAtMs = Date.now();
-}
-
-function publishGoalCheckpoint(active: ActiveTurn, turnId: string): void {
-  const completed = active.goalCompletion;
-  if (
-    !completed ||
-    completed.turnId !== turnId ||
-    completed.checkpointPublished
-  )
-    return;
-  completed.checkpointPublished = true;
-  active.onCheckpoint?.({ text: completed.text, turnId });
-}
 
 export function findActiveChatTurn<
   T extends Pick<ActiveTurn, "chatId" | "executionKind" | "threadId">,
@@ -773,55 +396,6 @@ export function findActiveChatTurn<
   return null;
 }
 
-export interface CodexThreadTurn {
-  completedAt: number | null;
-  durationMs: number | null;
-  error: TurnError | null;
-  id: string;
-  items: Array<
-    | CodexThreadItem
-    | {
-        clientId: string | null;
-        content: Array<{ type: string; text?: string }>;
-        id: string;
-        type: "userMessage";
-      }
-  >;
-  startedAt: number | null;
-  status: "completed" | "failed" | "interrupted" | "inProgress";
-}
-
-export interface CodexThreadReadResponse {
-  thread: {
-    agentNickname?: string | null;
-    agentRole?: string | null;
-    id: string;
-    model?: string | null;
-    parentThreadId?: string | null;
-    reasoningEffort?: string | null;
-    source?: unknown;
-    status: { type: "active" | "idle" | "notLoaded" | "systemError" };
-    turns: CodexThreadTurn[];
-  };
-}
-
-interface CodexThreadListResponse {
-  data: Array<CodexThreadReadResponse["thread"]>;
-  nextCursor: string | null;
-}
-
-interface WorkspaceFileState {
-  fingerprint: string;
-  status: string;
-}
-
-type WorkspaceSnapshot = Map<string, WorkspaceFileState>;
-type WorkspaceSnapshotMetadataReader = (
-  filePath: string,
-) => Promise<{ mode: number; mtimeMs: number; size: number }>;
-
-const execFileAsync = promisify(execFile);
-const WORKSPACE_SNAPSHOT_METADATA_CONCURRENCY = 16;
 const CODEX_STARTUP_TIMEOUT_MS = 2 * 60_000;
 const CODEX_RPC_TIMEOUT_MS = 2 * 60_000;
 const CODEX_PAUSE_BOUNDARY_TIMEOUT_MS = 24 * 60 * 60_000;
@@ -927,14 +501,6 @@ const KNOWN_CODEX_NOTIFICATION_METHODS = new Set([
 
 export function isKnownCodexNotificationMethod(method: string): boolean {
   return KNOWN_CODEX_NOTIFICATION_METHODS.has(method);
-}
-
-export type CodexExternalThreadChangeKind = "turn" | "goal" | "queue" | "plan";
-
-export interface CodexExternalThreadChange {
-  changes: CodexExternalThreadChangeKind[];
-  revision: number;
-  threadId: string;
 }
 
 const EXTERNAL_THREAD_CHANGE_LIMIT = 4_096;
@@ -1349,35 +915,6 @@ export function failClosedAgentInteractionReply(
   return { error: { code: -32_000, message: reason } };
 }
 
-interface ThreadResponse {
-  thread: { id: string };
-}
-
-interface TurnStartResponse {
-  turn: { id: string };
-}
-
-interface TurnStartedParams {
-  threadId: string;
-  initialSettings?: NativeInitialTurnSettings;
-  turn: {
-    id: string;
-    startedAt?: number | null;
-  };
-}
-
-interface TurnCompletedParams {
-  threadId: string;
-  turn: {
-    completedAt?: number | null;
-    durationMs?: number | null;
-    error: TurnError | null;
-    id: string;
-    startedAt?: number | null;
-    status: "completed" | "failed" | "interrupted" | "inProgress";
-  };
-}
-
 export function reconciledRootTurnStatus(
   status: TurnCompletedParams["turn"]["status"],
   finalAnswerAvailable: boolean,
@@ -1387,38 +924,6 @@ export function reconciledRootTurnStatus(
   if (finalAnswerAvailable) return "completed";
   if (interruptionRequested) return "interrupted";
   return status;
-}
-
-interface ThreadStartedParams {
-  thread: {
-    agentNickname?: string | null;
-    agentRole?: string | null;
-    id: string;
-    parentThreadId?: string | null;
-    source?: unknown;
-    status?: { type?: string };
-  };
-}
-
-interface ThreadStatusChangedParams {
-  status: { type?: string };
-  threadId: string;
-}
-
-function objectRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function optionalString(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function optionalDepth(value: unknown): number | null {
-  return typeof value === "number" && Number.isInteger(value) && value >= 0
-    ? Math.min(value, 32)
-    : null;
 }
 
 export function agentPathSegments(value: string | null | undefined): string[] {
@@ -1474,231 +979,6 @@ function nativeAgentRuntimeStatus(
   }
 }
 
-interface AgentMessageDeltaParams {
-  delta: string;
-  itemId: string;
-  threadId: string;
-  turnId: string;
-}
-
-interface CommandExecutionOutputDeltaParams {
-  delta: string;
-  itemId: string;
-  threadId: string;
-  turnId: string;
-}
-
-interface ReasoningSummaryPartAddedParams {
-  itemId: string;
-  summaryIndex: number;
-  threadId: string;
-  turnId: string;
-}
-
-interface ReasoningSummaryTextDeltaParams extends ReasoningSummaryPartAddedParams {
-  delta: string;
-}
-
-interface CommandExecutionItem {
-  aggregatedOutput: string | null;
-  command: string;
-  cwd: string;
-  durationMs?: number | null;
-  exitCode: number | null;
-  id: string;
-  status: "inProgress" | "completed" | "failed" | "declined";
-  type: "commandExecution";
-}
-
-interface FileUpdateChange {
-  diff?: string;
-  kind: { type: "add" | "delete" | "update" };
-  path: string;
-}
-
-interface FileChangeItem {
-  changes: FileUpdateChange[];
-  id: string;
-  status: "inProgress" | "completed" | "failed" | "declined";
-  type: "fileChange";
-}
-
-interface FileChangePatchUpdatedParams {
-  changes: FileUpdateChange[];
-  itemId: string;
-  threadId: string;
-  turnId: string;
-}
-
-interface AgentMessageItem {
-  id: string;
-  phase?: "commentary" | "final_answer" | null;
-  text?: string;
-  type: "agentMessage";
-}
-
-interface PlanItem {
-  id: string;
-  text: string;
-  type: "plan";
-}
-
-interface ReasoningItem {
-  content?: string[];
-  id: string;
-  summary: string[];
-  type: "reasoning";
-}
-
-interface McpToolCallItem {
-  arguments?: unknown;
-  durationMs: number | null;
-  error: {
-    code?: number | string | null;
-    message: string;
-    retryable?: boolean | null;
-  } | null;
-  id: string;
-  result?: {
-    content?: unknown[];
-    isError?: boolean;
-    status?: string;
-    structuredContent?: unknown;
-  } | null;
-  server: string;
-  status: "inProgress" | "completed" | "failed";
-  tool: string;
-  type: "mcpToolCall";
-}
-
-interface DynamicToolCallItem {
-  durationMs: number | null;
-  id: string;
-  namespace: string | null;
-  status: "inProgress" | "completed" | "failed";
-  success: boolean | null;
-  tool: string;
-  type: "dynamicToolCall";
-}
-
-interface CollabAgentToolCallItem {
-  agentsStates: Record<
-    string,
-    { message: string | null; status: string } | undefined
-  >;
-  id: string;
-  model: string | null;
-  prompt: string | null;
-  receiverThreadIds: string[];
-  senderThreadId: string;
-  status: "inProgress" | "completed" | "failed";
-  tool: string;
-  type: "collabAgentToolCall";
-}
-
-interface SubAgentActivityItem {
-  agentPath: string;
-  agentThreadId: string;
-  id: string;
-  kind: "started" | "interacted" | "completed" | "interrupted";
-  type: "subAgentActivity";
-}
-
-interface WebSearchItem {
-  action: {
-    pattern?: string;
-    queries?: string[];
-    query?: string;
-    type: string;
-    url?: string;
-  } | null;
-  id: string;
-  query: string;
-  type: "webSearch";
-}
-
-interface ImageViewItem {
-  id: string;
-  path: string;
-  type: "imageView";
-}
-
-interface ReviewModeItem {
-  id: string;
-  review: string;
-  type: "enteredReviewMode" | "exitedReviewMode";
-}
-
-interface ContextCompactionItem {
-  id: string;
-  type: "contextCompaction";
-}
-
-type CodexThreadItem =
-  | AgentMessageItem
-  | PlanItem
-  | ReasoningItem
-  | CommandExecutionItem
-  | FileChangeItem
-  | McpToolCallItem
-  | DynamicToolCallItem
-  | CollabAgentToolCallItem
-  | SubAgentActivityItem
-  | InterAgentCommunicationItem
-  | WebSearchItem
-  | ImageViewItem
-  | ReviewModeItem
-  | ContextCompactionItem;
-
-interface ItemLifecycleParams {
-  completedAtMs?: number;
-  item: CodexThreadItem;
-  startedAtMs?: number;
-  threadId: string;
-  turnId: string;
-}
-
-interface TokenUsageBreakdown {
-  totalTokens: number;
-  inputTokens: number;
-  cachedInputTokens: number;
-  cacheWriteInputTokens: number;
-  outputTokens: number;
-  reasoningOutputTokens: number;
-}
-
-interface ThreadTokenUsageUpdatedParams {
-  threadId: string;
-  turnId: string;
-  tokenUsage: {
-    total: TokenUsageBreakdown;
-    last: TokenUsageBreakdown;
-    modelContextWindow: number | null;
-  };
-}
-
-export interface ActiveAgentContextWindow {
-  threadId: string;
-  turnId: string;
-  usedTokens: number | null;
-  contextWindowTokens: number | null;
-  remainingTokens: number | null;
-  usedPercent: number | null;
-  remainingPercent: number | null;
-  usageUpdatedAtMs: number | null;
-  compactionScheduled: boolean;
-}
-
-export interface ActiveAgentContextWindowSource {
-  contextCompactionRequestedAtMs: number | null;
-  contextUsage: {
-    last: { totalTokens: number };
-    modelContextWindow: number | null;
-  } | null;
-  contextUsageUpdatedAtMs: number | null;
-  threadId: string;
-}
-
 export function activeAgentContextWindow(
   active: ActiveAgentContextWindowSource,
   turnId: string,
@@ -1730,229 +1010,6 @@ export function activeAgentContextWindow(
   };
 }
 
-interface RateLimitWindow {
-  usedPercent: number;
-  windowDurationMins: number | null;
-  resetsAt: number | null;
-}
-
-interface AccountRateLimitsUpdatedParams {
-  rateLimits: {
-    credits?: import("@cantrip/protocol").ProviderCreditsSnapshot | null;
-    limitId: string | null;
-    limitName: string | null;
-    planType: string | null;
-    primary: RateLimitWindow | null;
-    rateLimitReachedType: string | null;
-    secondary: RateLimitWindow | null;
-  };
-}
-
-interface WarningParams {
-  message: string;
-  threadId: string | null;
-}
-
-interface ConfigWarningParams {
-  details: string | null;
-  path?: string;
-  summary: string;
-}
-
-interface TurnError {
-  additionalDetails?: string | null;
-  codexErrorInfo?: unknown;
-  message: string;
-}
-
-interface ErrorNotificationParams {
-  error: TurnError;
-  threadId: string;
-  turnId: string;
-  willRetry: boolean;
-}
-
-interface TurnDiffUpdatedParams {
-  diff: string;
-  threadId: string;
-  turnId: string;
-}
-
-interface ThreadGoalUpdatedParams {
-  goal: ThreadGoal;
-  threadId: string;
-  turnId: string | null;
-}
-
-interface ThreadGoalClearedParams {
-  threadId: string;
-}
-
-interface NativeCollaborationMode {
-  mode: PlanMode;
-  settings: {
-    model: string;
-    reasoning_effort: RunAgentTurnOptions["model"]["reasoningEffort"];
-    developer_instructions: null;
-  };
-}
-
-interface NativeCollaborationModeListResponse {
-  data: Array<{
-    mode: PlanMode | null;
-    model: string | null;
-    reasoning_effort: RunAgentTurnOptions["model"]["reasoningEffort"];
-  }>;
-}
-
-interface TurnPlanUpdatedParams {
-  threadId: string;
-  turnId: string;
-  explanation: string | null;
-  plan: PlanStep[];
-}
-
-interface ToolRequestUserInputParams {
-  threadId: string;
-  turnId: string;
-  itemId: string;
-  questions: PendingPlanQuestion["questions"];
-  autoResolutionMs: number | null;
-}
-
-interface ServerRequestResolvedParams {
-  threadId: string;
-  requestId: number | string;
-}
-
-interface NativePendingPlanQuestion {
-  active: ActiveTurn;
-  question: PendingPlanQuestion;
-  requestKey: string;
-}
-
-interface NativePendingAgentInteraction {
-  stopPublication?: () => void;
-  requestMethod: string;
-  active: ActiveTurn;
-  request: AgentInteractionRuntimeRequest;
-  rpcId: number | string;
-  timeout: ReturnType<typeof setTimeout>;
-}
-
-export interface RunAgentTurnRetry {
-  reason: "capacity" | "invalid-compaction";
-  attempt: number;
-  operationGeneration: string | null;
-  threadId: string | null;
-  turnId: string | null;
-  nextThreadId: string | null;
-  error: unknown;
-  signal: AbortSignal;
-}
-
-export interface RunAgentTurnOptions {
-  /** Shared managed preparation owns configuration; this input inherits the native
-   * thread selection instead of replaying a possibly stale GUI bootstrap model. */
-  inheritThreadSettings?: boolean;
-  /** Already protected, complete native queue vector. Never flatten or append inferred skills. */
-  nativeInput?: ReadonlyArray<Record<string, unknown>>;
-  nativeClientUserMessageId?: string;
-  operationGeneration?: string;
-  /** Exact logical-root cancellation before native dispatch; never a chat-wide active-turn interrupt. */
-  preparationSignal?: AbortSignal;
-  /** Performs initial managed preparation inside native retry/cancellation handling, without model input. */
-  onBeforeFirstAttempt?: (
-    signal: AbortSignal,
-  ) => Promise<Partial<RunAgentTurnOptions>>;
-  /** Replaces authority/options for an actual new native attempt after retry delay. */
-  onBeforeRetry?: (
-    retry: RunAgentTurnRetry,
-  ) => Promise<Partial<RunAgentTurnOptions>>;
-  onBeforeNativeDispatch?: (threadId: string) => Promise<void>;
-  onNativeReceipt?: (receipt: { turn: { id: string } }) => Promise<void>;
-  /** Persist an explicitly unconsumed input before ending this GUI attempt. */
-  onNativeDeferred?: (input: {
-    threadId: string;
-    nativeInput: ReadonlyArray<Record<string, unknown>>;
-    frame: { error: { code: number; message: string; data?: unknown } };
-  }) => Promise<void>;
-  onNativeInteractionRequest?: (
-    request: AdmittedNativeReply,
-  ) => void | Promise<void>;
-  attachments?: RuntimeChatAttachment[];
-  chatId: string;
-  captureProtectedDiagnostics: boolean;
-  clientMessageId: string;
-  cwd: string;
-  executionProfile: "ide" | "standalone-chat";
-  executionLaneId?: string;
-  isPrimary: Extract<WorkerCommand, { type: "chat.turn" }>["isPrimary"];
-  model: Extract<WorkerCommand, { type: "chat.turn" }>["model"];
-  mcpServers?: McpServerConfiguration[];
-  automationPaused: Extract<
-    WorkerCommand,
-    { type: "chat.turn" }
-  >["automationPaused"];
-  planMode: Extract<WorkerCommand, { type: "chat.turn" }>["planMode"];
-  policyContext: string | null;
-  resultMode?: Extract<WorkerCommand, { type: "chat.turn" }>["resultMode"];
-  provider: RuntimeProvider;
-  permissionProfileId: Extract<
-    WorkerCommand,
-    { type: "chat.turn" }
-  >["permissionProfileId"];
-  prompt: string;
-  rootKind: Extract<WorkerCommand, { type: "chat.turn" }>["rootKind"];
-  skillNames: string[];
-  subagentDefaults: RuntimeSubagentDefaults | null;
-  subagentProtocolVersion: Extract<
-    WorkerCommand,
-    { type: "chat.turn" }
-  >["subagentProtocolVersion"];
-  threadId: string | null;
-  worktreeMode: Extract<WorkerCommand, { type: "chat.turn" }>["worktreeMode"];
-  worktreePolicy: Extract<
-    WorkerCommand,
-    { type: "chat.turn" }
-  >["worktreePolicy"];
-  onActivity?: (activity: AgentActivity) => void;
-  onMessage?: ActiveTurn["onMessage"];
-  onInteractionCleared?: ActiveTurn["onInteractionCleared"];
-  onInteractionExpired?: ActiveTurn["onInteractionExpired"];
-  onInteractionRequest?: ActiveTurn["onInteractionRequest"];
-  onCheckpoint?: ActiveTurn["onCheckpoint"];
-  onPlan?: ActiveTurn["onPlan"];
-  onPlanQuestion?: ActiveTurn["onPlanQuestion"];
-  onPlanQuestionResolved?: ActiveTurn["onPlanQuestionResolved"];
-  onThreadLoaded?: (threadId: string) => void;
-}
-
-export type PrepareAdmittedNativeExecutionOptions = Pick<
-  RunAgentTurnOptions,
-  | "chatId"
-  | "cwd"
-  | "executionLaneId"
-  | "model"
-  | "provider"
-  | "captureProtectedDiagnostics"
-  | "onActivity"
-  | "onMessage"
-  | "onInteractionCleared"
-  | "onInteractionExpired"
-  | "onInteractionRequest"
-  | "onCheckpoint"
-  | "onPlan"
-  | "onPlanQuestion"
-  | "onPlanQuestionResolved"
-  | "onNativeInteractionRequest"
-> & {
-  operationGeneration: string;
-  threadId: string;
-  /** Native preallocated identity. Matching it does not itself start a turn. */
-  expectedTurnId?: string;
-};
-
 /** A received native JSON-RPC rejection, distinct from uncertain transport loss. */
 export class CodexNativeRpcError extends Error {
   constructor(
@@ -1964,176 +1021,10 @@ export class CodexNativeRpcError extends Error {
   }
 }
 
-export interface ManagedExecutionAttempt {
-  threadId: string;
-  runnerGeneration: string;
-  attemptId: string;
-  turnId: string;
-  trigger: "goal" | "queue";
-  goalEpoch?: string;
-  input: Record<string, unknown>;
-}
-export interface ManagedExecutionDeclined extends Omit<
-  ManagedExecutionAttempt,
-  "input" | "trigger"
-> {
-  operationGeneration: string | null;
-  reason: string;
-}
-export interface ManagedExecutionResolution {
-  threadId: string;
-  runnerGeneration: string;
-  attemptId: string;
-  operationGeneration: string | null;
-  allow: boolean;
-}
-export interface ManagedExecutionGateHandler {
-  requested(
-    attempt: ManagedExecutionAttempt,
-    signal: AbortSignal,
-  ): Promise<void>;
-  declined(event: ManagedExecutionDeclined): void | Promise<void>;
-  failed(error: unknown): void;
-}
-
-export interface ManagedNativeGuiCommand {
-  permissionTransition?: PermissionTransition;
-  operationId?: string;
-  /** Server-issued settings source; metadata, never a native API parameter. */
-  settingsBindingId?: string;
-  queueClaim?: { id: string; promptRevision: number };
-  method: string;
-  params: Record<string, unknown>;
-  reply?: {
-    requestId: string | number;
-    requestMethod: string;
-    turnId: string | null;
-  };
-  /** Executes the exact already resolved native mutation once admission succeeds. */
-  dispatch(forward?: {
-    method: string;
-    params: Record<string, unknown>;
-  }): Promise<unknown>;
-}
-export type ManagedNativeCommandDispatcher = (
-  command: ManagedNativeGuiCommand,
-) => Promise<unknown>;
-
-export interface AdmittedNativeReplyIdentity {
-  operationGeneration: string;
-  rootThreadId: string;
-  requestId: string | number;
-}
-
-export interface AdmittedNativeReply extends AdmittedNativeReplyIdentity {
-  requestKey: string;
-  requestMethod: string;
-  threadId: string;
-  turnId: string | null;
-  kind: AgentInteractionRuntimeRequest["payload"]["kind"];
-}
-
-export type AdmittedNativeReplyResponse =
-  | { result: unknown; error?: never }
-  | {
-      error: { code: number; message: string; data?: unknown };
-      result?: never;
-    };
-
-/** Registration of an already admitted operation, before its native mutation. */
-export interface AdmittedNativeExecution {
-  readonly operationGeneration: string;
-  readonly threadId: string;
-  /** Whole operation lifetime; actual root/child turn signals remain separate. */
-  readonly signal: AbortSignal;
-  readonly completion: Promise<AgentTurnResult>;
-  assertCurrent(): void;
-  /** Actual native receipt, never fabricated to create a turn identity. */
-  bindReceipt(receipt: unknown): void;
-  fail(error: Error): void;
-}
-
-export interface RuntimeSubagentDefaults {
-  model: Extract<WorkerCommand, { type: "chat.turn" }>["model"];
-  provider: RuntimeProvider;
-}
-
-export interface RunAgentOperationOptions {
-  operationId: string;
-  cwd: string;
-  prompt: string;
-  developerInstructions: string | null;
-  skillNames: string[];
-  outputSchema: Record<string, unknown>;
-  mutationMode: "read-only" | "write";
-  networkAccess: "none" | "restricted" | "unrestricted";
-  permissionProfileId: string | null;
-  timeoutMs: number;
-  model: RunAgentTurnOptions["model"];
-  mcpServers: McpServerConfiguration[];
-  provider: RuntimeProvider;
-}
-
-export interface AgentOperationResult {
-  threadId: string;
-  turnId: string;
-  text: string;
-  structuredResult: unknown;
-  measuredUsage: MeasuredAgentUsage;
-  status: "completed";
-}
-
-export interface RuntimeChatAttachment extends ChatAttachmentSummary {
-  path: string;
-}
-
 export function codexReasoningEffortParams(
   model: RunAgentTurnOptions["model"],
 ): { effort?: NonNullable<RunAgentTurnOptions["model"]["reasoningEffort"]> } {
   return model.reasoningEffort ? { effort: model.reasoningEffort } : {};
-}
-
-export type GoalRuntimeOptions = Pick<
-  RunAgentTurnOptions,
-  | "cwd"
-  | "mcpServers"
-  | "model"
-  | "permissionProfileId"
-  | "provider"
-  | "threadId"
->;
-
-export interface NativeReplacementSettings {
-  sourceThreadId: string;
-  transportGeneration: string | null;
-  sourcePreparationVersion: number;
-  settings: NativeThreadSettings;
-}
-
-export interface PrepareManagedThreadOptions extends GoalRuntimeOptions {
-  /** Actual source Core settings, restored before replacement handoff. */
-  replacementSettings?: NativeReplacementSettings;
-  signal?: AbortSignal;
-  canonicalHistory?: boolean;
-  executionGate?: { runnerGeneration: string };
-  executionProfile: RunAgentTurnOptions["executionProfile"];
-  subagentDefaults: RuntimeSubagentDefaults | null;
-  planMode: PlanMode;
-  intent: "configure" | "preserve";
-  /** Bind identity before later initialization can fail or a view can attach. */
-  onThreadIdentified?: (threadId: string) => void | Promise<void>;
-}
-
-export type PrepareImportedManagedThreadOptions = Omit<
-  PrepareManagedThreadOptions,
-  "threadId" | "intent" | "replacementSettings"
-> & { transfer: ManagedHistoryImport };
-
-export interface HydrateChatRelocationOptions extends GoalRuntimeOptions {
-  payload: ChatRelocationContextPayload;
-  planMode: PlanMode;
-  requiredSkillNames: string[];
-  onThreadStarted(threadId: string): Promise<void>;
 }
 
 function relocationContentText(content: ChatMessageContent): string {
@@ -2649,13 +1540,6 @@ export function codexChatThreadSecurityParams(
       };
 }
 
-export interface CodexSkill {
-  name: string;
-  description: string;
-  displayName: string | null;
-  path: string | null;
-}
-
 export function parseCodexSkills(response: unknown, cwd: string): CodexSkill[] {
   if (!response || typeof response !== "object") return [];
   const data = (response as { data?: unknown }).data;
@@ -2719,13 +1603,6 @@ export function parsePermissionProfileList(response: unknown) {
     }),
   );
 }
-
-export type CompactAgentThreadOptions = Pick<
-  RunAgentTurnOptions,
-  "cwd" | "executionProfile" | "model" | "permissionProfileId" | "provider"
-> & {
-  threadId: string;
-};
 
 export function chatTurnRollbackBoundary(
   turns: readonly {
@@ -2953,1215 +1830,6 @@ function codexDiagnosticClass(line: string): string {
   return "diagnostic";
 }
 
-function activityStatus(
-  status: "inProgress" | "completed" | "failed" | "declined",
-): AgentActivity["status"] {
-  return status === "inProgress" ? "running" : status;
-}
-
-function boundedText(value: string | null | undefined, limit = 20_000) {
-  if (value === null || value === undefined) return null;
-  if (value.length <= limit) return value;
-  return `${value.slice(0, limit)}\n…truncated…`;
-}
-
-function boundedJson(value: unknown) {
-  if (value === null || value === undefined) return null;
-  try {
-    return boundedText(
-      typeof value === "string" ? value : JSON.stringify(value, null, 2),
-    );
-  } catch {
-    return null;
-  }
-}
-
-function objectStringField(value: unknown, field: string) {
-  if (typeof value !== "object" || value === null || !(field in value)) {
-    return null;
-  }
-  const candidate = (value as Record<string, unknown>)[field];
-  return typeof candidate === "string" ? candidate : null;
-}
-
-interface NormalizedMcpFailure {
-  code: string | null;
-  message: string;
-  retryable: boolean | null;
-}
-
-interface McpFailureCandidate {
-  code?: unknown;
-  message: string;
-  retryable?: unknown;
-}
-
-function primitiveMcpErrorCode(value: unknown): string | null {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return String(value);
-  }
-  if (typeof value !== "string") return null;
-  const code = redactAgentActivityText(value).trim();
-  return code && code.length <= 200 ? code : null;
-}
-
-function explicitMcpRetryability(value: unknown): boolean | null {
-  return typeof value === "boolean" ? value : null;
-}
-
-function genericMcpFailureMessage(message: string): boolean {
-  return /^(?:(?:mcp|tool)\s+)?(?:tool\s+)?call failed[.!]?$/iu.test(
-    message.trim(),
-  );
-}
-
-function parsedMcpJson(text: string): unknown {
-  const trimmed = text.trim();
-  if (!(
-    (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
-    (trimmed.startsWith("[") && trimmed.endsWith("]"))
-  )) {
-    return null;
-  }
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    return null;
-  }
-}
-
-function mcpFailureCandidate(
-  value: unknown,
-  depth = 0,
-): McpFailureCandidate | null {
-  if (depth > 8 || value === null || value === undefined) return null;
-  if (typeof value === "string") {
-    const parsed = parsedMcpJson(value);
-    return parsed === null
-      ? value.trim()
-        ? { message: value }
-        : null
-      : mcpFailureCandidate(parsed, depth + 1);
-  }
-  if (Array.isArray(value)) {
-    for (const entry of value) {
-      const candidate = mcpFailureCandidate(entry, depth + 1);
-      if (candidate) return candidate;
-    }
-    return null;
-  }
-  if (typeof value !== "object") return null;
-  const record = value as Record<string, unknown>;
-  const code = record.code ?? record.errorCode;
-  const retryable =
-    record.retryable ?? record.willRetry ?? record.canRetry ?? undefined;
-  const directMessage =
-    typeof record.message === "string"
-      ? record.message
-      : typeof record.error === "string"
-        ? record.error
-        : null;
-  if (directMessage?.trim()) {
-    return { code, message: directMessage, retryable };
-  }
-  for (const field of [
-    "error",
-    "result",
-    "structuredContent",
-    "data",
-    "cause",
-  ]) {
-    const nested = mcpFailureCandidate(record[field], depth + 1);
-    if (nested) {
-      return {
-        code: nested.code ?? code,
-        message: nested.message,
-        retryable: nested.retryable ?? retryable,
-      };
-    }
-  }
-  if (Array.isArray(record.content)) {
-    for (const content of record.content) {
-      if (
-        typeof content === "object" &&
-        content !== null &&
-        "text" in content &&
-        typeof content.text === "string"
-      ) {
-        const nested = mcpFailureCandidate(content.text, depth + 1);
-        if (nested) {
-          return {
-            code: nested.code ?? code,
-            message: nested.message,
-            retryable: nested.retryable ?? retryable,
-          };
-        }
-      }
-    }
-  }
-  return null;
-}
-
-function normalizedMcpFailure(
-  item: Pick<McpToolCallItem, "error" | "result" | "status">,
-): NormalizedMcpFailure | null {
-  if (
-    item.status !== "failed" &&
-    !item.error &&
-    item.result?.isError !== true &&
-    item.result?.status !== "failed"
-  ) {
-    return null;
-  }
-  const resultCandidate = mcpFailureCandidate(item.result);
-  const explicitCandidate = item.error
-    ? {
-        code: item.error.code,
-        message: item.error.message,
-        retryable: item.error.retryable,
-      }
-    : null;
-  const candidate =
-    resultCandidate &&
-    (!explicitCandidate || genericMcpFailureMessage(explicitCandidate.message))
-      ? resultCandidate
-      : (explicitCandidate ?? resultCandidate);
-  if (!candidate) return null;
-  const message =
-    boundedText(redactAgentActivityText(candidate.message).trim(), 4_000) ?? "";
-  if (!message) return null;
-  const embeddedCode =
-    /\bMCP error\s+(-?\d+)\b/iu.exec(message)?.[1] ??
-    /\bHTTP\s+(\d{3})\b/iu.exec(message)?.[1] ??
-    null;
-  return {
-    code:
-      primitiveMcpErrorCode(candidate.code) ??
-      primitiveMcpErrorCode(explicitCandidate?.code) ??
-      primitiveMcpErrorCode(resultCandidate?.code) ??
-      embeddedCode,
-    message,
-    retryable:
-      explicitMcpRetryability(candidate.retryable) ??
-      explicitMcpRetryability(explicitCandidate?.retryable) ??
-      explicitMcpRetryability(resultCandidate?.retryable),
-  };
-}
-
-function mcpResultText(result: McpToolCallItem["result"]) {
-  if (!result) return null;
-  const text = (result.content ?? [])
-    .flatMap((content) => {
-      if (
-        typeof content === "object" &&
-        content !== null &&
-        "text" in content &&
-        typeof content.text === "string"
-      ) {
-        return [content.text];
-      }
-      return [];
-    })
-    .join("\n\n")
-    .trim();
-  if (text) return boundedText(redactAgentActivityText(text));
-  if (
-    result.structuredContent !== null &&
-    result.structuredContent !== undefined
-  ) {
-    const serialized = boundedJson(result.structuredContent);
-    return serialized ? redactAgentActivityText(serialized) : null;
-  }
-  const serialized =
-    (result.content?.length ?? 0) > 0 ? boundedJson(result.content) : null;
-  return serialized ? redactAgentActivityText(serialized) : null;
-}
-
-export function completedActivityTimestamps(
-  startedAtMs: number | null | undefined,
-  completedAtMs: number,
-) {
-  return {
-    ...(startedAtMs === null || startedAtMs === undefined
-      ? {}
-      : { startedAtMs }),
-    updatedAtMs: completedAtMs,
-    completedAtMs,
-  };
-}
-
-function stableActivityId(prefix: string, ...parts: Array<string | null>) {
-  const digest = createHash("sha256")
-    .update(parts.map((part) => part ?? "").join("\0"))
-    .digest("hex")
-    .slice(0, 20);
-  return `${prefix}:${digest}`;
-}
-
-function eventCorrelation(
-  sourceMethod: string,
-  diagnosticId: string | null,
-  threadId: string | null,
-  turnId: string | null,
-  itemId: string | null,
-): CodexEventCorrelation {
-  return {
-    sourceMethod,
-    diagnosticId,
-    threadId,
-    turnId,
-    itemId,
-  };
-}
-
-function displayPath(cwd: string, filePath: string): string {
-  if (!path.isAbsolute(filePath)) {
-    return filePath;
-  }
-  if (path.resolve(filePath) === path.resolve(cwd)) {
-    return ".";
-  }
-  const relative = path.relative(cwd, filePath);
-  return relative && !relative.startsWith("..") && !path.isAbsolute(relative)
-    ? relative
-    : filePath;
-}
-
-export function appendBoundedCommandOutput(
-  current: CommandOutputBuffer,
-  delta: string,
-): CommandOutputBuffer {
-  if (!delta) return current;
-  const plainDelta = stripVTControlCharacters(delta);
-  let safeDelta = "";
-  for (const character of plainDelta) {
-    const codePoint = character.codePointAt(0)!;
-    if (
-      (codePoint < 0x20 &&
-        codePoint !== 0x09 &&
-        codePoint !== 0x0a &&
-        codePoint !== 0x0d) ||
-      (codePoint >= 0x7f && codePoint <= 0x9f)
-    ) {
-      continue;
-    }
-    safeDelta += character;
-  }
-  if (!safeDelta) return current;
-  const currentBytes = Buffer.from(current.output ?? "", "utf8");
-  const deltaBytes = Buffer.from(safeDelta, "utf8");
-  const totalBytes = currentBytes.byteLength + deltaBytes.byteLength;
-  if (totalBytes <= agentCommandOutputLimitBytes) {
-    return {
-      output: `${current.output ?? ""}${safeDelta}`,
-      truncated: current.truncated,
-    };
-  }
-
-  const retained = Buffer.allocUnsafe(agentCommandOutputLimitBytes);
-  const deltaStart = Math.max(0, deltaBytes.byteLength - retained.byteLength);
-  const retainedDelta = deltaBytes.subarray(deltaStart);
-  const retainedCurrentBytes = retained.byteLength - retainedDelta.byteLength;
-  if (retainedCurrentBytes > 0) {
-    currentBytes.copy(
-      retained,
-      0,
-      Math.max(0, currentBytes.byteLength - retainedCurrentBytes),
-    );
-  }
-  retainedDelta.copy(retained, Math.max(0, retainedCurrentBytes));
-
-  let start = 0;
-  while (start < retained.byteLength && (retained[start]! & 0xc0) === 0x80) {
-    start += 1;
-  }
-  return {
-    output: retained.subarray(start).toString("utf8"),
-    truncated: true,
-  };
-}
-
-export function boundedCommandOutput(
-  output: string | null,
-): CommandOutputBuffer {
-  return appendBoundedCommandOutput(
-    { output: null, truncated: false },
-    output ?? "",
-  );
-}
-
-function transcriptCommandOutput(output: string | null): string | null {
-  if (!output || output.length <= 20_000) return output;
-  return `…output truncated…\n${output.slice(-20_000)}`;
-}
-
-export function commandTelemetryFromDelta(
-  current: CommandTelemetryValue | null,
-  delta: string,
-  observedAtMs: number,
-): CommandTelemetryValue {
-  return {
-    ...appendBoundedCommandOutput(
-      current ?? { output: null, truncated: false },
-      delta,
-    ),
-    startedAtMs: current?.startedAtMs ?? observedAtMs,
-    updatedAtMs: observedAtMs,
-  };
-}
-
-export function commandTelemetryFromStart(
-  current: CommandTelemetryValue | null,
-  aggregatedOutput: string | null,
-  startedAtMs: number,
-  observedAtMs: number,
-): CommandTelemetryValue {
-  const initial = boundedCommandOutput(aggregatedOutput);
-  return {
-    output: current?.output ?? initial.output,
-    truncated: current?.truncated ?? initial.truncated,
-    startedAtMs,
-    updatedAtMs: observedAtMs,
-  };
-}
-
-export function commandTelemetryFromCompletion(
-  current: CommandTelemetryValue | null,
-  aggregatedOutput: string | null,
-  durationMs: number | null | undefined,
-  observedAtMs: number,
-): CommandTelemetryValue {
-  const output =
-    aggregatedOutput === null
-      ? {
-          output: current?.output ?? null,
-          truncated: current?.truncated ?? false,
-        }
-      : boundedCommandOutput(aggregatedOutput);
-  return {
-    ...output,
-    startedAtMs:
-      current?.startedAtMs ??
-      (durationMs === null || durationMs === undefined
-        ? observedAtMs
-        : Math.max(0, observedAtMs - durationMs)),
-    updatedAtMs: observedAtMs,
-  };
-}
-
-function boundedFilePreview(value: string): string {
-  return value.length <= agentFilePreviewLimitCharacters
-    ? value
-    : value.slice(-agentFilePreviewLimitCharacters);
-}
-
-function nativeFileChangePreview(change: FileUpdateChange): {
-  latestLine?: string;
-  diffPreview?: string;
-} {
-  if (!change.diff) return {};
-  if (change.kind.type === "update") {
-    const latestLine = latestChangedLine(change.diff);
-    const diffPreview = changedLinesPreview(change.diff);
-    return {
-      ...(latestLine === null ? {} : { latestLine }),
-      ...(diffPreview === null ? {} : { diffPreview }),
-    };
-  }
-  // Native additions/deletions contain the file content, not a unified diff.
-  const lines = boundedFilePreview(change.diff)
-    .replace(/\r?\n$/u, "")
-    .split(/\r?\n/u);
-  const marker = change.kind.type === "add" ? "+" : "-";
-  return {
-    latestLine: lines[lines.length - 1]!,
-    diffPreview: boundedFilePreview(
-      lines.map((line) => `${marker}${line}`).join("\n"),
-    ),
-  };
-}
-
-export function latestChangedLine(
-  diff: string | null | undefined,
-): string | null {
-  if (!diff) return null;
-  let latestAdded: string | null = null;
-  let latestRemoved: string | null = null;
-  for (const line of diff.split("\n")) {
-    if (line.startsWith("+") && !line.startsWith("+++ ")) {
-      latestAdded = line.slice(1);
-    } else if (line.startsWith("-") && !line.startsWith("--- ")) {
-      latestRemoved = line.slice(1);
-    }
-  }
-  const latest = latestAdded ?? latestRemoved;
-  return latest === null ? null : boundedFilePreview(latest);
-}
-
-export function changedLinesPreview(
-  diff: string | null | undefined,
-): string | null {
-  if (!diff) return null;
-  const preview = diff
-    .split("\n")
-    .filter(
-      (line) =>
-        (line.startsWith("+") && !line.startsWith("+++ ")) ||
-        (line.startsWith("-") && !line.startsWith("--- ")),
-    )
-    .join("\n");
-  return preview ? boundedFilePreview(preview) : null;
-}
-
-export function changedFiles(
-  diff: string,
-  lastActivityAtMs?: number,
-): ActiveTurn["diffChanges"] {
-  return diff
-    .split(/^diff --git /m)
-    .slice(1)
-    .flatMap((section) => {
-      const header = section.split("\n", 1)[0] ?? "";
-      const match = /^a\/(.+) b\/(.+)$/.exec(header);
-      if (!match?.[2]) {
-        return [];
-      }
-      const latestLine = latestChangedLine(section);
-      const diffPreview = changedLinesPreview(section);
-      return [
-        {
-          path: match[2],
-          kind: section.includes("\nnew file mode ")
-            ? ("add" as const)
-            : section.includes("\ndeleted file mode ")
-              ? ("delete" as const)
-              : ("update" as const),
-          ...(latestLine === null ? {} : { latestLine }),
-          ...(diffPreview === null ? {} : { diffPreview }),
-          ...(lastActivityAtMs === undefined ? {} : { lastActivityAtMs }),
-        },
-      ];
-    });
-}
-
-async function mapWithConcurrency<Input, Output>(
-  values: readonly Input[],
-  concurrency: number,
-  mapper: (value: Input, index: number) => Promise<Output>,
-): Promise<Output[]> {
-  if (values.length === 0) return [];
-  const results = new Array<Output>(values.length);
-  let nextIndex = 0;
-  const workers = Array.from(
-    { length: Math.min(concurrency, values.length) },
-    async () => {
-      while (nextIndex < values.length) {
-        const index = nextIndex;
-        nextIndex += 1;
-        results[index] = await mapper(values[index]!, index);
-      }
-    },
-  );
-  await Promise.all(workers);
-  return results;
-}
-
-export async function workspaceSnapshotFromPorcelainRecords(
-  cwd: string,
-  records: readonly string[],
-  readMetadata: WorkspaceSnapshotMetadataReader = lstat,
-): Promise<WorkspaceSnapshot> {
-  const entries: Array<{ filePath: string; status: string }> = [];
-  for (let index = 0; index < records.length; index += 1) {
-    const record = records[index] ?? "";
-    const status = record.slice(0, 2);
-    const filePath = record.slice(3);
-    if (!filePath) {
-      continue;
-    }
-    if (status.includes("R") || status.includes("C")) {
-      index += 1;
-    }
-    entries.push({ filePath, status });
-  }
-
-  const snapshotEntries = await mapWithConcurrency(
-    entries,
-    WORKSPACE_SNAPSHOT_METADATA_CONCURRENCY,
-    async ({ filePath, status }) => {
-      let fingerprint = "missing";
-      if (status !== " D") {
-        try {
-          const file = await readMetadata(path.join(cwd, filePath));
-          fingerprint = `${file.size}:${file.mtimeMs}:${file.mode}`;
-        } catch {
-          // Deleted or concurrently removed files have no filesystem fingerprint.
-        }
-      }
-      return [filePath, { fingerprint, status }] as const;
-    },
-  );
-  return new Map(snapshotEntries);
-}
-
-async function workspaceSnapshot(cwd: string): Promise<WorkspaceSnapshot> {
-  try {
-    const { stdout } = await execFileAsync(
-      "git",
-      ["-C", cwd, "status", "--porcelain=v1", "-z", "--untracked-files=all"],
-      { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 },
-    );
-    return await workspaceSnapshotFromPorcelainRecords(
-      cwd,
-      stdout.split("\0").filter(Boolean),
-    );
-  } catch {
-    return new Map();
-  }
-}
-
-async function workspaceChanges(
-  active: ActiveTurn,
-): Promise<ActiveTurn["diffChanges"]> {
-  const observedAtMs = Date.now();
-  const after = await workspaceSnapshot(active.cwd);
-  const paths = new Set([...active.baseline.keys(), ...after.keys()]);
-  const changes = new Map(
-    active.diffChanges.map((change) => [change.path, change]),
-  );
-  for (const filePath of paths) {
-    const beforeState = active.baseline.get(filePath);
-    const afterState = after.get(filePath);
-    if (
-      beforeState?.status === afterState?.status &&
-      beforeState?.fingerprint === afterState?.fingerprint
-    ) {
-      continue;
-    }
-    const status = afterState?.status ?? "D ";
-    const kind =
-      (status === "??" || status.includes("A")) && !beforeState
-        ? "add"
-        : status.includes("D")
-          ? "delete"
-          : "update";
-    changes.set(filePath, {
-      path: filePath,
-      kind,
-      lastActivityAtMs: observedAtMs,
-    });
-  }
-  return [...changes.values()].sort((left, right) =>
-    left.path.localeCompare(right.path),
-  );
-}
-
-function emitFileActivity(
-  active: AgentEventState,
-  turnId: string,
-  status: AgentActivity["status"],
-  correlation: CodexEventCorrelation,
-): void {
-  if (active.diffChanges.length === 0) {
-    return;
-  }
-  emitTurnActivity(
-    active,
-    agentActivitySchema.parse({
-      type: "fileChange",
-      id: `turn:${turnId}:files`,
-      status,
-      changes: active.diffChanges,
-      startedAtMs:
-        active.diffChanges
-          .map((change) => change.lastActivityAtMs)
-          .filter((value): value is number => value !== undefined)
-          .sort((left, right) => left - right)[0] ?? active.startedAtMs,
-      updatedAtMs: Math.max(
-        ...active.diffChanges.map(
-          (change) => change.lastActivityAtMs ?? active.startedAtMs,
-        ),
-      ),
-      completedAtMs: status === "running" ? null : Date.now(),
-      correlation,
-    }),
-  );
-}
-
-function webSearchAction(item: WebSearchItem): string | null {
-  if (!item.action) return null;
-  if (item.action.type === "open_page") {
-    return item.action.url
-      ? `Opened ${safeDisplayUrl(item.action.url)}`
-      : "Opened a page";
-  }
-  if (item.action.type === "find_in_page") {
-    const location = item.action.url
-      ? ` in ${safeDisplayUrl(item.action.url)}`
-      : "";
-    return item.action.pattern
-      ? `Found “${item.action.pattern}”${location}`
-      : `Searched within a page${location}`;
-  }
-  if (item.action.type === "search") {
-    const queries =
-      item.action.queries ?? (item.action.query ? [item.action.query] : []);
-    return queries.length > 0 ? `Searched ${queries.join(", ")}` : "Searched";
-  }
-  return item.action.type === "other" ? "Web search" : item.action.type;
-}
-
-function safeDisplayUrl(value: string): string {
-  try {
-    const url = new URL(value);
-    url.username = "";
-    url.password = "";
-    url.search = "";
-    url.hash = "";
-    return url.toString();
-  } catch {
-    return value.split(/[?#]/u, 1)[0] ?? "page";
-  }
-}
-
-function createThreadItemRawCapture(
-  item: CodexThreadItem,
-  commandOutput?: CommandOutputBuffer,
-) {
-  const metadata = { itemId: item.id, itemType: item.type };
-  switch (item.type) {
-    case "commandExecution":
-      return createAgentActivityRawEnvelope({
-        request: { command: item.command, cwd: item.cwd },
-        response: {
-          durationMs: item.durationMs ?? null,
-          exitCode: item.exitCode,
-          output: commandOutput?.output ?? item.aggregatedOutput,
-          outputTruncated: commandOutput?.truncated ?? false,
-          status: item.status,
-        },
-        metadata,
-      });
-    case "fileChange":
-      return createAgentActivityRawEnvelope({
-        request: { changes: item.changes },
-        response: {
-          changes: item.changes.map((change) => ({
-            kind: change.kind.type,
-            path: change.path,
-          })),
-          status: item.status,
-        },
-        metadata,
-      });
-    case "plan":
-      return createAgentActivityRawEnvelope({
-        response: { text: item.text },
-        metadata,
-      });
-    case "reasoning":
-      return createAgentActivityRawEnvelope({
-        response: { content: item.content, summary: item.summary },
-        metadata,
-      });
-    case "mcpToolCall":
-      return createAgentActivityRawEnvelope({
-        request: item.arguments,
-        response: {
-          error: item.error,
-          result: item.result,
-          status: item.status,
-        },
-        metadata: { ...metadata, server: item.server, tool: item.tool },
-      });
-    case "dynamicToolCall":
-      return createAgentActivityRawEnvelope({
-        response: {
-          durationMs: item.durationMs,
-          status: item.status,
-          success: item.success,
-        },
-        metadata: {
-          ...metadata,
-          namespace: item.namespace,
-          tool: item.tool,
-        },
-      });
-    case "collabAgentToolCall":
-      return createAgentActivityRawEnvelope({
-        request: {
-          model: item.model,
-          prompt: item.prompt,
-          receiverThreadIds: item.receiverThreadIds,
-          senderThreadId: item.senderThreadId,
-        },
-        response: { agentStates: item.agentsStates, status: item.status },
-        metadata: { ...metadata, tool: item.tool },
-      });
-    case "subAgentActivity":
-      return createAgentActivityRawEnvelope({
-        response: {
-          agentPath: item.agentPath,
-          agentThreadId: item.agentThreadId,
-          kind: item.kind,
-        },
-        metadata,
-      });
-    case "webSearch":
-      return createAgentActivityRawEnvelope({
-        request: { query: item.query },
-        response: { action: item.action },
-        metadata,
-      });
-    case "imageView":
-      return createAgentActivityRawEnvelope({
-        request: { path: item.path },
-        metadata,
-      });
-    case "enteredReviewMode":
-    case "exitedReviewMode":
-      return createAgentActivityRawEnvelope({
-        request: { review: item.review },
-        metadata,
-      });
-    case "contextCompaction":
-      return createAgentActivityRawEnvelope({ metadata });
-    case "agentMessage":
-      return createAgentActivityRawEnvelope({
-        response: { phase: item.phase, text: item.text },
-        metadata,
-      });
-  }
-}
-
-export function normalizeCodexThreadItem(
-  item: CodexThreadItem,
-  cwd: string,
-  lifecycle: "started" | "completed",
-  correlation: CodexEventCorrelation,
-  telemetry: {
-    commandOutput?: CommandOutputBuffer;
-    captureRaw?: boolean;
-    completedAtMs?: number | null;
-    fileChanges?: FileActivityChange[];
-    startedAtMs?: number;
-    status?: AgentActivity["status"];
-    updatedAtMs?: number;
-  } = {},
-): AgentActivity | null {
-  const timestamps = {
-    ...(telemetry.startedAtMs === undefined
-      ? {}
-      : { startedAtMs: telemetry.startedAtMs }),
-    ...(telemetry.updatedAtMs === undefined
-      ? {}
-      : { updatedAtMs: telemetry.updatedAtMs }),
-    ...(telemetry.completedAtMs === undefined
-      ? {}
-      : { completedAtMs: telemetry.completedAtMs }),
-  };
-  const raw = telemetry.captureRaw
-    ? {
-        raw: createThreadItemRawCapture(item, telemetry.commandOutput),
-      }
-    : {};
-  if (item.type === "interAgentCommunication") {
-    const description = describeAgentCommunication(item);
-    if (!description) return null;
-    return agentActivitySchema.parse({
-      type: "nativeItem",
-      kind: item.type,
-      id: item.id,
-      title: description.title,
-      details:
-        description.details ??
-        (description.unavailable === "encrypted-agent-communication"
-          ? "Encrypted agent message; text unavailable."
-          : "Agent message text unavailable."),
-      status: lifecycle === "started" ? "running" : "completed",
-      durationMs:
-        telemetry.startedAtMs !== undefined &&
-        telemetry.completedAtMs != null &&
-        telemetry.completedAtMs >= telemetry.startedAtMs
-          ? telemetry.completedAtMs - telemetry.startedAtMs
-          : null,
-      ...timestamps,
-      correlation,
-    });
-  }
-  if (item.type === "commandExecution") {
-    const output =
-      telemetry.commandOutput ?? boundedCommandOutput(item.aggregatedOutput);
-    return agentActivitySchema.parse({
-      type: "command",
-      id: item.id,
-      command: item.command,
-      cwd: displayPath(cwd, item.cwd) || ".",
-      status: activityStatus(item.status),
-      exitCode: item.exitCode,
-      output: transcriptCommandOutput(item.aggregatedOutput),
-      outputTail: output.output,
-      outputTruncated: output.truncated,
-      durationMs: item.durationMs ?? null,
-      ...raw,
-      ...timestamps,
-      ...(telemetry.status === undefined ? {} : { status: telemetry.status }),
-      correlation,
-    });
-  }
-  if (item.type === "fileChange") {
-    const changes =
-      telemetry.fileChanges ??
-      item.changes.map((change) => {
-        return {
-          path: displayPath(cwd, change.path),
-          kind: change.kind.type,
-          ...nativeFileChangePreview(change),
-          ...(telemetry.updatedAtMs === undefined
-            ? {}
-            : { lastActivityAtMs: telemetry.updatedAtMs }),
-        };
-      });
-    return agentActivitySchema.parse({
-      type: "fileChange",
-      id: item.id,
-      status: activityStatus(item.status),
-      changes,
-      ...raw,
-      ...timestamps,
-      correlation,
-    });
-  }
-  if (item.type === "plan") {
-    return agentActivitySchema.parse({
-      type: "plan",
-      id: item.id,
-      status: lifecycle === "started" ? "running" : "completed",
-      text: boundedText(item.text) ?? "",
-      explanation: null,
-      steps: [],
-      ...raw,
-      ...timestamps,
-      correlation,
-    });
-  }
-  if (item.type === "reasoning") {
-    return agentActivitySchema.parse({
-      type: "reasoning",
-      id: item.id,
-      status: lifecycle === "started" ? "running" : "completed",
-      summary: item.summary
-        .map((part) => boundedText(part)?.trim() ?? "")
-        .filter(Boolean)
-        .slice(0, 100),
-      ...raw,
-      ...timestamps,
-      correlation,
-    });
-  }
-  if (item.type === "mcpToolCall") {
-    const isCodeGraph = item.server.toLowerCase() === "codegraph";
-    const failure = normalizedMcpFailure(item);
-    return agentActivitySchema.parse({
-      type: "mcpToolCall",
-      id: item.id,
-      status: failure ? "failed" : activityStatus(item.status),
-      server: item.server,
-      tool: item.tool,
-      query: isCodeGraph
-        ? boundedText(objectStringField(item.arguments, "query"), 4_000)
-        : null,
-      resultText: isCodeGraph && !failure ? mcpResultText(item.result) : null,
-      error: failure?.message ?? null,
-      errorCode: failure?.code ?? null,
-      retryable: failure?.retryable ?? null,
-      durationMs: item.durationMs,
-      ...raw,
-      ...timestamps,
-      correlation,
-    });
-  }
-  if (item.type === "dynamicToolCall") {
-    return agentActivitySchema.parse({
-      type: "dynamicToolCall",
-      id: item.id,
-      status: activityStatus(item.status),
-      namespace: item.namespace?.trim() || null,
-      tool: item.tool,
-      success: item.success,
-      durationMs: item.durationMs,
-      ...raw,
-      ...timestamps,
-      correlation,
-    });
-  }
-  if (item.type === "collabAgentToolCall") {
-    return agentActivitySchema.parse({
-      type: "collabToolCall",
-      id: item.id,
-      status: activityStatus(item.status),
-      tool: item.tool,
-      senderThreadId: item.senderThreadId,
-      receiverThreadIds: item.receiverThreadIds.slice(0, 100),
-      prompt: boundedText(item.prompt, 100_000),
-      model: item.model,
-      agentStates: Object.entries(item.agentsStates)
-        .flatMap(([threadId, state]) =>
-          state
-            ? [
-                {
-                  threadId,
-                  status: state.status,
-                  message: boundedText(state.message, 4_000),
-                },
-              ]
-            : [],
-        )
-        .slice(0, 100),
-      ...raw,
-      ...timestamps,
-      correlation,
-    });
-  }
-  if (item.type === "subAgentActivity") {
-    return agentActivitySchema.parse({
-      type: "subAgent",
-      id: item.id,
-      status:
-        item.kind === "started"
-          ? "running"
-          : item.kind === "interrupted"
-            ? "failed"
-            : "completed",
-      kind: item.kind,
-      agentThreadId: item.agentThreadId,
-      agentPath: item.agentPath || item.agentThreadId,
-      ...raw,
-      ...timestamps,
-      correlation,
-    });
-  }
-  if (item.type === "webSearch") {
-    return agentActivitySchema.parse({
-      type: "webSearch",
-      id: item.id,
-      status: lifecycle === "started" ? "running" : "completed",
-      query: boundedText(item.query, 4_000) ?? "",
-      action: boundedText(webSearchAction(item), 4_000),
-      ...raw,
-      ...timestamps,
-      correlation,
-    });
-  }
-  if (item.type === "imageView") {
-    return agentActivitySchema.parse({
-      type: "imageView",
-      id: item.id,
-      status: lifecycle === "started" ? "running" : "completed",
-      path: displayPath(cwd, item.path),
-      ...raw,
-      ...timestamps,
-      correlation,
-    });
-  }
-  if (item.type === "enteredReviewMode" || item.type === "exitedReviewMode") {
-    return agentActivitySchema.parse({
-      type: "reviewMode",
-      id: item.id,
-      status: lifecycle === "started" ? "running" : "completed",
-      state: item.type === "enteredReviewMode" ? "entered" : "exited",
-      review: boundedText(item.review) ?? "",
-      ...raw,
-      ...timestamps,
-      correlation,
-    });
-  }
-  if (item.type === "contextCompaction") {
-    return agentActivitySchema.parse({
-      type: "contextCompaction",
-      id: item.id,
-      status: lifecycle === "started" ? "running" : "completed",
-      ...raw,
-      ...timestamps,
-      correlation,
-    });
-  }
-  return null;
-}
-
-export function normalizeAgentMessage(
-  item: AgentMessageItem,
-  correlation: CodexEventCorrelation,
-): NormalizedAgentMessage | null {
-  const text = item.text?.trim();
-  if (!text) return null;
-  return normalizedAgentMessageSchema.parse({
-    id: item.id,
-    text,
-    phase: item.phase ?? null,
-    correlation,
-  });
-}
-
-export interface StagedAgentMessageResult {
-  emitted: NormalizedAgentMessage[];
-  pending: NormalizedAgentMessage | null;
-}
-
-function asCommentary(message: NormalizedAgentMessage): NormalizedAgentMessage {
-  return message.phase === "commentary"
-    ? message
-    : { ...message, phase: "commentary" };
-}
-
-export function stageAgentMessage(
-  pending: NormalizedAgentMessage | null,
-  message: NormalizedAgentMessage,
-): StagedAgentMessageResult {
-  if (message.phase === "commentary") {
-    return {
-      emitted: pending ? [asCommentary(pending), message] : [message],
-      pending: null,
-    };
-  }
-  return {
-    emitted: pending ? [asCommentary(pending)] : [],
-    pending: message,
-  };
-}
-
-export function flushStagedAgentMessage(
-  pending: NormalizedAgentMessage | null,
-  completed: boolean,
-): StagedAgentMessageResult {
-  return {
-    emitted: pending ? [completed ? pending : asCommentary(pending)] : [],
-    pending: null,
-  };
-}
-
-function publishStagedAgentMessages(
-  active: AgentEventState,
-  staged: StagedAgentMessageResult,
-): void {
-  active.pendingAgentMessage = staged.pending;
-  for (const message of staged.emitted) {
-    if (!active.structuredChat || message.phase === "commentary") {
-      const scoped = normalizedAgentMessageSchema.parse({
-        ...message,
-        ...(active.agentScope ? { agentScope: active.agentScope } : {}),
-      });
-      active.liveAgentMessageFingerprints.add(agentMessageFingerprint(scoped));
-      active.onMessage?.(scoped);
-    }
-  }
-}
-
-function agentMessageFingerprint(message: NormalizedAgentMessage): string {
-  return JSON.stringify([
-    message.phase === "commentary" ? "commentary" : "final",
-    message.text,
-  ]);
-}
-
-function flushActiveAgentMessage(
-  active: AgentEventState,
-  completed: boolean,
-): void {
-  settleStreamingAgentMessage(active, completed);
-  publishStagedAgentMessages(
-    active,
-    flushStagedAgentMessage(active.pendingAgentMessage, completed),
-  );
-}
-
-export function normalizeTokenUsageActivity(
-  params: ThreadTokenUsageUpdatedParams,
-  correlation: CodexEventCorrelation,
-): AgentActivity {
-  const window = params.tokenUsage.modelContextWindow;
-  const contextUsedPercent = window
-    ? Math.round((params.tokenUsage.last.totalTokens / window) * 1_000) / 10
-    : null;
-  return agentActivitySchema.parse({
-    type: "usage",
-    id: `turn:${params.turnId}:usage`,
-    status: "completed",
-    ...params.tokenUsage,
-    contextUsedPercent,
-    correlation,
-  });
-}
-
-export function normalizeRateLimitActivity(
-  params: AccountRateLimitsUpdatedParams,
-  turnId: string,
-  correlation: CodexEventCorrelation,
-): AgentActivity {
-  return agentActivitySchema.parse({
-    type: "rateLimit",
-    id: `turn:${turnId}:rate-limit`,
-    status: params.rateLimits.rateLimitReachedType ? "failed" : "completed",
-    updatedAtMs: Date.now(),
-    limitId: params.rateLimits.limitId,
-    limitName: params.rateLimits.limitName,
-    planType: params.rateLimits.planType,
-    reachedType: params.rateLimits.rateLimitReachedType,
-    primary: params.rateLimits.primary,
-    secondary: params.rateLimits.secondary,
-    credits: params.rateLimits.credits,
-    correlation,
-  });
-}
-
-export function normalizeNoticeActivity(input: {
-  correlation: CodexEventCorrelation;
-  details?: string | null;
-  level: "warning" | "error";
-  message: string;
-  reasonCode?: string | null;
-  retry?: {
-    owner: "codex" | "cantrip";
-    attempt: number | null;
-    maxAttempts: number | null;
-    nextAttemptAtMs: number | null;
-  } | null;
-  status?: AgentActivity["status"];
-  willRetry?: boolean | null;
-}): AgentActivity {
-  return agentActivitySchema.parse({
-    type: "notice",
-    id: stableActivityId(
-      input.level,
-      input.correlation.turnId,
-      input.correlation.sourceMethod,
-      input.message,
-    ),
-    status:
-      input.status ??
-      (input.willRetry
-        ? "running"
-        : input.level === "error"
-          ? "failed"
-          : "completed"),
-    level: input.level,
-    message: boundedText(input.message)?.trim() || input.level,
-    details: boundedText(input.details),
-    willRetry: input.willRetry ?? null,
-    reasonCode: input.reasonCode ?? null,
-    retry: input.retry ?? null,
-    correlation: input.correlation,
-  });
-}
-
-export function codexErrorReasonCode(value: unknown): string | null {
-  if (typeof value === "string") return value.trim() || null;
-  const record = objectRecord(value);
-  if (!record) return null;
-  const keys = Object.keys(record);
-  return keys.length === 1 ? keys[0]! : null;
-}
-
 const CANTRIP_CAPACITY_RETRY_DELAYS_MS = [10_000, 20_000, 40_000] as const;
 
 export function cantripCapacityRetryDelayMs(attempt: number): number | null {
@@ -4209,203 +1877,6 @@ function waitForCapacityRetry(
     }, delayMs);
     signal.addEventListener("abort", onAbort, { once: true });
   });
-}
-
-function turnSummaryActivity(
-  turn: Pick<
-    CodexThreadTurn,
-    "completedAt" | "durationMs" | "id" | "startedAt" | "status"
-  >,
-  correlation: CodexEventCorrelation,
-  initialSettings?: NativeInitialTurnSettings,
-): AgentActivity {
-  return agentActivitySchema.parse({
-    type: "turnSummary",
-    id: `turn:${turn.id}:summary`,
-    status:
-      turn.status === "inProgress"
-        ? "running"
-        : turn.status === "completed"
-          ? "completed"
-          : "failed",
-    durationMs: turn.durationMs,
-    startedAt: turn.startedAt,
-    completedAt: turn.completedAt,
-    correlation,
-    ...(initialSettings ? { initialSettings } : {}),
-  });
-}
-
-export function normalizeCodexThreadTurn(
-  turn: CodexThreadTurn,
-  cwd: string,
-  threadId: string,
-  externalAttachmentIdsByItemId: ReadonlyMap<string, string[]> = new Map(),
-): AgentThreadSync["turns"][number] {
-  let lastFinalMessageIndex = -1;
-  if (turn.status === "completed") {
-    for (let index = 0; index < turn.items.length; index += 1) {
-      const item = turn.items[index];
-      if (
-        item?.type === "agentMessage" &&
-        item.phase !== "commentary" &&
-        item.text?.trim()
-      ) {
-        lastFinalMessageIndex = index;
-      }
-    }
-  }
-  const items = turn.items.flatMap((item, index): AgentThreadSyncItem[] => {
-    if (item.type === "userMessage") {
-      const text = item.content
-        .flatMap((content) =>
-          content.type === "text" && content.text ? [content.text] : [],
-        )
-        .join("\n\n")
-        .trim();
-      const externalAttachmentIds =
-        externalAttachmentIdsByItemId.get(item.id) ?? [];
-      return text || externalAttachmentIds.length
-        ? [
-            {
-              type: "userMessage",
-              id: item.id,
-              text,
-              externalAttachmentIds,
-            },
-          ]
-        : [];
-    }
-    if (item.type === "agentMessage") {
-      const message = normalizeAgentMessage(
-        item,
-        eventCorrelation("thread/read", null, threadId, turn.id, item.id),
-      );
-      if (!message) return [];
-      return [
-        {
-          type: "agentMessage",
-          ...(message.phase !== "commentary" && index !== lastFinalMessageIndex
-            ? asCommentary(message)
-            : message),
-        },
-      ];
-    }
-    const correlation = eventCorrelation(
-      "thread/read",
-      null,
-      threadId,
-      turn.id,
-      item.id,
-    );
-    const normalizedActivity = normalizeCodexThreadItem(
-      item,
-      cwd,
-      turn.status === "inProgress" ? "started" : "completed",
-      correlation,
-    );
-    const activity =
-      normalizedActivity && turn.status !== "inProgress"
-        ? settleRunningActivityAtTurnBoundary(
-            normalizedActivity,
-            turn.status === "completed" ? "completed" : "failed",
-            turn.completedAt === null ? null : turn.completedAt * 1_000,
-            correlation,
-          )
-        : normalizedActivity;
-    if (activity) return [{ type: "activity", activity }];
-    const unknown = item as { id?: unknown; type?: unknown };
-    const itemId = typeof unknown.id === "string" ? unknown.id : null;
-    const itemType =
-      typeof unknown.type === "string" ? unknown.type : "unknown";
-    return [
-      {
-        type: "activity",
-        activity: normalizeNoticeActivity({
-          level: "warning",
-          message: "An unsupported Codex history item could not be rendered.",
-          details: `Item type: ${itemType.slice(0, 200)}`,
-          correlation: eventCorrelation(
-            "thread/read",
-            null,
-            threadId,
-            turn.id,
-            itemId,
-          ),
-        }),
-      },
-    ];
-  });
-  if (turn.error?.message) {
-    items.push({
-      type: "activity",
-      activity: normalizeNoticeActivity({
-        level: "error",
-        message: turn.error.message,
-        details: turn.error.additionalDetails,
-        reasonCode: codexErrorReasonCode(turn.error.codexErrorInfo),
-        willRetry: false,
-        correlation: eventCorrelation(
-          "thread/read",
-          null,
-          threadId,
-          turn.id,
-          null,
-        ),
-      }),
-    });
-  }
-  items.push({
-    type: "activity",
-    activity: turnSummaryActivity(
-      turn,
-      eventCorrelation("thread/read", null, threadId, turn.id, null),
-    ),
-  });
-  return {
-    id: turn.id,
-    status: turn.status,
-    startedAt: turn.startedAt,
-    completedAt: turn.completedAt,
-    durationMs: turn.durationMs,
-    items,
-  };
-}
-
-export function normalizeCodexThreadReadResponse(
-  response: CodexThreadReadResponse,
-  cwd: string,
-  externalAttachmentIdsByItemId: ReadonlyMap<string, string[]> = new Map(),
-): AgentThreadSync {
-  const turns = response.thread.turns.map((turn) =>
-    normalizeCodexThreadTurn(
-      turn,
-      cwd,
-      response.thread.id,
-      externalAttachmentIdsByItemId,
-    ),
-  );
-  const status = turns.some((turn) => turn.status === "inProgress")
-    ? "running"
-    : turns.some((turn) => turn.status === "failed")
-      ? "failed"
-      : "idle";
-  return agentThreadSyncSchema.parse({
-    threadId: response.thread.id,
-    status,
-    turns,
-  });
-}
-
-export function completedCodexThreadTurnFromRead(
-  response: CodexThreadReadResponse,
-  cwd: string,
-  turnId: string,
-): AgentThreadSync["turns"][number] | null {
-  const turn = response.thread.turns.find(
-    (candidate) => candidate.id === turnId && candidate.status !== "inProgress",
-  );
-  return turn ? normalizeCodexThreadTurn(turn, cwd, response.thread.id) : null;
 }
 
 export class CodexAppServer implements CodexRuntime {
