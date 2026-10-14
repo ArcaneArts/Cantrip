@@ -206,3 +206,10 @@ scenarios. Retained renderer heap was approximately 174.14 versus 174.08 MiB;
 this single-pair diagnostic did not reproduce the higher unconstrained heap
 snapshots and does not establish a whole-page memory gain. Both snapshots and
 actual GC completion are captured for future comparisons.
+
+The newly enabled Windows worker suite exposed two existing fixture assumptions:
+it attempted to execute a POSIX-shebang `.cjs` file directly, and one active-file
+acknowledgement test supplied a drive-less file URI. The fixture now uses a
+packaged-style `.cmd` launcher on Windows while retaining its mutable JavaScript
+source; the acknowledgement fixture constructs native file URIs. Production
+launching, URI validation, and authority checks are unchanged.
