@@ -4249,7 +4249,7 @@ async function repositoryMethodInventory() {
             ? "system-lifecycle"
             : "delegated-or-missing-review";
       methods.push({
-        file: file.slice(repositoryRoot.length + 1),
+        file: file.slice(repositoryRoot.length + 1).replaceAll("\\", "/"),
         line: sourceText.slice(0, match.index).split("\n").length,
         method: match[1],
         ownerEvidence,

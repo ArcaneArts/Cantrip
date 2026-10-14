@@ -284,10 +284,16 @@ Validation so far:
   onboarding and mode retry each was needed (#2096/#2102). The process exited
   zero and cleanup reported zero sockets. Vite logged caught EPIPE messages
   while fixture sockets closed; shutdown behavior remains #2098/#2099.
-- Boundary/network audits pass. The standard check retry is running through
-  the wider pipeline and is not reported green; #2106 remains the known full
-  server baseline.
+- Boundary/network audits pass. The complete standard check retry reached the full server baseline: 1,409
+  passed, 74 failed, 70 skipped. Every failure name also appears on unchanged
+  main (#2106). The full standard check is not green.
 
 A dedicated Windows/macOS/Linux workflow runs app types, source-boundary audits
 and the API/domain/encryption suites independently. Browser results above are
 local darwin-arm64 against verified bundled Code `ba05010e28f2`.
+
+The first API CI run passed all 76 behavioral tests on all three platforms.
+Windows exposed an existing inventory formatter that emitted backslashes for
+repository source filenames, making the canonical route inventory appear
+stale. Repository inventory paths now normalize to forward slashes; audit
+assertions and canonical inventory contents remain intact.
