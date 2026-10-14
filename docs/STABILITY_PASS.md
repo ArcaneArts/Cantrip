@@ -12,7 +12,7 @@ Tests run independently of metadata audits. A skipped check is never a pass.
 | 4. Measured editor loading                | Merged      | [#2108](https://github.com/ArcaneArts/Cantrip/pull/2108)                                    | Comparable cold/warm/recovery measurements; implement only demonstrated improvements.                      |
 | 5. Worker command dispatch                | Merged      | [#2109](https://github.com/ArcaneArts/Cantrip/pull/2109)                                    | Typed feature handlers with explicit ownership and dependencies.                                           |
 | 6. App API modularization                 | Merged      | [#2110](https://github.com/ArcaneArts/Cantrip/pull/2110)                                    | Domain clients with compatible public exports and shared security infrastructure; all three OSs passed CI. |
-| 7. Codex runtime decomposition            | In progress | `codex/stability-codex-events`                                                              | 7A event/state boundaries; transport, turn/subagent ownership and interactions follow in separate PRs.     |
+| 7. Codex runtime decomposition            | In progress | [#2114](https://github.com/ArcaneArts/Cantrip/pull/2114)                                    | 7A event/state boundaries; transport, turn/subagent ownership and interactions follow in separate PRs.     |
 
 ## Milestone 1
 
