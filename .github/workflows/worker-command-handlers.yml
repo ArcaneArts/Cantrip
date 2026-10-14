@@ -1,0 +1,42 @@
+name: Worker command handlers
+
+on:
+  pull_request:
+    paths:
+      - cantrip_worker/src/index.ts
+      - cantrip_worker/src/commands/**
+      - cantrip_worker/test/command-handlers*.test.ts
+      - scripts/audit-server-boundaries.mjs
+      - .github/workflows/worker-command-handlers.yml
+      - packages/protocol/src/**
+      - pnpm-lock.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: worker-command-handlers-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  commands:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
+      - run: pnpm --filter @cantrip/worker typecheck
+      - name: Command ordering, ownership and real feature operations
+        if: ${{ !cancelled() }}
+        run: pnpm --filter @cantrip/worker exec vitest run test/command-handlers.test.ts test/command-handlers.integration.test.ts test/code-direct-endpoint.test.ts test/worktrees.test.ts test/github.test.ts test/github-workspace-link.test.ts test/attachment-store.test.ts test/customization.test.ts test/terminal-manager.test.ts test/explorer.test.ts test/direct-broker.test.ts test/project-folder-stats.test.ts test/project-repository-stats.test.ts test/project-export-manager.test.ts test/project-github-conversion.test.ts test/project-share-manager.test.ts test/remote-surface-manager.test.ts test/global-skills.test.ts --maxWorkers=2
