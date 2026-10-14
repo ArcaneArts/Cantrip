@@ -238,6 +238,18 @@ async function fixture(options: FixtureOptions = {}) {
   const entrypoint = path.join(bundle, "bin", "cantrip-code.cjs");
   await writeFile(entrypoint, source);
   await chmod(entrypoint, 0o755);
+  const launchEntrypoint =
+    process.platform === "win32"
+      ? "bin/cantrip-code.cmd"
+      : "bin/cantrip-code.cjs";
+  if (process.platform === "win32") {
+    // Match the packaged Windows launch contract; Windows cannot execute the
+    // POSIX shebang on the mutable JavaScript fixture directly.
+    await writeFile(
+      path.join(bundle, "bin", "cantrip-code.cmd"),
+      `@echo off\r\n"${process.execPath}" "%~dp0cantrip-code.cjs" %*\r\n`,
+    );
+  }
   const workbenchContents = `${JSON.stringify({ name: "cantrip-workbench", version: "0.1.0" })}\n`;
   await writeFile(
     path.join(bundle, "extensions", "cantrip-workbench", "package.json"),
@@ -257,7 +269,7 @@ async function fixture(options: FixtureOptions = {}) {
       vscodeCommit: "c".repeat(40),
       patchset: 1,
       cantripWorkbenchVersion: "0.1.0",
-      entrypoint: "bin/cantrip-code.cjs",
+      entrypoint: launchEntrypoint,
     }),
   );
   const installation = await verifyCantripCodeInstallation(bundle);
@@ -1560,9 +1572,7 @@ describe("Cantrip Code supervisor", () => {
   });
 
   it("retries a retained prewarm when its first automatic restart fails", async () => {
-    const { dataDirectory, entrypoint, supervisor } = await fixture({
-      readinessTimeoutMs: 500,
-    });
+    const { dataDirectory, entrypoint, supervisor } = await fixture();
     const processFile = path.join(
       dataDirectory,
       "code",
@@ -1573,17 +1583,18 @@ describe("Cantrip Code supervisor", () => {
     );
     await supervisor.prewarmProfile("default");
     const firstPid = await readFile(processFile, "utf8");
-    await writeFile(entrypoint, codeServerSource({ unhealthyStartup: true }));
+    // This process writes its PID and then fails explicitly. Healthy fixture
+    // startup must not depend on spawning Node within a 500ms deadline.
+    await writeFile(entrypoint, codeServerSource({ failStartup: true }));
 
     process.kill(Number(firstPid), "SIGKILL");
     const failedRestartPid = await waitForFileChange(processFile, firstPid);
-    await new Promise((resolve) => setTimeout(resolve, 600));
     await writeFile(entrypoint, codeServerSource());
 
     const recoveredPid = await waitForFileChange(
       processFile,
       failedRestartPid,
-      2_000,
+      3_000,
     );
     expect(recoveredPid).not.toBe(firstPid);
     expect(recoveredPid).not.toBe(failedRestartPid);

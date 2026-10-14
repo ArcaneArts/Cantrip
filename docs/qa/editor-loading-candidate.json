@@ -1,0 +1,495 @@
+{
+  "label": "candidate",
+  "runtime": "v24.14.0",
+  "platform": "darwin-arm64",
+  "iterations": 3,
+  "warmups": 1,
+  "observations": [
+    {
+      "iteration": 0,
+      "warmup": true,
+      "exitCode": 0,
+      "cases": [
+        {
+          "name": "cold-editor-usable",
+          "status": "passed",
+          "durationMs": 17194,
+          "phases": {
+            "fileOpenStartedAt": 1791982113376,
+            "fileRenderedAt": 1791982117637,
+            "firstSaveVerifiedAt": 1791982119057,
+            "fileOpenToRenderedMs": 4261
+          },
+          "setupRetries": 0,
+          "modeRetries": 1
+        },
+        {
+          "name": "warm-close-reopen",
+          "status": "passed",
+          "durationMs": 76
+        },
+        {
+          "name": "transient-renewal",
+          "status": "passed",
+          "durationMs": 5522
+        }
+      ],
+      "phases": {
+        "profileEndpointReadyMs": [211],
+        "sessionCreateMs": 41.668,
+        "documentCompleteMs": 36.872,
+        "workbenchBootstrapToReadyMs": 448,
+        "stages": [
+          {
+            "offsetFromBootstrapMs": -299.099853515625,
+            "stage": "bootstrapping",
+            "visible": false
+          },
+          {
+            "offsetFromBootstrapMs": 0,
+            "stage": "bootstrapping",
+            "visible": true
+          },
+          {
+            "offsetFromBootstrapMs": 9.400146484375,
+            "stage": "bootstrapping",
+            "visible": true
+          },
+          {
+            "offsetFromBootstrapMs": 9.60009765625,
+            "stage": "bootstrapping",
+            "visible": false
+          },
+          {
+            "offsetFromBootstrapMs": 234.400146484375,
+            "stage": "restoring",
+            "visible": false
+          },
+          {
+            "offsetFromBootstrapMs": 237.7001953125,
+            "stage": "restored",
+            "visible": false
+          },
+          {
+            "offsetFromBootstrapMs": 237.800048828125,
+            "stage": "ready",
+            "visible": false
+          },
+          {
+            "offsetFromBootstrapMs": 444.800048828125,
+            "stage": "restoring",
+            "visible": true
+          },
+          {
+            "offsetFromBootstrapMs": 448,
+            "stage": "restored",
+            "visible": true
+          },
+          {
+            "offsetFromBootstrapMs": 448,
+            "stage": "ready",
+            "visible": true
+          }
+        ],
+        "extensionBridgeReadyMs": [4169, 4169],
+        "presentationMs": [119],
+        "workerFileOpenMs": [2031, 10],
+        "socketHandshakes": [
+          {
+            "path": "/api/live",
+            "durationMs": 2.765999990515411,
+            "status": 101
+          },
+          {
+            "path": "/api/worker-links/:session/connect",
+            "durationMs": 13.404999976046383,
+            "status": 101
+          }
+        ]
+      },
+      "rendererMetrics": [
+        {
+          "name": "Documents",
+          "value": 14
+        },
+        {
+          "name": "Nodes",
+          "value": 2784
+        },
+        {
+          "name": "JSHeapUsedSize",
+          "value": 185229956
+        },
+        {
+          "name": "JSHeapTotalSize",
+          "value": 266698752
+        }
+      ],
+      "assetRequests": 16,
+      "completedAssetResponseBytes": null,
+      "assetRequestsWithUnavailableSizes": 16
+    },
+    {
+      "iteration": 1,
+      "warmup": false,
+      "exitCode": 0,
+      "cases": [
+        {
+          "name": "cold-editor-usable",
+          "status": "passed",
+          "durationMs": 22763,
+          "phases": {
+            "fileOpenStartedAt": 1791982156585,
+            "fileRenderedAt": 1791982161344,
+            "firstSaveVerifiedAt": 1791982162720,
+            "fileOpenToRenderedMs": 4759
+          },
+          "setupRetries": 1,
+          "modeRetries": 1
+        },
+        {
+          "name": "warm-close-reopen",
+          "status": "passed",
+          "durationMs": 81
+        },
+        {
+          "name": "transient-renewal",
+          "status": "passed",
+          "durationMs": 4849
+        }
+      ],
+      "phases": {
+        "profileEndpointReadyMs": [209],
+        "sessionCreateMs": 48.658,
+        "documentCompleteMs": 47.628,
+        "workbenchBootstrapToReadyMs": 586.39990234375,
+        "stages": [
+          {
+            "offsetFromBootstrapMs": 0,
+            "stage": "bootstrapping",
+            "visible": true
+          },
+          {
+            "offsetFromBootstrapMs": 289.199951171875,
+            "stage": "bootstrapping",
+            "visible": false
+          },
+          {
+            "offsetFromBootstrapMs": 583.699951171875,
+            "stage": "restoring",
+            "visible": true
+          },
+          {
+            "offsetFromBootstrapMs": 586.199951171875,
+            "stage": "restored",
+            "visible": true
+          },
+          {
+            "offsetFromBootstrapMs": 586.39990234375,
+            "stage": "ready",
+            "visible": true
+          },
+          {
+            "offsetFromBootstrapMs": 754.10009765625,
+            "stage": "restoring",
+            "visible": false
+          },
+          {
+            "offsetFromBootstrapMs": 757.300048828125,
+            "stage": "restored",
+            "visible": false
+          },
+          {
+            "offsetFromBootstrapMs": 757.5,
+            "stage": "ready",
+            "visible": false
+          }
+        ],
+        "extensionBridgeReadyMs": [4522, 4525],
+        "presentationMs": [66],
+        "workerFileOpenMs": [1832, 8],
+        "socketHandshakes": [
+          {
+            "path": "/api/live",
+            "durationMs": 2.917999983765185,
+            "status": 101
+          },
+          {
+            "path": "/api/worker-links/:session/connect",
+            "durationMs": 23.462000070139766,
+            "status": 101
+          }
+        ]
+      },
+      "rendererMetrics": [
+        {
+          "name": "Documents",
+          "value": 42
+        },
+        {
+          "name": "Nodes",
+          "value": 6995
+        },
+        {
+          "name": "JSHeapUsedSize",
+          "value": 237059420
+        },
+        {
+          "name": "JSHeapTotalSize",
+          "value": 282443776
+        }
+      ],
+      "assetRequests": 16,
+      "completedAssetResponseBytes": null,
+      "assetRequestsWithUnavailableSizes": 16
+    },
+    {
+      "iteration": 2,
+      "warmup": false,
+      "exitCode": 0,
+      "cases": [
+        {
+          "name": "cold-editor-usable",
+          "status": "passed",
+          "durationMs": 17059,
+          "phases": {
+            "fileOpenStartedAt": 1791982194399,
+            "fileRenderedAt": 1791982198579,
+            "firstSaveVerifiedAt": 1791982199857,
+            "fileOpenToRenderedMs": 4180
+          },
+          "setupRetries": 0,
+          "modeRetries": 1
+        },
+        {
+          "name": "warm-close-reopen",
+          "status": "passed",
+          "durationMs": 87
+        },
+        {
+          "name": "transient-renewal",
+          "status": "passed",
+          "durationMs": 4942
+        }
+      ],
+      "phases": {
+        "profileEndpointReadyMs": [216],
+        "sessionCreateMs": 38.682,
+        "documentCompleteMs": 19.481,
+        "workbenchBootstrapToReadyMs": 591.60009765625,
+        "stages": [
+          {
+            "offsetFromBootstrapMs": 0,
+            "stage": "bootstrapping",
+            "visible": true
+          },
+          {
+            "offsetFromBootstrapMs": 300.300048828125,
+            "stage": "bootstrapping",
+            "visible": false
+          },
+          {
+            "offsetFromBootstrapMs": 310,
+            "stage": "bootstrapping",
+            "visible": true
+          },
+          {
+            "offsetFromBootstrapMs": 310.300048828125,
+            "stage": "bootstrapping",
+            "visible": false
+          },
+          {
+            "offsetFromBootstrapMs": 588.900146484375,
+            "stage": "restoring",
+            "visible": true
+          },
+          {
+            "offsetFromBootstrapMs": 591.5,
+            "stage": "restored",
+            "visible": true
+          },
+          {
+            "offsetFromBootstrapMs": 591.60009765625,
+            "stage": "ready",
+            "visible": true
+          },
+          {
+            "offsetFromBootstrapMs": 760.400146484375,
+            "stage": "restoring",
+            "visible": false
+          },
+          {
+            "offsetFromBootstrapMs": 762.7001953125,
+            "stage": "restored",
+            "visible": false
+          },
+          {
+            "offsetFromBootstrapMs": 762.900146484375,
+            "stage": "ready",
+            "visible": false
+          }
+        ],
+        "extensionBridgeReadyMs": [3972, 3971],
+        "presentationMs": [75],
+        "workerFileOpenMs": [1890, 10],
+        "socketHandshakes": [
+          {
+            "path": "/api/live",
+            "durationMs": 3.0369999585673213,
+            "status": 101
+          },
+          {
+            "path": "/api/worker-links/:session/connect",
+            "durationMs": 7.134999963454902,
+            "status": 101
+          }
+        ]
+      },
+      "rendererMetrics": [
+        {
+          "name": "Documents",
+          "value": 14
+        },
+        {
+          "name": "Nodes",
+          "value": 4285
+        },
+        {
+          "name": "JSHeapUsedSize",
+          "value": 226648336
+        },
+        {
+          "name": "JSHeapTotalSize",
+          "value": 272744448
+        }
+      ],
+      "assetRequests": 16,
+      "completedAssetResponseBytes": null,
+      "assetRequestsWithUnavailableSizes": 16
+    },
+    {
+      "iteration": 3,
+      "warmup": false,
+      "exitCode": 0,
+      "cases": [
+        {
+          "name": "cold-editor-usable",
+          "status": "passed",
+          "durationMs": 17583,
+          "phases": {
+            "fileOpenStartedAt": 1791982231840,
+            "fileRenderedAt": 1791982236180,
+            "firstSaveVerifiedAt": 1791982237689,
+            "fileOpenToRenderedMs": 4340
+          },
+          "setupRetries": 0,
+          "modeRetries": 1
+        },
+        {
+          "name": "warm-close-reopen",
+          "status": "passed",
+          "durationMs": 80
+        },
+        {
+          "name": "transient-renewal",
+          "status": "passed",
+          "durationMs": 4541
+        }
+      ],
+      "phases": {
+        "profileEndpointReadyMs": [221],
+        "sessionCreateMs": 45.966,
+        "documentCompleteMs": 20.645,
+        "workbenchBootstrapToReadyMs": 579.400146484375,
+        "stages": [
+          {
+            "offsetFromBootstrapMs": 0,
+            "stage": "bootstrapping",
+            "visible": true
+          },
+          {
+            "offsetFromBootstrapMs": 296.300048828125,
+            "stage": "bootstrapping",
+            "visible": false
+          },
+          {
+            "offsetFromBootstrapMs": 306,
+            "stage": "bootstrapping",
+            "visible": true
+          },
+          {
+            "offsetFromBootstrapMs": 306.300048828125,
+            "stage": "bootstrapping",
+            "visible": false
+          },
+          {
+            "offsetFromBootstrapMs": 575.900146484375,
+            "stage": "restoring",
+            "visible": true
+          },
+          {
+            "offsetFromBootstrapMs": 579.300048828125,
+            "stage": "restored",
+            "visible": true
+          },
+          {
+            "offsetFromBootstrapMs": 579.400146484375,
+            "stage": "ready",
+            "visible": true
+          },
+          {
+            "offsetFromBootstrapMs": 753.900146484375,
+            "stage": "restoring",
+            "visible": false
+          },
+          {
+            "offsetFromBootstrapMs": 756.900146484375,
+            "stage": "restored",
+            "visible": false
+          },
+          {
+            "offsetFromBootstrapMs": 757.10009765625,
+            "stage": "ready",
+            "visible": false
+          }
+        ],
+        "extensionBridgeReadyMs": [4044, 4053],
+        "presentationMs": [91],
+        "workerFileOpenMs": [1996, 11],
+        "socketHandshakes": [
+          {
+            "path": "/api/live",
+            "durationMs": 3.0879999976605177,
+            "status": 101
+          },
+          {
+            "path": "/api/worker-links/:session/connect",
+            "durationMs": 24.61399999447167,
+            "status": 101
+          }
+        ]
+      },
+      "rendererMetrics": [
+        {
+          "name": "Documents",
+          "value": 17
+        },
+        {
+          "name": "Nodes",
+          "value": 5603
+        },
+        {
+          "name": "JSHeapUsedSize",
+          "value": 221177148
+        },
+        {
+          "name": "JSHeapTotalSize",
+          "value": 284540928
+        }
+      ],
+      "assetRequests": 16,
+      "completedAssetResponseBytes": null,
+      "assetRequestsWithUnavailableSizes": 16
+    }
+  ]
+}

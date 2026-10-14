@@ -65,3 +65,20 @@ metadata audit; it does not claim runtime or browser coverage.
 
 See [the stability ledger](STABILITY_PASS.md) for observed results, tracker
 follow-ups, and portions still awaiting execution.
+
+Loading measurements are available through:
+
+```sh
+node scripts/qa/editor-loading-benchmark.mjs --label current --warmups 1 --iterations 3 --output /tmp/editor-loading-current.json
+node --expose-gc scripts/qa/editor-http-buffer-benchmark.mjs
+```
+
+The browser benchmark repeats cold typing/save, warm retained reopening, and
+transient-renewal recovery in fresh owned fixtures. It captures verified
+workbench stages, actual network/handshake timing, worker endpoint and extension
+bridge readiness, presentation/file completion, file-open rendering, and renderer
+heap metrics. Onboarding remains part of the
+cold-case total; individual phases overlap and must not be summed. Unknown service-worker byte sizes are explicitly reported; bridge timing begins
+at session registration and can overlap browser document/workbench startup. The parser benchmark executes production parser functions,
+checks output/ownership, and reports local allocations and timing; it is not an
+end-to-end startup benchmark.

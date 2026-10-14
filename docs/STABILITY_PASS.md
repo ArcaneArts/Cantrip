@@ -8,8 +8,8 @@ Tests run independently of metadata audits. A skipped check is never a pass.
 | ----------------------------------------- | ----------- | ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | 1. Lease renewal and reconnect scheduling | Merged      | `codex/stability-lease-recovery` / [#2092](https://github.com/ArcaneArts/Cantrip/pull/2092) | Three regressions fixed; 135 app + 25 worker tests pass; Windows/macOS/Linux CI passed.             |
 | 2. Shared editor lifecycle and readiness  | Merged      | [#2093](https://github.com/ArcaneArts/Cantrip/pull/2093)                                    | Late readiness, retained frames, startup stages, and cancellation.                                  |
-| 3. Browser recovery harness               | In progress | `codex/stability-browser-harness`                                                           | Actual bundled editor, isolated services, automated failure injection and usable-editor assertions. |
-| 4. Measured editor loading                | Not started | —                                                                                           | Comparable cold/warm/recovery measurements; implement only demonstrated improvements.               |
+| 3. Browser recovery harness               | Merged      | [#2107](https://github.com/ArcaneArts/Cantrip/pull/2107)                                    | Actual bundled editor, isolated services, automated failure injection and usable-editor assertions. |
+| 4. Measured editor loading                | In progress | —                                                                                           | Comparable cold/warm/recovery measurements; implement only demonstrated improvements.               |
 | 5. Worker command dispatch                | Not started | —                                                                                           | Typed feature handlers with explicit ownership and dependencies.                                    |
 | 6. App API modularization                 | Not started | —                                                                                           | Domain clients with compatible public exports and shared security infrastructure.                   |
 | 7. Codex runtime decomposition            | Not started | —                                                                                           | Separate transport, turn lifecycle, subagents, normalization, and interactions incrementally.       |
@@ -168,3 +168,48 @@ Blocked portions are carried forward with automated follow-ups. They do not
 prevent measured loading investigation or later independent refactors.
 
 Sanitized observed browser results are committed in [qa/editor-recovery-results.json](qa/editor-recovery-results.json). Detailed owned logs and screenshots are preserved locally outside the disposable worktree before archival.
+
+## Milestone 4
+
+Based on merged harness PR [#2107](https://github.com/ArcaneArts/Cantrip/pull/2107).
+Its harness, editor-lifecycle, and lease-recovery CI all passed on Windows,
+macOS, and Linux. Owned services stopped; 516 local evidence files were
+preserved before removing disposable runtimes and archiving the M3 worktree.
+
+The HTTP parser redundantly copied an already-owned dechunked buffer. The local
+change retains that exactly sized buffer, while fixed-length bodies still copy
+their view out of transport storage. Binary/fragmented response regressions
+verify bytes, length, header filtering, and ownership after input storage reuse.
+
+Measurements and streaming/cache decisions are recorded in
+[EDITOR_LOADING_MEASUREMENTS.md](EDITOR_LOADING_MEASUREMENTS.md). Full-response
+buffering, byte limits, cancellation, authentication, and service-worker lineage
+remain in force. No cross-session asset cache is introduced.
+
+M4 validation: all 24 final browser scenarios passed across eight fresh fixtures
+(including warmups). Parser ownership tests: 56 passed; service-worker lineage,
+bounds, and cancellation tests: 47 passed. Worker bridge/supervisor: 91 passed;
+app and worker types pass. The retained-restart fixture now fails its restart
+process explicitly instead of relying on a 500 ms healthy spawn deadline and a
+600 ms sleep.
+
+The standard check attempt hit two protocol timeouts during a 903-second test
+stall. Both affected protocol files passed on retry (73 tests). The complete
+CUA test command subsequently passed its protocol, worker, integration, and app
+groups (136 protocol, 25 fixture contracts, 732 worker, 244 integration, and
+313 app tests; three explicit skips). The
+standard check is not reported green; the wider server baseline remains #2106.
+Focused behavior and browser results were collected independently.
+
+The two additional GC-controlled browser fixtures passed all six behavior
+scenarios. Retained renderer heap was approximately 174.14 versus 174.08 MiB;
+this single-pair diagnostic did not reproduce the higher unconstrained heap
+snapshots and does not establish a whole-page memory gain. Both snapshots and
+actual GC completion are captured for future comparisons.
+
+The newly enabled Windows worker suite exposed two existing fixture assumptions:
+it attempted to execute a POSIX-shebang `.cjs` file directly, and one active-file
+acknowledgement test supplied a drive-less file URI. The fixture now uses a
+packaged-style `.cmd` launcher on Windows while retaining its mutable JavaScript
+source; the acknowledgement fixture constructs native file URIs. Production
+launching, URI validation, and authority checks are unchanged.

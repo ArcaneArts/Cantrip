@@ -889,6 +889,19 @@ export class CodeSupervisor {
     sessionId: string,
     requestedPath: string,
   ): Promise<CodeOpenFileResult> {
+    const startedAtMs = performance.now();
+    const recordCompletion = (
+      source: "startup-navigation" | "bridge-request",
+    ) =>
+      workerLogger.event("info", "Cantrip Code file open completed", {
+        event: "code.session.file-open.completed",
+        subsystem: "code",
+        operation: "open-file",
+        status: "completed",
+        sessionId,
+        source,
+        durationMs: Math.round(performance.now() - startedAtMs),
+      });
     const generation = this.#sessionGeneration(sessionId);
     const signal = this.#sessionOperationSignal(sessionId, generation);
     return this.#enqueueSessionOperation(sessionId, async () => {
@@ -921,6 +934,7 @@ export class CodeSupervisor {
           expectedFileUri,
         )
       ) {
+        recordCompletion("startup-navigation");
         return { relativePath };
       }
       const result = await this.#bridge.openFile(
@@ -930,6 +944,7 @@ export class CodeSupervisor {
         signal,
       );
       this.#assertCurrentOperation(sessionId, generation, session);
+      recordCompletion("bridge-request");
       return result;
     });
   }
@@ -974,6 +989,7 @@ export class CodeSupervisor {
     sessionId: string,
     presentation: CodePresentation,
   ): Promise<CodeRuntimeStatus> {
+    const startedAtMs = performance.now();
     const generation = this.#sessionGeneration(sessionId);
     const signal = this.#sessionOperationSignal(sessionId, generation);
     return this.#enqueueSessionOperation(sessionId, async () => {
@@ -990,6 +1006,15 @@ export class CodeSupervisor {
       }
       await this.#bridge.setPresentation(sessionId, presentation, signal);
       this.#assertCurrentOperation(sessionId, generation, session);
+      workerLogger.event("info", "Cantrip Code presentation completed", {
+        event: "code.session.presentation.completed",
+        subsystem: "code",
+        operation: "set-presentation",
+        status: "completed",
+        sessionId,
+        presentation,
+        durationMs: Math.round(performance.now() - startedAtMs),
+      });
       return this.#status(session);
     });
   }

@@ -7,6 +7,11 @@ on:
       - scripts/network-tranche-two-acceptance*
       - scripts/codex-built-runtime.test.mjs
       - cantrip_app/src/lib/worker-link-peer-carrier*
+      - cantrip_app/src/lib/browser-code-tunnel*
+      - cantrip_worker/src/code/workbench-bridge.ts
+      - cantrip_worker/src/code/supervisor.ts
+      - cantrip_worker/test/code-supervisor.test.ts
+      - cantrip_worker/test/code-workbench-bridge.test.ts
       - cantrip_app/src/components/settings/settings-page.test.tsx
       - .github/workflows/editor-recovery-harness.yml
   workflow_dispatch:
@@ -29,5 +34,8 @@ jobs:
       - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
       - run: node --check scripts/qa/editor-recovery-browser.mjs
       - run: node --check scripts/qa/editor-recovery-fixture.mjs
+      - run: node --check scripts/qa/editor-loading-benchmark.mjs
+      - run: node --check scripts/qa/editor-http-buffer-benchmark.mjs
       - run: node --test scripts/network-tranche-two-acceptance.test.mjs scripts/codex-built-runtime.test.mjs
-      - run: pnpm --filter @cantrip/app exec vitest run src/lib/worker-link-peer-carrier.test.ts src/components/settings/settings-page.test.tsx --maxWorkers=2
+      - run: pnpm --filter @cantrip/app exec vitest run src/lib/worker-link-peer-carrier.test.ts src/lib/browser-code-tunnel.test.ts src/components/settings/settings-page.test.tsx --maxWorkers=2
+      - run: pnpm --filter @cantrip/worker exec vitest run test/code-workbench-bridge.test.ts test/code-supervisor.test.ts --maxWorkers=1

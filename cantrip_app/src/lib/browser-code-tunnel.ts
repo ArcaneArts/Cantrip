@@ -1719,7 +1719,9 @@ function parseHttpResponse(bytes: Uint8Array) {
       ([name]) =>
         !["connection", "transfer-encoding"].includes(name.toLowerCase()),
     ),
-    body: Uint8Array.from(chunked ? dechunk(rawBody) : rawBody).buffer,
+    // Dechunking already returns a new, exactly sized owned buffer. The raw
+    // body is a view over the transport response and still needs its own copy.
+    body: chunked ? dechunk(rawBody).buffer : Uint8Array.from(rawBody).buffer,
   };
 }
 

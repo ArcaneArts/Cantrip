@@ -1,0 +1,152 @@
+{
+  "label": "heap-baseline",
+  "runtime": "v24.14.0",
+  "platform": "darwin-arm64",
+  "iterations": 1,
+  "warmups": 0,
+  "observations": [
+    {
+      "iteration": 0,
+      "warmup": false,
+      "exitCode": 0,
+      "cases": [
+        {
+          "name": "cold-editor-usable",
+          "status": "passed",
+          "durationMs": 21932,
+          "phases": {
+            "fileOpenStartedAt": 1791982695995,
+            "fileRenderedAt": 1791982699853,
+            "firstSaveVerifiedAt": 1791982701260,
+            "fileOpenToRenderedMs": 3858
+          },
+          "setupRetries": 1,
+          "modeRetries": 1
+        },
+        {
+          "name": "warm-close-reopen",
+          "status": "passed",
+          "durationMs": 80
+        },
+        {
+          "name": "transient-renewal",
+          "status": "passed",
+          "durationMs": 5743
+        }
+      ],
+      "phases": {
+        "profileEndpointReadyMs": [210],
+        "sessionCreateMs": 49.462,
+        "documentCompleteMs": 14.872,
+        "workbenchBootstrapToReadyMs": 552.699951171875,
+        "stages": [
+          {
+            "offsetFromBootstrapMs": 0,
+            "stage": "bootstrapping",
+            "visible": true
+          },
+          {
+            "offsetFromBootstrapMs": 278.800048828125,
+            "stage": "bootstrapping",
+            "visible": false
+          },
+          {
+            "offsetFromBootstrapMs": 288.900146484375,
+            "stage": "bootstrapping",
+            "visible": false
+          },
+          {
+            "offsetFromBootstrapMs": 291.300048828125,
+            "stage": "bootstrapping",
+            "visible": true
+          },
+          {
+            "offsetFromBootstrapMs": 549,
+            "stage": "restoring",
+            "visible": true
+          },
+          {
+            "offsetFromBootstrapMs": 552.5,
+            "stage": "restored",
+            "visible": true
+          },
+          {
+            "offsetFromBootstrapMs": 552.699951171875,
+            "stage": "ready",
+            "visible": true
+          },
+          {
+            "offsetFromBootstrapMs": 707.10009765625,
+            "stage": "restoring",
+            "visible": false
+          },
+          {
+            "offsetFromBootstrapMs": 710.10009765625,
+            "stage": "restored",
+            "visible": false
+          },
+          {
+            "offsetFromBootstrapMs": 710.300048828125,
+            "stage": "ready",
+            "visible": false
+          }
+        ],
+        "extensionBridgeReadyMs": [3801, 3803],
+        "presentationMs": [53],
+        "workerFileOpenMs": [1919, 7],
+        "socketHandshakes": [
+          {
+            "path": "/api/live",
+            "durationMs": 3.0059999553486705,
+            "status": 101
+          },
+          {
+            "path": "/api/worker-links/:session/connect",
+            "durationMs": 17.640999983996153,
+            "status": 101
+          }
+        ]
+      },
+      "rendererMetrics": [
+        {
+          "name": "Documents",
+          "value": 17
+        },
+        {
+          "name": "Nodes",
+          "value": 5455
+        },
+        {
+          "name": "JSHeapUsedSize",
+          "value": 218541088
+        },
+        {
+          "name": "JSHeapTotalSize",
+          "value": 281116672
+        }
+      ],
+      "garbageCollected": true,
+      "retainedRendererMetrics": [
+        {
+          "name": "Documents",
+          "value": 13
+        },
+        {
+          "name": "Nodes",
+          "value": 2690
+        },
+        {
+          "name": "JSHeapUsedSize",
+          "value": 182593924
+        },
+        {
+          "name": "JSHeapTotalSize",
+          "value": 190414848
+        }
+      ],
+      "assetRequests": 16,
+      "completedAssetResponseBytes": null,
+      "assetRequestsWithUnavailableSizes": 16
+    }
+  ]
+}

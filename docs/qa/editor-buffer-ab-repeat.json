@@ -1,0 +1,46 @@
+{
+  "workdir": "repository root",
+  "baseline_cmd": "node --expose-gc scripts/qa/editor-http-buffer-benchmark.mjs --source /tmp/cantrip-stability-m4-browser-code-tunnel-baseline.ts",
+  "candidate_cmd": "node --expose-gc scripts/qa/editor-http-buffer-benchmark.mjs",
+  "warmups": 5,
+  "iterations": 25,
+  "timeout_sec": 120.0,
+  "baseline_stats": {
+    "iterations": 25,
+    "mean_ms": 406.4528916,
+    "median_ms": 395.999084,
+    "p95_ms": 477.238291,
+    "min_ms": 381.69575,
+    "max_ms": 485.713042,
+    "stdev_ms": 27.727100817073616
+  },
+  "candidate_stats": {
+    "iterations": 25,
+    "mean_ms": 340.00209672,
+    "median_ms": 339.043625,
+    "p95_ms": 360.870708,
+    "min_ms": 318.964625,
+    "max_ms": 362.282084,
+    "stdev_ms": 11.336106809054607
+  },
+  "baseline_output_stable": true,
+  "candidate_output_stable": true,
+  "output_equivalent": true,
+  "speedup_median_x": 1.1679885855396925,
+  "improvement_pct_median": 14.382724935798075,
+  "verdict": "keep-candidate",
+  "baseline_durations_ms": [
+    391.471625, 392.892041, 408.186958, 394.4025, 485.713042, 459.850458,
+    414.143917, 408.847833, 382.098042, 382.92675, 432.778792, 398.2975,
+    402.948291, 395.999084, 477.238291, 403.846417, 395.118708, 381.69575,
+    386.8295, 387.364708, 406.373875, 394.42075, 404.472208, 386.919125,
+    386.486125
+  ],
+  "candidate_durations_ms": [
+    327.556333, 326.810791, 338.753584, 341.943167, 337.971042, 341.833708,
+    347.924042, 324.88225, 347.776875, 331.16, 334.10925, 338.034625,
+    340.271666, 360.870708, 339.043625, 335.920708, 321.521583, 318.964625,
+    338.448917, 339.618, 352.290917, 355.42025, 339.985334, 356.658334,
+    362.282084
+  ]
+}
