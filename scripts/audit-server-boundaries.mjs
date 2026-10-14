@@ -14,6 +14,7 @@ import { format } from "prettier";
 
 import {
   combineApplicationSources,
+  normalizeSourcePath,
   readApplicationSourceCorpus,
 } from "./application-source-corpus.mjs";
 
@@ -527,7 +528,9 @@ async function taskProductionDependencyAudit() {
   const taskProtocolSources = [];
   for (const file of files) {
     const sourceText = await readFile(file, "utf8");
-    const relativeFile = file.slice(repositoryRoot.length + 1);
+    const relativeFile = normalizeSourcePath(
+      file.slice(repositoryRoot.length + 1),
+    );
     const taskImports = namedImportsFrom(sourceText, "@cantrip/protocol/tasks");
     if (taskImports.length > 0) taskProtocolSources.push(relativeFile);
     for (const symbol of taskImports) {
@@ -580,7 +583,9 @@ async function policyProductionDependencyAudit() {
   const opaqueProtocolSources = [];
   for (const file of files) {
     const sourceText = await readFile(file, "utf8");
-    const relativeFile = file.slice(repositoryRoot.length + 1);
+    const relativeFile = normalizeSourcePath(
+      file.slice(repositoryRoot.length + 1),
+    );
     const policyImports = namedImportsFrom(
       sourceText,
       "@cantrip/protocol/policies",
@@ -628,7 +633,9 @@ async function privateDisplayLabelProductionDependencyAudit() {
   const opaqueProtocolSources = [];
   for (const file of files) {
     const sourceText = await readFile(file, "utf8");
-    const relativeFile = file.slice(repositoryRoot.length + 1);
+    const relativeFile = normalizeSourcePath(
+      file.slice(repositoryRoot.length + 1),
+    );
     const protocolImports = namedImportsFrom(sourceText, "@cantrip/protocol");
     if (
       protocolImports.some(
@@ -674,7 +681,9 @@ async function surfacePrivateStateProductionDependencyAudit() {
   const opaqueProtocolSources = [];
   for (const file of files) {
     const sourceText = await readFile(file, "utf8");
-    const relativeFile = file.slice(repositoryRoot.length + 1);
+    const relativeFile = normalizeSourcePath(
+      file.slice(repositoryRoot.length + 1),
+    );
     const protocolImports = namedImportsFrom(sourceText, "@cantrip/protocol");
     const contentImports = namedImportsFrom(
       sourceText,
@@ -754,7 +763,9 @@ async function surfaceStreamProductionDependencyAudit() {
   const opaqueProtocolSources = [];
   for (const file of files) {
     const sourceText = await readFile(file, "utf8");
-    const relativeFile = file.slice(repositoryRoot.length + 1);
+    const relativeFile = normalizeSourcePath(
+      file.slice(repositoryRoot.length + 1),
+    );
     const imports = namedImportsFrom(
       sourceText,
       "@cantrip/protocol/surface-stream",
@@ -792,7 +803,9 @@ async function repositoryOperationProductionDependencyAudit() {
   const opaqueProtocolSources = [];
   for (const file of files) {
     const sourceText = await readFile(file, "utf8");
-    const relativeFile = file.slice(repositoryRoot.length + 1);
+    const relativeFile = normalizeSourcePath(
+      file.slice(repositoryRoot.length + 1),
+    );
     const imports = namedImportsFrom(
       sourceText,
       "@cantrip/protocol/repository-operation",
@@ -829,7 +842,9 @@ async function remoteSurfaceStreamProductionDependencyAudit() {
   const failures = [];
   for (const file of files) {
     const sourceText = await readFile(file, "utf8");
-    const relativeFile = file.slice(repositoryRoot.length + 1);
+    const relativeFile = normalizeSourcePath(
+      file.slice(repositoryRoot.length + 1),
+    );
     for (const match of sourceText.matchAll(
       /(?:from\s*|import\s*\(\s*)["']([^"']+)["']/gu,
     )) {
@@ -4249,7 +4264,7 @@ async function repositoryMethodInventory() {
             ? "system-lifecycle"
             : "delegated-or-missing-review";
       methods.push({
-        file: file.slice(repositoryRoot.length + 1).replaceAll("\\", "/"),
+        file: normalizeSourcePath(file.slice(repositoryRoot.length + 1)),
         line: sourceText.slice(0, match.index).split("\n").length,
         method: match[1],
         ownerEvidence,

@@ -11,7 +11,7 @@ Tests run independently of metadata audits. A skipped check is never a pass.
 | 3. Browser recovery harness               | Merged      | [#2107](https://github.com/ArcaneArts/Cantrip/pull/2107)                                    | Actual bundled editor, isolated services, automated failure injection and usable-editor assertions. |
 | 4. Measured editor loading                | Merged      | [#2108](https://github.com/ArcaneArts/Cantrip/pull/2108)                                    | Comparable cold/warm/recovery measurements; implement only demonstrated improvements.               |
 | 5. Worker command dispatch                | Merged      | [#2109](https://github.com/ArcaneArts/Cantrip/pull/2109)                                    | Typed feature handlers with explicit ownership and dependencies.                                    |
-| 6. App API modularization                 | In progress | `codex/stability-api-domains`                                                               | Domain clients with compatible public exports and shared security infrastructure.                   |
+| 6. App API modularization                 | In progress | [#2110](https://github.com/ArcaneArts/Cantrip/pull/2110)                                    | Domain clients with compatible public exports and shared security infrastructure.                   |
 | 7. Codex runtime decomposition            | Not started | —                                                                                           | Separate transport, turn lifecycle, subagents, normalization, and interactions incrementally.       |
 
 ## Milestone 1
@@ -297,3 +297,9 @@ Windows exposed an existing inventory formatter that emitted backslashes for
 repository source filenames, making the canonical route inventory appear
 stale. Repository inventory paths now normalize to forward slashes; audit
 assertions and canonical inventory contents remain intact.
+
+Seven additional dependency scans emitted the same OS-specific source names.
+They now share a canonical source-path formatter with repository inventory and
+API/server source corpora. A regression checks Windows repository names and the
+existing policy-template exception against canonical paths. All content and
+owner classification checks remain enabled.

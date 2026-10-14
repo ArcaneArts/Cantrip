@@ -9,6 +9,7 @@ on:
       - cantrip_app/src/lib/api*.test.ts
       - cantrip_app/src/lib/run-configuration-api.test.ts
       - scripts/client-api-source-corpus*
+      - scripts/application-source-corpus*
       - scripts/audit-server-boundaries.mjs
       - scripts/verify-network-tranche-two.mjs
       - .github/workflows/app-api-domains.yml
@@ -45,7 +46,7 @@ jobs:
       - run: pnpm --filter @cantrip/app typecheck
       - name: Source corpus, security boundaries and transport contracts
         if: ${{ !cancelled() }}
-        run: node --test scripts/client-api-source-corpus.test.mjs && pnpm audit:server-boundaries && pnpm verify:network-tranche-two
+        run: node --test scripts/client-api-source-corpus.test.mjs scripts/application-source-corpus.test.mjs && pnpm audit:server-boundaries && pnpm verify:network-tranche-two
       - name: API domains, shared caches, identity and encryption
         if: ${{ !cancelled() }}
         run: pnpm --filter @cantrip/app exec vitest run src/lib/api-client.test.ts src/lib/api-domain-state.test.ts src/lib/api-shared-code-identity.test.ts src/lib/api-folder-root.test.ts src/lib/api-native-history-settings.test.ts src/lib/run-configuration-api.test.ts src/lib/api-terminal-create.test.ts src/lib/api-managed-queue.test.ts src/lib/api-task-conversation.test.ts src/lib/attachment-encryption.test.ts src/lib/policy-encryption.test.ts src/lib/tunnel-worker-readiness-cache.test.ts src/lib/short-lived-request-cache.test.ts src/lib/client-encryption.test.ts --maxWorkers=2

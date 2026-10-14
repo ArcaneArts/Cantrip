@@ -1,3 +1,4 @@
+import { normalizeSourcePath } from "./application-source-corpus.mjs";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -50,4 +51,21 @@ test("missing client implementations fail actual source reads", async () => {
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("Windows audit source names match canonical inventory names and policy exceptions", () => {
+  assert.equal(
+    normalizeSourcePath(String.raw`cantrip_server\src\db\repository.ts`),
+    "cantrip_server/src/db/repository.ts",
+  );
+  assert.equal(
+    normalizeSourcePath("cantrip_server/src/db/repository.ts"),
+    "cantrip_server/src/db/repository.ts",
+  );
+  assert.equal(
+    normalizeSourcePath(
+      String.raw`cantrip_server\src\policies\templates.ts`,
+    ).endsWith("/policies/templates.ts"),
+    true,
+  );
 });

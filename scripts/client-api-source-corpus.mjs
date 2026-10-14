@@ -1,5 +1,6 @@
+import { normalizeSourcePath } from "./application-source-corpus.mjs";
 import { readFile, readdir } from "node:fs/promises";
-import { relative, resolve, sep } from "node:path";
+import { relative, resolve } from "node:path";
 
 async function domainSources(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -31,7 +32,7 @@ export async function readClientApiSourceText(repositoryRoot) {
     await Promise.all(
       paths.map(
         async (path) =>
-          `// Client API source: ${relative(repositoryRoot, path).split(sep).join("/")}\n${await readFile(path, "utf8")}`,
+          `// Client API source: ${normalizeSourcePath(relative(repositoryRoot, path))}\n${await readFile(path, "utf8")}`,
       ),
     )
   ).join("\n");
