@@ -417,3 +417,6 @@ export function withQuery(
   const suffix = query.toString();
   return suffix ? `${path}?${suffix}` : path;
 }
+
+// Bound operations keep their captured session and cannot recover CSRF under a replacement.
+export const BOUND_API_REQUEST_BEHAVIOR = { allowCsrfRecovery: false } as const;

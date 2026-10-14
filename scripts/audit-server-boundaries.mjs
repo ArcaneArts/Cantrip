@@ -1,3 +1,4 @@
+import { readClientApiSourceText } from "./client-api-source-corpus.mjs";
 import {
   nativeTableClassifications,
   nativeRouteContentClassification,
@@ -44,7 +45,6 @@ const automationProtocolPath = resolve(
   repositoryRoot,
   "packages/protocol/src/automations.ts",
 );
-const clientApiPath = resolve(repositoryRoot, "cantrip_app/src/lib/api.ts");
 const clientAutomationEncryptionPath = resolve(
   repositoryRoot,
   "cantrip_app/src/lib/project-automation-encryption.ts",
@@ -4313,7 +4313,7 @@ async function buildInventory() {
     readFile(remoteSurfaceTransportPath, "utf8"),
     readFile(remoteSurfaceManagerPath, "utf8"),
     readFile(remoteSurfaceRelayPath, "utf8"),
-    readFile(clientApiPath, "utf8"),
+    readClientApiSourceText(repositoryRoot),
     readFile(workerPath, "utf8"),
     readFile(workerRoutingPath, "utf8"),
     repositoryMethodInventory(),

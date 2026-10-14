@@ -1,3 +1,4 @@
+import { readClientApiSourceText } from "./client-api-source-corpus.mjs";
 import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -109,7 +110,7 @@ const [
   progress,
   packageManifest,
 ] = await Promise.all([
-  read("cantrip_app/src/lib/api.ts"),
+  readClientApiSourceText(repositoryRoot),
   read("cantrip_app/src/lib/desktop-tunnel.ts"),
   readApplication(),
   read("cantrip_server/src/operations/legacy-feature-transports.ts"),
