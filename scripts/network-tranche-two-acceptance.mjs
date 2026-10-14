@@ -474,6 +474,7 @@ export const targetedTests = {
     "src/terminal-worker-link-adapter.test.ts",
     "src/tunnel-worker-link-adapter.test.ts",
     "test/direct-broker.test.ts",
+    "test/desktop-adapter.test.ts",
     "test/tunnel-data-transport.test.ts",
     "test/tunnel-tcp-adapter.test.ts",
     "src/remote-surface-worker-link-adapter.test.ts",
@@ -577,13 +578,32 @@ async function run(command, args) {
   });
 }
 
-async function runAcceptance() {
-  const summary = await validateAcceptanceMatrix();
-  console.log(
-    `Validated ${summary.topologyCases} topology cases, ${summary.featureCases} feature cases, and ${summary.physicalDeviceDisclosures} honest physical-device disclosures.`,
-  );
-  if (process.argv.includes("--check")) return;
+export async function runAcceptance({
+  checkOnly = false,
+  runCommand = run,
+  validateMatrix = validateAcceptanceMatrix,
+  log = console.log,
+} = {}) {
+  const audit = async () => {
+    const summary = await validateMatrix();
+    log(
+      `Audited ${summary.topologyCases} topology entries, ${summary.featureCases} feature entries, and ${summary.physicalDeviceDisclosures} physical-device disclosures (metadata only).`,
+    );
+  };
+  if (checkOnly) {
+    await audit();
+    return;
+  }
 
+  const failures = [];
+  const attempt = async (label, operation) => {
+    try {
+      await operation();
+    } catch (error) {
+      failures.push(error);
+      log(`${label} failed: ${error.message}`);
+    }
+  };
   for (const packageName of [
     "@cantrip/version",
     "@cantrip/logging",
@@ -591,34 +611,48 @@ async function runAcceptance() {
     "@cantrip/crypto",
     "@cantrip/glitch",
   ]) {
-    await run("pnpm", ["--filter", packageName, "build"]);
+    await attempt(packageName, () =>
+      runCommand("pnpm", ["--filter", packageName, "build"]),
+    );
   }
-  await run("pnpm", ["verify:network-tranche-one"]);
-  await run("pnpm", ["verify:network-tranche-two"]);
-
+  // Collect actual runtime results before checking documentation/source metadata.
   for (const [group, files] of Object.entries(targetedTests)) {
-    const packageName = `@cantrip/${group}`;
-    await run("pnpm", [
-      "--filter",
-      packageName,
-      "exec",
-      "vitest",
-      "run",
-      "--maxWorkers=2",
-      ...files,
-    ]);
+    await attempt(`${group} behavior`, () =>
+      runCommand("pnpm", [
+        "--filter",
+        `@cantrip/${group}`,
+        "exec",
+        "vitest",
+        "run",
+        "--maxWorkers=2",
+        ...files,
+      ]),
+    );
   }
-  await run("cargo", [
-    "test",
-    "--locked",
-    "--manifest-path",
-    "cantrip_app/src-tauri/Cargo.toml",
-    "worker_link",
-  ]);
-
-  console.log("Tranche Two deterministic acceptance matrix passed.");
+  await attempt("native behavior", () =>
+    runCommand("cargo", [
+      "test",
+      "--locked",
+      "--manifest-path",
+      "cantrip_app/src-tauri/Cargo.toml",
+      "worker_link",
+    ]),
+  );
+  for (const command of [
+    "verify:network-tranche-one",
+    "verify:network-tranche-two",
+  ]) {
+    await attempt(command, () => runCommand("pnpm", [command]));
+  }
+  await attempt("acceptance metadata", audit);
+  if (failures.length)
+    throw new AggregateError(
+      failures,
+      `${failures.length} acceptance stages failed; all independent stages were attempted.`,
+    );
+  log("Tranche Two deterministic behavior and metadata checks passed.");
 }
 
 if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
-  await runAcceptance();
+  await runAcceptance({ checkOnly: process.argv.includes("--check") });
 }

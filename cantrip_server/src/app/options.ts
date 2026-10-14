@@ -7,6 +7,7 @@ import type { ProviderCredentialMigrationCoordinator } from "../models/provider-
 import type { RelayQuotaManager } from "../operations/relay-quotas.js";
 import type { ProjectShareTunnelBroker } from "../project-shares/tunnel.js";
 import type { WorkerCommandBus } from "../workers/bridge.js";
+import type { WorkerLinkCoordinatorOptions } from "../worker-links/coordinator.js";
 
 export interface BuildAppOptions {
   config: ServerConfig;
@@ -19,4 +20,8 @@ export interface BuildAppOptions {
   coordinator?: RelayCoordinator;
   providerCatalogService?: OpenRouterCatalogService;
   providerCredentialMigrations?: ProviderCredentialMigrationCoordinator;
+  workerLinkTiming?: Pick<
+    WorkerLinkCoordinatorOptions,
+    "sessionLeaseMs" | "sessionLifetimeMs" | "sweepIntervalMs"
+  >;
 }

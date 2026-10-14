@@ -137,6 +137,46 @@ const descriptor: WorkerLinkPeerSessionDescriptor = {
 };
 
 describe("WorkerLink WebRTC PeerCarrier", () => {
+  it.each(["create-offer", "send-offer"])(
+    "retires %s failure before readiness without an unhandled rejection",
+    async (stage) => {
+      const peer = new FakePeerConnection();
+      const failure = new Error(`${stage} failed`);
+      if (stage === "create-offer")
+        vi.spyOn(peer, "createOffer").mockRejectedValueOnce(failure);
+      const deletePeerSession = vi.fn(async () => undefined);
+      const sendSignals = vi.fn(async () => {
+        if (stage === "send-offer") throw failure;
+      });
+      await expect(
+        openWorkerLinkPeerCarrier({
+          session,
+          route: "lan",
+          createPeerConnection: () => peer as unknown as RTCPeerConnection,
+          createPeerSession: async () => descriptor,
+          deletePeerSession,
+          readMailbox: async () => ({
+            peerSessionId: descriptor.peerSession.peerSessionId,
+            sessionId: session.sessionId,
+            routeGeneration: session.routeGeneration,
+            route: "lan",
+            signals: [],
+            candidateAdvertisements: [],
+          }),
+          sendSignals,
+        }),
+      ).rejects.toBe(failure);
+      // Give the runtime a turn to report a separate rejected readiness promise.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(peer.connectionState).toBe("closed");
+      expect(
+        [...peer.channels.values()].every(
+          (channel) => channel.readyState === "closed",
+        ),
+      ).toBe(true);
+      expect(deletePeerSession).toHaveBeenCalledOnce();
+    },
+  );
   it("authenticates the exact peer and carries the shared envelope by lane", async () => {
     const peer = new FakePeerConnection();
     const sentSignals: unknown[] = [];
