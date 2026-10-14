@@ -26,6 +26,9 @@ importers:
       cross-env:
         specifier: ^10.1.0
         version: 10.1.0
+      playwright-core:
+        specifier: 1.62.1
+        version: 1.62.1
       prettier:
         specifier: ^3.9.6
         version: 3.9.6
@@ -7781,6 +7784,14 @@ packages:
       }
     engines: { node: ">=8" }
 
+  playwright-core@1.62.1:
+    resolution:
+      {
+        integrity: sha512-wPYSwEBJY9GHraISXqyqtx0na0LpO3XEX7jNDhntbex7tzUS7kLnZsOlFruFJB4Hi/rhDMjXGqHewDZ68nYZVw==,
+      }
+    engines: { node: ">=20" }
+    hasBin: true
+
   plist@3.1.1:
     resolution:
       {
@@ -14129,6 +14140,8 @@ snapshots:
   pkg-up@3.1.0:
     dependencies:
       find-up: 3.0.0
+
+  playwright-core@1.62.1: {}
 
   plist@3.1.1:
     dependencies:

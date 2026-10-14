@@ -174,6 +174,7 @@
       "cantrip_server/src/app/runtime/task-route-types.ts",
       "cantrip_server/src/app/runtime/task-routes.ts",
       "cantrip_server/src/app/runtime/task-turn-bootstrap-observer.ts",
+      "cantrip_server/src/app/runtime/task-workload-route.ts",
       "cantrip_server/src/app/runtime/tunnel-control-plane-runtime.ts",
       "cantrip_server/src/app/runtime/worker-notification-runtime.ts",
       "cantrip_server/src/app/runtime/worker-observation-publication-runtime.ts",
@@ -1329,7 +1330,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-basic-routes.ts",
-      "line": 67,
+      "line": 68,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId",
@@ -1368,7 +1369,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-basic-routes.ts",
-      "line": 166,
+      "line": 167,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/completion/read",
@@ -1381,7 +1382,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-basic-routes.ts",
-      "line": 181,
+      "line": 182,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/composer-draft",
@@ -1394,7 +1395,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-basic-routes.ts",
-      "line": 194,
+      "line": 195,
       "method": "PUT",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/composer-draft",
@@ -1472,7 +1473,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-customizations.ts",
-      "line": 558,
+      "line": 559,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/customizations/external-import",
@@ -1485,7 +1486,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-customizations.ts",
-      "line": 611,
+      "line": 612,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/customizations/external-import/status",
@@ -1511,7 +1512,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-customizations.ts",
-      "line": 396,
+      "line": 397,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/customizations/mcp-oauth",
@@ -1524,7 +1525,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-customizations.ts",
-      "line": 449,
+      "line": 450,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/customizations/mcp-oauth/status",
@@ -1537,7 +1538,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-customizations.ts",
-      "line": 502,
+      "line": 503,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/customizations/mcp-reload",
@@ -1563,7 +1564,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-customizations.ts",
-      "line": 284,
+      "line": 285,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/customizations/skill",
@@ -1576,7 +1577,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-customizations.ts",
-      "line": 340,
+      "line": 341,
       "method": "PUT",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/customizations/skill-roots",
@@ -1602,7 +1603,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-worktree-and-execution-lanes.ts",
-      "line": 78,
+      "line": 92,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/execution-lanes",
@@ -1615,7 +1616,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-worktree-and-execution-lanes.ts",
-      "line": 89,
+      "line": 103,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/execution-lanes/:laneId/release",
@@ -1628,7 +1629,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-basic-routes.ts",
-      "line": 85,
+      "line": 86,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/file-references",
@@ -1641,7 +1642,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-basic-routes.ts",
-      "line": 112,
+      "line": 113,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/files/operation",
@@ -1771,7 +1772,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/runtime/task-routes.ts",
-      "line": 1704,
+      "line": 1668,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/model-configuration",
@@ -2161,7 +2162,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-basic-routes.ts",
-      "line": 49,
+      "line": 50,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/runtime-selection",
@@ -2226,7 +2227,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-worktree-and-execution-lanes.ts",
-      "line": 46,
+      "line": 49,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/worktree",
@@ -4774,7 +4775,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/runtime/task-routes.ts",
-      "line": 1283,
+      "line": 1247,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/tasks/pause",
@@ -4787,7 +4788,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/runtime/task-routes.ts",
-      "line": 1296,
+      "line": 1260,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/tasks/pause",
@@ -4799,8 +4800,8 @@
     },
     {
       "boundary": "application-principal",
-      "file": "cantrip_server/src/app/runtime/task-routes.ts",
-      "line": 1245,
+      "file": "cantrip_server/src/app/runtime/task-workload-route.ts",
+      "line": 14,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/tasks/workload",
@@ -6646,7 +6647,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/runtime/task-routes.ts",
-      "line": 1653,
+      "line": 1617,
       "method": "DELETE",
       "ownerEvidence": "request-principal",
       "path": "/api/tasks/:chatId",
@@ -6659,7 +6660,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/runtime/task-routes.ts",
-      "line": 1344,
+      "line": 1308,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/tasks/:chatId",
@@ -6672,7 +6673,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/runtime/task-routes.ts",
-      "line": 1522,
+      "line": 1486,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/tasks/:chatId/attachments",
@@ -6685,7 +6686,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/runtime/task-routes.ts",
-      "line": 1864,
+      "line": 1828,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/tasks/:chatId/begin-implementation",
@@ -6698,7 +6699,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/runtime/task-routes.ts",
-      "line": 1833,
+      "line": 1797,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/tasks/:chatId/continue",
@@ -6711,7 +6712,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/runtime/task-routes.ts",
-      "line": 1357,
+      "line": 1321,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/tasks/:chatId/dashboard",
@@ -6724,7 +6725,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/runtime/task-routes.ts",
-      "line": 1680,
+      "line": 1644,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/tasks/:chatId/draft",
@@ -6737,7 +6738,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/runtime/task-routes.ts",
-      "line": 1747,
+      "line": 1711,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/tasks/:chatId/plan",
@@ -6750,7 +6751,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/runtime/task-routes.ts",
-      "line": 1802,
+      "line": 1766,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/tasks/:chatId/plan",
@@ -6763,7 +6764,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/runtime/task-routes.ts",
-      "line": 1895,
+      "line": 1859,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/tasks/:chatId/retry",
@@ -6776,7 +6777,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/runtime/task-routes.ts",
-      "line": 1771,
+      "line": 1735,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/tasks/:chatId/start",

@@ -80,7 +80,9 @@ const migratedConsumers = [
   },
   {
     path: "cantrip_worker/src/desktop/desktop-adapter.ts",
-    required: ["#resynchronizedAttachments", "refreshTargets(attachmentId)"],
+    // Refresh routing is exercised by desktop-adapter.test.ts in acceptance.
+    // A literal argument list cannot establish that behavior.
+    required: ["#resynchronizedAttachments"],
   },
 ];
 

@@ -82,7 +82,9 @@
     "test": "node --test scripts/*.test.mjs scripts/managed-runtimes/*.test.mjs scripts/cantrip-code/*.test.mjs scripts/cantrip-cli/*.test.mjs && pnpm cli:test && pnpm cua:test && pnpm code:extension:test && pnpm -r --if-present test",
     "check": "pnpm check:large-files && pnpm check:app-decomposition && pnpm check:server-repository-decomposition && pnpm verify:workflow-removal && pnpm audit:run-configurations && pnpm audit:server-boundaries && pnpm verify:network-tranche-one && pnpm verify:network-tranche-two && pnpm network:acceptance:check && pnpm code:source:verify && pnpm codex:verify && pnpm skill-templates:verify && pnpm cli:check && pnpm cua:check && pnpm typecheck && pnpm test && pnpm format:check",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "qa:editor-recovery": "node scripts/qa/editor-recovery-browser.mjs",
+    "qa:editor-fixture": "node scripts/qa/editor-recovery-fixture.mjs"
   },
   "devDependencies": {
     "@babel/parser": "7.29.8",
@@ -90,6 +92,7 @@
     "@types/node": "^26.1.2",
     "concurrently": "^10.0.4",
     "cross-env": "^10.1.0",
+    "playwright-core": "1.62.1",
     "prettier": "^3.9.6",
     "tsx": "^4.23.9",
     "typescript": "^7.0.2",

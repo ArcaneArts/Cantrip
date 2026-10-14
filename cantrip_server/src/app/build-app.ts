@@ -154,6 +154,7 @@ export async function buildApp({
   relayQuotas: providedRelayQuotas,
   coordinator,
   workerBridge,
+  workerLinkTiming,
 }: BuildAppOptions) {
   const {
     app,
@@ -453,6 +454,7 @@ export async function buildApp({
   ]);
   const workerLinks = new WorkerLinkService(
     new WorkerLinkCoordinator(bridge, {
+      ...workerLinkTiming,
       peerConfiguration: config.workerLinkPeer,
       serverId,
       serverGeneration: serverControlPlaneGeneration,
