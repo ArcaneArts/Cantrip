@@ -1,4 +1,16 @@
-import { spawnGuardedProcess } from "../code/process-guard.js";
+import { CodexRpcRequests } from "./rpc-requests.js";
+import { parseCodexRpcMessage, CodexNativeRpcError } from "./rpc-protocol.js";
+import {
+  launchCodexProcess,
+  readCodexProcessEndpoint,
+  openCodexWebSocket,
+} from "./process-transport.js";
+export {
+  parseCodexRpcMessage,
+  codexEndpointFromLine,
+  codexStartupExitMessage,
+  CodexNativeRpcError,
+} from "./rpc-protocol.js";
 import type {
   ActiveCommandTelemetry,
   ActiveTurn,
@@ -27,7 +39,6 @@ import type {
   NativePendingAgentInteraction,
   NativePendingPlanQuestion,
   NativeReplacementSettings,
-  PendingRpcRequest,
   PrepareAdmittedNativeExecutionOptions,
   PrepareImportedManagedThreadOptions,
   PrepareManagedThreadOptions,
@@ -48,7 +59,7 @@ import type {
   TurnStartResponse,
   TurnStartedParams,
 } from "./runtime-types.js";
-import { isDeepStrictEqual, stripVTControlCharacters } from "node:util";
+import { isDeepStrictEqual } from "node:util";
 import path from "node:path";
 import type {
   AgentActivity,
@@ -223,7 +234,6 @@ import {
   writeManagedCodexModelCatalog,
 } from "./model-catalog.js";
 import type { CodexComputerUseExecution } from "./execution-lifetime.js";
-import readline from "node:readline";
 import {
   ProviderAccountReauthenticationRequiredError,
   isChatGptTokenExpiredError,
@@ -363,17 +373,6 @@ export {
   commandTelemetryFromCompletion,
 } from "./command-output.js";
 
-const launchCodexProcess: CodexProcessLauncher = (
-  binary,
-  arguments_,
-  options,
-) =>
-  spawnGuardedProcess(binary, arguments_, {
-    cwd: process.cwd(),
-    env: options.env ?? process.env,
-    stdin: "pipe",
-  });
-
 export function findActiveChatTurn<
   T extends Pick<ActiveTurn, "chatId" | "executionKind" | "threadId">,
 >(
@@ -396,7 +395,6 @@ export function findActiveChatTurn<
   return null;
 }
 
-const CODEX_STARTUP_TIMEOUT_MS = 2 * 60_000;
 const CODEX_RPC_TIMEOUT_MS = 2 * 60_000;
 const CODEX_PAUSE_BOUNDARY_TIMEOUT_MS = 24 * 60 * 60_000;
 const COMPLETED_TURN_RECONCILIATION_TIMEOUT_MS = 5_000;
@@ -561,65 +559,6 @@ export class CodexExternalThreadChangeCoalescer {
     for (const pending of this.#pending.values()) clearTimeout(pending.timer);
     this.#pending.clear();
   }
-}
-
-export function parseCodexRpcMessage(raw: string): RpcMessage | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw) as unknown;
-  } catch {
-    return null;
-  }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return null;
-  }
-  const message = parsed as Record<string, unknown>;
-  if (
-    message.id !== undefined &&
-    typeof message.id !== "number" &&
-    typeof message.id !== "string"
-  ) {
-    return null;
-  }
-  if (message.method !== undefined && typeof message.method !== "string") {
-    return null;
-  }
-  if (message.id === undefined && message.method === undefined) {
-    return null;
-  }
-  if (message.error !== undefined) {
-    if (
-      !message.error ||
-      typeof message.error !== "object" ||
-      Array.isArray(message.error)
-    ) {
-      return null;
-    }
-    const error = message.error as Record<string, unknown>;
-    if (typeof error.code !== "number" || typeof error.message !== "string") {
-      return null;
-    }
-  }
-  return parsed as RpcMessage;
-}
-
-export function codexEndpointFromLine(line: string): string | null {
-  const plainText = stripVTControlCharacters(line);
-  return /^\s*listening on:\s+(ws:\/\/\S+)\s*$/.exec(plainText)?.[1] ?? null;
-}
-
-export function codexStartupExitMessage(
-  code: number | null,
-  signal: NodeJS.Signals | null,
-  stderrLines: readonly string[],
-): string {
-  const status = signal ?? `code ${String(code)}`;
-  const diagnostic = stderrLines
-    .map((line) => stripVTControlCharacters(line).trim())
-    .filter(Boolean)
-    .at(-1)
-    ?.slice(0, 2_000);
-  return `Codex app-server exited before listening (${status})${diagnostic ? `: ${diagnostic}` : "."}`;
 }
 
 export function isInvalidCompactionBlobError(error: unknown): boolean {
@@ -1008,17 +947,6 @@ export function activeAgentContextWindow(
     usageUpdatedAtMs: active.contextUsageUpdatedAtMs,
     compactionScheduled: active.contextCompactionRequestedAtMs !== null,
   };
-}
-
-/** A received native JSON-RPC rejection, distinct from uncertain transport loss. */
-export class CodexNativeRpcError extends Error {
-  constructor(
-    message: string,
-    readonly nativeError: { code: number; message: string; data?: unknown },
-    readonly requestMethod?: string,
-  ) {
-    super(message);
-  }
 }
 
 export function codexReasoningEffortParams(
@@ -1822,14 +1750,6 @@ function codexProviderLogContext(provider: RuntimeProvider) {
   };
 }
 
-function codexDiagnosticClass(line: string): string {
-  const normalized = line.toLowerCase();
-  if (normalized.includes("panic")) return "panic";
-  if (normalized.includes("error")) return "error";
-  if (normalized.includes("warn")) return "warning";
-  return "diagnostic";
-}
-
 const CANTRIP_CAPACITY_RETRY_DELAYS_MS = [10_000, 20_000, 40_000] as const;
 
 export function cantripCapacityRetryDelayMs(attempt: number): number | null {
@@ -2149,10 +2069,15 @@ export class CodexAppServer implements CodexRuntime {
     string,
     { generation: string; profileId: string }
   >();
-  readonly #pending = new Map<number, PendingRpcRequest>();
-  // Retain timed-out IDs until their response arrives so late private labels
-  // cannot fall through into the unmatched-response diagnostic buffer.
-  readonly #privateInferenceRequests = new Set<number>();
+  readonly #rpcRequests = new CodexRpcRequests({
+    send: (message) => this.send(message),
+    runtimeId: () => this.#runtimeId,
+    secrets: () => this.#diagnosticSecrets,
+    isZai: () => this.#runtimeIsZai,
+    recordDiagnostic: (diagnostic, warning) =>
+      this.recordDiagnostic(diagnostic, warning),
+  });
+
   readonly #pendingAgentInteractions = new Map<
     string,
     NativePendingAgentInteraction
@@ -2175,7 +2100,7 @@ export class CodexAppServer implements CodexRuntime {
   #runtimeId: string | null = null;
   #runtimeStartedAtMs: number | null = null;
   #nextDiagnosticSequence = 1;
-  #nextId = 1;
+
   #socket: WebSocket | null = null;
   #starting: Promise<void> | null = null;
 
@@ -5294,7 +5219,7 @@ export class CodexAppServer implements CodexRuntime {
       runtimeId: this.#runtimeId,
       counts: {
         activeTurns: this.#activeTurns.size,
-        pendingRequests: this.#pending.size,
+        pendingRequests: this.#rpcRequests.pendingCount,
       },
     });
     this.handleExit(new Error("Codex app-server stopped."));
@@ -7297,66 +7222,13 @@ export class CodexAppServer implements CodexRuntime {
       ...codexProviderLogContext(runtimeProvider),
     });
 
-    const stdoutLines = readline.createInterface({ input: child.stdout });
-    const stderrLines = readline.createInterface({ input: child.stderr });
-    const startupStderr: string[] = [];
-    let startupComplete = false;
-    stderrLines.on("line", (line) => {
-      if (line.trimStart().startsWith("listening on:")) return;
-      const diagnosticClass = codexDiagnosticClass(line);
-      workerLogger.rateLimited(
-        `codex-subprocess:${processRuntimeId ?? "starting"}:${diagnosticClass}`,
-        diagnosticClass === "panic" || diagnosticClass === "error"
-          ? "warn"
-          : "debug",
-        "Codex app-server emitted a subprocess diagnostic",
-        {
-          event: "codex.runtime.diagnostic",
-          subsystem: "codex",
-          operation: "subprocess-stderr",
-          status: diagnosticClass,
-          runtimeId: processRuntimeId,
-          diagnosticClass,
-        },
-      );
-      if (!startupComplete) {
-        startupStderr.push(
-          readableCodexProviderError(line, {
-            secrets: this.#diagnosticSecrets,
-            zai: this.#runtimeIsZai,
-          }),
-        );
-        if (startupStderr.length > 20) startupStderr.shift();
-      }
-    });
-    const remoteUrl = await new Promise<string>((resolve, reject) => {
-      const timeout = setTimeout(
-        () =>
-          reject(
-            new Error(
-              "Codex app-server did not announce an endpoint within 120 seconds.",
-            ),
-          ),
-        CODEX_STARTUP_TIMEOUT_MS,
-      );
-      const inspectLine = (line: string) => {
-        const endpoint = codexEndpointFromLine(line);
-        if (endpoint) {
-          startupComplete = true;
-          clearTimeout(timeout);
-          resolve(endpoint);
-        }
-      };
-      stdoutLines.on("line", inspectLine);
-      stderrLines.on("line", inspectLine);
-      child.once("error", (error) => {
-        clearTimeout(timeout);
-        reject(error);
-      });
-      child.once("exit", (code, signal) => {
-        clearTimeout(timeout);
-        reject(new Error(codexStartupExitMessage(code, signal, startupStderr)));
-      });
+    const remoteUrl = await readCodexProcessEndpoint(child, {
+      runtimeId: processRuntimeId,
+      readableError: (line) =>
+        readableCodexProviderError(line, {
+          secrets: this.#diagnosticSecrets,
+          zai: this.#runtimeIsZai,
+        }),
     });
     this.#remoteUrl = remoteUrl;
     workerLogger.event("debug", "Codex app-server endpoint announced", {
@@ -7367,26 +7239,7 @@ export class CodexAppServer implements CodexRuntime {
       runtimeId: processRuntimeId,
       durationMs: Date.now() - startedAtMs,
     });
-    const socket = new WebSocket(remoteUrl);
-    await new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(
-        () =>
-          reject(
-            new Error(
-              "Codex app-server WebSocket did not connect within 120 seconds.",
-            ),
-          ),
-        CODEX_STARTUP_TIMEOUT_MS,
-      );
-      socket.once("open", () => {
-        clearTimeout(timeout);
-        resolve();
-      });
-      socket.once("error", (error) => {
-        clearTimeout(timeout);
-        reject(error);
-      });
-    });
+    const socket = await openCodexWebSocket(remoteUrl);
     this.#socket = socket;
     this.#nativeTransportGeneration = randomUUID();
     this.#managedModelInventoryProvider = provider;
@@ -7433,7 +7286,7 @@ export class CodexAppServer implements CodexRuntime {
         durationMs: Date.now() - processStartedAtMs,
         counts: {
           activeTurns: this.#activeTurns.size,
-          pendingRequests: this.#pending.size,
+          pendingRequests: this.#rpcRequests.pendingCount,
         },
       });
       this.handleExit(new Error("Codex app-server WebSocket closed."));
@@ -7484,7 +7337,7 @@ export class CodexAppServer implements CodexRuntime {
           durationMs: Date.now() - processStartedAtMs,
           counts: {
             activeTurns: this.#activeTurns.size,
-            pendingRequests: this.#pending.size,
+            pendingRequests: this.#rpcRequests.pendingCount,
           },
         },
       );
@@ -7611,37 +7464,7 @@ export class CodexAppServer implements CodexRuntime {
         ),
       );
     }
-    const id = this.#nextId;
-    this.#nextId += 1;
-    if (method === "cantrip/inference") this.#privateInferenceRequests.add(id);
-    return new Promise((resolve, reject) => {
-      const startedAtMs = Date.now();
-      const timeout = setTimeout(() => {
-        this.#pending.delete(id);
-        workerLogger.rateLimited(
-          `codex-rpc-timeout:${method}`,
-          "warn",
-          "Codex app-server request timed out",
-          {
-            event: "codex.rpc.timeout",
-            subsystem: "codex",
-            operation: method,
-            status: "timed-out",
-            runtimeId: this.#runtimeId,
-            durationMs: Date.now() - startedAtMs,
-          },
-        );
-        reject(new Error(`Codex request ${method} timed out.`));
-      }, timeoutMs);
-      this.#pending.set(id, {
-        method,
-        reject,
-        resolve,
-        startedAtMs,
-        timeout,
-      });
-      this.send({ id, method, params });
-    });
+    return this.#rpcRequests.request(method, params, timeoutMs);
   }
 
   private methodAvailable(method: string): boolean {
@@ -7689,16 +7512,7 @@ export class CodexAppServer implements CodexRuntime {
       return;
     }
 
-    const diagnosticPayload =
-      !message.method &&
-      message.id !== undefined &&
-      this.#privateInferenceRequests.delete(Number(message.id))
-        ? {
-            id: message.id,
-            privateInference: true,
-            status: message.error ? "failed" : "completed",
-          }
-        : message;
+    const diagnosticPayload = this.#rpcRequests.diagnosticPayload(message);
     const diagnosticId = this.recordDiagnostic({
       at: new Date().toISOString(),
       direction: "from-runtime",
@@ -7707,68 +7521,7 @@ export class CodexAppServer implements CodexRuntime {
       payload: diagnosticPayload,
     });
 
-    if (message.id !== undefined && !message.method) {
-      const id = Number(message.id);
-      const pending = this.#pending.get(id);
-      if (!pending) {
-        this.recordDiagnostic(
-          {
-            at: new Date().toISOString(),
-            direction: "from-runtime",
-            kind: "unmatched-response",
-            method: null,
-            payload: diagnosticPayload,
-          },
-          `Unmatched App Server response ${String(message.id)}`,
-        );
-        return;
-      }
-      this.#pending.delete(id);
-      clearTimeout(pending.timeout);
-      if (message.error) {
-        workerLogger.rateLimited(
-          `codex-rpc-failed:${pending.method}:${message.error.code}`,
-          "warn",
-          "Codex app-server request failed",
-          {
-            event: "codex.rpc.failed",
-            subsystem: "codex",
-            operation: pending.method,
-            status: "failed",
-            runtimeId: this.#runtimeId,
-            durationMs: Date.now() - pending.startedAtMs,
-            reasonCode: `rpc-${message.error.code}`,
-          },
-        );
-        pending.reject(
-          new CodexNativeRpcError(
-            readableCodexProviderError(message.error.message, {
-              secrets: this.#diagnosticSecrets,
-              zai: this.#runtimeIsZai,
-            }),
-            message.error,
-            pending.method,
-          ),
-        );
-      } else {
-        workerLogger.sampled(
-          `codex-rpc-completed:${pending.method}`,
-          100,
-          "trace",
-          "Codex app-server request completed",
-          {
-            event: "codex.rpc.completed",
-            subsystem: "codex",
-            operation: pending.method,
-            status: "completed",
-            runtimeId: this.#runtimeId,
-            durationMs: Date.now() - pending.startedAtMs,
-          },
-        );
-        pending.resolve(message.result);
-      }
-      return;
-    }
+    if (this.#rpcRequests.handleResponse(message, diagnosticPayload)) return;
 
     if (message.id !== undefined && message.method) {
       void this.handleServerRequest(message).catch((error) => {
@@ -9752,12 +9505,7 @@ export class CodexAppServer implements CodexRuntime {
     this.#threadPreparationVersions.clear();
     for (const execution of this.#rootExecutionsByActive.values())
       this.abortComputerUseExecution(execution);
-    for (const pending of this.#pending.values()) {
-      clearTimeout(pending.timeout);
-      pending.reject(error);
-    }
-    this.#pending.clear();
-    this.#privateInferenceRequests.clear();
+    this.#rpcRequests.rejectAll(error);
     for (const pending of [...this.#pendingAgentInteractions.values()]) {
       this.releaseAgentInteraction(pending);
       pending.active.onInteractionCleared?.(pending.request.requestKey);

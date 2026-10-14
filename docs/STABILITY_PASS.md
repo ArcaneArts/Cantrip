@@ -377,8 +377,64 @@ connection-path expectation: the actual argument was the correctly resolved
 Windows absolute path. A fresh isolated follow-up uses one native temporary
 connection filename for input and both exact expectations. Credential rotation,
 reload ordering and binding-generation assertions remain unchanged. Command
-handler CI passed on all three OSs; native CUA/PostgreSQL CI is still running.
+handler and native CUA/PostgreSQL CI passed on all three OSs. The path fixture
+follow-up merged through [#2115](https://github.com/ArcaneArts/Cantrip/pull/2115)
+as `7f9151fe1`; its runtime matrix passed on every OS. Windows command CI hit an
+unchanged PowerShell replay marker timeout and cleanup failure, then passed on
+one failed-job retry. The reproducible entry point, uncertainty and automated
+acceptance remain tracked in [#2116](https://github.com/ArcaneArts/Cantrip/issues/2116).
+Primary synchronized and both owned worktrees were archived.
 
 RPC/process transport, turn lifecycle/cancellation, subagent reconciliation, and
 cleanly separable interaction/authentication ownership are the remaining M7
 slices. No new product behavior or performance improvement is claimed by 7A.
+
+## Milestone 7B: RPC and process transport
+
+Based on merged #2115 (`7f9151fe1`). A dedicated request owner now holds pending
+RPC calls, monotonically allocated IDs, private-inference response classification,
+timeouts and rejection on exit. Narrow typed callbacks obtain current runtime
+identity, diagnostic secrets and provider flags. The orchestrator retains method
+compatibility checks, authentication, native generation/catalog state and the
+existing child/socket fences.
+
+Protocol parsing/native RPC errors and process endpoint/WebSocket I/O now live
+in separate modules. Startup still installs the child before awaits, accepts an
+endpoint on either output stream, publishes it before WebSocket connection, and
+installs the socket/native generation before initialization. Helpers return the
+original startup promises directly. Listener order, timeouts, bounded diagnostics
+and the distinct socket-close/process-exit cleanup paths remain intact.
+
+All 107 facade export names are preserved. Supporting AST comparison finds all
+72 other top-level declarations and 171 of 176 class methods unchanged; the five
+changed methods delegate RPC/process work or report its pending count. The
+extracted module graph has no runtime cycle. The entry point shrinks from
+9,791 to 9,539 lines; no performance gain is claimed.
+
+Eight correlation characterizations cover concurrent reverse-order/string IDs,
+native error identity/details, private response redaction (including a late
+response after timeout), unmatched/duplicate responses, deadline handling,
+pending-call cancellation and monotonic IDs across close, and compatibility
+rejection before allocation. Two process cases exercise exit before listening
+and an endpoint announced on stderr. All 17 tests in the two affected fixtures
+pass against both original and extracted implementations; strict test types
+pass. Runtime CI includes the new correlation fixture independently of types.
+
+Validation:
+
+- Full worker suite: 2,627 passed, 133 existing skips across 299 files.
+- Pinned native runtime: 96 passed across eight files, using disposable homes
+  and local synthetic providers; computer-input cases were not enabled.
+- Actual bundled-editor browser: cold usability, retained reopening and
+  transient renewal passed with typing/save/worker-file assertions. One bounded
+  onboarding and mode retry each was needed (#2096/#2102). Runner exit zero,
+  zero sockets and no remaining fixture processes. Existing shutdown limits
+  #2098/#2099 remain; the worker used the bounded kill fallback and the server
+  exited one while retiring the fixture.
+- Worker source and strict test types pass; diff and formatting checks pass.
+  The standard check with Command Line Tools reached the same server baseline:
+  1,409 passed, 74 failed, 70 skipped. All 81 failure/suite names match M7A/M6
+  (#2106); no new failure name appeared. The full standard check is not green.
+
+Turn lifecycle/cancellation, subagent ownership/reconciliation and clean
+interaction/authentication boundaries remain for later M7 slices.
