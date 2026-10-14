@@ -3081,7 +3081,7 @@ async function attachmentContentRepositoryBoundaryAudit() {
     resolve(serverSourcePath, "chat-relocations/executor.ts"),
     resolve(serverSourcePath, "chats/execution-helpers.ts"),
     resolve(repositoryRoot, "packages/protocol/src/worker-command-surfaces.ts"),
-    resolve(repositoryRoot, "cantrip_worker/src/index.ts"),
+    resolve(repositoryRoot, "cantrip_worker/src/commands/attachment.ts"),
   ];
   const [
     schemaText,

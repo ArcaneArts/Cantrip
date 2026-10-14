@@ -9,8 +9,8 @@ Tests run independently of metadata audits. A skipped check is never a pass.
 | 1. Lease renewal and reconnect scheduling | Merged      | `codex/stability-lease-recovery` / [#2092](https://github.com/ArcaneArts/Cantrip/pull/2092) | Three regressions fixed; 135 app + 25 worker tests pass; Windows/macOS/Linux CI passed.             |
 | 2. Shared editor lifecycle and readiness  | Merged      | [#2093](https://github.com/ArcaneArts/Cantrip/pull/2093)                                    | Late readiness, retained frames, startup stages, and cancellation.                                  |
 | 3. Browser recovery harness               | Merged      | [#2107](https://github.com/ArcaneArts/Cantrip/pull/2107)                                    | Actual bundled editor, isolated services, automated failure injection and usable-editor assertions. |
-| 4. Measured editor loading                | In progress | —                                                                                           | Comparable cold/warm/recovery measurements; implement only demonstrated improvements.               |
-| 5. Worker command dispatch                | Not started | —                                                                                           | Typed feature handlers with explicit ownership and dependencies.                                    |
+| 4. Measured editor loading                | Merged      | [#2108](https://github.com/ArcaneArts/Cantrip/pull/2108)                                    | Comparable cold/warm/recovery measurements; implement only demonstrated improvements.               |
+| 5. Worker command dispatch                | In progress | `codex/stability-worker-dispatch`                                                           | Typed feature handlers with explicit ownership and dependencies.                                    |
 | 6. App API modularization                 | Not started | —                                                                                           | Domain clients with compatible public exports and shared security infrastructure.                   |
 | 7. Codex runtime decomposition            | Not started | —                                                                                           | Separate transport, turn lifecycle, subagents, normalization, and interactions incrementally.       |
 
@@ -213,3 +213,80 @@ acknowledgement test supplied a drive-less file URI. The fixture now uses a
 packaged-style `.cmd` launcher on Windows while retaining its mutable JavaScript
 source; the acknowledgement fixture constructs native file URIs. Production
 launching, URI validation, and authority checks are unchanged.
+
+## Milestone 5
+
+Based on merged M4 (`c9f2e466a`). M4's final harness contracts and stability
+recovery CI passed on Windows, macOS, and Linux. Its owned services stopped and
+217 evidence files were preserved before archiving its worktree.
+
+Extracted 206 commands into 14 typed feature handlers under
+`cantrip_worker/src/commands`: Code, WorkerLink/direct capabilities, GitHub,
+Git, workspace discovery, worktrees, projects, attachments, external history,
+remote surfaces, diagnostics, Explorer, skills, and customization. A small
+runtime callback type describes the existing native runtime factory. The entry
+point retains explicit command routing and owns service construction, startup,
+shutdown, provider decryption, native chat/terminal orchestration, and the
+protected repository operation authorization hub. No command registry or new
+runtime framework is introduced.
+
+The entry point shrank from 8,904 to 7,338 lines. Mutable settings/profile and
+CodeGraph supervisor state is accessed through getters, preserving reads after
+awaits. A one-off AST comparison confirmed all 206 extracted case bodies match
+the original except those live-state getters; this is supporting inspection,
+not a substitute for runtime tests.
+
+Validation so far:
+
+- Feature suites: 161 passed, one existing platform skip across 18 files.
+- New command characterization/integration coverage: 19 passed, including
+  incarnation stop claims, endpoint-close failure propagation, authorization
+  changes during awaits, route acceptance/revocation ordering, direct worker
+  binding and actual renewal expiry, and observation cleanup after removal.
+- Real Git discovery/status and managed worktree create/list/remove pass.
+  Encrypted attachment upload/download uses the real crypto and store; a failed
+  store write still clears decrypted bytes.
+- Worker source typecheck and a standalone strict typecheck of the new test
+  files passed. Formatting and diff checks passed.
+- Real bundled-editor browser regression: cold usable editor, retained reopening,
+  and transient renewal all passed. The runner typed, saved and verified a real
+  worker-owned file. Existing onboarding/mode races required one bounded retry
+  each (#2096/#2102); they remain tracked. Owned fixture cleanup reported zero
+  sockets; existing worker/server shutdown behavior (#2098/#2099) remains.
+- The attachment boundary audit now reads the actual extracted attachment
+  handler. The first standard check exposed this stale source location; runtime
+  suites and browser checks ran independently. The complete check retry reached the full server suite: 1,409 passed,
+  74 failed, 70 skipped. Every failed test/suite name also appears on unchanged
+  main; server/protocol sources are unchanged from the compared baseline.
+  The full check remains red under #2106. CUA protocol/worker/integration/app
+  groups passed (136 / 732 / 244 / 313, plus 25 fixture contracts; three skips).
+
+A dedicated Windows/macOS/Linux command-handler workflow runs source types and
+representative behavior suites independently. Browser results above are local
+darwin-arm64 results against the verified `ba05010e28f2` bundled Code build.
+
+The new three-OS feature suite exposed existing Windows fixture assumptions.
+Registered fake GitHub/Git Node executables now launch directly through Node
+on Windows; the shell fixture runs through Git Bash; disposable CI runners use consistent Git
+checkout line endings. Other child processes and production code
+are unchanged. Fixtures use the host PATH delimiter, account for Git checkout
+line endings, resolve drive-qualified skills paths, honor the export test's
+explicit Darwin path semantics, and select PowerShell for PowerShell-specific
+terminal inputs. A second run passed 148 tests on Windows, including all 19 new tests. Remaining
+GitHub argument/latency problems were traced to launching Node fixtures through
+Git Bash; direct Node invocation preserves arguments and removes that overhead.
+Terminal cleanup retries actual EBUSY deletion failures while the killed PTY
+releases its working directory, with a bounded retry limit. The Windows rerun
+includes the same tests and repaired fixtures. The first native CUA workflow
+passed PostgreSQL authority and all three OS jobs.
+
+The third Windows run passed 152 tests, with one long PR lifecycle fixture
+exceeding its 15-second default while executing many real local subprocesses.
+That Windows-only scenario receives a bounded 60-second test budget; all
+lifecycle authorization, confirmation, changed-head and mutation assertions
+remain. Other test deadlines and production timeouts are unchanged.
+
+The fourth Windows run passed the complete lifecycle scenario and every
+behavioral assertion, but one repository-stat fixture cleanup encountered a
+transient EBUSY on its disposable directory. That fixture now retries actual
+removal failures with the same bounded limit used for terminal cleanup.

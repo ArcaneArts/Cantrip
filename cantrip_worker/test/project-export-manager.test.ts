@@ -123,7 +123,7 @@ describe("local Codex project export adapter", () => {
 
     expect(result).toEqual({ threadId: "thread-one" });
     expect(started).toEqual(["thread-one"]);
-    expect(openedHomes).toEqual([path.join(homeDirectory, ".codex")]);
+    expect(openedHomes).toEqual([path.posix.join(homeDirectory, ".codex")]);
     expect(closed).toBe(true);
     expect(requests.map(({ method }) => method)).toEqual([
       "initialize",
