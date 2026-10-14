@@ -370,6 +370,15 @@ subagent ownership, cancellation, preparation, interactions and history suites
 independently of the typecheck. The CUA workflow now follows the extracted
 Codex module tree as well as the original entry point.
 
+M7A merged through #2114 as `fbea68284`; Primary synchronized and the owned
+worktree was archived after preserving 41 evidence files. Runtime CI passed on
+Linux/macOS. Windows passed 258 tests and failed one pre-existing fixture's Unix
+connection-path expectation: the actual argument was the correctly resolved
+Windows absolute path. A fresh isolated follow-up uses one native temporary
+connection filename for input and both exact expectations. Credential rotation,
+reload ordering and binding-generation assertions remain unchanged. Command
+handler CI passed on all three OSs; native CUA/PostgreSQL CI is still running.
+
 RPC/process transport, turn lifecycle/cancellation, subagent reconciliation, and
 cleanly separable interaction/authentication ownership are the remaining M7
 slices. No new product behavior or performance improvement is claimed by 7A.

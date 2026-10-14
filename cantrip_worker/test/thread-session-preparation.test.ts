@@ -935,12 +935,17 @@ describe("thread session preparation", () => {
 
   it("reloads managed MCP hosts after credential renewal at a stable connection path", async () => {
     const f = fixture();
+    const connectionFile = path.join(
+      tmpdir(),
+      "stable-chat",
+      "connection.json",
+    );
     const input = (generation: string) => ({
       ...options,
       mcpServers: [
         managedCuaMcpServer(
           { command: "node", arguments: ["cua-stdio.js"] },
-          "/stable/chat/connection.json",
+          connectionFile,
           generation,
         ),
       ],
@@ -960,11 +965,7 @@ describe("thread session preparation", () => {
       config: {
         mcp_servers: {
           cantrip_cua: {
-            args: [
-              "cua-stdio.js",
-              "--connection",
-              "/stable/chat/connection.json",
-            ],
+            args: ["cua-stdio.js", "--connection", connectionFile],
             env: { CANTRIP_MCP_CONNECTION_GENERATION: "binding-before-expiry" },
           },
         },
@@ -974,11 +975,7 @@ describe("thread session preparation", () => {
       config: {
         mcp_servers: {
           cantrip_cua: {
-            args: [
-              "cua-stdio.js",
-              "--connection",
-              "/stable/chat/connection.json",
-            ],
+            args: ["cua-stdio.js", "--connection", connectionFile],
             env: { CANTRIP_MCP_CONNECTION_GENERATION: "binding-after-expiry" },
           },
         },
