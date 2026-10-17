@@ -823,3 +823,45 @@ recovery, while successful launches elsewhere in that same run took 509–1,520
 ms. This third behavior fixture now uses the same normal 3,000 ms startup
 budget. The intentional deadline regression and other fixture budgets remain
 unchanged. Full local and platform suites are repeated for the corrected head.
+
+Final #2113 outcome: PR #2125 merged as `cb2c91faa`; the issue closed
+automatically. All nine jobs passed on final head `1d354081b` in the
+[command](https://github.com/ArcaneArts/Cantrip/actions/runs/39069219934),
+[editor recovery](https://github.com/ArcaneArts/Cantrip/actions/runs/39069219907)
+and [runtime](https://github.com/ArcaneArts/Cantrip/actions/runs/39069219968)
+workflows. Windows passed all 92 supervisor/bridge tests and 83 app contract
+tests, including both startup regression cases and all three healthy-recovery
+fixtures. The local complete supervisor suite passed 77 tests; the complete
+worker suite passed 2,632 with 133 existing skips. The standard check retained
+the same 78 failed server test/suite labels: 1,412 passed, 71 failed and 70
+skipped. Primary was synchronized and the owned worktree archived after
+preserving evidence.
+
+### #2111: exclusive capture persistence before evidence acknowledgement
+
+Issue: [#2111](https://github.com/ArcaneArts/Cantrip/issues/2111), on
+`codex/issue-2111-evidence-persistence`.
+
+A controlled filesystem/client interleaving reproduces the reported `ENOENT`
+at the original `persist` read. Capture put its event in the retry queue before
+its first immutable write completed. An already running pump could write the
+same event, publish it, receive acknowledgement and remove it while capture
+resumed from `EEXIST` and tried to read it. The reproducer uses actual immutable
+file creation, acknowledgement and removal; no timing fallback makes it pass.
+
+Capture now enters the retry queue only after persistence fails. The queue
+retains the exact original event and ciphertext. Active capture remains tracked
+by the existing write set, which shutdown awaits. Strict duplicate comparisons,
+encryption ownership checks, acknowledgement and durable permission recovery
+remain intact.
+
+The regression proves one immutable write, one publication and actual removal
+without an error. Additional cases cover a failed write's byte-identical retry,
+genuinely missing/malformed/changed committed records and owner/server changes
+during encryption. Missing or corrupt committed evidence still rejects and
+never publishes. All 23 delivery and permission-recovery tests pass locally;
+strict compilation of the changed fixture also passes. The existing runtime
+workflow now runs both suites on Linux, macOS and Windows and triggers on the
+affected production files. Full worker and standard repository checks run
+independently; their results and platform/merge evidence are recorded in this
+issue's PR and under `~/.codex/issue-fix-pass/20261017/`.

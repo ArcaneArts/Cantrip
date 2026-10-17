@@ -247,10 +247,16 @@ export class NativeSettingsDelivery {
       recoveryBindingId,
     );
     const eventId = event.eventId;
-    // Keep the exact ciphertext/event identity if local publication fails.
-    this.pending.set(eventId, { event, directory });
     try {
-      await this.persist(event, directory);
+      try {
+        await this.persist(event, directory);
+      } catch (error) {
+        // Retry only failed writes. An active capture must not race the pump's
+        // persistence and acknowledged removal of the same immutable event.
+        // Retain the exact ciphertext/event identity for a later attempt.
+        this.pending.set(eventId, { event, directory });
+        throw error;
+      }
       if (kind === "applied" || kind === "rejected") {
         const filename = path.join(directory, this.marker(scope));
         let retainedPermission = false;
