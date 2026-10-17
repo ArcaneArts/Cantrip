@@ -692,6 +692,10 @@ Validation on `codex/issue-2095-cli-routing`:
 
 ### #2118: Windows model-configuration initialization budget
 
+Implementation: [#2123](https://github.com/ArcaneArts/Cantrip/pull/2123), on
+`codex/issue-2118-db-fixture-budget`. The PR records platform validation and
+merge status.
+
 The fixture, database connection implementation, migrations and lockfile on
 base `eeca0beab` match the files in the failing Windows
 [run 38604558879](https://github.com/ArcaneArts/Cantrip/actions/runs/38604558879).
@@ -709,6 +713,6 @@ existing native three-platform and PostgreSQL jobs remain required evidence
 before this issue is closed.
 
 Three fresh local runs pass both assertions each time, with measured database
-startup of 2,085, 2,089 and 2,215 ms. Formatting and diff checks pass. The broader
-repository check and platform acceptance are in progress; this issue remains
-open until their outcomes are recorded.
+startup of 2,085, 2,089 and 2,215 ms. Formatting and diff checks pass. Broader
+repository and platform outcomes are recorded in the linked PR and preserved
+with the issue evidence under `~/.codex/issue-fix-pass/20261017/`.
