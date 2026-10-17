@@ -66,7 +66,9 @@ async function availablePort() {
 }
 
 /** Runs production entrypoints with state and browser origins owned by this run. */
-export async function startEditorRecoveryFixture() {
+export async function startEditorRecoveryFixture({
+  requireExplicitBootstrapRefresh = false,
+} = {}) {
   const runId = randomUUID();
   const directory = path.join(root, ".qa", `editor-${runId}`);
   await mkdir(directory, { recursive: true, mode: 0o700 });
@@ -104,6 +106,25 @@ export async function startEditorRecoveryFixture() {
   let fixture;
   try {
     proxy = http.createServer((request, response) => {
+      if (
+        request.method === "POST" &&
+        /^\/api\/workers\/[^/]+\/encryption\/refresh(?:\?|$)/u.test(request.url)
+      ) {
+        if (requireExplicitBootstrapRefresh) event("fault.bootstrap-released");
+        requireExplicitBootstrapRefresh = false;
+      }
+      if (
+        requireExplicitBootstrapRefresh &&
+        request.method === "POST" &&
+        request.url === "/api/internal/workers/encryption/bootstrap"
+      ) {
+        event("fault.bootstrap-unavailable");
+        response.writeHead(503, { "content-type": "application/json" });
+        response.end(
+          JSON.stringify({ error: "Injected initial QA bootstrap outage" }),
+        );
+        return;
+      }
       if (
         faults.rejectSessionCreates &&
         request.method === "POST" &&

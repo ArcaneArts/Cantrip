@@ -105,6 +105,7 @@ function workerPrincipal(
 
 export async function authorizeWorkerEncryption(input: {
   api?: WorkerGrantApi;
+  assertCurrent?: () => void;
   components: WorkerEncryptionComponentScope[];
   identity: ClientEncryptionIdentity;
   keyRevision?: number;
@@ -121,6 +122,7 @@ export async function authorizeWorkerEncryption(input: {
     ),
   ];
   let principal = workerPrincipal(await api.listPrincipals(), input.workerId);
+  input.assertCurrent?.();
   if (!principal) {
     throw new ClientEncryptionError(
       "principal-unavailable",
@@ -131,9 +133,11 @@ export async function authorizeWorkerEncryption(input: {
     try {
       principal = await api.approvePrincipal(principal.id, principal.revision);
     } catch {
+      input.assertCurrent?.();
       principal = workerPrincipal(await api.listPrincipals(), input.workerId);
     }
   }
+  input.assertCurrent?.();
   if (!principal || principal.state !== "approved") {
     throw new ClientEncryptionError(
       "principal-unavailable",
@@ -154,6 +158,7 @@ export async function authorizeWorkerEncryption(input: {
   }
   const keyRevision = input.keyRevision ?? snapshot.masterKeyRevision;
   const existingGrants = await api.listGrants(principal.id);
+  input.assertCurrent?.();
   const authorizations = pendingGrantMap(service, api);
   const created: EncryptionKeyGrant[] = [];
   for (const component of components) {
@@ -192,6 +197,7 @@ export async function authorizeWorkerEncryption(input: {
             keyRevision,
             workerPublicKey: principal.publicKey,
           });
+          input.assertCurrent?.();
           try {
             return await api.createGrant(principal.id, {
               component,
@@ -199,6 +205,7 @@ export async function authorizeWorkerEncryption(input: {
               wrappedKey,
             });
           } catch (error) {
+            input.assertCurrent?.();
             const concurrent = activeComponentGrant(
               await api.listGrants(principal.id),
               component,
@@ -220,6 +227,7 @@ export async function authorizeWorkerEncryption(input: {
       void authorization.then(clearAuthorization, clearAuthorization);
     }
     created.push(await authorization);
+    input.assertCurrent?.();
   }
   return created;
 }
