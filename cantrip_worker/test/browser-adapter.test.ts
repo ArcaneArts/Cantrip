@@ -296,8 +296,14 @@ describe("BrowserRemoteSurfaceAdapter", () => {
       const cdp = adapter.session(surfaceId)!;
       await eventually(
         async () =>
-          (await cdp.evaluate("document.activeElement?.id")) === "name",
+          (await cdp.evaluate("Boolean(document.querySelector('#name'))")) ===
+          true,
       );
+      // Keyboard assertions start at this field; a new headless window need
+      // not apply HTML autofocus before its target becomes active on every OS.
+      await cdp.command("Page.bringToFront");
+      await cdp.evaluate("document.querySelector('#name').focus()");
+      expect(await cdp.evaluate("document.activeElement?.id")).toBe("name");
       const send = async (message: unknown) =>
         session!.handleFrame(
           attachmentId,

@@ -1191,3 +1191,20 @@ Reproduce with `pnpm --filter @cantrip/worker exec vitest run
 test/browser-adapter.test.ts --maxWorkers=2` after building shared packages and
 installing Chromium. Local evidence is retained under
 `~/.codex/issue-fix-pass/20261017/2112-evidence/`.
+
+The full worker suite passed 2,664 tests with 133 existing skips, including the
+controlled restart case under the broader workload. The standard check reached
+1,418 server tests passed, 71 failed and 70 skipped: exactly the same 78 failed
+test/suite labels as #2102, with none added or removed. The remaining baseline
+is #2106, and the full check is not green.
+
+The first CI run passed eight of nine jobs. Linux and macOS each executed all
+17 browser tests successfully. Windows passed the new controlled recovery case
+in 2,657 ms and the existing multi-recovery case in 4,271 ms, but an older keyboard
+fixture failed while awaiting HTML autofocus before any keyboard assertion. That
+fixture now waits for its actual input element, brings the target forward and
+explicitly focuses its starting field. It still asserts the focused element and
+all streamed Enter, Space, form, editing and modifier behavior. The corrected
+17-test suite and strict fixture typecheck pass locally; final CI results are
+recorded in the issue PR. The original Windows failure log is retained with the
+evidence.
