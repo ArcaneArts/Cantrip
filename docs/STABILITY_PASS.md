@@ -1038,3 +1038,57 @@ Run the short cold-shutdown acceptance with
 after the documented native/Code/Chromium setup. Local evidence is retained under
 `~/.codex/issue-fix-pass/20261017/2099-evidence/`; recovery credentials and fixture
 control tokens are not published.
+
+Final #2099 delivery: [PR #2129](https://github.com/ArcaneArts/Cantrip/pull/2129)
+merged as `dd0929c1a` and closed the issue. All 13 CI jobs passed on the final
+head, including 38 Windows shutdown tests with 13 existing POSIX-only skips.
+The final full worker suite passed 2,663 tests with 133 existing skips. A second
+cold browser run exited naturally in 4,795 ms with all eight observed processes
+retired. The full server check reported 1,417 passed, 72 failed and 70 skipped:
+the previous 78 failed labels plus the already tracked DirectAttachmentCoordinator
+renewal timing recurrence. Its focused 28 tests passed on both unchanged main
+and the branch. This remains part of #2106, not a green full-check claim. Primary
+was synchronized and the owned worktree archived; private fixtures were retained
+outside the checkout.
+
+### #2096: await initial worker encryption bootstrap before folder creation
+
+Branch: `codex/issue-2096-folder-bootstrap`. The issue PR records final broad
+validation, platform results, merge and closure.
+
+The initial worker bootstrap can precede account encryption initialization and
+worker registration. Its error remains in the heartbeat even after browser
+onboarding finishes. The client previously rejected that cached status before
+attempting a real refresh. The controlled `folder-bootstrap` browser case
+reproduced the exact protected-connection error against the unmodified app.
+
+Folder authorization now refreshes unavailable worker encryption before creating
+scoped grants. If a post-grant command joins a heartbeat refresh that started
+before grant creation, it awaits that response and makes at most one additional
+refresh for the same principal and repository key. It never retries an actual
+refresh rejection, revocation or replaced principal, and does not issue another
+grant to repair stale readiness. Client encryption and session identity are
+checked across asynchronous registration, approval, grant discovery/wrapping and
+activation, including a sign-out/sign-in incarnation change.
+
+Twenty deterministic regressions cover initial registration ordering, a deferred
+pre-grant response, bounded unsuccessful refresh, terminal rejection/revocation,
+wrong key and replaced worker identity, owner/server/key/lock/session changes,
+late ready results, and reuse of an already-ready worker. Together with the
+existing grant and folder/API tests, 34 tests pass. App TypeScript checks pass.
+The independent full app suite passes all 474 files: 3,033 tests passed and
+three existing tests skipped.
+The App API domains workflow runs the new regression file and existing grant
+coverage on Linux, macOS and Windows.
+
+Run `pnpm qa:editor-recovery --case folder-bootstrap` after the documented
+native/Code/Chromium setup. The fixture returns a startup bootstrap outage until
+an explicit worker refresh is requested, then forwards the actual authenticated
+bootstrap unchanged. This case forbids the harness's folder resubmission
+fallback. The production app/server/worker and bundled editor completed real
+onboarding, one folder submission, typing, save and disk verification in 15,999 ms,
+with zero folder retries. The independent #2102 mode-selection fallback ran once.
+The worker exited naturally with code 0 in 1,013 ms and all eight observed owned
+processes retired. The ordinary editor loading deadline is unchanged. Local
+sanitized evidence is retained under `~/.codex/issue-fix-pass/20261017/2096-evidence/`;
+private recovery artifacts and fixture control tokens are not published.

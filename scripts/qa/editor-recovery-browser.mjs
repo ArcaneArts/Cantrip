@@ -14,7 +14,10 @@ const selectedCase =
   selectedCaseIndex < 0 ? null : process.argv[selectedCaseIndex + 1];
 const selectedCases = new Set(selectedCase?.split(",") ?? []);
 const seenCases = new Set();
-const fixture = await startEditorRecoveryFixture();
+const folderBootstrapCase = selectedCases.has("folder-bootstrap");
+const fixture = await startEditorRecoveryFixture({
+  requireExplicitBootstrapRefresh: folderBootstrapCase,
+});
 let browser;
 let context;
 try {
@@ -395,7 +398,10 @@ try {
     await delay(1_000);
   };
   try {
-    await run("cold-editor-usable", async () => {
+    const coldCaseName = folderBootstrapCase
+      ? "folder-bootstrap"
+      : "cold-editor-usable";
+    await run(coldCaseName, async () => {
       await page.goto(fixture.origin, { waitUntil: "domcontentloaded" });
       await page
         .getByRole("button", { name: "Save recovery file", exact: true })
@@ -469,10 +475,14 @@ try {
         } catch (error) {
           if (
             !(await page
-              .getByRole("dialog", { name: "Add folder project", exact: true })
+              .getByRole("dialog", {
+                name: "Add folder project",
+                exact: true,
+              })
               .isVisible())
           )
             break;
+          if (folderBootstrapCase) throw error;
           if (
             !(await page
               .getByText(
@@ -507,6 +517,16 @@ try {
           marker,
         ),
       );
+      if (folderBootstrapCase) {
+        const status = await inject({ type: "stats" });
+        assert.ok(status.eventCounts["fault.bootstrap-unavailable"] > 0);
+        assert.equal(status.eventCounts["fault.bootstrap-released"], 1);
+        assert.equal(
+          setupRetries,
+          0,
+          "Folder creation must succeed with one UI submission",
+        );
+      }
       return {
         marker,
         setupRetries,
