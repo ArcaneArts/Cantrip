@@ -761,3 +761,12 @@ fresh processes and stops on any failure. Repeated Windows execution and the
 existing three-platform command matrix must pass before closing this issue.
 Broader check results, repetition logs and CI evidence are retained under
 `~/.codex/issue-fix-pass/20261017/` and recorded in the linked PR.
+
+The first Windows acceptance run exposed a duplicate-close path introduced by
+shared teardown: the original test requested a PTY close immediately before
+`afterEach` requested it again, before its exit callback. Node-pty reported
+`AttachConsole failed` and Vitest lost the worker process. Redundant end-of-test
+closes are removed; existing `finally` paths use the same awaited cleanup.
+Assertions that explicitly exercise service closure retain their observed-exit
+wait. The failed run remains evidence, and the corrected head requires a fresh
+platform run before merge.

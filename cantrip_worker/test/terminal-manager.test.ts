@@ -203,7 +203,6 @@ describe("TerminalManager", () => {
     manager.detach("terminal-replay", "attachment-second-replay");
     await expect(reattached).resolves.toEqual({ status: "detached" });
     await expect(secondReattached).resolves.toEqual({ status: "detached" });
-    manager.close("terminal-replay");
   });
 
   it("closes every owned PTY before directory cleanup after an early fixture failure", async () => {
@@ -417,7 +416,6 @@ describe("TerminalManager", () => {
       manager.detach("terminal-recovery", "attachment-second");
       await expect(reattached).resolves.toEqual({ status: "detached" });
       await expect(second).resolves.toEqual({ status: "detached" });
-      manager.close("terminal-recovery");
     },
   );
 
@@ -458,7 +456,6 @@ describe("TerminalManager", () => {
 
       manager.detach("terminal-dimensions", "attachment-replay");
       await expect(reattached).resolves.toEqual({ status: "detached" });
-      manager.close("terminal-dimensions");
     },
   );
 
@@ -551,7 +548,6 @@ describe("TerminalManager", () => {
       .toContain("CANTRIP_PTY_RESTARTED");
     manager.input("terminal-1", "exit\r");
     await expect(restarted).resolves.toMatchObject({ status: "exited" });
-    manager.closeAll();
     const serializedLogs = JSON.stringify(
       readWorkerLogs({
         afterCursor,
@@ -602,7 +598,6 @@ describe("TerminalManager", () => {
       const stoppedOutput = output;
       await new Promise((resolve) => setTimeout(resolve, 150));
       expect(output).toBe(stoppedOutput);
-      manager.closeAll();
     },
   );
 
@@ -648,7 +643,6 @@ describe("TerminalManager", () => {
         .toBeGreaterThanOrEqual(2);
       manager.reconcileServices([]);
       await expect(exited).resolves.toMatchObject({ status: "exited" });
-      manager.closeAll();
     },
   );
 
@@ -716,7 +710,6 @@ describe("TerminalManager", () => {
       );
       expect(output).toContain(`CODEX_HOME:${codexHome}`);
       expect(output).toContain("API_KEY:test-key");
-      manager.closeAll();
     },
   );
 
@@ -815,7 +808,7 @@ describe("TerminalManager", () => {
           ),
         ).toThrow("Managed Codex attachment requires a bound native thread");
       } finally {
-        manager.closeAll();
+        await cleanupFixtures();
       }
     },
   );
@@ -876,7 +869,6 @@ describe("TerminalManager", () => {
       expect(output).toContain('model_provider="ollama"');
       expect(output).not.toContain("model_providers.cantrip_runtime");
       expect(output).toContain("OSS_BASE_URL:http://127.0.0.1:11434/v1");
-      manager.closeAll();
     },
   );
 });
@@ -958,7 +950,7 @@ it.skipIf(process.platform === "win32")(
           },
         ]);
     } finally {
-      manager.closeAll();
+      await cleanupFixtures();
     }
   },
 );
