@@ -1532,6 +1532,7 @@ describe.sequential("project execution placement API", () => {
         | "policy.list"
         | "policy.read"
         | "run.list"
+        | "run.start"
         | "target.list"
         | "target.show"
         | "explorer.list"
@@ -1652,38 +1653,83 @@ describe.sequential("project execution placement API", () => {
         },
       },
     });
-    const cliRunList = await cli("run.list");
-    expect(cliRunList.statusCode).toBe(200);
-    expect(
-      cantripCliCommandResultSchema.parse(cliRunList.json()).data,
-    ).toMatchObject({
-      operation: "list",
-      projectId,
-      inventory: { entries: [] },
+    // Definitions use the selected Primary replica, independently of the
+    // worker whose cwd supplied the CLI's project context.
+    for (const preferredWorkerId of ["worker-alpha", "worker-beta"] as const) {
+      await database.repository.updateProjectPreferredWorker(
+        LOCAL_USER_ID,
+        projectId,
+        preferredWorkerId,
+      );
+      for (const invokingWorkerId of ["worker-alpha", "worker-beta"] as const) {
+        const commandStart = routedCommands.length;
+        const response = await cli("run.list", {}, false, invokingWorkerId);
+        expect(response.statusCode, response.body).toBe(200);
+        expect(
+          cantripCliCommandResultSchema.parse(response.json()),
+        ).toMatchObject({
+          target: { kind: "project", projectId },
+          worktreeId:
+            preferredWorkerId === "worker-alpha"
+              ? alphaWorktreeId
+              : betaWorktreeId,
+          data: { operation: "list", projectId, inventory: { entries: [] } },
+        });
+        expect(routedCommands.slice(commandStart)).toEqual([
+          {
+            workerId: preferredWorkerId,
+            command: expect.objectContaining({
+              type: "project.run-configuration-definitions.list",
+              projectId,
+              sourcePath: path.join(dataDirectory, preferredWorkerId),
+            }),
+          },
+        ]);
+      }
+    }
+
+    const foreignProject = await database.repository.createGithubProject(
+      LOCAL_USER_ID,
+      {
+        workerId: "worker-alpha",
+        ...protectedProjectFields(),
+        repositoryBlindIndex: "R".repeat(43),
+        repositoryId: "cli-foreign-worktree",
+        nameWithOwner: "ArcaneArts/ForeignCliTarget",
+        url: "https://github.com/ArcaneArts/ForeignCliTarget",
+      },
+    );
+    await database.repository.completeGithubProjectSetup(
+      LOCAL_USER_ID,
+      foreignProject.id,
+      "worker-alpha",
+      {
+        path: path.join(dataDirectory, "foreign-cli-target"),
+        displayPath: "Foreign CLI target",
+        reused: false,
+        updated: false,
+        warning: null,
+      },
+    );
+    const foreignWorktrees = await database.repository.listProjectWorktrees(
+      LOCAL_USER_ID,
+      foreignProject.id,
+    );
+    expect(foreignWorktrees).toHaveLength(1);
+    const beforeRejectedRun = routedCommands.length;
+    const rejectedRun = await cli("run.start", {
+      configurationId: randomUUID(),
+      worktreeId: foreignWorktrees[0]!.id,
     });
-    expect(routedCommands).toContainEqual(
-      expect.objectContaining({
-        workerId: "worker-alpha",
-        command: expect.objectContaining({
-          type: "project.run-configuration-definitions.list",
-          sourcePath: path.join(dataDirectory, "worker-alpha"),
-        }),
-      }),
-    );
-    const betaRunList = await cli("run.list", {}, false, "worker-beta");
-    expect(betaRunList.statusCode).toBe(200);
+    expect(rejectedRun.statusCode, rejectedRun.body).toBe(404);
+    expect(rejectedRun.json()).toMatchObject({ code: "not-found" });
+    expect(routedCommands.slice(beforeRejectedRun)).toEqual([]);
     expect(
-      cantripCliCommandResultSchema.parse(betaRunList.json()).data,
-    ).toMatchObject({ projectId, inventory: { entries: [] } });
-    expect(routedCommands).toContainEqual(
-      expect.objectContaining({
-        workerId: "worker-alpha",
-        command: expect.objectContaining({
-          type: "project.run-configuration-definitions.list",
-          sourcePath: path.join(dataDirectory, "worker-alpha"),
-        }),
-      }),
-    );
+      await database.repository.listRunConfigurationRuntimes(
+        LOCAL_USER_ID,
+        projectId,
+      ),
+    ).toEqual([]);
     const hiddenPolicyRead = await cli("policy.read", {
       policyId: hiddenPolicy.id,
     });
