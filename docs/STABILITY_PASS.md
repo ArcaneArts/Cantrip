@@ -770,3 +770,42 @@ closes are removed; existing `finally` paths use the same awaited cleanup.
 Assertions that explicitly exercise service closure retain their observed-exit
 wait. The failed run remains evidence, and the corrected head requires a fresh
 platform run before merge.
+
+Final #2116 outcome: PR #2124 merged as `6b96708e6`; the issue closed
+automatically. The corrected head `f3cbaa9e9` passed both the
+[command](https://github.com/ArcaneArts/Cantrip/actions/runs/39067903070) and
+[Codex runtime](https://github.com/ArcaneArts/Cantrip/actions/runs/39067903094)
+matrices on all three platforms. Windows passed all 154 enabled command tests
+and three fresh terminal runs (three passed, eight existing platform skips in
+each). The final local fixture and three repetitions passed all 11 tests each.
+The full server check retained the same 78 failed test/suite labels as #2118:
+1,412 passed, 71 failed and 70 skipped. Node-pty's console enumeration helper
+still logs `AttachConsole failed` after console retirement; actual PTY exit,
+directory removal and runner completion pass. Primary was synchronized and the
+owned worktree archived after preserving all evidence.
+
+### #2113: failed-startup process identity before PID publication
+
+Implementation branch: `codex/issue-2113-startup-process`. The linked issue PR
+records validation and merge status.
+
+The unchanged supervisor suite passes all 76 tests on main. A fixture-only
+initialization barrier before PID publication deterministically reproduces the
+reported failure: the real startup operation fails after its 500 ms readiness
+deadline, but the old test waits two seconds for a PID file that cannot appear.
+The assertion therefore never verifies retirement or retry.
+
+The fixture now observes the actual guarded launch handle while calling through
+to the real process launcher. Both unhealthy HTTP and deliberately delayed
+initialization must report the original authenticated-readiness failure, emit
+an actual exit before rejection, leave the failed session unavailable and allow
+a healthy retry only after that exit. A real process liveness check verifies
+the failed PID is gone; on POSIX, its complete process group must also be gone.
+The delayed case proves PID publication did not happen. The healthy retry must
+use a different process and produce the exact spawn/exit/spawn order.
+
+No production launch, authorization or readiness deadline changes. Both focused
+cases pass locally. The complete supervisor and worker suites and standard
+repository check are run independently; the existing command workflow also
+executes both cases on Linux, macOS and Windows. Final counts and evidence are
+recorded in the issue PR and under `~/.codex/issue-fix-pass/20261017/`.

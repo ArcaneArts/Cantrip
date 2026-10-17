@@ -1,3 +1,4 @@
+import type { ChildProcess } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { EventEmitter } from "node:events";
 import {
@@ -27,6 +28,7 @@ import WebSocket from "ws";
 import { verifyCantripCodeInstallation } from "../src/code/installation.js";
 import { CodeDirectEndpointManager } from "../src/code/direct-endpoint.js";
 import { CodeWorkbenchBridge } from "../src/code/workbench-bridge.js";
+import * as processGuard from "../src/code/process-guard.js";
 import {
   CodeSupervisor,
   renameWorkspaceFile,
@@ -133,6 +135,7 @@ type FixtureOptions = Pick<
 > & {
   failStartup?: boolean;
   gateStartup?: boolean;
+  gateInitialization?: boolean;
   ignoreSigterm?: boolean;
   unhealthyStartup?: boolean;
 };
@@ -142,6 +145,7 @@ function codeServerSource(
     failStartup?: boolean;
     ignoreSigterm?: boolean;
     startupGate?: string | null;
+    initializationGate?: string | null;
     unhealthyStartup?: boolean;
   } = {},
 ): string {
@@ -153,6 +157,12 @@ const port = Number(process.argv[process.argv.indexOf("--port") + 1]);
 const connectionToken = process.argv[process.argv.indexOf("--connection-token") + 1];
 const userDataDir = process.argv[process.argv.indexOf("--user-data-dir") + 1];
 const startupGate = ${JSON.stringify(options.startupGate ?? null)};
+const initializationGate = ${JSON.stringify(options.initializationGate ?? null)};
+// Hold initialization before PID publication until the test releases this gate.
+if (initializationGate) {
+  const wait = new Int32Array(new SharedArrayBuffer(4));
+  while (!fs.existsSync(initializationGate)) Atomics.wait(wait, 0, 0, 10);
+}
 const failStartup = ${JSON.stringify(options.failStartup ?? false)};
 const ignoreSigterm = ${JSON.stringify(options.ignoreSigterm ?? false)};
 const unhealthyStartup = ${JSON.stringify(options.unhealthyStartup ?? false)};
@@ -210,6 +220,7 @@ async function fixture(options: FixtureOptions = {}) {
   const {
     failStartup = false,
     gateStartup = false,
+    gateInitialization = false,
     ignoreSigterm = false,
     unhealthyStartup = false,
     ...supervisorOptions
@@ -234,6 +245,9 @@ async function fixture(options: FixtureOptions = {}) {
     ignoreSigterm,
     startupGate,
     unhealthyStartup,
+    initializationGate: gateInitialization
+      ? path.join(root, "initialize.gate")
+      : null,
   });
   const entrypoint = path.join(bundle, "bin", "cantrip-code.cjs");
   await writeFile(entrypoint, source);
@@ -1054,42 +1068,84 @@ describe("Cantrip Code supervisor", () => {
     );
   });
 
-  it("observes failed startup process exit before allowing a retry", async () => {
-    const { dataDirectory, entrypoint, repository, supervisor } = await fixture(
-      {
-        ignoreSigterm: true,
-        readinessTimeoutMs: 500,
-        unhealthyStartup: true,
-      },
-    );
-    const profileDirectory = path.join(
-      dataDirectory,
-      "code",
-      "profiles",
-      createHash("sha256").update("default").digest("hex"),
-      "user-data",
-    );
-    const processFile = path.join(profileDirectory, "process.pid");
-    const opening = supervisor.open(
-      openCommand("unhealthy-startup", repository, "primary"),
-    );
-    const openingFailure = expect(opening).rejects.toThrow(
-      "authenticated HTTP response",
-    );
-    await waitForFile(processFile, 2_000);
-    const failedPid = Number(await readFile(processFile, "utf8"));
+  it.each([
+    { scenario: "unhealthy HTTP", gateInitialization: false },
+    { scenario: "delayed initialization", gateInitialization: true },
+  ])(
+    "observes failed startup process exit before allowing a retry ($scenario)",
+    async ({ gateInitialization }) => {
+      const { dataDirectory, entrypoint, repository, supervisor } =
+        await fixture({
+          ignoreSigterm: true,
+          gateInitialization,
+          readinessTimeoutMs: 500,
+          unhealthyStartup: true,
+        });
+      const profileDirectory = path.join(
+        dataDirectory,
+        "code",
+        "profiles",
+        createHash("sha256").update("default").digest("hex"),
+        "user-data",
+      );
+      const processes: ChildProcess[] = [];
+      const lifecycle: string[] = [];
+      const spawnGuardedProcess = processGuard.spawnGuardedProcess;
+      const launch = vi
+        .spyOn(processGuard, "spawnGuardedProcess")
+        .mockImplementation((...args) => {
+          // Observe the actual launch handle even when the child has not yet
+          // executed enough JavaScript to publish fixture metadata.
+          const child = spawnGuardedProcess(...args);
+          const index = processes.push(child) - 1;
+          lifecycle.push(`spawn:${index}`);
+          child.once("exit", () => lifecycle.push(`exit:${index}`));
+          return child;
+        });
+      try {
+        await expect(
+          supervisor.open(
+            openCommand("unhealthy-startup", repository, "primary"),
+          ),
+        ).rejects.toThrow("authenticated HTTP response within 500ms");
+        expect(processes).toHaveLength(1);
+        const failed = processes[0]!;
+        expect(failed.pid).toBeGreaterThan(0);
+        expect(lifecycle).toEqual(["spawn:0", "exit:0"]);
+        expect(failed.exitCode !== null || failed.signalCode !== null).toBe(
+          true,
+        );
+        expect(() => process.kill(failed.pid!, 0)).toThrow();
+        if (process.platform !== "win32") {
+          // The guard and its descendants share this real process group.
+          expect(() => process.kill(-failed.pid!, 0)).toThrow();
+        }
+        if (gateInitialization) {
+          await expect(
+            readFile(path.join(profileDirectory, "process.pid"), "utf8"),
+          ).rejects.toMatchObject({ code: "ENOENT" });
+        }
+        expect(() => supervisor.status("unhealthy-startup")).toThrow(
+          "is not open",
+        );
 
-    await openingFailure;
-    expect(() => process.kill(failedPid, 0)).toThrow();
-    expect(() => supervisor.status("unhealthy-startup")).toThrow("is not open");
-
-    await writeFile(entrypoint, codeServerSource());
-    await expect(
-      supervisor.open(
-        openCommand("healthy-startup-retry", repository, "secondary"),
-      ),
-    ).resolves.toMatchObject({ status: "running" });
-  });
+        await writeFile(entrypoint, codeServerSource());
+        await expect(
+          supervisor.open(
+            openCommand("healthy-startup-retry", repository, "secondary"),
+          ),
+        ).resolves.toMatchObject({
+          status: "running",
+          sessionId: "healthy-startup-retry",
+        });
+        expect(processes).toHaveLength(2);
+        expect(processes[1]!.pid).not.toBe(failed.pid);
+        expect(lifecycle).toEqual(["spawn:0", "exit:0", "spawn:1"]);
+      } finally {
+        launch.mockRestore();
+      }
+    },
+  );
 
   it("keeps a new session non-routable until open commits", async () => {
     let enterReadyLog: (() => void) | null = null;
