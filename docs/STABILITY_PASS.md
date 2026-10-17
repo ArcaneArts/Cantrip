@@ -809,3 +809,11 @@ cases pass locally. The complete supervisor and worker suites and standard
 repository check are run independently; the existing command workflow also
 executes both cases on Linux, macOS and Windows. Final counts and evidence are
 recorded in the issue PR and under `~/.codex/issue-fix-pass/20261017/`.
+
+Windows acceptance passed both new cases, but the full supervisor run exposed
+two other startup fixtures whose successful launches exhausted a 500 ms
+override: rollback recovery and repeated retained prewarm. Their existing
+behavior assertions remain unchanged, and they now use the shared fixture's
+normal 3,000 ms startup budget. The failure-retirement regression retains its
+intentional 500 ms deadline; no production timeout changes. The failed Windows
+run is retained and a fresh full matrix validates the correction.

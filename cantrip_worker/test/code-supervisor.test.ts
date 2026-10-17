@@ -984,7 +984,6 @@ describe("Cantrip Code supervisor", () => {
         bridge,
         failStartup: true,
         profileIdleTimeoutMs: 1_000,
-        readinessTimeoutMs: 500,
       },
     );
     const sessionId = "failed-open-rollback";
@@ -1684,9 +1683,7 @@ describe("Cantrip Code supervisor", () => {
   });
 
   it("functionally verifies an explicitly repeated retained prewarm", async () => {
-    const { dataDirectory, supervisor } = await fixture({
-      readinessTimeoutMs: 500,
-    });
+    const { dataDirectory, supervisor } = await fixture();
     const profileDirectory = path.join(
       dataDirectory,
       "code",
