@@ -9,6 +9,9 @@ on:
       - cantrip_app/src/lib/api*.test.ts
       - cantrip_app/src/lib/repository-worker-encryption*
       - cantrip_app/src/lib/worker-encryption-grants*
+      - cantrip_app/src/components/app/shell-navigation*
+      - cantrip_app/src/components/app/shell-client-control-navigation.test.tsx
+      - cantrip_app/src/lib/app-navigation*
       - cantrip_app/src/lib/run-configuration-api.test.ts
       - scripts/client-api-source-corpus*
       - scripts/application-source-corpus*
@@ -55,3 +58,6 @@ jobs:
       - name: Repository bootstrap ordering and authorization lifetime
         if: ${{ !cancelled() }}
         run: pnpm --filter @cantrip/app exec vitest run src/lib/repository-worker-encryption.test.ts src/lib/worker-encryption-grants.test.ts --maxWorkers=2
+      - name: Startup navigation ordering and destination identity lifetime
+        if: ${{ !cancelled() }}
+        run: pnpm --filter @cantrip/app exec vitest run src/components/app/shell-navigation-hydration.test.tsx src/components/app/shell-navigation.test.ts src/components/app/shell-client-control-navigation.test.tsx src/lib/app-navigation.test.ts --maxWorkers=2
