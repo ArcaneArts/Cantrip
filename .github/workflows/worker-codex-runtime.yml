@@ -39,6 +39,31 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
       - run: pnpm --filter @cantrip/worker typecheck
+      - name: Inspect native evidence directory ancestry
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { mkdtemp, mkdir, rm } from 'node:fs/promises';
+          import { tmpdir } from 'node:os';
+          import path from 'node:path';
+          const root = await mkdtemp(path.join(tmpdir(), 'native-evidence-ancestry-'));
+          try {
+            const directory = path.join(root, 'native-settings-evidence', 'partition');
+            const first = await mkdir(directory, { recursive: true, mode: 0o700 });
+            const parent = path.dirname(first);
+            const ancestors = [];
+            for (let current = directory; ancestors.length < 12; current = path.dirname(current)) {
+              ancestors.push(current);
+              if (current === parent) break;
+            }
+            console.log(JSON.stringify({ directory, first, parent, ancestors }));
+          } finally { await rm(root, { recursive: true, force: true }); }
+          NODE
+      - name: Native settings evidence and permission recovery
+        if: ${{ !cancelled() }}
+        timeout-minutes: 3
+        run: pnpm --filter @cantrip/worker exec vitest run test/native-settings-delivery.test.ts test/managed-native-permission-recovery.test.ts --maxWorkers=2 --reporter=verbose
       - name: Native RPC, turn streaming, ownership, cancellation and history
         if: ${{ !cancelled() }}
-        run: pnpm --filter @cantrip/worker exec vitest run test/codex-rpc-correlation.test.ts test/app-server.test.ts test/goal-streaming.test.ts test/subagent-ownership.test.ts test/computer-use-execution-lifetime.test.ts test/thread-session-preparation.test.ts test/native-replacement-settings-integration.test.ts test/native-inherited-turn-settings.test.ts test/native-managed-queue-execution.test.ts test/native-managed-command-session.test.ts test/native-managed-queue-tui.test.ts test/provider-account-portability.test.ts test/external-chatgpt-auth.test.ts test/pending-interaction-publication.test.ts test/managed-native-history.test.ts test/native-settings-correlation.test.ts test/native-settings-delivery.test.ts test/managed-native-permission-recovery.test.ts test/mcp-resource-context.test.ts test/admitted-native-execution.test.ts test/gui-native-permission-deferred.test.ts test/managed-session-mcp.test.ts --maxWorkers=2
+        run: pnpm --filter @cantrip/worker exec vitest run test/codex-rpc-correlation.test.ts test/app-server.test.ts test/goal-streaming.test.ts test/subagent-ownership.test.ts test/computer-use-execution-lifetime.test.ts test/thread-session-preparation.test.ts test/native-replacement-settings-integration.test.ts test/native-inherited-turn-settings.test.ts test/native-managed-queue-execution.test.ts test/native-managed-command-session.test.ts test/native-managed-queue-tui.test.ts test/provider-account-portability.test.ts test/external-chatgpt-auth.test.ts test/pending-interaction-publication.test.ts test/managed-native-history.test.ts test/native-settings-correlation.test.ts test/mcp-resource-context.test.ts test/admitted-native-execution.test.ts test/gui-native-permission-deferred.test.ts test/managed-session-mcp.test.ts --maxWorkers=2
