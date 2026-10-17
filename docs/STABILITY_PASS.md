@@ -656,6 +656,8 @@ Local reproduction and validation logs are retained under
 
 ### #2095: exact CLI Run source routing
 
+PR: [#2122](https://github.com/ArcaneArts/Cantrip/pull/2122).
+
 The named regression still fails on merged main `caa00b5be`: its setup prefers
 the Beta project replica but expects Run definitions from Alpha. The current
 source selection orders available registered Primary replicas by project
@@ -670,7 +672,18 @@ worktree from another project and verifies 404, no worker dispatch and no durabl
 Run instance. Existing exact cross-worker Explorer, Terminal, Browser and
 worktree operations remain asserted. No production routing changed.
 
-Validation on `codex/issue-2095-cli-routing`: all 51 tests pass across placement,
-Run definitions, Run runtimes and CLI execution. `pnpm network:acceptance` now
-passes its complete deterministic behavior and metadata matrix. Logs are
-retained with this issue's evidence.
+Validation on `codex/issue-2095-cli-routing`:
+
+- All 51 tests pass across placement, Run definitions, Run runtimes and CLI
+  execution.
+- Complete `pnpm network:acceptance` passes: 450 TypeScript and five focused
+  native tests, plus topology/feature metadata checks. Its server group passes
+  all 91 tests.
+- The standard `pnpm check` passes audits, native checks, source types and
+  focused/shared suites, then reaches 1,412 passed, 71 failed and 70 skipped in
+  the full server baseline. No new failure name appears relative to #2094's
+  check. The CLI routing failure is gone; the two unrelated intermittent cases
+  did not repeat, which does not resolve them. The remaining baseline stays
+  tracked in #2106, and the full check is not green.
+- Formatting and diff checks pass. Logs and the failure-name comparison are
+  retained with this issue's evidence.
