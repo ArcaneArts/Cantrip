@@ -5,6 +5,8 @@ import path from "node:path";
 
 import {
   taskWorkerCreateSchema,
+  projectTabLayoutWireSummarySchema,
+  projectSurfaceViewId,
   projectTaskWorkloadOpaqueSchema,
   taskWireCreateResultSchema,
   unprobedCodexRuntimeReport,
@@ -568,6 +570,9 @@ describe.sequential("opaque encrypted Task persistence", () => {
   });
 
   it("creates, updates, executes, and retries without storing Task prose", async () => {
+    const layoutBeforeTask = projectTabLayoutWireSummarySchema.parse(
+      await database.repository.tabLayouts.get(LOCAL_USER_ID, projectId),
+    );
     const chatId = randomUUID();
     const createdResponse = await app.inject({
       method: "POST",
@@ -587,15 +592,24 @@ describe.sequential("opaque encrypted Task persistence", () => {
       state: "draft",
       rowVersion: 1,
     });
-    const tabLayout = await database.repository.tabLayouts.get(
-      LOCAL_USER_ID,
-      projectId,
+    const tabLayout = projectTabLayoutWireSummarySchema.parse(
+      await database.repository.tabLayouts.get(LOCAL_USER_ID, projectId),
     );
+    expect(tabLayout).toEqual(layoutBeforeTask);
     expect(
-      tabLayout?.groups.flatMap(({ members }) =>
+      tabLayout.panes.flatMap(({ members }) =>
         members.map(({ tabKey }) => tabKey),
       ),
-    ).not.toContain(`chat:${chatId}`);
+    ).not.toContain(
+      projectSurfaceViewId({
+        projectId,
+        resource: {
+          kind: "entity",
+          definitionId: "project.agent",
+          resourceId: chatId,
+        },
+      }),
+    );
 
     const draftResponse = await app.inject({
       method: "PATCH",
