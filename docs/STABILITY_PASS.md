@@ -618,6 +618,8 @@ stability report remains a record of the observations made at that time.
 ### #2094: current layout fixtures
 
 PR: [#2121](https://github.com/ArcaneArts/Cantrip/pull/2121).
+Merged as `caa00b5be`; issue closed automatically. Primary synchronized and
+the owned worktree was archived after preserving the evidence.
 
 On base `9f3f7fad7`, the two affected server files reproduce both obsolete
 layout assertions plus the separate #2095 CLI routing failure (29 passed,
@@ -651,3 +653,37 @@ Validation on `codex/issue-2094-layout-fixtures`:
 
 Local reproduction and validation logs are retained under
 `~/.codex/issue-fix-pass/20261017/`. Other initial issues remain pending.
+
+### #2095: exact CLI Run source routing
+
+PR: [#2122](https://github.com/ArcaneArts/Cantrip/pull/2122).
+
+The named regression still fails on merged main `caa00b5be`: its setup prefers
+the Beta project replica but expects Run definitions from Alpha. The current
+source selection orders available registered Primary replicas by project
+preference, then user default. CLI definitions intentionally use that shared
+source regardless of the invoking worker's cwd; explicit runtime targets remain
+separate, as documented in `RUN_CONFIGURATIONS.md`.
+
+The fixture now checks both CLI callers against both project preferences. Each
+operation must dispatch exactly one command to the expected worker and path,
+and return the matching source worktree. A new rejection case supplies a real
+worktree from another project and verifies 404, no worker dispatch and no durable
+Run instance. Existing exact cross-worker Explorer, Terminal, Browser and
+worktree operations remain asserted. No production routing changed.
+
+Validation on `codex/issue-2095-cli-routing`:
+
+- All 51 tests pass across placement, Run definitions, Run runtimes and CLI
+  execution.
+- Complete `pnpm network:acceptance` passes: 450 TypeScript and five focused
+  native tests, plus topology/feature metadata checks. Its server group passes
+  all 91 tests.
+- The standard `pnpm check` passes audits, native checks, source types and
+  focused/shared suites, then reaches 1,412 passed, 71 failed and 70 skipped in
+  the full server baseline. No new failure name appears relative to #2094's
+  check. The CLI routing failure is gone; the two unrelated intermittent cases
+  did not repeat, which does not resolve them. The remaining baseline stays
+  tracked in #2106, and the full check is not green.
+- Formatting and diff checks pass. Logs and the failure-name comparison are
+  retained with this issue's evidence.
