@@ -1,0 +1,55 @@
+name: Browser recovery
+
+on:
+  pull_request:
+    paths:
+      - cantrip_worker/src/browser/**
+      - cantrip_worker/test/browser-adapter.test.ts
+      - cantrip_worker/test/browser-session.test.ts
+      - cantrip_worker/src/surface-private-state-encryption.ts
+      - cantrip_worker/src/worker-encryption.ts
+      - packages/protocol/src/**
+      - .github/workflows/browser-recovery.yml
+      - pnpm-lock.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: browser-recovery-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  recovery:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
+      - run: pnpm --filter @cantrip/worker typecheck
+      - name: Typecheck the actual browser fixture
+        run: pnpm exec tsc --noEmit --target ES2023 --module NodeNext --moduleResolution NodeNext --strict --skipLibCheck --noUncheckedIndexedAccess --esModuleInterop --resolveJsonModule cantrip_worker/test/browser-adapter.test.ts
+      - name: Install pinned Chromium and its system dependencies
+        run: pnpm exec playwright-core install --with-deps chromium
+      - name: Enable Chromium's namespace sandbox on the Linux runner
+        if: runner.os == 'Linux'
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Select the installed Chromium executable
+        shell: bash
+        run: |
+          node --input-type=module -e 'import { chromium } from "playwright-core"; import { appendFileSync } from "node:fs"; appendFileSync(process.env.GITHUB_ENV, `CANTRIP_CHROMIUM_EXECUTABLE=${chromium.executablePath()}\n`);'
+      - name: Actual Chromium recovery, input and protected state
+        if: ${{ !cancelled() }}
+        run: pnpm --filter @cantrip/worker exec vitest run test/browser-adapter.test.ts test/browser-session.test.ts src/browser/browser-private-state.test.ts src/browser/frame-pipeline.test.ts --maxWorkers=2

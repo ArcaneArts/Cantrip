@@ -26,6 +26,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { BrowserRemoteSurfaceAdapter } from "../src/browser/browser-adapter.js";
 import { BrowserCdpSession } from "../src/browser/browser-session.js";
+import * as browserPrivateState from "../src/browser/browser-private-state.js";
 import { findChromiumExecutable } from "../src/browser/chromium.js";
 import { readWorkerLogs } from "../src/logger.js";
 import {
@@ -196,6 +197,7 @@ async function hasBrowserState(input: {
         service: input.service,
       });
       if (
+        "url" in opened &&
         opened.revision === input.revision &&
         opened.url === input.url &&
         (input.title === undefined || state.title === input.title)
@@ -284,6 +286,7 @@ describe("BrowserRemoteSurfaceAdapter", () => {
             url: `http://127.0.0.1:${address.port}/`,
           }),
           preferredTransport: "websocket",
+          webrtc: null,
           viewport,
           desktopStream: null,
         },
@@ -295,7 +298,7 @@ describe("BrowserRemoteSurfaceAdapter", () => {
         async () =>
           (await cdp.evaluate("document.activeElement?.id")) === "name",
       );
-      const send = (message: unknown) =>
+      const send = async (message: unknown) =>
         session!.handleFrame(
           attachmentId,
           "control",
@@ -465,6 +468,7 @@ describe("BrowserRemoteSurfaceAdapter", () => {
           url: root,
         }),
         preferredTransport: "websocket" as const,
+        webrtc: null,
         viewport: { width: 640, height: 480, devicePixelRatio: 1 },
         desktopStream: null,
       };
@@ -524,6 +528,246 @@ describe("BrowserRemoteSurfaceAdapter", () => {
   );
 
   it.skipIf(!findChromiumExecutable())(
+    "restores configuration when the replacement publishes its initial blank page",
+    async () => {
+      const server = createServer((request, response) => {
+        response.setHeader("content-type", "text/html; charset=utf-8");
+        response.end(
+          `<title>${request.url === "/configured" ? "Configured" : "Home"}</title><textarea id="input"></textarea>`,
+        );
+      });
+      await new Promise<void>((resolve) =>
+        server.listen(0, "127.0.0.1", resolve),
+      );
+      const address = server.address();
+      if (!address || typeof address === "string")
+        throw new Error("Missing fixture address");
+      const root = `http://127.0.0.1:${address.port}/`;
+      const dataDirectory = await mkdtemp(
+        path.join(os.tmpdir(), "cantrip-browser-recovery-"),
+      );
+      temporaryDirectories.push(dataDirectory);
+      const launches: ChildProcess[] = [];
+      const adapter = new BrowserRemoteSurfaceAdapter({
+        dataDirectory,
+        onLaunch: (child) => launches.push(child),
+      });
+      const service = await encryptionService(dataDirectory);
+      adapter.setSurfacePrivateStateService(service);
+      const surfaceId = "browser-recovery-test";
+      const attachmentId = "recovery-attachment";
+      const viewport = { width: 640, height: 480, devicePixelRatio: 1 };
+      const emissions: Array<{
+        channel: RemoteSurfaceChannel;
+        payload: Uint8Array;
+      }> = [];
+      let session: Awaited<
+        ReturnType<BrowserRemoteSurfaceAdapter["open"]>
+      > | null = null;
+      let releaseOldState = () => {};
+      let restoreProtection = () => {};
+      try {
+        session = await adapter.open(
+          {
+            type: "surface.attach",
+            surfaceId,
+            attachmentId,
+            projectId: "project-test",
+            serverId,
+            configuration: { kind: "browser", profileId: null },
+            stateResource: "browser-row",
+            stateRevision: 1,
+            stateProtection: await persistentBrowserState({
+              revision: 1,
+              service,
+              surfaceId,
+              url: root,
+            }),
+            preferredTransport: "websocket",
+            webrtc: null,
+            viewport,
+            desktopStream: null,
+          },
+          (_id, channel, payload) => {
+            emissions.push({ channel, payload });
+            return true;
+          },
+        );
+        await session.attach({ id: attachmentId, viewport });
+        await eventually(() =>
+          hasBrowserState({
+            emissions,
+            revision: 1,
+            service,
+            surfaceId,
+            title: "Home",
+            url: root,
+          }),
+        );
+        const previous = adapter.session(surfaceId)!;
+        const original = BrowserCdpSession.prototype.command;
+        let interrupted = false;
+        let oldProtectionHeld = false;
+        let oldProtectionCompleted = false;
+        const oldStateRelease = new Promise<void>((resolve) => {
+          releaseOldState = resolve;
+        });
+        const originalProtect =
+          browserPrivateState.protectBrowserLocationOperation;
+        const protection = vi
+          .spyOn(browserPrivateState, "protectBrowserLocationOperation")
+          .mockImplementation(async (input) => {
+            const result = await originalProtect(input);
+            if (
+              interrupted &&
+              input.url === root &&
+              input.revision === 2 &&
+              !oldProtectionHeld
+            ) {
+              oldProtectionHeld = true;
+              await oldStateRelease;
+              oldProtectionCompleted = true;
+            }
+            return result;
+          });
+        restoreProtection = () => protection.mockRestore();
+        let replacement: BrowserCdpSession | null = null;
+        let blankHistoryObserved = false;
+        const replacementNavigations: unknown[] = [];
+        const command = vi
+          .spyOn(BrowserCdpSession.prototype, "command")
+          .mockImplementation(async function (
+            this: BrowserCdpSession,
+            method,
+            params = {},
+          ) {
+            if (
+              this === previous &&
+              method === "Page.navigate" &&
+              params.url === `${root}configured`
+            ) {
+              interrupted = true;
+              // Retain a real encrypted publication from the old page until
+              // its replacement has already published the configured state.
+              await original.call(this, "Page.reload");
+              await eventually(() => oldProtectionHeld);
+              this.client.close(
+                new Error("Chromium restarted during configuration."),
+              );
+            }
+            if (interrupted && this !== previous && method === "Page.enable") {
+              replacement = this;
+              await original.call(this, method, params);
+              // Produce actual initial-page lifecycle events before startup can
+              // issue its configured navigation. Wait for their history response.
+              await original.call(this, "Page.reload");
+              await eventually(() => blankHistoryObserved);
+              return;
+            }
+            if (this === replacement && method === "Page.navigate")
+              replacementNavigations.push(params.url);
+            const result = await original.call(this, method, params);
+            if (
+              this === replacement &&
+              method === "Page.getNavigationHistory"
+            ) {
+              const history = result as {
+                currentIndex: number;
+                entries: Array<{ url: string }>;
+              };
+              if (history.entries[history.currentIndex]?.url === "about:blank")
+                blankHistoryObserved = true;
+            }
+            return result;
+          });
+        try {
+          await session.updateConfiguration?.(
+            { kind: "browser", profileId: null },
+            {
+              serverId,
+              stateResource: "browser-row",
+              stateRevision: 2,
+              stateProtection: await persistentBrowserState({
+                revision: 2,
+                service,
+                surfaceId,
+                url: `${root}configured`,
+              }),
+            },
+          );
+        } finally {
+          command.mockRestore();
+        }
+        expect(interrupted).toBe(true);
+        expect(blankHistoryObserved).toBe(true);
+        expect(replacementNavigations).toEqual([`${root}configured`]);
+        expect(adapter.session(surfaceId)).not.toBe(previous);
+        await eventually(() =>
+          hasBrowserState({
+            emissions,
+            revision: 2,
+            service,
+            surfaceId,
+            title: "Configured",
+            url: `${root}configured`,
+          }),
+        );
+        const beforeStaleCompletion = emissions.length;
+        releaseOldState();
+        await eventually(() => oldProtectionCompleted);
+        // The protected result is complete; drain its publication continuation.
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(
+          await hasBrowserState({
+            emissions: emissions.slice(beforeStaleCompletion),
+            revision: 2,
+            service,
+            surfaceId,
+            url: root,
+          }),
+        ).toBe(false);
+        const current = adapter.session(surfaceId)!;
+        await current.evaluate("document.querySelector('#input').focus()");
+        const framesBeforeInput = emissions.filter(
+          ({ channel }) => channel === "frame",
+        ).length;
+        for (const text of ["first", " second"]) {
+          await session.handleFrame(
+            attachmentId,
+            "control",
+            new TextEncoder().encode(
+              JSON.stringify({
+                type: "clipboard",
+                operation: "paste-text",
+                text,
+              }),
+            ),
+          );
+        }
+        expect(
+          await current.evaluate("document.querySelector('#input').value"),
+        ).toBe("first second");
+        await eventually(
+          () =>
+            emissions.filter(({ channel }) => channel === "frame").length >
+            framesBeforeInput,
+        );
+      } finally {
+        releaseOldState();
+        restoreProtection();
+        await session?.close();
+        await eventually(() =>
+          launches.every(
+            (child) => child.exitCode !== null || child.signalCode !== null,
+          ),
+        );
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+      }
+    },
+    30_000,
+  );
+
+  it.skipIf(!findChromiumExecutable())(
     "streams a real Chromium page when its initial screenshot is unavailable",
     async () => {
       const server = createServer((request, response) => {
@@ -577,6 +821,7 @@ describe("BrowserRemoteSurfaceAdapter", () => {
             url: root,
           }),
           preferredTransport: "websocket",
+          webrtc: null,
           viewport: { width: 640, height: 480, devicePixelRatio: 1 },
           desktopStream: null,
         },
@@ -865,7 +1110,11 @@ describe("BrowserRemoteSurfaceAdapter", () => {
         let interruptedConfiguration = false;
         const command = vi
           .spyOn(BrowserCdpSession.prototype, "command")
-          .mockImplementation(function (method, params = {}) {
+          .mockImplementation(function (
+            this: BrowserCdpSession,
+            method,
+            params = {},
+          ) {
             if (
               !interruptedConfiguration &&
               method === "Page.navigate" &&

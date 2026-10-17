@@ -526,6 +526,9 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
   }
 
   private async initialize(viewport: RemoteSurfaceViewport): Promise<void> {
+    // Initial-page events can update the observed URL while CDP is enabling.
+    // Keep the requested destination for this runtime's first navigation.
+    const initialUrl = this.#currentUrl;
     this.#cdp.on("Page.screencastFrame", (params) => {
       const frame = params as ScreencastFrame;
       const payload = Buffer.from(frame.data, "base64");
@@ -573,7 +576,7 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
     ]);
     await this.configureViewport(viewport);
     this.startNavigation("initial");
-    await this.command("Page.navigate", { url: this.#currentUrl });
+    await this.command("Page.navigate", { url: initialUrl });
   }
 
   private startNavigation(operation: string): void {

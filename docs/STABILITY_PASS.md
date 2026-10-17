@@ -1144,3 +1144,50 @@ its existing incomplete-authority-retirement exit code 1 after the worker was
 stopped, with no surviving server process. Local evidence is retained under
 `~/.codex/issue-fix-pass/20261017/2102-evidence/`; recovery credentials and fixture
 control tokens are not published.
+
+Final #2102 delivery: [PR #2131](https://github.com/ArcaneArts/Cantrip/pull/2131)
+merged as `b98b72e29` and closed the issue. All six CI jobs passed on their first
+attempt; the 58 navigation tests passed on Linux, macOS and Windows. The standard
+check reached the remaining server baseline: 1,418 passed, 71 failed and 70
+skipped. Its 78 failed test/suite labels were all present in the previous cycle;
+the known DirectAttachmentCoordinator renewal timing failure did not recur.
+There were no new failures, and #2106 remains open. Primary was synchronized,
+the owned worktree archived, and both closed browser fixtures retained outside it.
+
+### #2112: retain the requested destination during Chromium replacement
+
+Branch: `codex/issue-2112-browser-recovery`. The issue PR records final broad
+validation, platform results, merge and closure.
+
+The original four Chromium tests passed on unchanged main, but a controlled
+interleaving reproduced the recovery failure. After interrupting configuration's
+`Page.navigate`, the replacement browser enables CDP on its initial blank page.
+An early page event can publish `about:blank` into the mutable observed URL before
+startup issues its own navigation. Startup then navigates to that blank URL
+instead of the requested configured URL. The new actual-Chromium fixture forces
+these events with a real initial-page reload and awaits its real history response;
+unmodified production code fails with an observed `Page.navigate` to
+`about:blank`, not the configured local page.
+
+Runtime initialization now captures its requested destination before enabling
+page events and uses that value for the first navigation. Observed page URLs
+continue updating normally. No navigation, recovery or fixture deadline changes.
+
+The controlled fixture verifies the replacement restores the encrypted revision-2
+URL and title. It also holds a real encrypted publication from the previous page
+until the replacement has published its state, releases it, and proves the old
+runtime cannot publish that stale location. Two subsequent text inputs reach the
+replacement page and new frames arrive. Cleanup observes every launched Chromium
+child exit. The existing broader browser fixture still covers screenshot failure,
+protected navigation, cursor/input, adoption and multiple runtime replacements.
+
+The four focused browser/CDP/private-state/frame suites pass 17 tests. Worker
+source types and a strict typecheck of the actual browser fixture pass; the latter
+also corrects existing fixture-only union narrowing, missing WebRTC defaults and
+callback type annotations. The Browser recovery workflow installs the pinned
+Chromium and runs these actual-browser tests on Linux, macOS and Windows.
+
+Reproduce with `pnpm --filter @cantrip/worker exec vitest run
+test/browser-adapter.test.ts --maxWorkers=2` after building shared packages and
+installing Chromium. Local evidence is retained under
+`~/.codex/issue-fix-pass/20261017/2112-evidence/`.
