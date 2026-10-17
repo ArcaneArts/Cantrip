@@ -33,6 +33,7 @@ class FixtureTerminalManager extends TerminalManager {
 }
 
 const managers = new Set<FixtureTerminalManager>();
+const fixturePids = new Set<number>();
 function createTerminalManager(
   options?: ConstructorParameters<typeof TerminalManager>[0],
 ) {
@@ -54,6 +55,21 @@ async function cleanupFixtures(
       { timeout: 5_000 },
     )
     .toBe(true);
+  await expect
+    .poll(
+      () =>
+        [...fixturePids].every((pid) => {
+          try {
+            process.kill(pid, 0);
+            return false;
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === "ESRCH") return true;
+            throw error;
+          }
+        }),
+      { timeout: 5_000 },
+    )
+    .toBe(true);
   await Promise.all(
     directories.map(async (directory) => {
       await beforeRemove?.(directory);
@@ -67,14 +83,46 @@ async function cleanupFixtures(
   );
   directories.length = 0;
   managers.clear();
+  fixturePids.clear();
 }
 
-// The command itself produces markers; input cannot pass by echoing a marker
-// command before an interactive PowerShell prompt has finished initializing.
-const replayCommand =
-  process.platform === "win32"
-    ? "$ErrorActionPreference = 'Stop'; [Console]::WriteLine('CANTRIP_REPLAY_MARKER'); $null = [Console]::ReadLine(); [Console]::WriteLine('CANTRIP_ATOMIC_DELTA'); while ($null -ne [Console]::ReadLine()) {}"
-    : "printf 'CANTRIP_REPLAY_MARKER\\n'; IFS= read -r line; printf 'CANTRIP_ATOMIC_DELTA\\n'; while IFS= read -r line; do :; done";
+const replayMarker = /CANTRIP_REPLAY_MARKER:(\d+)\r?\n/u;
+
+function observeFixtureProcess(output: string): void {
+  const match = replayMarker.exec(output);
+  expect(match).not.toBeNull();
+  const pid = Number(match![1]);
+  expect(Number.isSafeInteger(pid) && pid > 0).toBe(true);
+  fixturePids.add(pid);
+}
+
+async function replayCommand(directory: string): Promise<string> {
+  // The actual child produces markers and acknowledges one input line. No
+  // interactive shell startup or echoed marker command can satisfy this test.
+  await writeFile(
+    path.join(directory, "replay-fixture.cjs"),
+    [
+      'const { createInterface } = require("node:readline");',
+      "const input = createInterface({ input: process.stdin, terminal: false });",
+      "let emitted = false;",
+      'input.on("line", (line) => {',
+      '  if (line !== "emit-delta" || emitted) throw new Error("Unexpected fixture input");',
+      "  emitted = true;",
+      '  process.stdout.write("CANTRIP_ATOMIC_DELTA\\n");',
+      "});",
+      'process.stdout.write("CANTRIP_REPLAY_MARKER:" + process.pid + "\\n");',
+    ].join("\n"),
+  );
+  if (process.platform === "win32") {
+    // node is supplied by the same test runtime/CI PATH. Simple relative
+    // arguments avoid cmd.exe/CRT quoting differences, even in a spaced cwd.
+    process.env.COMSPEC = "cmd.exe";
+    return "node replay-fixture.cjs";
+  }
+  return (
+    "'" + process.execPath.replaceAll("'", "'\\''") + "' replay-fixture.cjs"
+  );
+}
 
 const originalComspec = process.env.COMSPEC;
 beforeEach(() => {
@@ -93,7 +141,9 @@ afterEach(async () => {
 
 describe("TerminalManager", () => {
   it("replays buffered output before signaling that a reattached view is ready", async () => {
-    const directory = await mkdtemp(path.join(tmpdir(), "cantrip-terminal-"));
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "cantrip terminal replay "),
+    );
     directories.push(directory);
     const manager = createTerminalManager();
     let initialOutput = "";
@@ -103,14 +153,15 @@ describe("TerminalManager", () => {
       directory,
       80,
       24,
-      { type: "command", command: replayCommand },
+      { type: "command", command: await replayCommand(directory) },
       (event) => {
         if (event.type === "terminal.output") initialOutput += event.data;
       },
     );
     await expect
       .poll(() => initialOutput, { timeout: 5_000 })
-      .toContain("CANTRIP_REPLAY_MARKER");
+      .toMatch(replayMarker);
+    observeFixtureProcess(initialOutput);
     expect(initialOutput).not.toContain("CANTRIP_ATOMIC_DELTA");
     await expect(
       manager.canonicalSnapshot("terminal-replay"),
@@ -205,75 +256,98 @@ describe("TerminalManager", () => {
     await expect(secondReattached).resolves.toEqual({ status: "detached" });
   });
 
-  it("closes every owned PTY before directory cleanup after an early fixture failure", async () => {
-    const ownedDirectories = await Promise.all(
-      ["attached", "service"].map((name) =>
-        mkdtemp(path.join(tmpdir(), `cantrip-terminal-failure-${name}-`)),
-      ),
-    );
-    directories.push(...ownedDirectories);
-    const exitedIds: string[] = [];
-    const attached = createTerminalManager({
-      observeLifecycle: ({ terminalId }) => exitedIds.push(terminalId),
-    });
-    const service = createTerminalManager({
-      observeLifecycle: ({ terminalId }) => exitedIds.push(terminalId),
-    });
-    const attachments: Array<ReturnType<TerminalManager["open"]>> = [];
-    const removed: string[] = [];
-    const failure = new Error("forced failure before replay assertions");
+  it.each([false, true])(
+    "closes every owned PTY before directory cleanup after an early fixture failure (program ready: %s)",
+    async (ready) => {
+      const ownedDirectories = await Promise.all(
+        ["attached", "service"].map((name) =>
+          mkdtemp(path.join(tmpdir(), `cantrip-terminal-failure-${name}-`)),
+        ),
+      );
+      directories.push(...ownedDirectories);
+      const commands = await Promise.all(ownedDirectories.map(replayCommand));
+      const output = ["", ""];
+      const exitedIds: string[] = [];
+      const attached = createTerminalManager({
+        observeLifecycle: ({ terminalId }) => exitedIds.push(terminalId),
+      });
+      const service = createTerminalManager({
+        observeLifecycle: ({ terminalId }) => exitedIds.push(terminalId),
+      });
+      const attachments: Array<ReturnType<TerminalManager["open"]>> = [];
+      const removed: string[] = [];
+      const failure = new Error("forced failure before replay assertions");
 
-    await expect(
-      (async () => {
-        try {
-          attachments.push(
-            attached.open(
-              "attached-failure",
-              "attachment",
-              ownedDirectories[0]!,
-              80,
-              24,
-              { type: "command", command: replayCommand },
-              () => {},
-            ),
-          );
-          service.reconcileServices([
-            {
-              terminalId: "service-failure",
-              cwd: ownedDirectories[1]!,
-              command: replayCommand,
-            },
-          ]);
-          attachments.push(
-            service.attachExisting("service-failure", "service-view", () => {}),
-          );
-          expect(attached.hasLiveSession("attached-failure")).toBe(true);
-          expect(service.hasLiveSession("service-failure")).toBe(true);
-          throw failure;
-        } finally {
-          await cleanupFixtures(async (directory) => {
-            expect(exitedIds.sort()).toEqual([
-              "attached-failure",
-              "service-failure",
+      await expect(
+        (async () => {
+          try {
+            attachments.push(
+              attached.open(
+                "attached-failure",
+                "attachment",
+                ownedDirectories[0]!,
+                80,
+                24,
+                { type: "command", command: commands[0]! },
+                (event) => {
+                  if (event.type === "terminal.output") output[0] += event.data;
+                },
+              ),
+            );
+            service.reconcileServices([
+              {
+                terminalId: "service-failure",
+                cwd: ownedDirectories[1]!,
+                command: commands[1]!,
+              },
             ]);
-            expect(attached.hasLiveSession("attached-failure")).toBe(false);
-            expect(service.hasLiveSession("service-failure")).toBe(false);
-            await access(directory);
-            removed.push(directory);
-          });
-        }
-      })(),
-    ).rejects.toBe(failure);
+            attachments.push(
+              service.attachExisting(
+                "service-failure",
+                "service-view",
+                (event) => {
+                  if (event.type === "terminal.output") output[1] += event.data;
+                },
+              ),
+            );
+            if (ready) {
+              await expect
+                .poll(() => output.every((value) => replayMarker.test(value)), {
+                  timeout: 5_000,
+                })
+                .toBe(true);
+              output.forEach(observeFixtureProcess);
+            }
+            expect(attached.hasLiveSession("attached-failure")).toBe(true);
+            expect(service.hasLiveSession("service-failure")).toBe(true);
+            throw failure;
+          } finally {
+            await cleanupFixtures(async (directory) => {
+              expect(exitedIds.sort()).toEqual([
+                "attached-failure",
+                "service-failure",
+              ]);
+              expect(attached.hasLiveSession("attached-failure")).toBe(false);
+              expect(service.hasLiveSession("service-failure")).toBe(false);
+              await access(directory);
+              removed.push(directory);
+            });
+          }
+        })(),
+      ).rejects.toBe(failure);
 
-    expect(await Promise.all(attachments)).toEqual([
-      expect.objectContaining({ status: "exited" }),
-      expect.objectContaining({ status: "exited" }),
-    ]);
-    expect(removed.sort()).toEqual(ownedDirectories.sort());
-    for (const directory of ownedDirectories) {
-      await expect(access(directory)).rejects.toMatchObject({ code: "ENOENT" });
-    }
-  });
+      expect(await Promise.all(attachments)).toEqual([
+        expect.objectContaining({ status: "exited" }),
+        expect.objectContaining({ status: "exited" }),
+      ]);
+      expect(removed.sort()).toEqual(ownedDirectories.sort());
+      for (const directory of ownedDirectories) {
+        await expect(access(directory)).rejects.toMatchObject({
+          code: "ENOENT",
+        });
+      }
+    },
+  );
 
   it.skipIf(process.platform === "win32")(
     "requests one bounded PTY redraw when only a truncated legacy replay remains",
