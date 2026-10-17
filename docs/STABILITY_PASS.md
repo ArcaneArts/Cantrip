@@ -900,6 +900,10 @@ and the owned worktree archived after saving evidence.
 
 ### #2116 follow-up: controlled replay program and observed child exit
 
+Implementation: [#2127](https://github.com/ArcaneArts/Cantrip/pull/2127), on
+`codex/issue-2116-controlled-pty`. The PR records final validation and merge
+status.
+
 The Windows replay marker failure recurred in
 [run 39070577172](https://github.com/ArcaneArts/Cantrip/actions/runs/39070577172)
 on unchanged terminal source and fixtures. Output contained only terminal mode
