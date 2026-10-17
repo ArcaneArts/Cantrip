@@ -617,6 +617,8 @@ stability report remains a record of the observations made at that time.
 
 ### #2094: current layout fixtures
 
+PR: [#2121](https://github.com/ArcaneArts/Cantrip/pull/2121).
+
 On base `9f3f7fad7`, the two affected server files reproduce both obsolete
 layout assertions plus the separate #2095 CLI routing failure (29 passed,
 three failed). Overview is a project page and rejects tab creation; the wire
@@ -636,6 +638,16 @@ Validation on `codex/issue-2094-layout-fixtures`:
 - Both affected tests pass independently (two passed, 30 filtered out).
 - Both complete files: 31 passed, one failed; the remaining failure is #2095.
 - Server source typecheck and formatting checks pass.
+- The standard `pnpm check` passes its audits, native checks, source types and
+  focused/shared suites, then fails in the full server baseline: 1,409 passed,
+  74 failed, 70 skipped. Both #2094 failure names are gone. Relative to M7D,
+  unchanged fixtures additionally miss a DirectAttachmentCoordinator renewal
+  callback and exceed the deferred native-permission test's five-second budget.
+  These observations remain part of #2106; the broad check is not green.
+- Independent runs of those two unchanged files pass all 37 tests on the
+  branch; untouched main passes 36 and reproduces the renewal-callback failure.
+  The native-permission timeout does not repeat in either focused run and
+  remains an unresolved intermittent observation, not a claimed fix.
 
 Local reproduction and validation logs are retained under
 `~/.codex/issue-fix-pass/20261017/`. Other initial issues remain pending.
