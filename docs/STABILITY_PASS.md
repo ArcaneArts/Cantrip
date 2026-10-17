@@ -1092,3 +1092,55 @@ The worker exited naturally with code 0 in 1,013 ms and all eight observed owned
 processes retired. The ordinary editor loading deadline is unchanged. Local
 sanitized evidence is retained under `~/.codex/issue-fix-pass/20261017/2096-evidence/`;
 private recovery artifacts and fixture control tokens are not published.
+
+Final #2096 delivery: [PR #2130](https://github.com/ArcaneArts/Cantrip/pull/2130)
+merged as `d01e77772` and closed the issue. All ten CI jobs passed on the final
+head, including the bootstrap regressions on Linux, macOS and Windows. An
+ordinary cold editor run also completed a real save in 19,228 ms with zero
+folder retries; its worker exited naturally in 3,332 ms and all eight observed
+processes retired. The standard check reported 1,417 server tests passed, 72
+failed and 70 skipped, with exactly the same 79 failed test/suite labels as the
+previous cycle. The remaining server baseline is #2106. Primary was synchronized
+and the owned worktree archived; private fixtures were retained outside it.
+
+### #2102: preserve explicit navigation across initial settings hydration
+
+Branch: `codex/issue-2102-mode-hydration`. The issue PR records final broad
+validation, platform results, merge and closure.
+
+Startup waited for settings and inventory queries, then unconditionally applied
+the saved destination even after the user had explicitly selected another mode.
+The real `mode-hydration` browser case holds an actual initial settings response,
+selects IDE through the menu, and releases that older response. Against the
+unmodified app it reproduced the return to Chat and failed the IDE assertion
+after 30,978 ms; the accessibility snapshot also retained the inconsistent
+repository-importer content described in the issue.
+
+Explicit mode selection now synchronously resolves startup navigation before
+pending queries can apply an older destination. Normal saved-mode/default
+startup still runs when there has been no local selection. Destination writes
+also capture the current client identity: queued writes and continuations after
+settings reads, revision conflicts and save responses stop when the account,
+server or session incarnation changes. Current-identity revision conflicts
+retain the existing refresh-and-retry behavior.
+
+Twelve controlled hook regressions cover both mode directions, consecutive
+choices, saved/default startup, account replacement with a late old query,
+owner/server/incarnation replacement during queued persistence, a late save
+response, and a genuine cross-client revision conflict. The four focused
+navigation files pass 58 tests; app TypeScript checks pass. The independent full
+app suite passes all 475 files: 3,045 tests passed and three existing tests
+skipped. The App API domains workflow runs these regressions on Linux, macOS
+and Windows.
+
+Run `pnpm qa:editor-recovery --case mode-hydration` after the documented
+native/Code/Chromium setup. This case forbids the normal mode-selection retry.
+The fixed production app/server/worker and bundled editor completed onboarding,
+the delayed-response interleaving, folder creation, actual typing, save and
+worker-owned file verification in 15,998 ms, with zero folder or mode retries.
+The worker exited naturally with code 0 in 1,761 ms and all eight observed owned
+processes retired; the fixture closed with zero sockets. The server reported
+its existing incomplete-authority-retirement exit code 1 after the worker was
+stopped, with no surviving server process. Local evidence is retained under
+`~/.codex/issue-fix-pass/20261017/2102-evidence/`; recovery credentials and fixture
+control tokens are not published.

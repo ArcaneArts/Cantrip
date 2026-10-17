@@ -15,6 +15,8 @@ const selectedCase =
 const selectedCases = new Set(selectedCase?.split(",") ?? []);
 const seenCases = new Set();
 const folderBootstrapCase = selectedCases.has("folder-bootstrap");
+const modeHydrationCase = selectedCases.has("mode-hydration");
+const settingsRelease = Promise.withResolvers();
 const fixture = await startEditorRecoveryFixture({
   requireExplicitBootstrapRefresh: folderBootstrapCase,
 });
@@ -398,10 +400,27 @@ try {
     await delay(1_000);
   };
   try {
-    const coldCaseName = folderBootstrapCase
-      ? "folder-bootstrap"
-      : "cold-editor-usable";
+    const coldCaseName = modeHydrationCase
+      ? "mode-hydration"
+      : folderBootstrapCase
+        ? "folder-bootstrap"
+        : "cold-editor-usable";
     await run(coldCaseName, async () => {
+      let settingsCaptured = false;
+      let settingsHeld = false;
+      let settingsDelivered = false;
+      if (modeHydrationCase) {
+        await page.route("**/api/settings", async (route) => {
+          if (route.request().method() !== "GET" || settingsCaptured)
+            return route.continue();
+          settingsCaptured = true;
+          const response = await route.fetch();
+          settingsHeld = true;
+          await settingsRelease.promise;
+          await route.fulfill({ response });
+          settingsDelivered = true;
+        });
+      }
       await page.goto(fixture.origin, { waitUntil: "domcontentloaded" });
       await page
         .getByRole("button", { name: "Save recovery file", exact: true })
@@ -423,6 +442,20 @@ try {
         .getByRole("button", { name: "Continue to Cantrip", exact: true })
         .click();
       let modeRetries = 0;
+      if (modeHydrationCase) {
+        const deadline = Date.now() + 30_000;
+        while (!settingsHeld && Date.now() < deadline) await delay(25);
+        assert.ok(
+          settingsHeld,
+          "Capture the actual initial settings response before selecting IDE",
+        );
+        await page
+          .getByRole("button", {
+            name: "Chat. Switch Cantrip mode",
+            exact: true,
+          })
+          .waitFor();
+      }
       for (;;) {
         const chatMode = page.getByRole("button", {
           name: "Chat. Switch Cantrip mode",
@@ -434,6 +467,21 @@ try {
             .getByRole("menuitem", { name: "Cantrip IDE", exact: true })
             .click();
         }
+        if (modeHydrationCase) {
+          settingsRelease.resolve();
+          const deadline = Date.now() + 30_000;
+          while (!settingsDelivered && Date.now() < deadline) await delay(25);
+          assert.ok(
+            settingsDelivered,
+            "Deliver the older actual settings response after the explicit choice",
+          );
+          await page
+            .getByRole("button", {
+              name: "IDE. Switch Cantrip mode",
+              exact: true,
+            })
+            .waitFor();
+        }
         try {
           await page
             .getByRole("button", { name: "Switch project", exact: true })
@@ -443,6 +491,7 @@ try {
             .click({ timeout: 5_000 });
           break;
         } catch (error) {
+          if (modeHydrationCase) throw error;
           if (modeRetries++ >= 2 || !(await chatMode.isVisible())) throw error;
         }
       }
@@ -531,6 +580,7 @@ try {
         marker,
         setupRetries,
         modeRetries,
+        ...(modeHydrationCase ? { settingsHeld, settingsDelivered } : {}),
         operation: "type, save, verify worker-owned file",
         phases: {
           fileOpenStartedAt,
@@ -1130,6 +1180,7 @@ try {
       path: path.join(fixture.directory, "browser-final.png"),
     });
   } finally {
+    settingsRelease.resolve();
     const workbenchTimeline = await page
       .evaluate(() => window.__qaWorkbenchTimeline ?? [])
       .catch(() => []);

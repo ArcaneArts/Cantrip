@@ -44,6 +44,10 @@ import { resolveAppStartupNavigation } from "@/lib/app-navigation";
 import { useAppLiveClientControl } from "@/lib/app-live-react";
 import { openClientNotification } from "@/lib/client-control-content-encryption";
 import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
+import {
+  clientSessionIdentityMatches,
+  getClientSessionIdentitySnapshot,
+} from "@/lib/client-session";
 import { projectSelectionAction } from "@/lib/mobile-navigation";
 import type { ProjectOverviewSection } from "@/lib/project-overview-section";
 import { projectSurfaceTabKey } from "@/lib/project-surface";
@@ -231,7 +235,7 @@ export function useShellNavigationState(
     popoutProjectId,
     projectOverviewPopoutTarget,
   } = environment;
-  const [appMode, setAppMode] = useState<AppMode | null>(
+  const [appMode, setAppModeState] = useState<AppMode | null>(
     isPopout || gitHistoryTarget ? "ide" : null,
   );
   const [selectedStandaloneChatId, setSelectedStandaloneChatId] = useState<
@@ -247,6 +251,15 @@ export function useShellNavigationState(
   }, [selectedStandaloneChatId]);
   const startupNavigationResolvedRef = useRef(
     isPopout || Boolean(gitHistoryTarget),
+  );
+  const setAppMode = useCallback<Dispatch<SetStateAction<AppMode | null>>>(
+    (mode) => {
+      // A local destination is newer than pending startup preferences. Resolve
+      // startup synchronously, before its queries can publish an older choice.
+      startupNavigationResolvedRef.current = true;
+      setAppModeState(mode);
+    },
+    [],
   );
   const destinationWriteRef = useRef<Promise<void>>(Promise.resolve());
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
@@ -371,10 +384,15 @@ export function useAppDestinationPersistence({
 }) {
   return useCallback(
     (patch: Omit<AppDestinationUpdate, "expectedRevision">) => {
+      const identity = getClientSessionIdentitySnapshot();
+      const isCurrent = () =>
+        identity !== null && clientSessionIdentityMatches(identity);
       const write = destinationWriteRef.current.then(async () => {
+        if (!isCurrent()) return;
         let bundle = queryClient.getQueryData<SettingsBundle>(["settings"]);
         if (!bundle) {
           bundle = await getSettings();
+          if (!isCurrent()) return;
           queryClient.setQueryData(["settings"], bundle);
         }
         const save = (expectedRevision: number) =>
@@ -383,13 +401,16 @@ export function useAppDestinationPersistence({
         try {
           destination = await save(bundle.preferences.destinationRevision);
         } catch (error) {
+          if (!isCurrent()) return;
           if (!(error instanceof CantripApiError) || error.status !== 409) {
             throw error;
           }
           bundle = await getSettings();
+          if (!isCurrent()) return;
           queryClient.setQueryData(["settings"], bundle);
           destination = await save(bundle.preferences.destinationRevision);
         }
+        if (!isCurrent()) return;
         queryClient.setQueryData<SettingsBundle>(["settings"], (current) =>
           current
             ? {
