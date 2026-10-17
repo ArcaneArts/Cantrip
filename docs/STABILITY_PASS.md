@@ -933,3 +933,47 @@ All 12 terminal tests pass locally. The existing Windows command workflow now
 runs ten additional fresh terminal processes after the full surrounding command
 suite. Final platform, broad-check, merge and closure evidence is recorded in
 this follow-up PR and under `~/.codex/issue-fix-pass/20261017/`.
+
+Final #2116 follow-up outcome: [PR #2127](https://github.com/ArcaneArts/Cantrip/pull/2127)
+merged as `9969e2f0a`; the issue closed automatically. All six final jobs passed
+on their first attempt in the
+[command](https://github.com/ArcaneArts/Cantrip/actions/runs/39072768762) and
+[runtime](https://github.com/ArcaneArts/Cantrip/actions/runs/39072768906) workflows.
+Windows passed ten fresh terminal runs, each with four passing tests and eight
+existing platform skips; replay took 306–385 ms. Three local repetitions passed
+all 12 terminal tests each. The standard check retained the same 78 failed server
+test/suite labels: 1,412 passed, 71 failed and 70 skipped. Primary was synchronized
+and the owned worktree archived after preserving evidence.
+
+### #2098: observed signal shutdown and explicit incomplete revocation
+
+Branch: `codex/issue-2098-server-shutdown`. The issue PR records final platform
+validation, merge and closure evidence.
+
+A child-process regression reproduces the reported AggregateError chain with
+actual protected Code attachments, a Fastify HTTP server and TCP relay sockets.
+A controlled worker either acknowledges all revocations, disconnects before
+shutdown, or acknowledges only one of two roots. Before the fix, healthy
+shutdown passes and both failure cases terminate through an unhandled rejection;
+the final lifecycle event is absent from the archive.
+
+The production signal handler now observes the application's close failure,
+records `server.shutdown.failed`, sets exit status 1 and always flushes the log
+archive. It also observes an archive-finalization rejection. It retains natural
+process exit and the original broker's failed-revocation contract: an offline or
+refusing worker is never treated as having acknowledged a revoke. Local resource
+retirement, authorization and generation fences remain unchanged.
+
+The process tests verify actual HTTP and relay closure, zero live attachments,
+denied attachment renewal, removal of managed roots, and natural process exit.
+Failure cases retain nonzero status and persisted failure diagnostics without
+an uncaught exception. POSIX uses actual SIGTERM; Windows emits the same Node
+signal event over the owned child's input because Windows process termination
+does not deliver POSIX SIGTERM. Separate handler tests cover concurrent SIGINT
+and SIGTERM, cleanup-before-flush ordering, and a rejected archive flush.
+
+All 91 focused shutdown, Code broker and log archive tests pass locally. The
+existing editor recovery contract workflow runs these tests on Linux, macOS and
+Windows. The full repository check runs independently; known server baseline
+failures remain tracked in #2106. Evidence is retained under
+`~/.codex/issue-fix-pass/20261017/`.
