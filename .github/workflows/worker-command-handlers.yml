@@ -49,7 +49,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          for ($attempt = 1; $attempt -le 3; $attempt++) {
+          for ($attempt = 1; $attempt -le 10; $attempt++) {
             pnpm --filter @cantrip/worker exec vitest run test/terminal-manager.test.ts --maxWorkers=2
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }

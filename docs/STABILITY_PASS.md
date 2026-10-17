@@ -886,3 +886,50 @@ The command matrix also reproduced #2116's original marker timeout with its
 unchanged PowerShell replay fixture. That issue was reopened with the failed
 run and placed back in the queue. A diagnostic retry passed; this does not
 establish a fix for #2116. Its follow-up remains a separate cycle.
+
+Final #2111 outcome: [PR #2126](https://github.com/ArcaneArts/Cantrip/pull/2126)
+merged as `5bd4d211a`; the issue closed automatically. All six final CI jobs
+passed in the [runtime](https://github.com/ArcaneArts/Cantrip/actions/runs/39071925861)
+and [command](https://github.com/ArcaneArts/Cantrip/actions/runs/39071925945)
+workflows. Windows passed 27 evidence tests in six seconds and 281 broader
+runtime tests with 19 existing skips. The final full local worker run passed
+2,642 tests with 133 existing skips. The standard repository check, before the
+Windows-only directory-loop correction, retained the same 78 failed server
+test/suite labels: 1,412 passed, 71 failed and 70 skipped. Primary was synchronized
+and the owned worktree archived after saving evidence.
+
+### #2116 follow-up: controlled replay program and observed child exit
+
+Implementation: [#2127](https://github.com/ArcaneArts/Cantrip/pull/2127), on
+`codex/issue-2116-controlled-pty`. The PR records final validation and merge
+status.
+
+The Windows replay marker failure recurred in
+[run 39070577172](https://github.com/ArcaneArts/Cantrip/actions/runs/39070577172)
+on unchanged terminal source and fixtures. Output contained only terminal mode
+escape sequences; PowerShell had not emitted the first script marker within
+five seconds. Cleanup completed, so the earlier ownership fix remains useful.
+The issue was reopened with the failed log. Later passing runs do not erase
+this recurrence.
+
+The replay and cleanup fixtures now run a small local Node program through the
+actual PTY. On Windows the ordinary command shell launches it, removing the
+PowerShell host initialization dependency. The program installs its input
+handler before emitting the initial marker and PID, accepts one input line and
+emits one delta. Input contains neither output marker. The replay fixture uses
+a working directory containing spaces and retains canonical snapshot,
+replay-before-ready, singleton attachment and exactly-once delta assertions.
+All original five-second observation budgets remain unchanged.
+
+Shared cleanup verifies every observed fixture child PID has exited, in addition
+to the actual manager/PTY exits, before removing any directory. Forced failures
+exercise both the immediate-start path and two fully started programs owned by
+separate attached/service managers. Both attachment promises must settle and
+the original thrown failure must survive cleanup. Existing bounded filesystem
+retries remain intact. No production terminal startup, input or shutdown logic
+changes.
+
+All 12 terminal tests pass locally. The existing Windows command workflow now
+runs ten additional fresh terminal processes after the full surrounding command
+suite. Final platform, broad-check, merge and closure evidence is recorded in
+this follow-up PR and under `~/.codex/issue-fix-pass/20261017/`.
