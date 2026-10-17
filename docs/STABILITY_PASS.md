@@ -605,3 +605,37 @@ permissions; their generated account credentials and databases are not committed
 The verified Code/native bundles in Primary are retained for repeatable QA.
 Milestone worktrees are archived after observed merge and evidence preservation;
 unrelated worktrees and user-owned services remain untouched.
+
+## Issue fix pass: October 17, 2026
+
+The initial open queue is #2094, #2095, #2118, #2116, #2113, #2111, #2098,
+#2099, #2096, #2102, #2112, #2100, #2103, #2101, #2104, #2105 and #2106, in
+that intended order. Each issue receives an independent worktree and PR.
+Blocked work remains open with reproduction evidence and a next step; a later
+passing retry alone does not resolve an intermittent defect. The earlier
+stability report remains a record of the observations made at that time.
+
+### #2094: current layout fixtures
+
+On base `9f3f7fad7`, the two affected server files reproduce both obsolete
+layout assertions plus the separate #2095 CLI routing failure (29 passed,
+three failed). Overview is a project page and rejects tab creation; the wire
+layout uses `panes`, not the retired `groups` property.
+
+The singleton fixture now asserts Overview's rejection without a layout
+mutation, then opens and focuses every supported built-in tab. Tasks provides
+the cross-project identity and launcher-pin persistence assertions. The test
+also checks that Overview has no tab launcher and pin changes leave the layout
+revision unchanged. The encrypted Task fixture parses the canonical wire schema,
+asserts Task creation leaves the entire layout unchanged, and checks membership
+using the supported surface ID. Its remaining encrypted draft, execution and
+retry assertions are retained. No production contract changed.
+
+Validation on `codex/issue-2094-layout-fixtures`:
+
+- Both affected tests pass independently (two passed, 30 filtered out).
+- Both complete files: 31 passed, one failed; the remaining failure is #2095.
+- Server source typecheck and formatting checks pass.
+
+Local reproduction and validation logs are retained under
+`~/.codex/issue-fix-pass/20261017/`. Other initial issues remain pending.

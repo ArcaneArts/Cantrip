@@ -2339,7 +2339,7 @@ describe.sequential("project execution placement API", () => {
     ).toHaveLength(1);
   });
 
-  it("opens each built-in singleton once per project and persists launcher pins outside layout revisions", async () => {
+  it("keeps Overview outside tabs, opens built-in singletons once per project, and persists launcher pins", async () => {
     const createProject = async (
       repositoryBlindIndex: string,
       repositorySuffix: string,
@@ -2363,8 +2363,34 @@ describe.sequential("project execution placement API", () => {
         })
       ).json(),
     );
+    const overviewResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${firstProject.id}/panes/member/open`,
+      payload: {
+        revision: firstLayout.revision,
+        surfaceRef: { kind: "builtin", definitionId: "project.overview" },
+      },
+    });
+    expect(overviewResponse.statusCode, overviewResponse.body).toBe(400);
+    expect(overviewResponse.json()).toEqual({
+      error: "Overview is a project page, not a tab.",
+    });
+    expect(
+      projectTabLayoutWireSummarySchema.parse(
+        (
+          await app.inject({
+            method: "GET",
+            url: `/api/projects/${firstProject.id}/panes`,
+          })
+        ).json(),
+      ),
+    ).toEqual(firstLayout);
+
+    const tabDefinitionIds = PROJECT_BUILT_IN_SURFACE_DEFINITION_IDS.filter(
+      (definitionId) => definitionId !== "project.overview",
+    );
     const openedViewIds: string[] = [];
-    for (const definitionId of PROJECT_BUILT_IN_SURFACE_DEFINITION_IDS) {
+    for (const definitionId of tabDefinitionIds) {
       const openResponse = await app.inject({
         method: "POST",
         url: `/api/projects/${firstProject.id}/panes/member/open`,
@@ -2389,17 +2415,15 @@ describe.sequential("project execution placement API", () => {
       firstLayout = opened.layout;
       openedViewIds.push(opened.viewId);
     }
-    expect(new Set(openedViewIds).size).toBe(
-      PROJECT_BUILT_IN_SURFACE_DEFINITION_IDS.length,
-    );
+    expect(new Set(openedViewIds).size).toBe(tabDefinitionIds.length);
     expect(
       firstLayout.panes
         .flatMap(({ members }) => members)
         .filter(({ tabKind }) => tabKind === "builtin"),
-    ).toHaveLength(PROJECT_BUILT_IN_SURFACE_DEFINITION_IDS.length);
+    ).toHaveLength(tabDefinitionIds.length);
 
     const revisionAfterOpening = firstLayout.revision;
-    for (const definitionId of PROJECT_BUILT_IN_SURFACE_DEFINITION_IDS) {
+    for (const definitionId of tabDefinitionIds) {
       const focusResponse = await app.inject({
         method: "POST",
         url: `/api/projects/${firstProject.id}/panes/member/open`,
@@ -2434,7 +2458,7 @@ describe.sequential("project execution placement API", () => {
       url: `/api/projects/${secondProject.id}/panes/member/open`,
       payload: {
         revision: secondLayout.revision,
-        surfaceRef: { kind: "builtin", definitionId: "project.overview" },
+        surfaceRef: { kind: "builtin", definitionId: "project.tasks" },
       },
     });
     expect(secondOpenResponse.statusCode, secondOpenResponse.body).toBe(200);
@@ -2447,7 +2471,7 @@ describe.sequential("project execution placement API", () => {
         projectId: secondProject.id,
         resource: {
           kind: "builtin",
-          definitionId: "project.overview",
+          definitionId: "project.tasks",
         },
       }),
     });
@@ -2456,7 +2480,7 @@ describe.sequential("project execution placement API", () => {
         projectId: firstProject.id,
         resource: {
           kind: "builtin",
-          definitionId: "project.overview",
+          definitionId: "project.tasks",
         },
       }),
     );
@@ -2472,11 +2496,18 @@ describe.sequential("project execution placement API", () => {
       launcherListResponse.json(),
     );
     expect(
+      launchers.some(
+        ({ target }) =>
+          target.kind === "definition" &&
+          target.definitionId === "project.overview",
+      ),
+    ).toBe(false);
+    expect(
       launchers.find(
         ({ location, target }) =>
           location === "project-navigator" &&
           target.kind === "definition" &&
-          target.definitionId === "project.overview",
+          target.definitionId === "project.tasks",
       ),
     ).toMatchObject({ pinned: true });
     expect(
@@ -2524,7 +2555,7 @@ describe.sequential("project execution placement API", () => {
       method: "PATCH",
       url: `/api/projects/${firstProject.id}/surface-launchers`,
       payload: {
-        definitionId: "project.overview",
+        definitionId: "project.tasks",
         location: "project-navigator",
         pinned: false,
       },
@@ -2537,7 +2568,7 @@ describe.sequential("project execution placement API", () => {
       location: "project-navigator",
       target: {
         kind: "definition",
-        definitionId: "project.overview",
+        definitionId: "project.tasks",
       },
       pinned: false,
     });
@@ -2564,7 +2595,7 @@ describe.sequential("project execution placement API", () => {
         ({ location, target }) =>
           location === "project-navigator" &&
           target.kind === "definition" &&
-          target.definitionId === "project.overview",
+          target.definitionId === "project.tasks",
       ),
     ).toMatchObject({ pinned: false });
   });
