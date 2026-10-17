@@ -866,3 +866,23 @@ workflow now runs both suites on Linux, macOS and Windows and triggers on the
 affected production files. Full worker and standard repository checks run
 independently; their results and platform/merge evidence are recorded in this
 issue's PR and under `~/.codex/issue-fix-pass/20261017/`.
+
+Windows acceptance exposed a separate blocker in the same persistence helper:
+recursive `mkdir` returned a namespaced `\\?\` path, while the ancestor loop
+walked the ordinary caller path. It reached `C:\` without matching the
+namespaced boundary and repeated forever. A real Windows filesystem diagnostic
+captured both paths and the repeated root. The new evidence suites timed out;
+the older runtime suite independently passed all 281 enabled Windows tests.
+
+After performing the actual `mkdir`, Windows now returns before the directory
+flush loop, matching the existing Windows no-op in `flushHistoryDirectory`.
+POSIX directory durability and file-content flushing remain unchanged. Direct
+filesystem tests cover ordinary and Windows namespaced nested paths, existing
+contents and an occupied-file creation error. The temporary diagnostic is
+removed; all evidence suites run as a separate bounded CI step. This correction
+requires a fresh complete platform run before merge.
+
+The command matrix also reproduced #2116's original marker timeout with its
+unchanged PowerShell replay fixture. That issue was reopened with the failed
+run and placed back in the queue. A diagnostic retry passed; this does not
+establish a fix for #2116. Its follow-up remains a separate cycle.
