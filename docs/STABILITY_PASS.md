@@ -716,3 +716,47 @@ Three fresh local runs pass both assertions each time, with measured database
 startup of 2,085, 2,089 and 2,215 ms. Formatting and diff checks pass. Broader
 repository and platform outcomes are recorded in the linked PR and preserved
 with the issue evidence under `~/.codex/issue-fix-pass/20261017/`.
+
+Final #2118 outcome: PR #2123 merged as `23399dbe9` and the issue closed
+automatically. [CI run 39065838183](https://github.com/ArcaneArts/Cantrip/actions/runs/39065838183)
+passed on its first attempt at head `2a6e09e8c`: all three native platforms and
+PostgreSQL passed. The three Windows repetitions passed both tests each, with
+PGlite startup of 3,929, 3,721 and 3,632 ms. The standard check retained exactly
+#2095's full-server baseline (1,412 passed, 71 failed, 70 skipped; the same 78
+failed test/suite labels). Primary was synchronized and the owned worktree
+archived after saving the evidence.
+
+### #2116: deterministic terminal replay and cleanup ownership
+
+Implementation branch: `codex/issue-2116-terminal-fixtures`. Platform acceptance
+and merge status are recorded in the issue's linked PR.
+
+The original Windows failure emitted only the PowerShell banner before the
+marker deadline, then failed directory removal with `EBUSY`. The fixture,
+production terminal manager and lockfile remain unchanged between that failing
+commit and base `23399dbe9`. The original complete file passes locally on macOS
+(10 tests), which does not disprove the observed Windows race.
+
+The replay fixture now launches a controlled command through the actual PTY.
+The command produces the first marker itself, waits for input, then produces
+the delta. Input contains neither marker, so terminal echo cannot satisfy the
+assertions. Canonical snapshot, replay-before-ready ordering, singleton
+attachment and exactly-once delivery to both subscribers remain checked.
+
+Every fixture manager registers both opened terminals and configured services.
+Shared cleanup closes all managers and waits for actual PTY exit before removing
+any directory, retaining bounded filesystem retries. A deliberately thrown
+failure before replay assertions proves an attached terminal and a background
+service both exit before either directory is removed, both attachment promises
+finish, and the original failure is preserved. Production startup and input
+handling are unchanged.
+
+The changed file passes all 11 tests locally in its first run and three fresh
+repetitions. An additional strict fixture
+compilation reports the same pre-existing diagnostics as the original file;
+normal source typechecking and runtime acceptance remain independent. The
+Windows command workflow runs the complete terminal file in three additional
+fresh processes and stops on any failure. Repeated Windows execution and the
+existing three-platform command matrix must pass before closing this issue.
+Broader check results, repetition logs and CI evidence are retained under
+`~/.codex/issue-fix-pass/20261017/` and recorded in the linked PR.
