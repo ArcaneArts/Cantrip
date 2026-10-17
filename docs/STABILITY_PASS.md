@@ -728,8 +728,9 @@ archived after saving the evidence.
 
 ### #2116: deterministic terminal replay and cleanup ownership
 
-Implementation branch: `codex/issue-2116-terminal-fixtures`. Platform acceptance
-and merge status are recorded in the issue's linked PR.
+Implementation: [#2124](https://github.com/ArcaneArts/Cantrip/pull/2124), on
+`codex/issue-2116-terminal-fixtures`. Platform acceptance and merge status are
+recorded in the linked PR.
 
 The original Windows failure emitted only the PowerShell banner before the
 marker deadline, then failed directory removal with `EBUSY`. The fixture,
