@@ -839,8 +839,9 @@ preserving evidence.
 
 ### #2111: exclusive capture persistence before evidence acknowledgement
 
-Issue: [#2111](https://github.com/ArcaneArts/Cantrip/issues/2111), on
-`codex/issue-2111-evidence-persistence`.
+Implementation: [#2126](https://github.com/ArcaneArts/Cantrip/pull/2126), on
+`codex/issue-2111-evidence-persistence`. The PR records final validation and
+merge status.
 
 A controlled filesystem/client interleaving reproduces the reported `ENOENT`
 at the original `persist` read. Capture put its event in the retry queue before
