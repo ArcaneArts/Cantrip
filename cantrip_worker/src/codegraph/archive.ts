@@ -85,12 +85,16 @@ function recordEntry(
   }
 }
 
-async function inspectTarArchive(archivePath: string): Promise<void> {
+async function inspectTarArchive(
+  archivePath: string,
+  signal?: AbortSignal,
+): Promise<void> {
   const seen = new Set<string>();
   const totals = { bytes: 0, entries: 0 };
   await tar.t({
     file: archivePath,
     strict: true,
+    filter: () => !signal?.aborted,
     onentry(entry) {
       if (entry.type !== "File" && entry.type !== "Directory") {
         throw new Error(
@@ -111,13 +115,16 @@ async function inspectTarArchive(archivePath: string): Promise<void> {
 async function extractTarArchive(
   archivePath: string,
   destination: string,
+  signal?: AbortSignal,
 ): Promise<void> {
-  await inspectTarArchive(archivePath);
+  await inspectTarArchive(archivePath, signal);
+  signal?.throwIfAborted();
   await tar.x({
     cwd: destination,
     file: archivePath,
     preservePaths: false,
     strict: true,
+    filter: () => !signal?.aborted,
     onentry(entry) {
       destinationFor(destination, entry.path);
       if (entry.type !== "File" && entry.type !== "Directory") {
@@ -127,6 +134,7 @@ async function extractTarArchive(
       }
     },
   });
+  signal?.throwIfAborted();
 }
 
 function openZip(archivePath: string): Promise<ZipFile> {
@@ -170,76 +178,91 @@ function openZipEntryStream(
 async function extractZipArchive(
   archivePath: string,
   destination: string,
+  signal?: AbortSignal,
 ): Promise<void> {
   const zipfile = await openZip(archivePath);
-  const seen = new Set<string>();
-  const totals = { bytes: 0, entries: 0 };
-  await new Promise<void>((resolve, reject) => {
-    let settled = false;
-    const fail = (error: unknown) => {
-      if (settled) return;
-      settled = true;
-      zipfile.close();
-      reject(error);
-    };
-    zipfile.once("error", fail);
-    zipfile.once("end", () => {
-      if (settled) return;
-      settled = true;
-      resolve();
-    });
-    zipfile.on("entry", (entry) => {
-      void (async () => {
-        if ((entry.generalPurposeBitFlag & 0x1) !== 0) {
-          throw new Error(
-            `CodeGraph archive contains an encrypted entry: ${entry.fileName}`,
+  const closed = new Promise<void>((resolve) => zipfile.once("close", resolve));
+  let entryOperation: Promise<void> | undefined;
+  try {
+    const seen = new Set<string>();
+    const totals = { bytes: 0, entries: 0 };
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const fail = (error: unknown) => {
+        if (settled) return;
+        settled = true;
+        zipfile.close();
+        reject(error);
+      };
+      zipfile.once("error", fail);
+      zipfile.once("end", () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      });
+      zipfile.on("entry", (entry) => {
+        entryOperation = (async () => {
+          signal?.throwIfAborted();
+          if ((entry.generalPurposeBitFlag & 0x1) !== 0) {
+            throw new Error(
+              `CodeGraph archive contains an encrypted entry: ${entry.fileName}`,
+            );
+          }
+          const type = zipEntryType(entry);
+          if (type === "symlink" || type === "other") {
+            throw new Error(
+              `CodeGraph archive contains an unsupported ${type} entry: ${entry.fileName}`,
+            );
+          }
+          recordEntry(
+            seen,
+            entry.fileName,
+            type === "file" ? entry.uncompressedSize : 0,
+            totals,
+            process.platform === "win32",
           );
-        }
-        const type = zipEntryType(entry);
-        if (type === "symlink" || type === "other") {
-          throw new Error(
-            `CodeGraph archive contains an unsupported ${type} entry: ${entry.fileName}`,
+          const output = destinationFor(destination, entry.fileName);
+          if (type === "directory") {
+            await mkdir(output, { recursive: true });
+            zipfile.readEntry();
+            return;
+          }
+          await mkdir(path.dirname(output), { recursive: true });
+          const stream = await openZipEntryStream(zipfile, entry);
+          await pipeline(
+            stream,
+            createWriteStream(output, { flags: "wx", mode: 0o600 }),
+            { signal },
           );
-        }
-        recordEntry(
-          seen,
-          entry.fileName,
-          type === "file" ? entry.uncompressedSize : 0,
-          totals,
-          process.platform === "win32",
-        );
-        const output = destinationFor(destination, entry.fileName);
-        if (type === "directory") {
-          await mkdir(output, { recursive: true });
+          const unixMode = (entry.externalFileAttributes >>> 16) & 0xffff;
+          if (process.platform !== "win32" && (unixMode & 0o111) !== 0) {
+            await chmod(output, 0o700);
+          }
+          signal?.throwIfAborted();
           zipfile.readEntry();
-          return;
-        }
-        await mkdir(path.dirname(output), { recursive: true });
-        const stream = await openZipEntryStream(zipfile, entry);
-        await pipeline(
-          stream,
-          createWriteStream(output, { flags: "wx", mode: 0o600 }),
-        );
-        const unixMode = (entry.externalFileAttributes >>> 16) & 0xffff;
-        if (process.platform !== "win32" && (unixMode & 0o111) !== 0) {
-          await chmod(output, 0o700);
-        }
-        zipfile.readEntry();
-      })().catch(fail);
+        })();
+        void entryOperation.catch(fail);
+      });
+      zipfile.readEntry();
     });
-    zipfile.readEntry();
-  });
+  } finally {
+    await entryOperation?.catch(() => undefined);
+    zipfile.close();
+    await closed;
+  }
 }
 
 export async function extractCodeGraphArchive(
   archivePath: string,
   kind: CodeGraphArchiveKind,
   destination: string,
+  signal?: AbortSignal,
 ): Promise<void> {
+  signal?.throwIfAborted();
   await mkdir(destination, { recursive: true });
   if (kind === "tar.gz") {
-    await extractTarArchive(archivePath, destination);
+    await extractTarArchive(archivePath, destination, signal);
     return;
   }
-  await extractZipArchive(archivePath, destination);
+  await extractZipArchive(archivePath, destination, signal);
 }

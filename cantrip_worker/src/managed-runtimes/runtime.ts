@@ -12,6 +12,7 @@ import {
   stat,
 } from "node:fs/promises";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 
 import {
   managedWebRuntimeArtifactSchema,
@@ -45,6 +46,7 @@ interface RuntimePointer extends RuntimePointerEntry {
 }
 
 export interface ManagedRuntimeProbeContext {
+  signal: AbortSignal;
   artifact: ManagedWebRuntimeArtifact;
   runtimeDirectory: string;
 }
@@ -299,6 +301,7 @@ export class ManagedRuntimeInstaller {
   readonly #options: ManagedRuntimeInstallerOptions;
   readonly #platform: NodeJS.Platform;
   readonly #root: string;
+  readonly #shutdown = new AbortController();
   #activeArchiveSha256: string | null = null;
   #operation: Promise<ManagedWebRuntimeStatus> | null = null;
   #status: ManagedWebRuntimeStatus;
@@ -346,7 +349,15 @@ export class ManagedRuntimeInstaller {
       : null;
   }
 
+  async close(): Promise<void> {
+    this.#shutdown.abort(
+      new Error("Managed runtime installer is shutting down."),
+    );
+    await this.#operation;
+  }
+
   prepare(): Promise<ManagedWebRuntimeStatus> {
+    this.#shutdown.signal.throwIfAborted();
     if (!this.#status.supported) return Promise.resolve(this.status());
     if (this.#operation) return this.#operation;
     this.#operation = this.#prepare().finally(() => {
@@ -356,6 +367,7 @@ export class ManagedRuntimeInstaller {
   }
 
   async reinstall(): Promise<ManagedWebRuntimeStatus> {
+    this.#shutdown.signal.throwIfAborted();
     if (!this.#status.supported) return this.status();
     if (this.#operation) {
       await this.#operation;
@@ -368,6 +380,7 @@ export class ManagedRuntimeInstaller {
   }
 
   async clearCache(): Promise<ManagedWebRuntimeStatus> {
+    this.#shutdown.signal.throwIfAborted();
     if (this.#operation) {
       await this.#operation;
       return await this.clearCache();
@@ -379,6 +392,18 @@ export class ManagedRuntimeInstaller {
   }
 
   async rollback(): Promise<ManagedWebRuntimeStatus> {
+    this.#shutdown.signal.throwIfAborted();
+    if (this.#operation) {
+      await this.#operation;
+      return await this.rollback();
+    }
+    this.#operation = this.#rollback().finally(() => {
+      this.#operation = null;
+    });
+    return await this.#operation;
+  }
+
+  async #rollback(): Promise<ManagedWebRuntimeStatus> {
     await this.#ensureStorage();
     return await this.#withLock(async () => {
       const current = await this.#loadPointer();
@@ -482,7 +507,10 @@ export class ManagedRuntimeInstaller {
     try {
       response = await this.#fetch(this.#manifestUrl, {
         headers: { accept: "application/json" },
-        signal: AbortSignal.timeout(30_000),
+        signal: AbortSignal.any([
+          this.#shutdown.signal,
+          AbortSignal.timeout(30_000),
+        ]),
       });
     } catch (error) {
       throw new ManagedRuntimeInstallError(
@@ -547,6 +575,7 @@ export class ManagedRuntimeInstaller {
           {
             maxExpandedBytes: artifact.extractedBytes,
           },
+          this.#shutdown.signal,
         );
       } catch (error) {
         throw new ManagedRuntimeInstallError(
@@ -670,7 +699,7 @@ export class ManagedRuntimeInstaller {
     timer.unref();
     try {
       const response = await this.#fetch(artifact.downloadUrl, {
-        signal: controller.signal,
+        signal: AbortSignal.any([this.#shutdown.signal, controller.signal]),
       });
       if (!response.ok || !response.body) {
         throw new ManagedRuntimeInstallError(
@@ -752,7 +781,10 @@ export class ManagedRuntimeInstaller {
       artifact.compressedBytes,
     );
     const hash = createHash("sha256");
-    for await (const chunk of createReadStream(archive)) hash.update(chunk);
+    for await (const chunk of createReadStream(archive, {
+      signal: this.#shutdown.signal,
+    }))
+      hash.update(chunk);
     const digest = hash.digest("hex");
     if (digest !== artifact.sha256) {
       throw new ManagedRuntimeInstallError(
@@ -804,7 +836,9 @@ export class ManagedRuntimeInstaller {
     artifact: ManagedWebRuntimeArtifact,
   ): Promise<void> {
     try {
+      this.#shutdown.signal.throwIfAborted();
       await this.#options.validateInventory({
+        signal: this.#shutdown.signal,
         artifact,
         runtimeDirectory: directory,
       });
@@ -822,7 +856,13 @@ export class ManagedRuntimeInstaller {
     artifact: ManagedWebRuntimeArtifact,
   ): Promise<void> {
     try {
-      await this.#options.probe({ artifact, runtimeDirectory: directory });
+      this.#shutdown.signal.throwIfAborted();
+      await this.#options.probe({
+        artifact,
+        runtimeDirectory: directory,
+        signal: this.#shutdown.signal,
+      });
+      this.#shutdown.signal.throwIfAborted();
     } catch (error) {
       throw new ManagedRuntimeInstallError(
         "health-check",
@@ -903,6 +943,7 @@ export class ManagedRuntimeInstaller {
     const lock = path.join(this.#root, "install.lock");
     const deadline = Date.now() + LOCK_WAIT_MS;
     for (;;) {
+      this.#shutdown.signal.throwIfAborted();
       try {
         await mkdir(lock, { mode: 0o700 });
         break;
@@ -930,10 +971,11 @@ export class ManagedRuntimeInstaller {
             true,
           );
         }
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        await delay(100, undefined, { signal: this.#shutdown.signal });
       }
     }
     try {
+      this.#shutdown.signal.throwIfAborted();
       return await operation();
     } finally {
       await rm(lock, { recursive: true, force: true });

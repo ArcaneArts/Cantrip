@@ -39,6 +39,7 @@ const SESSION_TTL_MS = 15 * 60_000;
 const MAX_SESSION_ELEMENTS = 100;
 
 interface InstallerLike {
+  close?(): Promise<void>;
   clearCache(): Promise<ManagedWebRuntimeStatus>;
   prepare(): Promise<ManagedWebRuntimeStatus>;
   reinstall(): Promise<ManagedWebRuntimeStatus>;
@@ -352,6 +353,7 @@ export async function probePlaywrightRuntime(
   runtimeDirectory: string,
   dataDirectory: string,
   loadPlaywright: PlaywrightLoader = defaultLoader,
+  signal?: AbortSignal,
 ): Promise<void> {
   const stateRoot = path.join(
     dataDirectory,
@@ -359,41 +361,54 @@ export async function probePlaywrightRuntime(
     "playwright",
     "probe",
   );
-  await rm(stateRoot, { recursive: true, force: true });
-  await createState(stateRoot);
-  const module = await loadPlaywright(runtimeDirectory);
-  const server = await module.chromium.launchServer({
-    executablePath: await findExecutable(runtimeDirectory),
-    headless: true,
-    chromiumSandbox: true,
-    env: browserEnvironment(runtimeDirectory, stateRoot),
-  });
+  signal?.throwIfAborted();
   try {
-    if (server.process().spawnargs.includes("--no-sandbox"))
-      throw new Error("Managed Chromium disabled its sandbox.");
-    const browser = await module.chromium.connect(server.wsEndpoint());
+    await rm(stateRoot, { recursive: true, force: true });
+    await createState(stateRoot);
+    const module = await loadPlaywright(runtimeDirectory);
+    signal?.throwIfAborted();
+    const server = await module.chromium.launchServer({
+      executablePath: await findExecutable(runtimeDirectory),
+      headless: true,
+      chromiumSandbox: true,
+      env: browserEnvironment(runtimeDirectory, stateRoot),
+    });
+    let closing: Promise<void> | undefined;
+    const close = () => (closing ??= server.close());
+    const abort = () => {
+      void close().catch(() => undefined);
+    };
+    signal?.addEventListener("abort", abort, { once: true });
     try {
-      const context = await browser.newContext();
+      signal?.throwIfAborted();
+      if (server.process().spawnargs.includes("--no-sandbox"))
+        throw new Error("Managed Chromium disabled its sandbox.");
+      const browser = await module.chromium.connect(server.wsEndpoint());
       try {
-        const page = await context.newPage();
-        await page.goto("data:text/html,<h1>Cantrip browser ready</h1>", {
-          timeout: 10_000,
-          waitUntil: "domcontentloaded",
-        });
-        if (
-          !(await page.locator("body").ariaSnapshot()).includes(
-            "Cantrip browser ready",
+        const context = await browser.newContext();
+        try {
+          const page = await context.newPage();
+          await page.goto("data:text/html,<h1>Cantrip browser ready</h1>", {
+            timeout: 10_000,
+            waitUntil: "domcontentloaded",
+          });
+          if (
+            !(await page.locator("body").ariaSnapshot()).includes(
+              "Cantrip browser ready",
+            )
           )
-        )
-          throw new Error("Managed Chromium accessibility probe failed.");
+            throw new Error("Managed Chromium accessibility probe failed.");
+        } finally {
+          await context.close();
+        }
       } finally {
-        await context.close();
+        await browser.close();
       }
     } finally {
-      await browser.close();
+      signal?.removeEventListener("abort", abort);
+      await close();
     }
   } finally {
-    await server.close();
     await rm(stateRoot, { recursive: true, force: true });
   }
 }
@@ -410,6 +425,7 @@ export class PlaywrightRuntimeManager {
   #browser: PlaywrightBrowser | null = null;
   #browserServer: PlaywrightBrowserServer | null = null;
   #closed = false;
+  #closePromise: Promise<void> | null = null;
   #idleTimer: ReturnType<typeof setTimeout> | null = null;
   #operation: Promise<void> | null = null;
   #pendingRuntime: string | null = null;
@@ -439,12 +455,13 @@ export class PlaywrightRuntimeManager {
         publicKeys: options.publicKeys ?? managedRuntimePublicKeys,
         validateInventory: async ({ artifact, runtimeDirectory }) =>
           validatePlaywrightInventory(runtimeDirectory, artifact.version),
-        probe: async ({ artifact, runtimeDirectory }) => {
+        probe: async ({ artifact, runtimeDirectory, signal }) => {
           await validatePlaywrightInventory(runtimeDirectory, artifact.version);
           await probePlaywrightRuntime(
             runtimeDirectory,
             options.dataDirectory,
             this.#loadPlaywright,
+            signal,
           );
         },
       });
@@ -480,6 +497,7 @@ export class PlaywrightRuntimeManager {
   async action(
     action: ManagedWebRuntimeAction,
   ): Promise<ManagedWebRuntimeStatus> {
+    if (this.#closed) throw new Error("Managed runtime is closed.");
     if (this.#operation) await this.#operation;
     this.#operation = this.#performAction(action).finally(
       () => (this.#operation = null),
@@ -747,17 +765,28 @@ export class PlaywrightRuntimeManager {
     await this.#closeSession(sessionId, record);
   }
 
-  async close(): Promise<void> {
+  close(): Promise<void> {
+    if (this.#closePromise) return this.#closePromise;
     this.#closed = true;
-    if (this.#updateTimer) clearInterval(this.#updateTimer);
-    if (this.#idleTimer) clearTimeout(this.#idleTimer);
-    if (this.#sessionTimer) clearInterval(this.#sessionTimer);
-    await Promise.all(
-      [...this.#sessions].map(([sessionId, record]) =>
-        this.#closeSession(sessionId, record),
-      ),
-    );
-    await this.#closeBrowser();
+    const operationSettled = Promise.allSettled([this.#operation]);
+    this.#closePromise = (async () => {
+      try {
+        await this.#installer.close?.();
+      } finally {
+        if (this.#updateTimer) clearInterval(this.#updateTimer);
+        if (this.#idleTimer) clearTimeout(this.#idleTimer);
+        if (this.#sessionTimer) clearInterval(this.#sessionTimer);
+        await Promise.all(
+          [...this.#sessions].map(([sessionId, record]) =>
+            this.#closeSession(sessionId, record),
+          ),
+        );
+        await this.#closeBrowser();
+        await operationSettled;
+        await this.#closeBrowser();
+      }
+    })();
+    return this.#closePromise;
   }
 
   async #configureContext(
@@ -940,6 +969,7 @@ export class PlaywrightRuntimeManager {
 
   async #ensureBrowser(): Promise<PlaywrightBrowser> {
     await this.prepare();
+    if (this.#closed) throw new Error("Browser runtime is closed.");
     if (this.#browser) return this.#browser;
     const runtime =
       this.#runtimeDirectory ?? this.#installer.runtimeDirectory();

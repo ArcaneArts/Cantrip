@@ -977,3 +977,64 @@ existing editor recovery contract workflow runs these tests on Linux, macOS and
 Windows. The full repository check runs independently; known server baseline
 failures remain tracked in #2106. Evidence is retained under
 `~/.codex/issue-fix-pass/20261017/`.
+
+Final #2098 outcome: [PR #2128](https://github.com/ArcaneArts/Cantrip/pull/2128)
+merged as `17f237b17`; the issue closed automatically. All three editor recovery
+contract jobs passed on their first attempt in
+[run 39074389959](https://github.com/ArcaneArts/Cantrip/actions/runs/39074389959),
+including 91 server, 92 worker and 83 app tests on each platform. The standard
+check retained the same 78 failed server test/suite labels: 1,418 passed,
+71 failed and 70 skipped. Primary was synchronized and the owned lane archived.
+
+### #2099: cancel initialization and observe actual worker exit
+
+Branch: `codex/issue-2099-worker-shutdown`. The issue PR records final broad
+validation, platform results, merge and closure.
+
+An unchanged production fixture opened the bundled editor and saved a real
+file, logged shutdown completion after 39 ms, then remained alive until the
+fixture's eight-second SIGKILL fallback. Separate child processes reproduced
+uncancelled SearXNG and Playwright manifest connections after manager close.
+All six new pending-header/body regressions fail against the original source.
+
+Managed web installers now cancel manifest and artifact requests, hash streams,
+lock waits and probes, and join installation/rollback cleanup. Shutdown starts
+both web-runtime managers and CodeGraph cancellation together. CodeGraph joins
+both downloads and actual probe process closure before removing staged files.
+SearXNG awaits child closure and clears its escalation timer; its probe and the
+Playwright probe remove private state after cancellation. Managers reject new
+work after closing, await pending preparation and retire late resources. A cold
+browser run under concurrent suite load exposed a remaining archive-extraction
+wait and correctly failed teardown. TAR extraction now skips remaining entries
+on cancellation and drains pending writes; ZIP extraction cancels the active
+pipeline and awaits stream/archive closure. Cleanup does not detach pending
+file writes or force the worker process to exit.
+
+The 51 focused tests cover real pending HTTP headers/bodies in child processes,
+SIGTERM escalation and actual process closure, interrupted downloads and probes,
+reinstall rollback, preservation of the previous signed runtime, and removal of
+partial files and owned locks. Four extraction tests interrupt real TAR/ZIP
+operations at controlled entry/write boundaries. Existing runtime behavior
+remains covered. The
+editor recovery contract workflow runs these suites on Linux, macOS and Windows;
+the two new CodeGraph archive/probe cases use the existing POSIX bundle fixture.
+
+Browser QA now fails if any owned worker exits abnormally, requires SIGKILL,
+leaves observed descendants alive, or cannot capture process ownership evidence.
+It writes results after teardown. The new `managed-runtimes-initialized` case
+waits for actual worker readiness and performs another real editor save before
+shutdown. The initialized run passed with SearXNG/Playwright `2026.08.22.1` and
+CodeGraph `1.6.2`; the worker exited naturally with code 0 in 78 ms and all 11
+observed processes were gone. After the extraction correction, the cold run
+exited naturally in 6,160 ms with all nine observed processes gone, while all
+three runtime reports still showed installation in progress. The full worker
+suite before the final extraction correction passed 2,659 tests with 133
+existing skips; the final focused suites cover the extraction change. No
+user-owned services or projects were used.
+
+Run the short cold-shutdown acceptance with
+`pnpm qa:editor-recovery --case cold-editor-usable`, and the initialized case with
+`pnpm qa:editor-recovery --case cold-editor-usable,managed-runtimes-initialized`
+after the documented native/Code/Chromium setup. Local evidence is retained under
+`~/.codex/issue-fix-pass/20261017/2099-evidence/`; recovery credentials and fixture
+control tokens are not published.

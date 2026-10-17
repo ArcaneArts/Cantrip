@@ -520,6 +520,51 @@ try {
         },
       };
     });
+    await run("managed-runtimes-initialized", async () => {
+      let status;
+      const deadline = Date.now() + 180_000;
+      do {
+        status = await page.evaluate(async (workerId) => {
+          const response = await fetch("/api/workers/management");
+          if (!response.ok)
+            throw new Error(`Worker status HTTP ${response.status}`);
+          return (await response.json()).find(
+            (worker) => worker.workerId === workerId,
+          );
+        }, fixture.workerId);
+        if (
+          status?.webRuntimes.search.state === "ready" &&
+          status?.webRuntimes.browser.state === "ready" &&
+          status?.codegraph.healthy
+        )
+          break;
+        await delay(500);
+      } while (Date.now() < deadline);
+      assert.equal(
+        status?.webRuntimes.search.state,
+        "ready",
+        JSON.stringify(status?.webRuntimes.search),
+      );
+      assert.equal(
+        status?.webRuntimes.browser.state,
+        "ready",
+        JSON.stringify(status?.webRuntimes.browser),
+      );
+      assert.equal(
+        status?.codegraph.healthy,
+        true,
+        JSON.stringify(status?.codegraph),
+      );
+      const marker = `INITIALIZED_${Date.now()}`;
+      await type(marker);
+      await save(marker);
+      return {
+        marker,
+        searchVersion: status.webRuntimes.search.installedVersion,
+        browserVersion: status.webRuntimes.browser.installedVersion,
+        codegraphVersion: status.codegraph.installedVersion,
+      };
+    });
     await run("warm-close-reopen", async () => {
       const before = await page.locator("iframe:visible").getAttribute("src");
       await page
@@ -1115,15 +1160,53 @@ try {
       ),
     );
     await performanceClient.detach().catch(() => {});
-    await writeFile(
-      path.join(fixture.directory, "browser-results.json"),
-      JSON.stringify({ origin: fixture.origin, results, errors }, null, 2),
-    );
+    const runtimesAtShutdown = await page
+      .evaluate(async (workerId) => {
+        const response = await fetch("/api/workers/management");
+        if (!response.ok)
+          throw new Error(`Worker status HTTP ${response.status}`);
+        const worker = (await response.json()).find(
+          (entry) => entry.workerId === workerId,
+        );
+        return {
+          search: worker?.webRuntimes.search.state,
+          browser: worker?.webRuntimes.browser.state,
+          codegraph: worker?.codegraph.runtimeState,
+        };
+      }, fixture.workerId)
+      .catch((error) => ({ unavailable: error.message }));
     try {
       await context.close();
       await browser.close();
     } finally {
       await fixture.close();
+      const shutdowns = fixture.events.filter(
+        (event) => event.type === "process.stopped" && event.name === "worker",
+      );
+      const exited = fixture.events.filter(
+        (event) => event.type === "process.exit" && event.name === "worker",
+      );
+      const passed =
+        shutdowns.length > 0 &&
+        exited.length === shutdowns.length &&
+        shutdowns.every(
+          (event) =>
+            event.code === 0 &&
+            event.signal === null &&
+            !event.snapshotError &&
+            event.survivors.length === 0,
+        ) &&
+        exited.every((event) => event.code === 0 && event.signal === null);
+      results.push({
+        name: "worker-shutdown",
+        status: passed ? "passed" : "failed",
+        evidence: { runtimesAtShutdown, shutdowns, exited },
+      });
+      console.log(`QA_EVT ${JSON.stringify(results.at(-1))}`);
+      await writeFile(
+        path.join(fixture.directory, "browser-results.json"),
+        JSON.stringify({ origin: fixture.origin, results, errors }, null, 2),
+      );
     }
   }
   if (results.some((result) => result.status === "failed"))

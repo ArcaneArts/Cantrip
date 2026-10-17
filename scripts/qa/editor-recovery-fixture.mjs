@@ -1,4 +1,10 @@
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
+import { promisify } from "node:util";
+import {
+  collectProcessTreePids,
+  parseUnixProcessTable,
+  forceKillProcessTree,
+} from "../devtop-processes.mjs";
 import { randomUUID } from "node:crypto";
 import { createWriteStream } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -8,6 +14,35 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
+
+const exec = promisify(execFile);
+async function ownedProcessTree(pid) {
+  if (process.platform === "win32") {
+    const { stdout } = await exec("powershell.exe", [
+      "-NoProfile",
+      "-Command",
+      "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId | ConvertTo-Json -Compress",
+    ]);
+    return collectProcessTreePids(
+      pid,
+      JSON.parse(stdout).map((entry) => ({
+        pid: entry.ProcessId,
+        ppid: entry.ParentProcessId,
+      })),
+    );
+  }
+  const { stdout } = await exec("ps", ["-axo", "pid=,ppid=,command="]);
+  return collectProcessTreePids(pid, parseUnixProcessTable(stdout));
+}
+function processAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if (error.code === "ESRCH") return false;
+    throw error;
+  }
+}
 
 const root = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -296,7 +331,15 @@ export async function startEditorRecoveryFixture() {
       const child = children.get(name);
       if (!child || child.exitCode !== null || child.signalCode !== null)
         return;
+      const started = performance.now();
       const exit = new Promise((resolve) => child.once("exit", resolve));
+      let ownedPids = [child.pid];
+      let snapshotError;
+      try {
+        ownedPids = await ownedProcessTree(child.pid);
+      } catch (error) {
+        snapshotError = error.message;
+      }
       child.kill("SIGTERM");
       const stopWait = new AbortController();
       try {
@@ -311,6 +354,24 @@ export async function startEditorRecoveryFixture() {
         child.kill("SIGKILL");
         await exit;
       }
+      let survivors = ownedPids.filter(processAlive);
+      const descendantDeadline = Date.now() + 2_000;
+      while (survivors.length && Date.now() < descendantDeadline) {
+        await delay(50);
+        survivors = survivors.filter(processAlive);
+      }
+      event("process.stopped", {
+        name,
+        pid: child.pid,
+        code: child.exitCode,
+        signal: child.signalCode,
+        durationMs: Math.round(performance.now() - started),
+        ownedPids,
+        survivors,
+        snapshotError,
+      });
+      // Failed retirement remains in the evidence; cleanup touches only this tree.
+      for (const pid of survivors) forceKillProcessTree(pid);
     };
     const waitForServer = async () => {
       const deadline = Date.now() + 90_000;

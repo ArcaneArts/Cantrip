@@ -103,6 +103,7 @@ async function extractTar(
   archivePath: string,
   destination: string,
   limits: ManagedRuntimeExtractionLimits,
+  signal?: AbortSignal,
 ): Promise<void> {
   const seen = new Set<string>();
   const totals = { bytes: 0, entries: 0 };
@@ -111,7 +112,7 @@ async function extractTar(
     file: archivePath,
     strict: true,
     filter(_entryPath, entry) {
-      if (inspectionError) return false;
+      if (inspectionError || signal?.aborted) return false;
       try {
         const archiveEntry = entry as ReadEntry;
         if (archiveEntry.type !== "File" && archiveEntry.type !== "Directory") {
@@ -134,6 +135,7 @@ async function extractTar(
       }
     },
   });
+  signal?.throwIfAborted();
   if (inspectionError) throw inspectionError;
   let extractionError: Error | null = null;
   await tar.x({
@@ -142,7 +144,7 @@ async function extractTar(
     preservePaths: false,
     strict: true,
     filter(_entryPath, entry) {
-      if (extractionError) return false;
+      if (extractionError || signal?.aborted) return false;
       try {
         const archiveEntry = entry as ReadEntry;
         destinationFor(destination, archiveEntry.path);
@@ -159,6 +161,8 @@ async function extractTar(
       }
     },
   });
+  // Drain skipped entries and await tar's pending filesystem writes before cleanup.
+  signal?.throwIfAborted();
   if (extractionError) throw extractionError;
 }
 
@@ -208,65 +212,78 @@ async function extractZip(
   archivePath: string,
   destination: string,
   limits: ManagedRuntimeExtractionLimits,
+  signal?: AbortSignal,
 ): Promise<void> {
   const zipfile = await openZip(archivePath);
-  const seen = new Set<string>();
-  const totals = { bytes: 0, entries: 0 };
-  await new Promise<void>((resolve, reject) => {
-    let settled = false;
-    const fail = (error: unknown) => {
-      if (settled) return;
-      settled = true;
-      zipfile.close();
-      reject(error);
-    };
-    zipfile.once("error", fail);
-    zipfile.once("end", () => {
-      if (settled) return;
-      settled = true;
-      resolve();
-    });
-    zipfile.on("entry", (entry) => {
-      void (async () => {
-        if ((entry.generalPurposeBitFlag & 0x1) !== 0) {
-          throw new Error(
-            `Managed runtime archive contains encrypted entry: ${entry.fileName}`,
+  const closed = new Promise<void>((resolve) => zipfile.once("close", resolve));
+  let entryOperation: Promise<void> | undefined;
+  try {
+    const seen = new Set<string>();
+    const totals = { bytes: 0, entries: 0 };
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const fail = (error: unknown) => {
+        if (settled) return;
+        settled = true;
+        zipfile.close();
+        reject(error);
+      };
+      zipfile.once("error", fail);
+      zipfile.once("end", () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      });
+      zipfile.on("entry", (entry) => {
+        entryOperation = (async () => {
+          signal?.throwIfAborted();
+          if ((entry.generalPurposeBitFlag & 0x1) !== 0) {
+            throw new Error(
+              `Managed runtime archive contains encrypted entry: ${entry.fileName}`,
+            );
+          }
+          const type = zipEntryType(entry);
+          if (type === "symlink" || type === "other") {
+            throw new Error(
+              `Managed runtime archive contains unsupported ${type}: ${entry.fileName}`,
+            );
+          }
+          recordEntry(
+            seen,
+            entry.fileName,
+            type === "file" ? entry.uncompressedSize : 0,
+            totals,
+            limits,
           );
-        }
-        const type = zipEntryType(entry);
-        if (type === "symlink" || type === "other") {
-          throw new Error(
-            `Managed runtime archive contains unsupported ${type}: ${entry.fileName}`,
+          const output = destinationFor(destination, entry.fileName);
+          if (type === "directory") {
+            await mkdir(output, { recursive: true });
+            zipfile.readEntry();
+            return;
+          }
+          await mkdir(path.dirname(output), { recursive: true });
+          const stream = await openZipEntryStream(zipfile, entry);
+          await pipeline(
+            stream,
+            createWriteStream(output, { flags: "wx", mode: 0o600 }),
+            { signal },
           );
-        }
-        recordEntry(
-          seen,
-          entry.fileName,
-          type === "file" ? entry.uncompressedSize : 0,
-          totals,
-          limits,
-        );
-        const output = destinationFor(destination, entry.fileName);
-        if (type === "directory") {
-          await mkdir(output, { recursive: true });
+          const unixMode = (entry.externalFileAttributes >>> 16) & 0xffff;
+          if (process.platform !== "win32" && (unixMode & 0o111) !== 0) {
+            await chmod(output, 0o700);
+          }
+          signal?.throwIfAborted();
           zipfile.readEntry();
-          return;
-        }
-        await mkdir(path.dirname(output), { recursive: true });
-        const stream = await openZipEntryStream(zipfile, entry);
-        await pipeline(
-          stream,
-          createWriteStream(output, { flags: "wx", mode: 0o600 }),
-        );
-        const unixMode = (entry.externalFileAttributes >>> 16) & 0xffff;
-        if (process.platform !== "win32" && (unixMode & 0o111) !== 0) {
-          await chmod(output, 0o700);
-        }
-        zipfile.readEntry();
-      })().catch(fail);
+        })();
+        void entryOperation.catch(fail);
+      });
+      zipfile.readEntry();
     });
-    zipfile.readEntry();
-  });
+  } finally {
+    await entryOperation?.catch(() => undefined);
+    zipfile.close();
+    await closed;
+  }
 }
 
 export async function extractManagedRuntimeArchive(
@@ -274,12 +291,14 @@ export async function extractManagedRuntimeArchive(
   format: ManagedRuntimeArchiveFormat,
   destination: string,
   limits: Partial<ManagedRuntimeExtractionLimits> = {},
+  signal?: AbortSignal,
 ): Promise<void> {
+  signal?.throwIfAborted();
   const effectiveLimits = { ...DEFAULT_LIMITS, ...limits };
   await mkdir(destination, { recursive: true, mode: 0o700 });
   if (format === "tar.gz") {
-    await extractTar(archivePath, destination, effectiveLimits);
+    await extractTar(archivePath, destination, effectiveLimits, signal);
   } else {
-    await extractZip(archivePath, destination, effectiveLimits);
+    await extractZip(archivePath, destination, effectiveLimits, signal);
   }
 }
