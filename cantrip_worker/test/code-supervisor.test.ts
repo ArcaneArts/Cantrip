@@ -1802,9 +1802,7 @@ describe("Cantrip Code supervisor", () => {
   });
 
   it("restarts a cached profile that no longer serves authenticated HTTP", async () => {
-    const { dataDirectory, repository, supervisor } = await fixture({
-      readinessTimeoutMs: 500,
-    });
+    const { dataDirectory, repository, supervisor } = await fixture();
     const first = await supervisor.open(
       openCommand("healthy-editor", repository, "primary"),
     );

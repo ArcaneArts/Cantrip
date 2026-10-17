@@ -817,3 +817,9 @@ behavior assertions remain unchanged, and they now use the shared fixture's
 normal 3,000 ms startup budget. The failure-retirement regression retains its
 intentional 500 ms deadline; no production timeout changes. The failed Windows
 run is retained and a fresh full matrix validates the correction.
+
+A follow-up local full-suite run also observed a 500 ms timeout in cached-profile
+recovery, while successful launches elsewhere in that same run took 509–1,520
+ms. This third behavior fixture now uses the same normal 3,000 ms startup
+budget. The intentional deadline regression and other fixture budgets remain
+unchanged. Full local and platform suites are repeated for the corrected head.
