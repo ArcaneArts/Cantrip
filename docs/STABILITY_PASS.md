@@ -786,8 +786,8 @@ owned worktree archived after preserving all evidence.
 
 ### #2113: failed-startup process identity before PID publication
 
-Implementation branch: `codex/issue-2113-startup-process`. The linked issue PR
-records validation and merge status.
+Implementation: [#2125](https://github.com/ArcaneArts/Cantrip/pull/2125), on
+`codex/issue-2113-startup-process`. The PR records validation and merge status.
 
 The unchanged supervisor suite passes all 76 tests on main. A fixture-only
 initialization barrier before PID publication deterministically reproduces the
