@@ -210,6 +210,38 @@ afterEach(() => {
 });
 
 describe("Terminal WorkerLink client", () => {
+  it("keeps a healthy terminal usable through a transient renewal failure", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+    const fixture = setup();
+    fixture.dependencies.now = Date.now;
+    vi.mocked(fixture.dependencies.renewGrant)
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockImplementation(async () => ({
+        ...fixture.activeGrant.binding.lease,
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      }));
+    const onClose = vi.fn();
+    const connection = await openTerminalWorkerLink(
+      {
+        onClose,
+        onMessage: vi.fn(),
+        operationId,
+        terminalId: "terminal-1",
+        workerId: "worker-1",
+      },
+      fixture.dependencies,
+    );
+    await vi.advanceTimersByTimeAsync(40_000);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(fixture.release).not.toHaveBeenCalled();
+    expect(connection.send({ type: "resize", cols: 100, rows: 30 })).toBe(true);
+    await vi.advanceTimersByTimeAsync(250);
+    expect(fixture.dependencies.renewGrant).toHaveBeenCalledTimes(2);
+    expect(onClose).not.toHaveBeenCalled();
+    connection.close();
+  });
+
   it("buffers frames until activation and returns credit after consumption", async () => {
     const fixture = setup();
     const messages: unknown[] = [];

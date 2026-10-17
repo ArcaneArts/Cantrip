@@ -1,168 +1,196 @@
-import { nativeModelAttribution } from "../native-model-attribution.js";
+import { CodexInteractions } from "./interactions.js";
+import { CodexAuthRecovery } from "./auth-recovery.js";
+import { codexProviderLogContext } from "./provider-config.js";
+export {
+  planQuestionId,
+  AGENT_INTERACTION_TIMEOUT_MS,
+  agentInteractionRequestFromServerRequest,
+  agentInteractionResponseFromNativeResult,
+  codexResultForAgentInteraction,
+  failClosedAgentInteractionReply,
+} from "./interaction-protocol.js";
 import {
-  requestManagedHistoryTransfer,
-  type ManagedHistoryExport,
-  type ManagedHistoryImport,
-} from "./managed-history-transfer.js";
+  CodexExecutionOwnership,
+  childThreadMetadataFromNotification,
+  nativeAgentRuntimeStatus,
+} from "./execution-ownership.js";
+export {
+  agentPathSegments,
+  childThreadMetadataFromNotification,
+} from "./execution-ownership.js";
+import { COMPLETED_TURN_RECONCILIATION_TIMEOUT_MS } from "./runtime-limits.js";
+import { CodexRpcRequests } from "./rpc-requests.js";
+import { parseCodexRpcMessage, CodexNativeRpcError } from "./rpc-protocol.js";
 import {
-  readNativeAccountDefaults,
-  writeNativeAccountDefaults,
-  nativeAccountDefaultsParams,
-} from "./native-account-defaults.js";
+  launchCodexProcess,
+  readCodexProcessEndpoint,
+  openCodexWebSocket,
+} from "./process-transport.js";
+export {
+  parseCodexRpcMessage,
+  codexEndpointFromLine,
+  codexStartupExitMessage,
+  CodexNativeRpcError,
+} from "./rpc-protocol.js";
 import type {
-  NativeAccountDefaultsWrite,
+  ActiveCommandTelemetry,
+  ActiveTurn,
+  AdmittedNativeExecution,
+  AdmittedNativeReply,
+  AdmittedNativeReplyIdentity,
+  AdmittedNativeReplyResponse,
+  AgentOperationResult,
+  AgentRuntimeState,
+  CodexExternalThreadChange,
+  CodexExternalThreadChangeKind,
+  CodexProcessLauncher,
+  CodexSkill,
+  CompactAgentThreadOptions,
+  GoalRuntimeOptions,
+  HydrateChatRelocationOptions,
+  ManagedExecutionGateHandler,
+  ManagedExecutionResolution,
+  ManagedNativeCommandDispatcher,
+  ManagedNativeGuiCommand,
+  NativeCollaborationMode,
+  NativeCollaborationModeListResponse,
+  NativeReplacementSettings,
+  PrepareAdmittedNativeExecutionOptions,
+  PrepareImportedManagedThreadOptions,
+  PrepareManagedThreadOptions,
+  RootExecution,
+  RpcMessage,
+  RunAgentOperationOptions,
+  RunAgentTurnOptions,
+  RunAgentTurnRetry,
+  RuntimeChatAttachment,
+  RuntimeSubagentDefaults,
+  ServerRequestResolvedParams,
+  ThreadResponse,
+  ThreadStartedParams,
+  ThreadStatusChangedParams,
+  TurnCompletedParams,
+  TurnPlanUpdatedParams,
+  TurnStartResponse,
+  TurnStartedParams,
+} from "./runtime-types.js";
+import { isDeepStrictEqual } from "node:util";
+import path from "node:path";
+import type {
+  AgentActivity,
+  AgentInteractionResponse,
+  AgentThreadSync,
+  AgentTurnResult,
+  ChatGoalResponse,
+  ChatGptModelInventory,
+  ChatMessageContent,
+  ChatRelocationContextPayload,
+  CodexCustomizationInventory,
+  CodexExternalImportPreview,
+  CodexExternalImportStatus,
+  CodexMcpOauthStartResult,
+  CodexMcpOauthStatus,
+  CodexMcpReloadResult,
+  CodexMcpResourceRead,
+  CodexRuntimeReport,
+  CodexSkillConfigResult,
+  CodexSkillRootsResult,
+  McpServerConfiguration,
   NativeAccountDefaultsResult,
+  NativeAccountDefaultsWrite,
+  PermissionProfileCapability,
+  PermissionTransition,
+  PlanMode,
+  ProviderAccessTokenLease,
+  ProviderQuotaSnapshot,
+  ProviderRateLimitResetConsumeInput,
+  ProviderRateLimitResetConsumeResult,
+  ThreadGoal,
 } from "@cantrip/protocol";
 import {
-  isNativePermissionDeferred,
-  NativePermissionDeferredError,
-} from "./native-permission-deferred.js";
-import {
-  NativeThreadSettingsState,
-  type NativeSettingsRequest,
-  type NativeThreadSettings,
-} from "./native-thread-settings.js";
-import { z } from "zod";
-import { publishPendingInteraction } from "./pending-interaction-publication.js";
-import {
-  describeAgentCommunication,
-  type InterAgentCommunicationItem,
-} from "./agent-communication.js";
-import {
-  CUA_DISCOVERY_GUIDANCE,
-  CUA_START_GUIDANCE,
-} from "../mcp/cua-guidance.js";
-import { createHash, randomUUID } from "node:crypto";
-import {
-  execFile,
-  type ChildProcessWithoutNullStreams,
-  type ProcessEnvOptions,
-} from "node:child_process";
-import { lstat, mkdir } from "node:fs/promises";
-import path from "node:path";
-import readline from "node:readline";
-import {
-  isDeepStrictEqual,
-  promisify,
-  stripVTControlCharacters,
-} from "node:util";
-
-import {
-  agentActivitySchema,
-  nativeInitialTurnSettingsSchema,
-  type NativeInitialTurnSettings,
-  agentCommandOutputLimitBytes,
-  agentFilePreviewLimitCharacters,
   CANTRIP_MCP_TOOL_NAMES,
   MANAGED_CUA_MCP_NAME,
-  agentInteractionAcceptedSchema,
-  agentInteractionResponseSchema,
-  agentInteractionRuntimeRequestSchema,
-  agentThreadSyncSchema,
+  YOLO_PERMISSION_PROFILE_ID,
+  agentActivitySchema,
   agentTurnResultSchema,
-  chatGptModelInventorySchema,
   chatGoalClearSchema,
   chatGoalResponseSchema,
+  chatGptModelInventorySchema,
   codexExternalImportStatusSchema,
   codexMcpOauthStatusSchema,
   codexMcpReloadResultSchema,
   isManagedCantripMcpName,
   isManagedCodeGraphMcpName,
-  pendingPlanQuestionSchema,
+  nativeInitialTurnSettingsSchema,
   permissionProfileCapabilitySchema,
   providerRateLimitResetConsumeOutcomeSchema,
   providerRateLimitResetConsumeResultSchema,
   shouldUseChatGptCredits,
-  YOLO_PERMISSION_PROFILE_ID,
-  normalizedAgentMessageSchema,
   threadGoalSchema,
-  type AgentActivity,
-  type AgentCommunicationKind,
-  type AgentScope,
-  type AgentInteractionRequestKind,
-  type AgentInteractionResponse,
-  type AgentInteractionRuntimeRequest,
-  type AgentThreadSync,
-  type AgentThreadSyncItem,
-  type AgentTurnResult,
-  type ChatGptModelInventory,
-  type ChatGoalResponse,
-  type ChatRelocationContextPayload,
-  type ChatMessageContent,
-  type CodexCustomizationInventory,
-  type CodexExternalImportPreview,
-  type CodexExternalImportStatus,
-  type CodexMcpOauthStartResult,
-  type CodexMcpOauthStatus,
-  type CodexMcpReloadResult,
-  type CodexRuntimeReport,
-  type CodexEventCorrelation,
-  type CodexMcpResourceRead,
-  type CodexSkillConfigResult,
-  type CodexSkillRootsResult,
-  type NormalizedAgentMessage,
-  type PendingPlanQuestion,
-  type PermissionProfileCapability,
-  type PermissionTransition,
-  type PlanMode,
-  type PlanStep,
-  type McpServerConfiguration,
-  type ProviderAccessTokenLease,
-  type ProviderQuotaSnapshot,
-  type ProviderRateLimitResetConsumeInput,
-  type ProviderRateLimitResetConsumeResult,
-  type ThreadGoal,
-  type ChatAttachmentSummary,
-  type WorkerCommand,
 } from "@cantrip/protocol";
-import { cantripVersion } from "@cantrip/version";
+import {
+  agentMessageFingerprint,
+  boundedMapSet,
+  boundedText,
+  codexErrorReasonCode,
+  completedActivityTimestamps,
+  eventCorrelation,
+  objectRecord,
+} from "./event-values.js";
+import type {
+  AccountRateLimitsUpdatedParams,
+  ActiveAgentContextWindow,
+  ActiveAgentContextWindowSource,
+  AgentMessageDeltaParams,
+  CodexThreadReadResponse,
+  CodexThreadTurn,
+  CommandExecutionOutputDeltaParams,
+  ConfigWarningParams,
+  ErrorNotificationParams,
+  FileChangePatchUpdatedParams,
+  ItemLifecycleParams,
+  ReasoningSummaryPartAddedParams,
+  ReasoningSummaryTextDeltaParams,
+  ThreadGoalClearedParams,
+  ThreadGoalUpdatedParams,
+  ThreadTokenUsageUpdatedParams,
+  TokenUsageBreakdown,
+  TurnDiffUpdatedParams,
+  WarningParams,
+  WorkspaceSnapshot,
+} from "./event-types.js";
+import { lstat, mkdir } from "node:fs/promises";
+import {
+  CUA_DISCOVERY_GUIDANCE,
+  CUA_START_GUIDANCE,
+} from "../mcp/cua-guidance.js";
+import { createAgentActivityRawEnvelope } from "./raw-capture.js";
 import { boundedJsonValueSchema } from "@cantrip/protocol/bounded-json";
-import {
-  measuredAgentUsageSchema,
-  type MeasuredAgentUsage,
-} from "@cantrip/protocol/agent-usage";
-
-import { spawnGuardedProcess } from "../code/process-guard.js";
-import { workerLogError, workerLogger } from "../logger.js";
-import {
-  CodexExecutionLifetime,
-  type CodexComputerUseExecution,
-} from "./execution-lifetime.js";
-import {
-  ProviderAccessTokenRequestError,
-  type ProviderAccessTokenClient,
-} from "../provider-access-tokens.js";
-import WebSocket, { type RawData } from "ws";
-
+import { measuredAgentUsageSchema } from "@cantrip/protocol/agent-usage";
+import { createHash, randomUUID } from "node:crypto";
+import type { RuntimeProvider } from "./external-chatgpt-auth.js";
 import type { CodexRuntime, CodexRuntimeDiagnostic } from "./runtime.js";
-import {
-  readCodexNativeHistory,
-  type CodexNativeHistorySnapshot,
-} from "./native-history.js";
-import {
-  NativeHistoryObservations,
-  type NativeHistoryObserver,
-  type NativeHistorySubscription,
-} from "./native-history-observation.js";
-import { attachmentPromptText } from "./attachment-inputs.js";
-import {
-  codexModelProviderName,
-  codexProviderConfiguration,
-  isZaiRuntimeProvider,
-} from "./provider-config.js";
-import {
-  createAgentActivityRawEnvelope,
-  redactAgentActivityText,
-} from "./raw-capture.js";
-import {
-  runtimeModelSupportsImages,
-  writeManagedCodexModelCatalog,
-} from "./model-catalog.js";
 import { LiveManagedModelCatalog } from "./live-managed-model-catalog.js";
+import { nativeModelAttribution } from "../native-model-attribution.js";
+import { workerLogError, workerLogger } from "../logger.js";
+import { NativeHistoryObservations } from "./native-history-observation.js";
+import { NativeThreadSettingsState } from "./native-thread-settings.js";
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
+import WebSocket from "ws";
+import type { ProviderAccessTokenClient } from "../provider-access-tokens.js";
+import { mergeCodexSkillRoots } from "./global-skills.js";
+import { z } from "zod";
+import { quotaSnapshotFromRateLimits } from "./rate-limits.js";
+import type { AccountRateLimitsResult } from "./rate-limits.js";
+import { cantripVersion } from "@cantrip/version";
+import {
+  NativePermissionDeferredError,
+  isNativePermissionDeferred,
+} from "./native-permission-deferred.js";
 import {
   customizationInventory,
-  parseExternalImportStatus,
   parseExternalImportPreview,
+  parseExternalImportStatus,
   parseMcpOauthCompletion,
   parseMcpOauthStart,
   parseMcpResourceRead,
@@ -173,583 +201,160 @@ import {
   selectExternalImportItems,
   skillPathForConfiguration,
 } from "./customization.js";
-import { redactCodexDiagnosticPayload } from "./diagnostic-redaction.js";
+import type { CodexNativeHistorySnapshot } from "./native-history.js";
+import { readCodexNativeHistory } from "./native-history.js";
+import type {
+  ManagedHistoryExport,
+  ManagedHistoryImport,
+} from "./managed-history-transfer.js";
+import { requestManagedHistoryTransfer } from "./managed-history-transfer.js";
+import type {
+  NativeHistoryObserver,
+  NativeHistorySubscription,
+} from "./native-history-observation.js";
+import type {
+  NativeSettingsRequest,
+  NativeThreadSettings,
+} from "./native-thread-settings.js";
 import {
-  isChatGptTokenExpiredError,
-  ProviderAccountReauthenticationRequiredError,
-  readableCodexProviderError,
-} from "./provider-errors.js";
+  nativeAccountDefaultsParams,
+  readNativeAccountDefaults,
+  writeNativeAccountDefaults,
+} from "./native-account-defaults.js";
+import {
+  codexModelProviderName,
+  codexProviderConfiguration,
+  isZaiRuntimeProvider,
+} from "./provider-config.js";
+import { attachmentPromptText } from "./attachment-inputs.js";
+import {
+  runtimeModelSupportsImages,
+  writeManagedCodexModelCatalog,
+} from "./model-catalog.js";
+import type { CodexComputerUseExecution } from "./execution-lifetime.js";
+import { readableCodexProviderError } from "./provider-errors.js";
+import type { RawData } from "ws";
 import {
   chatGptExternalAuthCapabilityError,
-  chatGptExternalRefreshResponse,
   chatGptExternalAuthSession,
   chatGptExternalLoginParams,
-  refreshExternalChatGptAuthSession,
-  type ExternalChatGptAuthSession,
-  type RuntimeProvider,
 } from "./external-chatgpt-auth.js";
-import { mergeCodexSkillRoots } from "./global-skills.js";
+import { ProviderAccessTokenRequestError } from "../provider-access-tokens.js";
+
+import { redactCodexDiagnosticPayload } from "./diagnostic-redaction.js";
 import {
-  quotaSnapshotFromRateLimits,
-  type AccountRateLimitsResult,
-} from "./rate-limits.js";
+  changedFiles,
+  completedCodexThreadTurnFromRead,
+  normalizeAgentMessage,
+  normalizeCodexThreadItem,
+  normalizeCodexThreadReadResponse,
+  normalizeCodexThreadTurn,
+  normalizeNoticeActivity,
+  normalizeRateLimitActivity,
+  normalizeTokenUsageActivity,
+  turnSummaryActivity,
+} from "./event-normalization.js";
+import { workspaceChanges, workspaceSnapshot } from "./workspace-snapshots.js";
+import {
+  appendStreamingAgentMessageDelta,
+  boundedCommandTelemetrySet,
+  clearCommandFlush,
+  clearStreamingAgentMessage,
+  clearTurnInspectionTelemetry,
+  emitCommandTelemetry,
+  emitFileActivity,
+  emitStreamingAgentMessage,
+  emitTurnActivity,
+  flushActiveAgentMessage,
+  publishGoalCheckpoint,
+  publishStagedAgentMessages,
+  rememberCompletedCommand,
+  resetGoalSegment,
+  scheduleCommandTelemetry,
+  settlePendingTurnActivities,
+  settleStreamingAgentMessage,
+  stageAgentMessage,
+} from "./turn-streaming.js";
+import {
+  MAX_TURN_FILE_ITEMS,
+  MAX_TURN_ITEM_TIMESTAMPS,
+} from "./runtime-limits.js";
+import {
+  commandTelemetryFromCompletion,
+  commandTelemetryFromDelta,
+  commandTelemetryFromStart,
+} from "./command-output.js";
 
-export type CodexProcessLauncher = (
-  binary: string,
-  arguments_: string[],
-  options: ProcessEnvOptions,
-) => ChildProcessWithoutNullStreams;
-
-const launchCodexProcess: CodexProcessLauncher = (
-  binary,
-  arguments_,
-  options,
-) =>
-  spawnGuardedProcess(binary, arguments_, {
-    cwd: process.cwd(),
-    env: options.env ?? process.env,
-    stdin: "pipe",
-  });
-
-export interface RpcError {
-  code: number;
-  message: string;
-}
-
-export interface RpcMessage {
-  historyCursor?: unknown;
-  error?: RpcError;
-  id?: number | string;
-  method?: string;
-  params?: unknown;
-  result?: unknown;
-}
-
-interface PendingRpcRequest {
-  method: string;
-  reject(error: Error): void;
-  resolve(result: unknown): void;
-  startedAtMs: number;
-  timeout: ReturnType<typeof setTimeout>;
-}
-
-interface ActiveTurn {
-  goalCompletion?: {
-    turnId: string;
-    text: string;
-    checkpointPublished: boolean;
-  };
-  nativeModelAttribution?: import("@cantrip/protocol").NativeTurnModelAttribution;
-  initialSettings?: NativeInitialTurnSettings;
-  inheritThreadSettings?: boolean;
-  admission?: {
-    operationGeneration: string;
-    controller: AbortController;
-    initialTurnId: string | null;
-    resolvedRequestIds: Set<string>;
-  };
-  agentScope: AgentScope | null;
-  baseline: WorkspaceSnapshot;
-  chatId: string | null;
-  collaborationMode: NativeCollaborationMode | null;
-  contextCompactionRequestedAtMs: number | null;
-  contextUsage: ThreadTokenUsageUpdatedParams["tokenUsage"] | null;
-  contextUsageUpdatedAtMs: number | null;
-  captureProtectedDiagnostics: boolean;
-  commandTelemetry: Map<string, ActiveCommandTelemetry>;
-  completedCommandIds: Set<string>;
-  cwd: string;
-  delta: string;
-  diffChanges: FileActivityChange[];
-  durationMs: number | null;
-  executionKind: "chat" | "operation";
-  executionLaneId: string | null;
-  fileStartedAtMs: Map<string, number>;
-  finalText: string | null;
-  interactionMode: "interactive" | "preauthorized";
-  interruptionRequestedAtMs: number | null;
-  itemStartedAtMs: Map<string, number>;
-  latestUsage: TokenUsageBreakdown | null;
-  liveAgentMessageFingerprints: Set<string>;
-  observedActivityFingerprints: Set<string>;
-  model: RunAgentTurnOptions["model"];
-  providerId: string;
-  providerKind: string;
-  onActivity?: (activity: AgentActivity) => void;
-  onMessage?: (message: NormalizedAgentMessage) => void;
-  onInteractionCleared?: (
-    requestKey: string,
-    response?: AgentInteractionResponse,
-  ) => void;
-  onInteractionExpired?: (requestKey: string) => void;
-  onInteractionRequest?: (request: AgentInteractionRuntimeRequest) => void;
-  onNativeInteractionRequest?: (
-    request: AdmittedNativeReply,
-  ) => void | Promise<void>;
-  onCheckpoint?: (checkpoint: { text: string; turnId: string }) => void;
-  onPlan?: (plan: {
-    explanation: string | null;
-    steps: PlanStep[];
-    turnId: string;
-  }) => void;
-  onPlanQuestion?: (question: PendingPlanQuestion) => void;
-  onPlanQuestionResolved?: (questionId: string) => void;
-  pendingActivities: Map<string, AgentActivity>;
-  pendingAgentMessage: NormalizedAgentMessage | null;
-  reasoningSummaries: Map<string, string[]>;
-  reject(error: Error): void;
-  resolve(result: AgentTurnResult | AgentOperationResult): void;
-  startedAtMs: number;
-  streamingAgentMessage: StreamingAgentMessage | null;
-  structuredChat: boolean;
-  threadId: string;
-  timeout: ReturnType<typeof setTimeout> | null;
-  structuredOutputSchema: Record<string, unknown> | null;
-}
-
-type AgentEventState = Pick<
-  ActiveTurn,
-  | "agentScope"
-  | "initialSettings"
-  | "nativeModelAttribution"
-  | "captureProtectedDiagnostics"
-  | "commandTelemetry"
-  | "completedCommandIds"
-  | "cwd"
-  | "delta"
-  | "diffChanges"
-  | "fileStartedAtMs"
-  | "finalText"
-  | "itemStartedAtMs"
-  | "latestUsage"
-  | "liveAgentMessageFingerprints"
-  | "observedActivityFingerprints"
-  | "onActivity"
-  | "onMessage"
-  | "pendingActivities"
-  | "pendingAgentMessage"
-  | "reasoningSummaries"
-  | "startedAtMs"
-  | "streamingAgentMessage"
-  | "structuredChat"
->;
-
-type AgentRuntimeStatus =
-  "starting" | "running" | "idle" | "completed" | "failed" | "interrupted";
-
-interface AgentRuntimeState extends AgentEventState {
-  computerUseLifetime: CodexExecutionLifetime;
-  agentPath: string[];
-  currentTurnId: string | null;
-  depth: number;
-  lastActiveAtMs: number;
-  nickname: string | null;
-  parentThreadId: string;
-  role: string | null;
-  segmentTurnIds: Set<string>;
-  status: AgentRuntimeStatus;
-  threadId: string;
-}
-
-interface RootExecution {
-  computerUseLifetime: CodexExecutionLifetime;
-  active: ActiveTurn;
-  agents: Map<string, AgentRuntimeState>;
-  rootThreadId: string;
-  rootTurnId: string | null;
-}
-
-interface ChildThreadMetadata {
-  agentPath?: string | null;
-  depth?: number | null;
-  nickname?: string | null;
-  parentThreadId: string;
-  role?: string | null;
-  threadId: string;
-}
-
-interface AgentNotificationTarget {
-  active: ActiveTurn;
-  execution: RootExecution;
-  isRoot: boolean;
-  state: AgentEventState;
-}
-
-type FileActivityChange = Extract<
-  AgentActivity,
-  { type: "fileChange" }
->["changes"][number];
-
-export interface CommandOutputBuffer {
-  output: string | null;
-  truncated: boolean;
-}
-
-export interface CommandTelemetryValue extends CommandOutputBuffer {
-  startedAtMs: number;
-  updatedAtMs: number;
-}
-
-interface ActiveCommandTelemetry extends CommandTelemetryValue {
-  correlation: CodexEventCorrelation;
-  flushTimer: ReturnType<typeof setTimeout> | null;
-  item: CommandExecutionItem | null;
-}
-
-interface StreamingAgentMessage {
-  correlation: CodexEventCorrelation;
-  flushTimer: ReturnType<typeof setTimeout> | null;
-  id: string;
-  lastEmittedText: string;
-  phase: NormalizedAgentMessage["phase"];
-  text: string;
-}
-
-const AGENT_MESSAGE_DELTA_COALESCE_MS = 100;
-const COMMAND_OUTPUT_COALESCE_MS = 100;
-const MAX_TURN_COMMAND_TELEMETRY = 200;
-const MAX_COMPLETED_COMMAND_IDS = 1_000;
-const MAX_TURN_FILE_ITEMS = 1_000;
-const MAX_TURN_ITEM_TIMESTAMPS = 1_000;
-const MAX_AGENT_THREADS_PER_EXECUTION = 256;
-const MAX_ORPHAN_AGENT_THREADS = 256;
-const MAX_KNOWN_AGENT_THREADS = 512;
-const MAX_OBSERVED_ACTIVITY_FINGERPRINTS = 2_000;
-const MAX_RECOVERED_AGENT_THREADS = 64;
-const MAX_RECOVERED_TURNS_PER_AGENT = 8;
-const MAX_RECOVERED_ITEMS_PER_TURN = 1_000;
-const RECOVERY_TURN_CLOCK_SLOP_MS = 5_000;
-
-function boundedMapSet<K, V>(map: Map<K, V>, key: K, value: V, limit: number) {
-  if (!map.has(key) && map.size >= limit) {
-    const oldest = map.keys().next().value as K | undefined;
-    if (oldest !== undefined) map.delete(oldest);
-  }
-  map.set(key, value);
-}
-
-function settleRunningActivityAtTurnBoundary(
-  activity: AgentActivity,
-  status: Exclude<AgentActivity["status"], "running">,
-  completedAtMs: number | null,
-  correlation: CodexEventCorrelation,
-): AgentActivity {
-  if (activity.status !== "running") return activity;
-  return agentActivitySchema.parse({
-    ...activity,
-    status,
-    ...(completedAtMs === null
-      ? {}
-      : {
-          updatedAtMs: Math.max(activity.updatedAtMs ?? 0, completedAtMs),
-          completedAtMs,
-        }),
-    correlation,
-  });
-}
-
-function scopedAgentActivity(
-  state: AgentEventState,
-  activity: AgentActivity,
-): AgentActivity {
-  return state.agentScope
-    ? agentActivitySchema.parse({ ...activity, agentScope: state.agentScope })
-    : activity;
-}
-
-function agentActivityDeliveryFingerprint(activity: AgentActivity): string {
-  return JSON.stringify([
-    activity.agentScope?.agentThreadId ??
-      activity.correlation?.threadId ??
-      null,
-    activity.correlation?.turnId ?? null,
-    activity.correlation?.itemId ?? activity.id,
-    activity.type,
-    activity.status,
-  ]);
-}
-
-function rememberObservedActivity(
-  state: AgentEventState,
-  activity: AgentActivity,
-): void {
-  if (
-    state.observedActivityFingerprints.size >=
-    MAX_OBSERVED_ACTIVITY_FINGERPRINTS
-  ) {
-    const oldest = state.observedActivityFingerprints.values().next().value;
-    if (oldest !== undefined) state.observedActivityFingerprints.delete(oldest);
-  }
-  state.observedActivityFingerprints.add(
-    agentActivityDeliveryFingerprint(activity),
-  );
-}
-
-function emitTurnActivity(
-  state: AgentEventState,
-  activity: AgentActivity,
-): void {
-  const capture = state.nativeModelAttribution;
-  const scoped = scopedAgentActivity(
-    state,
-    capture &&
-      (activity.type === "usage" || activity.type === "turnSummary") &&
-      capture.threadId === activity.correlation?.threadId &&
-      capture.turnId === activity.correlation?.turnId
-      ? { ...activity, nativeModelAttribution: capture }
-      : activity,
-  );
-  rememberObservedActivity(state, scoped);
-  const itemId = scoped.correlation?.itemId;
-  if (itemId) {
-    if (scoped.status === "running") {
-      boundedMapSet(
-        state.pendingActivities,
-        itemId,
-        scoped,
-        MAX_TURN_ITEM_TIMESTAMPS,
-      );
-    } else {
-      state.pendingActivities.delete(itemId);
-    }
-  }
-  state.onActivity?.(scoped);
-}
-
-function settlePendingTurnActivities(
-  active: AgentEventState,
-  status: "completed" | "failed",
-  completedAtMs: number,
-  correlation: CodexEventCorrelation,
-): void {
-  for (const activity of [...active.pendingActivities.values()]) {
-    emitTurnActivity(
-      active,
-      settleRunningActivityAtTurnBoundary(activity, status, completedAtMs, {
-        ...correlation,
-        itemId: activity.correlation?.itemId ?? null,
-      }),
-    );
-  }
-}
-
-function rememberCompletedCommand(
-  active: AgentEventState,
-  itemId: string,
-): void {
-  if (active.completedCommandIds.size >= MAX_COMPLETED_COMMAND_IDS) {
-    const oldest = active.completedCommandIds.values().next().value;
-    if (oldest !== undefined) active.completedCommandIds.delete(oldest);
-  }
-  active.completedCommandIds.add(itemId);
-}
-
-function boundedCommandTelemetrySet(
-  active: AgentEventState,
-  itemId: string,
-  telemetry: ActiveCommandTelemetry,
-): void {
-  if (
-    !active.commandTelemetry.has(itemId) &&
-    active.commandTelemetry.size >= MAX_TURN_COMMAND_TELEMETRY
-  ) {
-    const oldestId = active.commandTelemetry.keys().next().value;
-    if (oldestId !== undefined) {
-      const oldest = active.commandTelemetry.get(oldestId);
-      if (oldest) clearCommandFlush(oldest);
-      active.commandTelemetry.delete(oldestId);
-    }
-  }
-  active.commandTelemetry.set(itemId, telemetry);
-}
-
-function emitCommandTelemetry(
-  active: AgentEventState,
-  telemetry: ActiveCommandTelemetry,
-  completedAtMs?: number | null,
-  status?: AgentActivity["status"],
-): void {
-  if (!telemetry.item) return;
-  const activity = normalizeCodexThreadItem(
-    telemetry.item,
-    active.cwd,
-    completedAtMs === undefined ? "started" : "completed",
-    telemetry.correlation,
-    {
-      captureRaw: active.captureProtectedDiagnostics,
-      commandOutput: {
-        output: telemetry.output,
-        truncated: telemetry.truncated,
-      },
-      startedAtMs: telemetry.startedAtMs,
-      updatedAtMs: telemetry.updatedAtMs,
-      ...(completedAtMs === undefined ? {} : { completedAtMs }),
-      ...(status === undefined ? {} : { status }),
-    },
-  );
-  if (activity) emitTurnActivity(active, activity);
-}
-
-function clearCommandFlush(telemetry: ActiveCommandTelemetry): void {
-  if (!telemetry.flushTimer) return;
-  clearTimeout(telemetry.flushTimer);
-  telemetry.flushTimer = null;
-}
-
-function scheduleCommandTelemetry(
-  active: AgentEventState,
-  telemetry: ActiveCommandTelemetry,
-): void {
-  if (!telemetry.item || telemetry.flushTimer) return;
-  telemetry.flushTimer = setTimeout(() => {
-    telemetry.flushTimer = null;
-    if (active.commandTelemetry.get(telemetry.item!.id) !== telemetry) return;
-    emitCommandTelemetry(active, telemetry);
-  }, COMMAND_OUTPUT_COALESCE_MS);
-  telemetry.flushTimer.unref();
-}
-
-function clearStreamingAgentMessage(active: AgentEventState): void {
-  const streaming = active.streamingAgentMessage;
-  if (streaming?.flushTimer) clearTimeout(streaming.flushTimer);
-  active.streamingAgentMessage = null;
-}
-
-export function normalizeStreamingAgentMessage(
-  message: Omit<NormalizedAgentMessage, "phase" | "streaming">,
-): NormalizedAgentMessage {
-  return normalizedAgentMessageSchema.parse({
-    ...message,
-    // An agent message item can be followed by more tools or messages. Keep
-    // streamed text provisional until the authoritative turn boundary decides
-    // whether it was commentary or the final answer.
-    phase: "commentary",
-    streaming: true,
-  });
-}
-
-function emitStreamingAgentMessage(active: AgentEventState): void {
-  const streaming = active.streamingAgentMessage;
-  if (!streaming) return;
-  if (streaming.flushTimer) {
-    clearTimeout(streaming.flushTimer);
-    streaming.flushTimer = null;
-  }
-  const text = streaming.text.trim();
-  if (
-    !text ||
-    text === streaming.lastEmittedText ||
-    streaming.phase === "commentary" ||
-    active.structuredChat
-  ) {
-    return;
-  }
-  streaming.lastEmittedText = text;
-  active.onMessage?.(
-    normalizeStreamingAgentMessage({
-      id: streaming.id,
-      text,
-      correlation: streaming.correlation,
-      ...(active.agentScope ? { agentScope: active.agentScope } : {}),
-    }),
-  );
-}
-
-function scheduleStreamingAgentMessage(active: AgentEventState): void {
-  const streaming = active.streamingAgentMessage;
-  if (!streaming || streaming.flushTimer) return;
-  streaming.flushTimer = setTimeout(() => {
-    if (active.streamingAgentMessage !== streaming) return;
-    streaming.flushTimer = null;
-    emitStreamingAgentMessage(active);
-  }, AGENT_MESSAGE_DELTA_COALESCE_MS);
-  streaming.flushTimer.unref();
-}
-
-function settleStreamingAgentMessage(
-  active: AgentEventState,
-  completed: boolean,
-): void {
-  const streaming = active.streamingAgentMessage;
-  if (!streaming) return;
-  emitStreamingAgentMessage(active);
-  const text = streaming.text.trim();
-  clearStreamingAgentMessage(active);
-  if (!text || active.structuredChat) return;
-  active.onMessage?.(
-    normalizedAgentMessageSchema.parse({
-      id: streaming.id,
-      text,
-      phase:
-        streaming.phase === "commentary" || !completed
-          ? "commentary"
-          : "final_answer",
-      correlation: streaming.correlation,
-      ...(active.agentScope ? { agentScope: active.agentScope } : {}),
-    }),
-  );
-}
-
-function appendStreamingAgentMessageDelta(
-  active: AgentEventState,
-  itemId: string,
-  delta: string,
-  correlation: CodexEventCorrelation,
-): void {
-  if (active.streamingAgentMessage?.id !== itemId) {
-    settleStreamingAgentMessage(active, false);
-    active.streamingAgentMessage = {
-      correlation,
-      flushTimer: null,
-      id: itemId,
-      lastEmittedText: "",
-      phase: null,
-      text: "",
-    };
-  }
-  active.streamingAgentMessage.text += delta;
-  active.streamingAgentMessage.correlation = correlation;
-  scheduleStreamingAgentMessage(active);
-}
-
-function clearTurnInspectionTelemetry(active: AgentEventState): void {
-  clearStreamingAgentMessage(active);
-  for (const telemetry of active.commandTelemetry.values()) {
-    clearCommandFlush(telemetry);
-  }
-  active.commandTelemetry.clear();
-  active.completedCommandIds.clear();
-  active.fileStartedAtMs.clear();
-  active.itemStartedAtMs.clear();
-  active.pendingActivities.clear();
-}
-
-/** Reset segment-local output only; the surrounding legacy goal stays alive. */
-function resetGoalSegment(active: ActiveTurn): void {
-  clearTurnInspectionTelemetry(active);
-  active.delta = "";
-  active.diffChanges = [];
-  active.finalText = null;
-  active.durationMs = null;
-  active.latestUsage = null;
-  active.pendingAgentMessage = null;
-  active.interruptionRequestedAtMs = null;
-  active.liveAgentMessageFingerprints.clear();
-  active.reasoningSummaries.clear();
-  active.startedAtMs = Date.now();
-}
-
-function publishGoalCheckpoint(active: ActiveTurn, turnId: string): void {
-  const completed = active.goalCompletion;
-  if (
-    !completed ||
-    completed.turnId !== turnId ||
-    completed.checkpointPublished
-  )
-    return;
-  completed.checkpointPublished = true;
-  active.onCheckpoint?.({ text: completed.text, turnId });
-}
+export type {
+  CodexProcessLauncher,
+  RpcError,
+  RpcMessage,
+  CommandOutputBuffer,
+  CommandTelemetryValue,
+  CodexExternalThreadChangeKind,
+  CodexExternalThreadChange,
+  RunAgentTurnRetry,
+  RunAgentTurnOptions,
+  PrepareAdmittedNativeExecutionOptions,
+  ManagedExecutionAttempt,
+  ManagedExecutionDeclined,
+  ManagedExecutionResolution,
+  ManagedExecutionGateHandler,
+  ManagedNativeGuiCommand,
+  ManagedNativeCommandDispatcher,
+  AdmittedNativeReplyIdentity,
+  AdmittedNativeReply,
+  AdmittedNativeReplyResponse,
+  AdmittedNativeExecution,
+  RuntimeSubagentDefaults,
+  RunAgentOperationOptions,
+  AgentOperationResult,
+  RuntimeChatAttachment,
+  GoalRuntimeOptions,
+  NativeReplacementSettings,
+  PrepareManagedThreadOptions,
+  PrepareImportedManagedThreadOptions,
+  HydrateChatRelocationOptions,
+  CodexSkill,
+  CompactAgentThreadOptions,
+} from "./runtime-types.js";
+export {
+  completedActivityTimestamps,
+  codexErrorReasonCode,
+} from "./event-values.js";
+export {
+  normalizeStreamingAgentMessage,
+  stageAgentMessage,
+  flushStagedAgentMessage,
+} from "./turn-streaming.js";
+export type {
+  CodexThreadTurn,
+  CodexThreadReadResponse,
+  ActiveAgentContextWindow,
+  ActiveAgentContextWindowSource,
+  StagedAgentMessageResult,
+} from "./event-types.js";
+export { workspaceSnapshotFromPorcelainRecords } from "./workspace-snapshots.js";
+export {
+  latestChangedLine,
+  changedLinesPreview,
+  changedFiles,
+  normalizeCodexThreadItem,
+  normalizeAgentMessage,
+  normalizeTokenUsageActivity,
+  normalizeRateLimitActivity,
+  normalizeNoticeActivity,
+  normalizeCodexThreadTurn,
+  normalizeCodexThreadReadResponse,
+  completedCodexThreadTurnFromRead,
+} from "./event-normalization.js";
+export {
+  appendBoundedCommandOutput,
+  boundedCommandOutput,
+  commandTelemetryFromDelta,
+  commandTelemetryFromStart,
+  commandTelemetryFromCompletion,
+} from "./command-output.js";
 
 export function findActiveChatTurn<
   T extends Pick<ActiveTurn, "chatId" | "executionKind" | "threadId">,
@@ -773,59 +378,8 @@ export function findActiveChatTurn<
   return null;
 }
 
-export interface CodexThreadTurn {
-  completedAt: number | null;
-  durationMs: number | null;
-  error: TurnError | null;
-  id: string;
-  items: Array<
-    | CodexThreadItem
-    | {
-        clientId: string | null;
-        content: Array<{ type: string; text?: string }>;
-        id: string;
-        type: "userMessage";
-      }
-  >;
-  startedAt: number | null;
-  status: "completed" | "failed" | "interrupted" | "inProgress";
-}
-
-export interface CodexThreadReadResponse {
-  thread: {
-    agentNickname?: string | null;
-    agentRole?: string | null;
-    id: string;
-    model?: string | null;
-    parentThreadId?: string | null;
-    reasoningEffort?: string | null;
-    source?: unknown;
-    status: { type: "active" | "idle" | "notLoaded" | "systemError" };
-    turns: CodexThreadTurn[];
-  };
-}
-
-interface CodexThreadListResponse {
-  data: Array<CodexThreadReadResponse["thread"]>;
-  nextCursor: string | null;
-}
-
-interface WorkspaceFileState {
-  fingerprint: string;
-  status: string;
-}
-
-type WorkspaceSnapshot = Map<string, WorkspaceFileState>;
-type WorkspaceSnapshotMetadataReader = (
-  filePath: string,
-) => Promise<{ mode: number; mtimeMs: number; size: number }>;
-
-const execFileAsync = promisify(execFile);
-const WORKSPACE_SNAPSHOT_METADATA_CONCURRENCY = 16;
-const CODEX_STARTUP_TIMEOUT_MS = 2 * 60_000;
 const CODEX_RPC_TIMEOUT_MS = 2 * 60_000;
 const CODEX_PAUSE_BOUNDARY_TIMEOUT_MS = 24 * 60 * 60_000;
-const COMPLETED_TURN_RECONCILIATION_TIMEOUT_MS = 5_000;
 const CODEX_DIAGNOSTIC_LIMIT = 100;
 const CUSTOMIZATION_STATUS_LIMIT = 100;
 
@@ -929,14 +483,6 @@ export function isKnownCodexNotificationMethod(method: string): boolean {
   return KNOWN_CODEX_NOTIFICATION_METHODS.has(method);
 }
 
-export type CodexExternalThreadChangeKind = "turn" | "goal" | "queue" | "plan";
-
-export interface CodexExternalThreadChange {
-  changes: CodexExternalThreadChangeKind[];
-  revision: number;
-  threadId: string;
-}
-
 const EXTERNAL_THREAD_CHANGE_LIMIT = 4_096;
 const EXTERNAL_THREAD_CHANGE_DEBOUNCE_MS = 75;
 
@@ -997,65 +543,6 @@ export class CodexExternalThreadChangeCoalescer {
   }
 }
 
-export function parseCodexRpcMessage(raw: string): RpcMessage | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw) as unknown;
-  } catch {
-    return null;
-  }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return null;
-  }
-  const message = parsed as Record<string, unknown>;
-  if (
-    message.id !== undefined &&
-    typeof message.id !== "number" &&
-    typeof message.id !== "string"
-  ) {
-    return null;
-  }
-  if (message.method !== undefined && typeof message.method !== "string") {
-    return null;
-  }
-  if (message.id === undefined && message.method === undefined) {
-    return null;
-  }
-  if (message.error !== undefined) {
-    if (
-      !message.error ||
-      typeof message.error !== "object" ||
-      Array.isArray(message.error)
-    ) {
-      return null;
-    }
-    const error = message.error as Record<string, unknown>;
-    if (typeof error.code !== "number" || typeof error.message !== "string") {
-      return null;
-    }
-  }
-  return parsed as RpcMessage;
-}
-
-export function codexEndpointFromLine(line: string): string | null {
-  const plainText = stripVTControlCharacters(line);
-  return /^\s*listening on:\s+(ws:\/\/\S+)\s*$/.exec(plainText)?.[1] ?? null;
-}
-
-export function codexStartupExitMessage(
-  code: number | null,
-  signal: NodeJS.Signals | null,
-  stderrLines: readonly string[],
-): string {
-  const status = signal ?? `code ${String(code)}`;
-  const diagnostic = stderrLines
-    .map((line) => stripVTControlCharacters(line).trim())
-    .filter(Boolean)
-    .at(-1)
-    ?.slice(0, 2_000);
-  return `Codex app-server exited before listening (${status})${diagnostic ? `: ${diagnostic}` : "."}`;
-}
-
 export function isInvalidCompactionBlobError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return message.toLowerCase().includes("could not decode the compaction blob");
@@ -1069,315 +556,6 @@ export function codexWorkspaceContext(cwd: string): {
   return { cwd: resolved, runtimeWorkspaceRoots: [resolved] };
 }
 
-export function planQuestionId(
-  params: Pick<ToolRequestUserInputParams, "threadId" | "turnId" | "itemId">,
-  rpcId: number | string,
-): string {
-  return `${params.threadId}:${params.turnId}:${params.itemId}:${String(rpcId)}`;
-}
-
-export const AGENT_INTERACTION_TIMEOUT_MS = 30 * 60_000;
-
-const AGENT_INTERACTION_METHODS = new Set([
-  "item/commandExecution/requestApproval",
-  "item/fileChange/requestApproval",
-  "item/permissions/requestApproval",
-  "item/tool/requestUserInput",
-  "mcpServer/elicitation/request",
-]);
-
-function rpcParams(params: unknown): Record<string, unknown> {
-  if (!params || typeof params !== "object" || Array.isArray(params)) {
-    throw new Error("App Server request params must be an object.");
-  }
-  return params as Record<string, unknown>;
-}
-
-function availableCommandDecisions(
-  value: unknown,
-): Array<
-  | "accept"
-  | "acceptForSession"
-  | "acceptWithExecpolicyAmendment"
-  | "applyNetworkPolicyAmendment"
-  | "decline"
-  | "cancel"
-> | null {
-  if (!Array.isArray(value)) return null;
-  const known: ReadonlySet<string> = new Set([
-    "accept",
-    "acceptForSession",
-    "acceptWithExecpolicyAmendment",
-    "applyNetworkPolicyAmendment",
-    "decline",
-    "cancel",
-  ]);
-  return value.flatMap((decision) => {
-    if (typeof decision === "string" && known.has(decision)) {
-      return [
-        decision as
-          | "accept"
-          | "acceptForSession"
-          | "acceptWithExecpolicyAmendment"
-          | "applyNetworkPolicyAmendment"
-          | "decline"
-          | "cancel",
-      ];
-    }
-    if (!decision || typeof decision !== "object") return [];
-    if ("acceptWithExecpolicyAmendment" in decision) {
-      return ["acceptWithExecpolicyAmendment"] as const;
-    }
-    if ("applyNetworkPolicyAmendment" in decision) {
-      return ["applyNetworkPolicyAmendment"] as const;
-    }
-    return [];
-  }) as ReturnType<typeof availableCommandDecisions>;
-}
-
-export function agentInteractionRequestFromServerRequest(
-  method: string,
-  params: unknown,
-  requestKey: string,
-  nowMs = Date.now(),
-): AgentInteractionRuntimeRequest | null {
-  if (!AGENT_INTERACTION_METHODS.has(method)) return null;
-  const value = rpcParams(params);
-  const requestedTimeout =
-    method === "item/tool/requestUserInput" &&
-    typeof value.autoResolutionMs === "number" &&
-    Number.isSafeInteger(value.autoResolutionMs) &&
-    value.autoResolutionMs >= 0
-      ? value.autoResolutionMs
-      : AGENT_INTERACTION_TIMEOUT_MS;
-  const expiresAt = new Date(
-    nowMs + Math.min(requestedTimeout, AGENT_INTERACTION_TIMEOUT_MS),
-  ).toISOString();
-
-  if (method === "item/commandExecution/requestApproval") {
-    return agentInteractionRuntimeRequestSchema.parse({
-      requestKey,
-      threadId: value.threadId,
-      turnId: value.turnId,
-      itemId: value.itemId,
-      expiresAt,
-      payload: {
-        kind: "commandExecution",
-        startedAtMs: value.startedAtMs,
-        approvalId: value.approvalId ?? null,
-        environmentId: value.environmentId ?? null,
-        reason: value.reason ?? null,
-        command: value.command ?? null,
-        cwd: value.cwd ?? null,
-        commandActions: value.commandActions ?? null,
-        networkApprovalContext: value.networkApprovalContext ?? null,
-        additionalPermissions: value.additionalPermissions ?? null,
-        proposedExecpolicyAmendment: value.proposedExecpolicyAmendment ?? null,
-        proposedNetworkPolicyAmendments:
-          value.proposedNetworkPolicyAmendments ?? null,
-        availableDecisions: availableCommandDecisions(value.availableDecisions),
-      },
-    });
-  }
-  if (method === "item/fileChange/requestApproval") {
-    return agentInteractionRuntimeRequestSchema.parse({
-      requestKey,
-      threadId: value.threadId,
-      turnId: value.turnId,
-      itemId: value.itemId,
-      expiresAt,
-      payload: {
-        kind: "fileChange",
-        startedAtMs: value.startedAtMs,
-        reason: value.reason ?? null,
-        grantRoot: value.grantRoot ?? null,
-      },
-    });
-  }
-  if (method === "item/permissions/requestApproval") {
-    return agentInteractionRuntimeRequestSchema.parse({
-      requestKey,
-      threadId: value.threadId,
-      turnId: value.turnId,
-      itemId: value.itemId,
-      expiresAt,
-      payload: {
-        kind: "permissions",
-        startedAtMs: value.startedAtMs,
-        environmentId: value.environmentId ?? null,
-        cwd: value.cwd,
-        reason: value.reason ?? null,
-        requestedPermissions: value.permissions,
-      },
-    });
-  }
-  if (method === "item/tool/requestUserInput") {
-    return agentInteractionRuntimeRequestSchema.parse({
-      requestKey,
-      threadId: value.threadId,
-      turnId: value.turnId,
-      itemId: value.itemId,
-      expiresAt,
-      payload: {
-        kind: "userInput",
-        questions: value.questions,
-        autoResolutionMs: value.autoResolutionMs ?? null,
-      },
-    });
-  }
-  return agentInteractionRuntimeRequestSchema.parse({
-    requestKey,
-    threadId: value.threadId,
-    turnId: value.turnId ?? null,
-    itemId: null,
-    expiresAt,
-    payload: {
-      kind: "mcpElicitation",
-      serverName: value.serverName,
-      mode: value.mode,
-      message: value.message,
-      requestedSchema: value.requestedSchema ?? null,
-      url: value.url ?? null,
-      elicitationId: value.elicitationId ?? null,
-      metadata: value._meta ?? null,
-    },
-  });
-}
-
-/** Translate the accepted native reply for durable, encrypted GUI display. */
-export function agentInteractionResponseFromNativeResult(
-  kind: AgentInteractionRequestKind,
-  result: unknown,
-): AgentInteractionResponse | undefined {
-  if (!result || typeof result !== "object" || Array.isArray(result))
-    return undefined;
-  const value = result as Record<string, unknown>;
-  const response: Record<string, unknown> = { ...value, kind };
-  if (kind === "mcpElicitation") response.metadata = value._meta ?? null;
-  if (
-    kind === "commandExecution" &&
-    value.decision &&
-    typeof value.decision === "object"
-  ) {
-    const decision = value.decision as Record<
-      string,
-      { execpolicy_amendment?: unknown; network_policy_amendment?: unknown }
-    >;
-    if (decision.acceptWithExecpolicyAmendment) {
-      response.decision = "acceptWithExecpolicyAmendment";
-      response.execpolicyAmendment =
-        decision.acceptWithExecpolicyAmendment.execpolicy_amendment;
-    } else if (decision.applyNetworkPolicyAmendment) {
-      response.decision = "applyNetworkPolicyAmendment";
-      response.networkPolicyAmendment =
-        decision.applyNetworkPolicyAmendment.network_policy_amendment;
-    }
-  }
-  const parsed = agentInteractionResponseSchema.safeParse(response);
-  return parsed.success ? parsed.data : undefined;
-}
-
-export function codexResultForAgentInteraction(
-  response: AgentInteractionResponse,
-): unknown {
-  if (response.kind === "commandExecution") {
-    if (response.decision === "acceptWithExecpolicyAmendment") {
-      if (!response.execpolicyAmendment) {
-        throw new Error("Missing execpolicy amendment.");
-      }
-      return {
-        decision: {
-          acceptWithExecpolicyAmendment: {
-            execpolicy_amendment: response.execpolicyAmendment,
-          },
-        },
-      };
-    }
-    if (response.decision === "applyNetworkPolicyAmendment") {
-      if (!response.networkPolicyAmendment) {
-        throw new Error("Missing network policy amendment.");
-      }
-      return {
-        decision: {
-          applyNetworkPolicyAmendment: {
-            network_policy_amendment: response.networkPolicyAmendment,
-          },
-        },
-      };
-    }
-    return { decision: response.decision };
-  }
-  if (response.kind === "fileChange") {
-    return { decision: response.decision };
-  }
-  if (response.kind === "permissions") {
-    return {
-      permissions: response.permissions,
-      scope: response.scope,
-      strictAutoReview: response.strictAutoReview,
-    };
-  }
-  if (response.kind === "userInput") {
-    return { answers: response.answers };
-  }
-  return {
-    action: response.action,
-    content: response.content,
-    _meta: response.metadata,
-  };
-}
-
-export function failClosedAgentInteractionReply(
-  kind: AgentInteractionRequestKind,
-  reason: string,
-): Pick<RpcMessage, "error" | "result"> {
-  if (kind === "commandExecution" || kind === "fileChange") {
-    return { result: { decision: "cancel" } };
-  }
-  if (kind === "permissions") {
-    return {
-      result: {
-        permissions: {},
-        scope: "turn",
-        strictAutoReview: false,
-      },
-    };
-  }
-  if (kind === "mcpElicitation") {
-    return { result: { action: "cancel", content: null, _meta: null } };
-  }
-  return { error: { code: -32_000, message: reason } };
-}
-
-interface ThreadResponse {
-  thread: { id: string };
-}
-
-interface TurnStartResponse {
-  turn: { id: string };
-}
-
-interface TurnStartedParams {
-  threadId: string;
-  initialSettings?: NativeInitialTurnSettings;
-  turn: {
-    id: string;
-    startedAt?: number | null;
-  };
-}
-
-interface TurnCompletedParams {
-  threadId: string;
-  turn: {
-    completedAt?: number | null;
-    durationMs?: number | null;
-    error: TurnError | null;
-    id: string;
-    startedAt?: number | null;
-    status: "completed" | "failed" | "interrupted" | "inProgress";
-  };
-}
-
 export function reconciledRootTurnStatus(
   status: TurnCompletedParams["turn"]["status"],
   finalAnswerAvailable: boolean,
@@ -1387,316 +565,6 @@ export function reconciledRootTurnStatus(
   if (finalAnswerAvailable) return "completed";
   if (interruptionRequested) return "interrupted";
   return status;
-}
-
-interface ThreadStartedParams {
-  thread: {
-    agentNickname?: string | null;
-    agentRole?: string | null;
-    id: string;
-    parentThreadId?: string | null;
-    source?: unknown;
-    status?: { type?: string };
-  };
-}
-
-interface ThreadStatusChangedParams {
-  status: { type?: string };
-  threadId: string;
-}
-
-function objectRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function optionalString(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function optionalDepth(value: unknown): number | null {
-  return typeof value === "number" && Number.isInteger(value) && value >= 0
-    ? Math.min(value, 32)
-    : null;
-}
-
-export function agentPathSegments(value: string | null | undefined): string[] {
-  return (value ?? "")
-    .split(/[/.>]+/u)
-    .map((segment) => segment.trim())
-    .filter(Boolean)
-    .slice(0, 32);
-}
-
-export function childThreadMetadataFromNotification(
-  params: unknown,
-): ChildThreadMetadata | null {
-  const notification = objectRecord(params);
-  const thread = objectRecord(notification?.thread);
-  const threadId = optionalString(thread?.id);
-  if (!threadId) return null;
-  const source = objectRecord(thread?.source);
-  const subagent = objectRecord(source?.subAgent ?? source?.subagent);
-  const spawn = objectRecord(subagent?.thread_spawn ?? subagent?.threadSpawn);
-  const parentThreadId =
-    optionalString(thread?.parentThreadId) ??
-    optionalString(spawn?.parent_thread_id ?? spawn?.parentThreadId);
-  if (!parentThreadId) return null;
-  return {
-    threadId,
-    parentThreadId,
-    depth: optionalDepth(spawn?.depth),
-    agentPath: optionalString(spawn?.agent_path ?? spawn?.agentPath),
-    nickname:
-      optionalString(thread?.agentNickname) ??
-      optionalString(spawn?.agent_nickname ?? spawn?.agentNickname),
-    role:
-      optionalString(thread?.agentRole) ??
-      optionalString(spawn?.agent_role ?? spawn?.agentRole),
-  };
-}
-
-function nativeAgentRuntimeStatus(
-  status: { type?: string } | null | undefined,
-): AgentRuntimeStatus {
-  switch (status?.type) {
-    case "active":
-      return "running";
-    case "idle":
-      return "idle";
-    case "notLoaded":
-      return "completed";
-    case "systemError":
-      return "failed";
-    default:
-      return "starting";
-  }
-}
-
-interface AgentMessageDeltaParams {
-  delta: string;
-  itemId: string;
-  threadId: string;
-  turnId: string;
-}
-
-interface CommandExecutionOutputDeltaParams {
-  delta: string;
-  itemId: string;
-  threadId: string;
-  turnId: string;
-}
-
-interface ReasoningSummaryPartAddedParams {
-  itemId: string;
-  summaryIndex: number;
-  threadId: string;
-  turnId: string;
-}
-
-interface ReasoningSummaryTextDeltaParams extends ReasoningSummaryPartAddedParams {
-  delta: string;
-}
-
-interface CommandExecutionItem {
-  aggregatedOutput: string | null;
-  command: string;
-  cwd: string;
-  durationMs?: number | null;
-  exitCode: number | null;
-  id: string;
-  status: "inProgress" | "completed" | "failed" | "declined";
-  type: "commandExecution";
-}
-
-interface FileUpdateChange {
-  diff?: string;
-  kind: { type: "add" | "delete" | "update" };
-  path: string;
-}
-
-interface FileChangeItem {
-  changes: FileUpdateChange[];
-  id: string;
-  status: "inProgress" | "completed" | "failed" | "declined";
-  type: "fileChange";
-}
-
-interface FileChangePatchUpdatedParams {
-  changes: FileUpdateChange[];
-  itemId: string;
-  threadId: string;
-  turnId: string;
-}
-
-interface AgentMessageItem {
-  id: string;
-  phase?: "commentary" | "final_answer" | null;
-  text?: string;
-  type: "agentMessage";
-}
-
-interface PlanItem {
-  id: string;
-  text: string;
-  type: "plan";
-}
-
-interface ReasoningItem {
-  content?: string[];
-  id: string;
-  summary: string[];
-  type: "reasoning";
-}
-
-interface McpToolCallItem {
-  arguments?: unknown;
-  durationMs: number | null;
-  error: {
-    code?: number | string | null;
-    message: string;
-    retryable?: boolean | null;
-  } | null;
-  id: string;
-  result?: {
-    content?: unknown[];
-    isError?: boolean;
-    status?: string;
-    structuredContent?: unknown;
-  } | null;
-  server: string;
-  status: "inProgress" | "completed" | "failed";
-  tool: string;
-  type: "mcpToolCall";
-}
-
-interface DynamicToolCallItem {
-  durationMs: number | null;
-  id: string;
-  namespace: string | null;
-  status: "inProgress" | "completed" | "failed";
-  success: boolean | null;
-  tool: string;
-  type: "dynamicToolCall";
-}
-
-interface CollabAgentToolCallItem {
-  agentsStates: Record<
-    string,
-    { message: string | null; status: string } | undefined
-  >;
-  id: string;
-  model: string | null;
-  prompt: string | null;
-  receiverThreadIds: string[];
-  senderThreadId: string;
-  status: "inProgress" | "completed" | "failed";
-  tool: string;
-  type: "collabAgentToolCall";
-}
-
-interface SubAgentActivityItem {
-  agentPath: string;
-  agentThreadId: string;
-  id: string;
-  kind: "started" | "interacted" | "completed" | "interrupted";
-  type: "subAgentActivity";
-}
-
-interface WebSearchItem {
-  action: {
-    pattern?: string;
-    queries?: string[];
-    query?: string;
-    type: string;
-    url?: string;
-  } | null;
-  id: string;
-  query: string;
-  type: "webSearch";
-}
-
-interface ImageViewItem {
-  id: string;
-  path: string;
-  type: "imageView";
-}
-
-interface ReviewModeItem {
-  id: string;
-  review: string;
-  type: "enteredReviewMode" | "exitedReviewMode";
-}
-
-interface ContextCompactionItem {
-  id: string;
-  type: "contextCompaction";
-}
-
-type CodexThreadItem =
-  | AgentMessageItem
-  | PlanItem
-  | ReasoningItem
-  | CommandExecutionItem
-  | FileChangeItem
-  | McpToolCallItem
-  | DynamicToolCallItem
-  | CollabAgentToolCallItem
-  | SubAgentActivityItem
-  | InterAgentCommunicationItem
-  | WebSearchItem
-  | ImageViewItem
-  | ReviewModeItem
-  | ContextCompactionItem;
-
-interface ItemLifecycleParams {
-  completedAtMs?: number;
-  item: CodexThreadItem;
-  startedAtMs?: number;
-  threadId: string;
-  turnId: string;
-}
-
-interface TokenUsageBreakdown {
-  totalTokens: number;
-  inputTokens: number;
-  cachedInputTokens: number;
-  cacheWriteInputTokens: number;
-  outputTokens: number;
-  reasoningOutputTokens: number;
-}
-
-interface ThreadTokenUsageUpdatedParams {
-  threadId: string;
-  turnId: string;
-  tokenUsage: {
-    total: TokenUsageBreakdown;
-    last: TokenUsageBreakdown;
-    modelContextWindow: number | null;
-  };
-}
-
-export interface ActiveAgentContextWindow {
-  threadId: string;
-  turnId: string;
-  usedTokens: number | null;
-  contextWindowTokens: number | null;
-  remainingTokens: number | null;
-  usedPercent: number | null;
-  remainingPercent: number | null;
-  usageUpdatedAtMs: number | null;
-  compactionScheduled: boolean;
-}
-
-export interface ActiveAgentContextWindowSource {
-  contextCompactionRequestedAtMs: number | null;
-  contextUsage: {
-    last: { totalTokens: number };
-    modelContextWindow: number | null;
-  } | null;
-  contextUsageUpdatedAtMs: number | null;
-  threadId: string;
 }
 
 export function activeAgentContextWindow(
@@ -1730,410 +598,10 @@ export function activeAgentContextWindow(
   };
 }
 
-interface RateLimitWindow {
-  usedPercent: number;
-  windowDurationMins: number | null;
-  resetsAt: number | null;
-}
-
-interface AccountRateLimitsUpdatedParams {
-  rateLimits: {
-    credits?: import("@cantrip/protocol").ProviderCreditsSnapshot | null;
-    limitId: string | null;
-    limitName: string | null;
-    planType: string | null;
-    primary: RateLimitWindow | null;
-    rateLimitReachedType: string | null;
-    secondary: RateLimitWindow | null;
-  };
-}
-
-interface WarningParams {
-  message: string;
-  threadId: string | null;
-}
-
-interface ConfigWarningParams {
-  details: string | null;
-  path?: string;
-  summary: string;
-}
-
-interface TurnError {
-  additionalDetails?: string | null;
-  codexErrorInfo?: unknown;
-  message: string;
-}
-
-interface ErrorNotificationParams {
-  error: TurnError;
-  threadId: string;
-  turnId: string;
-  willRetry: boolean;
-}
-
-interface TurnDiffUpdatedParams {
-  diff: string;
-  threadId: string;
-  turnId: string;
-}
-
-interface ThreadGoalUpdatedParams {
-  goal: ThreadGoal;
-  threadId: string;
-  turnId: string | null;
-}
-
-interface ThreadGoalClearedParams {
-  threadId: string;
-}
-
-interface NativeCollaborationMode {
-  mode: PlanMode;
-  settings: {
-    model: string;
-    reasoning_effort: RunAgentTurnOptions["model"]["reasoningEffort"];
-    developer_instructions: null;
-  };
-}
-
-interface NativeCollaborationModeListResponse {
-  data: Array<{
-    mode: PlanMode | null;
-    model: string | null;
-    reasoning_effort: RunAgentTurnOptions["model"]["reasoningEffort"];
-  }>;
-}
-
-interface TurnPlanUpdatedParams {
-  threadId: string;
-  turnId: string;
-  explanation: string | null;
-  plan: PlanStep[];
-}
-
-interface ToolRequestUserInputParams {
-  threadId: string;
-  turnId: string;
-  itemId: string;
-  questions: PendingPlanQuestion["questions"];
-  autoResolutionMs: number | null;
-}
-
-interface ServerRequestResolvedParams {
-  threadId: string;
-  requestId: number | string;
-}
-
-interface NativePendingPlanQuestion {
-  active: ActiveTurn;
-  question: PendingPlanQuestion;
-  requestKey: string;
-}
-
-interface NativePendingAgentInteraction {
-  stopPublication?: () => void;
-  requestMethod: string;
-  active: ActiveTurn;
-  request: AgentInteractionRuntimeRequest;
-  rpcId: number | string;
-  timeout: ReturnType<typeof setTimeout>;
-}
-
-export interface RunAgentTurnRetry {
-  reason: "capacity" | "invalid-compaction";
-  attempt: number;
-  operationGeneration: string | null;
-  threadId: string | null;
-  turnId: string | null;
-  nextThreadId: string | null;
-  error: unknown;
-  signal: AbortSignal;
-}
-
-export interface RunAgentTurnOptions {
-  /** Shared managed preparation owns configuration; this input inherits the native
-   * thread selection instead of replaying a possibly stale GUI bootstrap model. */
-  inheritThreadSettings?: boolean;
-  /** Already protected, complete native queue vector. Never flatten or append inferred skills. */
-  nativeInput?: ReadonlyArray<Record<string, unknown>>;
-  nativeClientUserMessageId?: string;
-  operationGeneration?: string;
-  /** Exact logical-root cancellation before native dispatch; never a chat-wide active-turn interrupt. */
-  preparationSignal?: AbortSignal;
-  /** Performs initial managed preparation inside native retry/cancellation handling, without model input. */
-  onBeforeFirstAttempt?: (
-    signal: AbortSignal,
-  ) => Promise<Partial<RunAgentTurnOptions>>;
-  /** Replaces authority/options for an actual new native attempt after retry delay. */
-  onBeforeRetry?: (
-    retry: RunAgentTurnRetry,
-  ) => Promise<Partial<RunAgentTurnOptions>>;
-  onBeforeNativeDispatch?: (threadId: string) => Promise<void>;
-  onNativeReceipt?: (receipt: { turn: { id: string } }) => Promise<void>;
-  /** Persist an explicitly unconsumed input before ending this GUI attempt. */
-  onNativeDeferred?: (input: {
-    threadId: string;
-    nativeInput: ReadonlyArray<Record<string, unknown>>;
-    frame: { error: { code: number; message: string; data?: unknown } };
-  }) => Promise<void>;
-  onNativeInteractionRequest?: (
-    request: AdmittedNativeReply,
-  ) => void | Promise<void>;
-  attachments?: RuntimeChatAttachment[];
-  chatId: string;
-  captureProtectedDiagnostics: boolean;
-  clientMessageId: string;
-  cwd: string;
-  executionProfile: "ide" | "standalone-chat";
-  executionLaneId?: string;
-  isPrimary: Extract<WorkerCommand, { type: "chat.turn" }>["isPrimary"];
-  model: Extract<WorkerCommand, { type: "chat.turn" }>["model"];
-  mcpServers?: McpServerConfiguration[];
-  automationPaused: Extract<
-    WorkerCommand,
-    { type: "chat.turn" }
-  >["automationPaused"];
-  planMode: Extract<WorkerCommand, { type: "chat.turn" }>["planMode"];
-  policyContext: string | null;
-  resultMode?: Extract<WorkerCommand, { type: "chat.turn" }>["resultMode"];
-  provider: RuntimeProvider;
-  permissionProfileId: Extract<
-    WorkerCommand,
-    { type: "chat.turn" }
-  >["permissionProfileId"];
-  prompt: string;
-  rootKind: Extract<WorkerCommand, { type: "chat.turn" }>["rootKind"];
-  skillNames: string[];
-  subagentDefaults: RuntimeSubagentDefaults | null;
-  subagentProtocolVersion: Extract<
-    WorkerCommand,
-    { type: "chat.turn" }
-  >["subagentProtocolVersion"];
-  threadId: string | null;
-  worktreeMode: Extract<WorkerCommand, { type: "chat.turn" }>["worktreeMode"];
-  worktreePolicy: Extract<
-    WorkerCommand,
-    { type: "chat.turn" }
-  >["worktreePolicy"];
-  onActivity?: (activity: AgentActivity) => void;
-  onMessage?: ActiveTurn["onMessage"];
-  onInteractionCleared?: ActiveTurn["onInteractionCleared"];
-  onInteractionExpired?: ActiveTurn["onInteractionExpired"];
-  onInteractionRequest?: ActiveTurn["onInteractionRequest"];
-  onCheckpoint?: ActiveTurn["onCheckpoint"];
-  onPlan?: ActiveTurn["onPlan"];
-  onPlanQuestion?: ActiveTurn["onPlanQuestion"];
-  onPlanQuestionResolved?: ActiveTurn["onPlanQuestionResolved"];
-  onThreadLoaded?: (threadId: string) => void;
-}
-
-export type PrepareAdmittedNativeExecutionOptions = Pick<
-  RunAgentTurnOptions,
-  | "chatId"
-  | "cwd"
-  | "executionLaneId"
-  | "model"
-  | "provider"
-  | "captureProtectedDiagnostics"
-  | "onActivity"
-  | "onMessage"
-  | "onInteractionCleared"
-  | "onInteractionExpired"
-  | "onInteractionRequest"
-  | "onCheckpoint"
-  | "onPlan"
-  | "onPlanQuestion"
-  | "onPlanQuestionResolved"
-  | "onNativeInteractionRequest"
-> & {
-  operationGeneration: string;
-  threadId: string;
-  /** Native preallocated identity. Matching it does not itself start a turn. */
-  expectedTurnId?: string;
-};
-
-/** A received native JSON-RPC rejection, distinct from uncertain transport loss. */
-export class CodexNativeRpcError extends Error {
-  constructor(
-    message: string,
-    readonly nativeError: { code: number; message: string; data?: unknown },
-    readonly requestMethod?: string,
-  ) {
-    super(message);
-  }
-}
-
-export interface ManagedExecutionAttempt {
-  threadId: string;
-  runnerGeneration: string;
-  attemptId: string;
-  turnId: string;
-  trigger: "goal" | "queue";
-  goalEpoch?: string;
-  input: Record<string, unknown>;
-}
-export interface ManagedExecutionDeclined extends Omit<
-  ManagedExecutionAttempt,
-  "input" | "trigger"
-> {
-  operationGeneration: string | null;
-  reason: string;
-}
-export interface ManagedExecutionResolution {
-  threadId: string;
-  runnerGeneration: string;
-  attemptId: string;
-  operationGeneration: string | null;
-  allow: boolean;
-}
-export interface ManagedExecutionGateHandler {
-  requested(
-    attempt: ManagedExecutionAttempt,
-    signal: AbortSignal,
-  ): Promise<void>;
-  declined(event: ManagedExecutionDeclined): void | Promise<void>;
-  failed(error: unknown): void;
-}
-
-export interface ManagedNativeGuiCommand {
-  permissionTransition?: PermissionTransition;
-  operationId?: string;
-  /** Server-issued settings source; metadata, never a native API parameter. */
-  settingsBindingId?: string;
-  queueClaim?: { id: string; promptRevision: number };
-  method: string;
-  params: Record<string, unknown>;
-  reply?: {
-    requestId: string | number;
-    requestMethod: string;
-    turnId: string | null;
-  };
-  /** Executes the exact already resolved native mutation once admission succeeds. */
-  dispatch(forward?: {
-    method: string;
-    params: Record<string, unknown>;
-  }): Promise<unknown>;
-}
-export type ManagedNativeCommandDispatcher = (
-  command: ManagedNativeGuiCommand,
-) => Promise<unknown>;
-
-export interface AdmittedNativeReplyIdentity {
-  operationGeneration: string;
-  rootThreadId: string;
-  requestId: string | number;
-}
-
-export interface AdmittedNativeReply extends AdmittedNativeReplyIdentity {
-  requestKey: string;
-  requestMethod: string;
-  threadId: string;
-  turnId: string | null;
-  kind: AgentInteractionRuntimeRequest["payload"]["kind"];
-}
-
-export type AdmittedNativeReplyResponse =
-  | { result: unknown; error?: never }
-  | {
-      error: { code: number; message: string; data?: unknown };
-      result?: never;
-    };
-
-/** Registration of an already admitted operation, before its native mutation. */
-export interface AdmittedNativeExecution {
-  readonly operationGeneration: string;
-  readonly threadId: string;
-  /** Whole operation lifetime; actual root/child turn signals remain separate. */
-  readonly signal: AbortSignal;
-  readonly completion: Promise<AgentTurnResult>;
-  assertCurrent(): void;
-  /** Actual native receipt, never fabricated to create a turn identity. */
-  bindReceipt(receipt: unknown): void;
-  fail(error: Error): void;
-}
-
-export interface RuntimeSubagentDefaults {
-  model: Extract<WorkerCommand, { type: "chat.turn" }>["model"];
-  provider: RuntimeProvider;
-}
-
-export interface RunAgentOperationOptions {
-  operationId: string;
-  cwd: string;
-  prompt: string;
-  developerInstructions: string | null;
-  skillNames: string[];
-  outputSchema: Record<string, unknown>;
-  mutationMode: "read-only" | "write";
-  networkAccess: "none" | "restricted" | "unrestricted";
-  permissionProfileId: string | null;
-  timeoutMs: number;
-  model: RunAgentTurnOptions["model"];
-  mcpServers: McpServerConfiguration[];
-  provider: RuntimeProvider;
-}
-
-export interface AgentOperationResult {
-  threadId: string;
-  turnId: string;
-  text: string;
-  structuredResult: unknown;
-  measuredUsage: MeasuredAgentUsage;
-  status: "completed";
-}
-
-export interface RuntimeChatAttachment extends ChatAttachmentSummary {
-  path: string;
-}
-
 export function codexReasoningEffortParams(
   model: RunAgentTurnOptions["model"],
 ): { effort?: NonNullable<RunAgentTurnOptions["model"]["reasoningEffort"]> } {
   return model.reasoningEffort ? { effort: model.reasoningEffort } : {};
-}
-
-export type GoalRuntimeOptions = Pick<
-  RunAgentTurnOptions,
-  | "cwd"
-  | "mcpServers"
-  | "model"
-  | "permissionProfileId"
-  | "provider"
-  | "threadId"
->;
-
-export interface NativeReplacementSettings {
-  sourceThreadId: string;
-  transportGeneration: string | null;
-  sourcePreparationVersion: number;
-  settings: NativeThreadSettings;
-}
-
-export interface PrepareManagedThreadOptions extends GoalRuntimeOptions {
-  /** Actual source Core settings, restored before replacement handoff. */
-  replacementSettings?: NativeReplacementSettings;
-  signal?: AbortSignal;
-  canonicalHistory?: boolean;
-  executionGate?: { runnerGeneration: string };
-  executionProfile: RunAgentTurnOptions["executionProfile"];
-  subagentDefaults: RuntimeSubagentDefaults | null;
-  planMode: PlanMode;
-  intent: "configure" | "preserve";
-  /** Bind identity before later initialization can fail or a view can attach. */
-  onThreadIdentified?: (threadId: string) => void | Promise<void>;
-}
-
-export type PrepareImportedManagedThreadOptions = Omit<
-  PrepareManagedThreadOptions,
-  "threadId" | "intent" | "replacementSettings"
-> & { transfer: ManagedHistoryImport };
-
-export interface HydrateChatRelocationOptions extends GoalRuntimeOptions {
-  payload: ChatRelocationContextPayload;
-  planMode: PlanMode;
-  requiredSkillNames: string[];
-  onThreadStarted(threadId: string): Promise<void>;
 }
 
 function relocationContentText(content: ChatMessageContent): string {
@@ -2649,13 +1117,6 @@ export function codexChatThreadSecurityParams(
       };
 }
 
-export interface CodexSkill {
-  name: string;
-  description: string;
-  displayName: string | null;
-  path: string | null;
-}
-
 export function parseCodexSkills(response: unknown, cwd: string): CodexSkill[] {
   if (!response || typeof response !== "object") return [];
   const data = (response as { data?: unknown }).data;
@@ -2719,13 +1180,6 @@ export function parsePermissionProfileList(response: unknown) {
     }),
   );
 }
-
-export type CompactAgentThreadOptions = Pick<
-  RunAgentTurnOptions,
-  "cwd" | "executionProfile" | "model" | "permissionProfileId" | "provider"
-> & {
-  threadId: string;
-};
 
 export function chatTurnRollbackBoundary(
   turns: readonly {
@@ -2929,1239 +1383,6 @@ export function codexRuntimeId(
   return `${provider.credentialHomeKey ?? provider.id}:${configuration}`;
 }
 
-function safeProviderOrigin(provider: RuntimeProvider): string | null {
-  try {
-    return provider.baseUrl ? new URL(provider.baseUrl).origin : null;
-  } catch {
-    return null;
-  }
-}
-
-function codexProviderLogContext(provider: RuntimeProvider) {
-  return {
-    providerId: provider.id,
-    providerKind: provider.kind,
-    providerOrigin: safeProviderOrigin(provider),
-  };
-}
-
-function codexDiagnosticClass(line: string): string {
-  const normalized = line.toLowerCase();
-  if (normalized.includes("panic")) return "panic";
-  if (normalized.includes("error")) return "error";
-  if (normalized.includes("warn")) return "warning";
-  return "diagnostic";
-}
-
-function activityStatus(
-  status: "inProgress" | "completed" | "failed" | "declined",
-): AgentActivity["status"] {
-  return status === "inProgress" ? "running" : status;
-}
-
-function boundedText(value: string | null | undefined, limit = 20_000) {
-  if (value === null || value === undefined) return null;
-  if (value.length <= limit) return value;
-  return `${value.slice(0, limit)}\n…truncated…`;
-}
-
-function boundedJson(value: unknown) {
-  if (value === null || value === undefined) return null;
-  try {
-    return boundedText(
-      typeof value === "string" ? value : JSON.stringify(value, null, 2),
-    );
-  } catch {
-    return null;
-  }
-}
-
-function objectStringField(value: unknown, field: string) {
-  if (typeof value !== "object" || value === null || !(field in value)) {
-    return null;
-  }
-  const candidate = (value as Record<string, unknown>)[field];
-  return typeof candidate === "string" ? candidate : null;
-}
-
-interface NormalizedMcpFailure {
-  code: string | null;
-  message: string;
-  retryable: boolean | null;
-}
-
-interface McpFailureCandidate {
-  code?: unknown;
-  message: string;
-  retryable?: unknown;
-}
-
-function primitiveMcpErrorCode(value: unknown): string | null {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return String(value);
-  }
-  if (typeof value !== "string") return null;
-  const code = redactAgentActivityText(value).trim();
-  return code && code.length <= 200 ? code : null;
-}
-
-function explicitMcpRetryability(value: unknown): boolean | null {
-  return typeof value === "boolean" ? value : null;
-}
-
-function genericMcpFailureMessage(message: string): boolean {
-  return /^(?:(?:mcp|tool)\s+)?(?:tool\s+)?call failed[.!]?$/iu.test(
-    message.trim(),
-  );
-}
-
-function parsedMcpJson(text: string): unknown {
-  const trimmed = text.trim();
-  if (!(
-    (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
-    (trimmed.startsWith("[") && trimmed.endsWith("]"))
-  )) {
-    return null;
-  }
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    return null;
-  }
-}
-
-function mcpFailureCandidate(
-  value: unknown,
-  depth = 0,
-): McpFailureCandidate | null {
-  if (depth > 8 || value === null || value === undefined) return null;
-  if (typeof value === "string") {
-    const parsed = parsedMcpJson(value);
-    return parsed === null
-      ? value.trim()
-        ? { message: value }
-        : null
-      : mcpFailureCandidate(parsed, depth + 1);
-  }
-  if (Array.isArray(value)) {
-    for (const entry of value) {
-      const candidate = mcpFailureCandidate(entry, depth + 1);
-      if (candidate) return candidate;
-    }
-    return null;
-  }
-  if (typeof value !== "object") return null;
-  const record = value as Record<string, unknown>;
-  const code = record.code ?? record.errorCode;
-  const retryable =
-    record.retryable ?? record.willRetry ?? record.canRetry ?? undefined;
-  const directMessage =
-    typeof record.message === "string"
-      ? record.message
-      : typeof record.error === "string"
-        ? record.error
-        : null;
-  if (directMessage?.trim()) {
-    return { code, message: directMessage, retryable };
-  }
-  for (const field of [
-    "error",
-    "result",
-    "structuredContent",
-    "data",
-    "cause",
-  ]) {
-    const nested = mcpFailureCandidate(record[field], depth + 1);
-    if (nested) {
-      return {
-        code: nested.code ?? code,
-        message: nested.message,
-        retryable: nested.retryable ?? retryable,
-      };
-    }
-  }
-  if (Array.isArray(record.content)) {
-    for (const content of record.content) {
-      if (
-        typeof content === "object" &&
-        content !== null &&
-        "text" in content &&
-        typeof content.text === "string"
-      ) {
-        const nested = mcpFailureCandidate(content.text, depth + 1);
-        if (nested) {
-          return {
-            code: nested.code ?? code,
-            message: nested.message,
-            retryable: nested.retryable ?? retryable,
-          };
-        }
-      }
-    }
-  }
-  return null;
-}
-
-function normalizedMcpFailure(
-  item: Pick<McpToolCallItem, "error" | "result" | "status">,
-): NormalizedMcpFailure | null {
-  if (
-    item.status !== "failed" &&
-    !item.error &&
-    item.result?.isError !== true &&
-    item.result?.status !== "failed"
-  ) {
-    return null;
-  }
-  const resultCandidate = mcpFailureCandidate(item.result);
-  const explicitCandidate = item.error
-    ? {
-        code: item.error.code,
-        message: item.error.message,
-        retryable: item.error.retryable,
-      }
-    : null;
-  const candidate =
-    resultCandidate &&
-    (!explicitCandidate || genericMcpFailureMessage(explicitCandidate.message))
-      ? resultCandidate
-      : (explicitCandidate ?? resultCandidate);
-  if (!candidate) return null;
-  const message =
-    boundedText(redactAgentActivityText(candidate.message).trim(), 4_000) ?? "";
-  if (!message) return null;
-  const embeddedCode =
-    /\bMCP error\s+(-?\d+)\b/iu.exec(message)?.[1] ??
-    /\bHTTP\s+(\d{3})\b/iu.exec(message)?.[1] ??
-    null;
-  return {
-    code:
-      primitiveMcpErrorCode(candidate.code) ??
-      primitiveMcpErrorCode(explicitCandidate?.code) ??
-      primitiveMcpErrorCode(resultCandidate?.code) ??
-      embeddedCode,
-    message,
-    retryable:
-      explicitMcpRetryability(candidate.retryable) ??
-      explicitMcpRetryability(explicitCandidate?.retryable) ??
-      explicitMcpRetryability(resultCandidate?.retryable),
-  };
-}
-
-function mcpResultText(result: McpToolCallItem["result"]) {
-  if (!result) return null;
-  const text = (result.content ?? [])
-    .flatMap((content) => {
-      if (
-        typeof content === "object" &&
-        content !== null &&
-        "text" in content &&
-        typeof content.text === "string"
-      ) {
-        return [content.text];
-      }
-      return [];
-    })
-    .join("\n\n")
-    .trim();
-  if (text) return boundedText(redactAgentActivityText(text));
-  if (
-    result.structuredContent !== null &&
-    result.structuredContent !== undefined
-  ) {
-    const serialized = boundedJson(result.structuredContent);
-    return serialized ? redactAgentActivityText(serialized) : null;
-  }
-  const serialized =
-    (result.content?.length ?? 0) > 0 ? boundedJson(result.content) : null;
-  return serialized ? redactAgentActivityText(serialized) : null;
-}
-
-export function completedActivityTimestamps(
-  startedAtMs: number | null | undefined,
-  completedAtMs: number,
-) {
-  return {
-    ...(startedAtMs === null || startedAtMs === undefined
-      ? {}
-      : { startedAtMs }),
-    updatedAtMs: completedAtMs,
-    completedAtMs,
-  };
-}
-
-function stableActivityId(prefix: string, ...parts: Array<string | null>) {
-  const digest = createHash("sha256")
-    .update(parts.map((part) => part ?? "").join("\0"))
-    .digest("hex")
-    .slice(0, 20);
-  return `${prefix}:${digest}`;
-}
-
-function eventCorrelation(
-  sourceMethod: string,
-  diagnosticId: string | null,
-  threadId: string | null,
-  turnId: string | null,
-  itemId: string | null,
-): CodexEventCorrelation {
-  return {
-    sourceMethod,
-    diagnosticId,
-    threadId,
-    turnId,
-    itemId,
-  };
-}
-
-function displayPath(cwd: string, filePath: string): string {
-  if (!path.isAbsolute(filePath)) {
-    return filePath;
-  }
-  if (path.resolve(filePath) === path.resolve(cwd)) {
-    return ".";
-  }
-  const relative = path.relative(cwd, filePath);
-  return relative && !relative.startsWith("..") && !path.isAbsolute(relative)
-    ? relative
-    : filePath;
-}
-
-export function appendBoundedCommandOutput(
-  current: CommandOutputBuffer,
-  delta: string,
-): CommandOutputBuffer {
-  if (!delta) return current;
-  const plainDelta = stripVTControlCharacters(delta);
-  let safeDelta = "";
-  for (const character of plainDelta) {
-    const codePoint = character.codePointAt(0)!;
-    if (
-      (codePoint < 0x20 &&
-        codePoint !== 0x09 &&
-        codePoint !== 0x0a &&
-        codePoint !== 0x0d) ||
-      (codePoint >= 0x7f && codePoint <= 0x9f)
-    ) {
-      continue;
-    }
-    safeDelta += character;
-  }
-  if (!safeDelta) return current;
-  const currentBytes = Buffer.from(current.output ?? "", "utf8");
-  const deltaBytes = Buffer.from(safeDelta, "utf8");
-  const totalBytes = currentBytes.byteLength + deltaBytes.byteLength;
-  if (totalBytes <= agentCommandOutputLimitBytes) {
-    return {
-      output: `${current.output ?? ""}${safeDelta}`,
-      truncated: current.truncated,
-    };
-  }
-
-  const retained = Buffer.allocUnsafe(agentCommandOutputLimitBytes);
-  const deltaStart = Math.max(0, deltaBytes.byteLength - retained.byteLength);
-  const retainedDelta = deltaBytes.subarray(deltaStart);
-  const retainedCurrentBytes = retained.byteLength - retainedDelta.byteLength;
-  if (retainedCurrentBytes > 0) {
-    currentBytes.copy(
-      retained,
-      0,
-      Math.max(0, currentBytes.byteLength - retainedCurrentBytes),
-    );
-  }
-  retainedDelta.copy(retained, Math.max(0, retainedCurrentBytes));
-
-  let start = 0;
-  while (start < retained.byteLength && (retained[start]! & 0xc0) === 0x80) {
-    start += 1;
-  }
-  return {
-    output: retained.subarray(start).toString("utf8"),
-    truncated: true,
-  };
-}
-
-export function boundedCommandOutput(
-  output: string | null,
-): CommandOutputBuffer {
-  return appendBoundedCommandOutput(
-    { output: null, truncated: false },
-    output ?? "",
-  );
-}
-
-function transcriptCommandOutput(output: string | null): string | null {
-  if (!output || output.length <= 20_000) return output;
-  return `…output truncated…\n${output.slice(-20_000)}`;
-}
-
-export function commandTelemetryFromDelta(
-  current: CommandTelemetryValue | null,
-  delta: string,
-  observedAtMs: number,
-): CommandTelemetryValue {
-  return {
-    ...appendBoundedCommandOutput(
-      current ?? { output: null, truncated: false },
-      delta,
-    ),
-    startedAtMs: current?.startedAtMs ?? observedAtMs,
-    updatedAtMs: observedAtMs,
-  };
-}
-
-export function commandTelemetryFromStart(
-  current: CommandTelemetryValue | null,
-  aggregatedOutput: string | null,
-  startedAtMs: number,
-  observedAtMs: number,
-): CommandTelemetryValue {
-  const initial = boundedCommandOutput(aggregatedOutput);
-  return {
-    output: current?.output ?? initial.output,
-    truncated: current?.truncated ?? initial.truncated,
-    startedAtMs,
-    updatedAtMs: observedAtMs,
-  };
-}
-
-export function commandTelemetryFromCompletion(
-  current: CommandTelemetryValue | null,
-  aggregatedOutput: string | null,
-  durationMs: number | null | undefined,
-  observedAtMs: number,
-): CommandTelemetryValue {
-  const output =
-    aggregatedOutput === null
-      ? {
-          output: current?.output ?? null,
-          truncated: current?.truncated ?? false,
-        }
-      : boundedCommandOutput(aggregatedOutput);
-  return {
-    ...output,
-    startedAtMs:
-      current?.startedAtMs ??
-      (durationMs === null || durationMs === undefined
-        ? observedAtMs
-        : Math.max(0, observedAtMs - durationMs)),
-    updatedAtMs: observedAtMs,
-  };
-}
-
-function boundedFilePreview(value: string): string {
-  return value.length <= agentFilePreviewLimitCharacters
-    ? value
-    : value.slice(-agentFilePreviewLimitCharacters);
-}
-
-function nativeFileChangePreview(change: FileUpdateChange): {
-  latestLine?: string;
-  diffPreview?: string;
-} {
-  if (!change.diff) return {};
-  if (change.kind.type === "update") {
-    const latestLine = latestChangedLine(change.diff);
-    const diffPreview = changedLinesPreview(change.diff);
-    return {
-      ...(latestLine === null ? {} : { latestLine }),
-      ...(diffPreview === null ? {} : { diffPreview }),
-    };
-  }
-  // Native additions/deletions contain the file content, not a unified diff.
-  const lines = boundedFilePreview(change.diff)
-    .replace(/\r?\n$/u, "")
-    .split(/\r?\n/u);
-  const marker = change.kind.type === "add" ? "+" : "-";
-  return {
-    latestLine: lines[lines.length - 1]!,
-    diffPreview: boundedFilePreview(
-      lines.map((line) => `${marker}${line}`).join("\n"),
-    ),
-  };
-}
-
-export function latestChangedLine(
-  diff: string | null | undefined,
-): string | null {
-  if (!diff) return null;
-  let latestAdded: string | null = null;
-  let latestRemoved: string | null = null;
-  for (const line of diff.split("\n")) {
-    if (line.startsWith("+") && !line.startsWith("+++ ")) {
-      latestAdded = line.slice(1);
-    } else if (line.startsWith("-") && !line.startsWith("--- ")) {
-      latestRemoved = line.slice(1);
-    }
-  }
-  const latest = latestAdded ?? latestRemoved;
-  return latest === null ? null : boundedFilePreview(latest);
-}
-
-export function changedLinesPreview(
-  diff: string | null | undefined,
-): string | null {
-  if (!diff) return null;
-  const preview = diff
-    .split("\n")
-    .filter(
-      (line) =>
-        (line.startsWith("+") && !line.startsWith("+++ ")) ||
-        (line.startsWith("-") && !line.startsWith("--- ")),
-    )
-    .join("\n");
-  return preview ? boundedFilePreview(preview) : null;
-}
-
-export function changedFiles(
-  diff: string,
-  lastActivityAtMs?: number,
-): ActiveTurn["diffChanges"] {
-  return diff
-    .split(/^diff --git /m)
-    .slice(1)
-    .flatMap((section) => {
-      const header = section.split("\n", 1)[0] ?? "";
-      const match = /^a\/(.+) b\/(.+)$/.exec(header);
-      if (!match?.[2]) {
-        return [];
-      }
-      const latestLine = latestChangedLine(section);
-      const diffPreview = changedLinesPreview(section);
-      return [
-        {
-          path: match[2],
-          kind: section.includes("\nnew file mode ")
-            ? ("add" as const)
-            : section.includes("\ndeleted file mode ")
-              ? ("delete" as const)
-              : ("update" as const),
-          ...(latestLine === null ? {} : { latestLine }),
-          ...(diffPreview === null ? {} : { diffPreview }),
-          ...(lastActivityAtMs === undefined ? {} : { lastActivityAtMs }),
-        },
-      ];
-    });
-}
-
-async function mapWithConcurrency<Input, Output>(
-  values: readonly Input[],
-  concurrency: number,
-  mapper: (value: Input, index: number) => Promise<Output>,
-): Promise<Output[]> {
-  if (values.length === 0) return [];
-  const results = new Array<Output>(values.length);
-  let nextIndex = 0;
-  const workers = Array.from(
-    { length: Math.min(concurrency, values.length) },
-    async () => {
-      while (nextIndex < values.length) {
-        const index = nextIndex;
-        nextIndex += 1;
-        results[index] = await mapper(values[index]!, index);
-      }
-    },
-  );
-  await Promise.all(workers);
-  return results;
-}
-
-export async function workspaceSnapshotFromPorcelainRecords(
-  cwd: string,
-  records: readonly string[],
-  readMetadata: WorkspaceSnapshotMetadataReader = lstat,
-): Promise<WorkspaceSnapshot> {
-  const entries: Array<{ filePath: string; status: string }> = [];
-  for (let index = 0; index < records.length; index += 1) {
-    const record = records[index] ?? "";
-    const status = record.slice(0, 2);
-    const filePath = record.slice(3);
-    if (!filePath) {
-      continue;
-    }
-    if (status.includes("R") || status.includes("C")) {
-      index += 1;
-    }
-    entries.push({ filePath, status });
-  }
-
-  const snapshotEntries = await mapWithConcurrency(
-    entries,
-    WORKSPACE_SNAPSHOT_METADATA_CONCURRENCY,
-    async ({ filePath, status }) => {
-      let fingerprint = "missing";
-      if (status !== " D") {
-        try {
-          const file = await readMetadata(path.join(cwd, filePath));
-          fingerprint = `${file.size}:${file.mtimeMs}:${file.mode}`;
-        } catch {
-          // Deleted or concurrently removed files have no filesystem fingerprint.
-        }
-      }
-      return [filePath, { fingerprint, status }] as const;
-    },
-  );
-  return new Map(snapshotEntries);
-}
-
-async function workspaceSnapshot(cwd: string): Promise<WorkspaceSnapshot> {
-  try {
-    const { stdout } = await execFileAsync(
-      "git",
-      ["-C", cwd, "status", "--porcelain=v1", "-z", "--untracked-files=all"],
-      { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 },
-    );
-    return await workspaceSnapshotFromPorcelainRecords(
-      cwd,
-      stdout.split("\0").filter(Boolean),
-    );
-  } catch {
-    return new Map();
-  }
-}
-
-async function workspaceChanges(
-  active: ActiveTurn,
-): Promise<ActiveTurn["diffChanges"]> {
-  const observedAtMs = Date.now();
-  const after = await workspaceSnapshot(active.cwd);
-  const paths = new Set([...active.baseline.keys(), ...after.keys()]);
-  const changes = new Map(
-    active.diffChanges.map((change) => [change.path, change]),
-  );
-  for (const filePath of paths) {
-    const beforeState = active.baseline.get(filePath);
-    const afterState = after.get(filePath);
-    if (
-      beforeState?.status === afterState?.status &&
-      beforeState?.fingerprint === afterState?.fingerprint
-    ) {
-      continue;
-    }
-    const status = afterState?.status ?? "D ";
-    const kind =
-      (status === "??" || status.includes("A")) && !beforeState
-        ? "add"
-        : status.includes("D")
-          ? "delete"
-          : "update";
-    changes.set(filePath, {
-      path: filePath,
-      kind,
-      lastActivityAtMs: observedAtMs,
-    });
-  }
-  return [...changes.values()].sort((left, right) =>
-    left.path.localeCompare(right.path),
-  );
-}
-
-function emitFileActivity(
-  active: AgentEventState,
-  turnId: string,
-  status: AgentActivity["status"],
-  correlation: CodexEventCorrelation,
-): void {
-  if (active.diffChanges.length === 0) {
-    return;
-  }
-  emitTurnActivity(
-    active,
-    agentActivitySchema.parse({
-      type: "fileChange",
-      id: `turn:${turnId}:files`,
-      status,
-      changes: active.diffChanges,
-      startedAtMs:
-        active.diffChanges
-          .map((change) => change.lastActivityAtMs)
-          .filter((value): value is number => value !== undefined)
-          .sort((left, right) => left - right)[0] ?? active.startedAtMs,
-      updatedAtMs: Math.max(
-        ...active.diffChanges.map(
-          (change) => change.lastActivityAtMs ?? active.startedAtMs,
-        ),
-      ),
-      completedAtMs: status === "running" ? null : Date.now(),
-      correlation,
-    }),
-  );
-}
-
-function webSearchAction(item: WebSearchItem): string | null {
-  if (!item.action) return null;
-  if (item.action.type === "open_page") {
-    return item.action.url
-      ? `Opened ${safeDisplayUrl(item.action.url)}`
-      : "Opened a page";
-  }
-  if (item.action.type === "find_in_page") {
-    const location = item.action.url
-      ? ` in ${safeDisplayUrl(item.action.url)}`
-      : "";
-    return item.action.pattern
-      ? `Found “${item.action.pattern}”${location}`
-      : `Searched within a page${location}`;
-  }
-  if (item.action.type === "search") {
-    const queries =
-      item.action.queries ?? (item.action.query ? [item.action.query] : []);
-    return queries.length > 0 ? `Searched ${queries.join(", ")}` : "Searched";
-  }
-  return item.action.type === "other" ? "Web search" : item.action.type;
-}
-
-function safeDisplayUrl(value: string): string {
-  try {
-    const url = new URL(value);
-    url.username = "";
-    url.password = "";
-    url.search = "";
-    url.hash = "";
-    return url.toString();
-  } catch {
-    return value.split(/[?#]/u, 1)[0] ?? "page";
-  }
-}
-
-function createThreadItemRawCapture(
-  item: CodexThreadItem,
-  commandOutput?: CommandOutputBuffer,
-) {
-  const metadata = { itemId: item.id, itemType: item.type };
-  switch (item.type) {
-    case "commandExecution":
-      return createAgentActivityRawEnvelope({
-        request: { command: item.command, cwd: item.cwd },
-        response: {
-          durationMs: item.durationMs ?? null,
-          exitCode: item.exitCode,
-          output: commandOutput?.output ?? item.aggregatedOutput,
-          outputTruncated: commandOutput?.truncated ?? false,
-          status: item.status,
-        },
-        metadata,
-      });
-    case "fileChange":
-      return createAgentActivityRawEnvelope({
-        request: { changes: item.changes },
-        response: {
-          changes: item.changes.map((change) => ({
-            kind: change.kind.type,
-            path: change.path,
-          })),
-          status: item.status,
-        },
-        metadata,
-      });
-    case "plan":
-      return createAgentActivityRawEnvelope({
-        response: { text: item.text },
-        metadata,
-      });
-    case "reasoning":
-      return createAgentActivityRawEnvelope({
-        response: { content: item.content, summary: item.summary },
-        metadata,
-      });
-    case "mcpToolCall":
-      return createAgentActivityRawEnvelope({
-        request: item.arguments,
-        response: {
-          error: item.error,
-          result: item.result,
-          status: item.status,
-        },
-        metadata: { ...metadata, server: item.server, tool: item.tool },
-      });
-    case "dynamicToolCall":
-      return createAgentActivityRawEnvelope({
-        response: {
-          durationMs: item.durationMs,
-          status: item.status,
-          success: item.success,
-        },
-        metadata: {
-          ...metadata,
-          namespace: item.namespace,
-          tool: item.tool,
-        },
-      });
-    case "collabAgentToolCall":
-      return createAgentActivityRawEnvelope({
-        request: {
-          model: item.model,
-          prompt: item.prompt,
-          receiverThreadIds: item.receiverThreadIds,
-          senderThreadId: item.senderThreadId,
-        },
-        response: { agentStates: item.agentsStates, status: item.status },
-        metadata: { ...metadata, tool: item.tool },
-      });
-    case "subAgentActivity":
-      return createAgentActivityRawEnvelope({
-        response: {
-          agentPath: item.agentPath,
-          agentThreadId: item.agentThreadId,
-          kind: item.kind,
-        },
-        metadata,
-      });
-    case "webSearch":
-      return createAgentActivityRawEnvelope({
-        request: { query: item.query },
-        response: { action: item.action },
-        metadata,
-      });
-    case "imageView":
-      return createAgentActivityRawEnvelope({
-        request: { path: item.path },
-        metadata,
-      });
-    case "enteredReviewMode":
-    case "exitedReviewMode":
-      return createAgentActivityRawEnvelope({
-        request: { review: item.review },
-        metadata,
-      });
-    case "contextCompaction":
-      return createAgentActivityRawEnvelope({ metadata });
-    case "agentMessage":
-      return createAgentActivityRawEnvelope({
-        response: { phase: item.phase, text: item.text },
-        metadata,
-      });
-  }
-}
-
-export function normalizeCodexThreadItem(
-  item: CodexThreadItem,
-  cwd: string,
-  lifecycle: "started" | "completed",
-  correlation: CodexEventCorrelation,
-  telemetry: {
-    commandOutput?: CommandOutputBuffer;
-    captureRaw?: boolean;
-    completedAtMs?: number | null;
-    fileChanges?: FileActivityChange[];
-    startedAtMs?: number;
-    status?: AgentActivity["status"];
-    updatedAtMs?: number;
-  } = {},
-): AgentActivity | null {
-  const timestamps = {
-    ...(telemetry.startedAtMs === undefined
-      ? {}
-      : { startedAtMs: telemetry.startedAtMs }),
-    ...(telemetry.updatedAtMs === undefined
-      ? {}
-      : { updatedAtMs: telemetry.updatedAtMs }),
-    ...(telemetry.completedAtMs === undefined
-      ? {}
-      : { completedAtMs: telemetry.completedAtMs }),
-  };
-  const raw = telemetry.captureRaw
-    ? {
-        raw: createThreadItemRawCapture(item, telemetry.commandOutput),
-      }
-    : {};
-  if (item.type === "interAgentCommunication") {
-    const description = describeAgentCommunication(item);
-    if (!description) return null;
-    return agentActivitySchema.parse({
-      type: "nativeItem",
-      kind: item.type,
-      id: item.id,
-      title: description.title,
-      details:
-        description.details ??
-        (description.unavailable === "encrypted-agent-communication"
-          ? "Encrypted agent message; text unavailable."
-          : "Agent message text unavailable."),
-      status: lifecycle === "started" ? "running" : "completed",
-      durationMs:
-        telemetry.startedAtMs !== undefined &&
-        telemetry.completedAtMs != null &&
-        telemetry.completedAtMs >= telemetry.startedAtMs
-          ? telemetry.completedAtMs - telemetry.startedAtMs
-          : null,
-      ...timestamps,
-      correlation,
-    });
-  }
-  if (item.type === "commandExecution") {
-    const output =
-      telemetry.commandOutput ?? boundedCommandOutput(item.aggregatedOutput);
-    return agentActivitySchema.parse({
-      type: "command",
-      id: item.id,
-      command: item.command,
-      cwd: displayPath(cwd, item.cwd) || ".",
-      status: activityStatus(item.status),
-      exitCode: item.exitCode,
-      output: transcriptCommandOutput(item.aggregatedOutput),
-      outputTail: output.output,
-      outputTruncated: output.truncated,
-      durationMs: item.durationMs ?? null,
-      ...raw,
-      ...timestamps,
-      ...(telemetry.status === undefined ? {} : { status: telemetry.status }),
-      correlation,
-    });
-  }
-  if (item.type === "fileChange") {
-    const changes =
-      telemetry.fileChanges ??
-      item.changes.map((change) => {
-        return {
-          path: displayPath(cwd, change.path),
-          kind: change.kind.type,
-          ...nativeFileChangePreview(change),
-          ...(telemetry.updatedAtMs === undefined
-            ? {}
-            : { lastActivityAtMs: telemetry.updatedAtMs }),
-        };
-      });
-    return agentActivitySchema.parse({
-      type: "fileChange",
-      id: item.id,
-      status: activityStatus(item.status),
-      changes,
-      ...raw,
-      ...timestamps,
-      correlation,
-    });
-  }
-  if (item.type === "plan") {
-    return agentActivitySchema.parse({
-      type: "plan",
-      id: item.id,
-      status: lifecycle === "started" ? "running" : "completed",
-      text: boundedText(item.text) ?? "",
-      explanation: null,
-      steps: [],
-      ...raw,
-      ...timestamps,
-      correlation,
-    });
-  }
-  if (item.type === "reasoning") {
-    return agentActivitySchema.parse({
-      type: "reasoning",
-      id: item.id,
-      status: lifecycle === "started" ? "running" : "completed",
-      summary: item.summary
-        .map((part) => boundedText(part)?.trim() ?? "")
-        .filter(Boolean)
-        .slice(0, 100),
-      ...raw,
-      ...timestamps,
-      correlation,
-    });
-  }
-  if (item.type === "mcpToolCall") {
-    const isCodeGraph = item.server.toLowerCase() === "codegraph";
-    const failure = normalizedMcpFailure(item);
-    return agentActivitySchema.parse({
-      type: "mcpToolCall",
-      id: item.id,
-      status: failure ? "failed" : activityStatus(item.status),
-      server: item.server,
-      tool: item.tool,
-      query: isCodeGraph
-        ? boundedText(objectStringField(item.arguments, "query"), 4_000)
-        : null,
-      resultText: isCodeGraph && !failure ? mcpResultText(item.result) : null,
-      error: failure?.message ?? null,
-      errorCode: failure?.code ?? null,
-      retryable: failure?.retryable ?? null,
-      durationMs: item.durationMs,
-      ...raw,
-      ...timestamps,
-      correlation,
-    });
-  }
-  if (item.type === "dynamicToolCall") {
-    return agentActivitySchema.parse({
-      type: "dynamicToolCall",
-      id: item.id,
-      status: activityStatus(item.status),
-      namespace: item.namespace?.trim() || null,
-      tool: item.tool,
-      success: item.success,
-      durationMs: item.durationMs,
-      ...raw,
-      ...timestamps,
-      correlation,
-    });
-  }
-  if (item.type === "collabAgentToolCall") {
-    return agentActivitySchema.parse({
-      type: "collabToolCall",
-      id: item.id,
-      status: activityStatus(item.status),
-      tool: item.tool,
-      senderThreadId: item.senderThreadId,
-      receiverThreadIds: item.receiverThreadIds.slice(0, 100),
-      prompt: boundedText(item.prompt, 100_000),
-      model: item.model,
-      agentStates: Object.entries(item.agentsStates)
-        .flatMap(([threadId, state]) =>
-          state
-            ? [
-                {
-                  threadId,
-                  status: state.status,
-                  message: boundedText(state.message, 4_000),
-                },
-              ]
-            : [],
-        )
-        .slice(0, 100),
-      ...raw,
-      ...timestamps,
-      correlation,
-    });
-  }
-  if (item.type === "subAgentActivity") {
-    return agentActivitySchema.parse({
-      type: "subAgent",
-      id: item.id,
-      status:
-        item.kind === "started"
-          ? "running"
-          : item.kind === "interrupted"
-            ? "failed"
-            : "completed",
-      kind: item.kind,
-      agentThreadId: item.agentThreadId,
-      agentPath: item.agentPath || item.agentThreadId,
-      ...raw,
-      ...timestamps,
-      correlation,
-    });
-  }
-  if (item.type === "webSearch") {
-    return agentActivitySchema.parse({
-      type: "webSearch",
-      id: item.id,
-      status: lifecycle === "started" ? "running" : "completed",
-      query: boundedText(item.query, 4_000) ?? "",
-      action: boundedText(webSearchAction(item), 4_000),
-      ...raw,
-      ...timestamps,
-      correlation,
-    });
-  }
-  if (item.type === "imageView") {
-    return agentActivitySchema.parse({
-      type: "imageView",
-      id: item.id,
-      status: lifecycle === "started" ? "running" : "completed",
-      path: displayPath(cwd, item.path),
-      ...raw,
-      ...timestamps,
-      correlation,
-    });
-  }
-  if (item.type === "enteredReviewMode" || item.type === "exitedReviewMode") {
-    return agentActivitySchema.parse({
-      type: "reviewMode",
-      id: item.id,
-      status: lifecycle === "started" ? "running" : "completed",
-      state: item.type === "enteredReviewMode" ? "entered" : "exited",
-      review: boundedText(item.review) ?? "",
-      ...raw,
-      ...timestamps,
-      correlation,
-    });
-  }
-  if (item.type === "contextCompaction") {
-    return agentActivitySchema.parse({
-      type: "contextCompaction",
-      id: item.id,
-      status: lifecycle === "started" ? "running" : "completed",
-      ...raw,
-      ...timestamps,
-      correlation,
-    });
-  }
-  return null;
-}
-
-export function normalizeAgentMessage(
-  item: AgentMessageItem,
-  correlation: CodexEventCorrelation,
-): NormalizedAgentMessage | null {
-  const text = item.text?.trim();
-  if (!text) return null;
-  return normalizedAgentMessageSchema.parse({
-    id: item.id,
-    text,
-    phase: item.phase ?? null,
-    correlation,
-  });
-}
-
-export interface StagedAgentMessageResult {
-  emitted: NormalizedAgentMessage[];
-  pending: NormalizedAgentMessage | null;
-}
-
-function asCommentary(message: NormalizedAgentMessage): NormalizedAgentMessage {
-  return message.phase === "commentary"
-    ? message
-    : { ...message, phase: "commentary" };
-}
-
-export function stageAgentMessage(
-  pending: NormalizedAgentMessage | null,
-  message: NormalizedAgentMessage,
-): StagedAgentMessageResult {
-  if (message.phase === "commentary") {
-    return {
-      emitted: pending ? [asCommentary(pending), message] : [message],
-      pending: null,
-    };
-  }
-  return {
-    emitted: pending ? [asCommentary(pending)] : [],
-    pending: message,
-  };
-}
-
-export function flushStagedAgentMessage(
-  pending: NormalizedAgentMessage | null,
-  completed: boolean,
-): StagedAgentMessageResult {
-  return {
-    emitted: pending ? [completed ? pending : asCommentary(pending)] : [],
-    pending: null,
-  };
-}
-
-function publishStagedAgentMessages(
-  active: AgentEventState,
-  staged: StagedAgentMessageResult,
-): void {
-  active.pendingAgentMessage = staged.pending;
-  for (const message of staged.emitted) {
-    if (!active.structuredChat || message.phase === "commentary") {
-      const scoped = normalizedAgentMessageSchema.parse({
-        ...message,
-        ...(active.agentScope ? { agentScope: active.agentScope } : {}),
-      });
-      active.liveAgentMessageFingerprints.add(agentMessageFingerprint(scoped));
-      active.onMessage?.(scoped);
-    }
-  }
-}
-
-function agentMessageFingerprint(message: NormalizedAgentMessage): string {
-  return JSON.stringify([
-    message.phase === "commentary" ? "commentary" : "final",
-    message.text,
-  ]);
-}
-
-function flushActiveAgentMessage(
-  active: AgentEventState,
-  completed: boolean,
-): void {
-  settleStreamingAgentMessage(active, completed);
-  publishStagedAgentMessages(
-    active,
-    flushStagedAgentMessage(active.pendingAgentMessage, completed),
-  );
-}
-
-export function normalizeTokenUsageActivity(
-  params: ThreadTokenUsageUpdatedParams,
-  correlation: CodexEventCorrelation,
-): AgentActivity {
-  const window = params.tokenUsage.modelContextWindow;
-  const contextUsedPercent = window
-    ? Math.round((params.tokenUsage.last.totalTokens / window) * 1_000) / 10
-    : null;
-  return agentActivitySchema.parse({
-    type: "usage",
-    id: `turn:${params.turnId}:usage`,
-    status: "completed",
-    ...params.tokenUsage,
-    contextUsedPercent,
-    correlation,
-  });
-}
-
-export function normalizeRateLimitActivity(
-  params: AccountRateLimitsUpdatedParams,
-  turnId: string,
-  correlation: CodexEventCorrelation,
-): AgentActivity {
-  return agentActivitySchema.parse({
-    type: "rateLimit",
-    id: `turn:${turnId}:rate-limit`,
-    status: params.rateLimits.rateLimitReachedType ? "failed" : "completed",
-    updatedAtMs: Date.now(),
-    limitId: params.rateLimits.limitId,
-    limitName: params.rateLimits.limitName,
-    planType: params.rateLimits.planType,
-    reachedType: params.rateLimits.rateLimitReachedType,
-    primary: params.rateLimits.primary,
-    secondary: params.rateLimits.secondary,
-    credits: params.rateLimits.credits,
-    correlation,
-  });
-}
-
-export function normalizeNoticeActivity(input: {
-  correlation: CodexEventCorrelation;
-  details?: string | null;
-  level: "warning" | "error";
-  message: string;
-  reasonCode?: string | null;
-  retry?: {
-    owner: "codex" | "cantrip";
-    attempt: number | null;
-    maxAttempts: number | null;
-    nextAttemptAtMs: number | null;
-  } | null;
-  status?: AgentActivity["status"];
-  willRetry?: boolean | null;
-}): AgentActivity {
-  return agentActivitySchema.parse({
-    type: "notice",
-    id: stableActivityId(
-      input.level,
-      input.correlation.turnId,
-      input.correlation.sourceMethod,
-      input.message,
-    ),
-    status:
-      input.status ??
-      (input.willRetry
-        ? "running"
-        : input.level === "error"
-          ? "failed"
-          : "completed"),
-    level: input.level,
-    message: boundedText(input.message)?.trim() || input.level,
-    details: boundedText(input.details),
-    willRetry: input.willRetry ?? null,
-    reasonCode: input.reasonCode ?? null,
-    retry: input.retry ?? null,
-    correlation: input.correlation,
-  });
-}
-
-export function codexErrorReasonCode(value: unknown): string | null {
-  if (typeof value === "string") return value.trim() || null;
-  const record = objectRecord(value);
-  if (!record) return null;
-  const keys = Object.keys(record);
-  return keys.length === 1 ? keys[0]! : null;
-}
-
 const CANTRIP_CAPACITY_RETRY_DELAYS_MS = [10_000, 20_000, 40_000] as const;
 
 export function cantripCapacityRetryDelayMs(attempt: number): number | null {
@@ -4209,203 +1430,6 @@ function waitForCapacityRetry(
     }, delayMs);
     signal.addEventListener("abort", onAbort, { once: true });
   });
-}
-
-function turnSummaryActivity(
-  turn: Pick<
-    CodexThreadTurn,
-    "completedAt" | "durationMs" | "id" | "startedAt" | "status"
-  >,
-  correlation: CodexEventCorrelation,
-  initialSettings?: NativeInitialTurnSettings,
-): AgentActivity {
-  return agentActivitySchema.parse({
-    type: "turnSummary",
-    id: `turn:${turn.id}:summary`,
-    status:
-      turn.status === "inProgress"
-        ? "running"
-        : turn.status === "completed"
-          ? "completed"
-          : "failed",
-    durationMs: turn.durationMs,
-    startedAt: turn.startedAt,
-    completedAt: turn.completedAt,
-    correlation,
-    ...(initialSettings ? { initialSettings } : {}),
-  });
-}
-
-export function normalizeCodexThreadTurn(
-  turn: CodexThreadTurn,
-  cwd: string,
-  threadId: string,
-  externalAttachmentIdsByItemId: ReadonlyMap<string, string[]> = new Map(),
-): AgentThreadSync["turns"][number] {
-  let lastFinalMessageIndex = -1;
-  if (turn.status === "completed") {
-    for (let index = 0; index < turn.items.length; index += 1) {
-      const item = turn.items[index];
-      if (
-        item?.type === "agentMessage" &&
-        item.phase !== "commentary" &&
-        item.text?.trim()
-      ) {
-        lastFinalMessageIndex = index;
-      }
-    }
-  }
-  const items = turn.items.flatMap((item, index): AgentThreadSyncItem[] => {
-    if (item.type === "userMessage") {
-      const text = item.content
-        .flatMap((content) =>
-          content.type === "text" && content.text ? [content.text] : [],
-        )
-        .join("\n\n")
-        .trim();
-      const externalAttachmentIds =
-        externalAttachmentIdsByItemId.get(item.id) ?? [];
-      return text || externalAttachmentIds.length
-        ? [
-            {
-              type: "userMessage",
-              id: item.id,
-              text,
-              externalAttachmentIds,
-            },
-          ]
-        : [];
-    }
-    if (item.type === "agentMessage") {
-      const message = normalizeAgentMessage(
-        item,
-        eventCorrelation("thread/read", null, threadId, turn.id, item.id),
-      );
-      if (!message) return [];
-      return [
-        {
-          type: "agentMessage",
-          ...(message.phase !== "commentary" && index !== lastFinalMessageIndex
-            ? asCommentary(message)
-            : message),
-        },
-      ];
-    }
-    const correlation = eventCorrelation(
-      "thread/read",
-      null,
-      threadId,
-      turn.id,
-      item.id,
-    );
-    const normalizedActivity = normalizeCodexThreadItem(
-      item,
-      cwd,
-      turn.status === "inProgress" ? "started" : "completed",
-      correlation,
-    );
-    const activity =
-      normalizedActivity && turn.status !== "inProgress"
-        ? settleRunningActivityAtTurnBoundary(
-            normalizedActivity,
-            turn.status === "completed" ? "completed" : "failed",
-            turn.completedAt === null ? null : turn.completedAt * 1_000,
-            correlation,
-          )
-        : normalizedActivity;
-    if (activity) return [{ type: "activity", activity }];
-    const unknown = item as { id?: unknown; type?: unknown };
-    const itemId = typeof unknown.id === "string" ? unknown.id : null;
-    const itemType =
-      typeof unknown.type === "string" ? unknown.type : "unknown";
-    return [
-      {
-        type: "activity",
-        activity: normalizeNoticeActivity({
-          level: "warning",
-          message: "An unsupported Codex history item could not be rendered.",
-          details: `Item type: ${itemType.slice(0, 200)}`,
-          correlation: eventCorrelation(
-            "thread/read",
-            null,
-            threadId,
-            turn.id,
-            itemId,
-          ),
-        }),
-      },
-    ];
-  });
-  if (turn.error?.message) {
-    items.push({
-      type: "activity",
-      activity: normalizeNoticeActivity({
-        level: "error",
-        message: turn.error.message,
-        details: turn.error.additionalDetails,
-        reasonCode: codexErrorReasonCode(turn.error.codexErrorInfo),
-        willRetry: false,
-        correlation: eventCorrelation(
-          "thread/read",
-          null,
-          threadId,
-          turn.id,
-          null,
-        ),
-      }),
-    });
-  }
-  items.push({
-    type: "activity",
-    activity: turnSummaryActivity(
-      turn,
-      eventCorrelation("thread/read", null, threadId, turn.id, null),
-    ),
-  });
-  return {
-    id: turn.id,
-    status: turn.status,
-    startedAt: turn.startedAt,
-    completedAt: turn.completedAt,
-    durationMs: turn.durationMs,
-    items,
-  };
-}
-
-export function normalizeCodexThreadReadResponse(
-  response: CodexThreadReadResponse,
-  cwd: string,
-  externalAttachmentIdsByItemId: ReadonlyMap<string, string[]> = new Map(),
-): AgentThreadSync {
-  const turns = response.thread.turns.map((turn) =>
-    normalizeCodexThreadTurn(
-      turn,
-      cwd,
-      response.thread.id,
-      externalAttachmentIdsByItemId,
-    ),
-  );
-  const status = turns.some((turn) => turn.status === "inProgress")
-    ? "running"
-    : turns.some((turn) => turn.status === "failed")
-      ? "failed"
-      : "idle";
-  return agentThreadSyncSchema.parse({
-    threadId: response.thread.id,
-    status,
-    turns,
-  });
-}
-
-export function completedCodexThreadTurnFromRead(
-  response: CodexThreadReadResponse,
-  cwd: string,
-  turnId: string,
-): AgentThreadSync["turns"][number] | null {
-  const turn = response.thread.turns.find(
-    (candidate) => candidate.id === turnId && candidate.status !== "inProgress",
-  );
-  return turn ? normalizeCodexThreadTurn(turn, cwd, response.thread.id) : null;
 }
 
 export class CodexAppServer implements CodexRuntime {
@@ -4594,19 +1618,16 @@ export class CodexAppServer implements CodexRuntime {
   readonly #historyObservations = new NativeHistoryObservations();
   readonly #threadPreparations = new Map<string, Promise<void>>();
   #preparationEpoch = 0;
-  readonly #activeTurns = new Map<string, ActiveTurn>();
-  readonly #activeTurnsByThread = new Map<string, ActiveTurn>();
-  readonly #rootExecutionsByActive = new Map<ActiveTurn, RootExecution>();
-  readonly #rootExecutionsByThread = new Map<string, RootExecution>();
-  readonly #orphanAgentThreads = new Map<string, ChildThreadMetadata>();
-  readonly #knownAgentThreads = new Map<string, ChildThreadMetadata>();
-  readonly #unassociatedComputerUseTurns = new Map<
-    string,
-    {
-      lifetime: CodexExecutionLifetime;
-      roots: Map<RootExecution, AbortSignal>;
-    }
-  >();
+  readonly #executions = new CodexExecutionOwnership({
+    methodAvailable: (method) => this.methodAvailable(method),
+    request: (method, params, timeoutMs) =>
+      this.request(method, params, timeoutMs),
+    canonicalHistory: (threadId) =>
+      this.#managedThreadOverlays.get(threadId)?.options.canonicalHistory,
+    clearInteractionsForTurn: (active, reason) =>
+      this.#interactions.clearInteractionsForTurn(active, reason),
+  });
+
   readonly #threadSettings = new NativeThreadSettingsState();
   readonly #diagnosticSecrets = new Set<string>();
   #runtimeIsZai = false;
@@ -4678,33 +1699,50 @@ export class CodexAppServer implements CodexRuntime {
     string,
     { generation: string; profileId: string }
   >();
-  readonly #pending = new Map<number, PendingRpcRequest>();
-  // Retain timed-out IDs until their response arrives so late private labels
-  // cannot fall through into the unmatched-response diagnostic buffer.
-  readonly #privateInferenceRequests = new Set<number>();
-  readonly #pendingAgentInteractions = new Map<
-    string,
-    NativePendingAgentInteraction
-  >();
-  readonly #admittedReplyWaiters = new Set<() => void>();
+  readonly #rpcRequests = new CodexRpcRequests({
+    send: (message) => this.send(message),
+    runtimeId: () => this.#runtimeId,
+    secrets: () => this.#diagnosticSecrets,
+    isZai: () => this.#runtimeIsZai,
+    recordDiagnostic: (diagnostic, warning) =>
+      this.recordDiagnostic(diagnostic, warning),
+  });
+
+  readonly #interactions = new CodexInteractions({
+    rootExecution: (threadId) =>
+      this.#executions.rootExecutionsByThread.get(threadId),
+    activeTurnForNotification: (threadId, turnId) =>
+      this.#executions.activeTurnForNotification(threadId, turnId),
+    send: (message) => this.send(message),
+    dispatchGuiNativeCommand: (threadId, command) =>
+      this.dispatchGuiNativeCommand(threadId, command),
+    sessionId: () => this.#appServerSessionId,
+  });
+
   readonly #pendingCapacityRetries = new Map<
     string,
     { controller: AbortController; threadId: string | null }
   >();
-  readonly #pendingPlanQuestions = new Map<string, NativePendingPlanQuestion>();
+
   readonly #pausedChats = new Set<string>();
   readonly #runtimeDiagnostics: CodexRuntimeDiagnostic[] = [];
   #skillRoots: string[] = [];
   #appServerSessionId = randomUUID();
   #nativeTransportGeneration: string | null = null;
   #child: ChildProcessWithoutNullStreams | null = null;
-  #externalChatGptAuth: ExternalChatGptAuthSession | null = null;
-  #externalChatGptReauthentication: Promise<void> | null = null;
+  readonly #authRecovery = new CodexAuthRecovery({
+    providerAccessTokens: () => this.providerAccessTokens,
+    request: (method, params) => this.request(method, params),
+    rememberSecret: (secret) => {
+      this.#diagnosticSecrets.add(secret);
+    },
+  });
+
   #remoteUrl: string | null = null;
   #runtimeId: string | null = null;
   #runtimeStartedAtMs: number | null = null;
   #nextDiagnosticSequence = 1;
-  #nextId = 1;
+
   #socket: WebSocket | null = null;
   #starting: Promise<void> | null = null;
 
@@ -5043,7 +2081,7 @@ export class CodexAppServer implements CodexRuntime {
   }
 
   private assertGuiTurnCurrent(active: ActiveTurn, turnId: string): void {
-    if (this.#activeTurns.get(turnId) !== active)
+    if (this.#executions.activeTurns.get(turnId) !== active)
       throw new Error("The native control belongs to a replaced turn.");
   }
 
@@ -5064,7 +2102,11 @@ export class CodexAppServer implements CodexRuntime {
     chatId: string,
     executionLaneId: string,
   ): ActiveAgentContextWindow | null {
-    const active = findActiveChatTurn(this.#activeTurns, chatId, null);
+    const active = findActiveChatTurn(
+      this.#executions.activeTurns,
+      chatId,
+      null,
+    );
     if (!active || active[1].executionLaneId !== executionLaneId) return null;
     return activeAgentContextWindow(active[1], active[0]);
   }
@@ -5073,7 +2115,11 @@ export class CodexAppServer implements CodexRuntime {
     chatId: string,
     executionLaneId: string,
   ): ActiveAgentContextWindow {
-    const active = findActiveChatTurn(this.#activeTurns, chatId, null);
+    const active = findActiveChatTurn(
+      this.#executions.activeTurns,
+      chatId,
+      null,
+    );
     if (!active || active[1].executionLaneId !== executionLaneId) {
       throw new Error(
         "The Codex context compaction request does not match the active Cantrip turn.",
@@ -5088,7 +2134,7 @@ export class CodexAppServer implements CodexRuntime {
     paused: boolean,
   ): Promise<{ threadId: string; turnId: string } | null> {
     this.setChatPaused(chatId, paused);
-    const active = [...this.#activeTurns.entries()].find(
+    const active = [...this.#executions.activeTurns.entries()].find(
       ([, turn]) => turn.executionKind === "chat" && turn.chatId === chatId,
     );
     if (!active) {
@@ -5120,7 +2166,7 @@ export class CodexAppServer implements CodexRuntime {
         },
       });
     } catch (error) {
-      if (!this.#activeTurns.has(active[0])) return null;
+      if (!this.#executions.activeTurns.has(active[0])) return null;
       throw error;
     }
     workerLogger.event("info", `Codex turn ${paused ? "paused" : "resumed"}`, {
@@ -5638,11 +2684,11 @@ export class CodexAppServer implements CodexRuntime {
     );
     active.admission!.initialTurnId = options.expectedTurnId ?? null;
     const controller = active.admission!.controller;
-    this.#activeTurnsByThread.set(options.threadId, active);
+    this.#executions.trackActiveThread(options.threadId, active);
     this.registerRootExecution(active);
     const current = () =>
       this.#preparationEpoch === epoch &&
-      this.#activeTurnsByThread.get(options.threadId) === active &&
+      this.#executions.activeTurnsByThread.get(options.threadId) === active &&
       !controller.signal.aborted;
     const assertCurrent = () => {
       if (!current())
@@ -5773,7 +2819,7 @@ export class CodexAppServer implements CodexRuntime {
     if (this.hasActiveThread(threadId)) {
       throw new Error(`Codex thread ${threadId} already has an active turn.`);
     }
-    this.#activeTurnsByThread.set(threadId, activeTurn);
+    this.#executions.trackActiveThread(threadId, activeTurn);
     this.registerRootExecution(activeTurn);
     let response: TurnStartResponse;
     let dispatchedInput: ReadonlyArray<Record<string, unknown>> | undefined;
@@ -5840,7 +2886,7 @@ export class CodexAppServer implements CodexRuntime {
         isNativePermissionDeferred("turn/start", {
           error: error.nativeError,
         }) &&
-        ![...this.#activeTurns.values()].includes(activeTurn);
+        ![...this.#executions.activeTurns.values()].includes(activeTurn);
       this.releaseActiveTurn(activeTurn);
       if (deferred && options.onNativeDeferred) {
         await options.onNativeDeferred({
@@ -5971,7 +3017,7 @@ export class CodexAppServer implements CodexRuntime {
     if (!activeTurn) {
       throw new Error("Could not initialize the Codex agent operation.");
     }
-    this.#activeTurnsByThread.set(threadId, activeTurn);
+    this.#executions.trackActiveThread(threadId, activeTurn);
     this.registerRootExecution(activeTurn);
     let response: TurnStartResponse;
     try {
@@ -6034,10 +3080,13 @@ export class CodexAppServer implements CodexRuntime {
       ),
     );
     activeTurn.timeout = setTimeout(() => {
-      const current = [...this.#activeTurns.entries()].find(
+      const current = [...this.#executions.activeTurns.entries()].find(
         ([, candidate]) => candidate === activeTurn,
       );
-      if (!current || this.#activeTurnsByThread.get(threadId) !== activeTurn) {
+      if (
+        !current ||
+        this.#executions.activeTurnsByThread.get(threadId) !== activeTurn
+      ) {
         return;
       }
       this.releaseActiveTurn(activeTurn!);
@@ -7513,87 +4562,16 @@ export class CodexAppServer implements CodexRuntime {
     return { mode: options.mode, threadId };
   }
 
-  private admittedReplyPending(
-    input: AdmittedNativeReplyIdentity,
-  ): NativePendingAgentInteraction | null {
-    const execution = this.#rootExecutionsByThread.get(input.rootThreadId);
-    if (
-      !execution ||
-      execution.rootThreadId !== input.rootThreadId ||
-      execution.active.admission?.operationGeneration !==
-        input.operationGeneration ||
-      execution.active.admission.controller.signal.aborted
-    )
-      return null;
-    return (
-      [...this.#pendingAgentInteractions.values()].find(
-        (pending) =>
-          pending.active === execution.active &&
-          pending.rpcId === input.requestId,
-      ) ?? null
-    );
-  }
-
   pendingAdmittedNativeReply(
     input: AdmittedNativeReplyIdentity,
   ): AdmittedNativeReply | null {
-    const pending = this.admittedReplyPending(input);
-    return pending
-      ? {
-          ...input,
-          requestKey: pending.request.requestKey,
-          requestMethod: pending.requestMethod,
-          threadId: pending.request.threadId,
-          turnId: pending.request.turnId,
-          kind: pending.request.payload.kind,
-        }
-      : null;
+    return this.#interactions.pendingAdmittedNativeReply(input);
   }
 
   awaitPendingAdmittedNativeReply(
     input: AdmittedNativeReplyIdentity,
   ): Promise<AdmittedNativeReply> {
-    const known = this.pendingAdmittedNativeReply(input);
-    if (known) return Promise.resolve(known);
-    const active = this.#rootExecutionsByThread.get(input.rootThreadId)?.active;
-    const admission = active?.admission;
-    if (
-      !admission ||
-      admission.operationGeneration !== input.operationGeneration ||
-      admission.controller.signal.aborted ||
-      admission.resolvedRequestIds.has(
-        `${typeof input.requestId}:${input.requestId}`,
-      )
-    ) {
-      return Promise.reject(
-        new Error("The native reply operation is no longer current."),
-      );
-    }
-    return new Promise((resolve, reject) => {
-      const cleanup = () => {
-        this.#admittedReplyWaiters.delete(observed);
-        admission.controller.signal.removeEventListener("abort", aborted);
-      };
-      const aborted = () => {
-        cleanup();
-        reject(
-          new Error(
-            "The native reply operation ended before its request was observed.",
-          ),
-        );
-      };
-      const observed = () => {
-        const pending = this.pendingAdmittedNativeReply(input);
-        if (!pending) return;
-        cleanup();
-        resolve(pending);
-      };
-      this.#admittedReplyWaiters.add(observed);
-      admission.controller.signal.addEventListener("abort", aborted, {
-        once: true,
-      });
-      observed();
-    });
+    return this.#interactions.awaitPendingAdmittedNativeReply(input);
   }
 
   resolveAdmittedNativeReply(
@@ -7601,84 +4579,32 @@ export class CodexAppServer implements CodexRuntime {
       response: AdmittedNativeReplyResponse;
     },
   ): { accepted: true } {
-    const pending = this.admittedReplyPending(input);
-    if (!pending)
-      throw new Error(
-        "The native reply is no longer pending for this operation.",
-      );
-    // Consume before transport send. An uncertain failure cannot authorize replay
-    // or let a simultaneous GUI/console response win the same native request.
-    this.releaseAgentInteraction(pending);
-    this.send({ id: pending.rpcId, ...input.response });
-    pending.active.onInteractionCleared?.(
-      pending.request.requestKey,
-      "result" in input.response
-        ? agentInteractionResponseFromNativeResult(
-            pending.request.payload.kind,
-            input.response.result,
-          )
-        : undefined,
-    );
-    return { accepted: true };
+    return this.#interactions.resolveAdmittedNativeReply(input);
   }
 
-  async answerAgentInteraction(
+  answerAgentInteraction(
     requestKey: string,
     response: AgentInteractionResponse,
   ): Promise<{ accepted: true }> {
-    const pending = this.#pendingAgentInteractions.get(requestKey);
-    if (!pending) {
-      throw new Error("The agent interaction is no longer pending.");
-    }
-    if (pending.request.payload.kind !== response.kind) {
-      throw new Error("The agent interaction response kind does not match.");
-    }
-    const result = codexResultForAgentInteraction(response);
-    await this.dispatchGuiNativeCommand(pending.active.threadId, {
-      method: "serverRequest/reply",
-      params: { result },
-      reply: {
-        requestId: pending.rpcId,
-        requestMethod: pending.requestMethod,
-        turnId: pending.request.turnId,
-      },
-      dispatch: async () => {
-        if (this.#pendingAgentInteractions.get(requestKey) !== pending)
-          throw new Error("The agent interaction is no longer pending.");
-        this.releaseAgentInteraction(pending);
-        this.send({ id: pending.rpcId, result });
-        pending.active.onInteractionCleared?.(
-          pending.request.requestKey,
-          response,
-        );
-        return { accepted: true };
-      },
-    });
-    return agentInteractionAcceptedSchema.parse({ accepted: true });
+    return this.#interactions.answerAgentInteraction(requestKey, response);
   }
 
-  async cancelAgentInteraction(
+  cancelAgentInteraction(
     requestKey: string,
     reason: string,
   ): Promise<{ accepted: true }> {
-    const pending = this.#pendingAgentInteractions.get(requestKey);
-    if (!pending) {
-      return agentInteractionAcceptedSchema.parse({ accepted: true });
-    }
-    this.send({
-      id: pending.rpcId,
-      ...failClosedAgentInteractionReply(pending.request.payload.kind, reason),
-    });
-    this.releaseAgentInteraction(pending);
-    pending.active.onInteractionCleared?.(pending.request.requestKey);
-    return agentInteractionAcceptedSchema.parse({ accepted: true });
+    return this.#interactions.cancelAgentInteraction(requestKey, reason);
   }
 
   async interruptChat(
     chatId: string,
     threadId: string | null,
   ): Promise<{ interrupted: boolean }> {
-    const active = findActiveChatTurn(this.#activeTurns, chatId, threadId);
+    const active = findActiveChatTurn(
+      this.#executions.activeTurns,
+      chatId,
+      threadId,
+    );
     if (!active) {
       const pendingRetry = this.#pendingCapacityRetries.get(chatId);
       // An autonomous runner can be awaiting admission before it has a native
@@ -7709,10 +4635,10 @@ export class CodexAppServer implements CodexRuntime {
     }
     const previousRequest = active[1].interruptionRequestedAtMs;
     active[1].interruptionRequestedAtMs = Date.now();
-    const execution = this.#rootExecutionsByActive.get(active[1]);
+    const execution = this.#executions.rootExecutionsByActive.get(active[1]);
     // A user Stop cancels local host work immediately, even while the native
     // interrupt acknowledgement is pending or ultimately fails.
-    if (execution) this.abortComputerUseExecution(execution);
+    if (execution) this.#executions.abortComputerUseExecution(execution);
     try {
       const params = { threadId: active[1].threadId, turnId: active[0] };
       await this.dispatchGuiNativeCommand(active[1].threadId, {
@@ -7753,7 +4679,7 @@ export class CodexAppServer implements CodexRuntime {
       clientUserMessageId?: string;
     },
   ): Promise<{ steered: true; turnId: string }> {
-    const active = [...this.#activeTurns.entries()].find(
+    const active = [...this.#executions.activeTurns.entries()].find(
       ([, turn]) =>
         (threadId && turn.threadId === threadId) || turn.chatId === chatId,
     );
@@ -7822,8 +4748,8 @@ export class CodexAppServer implements CodexRuntime {
       status: "started",
       runtimeId: this.#runtimeId,
       counts: {
-        activeTurns: this.#activeTurns.size,
-        pendingRequests: this.#pending.size,
+        activeTurns: this.#executions.activeTurns.size,
+        pendingRequests: this.#rpcRequests.pendingCount,
       },
     });
     this.handleExit(new Error("Codex app-server stopped."));
@@ -7834,25 +4760,14 @@ export class CodexAppServer implements CodexRuntime {
     this.#remoteUrl = null;
     this.#runtimeId = null;
     this.#runtimeStartedAtMs = null;
-    this.#externalChatGptAuth = null;
+    this.#authRecovery.setSession(null);
     this.#diagnosticSecrets.clear();
     this.#runtimeIsZai = false;
     this.#starting = null;
     this.#loadedThreads.clear();
     this.#managedHistoryImports.clear();
     this.#managedNativeCommandDispatchers.clear();
-    for (const execution of this.#rootExecutionsByActive.values()) {
-      for (const state of execution.agents.values()) {
-        clearTurnInspectionTelemetry(state);
-      }
-    }
-    this.#rootExecutionsByActive.clear();
-    this.#rootExecutionsByThread.clear();
-    for (const pending of this.#unassociatedComputerUseTurns.values())
-      pending.lifetime.abort();
-    this.#unassociatedComputerUseTurns.clear();
-    this.#orphanAgentThreads.clear();
-    this.#knownAgentThreads.clear();
+    this.#executions.clearOwnership();
     this.#mcpConfigFingerprintsByThread.clear();
     this.#managedConfigApplications.clear();
     this.#managedThreadOverlays.clear();
@@ -8120,7 +5035,7 @@ export class CodexAppServer implements CodexRuntime {
     this.#remoteUrl = null;
     this.#runtimeId = null;
     this.#runtimeStartedAtMs = null;
-    this.#externalChatGptAuth = null;
+    this.#authRecovery.setSession(null);
     this.#diagnosticSecrets.clear();
     this.#runtimeIsZai = false;
     this.#loadedThreads.clear();
@@ -8646,14 +5561,12 @@ export class CodexAppServer implements CodexRuntime {
   }
 
   private hasActiveThread(threadId: string): boolean {
-    return this.#rootExecutionsByThread.has(threadId);
+    return this.#executions.hasActiveThread(threadId);
   }
 
   /** Native root/child ownership for lifecycle cancellation, even before CUA is used. */
   ownsComputerUseThread(rootThreadId: string, threadId: string): boolean {
-    return (
-      this.#rootExecutionsByThread.get(threadId)?.rootThreadId === rootThreadId
-    );
+    return this.#executions.ownsComputerUseThread(rootThreadId, threadId);
   }
 
   /** Resolve an exact observed native turn without creating or rebinding one.
@@ -8663,774 +5576,23 @@ export class CodexAppServer implements CodexRuntime {
     threadId: string;
     turnId: string;
   }): CodexComputerUseExecution | null {
-    const execution = this.#rootExecutionsByThread.get(input.threadId);
-    const rootTurnId = execution?.computerUseLifetime.turnId;
-    if (
-      !execution ||
-      execution.active.executionKind !== "chat" ||
-      execution.active.chatId !== input.chatId ||
-      !rootTurnId ||
-      !execution.computerUseLifetime.signal(rootTurnId)
-    )
-      return null;
-    const child = execution.agents.get(input.threadId);
-    const signal = child
-      ? child.computerUseLifetime.signal(input.turnId)
-      : input.threadId === execution.rootThreadId && input.turnId === rootTurnId
-        ? execution.computerUseLifetime.signal(input.turnId)
-        : null;
-    if (!signal) return null;
-    return {
-      chatId: execution.active.chatId,
-      ...(execution.active.admission
-        ? {
-            operationGeneration: execution.active.admission.operationGeneration,
-          }
-        : {}),
-      threadId: input.threadId,
-      turnId: input.turnId,
-      rootThreadId: execution.rootThreadId,
-      rootTurnId,
-      parentThreadId: child?.parentThreadId ?? null,
-      agentScope: this.agentScope(execution, child ?? null),
-      signal,
-    };
-  }
-
-  private abortComputerUseExecution(
-    execution: RootExecution,
-    turnId?: string,
-  ): void {
-    if (!execution.computerUseLifetime.abort(turnId)) return;
-    for (const state of execution.agents.values())
-      state.computerUseLifetime.abort();
-  }
-
-  private turnFinalizationCurrent(
-    active: ActiveTurn,
-    turnId: string,
-  ): () => boolean {
-    const execution = this.#rootExecutionsByActive.get(active);
-    // Operation timeouts can release before entering their terminal handler.
-    // Otherwise an awaited read belongs to this exact observed runtime turn.
-    return () =>
-      !execution ||
-      (this.#rootExecutionsByActive.get(active) === execution &&
-        execution.computerUseLifetime.turnId === turnId);
-  }
-
-  /** Native child turn/started can precede the parent's spawn result. Retain
-   * the event, but grant nothing until runtime ancestry identifies its root. */
-  private unassociatedComputerUseTurn(threadId: string, turnId?: string) {
-    const existing = this.#unassociatedComputerUseTurns.get(threadId);
-    if (existing && (!turnId || existing.lifetime.turnId === turnId))
-      return existing;
-    // A genuine newer child start takes a new root snapshot; a duplicate start
-    // retains its old (possibly aborted) lifetime and can never refresh it.
-    existing?.lifetime.abort();
-    this.#unassociatedComputerUseTurns.delete(threadId);
-    const roots = new Map<RootExecution, AbortSignal>();
-    for (const execution of this.#rootExecutionsByActive.values()) {
-      const turnId = execution.computerUseLifetime.turnId;
-      const signal = turnId && execution.computerUseLifetime.signal(turnId);
-      if (signal) roots.set(execution, signal);
-    }
-    if (!roots.size) return null;
-    if (this.#unassociatedComputerUseTurns.size >= MAX_ORPHAN_AGENT_THREADS) {
-      const oldest = this.#unassociatedComputerUseTurns.keys().next().value;
-      if (oldest !== undefined) {
-        this.#unassociatedComputerUseTurns.get(oldest)?.lifetime.abort();
-        this.#unassociatedComputerUseTurns.delete(oldest);
-      }
-    }
-    const pending = { lifetime: new CodexExecutionLifetime(), roots };
-    this.#unassociatedComputerUseTurns.set(threadId, pending);
-    return pending;
-  }
-
-  private adoptComputerUseTurn(
-    execution: RootExecution,
-    state: AgentRuntimeState,
-  ): void {
-    const pending = this.#unassociatedComputerUseTurns.get(state.threadId);
-    if (!pending) return;
-    this.#unassociatedComputerUseTurns.delete(state.threadId);
-    const turnId = execution.computerUseLifetime.turnId;
-    const signal = turnId && execution.computerUseLifetime.signal(turnId);
-    // A delayed spawn result cannot transfer an old child start into another
-    // root turn, or revive authority after Stop/completion/replacement.
-    if (!signal || pending.roots.get(execution) !== signal)
-      pending.lifetime.abort();
-    state.computerUseLifetime = pending.lifetime;
-  }
-
-  private observeComputerUseTurnStart(threadId: string, turnId: string): void {
-    const execution = this.#rootExecutionsByThread.get(threadId);
-    if (!execution) {
-      this.unassociatedComputerUseTurn(threadId, turnId)?.lifetime.observe(
-        turnId,
-      );
-      return;
-    }
-    if (threadId === execution.rootThreadId) {
-      if (execution.active.admission) {
-        const admission = execution.active.admission;
-        if (admission.initialTurnId && admission.initialTurnId !== turnId)
-          return;
-        admission.initialTurnId ??= turnId;
-      }
-      if (execution.computerUseLifetime.observe(turnId))
-        for (const state of execution.agents.values())
-          state.computerUseLifetime.abort();
-    } else {
-      const rootTurnId = execution.computerUseLifetime.turnId;
-      if (rootTurnId && execution.computerUseLifetime.signal(rootTurnId))
-        execution.agents.get(threadId)?.computerUseLifetime.observe(turnId);
-    }
-  }
-
-  private abortComputerUseThread(threadId: string, closed = true): void {
-    const execution = this.#rootExecutionsByThread.get(threadId);
-    if (!execution) {
-      this.#unassociatedComputerUseTurns.get(threadId)?.lifetime.abort();
-      return;
-    }
-    if (threadId === execution.rootThreadId) {
-      this.abortComputerUseExecution(execution);
-      if (closed && execution.active.admission) {
-        this.releaseActiveTurn(execution.active);
-        clearTurnInspectionTelemetry(execution.active);
-        execution.active.reject(
-          new Error("The admitted native execution's thread closed."),
-        );
-      }
-    } else execution.agents.get(threadId)?.computerUseLifetime.abort();
-  }
-
-  private agentScope(
-    execution: RootExecution,
-    state: AgentRuntimeState | null,
-  ): AgentScope | null {
-    if (!execution.rootTurnId) return null;
-    return {
-      agentThreadId: state?.threadId ?? execution.rootThreadId,
-      rootThreadId: execution.rootThreadId,
-      parentThreadId: state?.parentThreadId ?? null,
-      rootTurnId: execution.rootTurnId,
-      agentPath: state?.agentPath ?? ["root"],
-      nickname: state?.nickname ?? null,
-      role: state?.role ?? null,
-      depth: state?.depth ?? 0,
-      isRoot: state === null,
-    };
-  }
-
-  private refreshExecutionScopes(execution: RootExecution): void {
-    execution.active.agentScope = this.agentScope(execution, null);
-    for (const state of execution.agents.values()) {
-      state.agentScope = this.agentScope(execution, state);
-    }
+    return this.#executions.resolveComputerUseExecution(input);
   }
 
   private registerRootExecution(active: ActiveTurn): RootExecution {
-    const existing = this.#rootExecutionsByActive.get(active);
-    if (existing) return existing;
-    const execution: RootExecution = {
-      computerUseLifetime: new CodexExecutionLifetime(),
-      active,
-      agents: new Map(),
-      rootThreadId: active.threadId,
-      rootTurnId: null,
-    };
-    this.#rootExecutionsByActive.set(active, execution);
-    this.#rootExecutionsByThread.set(active.threadId, execution);
-    this.associateWaitingAgentThreads(active.threadId);
-    return execution;
+    return this.#executions.registerRootExecution(active);
   }
 
-  private bindRootTurn(execution: RootExecution, turnId: string): void {
-    const completed = execution.active.goalCompletion;
-    const continuing =
-      execution.rootTurnId !== turnId &&
-      completed?.turnId === execution.rootTurnId &&
-      !execution.active.admission;
-    if (continuing) resetGoalSegment(execution.active);
-    if (execution.rootTurnId !== turnId) {
-      execution.rootTurnId = turnId;
-      execution.active.observedActivityFingerprints.clear();
-      for (const state of execution.agents.values()) {
-        state.segmentTurnIds.clear();
-        state.observedActivityFingerprints.clear();
-        state.liveAgentMessageFingerprints.clear();
-      }
-      this.refreshExecutionScopes(execution);
-    }
-    for (const [knownTurnId, candidate] of this.#activeTurns) {
-      if (candidate === execution.active && knownTurnId !== turnId) {
-        this.#activeTurns.delete(knownTurnId);
-      }
-    }
-    this.#activeTurns.set(turnId, execution.active);
-    // A real next turn proves continuation even while the old completion is
-    // awaiting filesystem/history reads. Never let those reads own the new turn.
-    if (continuing) publishGoalCheckpoint(execution.active, completed!.turnId);
-  }
-
-  private childFallbackPath(
-    execution: RootExecution,
-    metadata: ChildThreadMetadata,
-  ): string[] {
-    const parent = execution.agents.get(metadata.parentThreadId);
-    const parentPath = parent?.agentPath ?? ["root"];
-    const label = metadata.nickname ?? `agent-${metadata.threadId.slice(-8)}`;
-    return [...parentPath, label].slice(0, 32);
-  }
-
-  private createAgentRuntimeState(
-    execution: RootExecution,
-    metadata: ChildThreadMetadata,
-  ): AgentRuntimeState {
-    const active = execution.active;
-    const parent = execution.agents.get(metadata.parentThreadId);
-    const path = agentPathSegments(metadata.agentPath);
-    const now = Date.now();
-    const state: AgentRuntimeState = {
-      computerUseLifetime: new CodexExecutionLifetime(),
-      agentScope: null,
-      agentPath:
-        path.length > 0 ? path : this.childFallbackPath(execution, metadata),
-      captureProtectedDiagnostics: active.captureProtectedDiagnostics,
-      commandTelemetry: new Map(),
-      completedCommandIds: new Set(),
-      currentTurnId: null,
-      cwd: active.cwd,
-      delta: "",
-      depth: metadata.depth ?? Math.min((parent?.depth ?? 0) + 1, 32),
-      diffChanges: [],
-      fileStartedAtMs: new Map(),
-      finalText: null,
-      itemStartedAtMs: new Map(),
-      lastActiveAtMs: now,
-      latestUsage: null,
-      liveAgentMessageFingerprints: new Set(),
-      observedActivityFingerprints: new Set(),
-      nickname: metadata.nickname ?? null,
-      onActivity: active.onActivity,
-      onMessage: active.onMessage,
-      parentThreadId: metadata.parentThreadId,
-      pendingActivities: new Map(),
-      pendingAgentMessage: null,
-      reasoningSummaries: new Map(),
-      role: metadata.role ?? null,
-      segmentTurnIds: new Set(),
-      startedAtMs: now,
-      status: "starting",
-      streamingAgentMessage: null,
-      structuredChat: false,
-      threadId: metadata.threadId,
-    };
-    state.agentScope = this.agentScope(execution, state);
-    return state;
-  }
-
-  private rememberOrphanAgentThread(metadata: ChildThreadMetadata): void {
-    if (
-      !this.#orphanAgentThreads.has(metadata.threadId) &&
-      this.#orphanAgentThreads.size >= MAX_ORPHAN_AGENT_THREADS
-    ) {
-      const oldest = this.#orphanAgentThreads.keys().next().value;
-      if (oldest !== undefined) this.#orphanAgentThreads.delete(oldest);
-    }
-    this.#orphanAgentThreads.set(metadata.threadId, metadata);
-  }
-
-  private rememberKnownAgentThread(metadata: ChildThreadMetadata): void {
-    if (
-      !this.#knownAgentThreads.has(metadata.threadId) &&
-      this.#knownAgentThreads.size >= MAX_KNOWN_AGENT_THREADS
-    ) {
-      const oldest = this.#knownAgentThreads.keys().next().value;
-      if (oldest !== undefined) this.#knownAgentThreads.delete(oldest);
-    }
-    this.#knownAgentThreads.set(metadata.threadId, metadata);
-  }
-
-  private associateAgentThread(
-    input: ChildThreadMetadata,
-  ): AgentRuntimeState | null {
-    const remembered = this.#knownAgentThreads.get(input.threadId);
-    const metadata: ChildThreadMetadata = {
-      ...remembered,
-      ...input,
-      agentPath: input.agentPath ?? remembered?.agentPath,
-      depth: input.depth ?? remembered?.depth,
-      nickname: input.nickname ?? remembered?.nickname,
-      role: input.role ?? remembered?.role,
-    };
-    const execution = this.#rootExecutionsByThread.get(metadata.parentThreadId);
-    if (!execution) {
-      this.rememberOrphanAgentThread(metadata);
-      return null;
-    }
-    if (metadata.threadId === execution.rootThreadId) return null;
-    const existing = execution.agents.get(metadata.threadId);
-    if (existing) {
-      existing.parentThreadId = metadata.parentThreadId;
-      existing.nickname = metadata.nickname ?? existing.nickname;
-      existing.role = metadata.role ?? existing.role;
-      existing.depth =
-        metadata.depth ??
-        Math.min(
-          (execution.agents.get(metadata.parentThreadId)?.depth ?? 0) + 1,
-          32,
-        );
-      const path = agentPathSegments(metadata.agentPath);
-      if (path.length > 0) existing.agentPath = path;
-      existing.agentScope = this.agentScope(execution, existing);
-      this.#orphanAgentThreads.delete(metadata.threadId);
-      this.rememberKnownAgentThread(metadata);
-      return existing;
-    }
-    if (execution.agents.size >= MAX_AGENT_THREADS_PER_EXECUTION) return null;
-    const state = this.createAgentRuntimeState(execution, metadata);
-    this.adoptComputerUseTurn(execution, state);
-    execution.agents.set(metadata.threadId, state);
-    this.#rootExecutionsByThread.set(metadata.threadId, execution);
-    this.#orphanAgentThreads.delete(metadata.threadId);
-    this.rememberKnownAgentThread(metadata);
-    this.associateWaitingAgentThreads(metadata.threadId);
-    return state;
-  }
-
-  private associateWaitingAgentThreads(parentThreadId: string): void {
-    const waiting = [...this.#orphanAgentThreads.values()].filter(
-      (candidate) => candidate.parentThreadId === parentThreadId,
-    );
-    for (const metadata of waiting) this.associateAgentThread(metadata);
-  }
-
-  private updateAgentStatus(
-    state: AgentRuntimeState,
-    status: AgentRuntimeStatus,
-  ): void {
-    state.status = status;
-    state.lastActiveAtMs = Date.now();
-  }
-
-  private emitAgentCommunication(input: {
-    diagnosticId: string | null;
-    itemId?: string | null;
-    kind: AgentCommunicationKind;
-    message?: string | null;
-    milestoneId?: string | null;
-    sourceMethod: string;
-    state: AgentRuntimeState;
-    status: AgentActivity["status"];
-    turnId?: string | null;
-  }): void {
-    if (!input.state.agentScope) return;
-    const milestoneId =
-      input.milestoneId ??
-      ((input.kind === "returned" ||
-        input.kind === "failed" ||
-        input.kind === "interrupted") &&
-      input.turnId
-        ? `${input.kind}:${input.turnId}`
-        : input.kind);
-    emitTurnActivity(
-      input.state,
-      agentActivitySchema.parse({
-        type: "agentCommunication",
-        id: `agent:${input.state.agentScope.rootTurnId}:${input.state.threadId}:${milestoneId}`,
-        kind: input.kind,
-        senderThreadId:
-          input.kind === "spawned" || input.kind === "followupSent"
-            ? input.state.parentThreadId
-            : input.state.threadId,
-        receiverThreadIds:
-          input.kind === "spawned" || input.kind === "followupSent"
-            ? [input.state.threadId]
-            : [input.state.parentThreadId],
-        message: boundedText(input.message, 100_000),
-        status: input.status,
-        updatedAtMs: Date.now(),
-        correlation: eventCorrelation(
-          input.sourceMethod,
-          input.diagnosticId,
-          input.state.threadId,
-          input.turnId ?? input.state.currentTurnId,
-          input.itemId ?? null,
-        ),
-      }),
-    );
-  }
-
-  private collaborationAgentStatus(value: string): AgentRuntimeStatus {
-    const normalized = value.toLowerCase();
-    if (normalized.includes("interrupt")) return "interrupted";
-    if (
-      normalized.includes("fail") ||
-      normalized.includes("error") ||
-      normalized.includes("notfound")
-    ) {
-      return "failed";
-    }
-    if (
-      normalized.includes("complete") ||
-      normalized.includes("done") ||
-      normalized.includes("shutdown")
-    ) {
-      return "completed";
-    }
-    if (normalized.includes("idle") || normalized.includes("wait")) {
-      return "idle";
-    }
-    return "running";
-  }
-
-  private associateAgentsFromItem(
-    item: CodexThreadItem,
-    notificationThreadId: string,
-    notificationTurnId: string,
-    sourceMethod: string,
-    diagnosticId: string | null,
-  ): void {
-    if (item.type === "collabAgentToolCall") {
-      const parentThreadId = this.#rootExecutionsByThread.has(
-        item.senderThreadId,
-      )
-        ? item.senderThreadId
-        : notificationThreadId;
-      const targetThreadIds = new Set([
-        ...item.receiverThreadIds,
-        ...Object.keys(item.agentsStates),
-      ]);
-      for (const threadId of targetThreadIds) {
-        if (threadId === parentThreadId) continue;
-        const state = this.associateAgentThread({
-          threadId,
-          parentThreadId,
-        });
-        const advertised = item.agentsStates[threadId];
-        if (state && advertised?.status) {
-          this.updateAgentStatus(
-            state,
-            this.collaborationAgentStatus(advertised.status),
-          );
-        }
-        if (state) {
-          const tool = item.tool.replaceAll("_", "").toLowerCase();
-          const execution =
-            this.#rootExecutionsByThread.get(notificationThreadId);
-          if (
-            tool === "closeagent" &&
-            item.status === "completed" &&
-            execution?.active.chatId &&
-            this.#rootExecutionsByThread.get(threadId) === execution &&
-            this.resolveComputerUseExecution({
-              chatId: execution.active.chatId,
-              threadId: notificationThreadId,
-              turnId: notificationTurnId,
-            })
-          )
-            state.computerUseLifetime.abort();
-          const advertisedMessage = boundedText(advertised?.message, 100_000);
-          const kind: AgentCommunicationKind =
-            tool === "spawnagent"
-              ? "spawned"
-              : tool === "sendinput" || tool === "resumeagent"
-                ? "followupSent"
-                : tool === "wait" && advertisedMessage
-                  ? "returned"
-                  : tool === "wait"
-                    ? "waiting"
-                    : "statusChanged";
-          this.emitAgentCommunication({
-            diagnosticId,
-            itemId: item.id,
-            kind,
-            message:
-              kind === "returned" ? advertisedMessage : (item.prompt ?? null),
-            milestoneId: kind === "spawned" ? "spawn" : `${kind}:${item.id}`,
-            sourceMethod,
-            state,
-            status:
-              item.status === "inProgress"
-                ? "running"
-                : item.status === "failed"
-                  ? "failed"
-                  : "completed",
-            turnId: notificationTurnId,
-          });
-        }
-      }
-      return;
-    }
-    if (
-      item.type === "subAgentActivity" &&
-      item.agentThreadId !== notificationThreadId
-    ) {
-      const state = this.associateAgentThread({
-        threadId: item.agentThreadId,
-        parentThreadId: notificationThreadId,
-        agentPath: item.agentPath,
-      });
-      if (state) {
-        this.updateAgentStatus(
-          state,
-          item.kind === "interrupted"
-            ? "interrupted"
-            : item.kind === "interacted"
-              ? "idle"
-              : "running",
-        );
-      }
-    }
-  }
-
-  private async discoverSubagentThreads(
-    execution: RootExecution,
-    isCurrent: () => boolean,
-  ): Promise<void> {
-    if (!this.methodAvailable("thread/list")) return;
-    let cursor: string | null = null;
-    let discovered = 0;
-    do {
-      const response = (await this.request(
-        "thread/list",
-        {
-          ancestorThreadId: execution.rootThreadId,
-          cursor,
-          limit: Math.min(100, MAX_RECOVERED_AGENT_THREADS - discovered),
-          sortKey: "created_at",
-          sortDirection: "asc",
-          useStateDbOnly: true,
-        },
-        COMPLETED_TURN_RECONCILIATION_TIMEOUT_MS,
-      )) as CodexThreadListResponse;
-      if (!isCurrent()) return;
-      if (!Array.isArray(response.data)) {
-        throw new Error("Codex returned an invalid descendant thread page.");
-      }
-      for (const thread of response.data) {
-        const metadata = childThreadMetadataFromNotification({ thread });
-        if (metadata) this.associateAgentThread(metadata);
-      }
-      discovered += response.data.length;
-      cursor = optionalString(response.nextCursor);
-    } while (cursor && discovered < MAX_RECOVERED_AGENT_THREADS);
-  }
-
-  private recoveredAgentTurns(
-    response: CodexThreadReadResponse,
-    state: AgentRuntimeState,
-    executionStartedAtMs: number,
-    executionCompletedAtMs: number,
-    rootTurnId: string | null,
-    history: CodexNativeHistorySnapshot["history"],
-  ): CodexThreadTurn[] {
-    const windowStart = executionStartedAtMs - RECOVERY_TURN_CLOCK_SLOP_MS;
-    const windowEnd = executionCompletedAtMs + RECOVERY_TURN_CLOCK_SLOP_MS;
-    return response.thread.turns
-      .filter((turn) => {
-        const retained = history?.turns.find(
-          (entry) => entry.turnId === turn.id,
-        );
-        if (retained?.contexts !== undefined) {
-          // Nearby timestamps do not establish child ownership. In particular,
-          // a restart followed by a quick new root used to replay the old child
-          // within the clock-slop window under the new root's scope.
-          return (
-            retained.contexts.length > 0 &&
-            retained.contexts.every(
-              (context) => context.rootTurnId === rootTurnId,
-            )
-          );
-        }
-        if (state.segmentTurnIds.has(turn.id)) return true;
-        if (turn.startedAt === null) return false;
-        const startedAtMs = turn.startedAt * 1_000;
-        return startedAtMs >= windowStart && startedAtMs <= windowEnd;
-      })
-      .slice(-MAX_RECOVERED_TURNS_PER_AGENT)
-      .map((turn) => ({
-        ...turn,
-        items: turn.items.slice(-MAX_RECOVERED_ITEMS_PER_TURN),
-      }));
-  }
-
-  private async reconcileAgentThread(
-    execution: RootExecution,
-    state: AgentRuntimeState,
-    executionCompletedAtMs: number,
-    isCurrent: () => boolean,
-  ): Promise<void> {
-    const snapshot = await readCodexNativeHistory(
-      (method, params) =>
-        this.request(method, params, COMPLETED_TURN_RECONCILIATION_TIMEOUT_MS),
-      state.threadId,
-    );
-    const response = snapshot as unknown as CodexThreadReadResponse;
-    if (!isCurrent()) return;
-    const metadata = childThreadMetadataFromNotification({
-      thread: response.thread,
-    });
-    if (metadata) this.associateAgentThread(metadata);
-    const turns = this.recoveredAgentTurns(
-      response,
-      state,
-      execution.active.startedAtMs,
-      executionCompletedAtMs,
-      execution.rootTurnId,
-      snapshot.history,
-    );
-    for (const turn of turns) {
-      // Managed durable projection owns retained snapshots. Re-emitting these
-      // as legacy thread/read events would assign another message identity.
-      if (
-        this.#managedThreadOverlays.get(execution.rootThreadId)?.options
-          .canonicalHistory &&
-        snapshot.history?.turns.some(
-          (entry) => entry.turnId === turn.id && entry.source === "canonical",
-        )
-      )
-        continue;
-      state.segmentTurnIds.add(turn.id);
-      const normalized = normalizeCodexThreadTurn(
-        turn,
-        execution.active.cwd,
-        state.threadId,
-      );
-      for (const item of normalized.items) {
-        if (item.type === "userMessage") {
-          this.emitAgentCommunication({
-            diagnosticId: null,
-            itemId: item.id,
-            kind:
-              response.thread.turns[0]?.id === turn.id
-                ? "spawned"
-                : "followupSent",
-            message: item.text || null,
-            milestoneId:
-              response.thread.turns[0]?.id === turn.id
-                ? "spawn"
-                : `followupSent:${item.id}`,
-            sourceMethod: "thread/read",
-            state,
-            status: "completed",
-            turnId: turn.id,
-          });
-          continue;
-        }
-        if (item.type === "agentMessage") {
-          const { type: _type, ...message } = item;
-          const scoped = normalizedAgentMessageSchema.parse({
-            ...message,
-            agentScope: state.agentScope,
-          });
-          const fingerprint = agentMessageFingerprint(scoped);
-          if (state.liveAgentMessageFingerprints.has(fingerprint)) continue;
-          state.liveAgentMessageFingerprints.add(fingerprint);
-          state.onMessage?.(scoped);
-          continue;
-        }
-        const scoped = scopedAgentActivity(state, item.activity);
-        if (
-          state.observedActivityFingerprints.has(
-            agentActivityDeliveryFingerprint(scoped),
-          )
-        ) {
-          continue;
-        }
-        emitTurnActivity(state, item.activity);
-      }
-      if (turn.status !== "inProgress") {
-        const status =
-          turn.status === "completed"
-            ? "completed"
-            : turn.status === "interrupted"
-              ? "interrupted"
-              : "failed";
-        this.updateAgentStatus(state, status);
-        this.emitAgentCommunication({
-          diagnosticId: null,
-          kind:
-            status === "completed"
-              ? "returned"
-              : status === "interrupted"
-                ? "interrupted"
-                : "failed",
-          sourceMethod: "thread/read",
-          state,
-          status: status === "completed" ? "completed" : "failed",
-          turnId: turn.id,
-        });
-      }
-    }
-  }
-
-  private async reconcileSubagentExecution(
+  private reconcileSubagentExecution(
     active: ActiveTurn,
     executionCompletedAtMs: number,
     isCurrent: () => boolean,
   ): Promise<void> {
-    if (active.executionKind !== "chat") return;
-    const execution = this.#rootExecutionsByActive.get(active);
-    if (!execution?.rootTurnId || (!active.onActivity && !active.onMessage)) {
-      return;
-    }
-    try {
-      await this.discoverSubagentThreads(execution, isCurrent);
-    } catch (error) {
-      workerLogger.event(
-        "warn",
-        "Could not discover descendant Codex threads",
-        {
-          event: "codex.subagent.reconciliation",
-          subsystem: "codex",
-          operation: "list-descendant-threads",
-          status: "failed",
-          chatId: active.chatId ?? undefined,
-          threadId: execution.rootThreadId,
-          turnId: execution.rootTurnId,
-          error: workerLogError(error),
-        },
-      );
-    }
-    if (!isCurrent()) return;
-    const states = [...execution.agents.values()]
-      .sort((left, right) => left.depth - right.depth)
-      .slice(0, MAX_RECOVERED_AGENT_THREADS);
-    for (let offset = 0; offset < states.length; offset += 4) {
-      if (!isCurrent()) return;
-      await Promise.all(
-        states.slice(offset, offset + 4).map(async (state) => {
-          try {
-            await this.reconcileAgentThread(
-              execution,
-              state,
-              executionCompletedAtMs,
-              isCurrent,
-            );
-          } catch (error) {
-            workerLogger.event(
-              "warn",
-              "Could not reconcile a descendant Codex thread",
-              {
-                event: "codex.subagent.reconciliation",
-                subsystem: "codex",
-                operation: "read-descendant-thread",
-                status: "failed",
-                chatId: active.chatId ?? undefined,
-                threadId: state.threadId,
-                turnId: execution.rootTurnId ?? undefined,
-                error: workerLogError(error),
-              },
-            );
-          }
-        }),
-      );
-    }
+    return this.#executions.reconcileSubagentExecution(
+      active,
+      executionCompletedAtMs,
+      isCurrent,
+    );
   }
 
   private settleDescendantsAtRootBoundary(
@@ -9439,206 +5601,20 @@ export class CodexAppServer implements CodexRuntime {
     observedAtMs: number,
     diagnosticId: string | null,
   ): void {
-    for (const state of execution.agents.values()) {
-      const runtimeStatus: AgentRuntimeStatus =
-        state.status === "completed" || state.status === "idle"
-          ? "completed"
-          : state.status === "failed" || state.status === "interrupted"
-            ? state.status
-            : rootStatus === "failed"
-              ? "failed"
-              : "interrupted";
-      const childCompleted = runtimeStatus === "completed";
-      const settledStatus = childCompleted ? "completed" : "failed";
-      const turnId = state.currentTurnId;
-      if (turnId) {
-        const correlation = eventCorrelation(
-          "turn/completed",
-          diagnosticId,
-          state.threadId,
-          turnId,
-          null,
-        );
-        for (const telemetry of state.commandTelemetry.values()) {
-          clearCommandFlush(telemetry);
-          telemetry.updatedAtMs = observedAtMs;
-          emitCommandTelemetry(state, telemetry, observedAtMs, settledStatus);
-        }
-        settlePendingTurnActivities(
-          state,
-          settledStatus,
-          observedAtMs,
-          correlation,
-        );
-        flushActiveAgentMessage(state, childCompleted);
-        emitTurnActivity(
-          state,
-          turnSummaryActivity(
-            {
-              id: turnId,
-              status: childCompleted ? "completed" : "interrupted",
-              startedAt: Math.floor(state.startedAtMs / 1_000),
-              completedAt: Math.floor(observedAtMs / 1_000),
-              durationMs: Math.max(0, observedAtMs - state.startedAtMs),
-            },
-            correlation,
-            state.initialSettings,
-          ),
-        );
-      }
-      state.currentTurnId = null;
-      this.updateAgentStatus(state, runtimeStatus);
-      this.emitAgentCommunication({
-        diagnosticId,
-        kind:
-          runtimeStatus === "completed"
-            ? "returned"
-            : runtimeStatus === "failed"
-              ? "failed"
-              : "interrupted",
-        sourceMethod: "turn/completed",
-        state,
-        status: runtimeStatus === "completed" ? "completed" : "failed",
-        turnId,
-      });
-      clearTurnInspectionTelemetry(state);
-    }
-  }
-
-  private notificationTarget(
-    threadId: string,
-    turnId: string,
-    startingTurn = false,
-  ): AgentNotificationTarget | null {
-    const execution = this.#rootExecutionsByThread.get(threadId);
-    if (!execution) return null;
-    const startedTurnId =
-      threadId === execution.rootThreadId
-        ? execution.computerUseLifetime.turnId
-        : execution.agents.get(threadId)?.computerUseLifetime.turnId;
-    if (execution.active.admission && !startedTurnId && !startingTurn)
-      return null;
-    if (startedTurnId && startedTurnId !== turnId && !startingTurn) return null;
-    if (threadId === execution.rootThreadId) {
-      const admittedTurnId = execution.active.admission?.initialTurnId;
-      if (admittedTurnId && admittedTurnId !== turnId) return null;
-      this.bindRootTurn(execution, turnId);
-      return {
-        active: execution.active,
-        execution,
-        isRoot: true,
-        state: execution.active,
-      };
-    }
-    const state = execution.agents.get(threadId);
-    if (!state) return null;
-    if (
-      state.currentTurnId &&
-      state.currentTurnId !== turnId &&
-      state.status === "running" &&
-      !startingTurn
-    ) {
-      return null;
-    }
-    if (state.currentTurnId !== turnId) {
-      if (state.currentTurnId) {
-        flushActiveAgentMessage(state, false);
-        clearTurnInspectionTelemetry(state);
-      }
-      state.currentTurnId = turnId;
-      state.delta = "";
-      state.diffChanges = [];
-      state.finalText = null;
-      state.latestUsage = null;
-      state.pendingAgentMessage = null;
-      state.startedAtMs = Date.now();
-      state.liveAgentMessageFingerprints.clear();
-      state.observedActivityFingerprints.clear();
-      state.reasoningSummaries.clear();
-    }
-    state.segmentTurnIds.add(turnId);
-    state.status = "running";
-    state.lastActiveAtMs = Date.now();
-    state.agentScope = this.agentScope(execution, state);
-    return {
-      active: execution.active,
+    return this.#executions.settleDescendantsAtRootBoundary(
       execution,
-      isRoot: false,
-      state,
-    };
-  }
-
-  private activeTurnForNotification(
-    threadId: string,
-    turnId: string,
-  ): ActiveTurn | undefined {
-    return this.notificationTarget(threadId, turnId)?.active;
+      rootStatus,
+      observedAtMs,
+      diagnosticId,
+    );
   }
 
   private bindTurnStartResponse(turnId: string, active: ActiveTurn): void {
-    const execution = this.#rootExecutionsByActive.get(active);
-    if (!execution) return;
-    // Notifications can precede this acknowledgement, including a native goal's
-    // next turn. The response may initialize, but never roll that lifetime back.
-    if (
-      !execution.computerUseLifetime.turnId ||
-      execution.computerUseLifetime.turnId === turnId
-    ) {
-      this.bindRootTurn(execution, turnId);
-      this.observeComputerUseTurnStart(active.threadId, turnId);
-    }
+    return this.#executions.bindTurnStartResponse(turnId, active);
   }
 
   private releaseActiveTurn(active: ActiveTurn, turnId?: string): boolean {
-    const execution = this.#rootExecutionsByActive.get(active);
-    if (
-      turnId !== undefined &&
-      execution?.computerUseLifetime.turnId &&
-      execution.computerUseLifetime.turnId !== turnId
-    )
-      return false;
-    if (this.#activeTurnsByThread.get(active.threadId) === active) {
-      this.#activeTurnsByThread.delete(active.threadId);
-    }
-    for (const [turnId, candidate] of this.#activeTurns) {
-      if (candidate === active) this.#activeTurns.delete(turnId);
-    }
-    this.clearInteractionsForTurn(
-      active,
-      "The native execution ended before the interaction was answered.",
-    );
-    active.admission?.controller.abort();
-    active.goalCompletion = undefined;
-    if (!execution) return true;
-    this.abortComputerUseExecution(execution);
-    const releasedThreadIds = new Set([
-      execution.rootThreadId,
-      ...execution.agents.keys(),
-    ]);
-    for (const state of execution.agents.values()) {
-      clearTurnInspectionTelemetry(state);
-      if (this.#rootExecutionsByThread.get(state.threadId) === execution)
-        this.#rootExecutionsByThread.delete(state.threadId);
-    }
-    if (this.#rootExecutionsByThread.get(execution.rootThreadId) === execution)
-      this.#rootExecutionsByThread.delete(execution.rootThreadId);
-    this.#rootExecutionsByActive.delete(active);
-    for (const [threadId, pending] of this.#unassociatedComputerUseTurns) {
-      pending.roots.delete(execution);
-      if (!pending.roots.size) {
-        pending.lifetime.abort();
-        this.#unassociatedComputerUseTurns.delete(threadId);
-      }
-    }
-    for (const [threadId, metadata] of this.#orphanAgentThreads) {
-      if (
-        releasedThreadIds.has(threadId) ||
-        releasedThreadIds.has(metadata.parentThreadId)
-      ) {
-        this.#orphanAgentThreads.delete(threadId);
-      }
-    }
-    return true;
+    return this.#executions.releaseActiveTurn(active, turnId);
   }
 
   private forgetThread(threadId: string): void {
@@ -9826,66 +5802,13 @@ export class CodexAppServer implements CodexRuntime {
       ...codexProviderLogContext(runtimeProvider),
     });
 
-    const stdoutLines = readline.createInterface({ input: child.stdout });
-    const stderrLines = readline.createInterface({ input: child.stderr });
-    const startupStderr: string[] = [];
-    let startupComplete = false;
-    stderrLines.on("line", (line) => {
-      if (line.trimStart().startsWith("listening on:")) return;
-      const diagnosticClass = codexDiagnosticClass(line);
-      workerLogger.rateLimited(
-        `codex-subprocess:${processRuntimeId ?? "starting"}:${diagnosticClass}`,
-        diagnosticClass === "panic" || diagnosticClass === "error"
-          ? "warn"
-          : "debug",
-        "Codex app-server emitted a subprocess diagnostic",
-        {
-          event: "codex.runtime.diagnostic",
-          subsystem: "codex",
-          operation: "subprocess-stderr",
-          status: diagnosticClass,
-          runtimeId: processRuntimeId,
-          diagnosticClass,
-        },
-      );
-      if (!startupComplete) {
-        startupStderr.push(
-          readableCodexProviderError(line, {
-            secrets: this.#diagnosticSecrets,
-            zai: this.#runtimeIsZai,
-          }),
-        );
-        if (startupStderr.length > 20) startupStderr.shift();
-      }
-    });
-    const remoteUrl = await new Promise<string>((resolve, reject) => {
-      const timeout = setTimeout(
-        () =>
-          reject(
-            new Error(
-              "Codex app-server did not announce an endpoint within 120 seconds.",
-            ),
-          ),
-        CODEX_STARTUP_TIMEOUT_MS,
-      );
-      const inspectLine = (line: string) => {
-        const endpoint = codexEndpointFromLine(line);
-        if (endpoint) {
-          startupComplete = true;
-          clearTimeout(timeout);
-          resolve(endpoint);
-        }
-      };
-      stdoutLines.on("line", inspectLine);
-      stderrLines.on("line", inspectLine);
-      child.once("error", (error) => {
-        clearTimeout(timeout);
-        reject(error);
-      });
-      child.once("exit", (code, signal) => {
-        clearTimeout(timeout);
-        reject(new Error(codexStartupExitMessage(code, signal, startupStderr)));
-      });
+    const remoteUrl = await readCodexProcessEndpoint(child, {
+      runtimeId: processRuntimeId,
+      readableError: (line) =>
+        readableCodexProviderError(line, {
+          secrets: this.#diagnosticSecrets,
+          zai: this.#runtimeIsZai,
+        }),
     });
     this.#remoteUrl = remoteUrl;
     workerLogger.event("debug", "Codex app-server endpoint announced", {
@@ -9896,26 +5819,7 @@ export class CodexAppServer implements CodexRuntime {
       runtimeId: processRuntimeId,
       durationMs: Date.now() - startedAtMs,
     });
-    const socket = new WebSocket(remoteUrl);
-    await new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(
-        () =>
-          reject(
-            new Error(
-              "Codex app-server WebSocket did not connect within 120 seconds.",
-            ),
-          ),
-        CODEX_STARTUP_TIMEOUT_MS,
-      );
-      socket.once("open", () => {
-        clearTimeout(timeout);
-        resolve();
-      });
-      socket.once("error", (error) => {
-        clearTimeout(timeout);
-        reject(error);
-      });
-    });
+    const socket = await openCodexWebSocket(remoteUrl);
     this.#socket = socket;
     this.#nativeTransportGeneration = randomUUID();
     this.#managedModelInventoryProvider = provider;
@@ -9961,8 +5865,8 @@ export class CodexAppServer implements CodexRuntime {
         runtimeId: processRuntimeId,
         durationMs: Date.now() - processStartedAtMs,
         counts: {
-          activeTurns: this.#activeTurns.size,
-          pendingRequests: this.#pending.size,
+          activeTurns: this.#executions.activeTurns.size,
+          pendingRequests: this.#rpcRequests.pendingCount,
         },
       });
       this.handleExit(new Error("Codex app-server WebSocket closed."));
@@ -9970,7 +5874,7 @@ export class CodexAppServer implements CodexRuntime {
       this.#remoteUrl = null;
       this.#runtimeId = null;
       this.#runtimeStartedAtMs = null;
-      this.#externalChatGptAuth = null;
+      this.#authRecovery.setSession(null);
       this.#diagnosticSecrets.clear();
       this.#runtimeIsZai = false;
       this.#starting = null;
@@ -10012,8 +5916,8 @@ export class CodexAppServer implements CodexRuntime {
           signal,
           durationMs: Date.now() - processStartedAtMs,
           counts: {
-            activeTurns: this.#activeTurns.size,
-            pendingRequests: this.#pending.size,
+            activeTurns: this.#executions.activeTurns.size,
+            pendingRequests: this.#rpcRequests.pendingCount,
           },
         },
       );
@@ -10027,7 +5931,7 @@ export class CodexAppServer implements CodexRuntime {
       this.#remoteUrl = null;
       this.#runtimeId = null;
       this.#runtimeStartedAtMs = null;
-      this.#externalChatGptAuth = null;
+      this.#authRecovery.setSession(null);
       this.#diagnosticSecrets.clear();
       this.#runtimeIsZai = false;
       this.#starting = null;
@@ -10073,9 +5977,8 @@ export class CodexAppServer implements CodexRuntime {
       if (result.type !== "chatgptAuthTokens") {
         throw new Error("Codex rejected portable ChatGPT authentication.");
       }
-      this.#externalChatGptAuth = chatGptExternalAuthSession(
-        runtimeProvider,
-        externalChatGptLease,
+      this.#authRecovery.setSession(
+        chatGptExternalAuthSession(runtimeProvider, externalChatGptLease),
       );
     }
     workerLogger.event("info", "Codex app-server ready", {
@@ -10140,37 +6043,7 @@ export class CodexAppServer implements CodexRuntime {
         ),
       );
     }
-    const id = this.#nextId;
-    this.#nextId += 1;
-    if (method === "cantrip/inference") this.#privateInferenceRequests.add(id);
-    return new Promise((resolve, reject) => {
-      const startedAtMs = Date.now();
-      const timeout = setTimeout(() => {
-        this.#pending.delete(id);
-        workerLogger.rateLimited(
-          `codex-rpc-timeout:${method}`,
-          "warn",
-          "Codex app-server request timed out",
-          {
-            event: "codex.rpc.timeout",
-            subsystem: "codex",
-            operation: method,
-            status: "timed-out",
-            runtimeId: this.#runtimeId,
-            durationMs: Date.now() - startedAtMs,
-          },
-        );
-        reject(new Error(`Codex request ${method} timed out.`));
-      }, timeoutMs);
-      this.#pending.set(id, {
-        method,
-        reject,
-        resolve,
-        startedAtMs,
-        timeout,
-      });
-      this.send({ id, method, params });
-    });
+    return this.#rpcRequests.request(method, params, timeoutMs);
   }
 
   private methodAvailable(method: string): boolean {
@@ -10218,16 +6091,7 @@ export class CodexAppServer implements CodexRuntime {
       return;
     }
 
-    const diagnosticPayload =
-      !message.method &&
-      message.id !== undefined &&
-      this.#privateInferenceRequests.delete(Number(message.id))
-        ? {
-            id: message.id,
-            privateInference: true,
-            status: message.error ? "failed" : "completed",
-          }
-        : message;
+    const diagnosticPayload = this.#rpcRequests.diagnosticPayload(message);
     const diagnosticId = this.recordDiagnostic({
       at: new Date().toISOString(),
       direction: "from-runtime",
@@ -10236,68 +6100,7 @@ export class CodexAppServer implements CodexRuntime {
       payload: diagnosticPayload,
     });
 
-    if (message.id !== undefined && !message.method) {
-      const id = Number(message.id);
-      const pending = this.#pending.get(id);
-      if (!pending) {
-        this.recordDiagnostic(
-          {
-            at: new Date().toISOString(),
-            direction: "from-runtime",
-            kind: "unmatched-response",
-            method: null,
-            payload: diagnosticPayload,
-          },
-          `Unmatched App Server response ${String(message.id)}`,
-        );
-        return;
-      }
-      this.#pending.delete(id);
-      clearTimeout(pending.timeout);
-      if (message.error) {
-        workerLogger.rateLimited(
-          `codex-rpc-failed:${pending.method}:${message.error.code}`,
-          "warn",
-          "Codex app-server request failed",
-          {
-            event: "codex.rpc.failed",
-            subsystem: "codex",
-            operation: pending.method,
-            status: "failed",
-            runtimeId: this.#runtimeId,
-            durationMs: Date.now() - pending.startedAtMs,
-            reasonCode: `rpc-${message.error.code}`,
-          },
-        );
-        pending.reject(
-          new CodexNativeRpcError(
-            readableCodexProviderError(message.error.message, {
-              secrets: this.#diagnosticSecrets,
-              zai: this.#runtimeIsZai,
-            }),
-            message.error,
-            pending.method,
-          ),
-        );
-      } else {
-        workerLogger.sampled(
-          `codex-rpc-completed:${pending.method}`,
-          100,
-          "trace",
-          "Codex app-server request completed",
-          {
-            event: "codex.rpc.completed",
-            subsystem: "codex",
-            operation: pending.method,
-            status: "completed",
-            runtimeId: this.#runtimeId,
-            durationMs: Date.now() - pending.startedAtMs,
-          },
-        );
-        pending.resolve(message.result);
-      }
-      return;
-    }
+    if (this.#rpcRequests.handleResponse(message, diagnosticPayload)) return;
 
     if (message.id !== undefined && message.method) {
       void this.handleServerRequest(message).catch((error) => {
@@ -10327,11 +6130,16 @@ export class CodexAppServer implements CodexRuntime {
     }
 
     let historyParams = message.params;
-    let startedTarget: ReturnType<typeof this.notificationTarget> = null;
+    let startedTarget: ReturnType<
+      CodexExecutionOwnership["notificationTarget"]
+    > = null;
     if (message.method === "turn/started") {
       const params = message.params as TurnStartedParams;
-      this.observeComputerUseTurnStart(params.threadId, params.turn.id);
-      startedTarget = this.notificationTarget(
+      this.#executions.observeComputerUseTurnStart(
+        params.threadId,
+        params.turn.id,
+      );
+      startedTarget = this.#executions.notificationTarget(
         params.threadId,
         params.turn.id,
         true,
@@ -10406,13 +6214,13 @@ export class CodexAppServer implements CodexRuntime {
       const params = message.params as ThreadStartedParams;
       const metadata = childThreadMetadataFromNotification(params);
       if (metadata) {
-        const state = this.associateAgentThread(metadata);
+        const state = this.#executions.associateAgentThread(metadata);
         if (state) {
-          this.updateAgentStatus(
+          this.#executions.updateAgentStatus(
             state,
             nativeAgentRuntimeStatus(params.thread.status),
           );
-          this.emitAgentCommunication({
+          this.#executions.emitAgentCommunication({
             diagnosticId,
             kind: "spawned",
             milestoneId: "spawn",
@@ -10429,7 +6237,7 @@ export class CodexAppServer implements CodexRuntime {
     if (message.method === "thread/closed") {
       const params = message.params as { threadId: string };
       this.forgetThread(params.threadId);
-      this.abortComputerUseThread(params.threadId);
+      this.#executions.abortComputerUseThread(params.threadId);
       return;
     }
 
@@ -10446,15 +6254,20 @@ export class CodexAppServer implements CodexRuntime {
         // systemError precedes the actual typed turn/completed failure (for
         // example serverOverloaded). Revoke CUA now, but preserve that result
         // and its exact execution identity for retry/terminal handling.
-        this.abortComputerUseThread(
+        this.#executions.abortComputerUseThread(
           params.threadId,
           params.status.type === "notLoaded",
         );
-      const execution = this.#rootExecutionsByThread.get(params.threadId);
+      const execution = this.#executions.rootExecutionsByThread.get(
+        params.threadId,
+      );
       const state = execution?.agents.get(params.threadId);
       if (state) {
-        this.updateAgentStatus(state, nativeAgentRuntimeStatus(params.status));
-        this.emitAgentCommunication({
+        this.#executions.updateAgentStatus(
+          state,
+          nativeAgentRuntimeStatus(params.status),
+        );
+        this.#executions.emitAgentCommunication({
           diagnosticId,
           kind: "statusChanged",
           sourceMethod: message.method,
@@ -10504,7 +6317,10 @@ export class CodexAppServer implements CodexRuntime {
 
     if (message.method === "turn/plan/updated") {
       const params = message.params as TurnPlanUpdatedParams;
-      const target = this.notificationTarget(params.threadId, params.turnId);
+      const target = this.#executions.notificationTarget(
+        params.threadId,
+        params.turnId,
+      );
       if (target) {
         if (target.isRoot) {
           target.active.onPlan?.({
@@ -10542,15 +6358,7 @@ export class CodexAppServer implements CodexRuntime {
 
     if (message.method === "serverRequest/resolved") {
       const params = message.params as ServerRequestResolvedParams;
-      const pending = [...this.#pendingAgentInteractions.values()].find(
-        (candidate) =>
-          candidate.request.threadId === params.threadId &&
-          candidate.rpcId === params.requestId,
-      );
-      if (pending) {
-        this.releaseAgentInteraction(pending);
-        pending.active.onInteractionCleared?.(pending.request.requestKey);
-      }
+      this.#interactions.resolveServerRequest(params);
       return;
     }
 
@@ -10574,7 +6382,7 @@ export class CodexAppServer implements CodexRuntime {
 
     if (message.method === "item/agentMessage/delta") {
       const params = message.params as AgentMessageDeltaParams;
-      const state = this.notificationTarget(
+      const state = this.#executions.notificationTarget(
         params.threadId,
         params.turnId,
       )?.state;
@@ -10598,7 +6406,7 @@ export class CodexAppServer implements CodexRuntime {
 
     if (message.method === "item/reasoning/summaryPartAdded") {
       const params = message.params as ReasoningSummaryPartAddedParams;
-      const state = this.notificationTarget(
+      const state = this.#executions.notificationTarget(
         params.threadId,
         params.turnId,
       )?.state;
@@ -10612,7 +6420,7 @@ export class CodexAppServer implements CodexRuntime {
 
     if (message.method === "item/reasoning/summaryTextDelta") {
       const params = message.params as ReasoningSummaryTextDeltaParams;
-      const state = this.notificationTarget(
+      const state = this.#executions.notificationTarget(
         params.threadId,
         params.turnId,
       )?.state;
@@ -10657,7 +6465,7 @@ export class CodexAppServer implements CodexRuntime {
 
     if (message.method === "item/commandExecution/outputDelta") {
       const params = message.params as CommandExecutionOutputDeltaParams;
-      const state = this.notificationTarget(
+      const state = this.#executions.notificationTarget(
         params.threadId,
         params.turnId,
       )?.state;
@@ -10694,7 +6502,7 @@ export class CodexAppServer implements CodexRuntime {
 
     if (message.method === "item/fileChange/patchUpdated") {
       const params = message.params as FileChangePatchUpdatedParams;
-      const state = this.notificationTarget(
+      const state = this.#executions.notificationTarget(
         params.threadId,
         params.turnId,
       )?.state;
@@ -10843,14 +6651,14 @@ export class CodexAppServer implements CodexRuntime {
 
     if (message.method === "item/started") {
       const params = message.params as ItemLifecycleParams;
-      this.associateAgentsFromItem(
+      this.#executions.associateAgentsFromItem(
         params.item,
         params.threadId,
         params.turnId,
         message.method,
         diagnosticId,
       );
-      const state = this.notificationTarget(
+      const state = this.#executions.notificationTarget(
         params.threadId,
         params.turnId,
       )?.state;
@@ -10956,14 +6764,14 @@ export class CodexAppServer implements CodexRuntime {
 
     if (message.method === "item/completed") {
       const params = message.params as ItemLifecycleParams;
-      this.associateAgentsFromItem(
+      this.#executions.associateAgentsFromItem(
         params.item,
         params.threadId,
         params.turnId,
         message.method,
         diagnosticId,
       );
-      const state = this.notificationTarget(
+      const state = this.#executions.notificationTarget(
         params.threadId,
         params.turnId,
       )?.state;
@@ -11095,7 +6903,7 @@ export class CodexAppServer implements CodexRuntime {
 
     if (message.method === "turn/diff/updated") {
       const params = message.params as TurnDiffUpdatedParams;
-      const state = this.notificationTarget(
+      const state = this.#executions.notificationTarget(
         params.threadId,
         params.turnId,
       )?.state;
@@ -11119,7 +6927,10 @@ export class CodexAppServer implements CodexRuntime {
 
     if (message.method === "thread/tokenUsage/updated") {
       const params = message.params as ThreadTokenUsageUpdatedParams;
-      const target = this.notificationTarget(params.threadId, params.turnId);
+      const target = this.#executions.notificationTarget(
+        params.threadId,
+        params.turnId,
+      );
       if (target) {
         const { active, state } = target;
         state.latestUsage = params.tokenUsage.last;
@@ -11146,7 +6957,7 @@ export class CodexAppServer implements CodexRuntime {
 
     if (message.method === "account/rateLimits/updated") {
       const params = message.params as AccountRateLimitsUpdatedParams;
-      for (const [turnId, active] of this.#activeTurns) {
+      for (const [turnId, active] of this.#executions.activeTurns) {
         emitTurnActivity(
           active,
           normalizeRateLimitActivity(
@@ -11168,7 +6979,9 @@ export class CodexAppServer implements CodexRuntime {
     if (message.method === "warning") {
       const params = message.params as WarningParams;
       if (params.threadId) {
-        const execution = this.#rootExecutionsByThread.get(params.threadId);
+        const execution = this.#executions.rootExecutionsByThread.get(
+          params.threadId,
+        );
         const state =
           execution?.agents.get(params.threadId) ?? execution?.active;
         const turnId =
@@ -11194,7 +7007,7 @@ export class CodexAppServer implements CodexRuntime {
         }
         return;
       }
-      for (const [turnId, active] of this.#activeTurns) {
+      for (const [turnId, active] of this.#executions.activeTurns) {
         emitTurnActivity(
           active,
           normalizeNoticeActivity({
@@ -11217,7 +7030,7 @@ export class CodexAppServer implements CodexRuntime {
 
     if (message.method === "configWarning") {
       const params = message.params as ConfigWarningParams;
-      for (const [turnId, active] of this.#activeTurns) {
+      for (const [turnId, active] of this.#executions.activeTurns) {
         emitTurnActivity(
           active,
           normalizeNoticeActivity({
@@ -11250,7 +7063,7 @@ export class CodexAppServer implements CodexRuntime {
     if (message.method === "error") {
       if (this.#threadSettings.observeError(message.params)) return;
       const params = message.params as ErrorNotificationParams;
-      const state = this.notificationTarget(
+      const state = this.#executions.notificationTarget(
         params.threadId,
         params.turnId,
       )?.state;
@@ -11293,12 +7106,15 @@ export class CodexAppServer implements CodexRuntime {
 
     if (message.method === "turn/completed") {
       const params = message.params as TurnCompletedParams;
-      const execution = this.#rootExecutionsByThread.get(params.threadId);
+      const execution = this.#executions.rootExecutionsByThread.get(
+        params.threadId,
+      );
       const lifetime =
         params.threadId === execution?.rootThreadId
           ? execution.computerUseLifetime
           : (execution?.agents.get(params.threadId)?.computerUseLifetime ??
-            this.unassociatedComputerUseTurn(params.threadId)?.lifetime);
+            this.#executions.unassociatedComputerUseTurn(params.threadId)
+              ?.lifetime);
       if (execution?.active.admission && !lifetime?.turnId) return;
       // Late completion of A must not release the still-running B execution.
       // Only real turn starts advance this bounded lifetime, not telemetry.
@@ -11306,9 +7122,12 @@ export class CodexAppServer implements CodexRuntime {
       // End before resolving UI telemetry: that association may still contain
       // an older turn, and native goals retain their surrounding execution.
       if (execution && params.threadId === execution.rootThreadId)
-        this.abortComputerUseExecution(execution, params.turn.id);
+        this.#executions.abortComputerUseExecution(execution, params.turn.id);
       else lifetime?.abort(params.turn.id);
-      const target = this.notificationTarget(params.threadId, params.turn.id);
+      const target = this.#executions.notificationTarget(
+        params.threadId,
+        params.turn.id,
+      );
       if (!target) {
         this.observeExternalThreadChange(params.threadId, "turn");
         return;
@@ -11410,14 +7229,14 @@ export class CodexAppServer implements CodexRuntime {
       );
       if (!target.isRoot) {
         const agent = state as AgentRuntimeState;
-        this.clearInteractionsForAgentTurn(
+        this.#interactions.clearInteractionsForAgentTurn(
           active,
           params.threadId,
           params.turn.id,
           "The child Codex turn completed before the interaction was answered.",
         );
         agent.currentTurnId = null;
-        this.updateAgentStatus(
+        this.#executions.updateAgentStatus(
           agent,
           terminalStatus === "completed"
             ? "completed"
@@ -11425,7 +7244,7 @@ export class CodexAppServer implements CodexRuntime {
               ? "interrupted"
               : "failed",
         );
-        this.emitAgentCommunication({
+        this.#executions.emitAgentCommunication({
           diagnosticId,
           kind:
             terminalStatus === "completed"
@@ -11441,7 +7260,7 @@ export class CodexAppServer implements CodexRuntime {
         clearTurnInspectionTelemetry(agent);
         return;
       }
-      this.#activeTurns.delete(params.turn.id);
+      this.#executions.deleteActiveTurn(params.turn.id);
       if (active.timeout) {
         clearTimeout(active.timeout);
         active.timeout = null;
@@ -11511,7 +7330,7 @@ export class CodexAppServer implements CodexRuntime {
     observedAtMs: number,
     diagnosticId: string | null,
   ): Promise<void> {
-    const isCurrent = this.turnFinalizationCurrent(active, turnId);
+    const isCurrent = this.#executions.turnFinalizationCurrent(active, turnId);
     if (!isCurrent()) return;
     // Capture before the first await: native goals can start their next turn
     // before workspace/history reconciliation finishes. Keep this bounded to
@@ -11531,7 +7350,7 @@ export class CodexAppServer implements CodexRuntime {
     }
     let released = false;
     try {
-      this.clearInteractionsForTurn(
+      this.#interactions.clearInteractionsForTurn(
         active,
         "The Codex turn completed before the interaction was answered.",
       );
@@ -11552,7 +7371,7 @@ export class CodexAppServer implements CodexRuntime {
       );
       await this.reconcileSubagentExecution(active, observedAtMs, isCurrent);
       if (!isCurrent()) return;
-      const execution = this.#rootExecutionsByActive.get(active);
+      const execution = this.#executions.rootExecutionsByActive.get(active);
       if (execution) {
         this.settleDescendantsAtRootBoundary(
           execution,
@@ -11807,16 +7626,16 @@ export class CodexAppServer implements CodexRuntime {
     observedAtMs = Date.now(),
     diagnosticId: string | null = null,
   ): Promise<void> {
-    const isCurrent = this.turnFinalizationCurrent(active, turnId);
+    const isCurrent = this.#executions.turnFinalizationCurrent(active, turnId);
     if (!isCurrent()) return;
-    const lifetime = this.#rootExecutionsByActive.get(active);
-    if (lifetime) this.abortComputerUseExecution(lifetime, turnId);
+    const lifetime = this.#executions.rootExecutionsByActive.get(active);
+    if (lifetime) this.#executions.abortComputerUseExecution(lifetime, turnId);
     try {
       if (active.timeout) {
         clearTimeout(active.timeout);
         active.timeout = null;
       }
-      this.clearInteractionsForTurn(active, error.message);
+      this.#interactions.clearInteractionsForTurn(active, error.message);
       const changes = await workspaceChanges(active);
       if (!isCurrent()) return;
       active.diffChanges = changes;
@@ -11834,7 +7653,7 @@ export class CodexAppServer implements CodexRuntime {
       );
       await this.reconcileSubagentExecution(active, observedAtMs, isCurrent);
       if (!isCurrent()) return;
-      const execution = this.#rootExecutionsByActive.get(active);
+      const execution = this.#executions.rootExecutionsByActive.get(active);
       if (execution) {
         this.settleDescendantsAtRootBoundary(
           execution,
@@ -11868,55 +7687,6 @@ export class CodexAppServer implements CodexRuntime {
     }
   }
 
-  private clearInteractionsForTurn(active: ActiveTurn, reason: string): void {
-    for (const pending of [...this.#pendingAgentInteractions.values()]) {
-      if (pending.active !== active) continue;
-      try {
-        this.send({
-          id: pending.rpcId,
-          ...failClosedAgentInteractionReply(
-            pending.request.payload.kind,
-            reason,
-          ),
-        });
-      } catch {
-        // The turn or runtime may already be closed.
-      }
-      this.releaseAgentInteraction(pending);
-      active.onInteractionCleared?.(pending.request.requestKey);
-    }
-  }
-
-  private clearInteractionsForAgentTurn(
-    active: ActiveTurn,
-    threadId: string,
-    turnId: string,
-    reason: string,
-  ): void {
-    for (const pending of [...this.#pendingAgentInteractions.values()]) {
-      if (
-        pending.active !== active ||
-        pending.request.threadId !== threadId ||
-        pending.request.turnId !== turnId
-      ) {
-        continue;
-      }
-      try {
-        this.send({
-          id: pending.rpcId,
-          ...failClosedAgentInteractionReply(
-            pending.request.payload.kind,
-            reason,
-          ),
-        });
-      } catch {
-        // The child turn or runtime may already be closed.
-      }
-      this.releaseAgentInteraction(pending);
-      active.onInteractionCleared?.(pending.request.requestKey);
-    }
-  }
-
   private async handleServerRequest(message: RpcMessage): Promise<void> {
     if (message.id === undefined) {
       return;
@@ -11928,63 +7698,7 @@ export class CodexAppServer implements CodexRuntime {
       });
       return;
     }
-    const request = agentInteractionRequestFromServerRequest(
-      message.method ?? "",
-      message.params,
-      `codex:${this.#appServerSessionId}:${typeof message.id}:${String(message.id)}`,
-    );
-    if (request) {
-      const active = request.turnId
-        ? this.activeTurnForNotification(request.threadId, request.turnId)
-        : this.#rootExecutionsByThread.get(request.threadId)?.active;
-      if (!active || (!active.onInteractionRequest && !active.admission)) {
-        this.send({
-          id: message.id,
-          ...failClosedAgentInteractionReply(
-            request.payload.kind,
-            "No active Cantrip interaction channel.",
-          ),
-        });
-        return;
-      }
-      if (active.interactionMode === "preauthorized") {
-        this.send({
-          id: message.id,
-          ...failClosedAgentInteractionReply(
-            request.payload.kind,
-            "Preauthorized agent operations cannot open interactive requests.",
-          ),
-        });
-        return;
-      }
-      this.registerAgentInteraction(
-        active,
-        message.id,
-        request,
-        message.method ?? "",
-      );
-      if (
-        request.payload.kind === "userInput" &&
-        request.turnId &&
-        request.itemId
-      ) {
-        const question = pendingPlanQuestionSchema.parse({
-          id: request.requestKey,
-          threadId: request.threadId,
-          turnId: request.turnId,
-          itemId: request.itemId,
-          questions: request.payload.questions,
-          createdAt: new Date().toISOString(),
-        });
-        this.#pendingPlanQuestions.set(question.id, {
-          active,
-          question,
-          requestKey: request.requestKey,
-        });
-        active.onPlanQuestion?.(question);
-      }
-      return;
-    }
+    if (this.#interactions.handleServerRequest(message, message.id)) return;
     this.recordDiagnostic(
       {
         at: new Date().toISOString(),
@@ -12004,237 +7718,22 @@ export class CodexAppServer implements CodexRuntime {
     });
   }
 
-  private async refreshExternalChatGptAuth(
+  private refreshExternalChatGptAuth(
     params: unknown,
   ): Promise<Record<string, unknown>> {
-    const session = this.#externalChatGptAuth;
-    if (!session || !this.providerAccessTokens) {
-      throw new Error("Portable ChatGPT authentication is not active.");
-    }
-    const refreshed = await refreshExternalChatGptAuthSession(
-      session,
-      this.providerAccessTokens,
-      params,
-    );
-    this.#diagnosticSecrets.add(refreshed.accessToken);
-    return refreshed.response;
+    return this.#authRecovery.refreshExternalChatGptAuth(params);
   }
 
-  private async requestWithChatGptAuthRecovery(
+  private requestWithChatGptAuthRecovery(
     provider: RuntimeProvider & { kind: "chatgpt" },
     method: string,
     params: unknown,
   ): Promise<unknown> {
-    try {
-      return await this.request(method, params);
-    } catch (error) {
-      if (!isChatGptTokenExpiredError(error)) throw error;
-    }
-
-    await this.reauthenticateExternalChatGptRuntime(provider);
-    try {
-      return await this.request(method, params);
-    } catch (error) {
-      if (isChatGptTokenExpiredError(error)) {
-        throw new ProviderAccountReauthenticationRequiredError();
-      }
-      throw error;
-    }
-  }
-
-  private async reauthenticateExternalChatGptRuntime(
-    provider: RuntimeProvider & { kind: "chatgpt" },
-  ): Promise<void> {
-    if (this.#externalChatGptReauthentication) {
-      return this.#externalChatGptReauthentication;
-    }
-    const pending = this.performExternalChatGptReauthentication(provider);
-    this.#externalChatGptReauthentication = pending;
-    try {
-      await pending;
-    } finally {
-      if (this.#externalChatGptReauthentication === pending) {
-        this.#externalChatGptReauthentication = null;
-      }
-    }
-  }
-
-  private async performExternalChatGptReauthentication(
-    provider: RuntimeProvider & { kind: "chatgpt" },
-  ): Promise<void> {
-    const session = this.#externalChatGptAuth;
-    if (!session || !this.providerAccessTokens) {
-      throw new ProviderAccountReauthenticationRequiredError();
-    }
-
-    let lease: ProviderAccessTokenLease;
-    try {
-      lease = await this.providerAccessTokens.get(
-        session.providerId,
-        session.providerAccountId,
-        {
-          credentialRevision: session.credentialRevision,
-          forceRefresh: true,
-          minimumValiditySeconds: 120,
-        },
-      );
-    } catch (error) {
-      if (
-        error instanceof ProviderAccessTokenRequestError &&
-        error.code === "reauth-required"
-      ) {
-        throw new ProviderAccountReauthenticationRequiredError();
-      }
-      throw new Error(
-        "Cantrip could not refresh ChatGPT authentication. Try again.",
-        {
-          cause: error,
-        },
-      );
-    }
-
-    const refreshed = chatGptExternalRefreshResponse(
-      session,
-      lease,
-      session.upstreamAccountId,
+    return this.#authRecovery.requestWithChatGptAuthRecovery(
+      provider,
+      method,
+      params,
     );
-    this.#diagnosticSecrets.add(lease.accessToken);
-    let result: { type?: unknown };
-    try {
-      result = (await this.request("account/login/start", {
-        type: "chatgptAuthTokens",
-        ...refreshed,
-      })) as { type?: unknown };
-    } catch (error) {
-      if (isChatGptTokenExpiredError(error)) {
-        throw new ProviderAccountReauthenticationRequiredError();
-      }
-      throw new Error(
-        "Codex could not accept refreshed ChatGPT authentication.",
-        {
-          cause: error,
-        },
-      );
-    }
-    if (result.type !== "chatgptAuthTokens") {
-      throw new Error("Codex rejected refreshed ChatGPT authentication.");
-    }
-    session.credentialRevision = lease.credentialRevision;
-    workerLogger.event(
-      "info",
-      "ChatGPT authentication refreshed after an expired token",
-      {
-        event: "provider.auth.refresh",
-        subsystem: "provider-auth",
-        operation: "refresh-expired-token",
-        status: "completed",
-        ...codexProviderLogContext(provider),
-      },
-    );
-  }
-
-  private registerAgentInteraction(
-    active: ActiveTurn,
-    rpcId: number | string,
-    request: AgentInteractionRuntimeRequest,
-    requestMethod = "",
-  ): void {
-    const existing = this.#pendingAgentInteractions.get(request.requestKey);
-    if (existing) {
-      if (existing.rpcId !== rpcId) {
-        throw new Error("Agent interaction request key was reused.");
-      }
-      return;
-    }
-    let pending: NativePendingAgentInteraction;
-    const timeout = setTimeout(
-      () => this.expireAgentInteraction(pending),
-      Math.max(0, Date.parse(request.expiresAt) - Date.now()),
-    );
-    timeout.unref();
-    pending = { active, request, requestMethod, rpcId, timeout };
-    this.#pendingAgentInteractions.set(request.requestKey, pending);
-    try {
-      for (const observed of [...this.#admittedReplyWaiters]) observed();
-      if (active.admission) {
-        const metadata = this.pendingAdmittedNativeReply({
-          operationGeneration: active.admission.operationGeneration,
-          rootThreadId: active.threadId,
-          requestId: rpcId,
-        });
-        const publish = active.onNativeInteractionRequest;
-        if (metadata && publish) {
-          pending.stopPublication = publishPendingInteraction({
-            publish: () => publish(metadata),
-            isCurrent: () =>
-              this.#pendingAgentInteractions.get(request.requestKey) ===
-                pending && !active.admission?.controller.signal.aborted,
-            failed: (error, attempt) =>
-              workerLogger.event(
-                "warn",
-                "Native interaction publication will retry",
-                {
-                  event: "codex.interaction.publication",
-                  subsystem: "codex",
-                  operation: "publish-pending-interaction",
-                  status: "retrying",
-                  threadId: request.threadId,
-                  turnId: request.turnId ?? undefined,
-                  counts: { attempt },
-                  error: workerLogError(error),
-                },
-              ),
-          });
-        }
-      }
-      active.onInteractionRequest?.(request);
-    } catch (error) {
-      this.releaseAgentInteraction(pending);
-      throw error;
-    }
-  }
-
-  private expireAgentInteraction(pending: NativePendingAgentInteraction): void {
-    if (
-      this.#pendingAgentInteractions.get(pending.request.requestKey) !== pending
-    ) {
-      return;
-    }
-    try {
-      this.send({
-        id: pending.rpcId,
-        ...failClosedAgentInteractionReply(
-          pending.request.payload.kind,
-          "The Cantrip interaction expired before it was answered.",
-        ),
-      });
-    } catch {
-      // The runtime may already be unavailable; the request still expires.
-    }
-    this.releaseAgentInteraction(pending);
-    pending.active.onInteractionExpired?.(pending.request.requestKey);
-  }
-
-  private releaseAgentInteraction(
-    pending: NativePendingAgentInteraction,
-  ): void {
-    clearTimeout(pending.timeout);
-    pending.stopPublication?.();
-    if (
-      this.#pendingAgentInteractions.get(pending.request.requestKey) !== pending
-    )
-      return;
-    pending.active.admission?.resolvedRequestIds.add(
-      `${typeof pending.rpcId}:${pending.rpcId}`,
-    );
-    this.#pendingAgentInteractions.delete(pending.request.requestKey);
-    const planQuestion = this.#pendingPlanQuestions.get(
-      pending.request.requestKey,
-    );
-    if (planQuestion) {
-      this.#pendingPlanQuestions.delete(planQuestion.question.id);
-      planQuestion.active.onPlanQuestionResolved?.(planQuestion.question.id);
-    }
   }
 
   private recordDiagnostic(
@@ -12279,42 +7778,11 @@ export class CodexAppServer implements CodexRuntime {
     this.#preparationEpoch += 1;
     this.#threadPreparations.clear();
     this.#threadPreparationVersions.clear();
-    for (const execution of this.#rootExecutionsByActive.values())
-      this.abortComputerUseExecution(execution);
-    for (const pending of this.#pending.values()) {
-      clearTimeout(pending.timeout);
-      pending.reject(error);
-    }
-    this.#pending.clear();
-    this.#privateInferenceRequests.clear();
-    for (const pending of [...this.#pendingAgentInteractions.values()]) {
-      this.releaseAgentInteraction(pending);
-      pending.active.onInteractionCleared?.(pending.request.requestKey);
-    }
-    this.#pendingAgentInteractions.clear();
-    this.#pendingPlanQuestions.clear();
-    for (const active of this.#activeTurnsByThread.values()) {
-      active.admission?.controller.abort();
-      if (active.timeout) clearTimeout(active.timeout);
-      flushActiveAgentMessage(active, false);
-      clearTurnInspectionTelemetry(active);
-      active.reject(error);
-    }
-    for (const execution of this.#rootExecutionsByActive.values()) {
-      for (const state of execution.agents.values()) {
-        flushActiveAgentMessage(state, false);
-        clearTurnInspectionTelemetry(state);
-      }
-    }
-    this.#activeTurns.clear();
-    this.#activeTurnsByThread.clear();
-    this.#rootExecutionsByActive.clear();
-    this.#rootExecutionsByThread.clear();
-    for (const pending of this.#unassociatedComputerUseTurns.values())
-      pending.lifetime.abort();
-    this.#unassociatedComputerUseTurns.clear();
-    this.#orphanAgentThreads.clear();
-    this.#knownAgentThreads.clear();
+    for (const execution of this.#executions.rootExecutionsByActive.values())
+      this.#executions.abortComputerUseExecution(execution);
+    this.#rpcRequests.rejectAll(error);
+    this.#interactions.clearOnExit();
+    this.#executions.failActiveTurns(error);
     this.#threadSettings.clear();
   }
 }

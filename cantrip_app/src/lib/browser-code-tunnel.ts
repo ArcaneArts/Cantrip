@@ -37,6 +37,8 @@ import {
   onServerConnectionIdentityChanged,
 } from "@/lib/server-connections";
 
+import { jitterRetryDelay } from "./lease-renewal";
+
 const INITIAL_CREDIT_BYTES = 256 * 1_024;
 const MAX_HTTP_RESPONSE_BYTES = 64 * 1_024 * 1_024;
 const MAX_HTTP_REQUEST_BYTES = 16 * 1_024 * 1_024;
@@ -1376,7 +1378,7 @@ class BrowserTunnelClient {
               throw error;
             }
             grace.signal.throwIfAborted();
-            await delay(RECONNECT_RETRY_MS, grace.signal);
+            await delay(jitterRetryDelay(RECONNECT_RETRY_MS), grace.signal);
             continue;
           }
         }
@@ -1405,7 +1407,7 @@ class BrowserTunnelClient {
           }
           if (error instanceof TunnelAuthorizationEndedError) rotate = true;
           grace.signal.throwIfAborted();
-          await delay(RECONNECT_RETRY_MS, grace.signal);
+          await delay(jitterRetryDelay(RECONNECT_RETRY_MS), grace.signal);
         }
       }
     } finally {
@@ -1717,7 +1719,9 @@ function parseHttpResponse(bytes: Uint8Array) {
       ([name]) =>
         !["connection", "transfer-encoding"].includes(name.toLowerCase()),
     ),
-    body: Uint8Array.from(chunked ? dechunk(rawBody) : rawBody).buffer,
+    // Dechunking already returns a new, exactly sized owned buffer. The raw
+    // body is a view over the transport response and still needs its own copy.
+    body: chunked ? dechunk(rawBody).buffer : Uint8Array.from(rawBody).buffer,
   };
 }
 

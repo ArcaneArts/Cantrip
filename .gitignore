@@ -83,3 +83,6 @@ cantrip_code/upstream/test-output.json
 
 # Shared Rust interaction foundation.
 cantrip_interaction/target/
+
+# Local QA sessions and their disposable browser profiles/artifacts.
+.qa/

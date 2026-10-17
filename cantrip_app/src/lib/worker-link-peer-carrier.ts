@@ -121,6 +121,9 @@ class WebRtcWorkerLinkCarrier implements WorkerLinkCarrier {
       this.#readyResolve = resolve;
       this.#readyReject = reject;
     });
+    // Offer/signaling can fail before start() reaches its readiness await.
+    // Observe retirement now while preserving rejection for that later await.
+    void this.#ready.catch(() => undefined);
     const createPeerConnection =
       options.createPeerConnection ??
       ((configuration: RTCConfiguration) =>

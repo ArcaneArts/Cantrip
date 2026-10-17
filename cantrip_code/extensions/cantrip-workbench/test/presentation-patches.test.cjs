@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
+const { execFileSync } = require("node:child_process");
 
 function patch(name) {
   return readFileSync(
@@ -112,17 +113,20 @@ test("suppresses notification toasts throughout editor presentation", () => {
   );
 });
 
-test("signals readiness only from a restored embedded editor with a valid mount nonce", () => {
-  const source = patch("0008-signal-embedded-workbench-readiness");
-
-  assert.match(source, /mainWindow\.parent === mainWindow/u);
-  assert.match(source, /querySelector\('\.part\.editor'\)/u);
-  assert.match(source, /\^\[A-Za-z0-9_-\]\{16,128\}\$/u);
-  assert.match(source, /type: 'cantrip-code\.workbench-ready'/u);
-  assert.match(source, /version: 1/u);
-  assert.match(
-    source,
-    /lifecycleService\.phase = LifecyclePhase\.Restored;\n\+\t\t\t\tsignalCantripWorkbenchReady\(\);/u,
+test("executes embedded readiness against the patched workbench lifecycle", () => {
+  execFileSync(
+    process.execPath,
+    [
+      "--test",
+      path.resolve(
+        __dirname,
+        "../../../../scripts/cantrip-code/workbench-readiness.test.mjs",
+      ),
+    ],
+    {
+      encoding: "utf8",
+      timeout: 30_000,
+    },
   );
 });
 

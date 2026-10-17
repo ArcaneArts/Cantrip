@@ -1,0 +1,144 @@
+{
+  "date": "2026-10-13",
+  "platform": "darwin-arm64",
+  "codeBuild": "ba05010e28f214852ff3f4359d20f66a32927ff3f55a759b34d8a5e03e380eae",
+  "notes": [
+    "Separate isolated and cumulative runs; not a performance benchmark.",
+    "Prototype instrumentation failures are excluded; blocked cases are not passes.",
+    "Actual editor typing and worker filesystem saves assert usability."
+  ],
+  "results": [
+    {
+      "name": "cold-editor-usable",
+      "status": "passed",
+      "durationMs": 16525,
+      "evidence": {
+        "marker": "SAVED_1791934617422",
+        "setupRetries": 1,
+        "operation": "type, save, verify worker-owned file"
+      }
+    },
+    {
+      "name": "warm-close-reopen",
+      "status": "passed",
+      "durationMs": 82,
+      "evidence": {
+        "sameFrameUrl": true
+      }
+    },
+    {
+      "name": "carrier-dirty-buffer",
+      "status": "failed",
+      "phase": "test",
+      "durationMs": 48046,
+      "error": "locator.click: Timeout 30000ms exceeded."
+    },
+    {
+      "name": "service-worker-restart",
+      "status": "passed",
+      "durationMs": 194,
+      "evidence": {
+        "asset": {
+          "status": 200,
+          "bytes": 910428
+        },
+        "dirtyBufferRetained": true,
+        "stoppedActualTarget": true
+      }
+    },
+    {
+      "name": "server-restart",
+      "status": "failed",
+      "phase": "test",
+      "durationMs": 91694,
+      "error": "locator.waitFor: Timeout 90000ms exceeded."
+    },
+    {
+      "name": "worker-restart",
+      "status": "passed",
+      "durationMs": 12572,
+      "evidence": {
+        "workerProcessReplaced": true,
+        "savedAfterFreshAuthorization": true
+      }
+    },
+    {
+      "name": "preview-pin-cycles",
+      "status": "failed",
+      "phase": "test",
+      "durationMs": 48362,
+      "error": "locator.click: Timeout 30000ms exceeded."
+    },
+    {
+      "name": "delayed-readiness",
+      "status": "passed",
+      "durationMs": 71838,
+      "evidence": {
+        "delayedMessages": 162,
+        "delayMs": 18000,
+        "typedAndSavedAfterLateReady": true
+      }
+    },
+    {
+      "name": "transient-renewal",
+      "status": "passed",
+      "durationMs": 5406,
+      "evidence": {
+        "failedStatus": 503,
+        "sameAuthorityRetried": true,
+        "retainedFrameAndDirtyBuffer": true,
+        "realLeaseMs": 45000
+      }
+    },
+    {
+      "name": "lost-pong",
+      "status": "failed",
+      "phase": "test",
+      "durationMs": 126288,
+      "error": "locator.waitFor: Timeout 90000ms exceeded."
+    },
+    {
+      "name": "route-replacement",
+      "status": "failed",
+      "phase": "test",
+      "durationMs": 30406,
+      "error": "Error: Editor save did not reach the worker-owned file: ROUTE_1791938691581"
+    },
+    {
+      "name": "hard-expiry",
+      "status": "passed",
+      "durationMs": 39128,
+      "evidence": {
+        "closedCarriers": 1,
+        "serverRejectedOldAuthority": true,
+        "diskUnchangedAfterSave": true,
+        "realLeaseMs": 45000
+      }
+    },
+    {
+      "name": "explicit-revocation",
+      "status": "passed",
+      "durationMs": 3766,
+      "evidence": {
+        "closedCarriers": 1,
+        "serverRejectedOldAuthority": true,
+        "diskUnchangedAfterSave": true,
+        "realLeaseMs": 45000
+      }
+    },
+    {
+      "name": "congested-sibling",
+      "status": "blocked",
+      "phase": "test",
+      "durationMs": 10032,
+      "error": "BlockedCaseError: Credit injection did not reach the selected actual asset after bounded WebSocket/RTC attempts: /__cantrip_code/abfa1041-cee7-412d-890f-b99a935a2839/code/oss-4ffe2270acdf711bbefecc3e8c79f4b3631640e5/static/out/vs/code/browser/workbench/workbench.js; fault={\"armed\":true,\"channelId\":null,\"dropped\":0,\"creditFrames\":335}. No congestion result is claimed."
+    },
+    {
+      "name": "worktree-switch-cycles",
+      "status": "blocked",
+      "phase": "test",
+      "durationMs": 35,
+      "error": "BlockedCaseError: Disposable folder projects have no worktree capability. Local Git initialization does not convert the project. Repository import requires GitHub authentication/catalog; an isolated local repository-project seed is needed. See docs/WORKTREES.md and RepositoryImporter."
+    }
+  ]
+}

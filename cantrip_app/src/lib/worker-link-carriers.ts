@@ -6,6 +6,12 @@ import {
   type ValidatedWorkerLinkFrame,
 } from "@cantrip/protocol";
 
+import {
+  boundedRenewalAttempt,
+  jitterRetryDelay,
+  transientRenewalError,
+} from "./lease-renewal";
+
 const CONNECT_TIMEOUT_MS = 5_000;
 const MAX_BUFFERED_BYTES = 8 * 1_024 * 1_024;
 const DIRECT_RENEW_INTERVAL_MS = 20_000;
@@ -59,7 +65,7 @@ export interface WorkerLinkLocalCarrierOptions {
   activateCapability(sessionId: string, capabilityId: string): Promise<void>;
   createTicket(sessionId: string): Promise<DirectAttachmentTicket>;
   createWebSocket(url: string): WorkerLinkWebSocketLike;
-  recordActivity(capabilityId: string): Promise<void>;
+  recordActivity(capabilityId: string, signal?: AbortSignal): Promise<void>;
   releaseCapability(capabilityId: string): Promise<void>;
   session: WorkerLinkSession;
 }
@@ -167,6 +173,8 @@ export async function openWorkerLinkLocalCarrier(
   let capabilityId: string | null = ticket.binding.capabilityId;
   let socket: WorkerLinkWebSocketLike | null = null;
   let renewTimer: ReturnType<typeof setTimeout> | null = null;
+  let renewalRequest: AbortController | null = null;
+  let renewalFailures = 0;
   try {
     const startedAt = performance.now();
     socket = options.createWebSocket(
@@ -197,15 +205,39 @@ export async function openWorkerLinkLocalCarrier(
     const connectedSocket = socket;
     const connectedCapabilityId = capabilityId;
     let carrier!: WebSocketWorkerLinkCarrier;
-    const scheduleRenewal = () => {
+    const scheduleRenewal = (delayMs = DIRECT_RENEW_INTERVAL_MS) => {
+      if (!capabilityId) return;
       renewTimer = setTimeout(() => {
         renewTimer = null;
         if (!capabilityId) return;
-        void options
-          .recordActivity(capabilityId)
-          .then(scheduleRenewal)
-          .catch(() => carrier.close("local-capability-renewal-failed"));
-      }, DIRECT_RENEW_INTERVAL_MS);
+        const activeCapabilityId = capabilityId;
+        const request = new AbortController();
+        renewalRequest = request;
+        // The broker enforces the installed capability's exact expiry. The
+        // legacy telemetry acknowledgement does not grant a new client lease.
+        void boundedRenewalAttempt(
+          (signal) => options.recordActivity(activeCapabilityId, signal),
+          request.signal,
+        )
+          .then(() => {
+            if (capabilityId !== activeCapabilityId || request.signal.aborted)
+              return;
+            renewalFailures = 0;
+            scheduleRenewal();
+          })
+          .catch((error) => {
+            if (capabilityId !== activeCapabilityId || request.signal.aborted)
+              return;
+            if (transientRenewalError(error) && renewalFailures < 3) {
+              scheduleRenewal(jitterRetryDelay(250 * 2 ** renewalFailures++));
+            } else {
+              carrier.close("local-capability-renewal-failed");
+            }
+          })
+          .finally(() => {
+            if (renewalRequest === request) renewalRequest = null;
+          });
+      }, delayMs);
     };
     carrier = new WebSocketWorkerLinkCarrier(
       "local",
@@ -214,6 +246,8 @@ export async function openWorkerLinkLocalCarrier(
       () => {
         if (renewTimer) clearTimeout(renewTimer);
         renewTimer = null;
+        renewalRequest?.abort();
+        renewalRequest = null;
         capabilityId = null;
         void options
           .releaseCapability(connectedCapabilityId)

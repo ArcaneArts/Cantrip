@@ -1,0 +1,52 @@
+name: App API domains
+
+on:
+  pull_request:
+    paths:
+      - cantrip_app/src/lib/api.ts
+      - cantrip_app/src/lib/api-client.ts
+      - cantrip_app/src/lib/api/**
+      - cantrip_app/src/lib/api*.test.ts
+      - cantrip_app/src/lib/run-configuration-api.test.ts
+      - scripts/client-api-source-corpus*
+      - scripts/application-source-corpus*
+      - scripts/audit-server-boundaries.mjs
+      - scripts/verify-network-tranche-two.mjs
+      - .github/workflows/app-api-domains.yml
+      - packages/protocol/src/**
+      - pnpm-lock.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-api-domains-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  domains:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      # Keep source audits and disposable fixtures on canonical line endings.
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
+      - run: pnpm --filter @cantrip/app typecheck
+      - name: Source corpus, security boundaries and transport contracts
+        if: ${{ !cancelled() }}
+        run: node --test scripts/client-api-source-corpus.test.mjs scripts/application-source-corpus.test.mjs && pnpm audit:server-boundaries && pnpm verify:network-tranche-two
+      - name: API domains, shared caches, identity and encryption
+        if: ${{ !cancelled() }}
+        run: pnpm --filter @cantrip/app exec vitest run src/lib/api-client.test.ts src/lib/api-domain-state.test.ts src/lib/api-shared-code-identity.test.ts src/lib/api-folder-root.test.ts src/lib/api-native-history-settings.test.ts src/lib/run-configuration-api.test.ts src/lib/api-terminal-create.test.ts src/lib/api-managed-queue.test.ts src/lib/api-task-conversation.test.ts src/lib/attachment-encryption.test.ts src/lib/policy-encryption.test.ts src/lib/tunnel-worker-readiness-cache.test.ts src/lib/short-lived-request-cache.test.ts src/lib/client-encryption.test.ts --maxWorkers=2

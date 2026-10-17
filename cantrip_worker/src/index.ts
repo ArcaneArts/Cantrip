@@ -33,27 +33,10 @@ import { createHash, randomUUID } from "node:crypto";
 import { lstat, mkdtemp, realpath, rm, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-
 import {
   chatAttachmentSummarySchema,
   cantripMcpOperationsForPermissionProfile,
   cantripMcpToolNamesForOperations,
-  codexCustomizationInventorySchema,
-  codexExternalImportApplySchema,
-  codexExternalImportPreviewSchema,
-  codexExternalImportStatusSchema,
-  codexMcpOauthStartResultSchema,
-  codexMcpOauthStartSchema,
-  codexMcpOauthStatusSchema,
-  codexMcpReloadRequestSchema,
-  codexMcpReloadResultSchema,
-  codexMcpResourceReadRequestSchema,
-  codexMcpResourceReadSchema,
-  directCapabilityRenewResultSchema,
-  codexSkillConfigResultSchema,
-  codexSkillConfigUpdateSchema,
-  codexSkillRootsResultSchema,
-  codexSkillRootsUpdateSchema,
   gitAgentDraftCreateSchema,
   gitAgentDraftModelOutputSchema,
   gitAgentDraftResultSchema,
@@ -65,26 +48,14 @@ import {
   providerQuotaSnapshotSchema,
   mentionedSkillNames,
   managedWebRuntimeActionResultSchema,
-  scriptCommandListSchema,
-  skillListSchema,
-  skillSettingsDeleteRequestSchema,
-  skillSettingsConfigResultSchema,
-  skillSettingsConfigUpdateSchema,
-  skillSettingsDocumentSchema,
-  skillSettingsFileRequestSchema,
-  skillSettingsFileUpdateSchema,
-  skillSettingsInventorySchema,
-  skillSettingsMutationResultSchema,
   workerCommandSchema,
   workerEncryptionRefreshResultSchema,
-  workerLinkIdentityResolveResultSchema,
   workerProviderConnectionTestResultSchema,
   workerRestartAcknowledgementSchema,
   type AgentTurnResultMode,
   type AgentActivity,
   type CodeGraphObservationTarget,
   type GitManagedOperationContext,
-  type GitManagedOperationRecord,
   type GitManagedOperationWorkerState,
   type GitCommitActionResult,
   type GitStashMutationResult,
@@ -92,7 +63,6 @@ import {
   type McpServerConfiguration,
   type McpServerOpaqueRuntime,
   type NativeCommandReceipt,
-  type WorktreeObservationTarget,
   type WorkerCommand,
   type WorkerEvent,
   type WorkerNotification,
@@ -103,20 +73,13 @@ import {
   type CodeSettingsWorkerStatus,
 } from "@cantrip/protocol/code-settings";
 import {
-  protectedRunConfigurationRuntimeWorkerOutputSchema,
-  runConfigurationRuntimeOutputContentSchema,
-} from "@cantrip/protocol/run-configuration-runtime";
-import {
   chatFileReferencesRequestContentSchema,
   chatFileReferencesResultContentSchema,
-  explorerOperationRequestContentSchema,
-  explorerOperationResultContentSchema,
   standaloneChatFileOperationRequestContentSchema,
   surfaceOperationOutcomeContentSchema,
   surfaceStreamWireResponseSchema,
   terminalInputContentSchema,
   terminalOutputContentSchema,
-  terminalSnapshotContentSchema,
   terminalSnapshotRequestContentSchema,
   type StandaloneChatFileOperationIntent,
   type StandaloneChatFileOperationRequestContent,
@@ -135,24 +98,14 @@ import {
   type RepositoryOperationOutcomeContent,
 } from "@cantrip/protocol/repository-operation";
 import { cantripVersion } from "@cantrip/version";
-
 import { AttachmentStore } from "./attachment-store.js";
-import {
-  openWorkerAttachmentChunk,
-  openWorkerAttachmentMetadata,
-  openWorkerAttachments,
-  protectWorkerAttachmentChunk,
-} from "./attachment-encryption.js";
+import { openWorkerAttachments } from "./attachment-encryption.js";
 import { ExternalChatAttachmentStagingStore } from "./external-chat-attachments.js";
 import { ChatRelocationHydrationStore } from "./chat-relocation-store.js";
 import { chatFileReferences } from "./chat-file-references.js";
 import { ProjectExportManager } from "./project-export-manager.js";
 import { ProjectAutomationScheduler } from "./automation-scheduler.js";
 import { protectProjectAutomationDispatch } from "./automation-encryption.js";
-import {
-  discoverExternalChatHistory,
-  readExternalChatHistory,
-} from "./external-chat-history.js";
 import { codexAccountHome } from "./codex/account-home.js";
 import {
   CodexAppServer,
@@ -256,17 +209,6 @@ import { WorkerLinkPeerGateway } from "./worker-link-peer-gateway.js";
 import { createWorkerLinkWebRtcTransportFactory } from "./worker-link-webrtc.js";
 import { ManagedDesktopRemoteSurfaceAdapter } from "./desktop/desktop-adapter.js";
 import { DesktopApplicationIconStore } from "./desktop/desktop-icons.js";
-import {
-  deleteExplorerEntry,
-  listExplorerDirectoryCommits,
-  listExplorerDirectory,
-  searchExplorerFiles,
-  readExplorerFile,
-  readExplorerMediaFile,
-  renameExplorerEntry,
-  createExplorerDirectory,
-  writeExplorerFile,
-} from "./explorer.js";
 import { GithubClient } from "./github.js";
 import { githubOperationRequiresCheckout } from "./github-operation-scope.js";
 import { probeManagedLinkPlacement } from "./project-replica-placement.js";
@@ -275,10 +217,6 @@ import {
   attachWorkspaceRoot,
   WorkspaceRootAttachmentError,
 } from "./workspace-root-attachment.js";
-import {
-  discoverWorkspaceRepositories,
-  validateWorkspaceRepositoryImport,
-} from "./workspace-repository-discovery.js";
 import { ChatScratchManager } from "./chat-scratch.js";
 import { ChatScratchFileManager } from "./chat-scratch-files.js";
 import { ProjectGithubConverter } from "./project-github-conversion.js";
@@ -320,11 +258,7 @@ import {
   protectWorkerRepositoryOperationContent,
   RepositoryOperationReplayGuard,
 } from "./repository-operation-encryption.js";
-import {
-  CustomizationContentReplayGuard,
-  openWorkerCustomizationRequest,
-  protectWorkerCustomizationResponse,
-} from "./customization-content-encryption.js";
+import { CustomizationContentReplayGuard } from "./customization-content-encryption.js";
 import {
   managedOperationContext,
   managedOperationIsActive,
@@ -373,66 +307,7 @@ import {
   buildGitAgentPrompt,
   failedPullRequestChecksEvidence,
 } from "./git-agent.js";
-import {
-  amendGitManagedOperation,
-  applyGitForcePush,
-  applyGitLfsAction,
-  applyGitBranchAction,
-  applyGitCommitAction,
-  applyGitConflictResolution,
-  applyGitPartialPatch,
-  applyGitRemoteAction,
-  applyGitRecoveryAction,
-  applyGitStashAction,
-  applyGitWorktreeChangesMove,
-  applyGitSubmoduleAction,
-  applyGitTagAction,
-  controlGitManagedOperation,
-  createGitStash,
-  inspectGitManagedOperation,
-  listGitConflicts,
-  previewGitBranchAction,
-  previewGitCommitAction,
-  previewGitConflictResolution,
-  previewGitPartialPatch,
-  previewGitRemoteAction,
-  previewGitRecoveryAction,
-  previewGitStashAction,
-  previewGitWorktreeChangesMove,
-  previewGitSubmoduleAction,
-  previewGitTagAction,
-  previewGitManagedOperation,
-  previewGitForcePush,
-  previewGitLfsAction,
-  readGitCommitDetail,
-  readGitCommitSignature,
-  readGitConflict,
-  readGitBranches,
-  readGitComparison,
-  readGitFileDiff,
-  readGitFileBlame,
-  readGitFileHistory,
-  readGitHistory,
-  readGitLfsStatus,
-  readGitRemotes,
-  readGitRecoveryCandidates,
-  readGitRevisionFileDiff,
-  readGitRevisionCandidates,
-  readGitStatus,
-  readGitStashes,
-  readGitStashFileDiff,
-  readGitSubmodules,
-  readGitTagDetail,
-  readGitTags,
-  searchGitCommits,
-  runGitAction,
-  startGitManagedOperation,
-} from "./git.js";
-import {
-  createGitGraphCommitOverlay,
-  readGitGraphMetrics,
-  readGitGraphSnapshot,
-} from "./git-graph.js";
+import { inspectGitManagedOperation } from "./git.js";
 import { createHeartbeat, sendHeartbeat } from "./heartbeat.js";
 import { SearxngRuntimeManager } from "./managed-runtimes/searxng.js";
 import { PlaywrightRuntimeManager } from "./managed-runtimes/playwright.js";
@@ -440,13 +315,6 @@ import { WorkerWebService } from "./web/service.js";
 import { DirectBroker } from "./direct-broker.js";
 import { enrollWorker } from "./enrollment.js";
 import { ProjectShareManager } from "./project-share-manager.js";
-import { assertProjectShareDestinationBinding } from "./project-share-binding.js";
-import { reconcileProjectObservationPaths } from "./project-source-path.js";
-import { openWorkerTunnelContentRecord } from "./tunnel-content-encryption.js";
-import { readProjectFolderStats } from "./project-folder-stats.js";
-import { readProjectRepositoryStats } from "./project-repository-stats.js";
-import { discoverScriptCommands } from "./script-command-discovery.js";
-import { protectWorkerRunContent } from "./run-content-encryption.js";
 import {
   TerminalManager,
   type TerminalRuntimeEvent,
@@ -476,6 +344,20 @@ import { SkillManager } from "./skill-manager.js";
 import { WorkerConnection } from "./transport.js";
 import { WorkerEncryptionService } from "./worker-encryption.js";
 import { WorktreeManager } from "./worktrees.js";
+import { handleCodeCommand } from "./commands/code.js";
+import { handleWorkerLinkCommand } from "./commands/worker-link.js";
+import { handleGithubCommand } from "./commands/github.js";
+import { handleGitCommand } from "./commands/git.js";
+import { handleWorkspaceCommand } from "./commands/workspace.js";
+import { handleWorktreeCommand } from "./commands/worktree.js";
+import { handleProjectCommand } from "./commands/project.js";
+import { handleAttachmentCommand } from "./commands/attachment.js";
+import { handleExternalHistoryCommand } from "./commands/external-history.js";
+import { handleSurfaceCommand } from "./commands/surface.js";
+import { handleDiagnosticsCommand } from "./commands/diagnostics.js";
+import { handleExplorerCommand } from "./commands/explorer.js";
+import { handleSkillsCommand } from "./commands/skills.js";
+import { handleCustomizationCommand } from "./commands/customization.js";
 
 const GIT_AGENT_GENERATION_TIMEOUT_MS = 2 * 60 * 1_000;
 const GIT_AGENT_OUTPUT_SCHEMA = {
@@ -3475,6 +3357,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     codexAuthClients.delete(input.credentialHomeKey);
   };
 
+  // Provider decryption and the protected repository operation dispatcher stay
+  // here with native runtime ownership. Feature handlers receive only their ports.
   const handleCommand = async (
     command: WorkerCommand,
     emit: (event: WorkerEvent) => void,
@@ -3515,57 +3399,28 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             }),
         );
       case "worker-link.identity.resolve":
-        return workerLinkIdentityResolveResultSchema.parse({
-          serverId: workerEncryption.serverIdentity(),
-          ownerId: workerEncryption.ownerId(),
-          workerId: config.workerId,
-          workerProcessGeneration,
-        });
       case "worker-link.session.install":
       case "worker-link.session.renew":
       case "worker-link.grant.install":
       case "worker-link.grant.renew":
       case "worker-link.grant.revoke":
-        return workerLinkGateway.handleCoordinatorCommand(command);
-      case "worker-link.session.route": {
-        const accepted =
-          await workerLinkGateway.handleCoordinatorCommand(command);
-        await workerLinkPeerGateway.replaceRouteGeneration(
-          command.sessionId,
-          command.routeGeneration,
-        );
-        return accepted;
-      }
+      case "worker-link.session.route":
       case "worker-link.session.revoke":
-        await workerLinkPeerGateway.revokeSession(
-          command.sessionId,
-          command.revocation.reason,
-        );
-        return workerLinkGateway.handleCoordinatorCommand(command);
       case "worker-link.peer.install":
       case "worker-link.peer.renew":
       case "worker-link.peer.revoke":
       case "worker-link.peer.signal":
-        return workerLinkPeerGateway.handleCoordinatorCommand(command);
       case "direct.capability.prepare":
-        if (command.binding.workerId !== config.workerId) {
-          throw new Error("Direct capability targets another worker.");
-        }
-        return directBroker.prepare(command);
       case "direct.capability.revoke":
-        return {
-          revoked: directBroker.revoke(command.capabilityId, command.reason),
-        };
-      case "direct.capability.renew": {
-        const leaseExpiresAt = directBroker.renew(
-          command.capabilityId,
-          command.leaseExpiresAt,
-        );
-        return directCapabilityRenewResultSchema.parse({
-          renewed: leaseExpiresAt !== null,
-          ...(leaseExpiresAt ? { leaseExpiresAt } : {}),
+      case "direct.capability.renew":
+        return handleWorkerLinkCommand(command, {
+          workerEncryption,
+          config,
+          workerProcessGeneration,
+          workerLinkGateway,
+          workerLinkPeerGateway,
+          directBroker,
         });
-      }
       case "worker.version":
         return cantripVersion;
       case "worker.restart":
@@ -3592,72 +3447,30 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           status,
         });
       }
-      case "code.settings.synchronize": {
-        const synchronizer = await ensureCodeSettingsSynchronizer({
-          forceAuthorizationResume: true,
-        });
-        return synchronizer
-          ? synchronizer.synchronize({
-              initializeIfMissing: command.initializeIfMissing,
-            })
-          : unavailableCodeSettingsStatus();
-      }
-      case "code.settings.invalidate": {
-        const synchronizer = await ensureCodeSettingsSynchronizer();
-        return synchronizer
-          ? synchronizer.invalidate(command.revision)
-          : unavailableCodeSettingsStatus();
-      }
+      case "code.settings.synchronize":
+      case "code.settings.invalidate":
       case "code.settings.status":
-        return (
-          (await ensureCodeSettingsSynchronizer())?.status() ??
-          codeSettingsSynchronizer?.status() ??
-          unavailableCodeSettingsStatus()
+      case "code.settings.resolve":
+      case "code.settings.workbench.open":
+        return handleCodeCommand(
+          command,
+          {
+            ensureCodeSettingsSynchronizer: (options) =>
+              ensureCodeSettingsSynchronizer(options),
+            unavailableCodeSettingsStatus,
+            getCodeSettingsSynchronizer: () => codeSettingsSynchronizer,
+            getDefaultCodeProfileId: () => defaultCodeProfileId,
+            code,
+            codeDirectEndpoints,
+            activeCodeTransportSecurityIdentity,
+          },
+          context,
         );
-      case "code.settings.resolve": {
-        const synchronizer = await ensureCodeSettingsSynchronizer({
-          forceAuthorizationResume: true,
-        });
-        return synchronizer
-          ? synchronizer.resolve(command.resolution)
-          : unavailableCodeSettingsStatus();
-      }
-      case "code.settings.workbench.open": {
-        const synchronizer = await ensureCodeSettingsSynchronizer({
-          forceAuthorizationResume: true,
-        });
-        if (!synchronizer || !defaultCodeProfileId) {
-          throw new Error(
-            "Code settings authorization is unavailable on this worker.",
-          );
-        }
-        if (command.profileId !== defaultCodeProfileId) {
-          throw new Error(
-            "Code settings workbench profile binding is invalid.",
-          );
-        }
-        const synchronization = await synchronizer.synchronize({
-          initializeIfMissing: true,
-        });
-        if (!["ready", "conflict"].includes(synchronization.state)) {
-          throw new Error(
-            synchronization.error ??
-              "Global Code settings are not ready on this worker.",
-          );
-        }
-        return {
-          synchronization,
-          runtime: await code.openSettingsWorkbench(command),
-        };
-      }
       case "diagnostics.logs.read":
-        return readWorkerLogs(command);
       case "diagnostics.logs.stream.start":
-        return workerLogStreams.start(command);
       case "diagnostics.logs.stream.renew":
-        return workerLogStreams.renew(command.subscriptionId, command.leaseMs);
       case "diagnostics.logs.stream.stop":
-        return workerLogStreams.stop(command.subscriptionId);
+        return handleDiagnosticsCommand(command, { workerLogStreams });
       case "worker.credential.rotate":
         saveWorkerCredential({
           credential: command.credential,
@@ -3855,15 +3668,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         );
         return { accepted: true };
       case "github.auth.status":
-        return github.authStatus();
       case "github.repositories.cached":
-        return github.cachedRepositories(command.login);
       case "github.repositories.list":
-        return github.listRepositories();
       case "github.repository-owners.list":
-        return github.listRepositoryOwners();
       case "github.repositories.create":
-        return github.createRepository(command.request);
+        return handleGithubCommand(command, { github });
       case "automation.dispatch.protect":
         return protectProjectAutomationDispatch({
           ...command,
@@ -3871,247 +3680,71 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           countOpenIssues: (repository) => github.countOpenIssues(repository),
         });
       case "github.issues.list":
-        return github.listIssues(
-          command.repository,
-          command.state,
-          command.cursor,
-          command.limit,
-          command.filters,
-        );
       case "github.inbox.list":
-        return github.listInbox(
-          command.repository,
-          command.kind,
-          command.state,
-          command.view,
-          command.cursor,
-          command.limit,
-        );
       case "github.pull-requests.list":
-        return github.listPullRequests(
-          command.repository,
-          command.state,
-          command.cursor,
-          command.limit,
-          command.filters,
-        );
       case "github.issue.get":
-        return github.getIssue(command.repository, command.number);
       case "github.issue.create":
-        return github.createIssue(command.repository, command.request);
       case "github.issue.comment":
-        return github.commentOnIssue(
-          command.repository,
-          command.number,
-          command.body,
-        );
       case "github.issue.close":
-        return github.closeIssue(
-          command.repository,
-          command.number,
-          command.comment,
-        );
       case "github.pull-request.create":
-        return github.createPullRequest(
-          command.repository,
-          command.cwd,
-          command.request,
-        );
       case "github.pull-request.get":
-        switch (command.section) {
-          case "overview":
-            return github.getPullRequestOverview(
-              command.repository,
-              command.cwd,
-              command.number,
-            );
-          case "files":
-            return github.getPullRequestFiles(
-              command.repository,
-              command.cwd,
-              command.number,
-            );
-          case "commits":
-            return github.getPullRequestCommits(
-              command.repository,
-              command.cwd,
-              command.number,
-            );
-          case "checks":
-            return github.getPullRequestChecks(
-              command.repository,
-              command.cwd,
-              command.number,
-            );
-          case "all":
-            return github.getPullRequest(
-              command.repository,
-              command.cwd,
-              command.number,
-            );
-        }
       case "github.pull-request.agent-context":
-        return github.getPullRequestAgentContext(
-          command.repository,
-          command.cwd,
-          command.number,
-          command.request,
-        );
       case "github.pull-request.comment":
-        return github.commentOnPullRequest(
-          command.repository,
-          command.cwd,
-          command.number,
-          command.body,
-        );
       case "github.pull-request.review.submit":
-        return github.submitPullRequestReview(
-          command.repository,
-          command.cwd,
-          command.number,
-          command.review,
-        );
       case "github.pull-request.review.comment":
-        return github.commentOnPullRequestLine(
-          command.repository,
-          command.cwd,
-          command.number,
-          command.comment,
-        );
       case "github.pull-request.review.reply":
-        return github.replyToPullRequestReview(
-          command.repository,
-          command.cwd,
-          command.number,
-          command.commentId,
-          command.body,
-        );
       case "github.pull-request.review.mutate":
-        return github.runPullRequestReviewAction(
-          command.repository,
-          command.cwd,
-          command.number,
-          command.action,
-        );
       case "github.pull-request.lifecycle.preview":
-        return github.previewPullRequestLifecycle(
-          command.repository,
-          command.cwd,
-          command.number,
-          command.action,
-        );
       case "github.pull-request.lifecycle.apply":
-        return github.applyPullRequestLifecycle(
-          command.repository,
-          command.cwd,
-          command.number,
-          command.request,
-        );
       case "github.pull-request.checkout.prepare":
-        return github.preparePullRequestCheckout(
-          command.repository,
-          command.cwd,
-          command.number,
-        );
       case "github.actions.overview":
-        return github.listActionsOverview(
-          command.repository,
-          command.cwd,
-          command.page,
-          command.limit,
-        );
       case "github.actions.run.get":
-        return github.getActionsRun(
-          command.repository,
-          command.cwd,
-          command.runId,
-        );
       case "github.actions.run.logs":
-        return github.readActionsRunLogs(
-          command.repository,
-          command.cwd,
-          command.runId,
-          command.jobId,
-        );
       case "github.actions.workflow.dispatch":
-        return github.dispatchActionsWorkflow(
-          command.repository,
-          command.cwd,
-          command.request,
-        );
       case "github.actions.run.action":
-        return github.runActionsRunAction(
-          command.repository,
-          command.cwd,
-          command.request,
-        );
       case "github.actions.run.checkout.prepare":
-        return github.prepareActionsRunCheckout(
-          command.repository,
-          command.cwd,
-          command.runId,
-        );
       case "github.releases.list":
-        return github.listReleases(command.repository);
       case "github.release.get":
-        return github.getRelease(command.repository, command.releaseId);
       case "github.release.create":
-        return github.createRelease(
-          command.repository,
-          command.cwd,
-          command.request,
-        );
+        return handleGithubCommand(command, { github });
       case "project.clone":
-        return github.cloneRepository(command.repository.nameWithOwner);
       case "project.folder.materialize":
-        return managedFolders.materialize(command);
-      case "workspace.repositories.discover": {
-        const result = await discoverWorkspaceRepositories(
-          command.rootPath,
-          { maxDepth: command.depth },
-          (progress) => {
-            emit({
-              type: "workspace.repositories.discovery-progress",
-              jobId: command.jobId,
-              attempt: command.attempt,
-              progress,
-            });
+        return handleProjectCommand(
+          command,
+          {
+            github,
+            managedFolders,
+            runConfigurationRuntimes,
+            projectGithubConverter,
+            workerEncryption,
+            runConfigurationDefinitions,
+            projectExports,
+            config,
+            chatScratch,
+            projectShares,
           },
+          emit,
         );
-        return {
-          jobId: command.jobId,
-          attempt: command.attempt,
-          candidates: result.candidates.map((candidate) => ({
-            path: candidate.canonicalPath,
-            displayPath: candidate.relativePath,
-            originUrl: candidate.originUrl,
-            github: candidate.github,
-            repositoryFingerprint: candidate.repositoryFingerprint,
-            classification: candidate.classification,
-            diagnosticCode: candidate.diagnosticCode,
-          })),
-          counts: {
-            candidates: result.candidates.length,
-            collapsedRepositories: result.collapsedRepositories,
-            rejectedRepositories: result.rejectedRepositories,
-            scannedDirectories: result.scannedDirectories,
-            scannedEntries: result.scannedEntries,
-            skippedSymlinks: result.skippedSymlinks,
-            unreadableDirectories: result.unreadableDirectories,
-          },
-          diagnosticCode: result.truncated ? "scan-truncated" : null,
-          truncated: result.truncated,
-        };
-      }
+      case "workspace.repositories.discover":
       case "workspace.repository-import.validate":
-        return validateWorkspaceRepositoryImport(command);
-      case "project.folder.delete": {
-        await runConfigurationRuntimes.stopProject(command.projectId);
-        return managedFolders.delete(
-          command.projectId,
-          command.workspaceStorage,
+        return handleWorkspaceCommand(command, emit);
+      case "project.folder.delete":
+        return handleProjectCommand(
+          command,
+          {
+            github,
+            managedFolders,
+            runConfigurationRuntimes,
+            projectGithubConverter,
+            workerEncryption,
+            runConfigurationDefinitions,
+            projectExports,
+            config,
+            chatScratch,
+            projectShares,
+          },
+          emit,
         );
-      }
       case "chat.scratch.provision":
         return chatScratch.provision(command);
       case "chat.scratch.resolve":
@@ -4347,125 +3980,14 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         });
       }
       case "project.folder-conversion.preflight":
-        return projectGithubConverter.preflight(command);
       case "project.folder-conversion.execute":
-        return projectGithubConverter.execute(command);
       case "project.replica.provision":
-        return github.provisionReplica(
-          {
-            jobId: command.jobId,
-            attempt: command.attempt,
-            projectId: command.projectId ?? command.jobId,
-            nameWithOwner: command.repository?.nameWithOwner ?? null,
-            workspaceStorage: command.workspaceStorage,
-            placement: command.placement ?? { mode: "managed" },
-            expectedRevision: command.expectedRevision,
-          },
-          (progress) =>
-            emit({
-              type: "project.replica.progress",
-              jobId: command.jobId,
-              attempt: command.attempt,
-              progress,
-            }),
-        );
       case "project.replica.synchronize":
-        return github.synchronizeReplica(
-          {
-            jobId: command.jobId,
-            attempt: command.attempt,
-            projectId: command.projectId ?? command.jobId,
-            nameWithOwner: command.repository.nameWithOwner,
-            sourcePath: command.sourcePath,
-            placement: command.placement,
-            repositoryFingerprint: command.repositoryFingerprint,
-            expectedRevision: command.expectedRevision,
-            policy: command.policy,
-          },
-          (progress) =>
-            emit({
-              type: "project.replica.progress",
-              jobId: command.jobId,
-              attempt: command.attempt,
-              progress,
-            }),
-        );
       case "project.replica.remove":
-        return github.removeReplica(
-          {
-            jobId: command.jobId,
-            attempt: command.attempt,
-            projectId: command.projectId ?? command.jobId,
-            nameWithOwner: command.repository?.nameWithOwner ?? null,
-            sourcePath: command.sourcePath,
-            placement: command.placement,
-            repositoryFingerprint: command.repositoryFingerprint,
-            deleteLocalFiles: command.deleteLocalFiles,
-          },
-          (progress) =>
-            emit({
-              type: "project.replica.progress",
-              jobId: command.jobId,
-              attempt: command.attempt,
-              progress,
-            }),
-        );
       case "project.replica.link.repair":
-        return github.repairReplicaLink({
-          projectId: command.projectId,
-          nameWithOwner: command.repository.nameWithOwner,
-          sourcePath: command.sourcePath,
-          linkPath: command.linkPath,
-          repositoryFingerprint: command.repositoryFingerprint,
-        });
       case "project.files.delete":
-        await runConfigurationRuntimes.stopForPath(command.path);
-        return github.deleteRepository(command.path);
       case "project.script-commands":
-        try {
-          const commands = await discoverScriptCommands(
-            (
-              await openTerminalPrivateState({
-                serverId: command.serverId,
-                terminalId: command.terminalId,
-                worktreePath: command.worktreePath,
-                stateProtection: command.stateProtection,
-                service: workerEncryption,
-              })
-            ).cwd,
-          );
-          return protectWorkerRepositoryOperationContent({
-            context: {
-              serverId: command.serverId,
-              projectId: command.terminalId,
-              worktreeId: command.terminalId,
-              operationId: command.operationId,
-              direction: "response",
-            },
-            content: commands,
-            schema: scriptCommandListSchema,
-            service: workerEncryption,
-          });
-        } catch {
-          throw new Error("Could not discover terminal script commands.");
-        }
       case "project.script-commands.inspect":
-        try {
-          return protectWorkerRepositoryOperationContent({
-            context: {
-              serverId: command.serverId,
-              projectId: command.projectId,
-              worktreeId: command.worktreeId,
-              operationId: command.operationId,
-              direction: "response",
-            },
-            content: await discoverScriptCommands(command.sourcePath),
-            schema: scriptCommandListSchema,
-            service: workerEncryption,
-          });
-        } catch {
-          throw new Error("Could not discover project script commands.");
-        }
       case "project.run-configuration-definitions.list":
       case "project.run-configuration-definitions.get":
       case "project.run-configuration-definitions.capabilities":
@@ -4475,111 +3997,43 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "project.run-configuration-definitions.validate":
       case "project.run-configuration-definitions.write":
       case "project.run-configuration-definitions.delete":
-        return runConfigurationDefinitions.execute(command);
       case "project.run-configuration-runtime.start":
-        return runConfigurationRuntimes.start(command);
       case "project.run-configuration-runtime.restart":
-        return runConfigurationRuntimes.restart(command);
       case "project.run-configuration-runtime.stop":
-        return runConfigurationRuntimes.stop(command);
       case "project.run-configuration-runtime.status":
-        return runConfigurationRuntimes.status(command.identity);
-      case "project.run-configuration-runtime.output": {
-        const snapshot = runConfigurationRuntimes.output(command);
-        return protectedRunConfigurationRuntimeWorkerOutputSchema.parse({
-          requestOperationId: command.requestOperationId,
-          identity: snapshot.identity,
-          protectedOutput: await protectWorkerRunContent({
-            serverId: command.serverId,
-            projectId: command.identity.projectId,
-            worktreeId: command.identity.worktreeId,
-            operationId: command.requestOperationId,
-            operation: "run.configuration.output",
-            content: {
-              data: snapshot.data,
-              truncated: snapshot.truncated,
-            },
-            schema: runConfigurationRuntimeOutputContentSchema,
-            service: workerEncryption,
-          }),
-        });
-      }
+      case "project.run-configuration-runtime.output":
       case "project.run-configuration-runtime.reconcile":
-        return runConfigurationRuntimes.reconcile(command.identities);
       case "project.repository-stats":
-        return readProjectRepositoryStats(command.cwd);
       case "project.folder-stats":
-        return readProjectFolderStats(command.root);
       case "project.export.target.inspect":
-        return projectExports.inspect(command.target, command.cwd);
       case "project.export.chat.begin":
-        return projectExports.begin(command);
       case "project.export.chat.chunk":
-        await projectExports.append(
-          command.operationId,
-          command.chatId,
-          command.chunkIndex,
-          Buffer.from(command.data, "base64"),
-        );
-        return { accepted: true };
       case "project.export.chat.complete":
-        return projectExports.complete(command.operationId, command.chatId);
+        return handleProjectCommand(
+          command,
+          {
+            github,
+            managedFolders,
+            runConfigurationRuntimes,
+            projectGithubConverter,
+            workerEncryption,
+            runConfigurationDefinitions,
+            projectExports,
+            config,
+            chatScratch,
+            projectShares,
+          },
+          emit,
+        );
       case "external.chat-history.discover":
-        return discoverExternalChatHistory(
-          {
-            attachmentStore: externalChatAttachments,
-            binary: config.codexBinary,
-            managedDataDirectory: config.dataDirectory,
-          },
-          command,
-        );
       case "external.chat-history.read":
-        return readExternalChatHistory(
-          {
-            attachmentStore: externalChatAttachments,
-            binary: config.codexBinary,
-            encryptionService: workerEncryption,
-            managedDataDirectory: config.dataDirectory,
-          },
-          command,
-        );
-      case "external.chat-history.attachment.read": {
-        if (command.ownerId !== workerEncryption.ownerId()) {
-          throw new Error("Attachment owner does not match this worker.");
-        }
-        const result = await externalChatAttachments.read(
-          command.sourceId,
-          command.sourceThreadId,
-          command.attachmentId,
-          command.offset,
-          command.limit,
-        );
-        if (result.status === "unavailable") return result;
-        try {
-          return {
-            status: "available" as const,
-            chunk: await protectWorkerAttachmentChunk({
-              chatId: command.chatId,
-              attachmentId: command.targetAttachmentId,
-              operationId: command.operationId,
-              direction: "relay",
-              sequence: command.sequence,
-              eof: result.eof,
-              bytes: result.bytes,
-              service: workerEncryption,
-            }),
-            sizeBytes: result.sizeBytes,
-          };
-        } finally {
-          clearSensitiveBytes(result.bytes);
-        }
-      }
+      case "external.chat-history.attachment.read":
       case "external.chat-history.attachments.release":
-        await externalChatAttachments.release(
-          command.sourceId,
-          command.sourceThreadId,
-        );
-        return { accepted: true };
+        return handleExternalHistoryCommand(command, {
+          externalChatAttachments,
+          config,
+          workerEncryption,
+        });
       case "browser.services.discover":
         return discoverBrowserServices({ workerId: config.workerId });
       case "mcp.configurations.discover":
@@ -4588,50 +4042,24 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           projectRoot: command.projectRoot,
           service: workerEncryption,
         });
-      case "project.share.open": {
-        const content = await openWorkerTunnelContentRecord({
-          record: command.protectedRecord,
-          serverId: workerEncryption.serverIdentity(),
-          service: workerEncryption,
-          tunnelId: command.shareId,
-          workerId: config.workerId,
-        });
-        assertProjectShareDestinationBinding(
-          command,
-          content.destination,
-          config.workerId,
-        );
-        if (
-          command.protectedRecord.operationId !== command.shareId &&
-          command.protectedRecord.revision === 1
-        ) {
-          throw new Error(
-            "Protected project share content belongs to another endpoint.",
-          );
-        }
-        const root =
-          content.destination.kind === "worker-chat-share"
-            ? (
-                await chatScratch.resolve({
-                  rootId: content.destination.rootId,
-                  chatId: content.destination.chatId,
-                })
-              ).path
-            : content.destination.root;
-        await projectShares.open({
-          password: content.destination.password,
-          publicBasePath: content.destination.publicBasePath,
-          publicOrigin: content.destination.publicOrigin,
-          realm: content.destination.realm,
-          root,
-          shareId: command.shareId,
-          username: content.destination.username,
-        });
-        return { accepted: true as const, shareId: command.shareId };
-      }
+      case "project.share.open":
       case "project.share.close":
-        await projectShares.close(command.shareId);
-        return { accepted: true };
+        return handleProjectCommand(
+          command,
+          {
+            github,
+            managedFolders,
+            runConfigurationRuntimes,
+            projectGithubConverter,
+            workerEncryption,
+            runConfigurationDefinitions,
+            projectExports,
+            config,
+            chatScratch,
+            projectShares,
+          },
+          emit,
+        );
       case "repository.operation": {
         const requestContext = {
           serverId: command.serverId,
@@ -5001,310 +4429,77 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         });
       }
       case "git.history":
-        return readGitHistory(
-          command.cwd,
-          command.limit,
-          command.cursor,
-          command.revisions,
-          command.options,
-        );
       case "git.graph.snapshot":
-        return readGitGraphSnapshot(
-          command.cwd,
-          command.revision,
-          command.rootPath,
-          command.maxNodes,
-        );
       case "git.graph.metrics":
-        return readGitGraphMetrics(
-          command.cwd,
-          command.revision,
-          command.rootPath,
-          command.maxNodes,
-          command.includeBlame,
-        );
       case "git.graph.commit-overlay":
-        return createGitGraphCommitOverlay(
-          await readGitCommitDetail(command.cwd, command.revision),
-          command.rootPath,
-        );
       case "git.file.history":
-        return readGitFileHistory(
-          command.cwd,
-          command.path,
-          command.revision,
-          command.limit,
-          command.cursor,
-        );
       case "git.file.blame":
-        return readGitFileBlame(
-          command.cwd,
-          command.path,
-          command.revision,
-          command.limit,
-          command.cursor,
-        );
       case "git.commit.search":
-        return searchGitCommits(
-          command.cwd,
-          command.query,
-          command.limit,
-          command.cursor,
-        );
       case "git.recovery.list":
-        return readGitRecoveryCandidates(
-          command.cwd,
-          command.kind,
-          command.limit,
-          command.cursor,
-        );
       case "git.recovery.preview":
-        return previewGitRecoveryAction(command.cwd, command.action);
       case "git.recovery.apply":
-        return applyGitRecoveryAction(
-          command.cwd,
-          command.request.action,
-          command.request.token,
-          command.request.confirmation,
-        );
       case "git.commit.get":
-        return readGitCommitDetail(
-          command.cwd,
-          command.revision,
-          command.parentIndex,
-          command.revisions,
-        );
       case "git.commit.signature.get":
-        return readGitCommitSignature(command.cwd, command.revision);
       case "git.refs.list":
-        return readGitRevisionCandidates(command.cwd);
       case "git.compare":
-        return readGitComparison(
-          command.cwd,
-          command.left,
-          command.right,
-          command.mode,
-        );
       case "git.revision.diff":
-        return readGitRevisionFileDiff(
-          command.cwd,
-          command.revision,
-          command.baseRevision,
-          command.path,
-          command.contextLines,
-        );
       case "git.status":
-        return readGitStatus(command.cwd);
       case "git.diff":
-        return readGitFileDiff(
-          command.cwd,
-          command.path,
-          command.scope,
-          command.contextLines,
-        );
       case "git.patch.preview":
-        return previewGitPartialPatch(command.cwd, command.request);
       case "git.patch.apply":
-        return applyGitPartialPatch(
-          command.cwd,
-          command.request,
-          command.token,
-        );
       case "git.stash.list":
-        return readGitStashes(command.cwd);
       case "git.stash.create":
-        return createGitStash(command.cwd, command.request);
       case "git.stash.diff":
-        return readGitStashFileDiff(
-          command.cwd,
-          command.hash,
-          command.path,
-          command.contextLines,
-        );
       case "git.stash.action.preview":
-        return previewGitStashAction(command.cwd, command.action);
       case "git.stash.action.apply":
-        return applyGitStashAction(command.cwd, command.action, command.token);
       case "git.worktree.changes.preview":
-        return previewGitWorktreeChangesMove(
-          command.cwd,
-          command.sourceCwd,
-          command.request,
-        );
       case "git.worktree.changes.apply":
-        return applyGitWorktreeChangesMove(
-          command.cwd,
-          command.sourceCwd,
-          command.request,
-          command.token,
-        );
       case "git.branch.list":
-        return readGitBranches(command.cwd);
       case "git.branch.action.preview":
-        return previewGitBranchAction(command.cwd, command.action);
       case "git.branch.action.apply":
-        return applyGitBranchAction(command.cwd, command.action, command.token);
       case "git.remote.list":
-        return readGitRemotes(command.cwd);
       case "git.remote.action.preview":
-        return previewGitRemoteAction(command.cwd, command.action);
       case "git.remote.action.apply":
-        return applyGitRemoteAction(command.cwd, command.action, command.token);
       case "git.submodule.list":
-        return readGitSubmodules(command.cwd);
       case "git.submodule.action.preview":
-        return previewGitSubmoduleAction(command.cwd, command.action);
       case "git.submodule.action.apply":
-        return applyGitSubmoduleAction(
-          command.cwd,
-          command.action,
-          command.token,
-        );
       case "git.lfs.status":
-        return readGitLfsStatus(command.cwd, command.refreshLocks);
       case "git.lfs.action.preview":
-        return previewGitLfsAction(command.cwd, command.action);
       case "git.lfs.action.apply":
-        return applyGitLfsAction(command.cwd, command.action, command.token);
       case "git.tag.list":
-        return readGitTags(command.cwd);
       case "git.tag.get":
-        return readGitTagDetail(command.cwd, command.name);
       case "git.tag.action.preview":
-        return previewGitTagAction(command.cwd, command.action);
       case "git.tag.action.apply":
-        return applyGitTagAction(command.cwd, command.action, command.token);
       case "git.commit.action.preview":
-        return previewGitCommitAction(command.cwd, command.action);
       case "git.commit.action.apply":
-        return applyGitCommitAction(command.cwd, command.action, command.token);
       case "git.operation.preview":
-        return previewGitManagedOperation(command.cwd, command.action);
       case "git.operation.start":
-        return startGitManagedOperation(
-          command.cwd,
-          command.action,
-          command.token,
-        );
       case "git.operation.inspect":
-        return inspectGitManagedOperation(command.cwd, command.context);
       case "git.operation.control":
-        return controlGitManagedOperation(
-          command.cwd,
-          command.context,
-          command.action,
-        );
       case "git.operation.amend":
-        return amendGitManagedOperation(
-          command.cwd,
-          command.context,
-          command.message,
-        );
       case "git.conflicts.list":
-        return listGitConflicts(command.cwd);
       case "git.conflicts.get":
-        return readGitConflict(command.cwd, command.path);
       case "git.conflicts.preview":
-        return previewGitConflictResolution(command.cwd, command.request);
       case "git.conflicts.apply":
-        return applyGitConflictResolution(
-          command.cwd,
-          command.request,
-          command.token,
-        );
       case "git.action":
-        return runGitAction(command.cwd, command.action);
       case "git.force-push.preview":
-        return previewGitForcePush(command.cwd);
       case "git.force-push.apply":
-        return applyGitForcePush(command.cwd, command.token);
+        return handleGitCommand(command);
       case "worktree.list":
-        return worktrees.list(command.sourcePath);
       case "worktree.reconcile":
-        return worktrees.reconcile(command.sourcePath);
       case "worktree.create":
-        return worktrees.create(
-          command.sourcePath,
-          command.worktreeId,
-          command.name,
-          command.mode,
-        );
-      case "worktree.remove": {
-        const result = await worktrees.remove(
-          command.sourcePath,
-          command.worktreePath,
-          {
-            allowExternal: command.allowExternal,
-            force: command.force,
-            beforeRemove: async (worktreePath) => {
-              await runConfigurationRuntimes.stopForPath(worktreePath);
-            },
-          },
-        );
-        codegraphObservations.forgetPath(command.worktreePath);
-        codegraphProjects?.detach(command.worktreePath);
-        return result;
-      }
+      case "worktree.remove":
       case "worktree.lock":
-        return worktrees.lock(
-          command.sourcePath,
-          command.worktreePath,
-          command.reason,
-        );
       case "worktree.unlock":
-        return worktrees.unlock(command.sourcePath, command.worktreePath);
-      case "worktree.prune": {
-        return worktrees.prune(command.sourcePath, command.allowExternal);
-      }
+      case "worktree.prune":
       case "worktree.status":
-        return worktrees.status(command.sourcePath, command.worktreePath);
-      case "worktree.observation.configure": {
-        const worktreeObservationPaths = await reconcileProjectObservationPaths(
-          command.targets,
-        );
-        const codegraphObservationPaths =
-          await reconcileProjectObservationPaths(
-            command.codegraphTargets ??
-              command.targets.map((target) => ({
-                projectId: target.projectId!,
-                worktreeId: target.worktreeId!,
-                rootKind: "git-worktree" as const,
-                sourcePath: target.sourcePath,
-                worktreePath: target.worktreePath,
-              })),
-          );
-        worktrees.configureObservation(worktreeObservationPaths.targets);
-        await codegraphObservations
-          .configure(codegraphObservationPaths.targets)
-          .catch((error) => {
-            workerLogger.event(
-              "warn",
-              "CodeGraph worktree reconciliation failed",
-              {
-                event: "codegraph.project.configure-failed",
-                subsystem: "codegraph",
-                operation: "configure-worktrees",
-                reasonCode: "configuration-failed",
-                status: "degraded",
-                error: workerLogError(error),
-              },
-            );
-          });
-        return {
-          accepted: true,
-          paths: [
-            ...new Map(
-              [
-                ...worktreeObservationPaths.paths,
-                ...codegraphObservationPaths.paths,
-              ].map((resolved) => [
-                `${resolved.projectId}\0${resolved.worktreeId}`,
-                resolved,
-              ]),
-            ).values(),
-          ],
-        };
-      }
+      case "worktree.observation.configure":
+        return handleWorktreeCommand(command, {
+          worktrees,
+          runConfigurationRuntimes,
+          codegraphObservations,
+          getCodegraphProjects: () => codegraphProjects,
+        });
       case "codegraph.status": {
         await ensureCodeGraphCommandTarget(command);
         const status = codegraphProjects?.publicStatus(
@@ -5370,745 +4565,70 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           status,
         });
       }
-      case "explorer.operation": {
-        const streamContext = {
-          serverId: command.serverId,
-          surfaceKind: "explorer" as const,
-          surfaceId: command.explorerId,
-          operationId: command.operationId,
-          direction: "request" as const,
-          sequence: command.sequence,
-        };
-        surfaceStreamReplay.reserve(streamContext);
-        const request = await openWorkerSurfaceStreamContent({
-          context: streamContext,
-          opaque: command.protectedRequest,
-          schema: explorerOperationRequestContentSchema,
-          service: workerEncryption,
+      case "explorer.operation":
+        return handleExplorerCommand(command, {
+          surfaceStreamReplay,
+          workerEncryption,
         });
-        let outcome: SurfaceOperationOutcomeContent;
-        let complete = true;
-        try {
-          switch (request.type) {
-            case "explorer.directory.list":
-              outcome = {
-                ok: true as const,
-                result: {
-                  type: request.type,
-                  value: await listExplorerDirectory(
-                    command.root,
-                    request.path,
-                  ),
-                },
-              };
-              break;
-            case "explorer.files.search":
-              outcome = {
-                ok: true as const,
-                result: {
-                  type: request.type,
-                  value: await searchExplorerFiles(
-                    command.root,
-                    request.query,
-                    request.limit,
-                  ),
-                },
-              };
-              break;
-            case "explorer.directory.commits":
-              outcome = {
-                ok: true as const,
-                result: {
-                  type: request.type,
-                  value: await listExplorerDirectoryCommits(
-                    command.root,
-                    request.path,
-                  ),
-                },
-              };
-              break;
-            case "explorer.file.read":
-              outcome = {
-                ok: true as const,
-                result: {
-                  type: "explorer.file" as const,
-                  value: await readExplorerFile(command.root, request.path),
-                },
-              };
-              break;
-            case "explorer.file.write":
-              outcome = {
-                ok: true as const,
-                result: {
-                  type: "explorer.file" as const,
-                  value: await writeExplorerFile(
-                    command.root,
-                    request.path,
-                    request.content,
-                    request.version,
-                  ),
-                },
-              };
-              break;
-            case "explorer.directory.create":
-              outcome = {
-                ok: true as const,
-                result: {
-                  type: "explorer.directory.created" as const,
-                  value: await createExplorerDirectory(
-                    command.root,
-                    request.path,
-                  ),
-                },
-              };
-              break;
-            case "explorer.entry.rename":
-              outcome = {
-                ok: true as const,
-                result: {
-                  type: "explorer.entry.mutated" as const,
-                  value: await renameExplorerEntry(
-                    command.root,
-                    request.path,
-                    request.name,
-                  ),
-                },
-              };
-              break;
-            case "explorer.entry.delete":
-              outcome = {
-                ok: true as const,
-                result: {
-                  type: "explorer.entry.mutated" as const,
-                  value: await deleteExplorerEntry(command.root, request.path),
-                },
-              };
-              break;
-            case "explorer.media.read": {
-              const value = await readExplorerMediaFile(
-                command.root,
-                request.path,
-                request.offset,
-                request.limit,
-              );
-              complete = value.eof;
-              outcome = {
-                ok: true as const,
-                result: { type: "explorer.media" as const, value },
-              };
-              break;
-            }
-          }
-        } catch (error) {
-          outcome = {
-            ok: false as const,
-            error:
-              error instanceof Error
-                ? error.message.slice(0, 2_000)
-                : "Explorer operation failed.",
-          };
-        }
-        const protectedResponse = await protectWorkerSurfaceStreamContent({
-          context: { ...streamContext, direction: "response" },
-          content: outcome,
-          schema: surfaceOperationOutcomeContentSchema,
-          service: workerEncryption,
-        });
-        surfaceStreamReplay.accept(streamContext, complete || !outcome.ok);
-        return surfaceStreamWireResponseSchema.parse({
-          operationId: command.operationId,
-          sequence: command.sequence,
-          protectedResponse,
-        });
-      }
       case "code.probe":
-        return {
-          ...code.probe(),
-          ...(codeDirectEndpoints.serverControlPlaneGeneration()
-            ? {
-                serverControlPlaneGeneration:
-                  codeDirectEndpoints.serverControlPlaneGeneration()!,
-              }
-            : {}),
-        };
       case "code.open":
-        return code.open(command);
       case "code.status":
-        return code.status(command.sessionId);
-      case "code.stop": {
-        const claim = code.claimStop(
-          command.sessionId,
-          command.expectedSessionIncarnationId,
-        );
-        if (!claim.accepted) return claim.status;
-        await codeDirectEndpoints.closeSession(
-          command.sessionId,
-          command.expectedSessionIncarnationId,
-        );
-        return claim.retire();
-      }
+      case "code.stop":
       case "code.endpoint.revoke":
-        codeDirectEndpoints.revoke(
-          `protected:${command.tunnelId}`,
-          "Code attachment released",
-        );
-        return { tunnelId: command.tunnelId };
       case "code.transport.route.authorize":
-        return codeDirectEndpoints.authorizeSharedRoute(
-          command,
-          activeCodeTransportSecurityIdentity(),
-          context.codeTransportLifecycleGeneration,
-        );
       case "code.transport.route.revoke":
-        return codeDirectEndpoints.revokeSharedRoute(
-          command,
-          activeCodeTransportSecurityIdentity(),
-          context.codeTransportLifecycleGeneration,
-        );
       case "code.transport.revoke":
-        return codeDirectEndpoints.revokeSharedTransport(
-          command,
-          activeCodeTransportSecurityIdentity(),
-          context.codeTransportLifecycleGeneration,
-        );
       case "code.saveAll":
-        return code.saveAll(command.sessionId);
       case "code.openFile":
-        return code.openFile(command.sessionId, command.path);
       case "code.getDirtyEditors":
-        return code.dirtyEditors(command.sessionId);
       case "code.setTheme":
-        return code.setTheme(
-          command.sessionId,
-          command.themeMode,
-          command.appearance,
-        );
       case "code.prepareAgentTurn":
-        return code.prepareAgentTurn(command.cwd);
       case "code.agentTurnState":
-        return code.agentTurnState(command.cwd, command.phase, command.paths);
+        return handleCodeCommand(
+          command,
+          {
+            ensureCodeSettingsSynchronizer: (options) =>
+              ensureCodeSettingsSynchronizer(options),
+            unavailableCodeSettingsStatus,
+            getCodeSettingsSynchronizer: () => codeSettingsSynchronizer,
+            getDefaultCodeProfileId: () => defaultCodeProfileId,
+            code,
+            codeDirectEndpoints,
+            activeCodeTransportSecurityIdentity,
+          },
+          context,
+        );
       case "skills.list":
-        return protectWorkerCustomizationResponse({
-          serverId: command.serverId,
-          workerId: config.workerId,
-          scope: command.scope,
-          operationId: command.operationId,
-          operation: command.type,
-          schema: skillListSchema,
-          service: workerEncryption,
-          execute: () =>
-            runtimeFor({
-              ...managedRuntimeTarget(command),
-              model: command.model,
-              provider: provider(),
-            }).listSkills({
-              cwd: command.cwd,
-              model: command.model,
-              provider: provider(),
-            }),
-        });
       case "skills.settings.list":
-        return protectWorkerCustomizationResponse({
-          serverId: command.serverId,
-          workerId: config.workerId,
-          scope: command.scope,
-          operationId: command.operationId,
-          operation: command.type,
-          schema: skillSettingsInventorySchema,
-          service: workerEncryption,
-          execute: async () => {
-            if (!command.model || !command.provider) {
-              return skillManager.list(command);
-            }
-            const runtime = runtimeFor({
-              ...managedRuntimeTarget(command),
-              model: command.model,
-              provider: provider(),
-            });
-            const codexSkills = await runtime.listSkillInventory(
-              {
-                cwd: command.cwd ?? config.dataDirectory,
-                model: command.model,
-                provider: provider(),
-              },
-              true,
-            );
-            return skillManager.list(command, codexSkills);
-          },
+      case "skills.settings.read":
+      case "skills.settings.write":
+      case "skills.settings.delete":
+      case "skills.settings.configure":
+        return handleSkillsCommand(command, {
+          config,
+          workerEncryption,
+          runtimeFor,
+          provider,
+          skillManager,
+          customizationContentReplay,
         });
-      case "skills.settings.read": {
-        const input = await openWorkerCustomizationRequest({
-          serverId: command.serverId,
-          workerId: config.workerId,
-          scope: command.scope,
-          operationId: command.operationId,
-          operation: command.type,
-          opaque: command.protectedRequest,
-          schema: skillSettingsFileRequestSchema.pick({
-            skillId: true,
-            file: true,
-          }),
-          service: workerEncryption,
-        });
-        return protectWorkerCustomizationResponse({
-          serverId: command.serverId,
-          workerId: config.workerId,
-          scope: command.scope,
-          operationId: command.operationId,
-          operation: command.type,
-          schema: skillSettingsDocumentSchema,
-          service: workerEncryption,
-          execute: () => skillManager.read(command, input.skillId, input.file),
-        });
-      }
-      case "skills.settings.write": {
-        customizationContentReplay.reserve({
-          serverId: command.serverId,
-          scope: command.scope,
-          operationId: command.operationId,
-          operation: command.type,
-        });
-        const input = await openWorkerCustomizationRequest({
-          serverId: command.serverId,
-          workerId: config.workerId,
-          scope: command.scope,
-          operationId: command.operationId,
-          operation: command.type,
-          opaque: command.protectedRequest,
-          schema: skillSettingsFileUpdateSchema.pick({
-            skillId: true,
-            file: true,
-            content: true,
-          }),
-          service: workerEncryption,
-        });
-        return protectWorkerCustomizationResponse({
-          serverId: command.serverId,
-          workerId: config.workerId,
-          scope: command.scope,
-          operationId: command.operationId,
-          operation: command.type,
-          schema: skillSettingsMutationResultSchema,
-          service: workerEncryption,
-          execute: () =>
-            skillManager.write(
-              command,
-              input.skillId,
-              input.file,
-              input.content,
-            ),
-        });
-      }
-      case "skills.settings.delete": {
-        customizationContentReplay.reserve({
-          serverId: command.serverId,
-          scope: command.scope,
-          operationId: command.operationId,
-          operation: command.type,
-        });
-        const input = await openWorkerCustomizationRequest({
-          serverId: command.serverId,
-          workerId: config.workerId,
-          scope: command.scope,
-          operationId: command.operationId,
-          operation: command.type,
-          opaque: command.protectedRequest,
-          schema: skillSettingsDeleteRequestSchema.pick({ skillId: true }),
-          service: workerEncryption,
-        });
-        return protectWorkerCustomizationResponse({
-          serverId: command.serverId,
-          workerId: config.workerId,
-          scope: command.scope,
-          operationId: command.operationId,
-          operation: command.type,
-          schema: skillSettingsMutationResultSchema,
-          service: workerEncryption,
-          execute: () => skillManager.delete(command, input.skillId),
-        });
-      }
-      case "skills.settings.configure": {
-        customizationContentReplay.reserve({
-          serverId: command.serverId,
-          scope: command.scope,
-          operationId: command.operationId,
-          operation: command.type,
-        });
-        const input = await openWorkerCustomizationRequest({
-          serverId: command.serverId,
-          workerId: config.workerId,
-          scope: command.scope,
-          operationId: command.operationId,
-          operation: command.type,
-          opaque: command.protectedRequest,
-          schema: skillSettingsConfigUpdateSchema.pick({
-            skillId: true,
-            enabled: true,
-          }),
-          service: workerEncryption,
-        });
-        return protectWorkerCustomizationResponse({
-          serverId: command.serverId,
-          workerId: config.workerId,
-          scope: command.scope,
-          operationId: command.operationId,
-          operation: command.type,
-          schema: skillSettingsConfigResultSchema,
-          service: workerEncryption,
-          execute: async () => {
-            const skillPath = await skillManager.configurationPath(
-              command,
-              input.skillId,
-            );
-            const result = await runtimeFor({
-              ...managedRuntimeTarget(command),
-              model: command.model,
-              provider: provider(),
-            }).configureSkill({
-              cwd: command.cwd ?? config.dataDirectory,
-              model: command.model,
-              provider: provider(),
-              path: skillPath,
-              enabled: input.enabled,
-            });
-            return skillSettingsConfigResultSchema.parse({
-              skillId: input.skillId,
-              effectiveEnabled: result.effectiveEnabled,
-            });
-          },
-        });
-      }
       case "customization.inventory.read":
-        return protectWorkerCustomizationResponse({
-          serverId: command.serverId,
-          workerId: config.workerId,
-          scope: command.scope,
-          operationId: command.operationId,
-          operation: command.type,
-          schema: codexCustomizationInventorySchema,
-          service: workerEncryption,
-          execute: () =>
-            runtimeFor({
-              ...managedRuntimeTarget(command),
-              model: command.model,
-              provider: provider(),
-            }).readCustomizationInventory(
-              {
-                cwd: command.cwd,
-                threadId: command.threadId,
-                model: command.model,
-                provider: provider(),
-              },
-              command.forceReload,
-            ),
-        });
       case "customization.external.preview":
-        return protectWorkerCustomizationResponse({
-          serverId: command.serverId,
-          workerId: config.workerId,
-          scope: command.scope,
-          operationId: command.operationId,
-          operation: command.type,
-          schema: codexExternalImportPreviewSchema,
-          service: workerEncryption,
-          execute: () =>
-            runtimeFor({
-              ...managedRuntimeTarget(command),
-              model: command.model,
-              provider: provider(),
-            }).previewExternalAgentConfig({
-              cwd: command.cwd,
-              model: command.model,
-              provider: provider(),
-            }),
+      case "customization.mcp.resource.read":
+      case "customization.skill.configure":
+      case "customization.skill-roots.set":
+      case "customization.mcp.oauth.start":
+      case "customization.mcp.oauth.status":
+      case "customization.mcp.reload":
+      case "customization.external.apply":
+      case "customization.external.status":
+        return handleCustomizationCommand(command, {
+          config,
+          workerEncryption,
+          runtimeFor,
+          provider,
+          customizationContentReplay,
         });
-      case "customization.mcp.resource.read": {
-        const input = await openWorkerCustomizationRequest({
-          serverId: command.serverId,
-          workerId: config.workerId,
-          scope: command.scope,
-          operationId: command.operationId,
-          operation: command.type,
-          opaque: command.protectedRequest,
-          schema: codexMcpResourceReadRequestSchema,
-          service: workerEncryption,
-        });
-        return protectWorkerCustomizationResponse({
-          serverId: command.serverId,
-          workerId: config.workerId,
-          scope: command.scope,
-          operationId: command.operationId,
-          operation: command.type,
-          schema: codexMcpResourceReadSchema,
-          service: workerEncryption,
-          execute: () =>
-            runtimeFor({
-              ...managedRuntimeTarget(command),
-              model: command.model,
-              provider: provider(),
-            }).readMcpResource({
-              cwd: command.cwd,
-              threadId: command.threadId,
-              model: command.model,
-              provider: provider(),
-              server: input.server,
-              uri: input.uri,
-            }),
-        });
-      }
-      case "customization.skill.configure": {
-        customizationContentReplay.reserve({
-          serverId: command.serverId,
-          scope: command.scope,
-          operationId: command.operationId,
-          operation: command.type,
-        });
-        const input = await openWorkerCustomizationRequest({
-          serverId: command.serverId,
-          workerId: config.workerId,
-          scope: command.scope,
-          operationId: command.operationId,
-          operation: command.type,
-          opaque: command.protectedRequest,
-          schema: codexSkillConfigUpdateSchema,
-          service: workerEncryption,
-        });
-        return protectWorkerCustomizationResponse({
-          serverId: command.serverId,
-          workerId: config.workerId,
-          scope: command.scope,
-          operationId: command.operationId,
-          operation: command.type,
-          schema: codexSkillConfigResultSchema,
-          service: workerEncryption,
-          execute: () =>
-            runtimeFor({
-              ...managedRuntimeTarget(command),
-              model: command.model,
-              provider: provider(),
-            }).configureSkill({
-              cwd: command.cwd,
-              model: command.model,
-              provider: provider(),
-              path: input.path,
-              enabled: input.enabled,
-            }),
-        });
-      }
-      case "customization.skill-roots.set": {
-        customizationContentReplay.reserve({
-          serverId: command.serverId,
-          scope: command.scope,
-          operationId: command.operationId,
-          operation: command.type,
-        });
-        const input = await openWorkerCustomizationRequest({
-          serverId: command.serverId,
-          workerId: config.workerId,
-          scope: command.scope,
-          operationId: command.operationId,
-          operation: command.type,
-          opaque: command.protectedRequest,
-          schema: codexSkillRootsUpdateSchema,
-          service: workerEncryption,
-        });
-        return protectWorkerCustomizationResponse({
-          serverId: command.serverId,
-          workerId: config.workerId,
-          scope: command.scope,
-          operationId: command.operationId,
-          operation: command.type,
-          schema: codexSkillRootsResultSchema,
-          service: workerEncryption,
-          execute: () =>
-            runtimeFor({
-              ...managedRuntimeTarget(command),
-              model: command.model,
-              provider: provider(),
-            }).setSkillRoots({
-              cwd: command.cwd,
-              model: command.model,
-              provider: provider(),
-              roots: input.roots,
-            }),
-        });
-      }
-      case "customization.mcp.oauth.start": {
-        customizationContentReplay.reserve({
-          serverId: command.serverId,
-          scope: command.scope,
-          operationId: command.operationId,
-          operation: command.type,
-        });
-        const input = await openWorkerCustomizationRequest({
-          serverId: command.serverId,
-          workerId: config.workerId,
-          scope: command.scope,
-          operationId: command.operationId,
-          operation: command.type,
-          opaque: command.protectedRequest,
-          schema: codexMcpOauthStartSchema,
-          service: workerEncryption,
-        });
-        return protectWorkerCustomizationResponse({
-          serverId: command.serverId,
-          workerId: config.workerId,
-          scope: command.scope,
-          operationId: command.operationId,
-          operation: command.type,
-          schema: codexMcpOauthStartResultSchema,
-          service: workerEncryption,
-          lifecycle: () => "pending",
-          execute: () =>
-            runtimeFor({
-              ...managedRuntimeTarget(command),
-              model: command.model,
-              provider: provider(),
-            }).startMcpOauth({
-              cwd: command.cwd,
-              model: command.model,
-              provider: provider(),
-              server: input.server,
-            }),
-        });
-      }
-      case "customization.mcp.oauth.status": {
-        const input = await openWorkerCustomizationRequest({
-          serverId: command.serverId,
-          workerId: config.workerId,
-          scope: command.scope,
-          operationId: command.operationId,
-          operation: command.type,
-          opaque: command.protectedRequest,
-          schema: codexMcpOauthStartSchema,
-          service: workerEncryption,
-        });
-        return protectWorkerCustomizationResponse({
-          serverId: command.serverId,
-          workerId: config.workerId,
-          scope: command.scope,
-          operationId: command.operationId,
-          operation: command.type,
-          schema: codexMcpOauthStatusSchema,
-          service: workerEncryption,
-          lifecycle: (status) =>
-            status.status === "pending"
-              ? "pending"
-              : status.status === "unknown"
-                ? "unknown"
-                : "completed",
-          execute: () =>
-            runtimeFor({
-              ...managedRuntimeTarget(command),
-              model: command.model,
-              provider: provider(),
-            }).mcpOauthStatus(input.server),
-        });
-      }
-      case "customization.mcp.reload": {
-        customizationContentReplay.reserve({
-          serverId: command.serverId,
-          scope: command.scope,
-          operationId: command.operationId,
-          operation: command.type,
-        });
-        await openWorkerCustomizationRequest({
-          serverId: command.serverId,
-          workerId: config.workerId,
-          scope: command.scope,
-          operationId: command.operationId,
-          operation: command.type,
-          opaque: command.protectedRequest,
-          schema: codexMcpReloadRequestSchema,
-          service: workerEncryption,
-        });
-        return protectWorkerCustomizationResponse({
-          serverId: command.serverId,
-          workerId: config.workerId,
-          scope: command.scope,
-          operationId: command.operationId,
-          operation: command.type,
-          schema: codexMcpReloadResultSchema,
-          service: workerEncryption,
-          execute: () =>
-            runtimeFor({
-              ...managedRuntimeTarget(command),
-              model: command.model,
-              provider: provider(),
-            }).reloadMcpServers({
-              cwd: command.cwd,
-              model: command.model,
-              provider: provider(),
-            }),
-        });
-      }
-      case "customization.external.apply": {
-        customizationContentReplay.reserve({
-          serverId: command.serverId,
-          scope: command.scope,
-          operationId: command.operationId,
-          operation: command.type,
-        });
-        const input = await openWorkerCustomizationRequest({
-          serverId: command.serverId,
-          workerId: config.workerId,
-          scope: command.scope,
-          operationId: command.operationId,
-          operation: command.type,
-          opaque: command.protectedRequest,
-          schema: codexExternalImportApplySchema,
-          service: workerEncryption,
-        });
-        return protectWorkerCustomizationResponse({
-          serverId: command.serverId,
-          workerId: config.workerId,
-          scope: command.scope,
-          operationId: command.operationId,
-          operation: command.type,
-          schema: codexExternalImportStatusSchema,
-          service: workerEncryption,
-          lifecycle: (status) => status.status,
-          execute: () =>
-            runtimeFor({
-              ...managedRuntimeTarget(command),
-              model: command.model,
-              provider: provider(),
-            }).applyExternalAgentConfig({
-              cwd: command.cwd,
-              model: command.model,
-              provider: provider(),
-              itemIds: input.itemIds,
-            }),
-        });
-      }
-      case "customization.external.status": {
-        const input = await openWorkerCustomizationRequest({
-          serverId: command.serverId,
-          workerId: config.workerId,
-          scope: command.scope,
-          operationId: command.operationId,
-          operation: command.type,
-          opaque: command.protectedRequest,
-          schema: codexExternalImportStatusSchema.pick({ importId: true }),
-          service: workerEncryption,
-        });
-        return protectWorkerCustomizationResponse({
-          serverId: command.serverId,
-          workerId: config.workerId,
-          scope: command.scope,
-          operationId: command.operationId,
-          operation: command.type,
-          schema: codexExternalImportStatusSchema,
-          service: workerEncryption,
-          lifecycle: (status) => status.status,
-          execute: () =>
-            runtimeFor({
-              ...managedRuntimeTarget(command),
-              model: command.model,
-              provider: provider(),
-            }).externalImportStatus(input.importId),
-        });
-      }
       case "permission-profiles.list":
         return runtimeFor({
           ...managedRuntimeTarget(command),
@@ -6119,92 +4639,15 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           model: command.model,
           provider: provider(),
         });
-      case "attachment.upload.begin": {
-        const metadata = await openWorkerAttachmentMetadata({
-          chatId: command.chatId,
-          attachmentId: command.attachmentId,
-          protectedMetadata: command.protectedMetadata,
-          service: workerEncryption,
-        });
-        if (metadata.error !== null) {
-          throw new Error(
-            "Unavailable attachment metadata cannot be uploaded.",
-          );
-        }
-        await attachments.begin(
-          command.chatId,
-          command.attachmentId,
-          metadata.fileName,
-          command.sizeBytes,
-          command.operationId,
-          metadata.sha256,
-        );
-        return { accepted: true };
-      }
-      case "attachment.upload.chunk": {
-        const bytes = await openWorkerAttachmentChunk({
-          chatId: command.chatId,
-          attachmentId: command.attachmentId,
-          operationId: command.operationId,
-          direction: command.direction,
-          chunk: command.chunk,
-          service: workerEncryption,
-        });
-        try {
-          await attachments.append(
-            command.chatId,
-            command.attachmentId,
-            command.chunk.sequence,
-            bytes,
-            command.operationId,
-            command.chunk.eof,
-          );
-          return { accepted: true };
-        } finally {
-          clearSensitiveBytes(bytes);
-        }
-      }
+      case "attachment.upload.begin":
+      case "attachment.upload.chunk":
       case "attachment.upload.complete":
-        return attachments.complete(
-          command.chatId,
-          command.attachmentId,
-          command.operationId,
-        );
-      case "attachment.read": {
-        const metadata = await openWorkerAttachmentMetadata({
-          chatId: command.chatId,
-          attachmentId: command.attachmentId,
-          protectedMetadata: command.protectedMetadata,
-          service: workerEncryption,
-        });
-        const result = await attachments.read(
-          command.chatId,
-          command.attachmentId,
-          metadata.fileName,
-          command.offset,
-          command.limit,
-        );
-        try {
-          return {
-            chunk: await protectWorkerAttachmentChunk({
-              chatId: command.chatId,
-              attachmentId: command.attachmentId,
-              operationId: command.operationId,
-              direction: command.direction,
-              sequence: command.sequence,
-              eof: result.eof,
-              bytes: result.bytes,
-              service: workerEncryption,
-            }),
-            sizeBytes: result.sizeBytes,
-          };
-        } finally {
-          clearSensitiveBytes(result.bytes);
-        }
-      }
+      case "attachment.read":
       case "attachment.delete":
-        await attachments.remove(command.chatId, command.attachmentId);
-        return { accepted: true };
+        return handleAttachmentCommand(command, {
+          workerEncryption,
+          attachments,
+        });
       case "terminal.prepare-state":
         return prepareManagedConsoleState(
           command.terminalId,
@@ -6512,26 +4955,17 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         terminals.restartService(command.terminalId);
         return { accepted: true };
       case "surface.attach":
-        return remoteSurfaces.attach(command);
       case "surface.detach":
-        await remoteSurfaces.detach(command.surfaceId, command.attachmentId);
-        return { accepted: true };
       case "surface.configure":
-        await remoteSurfaces.configure(command);
-        return { accepted: true };
       case "surface.suspend":
-        await remoteSurfaces.suspend(command.surfaceId);
-        return { accepted: true };
       case "surface.resume":
-        await remoteSurfaces.resume(command.surfaceId);
-        return { accepted: true };
       case "surface.close":
-        await remoteSurfaces.close(command.surfaceId);
-        return { accepted: true };
       case "surface.desktop.probe":
-        return desktopAdapter.probe();
       case "surface.desktop.targets":
-        return desktopAdapter.targets(command);
+        return handleSurfaceCommand(command, {
+          remoteSurfaces,
+          desktopAdapter,
+        });
       case "model.provider.test": {
         const startedAtMs = Date.now();
         const testId = randomUUID();

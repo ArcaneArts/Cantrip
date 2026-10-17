@@ -249,10 +249,13 @@ describe("account settings", () => {
 
   it("indexes settings from every account category", () => {
     expect(
-      settingsSearchResults("project membership", settingsNavigationSections),
+      settingsSearchResults(
+        "project permanent workspace",
+        settingsNavigationSections,
+      ),
     ).toEqual([
       expect.objectContaining({
-        id: "project-membership",
+        id: "project-workspaces",
         sectionId: "workspaces",
       }),
     ]);

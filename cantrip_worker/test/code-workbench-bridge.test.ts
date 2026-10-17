@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 import WebSocket from "ws";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -176,6 +178,8 @@ describe("Cantrip workbench bridge", () => {
   });
 
   it("acknowledges an exact active file only from the current authenticated authority", async () => {
+    const activeUri = pathToFileURL(path.resolve("/repo/src/start.ts")).href;
+    const otherUri = pathToFileURL(path.resolve("/other/src/start.ts")).href;
     const bridge = new CodeWorkbenchBridge();
     bridges.push(bridge);
     await bridge.start();
@@ -185,7 +189,7 @@ describe("Cantrip workbench bridge", () => {
       bridge.acknowledgesActiveFile(
         "initial-navigation",
         "src/start.ts",
-        "file:///repo/src/start.ts",
+        activeUri,
       ),
     ).toBe(false);
 
@@ -193,6 +197,7 @@ describe("Cantrip workbench bridge", () => {
     respond(first, await nextRequest(first));
     publishState(first, {
       activePath: "src/start.ts",
+      activeUri,
       topologyReconciled: true,
     });
     await vi.waitFor(() =>
@@ -200,7 +205,7 @@ describe("Cantrip workbench bridge", () => {
         bridge.acknowledgesActiveFile(
           "initial-navigation",
           "src/start.ts",
-          "file:///repo/src/start.ts",
+          activeUri,
         ),
       ).toBe(true),
     );
@@ -208,17 +213,17 @@ describe("Cantrip workbench bridge", () => {
       bridge.acknowledgesActiveFile(
         "initial-navigation",
         "src/other.ts",
-        "file:///repo/src/start.ts",
+        activeUri,
       ),
     ).toBe(false);
     expect(
       bridge.acknowledgesActiveFile(
         "initial-navigation",
         "src/start.ts",
-        "file:///other/src/start.ts",
+        otherUri,
       ),
     ).toBe(false);
-    publishState(first, { activePath: "src/start.ts" });
+    publishState(first, { activePath: "src/start.ts", activeUri });
     await vi.waitFor(() =>
       expect(
         bridge.state("initial-navigation").activeEditor?.topologyReconciled,
@@ -228,7 +233,7 @@ describe("Cantrip workbench bridge", () => {
       bridge.acknowledgesActiveFile(
         "initial-navigation",
         "src/start.ts",
-        "file:///repo/src/start.ts",
+        activeUri,
       ),
     ).toBe(false);
 
@@ -236,30 +241,31 @@ describe("Cantrip workbench bridge", () => {
     respond(second, await nextRequest(second));
     publishState(first, {
       activePath: "src/start.ts",
+      activeUri,
       topologyReconciled: true,
     });
     expect(
       bridge.acknowledgesActiveFile(
         "initial-navigation",
         "src/start.ts",
-        "file:///repo/src/start.ts",
+        activeUri,
       ),
     ).toBe(false);
     publishState(second, {
       activePath: "src/start.ts",
-      activeUri: "file:///other/src/start.ts",
+      activeUri: otherUri,
       topologyReconciled: true,
     });
     await vi.waitFor(() =>
       expect(bridge.state("initial-navigation").activeEditor?.uri).toBe(
-        "file:///other/src/start.ts",
+        otherUri,
       ),
     );
     expect(
       bridge.acknowledgesActiveFile(
         "initial-navigation",
         "src/start.ts",
-        "file:///repo/src/start.ts",
+        activeUri,
       ),
     ).toBe(false);
 

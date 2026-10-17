@@ -60,6 +60,21 @@ const DEFAULT_KEEPALIVE_INTERVAL_MS = 20_000;
 const DEFAULT_KEEPALIVE_TIMEOUT_MS = 10_000;
 const DEFAULT_RECONNECT_DELAY_MS = 1_000;
 const DEFAULT_TRANSPORT_DISCONNECT_GRACE_MS = 15_000;
+export function workerReconnectDelayMs(
+  baseMs: number,
+  failedAttempts: number,
+  random = Math.random,
+): number {
+  const ceiling = Math.min(
+    15_000,
+    baseMs * 2 ** Math.min(4, Math.max(0, failedAttempts - 1)),
+  );
+  return Math.max(
+    1,
+    Math.floor(ceiling * (0.75 + Math.min(1, Math.max(0, random())) * 0.25)),
+  );
+}
+
 type CommandEnvelopeDelivery = "sent" | "queued" | "dropped";
 
 function workerCommandFailureCode(error: unknown): string | undefined {
@@ -431,6 +446,10 @@ export class WorkerConnection {
     }
     if (wasCurrent && !this.#closed && !this.#authenticationRejected) {
       this.scheduleTransportDisconnect();
+      const reconnectDelayMs = workerReconnectDelayMs(
+        this.#reconnectDelayMs,
+        this.#connectAttempt,
+      );
       workerLogger.event("warn", "Worker command channel disconnected", {
         event: "worker.connection.disconnected",
         subsystem: "worker-connection",
@@ -439,13 +458,10 @@ export class WorkerConnection {
         status: "retrying",
         workerId: this.config.workerId,
         closeCode: code,
-        reconnectDelayMs: this.#reconnectDelayMs,
+        reconnectDelayMs,
         transportDisconnectGraceMs: this.#transportDisconnectGraceMs,
       });
-      this.#reconnectTimer = setTimeout(
-        () => this.connect(),
-        this.#reconnectDelayMs,
-      );
+      this.#reconnectTimer = setTimeout(() => this.connect(), reconnectDelayMs);
       this.#reconnectTimer.unref();
     }
   }

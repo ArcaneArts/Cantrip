@@ -10,7 +10,7 @@ import {
 describe("worker global Codex skills", () => {
   it("uses the worker user's legacy .codex skills directory by default", () => {
     expect(workerGlobalCodexSkillsRoot("/worker/home", {})).toBe(
-      path.join("/worker/home", ".codex", "skills"),
+      path.join(path.resolve("/worker/home"), ".codex", "skills"),
     );
   });
 
@@ -19,7 +19,7 @@ describe("worker global Codex skills", () => {
       workerGlobalCodexSkillsRoot("/worker/home", {
         CODEX_HOME: "/custom/codex-home",
       }),
-    ).toBe(path.join("/custom/codex-home", "skills"));
+    ).toBe(path.join(path.resolve("/custom/codex-home"), "skills"));
   });
 
   it("keeps global roots while deduplicating project roots", () => {

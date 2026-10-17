@@ -1570,6 +1570,85 @@ describe("WorkerLinkManager", () => {
     await manager.close();
   });
 
+  it("keeps a healthy carrier and sibling streams after a transient session renewal error", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+    const carrier = new FakeCarrier("local");
+    const setup = dependencies({ local: async () => carrier });
+    setup.dependency.now = Date.now;
+    vi.mocked(setup.dependency.renewSession)
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockImplementation(async () => ({
+        ...session(),
+        lease: {
+          ...session().lease,
+          expiresAt: new Date(Date.now() + 300_000).toISOString(),
+        },
+      }));
+    const manager = new WorkerLinkManager(setup.dependency);
+    const reference = await manager.acquire("worker-1");
+    const firstOpening = reference.link.openStream(
+      grant(reference.link.session),
+      "interactive",
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    acceptOpen(carrier);
+    const first = await firstOpening;
+    const secondOpening = reference.link.openStream(
+      grant(reference.link.session),
+      "interactive",
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    const secondIndex = carrier.sent
+      .map((frame) => frame.header.kind)
+      .lastIndexOf("open");
+    acceptOpen(carrier, secondIndex);
+    const second = await secondOpening;
+    const closed = vi.fn();
+    first.onClose(closed);
+    second.onClose(closed);
+    await vi.advanceTimersByTimeAsync(270_000);
+    expect(carrier.closed).toBe(false);
+    expect(closed).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(250);
+    expect(setup.dependency.renewSession).toHaveBeenCalledTimes(2);
+    expect(setup.dependency.createSession).toHaveBeenCalledOnce();
+    reference.release();
+    await manager.close();
+  });
+
+  it("ignores an outstanding renewal after the client identity is retired", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+    const pending = deferred<WorkerLinkSession>();
+    const carrier = new FakeCarrier("local");
+    const setup = dependencies({
+      local: async () => carrier,
+      renew: () => pending.promise,
+    });
+    setup.dependency.now = Date.now;
+    const manager = new WorkerLinkManager(setup.dependency);
+    const reference = await manager.acquire("worker-1");
+    await vi.advanceTimersByTimeAsync(270_000);
+    setup.invalidateIdentity();
+    pending.resolve({
+      ...session(),
+      lease: {
+        ...session().lease,
+        expiresAt: new Date(now + 900_000).toISOString(),
+      },
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(carrier.closed).toBe(true);
+    expect(manager.getStatusSnapshot()).toEqual([]);
+    expect(reference.link.session.lease.expiresAt).toBe(
+      session().lease.expiresAt,
+    );
+    expect(setup.dependency.createSession).toHaveBeenCalledOnce();
+    reference.release();
+    await manager.close();
+  });
+
   it("adopts a renewed route generation and reconnects without stale authority", async () => {
     vi.useFakeTimers();
     const initialLocal = new FakeCarrier("local", 4);

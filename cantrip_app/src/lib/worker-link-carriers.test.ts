@@ -172,106 +172,124 @@ describe("WorkerLink carriers", () => {
     carrier.close();
   });
 
-  it("activates and renews LOCAL after the broker proves its identity", async () => {
-    vi.useFakeTimers();
-    const keyPair = await crypto.subtle.generateKey({ name: "Ed25519" }, true, [
-      "sign",
-      "verify",
-    ]);
-    const publicKey = new Uint8Array(
-      await crypto.subtle.exportKey("raw", keyPair.publicKey),
-    );
-    const fingerprint = hex(
-      new Uint8Array(await crypto.subtle.digest("SHA-256", publicKey)),
-    );
-    const ticket: DirectAttachmentTicket = {
-      broker: {
-        available: true,
-        leaseRenewal: true,
-        protocol: "ws-v1",
-        loopbackHost: "127.0.0.1",
-        loopbackPort: 43123,
-        instanceId: "44444444-4444-4444-8444-444444444444",
-        publicKey: base64Url(publicKey),
-        fingerprint,
-      },
-      binding: {
-        capabilityId: "55555555-5555-4555-8555-555555555555",
-        ownerId: "owner-1",
-        authSessionId: "account-session-1",
-        workerId: "worker-1",
-        resourceKind: "worker-link",
-        resourceId: session.sessionId,
-        attachmentId: session.sessionId,
-        channels: ["worker-link"],
-        expiresAt: "2099-08-26T12:05:00.000Z",
-        leaseExpiresAt: "2099-08-26T12:01:00.000Z",
-      },
-      secret: "s".repeat(43),
-    };
-    let socket!: FakeSocket;
-    const activated = vi.fn(async () => undefined);
-    const recorded = vi
-      .fn<() => Promise<void>>()
-      .mockResolvedValueOnce(undefined)
-      .mockResolvedValueOnce(undefined)
-      .mockRejectedValueOnce(new Error("lease rejected"));
-    const released = vi.fn(async () => undefined);
-    const carrierPromise = openWorkerLinkLocalCarrier({
-      activateCapability: activated,
-      createTicket: async () => ticket,
-      createWebSocket: (url) => {
-        socket = new FakeSocket(url, (data) => {
-          if (typeof data !== "string") return;
-          const initialize = JSON.parse(data) as { challenge: string };
-          void crypto.subtle
-            .sign(
-              { name: "Ed25519" },
-              keyPair.privateKey,
-              new TextEncoder().encode(
-                `cantrip-direct-v1\0${ticket.binding.capabilityId}\0${initialize.challenge}`,
-              ),
-            )
-            .then((signature) =>
-              socket.message(
-                JSON.stringify({
-                  type: "ready",
-                  directSessionId: "66666666-6666-4666-8666-666666666666",
-                  brokerInstanceId: ticket.broker.instanceId,
-                  fingerprint,
-                  challenge: initialize.challenge,
-                  signature: base64Url(new Uint8Array(signature)),
-                  leaseExpiresAt: ticket.binding.leaseExpiresAt,
-                }),
-              ),
-            );
-        });
-        queueMicrotask(() => socket.open());
-        return socket;
-      },
-      recordActivity: recorded,
-      releaseCapability: released,
-      session,
-    });
+  it.each(["revoked", "transient"])(
+    "activates and renews LOCAL after the broker proves its identity (%s)",
+    async (failure) => {
+      vi.useFakeTimers();
+      const keyPair = await crypto.subtle.generateKey(
+        { name: "Ed25519" },
+        true,
+        ["sign", "verify"],
+      );
+      const publicKey = new Uint8Array(
+        await crypto.subtle.exportKey("raw", keyPair.publicKey),
+      );
+      const fingerprint = hex(
+        new Uint8Array(await crypto.subtle.digest("SHA-256", publicKey)),
+      );
+      const ticket: DirectAttachmentTicket = {
+        broker: {
+          available: true,
+          leaseRenewal: true,
+          protocol: "ws-v1",
+          loopbackHost: "127.0.0.1",
+          loopbackPort: 43123,
+          instanceId: "44444444-4444-4444-8444-444444444444",
+          publicKey: base64Url(publicKey),
+          fingerprint,
+        },
+        binding: {
+          capabilityId: "55555555-5555-4555-8555-555555555555",
+          ownerId: "owner-1",
+          authSessionId: "account-session-1",
+          workerId: "worker-1",
+          resourceKind: "worker-link",
+          resourceId: session.sessionId,
+          attachmentId: session.sessionId,
+          channels: ["worker-link"],
+          expiresAt: "2099-08-26T12:05:00.000Z",
+          leaseExpiresAt: "2099-08-26T12:01:00.000Z",
+        },
+        secret: "s".repeat(43),
+      };
+      let socket!: FakeSocket;
+      const activated = vi.fn(async () => undefined);
+      const recorded = vi
+        .fn<() => Promise<void>>()
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(
+          failure === "revoked"
+            ? Object.assign(new Error("lease rejected"), { status: 409 })
+            : new TypeError("Failed to fetch"),
+        )
+        .mockResolvedValue(undefined);
+      const released = vi.fn(async () => undefined);
+      const carrierPromise = openWorkerLinkLocalCarrier({
+        activateCapability: activated,
+        createTicket: async () => ticket,
+        createWebSocket: (url) => {
+          socket = new FakeSocket(url, (data) => {
+            if (typeof data !== "string") return;
+            const initialize = JSON.parse(data) as { challenge: string };
+            void crypto.subtle
+              .sign(
+                { name: "Ed25519" },
+                keyPair.privateKey,
+                new TextEncoder().encode(
+                  `cantrip-direct-v1\0${ticket.binding.capabilityId}\0${initialize.challenge}`,
+                ),
+              )
+              .then((signature) =>
+                socket.message(
+                  JSON.stringify({
+                    type: "ready",
+                    directSessionId: "66666666-6666-4666-8666-666666666666",
+                    brokerInstanceId: ticket.broker.instanceId,
+                    fingerprint,
+                    challenge: initialize.challenge,
+                    signature: base64Url(new Uint8Array(signature)),
+                    leaseExpiresAt: ticket.binding.leaseExpiresAt,
+                  }),
+                ),
+              );
+          });
+          queueMicrotask(() => socket.open());
+          return socket;
+        },
+        recordActivity: recorded,
+        releaseCapability: released,
+        session,
+      });
 
-    const carrier = await carrierPromise;
-    expect(carrier.route).toBe("local");
-    expect(socket.url).toBe("ws://127.0.0.1:43123/direct/v1");
-    expect(ticket.secret).toBe("");
-    expect(activated).toHaveBeenCalledWith(
-      session.sessionId,
-      ticket.binding.capabilityId,
-    );
-    expect(recorded).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(20_000);
-    await vi.advanceTimersByTimeAsync(20_000);
-    expect(recorded).toHaveBeenCalledTimes(2);
-    expect(socket.closed).toBe(false);
-    await vi.advanceTimersByTimeAsync(20_000);
-    await vi.waitFor(() => expect(socket.closed).toBe(true));
-    expect(recorded).toHaveBeenCalledTimes(3);
-    await vi.waitFor(() => expect(released).toHaveBeenCalledOnce());
-  });
+      const carrier = await carrierPromise;
+      expect(carrier.route).toBe("local");
+      expect(socket.url).toBe("ws://127.0.0.1:43123/direct/v1");
+      expect(ticket.secret).toBe("");
+      expect(activated).toHaveBeenCalledWith(
+        session.sessionId,
+        ticket.binding.capabilityId,
+      );
+      expect(recorded).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(20_000);
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(recorded).toHaveBeenCalledTimes(2);
+      expect(socket.closed).toBe(false);
+      await vi.advanceTimersByTimeAsync(20_000);
+      if (failure === "revoked") {
+        expect(socket.closed).toBe(true);
+        expect(recorded).toHaveBeenCalledTimes(3);
+        await vi.waitFor(() => expect(released).toHaveBeenCalledOnce());
+      } else {
+        expect(socket.closed).toBe(false);
+        await vi.advanceTimersByTimeAsync(250);
+        expect(recorded).toHaveBeenCalledTimes(4);
+        expect(socket.closed).toBe(false);
+        expect(released).not.toHaveBeenCalled();
+        carrier.close();
+      }
+    },
+  );
 });
 
 function base64Url(value: Uint8Array): string {

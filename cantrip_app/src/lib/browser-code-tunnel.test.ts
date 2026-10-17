@@ -1541,6 +1541,52 @@ describe("shared browser Code transport pooling", () => {
 });
 
 describe("browser Code attachment terminal state", () => {
+  it.each([false, true])(
+    "owns a fragmented binary HTTP body (chunked=%s)",
+    async (chunked) => {
+      const encoder = new TextEncoder();
+      const body = Uint8Array.of(0, 255, 13, 10, 128, 42);
+      const head = encoder.encode(
+        `HTTP/1.1 200 OK\r\n${chunked ? "Transfer-Encoding: chunked" : "Content-Length: 6"}\r\n\r\n`,
+      );
+      const framing = chunked ? encoder.encode("6\r\n") : new Uint8Array();
+      const tail = chunked ? encoder.encode("\r\n0\r\n\r\n") : new Uint8Array();
+      const wire = new Uint8Array(
+        head.length + framing.length + body.length + tail.length,
+      );
+      wire.set(head);
+      wire.set(framing, head.length);
+      wire.set(body, head.length + framing.length);
+      wire.set(tail, head.length + framing.length + body.length);
+      let receive: ((chunk: Uint8Array) => void) | undefined;
+      const connection = {
+        close: vi.fn(),
+        onData: (listener: (chunk: Uint8Array) => void) => {
+          receive = listener;
+        },
+        send: vi.fn().mockResolvedValue(undefined),
+        waitClosed: async () => {
+          for (let index = 0; index < wire.length; index += 7)
+            receive?.(wire.subarray(index, index + 7));
+        },
+      };
+      const result = await proxyBrowserCodeHttp(
+        { openConnection: async () => connection } as never,
+        httpRequest("owned-binary"),
+      );
+      expect(result.status).toBe(200);
+      expect(result.body.byteLength).toBe(body.length);
+      expect(new Uint8Array(result.body)).toEqual(body);
+      wire.fill(99);
+      expect(new Uint8Array(result.body)).toEqual(body);
+      expect(
+        result.headers.some(
+          ([name]) => name.toLowerCase() === "transfer-encoding",
+        ),
+      ).toBe(false);
+    },
+  );
+
   it("keeps the request stream open until the proxied HTTP response closes", async () => {
     const response = new TextEncoder().encode(
       "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\neditor-ready",
