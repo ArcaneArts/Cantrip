@@ -657,6 +657,8 @@ Local reproduction and validation logs are retained under
 ### #2095: exact CLI Run source routing
 
 PR: [#2122](https://github.com/ArcaneArts/Cantrip/pull/2122).
+Merged as `eeca0beab`; issue closed automatically. Primary synchronized and
+the owned worktree was archived after preserving the evidence.
 
 The named regression still fails on merged main `caa00b5be`: its setup prefers
 the Beta project replica but expects Run definitions from Alpha. The current
@@ -687,3 +689,26 @@ Validation on `codex/issue-2095-cli-routing`:
   tracked in #2106, and the full check is not green.
 - Formatting and diff checks pass. Logs and the failure-name comparison are
   retained with this issue's evidence.
+
+### #2118: Windows model-configuration initialization budget
+
+The fixture, database connection implementation, migrations and lockfile on
+base `eeca0beab` match the files in the failing Windows
+[run 38604558879](https://github.com/ArcaneArts/Cantrip/actions/runs/38604558879).
+That run records successful PGlite connections taking 11,069–13,421 ms and the
+model-configuration `beforeAll` exhausting its implicit 10,000 ms limit. The
+unmodified fixture passes locally on macOS; that does not invalidate the
+measured Windows failure.
+
+The initialization hook now has an explicit 30,000 ms budget. Individual test
+deadlines, production startup behavior, configuration/authority assertions and
+cleanup remain unchanged. The Windows native CI job additionally starts this
+fixture in three fresh Vitest processes. Any failed run fails the job immediately;
+these are repeated acceptance runs, not retries that discard failures. The
+existing native three-platform and PostgreSQL jobs remain required evidence
+before this issue is closed.
+
+Three fresh local runs pass both assertions each time, with measured database
+startup of 2,085, 2,089 and 2,215 ms. Formatting and diff checks pass. The broader
+repository check and platform acceptance are in progress; this issue remains
+open until their outcomes are recorded.
