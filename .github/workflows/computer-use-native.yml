@@ -141,3 +141,11 @@ jobs:
       - run: node scripts/cantrip-cua/smoke.mjs
       - run: node scripts/cantrip-cua/build.mjs --release
       - run: pnpm cua:test:worker
+      - name: Repeat cold model-configuration database fixtures on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            pnpm --filter @cantrip/server exec vitest run test/model-configuration-api.test.ts --maxWorkers=2
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
