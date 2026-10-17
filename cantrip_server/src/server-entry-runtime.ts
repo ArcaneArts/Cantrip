@@ -17,6 +17,7 @@ import {
 import { ProjectShareTunnelBroker } from "./project-shares/tunnel.js";
 import { WorkerBridge } from "./workers/bridge.js";
 import { CoordinatedWorkerBridge } from "./workers/coordinated-bridge.js";
+import { installServerShutdownHandlers } from "./server-shutdown.js";
 
 export type ServerStartOptions = Pick<BuildAppOptions, "workerLinkTiming">;
 
@@ -82,7 +83,6 @@ async function start(options: ServerStartOptions): Promise<void> {
     workerBridge,
     workerLinkTiming: options.workerLinkTiming,
   });
-  let closing = false;
 
   if (config.allowInsecureRemote) {
     app.log.warn(
@@ -90,33 +90,7 @@ async function start(options: ServerStartOptions): Promise<void> {
     );
   }
 
-  const close = async (signal: NodeJS.Signals) => {
-    if (closing) {
-      return;
-    }
-
-    closing = true;
-    const shutdownStartedAtMs = Date.now();
-    serverLogger.event("info", "Cantrip Server shutdown began", {
-      event: "server.shutdown.started",
-      subsystem: "server-lifecycle",
-      operation: "shutdown",
-      reasonCode: signal.toLowerCase(),
-      status: "stopping",
-    });
-    await app.close();
-    serverLogger.event("info", "Cantrip Server shutdown completed", {
-      event: "server.shutdown.completed",
-      subsystem: "server-lifecycle",
-      operation: "shutdown",
-      status: "stopped",
-      durationMs: Date.now() - shutdownStartedAtMs,
-    });
-    await closeServerLogArchive();
-  };
-
-  process.once("SIGINT", () => void close("SIGINT"));
-  process.once("SIGTERM", () => void close("SIGTERM"));
+  installServerShutdownHandlers(app);
 
   await app.listen({ host: config.host, port: config.port });
   serverLogger.event("info", "Cantrip Server is ready", {

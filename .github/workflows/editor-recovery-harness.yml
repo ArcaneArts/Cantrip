@@ -13,6 +13,11 @@ on:
       - cantrip_worker/test/code-supervisor.test.ts
       - cantrip_worker/test/code-workbench-bridge.test.ts
       - cantrip_app/src/components/settings/settings-page.test.tsx
+      - cantrip_server/src/server-entry-runtime.ts
+      - cantrip_server/src/server-shutdown.ts
+      - cantrip_server/src/code/**
+      - cantrip_server/test/server-shutdown*.test.ts
+      - cantrip_server/test/fixtures/server-shutdown.ts
       - .github/workflows/editor-recovery-harness.yml
   workflow_dispatch:
 
@@ -39,3 +44,4 @@ jobs:
       - run: node --test scripts/network-tranche-two-acceptance.test.mjs scripts/codex-built-runtime.test.mjs
       - run: pnpm --filter @cantrip/app exec vitest run src/lib/worker-link-peer-carrier.test.ts src/lib/browser-code-tunnel.test.ts src/components/settings/settings-page.test.tsx --maxWorkers=2
       - run: pnpm --filter @cantrip/worker exec vitest run test/code-workbench-bridge.test.ts test/code-supervisor.test.ts --maxWorkers=1
+      - run: pnpm --filter @cantrip/server exec vitest run test/server-shutdown.test.ts test/server-shutdown-handlers.test.ts test/code-tunnel.test.ts test/shared-code-transport.test.ts test/logger-archive.test.ts --maxWorkers=2
