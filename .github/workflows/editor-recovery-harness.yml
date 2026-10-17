@@ -11,6 +11,17 @@ on:
       - cantrip_worker/src/code/workbench-bridge.ts
       - cantrip_worker/src/code/supervisor.ts
       - cantrip_worker/test/code-supervisor.test.ts
+      - cantrip_worker/src/managed-runtimes/**
+      - cantrip_worker/src/codegraph/archive.ts
+      - cantrip_worker/src/codegraph/runtime.ts
+      - cantrip_worker/src/index.ts
+      - cantrip_worker/test/runtime-archive-shutdown.test.ts
+      - cantrip_worker/test/runtime-shutdown.test.ts
+      - cantrip_worker/test/fixtures/runtime-shutdown.ts
+      - cantrip_worker/test/managed-runtime.test.ts
+      - cantrip_worker/test/searxng-runtime.test.ts
+      - cantrip_worker/test/playwright-runtime-manager.test.ts
+      - cantrip_worker/test/codegraph-runtime.test.ts
       - cantrip_worker/test/code-workbench-bridge.test.ts
       - cantrip_app/src/components/settings/settings-page.test.tsx
       - cantrip_server/src/server-entry-runtime.ts
@@ -45,3 +56,5 @@ jobs:
       - run: pnpm --filter @cantrip/app exec vitest run src/lib/worker-link-peer-carrier.test.ts src/lib/browser-code-tunnel.test.ts src/components/settings/settings-page.test.tsx --maxWorkers=2
       - run: pnpm --filter @cantrip/worker exec vitest run test/code-workbench-bridge.test.ts test/code-supervisor.test.ts --maxWorkers=1
       - run: pnpm --filter @cantrip/server exec vitest run test/server-shutdown.test.ts test/server-shutdown-handlers.test.ts test/code-tunnel.test.ts test/shared-code-transport.test.ts test/logger-archive.test.ts --maxWorkers=2
+      - name: Managed runtime shutdown and ownership
+        run: pnpm --filter @cantrip/worker exec vitest run test/runtime-shutdown.test.ts test/runtime-archive-shutdown.test.ts test/managed-runtime.test.ts test/searxng-runtime.test.ts test/playwright-runtime-manager.test.ts test/codegraph-runtime.test.ts src/runtime-loop.test.ts --maxWorkers=2

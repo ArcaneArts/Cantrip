@@ -8,6 +8,7 @@ import {
   mkdtemp,
   mkdir,
   readFile,
+  readdir,
   rm,
   symlink,
   writeFile,
@@ -295,4 +296,115 @@ describe("managed runtime foundation", () => {
       failure: { category: "signature", retryable: false },
     });
   });
+  it.each(["download", "staged-probe", "promoted-probe", "reinstall"])(
+    "cancels %s, joins cleanup, and preserves the last verified runtime",
+    async (phase) => {
+      const dataDirectory = await temporaryDirectory();
+      const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+      const first = await signedFixture("2026.8.1", privateKey);
+      const second = await signedFixture("2026.8.2", privateKey);
+      let artifact = first.artifact;
+      let cancelling = false;
+      let reached = false;
+      const archives = new Map([
+        [first.artifact.downloadUrl, first.archive],
+        [second.artifact.downloadUrl, second.archive],
+      ]);
+      const normalFetch = fixtureFetch(
+        () => ({
+          schemaVersion: 1,
+          channel: "test",
+          publishedAt: "2026-08-26T12:00:00.000Z",
+          artifacts: [artifact],
+        }),
+        archives,
+      );
+      const installer = new ManagedRuntimeInstaller({
+        component: "searxng",
+        dataDirectory,
+        manifestUrl: "https://releases.cantrip.art/manifest.json",
+        publicKeys: {
+          "test-release-key": publicKey.export({ type: "spki", format: "pem" }),
+        },
+        fetch: async (input, options) => {
+          if (
+            !cancelling ||
+            phase !== "download" ||
+            String(input) !== artifact.downloadUrl
+          )
+            return await normalFetch(input, options);
+          const signal = options!.signal!;
+          const body = new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(second.archive.subarray(0, 10));
+              signal.addEventListener(
+                "abort",
+                () => controller.error(signal.reason),
+                { once: true },
+              );
+              reached = true;
+            },
+          });
+          return new Response(body);
+        },
+        async validateInventory({ runtimeDirectory }) {
+          await readFile(path.join(runtimeDirectory, "launcher"));
+        },
+        async probe({ runtimeDirectory, signal }) {
+          const staged = runtimeDirectory.includes(
+            `${path.sep}staging${path.sep}`,
+          );
+          if (
+            !cancelling ||
+            phase === "download" ||
+            (phase === "staged-probe" ? !staged : staged)
+          )
+            return;
+          reached = true;
+          await new Promise<void>((_resolve, reject) => {
+            signal.addEventListener("abort", () => reject(signal.reason), {
+              once: true,
+            });
+          });
+        },
+      });
+      try {
+        expect((await installer.prepare()).state).toBe("ready");
+        const runtimeRoot = path.join(
+          dataDirectory,
+          "managed-runtimes",
+          "searxng",
+        );
+        const pointer = await readFile(
+          path.join(runtimeRoot, "current.json"),
+          "utf8",
+        );
+        const installed = installer.runtimeDirectory()!;
+        cancelling = true;
+        artifact = phase === "reinstall" ? first.artifact : second.artifact;
+        const operation =
+          phase === "reinstall" ? installer.reinstall() : installer.prepare();
+        await expect.poll(() => reached).toBe(true);
+        await installer.close();
+        await operation;
+        expect(
+          await readFile(path.join(runtimeRoot, "current.json"), "utf8"),
+        ).toBe(pointer);
+        expect(await readFile(path.join(installed, "launcher"), "utf8")).toBe(
+          "runtime 2026.8.1\n",
+        );
+        expect(await readdir(path.join(runtimeRoot, "downloads"))).toEqual([]);
+        expect(await readdir(path.join(runtimeRoot, "staging"))).toEqual([]);
+        expect(await readdir(path.join(runtimeRoot, "versions"))).toEqual([
+          first.artifact.sha256,
+        ]);
+        await expect(
+          readFile(path.join(runtimeRoot, "install.lock")),
+        ).rejects.toMatchObject({ code: "ENOENT" });
+        expect(installer.status().failure).not.toBeNull();
+      } finally {
+        await installer.close();
+      }
+    },
+  );
 });

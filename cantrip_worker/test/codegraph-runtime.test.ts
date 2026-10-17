@@ -44,6 +44,7 @@ async function fakeRelease(
   version: string,
   options: {
     mcpHealthy?: boolean;
+    mcpBlocked?: boolean;
     mcpShutdownDelaySeconds?: number;
     reportedVersion?: string;
   } = {},
@@ -62,8 +63,9 @@ async function fakeRelease(
   const executable = path.join(bin, "codegraph");
   const mcpResponse =
     'read request; echo \'{"jsonrpc":"2.0","id":0,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"codegraph","version":"test"}}}\'';
-  const mcpBehavior =
-    options.mcpHealthy === false
+  const mcpBehavior = options.mcpBlocked
+    ? 'echo $$ > "$0.probe-pid"; read request; read shutdown'
+    : options.mcpHealthy === false
       ? "exit 9"
       : options.mcpShutdownDelaySeconds
         ? `trap 'sleep ${options.mcpShutdownDelaySeconds}; touch "$0.shutdown-complete"; exit 0' TERM\n  ${mcpResponse}\n  read shutdown`
@@ -583,5 +585,90 @@ describe.skipIf(process.platform === "win32")(
       });
       expect(conditionalRequestObserved).toBe(true);
     });
+  },
+);
+
+it.skipIf(process.platform === "win32")(
+  "joins both cancelled CodeGraph artifact downloads before cleanup",
+  async () => {
+    const dataDirectory = await mkdtemp(
+      path.join(tmpdir(), "cantrip-codegraph-cancel-download-"),
+    );
+    directories.push(dataDirectory);
+    const release = await fakeRelease("8.0.0");
+    const normalFetch = releaseFetch(() => release);
+    let downloads = 0;
+    let aborted = 0;
+    const manager = new CodeGraphRuntimeManager({
+      dataDirectory,
+      fetch: async (input, options) => {
+        if (String(input).includes("/releases/latest"))
+          return await normalFetch(input, options);
+        downloads += 1;
+        const signal = options!.signal!;
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              signal.addEventListener(
+                "abort",
+                () => {
+                  aborted += 1;
+                  controller.error(signal.reason);
+                },
+                { once: true },
+              );
+            },
+          }),
+        );
+      },
+    });
+    try {
+      await manager.prepare();
+      await expect.poll(() => downloads).toBe(2);
+      await manager.close();
+      expect(aborted).toBe(2);
+      const root = path.join(dataDirectory, "tools", "codegraph");
+      expect(await readdir(path.join(root, "downloads"))).toEqual([]);
+      expect(await readdir(path.join(root, "staging"))).toEqual([]);
+      expect(manager.status().installedVersion).toBeNull();
+    } finally {
+      await manager.close();
+    }
+  },
+);
+
+it.skipIf(process.platform === "win32")(
+  "retires the actual CodeGraph probe process before removing its staged runtime",
+  async () => {
+    const dataDirectory = await mkdtemp(
+      path.join(tmpdir(), "cantrip-codegraph-cancel-probe-"),
+    );
+    directories.push(dataDirectory);
+    const release = await fakeRelease("8.0.0", { mcpBlocked: true });
+    const manager = new CodeGraphRuntimeManager({
+      dataDirectory,
+      fetch: releaseFetch(() => release),
+    });
+    const staging = path.join(dataDirectory, "tools", "codegraph", "staging");
+    let marker: string | undefined;
+    try {
+      await manager.prepare();
+      await expect
+        .poll(async () => {
+          marker = (await readdir(staging, { recursive: true })).find((name) =>
+            name.endsWith(".probe-pid"),
+          );
+          return marker;
+        })
+        .toBeDefined();
+      const pid = Number(await readFile(path.join(staging, marker!), "utf8"));
+      expect(() => process.kill(pid, 0)).not.toThrow();
+      await manager.close();
+      expect(() => process.kill(pid, 0)).toThrow();
+      expect(await readdir(staging)).toEqual([]);
+      expect(manager.status().installedVersion).toBeNull();
+    } finally {
+      await manager.close();
+    }
   },
 );
