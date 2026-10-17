@@ -823,3 +823,66 @@ recovery, while successful launches elsewhere in that same run took 509–1,520
 ms. This third behavior fixture now uses the same normal 3,000 ms startup
 budget. The intentional deadline regression and other fixture budgets remain
 unchanged. Full local and platform suites are repeated for the corrected head.
+
+Final #2113 outcome: PR #2125 merged as `cb2c91faa`; the issue closed
+automatically. All nine jobs passed on final head `1d354081b` in the
+[command](https://github.com/ArcaneArts/Cantrip/actions/runs/39069219934),
+[editor recovery](https://github.com/ArcaneArts/Cantrip/actions/runs/39069219907)
+and [runtime](https://github.com/ArcaneArts/Cantrip/actions/runs/39069219968)
+workflows. Windows passed all 92 supervisor/bridge tests and 83 app contract
+tests, including both startup regression cases and all three healthy-recovery
+fixtures. The local complete supervisor suite passed 77 tests; the complete
+worker suite passed 2,632 with 133 existing skips. The standard check retained
+the same 78 failed server test/suite labels: 1,412 passed, 71 failed and 70
+skipped. Primary was synchronized and the owned worktree archived after
+preserving evidence.
+
+### #2111: exclusive capture persistence before evidence acknowledgement
+
+Implementation: [#2126](https://github.com/ArcaneArts/Cantrip/pull/2126), on
+`codex/issue-2111-evidence-persistence`. The PR records final validation and
+merge status.
+
+A controlled filesystem/client interleaving reproduces the reported `ENOENT`
+at the original `persist` read. Capture put its event in the retry queue before
+its first immutable write completed. An already running pump could write the
+same event, publish it, receive acknowledgement and remove it while capture
+resumed from `EEXIST` and tried to read it. The reproducer uses actual immutable
+file creation, acknowledgement and removal; no timing fallback makes it pass.
+
+Capture now enters the retry queue only after persistence fails. The queue
+retains the exact original event and ciphertext. Active capture remains tracked
+by the existing write set, which shutdown awaits. Strict duplicate comparisons,
+encryption ownership checks, acknowledgement and durable permission recovery
+remain intact.
+
+The regression proves one immutable write, one publication and actual removal
+without an error. Additional cases cover a failed write's byte-identical retry,
+genuinely missing/malformed/changed committed records and owner/server changes
+during encryption. Missing or corrupt committed evidence still rejects and
+never publishes. All 23 delivery and permission-recovery tests pass locally;
+strict compilation of the changed fixture also passes. The existing runtime
+workflow now runs both suites on Linux, macOS and Windows and triggers on the
+affected production files. Full worker and standard repository checks run
+independently; their results and platform/merge evidence are recorded in this
+issue's PR and under `~/.codex/issue-fix-pass/20261017/`.
+
+Windows acceptance exposed a separate blocker in the same persistence helper:
+recursive `mkdir` returned a namespaced `\\?\` path, while the ancestor loop
+walked the ordinary caller path. It reached `C:\` without matching the
+namespaced boundary and repeated forever. A real Windows filesystem diagnostic
+captured both paths and the repeated root. The new evidence suites timed out;
+the older runtime suite independently passed all 281 enabled Windows tests.
+
+After performing the actual `mkdir`, Windows now returns before the directory
+flush loop, matching the existing Windows no-op in `flushHistoryDirectory`.
+POSIX directory durability and file-content flushing remain unchanged. Direct
+filesystem tests cover ordinary and Windows namespaced nested paths, existing
+contents and an occupied-file creation error. The temporary diagnostic is
+removed; all evidence suites run as a separate bounded CI step. This correction
+requires a fresh complete platform run before merge.
+
+The command matrix also reproduced #2116's original marker timeout with its
+unchanged PowerShell replay fixture. That issue was reopened with the failed
+run and placed back in the queue. A diagnostic retry passed; this does not
+establish a fix for #2116. Its follow-up remains a separate cycle.

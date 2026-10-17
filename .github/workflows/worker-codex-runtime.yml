@@ -5,6 +5,8 @@ on:
     paths:
       - cantrip_worker/src/codex/**
       - cantrip_worker/src/native-model-attribution.ts
+      - cantrip_worker/src/native-settings-delivery.ts
+      - cantrip_worker/src/native-history-outbox-files.ts
       - cantrip_worker/test/**
       - packages/protocol/src/**
       - .github/workflows/worker-codex-runtime.yml
@@ -37,6 +39,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
       - run: pnpm --filter @cantrip/worker typecheck
+      - name: Native settings evidence and permission recovery
+        if: ${{ !cancelled() }}
+        timeout-minutes: 3
+        run: pnpm --filter @cantrip/worker exec vitest run test/native-history-outbox-files.test.ts test/native-settings-delivery.test.ts test/managed-native-permission-recovery.test.ts --maxWorkers=2 --reporter=verbose
       - name: Native RPC, turn streaming, ownership, cancellation and history
         if: ${{ !cancelled() }}
         run: pnpm --filter @cantrip/worker exec vitest run test/codex-rpc-correlation.test.ts test/app-server.test.ts test/goal-streaming.test.ts test/subagent-ownership.test.ts test/computer-use-execution-lifetime.test.ts test/thread-session-preparation.test.ts test/native-replacement-settings-integration.test.ts test/native-inherited-turn-settings.test.ts test/native-managed-queue-execution.test.ts test/native-managed-command-session.test.ts test/native-managed-queue-tui.test.ts test/provider-account-portability.test.ts test/external-chatgpt-auth.test.ts test/pending-interaction-publication.test.ts test/managed-native-history.test.ts test/native-settings-correlation.test.ts test/mcp-resource-context.test.ts test/admitted-native-execution.test.ts test/gui-native-permission-deferred.test.ts test/managed-session-mcp.test.ts --maxWorkers=2
