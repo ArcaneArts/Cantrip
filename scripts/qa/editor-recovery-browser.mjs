@@ -487,6 +487,7 @@ try {
             .getByRole("button", { name: "Switch project", exact: true })
             .click({ timeout: 5_000 });
           await page
+            .locator('[data-slot="project-switcher-footer"]')
             .getByRole("button", { name: "New project", exact: true })
             .click({ timeout: 5_000 });
           break;
@@ -953,6 +954,14 @@ try {
     await run("route-replacement", async () => {
       const marker = `ROUTE_${Date.now()}`;
       await type(marker);
+      const originalSrc = await page
+        .locator("iframe:visible")
+        .getAttribute("src");
+      assert.ok(
+        !(await readFile(path.join(repository, "qa.txt"), "utf8")).includes(
+          marker,
+        ),
+      );
       const sessions = currentSessions();
       assert.ok(
         sessions.length,
@@ -976,7 +985,39 @@ try {
       const next = `ROUTE_NEXT_${Date.now()}`;
       await type(next);
       await save(next);
-      return { replacements, savedAfterRelayReplacement: true };
+      const recoveredSrc = await page
+        .locator("iframe:visible")
+        .getAttribute("src");
+      assert.equal(
+        new URL(recoveredSrc, fixture.origin).searchParams.get("workspace"),
+        new URL(originalSrc, fixture.origin).searchParams.get("workspace"),
+        "Recovered edits must still target the original Code workspace",
+      );
+      const saved = await readFile(path.join(repository, "qa.txt"), "utf8");
+      assert.ok(saved.includes(marker) && saved.includes(next));
+      const recoveredSessions = currentSessions();
+      assert.ok(
+        recoveredSessions.length,
+        "Recovery must establish current carrier authority",
+      );
+      assert.ok(
+        recoveredSessions.every((current) =>
+          sessions.every(
+            (previous) =>
+              current.sessionId !== previous.sessionId ||
+              current.routeGeneration > previous.routeGeneration,
+          ),
+        ),
+        "Recovery must retire the replaced carrier authority",
+      );
+      return {
+        replacements,
+        savedAfterRelayReplacement: true,
+        secondEditSaved: true,
+        sameFrameUrl: recoveredSrc === originalSrc,
+        dirtyBufferRetained: true,
+        recoveredWithCurrentAuthority: true,
+      };
     });
     for (const mode of ["hard-expiry", "explicit-revocation"])
       await run(mode, async () => {

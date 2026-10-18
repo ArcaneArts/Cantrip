@@ -161,7 +161,7 @@ describe("WorkerLink carriers", () => {
     });
     const carrier = await carrierPromise;
     expect(socket.url).toBe(
-      "wss://cantrip.example/api/worker-links/11111111-1111-4111-8111-111111111111/connect?clientInstanceId=client-instance-1",
+      "wss://cantrip.example/api/worker-links/11111111-1111-4111-8111-111111111111/connect?clientInstanceId=client-instance-1&routeGeneration=1",
     );
     const frame = createWorkerLinkFrame(closeHeader, new Uint8Array());
     expect(carrier.send(frame)).toBe(true);

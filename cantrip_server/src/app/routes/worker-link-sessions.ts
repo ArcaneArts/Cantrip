@@ -588,10 +588,48 @@ export function installWorkerLinkSessionRoutes(
 
   app.get<{
     Params: { sessionId: string };
-    Querystring: { clientInstanceId?: string };
+    Querystring: { clientInstanceId?: string; routeGeneration?: string };
   }>(
     "/api/worker-links/:sessionId/connect",
-    { websocket: true },
+    {
+      websocket: true,
+      preValidation: async (request, reply) => {
+        if (
+          !request.headers.origin ||
+          !config.appOrigins.includes(request.headers.origin)
+        ) {
+          return reply.code(403).send({ error: "Origin not allowed." });
+        }
+        const principal = authenticatedPrincipal(request);
+        const session = await workerLinks.sessionForAuthorization(
+          request.params.sessionId,
+          {
+            accountSessionId:
+              principal.sessionId ?? `local:${principal.user.id}`,
+            ownerId: principal.user.id,
+          },
+        );
+        if (
+          !session ||
+          request.query.clientInstanceId !== session.identity.clientInstanceId
+        ) {
+          return reply
+            .code(404)
+            .send({ error: "WorkerLink session is unavailable." });
+        }
+        // Reject stale authority before HTTP 101: opening and immediately closing
+        // a stale socket would reset the client's bounded reconnect attempts.
+        // Older clients omit this field and retain the binary frame fences.
+        if (
+          request.query.routeGeneration !== undefined &&
+          request.query.routeGeneration !== String(session.routeGeneration)
+        ) {
+          return reply
+            .code(409)
+            .send({ error: "WorkerLink route generation is stale." });
+        }
+      },
+    },
     async (socket, request) => {
       if (
         !request.headers.origin ||
@@ -612,7 +650,9 @@ export function installWorkerLinkSessionRoutes(
       );
       if (
         !session ||
-        request.query.clientInstanceId !== session.identity.clientInstanceId
+        request.query.clientInstanceId !== session.identity.clientInstanceId ||
+        (request.query.routeGeneration !== undefined &&
+          request.query.routeGeneration !== String(session.routeGeneration))
       ) {
         socket.close(1008, "WorkerLink session is unavailable");
         return;
