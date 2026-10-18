@@ -591,6 +591,7 @@ describe("TerminalManager", () => {
   );
 
   it("runs an interactive shell in the requested source folder", async () => {
+    if (process.platform === "win32") process.env.COMSPEC = "cmd.exe";
     const afterCursor = readWorkerLogs({
       afterCursor: 0,
       limit: 200,
@@ -600,7 +601,14 @@ describe("TerminalManager", () => {
     directories.push(directory);
     const manager = createTerminalManager({
       environmentForCwd: (cwd) =>
-        cwd === directory ? { SETUP_TERMINAL_FIXTURE: "captured" } : {},
+        cwd === directory
+          ? {
+              SETUP_TERMINAL_FIXTURE: "captured",
+              ...(process.platform === "win32"
+                ? { PROMPT: "CANTRIP_SHELL_READY$G" }
+                : {}),
+            }
+          : {},
     });
     expect(manager.snapshot("missing-terminal", 100)).toEqual({
       terminalId: "missing-terminal",
@@ -610,6 +618,12 @@ describe("TerminalManager", () => {
       exitCode: null,
     });
     let output = "";
+    const waitForShellPrompt = async () => {
+      if (process.platform === "win32")
+        await expect
+          .poll(() => output, { timeout: 5_000 })
+          .toContain("CANTRIP_SHELL_READY>");
+    };
     const events: string[] = [];
     const exited = manager.open(
       "terminal-1",
@@ -628,10 +642,11 @@ describe("TerminalManager", () => {
       .poll(() => events.includes("terminal.ready"), { timeout: 5_000 })
       .toBe(true);
     expect(events.slice(0, 2)).toEqual(["terminal.output", "terminal.ready"]);
+    await waitForShellPrompt();
     manager.input(
       "terminal-1",
       process.platform === "win32"
-        ? "echo CANTRIP_PTY_OK:$env:SETUP_TERMINAL_FIXTURE\r"
+        ? "echo CANTRIP_PTY_OK:%SETUP_TERMINAL_FIXTURE%\r"
         : "printf 'CANTRIP_PTY_OK:%s\\n' \"$SETUP_TERMINAL_FIXTURE\"\r",
     );
     await expect
@@ -668,6 +683,7 @@ describe("TerminalManager", () => {
         if (event.type === "terminal.output") output += event.data;
       },
     );
+    await waitForShellPrompt();
     manager.input(
       "terminal-1",
       process.platform === "win32"
