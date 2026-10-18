@@ -1633,7 +1633,7 @@ no added failure labels relative to the 78-label merged baseline.
 
 The first new CI matrix exposes cold-database fixture budgets: initialization
 alone takes up to 6.8 seconds on Linux, 9.9 on macOS and 12.6 on Windows. Twenty
-tests that create their own database and nine database setup hooks now have
+tests that create their own database and ten database setup hooks now have
 explicit 30-second fixture budgets. Unit tests, polling deadlines and production
 timeouts are unchanged. The original five-second test and ten-second hook
 budgets could expire before assertions started. All three platforms already

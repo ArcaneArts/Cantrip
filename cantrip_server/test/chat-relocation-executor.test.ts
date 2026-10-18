@@ -61,7 +61,7 @@ beforeAll(async () => {
     config.agentModel,
     config.ollamaBaseUrl,
   );
-});
+}, 30_000);
 
 afterAll(async () => {
   await database?.close();
