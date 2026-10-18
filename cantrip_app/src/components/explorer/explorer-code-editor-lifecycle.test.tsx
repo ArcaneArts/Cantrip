@@ -484,6 +484,149 @@ afterEach(() => {
 });
 
 describe("ExplorerCodeEditor warm lifecycle", () => {
+  it.each([false, true])(
+    "reacquires missing tunnel authority and opens the latest file (desktop=%s)",
+    async (desktop) => {
+      vi.useFakeTimers();
+      tauri.enabled = desktop;
+      mockFreshSharedSessions();
+      const renderer = await mountReadySharedEditor("src/first.ts");
+      const initialOwned =
+        desktopCode.preferSharedProtectedCodeAttachment.mock.calls[0]![0];
+      await act(async () => renderer.update(editor("src/latest.ts")));
+      await flushImmediateTimers();
+      desktopCode.preferSharedProtectedCodeAttachment.mockRejectedValueOnce(
+        new api.CantripApiError("Tunnel not found.", 404),
+      );
+
+      await act(async () => emitBrowserUnavailable(sharedTransportId));
+      await flushImmediateTimers();
+      expect(
+        api.createProtectedExplorerCodeSessionAttachment,
+      ).toHaveBeenCalledTimes(2);
+      expect(
+        api.createProtectedExplorerCodeSessionAttachment,
+      ).toHaveBeenLastCalledWith(
+        "explorer-1",
+        "src/latest.ts",
+        "worker-1",
+        "worktree-1",
+        "dark",
+      );
+      expect(
+        desktopCode.stopSharedProtectedCodeAttachment,
+      ).toHaveBeenCalledWith(initialOwned);
+      expect(
+        api.releaseProtectedExplorerCodeSessionAttachment,
+      ).toHaveBeenCalledWith(initialOwned);
+      await act(async () => testWindow.sendMessage());
+      await flushImmediateTimers();
+      expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenLastCalledWith(
+        expect.objectContaining({ attachmentId: "attachment-2" }),
+        "src/latest.ts",
+        expect.any(Object),
+      );
+      expect(renderer.root.findByType("iframe").props.className).toBe(
+        "frame-ready",
+      );
+      await act(async () => renderer.unmount());
+    },
+  );
+
+  it("bounds missing-tunnel replacements and lets manual Retry acquire fresh authority", async () => {
+    vi.useFakeTimers();
+    mockFreshSharedSessions();
+    const renderer = await mountReadySharedEditor("src/first.ts");
+    for (
+      let attempt = 0;
+      attempt <= EXPLORER_CODE_SESSION_RECOVERY_LIMIT;
+      attempt += 1
+    ) {
+      desktopCode.preferSharedProtectedCodeAttachment.mockRejectedValueOnce(
+        new api.CantripApiError("Tunnel not found.", 404),
+      );
+      await act(async () => emitBrowserUnavailable(sharedTransportId));
+      await flushImmediateTimers();
+      if (attempt < EXPLORER_CODE_SESSION_RECOVERY_LIMIT) {
+        await act(async () => testWindow.sendMessage());
+        await flushImmediateTimers();
+      }
+    }
+    expect(
+      api.createProtectedExplorerCodeSessionAttachment,
+    ).toHaveBeenCalledTimes(4);
+    expect(renderer.root.findAllByType("iframe")).toHaveLength(0);
+    expect(JSON.stringify(renderer.toJSON())).toContain(
+      "three recovery attempts",
+    );
+    await act(async () => renderer.root.findByType("button").props.onClick());
+    await flushImmediateTimers();
+    expect(
+      api.createProtectedExplorerCodeSessionAttachment,
+    ).toHaveBeenCalledTimes(5);
+    await act(async () => renderer.unmount());
+  });
+
+  it.each([
+    [401, "Tunnel not found."],
+    [403, "Tunnel not found."],
+    [404, "A different missing resource."],
+    [409, "Tunnel not found."],
+    [410, "Tunnel not found."],
+  ] as const)(
+    "does not replace tunnel authority for HTTP %s: %s",
+    async (status, message) => {
+      vi.useFakeTimers();
+      mockFreshSharedSessions();
+      const renderer = await mountReadySharedEditor("src/first.ts");
+      desktopCode.preferSharedProtectedCodeAttachment.mockRejectedValueOnce(
+        new api.CantripApiError(message, status),
+      );
+      await act(async () => emitBrowserUnavailable(sharedTransportId));
+      await flushImmediateTimers();
+      expect(
+        api.createProtectedExplorerCodeSessionAttachment,
+      ).toHaveBeenCalledOnce();
+      expect(
+        api.releaseProtectedExplorerCodeSessionAttachment,
+      ).not.toHaveBeenCalled();
+      expect(JSON.stringify(renderer.toJSON())).toContain(message);
+      await act(async () => renderer.unmount());
+    },
+  );
+
+  it("ignores a missing tunnel from a superseded worktree recovery", async () => {
+    vi.useFakeTimers();
+    mockFreshSharedSessions();
+    const renderer = await mountReadySharedEditor("src/first.ts");
+    let rejectRecovery!: (error: unknown) => void;
+    desktopCode.preferSharedProtectedCodeAttachment.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectRecovery = reject;
+        }),
+    );
+    await act(async () => emitBrowserUnavailable(sharedTransportId));
+    await flushImmediateTimers();
+    await act(async () =>
+      renderer.update(editor("src/latest.ts", { worktreeId: "worktree-2" })),
+    );
+    await flushImmediateTimers();
+    const replacementUrl = renderer.root.findByType("iframe").props.src;
+    await act(async () =>
+      rejectRecovery(new api.CantripApiError("Tunnel not found.", 404)),
+    );
+    await flushImmediateTimers();
+    expect(
+      api.createProtectedExplorerCodeSessionAttachment,
+    ).toHaveBeenCalledTimes(2);
+    expect(renderer.root.findByType("iframe").props.src).toBe(replacementUrl);
+    expect(JSON.stringify(renderer.toJSON())).not.toContain(
+      "Tunnel not found.",
+    );
+    await act(async () => renderer.unmount());
+  });
+
   it("reacquires a missing session lease and opens the latest file without manual Retry", async () => {
     vi.useFakeTimers();
     tauri.enabled = true;

@@ -1419,3 +1419,58 @@ buffer and iframe URL, and saves a second edit after recovery. The initialized
 save passes in 43,003 ms and carrier recovery in 19,295 ms. The worker exits
 naturally with code 0 in 120 ms; all 14 observed owned PIDs retire and zero
 fixture sockets remain. Both cold and initialized browser commands exit 0.
+
+Final #2099 delivery: [PR #2139](https://github.com/ArcaneArts/Cantrip/pull/2139)
+merged as `58db2da0d` and closed the issue. All 19 CI jobs passed on their first
+attempt, including both werift package entry points on Linux, macOS and Windows.
+The standard check retained exactly the previous 78 server test/suite failure
+labels: 1,433 passed, 71 failed and 70 skipped. Primary was synchronized and the
+owned lane archived after preserving fixtures and verifying process retirement.
+
+### #2101: blocked first pass — authority replacement loses unsaved editor state
+
+Branch: `codex/issue-2101-server-recovery`. This investigation remains a draft
+with **no auto-merge**. The candidate below is incomplete and must not ship:
+although it replaces a missing tunnel, it can discard the existing dirty buffer.
+The issue remains open and receives one revisit after the independent queue.
+
+On merged `9820cb575`, cold typing/save passes. Restarting only the server with
+the same durable fixture directories fails the actual save in 32,096 ms and
+shows `Tunnel not found.`. Lost Pong, tested after a worker/client reset, fails
+its 90-second visible-buffer deadline (135,304 ms including fault setup). These
+are current failures; the older metadata message is not assumed to explain both.
+
+The browser tunnel correctly rejects its missing authority. The editor then
+retries the same owned tunnel, including after manual Retry. A candidate routes
+that exact HTTP 404 through the existing bounded fresh-session lifecycle. Nine
+controlled cases cover fresh authority for the latest file on browser/desktop,
+the three-replacement limit, other authoritative errors, and stale worktree
+responses. Three fail the original implementation. The candidate passes all 165
+tests in the editor lifecycle/browser tunnel/desktop Code matrix and app types.
+
+Actual browser acceptance rejects the candidate. Server restart restores a
+rendered editor but loses the unsaved marker and fails its save in 32,930 ms.
+Lost Pong still fails in 137,316 ms. A separate temporary diagnostic reused the
+original Code session ID through the existing authorized create API. After
+server restart it retained the original workspace and saved the dirty marker in
+17,797 ms, then failed the harness's unchanged same-iframe-URL assertion. That
+diagnostic still lost the Pong marker and showed `Protected path unavailable`
+after 137,302 ms. It is not a complete recovery result. The diagnostic session
+cache was removed; no API changes or relaxed browser assertions are committed.
+
+The worker generates a fresh workspace incarnation for a new Code session.
+Safely resuming a surviving session therefore needs explicit checks of the
+original binding, worker process, session incarnation and workspace under newly
+issued authority. The lost-Pong path also needs a verified way to preserve or
+handoff the dirty editor state when the old session is retired, plus metadata
+rehydration after worker readiness returns. Reusing IDs or accepting a rendered
+iframe alone is insufficient. Next attempt: add that controlled continuity
+contract, then rerun both actual faults with retained content and two real saves.
+No external credentials, devices or manual verification are required.
+
+All observed browser-owned PIDs retired naturally during the candidate and
+diagnostic runs; the fixtures closed with zero sockets. Sanitized case summaries
+and private raw fixtures are preserved under
+`~/.codex/issue-fix-pass/20261017/2101-evidence/` and `2101-owned-fixtures/`.
+The standard check and draft CI results are recorded in the issue PR. The owned
+lane is intentionally retained for the single revisit; Primary remains unchanged.
