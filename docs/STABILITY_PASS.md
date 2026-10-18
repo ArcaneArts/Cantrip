@@ -1186,3 +1186,51 @@ single passing diagnostic run did not close it. #2099 was reopened after a real
 carrier-recovery fixture required SIGKILL despite logging shutdown completion.
 Both have agent-runnable evidence and a next step on their trackers. Their work
 is separate from this terminal cycle.
+
+Final terminal delivery: [PR #2133](https://github.com/ArcaneArts/Cantrip/pull/2133)
+merged as `ee14858bf` and closed #2116. All six final platform jobs passed in
+the [command](https://github.com/ArcaneArts/Cantrip/actions/runs/39082551469) and
+[runtime](https://github.com/ArcaneArts/Cantrip/actions/runs/39082551508) workflows.
+Windows passed 156 command tests with nine existing skips, both startup cases,
+and ten fresh terminal runs with five passing cases and eight platform skips
+each. No console-attachment errors remained. The macOS command job first hit
+an unchanged GitHub lifecycle fixture timeout, now tracked by #2134; the same
+job passed 164 tests with one skip on retry. Local terminal/CLI coverage passed
+44 tests. The standard check retained exactly the previous 78 failed server
+test/suite labels: 1,418 passed, 71 failed and 70 skipped. Primary was synchronized
+and the owned terminal lane archived.
+
+### #2099 follow-up: closed ICE connections stay retired after gathering
+
+Branch: `codex/issue-2099-ice-close`. The issue PR records final browser, platform,
+standard-check and delivery results.
+
+Actual carrier-recovery browser runs still required SIGKILL roughly eight seconds
+after worker shutdown, despite its completion log. External diagnostic probes
+identified referenced 20 ms werift ICE connection timers. A second probe captured
+the causal transition: three already-closed connections became `completed` when
+their pending candidate gathering settled. Their owning peers remained closed;
+the overwritten connection state defeated the connect loop's existing closed
+guard. No TCP or UDP handles remained. Runtime installation status was incidental.
+
+A focused pnpm patch for werift 0.24.3 preserves `closed` when candidate gathering
+finishes. Both the ESM bundle used by the worker and the CommonJS distribution
+receive the same change. Normal gathering, ICE checks, cancellation and shutdown
+ownership remain intact. There is no forced exit or timer-unref workaround.
+
+The regression runs both real package entry points in fresh Node children. A
+loopback UDP STUN request proves gathering has a pending operation before the
+connection closes; its real bounded gather timeout then settles. Both original
+entry points failed with `completed` instead of `closed`. With the patch, both
+preserve `closed`, reject further connection establishment, and exit naturally.
+The existing editor recovery workflow runs this test on Linux, macOS and Windows.
+Sanitized evidence is retained under
+`~/.codex/issue-fix-pass/20261017/2099-recurrence-evidence/`; private fixture
+credentials remain outside published evidence.
+
+The fixed actual-browser carrier fixture completed cold typing/save in 16,273 ms
+and reproduced the independent #2100 second-edit cover. Its shutdown check passed:
+the worker exited naturally with code 0 in 228 ms while the managed browser was
+installing and search/CodeGraph were ready. All 15 observed owned PIDs retired;
+the fixture closed with zero sockets. No diagnostic probes were injected in this
+acceptance run. Worker types and 82 focused lifecycle/WorkerLink tests pass.

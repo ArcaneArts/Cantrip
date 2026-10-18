@@ -1,0 +1,32 @@
+diff --git a/lib/ice/src/ice.js b/lib/ice/src/ice.js
+index 51b7191d8458a417ab2b6c91ad78e4362482588f..8c71d155c346e6cd54c100f64d937eed343ee172 100644
+--- a/lib/ice/src/ice.js
++++ b/lib/ice/src/ice.js
+@@ -702,7 +702,10 @@ class Connection {
+             await Promise.allSettled(candidatePromises);
+             this.localCandidatesEnd = true;
+         }
+-        this.setState("completed");
++        // Candidate gathering may settle after close has retired the connection.
++        if (this.state !== "closed") {
++            this.setState("completed");
++        }
+     }
+     appendLocalCandidate(candidate) {
+         this.localCandidates.push(candidate);
+diff --git a/lib/index.mjs b/lib/index.mjs
+index 80c1d2fdc88eec788f50a94b913c8b4c8a2c1189..1c9707cfb78121163356726a8dd5c9f2b7783139 100644
+--- a/lib/index.mjs
++++ b/lib/index.mjs
+@@ -8946,7 +8946,10 @@ var Connection = class {
+       await Promise.allSettled(candidatePromises);
+       this.localCandidatesEnd = true;
+     }
+-    this.setState("completed");
++    // Candidate gathering may settle after close has retired the connection.
++    if (this.state !== "closed") {
++      this.setState("completed");
++    }
+   }
+   appendLocalCandidate(candidate) {
+     this.localCandidates.push(candidate);

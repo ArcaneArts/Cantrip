@@ -7,6 +7,7 @@ settings:
 
 patchedDependencies:
   webdav-server@2.6.3: 6d9ab239e94069970537406374780261e3dc976865163fad26cafb6643d2da2f
+  werift@0.24.3: 9e63211242b63adbee1c8117f74f99fbe188ae49fa64c8516da4d43ab7b901ff
 
 importers:
   .:
@@ -382,7 +383,7 @@ importers:
         version: 2.6.3(patch_hash=6d9ab239e94069970537406374780261e3dc976865163fad26cafb6643d2da2f)
       werift:
         specifier: ^0.24.3
-        version: 0.24.3(supports-color@10.2.2)
+        version: 0.24.3(patch_hash=9e63211242b63adbee1c8117f74f99fbe188ae49fa64c8516da4d43ab7b901ff)(supports-color@10.2.2)
       ws:
         specifier: ^8.21.2
         version: 8.21.2
@@ -14997,7 +14998,7 @@ snapshots:
 
   webidl-conversions@7.0.0: {}
 
-  werift@0.24.3(supports-color@10.2.2):
+  werift@0.24.3(patch_hash=9e63211242b63adbee1c8117f74f99fbe188ae49fa64c8516da4d43ab7b901ff)(supports-color@10.2.2):
     dependencies:
       "@fidm/x509": 1.2.1
       "@noble/curves": 1.9.7
