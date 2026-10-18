@@ -634,6 +634,33 @@ export function ExplorerCodeEditor({
     [consumeConnectionRetry],
   );
 
+  const replaceMissingSharedSession = useCallback(
+    (expectedBindingKey: string) => {
+      if (closingRef.current || bindingKeyRef.current !== expectedBindingKey) {
+        return;
+      }
+      // Missing server authority cannot be recovered through its old tunnel.
+      // The connection lifecycle retires the old lease before acquiring a
+      // newly authorized session for the current worktree and file intent.
+      sharedTransportUnavailableRef.current = false;
+      setReadyKey(null);
+      setPreferredAttachment(null);
+      const canRecover =
+        sessionRecoveryCountRef.current < EXPLORER_CODE_SESSION_RECOVERY_LIMIT;
+      connectionRetryableRef.current = canRecover;
+      if (canRecover) {
+        sessionRecoveryCountRef.current += 1;
+        setError(null);
+        requestConnectionRetry(expectedBindingKey);
+      } else {
+        setError(
+          "Cantrip Code lost its session after three recovery attempts. Retry to reconnect this editor.",
+        );
+      }
+    },
+    [requestConnectionRetry],
+  );
+
   const requestFrameRetry = useCallback(
     (expectedBindingKey: string, expectedNonce: string | null): boolean => {
       if (
@@ -1203,6 +1230,14 @@ export function ExplorerCodeEditor({
       })
       .catch((recoveryError: unknown) => {
         if (cancelled || bindingKeyRef.current !== expectedBindingKey) return;
+        if (
+          recoveryError instanceof CantripApiError &&
+          recoveryError.status === 404 &&
+          recoveryError.message === "Tunnel not found."
+        ) {
+          replaceMissingSharedSession(expectedBindingKey);
+          return;
+        }
         setError(
           errorMessage(recoveryError, SHARED_TRANSPORT_RECOVERY_FAILED_MESSAGE),
         );
@@ -1220,6 +1255,7 @@ export function ExplorerCodeEditor({
     bindingKey,
     closing,
     preferredAttachment,
+    replaceMissingSharedSession,
     sharedTransportRecoveryAttempt,
     startupEligible,
     workerOnline,
@@ -1261,24 +1297,7 @@ export function ExplorerCodeEditor({
           renewalError.status === 404 &&
           renewalError.message === "Code session attachment not found.";
         if (missingSession) {
-          // A lost server lease cannot be revived by reloading its old route.
-          // Retire it through the serialized lifecycle and acquire a fresh
-          // session, just as Retry does, while retaining the latest file intent.
-          setReadyKey(null);
-          setPreferredAttachment(null);
-          const canRecover =
-            sessionRecoveryCountRef.current <
-            EXPLORER_CODE_SESSION_RECOVERY_LIMIT;
-          connectionRetryableRef.current = canRecover;
-          if (canRecover) {
-            sessionRecoveryCountRef.current += 1;
-            setError(null);
-            requestConnectionRetry(bindingKey);
-          } else {
-            setError(
-              "Cantrip Code lost its session after three recovery attempts. Retry to reconnect this editor.",
-            );
-          }
+          replaceMissingSharedSession(bindingKey);
           return;
         }
         const authoritative =
@@ -1309,7 +1328,7 @@ export function ExplorerCodeEditor({
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [bindingKey, closing, preferredAttachment, requestConnectionRetry]);
+  }, [bindingKey, closing, preferredAttachment, replaceMissingSharedSession]);
 
   useEffect(() => {
     // Replacing a failed startup route consumes the existing retry budget.
