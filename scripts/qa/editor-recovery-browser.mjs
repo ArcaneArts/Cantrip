@@ -16,9 +16,12 @@ const selectedCases = new Set(selectedCase?.split(",") ?? []);
 const seenCases = new Set();
 const folderBootstrapCase = selectedCases.has("folder-bootstrap");
 const modeHydrationCase = selectedCases.has("mode-hydration");
+const repositoryCase =
+  !selectedCase || selectedCases.has("worktree-switch-cycles");
 const settingsRelease = Promise.withResolvers();
 const fixture = await startEditorRecoveryFixture({
   requireExplicitBootstrapRefresh: folderBootstrapCase,
+  repositoryProject: repositoryCase,
   logicalCreditControl: !selectedCase || selectedCases.has("congested-sibling"),
 });
 let browser;
@@ -58,6 +61,8 @@ try {
   const results = [];
   const errors = [];
   const observedSessions = new Map();
+  const codeAttachments = new Map();
+  const retiredCodeAttachments = new Set();
   const renewals = [];
   const networkTimings = [];
   browser = await chromium.launch({
@@ -158,6 +163,28 @@ try {
   });
   page.on("response", async (response) => {
     const pathname = new URL(response.url()).pathname;
+    if (pathname.includes("/code-session-attachments")) {
+      const request = response.request();
+      if (response.ok() && request.method() === "DELETE")
+        retiredCodeAttachments.add(pathname.split("/").at(-1));
+      if (response.ok() && request.method() === "POST") {
+        try {
+          const { session } = await response.json();
+          codeAttachments.set(session.attachmentId, {
+            attachmentId: session.attachmentId,
+            sessionId: session.sessionId,
+            workspacePath: session.runtime.workspaceUri
+              ? decodeURIComponent(
+                  new URL(session.runtime.workspaceUri).pathname,
+                )
+              : null,
+            worktreeId: request.postDataJSON().expectedWorktreeId,
+          });
+        } catch {
+          // An aborted response cannot establish an observed attachment.
+        }
+      }
+    }
     if (!pathname.includes("worker-link")) return;
     if (pathname.endsWith("/renew"))
       renewals.push({ pathname, status: response.status(), at: Date.now() });
@@ -312,16 +339,11 @@ try {
     await page.keyboard.insertText(text);
     await waitForText(text);
   };
-  const save = async (marker) => {
+  const save = async (marker, file = path.join(repository, "qa.txt")) => {
     const deadline = Date.now() + 30_000;
     let nextAttempt = 0;
     while (Date.now() < deadline) {
-      if (
-        (await readFile(path.join(repository, "qa.txt"), "utf8")).includes(
-          marker,
-        )
-      )
-        return;
+      if ((await readFile(file, "utf8")).includes(marker)) return;
       if (Date.now() >= nextAttempt) {
         await page.keyboard.press(
           process.platform === "darwin" ? "Meta+s" : "Control+s",
@@ -435,6 +457,10 @@ try {
           await page
             .getByRole("button", { name: "Switch project", exact: true })
             .click({ timeout: 5_000 });
+          if (repositoryCase) {
+            await page.keyboard.press("Escape");
+            break;
+          }
           await page
             .locator('[data-slot="project-switcher-footer"]')
             .getByRole("button", { name: "New project", exact: true })
@@ -445,56 +471,99 @@ try {
           if (modeRetries++ >= 2 || !(await chatMode.isVisible())) throw error;
         }
       }
-      await page.getByRole("menuitem", { name: "Folder", exact: true }).click();
-      await page
-        .getByRole("button", { name: "Use existing", exact: true })
-        .click();
-      await page
-        .getByRole("textbox", { name: "Project name", exact: true })
-        .fill("Editor Recovery QA");
-      await page
-        .getByPlaceholder("/path/on/the/selected/worker", { exact: true })
-        .fill(repository);
-      await page
-        .getByRole("button", { name: "Use folder", exact: true })
-        .click();
-      await writeFile(
-        path.join(fixture.directory, "project-submitted.aria.txt"),
-        await page.locator("body").ariaSnapshot(),
-      );
-      // Retry the actual operation only after its specific transient failure.
-      // First onboarding can precede the worker's initial protected-key refresh.
       let setupRetries = 0;
-      for (; setupRetries < 3; setupRetries += 1) {
-        try {
-          await page
-            .getByRole("treeitem", { name: "qa.txt", exact: true })
-            .waitFor({ timeout: 5_000 });
-          break;
-        } catch (error) {
-          if (
-            !(await page
-              .getByRole("dialog", {
-                name: "Add folder project",
-                exact: true,
-              })
-              .isVisible())
-          )
+      if (repositoryCase) {
+        for (;;) {
+          try {
+            await page.evaluate(() => window.__qaRepositoryFixture.create());
             break;
-          if (folderBootstrapCase) throw error;
-          if (
-            !(await page
-              .getByText(
+          } catch (error) {
+            if (
+              setupRetries >= 3 ||
+              !error.message.includes(
                 "The worker's protected server connection is unavailable.",
-                { exact: true },
               )
-              .isVisible())
-          )
-            throw error;
-          await delay(1_000 * (setupRetries + 1));
-          await page
-            .getByRole("button", { name: "Use folder", exact: true })
-            .click();
+            )
+              throw error;
+            await delay(1_000 * ++setupRetries);
+          }
+        }
+        const deadline = Date.now() + 30_000;
+        let project;
+        do {
+          project = await page.evaluate(() =>
+            window.__qaRepositoryFixture.project(),
+          );
+          if (project?.setupStatus === "ready") break;
+          await delay(100);
+        } while (Date.now() < deadline);
+        assert.equal(
+          project?.setupStatus,
+          "ready",
+          "The real worker direct-attachment job must finish",
+        );
+        assert.equal(project.capabilities.worktrees, true);
+        assert.equal(project.source.path, repository);
+        await page
+          .getByRole("button", { name: "Switch project", exact: true })
+          .click();
+        await page
+          .locator('[data-slot="project-switcher-project"]')
+          .filter({ hasText: fixture.repositorySeed.name })
+          .click();
+      } else {
+        await page
+          .getByRole("menuitem", { name: "Folder", exact: true })
+          .click();
+        await page
+          .getByRole("button", { name: "Use existing", exact: true })
+          .click();
+        await page
+          .getByRole("textbox", { name: "Project name", exact: true })
+          .fill("Editor Recovery QA");
+        await page
+          .getByPlaceholder("/path/on/the/selected/worker", { exact: true })
+          .fill(repository);
+        await page
+          .getByRole("button", { name: "Use folder", exact: true })
+          .click();
+        await writeFile(
+          path.join(fixture.directory, "project-submitted.aria.txt"),
+          await page.locator("body").ariaSnapshot(),
+        );
+        // Retry the actual operation only after its specific transient failure.
+        // First onboarding can precede the worker's initial protected-key refresh.
+        for (; setupRetries < 3; setupRetries += 1) {
+          try {
+            await page
+              .getByRole("treeitem", { name: "qa.txt", exact: true })
+              .waitFor({ timeout: 5_000 });
+            break;
+          } catch (error) {
+            if (
+              !(await page
+                .getByRole("dialog", {
+                  name: "Add folder project",
+                  exact: true,
+                })
+                .isVisible())
+            )
+              break;
+            if (folderBootstrapCase) throw error;
+            if (
+              !(await page
+                .getByText(
+                  "The worker's protected server connection is unavailable.",
+                  { exact: true },
+                )
+                .isVisible())
+            )
+              throw error;
+            await delay(1_000 * (setupRetries + 1));
+            await page
+              .getByRole("button", { name: "Use folder", exact: true })
+              .click();
+          }
         }
       }
       const fileOpenStartedAt = Date.now();
@@ -1238,23 +1307,166 @@ try {
       }
     });
     await run("worktree-switch-cycles", async () => {
-      await page
-        .getByRole("button", {
-          name: "Project actions for Editor Recovery QA",
-          exact: true,
-        })
-        .click();
-      const menu = await page.getByRole("menu").ariaSnapshot();
-      await writeFile(
-        path.join(fixture.directory, "worktree-menu.aria.txt"),
-        menu,
-      );
-      await page.keyboard.press("Escape");
-      const error = new Error(
-        "Disposable folder projects have no worktree capability. Local Git initialization does not convert the project. Repository import requires GitHub authentication/catalog; an isolated local repository-project seed is needed. See docs/WORKTREES.md and RepositoryImporter.",
-      );
-      error.name = "BlockedCaseError";
-      throw error;
+      const primary = (
+        await page.evaluate(() => window.__qaRepositoryFixture.worktrees())
+      ).find((worktree) => worktree.isPrimary);
+      assert.ok(primary, "The real repository import must create Primary");
+      assert.equal(primary.path, repository);
+      const worktrees = [primary];
+      for (const suffix of ["alpha", "beta"]) {
+        worktrees.push(
+          await page.evaluate(
+            (input) => window.__qaRepositoryFixture.createWorktree(input),
+            {
+              name: `QA ${suffix}`,
+              sourceWorktreeId: primary.id,
+              mode: {
+                type: "newBranch",
+                branch: `qa-${suffix}`,
+                startPoint: "HEAD",
+              },
+            },
+          ),
+        );
+      }
+      assert.equal(new Set(worktrees.map(({ id }) => id)).size, 3);
+      assert.equal(new Set(worktrees.map(({ path }) => path)).size, 3);
+      for (const worktree of worktrees) {
+        assert.equal(worktree.workerId, fixture.workerId);
+        assert.equal(worktree.lifecycleState, "ready");
+        assert.ok(
+          worktree.path.startsWith(`${fixture.directory}${path.sep}`),
+          "Every checkout must belong to this disposable fixture",
+        );
+        const { stdout } = await exec("git", [
+          "-C",
+          worktree.path,
+          "rev-parse",
+          "--show-toplevel",
+        ]);
+        assert.equal(stdout.trim(), worktree.path);
+      }
+      // The normal live events refresh the UI's worktree queries.
+      let current = primary;
+      const switches = [];
+      for (const next of [
+        worktrees[1],
+        worktrees[2],
+        primary,
+        worktrees[2],
+        worktrees[1],
+        primary,
+      ]) {
+        const beforeFrame = await page
+          .locator("iframe:visible")
+          .elementHandle();
+        const oldWorkspace = new URL(
+          await beforeFrame.getAttribute("src"),
+          fixture.origin,
+        ).searchParams.get("workspace");
+        const oldAttachments = [...codeAttachments.values()].filter(
+          ({ worktreeId, workspacePath, attachmentId }) =>
+            worktreeId === current.id &&
+            workspacePath === oldWorkspace &&
+            !retiredCodeAttachments.has(attachmentId),
+        );
+        assert.ok(
+          oldAttachments.length,
+          "Observe the active authorized attachment before switching",
+        );
+        const beforeFiles = new Map(
+          await Promise.all(
+            worktrees.map(async (worktree) => [
+              worktree.id,
+              await readFile(path.join(worktree.path, "qa.txt"), "utf8"),
+            ]),
+          ),
+        );
+        await page
+          .getByRole("button", { name: current.name, exact: true })
+          .click();
+        await page
+          .getByRole("menuitem", { name: next.name, exact: true })
+          .click();
+        await page
+          .getByRole("button", { name: next.name, exact: true })
+          .waitFor();
+        await page
+          .getByRole("treeitem", { name: "qa.txt", exact: true })
+          .click();
+        await waitForText("Cantrip editor recovery baseline");
+        const src = await page.locator("iframe:visible").getAttribute("src");
+        const workspacePath = new URL(src, fixture.origin).searchParams.get(
+          "workspace",
+        );
+        assert.ok(workspacePath?.startsWith(`${fixture.directory}${path.sep}`));
+        const workspace = JSON.parse(await readFile(workspacePath, "utf8"));
+        assert.deepEqual(
+          workspace.folders.map(({ path }) => path),
+          [next.path],
+        );
+        await disableAutosave();
+        for (let edit = 0; edit < 2; edit += 1) {
+          const marker = `WORKTREE_${switches.length}_${edit}_${Date.now()}`;
+          await type(marker);
+          await save(marker, path.join(next.path, "qa.txt"));
+        }
+        for (const sibling of worktrees.filter(({ id }) => id !== next.id))
+          assert.equal(
+            await readFile(path.join(sibling.path, "qa.txt"), "utf8"),
+            beforeFiles.get(sibling.id),
+            `Saving ${next.name} must not change ${sibling.name}`,
+          );
+        const retirementDeadline = Date.now() + 10_000;
+        while (
+          Date.now() < retirementDeadline &&
+          ((await beforeFrame.evaluate((frame) => frame.isConnected)) ||
+            oldAttachments.some(
+              ({ attachmentId }) => !retiredCodeAttachments.has(attachmentId),
+            ))
+        )
+          await delay(50);
+        assert.equal(
+          await beforeFrame.evaluate((frame) => frame.isConnected),
+          false,
+          "The previous worktree iframe must be removed",
+        );
+        assert.ok(
+          oldAttachments.every(({ attachmentId }) =>
+            retiredCodeAttachments.has(attachmentId),
+          ),
+          `The server must acknowledge release of the outgoing workspace attachment: ${JSON.stringify(oldAttachments.map(({ attachmentId }) => ({ attachmentId, released: retiredCodeAttachments.has(attachmentId) })))}`,
+        );
+        assert.ok(
+          [...codeAttachments.values()].some(
+            ({ worktreeId, workspacePath: observedWorkspace, attachmentId }) =>
+              worktreeId === next.id &&
+              observedWorkspace === workspacePath &&
+              !retiredCodeAttachments.has(attachmentId),
+          ),
+          "The new editor must have its own current authorized attachment",
+        );
+        await beforeFrame.dispose();
+        switches.push({
+          from: current.name,
+          to: next.name,
+          editsSaved: 2,
+          oldFrameRemoved: true,
+          releasedAttachments: oldAttachments.length,
+        });
+        console.log(
+          `QA_EVT ${JSON.stringify({ name: "worktree-switch", ...switches.at(-1) })}`,
+        );
+        current = next;
+      }
+      return {
+        relayBytesPerMinute: 1024 ** 3,
+        worktrees: worktrees.map(({ name, path: checkout }) => ({
+          name,
+          path: path.relative(fixture.directory, checkout),
+        })),
+        switches,
+      };
     });
     await run("preview-pin-cycles", async () => {
       for (let cycle = 0; cycle < 5; cycle += 1) {

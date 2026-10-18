@@ -69,10 +69,16 @@ async function availablePort() {
 export async function startEditorRecoveryFixture({
   requireExplicitBootstrapRefresh = false,
   logicalCreditControl = false,
+  repositoryProject = false,
 } = {}) {
   const runId = randomUUID();
   const directory = path.join(root, ".qa", `editor-${runId}`);
   await mkdir(directory, { recursive: true, mode: 0o700 });
+  const repositorySeed = repositoryProject
+    ? await (
+        await import("./editor-repository-fixture.mjs")
+      ).seedEditorRepository(directory, `qa-${runId}`)
+    : null;
   const events = [];
   const eventCounts = Object.create(null);
   const sockets = new Set();
@@ -269,13 +275,22 @@ export async function startEditorRecoveryFixture({
       root: path.join(root, "cantrip_app"),
       cacheDir: path.join(directory, "vite-cache"),
       configFile: path.join(root, "cantrip_app/vite.config.ts"),
-      plugins: logicalCreditControl
-        ? [
-            (
-              await import("./editor-logical-credit.mjs")
-            ).logicalCreditFixturePlugin(),
-          ]
-        : [],
+      plugins: [
+        ...(logicalCreditControl
+          ? [
+              (
+                await import("./editor-logical-credit.mjs")
+              ).logicalCreditFixturePlugin(),
+            ]
+          : []),
+        ...(repositorySeed
+          ? [
+              (
+                await import("./editor-repository-fixture.mjs")
+              ).editorRepositoryFixturePlugin(repositorySeed),
+            ]
+          : []),
+      ],
       build: { outDir: appDirectory, emptyOutDir: true },
       logLevel: "warn",
     });
@@ -325,6 +340,26 @@ export async function startEditorRecoveryFixture({
       "CANTRIP_SERVER_INSTANCE_ID",
     ])
       delete childEnvironment[name];
+    if (repositoryProject) {
+      // Six cold worktree mounts exceeded the normal 256 MiB/min worker relay
+      // budget. Keep a finite 1 GiB/min fixture budget for repeated full bundles;
+      // production defaults, per-stream credits and all other limits still apply.
+      childEnvironment.CANTRIP_WORKER_RELAY_BYTES_PER_MINUTE = String(
+        1024 ** 3,
+      );
+      childEnvironment.CANTRIP_ACCOUNT_RELAY_BYTES_PER_MINUTE = String(
+        1024 ** 3,
+      );
+      // This case must work without inheriting the user's GitHub credentials.
+      childEnvironment.GH_CONFIG_DIR = path.join(directory, "github-config");
+      for (const name of [
+        "GH_TOKEN",
+        "GITHUB_TOKEN",
+        "GH_ENTERPRISE_TOKEN",
+        "GITHUB_ENTERPRISE_TOKEN",
+      ])
+        delete childEnvironment[name];
+    }
     const launch = (name) => {
       const stream = createWriteStream(path.join(directory, `${name}.log`), {
         flags: "a",
@@ -445,6 +480,7 @@ export async function startEditorRecoveryFixture({
     });
     fixture = {
       directory,
+      repositorySeed,
       origin,
       proxyOrigin,
       events,

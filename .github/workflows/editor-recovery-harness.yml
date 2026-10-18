@@ -56,6 +56,7 @@ jobs:
       - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
       - run: node --check scripts/qa/editor-recovery-browser.mjs
       - run: node --check scripts/qa/editor-recovery-fixture.mjs
+      - run: node --check scripts/qa/editor-repository-fixture.mjs
       - run: node --check scripts/qa/editor-loading-benchmark.mjs
       - run: node --check scripts/qa/editor-http-buffer-benchmark.mjs
       - run: node --test scripts/network-tranche-two-acceptance.test.mjs scripts/codex-built-runtime.test.mjs
