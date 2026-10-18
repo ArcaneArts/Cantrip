@@ -294,11 +294,22 @@ describe("BrowserRemoteSurfaceAdapter", () => {
       );
       await session.attach({ id: attachmentId, viewport });
       const cdp = adapter.session(surfaceId)!;
-      await eventually(
-        async () =>
-          (await cdp.evaluate("Boolean(document.querySelector('#name'))")) ===
-          true,
-      );
+      try {
+        await eventually(
+          async () =>
+            (await cdp.evaluate("Boolean(document.querySelector('#name'))")) ===
+            true,
+        );
+      } catch (cause) {
+        const document = await cdp.evaluate(
+          "({ url: location.href, title: document.title, body: document.body?.innerText, readyState: document.readyState })",
+        );
+        const history = await cdp.command("Page.getNavigationHistory");
+        throw new Error(
+          `Keyboard fixture did not load: ${JSON.stringify({ document, history })}`,
+          { cause },
+        );
+      }
       // Keyboard assertions start at this field; a new headless window need
       // not apply HTML autofocus before its target becomes active on every OS.
       await cdp.command("Page.bringToFront");
