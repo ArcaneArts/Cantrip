@@ -1201,10 +1201,29 @@ is #2106, and the full check is not green.
 The first CI run passed eight of nine jobs. Linux and macOS each executed all
 17 browser tests successfully. Windows passed the new controlled recovery case
 in 2,657 ms and the existing multi-recovery case in 4,271 ms, but an older keyboard
-fixture failed while awaiting HTML autofocus before any keyboard assertion. That
-fixture now waits for its actual input element, brings the target forward and
-explicitly focuses its starting field. It still asserts the focused element and
-all streamed Enter, Space, form, editing and modifier behavior. The corrected
-17-test suite and strict fixture typecheck pass locally; final CI results are
-recorded in the issue PR. The original Windows failure log is retained with the
-evidence.
+fixture failed before any keyboard assertion. Explicitly focusing the initial
+field did not resolve that failure: subsequent diagnostics showed the document
+still at `about:blank`, with no requested URL in navigation history. A later run
+also stalled before the controlled recovery case's initial Home publication.
+These are unresolved startup failures, not passing recovery evidence. The fixture
+now records actual CDP navigation requests, results and page events on failure.
+Final platform results and any remaining limitations are recorded in the issue PR.
+The logs from every failed run remain with the evidence.
+
+Separate regressions observed during this cycle remain tracked independently:
+#2116 was reopened after the Windows command suite reproduced PTY cleanup EBUSY
+and cascading ENOENT; its next unchanged run passing does not resolve that race.
+#2099 was reopened after the actual carrier-recovery browser fixture reported
+worker shutdown completion in 12 ms but required SIGKILL after 8,114 ms while the
+managed browser runtime was installing. All owned processes were retired by the
+fixture fallback, and its evidence was preserved outside Primary.
+
+Cycle disposition: blocked pending Windows initial-navigation isolation. The
+fourth CI run passed all nine jobs, including all 17 actual browser tests on each
+OS, but only diagnostic instrumentation changed since the preceding failure.
+That passing run does not establish a fix for the intermittent initial blank
+page. PR #2132 remains draft, references #2112 without a closing keyword, and has
+no auto-merge enabled. The focused recovery implementation and reproducible
+original failure are preserved. Next step: capture a failing Windows navigation
+trace while preserving the original CDP promise timing, then fix the demonstrated
+startup failure and repeat the real browser suite. No manual testing is required.
