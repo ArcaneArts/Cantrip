@@ -181,7 +181,8 @@ describe("public HTTP hardening", () => {
         method: "POST",
         url: "/api/chats/missing/attachments",
         headers: { "content-type": "application/octet-stream" },
-        payload: Buffer.alloc(1_024 * 1_024 + 1),
+        // The encrypted wire budget includes encoding/envelope overhead.
+        payload: Buffer.alloc(3 * 1_024 * 1_024),
       });
       expect(oversizedUpload.statusCode).toBe(413);
     } finally {

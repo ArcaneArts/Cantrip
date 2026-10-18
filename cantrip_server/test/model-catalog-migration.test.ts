@@ -32,9 +32,11 @@ describe("model catalog migration", () => {
         );
 
         INSERT INTO model_provider_accounts (
-          id, provider_id, label, position, credential_home_key
+          id, provider_id, protected_label, position, credential_home_key
         ) VALUES (
-          'account-1', 'provider-1', 'Personal', 0, 'legacy-provider-1'
+          'account-1', 'provider-1',
+          '{"formatVersion":1,"keyRevision":1,"envelope":{"version":1,"algorithm":"AES-256-GCM","keyRevision":1,"nonce":"AAAAAAAAAAAAAAAA","ciphertext":"AAAAAAAAAAAAAAAAAAAAAA"}}'::jsonb,
+          0, 'legacy-provider-1'
         );
 
         INSERT INTO model_provider_account_workers (

@@ -198,7 +198,14 @@ describe("hosted worker presence", () => {
       );
       await vi.waitFor(() =>
         expect(
-          messages.slice(connectionEventStart).some(isWorkerPresenceEvent),
+          messages
+            .slice(connectionEventStart)
+            .some(
+              (message) =>
+                message.type === "event" &&
+                message.resource === "worker-availability" &&
+                message.scope.kind === "current-user",
+            ),
         ).toBe(true),
       );
 

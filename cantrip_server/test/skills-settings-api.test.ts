@@ -310,11 +310,14 @@ describe.sequential("skills settings API", () => {
     });
   });
 
-  it("rejects a worker that does not own the project", async () => {
+  it("rejects a worker with no project source without dispatching", async () => {
+    const before = commands.length;
     const response = await app.inject({
       method: "GET",
       url: `/api/skills?workerId=other-worker&providerId=${providerId}&projectId=${projectId}&operationId=${crypto.randomUUID()}`,
     });
-    expect(response.statusCode).toBe(409);
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({ error: "Project source not found." });
+    expect(commands).toHaveLength(before);
   });
 });

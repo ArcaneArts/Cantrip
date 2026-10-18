@@ -185,6 +185,7 @@ describe.sequential("chat relocation executor", () => {
       {
         workerId: "worker-source",
         ...protectedProjectFields(),
+        repositoryBlindIndex: "R".repeat(43),
         repositoryId: "relocation-executor-project",
         nameWithOwner: "ArcaneArts/Cantrip",
         url: "https://github.com/ArcaneArts/Cantrip",

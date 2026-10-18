@@ -229,6 +229,7 @@ describe("Z.ai Coding Plan catalog", () => {
       const project = await repository.createGithubProject(LOCAL_USER_ID, {
         workerId: "zai-worker",
         ...protectedProjectFields(),
+        repositoryBlindIndex: "R".repeat(43),
         repositoryId: "zai-migration-repository",
         nameWithOwner: "ArcaneArts/ZaiMigration",
         url: "https://github.com/ArcaneArts/ZaiMigration",

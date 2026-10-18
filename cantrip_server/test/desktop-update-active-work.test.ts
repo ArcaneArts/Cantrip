@@ -85,6 +85,7 @@ beforeAll(async () => {
   const project = await database.repository.createGithubProject(LOCAL_USER_ID, {
     workerId: "desktop-update-worker",
     ...protectedProjectFields(),
+    repositoryBlindIndex: "R".repeat(43),
     repositoryId: "desktop-update-repository",
     nameWithOwner: "ArcaneArts/Cantrip",
     url: "https://github.com/ArcaneArts/Cantrip",

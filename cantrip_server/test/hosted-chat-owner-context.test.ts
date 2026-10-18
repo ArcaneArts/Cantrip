@@ -1,10 +1,13 @@
+import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
+  encryptedChatTurnCreateSchema,
   unprobedCodexRuntimeReport,
   type WorkerEvent,
+  type WorkerCommand,
 } from "@cantrip/protocol";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -17,7 +20,13 @@ import type {
   WorkerRequestOptions,
 } from "../src/workers/bridge.js";
 
-import { protectedProjectFields } from "./private-label-fixture.js";
+import {
+  protectedChatFields,
+  protectedProjectFields,
+  protectedTerminalFields,
+} from "./private-label-fixture.js";
+
+import { settingsEnvelope } from "./native-settings-repository-fixture.js";
 
 const origin = "https://app.cantrip.test";
 const password = "correct horse battery staple";
@@ -77,9 +86,14 @@ describe("hosted chat owner context", () => {
     let pendingTurn:
       | {
           onEvent: NonNullable<WorkerRequestOptions["onEvent"]>;
+          resultMode: Extract<
+            WorkerCommand,
+            { type: "chat.turn" }
+          >["resultMode"];
           resolve(result: unknown): void;
         }
       | undefined;
+    const terminals = new Map<string, () => void>();
     const workerBridge: WorkerCommandBus = {
       attach() {},
       close() {},
@@ -96,6 +110,23 @@ describe("hosted chat owner context", () => {
         return () => undefined;
       },
       async request(_workerId, command, options) {
+        if (command.type === "chat.thread.ensure")
+          return { threadId: command.threadId ?? "hosted-thread" };
+        if (command.type === "terminal.prepare-state")
+          return protectedTerminalFields(command.terminalId);
+        if (command.type === "terminal.open") {
+          const completed = new Promise((resolve) =>
+            terminals.set(command.attachmentId, () =>
+              resolve({ status: "detached" }),
+            ),
+          );
+          await options?.onEvent?.({ type: "terminal.ready" });
+          return completed;
+        }
+        if (command.type === "terminal.detach") {
+          terminals.get(command.attachmentId)?.();
+          return { status: "detached" };
+        }
         if (command.type === "code.prepareAgentTurn") {
           return { prepared: true, sessions: [] };
         }
@@ -107,7 +138,11 @@ describe("hosted chat owner context", () => {
             throw new Error("Expected the chat turn event callback.");
           }
           return new Promise((resolve) => {
-            pendingTurn = { onEvent: options.onEvent!, resolve };
+            pendingTurn = {
+              onEvent: options.onEvent!,
+              resultMode: command.resultMode,
+              resolve,
+            };
           });
         }
         throw new Error(`Unexpected worker command ${command.type}.`);
@@ -163,6 +198,7 @@ describe("hosted chat owner context", () => {
       const project = await database.repository.createGithubProject(ownerId, {
         workerId,
         ...protectedProjectFields(),
+        repositoryBlindIndex: "R".repeat(43),
         repositoryId: "hosted-owner-context-repository",
         nameWithOwner: "ArcaneArts/HostedOwnerContext",
         url: "https://github.com/ArcaneArts/HostedOwnerContext",
@@ -184,7 +220,7 @@ describe("hosted chat owner context", () => {
         method: "POST",
         url: `/api/projects/${project.id}/chats`,
         headers: authHeaders,
-        payload: { title: "Delayed hosted event" },
+        payload: protectedChatFields(),
       });
       expect(chatResponse.statusCode, chatResponse.body).toBe(201);
       const chatId = chatResponse.json().id as string;
@@ -196,56 +232,80 @@ describe("hosted chat owner context", () => {
       });
       expect(modelResponse.statusCode, modelResponse.body).toBe(200);
 
+      const message = {
+        id: randomUUID(),
+        classification: { role: "user", mode: "default", attachmentIds: [] },
+        protectedContent: {
+          formatVersion: 1,
+          keyRevision: 1,
+          envelope: settingsEnvelope,
+        },
+        reasoningEffort: null,
+        idempotencyKey: "delayed-hosted-turn",
+      };
       const turnResponse = await app.inject({
         method: "POST",
         url: `/api/chats/${chatId}/turns`,
         headers: authHeaders,
-        payload: {
-          idempotencyKey: "delayed-hosted-turn",
-          text: "Reply after the request ends.",
-        },
+        payload: encryptedChatTurnCreateSchema.parse({
+          message,
+          modelId: DEFAULT_MODEL_ID,
+          queuedPrompt: {
+            id: randomUUID(),
+            classification: { mode: "default", attachmentIds: [] },
+            protectedContent: message.protectedContent,
+            modelId: DEFAULT_MODEL_ID,
+            reasoningEffort: null,
+            worktreeId: null,
+            frozen: false,
+            idempotencyKey: message.idempotencyKey,
+            pendingMessage: message,
+          },
+        }),
       });
       expect(turnResponse.statusCode, turnResponse.body).toBe(202);
       await expect.poll(() => pendingTurn).toBeDefined();
 
+      expect(pendingTurn!.resultMode.kind).toBe("chat-message-encrypted");
+      if (pendingTurn!.resultMode.kind !== "chat-message-encrypted")
+        throw new Error("Expected protected reply");
       const event: WorkerEvent = {
-        type: "agent.message",
+        type: "agent.protected-message",
         message: {
-          id: "delayed-hosted-response",
-          text: "The delayed response was persisted.",
-          phase: "final_answer",
-          correlation: {
-            sourceMethod: "item/completed",
-            diagnosticId: "hosted-owner-context",
-            threadId: "hosted-thread",
-            turnId: "hosted-turn",
-            itemId: "delayed-hosted-response",
+          ...message,
+          id: pendingTurn!.resultMode.messageId,
+          classification: {
+            role: "assistant",
+            mode: "default",
+            attachmentIds: [],
           },
+          idempotencyKey: pendingTurn!.resultMode.idempotencyKey,
+        },
+        telemetry: {
+          kind: "message",
+          phase: "final_answer",
+          turnId: "hosted-turn",
         },
       };
       await expect(pendingTurn!.onEvent(event)).resolves.toBeUndefined();
       pendingTurn!.resolve({
         threadId: "hosted-thread",
         turnId: "hosted-turn",
-        text: "The delayed response was persisted.",
+        text: "",
+        structuredResult: { message: event.message },
         status: "completed",
       });
 
       await expect
         .poll(async () => {
-          const messages = await database.repository.listMessages(
+          const messages = await database.repository.listEncryptedMessages(
             ownerId,
             chatId,
           );
-          return messages.some((message) =>
-            message.content.some(
-              (item) =>
-                item.type === "text" &&
-                item.text === "The delayed response was persisted.",
-            ),
-          );
+          return messages.find((stored) => stored.id === event.message.id)
+            ?.protectedContent;
         })
-        .toBe(true);
+        .toEqual(event.message.protectedContent);
       await expect
         .poll(async () => {
           const context = await database.repository.getChatExecutionContext(

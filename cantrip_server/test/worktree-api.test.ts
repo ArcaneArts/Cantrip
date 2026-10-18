@@ -7,7 +7,6 @@ import {
   cantripCliCommandResultSchema,
   appLiveServerMessageSchema,
   chatPauseStateSchema,
-  chatSummarySchema,
   chatWireSummarySchema,
   chatMessageListSchema,
   chatMessageWireListSchema,
@@ -16,9 +15,7 @@ import {
   codeSharedAttachmentWireSchema,
   codeSessionListSchema,
   codeSessionSummarySchema,
-  codeTabSummarySchema,
   codeTabWireSummarySchema,
-  explorerSummarySchema,
   explorerWireSummarySchema,
   gitActionResultSchema,
   gitBranchActionPreviewSchema,
@@ -62,13 +59,12 @@ import {
   gitTagMutationResultSchema,
   githubReleaseListSchema,
   githubReleaseSummarySchema,
-  projectViewSummarySchema,
+  projectViewWireSummarySchema,
   projectWorktreeListSchema,
   projectWorktreeSummarySchema,
-  queuedPromptSchema,
+  encryptedQueuedPromptSchema,
   standaloneChatShareAttachmentWireSchema,
   standaloneChatWireSummarySchema,
-  terminalSummarySchema,
   terminalWireSummarySchema,
   unprobedCodexRuntimeReport,
   worktreeStatusResultSchema,
@@ -289,6 +285,9 @@ const gitCompareCommands: Array<
 > = [];
 const gitRefsCommands: Array<
   Extract<WorkerCommand, { type: "git.refs.list" }>
+> = [];
+const protectedMessageCommands: Array<
+  Extract<WorkerCommand, { type: "chat.message.protect" }>
 > = [];
 const chatTurnCommands: Array<Extract<WorkerCommand, { type: "chat.turn" }>> =
   [];
@@ -1889,6 +1888,7 @@ const workerBridge = {
         chatPauseCommands.push({ ...command, timeoutMs: options?.timeoutMs });
         return { paused: command.paused };
       case "chat.message.protect":
+        protectedMessageCommands.push(command);
         return {
           id: command.message.id,
           classification: {
@@ -2794,7 +2794,7 @@ describe.sequential("server worktree control plane", () => {
       url: `/api/projects/${projectId}/worktrees/${primaryId}/repository-operation`,
       payload: { operationId, protectedRequest, access: "read" },
     });
-    expect(response.statusCode).toBe(200);
+    expect(response.statusCode, response.body).toBe(200);
     expect(response.json()).toEqual({
       operationId,
       protectedResponse: protectedRequest,
@@ -3048,7 +3048,7 @@ describe.sequential("server worktree control plane", () => {
       method: "POST",
       url: `/api/projects/${projectId}/worktrees/reconcile`,
     });
-    expect(response.statusCode).toBe(200);
+    expect(response.statusCode, response.body).toBe(200);
     const reconciled = projectWorktreeListSchema.parse(response.json());
     expect(reconciled).toEqual(
       expect.arrayContaining([
@@ -3304,37 +3304,40 @@ describe.sequential("server worktree control plane", () => {
     ).toEqual(contexts.map((context) => context!.threadId));
   });
 
+  // Routing/recovery fixtures create headless chats through the real repository.
+  // GUI creation and its eager CLI preparation are covered separately above.
   it("resolves queued prompts at dispatch time unless explicitly pinned", async () => {
-    const chat = chatSummarySchema.parse(
-      (
-        await app.inject({
-          method: "POST",
-          url: `/api/projects/${projectId}/chats`,
-          payload: { title: "Queued routing", worktreeMode: "agent-managed" },
-        })
-      ).json(),
-    );
+    const chat = (await database.repository.createChat(
+      LOCAL_USER_ID,
+      projectId,
+      { ...protectedChatFields(), worktreeMode: "agent-managed" },
+    ))!;
     const dispatchFrozenPrompt = async (worktreeId: string | null) => {
       const before = chatTurnCommands.length;
-      const prompt = queuedPromptSchema.parse(
+      const content = {
+        ...protectedStandaloneTurn(chat.modelId!).queuedPrompt,
+        frozen: true,
+        worktreeId,
+      };
+      const prompt = encryptedQueuedPromptSchema.parse(
         (
           await app.inject({
             method: "POST",
             url: `/api/chats/${chat.id}/queue`,
-            payload: {
-              text: "Queued pwd",
-              idempotencyKey: `queued-${before}`,
-              frozen: true,
-              worktreeId,
-            },
+            payload: content,
           })
         ).json(),
       );
-      await app.inject({
+      const thawed = await app.inject({
         method: "PATCH",
         url: `/api/queued-prompts/${prompt.id}`,
-        payload: { frozen: false },
+        payload: {
+          prompt: { ...content, frozen: false },
+          expectedItemRevision: prompt.revision,
+          operationId: randomUUID(),
+        },
       });
+      expect(thawed.statusCode, thawed.body).toBe(200);
       await expect.poll(() => chatTurnCommands.length).toBe(before + 1);
       await expect
         .poll(
@@ -3357,6 +3360,11 @@ describe.sequential("server worktree control plane", () => {
     });
     const dynamic = await dispatchFrozenPrompt(null);
     expect(dynamic.worktreeId).toBe(managedIds[0]);
+    const dynamicThreadId = (await database.repository.getChatExecutionContext(
+      LOCAL_USER_ID,
+      chat.id,
+    ))!.threadId;
+    expect(dynamicThreadId).toBeTruthy();
 
     const releaseCurrent = async () => {
       const lane = (
@@ -3370,7 +3378,7 @@ describe.sequential("server worktree control plane", () => {
         url: `/api/chats/${chat.id}/execution-lanes/${lane.id}/release`,
         payload: {},
       });
-      expect(response.statusCode).toBe(200);
+      expect(response.statusCode, response.body).toBe(200);
     };
     await releaseCurrent();
 
@@ -3386,7 +3394,7 @@ describe.sequential("server worktree control plane", () => {
     expect(
       await database.repository.getChatExecutionContext(LOCAL_USER_ID, chat.id),
     ).toMatchObject({
-      threadId: `thread-${managedIds[0]}`,
+      threadId: dynamicThreadId,
       worktreeId: managedIds[0],
     });
     await releaseCurrent();
@@ -3397,18 +3405,14 @@ describe.sequential("server worktree control plane", () => {
     const target = (
       await database.repository.listProjectWorktrees(LOCAL_USER_ID, projectId)
     ).find(({ id }) => id === targetId)!;
-    const chat = chatSummarySchema.parse(
-      (
-        await app.inject({
-          method: "POST",
-          url: `/api/projects/${projectId}/chats`,
-          payload: {
-            title: "Agent transition",
-            worktreeMode: "agent-managed",
-          },
-        })
-      ).json(),
-    );
+    const chat = (await database.repository.createChat(
+      LOCAL_USER_ID,
+      projectId,
+      {
+        ...protectedChatFields(),
+        worktreeMode: "agent-managed",
+      },
+    ))!;
     const before = chatTurnCommands.length;
     cliInvocation = {
       command: "worktree.switch",
@@ -3420,10 +3424,7 @@ describe.sequential("server worktree control plane", () => {
     const started = await app.inject({
       method: "POST",
       url: `/api/chats/${chat.id}/turns`,
-      payload: {
-        text: "Implement this safely",
-        idempotencyKey: "agent-transition-turn",
-      },
+      payload: protectedStandaloneTurn(chat.modelId!),
     });
     expect(started.statusCode).toBe(202);
     await expect.poll(() => chatTurnCommands.length).toBe(before + 2);
@@ -3457,9 +3458,16 @@ describe.sequential("server worktree control plane", () => {
     expect(continuationCommand!.executionLaneId).not.toBe(
       originCommand!.executionLaneId,
     );
-    expect(continuationCommand!.prompt).toContain(
-      `Continued in ${target.name}`,
+    const continuationProtection = protectedMessageCommands.find(
+      ({ message }) => message.id === continuationCommand!.protectedPrompt?.id,
     );
+    expect(continuationProtection?.message.content).toContainEqual(
+      expect.objectContaining({
+        type: "text",
+        text: expect.stringContaining(`Continued in ${target.name}`),
+      }),
+    );
+    expect(continuationCommand!.prompt).toBeUndefined();
 
     const context = await database.repository.getChatExecutionContext(
       LOCAL_USER_ID,
@@ -3467,7 +3475,7 @@ describe.sequential("server worktree control plane", () => {
     );
     expect(context).toMatchObject({
       worktreeId: targetId,
-      threadId: `thread-${targetId}`,
+      threadId: `thread-${chat.id}-${target.path}`,
     });
     const lanes = await database.repository.listChatExecutionLanes(
       LOCAL_USER_ID,
@@ -3488,19 +3496,29 @@ describe.sequential("server worktree control plane", () => {
         }),
       ]),
     );
-    const messages = chatMessageListSchema.parse(
+    const messages = chatMessageWireListSchema.parse(
       (
         await app.inject({
           method: "GET",
           url: `/api/chats/${chat.id}/messages`,
         })
       ).json(),
+    ).messages;
+    const worktreeActivityIds = new Set(
+      protectedMessageCommands
+        .filter(({ message }) =>
+          message.content.some(
+            (part) =>
+              part.type === "activity" && part.activity.type === "worktree",
+          ),
+        )
+        .map(({ message }) => message.id),
     );
-    const worktreeActivities = messages.filter(({ content }) =>
-      content.some(
-        (part) => part.type === "activity" && part.activity.type === "worktree",
-      ),
+    const worktreeActivities = messages.filter(({ id }) =>
+      worktreeActivityIds.has(id),
     );
+    for (const message of messages)
+      expect(message).not.toHaveProperty("content");
     expect(worktreeActivities).toHaveLength(1);
     expect(worktreeActivities[0]).toMatchObject({
       executionLaneId: originCommand!.executionLaneId,
@@ -3519,19 +3537,15 @@ describe.sequential("server worktree control plane", () => {
   });
 
   it("rejects agent transitions from pinned, stale, or spoofed lanes", async () => {
-    const chat = chatSummarySchema.parse(
-      (
-        await app.inject({
-          method: "POST",
-          url: `/api/projects/${projectId}/chats`,
-          payload: {
-            title: "Pinned agent safety",
-            worktreeId: primaryId,
-            worktreeMode: "pinned",
-          },
-        })
-      ).json(),
-    );
+    const chat = (await database.repository.createChat(
+      LOCAL_USER_ID,
+      projectId,
+      {
+        ...protectedChatFields(),
+        worktreeId: primaryId,
+        worktreeMode: "pinned",
+      },
+    ))!;
     const execution = await database.repository.startChatExecutionLane(
       LOCAL_USER_ID,
       chat.id,
@@ -3596,18 +3610,14 @@ describe.sequential("server worktree control plane", () => {
     const target = (
       await database.repository.listProjectWorktrees(LOCAL_USER_ID, projectId)
     ).find(({ id }) => id === targetId)!;
-    const chat = chatSummarySchema.parse(
-      (
-        await app.inject({
-          method: "POST",
-          url: `/api/projects/${projectId}/chats`,
-          payload: {
-            title: "Transition restart recovery",
-            worktreeMode: "agent-managed",
-          },
-        })
-      ).json(),
-    );
+    const chat = (await database.repository.createChat(
+      LOCAL_USER_ID,
+      projectId,
+      {
+        ...protectedChatFields(),
+        worktreeMode: "agent-managed",
+      },
+    ))!;
     const execution = await database.repository.startChatExecutionLane(
       LOCAL_USER_ID,
       chat.id,
@@ -3627,6 +3637,10 @@ describe.sequential("server worktree control plane", () => {
     await database.repository.resetInterruptedChatExecutions();
 
     const before = chatTurnCommands.length;
+    const worker = (await database.repository.getWorker(
+      LOCAL_USER_ID,
+      "test-worker",
+    ))!;
     const heartbeat = await app.inject({
       method: "POST",
       url: "/api/internal/workers/heartbeat",
@@ -3638,6 +3652,8 @@ describe.sequential("server worktree control plane", () => {
         architecture: "arm64",
         codexVersion: "0.146.1",
         codexRuntime: unprobedCodexRuntimeReport,
+        directBroker: worker.directBroker,
+        standaloneChat: worker.standaloneChat,
         code: {
           available: true,
           version: "1.109.5",
@@ -3689,15 +3705,11 @@ describe.sequential("server worktree control plane", () => {
   });
 
   it("recovers interrupted executions without losing durable lane metadata", async () => {
-    const chat = chatSummarySchema.parse(
-      (
-        await app.inject({
-          method: "POST",
-          url: `/api/projects/${projectId}/chats`,
-          payload: { title: "Restart recovery", worktreeMode: "agent-managed" },
-        })
-      ).json(),
-    );
+    const chat = (await database.repository.createChat(
+      LOCAL_USER_ID,
+      projectId,
+      { ...protectedChatFields(), worktreeMode: "agent-managed" },
+    ))!;
     const started = await database.repository.startChatExecutionLane(
       LOCAL_USER_ID,
       chat.id,
@@ -3743,62 +3755,74 @@ describe.sequential("server worktree control plane", () => {
       method: "POST",
       url: `/api/projects/${projectId}/chats`,
       payload: {
-        title: "Pinned work",
+        ...protectedChatFields(),
         worktreeId: firstId,
         worktreeMode: "pinned",
       },
     });
-    const chat = chatSummarySchema.parse(chatResponse.json());
+    expect(chatResponse.statusCode, chatResponse.body).toBe(201);
+    const chat = chatWireSummarySchema.parse(chatResponse.json());
     routedChatId = chat.id;
     expect(chat).toMatchObject({
       activeWorktreeId: firstId,
       worktreeMode: "pinned",
     });
 
-    const terminal = terminalSummarySchema.parse(
+    const terminal = terminalWireSummarySchema.parse(
       (
         await app.inject({
           method: "POST",
           url: `/api/projects/${projectId}/terminals`,
-          payload: { title: "Worktree shell", worktreeId: firstId },
+          payload: { ...protectedTerminalFields(), worktreeId: firstId },
         })
       ).json(),
     );
     routedTerminalId = terminal.id;
     expect(terminal.worktreeId).toBe(firstId);
-    const explorer = explorerSummarySchema.parse(
+    const explorer = explorerWireSummarySchema.parse(
       (
         await app.inject({
           method: "POST",
           url: `/api/projects/${projectId}/explorers`,
-          payload: { title: "Worktree files", worktreeId: secondId },
+          payload: { ...protectedExplorerFields(), worktreeId: secondId },
         })
       ).json(),
     );
     expect(explorer.worktreeId).toBe(secondId);
+    const updatedExplorerState = protectedExplorerFields().stateProtection;
     expect(
-      explorerSummarySchema.parse(
+      explorerWireSummarySchema.parse(
         (
           await app.inject({
             method: "PATCH",
             url: `/api/explorers/${explorer.id}/view-state`,
-            payload: { selectedPath: "package.json", fileMode: "visual" },
+            payload: {
+              stateProtection: updatedExplorerState,
+              fileMode: "visual",
+            },
           })
         ).json(),
       ),
-    ).toMatchObject({ selectedPath: "package.json", fileMode: "visual" });
-    const retargetedExplorer = explorerSummarySchema.parse(
+    ).toMatchObject({
+      stateProtection: updatedExplorerState,
+      fileMode: "visual",
+    });
+    const retargetedExplorerState = protectedExplorerFields().stateProtection;
+    const retargetedExplorer = explorerWireSummarySchema.parse(
       (
         await app.inject({
           method: "PATCH",
           url: `/api/explorers/${explorer.id}/worktree`,
-          payload: { worktreeId: firstId },
+          payload: {
+            worktreeId: firstId,
+            stateProtection: retargetedExplorerState,
+          },
         })
       ).json(),
     );
     expect(retargetedExplorer).toMatchObject({
       worktreeId: firstId,
-      selectedPath: null,
+      stateProtection: retargetedExplorerState,
       fileMode: "preview",
     });
     expect(
@@ -3808,13 +3832,13 @@ describe.sequential("server worktree control plane", () => {
       method: "POST",
       url: `/api/projects/${projectId}/code-tabs`,
       payload: {
-        title: "Worktree Code",
+        ...protectedDisplayLabelFields("code-tab"),
         worktreeId: secondId,
         profileId: "main-profile",
       },
     });
     expect(codeTabResponse.statusCode, codeTabResponse.body).toBe(201);
-    const codeTab = codeTabSummarySchema.parse(codeTabResponse.json());
+    const codeTab = codeTabWireSummarySchema.parse(codeTabResponse.json());
     expect(codeTab).toMatchObject({
       worktreeId: secondId,
       activeWorkerId: "test-worker",
@@ -3822,17 +3846,22 @@ describe.sequential("server worktree control plane", () => {
       themeMode: "follow-cantrip",
       status: "idle",
     });
-    const renamedCodeTab = codeTabSummarySchema.parse(
+    const updatedCodeTitle =
+      protectedDisplayLabelFields("code-tab").titleProtection;
+    const renamedCodeTab = codeTabWireSummarySchema.parse(
       (
         await app.inject({
           method: "PATCH",
           url: `/api/code-tabs/${codeTab.id}`,
-          payload: { title: "Review Code", themeMode: "independent" },
+          payload: {
+            titleProtection: updatedCodeTitle,
+            themeMode: "independent",
+          },
         })
       ).json(),
     );
     expect(renamedCodeTab).toMatchObject({
-      title: "Review Code",
+      titleProtection: updatedCodeTitle,
       themeMode: "follow-cantrip",
     });
     const session = await database.repository.getOrCreateCodeSession(
@@ -3858,7 +3887,7 @@ describe.sequential("server worktree control plane", () => {
         ).json(),
       ),
     ).toHaveLength(1);
-    const retargetedCodeTab = codeTabSummarySchema.parse(
+    const retargetedCodeTab = codeTabWireSummarySchema.parse(
       (
         await app.inject({
           method: "PATCH",
@@ -3877,23 +3906,28 @@ describe.sequential("server worktree control plane", () => {
     expect(
       await database.repository.listCodeSessions(LOCAL_USER_ID, codeTab.id),
     ).toBeNull();
-    const history = projectViewSummarySchema.parse(
+    const history = projectViewWireSummarySchema.parse(
       (
         await app.inject({
           method: "POST",
           url: `/api/projects/${projectId}/views`,
-          payload: { title: "History", kind: "history", worktreeId: secondId },
+          payload: {
+            ...protectedDisplayLabelFields("project-view"),
+            kind: "history",
+            worktreeId: secondId,
+          },
         })
       ).json(),
     );
     expect(history.worktreeId).toBe(secondId);
 
-    const fork = chatSummarySchema.parse(
+    const fork = chatWireSummarySchema.parse(
       (
         await app.inject({
           method: "POST",
           url: `/api/chats/${chat.id}/fork`,
           payload: {
+            ...protectedChatFields(),
             worktreeId: secondId,
             worktreeMode: "agent-managed",
           },
@@ -3921,11 +3955,12 @@ describe.sequential("server worktree control plane", () => {
     expect(blockedSwitch.statusCode).toBe(409);
     await database.repository.setChatStatus(chat.id, "idle");
 
-    const consoleTab = terminalSummarySchema.parse(
+    const consoleTab = terminalWireSummarySchema.parse(
       (
         await app.inject({
           method: "POST",
           url: `/api/chats/${chat.id}/console`,
+          payload: protectedTerminalFields(),
         })
       ).json(),
     );
@@ -4699,28 +4734,30 @@ describe.sequential("server worktree control plane", () => {
       });
       const originalRevoke =
         scope === "attachment"
-          ? DirectAttachmentCoordinator.prototype.revokeAttachment
-          : DirectAttachmentCoordinator.prototype.revokeResource;
+          ? DirectAttachmentCoordinator.prototype.mutateAttachment
+          : DirectAttachmentCoordinator.prototype.mutateResource;
       const revokeSpy =
         scope === "attachment"
           ? vi
-              .spyOn(DirectAttachmentCoordinator.prototype, "revokeAttachment")
+              .spyOn(DirectAttachmentCoordinator.prototype, "mutateAttachment")
               .mockImplementation(async function (
                 this: DirectAttachmentCoordinator,
                 attachmentId,
+                mutation,
               ) {
                 if (attachmentId === desktopAttachment.attachmentId) {
                   signalRevokeStarted();
                 }
-                return originalRevoke.call(this, attachmentId);
+                return originalRevoke.call(this, attachmentId, mutation);
               })
           : vi
-              .spyOn(DirectAttachmentCoordinator.prototype, "revokeResource")
+              .spyOn(DirectAttachmentCoordinator.prototype, "mutateResource")
               .mockImplementation(async function (
                 this: DirectAttachmentCoordinator,
                 ownerId,
                 resourceKind,
                 resourceId,
+                mutation,
               ) {
                 if (resourceKind === "tunnel" && resourceId === tunnelId) {
                   signalRevokeStarted();
@@ -4730,6 +4767,7 @@ describe.sequential("server worktree control plane", () => {
                   ownerId,
                   resourceKind,
                   resourceId,
+                  mutation,
                 );
               });
       const preparationsBefore = directPrepareCapabilityIds.length;
@@ -5899,6 +5937,7 @@ describe.sequential("server worktree control plane", () => {
       method: "GET",
       url: `/api/projects/${projectId}/worktrees/${target.id}/status`,
     });
+    expect(statusResponse.statusCode, statusResponse.body).toBe(200);
     expect(
       worktreeStatusResultSchema.parse(statusResponse.json()).worktree.path,
     ).toBe(target.path);

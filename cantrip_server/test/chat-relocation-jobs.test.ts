@@ -183,6 +183,7 @@ beforeAll(async () => {
   const project = await database.repository.createGithubProject(LOCAL_USER_ID, {
     workerId: "worker-alpha",
     ...protectedProjectFields(),
+    repositoryBlindIndex: "R".repeat(43),
     repositoryId: "chat-relocation-project",
     nameWithOwner: "ArcaneArts/Cantrip",
     url: "https://github.com/ArcaneArts/Cantrip",

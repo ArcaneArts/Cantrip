@@ -20,6 +20,7 @@ import {
   desc,
   eq,
   inArray,
+  isNotNull,
   isNull,
   ne,
   notInArray,
@@ -1149,6 +1150,7 @@ export class ChatExecutionLaneRepository {
               schema.chatRuntimeSessions.workerId,
               schema.chatRuntimeSessions.worktreeId,
             ],
+            where: isNotNull(schema.chatRuntimeSessions.worktreeId),
           });
         const runtimes = await transaction
           .select()
@@ -1316,6 +1318,7 @@ export class ChatExecutionLaneRepository {
               schema.chatRuntimeSessions.workerId,
               schema.chatRuntimeSessions.worktreeId,
             ],
+            where: isNotNull(schema.chatRuntimeSessions.worktreeId),
           });
         const runtimes = await transaction
           .select()

@@ -241,7 +241,7 @@ describe("OpenRouter catalog", () => {
       expect(stale?.syncStates).toEqual([
         expect.objectContaining({
           status: "stale",
-          error: "catalog network unavailable",
+          error: "openrouter-catalog-refresh-failed",
         }),
       ]);
     } finally {

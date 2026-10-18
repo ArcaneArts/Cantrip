@@ -117,6 +117,7 @@ beforeAll(async () => {
   const project = await database.repository.createGithubProject(LOCAL_USER_ID, {
     workerId: "primary-worker",
     ...protectedProjectFields(),
+    repositoryBlindIndex: "R".repeat(43),
     repositoryId: "remote-desktop-fleet-api",
     nameWithOwner: "ArcaneArts/Cantrip",
     url: "https://github.com/ArcaneArts/Cantrip",
