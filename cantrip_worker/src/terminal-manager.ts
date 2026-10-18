@@ -1043,8 +1043,13 @@ export class TerminalManager {
       if (session.process !== child) return;
       this.#appendOutput(terminalId, session, data);
     });
-    child.onExit(({ exitCode, signal }) => {
+    child.onExit(({ exitCode: nativeExitCode, signal }) => {
       if (session.process !== child) return;
+      // Windows can close the PTY pipe before node-pty receives the exit code.
+      // Preserve an unknown, non-success status while completing owned cleanup.
+      const exitCode = Number.isSafeInteger(nativeExitCode)
+        ? nativeExitCode
+        : -1;
       session.process = null;
       if (session.retargeting && !session.removeAfterExit && !this.#closing) {
         this.#finishManagedRetarget(terminalId, session);
