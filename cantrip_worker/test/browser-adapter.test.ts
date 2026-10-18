@@ -22,10 +22,11 @@ import type {
   EncryptionKeyGrant,
   EncryptionPrincipal,
 } from "@cantrip/protocol/encryption";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BrowserRemoteSurfaceAdapter } from "../src/browser/browser-adapter.js";
 import { BrowserCdpSession } from "../src/browser/browser-session.js";
+import { CdpClient } from "../src/browser/cdp-client.js";
 import * as browserPrivateState from "../src/browser/browser-private-state.js";
 import { findChromiumExecutable } from "../src/browser/chromium.js";
 import { readWorkerLogs } from "../src/logger.js";
@@ -37,6 +38,45 @@ import { WorkerEncryptionService } from "../src/worker-encryption.js";
 import { remoteSurfaceKeyInput } from "../../cantrip_app/src/lib/remote-surface-input.js";
 
 const temporaryDirectories: string[] = [];
+const navigationTrace: unknown[] = [];
+let restoreNavigationTrace = () => {};
+beforeEach(() => {
+  navigationTrace.length = 0;
+  const original = CdpClient.prototype.request;
+  const request = vi
+    .spyOn(CdpClient.prototype, "request")
+    .mockImplementation(async function (
+      this: CdpClient,
+      method,
+      params = {},
+      sessionId,
+    ) {
+      if (method === "Page.enable") {
+        this.on("Page.frameNavigated", (frame, id) => {
+          if (id === sessionId && navigationTrace.length < 64)
+            navigationTrace.push({
+              event: "Page.frameNavigated",
+              sessionId,
+              frame,
+            });
+        });
+      }
+      const result = await original.call(this, method, params, sessionId);
+      if (method === "Page.navigate" && navigationTrace.length < 64)
+        navigationTrace.push({ method, sessionId, params, result });
+      return result;
+    });
+  restoreNavigationTrace = () => request.mockRestore();
+});
+
+afterEach(({ task }) => {
+  restoreNavigationTrace();
+  if (task.result?.state === "fail")
+    console.error(
+      "Actual Chromium navigation trace:",
+      JSON.stringify(navigationTrace),
+    );
+});
 
 async function eventually(
   predicate: () => boolean | Promise<boolean>,
