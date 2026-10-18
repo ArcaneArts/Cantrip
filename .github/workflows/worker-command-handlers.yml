@@ -5,6 +5,7 @@ on:
     paths:
       - cantrip_worker/src/index.ts
       - cantrip_worker/src/commands/**
+      - cantrip_worker/src/terminal-manager.ts
       - cantrip_worker/test/**
       - scripts/audit-server-boundaries.mjs
       - .github/workflows/worker-command-handlers.yml

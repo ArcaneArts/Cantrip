@@ -70,7 +70,7 @@ async function cleanupFixtures(
       { timeout: 5_000 },
     )
     .toBe(true);
-  await Promise.all(
+  const removals = await Promise.allSettled(
     directories.map(async (directory) => {
       await beforeRemove?.(directory);
       await rm(directory, {
@@ -79,11 +79,17 @@ async function cleanupFixtures(
         maxRetries: 10,
         retryDelay: 100,
       });
+      directories.splice(directories.indexOf(directory), 1);
     }),
   );
-  directories.length = 0;
   managers.clear();
   fixturePids.clear();
+  const failures = removals.flatMap((result) =>
+    result.status === "rejected" ? [result.reason] : [],
+  );
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1)
+    throw new AggregateError(failures, "Failed to remove terminal fixtures.");
 }
 
 const replayMarker = /CANTRIP_REPLAY_MARKER:(\d+)\r?\n/u;
@@ -140,6 +146,57 @@ afterEach(async () => {
 });
 
 describe("TerminalManager", () => {
+  it("finishes independent removals and retains only failed fixture directories", async () => {
+    const failed = await mkdtemp(
+      path.join(tmpdir(), "cantrip-cleanup-failed-"),
+    );
+    const delayed = await mkdtemp(
+      path.join(tmpdir(), "cantrip-cleanup-delayed-"),
+    );
+    directories.push(failed, delayed);
+    const failure = new Error("controlled removal failure");
+    let release = () => {};
+    const removalAllowed = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let entered = () => {};
+    const removalStarted = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    let settled = false;
+    const cleanup = cleanupFixtures(async (directory) => {
+      if (directory === failed) throw failure;
+      entered();
+      await removalAllowed;
+    });
+    const observed = cleanup.then(
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      },
+    );
+    try {
+      await removalStarted;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(settled).toBe(false);
+      release();
+      await expect(cleanup).rejects.toBe(failure);
+      await expect(access(failed)).resolves.toBeUndefined();
+      await expect(access(delayed)).rejects.toMatchObject({ code: "ENOENT" });
+      const retried: string[] = [];
+      await cleanupFixtures(async (directory) => {
+        retried.push(directory);
+        await access(directory);
+      });
+      expect(retried).toEqual([failed]);
+    } finally {
+      release();
+      await observed;
+    }
+  });
+
   it("replays buffered output before signaling that a reattached view is ready", async () => {
     const directory = await mkdtemp(
       path.join(tmpdir(), "cantrip terminal replay "),
@@ -953,7 +1010,10 @@ it.skipIf(process.platform === "win32")(
     const directory = await mkdtemp(path.join(tmpdir(), "cantrip-cli-exit-"));
     directories.push(directory);
     const fakeCodex = path.join(directory, "fake-codex");
-    await writeFile(fakeCodex, "#!/bin/sh\nread line\nexit 3\n");
+    await writeFile(
+      fakeCodex,
+      "#!/bin/sh\nprintf 'CANTRIP_CLI_READY\\n'\nread line\nexit 3\n",
+    );
     await chmod(fakeCodex, 0o755);
     const observations: unknown[] = [];
     const manager = createTerminalManager({
@@ -985,6 +1045,7 @@ it.skipIf(process.platform === "win32")(
     };
     const old = randomUUID(),
       current = randomUUID();
+    let output = "";
     try {
       const open = manager.open(
         "terminal",
@@ -993,9 +1054,14 @@ it.skipIf(process.platform === "win32")(
         80,
         24,
         launch,
-        () => {},
+        (event) => {
+          if (event.type === "terminal.output") output += event.data;
+        },
         old,
       );
+      await expect
+        .poll(() => output, { timeout: 5_000 })
+        .toContain("CANTRIP_CLI_READY");
       manager.detach("terminal", "old");
       await open;
       const retry = manager.open(
