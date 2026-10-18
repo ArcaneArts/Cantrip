@@ -1631,7 +1631,7 @@ describe("durable native command admission", () => {
     }
   });
 
-  it("binds rollback preparation to its accepted parent without dispatching the turn and preserves Stop cancellation", async () => {
+  it("binds revert preparation to its accepted parent without dispatching the turn and preserves Stop cancellation", async () => {
     const repository = database.repository;
     const original = admission(
       await repository.getChatExecutionContext(LOCAL_USER_ID, chatId),
@@ -1675,24 +1675,39 @@ describe("durable native command admission", () => {
         session: { ...binding.session, runtimeGeneration: "replacement" },
       }),
     ).rejects.toMatchObject({ code: "stale-session" });
-    const rollback = admission(
+    const revert = admission(
       await repository.getChatExecutionContext(LOCAL_USER_ID, chatId),
       {
-        method: "thread/rollback",
+        method: "thread/revert",
         session: bound.session,
         expectedActivationGeneration: grant.receipt.activationGeneration,
       },
     );
-    const admittedRollback = await repository.nativeCommands.admit(
+    const retiredRollback = await repository.nativeCommands.admit(
       LOCAL_USER_ID,
-      rollback,
+      {
+        ...revert,
+        operationId: randomUUID(),
+        method: "thread/rollback",
+      },
     );
-    expect(admittedRollback.receipt.status).toBe("accepted");
-    await dispatch(rollback, admittedRollback.receipt);
+    expect(retiredRollback.receipt).toMatchObject({
+      status: "rejected",
+      rejectionCode: "unsupported-mutation",
+    });
+    const admittedRevert = await repository.nativeCommands.admit(
+      LOCAL_USER_ID,
+      revert,
+    );
+    expect(
+      admittedRevert.receipt.status,
+      JSON.stringify(admittedRevert.receipt),
+    ).toBe("accepted");
+    await dispatch(revert, admittedRevert.receipt);
     await repository.nativeCommands.settle(LOCAL_USER_ID, {
       workerId,
-      operationId: rollback.operationId,
-      operationGeneration: admittedRollback.receipt.operationGeneration,
+      operationId: revert.operationId,
+      operationGeneration: admittedRevert.receipt.operationGeneration,
       status: "applied",
       resultDigest: null,
       protectedResult: null,

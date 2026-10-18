@@ -551,6 +551,7 @@ describe("per-worker enrollment credentials", () => {
         {
           workerId: "worker-one",
           ...protectedProjectFields(),
+          repositoryBlindIndex: "R".repeat(43),
           repositoryId: "worker-reenrollment-project",
           nameWithOwner: "ArcaneArts/Cantrip",
           url: "https://github.com/ArcaneArts/Cantrip",
@@ -685,5 +686,5 @@ describe("per-worker enrollment credentials", () => {
     } finally {
       await app.close();
     }
-  });
+  }, 30_000);
 });

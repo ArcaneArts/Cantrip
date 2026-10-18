@@ -231,7 +231,7 @@ beforeAll(async () => {
   resolvedServerId = (
     await app.inject({ method: "GET", url: "/api/bootstrap" })
   ).json().server.id;
-});
+}, 30_000);
 
 afterAll(async () => {
   await app?.close();
@@ -240,6 +240,7 @@ afterAll(async () => {
 
 describe.sequential("browser service discovery API", () => {
   it("reports the embedded server and worker versions", async () => {
+    const expectedVersion = cantripVersionSchema.parse(cantripVersion);
     const serverResponse = await app.inject({ method: "GET", url: "/version" });
     const workerResponse = await app.inject({
       method: "GET",
@@ -252,14 +253,14 @@ describe.sequential("browser service discovery API", () => {
 
     expect(serverResponse.statusCode).toBe(200);
     expect(cantripVersionSchema.parse(serverResponse.json())).toEqual(
-      cantripVersion,
+      expectedVersion,
     );
     expect(workerResponse.statusCode).toBe(200);
     expect(cantripVersionSchema.parse(workerResponse.json())).toEqual(
-      cantripVersion,
+      expectedVersion,
     );
     expect(commands.at(-1)).toEqual({ type: "worker.version" });
-    expect(bootstrapResponse.json().server.version).toEqual(cantripVersion);
+    expect(bootstrapResponse.json().server.version).toEqual(expectedVersion);
   });
 
   it("routes discovery through the browser's owning worker", async () => {
@@ -490,9 +491,19 @@ describe.sequential("browser service discovery API", () => {
   });
 
   it("authorizes an exact Browser tunnel attachment for WorkerLink", async () => {
+    const createdBrowser = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/browsers`,
+      payload: {
+        ...protectedBrowserFields(),
+        target: { kind: "worker", projectId, workerId: "test-worker" },
+      },
+    });
+    expect(createdBrowser.statusCode, createdBrowser.body).toBe(201);
+    const grantBrowser = browserWireSummarySchema.parse(createdBrowser.json());
     const tunnelResponse = await app.inject({
       method: "POST",
-      url: `/api/browsers/${browserId}/tunnel`,
+      url: `/api/browsers/${grantBrowser.id}/tunnel`,
       payload: {
         tunnelId: randomUUID(),
         protocolHint: "http-websocket",

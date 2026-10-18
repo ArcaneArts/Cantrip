@@ -24,6 +24,8 @@ import {
 } from "./private-label-fixture.js";
 import { protectedSecretEnvelopeFixture } from "./protected-provider-credential-fixture.js";
 
+// Database-backed cases include cold PGlite initialization (up to 12.6 s in CI).
+// Their 30-second fixture budget leaves behavioral polling deadlines unchanged.
 const migrationsFolder = fileURLToPath(new URL("../drizzle", import.meta.url));
 
 async function setup() {
@@ -161,7 +163,7 @@ describe("Z.ai Coding Plan catalog", () => {
     } finally {
       await client.close();
     }
-  });
+  }, 30_000);
 
   it("migrates existing providers without changing mixed routes or resumed chats", async () => {
     const { client, database, repository } = await setup();
@@ -229,6 +231,7 @@ describe("Z.ai Coding Plan catalog", () => {
       const project = await repository.createGithubProject(LOCAL_USER_ID, {
         workerId: "zai-worker",
         ...protectedProjectFields(),
+        repositoryBlindIndex: "R".repeat(43),
         repositoryId: "zai-migration-repository",
         nameWithOwner: "ArcaneArts/ZaiMigration",
         url: "https://github.com/ArcaneArts/ZaiMigration",
@@ -320,5 +323,5 @@ describe("Z.ai Coding Plan catalog", () => {
     } finally {
       await client.close();
     }
-  });
+  }, 30_000);
 });

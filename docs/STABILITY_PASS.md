@@ -1562,3 +1562,80 @@ workspace, a second actual browser run passed cold typing/save in 16.24 seconds
 and all six switches in 16.797 seconds. All 21 owned PIDs again retired; the
 worker exited naturally with code 0 in 622 ms and the server reported its
 explicit remote-revocation failure before natural exit 1 in 94 ms.
+
+### #2105 final delivery
+
+[PR #2142](https://github.com/ArcaneArts/Cantrip/pull/2142) merged as
+`4567d2c5ed4428124858675014414dd39ca32922` and closed #2105. The three-platform
+harness workflow passed on its first attempt. Primary was synchronized, evidence
+was preserved, and the owned worktree was archived after its commands and
+processes finished.
+
+### #2106: verified database repairs and encrypted fixture contracts
+
+Branch: `codex/issue-2106-server-baseline`. This cycle uses `Refs #2106` and
+leaves the issue open for the remaining legacy fixture migration.
+
+Two production defects were exposed after updating stale fixtures. Relocation
+and execution-lane runtime inserts omitted the predicate required to select
+their existing partial unique index, causing PostgreSQL/PGlite `42P10` errors.
+The three conflict clauses now match `worktree_id IS NOT NULL`; the index and
+ownership/lease constraints are unchanged. Project-chat forking awaited worker
+message reprotection inside a database transaction, while worker dispatch needed
+that same database to resolve ownership. Forking now reads a source snapshot,
+releases the transaction for worker reprotection, and checks the snapshot again
+inside the atomic write transaction. Concurrent source or destination changes
+produce a 409 without creating a fork. A controlled callback writes the source
+during reprotection and verifies that rejection, retaining the original history.
+
+The fixture repairs supply required repository blind indexes and encrypted wire
+records, initialize account configuration before direct repository chat creation,
+and use current pane identities, worker availability events, migration stages and
+native `thread/revert` admission. The retired `thread/rollback` method remains
+explicitly rejected. Routing fixtures retain worker capabilities on heartbeat,
+bind protected messages to their real execution lanes, and synchronize attachment
+races at the current mutation boundary. Ciphertext persistence, ownership,
+revocation, cancellation and generation assertions remain in place. New bridge
+tests exercise an actual finite command deadline and completion of a streaming
+request beyond that deadline with controlled timers.
+
+The independent full server run reports 2 failed, 1,518 passed and 57 skipped
+tests across 260 files (326.14 seconds), compared with 71 failed, 1,433 passed and
+70 skipped on the merged baseline. Twenty-four previously failing files now
+pass; previously blocked cases also execute. The remaining failures are
+`local-foundation.test.ts` and the legacy Git case in `worktree-api.test.ts`.
+No failing assertion was deleted or marked skipped in either file.
+
+The first remaining fixture is one long sequential scenario spanning provider,
+repository, surface, conversation and restart behavior. An unmerged probe fixed
+its provider contracts, then reached removed `/api/github/*` routes. The second
+still expects plaintext worktree status/history/Git routes and server-owned Git
+operation state. Those operations now use encrypted repository requests and
+worker-owned state. Their migration requires a current protected client/worker
+fixture, rather than restoring the retired server endpoints or accepting 410 as
+successful Git behavior. The incomplete foundation probe is preserved outside
+the worktree; it is not part of this PR. This broader fixture migration remains
+open under #2106 instead of holding the independent repairs indefinitely.
+
+New three-platform CI runs the 24 restored suites and the 43 current worktree
+cases. Both exact CI commands pass locally: 131 tests in the restored suites and
+43 worktree cases. Its focused worktree selection explicitly excludes the outstanding legacy
+Git case; the ordinary full server command still runs it and fails. This is
+focused regression coverage, not a restored full-baseline claim. The worktree
+guide's additional checks pass: 791 protocol tests, 92 worker tests, 57 app tests
+and the app production build. Private logs and the incomplete probe are retained
+under `~/.codex/issue-fix-pass/20261017/2106-evidence/`.
+
+The standard `pnpm check` independently confirms the same two remaining failure
+labels (1,518 passed, 57 skipped; 318.41 seconds), after audits, native/script
+checks and source typechecks pass. Its later stages are not reached. There are
+no added failure labels relative to the 78-label merged baseline.
+
+The first new CI matrix exposes cold-database fixture budgets: initialization
+alone takes up to 6.8 seconds on Linux, 9.9 on macOS and 12.6 on Windows. Twenty
+tests that create their own database and ten database setup hooks now have
+explicit 30-second fixture budgets. Unit tests, polling deadlines and production
+timeouts are unchanged. The original five-second test and ten-second hook
+budgets could expire before assertions started. All three platforms already
+pass the 43 current worktree cases; PostgreSQL authority and the three native
+capture jobs also pass. The repaired fixture budgets require a fresh CI run.

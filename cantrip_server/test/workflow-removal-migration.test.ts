@@ -22,6 +22,8 @@ import { accountStorageMeasurementQuery } from "../src/db/account-resource-usage
 import { DesktopUpdateStateRepository } from "../src/db/repository/desktop-update-state.js";
 import * as schema from "../src/db/schema.js";
 
+// Database-backed cases include cold PGlite initialization (up to 12.6 s in CI).
+// Their 30-second fixture budget leaves behavioral polling deadlines unchanged.
 const migrationsFolder = fileURLToPath(new URL("../drizzle", import.meta.url));
 const workflowTables = [
   "workflow_trigger_deliveries",
@@ -51,7 +53,10 @@ async function migrateToWorkflowRemoval(client: PGlite) {
   for (const migration of migrations.slice(0, removalIndex)) {
     for (const statement of migration.sql) await client.exec(statement);
   }
-  return migrations[removalIndex]!;
+  return {
+    removal: migrations[removalIndex]!,
+    subsequent: migrations.slice(removalIndex + 1),
+  };
 }
 
 async function tableNames(client: PGlite, names: readonly string[]) {
@@ -143,7 +148,7 @@ describe("durable workflow removal migration", () => {
       keyRevision: 1,
     });
     try {
-      const removal = await migrateToWorkflowRemoval(client);
+      const { removal, subsequent } = await migrateToWorkflowRemoval(client);
       const [protectedName, protectedPrompt, protectedCondition] =
         await Promise.all([
           encryptProjectAutomationContent({
@@ -497,16 +502,6 @@ describe("durable workflow removal migration", () => {
       expect(workflowSchemaObjects.rows).toEqual([]);
       expect(await preservedState(client)).toEqual(stateBeforeRemoval);
 
-      const activeWork = await new DesktopUpdateStateRepository(
-        drizzle(client, { schema }),
-      ).desktopUpdateActiveWork("owner-1");
-      expect(activeWork).toEqual({
-        activeChats: 0,
-        queuedPrompts: 0,
-        terminalServices: 0,
-        backgroundJobs: 1,
-      });
-
       const preserved = await client.query<{
         automations: number;
         automation_runs: number;
@@ -597,6 +592,21 @@ describe("durable workflow removal migration", () => {
         prompt: "Preserve this ciphertext",
       });
 
+      // Current runtime queries require the current schema. Keep the historical
+      // removal/data-preservation assertions above at the migration boundary.
+      for (const migration of subsequent) {
+        for (const statement of migration.sql) await client.exec(statement);
+      }
+      const activeWork = await new DesktopUpdateStateRepository(
+        drizzle(client, { schema }),
+      ).desktopUpdateActiveWork("owner-1");
+      expect(activeWork).toEqual({
+        activeChats: 0,
+        queuedPrompts: 0,
+        terminalServices: 0,
+        backgroundJobs: 1,
+      });
+
       const measurementSql = accountStorageMeasurementQuery();
       expect(measurementSql).toContain('"tasks"');
       expect(measurementSql).toContain('"project_automations"');
@@ -643,7 +653,7 @@ describe("durable workflow removal migration", () => {
       clearSensitiveBytes(accountMasterKey);
       await client.close();
     }
-  });
+  }, 30_000);
 
   it("creates a workflow-free schema and does not replay the migration journal", async () => {
     const client = new PGlite();
@@ -667,5 +677,5 @@ describe("durable workflow removal migration", () => {
     } finally {
       await client.close();
     }
-  });
+  }, 30_000);
 });

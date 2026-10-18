@@ -55,6 +55,7 @@ beforeAll(async () => {
   const project = await database.repository.createGithubProject(LOCAL_USER_ID, {
     workerId: "import-worker",
     ...protectedProjectFields(),
+    repositoryBlindIndex: "R".repeat(43),
     repositoryId: "chat-import-recovery",
     nameWithOwner: "ArcaneArts/Cantrip",
     url: "https://github.com/ArcaneArts/Cantrip",
@@ -78,7 +79,7 @@ beforeAll(async () => {
   )[0]!;
   projectReplicaId = worktree.projectSourceId;
   worktreeId = worktree.id;
-});
+}, 30_000);
 
 afterAll(async () => {
   await database?.close();

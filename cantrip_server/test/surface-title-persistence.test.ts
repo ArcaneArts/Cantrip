@@ -20,6 +20,8 @@ import type { ServerConfig } from "../src/config.js";
 import { connectDatabase } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 
+// Database-backed cases include cold PGlite initialization (up to 12.6 s in CI).
+// Their 30-second fixture budget leaves behavioral polling deadlines unchanged.
 it("persists every app-facing private label and surface state only as authenticated ciphertext", async () => {
   const dataDirectory = await mkdtemp(
     path.join(tmpdir(), "cantrip-surface-title-persistence-"),
@@ -180,6 +182,7 @@ it("persists every app-facing private label and surface state only as authentica
   });
 
   const database = await connectDatabase(config);
+  await database.repository.ensureAccountConfiguration(LOCAL_USER_ID);
   try {
     await database.repository.recordWorker(LOCAL_USER_ID, {
       workerId: "surface-title-worker",
@@ -211,6 +214,7 @@ it("persists every app-facing private label and surface state only as authentica
         workerId: "surface-title-worker",
         id: ids.project,
         nameProtection: await protectedTitle("project", ids.project),
+        repositoryBlindIndex: "R".repeat(43),
         repositoryId: "surface-title-repository",
         nameWithOwner: "ArcaneArts/Cantrip",
         url: "https://github.com/ArcaneArts/Cantrip",
@@ -296,7 +300,7 @@ it("persists every app-facing private label and surface state only as authentica
       LOCAL_USER_ID,
       project.id,
     );
-    const groupId = initialLayout!.groups.find(({ members }) =>
+    const groupId = initialLayout!.panes.find(({ members }) =>
       members.some(({ tabId }) => tabId === ids.terminal),
     )!.id;
     const explorer = await database.repository.createExplorer(
@@ -306,7 +310,7 @@ it("persists every app-facing private label and surface state only as authentica
         id: ids.explorer,
         titleProtection: await protectedTitle("explorer", ids.explorer),
         stateProtection: explorerStateProtection,
-        tabGroupId: groupId,
+        paneId: groupId,
       },
       () => true,
     );
@@ -314,7 +318,7 @@ it("persists every app-facing private label and surface state only as authentica
       LOCAL_USER_ID,
       project.id,
     );
-    await database.repository.tabLayouts.updateGroup(
+    await database.repository.tabLayouts.updatePane(
       LOCAL_USER_ID,
       project.id,
       groupId,
@@ -537,4 +541,4 @@ it("persists every app-facing private label and surface state only as authentica
     await scan.close();
     await rm(dataDirectory, { recursive: true, force: true });
   }
-});
+}, 30_000);

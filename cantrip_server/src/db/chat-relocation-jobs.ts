@@ -20,6 +20,7 @@ import {
   desc,
   eq,
   inArray,
+  isNotNull,
   isNull,
   lte,
   ne,
@@ -1380,6 +1381,7 @@ export class ChatRelocationJobRepository {
             schema.chatRuntimeSessions.workerId,
             schema.chatRuntimeSessions.worktreeId,
           ],
+          targetWhere: isNotNull(schema.chatRuntimeSessions.worktreeId),
           set: {
             codexThreadId: job.targetRuntimeThreadId,
             modelRouteId: job.targetModelRouteId,

@@ -8,6 +8,8 @@ import { buildApp } from "../src/app.js";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase } from "../src/db/index.js";
 
+// Database-backed cases include cold PGlite initialization (up to 12.6 s in CI).
+// Their 30-second fixture budget leaves behavioral polling deadlines unchanged.
 const dataDirectories: string[] = [];
 const applicationOrigin = "https://app.cantrip.test";
 const publicOrigin = "https://api.cantrip.test";
@@ -78,7 +80,7 @@ describe("public HTTP hardening", () => {
     } finally {
       await app.close();
     }
-  });
+  }, 30_000);
 
   it("sets defensive API headers and accepts only the configured HTTPS proxy route", async () => {
     const config = await testConfig({
@@ -152,7 +154,7 @@ describe("public HTTP hardening", () => {
     } finally {
       await app.close();
     }
-  });
+  }, 30_000);
 
   it("rejects forwarding headers when no trusted proxy is configured", async () => {
     const config = await testConfig({
@@ -181,13 +183,14 @@ describe("public HTTP hardening", () => {
         method: "POST",
         url: "/api/chats/missing/attachments",
         headers: { "content-type": "application/octet-stream" },
-        payload: Buffer.alloc(1_024 * 1_024 + 1),
+        // The encrypted wire budget includes encoding/envelope overhead.
+        payload: Buffer.alloc(3 * 1_024 * 1_024),
       });
       expect(oversizedUpload.statusCode).toBe(413);
     } finally {
       await app.close();
     }
-  });
+  }, 30_000);
 
   it("separates process liveness from database readiness", async () => {
     const config = await testConfig();
@@ -229,7 +232,7 @@ describe("public HTTP hardening", () => {
     } finally {
       await app.close();
     }
-  });
+  }, 30_000);
 
   it("protects aggregate Prometheus metrics with an operator token", async () => {
     const config = await testConfig({
@@ -280,7 +283,7 @@ describe("public HTTP hardening", () => {
     } finally {
       await app.close();
     }
-  });
+  }, 30_000);
 
   it("requires a one-time first-owner token only while a closed hosted server is empty", async () => {
     const config = await testConfig({
@@ -301,7 +304,7 @@ describe("public HTTP hardening", () => {
     } finally {
       await database.close();
     }
-  });
+  }, 30_000);
 
   it("rate limits API, pairing, and upload traffic independently", async () => {
     const config = await testConfig({
@@ -370,7 +373,7 @@ describe("public HTTP hardening", () => {
     } finally {
       await app.close();
     }
-  });
+  }, 30_000);
 
   it("does not apply the hosted API bucket to ordinary local traffic", async () => {
     const config = await testConfig({
@@ -407,5 +410,5 @@ describe("public HTTP hardening", () => {
     } finally {
       await app.close();
     }
-  });
+  }, 30_000);
 });

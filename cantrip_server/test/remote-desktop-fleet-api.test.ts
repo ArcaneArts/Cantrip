@@ -117,6 +117,7 @@ beforeAll(async () => {
   const project = await database.repository.createGithubProject(LOCAL_USER_ID, {
     workerId: "primary-worker",
     ...protectedProjectFields(),
+    repositoryBlindIndex: "R".repeat(43),
     repositoryId: "remote-desktop-fleet-api",
     nameWithOwner: "ArcaneArts/Cantrip",
     url: "https://github.com/ArcaneArts/Cantrip",
@@ -143,7 +144,7 @@ beforeAll(async () => {
     protectedRemoteDesktopState(),
   );
   app = await buildApp({ config, database, logger: false, workerBridge });
-});
+}, 30_000);
 
 afterAll(async () => {
   await app?.close();
