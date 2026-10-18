@@ -180,6 +180,27 @@ export class TunnelTcpDestinationAdapter {
     }
     if (header.kind === "close" || header.kind === "error") {
       this.#remove(stream);
+      // Remote close has no protocol acknowledgement. Record completion only
+      // once the owned TCP socket has actually emitted its terminal event.
+      stream.socket.once("close", () => {
+        workerLogger.event(
+          "debug",
+          "Tunnel destination remote close completed",
+          {
+            connectionScope: "logical-stream",
+            event: "tunnel.destination.remote-close-completed",
+            subsystem: "tunnel",
+            operation: "close",
+            status: "completed",
+            tunnelId: header.tunnelId,
+            attachmentId: header.attachmentId,
+            sourceEndpointId: header.sourceEndpointId,
+            destinationEndpointId: header.destinationEndpointId,
+            connectionId: header.connectionId,
+            counts: { streams: this.#streams.size },
+          },
+        );
+      });
       stream.socket.destroy();
     }
   }

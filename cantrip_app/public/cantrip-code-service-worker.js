@@ -20,6 +20,7 @@ const MAX_PENDING_ADAPTER_RECOVERIES = 32;
 const ADAPTER_RECOVERY_TIMEOUT_MS = 1_500;
 const CLIENT_AUTHORIZATION_TIMEOUT_MS = 1_500;
 const REQUEST_DEADLINE_MS = 30_000;
+const FETCH_TOKEN_HEADER = "x-cantrip-code-fetch-token";
 const textEncoder = new TextEncoder();
 let activeRequestCount = 0;
 
@@ -898,6 +899,7 @@ async function proxyRequest(event, adapterId) {
     const requestId = crypto.randomUUID();
     context = createRequestContext(request, adapter, requestId);
     adapter.contexts.add(context);
+    void context.connectClientAbort(event);
     const body = await readRequestBody(request, context);
     context.throwIfFailed();
     const pageResponse = await deliverToPage(context, request, body);
@@ -1034,6 +1036,7 @@ function createRequestContext(request, adapter, requestId) {
   let pageSettled = false;
   let reader = null;
   let readerCancelled = false;
+  let abortChannel = null;
   const epoch = adapter.epoch;
 
   const cancelPage = () => {
@@ -1086,10 +1089,50 @@ function createRequestContext(request, adapter, requestId) {
     adapter,
     adapterId: adapter.adapterId,
     cancelReader,
+    async connectClientAbort(event) {
+      const fetchToken = request.headers.get(FETCH_TOKEN_HEADER);
+      if (!fetchToken || !IDENTITY.test(fetchToken) || !event.clientId) return;
+      try {
+        // Authorization already admitted this exact FetchEvent. Transfer the
+        // capability only to its client; it cannot address any other request.
+        const client = await self.clients.get(event.clientId);
+        if (disposed || pageSettled) return;
+        context.throwIfFailed();
+        if (!client) {
+          onAbort();
+          return;
+        }
+        abortChannel = new MessageChannel();
+        abortChannel.port1.addEventListener("message", (event) => {
+          if (
+            !disposed &&
+            !pageSettled &&
+            event.data?.type === "cantrip-code-fetch-abort-v1"
+          )
+            onAbort();
+        });
+        abortChannel.port1.start();
+        client.postMessage(
+          {
+            adapterId: adapter.adapterId,
+            generation: adapter.generation,
+            frameNonce: adapter.frameNonce,
+            fetchToken,
+            type: "cantrip-code-fetch-channel-v1",
+          },
+          [abortChannel.port2],
+        );
+      } catch {
+        if (!disposed && !pageSettled) onAbort();
+      }
+    },
     dispose() {
       if (disposed) return;
       disposed = true;
       clearTimeout(timer);
+      abortChannel?.port1.close();
+      abortChannel?.port2.close();
+      abortChannel = null;
       request.signal.removeEventListener("abort", onAbort);
       if (pending.get(requestId)?.context === context)
         pending.delete(requestId);
@@ -1223,7 +1266,9 @@ function deliverToPage(context, request, body) {
       adapter.port.postMessage({
         adapterId: context.adapterId,
         body,
-        headers: [...request.headers.entries()],
+        headers: [...request.headers.entries()].filter(
+          ([name]) => name !== FETCH_TOKEN_HEADER,
+        ),
         method: request.method,
         requestId: context.requestId,
         type: "cantrip-code-http-request-v1",

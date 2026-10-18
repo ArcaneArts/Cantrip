@@ -19,6 +19,7 @@ const modeHydrationCase = selectedCases.has("mode-hydration");
 const settingsRelease = Promise.withResolvers();
 const fixture = await startEditorRecoveryFixture({
   requireExplicitBootstrapRefresh: folderBootstrapCase,
+  logicalCreditControl: !selectedCase || selectedCases.has("congested-sibling"),
 });
 let browser;
 let context;
@@ -154,58 +155,6 @@ try {
             visible: frame.getClientRects().length > 0,
           });
       });
-    const wrapSend = (prototype) => {
-      const send = prototype.send;
-      window.__qaCreditFault = {
-        armed: false,
-        channelId: null,
-        dropped: 0,
-        creditFrames: 0,
-      };
-      prototype.send = function (data) {
-        const fault = window.__qaCreditFault;
-        if (
-          fault.armed &&
-          (data instanceof ArrayBuffer || ArrayBuffer.isView(data))
-        ) {
-          try {
-            const bytes =
-              data instanceof ArrayBuffer
-                ? new Uint8Array(data)
-                : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-            const size = new DataView(
-              bytes.buffer,
-              bytes.byteOffset,
-              bytes.byteLength,
-            ).getUint32(4, false);
-            if (size > 0 && size < bytes.byteLength - 7) {
-              const header = JSON.parse(
-                new TextDecoder().decode(bytes.subarray(8, 8 + size)),
-              );
-              if (header.kind === "open" && !fault.channelId)
-                fault.channelId = header.channel?.channelId;
-              if (
-                header.kind === "credit" &&
-                header.direction === "worker-to-client" &&
-                header.channel?.channelId
-              ) {
-                fault.creditFrames++;
-                if (fault.channelId === header.channel.channelId) {
-                  fault.dropped++;
-                  return;
-                }
-              }
-            }
-          } catch {
-            /* Non-WorkerLink frames retain their ordinary transport path. */
-          }
-        }
-        return send.call(this, data);
-      };
-    };
-    wrapSend(WebSocket.prototype);
-    if (typeof RTCDataChannel !== "undefined")
-      wrapSend(RTCDataChannel.prototype);
   });
   page.on("response", async (response) => {
     const pathname = new URL(response.url()).pathname;
@@ -1119,9 +1068,21 @@ try {
         return entries[0]?.name;
       });
       assert.ok(asset, "A real loaded workbench asset is required");
-      await page.evaluate(() => {
-        window.__qaCreditFault.armed = true;
-      });
+      const fetchControl = () =>
+        frame.locator("body").evaluate(async (_body, asset) => {
+          const response = await fetch(
+            `${asset}${asset.includes("?") ? "&" : "?"}qaControl=${Date.now()}`,
+            { cache: "no-store" },
+          );
+          return {
+            status: response.status,
+            bytes: (await response.arrayBuffer()).byteLength,
+          };
+        }, asset);
+      const control = await fetchControl();
+      assert.equal(control.status, 200);
+      const frameUrl = await page.locator("iframe:visible").getAttribute("src");
+      await page.evaluate(() => window.__qaLogicalCredit.arm());
       let completed = false;
       const pending = frame.locator("body").evaluate(async (body, asset) => {
         const controller = new AbortController();
@@ -1144,42 +1105,136 @@ try {
           completed = true;
         })
         .catch(() => {});
-      try {
-        const deadline = Date.now() + 10_000;
-        let fault;
-        do {
-          fault = await page.evaluate(() => window.__qaCreditFault);
-          if (fault.dropped) break;
-          await delay(100);
-        } while (Date.now() < deadline);
-        if (!fault.dropped) {
-          const error = new Error(
-            `Credit injection did not reach the selected actual asset after bounded WebSocket/RTC attempts: ${new URL(asset).pathname}; fault=${JSON.stringify(fault)}. No congestion result is claimed.`,
-          );
-          error.name = "BlockedCaseError";
-          throw error;
-        }
-        await delay(500);
-        assert.equal(
-          completed,
-          false,
-          "The selected bulk response must remain stalled",
-        );
-        const marker = `SIBLING_${Date.now()}`;
-        await type(marker);
-        await save(marker);
-        return { withheldCredits: fault.dropped, siblingSaveReachedDisk: true };
-      } finally {
-        await page.evaluate(() => {
-          window.__qaCreditFault.armed = false;
-        });
-        await frame
+      const snapshot = () =>
+        page.evaluate(() => window.__qaLogicalCredit.snapshot());
+      const abort = () =>
+        frame
           .locator("body")
           .evaluate((body) =>
             body.ownerDocument.defaultView.__qaBulkAbort?.abort(),
+          );
+      try {
+        const deadline = Date.now() + 10_000;
+        let stalled;
+        do {
+          stalled = await snapshot();
+          if (
+            stalled.withheldCredits > 0 &&
+            stalled.receivedBytes === stalled.creditBytes
           )
-          .catch(() => {});
-        await pending.catch(() => {});
+            break;
+          if (completed) break;
+          await delay(50);
+        } while (Date.now() < deadline);
+        assert.ok(
+          stalled.selected,
+          "The bulk HTTP request must select its own logical connection",
+        );
+        assert.ok(
+          stalled.withheldCredits > 0,
+          "The selected connection must withhold real receive credits",
+        );
+        assert.ok(
+          control.bytes > stalled.creditBytes,
+          "The real asset must exceed the selected stream's byte window",
+        );
+        assert.equal(
+          stalled.receivedBytes,
+          stalled.creditBytes,
+          "The producer must fill and stop at the actual initial credit window",
+        );
+        assert.equal(completed, false, "The bulk response must remain pending");
+        await delay(500);
+        assert.equal((await snapshot()).receivedBytes, stalled.receivedBytes);
+        for (let edit = 0; edit < 2; edit += 1) {
+          const marker = `SIBLING_${edit}_${Date.now()}`;
+          await type(marker);
+          await save(marker);
+        }
+        const afterSaves = await snapshot();
+        assert.equal(
+          completed,
+          false,
+          "Sibling saves must finish while the bulk producer is stalled",
+        );
+        assert.equal(afterSaves.receivedBytes, stalled.creditBytes);
+        assert.deepEqual(
+          afterSaves.currentIdentity,
+          stalled.identity,
+          "The original authenticated route must remain current",
+        );
+        assert.equal(
+          await page.locator("iframe:visible").getAttribute("src"),
+          frameUrl,
+        );
+        console.log(
+          `QA_EVT ${JSON.stringify({
+            name: "congested-sibling-progress",
+            stage: "sibling-saves-complete",
+            creditBytes: stalled.creditBytes,
+            receivedBytes: afterSaves.receivedBytes,
+            withheldCredits: afterSaves.withheldCredits,
+            siblingEditsSaved: 2,
+            originalAuthorityRetained: true,
+          })}`,
+        );
+        await abort();
+        const aborted = await pending;
+        assert.equal(aborted.error, "AbortError");
+        const cleanupDeadline = Date.now() + 5_000;
+        let retired;
+        let workerSocketClosed = false;
+        do {
+          retired = await snapshot();
+          const workerLog = await readFile(
+            path.join(fixture.directory, "worker.log"),
+            "utf8",
+          );
+          workerSocketClosed = workerLog
+            .split("\n")
+            .some(
+              (line) =>
+                line.includes(
+                  "event=tunnel.destination.remote-close-completed",
+                ) &&
+                Object.entries(stalled.identity).every(([key, value]) =>
+                  line.includes(` ${key}=${value}`),
+                ),
+            );
+          if (retired.retired && workerSocketClosed) break;
+          await delay(50);
+        } while (Date.now() < cleanupDeadline);
+        assert.equal(
+          retired.retired,
+          true,
+          "Abort must retire the actual local connection",
+        );
+        assert.equal(
+          workerSocketClosed,
+          true,
+          "The worker must finish closing the TCP socket for the exact authenticated logical stream",
+        );
+        assert.deepEqual(retired.currentIdentity, stalled.identity);
+        assert.deepEqual(
+          await fetchControl(),
+          control,
+          "A subsequent sibling request must complete after abort",
+        );
+        return {
+          initialCreditBytes: stalled.creditBytes,
+          stalledResponseBytes: afterSaves.receivedBytes,
+          withheldCredits: afterSaves.withheldCredits,
+          controlResponseBytes: control.bytes,
+          siblingEditsSaved: 2,
+          originalAuthorityRetained: true,
+          sameFrameUrl: true,
+          abortedLocally: retired.retired,
+          workerSocketClosed,
+        };
+      } finally {
+        await abort().catch(() => {});
+        await Promise.race([pending.catch(() => {}), delay(5_000)]);
+        await page.evaluate(() => window.__qaLogicalCredit.release());
       }
     });
     await run("worktree-switch-cycles", async () => {
