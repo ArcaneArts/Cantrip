@@ -1705,6 +1705,64 @@ describe("WorkerLinkManager", () => {
     await manager.close();
   });
 
+  it("replaces authority after bounded relay handshake failures and opens a fresh stream", async () => {
+    vi.useFakeTimers();
+    const initial = new FakeCarrier("relay");
+    const replacement = new FakeCarrier("relay");
+    const setup = dependencies({ preferredRoute: "relay" });
+    const manager = new WorkerLinkManager(setup.dependency);
+    const initialSession = session(ids[0], "relay");
+    const replacementSession = { ...initialSession, sessionId: ids[4]! };
+    vi.mocked(setup.dependency.createSession)
+      .mockResolvedValueOnce(initialSession)
+      .mockResolvedValue(replacementSession);
+    let generationReplaced = false;
+    const relay = vi.fn<WorkerLinkManagerDependencies["openRelay"]>(
+      async (active) => {
+        if (active.sessionId === replacementSession.sessionId)
+          return replacement;
+        if (generationReplaced)
+          throw new Error("Relay handshake rejected stale generation");
+        return initial;
+      },
+    );
+    setup.dependency.openRelay = relay;
+    const reference = await manager.acquire("worker-1");
+    const opening = reference.link.openStream(
+      grant(initialSession),
+      "interactive",
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    acceptOpen(initial);
+    const oldStream = await opening;
+    const closed = vi.fn();
+    oldStream.onClose(closed);
+
+    generationReplaced = true;
+    initial.close();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(relay).toHaveBeenCalledTimes(1 + 4 + 1);
+    expect(setup.dependency.createSession).toHaveBeenCalledTimes(2);
+    expect(setup.dependency.deleteSession).toHaveBeenCalledWith(
+      initialSession.sessionId,
+    );
+    expect(reference.link.session.sessionId).toBe(replacementSession.sessionId);
+    expect(closed).toHaveBeenCalledOnce();
+    expect(oldStream.write(new Uint8Array([1]))).toBe(false);
+
+    const reopened = reference.link.openStream(
+      grant(replacementSession),
+      "interactive",
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(acceptOpen(replacement).sessionId).toBe(
+      replacementSession.sessionId,
+    );
+    expect((await reopened).write(new Uint8Array([2]))).toBe(true);
+    reference.release();
+    await manager.close();
+  });
+
   it("bounds automatic reconnect attempts while retrying LOCAL before RELAY", async () => {
     vi.useFakeTimers();
     const initial = new FakeCarrier("local");

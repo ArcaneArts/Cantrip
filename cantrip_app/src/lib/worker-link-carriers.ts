@@ -155,6 +155,10 @@ export async function openWorkerLinkRelayCarrier(
   else if (url.protocol === "https:") url.protocol = "wss:";
   else throw new Error("WorkerLink relay requires HTTP or HTTPS.");
   url.searchParams.set("clientInstanceId", options.clientInstanceId);
+  url.searchParams.set(
+    "routeGeneration",
+    String(options.session.routeGeneration),
+  );
   const startedAt = performance.now();
   const socket = options.createWebSocket(url.toString());
   await waitForOpen(socket, CONNECT_TIMEOUT_MS);

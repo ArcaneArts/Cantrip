@@ -245,13 +245,155 @@ describe("WorkerLinkRelay", () => {
     relay.close();
   });
 
+  it("keeps sibling channels alive while valid worker output drains after a client close", () => {
+    const workers = new FakeWorkerBus();
+    const relay = new WorkerLinkRelay(workers.asBus());
+    const socket = new FakeSocket();
+    const open = openFrame();
+    relay.attach(session(), socket);
+    socket.emit("message", encodeWorkerLinkFrame(open, empty), true);
+    const base = {
+      protocolVersion: 1 as const,
+      sessionId: open.sessionId,
+      routeGeneration: open.routeGeneration,
+      effectiveRoute: "relay" as const,
+      channel: open.channel,
+      lane: open.lane,
+      sequence: 0,
+    };
+    const accept = {
+      ...base,
+      kind: "accept" as const,
+      initialCreditBytes: 1_024,
+    };
+    workers.frameListener?.(validatedFrame(accept));
+    const sibling = distinctOpenFrame({
+      channelId: "66666666-6666-4666-8666-666666666666",
+      grantId: "77777777-7777-4777-8777-777777777777",
+      openNonce: "88888888-8888-4888-8888-888888888888",
+      lane: "interactive",
+    });
+    socket.emit("message", encodeWorkerLinkFrame(sibling, empty), true);
+    workers.frameListener?.(
+      validatedFrame({ ...accept, channel: sibling.channel }),
+    );
+    socket.emit(
+      "message",
+      encodeWorkerLinkFrame(
+        {
+          ...base,
+          kind: "close",
+          sequence: 1,
+          code: "normal",
+        },
+        empty,
+      ),
+      true,
+    );
+    const sentBeforeDrain = socket.sent.length;
+    // These frames were already in flight when the client closed its channel.
+    workers.frameListener?.(
+      validatedFrame(
+        {
+          ...base,
+          kind: "data",
+          sequence: 1,
+          payloadFormat: "raw",
+          direction: "worker-to-client",
+        },
+        new Uint8Array([1]),
+      ),
+    );
+    workers.frameListener?.(
+      validatedFrame({
+        ...base,
+        kind: "close",
+        sequence: 2,
+        code: "normal",
+      }),
+    );
+    expect(socket.closes).toEqual([]);
+    expect(socket.sent).toHaveLength(sentBeforeDrain);
+    expect(relay.stats()).toMatchObject({ channels: 1, connections: 1 });
+
+    workers.frameListener?.(
+      validatedFrame(
+        {
+          ...base,
+          channel: sibling.channel,
+          kind: "data",
+          sequence: 1,
+          payloadFormat: "raw",
+          direction: "worker-to-client",
+        },
+        new Uint8Array([2]),
+      ),
+    );
+    expect(decodeWorkerLinkFrame(socket.sent.at(-1)!).header).toMatchObject({
+      kind: "data",
+      channel: sibling.channel,
+    });
+    expect(socket.closes).toEqual([]);
+    relay.close();
+  });
+
+  it.each(["identity", "sequence"] as const)(
+    "fences an invalid %s on a pending worker close",
+    (invalid) => {
+      const workers = new FakeWorkerBus();
+      const relay = new WorkerLinkRelay(workers.asBus());
+      const socket = new FakeSocket();
+      const open = openFrame();
+      relay.attach(session(), socket);
+      socket.emit("message", encodeWorkerLinkFrame(open, empty), true);
+      const base = {
+        protocolVersion: 1 as const,
+        sessionId: open.sessionId,
+        routeGeneration: open.routeGeneration,
+        effectiveRoute: "relay" as const,
+        channel: open.channel,
+        lane: open.lane,
+      };
+      socket.emit(
+        "message",
+        encodeWorkerLinkFrame(
+          {
+            ...base,
+            kind: "close",
+            sequence: 1,
+            code: "normal",
+          },
+          empty,
+        ),
+        true,
+      );
+      workers.frameListener?.(
+        validatedFrame({
+          ...base,
+          kind: "reject",
+          code: "resource-unavailable",
+          sequence: invalid === "sequence" ? 1 : 0,
+          channel: {
+            ...open.channel,
+            connectionId:
+              invalid === "identity"
+                ? "99999999-9999-4999-8999-999999999999"
+                : open.channel.connectionId,
+          },
+        }),
+      );
+      expect(socket.closes.at(-1)?.code).toBe(1008);
+      expect(relay.stats()).toMatchObject({ channels: 0, connections: 0 });
+    },
+  );
+
   it("rejects malformed bytes before the validated frame reaches a worker", () => {
     const workers = new FakeWorkerBus();
     const relay = new WorkerLinkRelay(workers.asBus());
     const socket = new FakeSocket();
     relay.attach(session(), socket);
     const malformed = encodeWorkerLinkFrame(openFrame(), empty);
-    malformed[0] ^= 0xff;
+    malformed[0] = malformed[0]! ^ 0xff;
 
     socket.emit("message", malformed, true);
 

@@ -1315,3 +1315,56 @@ results and lifecycle acknowledgements, and rejects duplicate finalization.
 The two missing-code cases fail the original implementation with the same Zod
 error captured in Windows CI. The three-platform command workflow includes this
 fixture alongside the unchanged real PTY tests and ten Windows repetitions.
+
+Final terminal follow-up delivery: [PR #2137](https://github.com/ArcaneArts/Cantrip/pull/2137)
+merged as `a4c7c42f2` and closed #2116. All six CI jobs passed on their first
+attempt, including four controlled exit-status cases and ten fresh Windows PTY
+runs with five passes and eight existing platform skips each. The local terminal
+matrix passed 42 tests. The standard check retained the previous 78 server
+failure labels: 1,418 passed, 71 failed and 70 skipped. Primary was synchronized
+and the owned lane archived after preserving the route-replacement baseline.
+
+### #2103: recover current relay authority after route replacement
+
+Branch: `codex/issue-2103-route-generation`. The issue PR records final standard
+check, platform and delivery results.
+
+The real editor on merged main repeatedly reopened its old-generation session
+and failed to save the dirty marker within 30 seconds. The client treated each
+HTTP 101 as a successful connection, resetting its bounded recovery attempts
+before the server rejected its stale frames. Relay connections now include the
+client's route generation, which the actual authorized connection handler checks
+before upgrading. The post-upgrade identity/generation check and binary frame
+fences remain. Older clients can still connect without the new query parameter.
+The existing bounded reconnect path can obtain current session authority.
+
+A second actual trace identified a normal worker close acknowledgement arriving
+after the relay removed the client-closed channel. That acknowledgement closed
+the entire new carrier as an out-of-sequence frame. The relay now retains at most
+1,024 closing channel records, validates their original identity and sequence,
+and discards their remaining output until acknowledgement. They hold no live
+channel quota and are cleared on connection retirement. Unknown or invalid
+frames still fail; live siblings continue exchanging frames.
+
+Both handshake and close-drain regressions fail the original implementations.
+The focused app matrix passes 91 tests; server handshake, relay and coordinator
+coverage passes 34. Coverage includes unavailable/unauthenticated authority,
+wrong origins/client instances, stale/future/malformed generations, a replacement
+during attachment, valid late output and invalid close identity/sequence.
+App/server source types pass. The existing three-platform recovery workflow now
+also runs the server regression matrix.
+
+The actual bundled-editor route case passes in 6,784 ms: generation advances
+from one to two, the initially unsaved marker reaches the original worker file,
+and a second edit also saves. The test verifies current carrier authority,
+retained dirty content and the original Code workspace. The iframe URL changes
+during this recovery; this run does not claim iframe retention. Cold typing/save
+passes in 16,789 ms. The fixture also scopes New project to the open project
+switcher, avoiding its identically named empty-state action.
+
+Worker shutdown remains unresolved under reopened #2099: two runs required
+SIGKILL at 8,085 and 8,081 ms after logging completion, with search and Chromium
+installing. All observed owned PIDs were retired by cleanup and zero fixture
+sockets remained. That worker follow-up is separate from this app/server fix.
+Evidence is retained under `~/.codex/issue-fix-pass/20261017/2103-evidence/`;
+private raw fixtures are preserved outside the disposable lane.

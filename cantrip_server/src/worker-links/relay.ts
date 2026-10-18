@@ -12,6 +12,7 @@ import type { AccountUsageRecorder } from "../account-usage/bandwidth-meter.js";
 import type { WorkerCommandBus } from "../workers/bridge.js";
 
 const MAX_RELAY_BUFFERED_BYTES = 8 * 1_024 * 1_024;
+const MAX_RELAY_CLOSING_CHANNELS = 1_024;
 const RELAY_DRAIN_INTERVAL_MS = 5;
 const RELAY_STALL_TIMEOUT_MS = 5_000;
 const EMPTY_PAYLOAD = new Uint8Array();
@@ -93,6 +94,7 @@ interface RemoteSurfaceGrantState {
 
 interface RelayConnection {
   channels: Map<string, RelayChannelState>;
+  closingChannels: Map<string, RelayChannelState>;
   closed: boolean;
   drainTimer: ReturnType<typeof setTimeout> | null;
   lanes: Record<WorkerLinkQosLane, RelayLaneQueue>;
@@ -155,6 +157,7 @@ export class WorkerLinkRelay {
     previous?.socket.close(1012, "WorkerLink relay was replaced");
     const connection: RelayConnection = {
       channels: new Map(),
+      closingChannels: new Map(),
       closed: false,
       drainTimer: null,
       lanes: createLaneQueues(),
@@ -180,7 +183,11 @@ export class WorkerLinkRelay {
           ) {
             return;
           }
-          const channel = connection.channels.get(header.channel.channelId);
+          const channelId = header.channel.channelId;
+          const closing = connection.closingChannels.has(channelId);
+          const channel =
+            connection.channels.get(channelId) ??
+            connection.closingChannels.get(channelId);
           if (
             !channel ||
             canonicalChannel(channel.header) !== canonicalChannel(header) ||
@@ -193,6 +200,15 @@ export class WorkerLinkRelay {
             return;
           }
           channel.workerSequence = header.sequence;
+          if (closing) {
+            // A client close releases the channel immediately. Already in-flight
+            // worker output and its close acknowledgement must not retire siblings.
+            // Validate their original identity/sequence, but never forward them.
+            if (header.kind === "close" || header.kind === "reject") {
+              connection.closingChannels.delete(channelId);
+            }
+            return;
+          }
           this.#record(
             connection,
             channel.bandwidthChannel,
@@ -313,7 +329,10 @@ export class WorkerLinkRelay {
     const channelId = header.channel.channelId;
     let channel: RelayChannelState;
     if (header.kind === "open") {
-      if (connection.channels.has(channelId)) {
+      if (
+        connection.channels.has(channelId) ||
+        connection.closingChannels.has(channelId)
+      ) {
         connection.socket.close(1008, "WorkerLink channel was replayed");
         return;
       }
@@ -368,7 +387,8 @@ export class WorkerLinkRelay {
       "egress",
       frame.bytes.byteLength,
     );
-    if (header.kind === "close") this.#releaseChannel(connection, channelId);
+    if (header.kind === "close")
+      this.#releaseChannel(connection, channelId, true);
   }
 
   #sendOrQueue(
@@ -531,10 +551,21 @@ export class WorkerLinkRelay {
     });
   }
 
-  #releaseChannel(connection: RelayConnection, channelId: string): void {
+  #releaseChannel(
+    connection: RelayConnection,
+    channelId: string,
+    awaitWorkerClose = false,
+  ): void {
     const channel = connection.channels.get(channelId);
     if (!channel) return;
     connection.channels.delete(channelId);
+    if (awaitWorkerClose) {
+      connection.closingChannels.set(channelId, channel);
+      if (connection.closingChannels.size > MAX_RELAY_CLOSING_CHANNELS) {
+        const oldest = connection.closingChannels.keys().next().value;
+        if (oldest !== undefined) connection.closingChannels.delete(oldest);
+      }
+    }
     const remoteSurface = connection.remoteSurfaceGrants.get(channel.grantId);
     if (!remoteSurface) return;
     remoteSurface.channelIds.delete(channelId);
@@ -546,6 +577,7 @@ export class WorkerLinkRelay {
   #retire(connection: RelayConnection): void {
     if (connection.closed) return;
     connection.closed = true;
+    connection.closingChannels.clear();
     if (this.#connections.get(connection.session.sessionId) === connection) {
       this.#connections.delete(connection.session.sessionId);
     }
