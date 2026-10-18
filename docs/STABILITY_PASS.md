@@ -1278,3 +1278,40 @@ code 0 in 4,818 ms while all three managed runtimes are installing; all 13 obser
 owned PIDs retire and zero fixture sockets remain. Evidence is retained under
 `~/.codex/issue-fix-pass/20261017/2100-evidence/`; raw private fixtures remain outside
 published evidence and the disposable worktree.
+
+Final #2100 delivery: [PR #2136](https://github.com/ArcaneArts/Cantrip/pull/2136)
+merged as `a9ed5cca5` and closed the issue. The bridge/direct-endpoint/supervisor
+matrix passed 107 tests locally; the Windows bridge/supervisor CI passed 97.
+All nine final CI jobs passed. The unrelated Windows command repetition first
+exposed a missing PTY exit code on unchanged terminal code; its retry passed all
+ten fresh repetitions. #2116 remains open for that distinct defect. The standard
+check retained the previous 78 server test/suite failure labels: 1,418 passed,
+71 failed and 70 skipped. Primary was synchronized and the owned lane archived.
+
+### #2116 follow-up: complete teardown when native exit status is unavailable
+
+Branch: `codex/issue-2116-unknown-pty-exit`. The issue PR records final platform,
+standard-check and delivery results.
+
+Windows command run `39084566336`, job `117548322144`, failed the third fresh
+terminal repetition in its early-cleanup case. node-pty emitted an exit event
+with `exitCode: undefined`; `terminalOpenResultSchema.parse` threw after the
+manager cleared its process reference, preventing the exit acknowledgement and
+remaining session finalization. This produced a missing-terminal assertion and
+an aggregate cleanup failure. Passing retries did not resolve the defect.
+
+The installed node-pty Windows socket-close path reads the agent's exit code,
+which can still be unset until a separate native process-exit callback arrives.
+The worker now normalizes an unavailable/invalid native status to `-1`, an
+explicit non-success result, before parsing and finalization. Known exit codes
+and signals are preserved. Service classification, attachment completion and
+lifecycle observers receive the same normalized result; duplicate notifications
+remain fenced by the original child identity.
+
+A controlled PTY event fixture covers missing status with and without a signal,
+ordinary successful exit and a known nonzero exit. Each case closes an attached
+terminal and a service, proves both wait for their exit event, verifies both
+results and lifecycle acknowledgements, and rejects duplicate finalization.
+The two missing-code cases fail the original implementation with the same Zod
+error captured in Windows CI. The three-platform command workflow includes this
+fixture alongside the unchanged real PTY tests and ten Windows repetitions.
