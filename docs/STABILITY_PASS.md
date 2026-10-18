@@ -1144,3 +1144,45 @@ its existing incomplete-authority-retirement exit code 1 after the worker was
 stopped, with no surviving server process. Local evidence is retained under
 `~/.codex/issue-fix-pass/20261017/2102-evidence/`; recovery credentials and fixture
 control tokens are not published.
+
+### #2116 follow-up: bundled Windows console teardown and settled cleanup
+
+The Windows command matrix in run `39080748349` reproduced the forced early
+fixture cleanup failure after #2116's earlier PRs: the shell reported exit, but
+removing the service directory failed with `EBUSY`. Later fixtures inherited
+already-removed directory entries and failed with `ENOENT`. The issue was reopened;
+a subsequent unchanged CI run passing did not count as a resolution.
+
+The installed node-pty 1.1.0 inbox ConPTY backend launches an asynchronous console
+process-list helper and immediately tears down the console. Its helper's observed
+`AttachConsole failed` output explains why shell exit alone cannot prove child
+retirement. Windows terminals now use node-pty's bundled ConPTY backend, which
+closes console input and uses its native teardown without that helper. The DLL
+and OpenConsole executable are already shipped in the installed package for both
+Windows architectures. Worker packaging deploys the production dependency intact.
+No runtime metadata gate or process-exit shortcut was added.
+
+Fixture cleanup now awaits every directory-removal attempt, forgets each directory
+only after successful removal, and retains failed removals for retry while still
+reporting their errors. A controlled regression failed the previous implementation
+because it returned before an independently held removal completed. The fixed
+fixture proves that only the failed directory is retried. The existing forced
+failures before and after actual child readiness, process-exit checks, canonical
+snapshot and atomic replay assertions remain intact. The detached CLI fixture also
+awaits its own child's stdout acknowledgement before sending its exit input;
+its first local run exposed an input-before-initialization race.
+
+Worker source typechecks and all 13 terminal-manager tests pass locally. The
+existing Windows CI executes ten fresh terminal-test processes after the complete
+command suite. This workflow now also triggers for production terminal-manager
+changes. The issue PR records remaining matrix results, the standard check,
+merge and closure. Evidence is retained under
+`~/.codex/issue-fix-pass/20261017/2116-conpty-evidence/`.
+
+Other first-pass dispositions: #2112 remains open with draft PR #2132 and
+no auto-merge. Its controlled configuration-recovery fix is verified locally,
+but repeated Windows CI also exposed an unresolved initial blank-page race; a
+single passing diagnostic run did not close it. #2099 was reopened after a real
+carrier-recovery fixture required SIGKILL despite logging shutdown completion.
+Both have agent-runnable evidence and a next step on their trackers. Their work
+is separate from this terminal cycle.

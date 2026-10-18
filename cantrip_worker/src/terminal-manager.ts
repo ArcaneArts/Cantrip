@@ -1020,6 +1020,9 @@ export class TerminalManager {
       cwd: session.cwd,
       env: processLaunch.env,
       name: "xterm-256color",
+      // The bundled backend owns console teardown. The inbox backend's
+      // asynchronous process-list helper can lose children as the shell exits.
+      useConptyDll: process.platform === "win32",
     });
     session.process = child;
     session.exited = null;
