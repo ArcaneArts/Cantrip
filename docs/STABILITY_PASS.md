@@ -1498,3 +1498,67 @@ and TCP lifecycle coverage. Sanitized browser evidence is retained under
 `~/.codex/issue-fix-pass/20261017/2104-evidence/`; private fixtures are preserved
 outside the worktree. This fixture does not claim that the blocked #2101 server
 recovery behavior is fixed.
+
+### #2104 final delivery and #2116 recurrence
+
+[PR #2141](https://github.com/ArcaneArts/Cantrip/pull/2141) merged as
+`2dbab47f0d412bdeaf5f8e00726e522439d741ea`; #2104 is closed, Primary was
+synchronized, and its owned worktree was archived after preserving evidence.
+All six editor contract/runtime jobs and both Linux/macOS command jobs passed.
+Windows commands failed with a distinct native Vitest-child exit during repeated
+PTY cleanup; the failed-job-only retry also failed. The unchanged terminal code
+is tracked under reopened [#2116](https://github.com/ArcaneArts/Cantrip/issues/2116#issuecomment-6245047926)
+for a bounded follow-up after the remaining independent cycles. A retry is not
+being treated as a fix. The standard check retained the same 78 server failure
+labels (71 failed, 1,433 passed, 70 skipped; 377.26 seconds).
+
+### #2105: local repository and actual editor worktree switching
+
+Branch: `codex/issue-2105-worktree-fixture`. Run
+`pnpm qa:editor-recovery --case worktree-switch-cycles` with the existing bundled
+runtime paths and installed Chromium. No GitHub credentials or user repository
+are required. The fixture creates a committed local Git checkout with a
+synthetic origin, then uses the production encrypted project API and worker's
+existing direct-attachment operation. It creates no remote repository and never
+pushes. The worker receives an isolated GitHub configuration directory with token
+environment variables removed. A helper is exposed only in the fixture's Vite
+build; normal application builds are unchanged.
+
+Primary and two secondary worktrees are created with normal server IDs,
+encrypted metadata and worker Git operations. Browser controls switch between
+all three checkouts twice. Each switch checks the generated editor workspace
+against the worker-owned checkout path, saves two distinct edits, verifies
+sibling files stayed byte-identical, observes the old iframe being removed, and
+requires a successful server response releasing its exact workspace attachment.
+The new attachment must belong to the selected worktree. Live events refresh the
+UI without extra page reloads. Setup retries only an actual protected-connection
+readiness failure; it does not use a speculative readiness gate.
+
+Repeated cold editor mounts exceeded the default 256 MiB/min worker relay budget
+in an initial run. This case uses the existing bounded configuration at 1 GiB/min
+for both worker and account; production defaults and per-stream limits are
+unchanged. Its final actual browser run passed cold typing/save in 17.411 seconds
+and all six switches in 21.638 seconds, with 12 saves and six acknowledged
+attachment releases. Focused worktree suites passed 57 app and 92 worker tests.
+The fixture also built the actual app successfully.
+
+The worker exited naturally with code 0 in 262 ms. All 21 observed owned process
+IDs were verified absent and zero fixture sockets remained. The server exited
+naturally with code 1 in 172 ms after explicitly reporting unavailable remote
+revocation, preserving the failure semantics implemented by #2128; it emitted
+no unhandled rejection and stranded no process. This is not a claim of successful
+remote revocation after the worker has exited. Raw private fixtures and sanitized
+results are retained outside the worktree under
+`~/.codex/issue-fix-pass/20261017/2105-owned-fixtures/` and `2105-evidence/`.
+
+The standard `pnpm check` completed the server suite with the same 78 failure
+labels as merged main: 71 failed, 1,433 passed, 70 skipped (360.78 seconds), with
+no added or removed failures. Those failures remain in #2106. Changed-file
+formatting, JavaScript syntax and diff checks pass. Three-platform harness CI
+also checks the new fixture module's syntax.
+
+After tightening the incoming attachment assertion to its exact displayed
+workspace, a second actual browser run passed cold typing/save in 16.24 seconds
+and all six switches in 16.797 seconds. All 21 owned PIDs again retired; the
+worker exited naturally with code 0 in 622 ms and the server reported its
+explicit remote-revocation failure before natural exit 1 in 94 ms.
