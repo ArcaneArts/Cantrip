@@ -1368,3 +1368,54 @@ installing. All observed owned PIDs were retired by cleanup and zero fixture
 sockets remained. That worker follow-up is separate from this app/server fix.
 Evidence is retained under `~/.codex/issue-fix-pass/20261017/2103-evidence/`;
 private raw fixtures are preserved outside the disposable lane.
+
+Final #2103 delivery: [PR #2138](https://github.com/ArcaneArts/Cantrip/pull/2138)
+merged as `9820cb575` and closed the issue. All six Linux, macOS and Windows
+recovery/contract jobs passed on their first attempt. The standard check retained
+exactly the previous 78 server test/suite failure labels: 1,433 passed, 71 failed
+and 70 skipped. Primary was synchronized and the owned lane archived after
+preserving browser evidence and verifying all observed owned PIDs had retired.
+
+### #2099 follow-up: cancel pending mDNS lookups with their ICE owner
+
+Branch: `codex/issue-2099-mdns-cancel`. The issue PR records final initialized
+browser, platform, standard-check and delivery results.
+
+The route-replacement fixture exposed another worker shutdown owner after the
+closed-state fix in PR #2135. An external handle probe found one referenced
+ten-second `MdnsLookup.lookup` timer at one, four and seven seconds after SIGTERM;
+no TCP or UDP handles remained. Closing the real werift connection destroyed its
+mDNS socket but did not settle pending lookups or cancel their timers. The real
+worker required SIGKILL. The prior candidate-gathering fix remained installed.
+
+The werift patch now tracks pending mDNS lookups and cancels their response
+listeners, timers and promises when the lookup owner closes. Close is idempotent,
+new lookups reject after closure, and synchronous query failures release their
+resources. ICE rejects late candidates and rechecks closure after an awaited DNS
+answer, preventing an already-closed connection from accepting it or creating a
+new lookup owner. Both package entry points receive the same fix; existing ICE
+gathering protection remains intact.
+
+Four controlled cases exercise the real ESM and CommonJS package entry points
+in fresh Node children. They cover successful resolution, multiple pending
+queries at close, repeated close, lookup after close, and an answer arriving just
+before connection closure. Both pending-query cases time out on the original
+implementation; both late-answer cases incorrectly accept the candidate. All
+six ICE shutdown cases now pass, including the two existing real-STUN cases,
+and every child exits naturally. Worker source and strict fixture types pass.
+The complete worker suite passes 2,679 tests with 133 existing skips.
+
+The actual cold browser fixture passes typing/save in 16,972 ms and route
+replacement with retained dirty content plus a second saved edit in 7,839 ms.
+The worker exits naturally with code 0 in 714 ms while search, browser and
+CodeGraph are all installing. All 15 observed worker-owned PIDs retire and zero
+fixture sockets remain. The acceptance run has no diagnostic probe injected.
+Evidence is retained under `~/.codex/issue-fix-pass/20261017/2099-mdns-evidence/`;
+private fixtures remain outside published evidence.
+
+A separate actual browser run waits until search, Chromium and CodeGraph report
+ready, verifies another real save, interrupts the carrier, retains the dirty
+buffer and iframe URL, and saves a second edit after recovery. The initialized
+save passes in 43,003 ms and carrier recovery in 19,295 ms. The worker exits
+naturally with code 0 in 120 ms; all 14 observed owned PIDs retire and zero
+fixture sockets remain. Both cold and initialized browser commands exit 0.
