@@ -22,6 +22,8 @@ import { accountStorageMeasurementQuery } from "../src/db/account-resource-usage
 import { DesktopUpdateStateRepository } from "../src/db/repository/desktop-update-state.js";
 import * as schema from "../src/db/schema.js";
 
+// Database-backed cases include cold PGlite initialization (up to 12.6 s in CI).
+// Their 30-second fixture budget leaves behavioral polling deadlines unchanged.
 const migrationsFolder = fileURLToPath(new URL("../drizzle", import.meta.url));
 const workflowTables = [
   "workflow_trigger_deliveries",
@@ -651,7 +653,7 @@ describe("durable workflow removal migration", () => {
       clearSensitiveBytes(accountMasterKey);
       await client.close();
     }
-  });
+  }, 30_000);
 
   it("creates a workflow-free schema and does not replay the migration journal", async () => {
     const client = new PGlite();
@@ -675,5 +677,5 @@ describe("durable workflow removal migration", () => {
     } finally {
       await client.close();
     }
-  });
+  }, 30_000);
 });

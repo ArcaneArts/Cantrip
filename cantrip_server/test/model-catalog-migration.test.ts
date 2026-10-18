@@ -7,6 +7,8 @@ import { describe, expect, it } from "vitest";
 
 import * as schema from "../src/db/schema.js";
 
+// Database-backed cases include cold PGlite initialization (up to 12.6 s in CI).
+// Their 30-second fixture budget leaves behavioral polling deadlines unchanged.
 const migrationsFolder = fileURLToPath(new URL("../drizzle", import.meta.url));
 
 describe("model catalog migration", () => {
@@ -110,5 +112,5 @@ describe("model catalog migration", () => {
     } finally {
       await client.close();
     }
-  });
+  }, 30_000);
 });

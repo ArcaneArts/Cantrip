@@ -177,7 +177,7 @@ beforeAll(async () => {
   );
   chatId = chat!.id;
   app = await buildApp({ config, database, logger: false, workerBridge });
-});
+}, 30_000);
 
 afterAll(async () => {
   await app?.close();

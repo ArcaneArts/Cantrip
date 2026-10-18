@@ -105,7 +105,7 @@ beforeAll(async () => {
   );
   app = await buildApp({ config, database, logger: false, workerBridge });
   await app.ready();
-});
+}, 30_000);
 
 afterAll(async () => {
   await app?.close();

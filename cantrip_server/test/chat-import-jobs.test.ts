@@ -79,7 +79,7 @@ beforeAll(async () => {
   )[0]!;
   projectReplicaId = worktree.projectSourceId;
   worktreeId = worktree.id;
-});
+}, 30_000);
 
 afterAll(async () => {
   await database?.close();

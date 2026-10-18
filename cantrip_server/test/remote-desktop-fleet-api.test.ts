@@ -144,7 +144,7 @@ beforeAll(async () => {
     protectedRemoteDesktopState(),
   );
   app = await buildApp({ config, database, logger: false, workerBridge });
-});
+}, 30_000);
 
 afterAll(async () => {
   await app?.close();

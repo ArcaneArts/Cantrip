@@ -20,6 +20,8 @@ import type { ServerConfig } from "../src/config.js";
 import { connectDatabase } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 
+// Database-backed cases include cold PGlite initialization (up to 12.6 s in CI).
+// Their 30-second fixture budget leaves behavioral polling deadlines unchanged.
 it("persists every app-facing private label and surface state only as authenticated ciphertext", async () => {
   const dataDirectory = await mkdtemp(
     path.join(tmpdir(), "cantrip-surface-title-persistence-"),
@@ -539,4 +541,4 @@ it("persists every app-facing private label and surface state only as authentica
     await scan.close();
     await rm(dataDirectory, { recursive: true, force: true });
   }
-});
+}, 30_000);

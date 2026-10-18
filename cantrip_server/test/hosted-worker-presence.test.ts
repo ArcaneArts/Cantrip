@@ -20,6 +20,8 @@ import type { ServerConfig } from "../src/config.js";
 import { connectDatabase } from "../src/db/index.js";
 import { WORKER_ONLINE_WINDOW_MS } from "../src/db/repository.js";
 
+// Database-backed cases include cold PGlite initialization (up to 12.6 s in CI).
+// Their 30-second fixture budget leaves behavioral polling deadlines unchanged.
 const origin = "https://app.cantrip.test";
 const password = "correct horse battery staple";
 const dataDirectories: string[] = [];
@@ -240,7 +242,7 @@ describe("hosted worker presence", () => {
       liveSocket?.terminate();
       await app.close();
     }
-  });
+  }, 30_000);
 });
 
 function isWorkerPresenceEvent(message: AppLiveServerMessage): boolean {

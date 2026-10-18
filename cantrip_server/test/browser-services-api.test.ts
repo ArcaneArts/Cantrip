@@ -231,7 +231,7 @@ beforeAll(async () => {
   resolvedServerId = (
     await app.inject({ method: "GET", url: "/api/bootstrap" })
   ).json().server.id;
-});
+}, 30_000);
 
 afterAll(async () => {
   await app?.close();

@@ -23,6 +23,8 @@ import {
   protectedTerminalFields,
 } from "./private-label-fixture.js";
 
+// Database-backed cases include cold PGlite initialization (up to 12.6 s in CI).
+// Their 30-second fixture budget leaves behavioral polling deadlines unchanged.
 it("persists custom tab-group titles only as authenticated ciphertext", async () => {
   const dataDirectory = await mkdtemp(
     path.join(tmpdir(), "cantrip-tab-group-title-persistence-"),
@@ -180,4 +182,4 @@ it("persists custom tab-group titles only as authenticated ciphertext", async ()
     await scan.close();
     await rm(dataDirectory, { recursive: true, force: true });
   }
-});
+}, 30_000);

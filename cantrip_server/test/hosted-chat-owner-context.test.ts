@@ -28,6 +28,8 @@ import {
 
 import { settingsEnvelope } from "./native-settings-repository-fixture.js";
 
+// Database-backed cases include cold PGlite initialization (up to 12.6 s in CI).
+// Their 30-second fixture budget leaves behavioral polling deadlines unchanged.
 const origin = "https://app.cantrip.test";
 const password = "correct horse battery staple";
 const dataDirectories: string[] = [];
@@ -318,5 +320,5 @@ describe("hosted chat owner context", () => {
     } finally {
       await app.close();
     }
-  });
+  }, 30_000);
 });

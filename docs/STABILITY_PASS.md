@@ -1625,3 +1625,17 @@ focused regression coverage, not a restored full-baseline claim. The worktree
 guide's additional checks pass: 791 protocol tests, 92 worker tests, 57 app tests
 and the app production build. Private logs and the incomplete probe are retained
 under `~/.codex/issue-fix-pass/20261017/2106-evidence/`.
+
+The standard `pnpm check` independently confirms the same two remaining failure
+labels (1,518 passed, 57 skipped; 318.41 seconds), after audits, native/script
+checks and source typechecks pass. Its later stages are not reached. There are
+no added failure labels relative to the 78-label merged baseline.
+
+The first new CI matrix exposes cold-database fixture budgets: initialization
+alone takes up to 6.8 seconds on Linux, 9.9 on macOS and 12.6 on Windows. Twenty
+tests that create their own database and nine database setup hooks now have
+explicit 30-second fixture budgets. Unit tests, polling deadlines and production
+timeouts are unchanged. The original five-second test and ten-second hook
+budgets could expire before assertions started. All three platforms already
+pass the 43 current worktree cases; PostgreSQL authority and the three native
+capture jobs also pass. The repaired fixture budgets require a fresh CI run.

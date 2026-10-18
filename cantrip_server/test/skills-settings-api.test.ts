@@ -156,7 +156,7 @@ beforeAll(async () => {
   app = await buildApp({ config, database, logger: false, workerBridge });
   providerId = (await database.repository.getSettings(LOCAL_USER_ID))
     .providers[0]!.id;
-});
+}, 30_000);
 
 afterAll(async () => {
   await app?.close();

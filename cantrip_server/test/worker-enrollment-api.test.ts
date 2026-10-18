@@ -686,5 +686,5 @@ describe("per-worker enrollment credentials", () => {
     } finally {
       await app.close();
     }
-  });
+  }, 30_000);
 });
