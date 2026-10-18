@@ -804,6 +804,93 @@ describe("worker TCP tunnel destination", () => {
     adapter.close();
   });
 
+  it("records remote retirement only after the socket closes and leaves its sibling alive", async () => {
+    class ControlledSocket extends EventEmitter {
+      destroyed = false;
+      writableLength = 0;
+      destroy(): this {
+        this.destroyed = true;
+        return this;
+      }
+      pause(): this {
+        return this;
+      }
+      resume(): this {
+        return this;
+      }
+      setNoDelay(): this {
+        return this;
+      }
+      setTimeout(): this {
+        return this;
+      }
+    }
+    const sockets: ControlledSocket[] = [];
+    const records: Array<{ context?: Record<string, unknown> }> = [];
+    subscriptions.push(
+      subscribeWorkerLogs((record) =>
+        records.push(record as { context?: Record<string, unknown> }),
+      ),
+    );
+    const adapter = new TunnelTcpDestinationAdapter(() => {
+      const socket = new ControlledSocket();
+      sockets.push(socket);
+      return socket as unknown as Socket;
+    });
+    const output: TunnelDataPlaneFrameHeader[] = [];
+    adapter.setFrameEmitter((header) => {
+      output.push(header);
+      return true;
+    });
+    try {
+      adapter.handleFrame(connectHeader("cancelled", 1234), EMPTY_PAYLOAD);
+      adapter.handleFrame(connectHeader("sibling", 1234), EMPTY_PAYLOAD);
+      sockets.forEach((socket) => socket.emit("connect"));
+      const close = {
+        ...connectHeader("cancelled", 1234),
+        sequence: 1,
+        kind: "close" as const,
+        code: "normal" as const,
+      };
+      adapter.handleFrame(close, EMPTY_PAYLOAD);
+      expect(sockets[0]!.destroyed).toBe(true);
+      expect(sockets[1]!.destroyed).toBe(false);
+      const closed = () =>
+        records.filter(
+          (record) =>
+            record.context?.event ===
+            "tunnel.destination.remote-close-completed",
+        );
+      expect(closed()).toHaveLength(0);
+      sockets[0]!.emit("close");
+      adapter.handleFrame(close, EMPTY_PAYLOAD);
+      expect(closed()).toHaveLength(1);
+      expect(closed()[0]!.context).toMatchObject({
+        tunnelId: "tunnel-1",
+        attachmentId: "attachment-1",
+        sourceEndpointId: "desktop-1",
+        destinationEndpointId: "worker-1",
+        connectionId: "cancelled",
+      });
+      expect(output.filter((header) => header.kind === "close")).toHaveLength(
+        0,
+      );
+      adapter.handleFrame(connectHeader("cancelled", 1234), EMPTY_PAYLOAD);
+      sockets[2]!.emit("connect");
+      expect(
+        output.filter(
+          (header) =>
+            header.kind === "accepted" && header.connectionId === "cancelled",
+        ),
+      ).toHaveLength(2);
+      expect(
+        output.filter((header) => header.kind === "rejected"),
+      ).toHaveLength(0);
+    } finally {
+      adapter.close();
+    }
+  });
+
   it("records a safe diagnostic when output capacity closes a stream", async () => {
     const port = await listenBurst(64 * 1_024);
     const adapter = new TunnelTcpDestinationAdapter();

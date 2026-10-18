@@ -1419,3 +1419,82 @@ buffer and iframe URL, and saves a second edit after recovery. The initialized
 save passes in 43,003 ms and carrier recovery in 19,295 ms. The worker exits
 naturally with code 0 in 120 ms; all 14 observed owned PIDs retire and zero
 fixture sockets remain. Both cold and initialized browser commands exit 0.
+
+Final #2099 delivery: [PR #2139](https://github.com/ArcaneArts/Cantrip/pull/2139)
+merged as `58db2da0d` and closed the issue. All 19 platform checks passed on
+their first attempt. The complete worker suite passed 2,679 tests with 133
+existing skips. The standard check retained the same 78 server failure labels
+(71 failed, 1,433 passed, 70 skipped). Primary was synchronized and the owned
+worktree archived after preserving both browser runs and verifying process exit.
+
+### #2101: blocked after bounded server-restart and lost-Pong attempts
+
+[Draft PR #2140](https://github.com/ArcaneArts/Cantrip/pull/2140), branch
+`codex/issue-2101-server-recovery`, is intentionally retained with no auto-merge
+or closing keyword. Its candidate handles an actual missing-tunnel 404 through
+the existing bounded session replacement path. Controlled app coverage passes
+165 tests and all three editor lifecycle CI jobs pass. Actual browser acceptance
+still fails: replacing the session restores a visible editor but loses its dirty
+buffer. The candidate must not merge in this state.
+
+Baseline, candidate and temporary session-resumption probes ran against the real
+bundled editor. Reusing the original session in the temporary probe preserved
+the dirty marker across server restart, but changed the iframe URL; lost-Pong
+recovery still failed with protected metadata unavailable. That probe was
+removed from the draft and preserved separately. Workers exited naturally and
+all observed owned PIDs retired. The standard check retained the same 78 server
+failure labels. Evidence and the smallest next step are recorded in
+[the issue comment](https://github.com/ArcaneArts/Cantrip/issues/2101#issuecomment-6244817520).
+
+The remaining work is a bounded, authorized session handoff that preserves the
+worker runtime/workspace incarnation, plus metadata refresh after reconnect.
+Do not silently substitute a fresh workspace or relax generation fencing. One
+revisit remains after independent issues have completed. Private evidence is
+retained under `~/.codex/issue-fix-pass/20261017/2101-evidence/`.
+
+### #2104: actual logical-stream congestion and cancellation
+
+Branch: `codex/issue-2104-stream-congestion`. The issue PR records final checks
+and merge state. Run `pnpm qa:editor-recovery --case congested-sibling` with the
+normal bundled runtime configuration.
+
+The fixture now instruments the real logical HTTP connection in its own Vite
+build. It withholds only that connection's destination receive credits before
+sequence allocation. Production builds contain no credit injection. The real
+workbench asset is fetched completely as a positive control, then fetched again
+with a 256 KiB window while the actual bundled editor saves two separate edits.
+The fixture verifies byte-count stability, unchanged route identity and iframe,
+local retirement, actual worker TCP socket closure, and a subsequent full fetch.
+
+This exposed a production cancellation defect: native iframe fetch abort rejected
+the client promise while the service worker's FetchEvent signal stayed active.
+The shim now correlates protected signal-bearing fetches with a private request
+channel. The service worker transfers that channel only to the already-authorized
+FetchEvent client and rechecks the current adapter epoch after client lookup.
+Abort uses the existing exact-request controller path. Delivery after a rejected
+fetch also cancels; channels, signal listeners and map entries retire on request
+completion. The correlation header is removed before forwarding upstream. Other
+origins and ordinary requests retain native fetch behavior. Existing ingress,
+body, authorization and deadline limits remain in force.
+
+Client-initiated logical close intentionally has no wire acknowledgement. A new
+worker diagnostic records the actual TCP socket close event for its exact route;
+the fixture waits for that event rather than assuming an acknowledgement exists.
+A controlled worker test verifies the event is absent before socket close,
+emitted once afterward, and leaves siblings usable and the retired ID reusable.
+
+The actual browser acceptance passes in 1,185 ms: the 15,450,994-byte asset stalls
+at exactly 262,144 bytes, two real editor saves reach the original worker file,
+and native abort retires both ends. The original authority and iframe remain.
+Cold typing/save passes in 15,529 ms. Worker shutdown is natural code 0 in 1,030 ms
+with all three managed runtimes installing; all nine observed worker-owned PIDs
+retire and zero fixture sockets remain. The complete app suite passes 3,053 tests
+with three existing skips. Focused app cancellation/transport coverage passes
+128 tests; four probe ownership cases pass. The new service-worker cancellation
+cases fail on the original implementation. App and worker source types pass.
+
+The three-platform editor contract workflow includes the cancellation, probe
+and TCP lifecycle coverage. Sanitized browser evidence is retained under
+`~/.codex/issue-fix-pass/20261017/2104-evidence/`; private fixtures are preserved
+outside the worktree. This fixture does not claim that the blocked #2101 server
+recovery behavior is fixed.

@@ -263,6 +263,85 @@
       nativeRevokeObjectURL(url);
     };
     const serviceWorkerContainer = navigator.serviceWorker;
+    // FetchEvent.request.signal does not reliably follow an iframe fetch abort.
+    // The service worker transfers a capability for this one admitted request;
+    // unknown tokens mean the native fetch already settled before delivery.
+    const pendingFetches = new Map();
+    if (
+      typeof window.fetch === "function" &&
+      serviceWorkerContainer?.addEventListener
+    ) {
+      const nativeFetch = window.fetch.bind(window);
+      window.fetch = async (input, init) => {
+        const signal =
+          init?.signal ?? (input instanceof Request ? input.signal : null);
+        if (!signal || signal.aborted) return nativeFetch(input, init);
+        const url = new URL(
+          input instanceof Request ? input.url : String(input),
+          document.baseURI ?? location.href,
+        );
+        if (
+          url.origin !== config.origin ||
+          !url.pathname.startsWith(`/__cantrip_code/${adapterId}/code/`)
+        )
+          return nativeFetch(input, init);
+        const mode =
+          init?.mode ?? (input instanceof Request ? input.mode : null);
+        if (mode === "no-cors") return nativeFetch(input, init);
+        const request = new Request(input, init);
+        const fetchToken = crypto.randomUUID();
+        request.headers.set("x-cantrip-code-fetch-token", fetchToken);
+        const entry = { port: null };
+        const abort = () => {
+          try {
+            entry.port?.postMessage({ type: "cantrip-code-fetch-abort-v1" });
+          } catch {
+            /* The request already retired. */
+          }
+        };
+        entry.connect = (port) => {
+          if (entry.port) {
+            port.close();
+            return;
+          }
+          entry.port = port;
+          if (request.signal.aborted) abort();
+        };
+        pendingFetches.set(fetchToken, entry);
+        request.signal.addEventListener("abort", abort, { once: true });
+        try {
+          return await nativeFetch(request);
+        } finally {
+          pendingFetches.delete(fetchToken);
+          request.signal.removeEventListener("abort", abort);
+          // A rejected fetch can settle without signalling the SW request.
+          abort();
+          entry.port?.close();
+        }
+      };
+      serviceWorkerContainer.addEventListener("message", (event) => {
+        const message = event.data;
+        if (
+          event.source !== serviceWorkerContainer.controller ||
+          message?.type !== "cantrip-code-fetch-channel-v1" ||
+          message.adapterId !== config.adapterId ||
+          message.generation !== config.generation ||
+          message.frameNonce !== config.frameNonce ||
+          event.ports?.length !== 1
+        )
+          return;
+        const port = event.ports[0];
+        const entry = pendingFetches.get(message.fetchToken);
+        if (entry) entry.connect(port);
+        else {
+          try {
+            port.postMessage({ type: "cantrip-code-fetch-abort-v1" });
+          } finally {
+            port.close();
+          }
+        }
+      });
+    }
     if (serviceWorkerContainer?.addEventListener) {
       serviceWorkerContainer.addEventListener("message", (event) => {
         const message = event.data;
