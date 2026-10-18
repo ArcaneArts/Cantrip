@@ -1639,3 +1639,78 @@ timeouts are unchanged. The original five-second test and ten-second hook
 budgets could expire before assertions started. All three platforms already
 pass the 43 current worktree cases; PostgreSQL authority and the three native
 capture jobs also pass. The repaired fixture budgets require a fresh CI run.
+
+### #2106 final partial delivery
+
+[PR #2143](https://github.com/ArcaneArts/Cantrip/pull/2143) merged as
+`1dec894dae92770a86d807b3329976c0293620e6`. All seven checks passed on the final
+head: 131 restored-suite tests and 43 current worktree tests on each of Linux,
+macOS and Windows, plus the three native jobs and PostgreSQL authority. Issue
+#2106 remains open for the two legacy fixtures described above. Primary was
+synchronized and the owned worktree was archived only after all commands and
+owned processes had finished. Evidence remains in `2106-evidence/` outside the
+archived worktree.
+
+### Final revisit of blocked recovery work
+
+The final source-history review against `1dec894dae` found no intervening
+browser adapter/session or manager changes that resolve #2112's Windows
+initial-navigation failure. [Draft #2132](https://github.com/ArcaneArts/Cantrip/pull/2132)
+retains the controlled configuration-recovery fix, but its diagnostic change
+alters CDP promise timing; its last green run is insufficient proof. The next
+step is to capture navigation requests, results and frame events while
+preserving the original promise identity, then isolate why the initial page
+stays blank before the recovery fault. Existing Windows CI can run that test;
+manual testing is not required.
+
+For #2101, the app's Code API, Explorer editor and shared-session recovery
+implementation are unchanged since the blocked cycle. The intervening worker
+tunnel change propagates fetch cancellation; it does not provide session
+authority restoration or protected-metadata rehydration. The actual-browser
+dirty-buffer losses therefore remain unresolved.
+[Draft #2140](https://github.com/ArcaneArts/Cantrip/pull/2140) must not merge:
+its fresh-session fallback recovers a visible editor but loses unsaved content.
+The next step is a bounded, authorized handoff retaining the same workspace
+and worker runtime incarnation, followed by both existing restart and lost-pong
+browser cases with retained dirty content and two real saves.
+
+Both drafts remain clean, with auto-merge disabled and no closing keywords.
+Their owned worktrees and external evidence are intentionally retained. The
+revisit found no new basis for repeating unchanged failed attempts. #2106's
+two legacy fixtures also remain open after the substantial verified partial
+repair: migrate their retired plaintext operations to the current protected
+client/worker harness, preserving exact checkout paths, ownership, encrypted
+state and operation results. The ordinary full suite continues to exercise
+those failures. These three dispositions are unresolved work, not passes or
+requirements for human verification.
+
+### #2116: native Windows PTY handle lifetime
+
+Branch: `codex/issue-2116-native-pty-lifetime`. Two independent Windows command
+jobs subsequently crashed their Vitest child while the early-failure PTY
+fixture was cleaning up. Those failures did not provide a native crash stack
+or exit code, so they do not establish an exact native crash instruction.
+
+Inspection of installed `node-pty` 1.1.0 found unsynchronized ownership of the
+Windows `ptyHandles` vector. Its exit thread can erase a baton while `PtyKill`
+still dereferences it after closing the console. Upstream
+[microsoft/node-pty#922](https://github.com/microsoft/node-pty/pull/922) fixes
+that handle lifetime race. The published `1.2.0-beta.15` source includes the
+mutex protection, and the package ships native prebuilds for supported worker
+platforms. The worker now pins that exact release, with its verified SHA-512
+in the lockfile. This is a prerelease dependency tradeoff to obtain the native
+fix; it does not claim that the missing crash stack has been recovered.
+
+Existing terminal teardown, exit-status handling and all lifecycle assertions
+remain unchanged. Acceptance uses the real PTY replay/cleanup fixtures, the
+controlled exit-event tests, the independent full worker suite and the existing
+three-platform command workflow, including ten fresh Windows PTY repetitions.
+The focused local tests pass all 17 cases in 6.84 seconds; worker source types
+also pass. The initial full worker run has 2,679 passes, 133 skips and one Grok
+OAuth fixture failure: it waits only for authentication, then asserts completed
+login and plan metadata outside that wait. Its focused nine tests pass on both
+unchanged main and this candidate. A concurrent full comparison passes all 2,680
+tests on main; the candidate repeats that Grok failure and hits one 15-second
+Sharp image-test timeout (2,678 passes). Those unrelated files are unchanged,
+but the full candidate run is not being called green. Standard repository and
+native CI results are pending.
