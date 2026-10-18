@@ -92,6 +92,12 @@ interface BridgeState {
   agentStatus?: unknown;
 }
 
+class BridgeAuthoritySupersededError extends Error {
+  constructor() {
+    super("Cantrip workbench bridge request was superseded.");
+  }
+}
+
 const DEFAULT_WORKBENCH_STATE: CodeWorkbenchState = {
   activeEditor: null,
   git: null,
@@ -641,16 +647,29 @@ export class CodeWorkbenchBridge {
     if (this.#sessions.get(sessionId) !== session) {
       throw new Error("Cantrip workbench bridge session was superseded.");
     }
-    const result = (await this.#request(
-      session,
-      "openFile",
-      {
-        expectedWorkspaceRootUri,
-        path: relativePath,
-      },
-      this.#requestTimeoutMs,
-      signal,
-    )) as Partial<CodeOpenFileResult>;
+    const deadline = performance.now() + this.#requestTimeoutMs;
+    let result: Partial<CodeOpenFileResult>;
+    for (;;) {
+      const remaining = deadline - performance.now();
+      if (remaining <= 0) {
+        throw new Error("Cantrip workbench openFile request timed out.");
+      }
+      try {
+        result = (await this.#request(
+          session,
+          "openFile",
+          { expectedWorkspaceRootUri, path: relativePath },
+          remaining,
+          signal,
+        )) as Partial<CodeOpenFileResult>;
+        break;
+      } catch (error) {
+        // Replay only current navigation on an actual authority replacement.
+        // #request still fences session identity, aborts and stale responses;
+        // all attempts share the original operation deadline.
+        if (!(error instanceof BridgeAuthoritySupersededError)) throw error;
+      }
+    }
     if (result.relativePath !== relativePath) {
       throw new Error("Cantrip Code opened an unexpected file.");
     }
@@ -1484,9 +1503,7 @@ export class CodeWorkbenchBridge {
         continue;
       }
       const superseded = this.#takePending(session, id);
-      superseded?.reject(
-        new Error("Cantrip workbench bridge request was superseded."),
-      );
+      superseded?.reject(new BridgeAuthoritySupersededError());
     }
   }
 

@@ -1234,3 +1234,47 @@ the worker exited naturally with code 0 in 228 ms while the managed browser was
 installing and search/CodeGraph were ready. All 15 observed owned PIDs retired;
 the fixture closed with zero sockets. No diagnostic probes were injected in this
 acceptance run. Worker types and 82 focused lifecycle/WorkerLink tests pass.
+
+Final #2099 follow-up delivery: [PR #2135](https://github.com/ArcaneArts/Cantrip/pull/2135)
+merged as `93ddc430a` and closed the issue. All 19 CI jobs passed on their first
+attempt. Both real STUN child cases passed on Windows, macOS and Linux in
+11.01, 11.35 and 10.50 seconds respectively. The complete worker suite passed
+2,666 tests with 133 existing skips. The standard check retained exactly the
+previous 78 server test/suite failure labels: 1,418 passed, 71 failed and 70 skipped.
+Primary was synchronized and the owned lane archived after preserving evidence.
+
+### #2100: retain file navigation through a bridge authority replacement
+
+Branch: `codex/issue-2100-editor-recovery`. The issue PR records final browser,
+platform, standard-check and delivery results.
+
+Repeated actual carrier-interruption runs on merged main retained and saved the
+dirty file, but the second edit hit a persistent parent cover. Current correlated
+logs identify `Cantrip workbench bridge request was superseded.` as the file-open
+failure; the original historical assertion was not required to reproduce it.
+The newest bridge connection correctly invalidated the old pending RPC, but
+the navigation caller propagated that recoverable replacement as a final error.
+
+The bridge now retries only the current file-open request after its own typed
+authority-replacement rejection. All attempts share the original five-second
+request deadline and original session, path, expected workspace and abort signal.
+Old request IDs and socket generations remain fenced. Session replacement,
+cancellation, remote failures (including identical error text), timeouts and
+non-navigation RPCs still fail normally.
+
+A controlled regression replaces the real WebSocket authority during navigation,
+then sends a late assertion failure from the old socket before acknowledging the
+current request and opening another file. The original implementation failed
+because no navigation reached the new authority. Additional controlled cases
+cover cancellation, registration replacement, ordinary remote rejection and a
+series of authority replacements exhausting the original deadline. All 20 bridge
+tests pass; worker types and 72 existing editor lifecycle/frame tests also pass.
+
+The actual production-app/server/worker/bundled-editor `carrier-dirty-buffer`
+case passes in 19,148 ms. It retains the iframe URL and unsaved marker, performs
+the recovery save, then accepts and saves a second real edit without a blocking
+cover. Cold typing/save also passes in 16,590 ms. The worker exits naturally with
+code 0 in 4,818 ms while all three managed runtimes are installing; all 13 observed
+owned PIDs retire and zero fixture sockets remain. Evidence is retained under
+`~/.codex/issue-fix-pass/20261017/2100-evidence/`; raw private fixtures remain outside
+published evidence and the disposable worktree.
