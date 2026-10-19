@@ -10,6 +10,10 @@ on:
       - "cantrip_app/src/lib/remote-surface-worker-link*"
       - "cantrip_app/src/lib/browser-code-tunnel*"
       - "cantrip_app/src/lib/desktop-tunnel-worker-link*"
+      - "cantrip_server/src/app/routes/worker-link-sessions.ts"
+      - "cantrip_server/src/worker-links/relay.ts"
+      - "cantrip_server/test/worker-link-relay.test.ts"
+      - "cantrip_server/test/worker-link-relay-route.test.ts"
       - "cantrip_worker/src/transport.ts"
       - "cantrip_worker/test/tunnel-data-transport.test.ts"
       - "cantrip_worker/test/project-share-transport.test.ts"
@@ -44,3 +48,6 @@ jobs:
       - name: Worker reconnect and authentication
         if: ${{ !cancelled() }}
         run: pnpm --filter @cantrip/worker exec vitest run test/tunnel-data-transport.test.ts test/project-share-transport.test.ts --maxWorkers=2
+      - name: Relay connection authority and frame fencing
+        if: ${{ !cancelled() }}
+        run: pnpm --filter @cantrip/server exec vitest run test/worker-link-relay-route.test.ts test/worker-link-relay.test.ts test/worker-link-coordinator.test.ts --maxWorkers=2

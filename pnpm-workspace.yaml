@@ -14,5 +14,6 @@ engineStrict: true
 injectWorkspacePackages: true
 patchedDependencies:
   webdav-server@2.6.3: patches/webdav-server@2.6.3.patch
+  werift@0.24.3: patches/werift@0.24.3.patch
 saveWorkspaceProtocol: rolling
 sharedWorkspaceLockfile: true

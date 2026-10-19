@@ -605,3 +605,1112 @@ permissions; their generated account credentials and databases are not committed
 The verified Code/native bundles in Primary are retained for repeatable QA.
 Milestone worktrees are archived after observed merge and evidence preservation;
 unrelated worktrees and user-owned services remain untouched.
+
+## Issue fix pass: October 17, 2026
+
+The initial open queue is #2094, #2095, #2118, #2116, #2113, #2111, #2098,
+#2099, #2096, #2102, #2112, #2100, #2103, #2101, #2104, #2105 and #2106, in
+that intended order. Each issue receives an independent worktree and PR.
+Blocked work remains open with reproduction evidence and a next step; a later
+passing retry alone does not resolve an intermittent defect. The earlier
+stability report remains a record of the observations made at that time.
+
+### #2094: current layout fixtures
+
+PR: [#2121](https://github.com/ArcaneArts/Cantrip/pull/2121).
+Merged as `caa00b5be`; issue closed automatically. Primary synchronized and
+the owned worktree was archived after preserving the evidence.
+
+On base `9f3f7fad7`, the two affected server files reproduce both obsolete
+layout assertions plus the separate #2095 CLI routing failure (29 passed,
+three failed). Overview is a project page and rejects tab creation; the wire
+layout uses `panes`, not the retired `groups` property.
+
+The singleton fixture now asserts Overview's rejection without a layout
+mutation, then opens and focuses every supported built-in tab. Tasks provides
+the cross-project identity and launcher-pin persistence assertions. The test
+also checks that Overview has no tab launcher and pin changes leave the layout
+revision unchanged. The encrypted Task fixture parses the canonical wire schema,
+asserts Task creation leaves the entire layout unchanged, and checks membership
+using the supported surface ID. Its remaining encrypted draft, execution and
+retry assertions are retained. No production contract changed.
+
+Validation on `codex/issue-2094-layout-fixtures`:
+
+- Both affected tests pass independently (two passed, 30 filtered out).
+- Both complete files: 31 passed, one failed; the remaining failure is #2095.
+- Server source typecheck and formatting checks pass.
+- The standard `pnpm check` passes its audits, native checks, source types and
+  focused/shared suites, then fails in the full server baseline: 1,409 passed,
+  74 failed, 70 skipped. Both #2094 failure names are gone. Relative to M7D,
+  unchanged fixtures additionally miss a DirectAttachmentCoordinator renewal
+  callback and exceed the deferred native-permission test's five-second budget.
+  These observations remain part of #2106; the broad check is not green.
+- Independent runs of those two unchanged files pass all 37 tests on the
+  branch; untouched main passes 36 and reproduces the renewal-callback failure.
+  The native-permission timeout does not repeat in either focused run and
+  remains an unresolved intermittent observation, not a claimed fix.
+
+Local reproduction and validation logs are retained under
+`~/.codex/issue-fix-pass/20261017/`. Other initial issues remain pending.
+
+### #2095: exact CLI Run source routing
+
+PR: [#2122](https://github.com/ArcaneArts/Cantrip/pull/2122).
+Merged as `eeca0beab`; issue closed automatically. Primary synchronized and
+the owned worktree was archived after preserving the evidence.
+
+The named regression still fails on merged main `caa00b5be`: its setup prefers
+the Beta project replica but expects Run definitions from Alpha. The current
+source selection orders available registered Primary replicas by project
+preference, then user default. CLI definitions intentionally use that shared
+source regardless of the invoking worker's cwd; explicit runtime targets remain
+separate, as documented in `RUN_CONFIGURATIONS.md`.
+
+The fixture now checks both CLI callers against both project preferences. Each
+operation must dispatch exactly one command to the expected worker and path,
+and return the matching source worktree. A new rejection case supplies a real
+worktree from another project and verifies 404, no worker dispatch and no durable
+Run instance. Existing exact cross-worker Explorer, Terminal, Browser and
+worktree operations remain asserted. No production routing changed.
+
+Validation on `codex/issue-2095-cli-routing`:
+
+- All 51 tests pass across placement, Run definitions, Run runtimes and CLI
+  execution.
+- Complete `pnpm network:acceptance` passes: 450 TypeScript and five focused
+  native tests, plus topology/feature metadata checks. Its server group passes
+  all 91 tests.
+- The standard `pnpm check` passes audits, native checks, source types and
+  focused/shared suites, then reaches 1,412 passed, 71 failed and 70 skipped in
+  the full server baseline. No new failure name appears relative to #2094's
+  check. The CLI routing failure is gone; the two unrelated intermittent cases
+  did not repeat, which does not resolve them. The remaining baseline stays
+  tracked in #2106, and the full check is not green.
+- Formatting and diff checks pass. Logs and the failure-name comparison are
+  retained with this issue's evidence.
+
+### #2118: Windows model-configuration initialization budget
+
+Implementation: [#2123](https://github.com/ArcaneArts/Cantrip/pull/2123), on
+`codex/issue-2118-db-fixture-budget`. The PR records platform validation and
+merge status.
+
+The fixture, database connection implementation, migrations and lockfile on
+base `eeca0beab` match the files in the failing Windows
+[run 38604558879](https://github.com/ArcaneArts/Cantrip/actions/runs/38604558879).
+That run records successful PGlite connections taking 11,069–13,421 ms and the
+model-configuration `beforeAll` exhausting its implicit 10,000 ms limit. The
+unmodified fixture passes locally on macOS; that does not invalidate the
+measured Windows failure.
+
+The initialization hook now has an explicit 30,000 ms budget. Individual test
+deadlines, production startup behavior, configuration/authority assertions and
+cleanup remain unchanged. The Windows native CI job additionally starts this
+fixture in three fresh Vitest processes. Any failed run fails the job immediately;
+these are repeated acceptance runs, not retries that discard failures. The
+existing native three-platform and PostgreSQL jobs remain required evidence
+before this issue is closed.
+
+Three fresh local runs pass both assertions each time, with measured database
+startup of 2,085, 2,089 and 2,215 ms. Formatting and diff checks pass. Broader
+repository and platform outcomes are recorded in the linked PR and preserved
+with the issue evidence under `~/.codex/issue-fix-pass/20261017/`.
+
+Final #2118 outcome: PR #2123 merged as `23399dbe9` and the issue closed
+automatically. [CI run 39065838183](https://github.com/ArcaneArts/Cantrip/actions/runs/39065838183)
+passed on its first attempt at head `2a6e09e8c`: all three native platforms and
+PostgreSQL passed. The three Windows repetitions passed both tests each, with
+PGlite startup of 3,929, 3,721 and 3,632 ms. The standard check retained exactly
+#2095's full-server baseline (1,412 passed, 71 failed, 70 skipped; the same 78
+failed test/suite labels). Primary was synchronized and the owned worktree
+archived after saving the evidence.
+
+### #2116: deterministic terminal replay and cleanup ownership
+
+Implementation: [#2124](https://github.com/ArcaneArts/Cantrip/pull/2124), on
+`codex/issue-2116-terminal-fixtures`. Platform acceptance and merge status are
+recorded in the linked PR.
+
+The original Windows failure emitted only the PowerShell banner before the
+marker deadline, then failed directory removal with `EBUSY`. The fixture,
+production terminal manager and lockfile remain unchanged between that failing
+commit and base `23399dbe9`. The original complete file passes locally on macOS
+(10 tests), which does not disprove the observed Windows race.
+
+The replay fixture now launches a controlled command through the actual PTY.
+The command produces the first marker itself, waits for input, then produces
+the delta. Input contains neither marker, so terminal echo cannot satisfy the
+assertions. Canonical snapshot, replay-before-ready ordering, singleton
+attachment and exactly-once delivery to both subscribers remain checked.
+
+Every fixture manager registers both opened terminals and configured services.
+Shared cleanup closes all managers and waits for actual PTY exit before removing
+any directory, retaining bounded filesystem retries. A deliberately thrown
+failure before replay assertions proves an attached terminal and a background
+service both exit before either directory is removed, both attachment promises
+finish, and the original failure is preserved. Production startup and input
+handling are unchanged.
+
+The changed file passes all 11 tests locally in its first run and three fresh
+repetitions. An additional strict fixture
+compilation reports the same pre-existing diagnostics as the original file;
+normal source typechecking and runtime acceptance remain independent. The
+Windows command workflow runs the complete terminal file in three additional
+fresh processes and stops on any failure. Repeated Windows execution and the
+existing three-platform command matrix must pass before closing this issue.
+Broader check results, repetition logs and CI evidence are retained under
+`~/.codex/issue-fix-pass/20261017/` and recorded in the linked PR.
+
+The first Windows acceptance run exposed a duplicate-close path introduced by
+shared teardown: the original test requested a PTY close immediately before
+`afterEach` requested it again, before its exit callback. Node-pty reported
+`AttachConsole failed` and Vitest lost the worker process. Redundant end-of-test
+closes are removed; existing `finally` paths use the same awaited cleanup.
+Assertions that explicitly exercise service closure retain their observed-exit
+wait. The failed run remains evidence, and the corrected head requires a fresh
+platform run before merge.
+
+Final #2116 outcome: PR #2124 merged as `6b96708e6`; the issue closed
+automatically. The corrected head `f3cbaa9e9` passed both the
+[command](https://github.com/ArcaneArts/Cantrip/actions/runs/39067903070) and
+[Codex runtime](https://github.com/ArcaneArts/Cantrip/actions/runs/39067903094)
+matrices on all three platforms. Windows passed all 154 enabled command tests
+and three fresh terminal runs (three passed, eight existing platform skips in
+each). The final local fixture and three repetitions passed all 11 tests each.
+The full server check retained the same 78 failed test/suite labels as #2118:
+1,412 passed, 71 failed and 70 skipped. Node-pty's console enumeration helper
+still logs `AttachConsole failed` after console retirement; actual PTY exit,
+directory removal and runner completion pass. Primary was synchronized and the
+owned worktree archived after preserving all evidence.
+
+### #2113: failed-startup process identity before PID publication
+
+Implementation: [#2125](https://github.com/ArcaneArts/Cantrip/pull/2125), on
+`codex/issue-2113-startup-process`. The PR records validation and merge status.
+
+The unchanged supervisor suite passes all 76 tests on main. A fixture-only
+initialization barrier before PID publication deterministically reproduces the
+reported failure: the real startup operation fails after its 500 ms readiness
+deadline, but the old test waits two seconds for a PID file that cannot appear.
+The assertion therefore never verifies retirement or retry.
+
+The fixture now observes the actual guarded launch handle while calling through
+to the real process launcher. Both unhealthy HTTP and deliberately delayed
+initialization must report the original authenticated-readiness failure, emit
+an actual exit before rejection, leave the failed session unavailable and allow
+a healthy retry only after that exit. A real process liveness check verifies
+the failed PID is gone; on POSIX, its complete process group must also be gone.
+The delayed case proves PID publication did not happen. The healthy retry must
+use a different process and produce the exact spawn/exit/spawn order.
+
+No production launch, authorization or readiness deadline changes. Both focused
+cases pass locally. The complete supervisor and worker suites and standard
+repository check are run independently; the existing command workflow also
+executes both cases on Linux, macOS and Windows. Final counts and evidence are
+recorded in the issue PR and under `~/.codex/issue-fix-pass/20261017/`.
+
+Windows acceptance passed both new cases, but the full supervisor run exposed
+two other startup fixtures whose successful launches exhausted a 500 ms
+override: rollback recovery and repeated retained prewarm. Their existing
+behavior assertions remain unchanged, and they now use the shared fixture's
+normal 3,000 ms startup budget. The failure-retirement regression retains its
+intentional 500 ms deadline; no production timeout changes. The failed Windows
+run is retained and a fresh full matrix validates the correction.
+
+A follow-up local full-suite run also observed a 500 ms timeout in cached-profile
+recovery, while successful launches elsewhere in that same run took 509–1,520
+ms. This third behavior fixture now uses the same normal 3,000 ms startup
+budget. The intentional deadline regression and other fixture budgets remain
+unchanged. Full local and platform suites are repeated for the corrected head.
+
+Final #2113 outcome: PR #2125 merged as `cb2c91faa`; the issue closed
+automatically. All nine jobs passed on final head `1d354081b` in the
+[command](https://github.com/ArcaneArts/Cantrip/actions/runs/39069219934),
+[editor recovery](https://github.com/ArcaneArts/Cantrip/actions/runs/39069219907)
+and [runtime](https://github.com/ArcaneArts/Cantrip/actions/runs/39069219968)
+workflows. Windows passed all 92 supervisor/bridge tests and 83 app contract
+tests, including both startup regression cases and all three healthy-recovery
+fixtures. The local complete supervisor suite passed 77 tests; the complete
+worker suite passed 2,632 with 133 existing skips. The standard check retained
+the same 78 failed server test/suite labels: 1,412 passed, 71 failed and 70
+skipped. Primary was synchronized and the owned worktree archived after
+preserving evidence.
+
+### #2111: exclusive capture persistence before evidence acknowledgement
+
+Implementation: [#2126](https://github.com/ArcaneArts/Cantrip/pull/2126), on
+`codex/issue-2111-evidence-persistence`. The PR records final validation and
+merge status.
+
+A controlled filesystem/client interleaving reproduces the reported `ENOENT`
+at the original `persist` read. Capture put its event in the retry queue before
+its first immutable write completed. An already running pump could write the
+same event, publish it, receive acknowledgement and remove it while capture
+resumed from `EEXIST` and tried to read it. The reproducer uses actual immutable
+file creation, acknowledgement and removal; no timing fallback makes it pass.
+
+Capture now enters the retry queue only after persistence fails. The queue
+retains the exact original event and ciphertext. Active capture remains tracked
+by the existing write set, which shutdown awaits. Strict duplicate comparisons,
+encryption ownership checks, acknowledgement and durable permission recovery
+remain intact.
+
+The regression proves one immutable write, one publication and actual removal
+without an error. Additional cases cover a failed write's byte-identical retry,
+genuinely missing/malformed/changed committed records and owner/server changes
+during encryption. Missing or corrupt committed evidence still rejects and
+never publishes. All 23 delivery and permission-recovery tests pass locally;
+strict compilation of the changed fixture also passes. The existing runtime
+workflow now runs both suites on Linux, macOS and Windows and triggers on the
+affected production files. Full worker and standard repository checks run
+independently; their results and platform/merge evidence are recorded in this
+issue's PR and under `~/.codex/issue-fix-pass/20261017/`.
+
+Windows acceptance exposed a separate blocker in the same persistence helper:
+recursive `mkdir` returned a namespaced `\\?\` path, while the ancestor loop
+walked the ordinary caller path. It reached `C:\` without matching the
+namespaced boundary and repeated forever. A real Windows filesystem diagnostic
+captured both paths and the repeated root. The new evidence suites timed out;
+the older runtime suite independently passed all 281 enabled Windows tests.
+
+After performing the actual `mkdir`, Windows now returns before the directory
+flush loop, matching the existing Windows no-op in `flushHistoryDirectory`.
+POSIX directory durability and file-content flushing remain unchanged. Direct
+filesystem tests cover ordinary and Windows namespaced nested paths, existing
+contents and an occupied-file creation error. The temporary diagnostic is
+removed; all evidence suites run as a separate bounded CI step. This correction
+requires a fresh complete platform run before merge.
+
+The command matrix also reproduced #2116's original marker timeout with its
+unchanged PowerShell replay fixture. That issue was reopened with the failed
+run and placed back in the queue. A diagnostic retry passed; this does not
+establish a fix for #2116. Its follow-up remains a separate cycle.
+
+Final #2111 outcome: [PR #2126](https://github.com/ArcaneArts/Cantrip/pull/2126)
+merged as `5bd4d211a`; the issue closed automatically. All six final CI jobs
+passed in the [runtime](https://github.com/ArcaneArts/Cantrip/actions/runs/39071925861)
+and [command](https://github.com/ArcaneArts/Cantrip/actions/runs/39071925945)
+workflows. Windows passed 27 evidence tests in six seconds and 281 broader
+runtime tests with 19 existing skips. The final full local worker run passed
+2,642 tests with 133 existing skips. The standard repository check, before the
+Windows-only directory-loop correction, retained the same 78 failed server
+test/suite labels: 1,412 passed, 71 failed and 70 skipped. Primary was synchronized
+and the owned worktree archived after saving evidence.
+
+### #2116 follow-up: controlled replay program and observed child exit
+
+Implementation: [#2127](https://github.com/ArcaneArts/Cantrip/pull/2127), on
+`codex/issue-2116-controlled-pty`. The PR records final validation and merge
+status.
+
+The Windows replay marker failure recurred in
+[run 39070577172](https://github.com/ArcaneArts/Cantrip/actions/runs/39070577172)
+on unchanged terminal source and fixtures. Output contained only terminal mode
+escape sequences; PowerShell had not emitted the first script marker within
+five seconds. Cleanup completed, so the earlier ownership fix remains useful.
+The issue was reopened with the failed log. Later passing runs do not erase
+this recurrence.
+
+The replay and cleanup fixtures now run a small local Node program through the
+actual PTY. On Windows the ordinary command shell launches it, removing the
+PowerShell host initialization dependency. The program installs its input
+handler before emitting the initial marker and PID, accepts one input line and
+emits one delta. Input contains neither output marker. The replay fixture uses
+a working directory containing spaces and retains canonical snapshot,
+replay-before-ready, singleton attachment and exactly-once delta assertions.
+All original five-second observation budgets remain unchanged.
+
+Shared cleanup verifies every observed fixture child PID has exited, in addition
+to the actual manager/PTY exits, before removing any directory. Forced failures
+exercise both the immediate-start path and two fully started programs owned by
+separate attached/service managers. Both attachment promises must settle and
+the original thrown failure must survive cleanup. Existing bounded filesystem
+retries remain intact. No production terminal startup, input or shutdown logic
+changes.
+
+All 12 terminal tests pass locally. The existing Windows command workflow now
+runs ten additional fresh terminal processes after the full surrounding command
+suite. Final platform, broad-check, merge and closure evidence is recorded in
+this follow-up PR and under `~/.codex/issue-fix-pass/20261017/`.
+
+Final #2116 follow-up outcome: [PR #2127](https://github.com/ArcaneArts/Cantrip/pull/2127)
+merged as `9969e2f0a`; the issue closed automatically. All six final jobs passed
+on their first attempt in the
+[command](https://github.com/ArcaneArts/Cantrip/actions/runs/39072768762) and
+[runtime](https://github.com/ArcaneArts/Cantrip/actions/runs/39072768906) workflows.
+Windows passed ten fresh terminal runs, each with four passing tests and eight
+existing platform skips; replay took 306–385 ms. Three local repetitions passed
+all 12 terminal tests each. The standard check retained the same 78 failed server
+test/suite labels: 1,412 passed, 71 failed and 70 skipped. Primary was synchronized
+and the owned worktree archived after preserving evidence.
+
+### #2098: observed signal shutdown and explicit incomplete revocation
+
+Branch: `codex/issue-2098-server-shutdown`. The issue PR records final platform
+validation, merge and closure evidence.
+
+A child-process regression reproduces the reported AggregateError chain with
+actual protected Code attachments, a Fastify HTTP server and TCP relay sockets.
+A controlled worker either acknowledges all revocations, disconnects before
+shutdown, or acknowledges only one of two roots. Before the fix, healthy
+shutdown passes and both failure cases terminate through an unhandled rejection;
+the final lifecycle event is absent from the archive.
+
+The production signal handler now observes the application's close failure,
+records `server.shutdown.failed`, sets exit status 1 and always flushes the log
+archive. It also observes an archive-finalization rejection. It retains natural
+process exit and the original broker's failed-revocation contract: an offline or
+refusing worker is never treated as having acknowledged a revoke. Local resource
+retirement, authorization and generation fences remain unchanged.
+
+The process tests verify actual HTTP and relay closure, zero live attachments,
+denied attachment renewal, removal of managed roots, and natural process exit.
+Failure cases retain nonzero status and persisted failure diagnostics without
+an uncaught exception. POSIX uses actual SIGTERM; Windows emits the same Node
+signal event over the owned child's input because Windows process termination
+does not deliver POSIX SIGTERM. Separate handler tests cover concurrent SIGINT
+and SIGTERM, cleanup-before-flush ordering, and a rejected archive flush.
+
+All 91 focused shutdown, Code broker and log archive tests pass locally. The
+existing editor recovery contract workflow runs these tests on Linux, macOS and
+Windows. The full repository check runs independently; known server baseline
+failures remain tracked in #2106. Evidence is retained under
+`~/.codex/issue-fix-pass/20261017/`.
+
+Final #2098 outcome: [PR #2128](https://github.com/ArcaneArts/Cantrip/pull/2128)
+merged as `17f237b17`; the issue closed automatically. All three editor recovery
+contract jobs passed on their first attempt in
+[run 39074389959](https://github.com/ArcaneArts/Cantrip/actions/runs/39074389959),
+including 91 server, 92 worker and 83 app tests on each platform. The standard
+check retained the same 78 failed server test/suite labels: 1,418 passed,
+71 failed and 70 skipped. Primary was synchronized and the owned lane archived.
+
+### #2099: cancel initialization and observe actual worker exit
+
+Branch: `codex/issue-2099-worker-shutdown`. The issue PR records final broad
+validation, platform results, merge and closure.
+
+An unchanged production fixture opened the bundled editor and saved a real
+file, logged shutdown completion after 39 ms, then remained alive until the
+fixture's eight-second SIGKILL fallback. Separate child processes reproduced
+uncancelled SearXNG and Playwright manifest connections after manager close.
+All six new pending-header/body regressions fail against the original source.
+
+Managed web installers now cancel manifest and artifact requests, hash streams,
+lock waits and probes, and join installation/rollback cleanup. Shutdown starts
+both web-runtime managers and CodeGraph cancellation together. CodeGraph joins
+both downloads and actual probe process closure before removing staged files.
+SearXNG awaits child closure and clears its escalation timer; its probe and the
+Playwright probe remove private state after cancellation. Managers reject new
+work after closing, await pending preparation and retire late resources. A cold
+browser run under concurrent suite load exposed a remaining archive-extraction
+wait and correctly failed teardown. TAR extraction now skips remaining entries
+on cancellation and drains pending writes; ZIP extraction cancels the active
+pipeline and awaits stream/archive closure. Cleanup does not detach pending
+file writes or force the worker process to exit.
+
+The 51 focused tests cover real pending HTTP headers/bodies in child processes,
+SIGTERM escalation and actual process closure, interrupted downloads and probes,
+reinstall rollback, preservation of the previous signed runtime, and removal of
+partial files and owned locks. Four extraction tests interrupt real TAR/ZIP
+operations at controlled entry/write boundaries. Existing runtime behavior
+remains covered. The
+editor recovery contract workflow runs these suites on Linux, macOS and Windows;
+the two new CodeGraph archive/probe cases use the existing POSIX bundle fixture.
+
+Browser QA now fails if any owned worker exits abnormally, requires SIGKILL,
+leaves observed descendants alive, or cannot capture process ownership evidence.
+It writes results after teardown. The new `managed-runtimes-initialized` case
+waits for actual worker readiness and performs another real editor save before
+shutdown. The initialized run passed with SearXNG/Playwright `2026.08.22.1` and
+CodeGraph `1.6.2`; the worker exited naturally with code 0 in 78 ms and all 11
+observed processes were gone. After the extraction correction, the cold run
+exited naturally in 6,160 ms with all nine observed processes gone, while all
+three runtime reports still showed installation in progress. The full worker
+suite before the final extraction correction passed 2,659 tests with 133
+existing skips; the final focused suites cover the extraction change. No
+user-owned services or projects were used.
+
+Run the short cold-shutdown acceptance with
+`pnpm qa:editor-recovery --case cold-editor-usable`, and the initialized case with
+`pnpm qa:editor-recovery --case cold-editor-usable,managed-runtimes-initialized`
+after the documented native/Code/Chromium setup. Local evidence is retained under
+`~/.codex/issue-fix-pass/20261017/2099-evidence/`; recovery credentials and fixture
+control tokens are not published.
+
+Final #2099 delivery: [PR #2129](https://github.com/ArcaneArts/Cantrip/pull/2129)
+merged as `dd0929c1a` and closed the issue. All 13 CI jobs passed on the final
+head, including 38 Windows shutdown tests with 13 existing POSIX-only skips.
+The final full worker suite passed 2,663 tests with 133 existing skips. A second
+cold browser run exited naturally in 4,795 ms with all eight observed processes
+retired. The full server check reported 1,417 passed, 72 failed and 70 skipped:
+the previous 78 failed labels plus the already tracked DirectAttachmentCoordinator
+renewal timing recurrence. Its focused 28 tests passed on both unchanged main
+and the branch. This remains part of #2106, not a green full-check claim. Primary
+was synchronized and the owned worktree archived; private fixtures were retained
+outside the checkout.
+
+### #2096: await initial worker encryption bootstrap before folder creation
+
+Branch: `codex/issue-2096-folder-bootstrap`. The issue PR records final broad
+validation, platform results, merge and closure.
+
+The initial worker bootstrap can precede account encryption initialization and
+worker registration. Its error remains in the heartbeat even after browser
+onboarding finishes. The client previously rejected that cached status before
+attempting a real refresh. The controlled `folder-bootstrap` browser case
+reproduced the exact protected-connection error against the unmodified app.
+
+Folder authorization now refreshes unavailable worker encryption before creating
+scoped grants. If a post-grant command joins a heartbeat refresh that started
+before grant creation, it awaits that response and makes at most one additional
+refresh for the same principal and repository key. It never retries an actual
+refresh rejection, revocation or replaced principal, and does not issue another
+grant to repair stale readiness. Client encryption and session identity are
+checked across asynchronous registration, approval, grant discovery/wrapping and
+activation, including a sign-out/sign-in incarnation change.
+
+Twenty deterministic regressions cover initial registration ordering, a deferred
+pre-grant response, bounded unsuccessful refresh, terminal rejection/revocation,
+wrong key and replaced worker identity, owner/server/key/lock/session changes,
+late ready results, and reuse of an already-ready worker. Together with the
+existing grant and folder/API tests, 34 tests pass. App TypeScript checks pass.
+The independent full app suite passes all 474 files: 3,033 tests passed and
+three existing tests skipped.
+The App API domains workflow runs the new regression file and existing grant
+coverage on Linux, macOS and Windows.
+
+Run `pnpm qa:editor-recovery --case folder-bootstrap` after the documented
+native/Code/Chromium setup. The fixture returns a startup bootstrap outage until
+an explicit worker refresh is requested, then forwards the actual authenticated
+bootstrap unchanged. This case forbids the harness's folder resubmission
+fallback. The production app/server/worker and bundled editor completed real
+onboarding, one folder submission, typing, save and disk verification in 15,999 ms,
+with zero folder retries. The independent #2102 mode-selection fallback ran once.
+The worker exited naturally with code 0 in 1,013 ms and all eight observed owned
+processes retired. The ordinary editor loading deadline is unchanged. Local
+sanitized evidence is retained under `~/.codex/issue-fix-pass/20261017/2096-evidence/`;
+private recovery artifacts and fixture control tokens are not published.
+
+Final #2096 delivery: [PR #2130](https://github.com/ArcaneArts/Cantrip/pull/2130)
+merged as `d01e77772` and closed the issue. All ten CI jobs passed on the final
+head, including the bootstrap regressions on Linux, macOS and Windows. An
+ordinary cold editor run also completed a real save in 19,228 ms with zero
+folder retries; its worker exited naturally in 3,332 ms and all eight observed
+processes retired. The standard check reported 1,417 server tests passed, 72
+failed and 70 skipped, with exactly the same 79 failed test/suite labels as the
+previous cycle. The remaining server baseline is #2106. Primary was synchronized
+and the owned worktree archived; private fixtures were retained outside it.
+
+### #2102: preserve explicit navigation across initial settings hydration
+
+Branch: `codex/issue-2102-mode-hydration`. The issue PR records final broad
+validation, platform results, merge and closure.
+
+Startup waited for settings and inventory queries, then unconditionally applied
+the saved destination even after the user had explicitly selected another mode.
+The real `mode-hydration` browser case holds an actual initial settings response,
+selects IDE through the menu, and releases that older response. Against the
+unmodified app it reproduced the return to Chat and failed the IDE assertion
+after 30,978 ms; the accessibility snapshot also retained the inconsistent
+repository-importer content described in the issue.
+
+Explicit mode selection now synchronously resolves startup navigation before
+pending queries can apply an older destination. Normal saved-mode/default
+startup still runs when there has been no local selection. Destination writes
+also capture the current client identity: queued writes and continuations after
+settings reads, revision conflicts and save responses stop when the account,
+server or session incarnation changes. Current-identity revision conflicts
+retain the existing refresh-and-retry behavior.
+
+Twelve controlled hook regressions cover both mode directions, consecutive
+choices, saved/default startup, account replacement with a late old query,
+owner/server/incarnation replacement during queued persistence, a late save
+response, and a genuine cross-client revision conflict. The four focused
+navigation files pass 58 tests; app TypeScript checks pass. The independent full
+app suite passes all 475 files: 3,045 tests passed and three existing tests
+skipped. The App API domains workflow runs these regressions on Linux, macOS
+and Windows.
+
+Run `pnpm qa:editor-recovery --case mode-hydration` after the documented
+native/Code/Chromium setup. This case forbids the normal mode-selection retry.
+The fixed production app/server/worker and bundled editor completed onboarding,
+the delayed-response interleaving, folder creation, actual typing, save and
+worker-owned file verification in 15,998 ms, with zero folder or mode retries.
+The worker exited naturally with code 0 in 1,761 ms and all eight observed owned
+processes retired; the fixture closed with zero sockets. The server reported
+its existing incomplete-authority-retirement exit code 1 after the worker was
+stopped, with no surviving server process. Local evidence is retained under
+`~/.codex/issue-fix-pass/20261017/2102-evidence/`; recovery credentials and fixture
+control tokens are not published.
+
+### #2116 follow-up: bundled Windows console teardown and settled cleanup
+
+The Windows command matrix in run `39080748349` reproduced the forced early
+fixture cleanup failure after #2116's earlier PRs: the shell reported exit, but
+removing the service directory failed with `EBUSY`. Later fixtures inherited
+already-removed directory entries and failed with `ENOENT`. The issue was reopened;
+a subsequent unchanged CI run passing did not count as a resolution.
+
+The installed node-pty 1.1.0 inbox ConPTY backend launches an asynchronous console
+process-list helper and immediately tears down the console. Its helper's observed
+`AttachConsole failed` output explains why shell exit alone cannot prove child
+retirement. Windows terminals now use node-pty's bundled ConPTY backend, which
+closes console input and uses its native teardown without that helper. The DLL
+and OpenConsole executable are already shipped in the installed package for both
+Windows architectures. Worker packaging deploys the production dependency intact.
+No runtime metadata gate or process-exit shortcut was added.
+
+Fixture cleanup now awaits every directory-removal attempt, forgets each directory
+only after successful removal, and retains failed removals for retry while still
+reporting their errors. A controlled regression failed the previous implementation
+because it returned before an independently held removal completed. The fixed
+fixture proves that only the failed directory is retried. The existing forced
+failures before and after actual child readiness, process-exit checks, canonical
+snapshot and atomic replay assertions remain intact. The detached CLI fixture also
+awaits its own child's stdout acknowledgement before sending its exit input;
+its first local run exposed an input-before-initialization race.
+
+Worker source typechecks and all 13 terminal-manager tests pass locally. The
+existing Windows CI executes ten fresh terminal-test processes after the complete
+command suite. This workflow now also triggers for production terminal-manager
+changes. The issue PR records remaining matrix results, the standard check,
+merge and closure. Evidence is retained under
+`~/.codex/issue-fix-pass/20261017/2116-conpty-evidence/`.
+
+Other first-pass dispositions: #2112 remains open with draft PR #2132 and
+no auto-merge. Its controlled configuration-recovery fix is verified locally,
+but repeated Windows CI also exposed an unresolved initial blank-page race; a
+single passing diagnostic run did not close it. #2099 was reopened after a real
+carrier-recovery fixture required SIGKILL despite logging shutdown completion.
+Both have agent-runnable evidence and a next step on their trackers. Their work
+is separate from this terminal cycle.
+
+Final terminal delivery: [PR #2133](https://github.com/ArcaneArts/Cantrip/pull/2133)
+merged as `ee14858bf` and closed #2116. All six final platform jobs passed in
+the [command](https://github.com/ArcaneArts/Cantrip/actions/runs/39082551469) and
+[runtime](https://github.com/ArcaneArts/Cantrip/actions/runs/39082551508) workflows.
+Windows passed 156 command tests with nine existing skips, both startup cases,
+and ten fresh terminal runs with five passing cases and eight platform skips
+each. No console-attachment errors remained. The macOS command job first hit
+an unchanged GitHub lifecycle fixture timeout, now tracked by #2134; the same
+job passed 164 tests with one skip on retry. Local terminal/CLI coverage passed
+44 tests. The standard check retained exactly the previous 78 failed server
+test/suite labels: 1,418 passed, 71 failed and 70 skipped. Primary was synchronized
+and the owned terminal lane archived.
+
+### #2099 follow-up: closed ICE connections stay retired after gathering
+
+Branch: `codex/issue-2099-ice-close`. The issue PR records final browser, platform,
+standard-check and delivery results.
+
+Actual carrier-recovery browser runs still required SIGKILL roughly eight seconds
+after worker shutdown, despite its completion log. External diagnostic probes
+identified referenced 20 ms werift ICE connection timers. A second probe captured
+the causal transition: three already-closed connections became `completed` when
+their pending candidate gathering settled. Their owning peers remained closed;
+the overwritten connection state defeated the connect loop's existing closed
+guard. No TCP or UDP handles remained. Runtime installation status was incidental.
+
+A focused pnpm patch for werift 0.24.3 preserves `closed` when candidate gathering
+finishes. Both the ESM bundle used by the worker and the CommonJS distribution
+receive the same change. Normal gathering, ICE checks, cancellation and shutdown
+ownership remain intact. There is no forced exit or timer-unref workaround.
+
+The regression runs both real package entry points in fresh Node children. A
+loopback UDP STUN request proves gathering has a pending operation before the
+connection closes; its real bounded gather timeout then settles. Both original
+entry points failed with `completed` instead of `closed`. With the patch, both
+preserve `closed`, reject further connection establishment, and exit naturally.
+The existing editor recovery workflow runs this test on Linux, macOS and Windows.
+Sanitized evidence is retained under
+`~/.codex/issue-fix-pass/20261017/2099-recurrence-evidence/`; private fixture
+credentials remain outside published evidence.
+
+The fixed actual-browser carrier fixture completed cold typing/save in 16,273 ms
+and reproduced the independent #2100 second-edit cover. Its shutdown check passed:
+the worker exited naturally with code 0 in 228 ms while the managed browser was
+installing and search/CodeGraph were ready. All 15 observed owned PIDs retired;
+the fixture closed with zero sockets. No diagnostic probes were injected in this
+acceptance run. Worker types and 82 focused lifecycle/WorkerLink tests pass.
+
+Final #2099 follow-up delivery: [PR #2135](https://github.com/ArcaneArts/Cantrip/pull/2135)
+merged as `93ddc430a` and closed the issue. All 19 CI jobs passed on their first
+attempt. Both real STUN child cases passed on Windows, macOS and Linux in
+11.01, 11.35 and 10.50 seconds respectively. The complete worker suite passed
+2,666 tests with 133 existing skips. The standard check retained exactly the
+previous 78 server test/suite failure labels: 1,418 passed, 71 failed and 70 skipped.
+Primary was synchronized and the owned lane archived after preserving evidence.
+
+### #2100: retain file navigation through a bridge authority replacement
+
+Branch: `codex/issue-2100-editor-recovery`. The issue PR records final browser,
+platform, standard-check and delivery results.
+
+Repeated actual carrier-interruption runs on merged main retained and saved the
+dirty file, but the second edit hit a persistent parent cover. Current correlated
+logs identify `Cantrip workbench bridge request was superseded.` as the file-open
+failure; the original historical assertion was not required to reproduce it.
+The newest bridge connection correctly invalidated the old pending RPC, but
+the navigation caller propagated that recoverable replacement as a final error.
+
+The bridge now retries only the current file-open request after its own typed
+authority-replacement rejection. All attempts share the original five-second
+request deadline and original session, path, expected workspace and abort signal.
+Old request IDs and socket generations remain fenced. Session replacement,
+cancellation, remote failures (including identical error text), timeouts and
+non-navigation RPCs still fail normally.
+
+A controlled regression replaces the real WebSocket authority during navigation,
+then sends a late assertion failure from the old socket before acknowledging the
+current request and opening another file. The original implementation failed
+because no navigation reached the new authority. Additional controlled cases
+cover cancellation, registration replacement, ordinary remote rejection and a
+series of authority replacements exhausting the original deadline. All 20 bridge
+tests pass; worker types and 72 existing editor lifecycle/frame tests also pass.
+
+The actual production-app/server/worker/bundled-editor `carrier-dirty-buffer`
+case passes in 19,148 ms. It retains the iframe URL and unsaved marker, performs
+the recovery save, then accepts and saves a second real edit without a blocking
+cover. Cold typing/save also passes in 16,590 ms. The worker exits naturally with
+code 0 in 4,818 ms while all three managed runtimes are installing; all 13 observed
+owned PIDs retire and zero fixture sockets remain. Evidence is retained under
+`~/.codex/issue-fix-pass/20261017/2100-evidence/`; raw private fixtures remain outside
+published evidence and the disposable worktree.
+
+Final #2100 delivery: [PR #2136](https://github.com/ArcaneArts/Cantrip/pull/2136)
+merged as `a9ed5cca5` and closed the issue. The bridge/direct-endpoint/supervisor
+matrix passed 107 tests locally; the Windows bridge/supervisor CI passed 97.
+All nine final CI jobs passed. The unrelated Windows command repetition first
+exposed a missing PTY exit code on unchanged terminal code; its retry passed all
+ten fresh repetitions. #2116 remains open for that distinct defect. The standard
+check retained the previous 78 server test/suite failure labels: 1,418 passed,
+71 failed and 70 skipped. Primary was synchronized and the owned lane archived.
+
+### #2116 follow-up: complete teardown when native exit status is unavailable
+
+Branch: `codex/issue-2116-unknown-pty-exit`. The issue PR records final platform,
+standard-check and delivery results.
+
+Windows command run `39084566336`, job `117548322144`, failed the third fresh
+terminal repetition in its early-cleanup case. node-pty emitted an exit event
+with `exitCode: undefined`; `terminalOpenResultSchema.parse` threw after the
+manager cleared its process reference, preventing the exit acknowledgement and
+remaining session finalization. This produced a missing-terminal assertion and
+an aggregate cleanup failure. Passing retries did not resolve the defect.
+
+The installed node-pty Windows socket-close path reads the agent's exit code,
+which can still be unset until a separate native process-exit callback arrives.
+The worker now normalizes an unavailable/invalid native status to `-1`, an
+explicit non-success result, before parsing and finalization. Known exit codes
+and signals are preserved. Service classification, attachment completion and
+lifecycle observers receive the same normalized result; duplicate notifications
+remain fenced by the original child identity.
+
+A controlled PTY event fixture covers missing status with and without a signal,
+ordinary successful exit and a known nonzero exit. Each case closes an attached
+terminal and a service, proves both wait for their exit event, verifies both
+results and lifecycle acknowledgements, and rejects duplicate finalization.
+The two missing-code cases fail the original implementation with the same Zod
+error captured in Windows CI. The three-platform command workflow includes this
+fixture alongside the unchanged real PTY tests and ten Windows repetitions.
+
+Final terminal follow-up delivery: [PR #2137](https://github.com/ArcaneArts/Cantrip/pull/2137)
+merged as `a4c7c42f2` and closed #2116. All six CI jobs passed on their first
+attempt, including four controlled exit-status cases and ten fresh Windows PTY
+runs with five passes and eight existing platform skips each. The local terminal
+matrix passed 42 tests. The standard check retained the previous 78 server
+failure labels: 1,418 passed, 71 failed and 70 skipped. Primary was synchronized
+and the owned lane archived after preserving the route-replacement baseline.
+
+### #2103: recover current relay authority after route replacement
+
+Branch: `codex/issue-2103-route-generation`. The issue PR records final standard
+check, platform and delivery results.
+
+The real editor on merged main repeatedly reopened its old-generation session
+and failed to save the dirty marker within 30 seconds. The client treated each
+HTTP 101 as a successful connection, resetting its bounded recovery attempts
+before the server rejected its stale frames. Relay connections now include the
+client's route generation, which the actual authorized connection handler checks
+before upgrading. The post-upgrade identity/generation check and binary frame
+fences remain. Older clients can still connect without the new query parameter.
+The existing bounded reconnect path can obtain current session authority.
+
+A second actual trace identified a normal worker close acknowledgement arriving
+after the relay removed the client-closed channel. That acknowledgement closed
+the entire new carrier as an out-of-sequence frame. The relay now retains at most
+1,024 closing channel records, validates their original identity and sequence,
+and discards their remaining output until acknowledgement. They hold no live
+channel quota and are cleared on connection retirement. Unknown or invalid
+frames still fail; live siblings continue exchanging frames.
+
+Both handshake and close-drain regressions fail the original implementations.
+The focused app matrix passes 91 tests; server handshake, relay and coordinator
+coverage passes 34. Coverage includes unavailable/unauthenticated authority,
+wrong origins/client instances, stale/future/malformed generations, a replacement
+during attachment, valid late output and invalid close identity/sequence.
+App/server source types pass. The existing three-platform recovery workflow now
+also runs the server regression matrix.
+
+The actual bundled-editor route case passes in 6,784 ms: generation advances
+from one to two, the initially unsaved marker reaches the original worker file,
+and a second edit also saves. The test verifies current carrier authority,
+retained dirty content and the original Code workspace. The iframe URL changes
+during this recovery; this run does not claim iframe retention. Cold typing/save
+passes in 16,789 ms. The fixture also scopes New project to the open project
+switcher, avoiding its identically named empty-state action.
+
+Worker shutdown remains unresolved under reopened #2099: two runs required
+SIGKILL at 8,085 and 8,081 ms after logging completion, with search and Chromium
+installing. All observed owned PIDs were retired by cleanup and zero fixture
+sockets remained. That worker follow-up is separate from this app/server fix.
+Evidence is retained under `~/.codex/issue-fix-pass/20261017/2103-evidence/`;
+private raw fixtures are preserved outside the disposable lane.
+
+Final #2103 delivery: [PR #2138](https://github.com/ArcaneArts/Cantrip/pull/2138)
+merged as `9820cb575` and closed the issue. All six Linux, macOS and Windows
+recovery/contract jobs passed on their first attempt. The standard check retained
+exactly the previous 78 server test/suite failure labels: 1,433 passed, 71 failed
+and 70 skipped. Primary was synchronized and the owned lane archived after
+preserving browser evidence and verifying all observed owned PIDs had retired.
+
+### #2099 follow-up: cancel pending mDNS lookups with their ICE owner
+
+Branch: `codex/issue-2099-mdns-cancel`. The issue PR records final initialized
+browser, platform, standard-check and delivery results.
+
+The route-replacement fixture exposed another worker shutdown owner after the
+closed-state fix in PR #2135. An external handle probe found one referenced
+ten-second `MdnsLookup.lookup` timer at one, four and seven seconds after SIGTERM;
+no TCP or UDP handles remained. Closing the real werift connection destroyed its
+mDNS socket but did not settle pending lookups or cancel their timers. The real
+worker required SIGKILL. The prior candidate-gathering fix remained installed.
+
+The werift patch now tracks pending mDNS lookups and cancels their response
+listeners, timers and promises when the lookup owner closes. Close is idempotent,
+new lookups reject after closure, and synchronous query failures release their
+resources. ICE rejects late candidates and rechecks closure after an awaited DNS
+answer, preventing an already-closed connection from accepting it or creating a
+new lookup owner. Both package entry points receive the same fix; existing ICE
+gathering protection remains intact.
+
+Four controlled cases exercise the real ESM and CommonJS package entry points
+in fresh Node children. They cover successful resolution, multiple pending
+queries at close, repeated close, lookup after close, and an answer arriving just
+before connection closure. Both pending-query cases time out on the original
+implementation; both late-answer cases incorrectly accept the candidate. All
+six ICE shutdown cases now pass, including the two existing real-STUN cases,
+and every child exits naturally. Worker source and strict fixture types pass.
+The complete worker suite passes 2,679 tests with 133 existing skips.
+
+The actual cold browser fixture passes typing/save in 16,972 ms and route
+replacement with retained dirty content plus a second saved edit in 7,839 ms.
+The worker exits naturally with code 0 in 714 ms while search, browser and
+CodeGraph are all installing. All 15 observed worker-owned PIDs retire and zero
+fixture sockets remain. The acceptance run has no diagnostic probe injected.
+Evidence is retained under `~/.codex/issue-fix-pass/20261017/2099-mdns-evidence/`;
+private fixtures remain outside published evidence.
+
+A separate actual browser run waits until search, Chromium and CodeGraph report
+ready, verifies another real save, interrupts the carrier, retains the dirty
+buffer and iframe URL, and saves a second edit after recovery. The initialized
+save passes in 43,003 ms and carrier recovery in 19,295 ms. The worker exits
+naturally with code 0 in 120 ms; all 14 observed owned PIDs retire and zero
+fixture sockets remain. Both cold and initialized browser commands exit 0.
+
+Final #2099 delivery: [PR #2139](https://github.com/ArcaneArts/Cantrip/pull/2139)
+merged as `58db2da0d` and closed the issue. All 19 platform checks passed on
+their first attempt. The complete worker suite passed 2,679 tests with 133
+existing skips. The standard check retained the same 78 server failure labels
+(71 failed, 1,433 passed, 70 skipped). Primary was synchronized and the owned
+worktree archived after preserving both browser runs and verifying process exit.
+
+### #2101: blocked after bounded server-restart and lost-Pong attempts
+
+[Draft PR #2140](https://github.com/ArcaneArts/Cantrip/pull/2140), branch
+`codex/issue-2101-server-recovery`, is intentionally retained with no auto-merge
+or closing keyword. Its candidate handles an actual missing-tunnel 404 through
+the existing bounded session replacement path. Controlled app coverage passes
+165 tests and all three editor lifecycle CI jobs pass. Actual browser acceptance
+still fails: replacing the session restores a visible editor but loses its dirty
+buffer. The candidate must not merge in this state.
+
+Baseline, candidate and temporary session-resumption probes ran against the real
+bundled editor. Reusing the original session in the temporary probe preserved
+the dirty marker across server restart, but changed the iframe URL; lost-Pong
+recovery still failed with protected metadata unavailable. That probe was
+removed from the draft and preserved separately. Workers exited naturally and
+all observed owned PIDs retired. The standard check retained the same 78 server
+failure labels. Evidence and the smallest next step are recorded in
+[the issue comment](https://github.com/ArcaneArts/Cantrip/issues/2101#issuecomment-6244817520).
+
+The remaining work is a bounded, authorized session handoff that preserves the
+worker runtime/workspace incarnation, plus metadata refresh after reconnect.
+Do not silently substitute a fresh workspace or relax generation fencing. One
+revisit remains after independent issues have completed. Private evidence is
+retained under `~/.codex/issue-fix-pass/20261017/2101-evidence/`.
+
+### #2104: actual logical-stream congestion and cancellation
+
+Branch: `codex/issue-2104-stream-congestion`. The issue PR records final checks
+and merge state. Run `pnpm qa:editor-recovery --case congested-sibling` with the
+normal bundled runtime configuration.
+
+The fixture now instruments the real logical HTTP connection in its own Vite
+build. It withholds only that connection's destination receive credits before
+sequence allocation. Production builds contain no credit injection. The real
+workbench asset is fetched completely as a positive control, then fetched again
+with a 256 KiB window while the actual bundled editor saves two separate edits.
+The fixture verifies byte-count stability, unchanged route identity and iframe,
+local retirement, actual worker TCP socket closure, and a subsequent full fetch.
+
+This exposed a production cancellation defect: native iframe fetch abort rejected
+the client promise while the service worker's FetchEvent signal stayed active.
+The shim now correlates protected signal-bearing fetches with a private request
+channel. The service worker transfers that channel only to the already-authorized
+FetchEvent client and rechecks the current adapter epoch after client lookup.
+Abort uses the existing exact-request controller path. Delivery after a rejected
+fetch also cancels; channels, signal listeners and map entries retire on request
+completion. The correlation header is removed before forwarding upstream. Other
+origins and ordinary requests retain native fetch behavior. Existing ingress,
+body, authorization and deadline limits remain in force.
+
+Client-initiated logical close intentionally has no wire acknowledgement. A new
+worker diagnostic records the actual TCP socket close event for its exact route;
+the fixture waits for that event rather than assuming an acknowledgement exists.
+A controlled worker test verifies the event is absent before socket close,
+emitted once afterward, and leaves siblings usable and the retired ID reusable.
+
+The actual browser acceptance passes in 1,185 ms: the 15,450,994-byte asset stalls
+at exactly 262,144 bytes, two real editor saves reach the original worker file,
+and native abort retires both ends. The original authority and iframe remain.
+Cold typing/save passes in 15,529 ms. Worker shutdown is natural code 0 in 1,030 ms
+with all three managed runtimes installing; all nine observed worker-owned PIDs
+retire and zero fixture sockets remain. The complete app suite passes 3,053 tests
+with three existing skips. Focused app cancellation/transport coverage passes
+128 tests; four probe ownership cases pass. The new service-worker cancellation
+cases fail on the original implementation. App and worker source types pass.
+
+The three-platform editor contract workflow includes the cancellation, probe
+and TCP lifecycle coverage. Sanitized browser evidence is retained under
+`~/.codex/issue-fix-pass/20261017/2104-evidence/`; private fixtures are preserved
+outside the worktree. This fixture does not claim that the blocked #2101 server
+recovery behavior is fixed.
+
+### #2104 final delivery and #2116 recurrence
+
+[PR #2141](https://github.com/ArcaneArts/Cantrip/pull/2141) merged as
+`2dbab47f0d412bdeaf5f8e00726e522439d741ea`; #2104 is closed, Primary was
+synchronized, and its owned worktree was archived after preserving evidence.
+All six editor contract/runtime jobs and both Linux/macOS command jobs passed.
+Windows commands failed with a distinct native Vitest-child exit during repeated
+PTY cleanup; the failed-job-only retry also failed. The unchanged terminal code
+is tracked under reopened [#2116](https://github.com/ArcaneArts/Cantrip/issues/2116#issuecomment-6245047926)
+for a bounded follow-up after the remaining independent cycles. A retry is not
+being treated as a fix. The standard check retained the same 78 server failure
+labels (71 failed, 1,433 passed, 70 skipped; 377.26 seconds).
+
+### #2105: local repository and actual editor worktree switching
+
+Branch: `codex/issue-2105-worktree-fixture`. Run
+`pnpm qa:editor-recovery --case worktree-switch-cycles` with the existing bundled
+runtime paths and installed Chromium. No GitHub credentials or user repository
+are required. The fixture creates a committed local Git checkout with a
+synthetic origin, then uses the production encrypted project API and worker's
+existing direct-attachment operation. It creates no remote repository and never
+pushes. The worker receives an isolated GitHub configuration directory with token
+environment variables removed. A helper is exposed only in the fixture's Vite
+build; normal application builds are unchanged.
+
+Primary and two secondary worktrees are created with normal server IDs,
+encrypted metadata and worker Git operations. Browser controls switch between
+all three checkouts twice. Each switch checks the generated editor workspace
+against the worker-owned checkout path, saves two distinct edits, verifies
+sibling files stayed byte-identical, observes the old iframe being removed, and
+requires a successful server response releasing its exact workspace attachment.
+The new attachment must belong to the selected worktree. Live events refresh the
+UI without extra page reloads. Setup retries only an actual protected-connection
+readiness failure; it does not use a speculative readiness gate.
+
+Repeated cold editor mounts exceeded the default 256 MiB/min worker relay budget
+in an initial run. This case uses the existing bounded configuration at 1 GiB/min
+for both worker and account; production defaults and per-stream limits are
+unchanged. Its final actual browser run passed cold typing/save in 17.411 seconds
+and all six switches in 21.638 seconds, with 12 saves and six acknowledged
+attachment releases. Focused worktree suites passed 57 app and 92 worker tests.
+The fixture also built the actual app successfully.
+
+The worker exited naturally with code 0 in 262 ms. All 21 observed owned process
+IDs were verified absent and zero fixture sockets remained. The server exited
+naturally with code 1 in 172 ms after explicitly reporting unavailable remote
+revocation, preserving the failure semantics implemented by #2128; it emitted
+no unhandled rejection and stranded no process. This is not a claim of successful
+remote revocation after the worker has exited. Raw private fixtures and sanitized
+results are retained outside the worktree under
+`~/.codex/issue-fix-pass/20261017/2105-owned-fixtures/` and `2105-evidence/`.
+
+The standard `pnpm check` completed the server suite with the same 78 failure
+labels as merged main: 71 failed, 1,433 passed, 70 skipped (360.78 seconds), with
+no added or removed failures. Those failures remain in #2106. Changed-file
+formatting, JavaScript syntax and diff checks pass. Three-platform harness CI
+also checks the new fixture module's syntax.
+
+After tightening the incoming attachment assertion to its exact displayed
+workspace, a second actual browser run passed cold typing/save in 16.24 seconds
+and all six switches in 16.797 seconds. All 21 owned PIDs again retired; the
+worker exited naturally with code 0 in 622 ms and the server reported its
+explicit remote-revocation failure before natural exit 1 in 94 ms.
+
+### #2105 final delivery
+
+[PR #2142](https://github.com/ArcaneArts/Cantrip/pull/2142) merged as
+`4567d2c5ed4428124858675014414dd39ca32922` and closed #2105. The three-platform
+harness workflow passed on its first attempt. Primary was synchronized, evidence
+was preserved, and the owned worktree was archived after its commands and
+processes finished.
+
+### #2106: verified database repairs and encrypted fixture contracts
+
+Branch: `codex/issue-2106-server-baseline`. This cycle uses `Refs #2106` and
+leaves the issue open for the remaining legacy fixture migration.
+
+Two production defects were exposed after updating stale fixtures. Relocation
+and execution-lane runtime inserts omitted the predicate required to select
+their existing partial unique index, causing PostgreSQL/PGlite `42P10` errors.
+The three conflict clauses now match `worktree_id IS NOT NULL`; the index and
+ownership/lease constraints are unchanged. Project-chat forking awaited worker
+message reprotection inside a database transaction, while worker dispatch needed
+that same database to resolve ownership. Forking now reads a source snapshot,
+releases the transaction for worker reprotection, and checks the snapshot again
+inside the atomic write transaction. Concurrent source or destination changes
+produce a 409 without creating a fork. A controlled callback writes the source
+during reprotection and verifies that rejection, retaining the original history.
+
+The fixture repairs supply required repository blind indexes and encrypted wire
+records, initialize account configuration before direct repository chat creation,
+and use current pane identities, worker availability events, migration stages and
+native `thread/revert` admission. The retired `thread/rollback` method remains
+explicitly rejected. Routing fixtures retain worker capabilities on heartbeat,
+bind protected messages to their real execution lanes, and synchronize attachment
+races at the current mutation boundary. Ciphertext persistence, ownership,
+revocation, cancellation and generation assertions remain in place. New bridge
+tests exercise an actual finite command deadline and completion of a streaming
+request beyond that deadline with controlled timers.
+
+The independent full server run reports 2 failed, 1,518 passed and 57 skipped
+tests across 260 files (326.14 seconds), compared with 71 failed, 1,433 passed and
+70 skipped on the merged baseline. Twenty-four previously failing files now
+pass; previously blocked cases also execute. The remaining failures are
+`local-foundation.test.ts` and the legacy Git case in `worktree-api.test.ts`.
+No failing assertion was deleted or marked skipped in either file.
+
+The first remaining fixture is one long sequential scenario spanning provider,
+repository, surface, conversation and restart behavior. An unmerged probe fixed
+its provider contracts, then reached removed `/api/github/*` routes. The second
+still expects plaintext worktree status/history/Git routes and server-owned Git
+operation state. Those operations now use encrypted repository requests and
+worker-owned state. Their migration requires a current protected client/worker
+fixture, rather than restoring the retired server endpoints or accepting 410 as
+successful Git behavior. The incomplete foundation probe is preserved outside
+the worktree; it is not part of this PR. This broader fixture migration remains
+open under #2106 instead of holding the independent repairs indefinitely.
+
+New three-platform CI runs the 24 restored suites and the 43 current worktree
+cases. Both exact CI commands pass locally: 131 tests in the restored suites and
+43 worktree cases. Its focused worktree selection explicitly excludes the outstanding legacy
+Git case; the ordinary full server command still runs it and fails. This is
+focused regression coverage, not a restored full-baseline claim. The worktree
+guide's additional checks pass: 791 protocol tests, 92 worker tests, 57 app tests
+and the app production build. Private logs and the incomplete probe are retained
+under `~/.codex/issue-fix-pass/20261017/2106-evidence/`.
+
+The standard `pnpm check` independently confirms the same two remaining failure
+labels (1,518 passed, 57 skipped; 318.41 seconds), after audits, native/script
+checks and source typechecks pass. Its later stages are not reached. There are
+no added failure labels relative to the 78-label merged baseline.
+
+The first new CI matrix exposes cold-database fixture budgets: initialization
+alone takes up to 6.8 seconds on Linux, 9.9 on macOS and 12.6 on Windows. Twenty
+tests that create their own database and ten database setup hooks now have
+explicit 30-second fixture budgets. Unit tests, polling deadlines and production
+timeouts are unchanged. The original five-second test and ten-second hook
+budgets could expire before assertions started. All three platforms already
+pass the 43 current worktree cases; PostgreSQL authority and the three native
+capture jobs also pass. The repaired fixture budgets require a fresh CI run.
+
+### #2106 final partial delivery
+
+[PR #2143](https://github.com/ArcaneArts/Cantrip/pull/2143) merged as
+`1dec894dae92770a86d807b3329976c0293620e6`. All seven checks passed on the final
+head: 131 restored-suite tests and 43 current worktree tests on each of Linux,
+macOS and Windows, plus the three native jobs and PostgreSQL authority. Issue
+#2106 remains open for the two legacy fixtures described above. Primary was
+synchronized and the owned worktree was archived only after all commands and
+owned processes had finished. Evidence remains in `2106-evidence/` outside the
+archived worktree.
+
+### Final revisit of blocked recovery work
+
+The final source-history review against `1dec894dae` found no intervening
+browser adapter/session or manager changes that resolve #2112's Windows
+initial-navigation failure. [Draft #2132](https://github.com/ArcaneArts/Cantrip/pull/2132)
+retains the controlled configuration-recovery fix, but its diagnostic change
+alters CDP promise timing; its last green run is insufficient proof. The next
+step is to capture navigation requests, results and frame events while
+preserving the original promise identity, then isolate why the initial page
+stays blank before the recovery fault. Existing Windows CI can run that test;
+manual testing is not required.
+
+For #2101, the app's Code API, Explorer editor and shared-session recovery
+implementation are unchanged since the blocked cycle. The intervening worker
+tunnel change propagates fetch cancellation; it does not provide session
+authority restoration or protected-metadata rehydration. The actual-browser
+dirty-buffer losses therefore remain unresolved.
+[Draft #2140](https://github.com/ArcaneArts/Cantrip/pull/2140) must not merge:
+its fresh-session fallback recovers a visible editor but loses unsaved content.
+The next step is a bounded, authorized handoff retaining the same workspace
+and worker runtime incarnation, followed by both existing restart and lost-pong
+browser cases with retained dirty content and two real saves.
+
+Both drafts remain clean, with auto-merge disabled and no closing keywords.
+Their owned worktrees and external evidence are intentionally retained. The
+revisit found no new basis for repeating unchanged failed attempts. #2106's
+two legacy fixtures also remain open after the substantial verified partial
+repair: migrate their retired plaintext operations to the current protected
+client/worker harness, preserving exact checkout paths, ownership, encrypted
+state and operation results. The ordinary full suite continues to exercise
+those failures. These three dispositions are unresolved work, not passes or
+requirements for human verification.
+
+### #2116: native Windows PTY handle lifetime
+
+Branch: `codex/issue-2116-native-pty-lifetime`. Two independent Windows command
+jobs subsequently crashed their Vitest child while the early-failure PTY
+fixture was cleaning up. Those failures did not provide a native crash stack
+or exit code, so they do not establish an exact native crash instruction.
+
+Inspection of installed `node-pty` 1.1.0 found unsynchronized ownership of the
+Windows `ptyHandles` vector. Its exit thread can erase a baton while `PtyKill`
+still dereferences it after closing the console. Upstream
+[microsoft/node-pty#922](https://github.com/microsoft/node-pty/pull/922) fixes
+that handle lifetime race. The published `1.2.0-beta.15` source includes the
+mutex protection, and the package ships native prebuilds for supported worker
+platforms. The worker now pins that exact release, with its verified SHA-512
+in the lockfile. This is a prerelease dependency tradeoff to obtain the native
+fix; it does not claim that the missing crash stack has been recovered.
+
+Existing terminal teardown, exit-status handling and all lifecycle assertions
+remain unchanged. Acceptance uses the real PTY replay/cleanup fixtures, the
+controlled exit-event tests, the independent full worker suite and the existing
+three-platform command workflow, including ten fresh Windows PTY repetitions.
+The focused local tests pass all 17 cases in 6.84 seconds; worker source types
+also pass. The initial full worker run has 2,679 passes, 133 skips and one Grok
+OAuth fixture failure: it waits only for authentication, then asserts completed
+login and plan metadata outside that wait. Its focused nine tests pass on both
+unchanged main and this candidate. A concurrent full comparison passes all 2,680
+tests on main; the candidate repeats that Grok failure and hits one 15-second
+Sharp image-test timeout (2,678 passes). Those unrelated files are unchanged,
+but the full candidate run is not being called green. Standard repository and
+native CI results are pending.

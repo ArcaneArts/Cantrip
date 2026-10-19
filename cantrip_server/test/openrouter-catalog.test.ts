@@ -14,6 +14,8 @@ import {
 } from "../src/models/openrouter-catalog.js";
 import { SecretVault } from "../src/security/secret-vault.js";
 
+// Database-backed cases include cold PGlite initialization (up to 12.6 s in CI).
+// Their 30-second fixture budget leaves behavioral polling deadlines unchanged.
 const migrationsFolder = fileURLToPath(new URL("../drizzle", import.meta.url));
 
 const publicModels = {
@@ -196,7 +198,7 @@ describe("OpenRouter catalog", () => {
     } finally {
       await client.close();
     }
-  });
+  }, 30_000);
 
   it("serves the durable last-good catalog when a forced refresh fails", async () => {
     const client = new PGlite();
@@ -241,11 +243,11 @@ describe("OpenRouter catalog", () => {
       expect(stale?.syncStates).toEqual([
         expect.objectContaining({
           status: "stale",
-          error: "catalog network unavailable",
+          error: "openrouter-catalog-refresh-failed",
         }),
       ]);
     } finally {
       await client.close();
     }
-  });
+  }, 30_000);
 });

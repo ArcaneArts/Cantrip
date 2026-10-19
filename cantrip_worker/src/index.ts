@@ -7191,6 +7191,12 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     if (stopping) return;
 
     stopping = true;
+    // Abort downloads/probes together before awaiting the other shutdown owners.
+    const managedRuntimesClosed = Promise.allSettled([
+      playwrightRuntime.close(),
+      searxngRuntime.close(),
+      codegraphRuntime?.close(),
+    ]);
     computerUseAgents.close();
     computerUsePreviews.close();
     computerUseApprovals.close();
@@ -7259,8 +7265,18 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     providerAuthObserver.close();
     runConfigurationDefinitions.close();
     await runConfigurationRuntimes.closeAll();
-    await playwrightRuntime.close();
-    await searxngRuntime.close();
+    for (const result of await managedRuntimesClosed) {
+      if (result.status === "rejected") {
+        process.exitCode = 1;
+        workerLogger.event("error", "Managed runtime shutdown failed", {
+          event: "worker.managed-runtime.shutdown-failed",
+          subsystem: "managed-runtime",
+          operation: "shutdown",
+          status: "failed",
+          error: workerLogError(result.reason),
+        });
+      }
+    }
     commandConnection.close();
     unregisterWorkerLinkPeerTransport();
     await workerLinkPeerGateway.close();

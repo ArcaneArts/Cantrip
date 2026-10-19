@@ -1,0 +1,63 @@
+name: Server behavior contracts
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/server-behavior-contracts.yml
+      - cantrip_server/src/**
+      - cantrip_server/test/**
+      - cantrip_server/drizzle/**
+      - packages/protocol/src/**
+      - pnpm-lock.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: server-behavior-contracts-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
+      - run: pnpm --filter @cantrip/server typecheck
+      - name: Encrypted identity, ownership, migration and request contracts
+        if: ${{ !cancelled() }}
+        run: >-
+          pnpm --filter @cantrip/server exec vitest run
+          test/browser-services-api.test.ts test/chat-archive-api.test.ts
+          test/chat-composer-draft-api.test.ts test/chat-import-jobs.test.ts
+          test/chat-relocation-api.test.ts test/chat-relocation-executor.test.ts
+          test/chat-relocation-jobs.test.ts test/desktop-update-active-work.test.ts
+          test/hosted-chat-owner-context.test.ts test/hosted-worker-presence.test.ts
+          test/http-hardening.test.ts test/logging.test.ts
+          test/model-catalog-migration.test.ts test/native-command-admission.test.ts
+          test/openrouter-catalog.test.ts test/remote-desktop-fleet-api.test.ts
+          test/skills-settings-api.test.ts test/surface-title-persistence.test.ts
+          test/tab-group-title-persistence.test.ts test/tenant-authorization.test.ts
+          test/worker-command-timeout-policy.test.ts test/worker-enrollment-api.test.ts
+          test/workflow-removal-migration.test.ts test/zai-catalog.test.ts
+          --maxWorkers=2
+      # This is focused regression coverage, not a full-baseline claim. #2106
+      # retains the unmodified plaintext Git case and local-foundation migration.
+      - name: Worktree execution lanes, protected routing and attachment retirement
+        if: ${{ !cancelled() }}
+        run: >-
+          pnpm --filter @cantrip/server exec vitest run test/worktree-api.test.ts
+          -t "^(?!.*uses exact worktree paths for status, history, and Git actions)"
+          --maxWorkers=2

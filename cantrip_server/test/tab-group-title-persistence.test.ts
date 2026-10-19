@@ -23,6 +23,8 @@ import {
   protectedTerminalFields,
 } from "./private-label-fixture.js";
 
+// Database-backed cases include cold PGlite initialization (up to 12.6 s in CI).
+// Their 30-second fixture budget leaves behavioral polling deadlines unchanged.
 it("persists custom tab-group titles only as authenticated ciphertext", async () => {
   const dataDirectory = await mkdtemp(
     path.join(tmpdir(), "cantrip-tab-group-title-persistence-"),
@@ -66,6 +68,7 @@ it("persists custom tab-group titles only as authenticated ciphertext", async ()
       {
         workerId: "tab-group-title-worker",
         ...protectedProjectFields(),
+        repositoryBlindIndex: "R".repeat(43),
         repositoryId: "tab-group-title-repository",
         nameWithOwner: "ArcaneArts/Cantrip",
         url: "https://github.com/ArcaneArts/Cantrip",
@@ -94,13 +97,15 @@ it("persists custom tab-group titles only as authenticated ciphertext", async ()
       LOCAL_USER_ID,
       project.id,
     );
-    groupId = layout!.groups[0]!.id;
+    groupId = layout!.panes.find(({ members }) =>
+      members.some(({ tabId }) => tabId === terminal!.id),
+    )!.id;
     const explorer = await database.repository.createExplorer(
       LOCAL_USER_ID,
       project.id,
       {
         ...protectedExplorerFields(),
-        tabGroupId: groupId,
+        paneId: groupId,
       },
     );
     expect(explorer).not.toBeNull();
@@ -116,13 +121,13 @@ it("persists custom tab-group titles only as authenticated ciphertext", async ()
       componentKey,
       label: "TAB-GROUP-TITLE-SENTINEL",
     });
-    const renamed = await database.repository.tabLayouts.updateGroup(
+    const renamed = await database.repository.tabLayouts.updatePane(
       LOCAL_USER_ID,
       project.id,
       groupId,
       { revision: layout!.revision, titleProtection },
     );
-    expect(renamed?.groups[0]).toMatchObject({
+    expect(renamed?.panes.find(({ id }) => id === groupId)).toMatchObject({
       id: groupId,
       titleProtection: {
         classification: { recordKind: "tab-group" },
@@ -139,7 +144,7 @@ it("persists custom tab-group titles only as authenticated ciphertext", async ()
       LOCAL_USER_ID,
       projectId,
     );
-    expect(layout?.groups.find(({ id }) => id === groupId)).toMatchObject({
+    expect(layout?.panes.find(({ id }) => id === groupId)).toMatchObject({
       titleProtection: {
         classification: { recordKind: "tab-group" },
       },
@@ -177,4 +182,4 @@ it("persists custom tab-group titles only as authenticated ciphertext", async ()
     await scan.close();
     await rm(dataDirectory, { recursive: true, force: true });
   }
-});
+}, 30_000);

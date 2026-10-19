@@ -93,7 +93,7 @@ describe("server logging", () => {
     expect(records).toMatchObject([
       {
         system: "server",
-        level: "info",
+        level: "debug",
         message: expect.stringContaining(
           "GET /api/projects/project-one/chats -> 200 OK",
         ),

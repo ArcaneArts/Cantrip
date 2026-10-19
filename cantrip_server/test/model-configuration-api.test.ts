@@ -77,6 +77,8 @@ const workerBridge: WorkerCommandBus = {
   },
 };
 
+// Cold PGlite initialization exceeded 13 seconds in the Windows native matrix
+// (#2118). Bound this setup hook separately from individual assertions.
 beforeAll(async () => {
   database = await connectDatabase(config);
   await database.repository.ensureLocalIdentity();
@@ -90,7 +92,7 @@ beforeAll(async () => {
     computerUseEnabled: true,
   });
   app = await buildApp({ config, database, logger: false, workerBridge });
-});
+}, 30_000);
 
 afterAll(async () => {
   await app?.close();

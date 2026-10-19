@@ -1020,6 +1020,9 @@ export class TerminalManager {
       cwd: session.cwd,
       env: processLaunch.env,
       name: "xterm-256color",
+      // The bundled backend owns console teardown. The inbox backend's
+      // asynchronous process-list helper can lose children as the shell exits.
+      useConptyDll: process.platform === "win32",
     });
     session.process = child;
     session.exited = null;
@@ -1040,8 +1043,13 @@ export class TerminalManager {
       if (session.process !== child) return;
       this.#appendOutput(terminalId, session, data);
     });
-    child.onExit(({ exitCode, signal }) => {
+    child.onExit(({ exitCode: nativeExitCode, signal }) => {
       if (session.process !== child) return;
+      // Windows can close the PTY pipe before node-pty receives the exit code.
+      // Preserve an unknown, non-success status while completing owned cleanup.
+      const exitCode = Number.isSafeInteger(nativeExitCode)
+        ? nativeExitCode
+        : -1;
       session.process = null;
       if (session.retargeting && !session.removeAfterExit && !this.#closing) {
         this.#finishManagedRetarget(terminalId, session);

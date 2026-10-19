@@ -5,7 +5,11 @@ import type {
 } from "@cantrip/protocol";
 
 import type { ClientSessionContext } from "./client-session";
-import { getClientSession } from "./client-session";
+import {
+  clientSessionIdentityMatches,
+  getClientSession,
+  getClientSessionIdentitySnapshot,
+} from "./client-session";
 import type {
   ClientEncryptionService,
   ClientEncryptionSnapshot,
@@ -86,17 +90,18 @@ export async function ensureRepositoryWorkerEncryption(input: {
   const service = input.service ?? clientEncryption;
   const snapshot = service.getSnapshot();
   const worker = input.worker;
-  const readiness = repositoryWorkerReadiness(worker, snapshot);
-  if (
-    !worker ||
-    !["ready", "pending-approval", "missing-grant", "stale"].includes(readiness)
-  ) {
+  let readiness = repositoryWorkerReadiness(worker, snapshot);
+  if (!worker || ["offline", "locked", "revoked"].includes(readiness)) {
     throw new RepositoryWorkerReadinessError(
       readiness === "ready" ? "unavailable" : readiness,
       "The worker's protected server connection is unavailable.",
     );
   }
-  const session = (input.session ?? getClientSession)();
+  const getSession = input.session ?? getClientSession;
+  const session = getSession();
+  const sessionIdentity = input.session
+    ? null
+    : getClientSessionIdentitySnapshot();
   const identity = session
     ? { ownerId: session.user.id, serverId: session.serverId }
     : null;
@@ -112,37 +117,93 @@ export async function ensureRepositoryWorkerEncryption(input: {
       "Encryption must be unlocked before authorizing a worker.",
     );
   }
+  const keyRevision = snapshot.masterKeyRevision;
+  const assertCurrent = () => {
+    const current = getSession();
+    if (
+      service.getSnapshot() !== snapshot ||
+      current?.user.id !== identity.ownerId ||
+      current.serverId !== identity.serverId ||
+      (sessionIdentity && !clientSessionIdentityMatches(sessionIdentity))
+    ) {
+      throw new RepositoryWorkerReadinessError(
+        "locked",
+        "Encryption identity changed while authorizing the worker. Try again after unlocking.",
+      );
+    }
+  };
   if (readiness === "ready") return worker.encryption;
-  await authorizeWorkerEncryption({
+  const refresh = async () => {
+    assertCurrent();
+    const result = await input.refresh(worker.workerId, {
+      component: "repository-content",
+      keyRevision,
+    });
+    assertCurrent();
+    if (
+      result.component !== "repository-content" ||
+      result.keyRevision !== keyRevision
+    ) {
+      throw new RepositoryWorkerReadinessError(
+        "stale",
+        "The worker returned readiness for another repository key.",
+      );
+    }
+    return {
+      status: result.status,
+      readiness: repositoryWorkerReadiness(
+        { ...worker, encryption: result.status },
+        snapshot,
+      ),
+    };
+  };
+  // The first heartbeat can retain a bootstrap error from before onboarding
+  // initialized the account. Refresh actual authority before granting its key.
+  if (readiness === "unavailable") {
+    const refreshed = await refresh();
+    const { status } = refreshed;
+    readiness = refreshed.readiness;
+    if (readiness === "ready") return status;
+    if (!["pending-approval", "missing-grant", "stale"].includes(readiness)) {
+      throw new RepositoryWorkerReadinessError(
+        readiness,
+        "The worker's protected server connection is unavailable.",
+      );
+    }
+  }
+  const grants = await authorizeWorkerEncryption({
     api: input.api,
+    assertCurrent,
     components: ["repository-content"],
     identity,
-    keyRevision: snapshot.masterKeyRevision,
+    keyRevision,
     service,
     workerId: worker.workerId,
   });
-  const refreshed = await input.refresh(worker.workerId, {
-    component: "repository-content",
-    keyRevision: snapshot.masterKeyRevision,
-  });
-  if (
-    refreshed.component !== "repository-content" ||
-    refreshed.keyRevision !== snapshot.masterKeyRevision
-  ) {
+  let refreshed = await refresh();
+  const principalId = grants[0]?.principalId;
+  // A heartbeat refresh started before createGrant can be joined by the first
+  // command. Once it completes, one fresh command can observe the committed
+  // grant. Never retry a rejected refresh, revocation, or a replaced identity.
+  for (let attempt = 0; ; attempt += 1) {
+    const { status, readiness } = refreshed;
+    if (status.principalId !== principalId) {
+      throw new RepositoryWorkerReadinessError(
+        "stale",
+        "The worker encryption identity changed while authorizing its repository key.",
+      );
+    }
+    if (readiness === "ready") return status;
+    if (
+      attempt === 0 &&
+      ["pending-approval", "missing-grant", "stale"].includes(readiness)
+    ) {
+      refreshed = await refresh();
+      continue;
+    }
     throw new RepositoryWorkerReadinessError(
-      "stale",
-      "The worker returned readiness for another repository key.",
-    );
-  }
-  const refreshedReadiness = repositoryWorkerReadiness(
-    { ...worker, encryption: refreshed.status },
-    snapshot,
-  );
-  if (refreshedReadiness !== "ready") {
-    throw new RepositoryWorkerReadinessError(
-      refreshedReadiness,
+      readiness,
       "The worker did not activate its protected server connection.",
     );
   }
-  return refreshed.status;
 }

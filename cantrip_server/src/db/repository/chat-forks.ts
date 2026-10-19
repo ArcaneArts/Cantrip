@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 
 import type {
   ChatMessageOpaqueContent,
@@ -50,7 +51,7 @@ export class ChatForkRepository {
       messages: ChatMessageOpaqueSummary[],
     ) => Promise<ChatMessageOpaqueContent[]>,
   ): Promise<ChatWireSummary | null> {
-    return this.database.transaction(async (transaction) => {
+    const readSource = async (transaction: RepositoryDatabase) => {
       const rows = await transaction
         .select({ chat: schema.chats })
         .from(schema.chats)
@@ -133,23 +134,37 @@ export class ChatForkRepository {
       ) {
         return null;
       }
-      const protectedCopies = await protectMessages(
-        sourceMessages.map(toEncryptedChatMessage),
+      return { row, target, sourceMessages, projectId };
+    };
+    const source = await this.database.transaction(readSource);
+    if (!source) return null;
+    const { row, target, sourceMessages, projectId } = source;
+    // Worker dispatch resolves ownership through the database. Release the read
+    // transaction before awaiting it, then verify the source in the write transaction.
+    const protectedCopies = await protectMessages(
+      sourceMessages.map(toEncryptedChatMessage),
+    );
+    if (
+      protectedCopies.length !== sourceMessages.length ||
+      protectedCopies.some((copy, index) => {
+        const source = sourceMessages[index]!;
+        return (
+          copy.classification.role !== source.role ||
+          copy.classification.mode !== source.mode ||
+          JSON.stringify(copy.classification.attachmentIds) !==
+            JSON.stringify(source.attachmentIds)
+        );
+      })
+    ) {
+      throw new Error(
+        "The worker returned inconsistent encrypted fork messages.",
       );
-      if (
-        protectedCopies.length !== sourceMessages.length ||
-        protectedCopies.some((copy, index) => {
-          const source = sourceMessages[index]!;
-          return (
-            copy.classification.role !== source.role ||
-            copy.classification.mode !== source.mode ||
-            JSON.stringify(copy.classification.attachmentIds) !==
-              JSON.stringify(source.attachmentIds)
-          );
-        })
-      ) {
-        throw new Error(
-          "The worker returned inconsistent encrypted fork messages.",
+    }
+    return this.database.transaction(async (transaction) => {
+      const current = await readSource(transaction);
+      if (!isDeepStrictEqual(current, source)) {
+        throw new ExecutionLaneConflictError(
+          "The chat or destination changed while preparing the fork. Retry the fork.",
         );
       }
       const [

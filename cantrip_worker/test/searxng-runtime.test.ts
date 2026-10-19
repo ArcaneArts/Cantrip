@@ -1,6 +1,7 @@
+import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -8,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ManagedWebRuntimeStatus } from "@cantrip/protocol";
 
 import {
+  probeSearxngRuntime,
   renderSearxngSettings,
   SearxngRuntimeManager,
   validateSearxngInventory,
@@ -80,16 +82,21 @@ async function fixtureRuntime(): Promise<string> {
 function fakeChild() {
   const child = new EventEmitter() as EventEmitter & {
     exitCode: number | null;
+    signalCode: NodeJS.Signals | null;
     kill: ReturnType<typeof vi.fn>;
     stderr: PassThrough;
     stdout: PassThrough;
   };
   child.exitCode = null;
+  child.signalCode = null;
   child.stdout = new PassThrough();
   child.stderr = new PassThrough();
   child.kill = vi.fn(() => {
     child.exitCode = 0;
-    queueMicrotask(() => child.emit("exit", 0, null));
+    queueMicrotask(() => {
+      child.emit("exit", 0, null);
+      child.emit("close", 0, null);
+    });
     return true;
   });
   return child;
@@ -244,4 +251,47 @@ describe("SearXNG managed runtime", () => {
 
     await manager.close();
   });
+});
+
+it("cancels a SearXNG probe and waits for its actual child before removing private state", async () => {
+  const runtime = await fixtureRuntime();
+  const dataDirectory = await fixtureRuntime();
+  const shutdown = new AbortController();
+  let child: ReturnType<typeof spawn> | undefined;
+  let probing = false;
+  const operation = probeSearxngRuntime(
+    runtime,
+    dataDirectory,
+    async (_input, options) =>
+      await new Promise<Response>((_resolve, reject) => {
+        probing = true;
+        const signal = options!.signal!;
+        signal.addEventListener("abort", () => reject(signal.reason), {
+          once: true,
+        });
+      }),
+    () =>
+      (child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+        stdio: "pipe",
+      })) as never,
+    shutdown.signal,
+  );
+  const result = expect(operation).rejects.toThrow();
+  try {
+    await expect.poll(() => probing).toBe(true);
+    const pid = child!.pid!;
+    shutdown.abort(new Error("owned test shutdown"));
+    await result;
+    expect(() => process.kill(pid, 0)).toThrow();
+    expect(
+      await readdir(
+        path.join(dataDirectory, "managed-runtimes", "searxng", "state"),
+      ),
+    ).toEqual([]);
+  } finally {
+    shutdown.abort();
+    await result;
+    if (child?.exitCode === null && child.signalCode === null)
+      child.kill("SIGKILL");
+  }
 });

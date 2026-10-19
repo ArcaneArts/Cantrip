@@ -5,7 +5,10 @@ import path from "node:path";
 /** Flush newly created directory links as well as their existing parent. */
 export async function ensureHistoryDirectory(directory: string): Promise<void> {
   const firstCreated = await mkdir(directory, { recursive: true, mode: 0o700 });
-  if (!firstCreated) return;
+  // Windows directory flushing is a no-op. Its recursive mkdir result can use
+  // a namespaced path (\\?\), which does not equal the caller's ordinary path.
+  // Do not walk that ancestry looking for a boundary we can never match.
+  if (!firstCreated || process.platform === "win32") return;
   const parent = path.dirname(firstCreated);
   for (let current = directory; ; current = path.dirname(current)) {
     await flushHistoryDirectory(current);

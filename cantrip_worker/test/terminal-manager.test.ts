@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -16,6 +16,120 @@ class SnapshotFailingTerminalState extends TerminalCanonicalState {
 }
 
 const directories: string[] = [];
+class FixtureTerminalManager extends TerminalManager {
+  readonly terminalIds = new Set<string>();
+
+  override open(...args: Parameters<TerminalManager["open"]>) {
+    this.terminalIds.add(args[0]);
+    return super.open(...args);
+  }
+
+  override reconcileServices(
+    services: Parameters<TerminalManager["reconcileServices"]>[0],
+  ) {
+    for (const { terminalId } of services) this.terminalIds.add(terminalId);
+    super.reconcileServices(services);
+  }
+}
+
+const managers = new Set<FixtureTerminalManager>();
+const fixturePids = new Set<number>();
+function createTerminalManager(
+  options?: ConstructorParameters<typeof TerminalManager>[0],
+) {
+  const manager = new FixtureTerminalManager(options);
+  managers.add(manager);
+  return manager;
+}
+
+async function cleanupFixtures(
+  beforeRemove?: (directory: string) => void | Promise<void>,
+) {
+  for (const manager of managers) manager.closeAll();
+  await expect
+    .poll(
+      () =>
+        [...managers].every((manager) =>
+          [...manager.terminalIds].every((id) => !manager.hasLiveSession(id)),
+        ),
+      { timeout: 5_000 },
+    )
+    .toBe(true);
+  await expect
+    .poll(
+      () =>
+        [...fixturePids].every((pid) => {
+          try {
+            process.kill(pid, 0);
+            return false;
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === "ESRCH") return true;
+            throw error;
+          }
+        }),
+      { timeout: 5_000 },
+    )
+    .toBe(true);
+  const removals = await Promise.allSettled(
+    directories.map(async (directory) => {
+      await beforeRemove?.(directory);
+      await rm(directory, {
+        recursive: true,
+        force: true,
+        maxRetries: 10,
+        retryDelay: 100,
+      });
+      directories.splice(directories.indexOf(directory), 1);
+    }),
+  );
+  managers.clear();
+  fixturePids.clear();
+  const failures = removals.flatMap((result) =>
+    result.status === "rejected" ? [result.reason] : [],
+  );
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1)
+    throw new AggregateError(failures, "Failed to remove terminal fixtures.");
+}
+
+const replayMarker = /CANTRIP_REPLAY_MARKER:(\d+)\r?\n/u;
+
+function observeFixtureProcess(output: string): void {
+  const match = replayMarker.exec(output);
+  expect(match).not.toBeNull();
+  const pid = Number(match![1]);
+  expect(Number.isSafeInteger(pid) && pid > 0).toBe(true);
+  fixturePids.add(pid);
+}
+
+async function replayCommand(directory: string): Promise<string> {
+  // The actual child produces markers and acknowledges one input line. No
+  // interactive shell startup or echoed marker command can satisfy this test.
+  await writeFile(
+    path.join(directory, "replay-fixture.cjs"),
+    [
+      'const { createInterface } = require("node:readline");',
+      "const input = createInterface({ input: process.stdin, terminal: false });",
+      "let emitted = false;",
+      'input.on("line", (line) => {',
+      '  if (line !== "emit-delta" || emitted) throw new Error("Unexpected fixture input");',
+      "  emitted = true;",
+      '  process.stdout.write("CANTRIP_ATOMIC_DELTA\\n");',
+      "});",
+      'process.stdout.write("CANTRIP_REPLAY_MARKER:" + process.pid + "\\n");',
+    ].join("\n"),
+  );
+  if (process.platform === "win32") {
+    // node is supplied by the same test runtime/CI PATH. Simple relative
+    // arguments avoid cmd.exe/CRT quoting differences, even in a spaced cwd.
+    process.env.COMSPEC = "cmd.exe";
+    return "node replay-fixture.cjs";
+  }
+  return (
+    "'" + process.execPath.replaceAll("'", "'\\''") + "' replay-fixture.cjs"
+  );
+}
+
 const originalComspec = process.env.COMSPEC;
 beforeEach(() => {
   // These fixtures send PowerShell syntax; COMSPEC normally selects cmd.exe.
@@ -23,27 +137,72 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  if (originalComspec === undefined) delete process.env.COMSPEC;
-  else process.env.COMSPEC = originalComspec;
-  await Promise.all(
-    directories
-      .splice(0)
-      .map((directory) =>
-        rm(directory, {
-          recursive: true,
-          force: true,
-          maxRetries: 10,
-          retryDelay: 100,
-        }),
-      ),
-  );
+  try {
+    await cleanupFixtures();
+  } finally {
+    if (originalComspec === undefined) delete process.env.COMSPEC;
+    else process.env.COMSPEC = originalComspec;
+  }
 });
 
 describe("TerminalManager", () => {
+  it("finishes independent removals and retains only failed fixture directories", async () => {
+    const failed = await mkdtemp(
+      path.join(tmpdir(), "cantrip-cleanup-failed-"),
+    );
+    const delayed = await mkdtemp(
+      path.join(tmpdir(), "cantrip-cleanup-delayed-"),
+    );
+    directories.push(failed, delayed);
+    const failure = new Error("controlled removal failure");
+    let release = () => {};
+    const removalAllowed = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let entered = () => {};
+    const removalStarted = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    let settled = false;
+    const cleanup = cleanupFixtures(async (directory) => {
+      if (directory === failed) throw failure;
+      entered();
+      await removalAllowed;
+    });
+    const observed = cleanup.then(
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      },
+    );
+    try {
+      await removalStarted;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(settled).toBe(false);
+      release();
+      await expect(cleanup).rejects.toBe(failure);
+      await expect(access(failed)).resolves.toBeUndefined();
+      await expect(access(delayed)).rejects.toMatchObject({ code: "ENOENT" });
+      const retried: string[] = [];
+      await cleanupFixtures(async (directory) => {
+        retried.push(directory);
+        await access(directory);
+      });
+      expect(retried).toEqual([failed]);
+    } finally {
+      release();
+      await observed;
+    }
+  });
+
   it("replays buffered output before signaling that a reattached view is ready", async () => {
-    const directory = await mkdtemp(path.join(tmpdir(), "cantrip-terminal-"));
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "cantrip terminal replay "),
+    );
     directories.push(directory);
-    const manager = new TerminalManager();
+    const manager = createTerminalManager();
     let initialOutput = "";
     const initialAttachment = manager.open(
       "terminal-replay",
@@ -51,20 +210,16 @@ describe("TerminalManager", () => {
       directory,
       80,
       24,
-      { type: "shell" },
+      { type: "command", command: await replayCommand(directory) },
       (event) => {
         if (event.type === "terminal.output") initialOutput += event.data;
       },
     );
-    manager.input(
-      "terminal-replay",
-      process.platform === "win32"
-        ? "echo CANTRIP_REPLAY_MARKER\r"
-        : "printf 'CANTRIP_REPLAY_MARKER\\n'\r",
-    );
     await expect
       .poll(() => initialOutput, { timeout: 5_000 })
-      .toContain("CANTRIP_REPLAY_MARKER");
+      .toMatch(replayMarker);
+    observeFixtureProcess(initialOutput);
+    expect(initialOutput).not.toContain("CANTRIP_ATOMIC_DELTA");
     await expect(
       manager.canonicalSnapshot("terminal-replay"),
     ).resolves.toMatchObject({
@@ -93,12 +248,7 @@ describe("TerminalManager", () => {
       "attachment-second-replay",
       (event) => secondReplayEvents.push(event),
     );
-    manager.input(
-      "terminal-replay",
-      process.platform === "win32"
-        ? "-join (67,65,78,84,82,73,80,95,65,84,79,77,73,67,95,68,69,76,84,65 | ForEach-Object {[char]$_})\r"
-        : "printf '\\103\\101\\116\\124\\122\\111\\120\\137\\101\\124\\117\\115\\111\\103\\137\\104\\105\\114\\124\\101\\n'\r",
-    );
+    manager.input("terminal-replay", "emit-delta\r");
 
     await expect
       .poll(
@@ -161,8 +311,100 @@ describe("TerminalManager", () => {
     manager.detach("terminal-replay", "attachment-second-replay");
     await expect(reattached).resolves.toEqual({ status: "detached" });
     await expect(secondReattached).resolves.toEqual({ status: "detached" });
-    manager.close("terminal-replay");
   });
+
+  it.each([false, true])(
+    "closes every owned PTY before directory cleanup after an early fixture failure (program ready: %s)",
+    async (ready) => {
+      const ownedDirectories = await Promise.all(
+        ["attached", "service"].map((name) =>
+          mkdtemp(path.join(tmpdir(), `cantrip-terminal-failure-${name}-`)),
+        ),
+      );
+      directories.push(...ownedDirectories);
+      const commands = await Promise.all(ownedDirectories.map(replayCommand));
+      const output = ["", ""];
+      const exitedIds: string[] = [];
+      const attached = createTerminalManager({
+        observeLifecycle: ({ terminalId }) => exitedIds.push(terminalId),
+      });
+      const service = createTerminalManager({
+        observeLifecycle: ({ terminalId }) => exitedIds.push(terminalId),
+      });
+      const attachments: Array<ReturnType<TerminalManager["open"]>> = [];
+      const removed: string[] = [];
+      const failure = new Error("forced failure before replay assertions");
+
+      await expect(
+        (async () => {
+          try {
+            attachments.push(
+              attached.open(
+                "attached-failure",
+                "attachment",
+                ownedDirectories[0]!,
+                80,
+                24,
+                { type: "command", command: commands[0]! },
+                (event) => {
+                  if (event.type === "terminal.output") output[0] += event.data;
+                },
+              ),
+            );
+            service.reconcileServices([
+              {
+                terminalId: "service-failure",
+                cwd: ownedDirectories[1]!,
+                command: commands[1]!,
+              },
+            ]);
+            attachments.push(
+              service.attachExisting(
+                "service-failure",
+                "service-view",
+                (event) => {
+                  if (event.type === "terminal.output") output[1] += event.data;
+                },
+              ),
+            );
+            if (ready) {
+              await expect
+                .poll(() => output.every((value) => replayMarker.test(value)), {
+                  timeout: 5_000,
+                })
+                .toBe(true);
+              output.forEach(observeFixtureProcess);
+            }
+            expect(attached.hasLiveSession("attached-failure")).toBe(true);
+            expect(service.hasLiveSession("service-failure")).toBe(true);
+            throw failure;
+          } finally {
+            await cleanupFixtures(async (directory) => {
+              expect(exitedIds.sort()).toEqual([
+                "attached-failure",
+                "service-failure",
+              ]);
+              expect(attached.hasLiveSession("attached-failure")).toBe(false);
+              expect(service.hasLiveSession("service-failure")).toBe(false);
+              await access(directory);
+              removed.push(directory);
+            });
+          }
+        })(),
+      ).rejects.toBe(failure);
+
+      expect(await Promise.all(attachments)).toEqual([
+        expect.objectContaining({ status: "exited" }),
+        expect.objectContaining({ status: "exited" }),
+      ]);
+      expect(removed.sort()).toEqual(ownedDirectories.sort());
+      for (const directory of ownedDirectories) {
+        await expect(access(directory)).rejects.toMatchObject({
+          code: "ENOENT",
+        });
+      }
+    },
+  );
 
   it.skipIf(process.platform === "win32")(
     "requests one bounded PTY redraw when only a truncated legacy replay remains",
@@ -174,7 +416,7 @@ describe("TerminalManager", () => {
       }).latestCursor;
       const directory = await mkdtemp(path.join(tmpdir(), "cantrip-terminal-"));
       directories.push(directory);
-      const manager = new TerminalManager({
+      const manager = createTerminalManager({
         canonicalStateFactory: (cols, rows) =>
           new SnapshotFailingTerminalState(cols, rows),
         maxScrollbackCharacters: 128,
@@ -305,7 +547,6 @@ describe("TerminalManager", () => {
       manager.detach("terminal-recovery", "attachment-second");
       await expect(reattached).resolves.toEqual({ status: "detached" });
       await expect(second).resolves.toEqual({ status: "detached" });
-      manager.close("terminal-recovery");
     },
   );
 
@@ -314,7 +555,7 @@ describe("TerminalManager", () => {
     async () => {
       const directory = await mkdtemp(path.join(tmpdir(), "cantrip-terminal-"));
       directories.push(directory);
-      const manager = new TerminalManager();
+      const manager = createTerminalManager();
       const initialAttachment = manager.open(
         "terminal-dimensions",
         "attachment-initial",
@@ -346,11 +587,11 @@ describe("TerminalManager", () => {
 
       manager.detach("terminal-dimensions", "attachment-replay");
       await expect(reattached).resolves.toEqual({ status: "detached" });
-      manager.close("terminal-dimensions");
     },
   );
 
   it("runs an interactive shell in the requested source folder", async () => {
+    if (process.platform === "win32") process.env.COMSPEC = "cmd.exe";
     const afterCursor = readWorkerLogs({
       afterCursor: 0,
       limit: 200,
@@ -358,9 +599,16 @@ describe("TerminalManager", () => {
     }).latestCursor;
     const directory = await mkdtemp(path.join(tmpdir(), "cantrip-terminal-"));
     directories.push(directory);
-    const manager = new TerminalManager({
+    const manager = createTerminalManager({
       environmentForCwd: (cwd) =>
-        cwd === directory ? { SETUP_TERMINAL_FIXTURE: "captured" } : {},
+        cwd === directory
+          ? {
+              SETUP_TERMINAL_FIXTURE: "captured",
+              ...(process.platform === "win32"
+                ? { PROMPT: "CANTRIP_SHELL_READY$G" }
+                : {}),
+            }
+          : {},
     });
     expect(manager.snapshot("missing-terminal", 100)).toEqual({
       terminalId: "missing-terminal",
@@ -370,6 +618,12 @@ describe("TerminalManager", () => {
       exitCode: null,
     });
     let output = "";
+    const waitForShellPrompt = async () => {
+      if (process.platform === "win32")
+        await expect
+          .poll(() => output, { timeout: 5_000 })
+          .toContain("CANTRIP_SHELL_READY>");
+    };
     const events: string[] = [];
     const exited = manager.open(
       "terminal-1",
@@ -388,10 +642,11 @@ describe("TerminalManager", () => {
       .poll(() => events.includes("terminal.ready"), { timeout: 5_000 })
       .toBe(true);
     expect(events.slice(0, 2)).toEqual(["terminal.output", "terminal.ready"]);
+    await waitForShellPrompt();
     manager.input(
       "terminal-1",
       process.platform === "win32"
-        ? "echo CANTRIP_PTY_OK:$env:SETUP_TERMINAL_FIXTURE\r"
+        ? "echo CANTRIP_PTY_OK:%SETUP_TERMINAL_FIXTURE%\r"
         : "printf 'CANTRIP_PTY_OK:%s\\n' \"$SETUP_TERMINAL_FIXTURE\"\r",
     );
     await expect
@@ -428,6 +683,7 @@ describe("TerminalManager", () => {
         if (event.type === "terminal.output") output += event.data;
       },
     );
+    await waitForShellPrompt();
     manager.input(
       "terminal-1",
       process.platform === "win32"
@@ -439,7 +695,6 @@ describe("TerminalManager", () => {
       .toContain("CANTRIP_PTY_RESTARTED");
     manager.input("terminal-1", "exit\r");
     await expect(restarted).resolves.toMatchObject({ status: "exited" });
-    manager.closeAll();
     const serializedLogs = JSON.stringify(
       readWorkerLogs({
         afterCursor,
@@ -458,7 +713,7 @@ describe("TerminalManager", () => {
     async () => {
       const directory = await mkdtemp(path.join(tmpdir(), "cantrip-service-"));
       directories.push(directory);
-      const manager = new TerminalManager({ serviceRestartDelayMs: 50 });
+      const manager = createTerminalManager({ serviceRestartDelayMs: 50 });
       manager.reconcileServices([
         {
           terminalId: "terminal-service",
@@ -490,7 +745,6 @@ describe("TerminalManager", () => {
       const stoppedOutput = output;
       await new Promise((resolve) => setTimeout(resolve, 150));
       expect(output).toBe(stoppedOutput);
-      manager.closeAll();
     },
   );
 
@@ -501,7 +755,7 @@ describe("TerminalManager", () => {
         path.join(tmpdir(), "cantrip-service-restart-"),
       );
       directories.push(directory);
-      const manager = new TerminalManager({ serviceRestartDelayMs: 5_000 });
+      const manager = createTerminalManager({ serviceRestartDelayMs: 5_000 });
       manager.reconcileServices([
         {
           terminalId: "terminal-service",
@@ -536,7 +790,6 @@ describe("TerminalManager", () => {
         .toBeGreaterThanOrEqual(2);
       manager.reconcileServices([]);
       await expect(exited).resolves.toMatchObject({ status: "exited" });
-      manager.closeAll();
     },
   );
 
@@ -559,7 +812,7 @@ describe("TerminalManager", () => {
       );
       await chmod(fakeCodex, 0o755);
 
-      const manager = new TerminalManager();
+      const manager = createTerminalManager();
       let output = "";
       const exited = manager.open(
         "terminal-codex",
@@ -604,7 +857,6 @@ describe("TerminalManager", () => {
       );
       expect(output).toContain(`CODEX_HOME:${codexHome}`);
       expect(output).toContain("API_KEY:test-key");
-      manager.closeAll();
     },
   );
 
@@ -626,7 +878,7 @@ describe("TerminalManager", () => {
         ].join("\n"),
       );
       await chmod(fakeCodex, 0o755);
-      const manager = new TerminalManager({
+      const manager = createTerminalManager({
         environment: {
           CANTRIP_CODEX_ATTACH_THREAD_ID: "inherited-wrong-thread",
         },
@@ -703,7 +955,7 @@ describe("TerminalManager", () => {
           ),
         ).toThrow("Managed Codex attachment requires a bound native thread");
       } finally {
-        manager.closeAll();
+        await cleanupFixtures();
       }
     },
   );
@@ -725,7 +977,7 @@ describe("TerminalManager", () => {
       );
       await chmod(fakeCodex, 0o755);
 
-      const manager = new TerminalManager();
+      const manager = createTerminalManager();
       let output = "";
       const exited = manager.open(
         "terminal-ollama",
@@ -764,7 +1016,6 @@ describe("TerminalManager", () => {
       expect(output).toContain('model_provider="ollama"');
       expect(output).not.toContain("model_providers.cantrip_runtime");
       expect(output).toContain("OSS_BASE_URL:http://127.0.0.1:11434/v1");
-      manager.closeAll();
     },
   );
 });
@@ -775,10 +1026,13 @@ it.skipIf(process.platform === "win32")(
     const directory = await mkdtemp(path.join(tmpdir(), "cantrip-cli-exit-"));
     directories.push(directory);
     const fakeCodex = path.join(directory, "fake-codex");
-    await writeFile(fakeCodex, "#!/bin/sh\nread line\nexit 3\n");
+    await writeFile(
+      fakeCodex,
+      "#!/bin/sh\nprintf 'CANTRIP_CLI_READY\\n'\nread line\nexit 3\n",
+    );
     await chmod(fakeCodex, 0o755);
     const observations: unknown[] = [];
-    const manager = new TerminalManager({
+    const manager = createTerminalManager({
       observeLifecycle: (value) => observations.push(value),
     });
     const launch = {
@@ -807,6 +1061,7 @@ it.skipIf(process.platform === "win32")(
     };
     const old = randomUUID(),
       current = randomUUID();
+    let output = "";
     try {
       const open = manager.open(
         "terminal",
@@ -815,9 +1070,14 @@ it.skipIf(process.platform === "win32")(
         80,
         24,
         launch,
-        () => {},
+        (event) => {
+          if (event.type === "terminal.output") output += event.data;
+        },
         old,
       );
+      await expect
+        .poll(() => output, { timeout: 5_000 })
+        .toContain("CANTRIP_CLI_READY");
       manager.detach("terminal", "old");
       await open;
       const retry = manager.open(
@@ -846,7 +1106,7 @@ it.skipIf(process.platform === "win32")(
           },
         ]);
     } finally {
-      manager.closeAll();
+      await cleanupFixtures();
     }
   },
 );

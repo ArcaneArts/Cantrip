@@ -5,6 +5,7 @@ on:
     paths:
       - cantrip_worker/src/index.ts
       - cantrip_worker/src/commands/**
+      - cantrip_worker/src/terminal-manager.ts
       - cantrip_worker/test/**
       - scripts/audit-server-boundaries.mjs
       - .github/workflows/worker-command-handlers.yml
@@ -42,3 +43,16 @@ jobs:
       - name: Command ordering, ownership and real feature operations
         if: ${{ !cancelled() }}
         run: pnpm --filter @cantrip/worker exec vitest run test/command-handlers.test.ts test/command-handlers.integration.test.ts test/code-direct-endpoint.test.ts test/worktrees.test.ts test/github.test.ts test/github-workspace-link.test.ts test/attachment-store.test.ts test/customization.test.ts test/terminal-manager.test.ts test/explorer.test.ts test/direct-broker.test.ts test/project-folder-stats.test.ts test/project-repository-stats.test.ts test/project-export-manager.test.ts test/project-github-conversion.test.ts test/project-share-manager.test.ts test/remote-surface-manager.test.ts test/global-skills.test.ts --maxWorkers=2
+      - name: Code startup retirement before retry
+        if: ${{ !cancelled() }}
+        run: pnpm --filter @cantrip/worker exec vitest run test/code-supervisor.test.ts -t "observes failed startup process exit before allowing a retry" --maxWorkers=2
+      - name: Native terminal exit-event ownership
+        run: pnpm --filter @cantrip/worker exec vitest run test/terminal-exit-event.test.ts --maxWorkers=2
+      - name: Repeat real terminal replay and cleanup fixtures on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          for ($attempt = 1; $attempt -le 10; $attempt++) {
+            pnpm --filter @cantrip/worker exec vitest run test/terminal-manager.test.ts --maxWorkers=2
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }

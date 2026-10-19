@@ -9,6 +9,7 @@ import {
 } from "@cantrip/protocol";
 import type { FastifyInstance } from "fastify";
 
+import { ExecutionLaneConflictError } from "../../db/repository/chat-execution-lanes.js";
 import type { ServerRepository } from "../../db/repository.js";
 import { errorMessage, invalidBody } from "../../http/request-helpers.js";
 import type { WorkerCommandBus } from "../../workers/bridge.js";
@@ -107,6 +108,9 @@ export function installChatForkRoute(
           ? reply.code(201).send(chatWireSummarySchema.parse(chat))
           : reply.code(404).send({ error: "Chat or message not found." });
       } catch (error) {
+        if (error instanceof ExecutionLaneConflictError) {
+          return reply.code(409).send({ error: error.message });
+        }
         if (/unique|duplicate/i.test(errorMessage(error))) {
           return reply.code(409).send({
             error: "This worktree is already leased by another chat.",

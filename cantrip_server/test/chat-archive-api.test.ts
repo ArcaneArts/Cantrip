@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -8,7 +9,7 @@ import {
   chatWireSummarySchema,
   unprobedCodexRuntimeReport,
 } from "@cantrip/protocol";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { buildApp } from "../src/app.js";
 import type { ServerConfig } from "../src/config.js";
@@ -23,6 +24,8 @@ import {
   protectedChatFields,
   protectedProjectFields,
 } from "./private-label-fixture.js";
+
+import { settingsEnvelope } from "./native-settings-repository-fixture.js";
 
 const dataDirectory = await mkdtemp(
   path.join(tmpdir(), "cantrip-chat-archive-api-"),
@@ -43,8 +46,8 @@ const config: ServerConfig = {
 const workerBridge: WorkerCommandBus = {
   attach() {},
   close() {},
-  isConnected() {
-    return false;
+  isConnected(workerId) {
+    return workerId === "archive-worker";
   },
   sendSurfaceFrame() {
     return false;
@@ -56,6 +59,23 @@ const workerBridge: WorkerCommandBus = {
     return () => undefined;
   },
   async request(_workerId, command) {
+    if (command.type === "chat.messages.reprotect") {
+      return command.messages.map(({ source, id, idempotencyKey }) => ({
+        id,
+        classification: {
+          role: source.role,
+          mode: source.mode,
+          attachmentIds: source.attachmentIds,
+        },
+        protectedContent: {
+          formatVersion: 1,
+          keyRevision: 1,
+          envelope: settingsEnvelope,
+        },
+        reasoningEffort: source.reasoningEffort,
+        idempotencyKey,
+      }));
+    }
     throw new Error(`Unexpected worker command ${command.type}.`);
   },
 };
@@ -112,7 +132,7 @@ beforeAll(async () => {
   );
   app = await buildApp({ config, database, logger: false, workerBridge });
   await app.ready();
-});
+}, 30_000);
 
 afterAll(async () => {
   await app?.close();
@@ -134,9 +154,15 @@ describe.sequential("chat archive API", () => {
       titleProtection: renamed,
     });
 
-    await database.repository.appendMessage(LOCAL_USER_ID, source.id, {
-      role: "user",
-      content: [{ type: "text", text: "Fork from this message" }],
+    await database.repository.appendEncryptedMessage(LOCAL_USER_ID, source.id, {
+      id: randomUUID(),
+      classification: { role: "user", mode: "default", attachmentIds: [] },
+      protectedContent: {
+        formatVersion: 1,
+        keyRevision: 1,
+        envelope: settingsEnvelope,
+      },
+      reasoningEffort: null,
       idempotencyKey: "opaque-title-fork-source",
     });
     const forkFields = protectedChatFields();
@@ -145,11 +171,64 @@ describe.sequential("chat archive API", () => {
       url: `/api/chats/${source.id}/fork`,
       payload: forkFields,
     });
-    expect(forkResponse.statusCode).toBe(201);
+    expect(forkResponse.statusCode, forkResponse.body).toBe(201);
     expect(chatWireSummarySchema.parse(forkResponse.json())).toMatchObject({
       id: forkFields.id,
       titleProtection: forkFields.titleProtection,
     });
+  });
+
+  it("rejects a source changed during worker reprotection without creating a fork", async () => {
+    const source = await createChat("Concurrent fork");
+    await database.repository.appendEncryptedMessage(LOCAL_USER_ID, source.id, {
+      id: randomUUID(),
+      classification: { role: "user", mode: "default", attachmentIds: [] },
+      protectedContent: {
+        formatVersion: 1,
+        keyRevision: 1,
+        envelope: settingsEnvelope,
+      },
+      reasoningEffort: null,
+      idempotencyKey: "concurrent-fork-source",
+    });
+    const input = protectedChatFields();
+    const original = workerBridge.request.bind(workerBridge);
+    const request = vi
+      .spyOn(workerBridge, "request")
+      .mockImplementationOnce(async (...args) => {
+        expect(args[1].type).toBe("chat.messages.reprotect");
+        // A worker-side callback can read/write through a separate database request.
+        // Holding the fork transaction here would deadlock the local database.
+        await database.repository.updateChat(LOCAL_USER_ID, source.id, {
+          titleProtection: protectedChatFields().titleProtection,
+        });
+        return original(...args);
+      });
+    try {
+      const response = await app.inject({
+        method: "POST",
+        url: `/api/chats/${source.id}/fork`,
+        payload: input,
+      });
+      expect(response.statusCode, response.body).toBe(409);
+      expect(response.json().error).toContain(
+        "changed while preparing the fork",
+      );
+      expect(
+        await database.repository.getChatExecutionContext(
+          LOCAL_USER_ID,
+          input.id,
+        ),
+      ).toBeNull();
+      expect(
+        await database.repository.listEncryptedMessages(
+          LOCAL_USER_ID,
+          source.id,
+        ),
+      ).toHaveLength(1);
+    } finally {
+      request.mockRestore();
+    }
   });
 
   it("archives populated chats and restores them with their history", async () => {

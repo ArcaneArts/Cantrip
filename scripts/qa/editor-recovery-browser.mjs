@@ -14,7 +14,16 @@ const selectedCase =
   selectedCaseIndex < 0 ? null : process.argv[selectedCaseIndex + 1];
 const selectedCases = new Set(selectedCase?.split(",") ?? []);
 const seenCases = new Set();
-const fixture = await startEditorRecoveryFixture();
+const folderBootstrapCase = selectedCases.has("folder-bootstrap");
+const modeHydrationCase = selectedCases.has("mode-hydration");
+const repositoryCase =
+  !selectedCase || selectedCases.has("worktree-switch-cycles");
+const settingsRelease = Promise.withResolvers();
+const fixture = await startEditorRecoveryFixture({
+  requireExplicitBootstrapRefresh: folderBootstrapCase,
+  repositoryProject: repositoryCase,
+  logicalCreditControl: !selectedCase || selectedCases.has("congested-sibling"),
+});
 let browser;
 let context;
 try {
@@ -52,6 +61,8 @@ try {
   const results = [];
   const errors = [];
   const observedSessions = new Map();
+  const codeAttachments = new Map();
+  const retiredCodeAttachments = new Set();
   const renewals = [];
   const networkTimings = [];
   browser = await chromium.launch({
@@ -149,61 +160,31 @@ try {
             visible: frame.getClientRects().length > 0,
           });
       });
-    const wrapSend = (prototype) => {
-      const send = prototype.send;
-      window.__qaCreditFault = {
-        armed: false,
-        channelId: null,
-        dropped: 0,
-        creditFrames: 0,
-      };
-      prototype.send = function (data) {
-        const fault = window.__qaCreditFault;
-        if (
-          fault.armed &&
-          (data instanceof ArrayBuffer || ArrayBuffer.isView(data))
-        ) {
-          try {
-            const bytes =
-              data instanceof ArrayBuffer
-                ? new Uint8Array(data)
-                : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-            const size = new DataView(
-              bytes.buffer,
-              bytes.byteOffset,
-              bytes.byteLength,
-            ).getUint32(4, false);
-            if (size > 0 && size < bytes.byteLength - 7) {
-              const header = JSON.parse(
-                new TextDecoder().decode(bytes.subarray(8, 8 + size)),
-              );
-              if (header.kind === "open" && !fault.channelId)
-                fault.channelId = header.channel?.channelId;
-              if (
-                header.kind === "credit" &&
-                header.direction === "worker-to-client" &&
-                header.channel?.channelId
-              ) {
-                fault.creditFrames++;
-                if (fault.channelId === header.channel.channelId) {
-                  fault.dropped++;
-                  return;
-                }
-              }
-            }
-          } catch {
-            /* Non-WorkerLink frames retain their ordinary transport path. */
-          }
-        }
-        return send.call(this, data);
-      };
-    };
-    wrapSend(WebSocket.prototype);
-    if (typeof RTCDataChannel !== "undefined")
-      wrapSend(RTCDataChannel.prototype);
   });
   page.on("response", async (response) => {
     const pathname = new URL(response.url()).pathname;
+    if (pathname.includes("/code-session-attachments")) {
+      const request = response.request();
+      if (response.ok() && request.method() === "DELETE")
+        retiredCodeAttachments.add(pathname.split("/").at(-1));
+      if (response.ok() && request.method() === "POST") {
+        try {
+          const { session } = await response.json();
+          codeAttachments.set(session.attachmentId, {
+            attachmentId: session.attachmentId,
+            sessionId: session.sessionId,
+            workspacePath: session.runtime.workspaceUri
+              ? decodeURIComponent(
+                  new URL(session.runtime.workspaceUri).pathname,
+                )
+              : null,
+            worktreeId: request.postDataJSON().expectedWorktreeId,
+          });
+        } catch {
+          // An aborted response cannot establish an observed attachment.
+        }
+      }
+    }
     if (!pathname.includes("worker-link")) return;
     if (pathname.endsWith("/renew"))
       renewals.push({ pathname, status: response.status(), at: Date.now() });
@@ -358,16 +339,11 @@ try {
     await page.keyboard.insertText(text);
     await waitForText(text);
   };
-  const save = async (marker) => {
+  const save = async (marker, file = path.join(repository, "qa.txt")) => {
     const deadline = Date.now() + 30_000;
     let nextAttempt = 0;
     while (Date.now() < deadline) {
-      if (
-        (await readFile(path.join(repository, "qa.txt"), "utf8")).includes(
-          marker,
-        )
-      )
-        return;
+      if ((await readFile(file, "utf8")).includes(marker)) return;
       if (Date.now() >= nextAttempt) {
         await page.keyboard.press(
           process.platform === "darwin" ? "Meta+s" : "Control+s",
@@ -395,7 +371,27 @@ try {
     await delay(1_000);
   };
   try {
-    await run("cold-editor-usable", async () => {
+    const coldCaseName = modeHydrationCase
+      ? "mode-hydration"
+      : folderBootstrapCase
+        ? "folder-bootstrap"
+        : "cold-editor-usable";
+    await run(coldCaseName, async () => {
+      let settingsCaptured = false;
+      let settingsHeld = false;
+      let settingsDelivered = false;
+      if (modeHydrationCase) {
+        await page.route("**/api/settings", async (route) => {
+          if (route.request().method() !== "GET" || settingsCaptured)
+            return route.continue();
+          settingsCaptured = true;
+          const response = await route.fetch();
+          settingsHeld = true;
+          await settingsRelease.promise;
+          await route.fulfill({ response });
+          settingsDelivered = true;
+        });
+      }
       await page.goto(fixture.origin, { waitUntil: "domcontentloaded" });
       await page
         .getByRole("button", { name: "Save recovery file", exact: true })
@@ -417,6 +413,20 @@ try {
         .getByRole("button", { name: "Continue to Cantrip", exact: true })
         .click();
       let modeRetries = 0;
+      if (modeHydrationCase) {
+        const deadline = Date.now() + 30_000;
+        while (!settingsHeld && Date.now() < deadline) await delay(25);
+        assert.ok(
+          settingsHeld,
+          "Capture the actual initial settings response before selecting IDE",
+        );
+        await page
+          .getByRole("button", {
+            name: "Chat. Switch Cantrip mode",
+            exact: true,
+          })
+          .waitFor();
+      }
       for (;;) {
         const chatMode = page.getByRole("button", {
           name: "Chat. Switch Cantrip mode",
@@ -428,64 +438,132 @@ try {
             .getByRole("menuitem", { name: "Cantrip IDE", exact: true })
             .click();
         }
+        if (modeHydrationCase) {
+          settingsRelease.resolve();
+          const deadline = Date.now() + 30_000;
+          while (!settingsDelivered && Date.now() < deadline) await delay(25);
+          assert.ok(
+            settingsDelivered,
+            "Deliver the older actual settings response after the explicit choice",
+          );
+          await page
+            .getByRole("button", {
+              name: "IDE. Switch Cantrip mode",
+              exact: true,
+            })
+            .waitFor();
+        }
         try {
           await page
             .getByRole("button", { name: "Switch project", exact: true })
             .click({ timeout: 5_000 });
+          if (repositoryCase) {
+            await page.keyboard.press("Escape");
+            break;
+          }
           await page
+            .locator('[data-slot="project-switcher-footer"]')
             .getByRole("button", { name: "New project", exact: true })
             .click({ timeout: 5_000 });
           break;
         } catch (error) {
+          if (modeHydrationCase) throw error;
           if (modeRetries++ >= 2 || !(await chatMode.isVisible())) throw error;
         }
       }
-      await page.getByRole("menuitem", { name: "Folder", exact: true }).click();
-      await page
-        .getByRole("button", { name: "Use existing", exact: true })
-        .click();
-      await page
-        .getByRole("textbox", { name: "Project name", exact: true })
-        .fill("Editor Recovery QA");
-      await page
-        .getByPlaceholder("/path/on/the/selected/worker", { exact: true })
-        .fill(repository);
-      await page
-        .getByRole("button", { name: "Use folder", exact: true })
-        .click();
-      await writeFile(
-        path.join(fixture.directory, "project-submitted.aria.txt"),
-        await page.locator("body").ariaSnapshot(),
-      );
-      // Retry the actual operation only after its specific transient failure.
-      // First onboarding can precede the worker's initial protected-key refresh.
       let setupRetries = 0;
-      for (; setupRetries < 3; setupRetries += 1) {
-        try {
-          await page
-            .getByRole("treeitem", { name: "qa.txt", exact: true })
-            .waitFor({ timeout: 5_000 });
-          break;
-        } catch (error) {
-          if (
-            !(await page
-              .getByRole("dialog", { name: "Add folder project", exact: true })
-              .isVisible())
-          )
+      if (repositoryCase) {
+        for (;;) {
+          try {
+            await page.evaluate(() => window.__qaRepositoryFixture.create());
             break;
-          if (
-            !(await page
-              .getByText(
+          } catch (error) {
+            if (
+              setupRetries >= 3 ||
+              !error.message.includes(
                 "The worker's protected server connection is unavailable.",
-                { exact: true },
               )
-              .isVisible())
-          )
-            throw error;
-          await delay(1_000 * (setupRetries + 1));
-          await page
-            .getByRole("button", { name: "Use folder", exact: true })
-            .click();
+            )
+              throw error;
+            await delay(1_000 * ++setupRetries);
+          }
+        }
+        const deadline = Date.now() + 30_000;
+        let project;
+        do {
+          project = await page.evaluate(() =>
+            window.__qaRepositoryFixture.project(),
+          );
+          if (project?.setupStatus === "ready") break;
+          await delay(100);
+        } while (Date.now() < deadline);
+        assert.equal(
+          project?.setupStatus,
+          "ready",
+          "The real worker direct-attachment job must finish",
+        );
+        assert.equal(project.capabilities.worktrees, true);
+        assert.equal(project.source.path, repository);
+        await page
+          .getByRole("button", { name: "Switch project", exact: true })
+          .click();
+        await page
+          .locator('[data-slot="project-switcher-project"]')
+          .filter({ hasText: fixture.repositorySeed.name })
+          .click();
+      } else {
+        await page
+          .getByRole("menuitem", { name: "Folder", exact: true })
+          .click();
+        await page
+          .getByRole("button", { name: "Use existing", exact: true })
+          .click();
+        await page
+          .getByRole("textbox", { name: "Project name", exact: true })
+          .fill("Editor Recovery QA");
+        await page
+          .getByPlaceholder("/path/on/the/selected/worker", { exact: true })
+          .fill(repository);
+        await page
+          .getByRole("button", { name: "Use folder", exact: true })
+          .click();
+        await writeFile(
+          path.join(fixture.directory, "project-submitted.aria.txt"),
+          await page.locator("body").ariaSnapshot(),
+        );
+        // Retry the actual operation only after its specific transient failure.
+        // First onboarding can precede the worker's initial protected-key refresh.
+        for (; setupRetries < 3; setupRetries += 1) {
+          try {
+            await page
+              .getByRole("treeitem", { name: "qa.txt", exact: true })
+              .waitFor({ timeout: 5_000 });
+            break;
+          } catch (error) {
+            if (
+              !(await page
+                .getByRole("dialog", {
+                  name: "Add folder project",
+                  exact: true,
+                })
+                .isVisible())
+            )
+              break;
+            if (folderBootstrapCase) throw error;
+            if (
+              !(await page
+                .getByText(
+                  "The worker's protected server connection is unavailable.",
+                  { exact: true },
+                )
+                .isVisible())
+            )
+              throw error;
+            await delay(1_000 * (setupRetries + 1));
+            await page
+              .getByRole("button", { name: "Use folder", exact: true })
+              .click();
+          }
         }
       }
       const fileOpenStartedAt = Date.now();
@@ -507,10 +585,21 @@ try {
           marker,
         ),
       );
+      if (folderBootstrapCase) {
+        const status = await inject({ type: "stats" });
+        assert.ok(status.eventCounts["fault.bootstrap-unavailable"] > 0);
+        assert.equal(status.eventCounts["fault.bootstrap-released"], 1);
+        assert.equal(
+          setupRetries,
+          0,
+          "Folder creation must succeed with one UI submission",
+        );
+      }
       return {
         marker,
         setupRetries,
         modeRetries,
+        ...(modeHydrationCase ? { settingsHeld, settingsDelivered } : {}),
         operation: "type, save, verify worker-owned file",
         phases: {
           fileOpenStartedAt,
@@ -518,6 +607,51 @@ try {
           firstSaveVerifiedAt: Date.now(),
           fileOpenToRenderedMs: fileRenderedAt - fileOpenStartedAt,
         },
+      };
+    });
+    await run("managed-runtimes-initialized", async () => {
+      let status;
+      const deadline = Date.now() + 180_000;
+      do {
+        status = await page.evaluate(async (workerId) => {
+          const response = await fetch("/api/workers/management");
+          if (!response.ok)
+            throw new Error(`Worker status HTTP ${response.status}`);
+          return (await response.json()).find(
+            (worker) => worker.workerId === workerId,
+          );
+        }, fixture.workerId);
+        if (
+          status?.webRuntimes.search.state === "ready" &&
+          status?.webRuntimes.browser.state === "ready" &&
+          status?.codegraph.healthy
+        )
+          break;
+        await delay(500);
+      } while (Date.now() < deadline);
+      assert.equal(
+        status?.webRuntimes.search.state,
+        "ready",
+        JSON.stringify(status?.webRuntimes.search),
+      );
+      assert.equal(
+        status?.webRuntimes.browser.state,
+        "ready",
+        JSON.stringify(status?.webRuntimes.browser),
+      );
+      assert.equal(
+        status?.codegraph.healthy,
+        true,
+        JSON.stringify(status?.codegraph),
+      );
+      const marker = `INITIALIZED_${Date.now()}`;
+      await type(marker);
+      await save(marker);
+      return {
+        marker,
+        searchVersion: status.webRuntimes.search.installedVersion,
+        browserVersion: status.webRuntimes.browser.installedVersion,
+        codegraphVersion: status.codegraph.installedVersion,
       };
     });
     await run("warm-close-reopen", async () => {
@@ -838,6 +972,14 @@ try {
     await run("route-replacement", async () => {
       const marker = `ROUTE_${Date.now()}`;
       await type(marker);
+      const originalSrc = await page
+        .locator("iframe:visible")
+        .getAttribute("src");
+      assert.ok(
+        !(await readFile(path.join(repository, "qa.txt"), "utf8")).includes(
+          marker,
+        ),
+      );
       const sessions = currentSessions();
       assert.ok(
         sessions.length,
@@ -861,7 +1003,39 @@ try {
       const next = `ROUTE_NEXT_${Date.now()}`;
       await type(next);
       await save(next);
-      return { replacements, savedAfterRelayReplacement: true };
+      const recoveredSrc = await page
+        .locator("iframe:visible")
+        .getAttribute("src");
+      assert.equal(
+        new URL(recoveredSrc, fixture.origin).searchParams.get("workspace"),
+        new URL(originalSrc, fixture.origin).searchParams.get("workspace"),
+        "Recovered edits must still target the original Code workspace",
+      );
+      const saved = await readFile(path.join(repository, "qa.txt"), "utf8");
+      assert.ok(saved.includes(marker) && saved.includes(next));
+      const recoveredSessions = currentSessions();
+      assert.ok(
+        recoveredSessions.length,
+        "Recovery must establish current carrier authority",
+      );
+      assert.ok(
+        recoveredSessions.every((current) =>
+          sessions.every(
+            (previous) =>
+              current.sessionId !== previous.sessionId ||
+              current.routeGeneration > previous.routeGeneration,
+          ),
+        ),
+        "Recovery must retire the replaced carrier authority",
+      );
+      return {
+        replacements,
+        savedAfterRelayReplacement: true,
+        secondEditSaved: true,
+        sameFrameUrl: recoveredSrc === originalSrc,
+        dirtyBufferRetained: true,
+        recoveredWithCurrentAuthority: true,
+      };
     });
     for (const mode of ["hard-expiry", "explicit-revocation"])
       await run(mode, async () => {
@@ -963,9 +1137,21 @@ try {
         return entries[0]?.name;
       });
       assert.ok(asset, "A real loaded workbench asset is required");
-      await page.evaluate(() => {
-        window.__qaCreditFault.armed = true;
-      });
+      const fetchControl = () =>
+        frame.locator("body").evaluate(async (_body, asset) => {
+          const response = await fetch(
+            `${asset}${asset.includes("?") ? "&" : "?"}qaControl=${Date.now()}`,
+            { cache: "no-store" },
+          );
+          return {
+            status: response.status,
+            bytes: (await response.arrayBuffer()).byteLength,
+          };
+        }, asset);
+      const control = await fetchControl();
+      assert.equal(control.status, 200);
+      const frameUrl = await page.locator("iframe:visible").getAttribute("src");
+      await page.evaluate(() => window.__qaLogicalCredit.arm());
       let completed = false;
       const pending = frame.locator("body").evaluate(async (body, asset) => {
         const controller = new AbortController();
@@ -988,62 +1174,299 @@ try {
           completed = true;
         })
         .catch(() => {});
-      try {
-        const deadline = Date.now() + 10_000;
-        let fault;
-        do {
-          fault = await page.evaluate(() => window.__qaCreditFault);
-          if (fault.dropped) break;
-          await delay(100);
-        } while (Date.now() < deadline);
-        if (!fault.dropped) {
-          const error = new Error(
-            `Credit injection did not reach the selected actual asset after bounded WebSocket/RTC attempts: ${new URL(asset).pathname}; fault=${JSON.stringify(fault)}. No congestion result is claimed.`,
-          );
-          error.name = "BlockedCaseError";
-          throw error;
-        }
-        await delay(500);
-        assert.equal(
-          completed,
-          false,
-          "The selected bulk response must remain stalled",
-        );
-        const marker = `SIBLING_${Date.now()}`;
-        await type(marker);
-        await save(marker);
-        return { withheldCredits: fault.dropped, siblingSaveReachedDisk: true };
-      } finally {
-        await page.evaluate(() => {
-          window.__qaCreditFault.armed = false;
-        });
-        await frame
+      const snapshot = () =>
+        page.evaluate(() => window.__qaLogicalCredit.snapshot());
+      const abort = () =>
+        frame
           .locator("body")
           .evaluate((body) =>
             body.ownerDocument.defaultView.__qaBulkAbort?.abort(),
+          );
+      try {
+        const deadline = Date.now() + 10_000;
+        let stalled;
+        do {
+          stalled = await snapshot();
+          if (
+            stalled.withheldCredits > 0 &&
+            stalled.receivedBytes === stalled.creditBytes
           )
-          .catch(() => {});
-        await pending.catch(() => {});
+            break;
+          if (completed) break;
+          await delay(50);
+        } while (Date.now() < deadline);
+        assert.ok(
+          stalled.selected,
+          "The bulk HTTP request must select its own logical connection",
+        );
+        assert.ok(
+          stalled.withheldCredits > 0,
+          "The selected connection must withhold real receive credits",
+        );
+        assert.ok(
+          control.bytes > stalled.creditBytes,
+          "The real asset must exceed the selected stream's byte window",
+        );
+        assert.equal(
+          stalled.receivedBytes,
+          stalled.creditBytes,
+          "The producer must fill and stop at the actual initial credit window",
+        );
+        assert.equal(completed, false, "The bulk response must remain pending");
+        await delay(500);
+        assert.equal((await snapshot()).receivedBytes, stalled.receivedBytes);
+        for (let edit = 0; edit < 2; edit += 1) {
+          const marker = `SIBLING_${edit}_${Date.now()}`;
+          await type(marker);
+          await save(marker);
+        }
+        const afterSaves = await snapshot();
+        assert.equal(
+          completed,
+          false,
+          "Sibling saves must finish while the bulk producer is stalled",
+        );
+        assert.equal(afterSaves.receivedBytes, stalled.creditBytes);
+        assert.deepEqual(
+          afterSaves.currentIdentity,
+          stalled.identity,
+          "The original authenticated route must remain current",
+        );
+        assert.equal(
+          await page.locator("iframe:visible").getAttribute("src"),
+          frameUrl,
+        );
+        console.log(
+          `QA_EVT ${JSON.stringify({
+            name: "congested-sibling-progress",
+            stage: "sibling-saves-complete",
+            creditBytes: stalled.creditBytes,
+            receivedBytes: afterSaves.receivedBytes,
+            withheldCredits: afterSaves.withheldCredits,
+            siblingEditsSaved: 2,
+            originalAuthorityRetained: true,
+          })}`,
+        );
+        await abort();
+        const aborted = await pending;
+        assert.equal(aborted.error, "AbortError");
+        const cleanupDeadline = Date.now() + 5_000;
+        let retired;
+        let workerSocketClosed = false;
+        do {
+          retired = await snapshot();
+          const workerLog = await readFile(
+            path.join(fixture.directory, "worker.log"),
+            "utf8",
+          );
+          workerSocketClosed = workerLog
+            .split("\n")
+            .some(
+              (line) =>
+                line.includes(
+                  "event=tunnel.destination.remote-close-completed",
+                ) &&
+                Object.entries(stalled.identity).every(([key, value]) =>
+                  line.includes(` ${key}=${value}`),
+                ),
+            );
+          if (retired.retired && workerSocketClosed) break;
+          await delay(50);
+        } while (Date.now() < cleanupDeadline);
+        assert.equal(
+          retired.retired,
+          true,
+          "Abort must retire the actual local connection",
+        );
+        assert.equal(
+          workerSocketClosed,
+          true,
+          "The worker must finish closing the TCP socket for the exact authenticated logical stream",
+        );
+        assert.deepEqual(retired.currentIdentity, stalled.identity);
+        assert.deepEqual(
+          await fetchControl(),
+          control,
+          "A subsequent sibling request must complete after abort",
+        );
+        return {
+          initialCreditBytes: stalled.creditBytes,
+          stalledResponseBytes: afterSaves.receivedBytes,
+          withheldCredits: afterSaves.withheldCredits,
+          controlResponseBytes: control.bytes,
+          siblingEditsSaved: 2,
+          originalAuthorityRetained: true,
+          sameFrameUrl: true,
+          abortedLocally: retired.retired,
+          workerSocketClosed,
+        };
+      } finally {
+        await abort().catch(() => {});
+        await Promise.race([pending.catch(() => {}), delay(5_000)]);
+        await page.evaluate(() => window.__qaLogicalCredit.release());
       }
     });
     await run("worktree-switch-cycles", async () => {
-      await page
-        .getByRole("button", {
-          name: "Project actions for Editor Recovery QA",
-          exact: true,
-        })
-        .click();
-      const menu = await page.getByRole("menu").ariaSnapshot();
-      await writeFile(
-        path.join(fixture.directory, "worktree-menu.aria.txt"),
-        menu,
-      );
-      await page.keyboard.press("Escape");
-      const error = new Error(
-        "Disposable folder projects have no worktree capability. Local Git initialization does not convert the project. Repository import requires GitHub authentication/catalog; an isolated local repository-project seed is needed. See docs/WORKTREES.md and RepositoryImporter.",
-      );
-      error.name = "BlockedCaseError";
-      throw error;
+      const primary = (
+        await page.evaluate(() => window.__qaRepositoryFixture.worktrees())
+      ).find((worktree) => worktree.isPrimary);
+      assert.ok(primary, "The real repository import must create Primary");
+      assert.equal(primary.path, repository);
+      const worktrees = [primary];
+      for (const suffix of ["alpha", "beta"]) {
+        worktrees.push(
+          await page.evaluate(
+            (input) => window.__qaRepositoryFixture.createWorktree(input),
+            {
+              name: `QA ${suffix}`,
+              sourceWorktreeId: primary.id,
+              mode: {
+                type: "newBranch",
+                branch: `qa-${suffix}`,
+                startPoint: "HEAD",
+              },
+            },
+          ),
+        );
+      }
+      assert.equal(new Set(worktrees.map(({ id }) => id)).size, 3);
+      assert.equal(new Set(worktrees.map(({ path }) => path)).size, 3);
+      for (const worktree of worktrees) {
+        assert.equal(worktree.workerId, fixture.workerId);
+        assert.equal(worktree.lifecycleState, "ready");
+        assert.ok(
+          worktree.path.startsWith(`${fixture.directory}${path.sep}`),
+          "Every checkout must belong to this disposable fixture",
+        );
+        const { stdout } = await exec("git", [
+          "-C",
+          worktree.path,
+          "rev-parse",
+          "--show-toplevel",
+        ]);
+        assert.equal(stdout.trim(), worktree.path);
+      }
+      // The normal live events refresh the UI's worktree queries.
+      let current = primary;
+      const switches = [];
+      for (const next of [
+        worktrees[1],
+        worktrees[2],
+        primary,
+        worktrees[2],
+        worktrees[1],
+        primary,
+      ]) {
+        const beforeFrame = await page
+          .locator("iframe:visible")
+          .elementHandle();
+        const oldWorkspace = new URL(
+          await beforeFrame.getAttribute("src"),
+          fixture.origin,
+        ).searchParams.get("workspace");
+        const oldAttachments = [...codeAttachments.values()].filter(
+          ({ worktreeId, workspacePath, attachmentId }) =>
+            worktreeId === current.id &&
+            workspacePath === oldWorkspace &&
+            !retiredCodeAttachments.has(attachmentId),
+        );
+        assert.ok(
+          oldAttachments.length,
+          "Observe the active authorized attachment before switching",
+        );
+        const beforeFiles = new Map(
+          await Promise.all(
+            worktrees.map(async (worktree) => [
+              worktree.id,
+              await readFile(path.join(worktree.path, "qa.txt"), "utf8"),
+            ]),
+          ),
+        );
+        await page
+          .getByRole("button", { name: current.name, exact: true })
+          .click();
+        await page
+          .getByRole("menuitem", { name: next.name, exact: true })
+          .click();
+        await page
+          .getByRole("button", { name: next.name, exact: true })
+          .waitFor();
+        await page
+          .getByRole("treeitem", { name: "qa.txt", exact: true })
+          .click();
+        await waitForText("Cantrip editor recovery baseline");
+        const src = await page.locator("iframe:visible").getAttribute("src");
+        const workspacePath = new URL(src, fixture.origin).searchParams.get(
+          "workspace",
+        );
+        assert.ok(workspacePath?.startsWith(`${fixture.directory}${path.sep}`));
+        const workspace = JSON.parse(await readFile(workspacePath, "utf8"));
+        assert.deepEqual(
+          workspace.folders.map(({ path }) => path),
+          [next.path],
+        );
+        await disableAutosave();
+        for (let edit = 0; edit < 2; edit += 1) {
+          const marker = `WORKTREE_${switches.length}_${edit}_${Date.now()}`;
+          await type(marker);
+          await save(marker, path.join(next.path, "qa.txt"));
+        }
+        for (const sibling of worktrees.filter(({ id }) => id !== next.id))
+          assert.equal(
+            await readFile(path.join(sibling.path, "qa.txt"), "utf8"),
+            beforeFiles.get(sibling.id),
+            `Saving ${next.name} must not change ${sibling.name}`,
+          );
+        const retirementDeadline = Date.now() + 10_000;
+        while (
+          Date.now() < retirementDeadline &&
+          ((await beforeFrame.evaluate((frame) => frame.isConnected)) ||
+            oldAttachments.some(
+              ({ attachmentId }) => !retiredCodeAttachments.has(attachmentId),
+            ))
+        )
+          await delay(50);
+        assert.equal(
+          await beforeFrame.evaluate((frame) => frame.isConnected),
+          false,
+          "The previous worktree iframe must be removed",
+        );
+        assert.ok(
+          oldAttachments.every(({ attachmentId }) =>
+            retiredCodeAttachments.has(attachmentId),
+          ),
+          `The server must acknowledge release of the outgoing workspace attachment: ${JSON.stringify(oldAttachments.map(({ attachmentId }) => ({ attachmentId, released: retiredCodeAttachments.has(attachmentId) })))}`,
+        );
+        assert.ok(
+          [...codeAttachments.values()].some(
+            ({ worktreeId, workspacePath: observedWorkspace, attachmentId }) =>
+              worktreeId === next.id &&
+              observedWorkspace === workspacePath &&
+              !retiredCodeAttachments.has(attachmentId),
+          ),
+          "The new editor must have its own current authorized attachment",
+        );
+        await beforeFrame.dispose();
+        switches.push({
+          from: current.name,
+          to: next.name,
+          editsSaved: 2,
+          oldFrameRemoved: true,
+          releasedAttachments: oldAttachments.length,
+        });
+        console.log(
+          `QA_EVT ${JSON.stringify({ name: "worktree-switch", ...switches.at(-1) })}`,
+        );
+        current = next;
+      }
+      return {
+        relayBytesPerMinute: 1024 ** 3,
+        worktrees: worktrees.map(({ name, path: checkout }) => ({
+          name,
+          path: path.relative(fixture.directory, checkout),
+        })),
+        switches,
+      };
     });
     await run("preview-pin-cycles", async () => {
       for (let cycle = 0; cycle < 5; cycle += 1) {
@@ -1065,6 +1488,7 @@ try {
       path: path.join(fixture.directory, "browser-final.png"),
     });
   } finally {
+    settingsRelease.resolve();
     const workbenchTimeline = await page
       .evaluate(() => window.__qaWorkbenchTimeline ?? [])
       .catch(() => []);
@@ -1115,15 +1539,53 @@ try {
       ),
     );
     await performanceClient.detach().catch(() => {});
-    await writeFile(
-      path.join(fixture.directory, "browser-results.json"),
-      JSON.stringify({ origin: fixture.origin, results, errors }, null, 2),
-    );
+    const runtimesAtShutdown = await page
+      .evaluate(async (workerId) => {
+        const response = await fetch("/api/workers/management");
+        if (!response.ok)
+          throw new Error(`Worker status HTTP ${response.status}`);
+        const worker = (await response.json()).find(
+          (entry) => entry.workerId === workerId,
+        );
+        return {
+          search: worker?.webRuntimes.search.state,
+          browser: worker?.webRuntimes.browser.state,
+          codegraph: worker?.codegraph.runtimeState,
+        };
+      }, fixture.workerId)
+      .catch((error) => ({ unavailable: error.message }));
     try {
       await context.close();
       await browser.close();
     } finally {
       await fixture.close();
+      const shutdowns = fixture.events.filter(
+        (event) => event.type === "process.stopped" && event.name === "worker",
+      );
+      const exited = fixture.events.filter(
+        (event) => event.type === "process.exit" && event.name === "worker",
+      );
+      const passed =
+        shutdowns.length > 0 &&
+        exited.length === shutdowns.length &&
+        shutdowns.every(
+          (event) =>
+            event.code === 0 &&
+            event.signal === null &&
+            !event.snapshotError &&
+            event.survivors.length === 0,
+        ) &&
+        exited.every((event) => event.code === 0 && event.signal === null);
+      results.push({
+        name: "worker-shutdown",
+        status: passed ? "passed" : "failed",
+        evidence: { runtimesAtShutdown, shutdowns, exited },
+      });
+      console.log(`QA_EVT ${JSON.stringify(results.at(-1))}`);
+      await writeFile(
+        path.join(fixture.directory, "browser-results.json"),
+        JSON.stringify({ origin: fixture.origin, results, errors }, null, 2),
+      );
     }
   }
   if (results.some((result) => result.status === "failed"))

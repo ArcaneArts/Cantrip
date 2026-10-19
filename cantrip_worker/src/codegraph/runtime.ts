@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { setTimeout as delay } from "node:timers/promises";
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { createReadStream } from "node:fs";
 import {
@@ -305,8 +306,9 @@ process.exit(result.status ?? 1);
 async function runProcess(
   executable: string,
   args: string[],
-  options: { cwd?: string; timeoutMs?: number } = {},
+  options: { cwd?: string; timeoutMs?: number; signal?: AbortSignal } = {},
 ): Promise<ProcessResult> {
+  options.signal?.throwIfAborted();
   return new Promise((resolve, reject) => {
     const child = spawn(executable, args, {
       cwd: options.cwd,
@@ -324,22 +326,36 @@ async function runProcess(
     child.stderr.on("data", (chunk: Buffer | string) => {
       stderr = append(stderr, chunk);
     });
-    const timeout = setTimeout(() => {
+    let failure: Error | undefined;
+    const stop = (error: Error) => {
+      failure ??= error;
       child.kill("SIGKILL");
-      reject(new Error(`CodeGraph command timed out: ${args.join(" ")}`));
+    };
+    const abort = () =>
+      stop(
+        new Error("CodeGraph command cancelled during shutdown.", {
+          cause: options.signal?.reason,
+        }),
+      );
+    const timeout = setTimeout(() => {
+      stop(new Error(`CodeGraph command timed out: ${args.join(" ")}`));
     }, options.timeoutMs ?? PROCESS_TIMEOUT_MS);
     timeout.unref();
-    child.once("error", (error) => {
+    options.signal?.addEventListener("abort", abort, { once: true });
+    const cleanup = () => {
       clearTimeout(timeout);
+      options.signal?.removeEventListener("abort", abort);
+    };
+    child.once("error", (error) => {
+      cleanup();
       reject(error);
     });
-    child.once("exit", (code, signal) => {
-      clearTimeout(timeout);
-      if (signal) {
+    child.once("close", (code, signal) => {
+      cleanup();
+      if (failure) reject(failure);
+      else if (signal)
         reject(new Error(`CodeGraph command exited from signal ${signal}.`));
-        return;
-      }
-      resolve({ code: code ?? 1, stderr, stdout });
+      else resolve({ code: code ?? 1, stderr, stdout });
     });
   });
 }
@@ -347,7 +363,9 @@ async function runProcess(
 async function verifyMcpHandshake(
   invocation: CodeGraphProcessInvocation,
   projectRoot: string,
+  signal?: AbortSignal,
 ): Promise<void> {
+  signal?.throwIfAborted();
   await new Promise<void>((resolve, reject) => {
     const child = spawn(
       invocation.command,
@@ -373,6 +391,7 @@ async function verifyMcpHandshake(
       settled = true;
       clearTimeout(timeout);
       if (forceKill) clearTimeout(forceKill);
+      signal?.removeEventListener("abort", abort);
       if (error) reject(error);
       else resolve();
     };
@@ -385,6 +404,13 @@ async function verifyMcpHandshake(
       forceKill = setTimeout(() => child.kill("SIGKILL"), 1_000);
       forceKill.unref();
     };
+    const abort = () =>
+      stop(
+        new Error("CodeGraph MCP probe cancelled during shutdown.", {
+          cause: signal?.reason,
+        }),
+      );
+    signal?.addEventListener("abort", abort, { once: true });
     const timeout = setTimeout(
       () =>
         stop(
@@ -453,6 +479,7 @@ async function verifyMcpHandshake(
       })}\n`,
     );
   });
+  signal?.throwIfAborted();
 }
 
 async function readJsonFile<T>(file: string): Promise<T | null> {
@@ -596,6 +623,7 @@ export class CodeGraphRuntimeManager {
   readonly #releaseApiUrl: string;
   readonly #root: string;
   readonly #target: CodeGraphTarget;
+  readonly #shutdown = new AbortController();
   #current: CurrentRuntime | null = null;
   #status: CodeGraphRuntimeStatus;
   #updatePromise: Promise<CodeGraphRuntimeStatus> | null = null;
@@ -666,7 +694,13 @@ export class CodeGraphRuntimeManager {
     }
   }
 
+  async close(): Promise<void> {
+    this.#shutdown.abort(new Error("CodeGraph runtime is shutting down."));
+    await this.#updatePromise;
+  }
+
   async prepare(): Promise<CodeGraphRuntimeStatus> {
+    this.#shutdown.signal.throwIfAborted();
     await Promise.all([
       mkdir(path.join(this.#root, "bin"), { recursive: true }),
       mkdir(path.join(this.#root, "downloads"), { recursive: true }),
@@ -724,6 +758,7 @@ export class CodeGraphRuntimeManager {
   }
 
   async updateNow(): Promise<CodeGraphRuntimeStatus> {
+    if (this.#shutdown.signal.aborted) return this.status();
     if (this.#updatePromise) return this.#updatePromise;
     this.#updatePromise = this.#performUpdate()
       .catch((error: unknown) => {
@@ -864,7 +899,10 @@ export class CodeGraphRuntimeManager {
         "user-agent": "Cantrip-Worker-CodeGraph-Manager",
         "x-github-api-version": "2022-11-28",
       },
-      signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
+      signal: AbortSignal.any([
+        this.#shutdown.signal,
+        AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
+      ]),
     });
     const checkedAt = this.#now().toISOString();
     if (response.status === 304 && cached?.schemaVersion === 1) {
@@ -902,10 +940,15 @@ export class CodeGraphRuntimeManager {
     const staging = path.join(this.#root, "staging", identifier);
     let promotedDirectory: string | null = null;
     try {
-      const [archiveSha256] = await Promise.all([
+      // Both downloads own files below the cleanup boundary. Wait for both to
+      // settle before removing them, including when shutdown aborts the pair.
+      const [archiveDownload, checksumDownload] = await Promise.allSettled([
         this.#download(release.asset, archivePath, MAX_ARCHIVE_BYTES),
         this.#download(release.checksums, checksumPath, MAX_CHECKSUM_BYTES),
       ]);
+      if (archiveDownload.status === "rejected") throw archiveDownload.reason;
+      if (checksumDownload.status === "rejected") throw checksumDownload.reason;
+      const archiveSha256 = archiveDownload.value;
       const checksumText = await readFile(checksumPath, "utf8");
       const expected = this.#checksumFor(checksumText, release.asset.name);
       if (!constantTimeEqual(archiveSha256, expected)) {
@@ -918,6 +961,7 @@ export class CodeGraphRuntimeManager {
         archivePath,
         this.#target.archiveKind,
         extracted,
+        this.#shutdown.signal,
       );
       const stagedExecutable = await this.#findExecutable(extracted);
       if (this.#platform !== "win32") await chmod(stagedExecutable, 0o700);
@@ -927,6 +971,7 @@ export class CodeGraphRuntimeManager {
       await verifyMcpHandshake(
         codeGraphProcessInvocationFor(stagedExecutable, this.#platform),
         stagedHealthRoot,
+        this.#shutdown.signal,
       );
       const packageBase = `${release.version}-${archiveSha256.slice(0, 12)}`;
       let packageDirectory = packageBase;
@@ -954,6 +999,7 @@ export class CodeGraphRuntimeManager {
       await verifyMcpHandshake(
         codeGraphProcessInvocationFor(promotedExecutable, this.#platform),
         promotedHealthRoot,
+        this.#shutdown.signal,
       );
       return {
         schemaVersion: 1,
@@ -993,7 +1039,10 @@ export class CodeGraphRuntimeManager {
     const response = await this.#fetch(asset.url, {
       headers: { "user-agent": "Cantrip-Worker-CodeGraph-Manager" },
       redirect: "follow",
-      signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
+      signal: AbortSignal.any([
+        this.#shutdown.signal,
+        AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
+      ]),
     });
     if (!response.ok || !response.body) {
       throw new Error(
@@ -1097,10 +1146,11 @@ export class CodeGraphRuntimeManager {
       this.#platform,
     );
     await Promise.all(invocation.requiredFiles.map((file) => access(file)));
-    const result = await runProcess(invocation.command, [
-      ...invocation.arguments,
-      "--version",
-    ]);
+    const result = await runProcess(
+      invocation.command,
+      [...invocation.arguments, "--version"],
+      { signal: this.#shutdown.signal },
+    );
     const reported = safeVersion(`${result.stdout}\n${result.stderr}`.trim());
     if (result.code !== 0 || reported !== expectedVersion) {
       throw new Error(
@@ -1114,11 +1164,11 @@ export class CodeGraphRuntimeManager {
       executable,
       this.#platform,
     );
-    const result = await runProcess(invocation.command, [
-      ...invocation.arguments,
-      "telemetry",
-      "off",
-    ]);
+    const result = await runProcess(
+      invocation.command,
+      [...invocation.arguments, "telemetry", "off"],
+      { signal: this.#shutdown.signal },
+    );
     if (result.code !== 0) {
       throw new Error(
         `codegraph telemetry off failed: ${(result.stderr || result.stdout).trim() || `exit ${result.code}`}`,
@@ -1189,6 +1239,7 @@ export class CodeGraphRuntimeManager {
     const startedAt = Date.now();
     let handle: Awaited<ReturnType<typeof open>> | null = null;
     while (!handle) {
+      this.#shutdown.signal.throwIfAborted();
       try {
         handle = await open(lockPath, "wx", 0o600);
         await handle.writeFile(
@@ -1210,10 +1261,11 @@ export class CodeGraphRuntimeManager {
             "Timed out waiting for another CodeGraph runtime update.",
           );
         }
-        await new Promise((resolve) => setTimeout(resolve, 250));
+        await delay(250, undefined, { signal: this.#shutdown.signal });
       }
     }
     try {
+      this.#shutdown.signal.throwIfAborted();
       return await action();
     } finally {
       await handle.close();

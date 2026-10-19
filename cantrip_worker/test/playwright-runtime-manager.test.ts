@@ -9,7 +9,10 @@ import type { CantripMcpBinding } from "@cantrip/protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { BrowserNetworkProxy } from "../src/managed-runtimes/browser-proxy.js";
-import { PlaywrightRuntimeManager } from "../src/managed-runtimes/playwright.js";
+import {
+  PlaywrightRuntimeManager,
+  probePlaywrightRuntime,
+} from "../src/managed-runtimes/playwright.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -340,4 +343,58 @@ describe("BrowserNetworkProxy", () => {
       upstream.close((error) => (error ? reject(error) : resolve()));
     });
   });
+});
+
+it("cancels a Playwright probe by closing its server and waits for navigation to settle", async () => {
+  const runtime = await fixture();
+  const dataDirectory = await fixture();
+  const shutdown = new AbortController();
+  let navigating = false;
+  let rejectNavigation!: (error: Error) => void;
+  const closeServer = vi.fn(async () => {
+    rejectNavigation(new Error("probe browser closed"));
+  });
+  const probe = probePlaywrightRuntime(
+    runtime,
+    dataDirectory,
+    async () =>
+      ({
+        chromium: {
+          launchServer: async () => ({
+            close: closeServer,
+            process: () => ({ spawnargs: [] }),
+            wsEndpoint: () => "ws://probe.invalid",
+          }),
+          connect: async () => ({
+            close: async () => {},
+            newContext: async () => ({
+              close: async () => {},
+              newPage: async () => ({
+                goto: async () =>
+                  await new Promise<void>((_resolve, reject) => {
+                    rejectNavigation = reject;
+                    navigating = true;
+                  }),
+              }),
+            }),
+          }),
+        },
+      }) as never,
+    shutdown.signal,
+  );
+  const result = expect(probe).rejects.toThrow("probe browser closed");
+  try {
+    await expect.poll(() => navigating).toBe(true);
+    shutdown.abort();
+    await result;
+    expect(closeServer).toHaveBeenCalledOnce();
+    await expect(
+      readFile(
+        path.join(dataDirectory, "managed-runtimes", "playwright", "probe"),
+      ),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+  } finally {
+    shutdown.abort();
+    await result;
+  }
 });

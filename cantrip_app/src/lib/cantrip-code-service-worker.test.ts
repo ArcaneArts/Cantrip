@@ -43,6 +43,7 @@ interface ChannelMessage {
   rootLease?: string;
   reason?: string;
   requestId?: string;
+  fetchToken?: string;
   status?: number;
   statusText?: string;
   type?: string;
@@ -54,7 +55,7 @@ interface TestClient {
   frameType?: "nested" | "top-level";
   id: string;
   messages: ChannelMessage[];
-  postMessage(message: ChannelMessage): void;
+  postMessage(message: ChannelMessage, transfer?: FakeMessagePort[]): void;
   type: "sharedworker" | "window" | "worker";
   url: string;
 }
@@ -228,6 +229,18 @@ function createHarness(options: { registerDefault?: boolean } = {}): {
       `33333333-3333-4333-8333-${String(++requestSequence).padStart(12, "0")}`,
     subtle,
   });
+  vi.stubGlobal(
+    "MessageChannel",
+    class {
+      port1: FakeMessagePort;
+      port2: FakeMessagePort;
+      constructor() {
+        const pair = messagePortPair();
+        this.port1 = pair.workerPort;
+        this.port2 = pair.pagePort;
+      }
+    },
+  );
   new Function(serviceWorkerSource)();
 
   const dispatchMessage = (
@@ -1579,6 +1592,97 @@ describe("Cantrip Code service worker", () => {
       respond(harness, request, second);
     await Promise.all([...firstPending, ...secondPending]);
     expect(MAX_CONCURRENT_REQUESTS).toBe(32);
+  });
+
+  it("cancels only the request-owned client channel without a FetchEvent signal", async () => {
+    const harness = createHarness();
+    const ports: FakeMessagePort[] = [];
+    const post = vi
+      .spyOn(harness.owner, "postMessage")
+      .mockImplementation((_, transfer) => {
+        ports.push(...(transfer ?? []));
+      });
+    const request = testRequest({
+      method: "GET",
+      headers: new Headers({
+        "x-cantrip-code-fetch-token": LINEAGE_TOKEN,
+        "x-ordinary": "kept",
+      }),
+    });
+    const cancelled = harness.dispatch(request);
+    const sibling = harness.dispatch(testRequest());
+    await vi.waitFor(() => {
+      expect(harness.requests()).toHaveLength(2);
+      expect(ports).toHaveLength(1);
+    });
+    expect(post).toHaveBeenCalledWith(
+      expect.objectContaining({
+        adapterId: ADAPTER_ID,
+        generation: GENERATION,
+        frameNonce: null,
+        fetchToken: LINEAGE_TOKEN,
+        type: "cantrip-code-fetch-channel-v1",
+      }),
+      [ports[0]],
+    );
+    expect(harness.requests()[0]?.headers).toEqual([["x-ordinary", "kept"]]);
+    ports[0]!.postMessage({ type: "cantrip-code-fetch-abort-v1" });
+    ports[0]!.postMessage({ type: "cantrip-code-fetch-abort-v1" });
+    expect(request.signal.aborted).toBe(false);
+    expect((await cancelled).status).toBe(502);
+    expect(ports[0]!.peer!.closed).toBe(true);
+    const cancellations = harness
+      .messages()
+      .filter(({ type }) => type === "cantrip-code-http-cancel-v1");
+    expect(cancellations).toEqual([
+      expect.objectContaining({ requestId: harness.requests()[0]?.requestId }),
+    ]);
+    respond(harness, harness.requests()[1]!);
+    expect((await sibling).status).toBe(200);
+  });
+
+  it("closes the client channel on success and ignores a late abort", async () => {
+    const harness = createHarness();
+    const ports: FakeMessagePort[] = [];
+    vi.spyOn(harness.owner, "postMessage").mockImplementation((_, transfer) =>
+      ports.push(...(transfer ?? [])),
+    );
+    const response = harness.dispatch(
+      testRequest({
+        method: "GET",
+        headers: new Headers({ "x-cantrip-code-fetch-token": LINEAGE_TOKEN }),
+      }),
+    );
+    await vi.waitFor(() => expect(ports).toHaveLength(1));
+    await vi.waitFor(() => expect(harness.requests()).toHaveLength(1));
+    respond(harness, harness.requests()[0]!);
+    expect((await response).status).toBe(200);
+    ports[0]!.postMessage({ type: "cantrip-code-fetch-abort-v1" });
+    expect(ports[0]!.peer!.closed).toBe(true);
+    expect(
+      harness
+        .messages()
+        .filter(({ type }) => type === "cantrip-code-http-cancel-v1"),
+    ).toHaveLength(0);
+  });
+
+  it("does not transfer a cancellation channel after its adapter was retired", async () => {
+    const harness = createHarness();
+    const client = deferred<TestClient>();
+    harness.clientGet.mockReturnValueOnce(client.promise);
+    const post = vi.spyOn(harness.owner, "postMessage");
+    const response = harness.dispatch(
+      testRequest({
+        method: "GET",
+        headers: new Headers({ "x-cantrip-code-fetch-token": LINEAGE_TOKEN }),
+      }),
+    );
+    await vi.waitFor(() => expect(harness.requests()).toHaveLength(1));
+    harness.unregister(requiredAdapter(harness));
+    client.resolve(harness.owner);
+    expect((await response).status).toBe(503);
+    await Promise.resolve();
+    expect(post).not.toHaveBeenCalled();
   });
 
   it("propagates request cancellation to the exact adapter port once", async () => {

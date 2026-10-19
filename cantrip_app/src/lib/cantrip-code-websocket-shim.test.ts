@@ -68,7 +68,13 @@ function messageEvent(data: unknown, source: object): Event {
   return event;
 }
 
-function createHarness(options: { nested?: boolean } = {}): {
+function createHarness(
+  options: {
+    nested?: boolean;
+    fetch?: typeof fetch;
+    serviceWorker?: EventTarget & { controller: object };
+  } = {},
+): {
   NativeWebSocket: new () => object;
   WebSocket: ShimSocketConstructor;
   dispatchParent: (message: Record<string, unknown>) => void;
@@ -96,8 +102,11 @@ function createHarness(options: { nested?: boolean } = {}): {
     parent,
     top: relay,
     WebSocket: NativeWebSocket,
+    fetch: options.fetch,
   });
 
+  if (options.serviceWorker)
+    vi.stubGlobal("navigator", { serviceWorker: options.serviceWorker });
   let socketSequence = 0;
   vi.stubGlobal("window", browserWindow);
   vi.stubGlobal("location", browserWindow.location);
@@ -179,6 +188,137 @@ function acknowledge(
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+});
+
+describe("Cantrip Code fetch cancellation", () => {
+  function setup() {
+    const controller = {};
+    const serviceWorker = Object.assign(new EventTarget(), { controller });
+    const nativeFetch = vi.fn<typeof fetch>();
+    const harness = createHarness({ fetch: nativeFetch, serviceWorker });
+    const invoke = harness.window.fetch as typeof fetch;
+    const connect = (
+      fetchToken: string,
+      overrides: Record<string, unknown> = {},
+      source: object = controller,
+    ) => {
+      const port = { postMessage: vi.fn(), close: vi.fn() };
+      const event = messageEvent(
+        {
+          type: "cantrip-code-fetch-channel-v1",
+          adapterId: ADAPTER_ID,
+          generation: GENERATION,
+          frameNonce: FRAME_NONCE,
+          fetchToken,
+          ...overrides,
+        },
+        source,
+      );
+      Object.defineProperty(event, "ports", { value: [port] });
+      serviceWorker.dispatchEvent(event);
+      return port;
+    };
+    return { nativeFetch, invoke, connect };
+  }
+  const url = `${ORIGIN}/__cantrip_code/${ADAPTER_ID}/code/large.js`;
+
+  it.each(["before", "after"])(
+    "cancels when native abort settles %s channel delivery",
+    async (ordering) => {
+      const { nativeFetch, invoke, connect } = setup();
+      nativeFetch.mockImplementation(
+        (input) =>
+          new Promise((_resolve, reject) => {
+            (input as Request).signal.addEventListener(
+              "abort",
+              () => reject(new DOMException("Aborted", "AbortError")),
+              { once: true },
+            );
+          }),
+      );
+      const abort = new AbortController();
+      const request = invoke(url, { signal: abort.signal });
+      const rejected = expect(request).rejects.toMatchObject({
+        name: "AbortError",
+      });
+      const token = (nativeFetch.mock.calls[0]![0] as Request).headers.get(
+        "x-cantrip-code-fetch-token",
+      )!;
+      expect(token).toBeTruthy();
+      let port;
+      if (ordering === "before") {
+        abort.abort();
+        await rejected;
+        port = connect(token);
+      } else {
+        port = connect(token);
+        expect(port.postMessage).not.toHaveBeenCalled();
+        abort.abort();
+        await rejected;
+      }
+      expect(port.postMessage).toHaveBeenCalledWith({
+        type: "cantrip-code-fetch-abort-v1",
+      });
+      expect(port.close).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("ignores channels from other controllers, adapters and frame generations", async () => {
+    const { nativeFetch, invoke, connect } = setup();
+    let resolve!: (value: Response) => void;
+    nativeFetch.mockReturnValue(
+      new Promise((done) => {
+        resolve = done;
+      }),
+    );
+    const abort = new AbortController();
+    const request = invoke(url, { signal: abort.signal });
+    const token = (nativeFetch.mock.calls[0]![0] as Request).headers.get(
+      "x-cantrip-code-fetch-token",
+    )!;
+    const rejected = [
+      connect(token, {}, {}),
+      connect(token, { generation: "old" }),
+      connect(token, { frameNonce: "old" }),
+      connect(token, { adapterId: "other" }),
+    ];
+    const accepted = connect(token);
+    abort.abort();
+    expect(accepted.postMessage).toHaveBeenCalledWith({
+      type: "cantrip-code-fetch-abort-v1",
+    });
+    for (const port of rejected)
+      expect(port.postMessage).not.toHaveBeenCalled();
+    resolve(new Response("ok"));
+    await request;
+    expect(accepted.close).toHaveBeenCalledOnce();
+  });
+
+  it("preserves ordinary fetch arguments and an already aborted signal", async () => {
+    const { nativeFetch, invoke } = setup();
+    nativeFetch.mockResolvedValue(new Response("ok"));
+    const abort = new AbortController();
+    const options = { signal: abort.signal };
+    await invoke("https://other.example/test", options);
+    expect(nativeFetch).toHaveBeenLastCalledWith(
+      "https://other.example/test",
+      options,
+    );
+    await invoke(url);
+    expect(nativeFetch).toHaveBeenLastCalledWith(url, undefined);
+    const noCors = new Request(url, {
+      method: "POST",
+      body: "payload",
+      mode: "no-cors",
+      signal: abort.signal,
+    });
+    await invoke(noCors);
+    expect(nativeFetch).toHaveBeenLastCalledWith(noCors, undefined);
+    expect(noCors.bodyUsed).toBe(false);
+    abort.abort();
+    await invoke(url, options);
+    expect(nativeFetch).toHaveBeenLastCalledWith(url, options);
+  });
 });
 
 describe("Cantrip Code WebSocket shim", () => {

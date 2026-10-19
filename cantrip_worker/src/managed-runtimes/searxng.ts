@@ -11,6 +11,8 @@ import {
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
+import { stopRuntimeProcess } from "./process.js";
 
 import {
   managedWebRuntimeCapabilitiesSchema,
@@ -40,6 +42,7 @@ const MAX_FAILURES_BEFORE_DEGRADED = 5;
 const STABLE_PROCESS_MS = 5 * 60_000;
 
 interface InstallerLike {
+  close?(): Promise<void>;
   clearCache(): Promise<ManagedWebRuntimeStatus>;
   prepare(): Promise<ManagedWebRuntimeStatus>;
   reinstall(): Promise<ManagedWebRuntimeStatus>;
@@ -139,6 +142,7 @@ export async function probeSearxngRuntime(
   dataDirectory: string,
   fetchImplementation: typeof fetch = fetch,
   spawnImplementation: typeof spawnGuardedProcess = spawnGuardedProcess,
+  signal?: AbortSignal,
 ): Promise<void> {
   const probeRoot = path.join(
     dataDirectory,
@@ -147,66 +151,75 @@ export async function probeSearxngRuntime(
     "state",
     `probe-${process.pid}-${randomBytes(6).toString("hex")}`,
   );
-  const home = path.join(probeRoot, "home");
-  const temporary = path.join(probeRoot, "tmp");
-  const cache = path.join(probeRoot, "cache");
-  await Promise.all([probeRoot, home, temporary, cache].map(privateDirectory));
-  const port = await randomLoopbackPort();
-  const template = await readFile(
-    path.join(runtimeDirectory, "config-template", "smoke-settings.yml"),
-    "utf8",
-  );
-  const settingsPath = path.join(probeRoot, "settings.yml");
-  await writeFile(
-    settingsPath,
-    renderSearxngSettings(template, port, randomBytes(32).toString("hex")),
-    { encoding: "utf8", mode: 0o600 },
-  );
-  const child = spawnImplementation(
-    pythonExecutable(runtimeDirectory),
-    [
-      "-I",
-      path.join(runtimeDirectory, "launcher", "serve.py"),
-      "--port",
-      String(port),
-      "--settings",
-      settingsPath,
-    ],
-    {
-      cwd: runtimeDirectory,
-      env: isolatedEnvironment(home, temporary, cache),
-      ownerPid: process.pid,
-      stdin: "ignore",
-    },
-  );
-  let diagnostic = "";
-  let childError: Error | null = null;
-  child.stdout?.on("data", (chunk) => {
-    diagnostic = boundedDiagnostic(diagnostic, chunk);
-  });
-  child.stderr?.on("data", (chunk) => {
-    diagnostic = boundedDiagnostic(diagnostic, chunk);
-  });
-  child.once("error", (error) => {
-    childError = error;
-  });
+  signal?.throwIfAborted();
+  let child: ChildProcess | undefined;
   try {
+    const home = path.join(probeRoot, "home");
+    const temporary = path.join(probeRoot, "tmp");
+    const cache = path.join(probeRoot, "cache");
+    await Promise.all(
+      [probeRoot, home, temporary, cache].map(privateDirectory),
+    );
+    const port = await randomLoopbackPort();
+    const template = await readFile(
+      path.join(runtimeDirectory, "config-template", "smoke-settings.yml"),
+      "utf8",
+    );
+    const settingsPath = path.join(probeRoot, "settings.yml");
+    await writeFile(
+      settingsPath,
+      renderSearxngSettings(template, port, randomBytes(32).toString("hex")),
+      { encoding: "utf8", mode: 0o600 },
+    );
+    signal?.throwIfAborted();
+    child = spawnImplementation(
+      pythonExecutable(runtimeDirectory),
+      [
+        "-I",
+        path.join(runtimeDirectory, "launcher", "serve.py"),
+        "--port",
+        String(port),
+        "--settings",
+        settingsPath,
+      ],
+      {
+        cwd: runtimeDirectory,
+        env: isolatedEnvironment(home, temporary, cache),
+        ownerPid: process.pid,
+        stdin: "ignore",
+      },
+    );
+    let diagnostic = "";
+    let childError: Error | null = null;
+    child.stdout?.on("data", (chunk) => {
+      diagnostic = boundedDiagnostic(diagnostic, chunk);
+    });
+    child.stderr?.on("data", (chunk) => {
+      diagnostic = boundedDiagnostic(diagnostic, chunk);
+    });
+    child.once("error", (error) => {
+      childError = error;
+    });
     const origin = `http://127.0.0.1:${port}`;
     const deadline = Date.now() + START_TIMEOUT_MS;
     let ready = false;
     while (Date.now() < deadline) {
+      signal?.throwIfAborted();
       if (childError) throw childError;
       if (child.exitCode !== null) {
         throw new Error(`SearXNG probe exited early. ${diagnostic}`.trim());
       }
       try {
         const response = await fetchImplementation(`${origin}/healthz`, {
-          signal: AbortSignal.timeout(1_000),
+          signal: AbortSignal.any([
+            ...(signal ? [signal] : []),
+            AbortSignal.timeout(1_000),
+          ]),
         });
         ready = response.ok;
       } catch {}
       if (ready) break;
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      await delay(200, undefined, { signal });
     }
     if (!ready) {
       throw new Error(
@@ -219,7 +232,10 @@ export async function probeSearxngRuntime(
       q: "managed runtime probe",
     });
     const response = await fetchImplementation(`${origin}/search?${query}`, {
-      signal: AbortSignal.timeout(5_000),
+      signal: AbortSignal.any([
+        ...(signal ? [signal] : []),
+        AbortSignal.timeout(5_000),
+      ]),
     });
     const payload = (await response.json()) as { results?: unknown };
     if (
@@ -230,12 +246,7 @@ export async function probeSearxngRuntime(
       throw new Error("SearXNG probe search returned no fixture results.");
     }
   } finally {
-    if (child.exitCode === null) child.kill("SIGTERM");
-    await Promise.race([
-      new Promise<void>((resolve) => child.once("exit", () => resolve())),
-      new Promise<void>((resolve) => setTimeout(resolve, STOP_TIMEOUT_MS)),
-    ]);
-    if (child.exitCode === null) child.kill("SIGKILL");
+    if (child) await stopRuntimeProcess(child, STOP_TIMEOUT_MS);
     await rm(probeRoot, { recursive: true, force: true });
   }
 }
@@ -327,6 +338,7 @@ export class SearxngRuntimeManager {
   #activeRequests = 0;
   #child: ChildProcess | null = null;
   #closed = false;
+  #closePromise: Promise<void> | null = null;
   #diagnostics = "";
   #endpoint: SearxngEndpoint | null = null;
   #failureCount = 0;
@@ -357,13 +369,14 @@ export class SearxngRuntimeManager {
         validateInventory: async ({ artifact, runtimeDirectory }) => {
           await validateSearxngInventory(runtimeDirectory, artifact.version);
         },
-        probe: async ({ artifact, runtimeDirectory }) => {
+        probe: async ({ artifact, runtimeDirectory, signal }) => {
           await validateSearxngInventory(runtimeDirectory, artifact.version);
           await probeSearxngRuntime(
             runtimeDirectory,
             options.dataDirectory,
             this.#fetch,
             this.#spawn,
+            signal,
           );
         },
       });
@@ -412,6 +425,7 @@ export class SearxngRuntimeManager {
   async action(
     action: ManagedWebRuntimeAction,
   ): Promise<ManagedWebRuntimeStatus> {
+    if (this.#closed) throw new Error("Managed runtime is closed.");
     if (action === "clear-profiles")
       throw new Error("The search runtime has no persistent browser profiles.");
     if (this.#activeRequests > 0)
@@ -554,12 +568,23 @@ export class SearxngRuntimeManager {
       });
   }
 
-  async close(): Promise<void> {
+  close(): Promise<void> {
+    if (this.#closePromise) return this.#closePromise;
     this.#closed = true;
-    if (this.#updateTimer) clearInterval(this.#updateTimer);
-    if (this.#restartTimer) clearTimeout(this.#restartTimer);
-    if (this.#stableTimer) clearTimeout(this.#stableTimer);
-    await this.#stopChild();
+    const operationSettled = Promise.allSettled([this.#operation]);
+    this.#closePromise = (async () => {
+      try {
+        await this.#installer.close?.();
+      } finally {
+        if (this.#updateTimer) clearInterval(this.#updateTimer);
+        if (this.#restartTimer) clearTimeout(this.#restartTimer);
+        if (this.#stableTimer) clearTimeout(this.#stableTimer);
+        await this.#stopChild();
+        await operationSettled;
+        await this.#stopChild();
+      }
+    })();
+    return this.#closePromise;
   }
 
   async #reconcile(): Promise<void> {
@@ -611,6 +636,7 @@ export class SearxngRuntimeManager {
   }
 
   async #startChild(runtimeDirectory: string, version: string): Promise<void> {
+    if (this.#closed) return;
     const root = path.join(this.#dataDirectory, "managed-runtimes", "searxng");
     const configDirectory = path.join(root, "config");
     const home = path.join(root, "state", "home");
@@ -633,6 +659,7 @@ export class SearxngRuntimeManager {
     await writeFile(settingsPath, settings, { encoding: "utf8", mode: 0o600 });
     if (process.platform !== "win32") await chmod(settingsPath, 0o600);
 
+    if (this.#closed) return;
     this.#diagnostics = "";
     this.#spawnError = null;
     const child = this.#spawn(
@@ -687,6 +714,7 @@ export class SearxngRuntimeManager {
   async #waitUntilReady(origin: string, child: ChildProcess): Promise<void> {
     const deadline = Date.now() + START_TIMEOUT_MS;
     while (Date.now() < deadline) {
+      if (this.#closed) throw new Error("Search runtime is closed.");
       if (this.#spawnError) throw this.#spawnError;
       if (child.exitCode !== null)
         throw new Error(
@@ -764,12 +792,6 @@ export class SearxngRuntimeManager {
     const child = this.#child;
     this.#child = null;
     this.#endpoint = null;
-    if (!child || child.exitCode !== null) return;
-    child.kill("SIGTERM");
-    await Promise.race([
-      new Promise<void>((resolve) => child.once("exit", () => resolve())),
-      new Promise<void>((resolve) => setTimeout(resolve, STOP_TIMEOUT_MS)),
-    ]);
-    if (child.exitCode === null) child.kill("SIGKILL");
+    if (child) await stopRuntimeProcess(child, STOP_TIMEOUT_MS);
   }
 }

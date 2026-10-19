@@ -1,0 +1,161 @@
+diff --git a/lib/ice/src/dns/lookup.js b/lib/ice/src/dns/lookup.js
+index f200fc068cb786b03dd74e6b66fec3663ca85e5d..4d010539941a362cdaff73e86b77065b59a28794 100644
+--- a/lib/ice/src/dns/lookup.js
++++ b/lib/ice/src/dns/lookup.js
+@@ -41,6 +41,8 @@ const worker_thread = __importStar(require("node:worker_threads"));
+ const multicast_dns_1 = __importDefault(require("multicast-dns"));
+ class MdnsLookup {
+     constructor() {
++        this.closed = false;
++        this.pending = new Set();
+         Object.defineProperty(this, "cache", {
+             enumerable: true,
+             configurable: true,
+@@ -56,10 +58,16 @@ class MdnsLookup {
+         this.mdnsInstance.setMaxListeners(50);
+     }
+     lookup(host) {
++        if (this.closed) return Promise.reject(new Error("mDNS lookup is closed"));
+         return new Promise((r, f) => {
+             const cleanup = () => {
+                 this.mdnsInstance.removeListener("response", l);
+                 clearTimeout(timeout);
++                this.pending.delete(cancel);
++            };
++            const cancel = () => {
++                cleanup();
++                f(new Error("mDNS lookup is closed"));
+             };
+             const timeout = setTimeout(() => {
+                 cleanup();
+@@ -76,11 +84,20 @@ class MdnsLookup {
+                 cleanup();
+                 r(a.data);
+             };
++            this.pending.add(cancel);
+             this.mdnsInstance.on("response", l);
+-            this.mdnsInstance.query(host, "A");
++            try {
++                this.mdnsInstance.query(host, "A");
++            } catch (error) {
++                cleanup();
++                f(error);
++            }
+         });
+     }
+     close() {
++        if (this.closed) return;
++        this.closed = true;
++        for (const cancel of this.pending) cancel();
+         this.mdnsInstance.destroy();
+     }
+ }
+diff --git a/lib/ice/src/ice.js b/lib/ice/src/ice.js
+index 51b7191d8458a417ab2b6c91ad78e4362482588f..64aee0ab5523921af1b33a28a2a5c4b0cae3ff34 100644
+--- a/lib/ice/src/ice.js
++++ b/lib/ice/src/ice.js
+@@ -702,7 +702,10 @@ class Connection {
+             await Promise.allSettled(candidatePromises);
+             this.localCandidatesEnd = true;
+         }
+-        this.setState("completed");
++        // Candidate gathering may settle after close has retired the connection.
++        if (this.state !== "closed") {
++            this.setState("completed");
++        }
+     }
+     appendLocalCandidate(candidate) {
+         this.localCandidates.push(candidate);
+@@ -1136,6 +1139,7 @@ class Connection {
+         // To signal end-of-candidates, pass `None`.
+         // :param remote_candidate: A :class:`Candidate` instance or `None`.
+         // """
++        if (this.state === "closed") return;
+         if (!remoteCandidate) {
+             this.remoteCandidatesEnd = true;
+             return;
+@@ -1146,6 +1150,7 @@ class Connection {
+                     this.lookup = new lookup_1.MdnsLookup();
+                 }
+                 const host = await this.lookup.lookup(remoteCandidate.host);
++                if (this.state === "closed") return;
+                 remoteCandidate.host = host;
+             }
+             catch (error) {
+diff --git a/lib/index.mjs b/lib/index.mjs
+index 80c1d2fdc88eec788f50a94b913c8b4c8a2c1189..aead0a0a11ba64d5036e7c988f1754c9a9b97e78 100644
+--- a/lib/index.mjs
++++ b/lib/index.mjs
+@@ -8509,14 +8509,22 @@ import mdns from "multicast-dns";
+ var MdnsLookup = class {
+   cache = /* @__PURE__ */ new Map();
+   mdnsInstance = mdns();
++  closed = false;
++  pending = /* @__PURE__ */ new Set();
+   constructor() {
+     this.mdnsInstance.setMaxListeners(50);
+   }
+   lookup(host) {
++    if (this.closed) return Promise.reject(new Error("mDNS lookup is closed"));
+     return new Promise((r, f) => {
+       const cleanup = () => {
+         this.mdnsInstance.removeListener("response", l);
+         clearTimeout(timeout);
++        this.pending.delete(cancel);
++      };
++      const cancel = () => {
++        cleanup();
++        f(new Error("mDNS lookup is closed"));
+       };
+       const timeout = setTimeout(() => {
+         cleanup();
+@@ -8533,11 +8541,20 @@ var MdnsLookup = class {
+         cleanup();
+         r(a.data);
+       };
++      this.pending.add(cancel);
+       this.mdnsInstance.on("response", l);
+-      this.mdnsInstance.query(host, "A");
++      try {
++        this.mdnsInstance.query(host, "A");
++      } catch (error) {
++        cleanup();
++        f(error);
++      }
+     });
+   }
+   close() {
++    if (this.closed) return;
++    this.closed = true;
++    for (const cancel of this.pending) cancel();
+     this.mdnsInstance.destroy();
+   }
+ };
+@@ -8946,7 +8963,10 @@ var Connection = class {
+       await Promise.allSettled(candidatePromises);
+       this.localCandidatesEnd = true;
+     }
+-    this.setState("completed");
++    // Candidate gathering may settle after close has retired the connection.
++    if (this.state !== "closed") {
++      this.setState("completed");
++    }
+   }
+   appendLocalCandidate(candidate) {
+     this.localCandidates.push(candidate);
+@@ -9541,6 +9561,7 @@ var Connection = class {
+     this.stateChanged.execute(state);
+   }
+   async addRemoteCandidate(remoteCandidate) {
++    if (this.state === "closed") return;
+     if (!remoteCandidate) {
+       this.remoteCandidatesEnd = true;
+       return;
+@@ -9551,6 +9572,7 @@ var Connection = class {
+           this.lookup = new MdnsLookup();
+         }
+         const host = await this.lookup.lookup(remoteCandidate.host);
++        if (this.state === "closed") return;
+         remoteCandidate.host = host;
+       } catch (error) {
+         return;

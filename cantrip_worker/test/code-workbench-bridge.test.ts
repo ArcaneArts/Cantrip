@@ -755,7 +755,7 @@ describe("Cantrip workbench bridge", () => {
     first.close();
   });
 
-  it("uses the latest socket for RPC and ignores superseded responses", async () => {
+  it("rejects superseded non-navigation RPCs and routes new requests to the latest socket", async () => {
     const bridge = new CodeWorkbenchBridge({ requestTimeoutMs: 250 });
     bridges.push(bridge);
     await bridge.start();
@@ -765,14 +765,10 @@ describe("Cantrip workbench bridge", () => {
     const second = await openSocket(url);
     respond(second, await nextRequest(second));
 
-    const pendingOpen = bridge.openFile(
-      "owned-session",
-      "second.ts",
-      "file:///repo",
-    );
-    const superseded = expect(pendingOpen).rejects.toThrow("superseded");
+    const pendingSettings = bridge.openSettings("owned-session");
+    const superseded = expect(pendingSettings).rejects.toThrow("superseded");
     const secondRequest = await nextRequest(second);
-    expect(secondRequest.method).toBe("openFile");
+    expect(secondRequest.method).toBe("openSettings");
 
     const third = await openSocket(url);
     respond(third, await nextRequest(third));
@@ -795,6 +791,165 @@ describe("Cantrip workbench bridge", () => {
     first.close();
     second.close();
     third.close();
+  });
+
+  it("replays current file navigation after authority replacement and ignores a late old failure", async () => {
+    const bridge = new CodeWorkbenchBridge({ requestTimeoutMs: 2_000 });
+    bridges.push(bridge);
+    await bridge.start();
+    const url = bridge.register("recovery-session", "recovery-secret");
+    const first = await openSocket(url);
+    respond(first, await nextRequest(first));
+
+    let settled = false;
+    const outcome = bridge
+      .openFile("recovery-session", "retained.ts", "file:///repo")
+      .then(
+        (value) => {
+          settled = true;
+          return { value };
+        },
+        (error: unknown) => {
+          settled = true;
+          return { error };
+        },
+      );
+    const oldRequest = await nextRequest(first);
+    const second = await openSocket(url);
+    respond(second, await nextRequest(second));
+    const currentRequest = await nextRequest(second);
+    expect(currentRequest).toMatchObject({
+      method: "openFile",
+      params: { path: "retained.ts", expectedWorkspaceRootUri: "file:///repo" },
+    });
+    expect(currentRequest.id).not.toBe(oldRequest.id);
+
+    rejectRequest(
+      first,
+      oldRequest,
+      "Assertion Failed: Argument is undefined or null.",
+    );
+    // This later message acknowledges that the old failure was processed first.
+    publishState(first, { dirtyPaths: ["retained.ts"] });
+    await vi.waitFor(() =>
+      expect(bridge.dirtyEditors("recovery-session")).toHaveLength(1),
+    );
+    expect(settled).toBe(false);
+    respond(second, currentRequest, { relativePath: "retained.ts" });
+    await expect(outcome).resolves.toEqual({
+      value: { relativePath: "retained.ts" },
+    });
+
+    const nextOpen = bridge.openFile(
+      "recovery-session",
+      "next.ts",
+      "file:///repo",
+    );
+    respond(second, await nextRequest(second), { relativePath: "next.ts" });
+    await expect(nextOpen).resolves.toEqual({ relativePath: "next.ts" });
+    first.close();
+    second.close();
+  });
+
+  it.each(["abort", "registration", "remote failure"] as const)(
+    "stops replayed navigation on %s without accepting a late result",
+    async (failure) => {
+      const bridge = new CodeWorkbenchBridge({ requestTimeoutMs: 2_000 });
+      bridges.push(bridge);
+      await bridge.start();
+      const url = bridge.register("fenced-session", "fenced-secret");
+      const first = await openSocket(url);
+      respond(first, await nextRequest(first));
+      const controller = new AbortController();
+      const outcome = bridge
+        .openFile("fenced-session", "old.ts", "file:///repo", controller.signal)
+        .then(
+          (value) => ({ value }),
+          (error: unknown) => ({ error }),
+        );
+      const firstRequest = await nextRequest(first);
+      const second = await openSocket(url);
+      respond(second, await nextRequest(second));
+      const secondRequest = await nextRequest(second);
+      expect(secondRequest.method).toBe("openFile");
+
+      let current = second;
+      if (failure === "abort") {
+        controller.abort(new Error("Navigation was cancelled by its caller."));
+      } else if (failure === "registration") {
+        const replacement = bridge.register("fenced-session", "new-secret");
+        current = await openSocket(replacement);
+        respond(current, await nextRequest(current));
+      } else {
+        // A remote error with identical text is not a local authority change.
+        rejectRequest(
+          second,
+          secondRequest,
+          "Cantrip workbench bridge request was superseded.",
+        );
+      }
+      const result = await outcome;
+      expect(result).toHaveProperty("error");
+      expect((result as { error: Error }).error.message).toContain(
+        failure === "abort" ? "cancelled by its caller" : "superseded",
+      );
+      if (first.readyState === WebSocket.OPEN)
+        respond(first, firstRequest, { relativePath: "old.ts" });
+      if (second.readyState === WebSocket.OPEN)
+        respond(second, secondRequest, { relativePath: "old.ts" });
+
+      const nextOpen = bridge.openFile(
+        "fenced-session",
+        "new.ts",
+        "file:///repo",
+      );
+      const request = await nextRequest(current);
+      expect(request.params.path).toBe("new.ts");
+      respond(current, request, { relativePath: "new.ts" });
+      await expect(nextOpen).resolves.toEqual({ relativePath: "new.ts" });
+      first.close();
+      second.close();
+      current.close();
+    },
+  );
+
+  it("bounds repeated authority replacements by the original navigation deadline", async () => {
+    const now = vi.spyOn(performance, "now").mockReturnValue(0);
+    try {
+      const bridge = new CodeWorkbenchBridge({ requestTimeoutMs: 1_000 });
+      bridges.push(bridge);
+      await bridge.start();
+      const url = bridge.register("deadline-session", "deadline-secret");
+      const first = await openSocket(url);
+      respond(first, await nextRequest(first));
+      const outcome = bridge
+        .openFile("deadline-session", "same.ts", "file:///repo")
+        .then(
+          (value) => ({ value }),
+          (error: unknown) => ({ error }),
+        );
+      expect((await nextRequest(first)).method).toBe("openFile");
+
+      now.mockReturnValue(400);
+      const second = await openSocket(url);
+      respond(second, await nextRequest(second));
+      expect((await nextRequest(second)).method).toBe("openFile");
+
+      now.mockReturnValue(1_001);
+      const third = await openSocket(url);
+      respond(third, await nextRequest(third));
+      const result = await outcome;
+      expect(result).toHaveProperty("error");
+      expect((result as { error: Error }).error.message).toContain(
+        "openFile request timed out",
+      );
+      expect(requestQueues.get(third)).toEqual([]);
+      first.close();
+      second.close();
+      third.close();
+    } finally {
+      now.mockRestore();
+    }
   });
 
   it("cancels only the exact pending RPC without retiring its socket", async () => {

@@ -1532,6 +1532,7 @@ describe.sequential("project execution placement API", () => {
         | "policy.list"
         | "policy.read"
         | "run.list"
+        | "run.start"
         | "target.list"
         | "target.show"
         | "explorer.list"
@@ -1652,38 +1653,83 @@ describe.sequential("project execution placement API", () => {
         },
       },
     });
-    const cliRunList = await cli("run.list");
-    expect(cliRunList.statusCode).toBe(200);
-    expect(
-      cantripCliCommandResultSchema.parse(cliRunList.json()).data,
-    ).toMatchObject({
-      operation: "list",
-      projectId,
-      inventory: { entries: [] },
+    // Definitions use the selected Primary replica, independently of the
+    // worker whose cwd supplied the CLI's project context.
+    for (const preferredWorkerId of ["worker-alpha", "worker-beta"] as const) {
+      await database.repository.updateProjectPreferredWorker(
+        LOCAL_USER_ID,
+        projectId,
+        preferredWorkerId,
+      );
+      for (const invokingWorkerId of ["worker-alpha", "worker-beta"] as const) {
+        const commandStart = routedCommands.length;
+        const response = await cli("run.list", {}, false, invokingWorkerId);
+        expect(response.statusCode, response.body).toBe(200);
+        expect(
+          cantripCliCommandResultSchema.parse(response.json()),
+        ).toMatchObject({
+          target: { kind: "project", projectId },
+          worktreeId:
+            preferredWorkerId === "worker-alpha"
+              ? alphaWorktreeId
+              : betaWorktreeId,
+          data: { operation: "list", projectId, inventory: { entries: [] } },
+        });
+        expect(routedCommands.slice(commandStart)).toEqual([
+          {
+            workerId: preferredWorkerId,
+            command: expect.objectContaining({
+              type: "project.run-configuration-definitions.list",
+              projectId,
+              sourcePath: path.join(dataDirectory, preferredWorkerId),
+            }),
+          },
+        ]);
+      }
+    }
+
+    const foreignProject = await database.repository.createGithubProject(
+      LOCAL_USER_ID,
+      {
+        workerId: "worker-alpha",
+        ...protectedProjectFields(),
+        repositoryBlindIndex: "R".repeat(43),
+        repositoryId: "cli-foreign-worktree",
+        nameWithOwner: "ArcaneArts/ForeignCliTarget",
+        url: "https://github.com/ArcaneArts/ForeignCliTarget",
+      },
+    );
+    await database.repository.completeGithubProjectSetup(
+      LOCAL_USER_ID,
+      foreignProject.id,
+      "worker-alpha",
+      {
+        path: path.join(dataDirectory, "foreign-cli-target"),
+        displayPath: "Foreign CLI target",
+        reused: false,
+        updated: false,
+        warning: null,
+      },
+    );
+    const foreignWorktrees = await database.repository.listProjectWorktrees(
+      LOCAL_USER_ID,
+      foreignProject.id,
+    );
+    expect(foreignWorktrees).toHaveLength(1);
+    const beforeRejectedRun = routedCommands.length;
+    const rejectedRun = await cli("run.start", {
+      configurationId: randomUUID(),
+      worktreeId: foreignWorktrees[0]!.id,
     });
-    expect(routedCommands).toContainEqual(
-      expect.objectContaining({
-        workerId: "worker-alpha",
-        command: expect.objectContaining({
-          type: "project.run-configuration-definitions.list",
-          sourcePath: path.join(dataDirectory, "worker-alpha"),
-        }),
-      }),
-    );
-    const betaRunList = await cli("run.list", {}, false, "worker-beta");
-    expect(betaRunList.statusCode).toBe(200);
+    expect(rejectedRun.statusCode, rejectedRun.body).toBe(404);
+    expect(rejectedRun.json()).toMatchObject({ code: "not-found" });
+    expect(routedCommands.slice(beforeRejectedRun)).toEqual([]);
     expect(
-      cantripCliCommandResultSchema.parse(betaRunList.json()).data,
-    ).toMatchObject({ projectId, inventory: { entries: [] } });
-    expect(routedCommands).toContainEqual(
-      expect.objectContaining({
-        workerId: "worker-alpha",
-        command: expect.objectContaining({
-          type: "project.run-configuration-definitions.list",
-          sourcePath: path.join(dataDirectory, "worker-alpha"),
-        }),
-      }),
-    );
+      await database.repository.listRunConfigurationRuntimes(
+        LOCAL_USER_ID,
+        projectId,
+      ),
+    ).toEqual([]);
     const hiddenPolicyRead = await cli("policy.read", {
       policyId: hiddenPolicy.id,
     });
@@ -2339,7 +2385,7 @@ describe.sequential("project execution placement API", () => {
     ).toHaveLength(1);
   });
 
-  it("opens each built-in singleton once per project and persists launcher pins outside layout revisions", async () => {
+  it("keeps Overview outside tabs, opens built-in singletons once per project, and persists launcher pins", async () => {
     const createProject = async (
       repositoryBlindIndex: string,
       repositorySuffix: string,
@@ -2363,8 +2409,34 @@ describe.sequential("project execution placement API", () => {
         })
       ).json(),
     );
+    const overviewResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${firstProject.id}/panes/member/open`,
+      payload: {
+        revision: firstLayout.revision,
+        surfaceRef: { kind: "builtin", definitionId: "project.overview" },
+      },
+    });
+    expect(overviewResponse.statusCode, overviewResponse.body).toBe(400);
+    expect(overviewResponse.json()).toEqual({
+      error: "Overview is a project page, not a tab.",
+    });
+    expect(
+      projectTabLayoutWireSummarySchema.parse(
+        (
+          await app.inject({
+            method: "GET",
+            url: `/api/projects/${firstProject.id}/panes`,
+          })
+        ).json(),
+      ),
+    ).toEqual(firstLayout);
+
+    const tabDefinitionIds = PROJECT_BUILT_IN_SURFACE_DEFINITION_IDS.filter(
+      (definitionId) => definitionId !== "project.overview",
+    );
     const openedViewIds: string[] = [];
-    for (const definitionId of PROJECT_BUILT_IN_SURFACE_DEFINITION_IDS) {
+    for (const definitionId of tabDefinitionIds) {
       const openResponse = await app.inject({
         method: "POST",
         url: `/api/projects/${firstProject.id}/panes/member/open`,
@@ -2389,17 +2461,15 @@ describe.sequential("project execution placement API", () => {
       firstLayout = opened.layout;
       openedViewIds.push(opened.viewId);
     }
-    expect(new Set(openedViewIds).size).toBe(
-      PROJECT_BUILT_IN_SURFACE_DEFINITION_IDS.length,
-    );
+    expect(new Set(openedViewIds).size).toBe(tabDefinitionIds.length);
     expect(
       firstLayout.panes
         .flatMap(({ members }) => members)
         .filter(({ tabKind }) => tabKind === "builtin"),
-    ).toHaveLength(PROJECT_BUILT_IN_SURFACE_DEFINITION_IDS.length);
+    ).toHaveLength(tabDefinitionIds.length);
 
     const revisionAfterOpening = firstLayout.revision;
-    for (const definitionId of PROJECT_BUILT_IN_SURFACE_DEFINITION_IDS) {
+    for (const definitionId of tabDefinitionIds) {
       const focusResponse = await app.inject({
         method: "POST",
         url: `/api/projects/${firstProject.id}/panes/member/open`,
@@ -2434,7 +2504,7 @@ describe.sequential("project execution placement API", () => {
       url: `/api/projects/${secondProject.id}/panes/member/open`,
       payload: {
         revision: secondLayout.revision,
-        surfaceRef: { kind: "builtin", definitionId: "project.overview" },
+        surfaceRef: { kind: "builtin", definitionId: "project.tasks" },
       },
     });
     expect(secondOpenResponse.statusCode, secondOpenResponse.body).toBe(200);
@@ -2447,7 +2517,7 @@ describe.sequential("project execution placement API", () => {
         projectId: secondProject.id,
         resource: {
           kind: "builtin",
-          definitionId: "project.overview",
+          definitionId: "project.tasks",
         },
       }),
     });
@@ -2456,7 +2526,7 @@ describe.sequential("project execution placement API", () => {
         projectId: firstProject.id,
         resource: {
           kind: "builtin",
-          definitionId: "project.overview",
+          definitionId: "project.tasks",
         },
       }),
     );
@@ -2472,11 +2542,18 @@ describe.sequential("project execution placement API", () => {
       launcherListResponse.json(),
     );
     expect(
+      launchers.some(
+        ({ target }) =>
+          target.kind === "definition" &&
+          target.definitionId === "project.overview",
+      ),
+    ).toBe(false);
+    expect(
       launchers.find(
         ({ location, target }) =>
           location === "project-navigator" &&
           target.kind === "definition" &&
-          target.definitionId === "project.overview",
+          target.definitionId === "project.tasks",
       ),
     ).toMatchObject({ pinned: true });
     expect(
@@ -2524,7 +2601,7 @@ describe.sequential("project execution placement API", () => {
       method: "PATCH",
       url: `/api/projects/${firstProject.id}/surface-launchers`,
       payload: {
-        definitionId: "project.overview",
+        definitionId: "project.tasks",
         location: "project-navigator",
         pinned: false,
       },
@@ -2537,7 +2614,7 @@ describe.sequential("project execution placement API", () => {
       location: "project-navigator",
       target: {
         kind: "definition",
-        definitionId: "project.overview",
+        definitionId: "project.tasks",
       },
       pinned: false,
     });
@@ -2564,7 +2641,7 @@ describe.sequential("project execution placement API", () => {
         ({ location, target }) =>
           location === "project-navigator" &&
           target.kind === "definition" &&
-          target.definitionId === "project.overview",
+          target.definitionId === "project.tasks",
       ),
     ).toMatchObject({ pinned: false });
   });

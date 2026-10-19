@@ -179,6 +179,7 @@ describe("hosted tenant authorization", () => {
         first.userId,
         {
           ...protectedProjectFields(),
+          repositoryBlindIndex: "R".repeat(43),
           repositoryId: "private-project-one",
           nameWithOwner: "first/private-project",
           url: "https://github.com/first/private-project.git",

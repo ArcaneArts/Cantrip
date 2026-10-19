@@ -61,6 +61,7 @@ let chatId: string;
 
 beforeAll(async () => {
   database = await connectDatabase(config);
+  await database.repository.ensureAccountConfiguration(LOCAL_USER_ID);
   await database.repository.recordWorker(LOCAL_USER_ID, {
     workerId: "draft-worker",
     name: "Draft Worker",
@@ -103,7 +104,7 @@ beforeAll(async () => {
   chatId = chat.id;
   app = await buildApp({ config, database, logger: false, workerBridge });
   await app.ready();
-});
+}, 30_000);
 
 afterAll(async () => {
   await app?.close();
