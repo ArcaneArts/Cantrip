@@ -97,6 +97,151 @@ afterAll(async () => {
 });
 
 describe("per-worker enrollment credentials", () => {
+  it("restores a retained desktop identity after its server records were reset", async () => {
+    const config = await createConfig();
+    const database = await connectDatabase(config);
+    const app = await buildApp({ config, database, logger: false });
+    try {
+      const registered = await app.inject({
+        method: "POST",
+        url: "/api/auth/register",
+        headers: { origin, "x-cantrip-bootstrap-token": bootstrapToken },
+        payload: {
+          email: "restore@example.com",
+          displayName: "Restored owner",
+          password,
+        },
+      });
+      expect(registered.statusCode).toBe(201);
+      const authHeaders = {
+        cookie: sessionCookie(registered),
+        origin,
+        "x-cantrip-csrf": registered.json().csrfToken as string,
+      };
+      const ownerId = registered.json().currentUser.id as string;
+      const workerId = "desktop-b419d665-7ad8-4ee7-b0b9-8fd9096a4f23";
+      const created = await app.inject({
+        method: "POST",
+        url: "/api/workers/enrollment-codes",
+        headers: authHeaders,
+        payload: { label: "This machine", candidateWorkerIds: [workerId] },
+      });
+      expect(created.statusCode).toBe(201);
+      const link = workerEnrollmentCodeResultSchema.parse(created.json());
+      expect(link.workerId).toBe(workerId);
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/internal/workers/enroll",
+        payload: { code: link.code, heartbeat: heartbeat(link.workerId!) },
+      });
+      expect(response.statusCode).toBe(201);
+      const enrolled = workerEnrollmentResultSchema.parse(response.json());
+      expect(enrolled.worker.workerId).toBe(workerId);
+      expect(await database.repository.getWorkerOwnerId(workerId)).toBe(
+        ownerId,
+      );
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: "/api/internal/workers/heartbeat",
+            headers: { authorization: `Bearer ${enrolled.credential}` },
+            payload: heartbeat(workerId),
+          })
+        ).statusCode,
+      ).toBe(202);
+    } finally {
+      await app.close();
+    }
+  }, 30_000);
+
+  it("skips claimed candidates and rechecks ownership when recovery enrollment is exchanged", async () => {
+    const config = await createConfig();
+    const database = await connectDatabase(config);
+    const app = await buildApp({ config, database, logger: false });
+    try {
+      const passwordHash = await hashPassword(password);
+      const owner = await database.repository.createAccount({
+        displayName: "Owner",
+        email: "owner@example.com",
+        normalizedEmail: "owner@example.com",
+        passwordHash,
+        role: "owner",
+      });
+      const other = await database.repository.createAccount({
+        displayName: "Other",
+        email: "other@example.com",
+        normalizedEmail: "other@example.com",
+        passwordHash,
+        role: "member",
+      });
+      await database.repository.recordWorker(owner.id, heartbeat("own-linked"));
+      await database.repository.recordWorker(
+        other.id,
+        heartbeat("other-linked"),
+      );
+      await database.repository.recordWorker(
+        other.id,
+        heartbeat("other-unlinked"),
+      );
+      await database.repository.unlinkWorker(other.id, "other-unlinked");
+      const claimed = ["own-linked", "other-linked", "other-unlinked"];
+      expect(
+        await database.repository.findReusableWorkerId(owner.id, claimed),
+      ).toBeNull();
+      expect(
+        await database.repository.findReusableWorkerId(owner.id, [
+          ...claimed,
+          "retained",
+          "another-retained",
+        ]),
+      ).toBe("retained");
+      await database.repository.recordWorker(
+        owner.id,
+        heartbeat("own-unlinked"),
+      );
+      await database.repository.unlinkWorker(owner.id, "own-unlinked");
+      expect(
+        await database.repository.findReusableWorkerId(owner.id, [
+          "retained",
+          "own-unlinked",
+        ]),
+      ).toBe("own-unlinked");
+
+      const code = `ctwl_${"r".repeat(32)}`;
+      await database.repository.createWorkerEnrollmentCode({
+        codeHash: hashSecret(code),
+        createdBySessionId: null,
+        expiresAt: new Date(Date.now() + 60_000),
+        label: "Recovery",
+        ownerId: owner.id,
+      });
+      // A candidate is only a suggestion; another account can enroll it first.
+      await database.repository.recordWorker(other.id, heartbeat("retained"));
+      const denied = await app.inject({
+        method: "POST",
+        url: "/api/internal/workers/enroll",
+        payload: { code, heartbeat: heartbeat("retained") },
+      });
+      expect(denied.statusCode).toBe(409);
+      expect(await database.repository.getWorkerOwnerId("retained")).toBe(
+        other.id,
+      );
+      const retry = await app.inject({
+        method: "POST",
+        url: "/api/internal/workers/enroll",
+        payload: { code, heartbeat: heartbeat("another-retained") },
+      });
+      expect(retry.statusCode).toBe(201);
+      expect(
+        await database.repository.getWorkerOwnerId("another-retained"),
+      ).toBe(owner.id);
+    } finally {
+      await app.close();
+    }
+  }, 30_000);
+
   it("reassigns a desktop worker only with its old credential and revokes the prior account", async () => {
     const config = await createConfig();
     const database = await connectDatabase(config);

@@ -173,7 +173,18 @@ export class WorkerRepository {
       .groupBy(schema.workers.id, schema.workers.lastSeenAt)
       .orderBy(desc(activeSourceCount), desc(schema.workers.lastSeenAt))
       .limit(1);
-    return rows[0]?.id ?? null;
+    if (rows[0]) return rows[0].id;
+
+    // A reset server has no record of a desktop's retained identity. Reuse an
+    // unclaimed candidate so pairing keeps its local storage directory. Existing
+    // identities remain unavailable unless they belong to this owner and were
+    // unlinked above; enrollment still checks ownership when exchanging the code.
+    const claimed = await this.database
+      .select({ id: schema.workers.id })
+      .from(schema.workers)
+      .where(inArray(schema.workers.id, candidates));
+    const claimedIds = new Set(claimed.map(({ id }) => id));
+    return candidates.find((id) => !claimedIds.has(id)) ?? null;
   }
 
   async getWorkerEnrollmentCodeStatus(
