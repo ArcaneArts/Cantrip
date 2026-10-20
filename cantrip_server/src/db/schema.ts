@@ -5548,7 +5548,7 @@ export const managedChatPreparations = pgTable(
     index("managed_chat_preparations_worker").on(table.ownerId, table.workerId),
     check(
       "managed_chat_preparations_phase_check",
-      sql`${table.phase} IN ('pending','thread','console','ready','failed')`,
+      sql`${table.phase} IN ('pending','thread','console','ready','failed','needs-model')`,
     ),
     check(
       "managed_chat_preparations_failed_phase_check",

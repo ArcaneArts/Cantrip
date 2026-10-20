@@ -13,6 +13,9 @@ import {
 import { LOCAL_USER_ID as owner } from "../src/db/repository.js";
 import * as schema from "../src/db/schema.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
+import { ModelSelectionRequiredError } from "../src/models/model-selection.js";
+import type { ModelRuntime } from "../src/db/repository.js";
+import { serverLogger } from "../src/logger.js";
 
 let f: Awaited<ReturnType<typeof createNativeSettingsFixture>>;
 beforeEach(async () => {
@@ -23,6 +26,7 @@ beforeEach(async () => {
     .where(eq(schema.chatRuntimeSessions.chatId, f.chatId));
 }, 60000);
 afterEach(async () => {
+  vi.restoreAllMocks();
   await f?.close();
 });
 async function fixture(
@@ -30,6 +34,7 @@ async function fixture(
     thread?: () => Promise<void>;
     console?: () => Promise<void>;
     exitAfterReady?: boolean;
+    resolveRuntime?: (runtime: ModelRuntime) => Promise<ModelRuntime | null>;
   } = {},
 ) {
   const calls: string[] = [];
@@ -80,12 +85,63 @@ async function fixture(
     serverId: "server",
     runAsOwner: async (_owner, run) => run(),
     publish() {},
-    runtimeForContext: async () => runtime,
+    runtimeForContext: async () =>
+      options.resolveRuntime ? options.resolveRuntime(runtime) : runtime,
     routePairsForConfiguration: async () =>
       [{ root: { runtime, reasoningEffort: null }, subagent: null }] as never,
   });
   return { preparation, calls, bridge };
 }
+it("waits for model setup without a session failure or worker launch, then prepares after setup", async () => {
+  let needsModel = true;
+  const log = vi.spyOn(serverLogger, "event");
+  const { preparation, calls } = await fixture({
+    resolveRuntime: async (runtime) => {
+      if (needsModel) throw new ModelSelectionRequiredError();
+      return runtime;
+    },
+  });
+  await preparation.request(owner, f.chatId);
+  await preparation.settle(owner, f.chatId);
+  expect(
+    await f.repository.managedChatPreparations.get(owner, f.chatId),
+  ).toMatchObject({
+    phase: "needs-model",
+    failedPhase: null,
+  });
+  expect(calls).toEqual([]);
+  expect(
+    log.mock.calls.some(
+      ([, , context]) => context?.event === "chat.preparation.failed",
+    ),
+  ).toBe(false);
+  await expect(preparation.join(owner, f.chatId)).rejects.toBeInstanceOf(
+    ModelSelectionRequiredError,
+  );
+  await preparation.settle(owner, f.chatId);
+  expect(calls).toEqual([]);
+  needsModel = false;
+  await preparation.request(owner, f.chatId);
+  await preparation.settle(owner, f.chatId);
+  expect(
+    await f.repository.managedChatPreparations.get(owner, f.chatId),
+  ).toMatchObject({
+    phase: "ready",
+    failedPhase: null,
+  });
+  expect(calls.filter((type) => type === "chat.thread.ensure")).toHaveLength(1);
+});
+it("does not disguise an unavailable provider route as missing model setup", async () => {
+  const { preparation } = await fixture({ resolveRuntime: async () => null });
+  await preparation.request(owner, f.chatId);
+  await preparation.settle(owner, f.chatId);
+  expect(
+    await f.repository.managedChatPreparations.get(owner, f.chatId),
+  ).toMatchObject({
+    phase: "failed",
+    failedPhase: "thread",
+  });
+});
 it("coalesces preparation and joins the canonical thread before waiting for CLI startup", async () => {
   let releaseThread!: () => void;
   let releaseConsole!: () => void;

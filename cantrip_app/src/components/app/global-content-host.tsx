@@ -754,6 +754,7 @@ export function GlobalContentHost({
               key={selectedChat.id}
               capabilities={IDE_CHAT_SURFACE_CAPABILITIES}
               chat={selectedChat}
+              onConfigureModels={() => openCompactRootSettings("models")}
               githubEnabled={selectedProject?.capabilities.github ?? false}
               inspectOnly={selectedChat.experience === "task"}
               inspectOpen={agentInspectOpenChats.has(selectedChat.id)}

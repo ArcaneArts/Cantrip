@@ -32,6 +32,7 @@ import {
   updateRuntimeAccountCredits,
 } from "../../models/chatgpt-account-routing.js";
 import { evaluateModelRouteAvailability } from "../../models/model-route-availability.js";
+import { ModelSelectionRequiredError } from "../../models/model-selection.js";
 import type { OpenRouterRuntimeCatalogHydrator } from "../../models/openrouter-runtime-catalog.js";
 import {
   readAndPersistProviderQuotaSnapshot,
@@ -91,9 +92,7 @@ export function createModelRoutingRuntime({
       : (await repository.getUserSettings(applicationOwnerId())).defaultModelId;
     const modelId = requestedModelId ?? context.modelId ?? defaultModelId;
     if (!modelId) {
-      throw new Error(
-        "Choose a model or configure a default model in Settings.",
-      );
+      throw new ModelSelectionRequiredError();
     }
     return modelId;
   };

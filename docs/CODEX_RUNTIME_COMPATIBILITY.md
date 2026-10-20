@@ -27,6 +27,13 @@ The 0.160.1 catalog lists `gpt-6-astra` and now gives `gpt-6.1-sol` the highest
 priority, making Sol the bundled Codex default when no model is explicitly configured. Cantrip
 continues to use its server-owned model configuration for managed turns.
 
+Project agent sessions without a selected or default model remain in the
+durable `needs-model` preparation phase. This is setup guidance, not a native
+session failure: the UI offers **Configure models** and **Check again** without
+polling or repeatedly launching the worker. The phase comes from the model
+resolver's explicit missing-selection result, not a separate readiness gate.
+Provider-route and native runtime failures retain their normal failure states.
+
 All 39 existing Cantrip source patches are rebased onto this tag. A final
 compatibility patch adapts the new native interfaces and regenerates both
 stable and experimental protocol exports. Managed TUI attachment keeps the new
