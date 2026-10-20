@@ -50,10 +50,7 @@ test("devtop is launched through the hard-stop lifecycle wrapper", async () => {
     launcher,
     /CANTRIP_WORKER_DATA_DIR=\$\{packageStateDirectory\}\/worker/u,
   );
-  assert.match(
-    launcher,
-    /CANTRIP_LOCAL_ONLY=true VITE_CANTRIP_LOCAL_ONLY=true/u,
-  );
+  assert.doesNotMatch(launcher, /(?:VITE_)?CANTRIP_LOCAL_ONLY=true/u);
   assert.ok(
     launcher.indexOf(
       "const developmentIdentity = await ensureDevtopTauriConfig",

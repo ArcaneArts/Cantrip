@@ -169,7 +169,34 @@ describe("server connections", () => {
     expect(getActiveServerConnection()?.kind).toBe("local");
   });
 
-  it("forces devtop to Local without deleting saved remote profiles", async () => {
+  it("lets the desktop switch between Local and remote servers across reloads", async () => {
+    tauriApi.isTauri.mockReturnValue(true);
+    tauriApi.invoke.mockResolvedValue("http://127.0.0.1:4310");
+    vi.stubEnv("VITE_CANTRIP_LOCAL_ONLY", "");
+
+    await initializeServerConnections();
+    const remote = await saveServerConnection({
+      name: "Winterhold",
+      url: "https://winterhold.cantrip.art",
+    });
+    await selectServerConnection(remote.id);
+    await initializeServerConnections();
+
+    expect(getActiveServerConnection()?.id).toBe(remote.id);
+    expect(getServerConnections().map(({ id }) => id)).toEqual([
+      "local",
+      remote.id,
+    ]);
+
+    await selectServerConnection("local");
+    await initializeServerConnections();
+    expect(getActiveServerConnection()?.id).toBe("local");
+
+    await selectServerConnection(remote.id);
+    expect(getActiveServerConnection()?.id).toBe(remote.id);
+  });
+
+  it("honors explicitly requested local-only mode without deleting saved remote profiles", async () => {
     tauriApi.isTauri.mockReturnValue(true);
     tauriApi.invoke.mockResolvedValue("http://127.0.0.1:4310");
     vi.stubEnv("VITE_CANTRIP_LOCAL_ONLY", "true");

@@ -603,6 +603,11 @@ pnpm devtop
 
 `devtop` runs the same protocol, server, and worker development stack, but launches the frontend inside the Tauri desktop window instead of asking you to open the standalone browser app. Tauri starts its Vite hot-reload server on <http://127.0.0.1:1420>, separately from the browser-development port.
 
+Use the sidebar server switcher to select **Local**, a saved server such as
+**Winterhold**, or **Add server**. The selected server persists across reloads
+and restarts, so the development desktop can test hosted sign-in, pairing, and
+project flows while the local development stack remains available.
+
 The default Tauri development identity is a named profile stored in shared Git
 metadata, not in a build directory or individual worktree. Its application
 identifier, native installation catalog, and profile key therefore survive

@@ -254,10 +254,12 @@ pnpm code:verify
 3. Build the required distribution automatically when it is missing or stale.
 4. Print build progress while preparing a new distribution.
 
-`pnpm devtop` is a deliberately local-only validation stack. It sets
-`CANTRIP_LOCAL_ONLY=true` for the debug desktop shell, which prevents retained
-linked-worker profiles from autostarting beside the local development worker.
-This guard does not change packaged builds or ordinary non-local debug launches.
+`pnpm devtop` supports both Local and remote servers through the sidebar server
+switcher and restores the selected server on restart. It does not force the
+local-only flags. For an explicitly local-only validation run, launch with
+`pnpm exec cross-env CANTRIP_LOCAL_ONLY=true VITE_CANTRIP_LOCAL_ONLY=true pnpm devtop`.
+That opt-in pins the frontend to Local and prevents retained linked-worker
+profiles from autostarting when the debug desktop shell starts.
 
 The implemented cache lives under ignored `.cantrip-code/cache/builds/`, shared
 through Git's common repository directory so sequential worktrees reuse the
