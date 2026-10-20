@@ -516,72 +516,218 @@ describe("persistent worker encryption", () => {
     expect(fetcher).toHaveBeenCalledOnce();
   });
 
-  it("rejects a different logical server at the same transport origin", async () => {
+  it("reconnects a restored remote worker after server and account IDs change", async () => {
     const dataDirectory = await directory();
+    const pathname = workerEncryptionKeyPath(dataDirectory);
     const workerId = "worker-a";
+    const serverUrl = "https://cantrip.test";
     const original = await WorkerEncryptionService.open({
       dataDirectory,
-      serverUrl: "https://cantrip.test",
+      serverUrl,
       workerId,
     });
-    const workerPrincipal = principal(original, workerId, "pending");
+    const workerPrincipal = principal(original, workerId);
+    const oldKey = generateAccountMasterKey();
+    const oldGrant = grant(
+      workerPrincipal.id,
+      await wrapComponentKeyForWorker({
+        ownerId,
+        workerId,
+        component: "repository-content",
+        componentKey: oldKey,
+        keyRevision: 2,
+        workerPublicKey: workerPrincipal.publicKey,
+      }),
+      "55555555-5555-4555-8555-555555555555",
+    );
     await original.acceptBootstrap({
       serverId,
       ownerId,
       principal: workerPrincipal,
-      grants: [],
+      grants: [oldGrant],
     });
+    const retainedRecord = await readFile(pathname, "utf8");
     const restarted = await WorkerEncryptionService.open({
       dataDirectory,
-      serverUrl: "https://cantrip.test",
+      serverUrl,
       workerId,
     });
 
+    // Credentials erased by a reset cannot authorize a new binding.
     await expect(
-      restarted.acceptBootstrap({
-        serverId: otherServerId,
-        ownerId,
-        principal: workerPrincipal,
-        grants: [],
+      restarted.refresh({
+        credential: "old-credential",
+        fetch: fetchSequence(
+          Promise.resolve(
+            Response.json({ error: "Unauthorized" }, { status: 401 }),
+          ),
+        ),
       }),
-    ).rejects.toMatchObject({
-      code: "identity-mismatch",
-    } satisfies Partial<WorkerEncryptionError>);
-    expect(() => restarted.serverIdentity()).toThrowError(
-      /has not verified the logical server identity/u,
-    );
-    expect(
-      JSON.parse(
-        await readFile(workerEncryptionKeyPath(dataDirectory), "utf8"),
+    ).rejects.toMatchObject({ code: "server-unavailable" });
+    expect(await readFile(pathname, "utf8")).toBe(retainedRecord);
+
+    const replacementOwnerId = "recreated-account";
+    const pendingPrincipal = {
+      ...principal(restarted, workerId, "pending"),
+      ownerId: replacementOwnerId,
+    };
+    const fetcher = vi.fn(
+      async (_url: unknown, request: RequestInit | undefined) => {
+        expect(_url).toBe(
+          `${serverUrl}/api/internal/workers/encryption/bootstrap`,
+        );
+        expect(request?.headers).toMatchObject({
+          authorization: "Bearer restored-credential",
+          "x-cantrip-worker-id": workerId,
+        });
+        return Response.json({
+          serverId: otherServerId,
+          ownerId: replacementOwnerId,
+          principal: pendingPrincipal,
+          grants: [],
+        });
+      },
+    ) as unknown as typeof fetch;
+    await expect(
+      restarted.refresh({ credential: "restored-credential", fetch: fetcher }),
+    ).resolves.toMatchObject({ state: "pending-approval", error: null });
+    expect(restarted.registration()).toEqual(original.registration());
+    expect(restarted.serverIdentity()).toBe(otherServerId);
+    expect(() => restarted.componentKey("repository-content")).toThrow();
+    expect(JSON.parse(await readFile(pathname, "utf8"))).toMatchObject({
+      serverId: otherServerId,
+      ownerId: replacementOwnerId,
+      acceptedRevisions: {},
+    });
+
+    // The password-unlocked client grants the new account's key normally.
+    const replacementKey = generateAccountMasterKey();
+    const replacementGrant = {
+      ...grant(
+        workerPrincipal.id,
+        await wrapComponentKeyForWorker({
+          ownerId: replacementOwnerId,
+          workerId,
+          component: "repository-content",
+          componentKey: replacementKey,
+          keyRevision: 1,
+          workerPublicKey: workerPrincipal.publicKey,
+        }),
+        "66666666-6666-4666-8666-666666666666",
       ),
-    ).toMatchObject({ serverId });
-
-    const nonLoopback = await WorkerEncryptionService.open({
-      allowLoopbackServerIdentityChange: true,
+      ownerId: replacementOwnerId,
+    };
+    const approved = {
+      serverId: otherServerId,
+      ownerId: replacementOwnerId,
+      principal: { ...workerPrincipal, ownerId: replacementOwnerId },
+      grants: [replacementGrant],
+    };
+    await expect(
+      restarted.refresh({
+        credential: "restored-credential",
+        fetch: fetchSequence(Promise.resolve(Response.json(approved))),
+      }),
+    ).resolves.toMatchObject({ state: "ready", error: null });
+    expect(
+      bytesEqual(
+        restarted.componentKey("repository-content").key,
+        replacementKey,
+      ),
+    ).toBe(true);
+    expect(
+      bytesEqual(restarted.componentKey("repository-content").key, oldKey),
+    ).toBe(false);
+    const reopened = await WorkerEncryptionService.open({
       dataDirectory,
-      serverUrl: "https://cantrip.test",
+      serverUrl,
       workerId,
     });
     await expect(
-      nonLoopback.acceptBootstrap({
-        serverId: otherServerId,
-        ownerId,
-        principal: workerPrincipal,
-        grants: [],
+      reopened.refresh({
+        credential: "restored-credential",
+        fetch: fetchSequence(Promise.resolve(Response.json(approved))),
       }),
-    ).rejects.toMatchObject({
-      code: "identity-mismatch",
-    } satisfies Partial<WorkerEncryptionError>);
+    ).resolves.toMatchObject({ state: "ready" });
+    expect(
+      bytesEqual(
+        reopened.componentKey("repository-content").key,
+        replacementKey,
+      ),
+    ).toBe(true);
+    expect(JSON.parse(await readFile(pathname, "utf8"))).toMatchObject({
+      serverId: otherServerId,
+      ownerId: replacementOwnerId,
+      acceptedRevisions: { "repository-content": 1 },
+    });
   });
 
-  it("rebinds an explicit development worker after its loopback server is replaced", async () => {
+  it.each(["worker", "key", "account"])(
+    "rejects mismatched %s authorization without replacing the retained binding",
+    async (mismatch) => {
+      const dataDirectory = await directory();
+      const workerId = "worker-a";
+      const service = await WorkerEncryptionService.open({
+        dataDirectory,
+        serverUrl: "https://cantrip.test",
+        workerId,
+      });
+      const workerPrincipal = principal(service, workerId, "pending");
+      await service.acceptBootstrap({
+        serverId,
+        ownerId,
+        principal: workerPrincipal,
+        grants: [],
+      });
+      const retainedRecord = await readFile(
+        workerEncryptionKeyPath(dataDirectory),
+        "utf8",
+      );
+      const other = await WorkerEncryptionService.open({
+        dataDirectory: await directory(),
+        serverUrl: "https://cantrip.test",
+        workerId,
+      });
+      const returnedOwner =
+        mismatch === "account" ? "another-account" : ownerId;
+      const returnedPrincipal = {
+        ...workerPrincipal,
+        ownerId: returnedOwner,
+        workerId: mismatch === "worker" ? "worker-b" : workerId,
+        publicKey:
+          mismatch === "key"
+            ? other.registration().publicKey
+            : workerPrincipal.publicKey,
+      };
+      await expect(
+        service.refresh({
+          credential: "worker-credential",
+          fetch: fetchSequence(
+            Promise.resolve(
+              Response.json({
+                serverId: mismatch === "account" ? serverId : otherServerId,
+                ownerId: returnedOwner,
+                principal: returnedPrincipal,
+                grants: [],
+              }),
+            ),
+          ),
+        }),
+      ).rejects.toMatchObject({ code: "identity-mismatch" });
+      expect(
+        await readFile(workerEncryptionKeyPath(dataDirectory), "utf8"),
+      ).toBe(retainedRecord);
+      expect(() => service.serverIdentity()).toThrow();
+    },
+  );
+
+  it("rebinds a restored remote worker with approved grants without carrying over old revisions", async () => {
     const dataDirectory = await directory();
     const pathname = workerEncryptionKeyPath(dataDirectory);
     const workerId = "desktop-local";
     const original = await WorkerEncryptionService.open({
-      allowLoopbackServerIdentityChange: true,
       dataDirectory,
-      serverUrl: "http://127.0.0.1:4310",
+      serverUrl: "https://cantrip.test",
       workerId,
     });
     const workerPrincipal = principal(original, workerId);
@@ -612,9 +758,8 @@ describe("persistent worker encryption", () => {
     });
 
     const restarted = await WorkerEncryptionService.open({
-      allowLoopbackServerIdentityChange: true,
       dataDirectory,
-      serverUrl: "http://127.0.0.1:4310",
+      serverUrl: "https://cantrip.test",
       workerId,
     });
     const replacementKey = deriveComponentKey({
@@ -655,6 +800,59 @@ describe("persistent worker encryption", () => {
       serverId: otherServerId,
       acceptedRevisions: { "repository-content": 1 },
     });
+  });
+
+  it("keeps the retained binding when a replacement server returns an unreadable grant", async () => {
+    const dataDirectory = await directory();
+    const workerId = "worker-a";
+    const service = await WorkerEncryptionService.open({
+      dataDirectory,
+      serverUrl: "https://cantrip.test",
+      workerId,
+    });
+    const workerPrincipal = principal(service, workerId);
+    await service.acceptBootstrap({
+      serverId,
+      ownerId,
+      principal: workerPrincipal,
+      grants: [],
+    });
+    const pathname = workerEncryptionKeyPath(dataDirectory);
+    const retainedRecord = await readFile(pathname, "utf8");
+    const other = await WorkerEncryptionService.open({
+      dataDirectory: await directory(),
+      serverUrl: "https://cantrip.test",
+      workerId,
+    });
+    const unreadable = grant(
+      workerPrincipal.id,
+      await wrapComponentKeyForWorker({
+        ownerId,
+        workerId,
+        component: "repository-content",
+        componentKey: generateAccountMasterKey(),
+        keyRevision: 1,
+        workerPublicKey: other.registration().publicKey,
+      }),
+      "77777777-7777-4777-8777-777777777777",
+    );
+    await expect(
+      service.refresh({
+        credential: "worker-credential",
+        fetch: fetchSequence(
+          Promise.resolve(
+            Response.json({
+              serverId: otherServerId,
+              ownerId,
+              principal: workerPrincipal,
+              grants: [unreadable],
+            }),
+          ),
+        ),
+      }),
+    ).rejects.toMatchObject({ code: "principal-unavailable" });
+    expect(await readFile(pathname, "utf8")).toBe(retainedRecord);
+    expect(() => service.componentKey("repository-content")).toThrow();
   });
 
   it("opens client-created scoped grants, restores after restart, and fails closed", async () => {

@@ -296,7 +296,6 @@ export class WorkerEncryptionService {
     private readonly pathname: string,
     private readonly serverUrl: string,
     private readonly transportServerUrl: string,
-    private readonly allowLoopbackServerIdentityChange: boolean,
     private readonly workerId: string,
     private readonly principalId: string,
     private readonly publicKey: EncryptionPublicKey,
@@ -329,7 +328,6 @@ export class WorkerEncryptionService {
   }
 
   static async open(input: {
-    allowLoopbackServerIdentityChange?: boolean;
     allowLoopbackServerPortChange?: boolean;
     dataDirectory: string;
     serverUrl: string;
@@ -342,9 +340,6 @@ export class WorkerEncryptionService {
       serverUrl,
       allowLoopbackServerPortChange,
     );
-    const allowLoopbackServerIdentityChange =
-      (input.allowLoopbackServerIdentityChange ?? false) &&
-      isLoopbackHostname(new URL(serverUrl).hostname);
     const pathname = workerEncryptionKeyPath(input.dataDirectory);
     if (existsSync(pathname)) {
       const record = parseRecord(readRecord(pathname), {
@@ -396,7 +391,6 @@ export class WorkerEncryptionService {
           pathname,
           serverUrl,
           transportServerUrl,
-          allowLoopbackServerIdentityChange,
           input.workerId,
           record.principalId,
           record.publicKey,
@@ -434,7 +428,6 @@ export class WorkerEncryptionService {
       pathname,
       serverUrl,
       transportServerUrl,
-      allowLoopbackServerIdentityChange,
       input.workerId,
       principalId,
       publicKey,
@@ -582,6 +575,7 @@ export class WorkerEncryptionService {
     return this.acceptBootstrapGeneration(payload, generation);
   }
 
+  /** Accept authorization obtained from the worker-authenticated bootstrap endpoint. */
   async acceptBootstrap(input: unknown): Promise<WorkerEncryptionStatus> {
     const generation = ++this.#bootstrapGeneration;
     return this.acceptBootstrapGeneration(input, generation);
@@ -620,12 +614,6 @@ export class WorkerEncryptionService {
     const serverIdentityChanged = Boolean(
       this.#boundServerId && this.#boundServerId !== result.serverId,
     );
-    if (serverIdentityChanged && !this.allowLoopbackServerIdentityChange) {
-      throw new WorkerEncryptionError(
-        "identity-mismatch",
-        "The worker encryption key belongs to another logical server.",
-      );
-    }
     if (
       principal.id !== this.principalId ||
       principal.workerId !== this.workerId ||
@@ -636,12 +624,22 @@ export class WorkerEncryptionService {
         "The server returned a different worker encryption identity.",
       );
     }
-    if (this.#ownerId && this.#ownerId !== result.ownerId) {
+    if (
+      !serverIdentityChanged &&
+      this.#ownerId &&
+      this.#ownerId !== result.ownerId
+    ) {
       throw new WorkerEncryptionError(
         "identity-mismatch",
         "The worker encryption key belongs to another account.",
       );
     }
+    // A database reset replaces both server and account IDs. Bootstrap can
+    // succeed there only with a credential authorized by that server (normally
+    // obtained by restoring this machine). Keep the worker key, but reconcile
+    // its binding and revision history with that authenticated authorization.
+    // New component keys still come from the password-unlocked client's grants;
+    // no keys or accepted revisions carry over from the previous server.
     const acceptedRevisions = serverIdentityChanged
       ? new Map<WorkerEncryptionComponentScope, number>()
       : new Map(this.#acceptedRevisions);
