@@ -186,6 +186,7 @@ export function useChatTranscriptController({
   onOpenFile,
   onRename,
   onOpenRelocation,
+  onConfigureModels,
   onToast,
   relocationJob,
   refocusOnWindowActivation,
@@ -209,6 +210,7 @@ export function useChatTranscriptController({
   onOpenFile(path: string): void;
   onRename(title: string): void;
   onOpenRelocation(): void;
+  onConfigureModels?(): void;
   onToast(toast: AppToastInput): void;
   relocationJob: ChatRelocationJobSummary | null;
   refocusOnWindowActivation: boolean;
@@ -1935,6 +1937,7 @@ export function useChatTranscriptController({
     onFilesOpenChange,
     onOpenFile,
     onOpenRelocation,
+    onConfigureModels,
     permissionProfiles,
     nativePermissions,
     planImplementationDisabled,

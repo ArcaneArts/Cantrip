@@ -14,6 +14,7 @@ import type { WorkerCommandBus } from "../../workers/bridge.js";
 import type { createModelRoutingRuntime } from "./model-routing-runtime.js";
 import { prepareManagedConsoleLaunch } from "../../terminals/managed-session.js";
 import { boundManagedRuntime } from "../../terminals/bound-managed-runtime.js";
+import { ModelSelectionRequiredError } from "../../models/model-selection.js";
 
 type Dependencies = Pick<
   ReturnType<typeof createModelRoutingRuntime>,
@@ -232,6 +233,14 @@ export function createManagedChatPreparation(deps: Dependencies) {
           throw new Error("The CLI exited during preparation.");
         await jobs.update(ownerId, state, "ready", null, terminal.id);
       } catch (error) {
+        nativeFailed(error);
+        if (
+          phase === "thread" &&
+          error instanceof ModelSelectionRequiredError
+        ) {
+          if (state) await jobs.update(ownerId, state, "needs-model");
+          return;
+        }
         serverLogger.event("warn", "Managed chat preparation failed", {
           event: "chat.preparation.failed",
           subsystem: "chat-preparation",
@@ -240,7 +249,6 @@ export function createManagedChatPreparation(deps: Dependencies) {
           chatId,
           error: error instanceof Error ? error : new Error(String(error)),
         });
-        nativeFailed(error);
         if (state) await jobs.update(ownerId, state, "failed", phase);
       } finally {
         if (active.get(identity) === job) active.delete(identity);

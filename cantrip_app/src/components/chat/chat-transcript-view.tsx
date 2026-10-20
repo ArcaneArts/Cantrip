@@ -138,6 +138,7 @@ export function ChatTranscriptView({
     onFilesOpenChange,
     onOpenFile,
     onOpenRelocation,
+    onConfigureModels,
     permissionProfiles,
     nativePermissions,
     planImplementationDisabled,
@@ -304,6 +305,7 @@ export function ChatTranscriptView({
           key={chat.id}
           chatId={chat.id}
           projectId={chat.projectId}
+          onConfigureModels={onConfigureModels}
         />
       ) : null}
       <div

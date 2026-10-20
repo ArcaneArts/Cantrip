@@ -22,9 +22,11 @@ const subscribe = (listener: () => void) =>
 export function ManagedChatPreparationStatus({
   chatId,
   projectId,
+  onConfigureModels,
 }: {
   chatId: string;
   projectId: string;
+  onConfigureModels?(): void;
 }) {
   const identityKey = useSyncExternalStore(subscribe, snapshot);
   const identity = useMemo(
@@ -66,7 +68,8 @@ export function ManagedChatPreparationStatus({
     },
     retry: false,
     refetchInterval: (query) =>
-      query.state.data && !["ready", "failed"].includes(query.state.data.phase)
+      query.state.data &&
+      !["ready", "failed", "needs-model"].includes(query.state.data.phase)
         ? 1000
         : false,
   });
@@ -97,7 +100,7 @@ export function ManagedChatPreparationStatus({
     <div
       key={readyKey ?? "preparing"}
       className={cn(
-        "flex items-center gap-2 px-4 pt-2 text-xs text-muted-foreground sm:px-8 md:px-10",
+        "flex flex-wrap items-center gap-2 px-4 pt-2 text-xs text-muted-foreground sm:px-8 md:px-10",
         readyKey &&
           "animate-out fade-out [animation-delay:2s] [animation-duration:300ms] [animation-fill-mode:forwards] motion-reduce:animate-none",
       )}
@@ -111,13 +114,24 @@ export function ManagedChatPreparationStatus({
               thread: "Preparing agent session…",
               console: "Starting attached CLI…",
               ready: "Session prepared",
+              "needs-model":
+                "Choose or configure a model in Settings → Models to start this session.",
               failed:
                 state.data?.failedPhase === "console"
                   ? "Session prepared, but the CLI is unavailable."
                   : "The agent session could not be prepared.",
             }[state.data!.phase]}
       </span>
-      {state.error || state.data?.phase === "failed" ? (
+      {!state.error &&
+      state.data?.phase === "needs-model" &&
+      onConfigureModels ? (
+        <Button variant="ghost" onClick={onConfigureModels}>
+          Configure models
+        </Button>
+      ) : null}
+      {state.error ||
+      state.data?.phase === "failed" ||
+      state.data?.phase === "needs-model" ? (
         <Button
           variant="ghost"
           disabled={retrying}
@@ -142,7 +156,9 @@ export function ManagedChatPreparationStatus({
             }
           }}
         >
-          Retry preparation
+          {!state.error && state.data?.phase === "needs-model"
+            ? "Check again"
+            : "Retry preparation"}
         </Button>
       ) : null}
       {error ? <span role="alert">{error}</span> : null}
