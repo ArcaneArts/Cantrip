@@ -34,6 +34,7 @@ const forwardedSecretNames = [
   "CANTRIP_ACCOUNT_UPLOAD_CONCURRENCY",
   "CANTRIP_ACCOUNT_WEBSOCKET_LIMIT",
   "CANTRIP_ADMIN_BOOTSTRAP_TOKEN",
+  "CANTRIP_ADMIN_PASSWORD",
   "CANTRIP_AGENT_MODEL",
   "CANTRIP_AGENT_MODEL_PROVIDER",
   "CANTRIP_API_BODY_LIMIT_BYTES",
@@ -238,7 +239,9 @@ export function buildProductionEnvironment(secrets, config) {
 
   const environment = {};
   for (const name of forwardedSecretNames) {
-    const value = secret(name);
+    // Whitespace is part of a password, including at either end.
+    const value =
+      name === "CANTRIP_ADMIN_PASSWORD" ? secrets.get(name) : secret(name);
     if (value !== undefined && value !== "") environment[name] = value;
   }
   return { ...environment, ...deploymentOverrides };

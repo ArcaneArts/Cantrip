@@ -234,6 +234,96 @@ export class AccountRepository {
     return toUserSummary(user);
   }
 
+  async ensureConfiguredAdministrator(input: {
+    email: string;
+    normalizedEmail: string;
+    passwordHash: string;
+    passwordMatches: (encoded: string) => Promise<boolean>;
+  }): Promise<UserSummary> {
+    const user = await this.database.transaction(async (transaction) => {
+      const now = new Date();
+      const [{ count = 0 } = {}] = await transaction
+        .select({ count: sql<number>`count(*)::int` })
+        .from(schema.users)
+        .where(eq(schema.users.kind, "account"));
+      await transaction
+        .insert(schema.users)
+        .values({
+          id: randomUUID(),
+          kind: "account",
+          role: count === 0 ? "owner" : "admin",
+          status: "active",
+          displayName: "Administrator",
+          email: input.email,
+          normalizedEmail: input.normalizedEmail,
+          passwordHash: input.passwordHash,
+          passwordChangedAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoNothing();
+      const rows = await transaction
+        .select()
+        .from(schema.users)
+        .where(
+          and(
+            eq(schema.users.kind, "account"),
+            eq(schema.users.normalizedEmail, input.normalizedEmail),
+          ),
+        )
+        .for("update");
+      const existing = firstOrThrow(
+        rows,
+        "resolving the configured administrator",
+      );
+      const passwordChanged =
+        !existing.passwordHash ||
+        !(await input.passwordMatches(existing.passwordHash));
+      const role = existing.role === "owner" ? "owner" : "admin";
+      if (
+        !passwordChanged &&
+        existing.role === role &&
+        existing.status === "active"
+      ) {
+        return toUserSummary(existing);
+      }
+      const updated = await transaction
+        .update(schema.users)
+        .set({
+          role,
+          status: "active",
+          ...(passwordChanged
+            ? { passwordHash: input.passwordHash, passwordChangedAt: now }
+            : {}),
+          updatedAt: now,
+        })
+        .where(eq(schema.users.id, existing.id))
+        .returning();
+      if (passwordChanged) {
+        await transaction
+          .update(schema.userSessions)
+          .set({
+            revokedAt: now,
+            revokedReason: "configured-admin-password-changed",
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(schema.userSessions.userId, existing.id),
+              isNull(schema.userSessions.revokedAt),
+            ),
+          );
+      }
+      // Password-backed encryption wrappers remain client-owned. Never replace
+      // or discard an existing account's encryption keys during provisioning.
+      return toUserSummary(
+        firstOrThrow(updated, "updating the configured administrator"),
+      );
+    });
+    await this.provisioning.ensureDefaultProjectWorkspace(user.id);
+    await this.provisioning.ensureOwnerPolicyState(user.id);
+    return user;
+  }
+
   async findAccountCredential(
     normalizedEmail: string,
   ): Promise<AccountCredentialRecord | null> {
