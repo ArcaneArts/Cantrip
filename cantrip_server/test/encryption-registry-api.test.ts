@@ -23,6 +23,7 @@ import {
 import { afterAll, describe, expect, it, vi } from "vitest";
 
 import { buildApp } from "../src/app.js";
+import { ensureConfiguredAdministrator } from "../src/auth/configured-administrator.js";
 import { hashPassword, hashSecret } from "../src/auth/service.js";
 import { CodeTunnelBroker } from "../src/code/tunnel.js";
 import type { ServerConfig } from "../src/config.js";
@@ -217,6 +218,65 @@ afterAll(async () => {
 });
 
 describe("opaque encryption registry", () => {
+  it("keeps administrator passwords environment-managed without replacing client encryption keys", async () => {
+    const config: ServerConfig = {
+      ...(await createConfig()),
+      adminEmail: "admin@example.com",
+      adminPassword: password,
+      adminBootstrapToken: undefined,
+      licenseWhitelistEnabled: true,
+    };
+    const database = await connectDatabase(config);
+    const app = await buildApp({ config, database, logger: false });
+    try {
+      const login = await app.inject({
+        method: "POST",
+        url: "/api/auth/login",
+        headers: { origin },
+        payload: { email: config.adminEmail, password },
+      });
+      expect(login.statusCode).toBe(200);
+      const headers = authHeaders(login);
+      const initialization = initialProfile(
+        "11111111-1111-4111-8111-111111111111",
+      );
+      const initialized = await app.inject({
+        method: "POST",
+        url: "/api/encryption/profile/initialize",
+        headers,
+        payload: initialization,
+      });
+      expect(initialized.statusCode).toBe(201);
+      const profile = initialized.json().profile;
+      const changed = await app.inject({
+        method: "POST",
+        url: "/api/account/password",
+        headers,
+        payload: {
+          currentPassword: password,
+          newPassword: "a different correct password",
+          expectedProfileRevision: profile.revision,
+          passwordKdf: initialization.profile.passwordKdf,
+          passwordWrappedMasterKey:
+            initialization.profile.passwordWrappedMasterKey,
+        },
+      });
+      expect(changed.statusCode).toBe(409);
+      expect(changed.json().error).toContain("CANTRIP_ADMIN_PASSWORD");
+      await ensureConfiguredAdministrator(
+        { ...config, adminPassword: "changed environment password" },
+        database.repository,
+      );
+      expect(
+        await database.repository.encryptionRegistry.getProfile(
+          login.json().currentUser.id,
+        ),
+      ).toEqual(profile);
+    } finally {
+      await app.close();
+    }
+  });
+
   it("registers an authenticated local bootstrap worker without a credential row", async () => {
     const hostedConfig = await createConfig();
     const config: ServerConfig = {

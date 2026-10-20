@@ -48,6 +48,7 @@ services:
     environment:
       CANTRIP_ACTIVE_SECRET_ENCRYPTION_KEY_ID: ${CANTRIP_ACTIVE_SECRET_ENCRYPTION_KEY_ID:?set active encryption key id}
       CANTRIP_ADMIN_EMAIL: ${CANTRIP_ADMIN_EMAIL:?set administrator email}
+      CANTRIP_ADMIN_PASSWORD: ${CANTRIP_ADMIN_PASSWORD:-}
       CANTRIP_APP_ORIGINS: ${CANTRIP_APP_ORIGIN:?set application origin}
       CANTRIP_AUTH_MODE: accounts
       CANTRIP_BOOTSTRAP_MODE: hosted

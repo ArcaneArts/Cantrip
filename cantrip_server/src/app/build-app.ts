@@ -23,6 +23,7 @@ import type { GitOperationObservationState } from "@cantrip/protocol";
 import { cantripVersion } from "@cantrip/version";
 
 import { installRequestPrincipal } from "../auth/principal.js";
+import { ensureConfiguredAdministrator } from "../auth/configured-administrator.js";
 import { hashSecret, UserSessionService } from "../auth/service.js";
 import {
   ChatThreadChangeReconciler,
@@ -425,6 +426,7 @@ export async function buildApp({
     scheduleProjectWorktreeObservation,
     scheduleWorkerWorktreeObservation,
   });
+  await ensureConfiguredAdministrator(config, repository);
   if (
     config.deploymentMode === "hosted" &&
     config.authMode === "accounts" &&

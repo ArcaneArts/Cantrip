@@ -99,6 +99,12 @@ requires an authenticated owner or administrator and all mutations retain the
 normal CSRF, origin, rate-limit, and audit protections. Operators may explicitly
 set `CANTRIP_LICENSE_WHITELIST_ENABLED=false` to allow open registration.
 
+When `CANTRIP_ADMIN_PASSWORD` is set, startup provisions the configured
+administrator and synchronizes its password before accepting requests.
+Registration cannot replace that account. See the
+[environment-managed administrator contract](HOSTED_DEPLOYMENT.md#environment-managed-administrator)
+for session revocation and encrypted-key recovery semantics.
+
 `CANTRIP_ALLOW_INSECURE_REMOTE` applies only to a non-hosted anonymous server
 and remains an acknowledgement for a separately protected trusted network. It
 is not authentication and can never enable anonymous hosted mode.
@@ -151,8 +157,10 @@ fallbacks outside request-owned account operations.
 
 ## 3.1 Credential and session controls
 
-- Passwords are encoded with Argon2id (64 MiB, three passes, one lane). The
-  server never accepts a plaintext password through configuration.
+- Passwords are encoded with Argon2id (64 MiB, three passes, one lane).
+  Single-user password mode requires an encoded `CANTRIP_PASSWORD_HASH`.
+  Account mode optionally accepts `CANTRIP_ADMIN_PASSWORD` from the operator's
+  secret environment and persists only its Argon2id hash.
 - Browser sessions use 256-bit random opaque cookies. Only SHA-256 token hashes
   are stored in PostgreSQL/PGlite.
 - Each session has a per-session CSRF token derived from its random session

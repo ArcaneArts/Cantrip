@@ -10,7 +10,8 @@ import {
 import { cuaCursorPreferenceContext } from "@cantrip/protocol/computer-use-preferences";
 
 import { buildApp } from "../src/app.js";
-import { hashPassword } from "../src/auth/service.js";
+import { ensureConfiguredAdministrator } from "../src/auth/configured-administrator.js";
+import { hashPassword, verifyPassword } from "../src/auth/service.js";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase } from "../src/db/index.js";
 
@@ -82,6 +83,180 @@ afterAll(async () => {
 });
 
 describe("server account authentication", () => {
+  it("provisions the configured administrator before login and preserves unchanged credentials", async () => {
+    const config = {
+      ...(await createConfig("accounts")),
+      adminEmail: "Admin@example.com",
+      adminPassword: "  environment administrator password  ",
+      adminBootstrapToken: undefined,
+      licenseWhitelistEnabled: true,
+    };
+    const database = await connectDatabase(config);
+    const app = await buildApp({ config, database, logger: false });
+    try {
+      const credential =
+        await database.repository.findAccountCredential("admin@example.com");
+      expect(credential?.user).toMatchObject({
+        role: "owner",
+        email: "Admin@example.com",
+      });
+      expect(credential?.passwordHash).toMatch(/^\$argon2id\$/u);
+      expect(
+        await verifyPassword(credential!.passwordHash, config.adminPassword),
+      ).toBe(true);
+      const login = async (candidate: string) =>
+        app.inject({
+          method: "POST",
+          url: "/api/auth/login",
+          headers: { origin },
+          payload: { email: "ADMIN@example.com", password: candidate },
+        });
+      expect((await login(config.adminPassword.trim())).statusCode).toBe(401);
+      const signedIn = await login(config.adminPassword);
+      expect(signedIn.statusCode).toBe(200);
+      const headers = {
+        cookie: sessionCookie(signedIn),
+        origin,
+        "x-cantrip-csrf": signedIn.json().csrfToken as string,
+      };
+      expect(
+        (await app.inject({ url: "/api/admin/accounts", headers })).statusCode,
+      ).toBe(200);
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: "/api/auth/reauthenticate",
+            headers,
+            payload: { password: config.adminPassword },
+          })
+        ).statusCode,
+      ).toBe(200);
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: "/api/auth/register",
+            headers: { origin },
+            payload: {
+              email: "admin@example.com",
+              displayName: "Impostor",
+              password,
+            },
+          })
+        ).statusCode,
+      ).toBe(409);
+      await ensureConfiguredAdministrator(config, database.repository);
+      expect(
+        await database.repository.findAccountCredential("admin@example.com"),
+      ).toEqual(credential);
+      expect(await database.repository.countAccountUsers()).toBe(1);
+      expect(
+        (await app.inject({ url: "/api/admin/accounts", headers })).statusCode,
+      ).toBe(200);
+      expect(
+        (await app.inject({ url: "/api/encryption/profile", headers })).json()
+          .status,
+      ).toBe("uninitialized");
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("synchronizes only the configured account and revokes its sessions when the environment password changes", async () => {
+    const config = {
+      ...(await createConfig("accounts")),
+      adminEmail: "admin@example.com",
+      adminPassword: "first environment administrator password",
+      licenseWhitelistEnabled: true,
+    };
+    const database = await connectDatabase(config);
+    const member = await database.repository.createAccount({
+      displayName: "Existing admin",
+      email: config.adminEmail,
+      normalizedEmail: config.adminEmail,
+      passwordHash: await hashPassword(password),
+      role: "member",
+    });
+    const other = await database.repository.createAccount({
+      displayName: "Other member",
+      email: "other@example.com",
+      normalizedEmail: "other@example.com",
+      passwordHash: await hashPassword(password),
+      role: "member",
+    });
+    const app = await buildApp({ config, database, logger: false });
+    try {
+      const credential = await database.repository.findAccountCredential(
+        config.adminEmail,
+      );
+      expect(credential?.user).toMatchObject({
+        id: member.id,
+        role: "admin",
+        displayName: "Existing admin",
+      });
+      const login = (email: string, candidate: string) =>
+        app.inject({
+          method: "POST",
+          url: "/api/auth/login",
+          headers: { origin },
+          payload: { email, password: candidate },
+        });
+      expect((await login(config.adminEmail, password)).statusCode).toBe(401);
+      const signedIn = await login(config.adminEmail, config.adminPassword);
+      const otherSignedIn = await login(other.email!, password);
+      expect(signedIn.statusCode).toBe(200);
+      expect(otherSignedIn.statusCode).toBe(200);
+      const replacement = "replacement environment administrator password";
+      await ensureConfiguredAdministrator(
+        { ...config, adminPassword: replacement },
+        database.repository,
+      );
+      expect(
+        (await login(config.adminEmail, config.adminPassword)).statusCode,
+      ).toBe(401);
+      expect((await login(config.adminEmail, replacement)).statusCode).toBe(
+        200,
+      );
+      expect(
+        (
+          await app.inject({
+            url: "/api/admin/accounts",
+            headers: { cookie: sessionCookie(signedIn), origin },
+          })
+        ).statusCode,
+      ).toBe(401);
+      expect(
+        (
+          await app.inject({
+            url: "/api/settings",
+            headers: { cookie: sessionCookie(otherSignedIn), origin },
+          })
+        ).statusCode,
+      ).toBe(200);
+      expect(
+        (await database.repository.findAccountCredential(other.email!))?.user
+          .role,
+      ).toBe("member");
+      await ensureConfiguredAdministrator(
+        { ...config, adminPassword: undefined },
+        database.repository,
+      );
+      expect((await login(config.adminEmail, replacement)).statusCode).toBe(
+        200,
+      );
+      await ensureConfiguredAdministrator(
+        { ...config, authMode: "password" },
+        database.repository,
+      );
+      expect((await login(config.adminEmail, replacement)).statusCode).toBe(
+        200,
+      );
+    } finally {
+      await app.close();
+    }
+  });
+
   it("persists opaque cursor preferences only for the authenticated account and requires CSRF for changes", async () => {
     const config = await createConfig("accounts");
     const database = await connectDatabase(config);

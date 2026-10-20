@@ -165,6 +165,16 @@ export function installAccountSecurityRoutes(
     }
     const principal = authenticatedPrincipal(request);
     const ownerId = principalOwnerId(request);
+    if (
+      config.adminPassword &&
+      principal.user.email &&
+      normalizeAccountEmail(principal.user.email) === normalizedAdminEmail
+    ) {
+      return reply.code(409).send({
+        error:
+          "This administrator password is managed by CANTRIP_ADMIN_PASSWORD.",
+      });
+    }
     const limited = consumeAuthAttempt(
       request,
       "password-change",
