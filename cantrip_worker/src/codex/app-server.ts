@@ -2064,9 +2064,11 @@ export class CodexAppServer implements CodexRuntime {
     method: string,
     params: Record<string, unknown> & { threadId: string },
     operationId?: string,
+    goalObjectiveOnly?: boolean,
   ): Promise<unknown> {
     return this.dispatchGuiNativeCommand(params.threadId, {
       operationId,
+      goalObjectiveOnly,
       method,
       params,
       dispatch: (forward) =>
@@ -3832,7 +3834,8 @@ export class CodexAppServer implements CodexRuntime {
 
   async updateGoal(
     options: GoalRuntimeOptions & {
-      status: "active" | "paused";
+      status?: "active" | "paused";
+      objective?: string;
       threadId: string;
       configureTaskPermissions?: boolean;
     },
@@ -3852,10 +3855,18 @@ export class CodexAppServer implements CodexRuntime {
       );
     }
     const response = chatGoalResponseSchema.parse(
-      await this.requestGuiThreadMutation("thread/goal/set", {
-        threadId,
-        status: options.status,
-      }),
+      await this.requestGuiThreadMutation(
+        "thread/goal/set",
+        {
+          threadId,
+          ...(options.status === undefined ? {} : { status: options.status }),
+          ...(options.objective === undefined
+            ? {}
+            : { objective: options.objective }),
+        },
+        undefined,
+        options.objective !== undefined && options.status === undefined,
+      ),
     );
     this.cacheGoal(response);
     return response;

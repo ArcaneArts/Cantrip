@@ -141,7 +141,7 @@ export function installChatGoalRoutes(
     taskGoalDispatchLease,
   }: ChatGoalRouteDependencies,
 ): void {
-  app.get<{ Params: { chatId: string } }>(
+  app.get<{ Params: { chatId: string }; Querystring: { encrypted?: string } }>(
     "/api/chats/:chatId/goal",
     async (request, reply) => {
       const context = await repository.getChatExecutionContext(
@@ -186,9 +186,10 @@ export function installChatGoalRoutes(
             .code(409)
             .send({ error: "Selected model was not found." });
         }
-        const result = chatGoalResponseSchema.parse(
+        const result = chatGoalWireResponseSchema.parse(
           await bridge.request(context.workerId, {
             type: "chat.goal.get",
+            protectObjective: request.query.encrypted === "1",
             chatId: context.chatId,
             cwd: context.cwd,
             threadId: context.threadId,
@@ -262,186 +263,190 @@ export function installChatGoalRoutes(
     },
   );
 
-  app.patch<{ Params: { chatId: string } }>(
-    "/api/chats/:chatId/goal",
-    async (request, reply) => {
-      const input = chatGoalUpdateSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      const context = await repository.getChatExecutionContext(
-        applicationOwnerId(),
-        request.params.chatId,
-      );
-      if (!context) {
-        return reply.code(404).send({ error: "Chat source not found." });
-      }
-      if (!context.threadId) {
-        return reply.code(409).send({ error: "This chat has no goal." });
-      }
-      if (!bridge.isConnected(context.workerId)) {
-        return reply.code(503).send({ error: "Project worker is offline." });
-      }
-      try {
-        const runtime = await runtimeForContext(context);
-        if (!runtime) throw new Error("Selected model was not found.");
-        if (context.experience === "task") {
-          const task = await repository.tasks.get(
-            applicationOwnerId(),
-            context.chatId,
-          );
-          if (!task) {
-            return reply.code(404).send({ error: "Task not found." });
-          }
-          const message =
-            input.data.status === "active" &&
-            !context.automationPaused &&
-            !chatIsExecuting(context.status)
-              ? {
-                  id: randomUUID(),
-                  idempotencyKey: `task-goal-resume:${randomUUID()}`,
-                  kind: "resume" as const,
-                }
-              : null;
-          const result = taskGoalWorkerResultSchema.parse(
-            await bridge.request(context.workerId, {
-              type: "chat.goal.update",
-              chatId: context.chatId,
-              cwd: context.cwd,
-              threadId: context.threadId,
-              status: input.data.status,
-              model: runtime.model,
-              provider: runtime.provider,
-              permissionProfileId:
-                effectivePermissionProfile(context).effectiveId,
-              taskContext: {
-                task: taskContentFromSummary(task),
-                automationPaused: context.automationPaused,
-                chatStatus: context.status,
-                message,
-              },
-            }),
-          );
-          if (
-            result.goal?.chatId !== context.chatId ||
-            (message &&
-              (result.message?.id !== message.id ||
-                result.message.idempotencyKey !== message.idempotencyKey))
-          ) {
-            throw new Error("Encrypted Goal metadata is invalid.");
-          }
-          const synchronized = await repository.tasks.syncImplementationState(
-            applicationOwnerId(),
-            context.chatId,
-            { rowVersion: task.rowVersion, task: result.task },
-          );
-          await reconcileTaskGoalDispatch(task, (synchronized ?? task).state);
-          if (result.goal?.status === "active" && result.message) {
-            const dispatchLease = taskGoalDispatchLease(task);
-            if (dispatchLease) await retainTaskGoalLease(dispatchLease);
-            const dispatchConfiguration = task.dispatch?.modelConfiguration;
-            const modelId =
-              dispatchConfiguration?.modelId ?? (await resolveModelId(context));
-            await beginTurn(
-              context,
-              {
-                text: "Resume the active encrypted Task Goal.",
-                mode: "goal",
-                modelId,
-                reasoningEffort: dispatchConfiguration?.reasoningEffort,
-                customSubagentModel: dispatchConfiguration?.customSubagentModel,
-                subagentModelId: dispatchConfiguration?.subagentModelId,
-                subagentReasoningEffort:
-                  dispatchConfiguration?.subagentReasoningEffort,
-                idempotencyKey: result.message.idempotencyKey,
-              },
-              {
-                encryptedTaskMessages: {
-                  userMessage: result.message,
-                  response: {
-                    id: randomUUID(),
-                    idempotencyKey: `assistant:${result.message.id}`,
-                  },
-                },
-                purpose: "Resume encrypted Task Goal",
-                runtimes: [runtime],
-                workerPrompt: GOAL_RESUME_PROMPT,
-                ...(dispatchLease
-                  ? scheduledTaskGoalTurnOptions(dispatchLease)
-                  : {}),
-              },
-            );
-          }
-          return reply.send(
-            chatGoalWireResponseSchema.parse({
-              kind: "task-encrypted",
-              goal: result.goal,
-            }),
-          );
+  app.patch<{
+    Params: { chatId: string };
+    Querystring: { encrypted?: string };
+  }>("/api/chats/:chatId/goal", async (request, reply) => {
+    const input = chatGoalUpdateSchema.safeParse(request.body);
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    const context = await repository.getChatExecutionContext(
+      applicationOwnerId(),
+      request.params.chatId,
+    );
+    if (!context) {
+      return reply.code(404).send({ error: "Chat source not found." });
+    }
+    if (!context.threadId) {
+      return reply.code(409).send({ error: "This chat has no goal." });
+    }
+    if (!bridge.isConnected(context.workerId)) {
+      return reply.code(503).send({ error: "Project worker is offline." });
+    }
+    try {
+      const runtime = await runtimeForContext(context);
+      if (!runtime) throw new Error("Selected model was not found.");
+      if (context.experience === "task") {
+        const task = await repository.tasks.get(
+          applicationOwnerId(),
+          context.chatId,
+        );
+        if (!task) {
+          return reply.code(404).send({ error: "Task not found." });
         }
-        const managed = managedConsoleSessionContext(context)
-          ? await prepareManagedConsoleLaunch(context, runtime, {
-              ownerId: applicationOwnerId(),
-              bridge,
-              repository,
-              routePairsForConfiguration,
-            })
-          : null;
-        const result = chatGoalResponseSchema.parse(
+        const message =
+          input.data.status === "active" &&
+          !context.automationPaused &&
+          !chatIsExecuting(context.status)
+            ? {
+                id: randomUUID(),
+                idempotencyKey: `task-goal-resume:${randomUUID()}`,
+                kind: "resume" as const,
+              }
+            : null;
+        const result = taskGoalWorkerResultSchema.parse(
           await bridge.request(context.workerId, {
-            ...(managed
-              ? {
-                  session: managed.session,
-                  subagentDefaults: managed.subagentDefaults,
-                  mcpServers: managed.mcpServers,
-                  planMode: managed.planMode,
-                }
-              : {}),
             type: "chat.goal.update",
             chatId: context.chatId,
             cwd: context.cwd,
             threadId: context.threadId,
             status: input.data.status,
+            protectedObjective: input.data.protectedObjective,
             model: runtime.model,
             provider: runtime.provider,
             permissionProfileId:
               effectivePermissionProfile(context).effectiveId,
+            taskContext: {
+              task: taskContentFromSummary(task),
+              automationPaused: context.automationPaused,
+              chatStatus: context.status,
+              message,
+            },
           }),
         );
         if (
-          !managed &&
-          input.data.status === "active" &&
-          !context.automationPaused &&
-          !chatIsExecuting(context.status) &&
-          result.goal
+          result.goal?.chatId !== context.chatId ||
+          (message &&
+            (result.message?.id !== message.id ||
+              result.message.idempotencyKey !== message.idempotencyKey))
         ) {
-          const modelId = await resolveModelId(context);
+          throw new Error("Encrypted Goal metadata is invalid.");
+        }
+        const synchronized = await repository.tasks.syncImplementationState(
+          applicationOwnerId(),
+          context.chatId,
+          { rowVersion: task.rowVersion, task: result.task },
+        );
+        await reconcileTaskGoalDispatch(task, (synchronized ?? task).state);
+        if (result.goal?.status === "active" && result.message) {
+          const dispatchLease = taskGoalDispatchLease(task);
+          if (dispatchLease) await retainTaskGoalLease(dispatchLease);
+          const dispatchConfiguration = task.dispatch?.modelConfiguration;
+          const modelId =
+            dispatchConfiguration?.modelId ?? (await resolveModelId(context));
           await beginTurn(
             context,
             {
-              text: `Resume goal: ${result.goal.objective}`,
+              text: "Resume the active encrypted Task Goal.",
               mode: "goal",
               modelId,
-              idempotencyKey: `goal-resume:${result.goal.updatedAt}:${randomUUID()}`,
+              reasoningEffort: dispatchConfiguration?.reasoningEffort,
+              customSubagentModel: dispatchConfiguration?.customSubagentModel,
+              subagentModelId: dispatchConfiguration?.subagentModelId,
+              subagentReasoningEffort:
+                dispatchConfiguration?.subagentReasoningEffort,
+              idempotencyKey: result.message.idempotencyKey,
             },
             {
-              purpose: "Resume Codex goal",
+              encryptedTaskMessages: {
+                userMessage: result.message,
+                response: {
+                  id: randomUUID(),
+                  idempotencyKey: `assistant:${result.message.id}`,
+                },
+              },
+              purpose: "Resume encrypted Task Goal",
               runtimes: [runtime],
               workerPrompt: GOAL_RESUME_PROMPT,
+              ...(dispatchLease
+                ? scheduledTaskGoalTurnOptions(dispatchLease)
+                : {}),
             },
           );
         }
-        return reply.send(chatGoalWireResponseSchema.parse(result));
-      } catch (error) {
-        return reply.code(409).send({
-          error:
-            context.experience === "task"
-              ? "Encrypted Goal update failed."
-              : errorMessage(error),
-        });
+        return reply.send(
+          chatGoalWireResponseSchema.parse({
+            kind: "task-encrypted",
+            goal: result.goal,
+          }),
+        );
       }
-    },
-  );
+      const managed = managedConsoleSessionContext(context)
+        ? await prepareManagedConsoleLaunch(context, runtime, {
+            ownerId: applicationOwnerId(),
+            bridge,
+            repository,
+            routePairsForConfiguration,
+          })
+        : null;
+      const result = chatGoalWireResponseSchema.parse(
+        await bridge.request(context.workerId, {
+          ...(managed
+            ? {
+                session: managed.session,
+                subagentDefaults: managed.subagentDefaults,
+                mcpServers: managed.mcpServers,
+                planMode: managed.planMode,
+              }
+            : {}),
+          type: "chat.goal.update",
+          protectObjective:
+            request.query.encrypted === "1" ||
+            Boolean(input.data.protectedObjective),
+          chatId: context.chatId,
+          cwd: context.cwd,
+          threadId: context.threadId,
+          status: input.data.status,
+          protectedObjective: input.data.protectedObjective,
+          model: runtime.model,
+          provider: runtime.provider,
+          permissionProfileId: effectivePermissionProfile(context).effectiveId,
+        }),
+      );
+      if (
+        !managed &&
+        input.data.status === "active" &&
+        !context.automationPaused &&
+        !chatIsExecuting(context.status) &&
+        result.goal
+      ) {
+        const modelId = await resolveModelId(context);
+        await beginTurn(
+          context,
+          {
+            text: "Resume the existing goal.",
+            mode: "goal",
+            modelId,
+            idempotencyKey: `goal-resume:${result.goal.updatedAt}:${randomUUID()}`,
+          },
+          {
+            purpose: "Resume Codex goal",
+            runtimes: [runtime],
+            workerPrompt: GOAL_RESUME_PROMPT,
+          },
+        );
+      }
+      return reply.send(chatGoalWireResponseSchema.parse(result));
+    } catch (error) {
+      return reply.code(409).send({
+        error:
+          context.experience === "task"
+            ? "Encrypted Goal update failed."
+            : errorMessage(error),
+      });
+    }
+  });
 
   app.delete<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/goal",

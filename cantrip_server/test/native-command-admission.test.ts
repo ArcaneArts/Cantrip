@@ -1450,6 +1450,23 @@ describe("durable native command admission", () => {
         payload: { status: "active" },
       });
       expect(resumed.statusCode, resumed.body).toBe(200);
+      const message = opaqueMessage("user");
+      const protectedObjective = {
+        ...message,
+        classification: { ...message.classification, mode: "goal" as const },
+      };
+      const edited = await app.inject({
+        method: "PATCH",
+        url: `/api/chats/${chatId}/goal`,
+        payload: { protectedObjective },
+      });
+      expect(edited.statusCode, edited.body).toBe(200);
+      expect(request.mock.calls.at(-1)?.[1]).toMatchObject({
+        type: "chat.goal.update",
+        protectObjective: true,
+        protectedObjective,
+      });
+      expect(request.mock.calls.at(-1)?.[1].status).toBeUndefined();
       const cleared = await app.inject({
         method: "DELETE",
         url: `/api/chats/${chatId}/goal`,
@@ -1462,6 +1479,7 @@ describe("durable native command admission", () => {
       expect(compacted.statusCode, compacted.body).toBe(200);
       expect(request.mock.calls.map(([, command]) => command.type)).toEqual([
         "chat.goal.update",
+        "chat.goal.update",
         "chat.goal.clear",
         "chat.compact",
       ]);
@@ -1472,7 +1490,7 @@ describe("durable native command admission", () => {
           mcpServers: [],
           subagentDefaults: { model: child.model, provider: child.provider },
         });
-      expect(routePairsForConfiguration).toHaveBeenCalledTimes(3);
+      expect(routePairsForConfiguration).toHaveBeenCalledTimes(4);
       expect(beginTurn).not.toHaveBeenCalled();
     } finally {
       await app.close();

@@ -104,10 +104,10 @@ let goal = mode === "replace-completed"
   : {
       threadId,
       objective: "Active goal",
-      status: "active",
+      status: mode === "edit-paused" ? "paused" : "active",
       tokenBudget: null,
-      tokensUsed: 0,
-      timeUsedSeconds: 0,
+      tokensUsed: mode === "edit-paused" ? 125 : 0,
+      timeUsedSeconds: mode === "edit-paused" ? 45 : 0,
       createdAt: 1,
       updatedAt: 2
     };
@@ -180,6 +180,12 @@ server.on("connection", (socket) => {
       return;
     }
     if (message.method === "thread/goal/set") {
+      if (mode === "edit-paused") {
+        if (message.params.status !== undefined || message.params.tokenBudget !== undefined) process.exit(43);
+        goal = { ...goal, objective: message.params.objective, updatedAt: 3 };
+        reply(socket, message.id, { goal });
+        return;
+      }
       if (mode === "replace-completed" && !cleared) {
         socket.send(JSON.stringify({
           id: message.id,
@@ -400,6 +406,7 @@ process.on("SIGINT", () => server.close(() => process.exit(0)));
 }
 
 type FixtureMode =
+  | "edit-paused"
   | "automatic-continuation"
   | "replace-completed"
   | "turn-id-race"
@@ -443,6 +450,31 @@ async function fixture(
 }
 
 describe("Codex goal streaming", () => {
+  it("edits an existing goal without resuming it or resetting its budget and usage", async () => {
+    const { root, runtime } = await fixture("edit-paused");
+    try {
+      await expect(
+        runtime.updateGoal({
+          cwd: root,
+          model,
+          provider,
+          permissionProfileId: YOLO_PERMISSION_PROFILE_ID,
+          threadId: "goal-thread",
+          objective: "Revised goal",
+        }),
+      ).resolves.toMatchObject({
+        goal: {
+          objective: "Revised goal",
+          status: "paused",
+          tokensUsed: 125,
+          timeUsedSeconds: 45,
+          createdAt: 1,
+        },
+      });
+    } finally {
+      runtime.close();
+    }
+  });
   it("reports process exit before an endpoint is announced", async () => {
     const { root, runtime } = await fixture("startup-exit");
     try {

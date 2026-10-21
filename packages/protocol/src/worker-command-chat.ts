@@ -465,6 +465,7 @@ export const workerChatCommandSchemas = [
   }),
   z.object({
     type: z.literal("chat.goal.get"),
+    protectObjective: z.boolean().optional(),
     chatId: z.string().min(1),
     cwd: z.string().min(1),
     threadId: z.string().min(1),
@@ -497,6 +498,7 @@ export const workerChatCommandSchemas = [
   }),
   z.object({
     type: z.literal("chat.goal.update"),
+    protectObjective: z.boolean().optional(),
     session: managedSessionContextSchema.optional(),
     subagentDefaults: managedSessionSubagentDefaultsSchema
       .nullable()
@@ -507,6 +509,7 @@ export const workerChatCommandSchemas = [
     cwd: z.string().min(1),
     threadId: z.string().min(1),
     status: chatGoalUpdateSchema.shape.status,
+    protectedObjective: chatGoalUpdateSchema.shape.protectedObjective,
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
     permissionProfileId: permissionProfileIdSchema,

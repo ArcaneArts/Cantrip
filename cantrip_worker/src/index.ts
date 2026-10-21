@@ -245,6 +245,7 @@ import {
   encryptChatTurnResult,
   openEncryptedChatTurn,
   protectChatMessage,
+  protectChatGoalResponse,
   protectChatTurn,
   reprotectChatMessages,
 } from "./chat-message-encryption.js";
@@ -6510,7 +6511,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               ownerId: workerEncryption.ownerId(),
               rawResult: result,
             })
-          : result;
+          : command.protectObjective
+            ? protectChatGoalResponse(result, workerEncryption)
+            : result;
       }
       case "chat.goal.create": {
         const encryptedTaskGoal = typeof command.objective !== "string";
@@ -6570,6 +6573,14 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         }
       }
       case "chat.goal.update": {
+        const objective = command.protectedObjective
+          ? await openEncryptedChatTurn({
+              history: [],
+              prompt: command.protectedObjective,
+              service: workerEncryption,
+              threadId: command.threadId,
+            })
+          : undefined;
         const prepared = await prepareManagedMutation(command, provider());
         const result = await (
           prepared?.runtime ??
@@ -6587,6 +6598,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           permissionProfileId: command.permissionProfileId,
           provider: provider(),
           status: command.status,
+          objective,
           threadId: prepared?.threadId ?? command.threadId,
         });
         return command.taskContext
@@ -6598,7 +6610,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               ownerId: workerEncryption.ownerId(),
               rawResult: result,
             })
-          : result;
+          : command.protectObjective
+            ? protectChatGoalResponse(result, workerEncryption)
+            : result;
       }
       case "chat.goal.clear": {
         const prepared = await prepareManagedMutation(command, provider());
