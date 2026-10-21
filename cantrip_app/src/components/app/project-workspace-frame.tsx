@@ -21,7 +21,7 @@ import {
   type ProjectPaneSummary,
 } from "@cantrip/protocol";
 import { useQueries } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
+import { Info, Plus } from "lucide-react";
 import {
   Fragment,
   useMemo,
@@ -70,6 +70,7 @@ import {
   ProjectPaneTabStrip,
   surfaceCanDelete,
   surfaceDeleteLabel,
+  surfaceNeedsApproval,
 } from "@/components/workspace/project-tab-bar";
 import {
   ProjectSurfaceCreateMenu,
@@ -178,7 +179,8 @@ function SortableDockRailTab({
       : active
         ? "Collapse"
         : "Focus";
-  const actionLabel = `${action} ${surface.title}`;
+  const needsApproval = surfaceNeedsApproval(surface);
+  const actionLabel = `${action} ${surface.title}${needsApproval ? " (Approval required)" : ""}`;
   return (
     <div
       className={expanded ? "h-10 w-40 shrink-0" : "size-10 shrink-0"}
@@ -221,7 +223,9 @@ function SortableDockRailTab({
                 tooltipSide={tooltipSide}
                 variant="ghost"
               >
-                {surface.kind === "builtin" ? (
+                {needsApproval ? (
+                  <Info aria-hidden="true" className="size-4 text-amber-500" />
+                ) : surface.kind === "builtin" ? (
                   <ProjectBuiltInSurfaceIcon
                     className="size-4"
                     definitionId={surface.entity.definitionId}

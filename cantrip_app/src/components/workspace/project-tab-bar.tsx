@@ -8,7 +8,7 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { FileCode2, MoreHorizontal, Plus, X } from "lucide-react";
+import { FileCode2, Info, MoreHorizontal, Plus, X } from "lucide-react";
 import type { ExecutionTarget, ProjectPaneRegion } from "@cantrip/protocol";
 import { Fragment, useCallback, useState, type ReactNode } from "react";
 import {
@@ -99,8 +99,16 @@ export function surfaceDeleteLabel(surface: ProjectSurface): string {
   return surface.kind === "chat" ? "Archive Resource" : "Delete Resource";
 }
 
+export function surfaceNeedsApproval(surface: ProjectSurface): boolean {
+  return (
+    surface.kind === "chat" && surface.entity.status === "waiting-for-approval"
+  );
+}
+
 function SurfaceTabIcon({ surface }: { surface: ProjectSurface }) {
-  return surface.kind === "builtin" ? (
+  return surfaceNeedsApproval(surface) ? (
+    <Info aria-hidden="true" className="size-3.5 shrink-0 text-amber-500" />
+  ) : surface.kind === "builtin" ? (
     <ProjectBuiltInSurfaceIcon
       className="size-3.5 shrink-0"
       definitionId={surface.entity.definitionId}
@@ -228,6 +236,9 @@ export function ProjectPaneTabStrip({
               const active =
                 !previewFile?.active && surface.tabKey === activeTabKey;
               const editing = editingTabKey === surface.tabKey;
+              const tabLabel = surfaceNeedsApproval(surface)
+                ? `${surface.title} (Approval required)`
+                : surface.title;
               const canRename = surfaceCanRename(surface);
               const canDelete = surfaceCanDelete(surface);
               const menuActions: SurfaceMenuActions = {
@@ -278,7 +289,7 @@ export function ProjectPaneTabStrip({
                             data-condensed={
                               !editing && memberPosition >= expanded
                             }
-                            title={surface.title}
+                            title={tabLabel}
                             style={{
                               width:
                                 !editing && memberPosition >= expanded
@@ -313,7 +324,7 @@ export function ProjectPaneTabStrip({
                               <button
                                 type="button"
                                 role="tab"
-                                aria-label={surface.title}
+                                aria-label={tabLabel}
                                 aria-selected={active}
                                 className="tab-color-content flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left"
                                 onClick={() => onSelect(surface.tabKey)}

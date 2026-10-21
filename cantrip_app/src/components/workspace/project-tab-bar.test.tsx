@@ -258,6 +258,62 @@ function renderTabs(surface: ProjectFileSurface) {
 }
 
 describe("project pane tab strip", () => {
+  it.each(["tabs", "icons"] as const)(
+    "updates an inactive chat's approval indicator in %s mode",
+    async (mode) => {
+      display.mode = mode;
+      const surface = chatSurface();
+      const onSelect = vi.fn();
+      const tabs = (status: typeof surface.entity.status) => (
+        <DndContext>
+          <ProjectPaneTabStrip
+            activeTabKey=""
+            onClose={vi.fn()}
+            onCreate={vi.fn()}
+            onDelete={vi.fn()}
+            onRename={vi.fn()}
+            onSelect={onSelect}
+            surfaces={[{ ...surface, entity: { ...surface.entity, status } }]}
+          />
+        </DndContext>
+      );
+      let renderer!: TestRenderer.ReactTestRenderer;
+      await act(async () => {
+        renderer = TestRenderer.create(tabs("idle"));
+      });
+
+      for (const status of [
+        "waiting-for-approval",
+        "running",
+        "idle",
+      ] as const) {
+        await act(async () => renderer.update(tabs(status)));
+        const pending = status === "waiting-for-approval";
+        const tab = renderer.root.findByProps({ role: "tab" });
+        const frame = renderer.root.findByProps({
+          "data-project-tab-key": surface.tabKey,
+        });
+        const label = pending ? "Agent chat (Approval required)" : "Agent chat";
+        expect(tab.props["aria-selected"]).toBe(false);
+        expect(tab.props["aria-label"]).toBe(label);
+        expect(frame.props.title).toBe(label);
+        expect(frame.props["data-condensed"]).toBe(mode === "icons");
+        expect(
+          tab.findAll(
+            (node) =>
+              node.type === "svg" &&
+              node.props.className.includes("text-amber-500"),
+          ),
+        ).toHaveLength(pending ? 1 : 0);
+        if (pending) {
+          await act(async () => tab.props.onClick());
+          expect(onSelect).toHaveBeenCalledWith(surface.tabKey);
+        }
+      }
+      await act(async () => renderer.unmount());
+    },
+  );
+
   it.each([
     ["tabs", 0, false],
     ["icons", 208, true],
