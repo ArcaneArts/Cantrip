@@ -204,6 +204,21 @@ describe("owned input and viewport state", () => {
       "a\nb",
     );
   });
+  it("keeps an empty first line intact when outdenting at offset zero", () => {
+    const text = "\nnext";
+    const outdent = indentationChange(text, 0, 0, true);
+    expect(
+      text.slice(0, outdent.change.from) +
+        outdent.change.insert +
+        text.slice(outdent.change.to),
+    ).toBe(text);
+    const indent = indentationChange(text, 0, text.length, false);
+    expect(
+      text.slice(0, indent.change.from) +
+        indent.change.insert +
+        text.slice(indent.change.to),
+    ).toBe("  \n  next");
+  });
   it("keeps only visible lines plus overscan, including a trailing empty line", () => {
     expect(editorViewport(24012, 480, 100000)).toEqual({
       first: 992,

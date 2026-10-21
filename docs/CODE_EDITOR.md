@@ -116,6 +116,9 @@ software keyboard. The integration runner restarts both real server and worker
 processes, then verifies explicit saves after reconnection. It also creates an
 actual alternate worktree, saves there through the native file window, and
 verifies that the Primary file did not change.
+It also provisions a standalone Chat through the normal API, seeds a disposable
+scratch file after the worker creates its root, and reads/saves that file using
+the actual Chat file-window route.
 
 The bundle command emits `.qa/native-editor-bundle/report.json` with production
 asset sizes and module attribution. Whole shared chunks are not incremental
@@ -125,15 +128,15 @@ neither fixture timings nor worker sizes represent full-client startup cost.
 
 An October 21, 2026 macOS arm64 sample using Node 24.14.0 and headless
 Chromium/WebKit measured component-fixture opening at 118–278 ms and warm file
-switching at 36–60 ms across desktop/phone layouts. Input-event-to-two-animation-
-frame samples were 11–19 ms for the small document and 35–44 ms for the
+switching at 36–60 ms across desktop/phone layouts. Time from an input event
+through two animation frames was 11–19 ms for the small document and 35–44 ms for the
 20,001-line document; scrolling to its final line took 39–54 ms, with coloring
 arriving at 87–137 ms. These are individual fixture samples, not production
 latency guarantees, and the broad repository checks were running concurrently.
 The full production-client fixture records its own file-open/API timings,
 which also include encrypted worker connection setup.
 
-The corresponding production attribution recorded 19,491 rendered characters
+The corresponding production attribution recorded 19,509 rendered characters
 for the ten owned client editor modules before final chunk minification. The
 standalone worker was 11,825 raw / 4,361 gzip bytes; its two lazy grammar families
 were 6,386 raw / 2,849 gzip bytes combined. Editor CSS was 3,102 raw / 1,098 gzip

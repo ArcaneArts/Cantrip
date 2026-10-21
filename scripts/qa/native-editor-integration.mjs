@@ -24,7 +24,14 @@ for (const [name, engine, mobile] of selected) {
   const consoleErrors = [];
   const results = [],
     errors = [],
-    requests = [];
+    requests = [],
+    codeCreations = [];
+  const usedCode = () =>
+    requests.some((url) =>
+      /monaco|editor\.api|code-attachments|code-session|\/code-tabs\/[^/]+\/(?:protected-attachment|sessions)/u.test(
+        url,
+      ),
+    ) || codeCreations.length > 0;
   const record = (event, details = {}) => {
     const entry = {
       event,
@@ -48,14 +55,20 @@ for (const [name, engine, mobile] of selected) {
       hasTouch: mobile,
       isMobile: mobile,
     });
+    context.on("request", (request) => {
+      const pathname = new URL(request.url()).pathname;
+      requests.push(pathname);
+      if (
+        request.method() === "POST" &&
+        /\/api\/projects\/[^/]+\/code-tabs$/u.test(pathname)
+      )
+        codeCreations.push(pathname);
+    });
     page = await context.newPage();
     page.on("pageerror", (error) => errors.push(error.message));
     page.on("console", (message) => {
       if (message.type() === "error") consoleErrors.push(message.text());
     });
-    page.on("request", (request) =>
-      requests.push(new URL(request.url()).pathname),
-    );
     page.on("requestfinished", (request) => {
       const timing = request.timing();
       if (new URL(request.url()).pathname.startsWith("/api/"))
@@ -161,12 +174,7 @@ for (const [name, engine, mobile] of selected) {
       requests: networkTimings.filter((request) => request.start >= fileOpenAt),
     });
     assert.equal(await page.locator("iframe").count(), 0);
-    assert.equal(
-      requests.some((url) =>
-        /monaco|editor\.api|code-attachments|code-session/u.test(url),
-      ),
-      false,
-    );
+    assert.equal(usedCode(), false);
     const file = path.join(fixture.repositorySeed.repository, "qa.txt");
     const saveOutcome = async (marker) => {
       const end = Date.now() + 15000;
@@ -521,6 +529,77 @@ for (const [name, engine, mobile] of selected) {
     await alternatePage.close();
     await page.evaluate(() => window.__qaRepositoryFixture.closePopouts());
     record("native.alternate-worktree", { status: "pass" });
+    const chat = await page.evaluate(() =>
+      window.__qaRepositoryFixture.createChat(),
+    );
+    const chatFile = path.join(
+      fixture.directory,
+      "worker",
+      "chat-scratch",
+      chat.id,
+      "notes.cantrip-source",
+    );
+    const provisionDeadline = Date.now() + 30000;
+    for (;;) {
+      try {
+        await writeFile(chatFile, "Chat editor baseline\n");
+        break;
+      } catch (error) {
+        // Retry an actual missing directory while the real provision job runs.
+        // Never create the worker-owned scratch directory or registry ourselves.
+        if (error.code !== "ENOENT" || Date.now() > provisionDeadline)
+          throw error;
+        await delay(50);
+      }
+    }
+    const chatPage = await context.newPage();
+    chatPage.on("pageerror", (error) => errors.push(error.message));
+    const chatSearch = await page.evaluate(
+      (id) =>
+        window.__qaRepositoryFixture.chatFileSearch(id, "notes.cantrip-source"),
+      chat.id,
+    );
+    await chatPage.goto(`${fixture.origin}/${chatSearch}`, {
+      waitUntil: "domcontentloaded",
+    });
+    const chatInput = chatPage.getByRole("textbox", {
+      name: "Edit notes.cantrip-source",
+      exact: true,
+    });
+    try {
+      await chatInput.waitFor({ timeout: 30000 });
+      assert.equal(await chatInput.inputValue(), "Chat editor baseline\n");
+      await chatInput.fill("Chat native saved 😀é\n");
+      await chatInput.press("ControlOrMeta+s");
+      const chatSaveDeadline = Date.now() + 15000;
+      while ((await readFile(chatFile, "utf8")) !== "Chat native saved 😀é\n") {
+        if (Date.now() > chatSaveDeadline)
+          throw new Error("Chat native save did not reach the scratch file");
+        await delay(50);
+      }
+      assert.equal(await chatPage.locator("iframe").count(), 0);
+      await chatPage.screenshot({
+        path: path.join(fixture.directory, "native-chat-file.png"),
+      });
+      record("native.chat-file", { status: "pass" });
+    } catch (error) {
+      await writeFile(
+        path.join(fixture.directory, "native-chat-failed.aria.txt"),
+        await chatPage
+          .locator("body")
+          .ariaSnapshot({ timeout: 5000 })
+          .catch(() => ""),
+      );
+      await chatPage
+        .screenshot({
+          path: path.join(fixture.directory, "native-chat-failed.png"),
+          timeout: 5000,
+        })
+        .catch(() => {});
+      throw error;
+    } finally {
+      await chatPage.close();
+    }
     await input.pressSequentially("conflicting draft");
     const conflictDraft = await input.inputValue();
     await writeFile(file, "external edit\n");
@@ -532,6 +611,12 @@ for (const [name, engine, mobile] of selected) {
     assert.equal(await input.inputValue(), conflictDraft);
     assert.equal(await readFile(file, "utf8"), "external edit\n");
     record("native.conflict", { status: "pass" });
+    if (!process.argv.includes("--vscode"))
+      assert.equal(
+        usedCode(),
+        false,
+        "Ordinary file routes across every window must not create Code tabs/attachments or load Monaco",
+      );
     await page.screenshot({
       path: path.join(fixture.directory, "native-editor.png"),
     });
@@ -562,7 +647,14 @@ for (const [name, engine, mobile] of selected) {
     await writeFile(
       path.join(fixture.directory, "native-editor-results.json"),
       JSON.stringify(
-        { results, errors, consoleErrors, networkTimings },
+        {
+          results,
+          errors,
+          consoleErrors,
+          networkTimings,
+          resourcePaths: [...new Set(requests)],
+          codeCreations,
+        },
         null,
         2,
       ),
