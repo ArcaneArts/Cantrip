@@ -1668,7 +1668,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-goals.ts",
-      "line": 446,
+      "line": 451,
       "method": "DELETE",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/goal",
@@ -1694,7 +1694,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-goals.ts",
-      "line": 265,
+      "line": 266,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/goal",
@@ -1707,7 +1707,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-goals.ts",
-      "line": 213,
+      "line": 214,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/goal",
