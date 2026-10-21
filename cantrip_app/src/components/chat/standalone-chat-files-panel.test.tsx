@@ -105,6 +105,7 @@ vi.mock("@/lib/desktop-popout", () => ({
 }));
 
 import { StandaloneChatFilesPanel } from "./standalone-chat-files-panel";
+import { chatEditorSessions } from "./standalone-chat-editor-sessions";
 
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -137,7 +138,7 @@ const chat = standaloneChatSummarySchema.parse({
   worktreeMode: null,
 });
 
-async function renderPanel(desktopRuntime: boolean) {
+async function renderPanel(desktopRuntime: boolean, selectedChat = chat) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -146,7 +147,7 @@ async function renderPanel(desktopRuntime: boolean) {
     renderer = TestRenderer.create(
       <QueryClientProvider client={client}>
         <StandaloneChatFilesPanel
-          chat={chat}
+          chat={selectedChat}
           desktopRuntime={desktopRuntime}
           requestedPath={null}
         />
@@ -163,6 +164,7 @@ async function renderPanel(desktopRuntime: boolean) {
 
 describe("standalone Chat files panel", () => {
   beforeEach(() => {
+    chatEditorSessions.discardAll();
     desktop.openDesktopStandaloneChatFile.mockClear();
     api.saveStandaloneChatFile.mockReset();
     api.saveStandaloneChatFile.mockResolvedValue({
@@ -257,6 +259,112 @@ describe("standalone Chat files panel", () => {
     ).toHaveLength(0);
     await act(async () => renderer.unmount());
     client.clear();
+  });
+
+  it("retains a Chat file draft across in-app unmounts and actually discards it on confirmed close", async () => {
+    const first = await renderPanel(false);
+    await act(async () =>
+      first.renderer.root
+        .findByProps({ "data-chat-file-path": "notes.txt" })
+        .props.onClick(),
+    );
+    await vi.waitFor(() =>
+      expect(
+        first.renderer.root.findAllByProps({ "data-editor": true }),
+      ).toHaveLength(1),
+    );
+    await act(async () =>
+      (editor.current as EditorProps).onChange("retained navigation draft"),
+    );
+    const retained = (editor.current as EditorProps).session;
+    retained.selection = { start: 2, end: 7, direction: "backward" };
+    retained.scrollTop = 120;
+    await act(async () => first.renderer.unmount());
+    first.client.clear();
+
+    const unloadWhileHidden = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(unloadWhileHidden);
+    expect(unloadWhileHidden.defaultPrevented).toBe(true);
+
+    api.getStandaloneChatFile.mockRejectedValueOnce(
+      new Error("worker disconnected"),
+    );
+    const second = await renderPanel(false, {
+      ...chat,
+      activeScratchRootId: "00000000-0000-4000-8000-000000000003",
+    });
+    await act(async () =>
+      second.renderer.root
+        .findByProps({ "data-chat-file-path": "notes.txt" })
+        .props.onClick(),
+    );
+    await vi.waitFor(() =>
+      expect(
+        second.renderer.root.findAllByProps({ "data-editor": true }),
+      ).toHaveLength(1),
+    );
+    expect((editor.current as EditorProps).session).toBe(retained);
+    expect(retained.selection).toEqual({
+      start: 2,
+      end: 7,
+      direction: "backward",
+    });
+    expect(retained.scrollTop).toBe(120);
+    expect(api.getStandaloneChatFile).toHaveBeenLastCalledWith(
+      chat.id,
+      "notes.txt",
+      {
+        workerId: chat.activeWorkerId,
+        scratchRootId: chat.activeScratchRootId,
+      },
+    );
+    expect(retained.history.undo(retained.text)?.text).toBe("hello");
+    api.saveStandaloneChatFile.mockRejectedValueOnce(
+      new Error("scratch binding moved"),
+    );
+    await act(async () => (editor.current as EditorProps).onSave());
+    await vi.waitFor(() =>
+      expect(JSON.stringify(second.renderer.toJSON())).toContain(
+        "scratch binding moved",
+      ),
+    );
+    expect(api.saveStandaloneChatFile).toHaveBeenLastCalledWith(
+      chat.id,
+      {
+        path: "notes.txt",
+        content: "retained navigation draft",
+        version: "version-one",
+      },
+      {
+        workerId: chat.activeWorkerId,
+        scratchRootId: chat.activeScratchRootId,
+      },
+    );
+    expect(retained.text).toBe("retained navigation draft");
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    await act(async () =>
+      second.renderer.root
+        .findByProps({ "aria-label": "Close Chat file" })
+        .props.onClick(),
+    );
+    await act(async () =>
+      second.renderer.root
+        .findByProps({ "data-chat-file-path": "notes.txt" })
+        .props.onClick(),
+    );
+    await vi.waitFor(() =>
+      expect(
+        second.renderer.root.findAllByProps({ "data-editor": true }),
+      ).toHaveLength(1),
+    );
+    expect((editor.current as EditorProps).session.text).toBe("hello");
+    expect((editor.current as EditorProps).session).not.toBe(retained);
+    const cleanUnload = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(cleanUnload);
+    expect(cleanUnload.defaultPrevented).toBe(false);
+    confirm.mockRestore();
+    await act(async () => second.renderer.unmount());
+    second.client.clear();
   });
 
   it("opens Chat files in a native desktop window", async () => {

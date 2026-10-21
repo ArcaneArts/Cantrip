@@ -5,10 +5,12 @@ import { File, Loader2, Save } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Markdown } from "@/components/chat/markdown";
 import { NativeCodeEditor } from "@/components/editor/native-code-editor";
+import type { EditorDocumentSession } from "@/components/editor/document-session";
 import {
-  EditorSessionStore,
-  type EditorDocumentSession,
-} from "@/components/editor/document-session";
+  chatEditorSessions,
+  chatFileDocumentId,
+  retainedChatFileBinding,
+} from "./standalone-chat-editor-sessions";
 import { structuredFileFormatForPath } from "@/components/explorer/explorer-file-language";
 import { StructuredFileVisual } from "@/components/explorer/structured-file-visual";
 import { formatExplorerSize } from "@/components/explorer/explorer-entry-metadata";
@@ -102,7 +104,7 @@ export function ChatFilePreview({
   chat?: StandaloneChatSummary;
   entry: ExplorerEntry | null;
   onSaved(): void;
-  onDirtyChange?(dirty: boolean): void;
+  onDirtyChange?(dirty: boolean, document: EditorDocumentSession | null): void;
 }) {
   const identity = getClientSession();
   const chats = useQuery({
@@ -119,8 +121,8 @@ export function ChatFilePreview({
   const chat = knownChat ?? chats.data?.find((value) => value.id === chatId);
   // Pin the binding that supplied this document. A relocation must never redirect
   // an old draft; the server validates this exact binding on reads and saves.
-  const [binding, setBinding] = useState<StandaloneChatFileBinding | null>(
-    null,
+  const [binding, setBinding] = useState<StandaloneChatFileBinding | null>(() =>
+    retainedChatFileBinding(chatId, entry?.path),
   );
   useEffect(() => {
     if (!binding && chat?.activeWorkerId && chat.activeScratchRootId)
@@ -153,37 +155,36 @@ export function ChatFilePreview({
   const [content, setContent] = useState("");
   const [version, setVersion] = useState("");
   const [mode, setMode] = useState<PreviewMode>("edit");
-  const sessions = useRef<EditorSessionStore | null>(null);
-  sessions.current ??= new EditorSessionStore();
   const [document, setDocument] = useState<EditorDocumentSession | null>(null);
   const documentRef = useRef(document);
   documentRef.current = document;
   const accountScope = JSON.stringify([identity?.serverId, identity?.user.id]);
   useEffect(() => {
-    sessions.current!.resetScope(accountScope);
+    chatEditorSessions.resetScope(accountScope);
     setDocument(null);
     setContent("");
     setVersion("");
     setBinding(
-      chat?.activeWorkerId && chat.activeScratchRootId
-        ? {
-            workerId: chat.activeWorkerId,
-            scratchRootId: chat.activeScratchRootId,
-          }
-        : null,
+      retainedChatFileBinding(chatId, entry?.path) ??
+        (chat?.activeWorkerId && chat.activeScratchRootId
+          ? {
+              workerId: chat.activeWorkerId,
+              scratchRootId: chat.activeScratchRootId,
+            }
+          : null),
     );
   }, [accountScope]);
-  const documentId = JSON.stringify([
-    identity?.serverId,
-    identity?.user.id,
-    chatId,
-    binding?.workerId,
-    binding?.scratchRootId,
-    entry?.path,
-  ]);
+  const documentId = chatFileDocumentId(chatId, entry?.path, binding);
+  useEffect(() => {
+    const cached = chatEditorSessions.get(documentId) ?? null;
+    setDocument(cached);
+    setContent(cached?.text ?? "");
+    setVersion(cached?.version ?? "");
+    setMode("edit");
+  }, [documentId]);
   useEffect(() => {
     if (!query.data || query.data.path !== entry?.path) return;
-    const next = sessions.current!.open(
+    const next = chatEditorSessions.open(
       documentId,
       query.data.content,
       query.data.version,
@@ -215,12 +216,8 @@ export function ChatFilePreview({
   const dirty = document?.id === documentId && document.dirty;
   const hasUnsavedChanges = Boolean(dirty || document?.saving);
   useEffect(() => {
-    onDirtyChange?.(hasUnsavedChanges);
-    if (!hasUnsavedChanges) return;
-    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [hasUnsavedChanges, onDirtyChange]);
+    onDirtyChange?.(hasUnsavedChanges, document);
+  }, [hasUnsavedChanges, onDirtyChange, document]);
   if (!entry) {
     return (
       <div className="grid h-full place-items-center p-5 text-center text-xs text-muted-foreground">

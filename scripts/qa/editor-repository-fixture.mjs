@@ -57,9 +57,10 @@ export function editorRepositoryFixturePlugin(seed) {
       return {
         code: `${source}\nimport { createGithubProject as qaCreateProject, getProjects as qaGetProjects } from '@/lib/project-encryption';
 import { createProjectWorktree as qaCreateWorktree, getProjectWorktrees as qaGetWorktrees } from '@/lib/api/worktrees';
-import { getExplorers as qaGetExplorers } from '@/lib/api/explorers';
+import { getExplorers as qaGetExplorers, createExplorer as qaCreateExplorer } from '@/lib/api/explorers';
 import { createDesktopExplorerWindowBroker as qaCreateFileBroker } from '@/lib/desktop-explorer-window-broker';
-import { desktopExplorerFileSearch as qaFileSearch } from '@/lib/desktop-popout';
+import { desktopExplorerFileSearch as qaFileSearch, desktopStandaloneChatFileSearch as qaChatFileSearch } from '@/lib/desktop-popout';
+import { createStandaloneChat as qaCreateChat } from '@/lib/api/chats';
 const qaFileBrokers = new Set();
 let qaProjectId = sessionStorage.getItem("__qaRepositoryProjectId");
 globalThis.__qaRepositoryFixture = {
@@ -67,8 +68,12 @@ globalThis.__qaRepositoryFixture = {
   async project() { return (await qaGetProjects()).find(project => project.id === qaProjectId); },
   async worktrees() { return qaGetWorktrees(qaProjectId); },
   async createWorktree(input) { return qaCreateWorktree(qaProjectId, input); },
-  async popout(path) {
-    const [explorer] = await qaGetExplorers(qaProjectId);
+  async createChat() { return qaCreateChat('Native editor QA Chat'); },
+  chatFileSearch(chatId, path) { return qaChatFileSearch({ chatId, path }); },
+  async popout(path, worktreeId) {
+    const explorer = worktreeId
+      ? await qaCreateExplorer(qaProjectId, 'Native editor worktree QA', worktreeId, undefined, undefined, { attachToTabLayout: false })
+      : (await qaGetExplorers(qaProjectId))[0];
     const broker = qaCreateFileBroker({ appearance: 'dark', explorer, path });
     qaFileBrokers.add(broker);
     return qaFileSearch({ explorerId: explorer.id, projectId: qaProjectId, path }, broker.launchId);

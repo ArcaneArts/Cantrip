@@ -6,6 +6,7 @@ import type { SyntaxRequest, SyntaxResponse } from "./worker-protocol";
 const worker = self as unknown as DedicatedWorkerGlobalScope;
 let document: SyntaxDocument | null = null;
 let documentId = "";
+let documentPath = "";
 let revision = -1;
 let queue = Promise.resolve();
 
@@ -18,11 +19,21 @@ worker.onmessage = (event: MessageEvent<SyntaxRequest>) => {
         const catalog = await loadLanguage(language);
         document = new SyntaxDocument(message.text, language, catalog);
         documentId = message.documentId;
+        documentPath = message.path;
         revision = message.revision;
       } else if (documentId !== message.documentId || !document) return;
       else if (message.type === "edit") {
         if (message.baseRevision !== revision) return;
         document.apply(message.change);
+        const language = languageForFile(documentPath, document.lines[0]);
+        if (language !== document.language) {
+          const catalog = await loadLanguage(language);
+          document = new SyntaxDocument(
+            document.lines.join("\n"),
+            language,
+            catalog,
+          );
+        }
         revision = message.revision;
       }
       if (message.revision !== revision || !document) return;

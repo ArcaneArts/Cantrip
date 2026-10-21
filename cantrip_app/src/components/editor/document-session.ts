@@ -138,6 +138,13 @@ export class EditorSessionStore {
       (session) => session.dirty || session.saving,
     );
   }
+  find(
+    predicate: (session: EditorDocumentSession) => boolean,
+  ): EditorDocumentSession | undefined {
+    for (const session of this.sessions.values())
+      if (predicate(session)) return session;
+    return undefined;
+  }
   get(id: string): EditorDocumentSession | undefined {
     const session = this.sessions.get(id);
     if (session) {

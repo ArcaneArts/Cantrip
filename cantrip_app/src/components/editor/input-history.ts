@@ -68,7 +68,7 @@ export function indentationChange(
       change: { from: start, to: end, insert: "  " },
       selection: { start: start + 2, end: start + 2, direction: "none" },
     };
-  const from = text.lastIndexOf("\n", start - 1) + 1;
+  const from = start === 0 ? 0 : text.lastIndexOf("\n", start - 1) + 1;
   const selectedEnd = end > start && text[end - 1] === "\n" ? end - 1 : end;
   const nextLine = text.indexOf("\n", selectedEnd);
   const to = nextLine < 0 ? text.length : nextLine;
