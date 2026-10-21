@@ -1,5 +1,5 @@
 import type { ProjectPaneSummary } from "@cantrip/protocol";
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -295,9 +295,14 @@ describe("dock rail tabs", () => {
     },
   );
 
-  it.each(["right", "bottom"] as const)(
-    "marks an inactive chat awaiting approval in the %s dock",
-    async (region) => {
+  it.each([
+    ["right", "icons"],
+    ["bottom", "icons"],
+    ["bottom", "tabs"],
+  ] as const)(
+    "updates an inactive chat's activity in the %s dock in %s mode",
+    async (region, mode) => {
+      display.mode = mode;
       const chat = surface("chat", "agent", "Agent chat", 0);
       if (chat.kind !== "chat") throw new Error("Expected a chat surface");
       chat.entity.status = "waiting-for-approval";
@@ -320,6 +325,7 @@ describe("dock rail tabs", () => {
         );
       expect(button).toBeDefined();
       expect(button!.props["aria-pressed"]).toBe(false);
+      expect(button!.props["data-agent-running"]).toBe(false);
       expect(button!.props["data-tooltip"]).toBe(label);
       expect(
         button!.findAll(
@@ -330,6 +336,28 @@ describe("dock rail tabs", () => {
       ).toHaveLength(1);
       await act(async () => button!.props.onClick());
       expect(onSelect).toHaveBeenCalledWith(chat, false);
+      const props = renderer.root.findByType(DockRail).props as ComponentProps<
+        typeof DockRail
+      >;
+      for (const status of ["running", "idle", "failed"] as const) {
+        await act(async () => {
+          renderer.update(
+            <DockRail
+              {...props}
+              surfaces={[{ ...chat, entity: { ...chat.entity, status } }]}
+            />,
+          );
+        });
+        const running = status === "running";
+        const label = `Focus Agent chat${running ? " (Running)" : ""}`;
+        const tab = renderer.root.findByProps({
+          "data-dock-rail-tab": chat.tabKey,
+        });
+        const control = tab.findAllByType("button")[0]!;
+        expect(control.props["aria-label"]).toBe(`${label} in ${region} dock`);
+        expect(control.props["data-agent-running"]).toBe(running);
+        expect(control.props["data-tooltip"]).toBe(label);
+      }
       await act(async () => renderer.unmount());
     },
   );

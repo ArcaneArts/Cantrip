@@ -33,6 +33,35 @@
   color: var(--tab-ink);
   transition: color 150ms ease;
 }
+
+/* Mask the glyphs themselves so the same shimmer works on text and SVG icons,
+   including tabs whose label is hidden. Leave tab actions and selection still. */
+.tab-color-content[data-agent-running="true"] > :is(svg, span) {
+  color: color-mix(in oklab, var(--tab-ink) 80%, var(--foreground));
+  mask-image: linear-gradient(
+    105deg,
+    rgb(0 0 0 / 60%) 25%,
+    #000 48%,
+    rgb(0 0 0 / 60%) 72%
+  );
+  mask-size: 250% 100%;
+  animation: agent-tab-running 2s ease-in-out infinite;
+}
+
+@keyframes agent-tab-running {
+  0% {
+    mask-position: 150% 50%;
+    opacity: 0.8;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    mask-position: -50% 50%;
+    opacity: 0.8;
+  }
+}
+
 .tab-color .tab-color-underline {
   position: absolute;
   pointer-events: none;
@@ -64,6 +93,11 @@
   width: 2px;
 }
 @media (prefers-reduced-motion: reduce) {
+  .tab-color-content[data-agent-running="true"] > :is(svg, span) {
+    mask-image: none;
+    animation: none;
+  }
+
   .tab-color .tab-color-content,
   .tab-color .tab-color-underline {
     transition: none;

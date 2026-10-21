@@ -105,6 +105,10 @@ export function surfaceNeedsApproval(surface: ProjectSurface): boolean {
   );
 }
 
+export function surfaceIsRunning(surface: ProjectSurface): boolean {
+  return surface.kind === "chat" && surface.entity.status === "running";
+}
+
 function SurfaceTabIcon({ surface }: { surface: ProjectSurface }) {
   return surfaceNeedsApproval(surface) ? (
     <Info aria-hidden="true" className="size-3.5 shrink-0 text-amber-500" />
@@ -238,7 +242,9 @@ export function ProjectPaneTabStrip({
               const editing = editingTabKey === surface.tabKey;
               const tabLabel = surfaceNeedsApproval(surface)
                 ? `${surface.title} (Approval required)`
-                : surface.title;
+                : surfaceIsRunning(surface)
+                  ? `${surface.title} (Running)`
+                  : surface.title;
               const canRename = surfaceCanRename(surface);
               const canDelete = surfaceCanDelete(surface);
               const menuActions: SurfaceMenuActions = {
@@ -326,6 +332,7 @@ export function ProjectPaneTabStrip({
                                 role="tab"
                                 aria-label={tabLabel}
                                 aria-selected={active}
+                                data-agent-running={surfaceIsRunning(surface)}
                                 className="tab-color-content flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left"
                                 onClick={() => onSelect(surface.tabKey)}
                                 onDoubleClick={(event) => {

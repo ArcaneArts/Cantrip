@@ -258,16 +258,21 @@ function renderTabs(surface: ProjectFileSurface) {
 }
 
 describe("project pane tab strip", () => {
-  it.each(["tabs", "icons"] as const)(
-    "updates an inactive chat's approval indicator in %s mode",
-    async (mode) => {
+  it.each([
+    ["tabs", false],
+    ["tabs", true],
+    ["icons", false],
+    ["icons", true],
+  ] as const)(
+    "updates chat activity in %s mode with active=%s",
+    async (mode, active) => {
       display.mode = mode;
       const surface = chatSurface();
       const onSelect = vi.fn();
       const tabs = (status: typeof surface.entity.status) => (
         <DndContext>
           <ProjectPaneTabStrip
-            activeTabKey=""
+            activeTabKey={active ? surface.tabKey : ""}
             onClose={vi.fn()}
             onCreate={vi.fn()}
             onDelete={vi.fn()}
@@ -285,6 +290,7 @@ describe("project pane tab strip", () => {
       for (const status of [
         "waiting-for-approval",
         "running",
+        "failed",
         "idle",
       ] as const) {
         await act(async () => renderer.update(tabs(status)));
@@ -293,8 +299,13 @@ describe("project pane tab strip", () => {
         const frame = renderer.root.findByProps({
           "data-project-tab-key": surface.tabKey,
         });
-        const label = pending ? "Agent chat (Approval required)" : "Agent chat";
-        expect(tab.props["aria-selected"]).toBe(false);
+        const label = pending
+          ? "Agent chat (Approval required)"
+          : status === "running"
+            ? "Agent chat (Running)"
+            : "Agent chat";
+        expect(tab.props["aria-selected"]).toBe(active);
+        expect(tab.props["data-agent-running"]).toBe(status === "running");
         expect(tab.props["aria-label"]).toBe(label);
         expect(frame.props.title).toBe(label);
         expect(frame.props["data-condensed"]).toBe(mode === "icons");
