@@ -9,6 +9,7 @@ const directory = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  worker: { format: "es" },
   optimizeDeps: {
     exclude: ["@xterm/addon-fit", "@xterm/xterm"],
   },
