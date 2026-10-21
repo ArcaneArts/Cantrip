@@ -1,8 +1,8 @@
 diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
-index 6284c4e..5e41a02 100644
+index dcc2a6fbfe57bc488fc8931515e5dab3e46191e4..69ed09f72db480b788cfa9281287dd72f60d6aa5 100644
 --- a/codex-rs/app-server/src/request_processors/thread_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
-@@ -4639,7 +4639,39 @@ impl ThreadRequestProcessor {
+@@ -4870,7 +4870,39 @@ impl ThreadRequestProcessor {
                  include_archived: true,
                  include_history,
              };
@@ -44,10 +44,10 @@ index 6284c4e..5e41a02 100644
  
          let stored_thread = result.map_err(thread_store_resume_read_error)?;
 diff --git a/codex-rs/app-server/tests/suite/v2/thread_resume.rs b/codex-rs/app-server/tests/suite/v2/thread_resume.rs
-index 6f58231..bdbf559 100644
+index df29831ad02648e70699cb81a516aa275ed07456..84a1728516c34a25296006d0284c0b42f9703def 100644
 --- a/codex-rs/app-server/tests/suite/v2/thread_resume.rs
 +++ b/codex-rs/app-server/tests/suite/v2/thread_resume.rs
-@@ -160,6 +160,125 @@ const DEFAULT_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs
+@@ -165,6 +165,125 @@ const DEFAULT_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs
  #[cfg(not(windows))]
  const DEFAULT_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
  
@@ -173,7 +173,7 @@ index 6f58231..bdbf559 100644
  #[tokio::test]
  async fn thread_resume_paginated_model_context_preserves_original_metadata() -> Result<()> {
      let server = create_mock_responses_server_repeating_assistant("Done").await;
-@@ -442,7 +561,7 @@ async fn wait_for_responses_request_count(
+@@ -447,7 +566,7 @@ async fn wait_for_responses_request_count(
  }
  
  #[tokio::test]
@@ -182,7 +182,7 @@ index 6f58231..bdbf559 100644
      let server = create_mock_responses_server_repeating_assistant("Done").await;
      let codex_home = TempDir::new()?;
      mock_responses_config(&server.uri()).write(codex_home.path())?;
-@@ -462,26 +581,29 @@ async fn thread_resume_rejects_unmaterialized_thread() -> Result<()> {
+@@ -467,26 +586,29 @@ async fn thread_resume_rejects_unmaterialized_thread() -> Result<()> {
      let ThreadStartResponse { thread, .. } =
          timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(start_id)).await??;
  
@@ -225,10 +225,10 @@ index 6f58231..bdbf559 100644
      Ok(())
  }
 diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
-index 16f0fdf..b790735 100644
+index a56afc1a3e05d30ba77be0a2b3a630d460e58e06..027531de4ac840fba017d7305965fabbd6237cb5 100644
 --- a/codex-rs/core/src/codex_thread.rs
 +++ b/codex-rs/core/src/codex_thread.rs
-@@ -340,6 +340,18 @@ impl CodexThread {
+@@ -383,6 +383,18 @@ impl CodexThread {
              .await;
      }
  
@@ -248,10 +248,10 @@ index 16f0fdf..b790735 100644
      pub async fn flush_rollout(&self) -> std::io::Result<()> {
          self.session.flush_rollout().await
 diff --git a/codex-rs/thread-store/src/live_thread.rs b/codex-rs/thread-store/src/live_thread.rs
-index f6f57e6..5485f37 100644
+index ab18df6d8e19a709f299b14dd7d70a76df439133..b9b0dacf666743adfee1118b4728b64c1ec65d79 100644
 --- a/codex-rs/thread-store/src/live_thread.rs
 +++ b/codex-rs/thread-store/src/live_thread.rs
-@@ -305,6 +305,19 @@ impl LiveThread {
+@@ -287,6 +287,19 @@ impl LiveThread {
          self.apply_pending_metadata_update(update, context).await
      }
  
@@ -272,7 +272,7 @@ index f6f57e6..5485f37 100644
          self.thread_store.flush_thread(self.thread_id).await?;
          self.flush_pending_metadata_update_for_existing_history()
 diff --git a/codex-rs/thread-store/src/local/update_thread_metadata.rs b/codex-rs/thread-store/src/local/update_thread_metadata.rs
-index 76bc877..6fc3ea7 100644
+index 393513eb996323a08231e6d6d0265b3f24c55233..e37beba11782eed0ae3d119f244acae5dd71c95c 100644
 --- a/codex-rs/thread-store/src/local/update_thread_metadata.rs
 +++ b/codex-rs/thread-store/src/local/update_thread_metadata.rs
 @@ -73,25 +73,25 @@ pub(super) async fn update_thread_metadata(
@@ -319,12 +319,12 @@ index 76bc877..6fc3ea7 100644
 +        Err(err) => return Err(err),
      };
      let paginated = matches!(history_mode, Some(ThreadHistoryMode::Paginated));
-     let needs_rollout_compat = requires_rollout_compat || patch.name.is_some();
+     if paginated
 diff --git a/codex-rs/thread-store/src/thread_metadata_sync.rs b/codex-rs/thread-store/src/thread_metadata_sync.rs
-index 8e1fc67..7a20279 100644
+index 0351105fc10f97ce3e1c9036702595d89ce68e87..ef6749987c3d5cb427904b6d324b3651ed5598b7 100644
 --- a/codex-rs/thread-store/src/thread_metadata_sync.rs
 +++ b/codex-rs/thread-store/src/thread_metadata_sync.rs
-@@ -151,6 +151,15 @@ impl ThreadMetadataSync {
+@@ -155,6 +155,15 @@ impl ThreadMetadataSync {
              })
      }
  
@@ -340,7 +340,7 @@ index 8e1fc67..7a20279 100644
      pub(crate) fn take_pending_update_for_existing_history(
          &self,
      ) -> Option<PendingThreadMetadataPatch> {
-@@ -547,6 +556,84 @@ mod tests {
+@@ -557,6 +566,84 @@ mod tests {
          assert_eq!(update.patch.first_user_message, None);
      }
  

@@ -1,8 +1,8 @@
 diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
-index 77c9205..cf8bafc 100644
+index 8e05b73fd1d85f18f57aab6d1ba665cd920c9092..901f66c363a5a345866bf51de413324682d84a70 100644
 --- a/codex-rs/app-server-protocol/src/protocol/common.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/common.rs
-@@ -4541,6 +4541,8 @@ mod tests {
+@@ -4547,6 +4547,8 @@ mod tests {
      fn thread_settings_updated_notification_is_marked_experimental() {
          let notification =
              ServerNotification::ThreadSettingsUpdated(v2::ThreadSettingsUpdatedNotification {
@@ -12,7 +12,7 @@ index 77c9205..cf8bafc 100644
                  thread_settings: v2::ThreadSettings {
                      disabled_plugin_ids: Vec::new(),
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-index 8e4c9bb..8185053 100644
+index 6d742af52927a0739c6d9b39445817aab342952b..4cacf7ee9476be9ee432064fd309f46bda52639e 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 @@ -237,6 +237,10 @@ impl ThreadStartResponse {
@@ -56,7 +56,7 @@ index 8e4c9bb..8185053 100644
      pub thread_settings: ThreadSettings,
  }
 diff --git a/codex-rs/app-server/src/bespoke_event_handling.rs b/codex-rs/app-server/src/bespoke_event_handling.rs
-index 173c41e..60d6063 100644
+index 4fe6e2b6d34217e6a1e38baa5fc3efae733c3b99..2fd7aa1aafd67db70e3603a26644aaafc4a0f900 100644
 --- a/codex-rs/app-server/src/bespoke_event_handling.rs
 +++ b/codex-rs/app-server/src/bespoke_event_handling.rs
 @@ -1,7 +1,7 @@
@@ -68,7 +68,7 @@ index 173c41e..60d6063 100644
  use crate::server_request_error::is_turn_transition_server_request_error;
  use crate::thread_state::ThreadState;
  use crate::thread_state::TurnSummary;
-@@ -1231,17 +1231,21 @@ pub(crate) async fn apply_bespoke_event_handling(
+@@ -1235,17 +1235,21 @@ pub(crate) async fn apply_bespoke_event_handling(
                  .await;
          }
          EventMsg::ThreadRolledBack(_) | EventMsg::ThreadQueueChanged(_) => {}
@@ -95,10 +95,10 @@ index 173c41e..60d6063 100644
                              thread_settings,
                          },
 diff --git a/codex-rs/app-server/src/request_processors.rs b/codex-rs/app-server/src/request_processors.rs
-index 143e5ec..446f89b 100644
+index 28985d2eb70fcdb3755eddad291e9c0af7ade122..764af3f71b4573c626fb41752faee37257505b69 100644
 --- a/codex-rs/app-server/src/request_processors.rs
 +++ b/codex-rs/app-server/src/request_processors.rs
-@@ -301,11 +301,11 @@ use codex_app_server_protocol::TurnError;
+@@ -303,11 +303,11 @@ use codex_app_server_protocol::TurnError;
  use codex_app_server_protocol::TurnInterruptParams;
  use codex_app_server_protocol::TurnInterruptResponse;
  use codex_app_server_protocol::TurnItemsView;
@@ -112,7 +112,7 @@ index 143e5ec..446f89b 100644
  use codex_app_server_protocol::TurnStartParams;
  use codex_app_server_protocol::TurnStartResponse;
  use codex_app_server_protocol::TurnStatus;
-@@ -718,6 +718,7 @@ pub(crate) use self::thread_processor::thread_from_stored_thread;
+@@ -729,6 +729,7 @@ pub(crate) use self::thread_processor::thread_from_stored_thread;
  pub(crate) use self::thread_summary::read_summary_from_rollout;
  #[cfg(test)]
  pub(crate) use self::thread_summary::summary_to_thread;
@@ -121,7 +121,7 @@ index 143e5ec..446f89b 100644
  
  pub(crate) fn build_legacy_api_turns_from_rollout_items(items: &[RolloutItem]) -> Vec<Turn> {
 diff --git a/codex-rs/app-server/src/request_processors/persisted_resume_settings_tests.rs b/codex-rs/app-server/src/request_processors/persisted_resume_settings_tests.rs
-index 9045d63..b989c60 100644
+index 12d99d81a5c42ea7d327eb24507fb54d5aa82136..df9072adb3209daedc7015b9fa920157d41d7d01 100644
 --- a/codex-rs/app-server/src/request_processors/persisted_resume_settings_tests.rs
 +++ b/codex-rs/app-server/src/request_processors/persisted_resume_settings_tests.rs
 @@ -28,6 +28,7 @@ fn settings_item(
@@ -132,7 +132,7 @@ index 9045d63..b989c60 100644
              thread_id: None,
              thread_settings: ThreadSettingsSnapshot {
                  disabled_plugin_ids: Vec::new(),
-@@ -199,6 +200,7 @@ fn full_restore_accepts_only_latest_owned_snapshot_not_foreign_or_ownerless_hist
+@@ -193,6 +194,7 @@ fn full_restore_accepts_only_latest_owned_snapshot_not_foreign_or_ownerless_hist
      let item = |thread_id, snapshot| {
          RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(
              ThreadSettingsAppliedEvent {
@@ -141,19 +141,30 @@ index 9045d63..b989c60 100644
                  thread_settings: snapshot,
              },
 diff --git a/codex-rs/app-server/src/request_processors/thread_goal_processor.rs b/codex-rs/app-server/src/request_processors/thread_goal_processor.rs
-index 505fbd4..ee3cff7 100644
+index 592e12b2540363ffae63eaec6bbbc758bec57f5f..7b72d35cb642dcd190f1d1558939ac09a527cb06 100644
 --- a/codex-rs/app-server/src/request_processors/thread_goal_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_goal_processor.rs
-@@ -517,6 +517,7 @@ fn thread_settings_applied_item(
- ) -> RolloutItem {
-     RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(
-         ThreadSettingsAppliedEvent {
+@@ -529,6 +529,18 @@ impl ThreadGoalRequestProcessor {
+     }
+ }
+ 
++fn thread_settings_applied_item(
++    thread_id: ThreadId,
++    thread_settings: ThreadSettingsSnapshot,
++) -> RolloutItem {
++    RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(
++        ThreadSettingsAppliedEvent {
 +            operation_id: None,
-             thread_id: Some(thread_id),
-             thread_settings,
-         },
++            thread_id: Some(thread_id),
++            thread_settings,
++        },
++    ))
++}
+ pub(super) fn api_thread_goal_from_state(goal: codex_state::ThreadGoal) -> ThreadGoal {
+     ThreadGoal {
+         thread_id: goal.thread_id.to_string(),
 diff --git a/codex-rs/app-server/src/request_processors/thread_summary.rs b/codex-rs/app-server/src/request_processors/thread_summary.rs
-index 42562e4..77e19e6 100644
+index 42562e408493c85db200c738efdea0a5aa6406e7..77e19e6d08f2c5901ed88d7f1052efc239a01639 100644
 --- a/codex-rs/app-server/src/request_processors/thread_summary.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_summary.rs
 @@ -298,3 +298,30 @@ pub(crate) fn summary_to_thread(
@@ -188,10 +199,10 @@ index 42562e4..77e19e6 100644
 +    }
 +}
 diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/codex-rs/app-server/src/request_processors/turn_processor.rs
-index 49a9dc6..54c730f 100644
+index a533fe7d9a8d075d9373e0defa3ee50b7491d93c..dfee30af99b1be1f0db445e0f6b33194b5d5d179 100644
 --- a/codex-rs/app-server/src/request_processors/turn_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/turn_processor.rs
-@@ -1002,20 +1002,33 @@ impl TurnRequestProcessor {
+@@ -1022,20 +1022,33 @@ impl TurnRequestProcessor {
              )
              .await?;
  
@@ -238,10 +249,10 @@ index 49a9dc6..54c730f 100644
  
      async fn thread_inject_items_response_inner(
 diff --git a/codex-rs/core/src/agent/control_tests.rs b/codex-rs/core/src/agent/control_tests.rs
-index 9eb71be..62e59d5 100644
+index 15ac635c840e4f1e1a8ccf5671b8cd4add687512..34fb68d73dd5a2096c43d590dbb9f51bcccbf3b8 100644
 --- a/codex-rs/core/src/agent/control_tests.rs
 +++ b/codex-rs/core/src/agent/control_tests.rs
-@@ -1798,6 +1798,7 @@ async fn spawn_agent_fork_from_paginated_parent_uses_model_context_prefix() {
+@@ -2402,6 +2402,7 @@ async fn spawn_agent_fork_from_paginated_parent_uses_model_context_prefix(
              })),
              RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(
                  ThreadSettingsAppliedEvent {
@@ -250,10 +261,10 @@ index 9eb71be..62e59d5 100644
                      thread_settings: ThreadSettingsSnapshot {
                          disabled_plugin_ids: Vec::new(),
 diff --git a/codex-rs/core/src/session/handlers.rs b/codex-rs/core/src/session/handlers.rs
-index bd1189c..62119e5 100644
+index 42625ee042fffbc5d7a44f8b937440f2ee94cba5..8b6d1f82955c475e968cec1af83d1ca7fa416980 100644
 --- a/codex-rs/core/src/session/handlers.rs
 +++ b/codex-rs/core/src/session/handlers.rs
-@@ -524,6 +524,7 @@ pub(super) async fn submission_loop(
+@@ -607,6 +607,7 @@ pub(super) async fn submission_loop(
                      should_exit
                  }
                  Op::ThreadSettings {
@@ -261,7 +272,7 @@ index bd1189c..62119e5 100644
                      thread_settings,
                      reply,
                  } => {
-@@ -534,7 +535,7 @@ pub(super) async fn submission_loop(
+@@ -621,7 +622,7 @@ pub(super) async fn submission_loop(
                              if let Some(reply) = reply {
                                  let _ = reply.send(Ok(()));
                              }
@@ -271,10 +282,10 @@ index bd1189c..62119e5 100644
                          Err(error) => {
                              let message = format!("invalid thread settings override: {error}");
 diff --git a/codex-rs/core/src/session/thread_settings.rs b/codex-rs/core/src/session/thread_settings.rs
-index 2105904..6e58460 100644
+index c45ce098c68577f9f57d77c4d8c3aecac662b612..56ed0e2648e464bf9344c3f82a3a189eeb9f7f87 100644
 --- a/codex-rs/core/src/session/thread_settings.rs
 +++ b/codex-rs/core/src/session/thread_settings.rs
-@@ -97,10 +97,23 @@ pub(super) async fn apply_update(
+@@ -107,10 +107,23 @@ pub(super) async fn apply_update(
      session: &Session,
      submission_id: String,
      updates: SessionSettingsUpdate,
@@ -299,7 +310,7 @@ index 2105904..6e58460 100644
      Ok(())
  }
  
-@@ -109,8 +122,18 @@ pub(super) async fn emit_applied(
+@@ -119,8 +132,18 @@ pub(super) async fn emit_applied(
      session: &Session,
      submission_id: String,
      snapshot: ThreadSettingsSnapshot,
@@ -318,7 +329,7 @@ index 2105904..6e58460 100644
          thread_id: Some(session.thread_id()),
          thread_settings: snapshot,
      });
-@@ -125,6 +148,7 @@ pub(super) async fn emit_applied(
+@@ -135,6 +158,7 @@ pub(super) async fn emit_applied(
  /// Builds a current thread-owned snapshot for storage checkpoints.
  pub(super) async fn applied_event(session: &Session) -> EventMsg {
      EventMsg::ThreadSettingsApplied(ThreadSettingsAppliedEvent {
@@ -327,10 +338,10 @@ index 2105904..6e58460 100644
          thread_settings: session.thread_settings_snapshot().await,
      })
 diff --git a/codex-rs/core/tests/common/lib.rs b/codex-rs/core/tests/common/lib.rs
-index 0b05675..74cd7e6 100644
+index 77758d04083c5ca611c9b7710b81957cc8f75328..156a8bf3bbc74346973c60e28b8a4fe9ad4bc86e 100644
 --- a/codex-rs/core/tests/common/lib.rs
 +++ b/codex-rs/core/tests/common/lib.rs
-@@ -315,6 +315,7 @@ pub async fn submit_thread_settings(
+@@ -317,6 +317,7 @@ pub async fn submit_thread_settings(
  
      let submission_id = codex
          .submit(Op::ThreadSettings {
@@ -339,10 +350,10 @@ index 0b05675..74cd7e6 100644
              reply: None,
          })
 diff --git a/codex-rs/core/tests/suite/fork_thread.rs b/codex-rs/core/tests/suite/fork_thread.rs
-index 4f5708b..20c6eda 100644
+index c90fb922467a160b09ce93c2c8d8deab8fdd23ed..cd7c6b91e906a55887a798cf6657d9d17f89cd23 100644
 --- a/codex-rs/core/tests/suite/fork_thread.rs
 +++ b/codex-rs/core/tests/suite/fork_thread.rs
-@@ -194,6 +194,7 @@ fn thread_settings_applied_item(
+@@ -195,6 +195,7 @@ fn thread_settings_applied_item(
  ) -> RolloutItem {
      RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(
          ThreadSettingsAppliedEvent {
@@ -351,10 +362,10 @@ index 4f5708b..20c6eda 100644
              thread_settings: snapshot,
          },
 diff --git a/codex-rs/core/tests/suite/remote_env.rs b/codex-rs/core/tests/suite/remote_env.rs
-index e3cfd43..21db378 100644
+index 23acf8c18d84b8d90bdb8288d0f02a90085c5ff3..e364ffe2f062e939f8c4f5a3fe8c402bc0afadb0 100644
 --- a/codex-rs/core/tests/suite/remote_env.rs
 +++ b/codex-rs/core/tests/suite/remote_env.rs
-@@ -622,6 +622,7 @@ async fn environment_permissions_follow_configuration_ownership() -> Result<()>
+@@ -632,6 +632,7 @@ async fn environment_permissions_follow_configuration_ownership() -> Result<()>
      .await?;
      test.codex
          .submit(Op::ThreadSettings {
@@ -363,10 +374,10 @@ index e3cfd43..21db378 100644
                  permission_profile: Some(PermissionProfile::workspace_write()),
                  ..Default::default()
 diff --git a/codex-rs/core/tests/suite/settings_commits.rs b/codex-rs/core/tests/suite/settings_commits.rs
-index ea368e2..d4b8d2e 100644
+index 823a1b50debd9c2845898f921cca1a8833d88620..84b9710c3bc00d113b73f878ef7ae73628bc9902 100644
 --- a/codex-rs/core/tests/suite/settings_commits.rs
 +++ b/codex-rs/core/tests/suite/settings_commits.rs
-@@ -228,6 +228,7 @@ async fn settings_notifications_keep_their_commit_across_postcommit_work(
+@@ -232,6 +232,7 @@ async fn settings_notifications_keep_their_commit_across_postcommit_work(
                  SettingsOperation::Standalone => {
                      codex
                          .submit(Op::ThreadSettings {
@@ -375,7 +386,7 @@ index ea368e2..d4b8d2e 100644
                              reply: None,
                          })
 diff --git a/codex-rs/core/tests/suite/settings_constraints.rs b/codex-rs/core/tests/suite/settings_constraints.rs
-index e85d9a2..2eafb8b 100644
+index 3f4c32bf28f668b86e8c604d6d043f08f9e58af5..1264b66e6e9a8f1792b88d0ae875eb8efb60c5b4 100644
 --- a/codex-rs/core/tests/suite/settings_constraints.rs
 +++ b/codex-rs/core/tests/suite/settings_constraints.rs
 @@ -50,6 +50,7 @@ impl SettingsOperation {
@@ -387,7 +398,7 @@ index e85d9a2..2eafb8b 100644
                          reply: None,
                      })
 diff --git a/codex-rs/core/tests/suite/step_settings.rs b/codex-rs/core/tests/suite/step_settings.rs
-index c532200..069a728 100644
+index ac0e9bf7d66e1825ada917f5490f9a7794063564..0b28944295f8caa0402a9a504b99700350569d7e 100644
 --- a/codex-rs/core/tests/suite/step_settings.rs
 +++ b/codex-rs/core/tests/suite/step_settings.rs
 @@ -776,6 +776,7 @@ async fn settings_updates_preserve_turn_identity_and_target(target: SettingsTarg
@@ -398,7 +409,7 @@ index c532200..069a728 100644
                      thread_settings: ThreadSettingsOverrides {
                          model: Some(MODEL_B.to_string()),
                          effort: Some(Some(ReasoningEffort::High)),
-@@ -1978,6 +1979,7 @@ async fn sparse_updates_preserve_divergent_active_and_future_models() -> Result<
+@@ -1986,6 +1987,7 @@ async fn sparse_updates_preserve_divergent_active_and_future_models() -> Result<
  
      test.codex
          .submit(Op::ThreadSettings {
@@ -407,18 +418,18 @@ index c532200..069a728 100644
                  service_tier: Some(Some(ServiceTier::Fast.request_value().to_string())),
                  ..Default::default()
 diff --git a/codex-rs/protocol/src/protocol.rs b/codex-rs/protocol/src/protocol.rs
-index 4537b5b..01e33fa 100644
+index ad632cd2662d42d331deb61b95d1fc8e9e2fa905..255e98c4291358110e57f0c5f5dbd1967dd8a1b5 100644
 --- a/codex-rs/protocol/src/protocol.rs
 +++ b/codex-rs/protocol/src/protocol.rs
-@@ -650,6 +650,7 @@ pub enum Op {
-     /// This uses the same submission queue as turn starts so app-server can
+@@ -731,6 +731,7 @@ pub enum Op {
      /// preserve caller order between both kinds of mutation.
+     #[debug("ThreadSettings {{ requested_settings: {thread_settings:?} }}")]
      ThreadSettings {
 +        operation_id: Option<String>,
          /// Sparse thread-settings overrides to apply.
          thread_settings: ThreadSettingsOverrides,
          /// When present, report validation errors here instead of emitting an error event.
-@@ -2207,6 +2208,10 @@ pub struct TurnStartedEvent {
+@@ -2329,6 +2330,10 @@ pub struct TurnStartedEvent {
  
  #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, JsonSchema, TS)]
  pub struct ThreadSettingsAppliedEvent {
@@ -430,10 +441,10 @@ index 4537b5b..01e33fa 100644
      /// Absent in older histories; copied snapshots retain their original owner's ID.
      #[serde(default, skip_serializing_if = "Option::is_none")]
 diff --git a/codex-rs/state/src/extract.rs b/codex-rs/state/src/extract.rs
-index 02c9aaa..4e58090 100644
+index fa357605c08dc6d87809463984c0360d7fee68c9..94bb9772ff6b5b3632fc8fc00c93df79faafdac9 100644
 --- a/codex-rs/state/src/extract.rs
 +++ b/codex-rs/state/src/extract.rs
-@@ -706,6 +706,7 @@ mod tests {
+@@ -727,6 +727,7 @@ mod tests {
              .join("updated/workspace");
          let mut item = RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(
              ThreadSettingsAppliedEvent {
@@ -442,10 +453,10 @@ index 02c9aaa..4e58090 100644
                  thread_settings: ThreadSettingsSnapshot {
                      disabled_plugin_ids: Vec::new(),
 diff --git a/codex-rs/thread-store/src/thread_metadata_sync.rs b/codex-rs/thread-store/src/thread_metadata_sync.rs
-index ecfdc3b..2a3daac 100644
+index 9f43bb33e0e1f7658871f2b35034d7e997eb18da..a342339c5977ac23d7644f1394a33ab68e500170 100644
 --- a/codex-rs/thread-store/src/thread_metadata_sync.rs
 +++ b/codex-rs/thread-store/src/thread_metadata_sync.rs
-@@ -818,6 +818,7 @@ mod tests {
+@@ -829,6 +829,7 @@ mod tests {
  
          let mut item = RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(
              ThreadSettingsAppliedEvent {
@@ -454,10 +465,10 @@ index ecfdc3b..2a3daac 100644
                  thread_settings: ThreadSettingsSnapshot {
                      disabled_plugin_ids: Vec::new(),
 diff --git a/codex-rs/tui/src/app/app_server_event_targets.rs b/codex-rs/tui/src/app/app_server_event_targets.rs
-index 395d79d..a92f6f5 100644
+index 39d9b2912f21e8f7aad2b76f6a4b9a354e2bde12..01f7b7dec78c145beb3814b2d599f4047e658006 100644
 --- a/codex-rs/tui/src/app/app_server_event_targets.rs
 +++ b/codex-rs/tui/src/app/app_server_event_targets.rs
-@@ -357,6 +357,8 @@ mod tests {
+@@ -366,6 +366,8 @@ mod tests {
          let thread_id = ThreadId::new();
          let notification =
              ServerNotification::ThreadSettingsUpdated(ThreadSettingsUpdatedNotification {
@@ -467,10 +478,10 @@ index 395d79d..a92f6f5 100644
                  thread_settings: test_thread_settings(),
              });
 diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
-index f7e0c6a..1cce759 100644
+index 5f06114c7ca883f7c7726831b171c87ac4103b0c..4de83eea287194d9c7b9addbf34a9f4bf672c3e2 100644
 --- a/codex-rs/tui/src/app/tests.rs
 +++ b/codex-rs/tui/src/app/tests.rs
-@@ -9588,6 +9588,8 @@ async fn inactive_thread_settings_notification_updates_cached_collaboration_mode
+@@ -9878,6 +9878,8 @@ async fn inactive_thread_settings_notification_updates_cached_collaboration_mode
      );
  
      let notification = ThreadSettingsUpdatedNotification {
@@ -480,7 +491,7 @@ index f7e0c6a..1cce759 100644
          thread_settings: ThreadSettings {
              disabled_plugin_ids: Vec::new(),
 diff --git a/codex-rs/tui/src/chatwidget/tests/app_server.rs b/codex-rs/tui/src/chatwidget/tests/app_server.rs
-index e03e997..9d08728 100644
+index 8e83ad083ae63717492fe3d7d60bf29f7cf19e8e..9e75c629ea380e8761aa98766e23c047b9f0ffad 100644
 --- a/codex-rs/tui/src/chatwidget/tests/app_server.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/app_server.rs
 @@ -12,6 +12,8 @@ fn thread_settings_for_test(

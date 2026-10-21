@@ -1,9 +1,12 @@
 pub(crate) mod command_runner;
 pub(crate) mod discovery;
 pub(crate) mod dispatcher;
+mod matcher;
 pub(crate) mod mcp_runner;
 pub(crate) mod output_parser;
 pub(crate) mod schema_loader;
+
+pub(crate) use matcher::HookMatcher;
 
 use crate::events::compact::PostCompactRequest;
 use crate::events::compact::PreCompactOutcome;
@@ -60,7 +63,7 @@ pub(crate) struct ConfiguredHandler {
     /// Internally admitted cleanup hook, enabled independently of per-hook state.
     pub builtin: bool,
     pub event_name: codex_protocol::protocol::HookEventName,
-    pub matcher: Option<String>,
+    pub matcher: Option<HookMatcher>,
     pub timeout_sec: u64,
     pub status_message: Option<String>,
     pub additional_context_limit: AdditionalContextLimit,
@@ -218,9 +221,10 @@ pub struct HookListEntry {
 
 #[derive(Clone)]
 pub(crate) struct ClaudeHooksEngine {
-    pub(crate) handlers: Vec<ConfiguredHandler>,
-    warnings: Vec<String>,
-    required_load_errors: Vec<String>,
+    // Per-turn views share configuration; executor overlays copy handlers on mutation.
+    pub(crate) handlers: Arc<Vec<ConfiguredHandler>>,
+    warnings: Arc<[String]>,
+    required_load_errors: Arc<[String]>,
     pub(crate) command_runtime: CommandHookRuntime,
     pub(crate) mcp_executor: Arc<dyn HookMcpExecutor>,
 }
@@ -237,9 +241,9 @@ impl ClaudeHooksEngine {
     ) -> Self {
         if !enabled && plugin_hook_sources.is_empty() {
             return Self {
-                handlers: Vec::new(),
-                warnings: Vec::new(),
-                required_load_errors: Vec::new(),
+                handlers: Arc::default(),
+                warnings: Arc::default(),
+                required_load_errors: Arc::default(),
                 command_runtime,
                 mcp_executor,
             };
@@ -259,9 +263,9 @@ impl ClaudeHooksEngine {
             discovered.required_load_errors.clear();
         }
         Self {
-            handlers: discovered.handlers,
-            warnings: discovered.warnings,
-            required_load_errors: discovered.required_load_errors,
+            handlers: Arc::new(discovered.handlers),
+            warnings: discovered.warnings.into(),
+            required_load_errors: discovered.required_load_errors.into(),
             command_runtime,
             mcp_executor,
         }
@@ -272,15 +276,26 @@ impl ClaudeHooksEngine {
     }
 
     pub(crate) fn set_executor_hooks(&mut self, executor_hooks: Vec<ExecutorPluginHookSource>) {
-        self.handlers.retain(|handler| {
+        if executor_hooks.is_empty()
+            && !self.handlers.iter().any(|handler| {
+                matches!(
+                    handler.source_path,
+                    HandlerSourcePath::ExecutorScoped { .. }
+                )
+            })
+        {
+            return;
+        }
+
+        let handlers = Arc::make_mut(&mut self.handlers);
+        handlers.retain(|handler| {
             !matches!(
                 handler.source_path,
                 HandlerSourcePath::ExecutorScoped { .. }
             )
         });
 
-        let mut display_order = self
-            .handlers
+        let mut display_order = handlers
             .iter()
             .map(|handler| handler.display_order)
             .max()
@@ -317,7 +332,7 @@ impl ClaudeHooksEngine {
                 if !seen_targets.insert(target) {
                     continue;
                 }
-                self.handlers.push(ConfiguredHandler {
+                handlers.push(ConfiguredHandler {
                     builtin: true,
                     event_name,
                     matcher: None,

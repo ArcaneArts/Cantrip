@@ -1,8 +1,8 @@
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
-index 19885ae..3699a4e 100644
+index 72658b908782ad8f90ba70260fba20a395999f0b..a3264d0a73ef4cf9813a4d9d2722f20680e11f2f 100644
 --- a/codex-rs/Cargo.lock
 +++ b/codex-rs/Cargo.lock
-@@ -4608,6 +4608,7 @@ dependencies = [
+@@ -4663,6 +4663,7 @@ dependencies = [
   "scopeguard",
   "serde",
   "serde_json",
@@ -11,10 +11,10 @@ index 19885ae..3699a4e 100644
   "sqlx-macros",
   "sqlx-sqlite",
 diff --git a/codex-rs/app-server-client/src/lib.rs b/codex-rs/app-server-client/src/lib.rs
-index fc6c146..539c2db 100644
+index 6da56e3ca3a56f96da89141ac7e0a55ab9e48adb..5ed297b9fb07378d9edd23a10864826ee640631a 100644
 --- a/codex-rs/app-server-client/src/lib.rs
 +++ b/codex-rs/app-server-client/src/lib.rs
-@@ -67,6 +67,7 @@ pub use crate::path::AppServerPath;
+@@ -73,6 +73,7 @@ pub use crate::path::AppServerPath;
  pub use crate::remote::RemoteAppServerClient;
  pub use crate::remote::RemoteAppServerConnectArgs;
  pub use crate::remote::RemoteAppServerEndpoint;
@@ -22,7 +22,7 @@ index fc6c146..539c2db 100644
  
  /// Transitional access to core-only embedded app-server types.
  ///
-@@ -707,6 +708,10 @@ impl AppServerClient {
+@@ -756,6 +757,10 @@ impl AppServerClient {
          }
      }
  
@@ -34,7 +34,7 @@ index fc6c146..539c2db 100644
          match self {
              Self::Remote(client) => client.managed_gateway_thread_id(),
 diff --git a/codex-rs/app-server-client/src/managed_gateway_tests.rs b/codex-rs/app-server-client/src/managed_gateway_tests.rs
-index ee833fe..4b2bd64 100644
+index ee833fe0b8e7de5e77d75da84b087eba2fe5bbf6..4b2bd64ae565270b752f0aa60d3d1b0b6068605c 100644
 --- a/codex-rs/app-server-client/src/managed_gateway_tests.rs
 +++ b/codex-rs/app-server-client/src/managed_gateway_tests.rs
 @@ -148,3 +148,16 @@ fn managed_gateway_capability_rejects_partial_or_unknown_contracts() {
@@ -55,10 +55,10 @@ index ee833fe..4b2bd64 100644
 +    assert!(!parse_managed_queue(&serde_json::json!({"remote":true})).unwrap());
 +}
 diff --git a/codex-rs/app-server-client/src/remote.rs b/codex-rs/app-server-client/src/remote.rs
-index 0e64896..c218d1a 100644
+index 6308158987e56ca6275e1635c7830d80ad123c39..e9b4c3cc05174806126393cbb5fd13e9adc411bc 100644
 --- a/codex-rs/app-server-client/src/remote.rs
 +++ b/codex-rs/app-server-client/src/remote.rs
-@@ -159,6 +159,7 @@ struct RemoteServerMetadata {
+@@ -160,6 +160,7 @@ struct RemoteServerMetadata {
      platform_family: Option<String>,
      platform_os: Option<String>,
      managed_gateway_thread_id: Option<String>,
@@ -66,7 +66,7 @@ index 0e64896..c218d1a 100644
  }
  
  pub struct RemoteAppServerClient {
-@@ -241,6 +242,10 @@ impl RemoteAppServerClient {
+@@ -244,6 +245,10 @@ impl RemoteAppServerClient {
      }
  
      /// A gateway-scoped thread; absent on ordinary remote connections.
@@ -77,7 +77,7 @@ index 0e64896..c218d1a 100644
      pub fn managed_gateway_thread_id(&self) -> Option<&str> {
          self.metadata.managed_gateway_thread_id.as_deref()
      }
-@@ -927,6 +932,7 @@ where
+@@ -955,6 +960,7 @@ where
                              metadata.platform_os = response.result.get("platformOs")
                                  .and_then(serde_json::Value::as_str).map(str::to_string);
                              metadata.managed_gateway_thread_id = parse_managed_gateway(&response.result)?;
@@ -85,7 +85,7 @@ index 0e64896..c218d1a 100644
                              break Ok(());
                          }
                          JSONRPCMessage::Error(error) if error.id == initialize_request_id => {
-@@ -1022,6 +1028,21 @@ where
+@@ -1050,6 +1056,21 @@ where
      Ok((pending_events, metadata))
  }
  
@@ -108,10 +108,10 @@ index 0e64896..c218d1a 100644
      let Some(capability) = result.get("cantripManagedGateway") else {
          return Ok(None);
 diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
-index 1c7b837..0e905e0 100644
+index 27a49503e038c6b4752f13d78c1f6d1758e0c814..91b47917779e9c7a0b6d8d47631808eda074fccd 100644
 --- a/codex-rs/app-server-protocol/src/protocol/common.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/common.rs
-@@ -697,6 +697,16 @@ client_request_definitions! {
+@@ -709,6 +709,16 @@ client_request_definitions! {
          serialization: None,
          response: v2::ManagedExecutionInvalidateResponse,
      },
@@ -129,7 +129,7 @@ index 1c7b837..0e905e0 100644
          params: v2::ThreadManagedConfigUpdateParams,
          serialization: thread_id(params.thread_id),
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/managed_execution.rs b/codex-rs/app-server-protocol/src/protocol/v2/managed_execution.rs
-index ff38d1f..acee870 100644
+index ff38d1fd8cd98d94445b8ae8b003f26b218217e6..acee87027d13998dd4edbbb7c3d8c1043bb090b4 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/managed_execution.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/managed_execution.rs
 @@ -75,6 +75,9 @@ pub struct ManagedExecutionRequestedNotification {
@@ -180,10 +180,10 @@ index ff38d1f..acee870 100644
 +    pub conflict: bool,
 +}
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-index 0c0a825..685bc8b 100644
+index 2174562abfd862e034bdcd3023127b72d082fb18..892b5ed475ec29ef4449816afda923cd8b2f9637 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-@@ -942,6 +942,7 @@ pub struct ThreadGoalSetParams {
+@@ -964,6 +964,7 @@ pub struct ThreadGoalSetParams {
  #[ts(export_to = "v2/")]
  pub struct ThreadGoalSetResponse {
      pub goal: ThreadGoal,
@@ -191,7 +191,7 @@ index 0c0a825..685bc8b 100644
  }
  
  #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
-@@ -956,6 +957,7 @@ pub struct ThreadGoalGetParams {
+@@ -978,6 +979,7 @@ pub struct ThreadGoalGetParams {
  #[ts(export_to = "v2/")]
  pub struct ThreadGoalGetResponse {
      pub goal: Option<ThreadGoal>,
@@ -200,10 +200,10 @@ index 0c0a825..685bc8b 100644
  
  #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 diff --git a/codex-rs/app-server/src/message_processor.rs b/codex-rs/app-server/src/message_processor.rs
-index 4b6fc3c..38a7d2d 100644
+index 92a1f0b3498a14ee0471228d7a6fd677f59ef3da..31c227227e7007ff3eee7b17e97d87941e27e0ff 100644
 --- a/codex-rs/app-server/src/message_processor.rs
 +++ b/codex-rs/app-server/src/message_processor.rs
-@@ -1433,6 +1433,16 @@ impl MessageProcessor {
+@@ -1446,6 +1446,16 @@ impl MessageProcessor {
                      .managed_execution_invalidate(&request_id, params)
                      .await
              }
@@ -221,7 +221,7 @@ index 4b6fc3c..38a7d2d 100644
                  self.turn_processor
                      .thread_managed_config_update(&request_id, params)
 diff --git a/codex-rs/app-server/src/request_processors/managed_execution.rs b/codex-rs/app-server/src/request_processors/managed_execution.rs
-index 7d300af..fda8598 100644
+index 7d300af4c9b6059b224e87b97d877b01dec608c4..fda8598bba27b2e8fe423d0af561e94e2f92e2bf 100644
 --- a/codex-rs/app-server/src/request_processors/managed_execution.rs
 +++ b/codex-rs/app-server/src/request_processors/managed_execution.rs
 @@ -44,6 +44,7 @@ impl OutgoingMessageSender {
@@ -284,10 +284,10 @@ index 7d300af..fda8598 100644
          &self,
          request_id: &ConnectionRequestId,
 diff --git a/codex-rs/app-server/src/request_processors/thread_goal_processor.rs b/codex-rs/app-server/src/request_processors/thread_goal_processor.rs
-index 6d52f5b..505fbd4 100644
+index bada44de510d3fb2e22b5d8fa5ba25a1aa6896ea..592e12b2540363ffae63eaec6bbbc758bec57f5f 100644
 --- a/codex-rs/app-server/src/request_processors/thread_goal_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_goal_processor.rs
-@@ -235,7 +235,10 @@ impl ThreadGoalRequestProcessor {
+@@ -242,7 +242,10 @@ impl ThreadGoalRequestProcessor {
          self.outgoing
              .send_response(
                  request_id.clone(),
@@ -299,7 +299,7 @@ index 6d52f5b..505fbd4 100644
              )
              .await;
          self.emit_thread_goal_updated_ordered(thread_id, goal, listener_command_tx)
-@@ -258,11 +261,15 @@ impl ThreadGoalRequestProcessor {
+@@ -265,11 +268,15 @@ impl ThreadGoalRequestProcessor {
              .await?;
          let goal = self
              .goal_service
@@ -319,10 +319,10 @@ index 6d52f5b..505fbd4 100644
  
      async fn thread_goal_clear_inner(
 diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
-index bf18998..b437227 100644
+index accbc60c4b287d9852a9e2984094ae3b3841b103..4fed5a4056bd182a0b13c5b07ccdabd5f3258913 100644
 --- a/codex-rs/app-server/src/request_processors/thread_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
-@@ -4280,9 +4280,20 @@ impl ThreadRequestProcessor {
+@@ -4505,9 +4505,20 @@ impl ThreadRequestProcessor {
                  self.thread_goal_processor
                      .emit_resume_goal_snapshot(thread_id)
                      .await;
@@ -347,7 +347,7 @@ index bf18998..b437227 100644
              Err(err) => {
                  let error = match err.details() {
 diff --git a/codex-rs/app-server/src/request_processors/thread_queue_processor.rs b/codex-rs/app-server/src/request_processors/thread_queue_processor.rs
-index ea6ec7d..3408372 100644
+index a2f5b5ad680f7b2aab373ad09383100a3d0251dc..46c5ca7ffdd9de8a13ed52d8787bdaca76f96a81 100644
 --- a/codex-rs/app-server/src/request_processors/thread_queue_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_queue_processor.rs
 @@ -74,6 +74,46 @@ impl ThreadQueueRequestProcessor {
@@ -398,10 +398,10 @@ index ea6ec7d..3408372 100644
          &self,
          params: ThreadQueueAddParams,
 diff --git a/codex-rs/app-server/tests/suite/v2/thread_queue.rs b/codex-rs/app-server/tests/suite/v2/thread_queue.rs
-index a73eed6..2f07729 100644
+index 4abd4c7576bcec32bc7f55cb768e8dbcf67737a7..ca91349e5a24a5f8a1430474650693e7ac82cd96 100644
 --- a/codex-rs/app-server/tests/suite/v2/thread_queue.rs
 +++ b/codex-rs/app-server/tests/suite/v2/thread_queue.rs
-@@ -1268,3 +1268,368 @@ async fn managed_execution_goal_proposes_exact_continuation_before_inference() -
+@@ -1272,3 +1272,368 @@ async fn managed_execution_goal_proposes_exact_continuation_before_inference() -
      assert!(server.received_requests().await.unwrap().is_empty());
      Ok(())
  }
@@ -771,10 +771,10 @@ index a73eed6..2f07729 100644
 +    Ok(())
 +}
 diff --git a/codex-rs/app-server/tests/suite/v2/thread_resume.rs b/codex-rs/app-server/tests/suite/v2/thread_resume.rs
-index f7fb88f..732c23a 100644
+index 373759adae4fb15d7649393fcbf62fd0ec2477e0..6b80cdbea32763b5d281555e10ccf43b4798b110 100644
 --- a/codex-rs/app-server/tests/suite/v2/thread_resume.rs
 +++ b/codex-rs/app-server/tests/suite/v2/thread_resume.rs
-@@ -2197,6 +2197,7 @@ async fn unloaded_thread_goal_mutations_respect_parent_ownership() -> Result<()>
+@@ -2309,6 +2309,7 @@ async fn unloaded_thread_goal_mutations_respect_parent_ownership() -> Result<()>
                      retained,
                      ThreadGoalGetResponse {
                          goal: Some(original.goal.clone()),
@@ -783,13 +783,13 @@ index f7fb88f..732c23a 100644
                  );
              } else if method == "thread/goal/set" {
 diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
-index 2ed4a26..59a22b1 100644
+index 4ac577d6be1ca8cbffb839ff11755e75a294d1fc..e80c59d1733bfff03430196d56f4cccd5c64f971 100644
 --- a/codex-rs/core/src/codex_thread.rs
 +++ b/codex-rs/core/src/codex_thread.rs
-@@ -418,9 +418,30 @@ impl CodexThread {
+@@ -469,9 +469,30 @@ impl CodexThread {
      pub async fn start_turn_if_idle(
          &self,
-         request: TurnInputRequest,
+         request: impl Into<WithTurnExtensionData<TurnInputRequest>>,
 +    ) -> CodexResult<StartIfIdleSubmission> {
 +        self.start_turn_if_idle_with_goal_epoch(request, None).await
 +    }
@@ -817,10 +817,10 @@ index 2ed4a26..59a22b1 100644
 +            )
              .await?
          {
-             TurnInputSubmission::Started { turn_id } => {
-@@ -577,6 +598,16 @@ impl CodexThread {
+             TurnInputSubmission::Started {
+@@ -642,6 +663,16 @@ impl CodexThread {
          &self,
-         request: TurnInputRequest,
+         request: impl Into<WithTurnExtensionData<TurnInputRequest>>,
          mode: TurnInputMode,
 +    ) -> CodexResult<TurnInputSubmission> {
 +        self.submit_turn_input_with_mode_and_goal_epoch(request, mode, None)
@@ -835,7 +835,7 @@ index 2ed4a26..59a22b1 100644
      ) -> CodexResult<TurnInputSubmission> {
          if !matches!(mode, TurnInputMode::Steer { .. }) {
              self.ensure_execution_capacity_for_turn_start(
-@@ -608,11 +639,12 @@ impl CodexThread {
+@@ -673,11 +704,12 @@ impl CodexThread {
                  "start": request.start, "additionalContext": request.additional_context,
                  "responsesapiClientMetadata": request.responsesapi_client_metadata, "trace": request.trace });
              let attempt_id = gate
@@ -850,7 +850,7 @@ index 2ed4a26..59a22b1 100644
                  .await
                  .map_err(CodexErr::InvalidRequest)?;
 diff --git a/codex-rs/core/src/managed_execution.rs b/codex-rs/core/src/managed_execution.rs
-index 8bc4e8e..574cc93 100644
+index 8bc4e8efb98d9a8f5c1b349dcdeafac115b43641..574cc93222be99e49a66cf026c32af490ad25fd6 100644
 --- a/codex-rs/core/src/managed_execution.rs
 +++ b/codex-rs/core/src/managed_execution.rs
 @@ -15,6 +15,7 @@ pub enum ManagedExecutionEvent {
@@ -902,7 +902,7 @@ index 8bc4e8e..574cc93 100644
              .is_err()
          {
 diff --git a/codex-rs/ext/goal/src/api.rs b/codex-rs/ext/goal/src/api.rs
-index b414e9c..a57e31c 100644
+index a2bd783dc8b08c14bedec1e4c37fc2d141022e8f..a1daa7199ab072fc0f765582e627a5fea0c8813c 100644
 --- a/codex-rs/ext/goal/src/api.rs
 +++ b/codex-rs/ext/goal/src/api.rs
 @@ -65,6 +65,10 @@ pub struct GoalSetOutcome {
@@ -916,10 +916,13 @@ index b414e9c..a57e31c 100644
      pub fn thread_goal_updated_item(&self) -> RolloutItem {
          RolloutItem::EventMsg(EventMsg::ThreadGoalUpdated(ThreadGoalUpdatedEvent {
              thread_id: self.goal.thread_id,
-@@ -141,6 +145,24 @@ impl GoalService {
+@@ -141,9 +145,24 @@ impl GoalService {
              .map_err(|err| GoalServiceError::Internal(format!("failed to read thread goal: {err}")))
      }
  
+-    /// Records the user's instruction after validation and before changing goal state.
+-    /// The recording future runs under the runtime's goal mutation permit; failure leaves
+-    /// the goal unchanged. Recorded user intent remains valid if the database write fails.
 +    pub async fn get_thread_goal_with_epoch(
 +        &self,
 +        state_db: &codex_state::StateRuntime,
@@ -937,12 +940,12 @@ index b414e9c..a57e31c 100644
 +            })
 +            .map_err(|err| GoalServiceError::Internal(format!("failed to read thread goal: {err}")))
 +    }
-+
++    /// Records user intent under the goal mutation permit before changing goal state.
      pub async fn set_thread_goal(
          &self,
          state_db: &codex_state::StateRuntime,
 diff --git a/codex-rs/ext/goal/src/runtime.rs b/codex-rs/ext/goal/src/runtime.rs
-index 7d826ac..e3fe983 100644
+index 8744473a073c17219da85f017cadbdea428d205f..7d427ebc75d6f63989bdb9881ca88ce7b97df627 100644
 --- a/codex-rs/ext/goal/src/runtime.rs
 +++ b/codex-rs/ext/goal/src/runtime.rs
 @@ -238,7 +238,27 @@ impl GoalRuntimeHandle {
@@ -974,7 +977,7 @@ index 7d826ac..e3fe983 100644
              }
              codex_state::ThreadGoalStatus::BudgetLimited => {
                  if self.inner.accounting_state.current_turn_id().is_none() {
-@@ -471,17 +491,19 @@ impl GoalRuntimeHandle {
+@@ -482,17 +502,19 @@ impl GoalRuntimeHandle {
              .get::<TurnStartOptions>()
              .map(|options| options.as_ref().clone())
              .unwrap_or_default();
@@ -996,7 +999,7 @@ index 7d826ac..e3fe983 100644
              .await
          {
 diff --git a/codex-rs/ext/queue/src/service.rs b/codex-rs/ext/queue/src/service.rs
-index 06aeb63..b3bbd72 100644
+index 06aeb63b4cacccf562ee91897bafbcf962bd978c..b3bbd7251f24eb39c1eedceb510ad8dbcfe0b8b4 100644
 --- a/codex-rs/ext/queue/src/service.rs
 +++ b/codex-rs/ext/queue/src/service.rs
 @@ -353,6 +353,29 @@ impl QueuedItemService {
@@ -1030,10 +1033,10 @@ index 06aeb63..b3bbd72 100644
          &self,
          thread_id: ThreadId,
 diff --git a/codex-rs/state/Cargo.toml b/codex-rs/state/Cargo.toml
-index c6c2215..7e1d4d9 100644
+index d98de0da11092416064aa21dc309d3ccb2fd2c3d..d0cfdf4b25b2d69606b38fc0300630b81e150e94 100644
 --- a/codex-rs/state/Cargo.toml
 +++ b/codex-rs/state/Cargo.toml
-@@ -14,6 +14,7 @@ libsqlite3-sys = { workspace = true }
+@@ -15,6 +15,7 @@ libsqlite3-sys = { workspace = true }
  log = { workspace = true }
  serde = { workspace = true, features = ["derive"] }
  serde_json = { workspace = true }
@@ -1043,14 +1046,14 @@ index c6c2215..7e1d4d9 100644
  sqlx-sqlite = { workspace = true }
 diff --git a/codex-rs/state/goals_migrations/0003_thread_goal_configuration_revision.sql b/codex-rs/state/goals_migrations/0003_thread_goal_configuration_revision.sql
 new file mode 100644
-index 0000000..b1295be
+index 0000000000000000000000000000000000000000..b1295be25ac81faba94ca8613a393365c7269286
 --- /dev/null
 +++ b/codex-rs/state/goals_migrations/0003_thread_goal_configuration_revision.sql
 @@ -0,0 +1 @@
 +ALTER TABLE thread_goals ADD COLUMN configuration_revision INTEGER NOT NULL DEFAULT 0 CHECK (configuration_revision >= 0);
 diff --git a/codex-rs/state/queue_migrations/0003_managed_queue_delete_receipts.sql b/codex-rs/state/queue_migrations/0003_managed_queue_delete_receipts.sql
 new file mode 100644
-index 0000000..e0a3e8c
+index 0000000000000000000000000000000000000000..e0a3e8cdeeb428dde1e7848fcc5dd774e615fe03
 --- /dev/null
 +++ b/codex-rs/state/queue_migrations/0003_managed_queue_delete_receipts.sql
 @@ -0,0 +1,5 @@
@@ -1060,7 +1063,7 @@ index 0000000..e0a3e8c
 +    outcome TEXT NOT NULL CHECK (outcome IN ('deleted', 'changed', 'missing'))
 +);
 diff --git a/codex-rs/state/src/model/thread_goal.rs b/codex-rs/state/src/model/thread_goal.rs
-index 12d2a78..93d8c3f 100644
+index 12d2a78dac8990be14e2718d4427726c783916bc..93d8c3f42a199b0884828dabc43966416e69b329 100644
 --- a/codex-rs/state/src/model/thread_goal.rs
 +++ b/codex-rs/state/src/model/thread_goal.rs
 @@ -61,6 +61,7 @@ impl TryFrom<&str> for ThreadGoalStatus {
@@ -1110,7 +1113,7 @@ index 12d2a78..93d8c3f 100644
 +    }
 +}
 diff --git a/codex-rs/state/src/runtime/goals.rs b/codex-rs/state/src/runtime/goals.rs
-index ed616e1..939659c 100644
+index ed616e16b7c81d06bcf02302912e16f71ad936f3..939659c6dca6fabe5affb9e16a37899b65db60aa 100644
 --- a/codex-rs/state/src/runtime/goals.rs
 +++ b/codex-rs/state/src/runtime/goals.rs
 @@ -47,6 +47,7 @@ impl GoalStore {
@@ -1324,7 +1327,7 @@ index ed616e1..939659c 100644
 +    }
  }
 diff --git a/codex-rs/state/src/runtime/queued_items.rs b/codex-rs/state/src/runtime/queued_items.rs
-index 3cbf32b..d9d8139 100644
+index 3cbf32b6ee19a1b3142f2e58c8d4019ab04dd69a..d9d8139d71ce7cdb323b50edb98c772ab8729cc8 100644
 --- a/codex-rs/state/src/runtime/queued_items.rs
 +++ b/codex-rs/state/src/runtime/queued_items.rs
 @@ -161,6 +161,69 @@ impl SqliteQueueStore {
@@ -1398,7 +1401,7 @@ index 3cbf32b..d9d8139 100644
          let mut transaction = self.pool.begin().await?;
          let rows: Vec<(String, i64)> = sqlx::query_as(
 diff --git a/codex-rs/state/src/runtime/queued_items_tests.rs b/codex-rs/state/src/runtime/queued_items_tests.rs
-index 3f97eb3..4ed8548 100644
+index 3f97eb3bde7c91a3a944f64d9e9556d63395a604..4ed85481c0b272086deb32bad2e549af1905bf09 100644
 --- a/codex-rs/state/src/runtime/queued_items_tests.rs
 +++ b/codex-rs/state/src/runtime/queued_items_tests.rs
 @@ -276,3 +276,83 @@ async fn concurrent_inserts_enforce_the_queue_limit() {
@@ -1486,7 +1489,7 @@ index 3f97eb3..4ed8548 100644
 +    );
 +}
 diff --git a/codex-rs/thread-store/src/queue_store.rs b/codex-rs/thread-store/src/queue_store.rs
-index 74fc2fc..a0c7eda 100644
+index 74fc2fc9705017ac7cc6a41741e52738b87f27bc..a0c7edad89c800c42ca4f5927dc8bf5c43a1c6a9 100644
 --- a/codex-rs/thread-store/src/queue_store.rs
 +++ b/codex-rs/thread-store/src/queue_store.rs
 @@ -44,6 +44,14 @@ pub trait QueueStore: Send + Sync {
@@ -1526,10 +1529,10 @@ index 74fc2fc..a0c7eda 100644
          Box::pin(async move {
              self.queue()
 diff --git a/codex-rs/tui/src/app.rs b/codex-rs/tui/src/app.rs
-index 37b5c78..498ef8a 100644
+index 1b07e9826dd10fae888b903d75bdf0187a768e82..2c6ef708ea41031c5b67ee87595616cdf5e1485c 100644
 --- a/codex-rs/tui/src/app.rs
 +++ b/codex-rs/tui/src/app.rs
-@@ -865,6 +865,8 @@ impl App {
+@@ -904,6 +904,8 @@ impl App {
              }
              _ => false,
          };
@@ -1539,10 +1542,10 @@ index 37b5c78..498ef8a 100644
              && !transcript_owns_input
              && !self.chat_widget.keymap_contexts().is_warnings()
 diff --git a/codex-rs/tui/src/app/app_server_events.rs b/codex-rs/tui/src/app/app_server_events.rs
-index 81e00f8..7e8b1b6 100644
+index 2821d6d242d25a3bd9825374388df758b9570e21..c862e0a66a7b48890899bc1ea7db1eb47600c5cb 100644
 --- a/codex-rs/tui/src/app/app_server_events.rs
 +++ b/codex-rs/tui/src/app/app_server_events.rs
-@@ -93,6 +93,9 @@ impl App {
+@@ -133,6 +133,9 @@ impl App {
                      notification.as_ref(),
                      ServerNotification::ServerRequestResolved(_)
                  );
@@ -1552,7 +1555,7 @@ index 81e00f8..7e8b1b6 100644
                  self.handle_server_notification_event(app_server_client, *notification)
                      .await;
                  if request_resolved {
-@@ -105,6 +108,7 @@ impl App {
+@@ -147,6 +150,7 @@ impl App {
                  self.repaint_agents_overview();
              }
              AppServerEvent::Disconnected { message } => {
@@ -1561,19 +1564,19 @@ index 81e00f8..7e8b1b6 100644
                      return;
                  }
 diff --git a/codex-rs/tui/src/app/event_dispatch.rs b/codex-rs/tui/src/app/event_dispatch.rs
-index 888d119..b47baa9 100644
+index 4918881732c7fc61d2af739ec937aeb3cfb75576..ecc00fa68bb9467281636f9d26fc5fd25487f0de 100644
 --- a/codex-rs/tui/src/app/event_dispatch.rs
 +++ b/codex-rs/tui/src/app/event_dispatch.rs
-@@ -52,6 +52,8 @@ impl App {
-                     | AppEvent::FinishPromptRevert { .. }
+@@ -86,6 +86,8 @@ impl App {
                      | AppEvent::ManagedWorktreeCreated(_)
                      | AppEvent::AgentsOverviewWorktreeCreated(_)
+                     | AppEvent::AgentsOverviewPinToggled { .. }
 +                    | AppEvent::ManagedQueueResult { .. }
 +                    | AppEvent::ManagedQueueRequest(_)
                      | AppEvent::AppendMessageHistoryEntry { .. }
                      | AppEvent::BeginInitialHistoryReplayBuffer
                      | AppEvent::BeginThreadSwitchHistoryReplayBuffer
-@@ -141,6 +143,32 @@ impl App {
+@@ -189,6 +191,32 @@ impl App {
                  self.continue_misalignment(app_server, review).await;
              }
              AppEvent::CloseMisalignmentReview => self.chat_widget.show_misalignment_policy_precaution(),
@@ -1607,10 +1610,10 @@ index 888d119..b47baa9 100644
                  if cwds_differ(cwd, self.config.cwd.as_path()) =>
              {
 diff --git a/codex-rs/tui/src/app/reconnect.rs b/codex-rs/tui/src/app/reconnect.rs
-index 2b1b875..80e24c8 100644
+index 97e8d65d11f1722955e17ddf92080a9b00191fef..06078a7629f323d344a74d659330ed53ba012c42 100644
 --- a/codex-rs/tui/src/app/reconnect.rs
 +++ b/codex-rs/tui/src/app/reconnect.rs
-@@ -472,6 +472,10 @@ impl App {
+@@ -526,6 +526,10 @@ impl App {
              server.reconnect(app_server.request_handle(), self.app_event_tx.clone());
          }
          self.reconnect.offline = false;
@@ -1622,10 +1625,10 @@ index 2b1b875..80e24c8 100644
              bootstrap.status_account_display,
              bootstrap.plan_type,
 diff --git a/codex-rs/tui/src/app/startup.rs b/codex-rs/tui/src/app/startup.rs
-index cd98621..7c40e61 100644
+index 2b4256f65bc510acd0104a33cbe6b2a144371ca1..c7e8e82de000c8909d3779e3a83adda526003633 100644
 --- a/codex-rs/tui/src/app/startup.rs
 +++ b/codex-rs/tui/src/app/startup.rs
-@@ -770,6 +770,9 @@ impl App {
+@@ -876,6 +876,9 @@ impl App {
          if startup_session_cancelled {
              start_in_agents_overview = true;
          }
@@ -1636,10 +1639,10 @@ index cd98621..7c40e61 100644
          if pending_startup_thread_start && !start_in_agents_overview {
              chat_widget
 diff --git a/codex-rs/tui/src/app_event.rs b/codex-rs/tui/src/app_event.rs
-index ce30da4..1337ebb 100644
+index a20193149e57e60f75e89fbd4b4aa819d511b2e5..4950b2e7d0438d8e36babc3d65eb97bdbb737e8a 100644
 --- a/codex-rs/tui/src/app_event.rs
 +++ b/codex-rs/tui/src/app_event.rs
-@@ -289,6 +289,14 @@ pub(crate) enum AppEvent {
+@@ -312,6 +312,14 @@ pub(crate) enum AppEvent {
      ReviewMisalignment(Arc<crate::chatwidget::MisalignmentReview>),
      ContinueMisalignment(Arc<crate::chatwidget::MisalignmentReview>),
      CloseMisalignmentReview,
@@ -1655,10 +1658,10 @@ index ce30da4..1337ebb 100644
      OpenAgentsOverview,
      ShowMoreAgentsOverview,
 diff --git a/codex-rs/tui/src/app_server_session.rs b/codex-rs/tui/src/app_server_session.rs
-index 3942e56..f2d8735 100644
+index 0b6bb57d89b0ebea70873dbd66068cd2ff849b6b..62caf5da7237c3c07f5fe08bf58bccb117e9f755 100644
 --- a/codex-rs/tui/src/app_server_session.rs
 +++ b/codex-rs/tui/src/app_server_session.rs
-@@ -519,6 +519,28 @@ impl AppServerSession {
+@@ -587,6 +587,28 @@ impl AppServerSession {
          self.remote_cwd_override.as_deref()
      }
  
@@ -1688,10 +1691,10 @@ index 3942e56..f2d8735 100644
          thread_id.is_some_and(|thread_id| {
              self.client.managed_gateway_thread_id() == Some(thread_id.to_string().as_str())
 diff --git a/codex-rs/tui/src/bottom_pane/chat_composer.rs b/codex-rs/tui/src/bottom_pane/chat_composer.rs
-index 7272255..4cab751 100644
+index 2ad3f1cd95ea3b5cb55326c2f56be31b76eeb761..65033eb4efd2f405384980ffdcda64ef9011970c 100644
 --- a/codex-rs/tui/src/bottom_pane/chat_composer.rs
 +++ b/codex-rs/tui/src/bottom_pane/chat_composer.rs
-@@ -620,6 +620,7 @@ pub(crate) struct ChatComposer {
+@@ -624,6 +624,7 @@ pub(crate) struct ChatComposer {
      blocks_direct_input: bool,
      is_task_running: bool,
      queue_submissions: bool,
@@ -1699,7 +1702,7 @@ index 7272255..4cab751 100644
      /// Slash-command draft staged for local recall after application-level dispatch.
      ///
      /// This slot is intentionally separate from `ChatComposerHistory` so inline slash commands can
-@@ -796,6 +797,7 @@ impl ChatComposer {
+@@ -801,6 +802,7 @@ impl ChatComposer {
              blocks_direct_input: false,
              is_task_running: false,
              queue_submissions: false,
@@ -1707,7 +1710,7 @@ index 7272255..4cab751 100644
              pending_slash_command_history: None,
              skills: None,
              plugins: None,
-@@ -3521,9 +3523,14 @@ impl ChatComposer {
+@@ -3500,9 +3502,14 @@ impl ChatComposer {
              self.footer.mode = reset_mode_after_activity(self.footer.mode);
          }
          if self.queue_keys.is_pressed(key_event)
@@ -1724,7 +1727,7 @@ index 7272255..4cab751 100644
          }
  
          if self.submit_keys.is_pressed(key_event) {
-@@ -4375,6 +4382,10 @@ impl ChatComposer {
+@@ -4261,6 +4268,10 @@ impl ChatComposer {
          self.is_task_running = running;
      }
  
@@ -1736,10 +1739,10 @@ index 7272255..4cab751 100644
          self.queue_submissions = queue_submissions;
      }
 diff --git a/codex-rs/tui/src/bottom_pane/mod.rs b/codex-rs/tui/src/bottom_pane/mod.rs
-index 912880e..af3f30d 100644
+index ae9405e9ff3718aa8d3c6c3dfac487a3c2688823..ea71b6f14f5a566fe66a4c13b41805091ff82a46 100644
 --- a/codex-rs/tui/src/bottom_pane/mod.rs
 +++ b/codex-rs/tui/src/bottom_pane/mod.rs
-@@ -1338,6 +1338,10 @@ impl BottomPane {
+@@ -1400,6 +1400,10 @@ impl BottomPane {
          }
      }
  
@@ -1751,10 +1754,10 @@ index 912880e..af3f30d 100644
          self.composer.set_queue_submissions(queue_submissions);
      }
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index 7fafd6d..5b8bdc2 100644
+index 2f74f843d59d8578fe32a195de0c664bf049e4fe..427bc1e416a817cc8ff6e67ef3ae2dc0eba88bcf 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
-@@ -280,6 +280,7 @@ mod goal_menu;
+@@ -281,6 +281,7 @@ mod goal_menu;
  mod ide_context;
  use self::ide_context::IdeContextState;
  mod input_queue;
@@ -1763,10 +1766,10 @@ index 7fafd6d..5b8bdc2 100644
  use self::input_queue::InputQueueState;
  mod image_submission;
 diff --git a/codex-rs/tui/src/chatwidget/input_flow.rs b/codex-rs/tui/src/chatwidget/input_flow.rs
-index b4d45da..04cccce 100644
+index 5b44cac1b0a97e94a786705c490dd80e5a7a8888..24803b2c79c3e2a4bdb8ca63972ab922529f1868 100644
 --- a/codex-rs/tui/src/chatwidget/input_flow.rs
 +++ b/codex-rs/tui/src/chatwidget/input_flow.rs
-@@ -168,6 +168,10 @@ impl ChatWidget {
+@@ -169,6 +169,10 @@ impl ChatWidget {
          if self.has_misalignment_policy_violation() {
              return false;
          }
@@ -1776,8 +1779,8 @@ index b4d45da..04cccce 100644
 +        }
          let should_run_now = self.is_session_configured()
              && !self.is_user_turn_pending_or_running()
-             && !self.input_queue.suppress_queue_autosend
-@@ -234,6 +238,9 @@ impl ChatWidget {
+             && !self.input_queue.submissions_paused()
+@@ -235,6 +239,9 @@ impl ChatWidget {
  
      /// If idle and there are queued inputs, submit exactly one to start the next turn.
      pub(crate) fn maybe_send_next_queued_input(&mut self) -> bool {
@@ -1785,9 +1788,9 @@ index b4d45da..04cccce 100644
 +            return false;
 +        }
          if !self.is_session_configured()
+             || self.fork_in_progress
              || self.has_misalignment_policy_violation()
-             || self.input_queue.suppress_queue_autosend
-@@ -357,6 +364,22 @@ impl ChatWidget {
+@@ -359,6 +366,22 @@ impl ChatWidget {
              questions.has_queued_messages = has_queued;
          }
          let mut preview = self.input_queue.preview();
@@ -1811,7 +1814,7 @@ index b4d45da..04cccce 100644
              preview.queued_messages.insert(
                  /*index*/ 0,
 diff --git a/codex-rs/tui/src/chatwidget/input_queue.rs b/codex-rs/tui/src/chatwidget/input_queue.rs
-index 13600b2..d3c04db 100644
+index bdaedab6ca43f20a16e1ba5efee0a986acca26b4..11d2a51e040e8b7984224718aacee435354a2f10 100644
 --- a/codex-rs/tui/src/chatwidget/input_queue.rs
 +++ b/codex-rs/tui/src/chatwidget/input_queue.rs
 @@ -24,6 +24,7 @@ pub(super) struct PendingInputPreview {
@@ -1823,7 +1826,7 @@ index 13600b2..d3c04db 100644
      pub(super) queued_user_messages: VecDeque<QueuedUserMessage>,
      /// History records for queued user messages. Slash commands such as `/goal`
 diff --git a/codex-rs/tui/src/chatwidget/input_restore.rs b/codex-rs/tui/src/chatwidget/input_restore.rs
-index e1a798b..1c1508d 100644
+index e1a798b522b62c05c1d0007ec5a668b12154e70f..1c1508d1af54df7133fbaf1bc8056c13f317ea54 100644
 --- a/codex-rs/tui/src/chatwidget/input_restore.rs
 +++ b/codex-rs/tui/src/chatwidget/input_restore.rs
 @@ -571,6 +571,7 @@ impl ChatWidget {
@@ -1844,10 +1847,10 @@ index e1a798b..1c1508d 100644
              self.safety_buffering_source = input_state.safety_buffering_source;
              self.turn_lifecycle.restore_running(
 diff --git a/codex-rs/tui/src/chatwidget/input_submission.rs b/codex-rs/tui/src/chatwidget/input_submission.rs
-index 5184f1c..27e2f83 100644
+index 9998e77583d40fe12e0026c7028332c109c4c8ea..69daabed5855d5c679ad9dc872ad9975758dba3e 100644
 --- a/codex-rs/tui/src/chatwidget/input_submission.rs
 +++ b/codex-rs/tui/src/chatwidget/input_submission.rs
-@@ -139,7 +139,21 @@ impl ChatWidget {
+@@ -140,7 +140,21 @@ impl ChatWidget {
              return (false, None);
          }
          self.empty_state_animation.borrow_mut().dismiss();
@@ -1870,7 +1873,7 @@ index 5184f1c..27e2f83 100644
              let model_prompt = source == UserMessageSource::Prompt
                  && (shell_escape_policy == ShellEscapePolicy::Disallow
                      || !user_message.text.starts_with('!'));
-@@ -414,6 +428,20 @@ impl ChatWidget {
+@@ -424,6 +438,20 @@ impl ChatWidget {
          self.maybe_apply_ide_context(&mut items);
          crate::task_mentions::apply_task_references(&mut items, &mention_bindings, self.thread_id);
  
@@ -1892,10 +1895,10 @@ index 5184f1c..27e2f83 100644
              self.active_collaboration_mask
                  .as_ref()
 diff --git a/codex-rs/tui/src/chatwidget/interaction.rs b/codex-rs/tui/src/chatwidget/interaction.rs
-index 571ae8d..441197a 100644
+index 8657de2e8373e4a07fd4e97eb7ca5b1ca6048a54..3094667d22fe2d67b2499b80364ef7f7c9a4f63b 100644
 --- a/codex-rs/tui/src/chatwidget/interaction.rs
 +++ b/codex-rs/tui/src/chatwidget/interaction.rs
-@@ -64,6 +64,14 @@ impl ChatWidget {
+@@ -88,6 +88,14 @@ impl ChatWidget {
          if self.handle_question_key(key_event) {
              return KeyEventAction::None;
          }
@@ -1912,7 +1915,7 @@ index 571ae8d..441197a 100644
                  key_event,
 diff --git a/codex-rs/tui/src/chatwidget/managed_queue.rs b/codex-rs/tui/src/chatwidget/managed_queue.rs
 new file mode 100644
-index 0000000..407f364
+index 0000000000000000000000000000000000000000..407f364ea252413b4901db1dcc24aff951905773
 --- /dev/null
 +++ b/codex-rs/tui/src/chatwidget/managed_queue.rs
 @@ -0,0 +1,441 @@
@@ -2358,13 +2361,13 @@ index 0000000..407f364
 +    }
 +}
 diff --git a/codex-rs/tui/src/chatwidget/protocol.rs b/codex-rs/tui/src/chatwidget/protocol.rs
-index 2fbce46..f5f38a9 100644
+index d185f0956feb9120720fb68026d5104b67af7085..358c94dfb02408b67dcf50f8e985ef084cca51f5 100644
 --- a/codex-rs/tui/src/chatwidget/protocol.rs
 +++ b/codex-rs/tui/src/chatwidget/protocol.rs
-@@ -44,6 +44,16 @@ impl ChatWidget {
-             self.restore_retry_status_header_if_present();
-         }
-         match notification {
+@@ -58,6 +58,16 @@ impl ChatWidget {
+                     );
+                 }
+             }
 +            ServerNotification::ThreadQueueChanged(notification) => {
 +                if self
 +                    .input_queue
@@ -2378,19 +2381,19 @@ index 2fbce46..f5f38a9 100644
              ServerNotification::ThreadTokenUsageUpdated(notification) => {
                  self.set_token_info(Some(token_usage_info_from_app_server(
                      notification.token_usage,
-@@ -346,7 +356,6 @@ impl ChatWidget {
-             | ServerNotification::ThreadStarted(_)
+@@ -361,7 +371,6 @@ impl ChatWidget {
              | ServerNotification::ThreadStatusChanged(_)
+             | ServerNotification::ThreadReadStateChanged(_)
              | ServerNotification::ThreadReverted(_)
 -            | ServerNotification::ThreadQueueChanged(_)
+             | ServerNotification::ThreadPredictionUpdated(_)
              | ServerNotification::ManagedExecutionRequested(_)
              | ServerNotification::ManagedExecutionDeclined(_)
-             | ServerNotification::ThreadArchived(_)
 diff --git a/codex-rs/tui/src/chatwidget/tests.rs b/codex-rs/tui/src/chatwidget/tests.rs
-index 6d42ca5..74716fb 100644
+index 8534d753f6c92a7a0fdc8254d970bb260a4b4faa..ca9bd16d424897f1e9ea6a4891647146177f82d1 100644
 --- a/codex-rs/tui/src/chatwidget/tests.rs
 +++ b/codex-rs/tui/src/chatwidget/tests.rs
-@@ -260,6 +260,7 @@ mod history_replay;
+@@ -259,6 +259,7 @@ mod history_replay;
  mod home_cleanup_tests;
  #[path = "tests/luna_reserve_usage_tests.rs"]
  mod luna_reserve_usage_tests;
@@ -2399,10 +2402,10 @@ index 6d42ca5..74716fb 100644
  #[path = "tests/misalignment_policy_tests.rs"]
  mod misalignment_policy;
 diff --git a/codex-rs/tui/src/chatwidget/tests/composer_submission.rs b/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
-index 099806b..b7990d2 100644
+index 6ef2db01fb53431a6bf79562780057f340477f42..e44f950ce8810cb334de5476899a9372641ec37f 100644
 --- a/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
-@@ -1811,6 +1811,7 @@ async fn restore_thread_input_state_applies_running_state_policy() {
+@@ -1872,6 +1872,7 @@ async fn restore_thread_input_state_applies_running_state_policy() {
      let input_state = ThreadInputState {
          questions: None,
          pending_thread_settings: None,
@@ -2412,7 +2415,7 @@ index 099806b..b7990d2 100644
              ..Default::default()
 diff --git a/codex-rs/tui/src/chatwidget/tests/managed_queue.rs b/codex-rs/tui/src/chatwidget/tests/managed_queue.rs
 new file mode 100644
-index 0000000..7a37bf6
+index 0000000000000000000000000000000000000000..7a37bf6fe3798341cbed060c561ef73d98d6cad1
 --- /dev/null
 +++ b/codex-rs/tui/src/chatwidget/tests/managed_queue.rs
 @@ -0,0 +1,211 @@
@@ -2628,10 +2631,10 @@ index 0000000..7a37bf6
 +    assert!(!chat.maybe_send_next_queued_input());
 +}
 diff --git a/codex-rs/tui/src/chatwidget/tests/review_mode.rs b/codex-rs/tui/src/chatwidget/tests/review_mode.rs
-index 710c3a9..3ebbbbb 100644
+index dd8214d01390b4a3a0ffdea29590577696bf2342..014354ba63f2ea2f7b3a0492bf0cc1afe0aafdde 100644
 --- a/codex-rs/tui/src/chatwidget/tests/review_mode.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/review_mode.rs
-@@ -380,6 +380,7 @@ async fn restore_thread_input_state_restores_pending_steers_without_downgrading_
+@@ -418,6 +418,7 @@ async fn restore_thread_input_state_restores_pending_steers_without_downgrading_
          Some(ThreadInputState {
              pending_thread_settings: None,
              questions: None,
@@ -2640,7 +2643,7 @@ index 710c3a9..3ebbbbb 100644
              safety_buffering_prompt: None,
              safety_buffering_source: UserMessageSource::Prompt,
 diff --git a/codex-rs/tui/src/chatwidget/user_messages.rs b/codex-rs/tui/src/chatwidget/user_messages.rs
-index ed99725..eb03237 100644
+index ed997253bc7e63e72f4e2f2601213effaf588879..eb032377108836b1e49d51e2cc9d3e994a2d73f2 100644
 --- a/codex-rs/tui/src/chatwidget/user_messages.rs
 +++ b/codex-rs/tui/src/chatwidget/user_messages.rs
 @@ -144,6 +144,7 @@ pub(crate) struct ThreadInputState {
@@ -2652,10 +2655,10 @@ index ed99725..eb03237 100644
      pub(super) safety_buffering_prompt: Option<UserMessage>,
      pub(super) safety_buffering_source: UserMessageSource,
 diff --git a/codex-rs/tui/src/lib.rs b/codex-rs/tui/src/lib.rs
-index 2697cba..9ecbe9c 100644
+index a3fb5447b06d48d3a2924eb25dae4174243cb844..a88d8025f89f6aca71767b2eac61485fe5afac32 100644
 --- a/codex-rs/tui/src/lib.rs
 +++ b/codex-rs/tui/src/lib.rs
-@@ -242,6 +242,7 @@ pub use update_action::DaemonUpdateSource;
+@@ -253,6 +253,7 @@ pub use update_action::DaemonUpdateSource;
  pub use update_action::UpdateAction;
  #[cfg(not(debug_assertions))]
  pub use update_action::get_update_action;
@@ -2665,7 +2668,7 @@ index 2697cba..9ecbe9c 100644
  mod updates;
 diff --git a/codex-rs/tui/src/managed_queue.rs b/codex-rs/tui/src/managed_queue.rs
 new file mode 100644
-index 0000000..e9683fa
+index 0000000000000000000000000000000000000000..e9683fa1eb43a46652506abaaefb61716659a221
 --- /dev/null
 +++ b/codex-rs/tui/src/managed_queue.rs
 @@ -0,0 +1,215 @@

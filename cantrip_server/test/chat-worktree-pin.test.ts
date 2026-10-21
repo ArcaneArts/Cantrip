@@ -51,7 +51,7 @@ beforeAll(async () => {
     name: "Pin Worker",
     platform: "darwin",
     architecture: "arm64",
-    codexVersion: "0.160.1",
+    codexVersion: "0.163.0",
     codexRuntime: unprobedCodexRuntimeReport,
     remoteSurfaces: {
       browser: false,

@@ -2,6 +2,7 @@
 //! editable text using the textarea's last rendered viewport and hides completion suggestions.
 //! Double/triple clicks select words/logical lines using the transcript's shared gesture rules.
 //! Copy preserves the draft and cursor; confirmed copies clear selection for every gesture.
+//! Wheel browsing uses the current viewport without changing popup or selection ownership.
 
 use super::*;
 use crate::clipboard_copy::CopyStatus;
@@ -10,13 +11,38 @@ use crossterm::event::MouseButton;
 use crossterm::event::MouseEvent;
 use crossterm::event::MouseEventKind;
 
+/// The input that will receive clipboard text, independent of a search preview.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum ClipboardPasteTarget {
+    Draft(String, super::super::textarea::EditTarget),
+    HistorySearch(String),
+    VimSearch(String, super::super::textarea::EditTarget),
+}
+
 impl ChatComposer {
-    pub(crate) fn can_paste_on_right_click(&self) -> bool {
-        self.draft.input_enabled
+    pub(crate) fn clipboard_paste_target(
+        &self,
+        shortcut: Option<KeyCode>,
+    ) -> Option<ClipboardPasteTarget> {
+        let allowed = self.draft.input_enabled
             && !self.blocks_direct_input
-            && self.history_search.is_none()
-            && self.draft.textarea.vim_query().is_none()
-            && self.draft.textarea.mouse_selection_range().is_none()
+            && (shortcut.is_some()
+                || (self.history_search.is_none()
+                    && self.draft.textarea.vim_query().is_none()
+                    && self.draft.textarea.mouse_selection_range().is_none()));
+        if !allowed {
+            return None;
+        }
+        Some(if let Some(search) = &self.history_search {
+            ClipboardPasteTarget::HistorySearch(search.query.clone())
+        } else if let Some(search) = self.draft.textarea.vim_query() {
+            ClipboardPasteTarget::VimSearch(
+                search.editor.text().to_string(),
+                search.editor.edit_target(),
+            )
+        } else {
+            ClipboardPasteTarget::Draft(self.current_text(), self.draft.textarea.edit_target())
+        })
     }
 
     pub(in crate::bottom_pane) fn finish_copy(
@@ -61,6 +87,10 @@ impl ChatComposer {
         Some((char_count, result))
     }
 
+    pub(crate) fn clear_mouse_selection(&mut self) {
+        self.draft.textarea.set_cursor(self.draft.textarea.cursor());
+    }
+
     pub(crate) fn end_mouse_drag(&mut self) {
         self.draft.textarea.end_mouse_drag();
     }
@@ -85,11 +115,19 @@ impl ChatComposer {
 
     /// Dispatch after preparation and rendering have refreshed the viewport.
     pub(crate) fn handle_mouse(&mut self, event: MouseEvent) -> bool {
+        if self
+            .draft
+            .textarea
+            .scroll_mouse(event, &mut self.draft.textarea_state.borrow_mut())
+        {
+            return true;
+        }
         let handled = self
             .draft
             .textarea
             .handle_mouse(event, *self.draft.textarea_state.borrow());
         if handled {
+            self.draft.textarea_state.borrow_mut().follow_cursor();
             self.attachments.clear_remote_image_selection();
             self.sync_popups();
         }

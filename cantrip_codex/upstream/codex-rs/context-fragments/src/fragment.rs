@@ -38,6 +38,8 @@ impl From<RenderedFragment> for ResponseItem {
         let (content, content_kind) = annotated_content.into_parts();
 
         Self::Message {
+            status: None,
+            encrypted_content: None,
             id: None,
             role: role.to_string(),
             content: vec![content],
@@ -66,11 +68,6 @@ pub trait ContextualUserFragment {
 
     /// Returns a stable `<feature>.<name>` classification, using `generic` for shared fragments.
     fn content_kind(&self) -> ContentItemKind;
-
-    /// Whether this fragment must be recorded as its own response item.
-    fn requires_separate_message(&self) -> bool {
-        false
-    }
 
     fn markers(&self) -> (&'static str, &'static str);
 

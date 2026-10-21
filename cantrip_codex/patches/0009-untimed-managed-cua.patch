@@ -1,8 +1,8 @@
 diff --git a/codex-rs/codex-mcp/src/binding.rs b/codex-rs/codex-mcp/src/binding.rs
-index f0a95b9..3906413 100644
+index a20d1a8e352edd4c91289b3d1e8e31c10762183f..bf1f2ff2642c76af974e0fcb011c09fbfb41bd46 100644
 --- a/codex-rs/codex-mcp/src/binding.rs
 +++ b/codex-rs/codex-mcp/src/binding.rs
-@@ -311,6 +311,9 @@ impl PreparedMcpCall {
+@@ -387,6 +387,9 @@ impl PreparedMcpCall {
          Fut: Future<Output = Result<(Option<JsonValue>, Option<JsonValue>)>>,
      {
          let effective_timeout = match (self.client.tool_timeout, requested_timeout) {
@@ -13,10 +13,10 @@ index f0a95b9..3906413 100644
                  Some(server_timeout.min(requested_timeout))
              }
 diff --git a/codex-rs/codex-mcp/src/connection_manager.rs b/codex-rs/codex-mcp/src/connection_manager.rs
-index ad4fbf4..c2ce6f7 100644
+index 0f70d060bda6ad18804b9785b0764a23f16f28f4..a82579752ba4216283b0e42a054e5873f8c9982a 100644
 --- a/codex-rs/codex-mcp/src/connection_manager.rs
 +++ b/codex-rs/codex-mcp/src/connection_manager.rs
-@@ -1012,6 +1012,9 @@ impl McpConnectionSet {
+@@ -1035,6 +1035,9 @@ impl McpConnectionSet {
          };
  
          let effective_timeout = match (view.tool_timeout, requested_timeout) {

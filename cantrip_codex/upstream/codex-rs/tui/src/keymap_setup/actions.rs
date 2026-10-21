@@ -97,6 +97,7 @@ pub(super) const KEYMAP_ACTIONS: &[KeymapActionDescriptor] = &[
     gated_action("global", "Global", "toggle_fast_mode", "Turn Fast mode on or off.", KeymapActionFeature::FastMode),
     action("global", "Global", "toggle_raw_output", "Toggle raw scrollback mode."),
     action("global", "Global", "toggle_side_conversation", "Switch between a side conversation and its parent."),
+    action("global", "Global", "leader", "Set the prefix used by shared leader shortcuts."),
     action("chat", "Chat", "interrupt_turn", "Interrupt the active turn."),
     action("chat", "Chat", "decrease_reasoning_effort", "Decrease reasoning effort."),
     action("chat", "Chat", "increase_reasoning_effort", "Increase reasoning effort."),
@@ -223,6 +224,7 @@ pub(super) const KEYMAP_ACTIONS: &[KeymapActionDescriptor] = &[
     action("agents", "Agents", "search", "Search the available agent tasks."),
     action("agents", "Agents", "new_task", "Open a new session in the selected checkout."),
     action("agents", "Agents", "new_worktree", "Open a new session in a worktree from the project default branch."),
+    action("agents", "Agents", "fork", "Fork the selected conversation and open the new session."),
     action("agents", "Agents", "rename", "Rename the selected task."),
     action("agents", "Agents", "stop", "Stop the selected running task."),
     action("agents", "Agents", "archive", "Archive the selected task and its child agents."),
@@ -271,6 +273,7 @@ pub(super) fn binding_slot<'a>(
     action: &str,
 ) -> Option<&'a mut Option<KeybindingsSpec>> {
     match (context, action) {
+        ("global", "leader") => Some(&mut keymap.global.leader),
         ("global", "open_agents") => Some(&mut keymap.global.open_agents),
         ("global", "open_transcript") => Some(&mut keymap.global.open_transcript),
         ("global", "find_transcript") => Some(&mut keymap.global.find_transcript),
@@ -408,6 +411,7 @@ pub(super) fn binding_slot<'a>(
         ("agents", "search") => Some(&mut keymap.agents.search),
         ("agents", "new_task") => Some(&mut keymap.agents.new_task),
         ("agents", "new_worktree") => Some(&mut keymap.agents.new_worktree),
+        ("agents", "fork") => Some(&mut keymap.agents.fork),
         ("agents", "rename") => Some(&mut keymap.agents.rename),
         ("agents", "stop") => Some(&mut keymap.agents.stop),
         ("agents", "archive") => Some(&mut keymap.agents.archive),
@@ -446,6 +450,23 @@ pub(super) fn format_action_binding_summary(
     let specs = specs
         .into_iter()
         .filter(|spec| seen.insert(spec.clone()))
+        .map(|spec| {
+            let Some(completion) = spec.strip_prefix("leader ") else {
+                return spec;
+            };
+            let resolved = runtime_keymap
+                .chords
+                .leader
+                .iter()
+                .filter_map(|prefix| super::binding_to_config_key_spec(*prefix).ok())
+                .map(|prefix| format!("{prefix} {completion}"))
+                .collect::<Vec<_>>();
+            if resolved.is_empty() {
+                format!("{spec} (inactive)")
+            } else {
+                format!("{spec} ({})", resolved.join(", "))
+            }
+        })
         .collect::<Vec<_>>();
     if specs.is_empty() {
         "unbound".to_string()

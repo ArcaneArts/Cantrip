@@ -53,7 +53,7 @@ use rmcp::model::JsonObject;
 use rmcp::model::ListToolsResult;
 use rmcp::model::MetaObject;
 use rmcp::model::ServerCapabilities;
-use rmcp::model::ServerInfo;
+use rmcp::model::ServerConfig;
 use rmcp::model::Tool;
 use rmcp::model::ToolAnnotations;
 use rmcp::transport::StreamableHttpServerConfig;
@@ -1495,19 +1495,10 @@ url = "https://example.com/allowed-mcp"
     Ok(())
 }
 
-#[test_case("disabled")]
-#[test_case("enterprise")]
 #[tokio::test]
-async fn plugin_install_skips_mcp_oauth_managed_by_plugin_config(case: &str) -> Result<()> {
+async fn plugin_install_skips_mcp_oauth_for_disabled_server() -> Result<()> {
     let oauth_server = MockServer::start().await;
-    let endpoint = format!("{}/mcp", oauth_server.uri());
-    let mcp_settings = match case {
-        "disabled" => "enabled = false".to_string(),
-        "enterprise" => format!(
-            "ema_auth = {{ url = '{endpoint}', resource = '{endpoint}', client_id = 'resource-client', authorization_server_issuer = 'https://as.example' }}"
-        ),
-        _ => unreachable!("unknown test case"),
-    };
+    let mcp_settings = "enabled = false";
     let codex_home = TempDir::new()?;
     std::fs::write(
         codex_home.path().join("config.toml"),
@@ -1566,7 +1557,7 @@ plugins = true
             .and_then(|plugins| plugins.get("sample-plugin@debug"))
             .and_then(|plugin| plugin.get("mcp_servers"))
             .and_then(|servers| servers.get("sample-mcp")),
-        Some(&toml::from_str::<toml::Value>(&mcp_settings)?)
+        Some(&toml::from_str::<toml::Value>(mcp_settings)?)
     );
     Ok(())
 }
@@ -2047,10 +2038,20 @@ async fn plugin_oauth_login_preserves_registered_callbacks_or_uses_legacy_fallba
     )
     .await??;
     assert_eq!(
+        completed.login_id.as_deref(),
+        Some(
+            response
+                .login_id
+                .as_deref()
+                .expect("login response should contain an ID")
+        )
+    );
+    assert_eq!(
         completed,
         McpServerOauthLoginCompletedNotification {
             name: "sample-mcp".to_string(),
             thread_id: None,
+            login_id: response.login_id,
             success: true,
             error: None,
         }
@@ -2110,8 +2111,17 @@ connectors = true
     Ok(())
 }
 
+#[test_case("", None, true; "legacy activation")]
+#[test_case("[plugins._default]\nenabled = false", None, false; "default disabled")]
+#[test_case("[plugins._default]\nenabled = false\n[plugins.\"linear@openai-curated-remote\"]\nenabled = true", None, true; "explicitly enabled overrides default")]
+#[test_case("", Some("[plugins._default]\nenabled = false"), false; "default disabled during install")]
+#[test_case("", Some("[plugins._default]\nenabled = \"invalid\""), false; "invalid policy during install skips auth")]
 #[tokio::test]
-async fn plugin_install_starts_remote_mcp_oauth_for_install_response_only_app() -> Result<()> {
+async fn plugin_install_remote_auth_setup_respects_activation_policy(
+    plugin_config: &str,
+    plugin_config_after_install: Option<&str>,
+    expected_auth: bool,
+) -> Result<()> {
     let codex_home = TempDir::new()?;
     let server = MockServer::start().await;
     let oauth_server = MockServer::start().await;
@@ -2122,9 +2132,36 @@ async fn plugin_install_starts_remote_mcp_oauth_for_install_response_only_app() 
     )
     .await;
     configure_remote_plugin_with_apps_test(codex_home.path(), &server)?;
+    let config_path = codex_home.path().join("config.toml");
+    let original_config = std::fs::read_to_string(&config_path)?;
+    let config_contents = format!("{original_config}\n{plugin_config}\n");
+    std::fs::write(&config_path, &config_contents)?;
     mount_remote_plugin_detail(&server, REMOTE_PLUGIN_ID, "1.2.3", Some(&bundle_url)).await;
     mount_empty_remote_installed_plugins(&server).await;
-    mount_remote_plugin_install_with_apps_needing_auth(&server, REMOTE_PLUGIN_ID, &["alpha"]).await;
+    let updated_config = plugin_config_after_install
+        .map(|plugin_config| format!("{original_config}\n{plugin_config}\n"));
+    let expected_config = updated_config.as_ref().unwrap_or(&config_contents).clone();
+    let install_config_path = config_path.clone();
+    Mock::given(method("POST"))
+        .and(path(format!(
+            "/backend-api/ps/plugins/{REMOTE_PLUGIN_ID}/install"
+        )))
+        .and(query_param("includeAppsNeedingAuth", "true"))
+        .and(header("authorization", "Bearer chatgpt-token"))
+        .and(header("chatgpt-account-id", "account-123"))
+        .respond_with(move |_request: &Request| {
+            if let Some(updated_config) = &updated_config {
+                std::fs::write(&install_config_path, updated_config)
+                    .expect("install responder should update config");
+            }
+            ResponseTemplate::new(/*s*/ 200).set_body_json(json!({
+                "id": REMOTE_PLUGIN_ID,
+                "enabled": true,
+                "app_ids_needing_auth": ["alpha"],
+            }))
+        })
+        .mount(&server)
+        .await;
 
     let mut mcp = TestAppServer::builder()
         .with_codex_home(codex_home.path())
@@ -2140,16 +2177,44 @@ async fn plugin_install_starts_remote_mcp_oauth_for_install_response_only_app() 
         response,
         PluginInstallResponse {
             auth_policy: PluginAuthPolicy::OnUse,
-            apps_needing_auth: vec![AppSummary {
-                id: "alpha".to_string(),
-                name: "alpha".to_string(),
-                description: None,
-                install_url: Some("https://chatgpt.com/apps/alpha/alpha".to_string()),
-                category: None,
-            }],
+            apps_needing_auth: if expected_auth {
+                vec![AppSummary {
+                    id: "alpha".to_string(),
+                    name: "alpha".to_string(),
+                    description: None,
+                    install_url: Some("https://chatgpt.com/apps/alpha/alpha".to_string()),
+                    category: None,
+                }]
+            } else {
+                Vec::new()
+            },
         }
     );
-    assert!(oauth_discovery_request_count(&oauth_server).await > 0);
+    if expected_auth {
+        assert!(oauth_discovery_request_count(&oauth_server).await > 0);
+    } else {
+        assert!(
+            oauth_server
+                .received_requests()
+                .await
+                .unwrap_or_default()
+                .is_empty()
+        );
+    }
+    wait_for_remote_plugin_request_count(
+        &server,
+        "POST",
+        &format!("/ps/plugins/{REMOTE_PLUGIN_ID}/install"),
+        /*expected_count*/ 1,
+    )
+    .await?;
+    assert!(
+        codex_home
+            .path()
+            .join("plugins/cache/openai-curated-remote/linear/1.2.3/.codex-plugin/plugin.json")
+            .is_file()
+    );
+    assert_eq!(std::fs::read_to_string(config_path)?, expected_config);
     Ok(())
 }
 
@@ -2567,8 +2632,8 @@ struct PluginInstallMcpServer {
 }
 
 impl ServerHandler for PluginInstallMcpServer {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
     }
 
     fn list_tools(

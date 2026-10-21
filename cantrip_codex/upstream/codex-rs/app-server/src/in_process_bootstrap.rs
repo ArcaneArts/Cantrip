@@ -92,7 +92,8 @@ impl EmbeddedNetworkPolicy {
                     .restrict_to_endpoints(endpoint.parse().into_iter().collect()),
             ),
         )
-        .with_local_bootstrap_factory(factory);
+        .with_local_bootstrap_factory(factory)
+        .with_application_network_policy(self.effective.policy());
         auth
     }
 }
@@ -132,6 +133,7 @@ pub(super) async fn configure(
     let policy_config = config_manager
         .load_startup_config(Some(config.cwd.to_path_buf()))
         .await?;
+    config.validate_windows_mxc_requirement_from(&policy_config)?;
     let auth_config = codex_login::AuthConfig {
         chatgpt_base_url: Some(policy_config.chatgpt_base_url.clone()),
         forced_login_method: policy_config.forced_login_method,

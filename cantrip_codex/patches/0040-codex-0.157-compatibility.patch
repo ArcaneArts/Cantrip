@@ -1,8 +1,8 @@
 diff --git a/codex-rs/app-server-protocol/src/export.rs b/codex-rs/app-server-protocol/src/export.rs
-index db5ff71..299568a 100644
+index 0f90faf920cfcf6565c55548fc4064ba7dcccd96..a1e3a7edc4bf3bb0ebfbaabded3a5af82b52333f 100644
 --- a/codex-rs/app-server-protocol/src/export.rs
 +++ b/codex-rs/app-server-protocol/src/export.rs
-@@ -2261,6 +2261,20 @@ mod tests {
+@@ -2279,6 +2279,20 @@ mod tests {
                                  | "CollabCloseEndEvent"
                                  | "CollabResumeBeginEvent"
                                  | "CollabResumeEndEvent"
@@ -24,7 +24,7 @@ index db5ff71..299568a 100644
                  });
  
 diff --git a/codex-rs/app-server-protocol/src/protocol/thread_history.rs b/codex-rs/app-server-protocol/src/protocol/thread_history.rs
-index 4d8fd27..38ca488 100644
+index 24d8aec22e8b32b3a428139d21dfb702b3fd2b0b..476c142f2309dcef86ac207bd346531fa4554f28 100644
 --- a/codex-rs/app-server-protocol/src/protocol/thread_history.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/thread_history.rs
 @@ -103,7 +103,7 @@ pub struct ThreadHistoryItemChange {
@@ -56,8 +56,8 @@ index 4d8fd27..38ca488 100644
 +    fn from(value: ThreadHistoryTurnChange) -> Self {
          Self {
              id: value.turn_id,
-             items: Vec::new(),
-@@ -145,7 +145,7 @@ impl From<ThreadHistoryTurnMetadata> for Turn {
+             root_turn_id: value.root_turn_id,
+@@ -146,7 +146,7 @@ impl From<ThreadHistoryTurnMetadata> for Turn {
      }
  }
  
@@ -66,7 +66,7 @@ index 4d8fd27..38ca488 100644
      fn from_pending_turn(turn: &PendingTurn) -> Self {
          Self {
              turn_id: turn.id.clone(),
-@@ -166,7 +166,7 @@ impl ThreadHistoryTurnMetadata {
+@@ -167,7 +167,7 @@ impl ThreadHistoryTurnMetadata {
  struct ThreadHistoryChangeAccumulator {
      changed_items: Vec<Option<ThreadHistoryItemChange>>,
      changed_item_indexes: HashMap<(String, String), usize>,
@@ -75,7 +75,7 @@ index 4d8fd27..38ca488 100644
      changed_turn_indexes: HashMap<String, usize>,
      removed_turn_ids: Vec<String>,
      removed_turn_indexes: HashMap<String, usize>,
-@@ -205,7 +205,7 @@ impl ThreadHistoryChangeAccumulator {
+@@ -206,7 +206,7 @@ impl ThreadHistoryChangeAccumulator {
          self.changed_items.push(Some(change));
      }
  
@@ -84,7 +84,7 @@ index 4d8fd27..38ca488 100644
          if let Some(index) = self.changed_turn_indexes.get(&change.turn_id).copied() {
              self.changed_turns[index] = Some(change);
              return;
-@@ -298,6 +298,7 @@ impl ThreadHistoryBuilder {
+@@ -299,6 +299,7 @@ impl ThreadHistoryBuilder {
      fn observe_canonical_status(&mut self, event: &EventMsg) {
          let change = match event {
              EventMsg::TurnStarted(turn) if turn.canonical_items => ThreadHistoryTurnChange {
@@ -92,7 +92,7 @@ index 4d8fd27..38ca488 100644
                  turn_id: turn.turn_id.clone(),
                  status: TurnStatus::InProgress,
                  error: None,
-@@ -308,6 +309,10 @@ impl ThreadHistoryBuilder {
+@@ -309,6 +310,10 @@ impl ThreadHistoryBuilder {
              EventMsg::TurnComplete(turn) if self.canonical_items.contains_key(&turn.turn_id) => {
                  ThreadHistoryTurnChange {
                      turn_id: turn.turn_id.clone(),
@@ -103,7 +103,7 @@ index 4d8fd27..38ca488 100644
                      status: if turn.error.is_some() {
                          TurnStatus::Failed
                      } else {
-@@ -334,6 +339,10 @@ impl ThreadHistoryBuilder {
+@@ -335,6 +340,10 @@ impl ThreadHistoryBuilder {
                  };
                  ThreadHistoryTurnChange {
                      turn_id: id.clone(),
@@ -114,7 +114,7 @@ index 4d8fd27..38ca488 100644
                      status: TurnStatus::Interrupted,
                      error: None,
                      started_at: turn.started_at,
-@@ -392,12 +401,12 @@ impl ThreadHistoryBuilder {
+@@ -393,12 +402,12 @@ impl ThreadHistoryBuilder {
  
      /// Snapshots active turn metadata without cloning its items.
      /// Like the full snapshot, falls back to the last finished turn.
@@ -129,7 +129,7 @@ index 4d8fd27..38ca488 100644
                  if let Some(status) = self.canonical_status.get(&turn.id) {
                      metadata.status = status.status.clone();
                      metadata.error = status.error.clone();
-@@ -1379,7 +1388,7 @@ impl ThreadHistoryBuilder {
+@@ -1382,7 +1391,7 @@ impl ThreadHistoryBuilder {
                  codex_error_info: payload.codex_error_info.clone().map(Into::into),
                  additional_details: None,
              });
@@ -138,7 +138,7 @@ index 4d8fd27..38ca488 100644
          } else {
              None
          };
-@@ -1402,7 +1411,7 @@ impl ThreadHistoryBuilder {
+@@ -1405,7 +1414,7 @@ impl ThreadHistoryBuilder {
              }
              turn.completed_at = payload.completed_at;
              turn.duration_ms = payload.duration_ms;
@@ -147,7 +147,7 @@ index 4d8fd27..38ca488 100644
          };
          if let Some(turn_id) = payload.turn_id.as_deref() {
              // Prefer an exact ID match so we interrupt the turn explicitly targeted by the event.
-@@ -1454,7 +1463,7 @@ impl ThreadHistoryBuilder {
+@@ -1457,7 +1466,7 @@ impl ThreadHistoryBuilder {
              }
              turn.completed_at = payload.completed_at;
              turn.duration_ms = payload.duration_ms;
@@ -156,7 +156,7 @@ index 4d8fd27..38ca488 100644
          };
  
          // Prefer an exact ID match from the active turn and then close it.
-@@ -1482,7 +1491,7 @@ impl ThreadHistoryBuilder {
+@@ -1485,7 +1494,7 @@ impl ThreadHistoryBuilder {
              }
              turn.completed_at = payload.completed_at;
              turn.duration_ms = payload.duration_ms;
@@ -165,7 +165,7 @@ index 4d8fd27..38ca488 100644
              self.record_changed_turn(changed_turn);
              return;
          }
-@@ -1654,11 +1663,11 @@ impl ThreadHistoryBuilder {
+@@ -1657,11 +1666,11 @@ impl ThreadHistoryBuilder {
  
      fn record_changed_pending_turn(&mut self, turn: &PendingTurn) {
          if self.is_tracking_changes() {
@@ -179,25 +179,25 @@ index 4d8fd27..38ca488 100644
          if let Some(change_set) = self.active_change_set.as_mut() {
              change_set.changed_turns.push(turn);
          }
-@@ -3884,6 +3893,8 @@ mod tests {
-         let events = vec![
+@@ -3902,6 +3911,8 @@ mod tests {
              EventMsg::TurnStarted(TurnStartedEvent {
+                 turn_attribution: None,
                  turn_id: "turn-a".into(),
 +                canonical_items: false,
 +                initial_settings: None,
                  root_turn_id: None,
                  trace_id: None,
                  started_at: None,
-@@ -3905,6 +3916,8 @@ mod tests {
-             }),
+@@ -3925,6 +3936,8 @@ mod tests {
              EventMsg::TurnStarted(TurnStartedEvent {
+                 turn_attribution: None,
                  turn_id: "turn-b".into(),
 +                canonical_items: false,
 +                initial_settings: None,
                  root_turn_id: None,
                  trace_id: None,
                  started_at: None,
-@@ -4172,6 +4185,8 @@ mod tests {
+@@ -4195,6 +4208,8 @@ mod tests {
              started_at: Some(100),
              model_context_window: None,
              collaboration_mode_kind: Default::default(),
@@ -206,8 +206,8 @@ index 4d8fd27..38ca488 100644
          }));
          builder.handle_event(&EventMsg::UserMessage(UserMessageEvent {
              message: "first".into(),
-@@ -4237,6 +4252,8 @@ mod tests {
-         builder.handle_event(&EventMsg::TurnStarted(TurnStartedEvent {
+@@ -4262,6 +4277,8 @@ mod tests {
+             turn_attribution: None,
              turn_id: "turn-1".into(),
              root_turn_id: Some("root-turn".into()),
 +            canonical_items: false,
@@ -215,7 +215,7 @@ index 4d8fd27..38ca488 100644
              trace_id: None,
              started_at: Some(100),
              model_context_window: None,
-@@ -4246,7 +4263,7 @@ mod tests {
+@@ -4271,7 +4288,7 @@ mod tests {
              message: "hello".into(),
              ..Default::default()
          }));
@@ -224,7 +224,7 @@ index 4d8fd27..38ca488 100644
              turn_id: "turn-1".into(),
              root_turn_id: Some("root-turn".into()),
              error: None,
-@@ -5421,7 +5438,7 @@ mod tests {
+@@ -5533,7 +5550,7 @@ mod tests {
                      started_at_ms: None,
                      completed_at_ms: None,
                  }],
@@ -233,7 +233,7 @@ index 4d8fd27..38ca488 100644
                      turn_id: "rollout-0".into(),
                      root_turn_id: None,
                      status: TurnStatus::Completed,
-@@ -5531,7 +5548,7 @@ mod tests {
+@@ -5644,7 +5661,7 @@ mod tests {
              start_changes,
              ThreadHistoryChangeSet {
                  changed_items: Vec::new(),
@@ -242,7 +242,7 @@ index 4d8fd27..38ca488 100644
                      turn_id: "turn-a".into(),
                      root_turn_id: Some("root-turn".into()),
                      status: TurnStatus::InProgress,
-@@ -5570,7 +5587,7 @@ mod tests {
+@@ -5684,7 +5701,7 @@ mod tests {
              complete_changes,
              ThreadHistoryChangeSet {
                  changed_items: Vec::new(),
@@ -251,7 +251,7 @@ index 4d8fd27..38ca488 100644
                      turn_id: "turn-a".into(),
                      root_turn_id: Some("root-turn".into()),
                      status: TurnStatus::Completed,
-@@ -5618,7 +5635,7 @@ mod tests {
+@@ -5732,7 +5749,7 @@ mod tests {
                      started_at_ms: None,
                      completed_at_ms: None,
                  }],
@@ -260,7 +260,7 @@ index 4d8fd27..38ca488 100644
                      turn_id: "rollout-0".into(),
                      root_turn_id: None,
                      status: TurnStatus::Completed,
-@@ -5661,7 +5678,7 @@ mod tests {
+@@ -5777,7 +5794,7 @@ mod tests {
              changes,
              ThreadHistoryChangeSet {
                  changed_items: Vec::new(),
@@ -270,7 +270,7 @@ index 4d8fd27..38ca488 100644
                      root_turn_id: Some("root-turn".into()),
                      status: TurnStatus::Completed,
 diff --git a/codex-rs/app-server-protocol/src/protocol/thread_history_canonical_tests.rs b/codex-rs/app-server-protocol/src/protocol/thread_history_canonical_tests.rs
-index 04d2deb..8876278 100644
+index 04d2deb127a994d654dfbe8a63d68fa0f5d7274d..88762789ceaa9dd2ef070bdf58ac38ea18571021 100644
 --- a/codex-rs/app-server-protocol/src/protocol/thread_history_canonical_tests.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/thread_history_canonical_tests.rs
 @@ -5,6 +5,7 @@ use codex_protocol::protocol::{ErrorEvent, UserMessageEvent};
@@ -310,7 +310,7 @@ index 04d2deb..8876278 100644
 +    );
 +}
 diff --git a/codex-rs/app-server-protocol/src/protocol/thread_history_metadata.rs b/codex-rs/app-server-protocol/src/protocol/thread_history_metadata.rs
-index 8d25192..7dca4a1 100644
+index 8d251920ccda3236e0bba0735b7530728991f6f9..7dca4a17d972585a26d4a3f2119dff352776fbe4 100644
 --- a/codex-rs/app-server-protocol/src/protocol/thread_history_metadata.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/thread_history_metadata.rs
 @@ -351,6 +351,7 @@ mod tests {
@@ -322,7 +322,7 @@ index 8d25192..7dca4a1 100644
              turn_id: turn_id.into(),
              trace_id: None,
 diff --git a/codex-rs/app-server-protocol/src/protocol/thread_history_projection.rs b/codex-rs/app-server-protocol/src/protocol/thread_history_projection.rs
-index 6ff0d4d..584b66e 100644
+index 8de09b4a37dfdb7c1d377a3ac9d8341beabd12d4..dd1fe9eede5f9da2eb8add2d513f0c985b21b1e1 100644
 --- a/codex-rs/app-server-protocol/src/protocol/thread_history_projection.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/thread_history_projection.rs
 @@ -9,7 +9,7 @@ use codex_rollout::RolloutLine;
@@ -350,7 +350,7 @@ index 6ff0d4d..584b66e 100644
 -            changed_turns: vec![ThreadHistoryTurnMetadata {
 +            changed_turns: vec![ThreadHistoryTurnChange {
                  turn_id: event.turn_id.clone(),
-                 root_turn_id: None,
+                 root_turn_id: event.root_turn_id.clone(),
                  status: if event.error.is_some() {
 @@ -58,7 +58,7 @@ pub fn project_rollout_line(line: &RolloutLine) -> ThreadHistoryChangeSet {
                  return ThreadHistoryChangeSet::default();
@@ -359,22 +359,22 @@ index 6ff0d4d..584b66e 100644
 -                changed_turns: vec![ThreadHistoryTurnMetadata {
 +                changed_turns: vec![ThreadHistoryTurnChange {
                      turn_id: turn_id.clone(),
-                     root_turn_id: None,
+                     root_turn_id: event.root_turn_id.clone(),
                      status: TurnStatus::Interrupted,
 diff --git a/codex-rs/app-server-protocol/src/protocol/thread_history_projection_tests.rs b/codex-rs/app-server-protocol/src/protocol/thread_history_projection_tests.rs
-index 7ba4793..0d364ce 100644
+index 0fb0c05347686ebad450348708ad3026a1e06157..d98fe797ecdfc508c58e15c134e4f66c2ce6872d 100644
 --- a/codex-rs/app-server-protocol/src/protocol/thread_history_projection_tests.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/thread_history_projection_tests.rs
-@@ -59,7 +59,7 @@ fn projects_turn_lifecycle_without_prior_builder_state() {
+@@ -61,7 +61,7 @@ fn projects_turn_lifecycle_without_prior_builder_state() {
      assert_eq!(
          completed,
          ThreadHistoryChangeSet {
 -            changed_turns: vec![ThreadHistoryTurnMetadata {
 +            changed_turns: vec![ThreadHistoryTurnChange {
                  turn_id: "turn-1".to_string(),
-                 root_turn_id: None,
+                 root_turn_id: Some("root-turn".into()),
                  status: TurnStatus::Completed,
-@@ -96,7 +96,7 @@ fn projects_failed_turn_completion_as_snapshot() {
+@@ -99,7 +99,7 @@ fn projects_failed_turn_completion_as_snapshot() {
      assert_eq!(
          changes,
          ThreadHistoryChangeSet {
@@ -383,20 +383,20 @@ index 7ba4793..0d364ce 100644
                  turn_id: "turn-1".to_string(),
                  root_turn_id: None,
                  status: TurnStatus::Failed,
-@@ -251,7 +251,7 @@ fn projects_identified_turn_aborts() {
+@@ -256,7 +256,7 @@ fn projects_identified_turn_aborts() {
      assert_eq!(
          changes,
          ThreadHistoryChangeSet {
 -            changed_turns: vec![ThreadHistoryTurnMetadata {
 +            changed_turns: vec![ThreadHistoryTurnChange {
                  turn_id: "turn-1".to_string(),
-                 root_turn_id: None,
+                 root_turn_id: Some("root-turn".into()),
                  status: TurnStatus::Interrupted,
 diff --git a/codex-rs/app-server/src/bespoke_event_handling.rs b/codex-rs/app-server/src/bespoke_event_handling.rs
-index 983ecc3..fb9b928 100644
+index cd69f33c06270f1c5edbe863a62c3e6d8d351294..244b339f558b758b9f78cb6e9b0f418e9968a9d6 100644
 --- a/codex-rs/app-server/src/bespoke_event_handling.rs
 +++ b/codex-rs/app-server/src/bespoke_event_handling.rs
-@@ -1029,11 +1029,12 @@ pub(crate) async fn apply_bespoke_event_handling(
+@@ -1033,11 +1033,12 @@ pub(crate) async fn apply_bespoke_event_handling(
                  .await;
          }
          EventMsg::Error(ev) => {
@@ -411,7 +411,7 @@ index 983ecc3..fb9b928 100644
                  ) {
                      // Correlate the rejected operation without changing the active
                      // turn summary, status or input/approval authority.
-@@ -3068,6 +3069,7 @@ mod tests {
+@@ -3078,6 +3079,7 @@ mod tests {
      #[tokio::test]
      async fn queued_settings_rejection_preserves_a_running_turn() -> Result<()> {
          use codex_core::config::Constrained;
@@ -419,7 +419,7 @@ index 983ecc3..fb9b928 100644
          use codex_protocol::protocol::ThreadSettingsOverrides;
          use core_test_support::responses;
          use core_test_support::streaming_sse::StreamingSseChunk;
-@@ -3120,8 +3122,6 @@ mod tests {
+@@ -3130,8 +3132,6 @@ mod tests {
                  outgoing.clone(),
                  thread_state.clone(),
                  thread_watch_manager.clone(),
@@ -429,7 +429,7 @@ index 983ecc3..fb9b928 100644
              .await;
          };
 diff --git a/codex-rs/app-server/src/request_processors/persisted_resume_settings.rs b/codex-rs/app-server/src/request_processors/persisted_resume_settings.rs
-index 3e35fef..4abef79 100644
+index 3e35fefec6a5d403993e76f420d7acb65c298c64..4abef792f66fdb264ddddafc53bed29226484b95 100644
 --- a/codex-rs/app-server/src/request_processors/persisted_resume_settings.rs
 +++ b/codex-rs/app-server/src/request_processors/persisted_resume_settings.rs
 @@ -171,7 +171,10 @@ pub(super) fn merge_owned_resume_settings(
@@ -462,10 +462,10 @@ index 3e35fef..4abef79 100644
                  None => PermissionProfileSnapshot::legacy(profile),
              };
 diff --git a/codex-rs/app-server/src/request_processors/persisted_resume_settings_tests.rs b/codex-rs/app-server/src/request_processors/persisted_resume_settings_tests.rs
-index 713e5e6..3873352 100644
+index 183372ee89ab580ab12c0ceede72abd9bd58d95c..783b64a2ce1e4e83a337abeabed1e0d87962b2de 100644
 --- a/codex-rs/app-server/src/request_processors/persisted_resume_settings_tests.rs
 +++ b/codex-rs/app-server/src/request_processors/persisted_resume_settings_tests.rs
-@@ -187,7 +187,7 @@ fn full_snapshot() -> ThreadSettingsSnapshot {
+@@ -181,7 +181,7 @@ fn full_snapshot() -> ThreadSettingsSnapshot {
      snapshot.reasoning_effort = Some(codex_protocol::openai_models::ReasoningEffort::High);
      snapshot.reasoning_summary = Some(codex_protocol::config_types::ReasoningSummary::Detailed);
      snapshot.workspace_roots = Some(vec![cwd()]);
@@ -475,10 +475,10 @@ index 713e5e6..3873352 100644
      snapshot
  }
 diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
-index 20c4bba..13e18b4 100644
+index 052cf6c097ad14f7fad0e166ee91215ffa6dd62f..94f76f3d340ba976f4630e3a81bf79743f8685ab 100644
 --- a/codex-rs/app-server/src/request_processors/thread_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
-@@ -4147,6 +4147,11 @@ impl ThreadRequestProcessor {
+@@ -4370,6 +4370,11 @@ impl ThreadRequestProcessor {
              .as_ref()
              .is_none_or(|managed| managed.preserve_subagent_settings.unwrap_or(false));
          if let Some(managed_config) = managed_config {
@@ -491,10 +491,10 @@ index 20c4bba..13e18b4 100644
                  managed_config,
                  &self.outgoing,
 diff --git a/codex-rs/app-server/src/request_processors/thread_queue_processor.rs b/codex-rs/app-server/src/request_processors/thread_queue_processor.rs
-index ae88fbf..b93b23e 100644
+index 5a26ac7da4d7788c35d32962faf2982c45fd42b4..4062babf335a2e576291027dd411f0a3cc6c5e7c 100644
 --- a/codex-rs/app-server/src/request_processors/thread_queue_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_queue_processor.rs
-@@ -251,7 +251,10 @@ impl ThreadQueueRequestProcessor {
+@@ -254,7 +254,10 @@ impl ThreadQueueRequestProcessor {
                  reason: NotSubmittedReason::ServerDraining,
              } => return Err(crate::error_code::server_draining_error()),
              StartIfIdleSubmission::NotSubmitted {
@@ -507,7 +507,7 @@ index ae88fbf..b93b23e 100644
                  return Err(invalid_request(
                      "thread already has an active or pending turn",
 diff --git a/codex-rs/app-server/src/request_processors/thread_summary.rs b/codex-rs/app-server/src/request_processors/thread_summary.rs
-index 45a9beb..1567abd 100644
+index 45a9bebfa9f5848e2f0f5ee7cceb151041bd7252..1567abd16dfa824de5ce570b2fe3bcfd0e7e725a 100644
 --- a/codex-rs/app-server/src/request_processors/thread_summary.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_summary.rs
 @@ -172,29 +172,6 @@ pub(crate) fn thread_response_active_permission_profile(
@@ -549,7 +549,7 @@ index 45a9beb..1567abd 100644
          multi_agent_enabled: snapshot
              .child_settings
 diff --git a/codex-rs/app-server/src/thread_state.rs b/codex-rs/app-server/src/thread_state.rs
-index 7c147ee..6928c81 100644
+index 8887fd3e541ffce2f7062def6586195779b3766f..ab08733c93ba556cf486fb6000e05d2825f92c09 100644
 --- a/codex-rs/app-server/src/thread_state.rs
 +++ b/codex-rs/app-server/src/thread_state.rs
 @@ -3,7 +3,7 @@ use crate::outgoing_message::ConnectionRequestId;
@@ -561,7 +561,7 @@ index 7c147ee..6928c81 100644
  use codex_app_server_protocol::ThreadItem;
  use codex_app_server_protocol::ThreadSettings;
  use codex_app_server_protocol::Turn;
-@@ -180,7 +180,7 @@ impl ThreadState {
+@@ -184,7 +184,7 @@ impl ThreadState {
              .active_turn_snapshot_with_items_view(items_view)
      }
  
@@ -571,10 +571,10 @@ index 7c147ee..6928c81 100644
      }
  
 diff --git a/codex-rs/app-server/tests/suite/v2/cyber_access_program.rs b/codex-rs/app-server/tests/suite/v2/cyber_access_program.rs
-index fea72f3..b405b13 100644
+index cae8a6bceda3c3334165b297d0559c8b78923248..181c5fdbe06bfdd6a50481d753c84fba47efd95e 100644
 --- a/codex-rs/app-server/tests/suite/v2/cyber_access_program.rs
 +++ b/codex-rs/app-server/tests/suite/v2/cyber_access_program.rs
-@@ -61,6 +61,7 @@ async fn thread_start_stages_daybreak_until_persistence() -> Result<()> {
+@@ -69,6 +69,7 @@ async fn thread_start_stages_daybreak_until_persistence() -> Result<()> {
              .request(|request_id| ClientRequest::ThreadRead {
                  request_id,
                  params: ThreadReadParams {
@@ -582,7 +582,7 @@ index fea72f3..b405b13 100644
                      thread_id: started.thread.id.clone(),
                      include_turns: false,
                  },
-@@ -88,6 +89,7 @@ async fn thread_start_stages_daybreak_until_persistence() -> Result<()> {
+@@ -96,6 +97,7 @@ async fn thread_start_stages_daybreak_until_persistence() -> Result<()> {
              .request(|request_id| ClientRequest::ThreadRead {
                  request_id,
                  params: ThreadReadParams {
@@ -590,7 +590,7 @@ index fea72f3..b405b13 100644
                      thread_id: thread_id.clone(),
                      include_turns: false,
                  },
-@@ -263,6 +265,7 @@ async fn daybreak_thread_metadata_persists_independently_across_restart_and_fork
+@@ -442,6 +444,7 @@ async fn daybreak_thread_metadata_persists_independently_across_restart_and_fork
              .request(|request_id| ClientRequest::ThreadRead {
                  request_id,
                  params: ThreadReadParams {
@@ -599,7 +599,7 @@ index fea72f3..b405b13 100644
                      include_turns: false,
                  },
 diff --git a/codex-rs/app-server/tests/suite/v2/guardian_sync_session_tests.rs b/codex-rs/app-server/tests/suite/v2/guardian_sync_session_tests.rs
-index 0830c48..d9e438a 100644
+index 0830c4807996bc026505741b63e45082376b6e8a..d9e438a851a1304a39df0b8a21f77b2dfc68d3f5 100644
 --- a/codex-rs/app-server/tests/suite/v2/guardian_sync_session_tests.rs
 +++ b/codex-rs/app-server/tests/suite/v2/guardian_sync_session_tests.rs
 @@ -425,6 +425,7 @@ async fn managed_reviewers_reuse_fork_and_resume_after_parent_shutdown(
@@ -611,10 +611,10 @@ index 0830c48..d9e438a 100644
                  include_turns: true,
              },
 diff --git a/codex-rs/app-server/tests/suite/v2/mcp_resource.rs b/codex-rs/app-server/tests/suite/v2/mcp_resource.rs
-index f3b87e7..92a0dd3 100644
+index cb5f8760dcb7cc12c1920155872e487bf8a63789..ae9893830cc6b47e83b554efae40ec9d856009c6 100644
 --- a/codex-rs/app-server/tests/suite/v2/mcp_resource.rs
 +++ b/codex-rs/app-server/tests/suite/v2/mcp_resource.rs
-@@ -706,6 +706,7 @@ async fn metadata_and_mcp_requests_complete_while_unrelated_resume_loads_config(
+@@ -708,6 +708,7 @@ async fn metadata_and_mcp_requests_complete_while_unrelated_resume_loads_config(
          sender.request(ClientRequest::ThreadRead {
              request_id: RequestId::Integer(9),
              params: ThreadReadParams {
@@ -622,7 +622,7 @@ index f3b87e7..92a0dd3 100644
                  thread_id: thread.id,
                  include_turns: false,
              },
-@@ -989,6 +990,7 @@ async fn resume_revalidates_persisted_thread_after_config_load(
+@@ -991,6 +992,7 @@ async fn resume_revalidates_persisted_thread_after_config_load(
                  reader.request(ClientRequest::ThreadRead {
                      request_id: RequestId::Integer(1),
                      params: ThreadReadParams {
@@ -631,10 +631,10 @@ index f3b87e7..92a0dd3 100644
                          include_turns: false,
                      },
 diff --git a/codex-rs/app-server/tests/suite/v2/mod.rs b/codex-rs/app-server/tests/suite/v2/mod.rs
-index 9ecf31f..4e4c2ef 100644
+index 0f60613b5795b65deaabcb43fb4225f758589cc7..452fc61e3e68e1b15c9663da034993eb34da8d52 100644
 --- a/codex-rs/app-server/tests/suite/v2/mod.rs
 +++ b/codex-rs/app-server/tests/suite/v2/mod.rs
-@@ -63,6 +63,7 @@ mod host_skills;
+@@ -71,6 +71,7 @@ mod host_skills;
  mod imagegen_extension;
  mod initialize;
  mod luna_reserve;
@@ -642,7 +642,7 @@ index 9ecf31f..4e4c2ef 100644
  mod marketplace_add;
  mod marketplace_remove;
  mod marketplace_upgrade;
-@@ -79,7 +80,6 @@ mod misalignment_policy;
+@@ -87,7 +88,6 @@ mod misalignment_policy;
  mod model_auto_review;
  mod model_list;
  mod model_list_requirements_tests;
@@ -651,7 +651,7 @@ index 9ecf31f..4e4c2ef 100644
  #[path = "model_provider_enforcement_tests.rs"]
  mod model_provider_enforcement;
 diff --git a/codex-rs/app-server/tests/suite/v2/thread_environments.rs b/codex-rs/app-server/tests/suite/v2/thread_environments.rs
-index c9bc999..455192c 100644
+index c9bc999f6df5f163d4c51c40819e3639ff5ed461..455192cef391cb52824e61c121e072a7fa076a7e 100644
 --- a/codex-rs/app-server/tests/suite/v2/thread_environments.rs
 +++ b/codex-rs/app-server/tests/suite/v2/thread_environments.rs
 @@ -140,6 +140,7 @@ async fn assert_read_and_list_environments(
@@ -663,10 +663,10 @@ index c9bc999..455192c 100644
              include_turns: false,
          })
 diff --git a/codex-rs/app-server/tests/suite/v2/thread_list.rs b/codex-rs/app-server/tests/suite/v2/thread_list.rs
-index ce71714..15541ce 100644
+index 76c4558ba4ac0652f188c269dae5874d62da6aec..9a24317dcb0de44bf3ea16351c93c49582da3887 100644
 --- a/codex-rs/app-server/tests/suite/v2/thread_list.rs
 +++ b/codex-rs/app-server/tests/suite/v2/thread_list.rs
-@@ -2785,6 +2785,7 @@ async fn thread_originator_is_preserved_in_list_read_and_resume(originator: &str
+@@ -3139,6 +3139,7 @@ async fn thread_originator_is_preserved_in_list_read_and_resume(originator: &str
              .request(|request_id| ClientRequest::ThreadRead {
                  request_id,
                  params: ThreadReadParams {
@@ -675,10 +675,10 @@ index ce71714..15541ce 100644
                      include_turns: false,
                  },
 diff --git a/codex-rs/app-server/tests/suite/v2/thread_read.rs b/codex-rs/app-server/tests/suite/v2/thread_read.rs
-index 0c929ea..67a009f 100644
+index 73417c96cd970aa72641ab775050a861d4e2dcc7..c916e90bea057f466bf63e2d7bff478d04399088 100644
 --- a/codex-rs/app-server/tests/suite/v2/thread_read.rs
 +++ b/codex-rs/app-server/tests/suite/v2/thread_read.rs
-@@ -278,12 +278,14 @@ async fn thread_read_preserves_file_id_from_completed_turn() -> Result<()> {
+@@ -289,6 +289,7 @@ async fn thread_read_preserves_file_id_and_root_from_completed_turn(
  
      let read_id = mcp
          .send_thread_read_request(ThreadReadParams {
@@ -686,30 +686,16 @@ index 0c929ea..67a009f 100644
              thread_id: thread.id.clone(),
              include_turns: true,
          })
-         .await?;
-     let ThreadReadResponse {
-         thread: loaded_thread,
-+        ..
-     } = timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(read_id)).await??;
-     let ThreadItem::UserMessage { content, .. } = &loaded_thread.turns[0].items[0] else {
-         panic!("expected completed turn to start with a user message");
-@@ -299,12 +301,14 @@ async fn thread_read_preserves_file_id_from_completed_turn() -> Result<()> {
-         .await?;
+@@ -316,6 +317,7 @@ async fn thread_read_preserves_file_id_and_root_from_completed_turn(
      let read_id = mcp
          .send_thread_read_request(ThreadReadParams {
+             thread_id: thread.id.clone(),
 +            include_history_metadata: false,
-             thread_id: thread.id,
              include_turns: true,
          })
          .await?;
-     let ThreadReadResponse {
-         thread: restarted_thread,
-+        ..
-     } = timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(read_id)).await??;
-     let ThreadItem::UserMessage { content, .. } = &restarted_thread.turns[0].items[0] else {
-         panic!("expected persisted turn to start with a user message");
 diff --git a/codex-rs/app-server/tests/suite/v2/thread_settings_update.rs b/codex-rs/app-server/tests/suite/v2/thread_settings_update.rs
-index 078369c..7bddda7 100644
+index 078369cfac288553dfd57e94dedcf2f33e528e9e..7bddda73ffabc735d34ff0e304872bbd536f0702 100644
 --- a/codex-rs/app-server/tests/suite/v2/thread_settings_update.rs
 +++ b/codex-rs/app-server/tests/suite/v2/thread_settings_update.rs
 @@ -768,6 +768,7 @@ async fn thread_settings_update_preserves_session_profiles() -> Result<()> {
@@ -813,10 +799,10 @@ index 078369c..7bddda7 100644
      }
      Ok(())
 diff --git a/codex-rs/core/src/agent/control.rs b/codex-rs/core/src/agent/control.rs
-index cc0ffad..fa0ed33 100644
+index f14af12d6c016c22f23f76f4dbfd68a805673c45..50084a2068c840ec27b9dab53db319cc8776f230 100644
 --- a/codex-rs/core/src/agent/control.rs
 +++ b/codex-rs/core/src/agent/control.rs
-@@ -111,10 +111,11 @@ impl LocalAgentControl {
+@@ -115,10 +115,11 @@ impl LocalAgentControl {
          thread_id_generator: ThreadIdGenerator,
          rollout_budget: Option<RolloutBudgetConfig>,
      ) -> Self {
@@ -831,10 +817,10 @@ index cc0ffad..fa0ed33 100644
      }
  
 diff --git a/codex-rs/core/src/agent/control/runtime.rs b/codex-rs/core/src/agent/control/runtime.rs
-index 2878837..a6d1350 100644
+index 0ea885ab836e13e10683ddd4827c2fc2c5742e6d..86c2ef201128c08cb3596bb7cee5262c6c885ad5 100644
 --- a/codex-rs/core/src/agent/control/runtime.rs
 +++ b/codex-rs/core/src/agent/control/runtime.rs
-@@ -21,6 +21,7 @@ use std::sync::Weak;
+@@ -182,6 +182,7 @@ impl Drop for AgentTreeTeardownGuard {
  /// Local tree state, kept separate from the shared agent operation interface.
  #[derive(Clone)]
  pub(crate) struct LocalAgentRuntime {
@@ -842,7 +828,7 @@ index 2878837..a6d1350 100644
      /// Weak handle back to the global thread registry/state.
      /// This is `Weak` to avoid reference cycles and shadow persistence of the form
      /// `ThreadManagerState -> CodexThread -> Session -> SessionServices -> ThreadManagerState`.
-@@ -46,6 +47,7 @@ impl LocalAgentRuntime {
+@@ -211,6 +212,7 @@ impl LocalAgentRuntime {
          rollout_budget: Option<RolloutBudgetConfig>,
      ) -> Self {
          let runtime = Self {
@@ -850,7 +836,7 @@ index 2878837..a6d1350 100644
              manager,
              thread_id_generator,
              registry: Arc::default(),
-@@ -64,6 +66,7 @@ impl LocalAgentRuntime {
+@@ -232,6 +234,7 @@ impl LocalAgentRuntime {
      /// Bind local startup to the same tree state with this session's identity.
      pub(crate) fn control(&self, session_id: SessionId) -> LocalAgentControl {
          LocalAgentControl {
@@ -859,10 +845,10 @@ index 2878837..a6d1350 100644
              runtime: self.clone(),
          }
 diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
-index 95940fa..71b759f 100644
+index a92136a00cf37deff5597dd43f203642403746cf..cc767c7cf3d1aa38bf33f21b9045ebb32a287bcb 100644
 --- a/codex-rs/core/src/codex_thread.rs
 +++ b/codex-rs/core/src/codex_thread.rs
-@@ -644,7 +644,7 @@ impl CodexThread {
+@@ -709,7 +709,7 @@ impl CodexThread {
                  "responsesapiClientMetadata": request.responsesapi_client_metadata, "trace": request.trace });
              let attempt_id = gate
                  .request_with_goal_epoch(
@@ -872,10 +858,10 @@ index 95940fa..71b759f 100644
                      request.start.turn_trigger.clone().unwrap(),
                      snapshot,
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index e40dc94..af7a67c 100644
+index c5751ba79e1aed95e88184c8718585e77c4ceea6..34da5d704dceaf773503c191db028d62947d6a1e 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
-@@ -4852,22 +4852,26 @@ impl Config {
+@@ -5033,22 +5033,26 @@ impl Config {
                      .map_err(|error| std::io::Error::new(ErrorKind::InvalidInput, error))?;
                  let profiles =
                      merge_managed_permission_profiles(cfg.permissions.as_ref(), requirements)?;
@@ -914,12 +900,12 @@ index e40dc94..af7a67c 100644
                      .permission_profile()
                      .clone()
 diff --git a/codex-rs/core/src/lib.rs b/codex-rs/core/src/lib.rs
-index 7a64dbe..f03673e 100644
+index 3faa86b434b68af5b062e36a8d3b22f6a1276f19..95de2ebe47b9dd0639f2090ebc76d54de6637a0e 100644
 --- a/codex-rs/core/src/lib.rs
 +++ b/codex-rs/core/src/lib.rs
-@@ -35,8 +35,8 @@ mod compact_model_fallback;
- mod compact_remote_history;
+@@ -38,8 +38,8 @@ mod compact_remote_history;
  mod compact_remote_v2;
+ mod compact_retained_tool_outputs;
  mod compact_token_budget;
 -mod thread_startup_metadata;
  pub mod managed_execution;
@@ -928,7 +914,7 @@ index 7a64dbe..f03673e 100644
  pub use codex_network_proxy::NetworkDomainPermission;
  pub use codex_network_proxy::NetworkDomainPermissionEntry;
 diff --git a/codex-rs/core/src/session/canonical_history_failure_tests.rs b/codex-rs/core/src/session/canonical_history_failure_tests.rs
-index 9cb801e..e5d4690 100644
+index 9cb801ec74f0ed8f15f8e45dfb44009d00f032ad..e5d469039a7f9edd13523566557c20d6c724f565 100644
 --- a/codex-rs/core/src/session/canonical_history_failure_tests.rs
 +++ b/codex-rs/core/src/session/canonical_history_failure_tests.rs
 @@ -11,6 +11,7 @@ async fn failed_native_append_remains_a_visible_gap_after_writer_recovery() {
@@ -940,7 +926,7 @@ index 9cb801e..e5d4690 100644
                  turn_id: "retained-turn".into(),
                  canonical_items: true,
 diff --git a/codex-rs/core/src/session/canonical_history_tests.rs b/codex-rs/core/src/session/canonical_history_tests.rs
-index ddc5e00..56444a4 100644
+index ddc5e00bad7249a5a0579a6d038ac20d7741babc..56444a48b99567735203e4c6ef32c0b546b5e5ed 100644
 --- a/codex-rs/core/src/session/canonical_history_tests.rs
 +++ b/codex-rs/core/src/session/canonical_history_tests.rs
 @@ -13,6 +13,7 @@ async fn raw_late_items_keep_their_original_turn_retention() {
@@ -969,7 +955,7 @@ index ddc5e00..56444a4 100644
                  canonical_items: false,
                  turn_id: context.sub_id.clone(),
 diff --git a/codex-rs/core/src/session/guardian_checkpoint.rs b/codex-rs/core/src/session/guardian_checkpoint.rs
-index 918e005..09250e6 100644
+index 918e005e70840508457f0371e450a0edfb615e5c..09250e6bbb9808fd3916ac9d25d1a8ba5c482533 100644
 --- a/codex-rs/core/src/session/guardian_checkpoint.rs
 +++ b/codex-rs/core/src/session/guardian_checkpoint.rs
 @@ -13,6 +13,7 @@ impl Session {
@@ -981,7 +967,7 @@ index 918e005..09250e6 100644
              replacement_history: Some(history.annotated_items().to_vec()),
              guardian_history: history.guardian_history_checkpoint(),
 diff --git a/codex-rs/core/src/session/managed_context.rs b/codex-rs/core/src/session/managed_context.rs
-index 02fe92e..04df442 100644
+index 02fe92e528b8ba0bc09d7c95006a0a8859f4a07d..04df442504b66e753d05efd66d63b43ba905b990 100644
 --- a/codex-rs/core/src/session/managed_context.rs
 +++ b/codex-rs/core/src/session/managed_context.rs
 @@ -77,12 +77,18 @@ impl Session {
@@ -1020,7 +1006,7 @@ index 02fe92e..04df442 100644
          Ok(())
      }
 diff --git a/codex-rs/core/src/session/managed_context_tests.rs b/codex-rs/core/src/session/managed_context_tests.rs
-index ab6a047..e29c892 100644
+index ab6a0470d26997bf4eb8977c159d5b6e3c76015a..e29c892ee6a6c05632b460a6456af1905596cf3c 100644
 --- a/codex-rs/core/src/session/managed_context_tests.rs
 +++ b/codex-rs/core/src/session/managed_context_tests.rs
 @@ -28,6 +28,7 @@ async fn managed_context_reset_preserves_history_and_requires_current_idle_bound
@@ -1087,10 +1073,10 @@ index ab6a047..e29c892 100644
      );
  }
 diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
-index c861661..9891c0d 100644
+index 93ec5e89f3480dab50740a96b1a72f9e19eae4ad..76170aa306fcababaf5cbec8ad20fd3a42af38bb 100644
 --- a/codex-rs/core/src/session/mod.rs
 +++ b/codex-rs/core/src/session/mod.rs
-@@ -1072,16 +1072,23 @@ fn initial_collaboration_mode(
+@@ -1180,16 +1180,23 @@ fn initial_collaboration_mode(
      // yet contain a complete owned snapshot. Never inherit a parent's root mode.
      let preserved = preserved.or_else(|| match history {
          InitialHistory::Resumed(resumed) if !source.is_non_root_agent() => resumed
@@ -1120,19 +1106,19 @@ index c861661..9891c0d 100644
          _ => None,
      });
      let mut mode = preserved.unwrap_or_else(|| CollaborationMode {
-@@ -4419,6 +4426,7 @@ impl Session {
-                 state.history.set_world_state_baseline(snapshot);
-             }
-             CompactedItem {
+@@ -4530,6 +4537,7 @@ impl Session {
+                 .history
+                 .set_world_state_baseline(world_state_baseline.clone());
+             let compacted_item = CompactedItem {
 +                context_reset: false,
                  message: metadata.message,
                  replacement_history: Some(replacement_history),
                  guardian_history: state.history.guardian_history_checkpoint(),
 diff --git a/codex-rs/core/src/session/rollout_reconstruction.rs b/codex-rs/core/src/session/rollout_reconstruction.rs
-index 9657bef..e383aaf 100644
+index 8e315bcbe8535e1034400e4f1475e78dbe09e480..9aa415877eea0ba29a6975df0f91f9943ee8c443 100644
 --- a/codex-rs/core/src/session/rollout_reconstruction.rs
 +++ b/codex-rs/core/src/session/rollout_reconstruction.rs
-@@ -209,6 +209,7 @@ impl Session {
+@@ -249,6 +249,7 @@ impl ContextManager {
                  | RolloutItem::TurnContext(_)
                  | RolloutItem::WorldState(_)
                  | RolloutItem::RetainedContext(_)
@@ -1141,7 +1127,7 @@ index 9657bef..e383aaf 100644
                  | RolloutItem::TokenUsageRecord(_)
                  | RolloutItem::RealtimeItem(_)
 diff --git a/codex-rs/core/src/session/security_transitions.rs b/codex-rs/core/src/session/security_transitions.rs
-index 1813510..9a1ead3 100644
+index 181351091a654c1e5c1ffda3c7c7357febd88aeb..9a1ead32bee35e0465399114c030f1dc9c7483af 100644
 --- a/codex-rs/core/src/session/security_transitions.rs
 +++ b/codex-rs/core/src/session/security_transitions.rs
 @@ -20,7 +20,8 @@ struct SecurityPatch {
@@ -1206,10 +1192,10 @@ index 1813510..9a1ead3 100644
  pub(crate) struct SecurityTransitions {
      pub(crate) mutation_gate: Mutex<()>,
 diff --git a/codex-rs/core/src/session/session.rs b/codex-rs/core/src/session/session.rs
-index 9c0c67f..75bb154 100644
+index b2e415bc48f5d4013d26de851de558010d481dc5..defe09a8bffc2ad89600d86da19e7ab4cdb78790 100644
 --- a/codex-rs/core/src/session/session.rs
 +++ b/codex-rs/core/src/session/session.rs
-@@ -352,7 +352,9 @@ impl SessionConfiguration {
+@@ -356,7 +356,9 @@ impl SessionConfiguration {
              profile_workspace_roots: Some(
                  self.permission_profile_state
                      .profile_workspace_roots()
@@ -1221,18 +1207,18 @@ index 9c0c67f..75bb154 100644
              reasoning_effort: self.step_settings.collaboration_mode.reasoning_effort(),
              reasoning_summary: self.step_settings.reasoning_summary,
 diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
-index 9b94df4..e8978a7 100644
+index 90eb09d5cc5a17f972c89abe4e34b8e16d169cad..68859a7ad9562fce2c4689f8328a44264c6759a8 100644
 --- a/codex-rs/core/src/session/tests.rs
 +++ b/codex-rs/core/src/session/tests.rs
-@@ -16,6 +16,7 @@ use crate::agents_md_manager::SessionInstructions;
- use crate::compact::InitialContextInjection;
+@@ -18,6 +18,7 @@ use crate::agents_md_manager::SessionInstructions;
  use crate::config::ConfigBuilder;
  use crate::config::ConfigOverrides;
+ use crate::config::RuntimeConfigRefresh;
 +use crate::config::test_config;
  use crate::context::ContextualUserFragment;
  use crate::context::DeveloperInstructions;
  use crate::context::TurnAborted;
-@@ -6139,6 +6140,8 @@ async fn standalone_settings_invalidate_continuation_before_delivering_acceptanc
+@@ -6381,6 +6382,8 @@ async fn standalone_settings_invalidate_continuation_before_delivering_acceptanc
              id: "occupied".into(),
              msg: EventMsg::ThreadSettingsApplied(
                  codex_protocol::protocol::ThreadSettingsAppliedEvent {
@@ -1241,15 +1227,15 @@ index 9b94df4..e8978a7 100644
                      thread_id: Some(session.thread_id()),
                      thread_settings: session.thread_settings_snapshot().await,
                  },
-@@ -6153,6 +6156,7 @@ async fn standalone_settings_invalidate_continuation_before_delivering_acceptanc
-         .send(Submission {
+@@ -6396,6 +6399,7 @@ async fn standalone_settings_invalidate_continuation_before_delivering_acceptanc
              id: "settings".into(),
+             turn_extension_init: None,
              op: Op::ThreadSettings {
 +                operation_id: None,
                  thread_settings: codex_protocol::protocol::ThreadSettingsOverrides::default(),
                  reply: Some(reply),
              },
-@@ -6212,6 +6216,8 @@ async fn compaction_persists_resume_metadata_and_companion_records() {
+@@ -6475,6 +6479,8 @@ async fn compaction_persists_resume_metadata_and_companion_records() {
          previous_turn_settings: Some(previous_turn_settings),
      };
      let expected_settings = codex_protocol::protocol::ThreadSettingsAppliedEvent {
@@ -1259,10 +1245,10 @@ index 9b94df4..e8978a7 100644
          thread_settings: session.thread_settings_snapshot().await,
      };
 diff --git a/codex-rs/core/src/tools/executed_tool_calls/mcp_attribution_tests.rs b/codex-rs/core/src/tools/executed_tool_calls/mcp_attribution_tests.rs
-index 8d90927..be4b1a5 100644
+index 9085d18a43266a00886332f8d27ccddb062baa6e..57433fb561891864845b5e37f8f2e901e0d33482 100644
 --- a/codex-rs/core/src/tools/executed_tool_calls/mcp_attribution_tests.rs
 +++ b/codex-rs/core/src/tools/executed_tool_calls/mcp_attribution_tests.rs
-@@ -65,6 +65,7 @@ fn restores_cumulative_item_and_compaction_checkpoints() {
+@@ -67,6 +67,7 @@ fn restores_cumulative_item_and_compaction_checkpoints() {
      let history = InitialHistory::Forked(vec![
          RolloutItem::ResponseItem(envelope(Some(initial))),
          RolloutItem::Compacted(CompactedItem {
@@ -1271,7 +1257,7 @@ index 8d90927..be4b1a5 100644
              replacement_history: Some(vec![envelope(Some(cumulative.clone()))]),
              guardian_history: None,
 diff --git a/codex-rs/core/tests/suite/agent_eviction_tests.rs b/codex-rs/core/tests/suite/agent_eviction_tests.rs
-index ae7c6e2..53472d7 100644
+index ae7c6e282d75c8dab9360ef0951b85b56876df4d..53472d7b594eb8766ac8ca6e9c514c972af2b247 100644
 --- a/codex-rs/core/tests/suite/agent_eviction_tests.rs
 +++ b/codex-rs/core/tests/suite/agent_eviction_tests.rs
 @@ -125,6 +125,7 @@ async fn queued_mail_and_cancelled_eviction_keep_worker_ownership() -> Result<()
@@ -1283,10 +1269,10 @@ index ae7c6e2..53472d7 100644
                  model: Some(COMMITTED_MODEL.to_string()),
                  ..Default::default()
 diff --git a/codex-rs/core/tests/suite/override_updates.rs b/codex-rs/core/tests/suite/override_updates.rs
-index 8550c07..54bcdd6 100644
+index fc71c4f6b5ee347704adff2cb5c8633b137ce7eb..7adf9c30e8e102ec06fbd1561cd9edae773c5e5e 100644
 --- a/codex-rs/core/tests/suite/override_updates.rs
 +++ b/codex-rs/core/tests/suite/override_updates.rs
-@@ -35,7 +35,7 @@ async fn assert_settings_only_rollout(test: &TestCodex) -> Result<()> {
+@@ -36,7 +36,7 @@ async fn assert_settings_only_rollout(test: &TestCodex) -> Result<()> {
      let contents = tokio::fs::read_to_string(rollout_path).await?;
      let mut latest = None;
      for line in contents.lines() {
@@ -1296,7 +1282,7 @@ index 8550c07..54bcdd6 100644
              assert!(
                  !matches!(
 diff --git a/codex-rs/core/tests/suite/step_settings.rs b/codex-rs/core/tests/suite/step_settings.rs
-index 512ecbc..f843be5 100644
+index 8689d18ebce3994e5bdb773a1c195bb31d4e37bd..82cfa5756662b54055cb52f604e4a0e45c472484 100644
 --- a/codex-rs/core/tests/suite/step_settings.rs
 +++ b/codex-rs/core/tests/suite/step_settings.rs
 @@ -487,6 +487,7 @@ async fn tool_result_history_keeps_originating_model_across_switch_and_replay()
@@ -1316,7 +1302,7 @@ index 512ecbc..f843be5 100644
                          model: Some(model.to_string()),
                          ..Default::default()
 diff --git a/codex-rs/exec/src/worktree.rs b/codex-rs/exec/src/worktree.rs
-index a61d173..92b6f4c 100644
+index a61d173dfaec18790a8310c438f9359c51ae4aad..92b6f4cf32a6d29de0f2c88a0a123a064ade268a 100644
 --- a/codex-rs/exec/src/worktree.rs
 +++ b/codex-rs/exec/src/worktree.rs
 @@ -69,6 +69,7 @@ pub(super) async fn fork_source(
@@ -1328,10 +1314,10 @@ index a61d173..92b6f4c 100644
                      include_turns: false,
                  },
 diff --git a/codex-rs/ext/goal/src/accounting.rs b/codex-rs/ext/goal/src/accounting.rs
-index b2a89ce..753e455 100644
+index e338a563faffe50b0d90d127456ecca31709c337..65ea5e7cf57fc5ca584c2a8d6e9d03331d4819cd 100644
 --- a/codex-rs/ext/goal/src/accounting.rs
 +++ b/codex-rs/ext/goal/src/accounting.rs
-@@ -196,7 +196,8 @@ impl GoalAccountingState {
+@@ -208,7 +208,8 @@ impl GoalAccountingState {
              | TurnItem::ExitedReviewMode(_)
              | TurnItem::FileChange(_)
              | TurnItem::McpToolCall(_)
@@ -1342,19 +1328,19 @@ index b2a89ce..753e455 100644
          if turn.has_activity {
              inner.consecutive_empty_turns = 0;
 diff --git a/codex-rs/ext/guardian-reviewer/src/retry.rs b/codex-rs/ext/guardian-reviewer/src/retry.rs
-index 3adcb4d..69b85c4 100644
+index dd98638fe52c4dce282858c8ca41c0b9075992be..d68eafc5ff37ca746d3f20860fa5036f0802c9df 100644
 --- a/codex-rs/ext/guardian-reviewer/src/retry.rs
 +++ b/codex-rs/ext/guardian-reviewer/src/retry.rs
-@@ -123,6 +123,7 @@ fn should_retry_guardian_review(outcome: &GuardianReviewOutcome) -> bool {
+@@ -157,6 +157,7 @@ fn should_retry_guardian_review(outcome: &GuardianReviewOutcome) -> bool {
              | CodexErrorInfo::SandboxError
              | CodexErrorInfo::ActiveTurnNotSteerable { .. }
              | CodexErrorInfo::ThreadRollbackFailed
 +            | CodexErrorInfo::ThreadSettingsUpdateFailed { .. }
              | CodexErrorInfo::Other => false,
          },
-         GuardianReviewOutcome::Completed(_)
+         GuardianReviewOutcome::CachedApproval
 diff --git a/codex-rs/memories/write/src/rollout_input.rs b/codex-rs/memories/write/src/rollout_input.rs
-index 7a1d1d9..e89a222 100644
+index 2d45c7b63bdcda64ff2d37eccb112556e10a2f4e..97230e47c9c6b6cad8e48ed071bf2b17a3e495ca 100644
 --- a/codex-rs/memories/write/src/rollout_input.rs
 +++ b/codex-rs/memories/write/src/rollout_input.rs
 @@ -55,6 +55,7 @@ pub(crate) fn serialize_tiered_input(
@@ -1366,7 +1352,7 @@ index 7a1d1d9..e89a222 100644
          let Some(mut item) = item else { continue };
          if let ResponseItem::Message { content, .. } = &mut item {
 diff --git a/codex-rs/protocol/src/codex_error_info.rs b/codex-rs/protocol/src/codex_error_info.rs
-index 10928a4..5033a50 100644
+index 10928a467cfdee417abd8fa3be33c1c718cdc91a..5033a50400d248017a496acc62c324238dc50289 100644
 --- a/codex-rs/protocol/src/codex_error_info.rs
 +++ b/codex-rs/protocol/src/codex_error_info.rs
 @@ -48,6 +48,9 @@ enum CodexErrorInfoWire {
@@ -1380,10 +1366,10 @@ index 10928a4..5033a50 100644
      Other,
  }
 diff --git a/codex-rs/protocol/src/protocol.rs b/codex-rs/protocol/src/protocol.rs
-index 077b671..189daef 100644
+index 506bdb8e4afd205421415f42fecb9756160357b9..39c2060e10ececf9453b8fd6493bb7b5081a36ab 100644
 --- a/codex-rs/protocol/src/protocol.rs
 +++ b/codex-rs/protocol/src/protocol.rs
-@@ -2355,7 +2355,7 @@ pub struct ThreadSettingsSnapshot {
+@@ -2477,7 +2477,7 @@ pub struct ThreadSettingsSnapshot {
      pub workspace_roots: Option<Vec<AbsolutePathBuf>>,
      #[serde(default, skip_serializing_if = "Option::is_none")]
      #[ts(optional)]
@@ -1393,7 +1379,7 @@ index 077b671..189daef 100644
      pub reasoning_effort: Option<ReasoningEffortConfig>,
      #[serde(skip_serializing_if = "Option::is_none")]
 diff --git a/codex-rs/state/src/extract.rs b/codex-rs/state/src/extract.rs
-index 1200d37..a42239b 100644
+index a2cb74ece6a16c8e6651574d1cc9c71b6eae1265..393adf3477ff40ef624b4265e10d06ba59b1d84a 100644
 --- a/codex-rs/state/src/extract.rs
 +++ b/codex-rs/state/src/extract.rs
 @@ -40,7 +40,8 @@ pub fn apply_rollout_item(
@@ -1407,11 +1393,11 @@ index 1200d37..a42239b 100644
          RolloutItem::TokenUsageRecord(_) => {}
      }
 diff --git a/codex-rs/state/src/runtime.rs b/codex-rs/state/src/runtime.rs
-index 4d48c05..b0de8d9 100644
+index 9a9b73e03498d5ed7345bb12d6c3474cdf984b0d..ddb861a6db62c6ed82eba9509dde04edbdc01a44 100644
 --- a/codex-rs/state/src/runtime.rs
 +++ b/codex-rs/state/src/runtime.rs
-@@ -45,8 +45,8 @@ mod goals;
- mod logs;
+@@ -47,8 +47,8 @@ mod logs;
+ mod logs_maintenance;
  mod memories;
  mod memory_versions;
 -mod projects;
@@ -1421,10 +1407,10 @@ index 4d48c05..b0de8d9 100644
  pub(crate) mod reclamation;
  pub(crate) mod recovery;
 diff --git a/codex-rs/thread-store/src/live_thread.rs b/codex-rs/thread-store/src/live_thread.rs
-index 91ea91b..22c72d3 100644
+index 33756c733c26aad919e29abb7585fcbf2cc7c171..30142ebe73e24f93979a9c8942f713efad8071ab 100644
 --- a/codex-rs/thread-store/src/live_thread.rs
 +++ b/codex-rs/thread-store/src/live_thread.rs
-@@ -315,7 +315,8 @@ impl LiveThread {
+@@ -297,7 +297,8 @@ impl LiveThread {
              .lock()
              .await
              .take_pending_update_for_attachment();
@@ -1435,7 +1421,7 @@ index 91ea91b..22c72d3 100644
  
      pub async fn flush(&self) -> ThreadStoreResult<()> {
 diff --git a/codex-rs/thread-store/src/local/portable_history.rs b/codex-rs/thread-store/src/local/portable_history.rs
-index 8332f89..7915a12 100644
+index 8332f89b3fc6f27003fb5d384c4ecf7a6888dbe7..7915a1201f303cc5a2f1c93241e02d38d236866d 100644
 --- a/codex-rs/thread-store/src/local/portable_history.rs
 +++ b/codex-rs/thread-store/src/local/portable_history.rs
 @@ -74,8 +74,9 @@ pub(super) async fn export(
@@ -1460,7 +1446,7 @@ index 8332f89..7915a12 100644
      Ok(content)
  }
 diff --git a/codex-rs/thread-store/src/local/portable_history_import.rs b/codex-rs/thread-store/src/local/portable_history_import.rs
-index 36e611e..b68bed8 100644
+index 36e611ea194ef2bff1407aa673f8f30d3093c27f..b68bed8aeed0cd074716033edf108985ebed3de4 100644
 --- a/codex-rs/thread-store/src/local/portable_history_import.rs
 +++ b/codex-rs/thread-store/src/local/portable_history_import.rs
 @@ -198,7 +198,8 @@ fn validate(snapshot: &PortableThreadHistory) -> ThreadStoreResult<Vec<String>>
@@ -1492,10 +1478,10 @@ index 36e611e..b68bed8 100644
              .segments
              .last()
 diff --git a/codex-rs/tui/src/app.rs b/codex-rs/tui/src/app.rs
-index 0fa07c8..72257ca 100644
+index ca08b529d0b124e75396cffc5a4d34497c8500ac..7ad07ec13aeb6de53404bdb9402b1ca0465633e1 100644
 --- a/codex-rs/tui/src/app.rs
 +++ b/codex-rs/tui/src/app.rs
-@@ -207,8 +207,8 @@ mod agents_overview_threads;
+@@ -209,8 +209,8 @@ mod agents_overview_threads;
  mod agents_overview_usage;
  mod agents_overview_view;
  pub(crate) use agents_overview::AGENTS_OVERVIEW_VIEW_ID;
@@ -1505,18 +1491,15 @@ index 0fa07c8..72257ca 100644
  mod app_server_event_targets;
  mod app_server_events;
  pub(crate) mod app_server_requests;
-@@ -236,9 +236,9 @@ mod new_session;
- mod turn_tips;
- pub(crate) use new_session::has_launch_setting;
- mod clipboard;
-+mod managed_permission_changes;
+@@ -244,7 +244,6 @@ mod clipboard;
+ mod footer_selection;
  mod native_history;
  mod owned_transcript;
 -mod managed_permission_changes;
  mod pending_interactive_replay;
  mod permission_shortcuts;
  mod pets;
-@@ -547,7 +547,8 @@ pub(crate) struct App {
+@@ -557,7 +556,8 @@ pub(crate) struct App {
      runtime_permission_profile_override: Option<RuntimePermissionProfileOverride>,
      /// In-flight remote selections; confirmed settings live in each task's server snapshot.
      pending_server_profiles: HashMap<ThreadId, PermissionProfileSelection>,
@@ -1527,10 +1510,10 @@ index 0fa07c8..72257ca 100644
      observed_native_settings: HashMap<ThreadId, codex_app_server_protocol::ThreadSettings>,
  
 diff --git a/codex-rs/tui/src/app/agents_overview_tests.rs b/codex-rs/tui/src/app/agents_overview_tests.rs
-index b5f4d88..e828163 100644
+index 78c018f14db4ca16eac52c91593108c1d8a9e946..1d5cc8c2e0bd13408260e2bd3915b0fe13f6b8a5 100644
 --- a/codex-rs/tui/src/app/agents_overview_tests.rs
 +++ b/codex-rs/tui/src/app/agents_overview_tests.rs
-@@ -2293,6 +2293,7 @@ async fn resume_picker_round_trip_preserves_each_threads_input() -> Result<()> {
+@@ -2361,6 +2361,7 @@ async fn resume_picker_round_trip_preserves_each_threads_input() -> Result<()> {
              app.chat_widget.handle_server_notification(
                  ServerNotification::TurnStarted(
                      codex_app_server_protocol::TurnStartedNotification {
@@ -1539,10 +1522,10 @@ index b5f4d88..e828163 100644
                          turn: codex_app_server_protocol::Turn {
                              id: "turn-with-follow-up".to_string(),
 diff --git a/codex-rs/tui/src/app/app_server_events.rs b/codex-rs/tui/src/app/app_server_events.rs
-index 72aa787..96b5a0a 100644
+index 48a770bc9a6165ce831fa1b9d9f0f921c93065df..0284a7ab99ca7c940a616ee3fbee8611a0be2223 100644
 --- a/codex-rs/tui/src/app/app_server_events.rs
 +++ b/codex-rs/tui/src/app/app_server_events.rs
-@@ -86,7 +86,8 @@ impl App {
+@@ -119,7 +119,8 @@ impl App {
                  self.agents_overview.pending_usage = None;
                  self.agents_overview.usage_disabled = false;
                  self.repaint_agents_overview();
@@ -1550,9 +1533,9 @@ index 72aa787..96b5a0a 100644
 +                self.reconcile_managed_permission_changes(app_server_client)
 +                    .await;
                  self.refresh_agents_overview_threads(app_server_client);
-             }
-             AppServerEvent::ServerNotification(notification) => {
-@@ -143,6 +144,7 @@ impl App {
+                 if let Some(primary_thread_id) = self.primary_thread_id
+                     && !self
+@@ -185,6 +186,7 @@ impl App {
                                  "thread-closed-{thread_id}-{attempt}"
                              )),
                              params: ThreadReadParams {
@@ -1560,7 +1543,7 @@ index 72aa787..96b5a0a 100644
                                  thread_id: closed.thread_id.clone(),
                                  include_turns: false,
                              },
-@@ -188,17 +190,28 @@ impl App {
+@@ -230,17 +232,28 @@ impl App {
          {
              // A native engine can be replaced without replacing its app-server
              // connection. Only a current read can establish that new epoch.
@@ -1596,7 +1579,7 @@ index 72aa787..96b5a0a 100644
              let _ = self.dynamic_tool_status_updates.send(status.clone());
          }
 diff --git a/codex-rs/tui/src/app/backend_banner_fallback.rs b/codex-rs/tui/src/app/backend_banner_fallback.rs
-index d792f62..0a766d7 100644
+index d792f62ea43deb80b89b8ef8ac4c8767a6386b2b..0a766d75f926502d578252874165be865a5eae0d 100644
 --- a/codex-rs/tui/src/app/backend_banner_fallback.rs
 +++ b/codex-rs/tui/src/app/backend_banner_fallback.rs
 @@ -31,7 +31,7 @@ impl App {
@@ -1609,10 +1592,10 @@ index d792f62..0a766d7 100644
              ..ThreadSettingsUpdateParams::default()
          };
 diff --git a/codex-rs/tui/src/app/misalignment_policy.rs b/codex-rs/tui/src/app/misalignment_policy.rs
-index 97554a0..ac104c2 100644
+index fe10a086d479c23a4b821ed93ddf073d3a2a7699..f02174d9064338a284083673210a45e93088170a 100644
 --- a/codex-rs/tui/src/app/misalignment_policy.rs
 +++ b/codex-rs/tui/src/app/misalignment_policy.rs
-@@ -173,6 +173,7 @@ impl App {
+@@ -190,6 +190,7 @@ impl App {
                  self.chat_widget.handle_server_notification(
                      ServerNotification::TurnStarted(
                          codex_app_server_protocol::TurnStartedNotification {
@@ -1621,7 +1604,7 @@ index 97554a0..ac104c2 100644
                              turn: response.turn,
                          },
 diff --git a/codex-rs/tui/src/app/owned_transcript_follow_tests.rs b/codex-rs/tui/src/app/owned_transcript_follow_tests.rs
-index 6f05c02..e57a540 100644
+index 552bee01b6b657f81a87666aed1f7738f7487d66..c3e7b5c4b88340437df1a6b9a912f4229d06bdb9 100644
 --- a/codex-rs/tui/src/app/owned_transcript_follow_tests.rs
 +++ b/codex-rs/tui/src/app/owned_transcript_follow_tests.rs
 @@ -26,6 +26,7 @@ async fn follow_control_click_preserves_draft_caret_and_composer_geometry() -> R
@@ -1633,7 +1616,7 @@ index 6f05c02..e57a540 100644
                          turn: codex_app_server_protocol::Turn {
                              id: "turn".into(),
 diff --git a/codex-rs/tui/src/app/owned_transcript_tests.rs b/codex-rs/tui/src/app/owned_transcript_tests.rs
-index 46c0da6..3f50edf 100644
+index ff6e0201bb827516090eb84b7a1b12f342c8844d..0c75d6dc0226e30b4c972425536c7595dde84fe9 100644
 --- a/codex-rs/tui/src/app/owned_transcript_tests.rs
 +++ b/codex-rs/tui/src/app/owned_transcript_tests.rs
 @@ -595,6 +595,7 @@ async fn owned_details_escape_interrupts_work_without_starting_backtrack() -> Re
@@ -1645,7 +1628,7 @@ index 46c0da6..3f50edf 100644
              turn: codex_app_server_protocol::Turn {
                  id: "active-turn".to_string(),
 diff --git a/codex-rs/tui/src/app/permission_shortcuts.rs b/codex-rs/tui/src/app/permission_shortcuts.rs
-index 7502b83..8d0b4cf 100644
+index 7502b83954a48a8ed5be6e0ccb2c3c59a672d691..8d0b4cfc33e87d8286f594623fcfb99037580e48 100644
 --- a/codex-rs/tui/src/app/permission_shortcuts.rs
 +++ b/codex-rs/tui/src/app/permission_shortcuts.rs
 @@ -15,13 +15,17 @@ impl App {
@@ -1670,10 +1653,10 @@ index 7502b83..8d0b4cf 100644
              return;
          }
 diff --git a/codex-rs/tui/src/app/reconnect.rs b/codex-rs/tui/src/app/reconnect.rs
-index 72d6c5d..a4ba8cb 100644
+index 3fc0088f51c6dbd53e2f09ea86aa10f4e26aabc3..57a2cef83c5e71e21f9319e776fec5a95c9941f4 100644
 --- a/codex-rs/tui/src/app/reconnect.rs
 +++ b/codex-rs/tui/src/app/reconnect.rs
-@@ -503,7 +503,8 @@ impl App {
+@@ -552,7 +552,8 @@ impl App {
          if app_server.is_managed_gateway_thread(self.chat_widget.thread_id())
              && let Some(thread_id) = self.chat_widget.thread_id()
          {
@@ -1684,46 +1667,10 @@ index 72d6c5d..a4ba8cb 100644
          self.reconcile_managed_permission_changes(app_server).await;
          self.chat_widget.add_info_message(
 diff --git a/codex-rs/tui/src/app/startup.rs b/codex-rs/tui/src/app/startup.rs
-index 68b5029..a73dadf 100644
+index 812ad28bce914a3684062894715c3782b39d75da..07dad39eeb70fa17a6958da2405657aceafa32d0 100644
 --- a/codex-rs/tui/src/app/startup.rs
 +++ b/codex-rs/tui/src/app/startup.rs
-@@ -353,20 +353,21 @@ impl App {
-         if let Err(err) = startup_draft.flush_pending_events(tui).await {
-             return shutdown_on_startup_error(app_server, err).await;
-         }
--        let exit_info =
--            if managed_attachment || (matches!(&session_selection, SessionSelection::Fork(_)) && config.model.is_none()) {
--                None
--            } else {
--                handle_model_migration_prompt_if_needed(
--                    tui,
--                    &mut config,
--                    &local_settings,
--                    model.as_str(),
--                    &app_event_tx,
--                    &available_models,
--                )
--                .await?
--            };
-+        let exit_info = if managed_attachment
-+            || (matches!(&session_selection, SessionSelection::Fork(_)) && config.model.is_none())
-+        {
-+            None
-+        } else {
-+            handle_model_migration_prompt_if_needed(
-+                tui,
-+                &mut config,
-+                &local_settings,
-+                model.as_str(),
-+                &app_event_tx,
-+                &available_models,
-+            )
-+            .await?
-+        };
-         if let Some(exit_info) = exit_info {
-             app_server
-                 .shutdown()
-@@ -840,8 +841,8 @@ See the Codex keymap documentation for supported actions and examples."
+@@ -950,8 +950,8 @@ See the Codex keymap documentation for supported actions and examples."
              runtime_approvals_reviewer_override: None,
              runtime_permission_profile_override: None,
              pending_server_profiles: HashMap::new(),
@@ -1735,19 +1682,19 @@ index 68b5029..a73dadf 100644
              file_search,
              enhanced_keys_supported,
 diff --git a/codex-rs/tui/src/app/tests/history_hydration_tests.rs b/codex-rs/tui/src/app/tests/history_hydration_tests.rs
-index 9a5d34f..9889986 100644
+index 5a65adb334f35be699b195fc88cdb2cc44171740..47b86d13ec846cd4898744d2590e321829d5ea70 100644
 --- a/codex-rs/tui/src/app/tests/history_hydration_tests.rs
 +++ b/codex-rs/tui/src/app/tests/history_hydration_tests.rs
-@@ -55,6 +55,8 @@ async fn history_fixture(
-     for (index, count) in item_counts.iter().enumerate() {
+@@ -56,6 +56,8 @@ async fn history_fixture(
          let turn_id = format!("turn-{index}");
          let mut events = vec![EventMsg::TurnStarted(TurnStartedEvent {
+             turn_attribution: None,
 +            canonical_items: false,
 +            initial_settings: None,
              turn_id: turn_id.clone(),
              root_turn_id: None,
              trace_id: None,
-@@ -198,6 +200,7 @@ async fn history_hydration_metadata_tracks_missing_turns_and_stale_completions_k
+@@ -200,6 +202,7 @@ async fn history_hydration_metadata_tracks_missing_turns_and_stale_completions_k
              .map(serde_json::from_value::<ThreadReadParams>)
              .collect::<Result<Vec<_>, _>>()?,
          vec![ThreadReadParams {
@@ -1756,7 +1703,7 @@ index 9a5d34f..9889986 100644
              include_turns: false,
          }]
 diff --git a/codex-rs/tui/src/app/tests/luna_reserve_recovery_tests.rs b/codex-rs/tui/src/app/tests/luna_reserve_recovery_tests.rs
-index f56c31a..dbc6c0a 100644
+index 8dbceb0cda168c6470b3326ad40e5ebbe1ef99b7..289500450bc47ace03d03b448d6dc8d98dd4bdfb 100644
 --- a/codex-rs/tui/src/app/tests/luna_reserve_recovery_tests.rs
 +++ b/codex-rs/tui/src/app/tests/luna_reserve_recovery_tests.rs
 @@ -166,7 +166,7 @@ async fn luna_reserve_entry_dispatches_an_already_queued_turn_with_accepted_sett
@@ -1768,7 +1715,7 @@ index f56c31a..dbc6c0a 100644
                  settings.service_tier,
                  settings.collaboration_mode
              )
-@@ -271,7 +271,7 @@ async fn luna_reserve_recovery_restores_task_and_pending_turn_after_fresh_backen
+@@ -273,7 +273,7 @@ async fn luna_reserve_recovery_restores_task_and_pending_turn_after_fresh_backen
              ThreadSettingsUpdateParams {
                  thread_id: app.active_thread_id.unwrap().to_string(),
                  model: Some("gpt-5.5".into()),
@@ -1778,7 +1725,7 @@ index f56c31a..dbc6c0a 100644
                  service_tier: None,
                  ..Default::default()
 diff --git a/codex-rs/tui/src/app/tests/managed_gateway_defaults.rs b/codex-rs/tui/src/app/tests/managed_gateway_defaults.rs
-index ba750a1..49fcb06 100644
+index ba750a124ed1ec256e5096552c032b07be300219..49fcb069d38c82915eb1757a7d3a1bf8cf1effee 100644
 --- a/codex-rs/tui/src/app/tests/managed_gateway_defaults.rs
 +++ b/codex-rs/tui/src/app/tests/managed_gateway_defaults.rs
 @@ -94,16 +94,12 @@ async fn managed_gateway_picker_settings_keep_real_requests_without_implicit_def
@@ -1808,7 +1755,7 @@ index ba750a1..49fcb06 100644
          // A negotiated managed gateway must surface rejected settings. Ordinary
          // older remote servers retain their existing capability downgrade.
 diff --git a/codex-rs/tui/src/app/tests/managed_permissions.rs b/codex-rs/tui/src/app/tests/managed_permissions.rs
-index 8f17c42..5d22378 100644
+index 8f17c42f089a13cc3383d942f797806e98be8db8..5d2237884c135908ed7d0450155ff4db9ddb9f63 100644
 --- a/codex-rs/tui/src/app/tests/managed_permissions.rs
 +++ b/codex-rs/tui/src/app/tests/managed_permissions.rs
 @@ -27,6 +27,7 @@ async fn managed_permissions_fixture(
@@ -1847,50 +1794,33 @@ index 8f17c42..5d22378 100644
      assert!(app.pending_permission_changes.is_empty());
      assert_eq!(
 diff --git a/codex-rs/tui/src/app/tests/pagination_completion_tests.rs b/codex-rs/tui/src/app/tests/pagination_completion_tests.rs
-index d3d9849..dade82e 100644
+index 7cfc88a950312268a8ca5fa9589171eff7016cb2..e9d6dbf14c19432944aead99be1c69d129068f25 100644
 --- a/codex-rs/tui/src/app/tests/pagination_completion_tests.rs
 +++ b/codex-rs/tui/src/app/tests/pagination_completion_tests.rs
-@@ -57,6 +57,8 @@ pub(super) async fn completed_history_app(
-         let turn_id = format!("turn-{index}");
+@@ -58,6 +58,8 @@ pub(super) async fn completed_history_app(
          let finished = completed_at.timestamp() + index as i64 * 60;
          let mut events = vec![EventMsg::TurnStarted(TurnStartedEvent {
+             turn_attribution: None,
 +            canonical_items: false,
 +            initial_settings: None,
              turn_id: turn_id.clone(),
              root_turn_id: None,
              trace_id: None,
 diff --git a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-index 229b64e..2fc2150 100644
+index c3cbad27dc60ad127b0c11fe2c69564c4ec8d2a9..b5473061803f1eae425762b719b3beb64b7b69f4 100644
 --- a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
 +++ b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-@@ -4675,6 +4675,8 @@ async fn command_center_read_only_open_requests_and_failure_preservation() -> Re
-                 let first_ordinal = contents.lines().count();
+@@ -5095,6 +5095,8 @@ async fn command_center_read_only_open_requests_and_failure_preservation() -> Re
                  let events = [
                      EventMsg::TurnStarted(TurnStartedEvent {
+                         turn_attribution: None,
 +                        canonical_items: false,
 +                        initial_settings: None,
                          turn_id: format!("saved-turn-{index}"),
                          root_turn_id: None,
                          trace_id: None,
-diff --git a/codex-rs/tui/src/app_server_session.rs b/codex-rs/tui/src/app_server_session.rs
-index 99ffb11..1681868 100644
---- a/codex-rs/tui/src/app_server_session.rs
-+++ b/codex-rs/tui/src/app_server_session.rs
-@@ -1349,7 +1349,11 @@ impl AppServerSession {
-                 params: TurnStartParams {
-                     disabled_plugin_ids: None,
-                     thread_id: thread_id.to_string(),
--                    turn_trigger: if self.is_managed_gateway_thread(Some(thread_id)) { None } else { Some("user".to_string()) },
-+                    turn_trigger: if self.is_managed_gateway_thread(Some(thread_id)) {
-+                        None
-+                    } else {
-+                        Some("user".to_string())
-+                    },
-                     client_user_message_id: Some(client_user_message_id),
-                     input: items,
-                     tool_output: None,
 diff --git a/codex-rs/tui/src/app_server_session/rollout_history.rs b/codex-rs/tui/src/app_server_session/rollout_history.rs
-index 861d655..dab4aa9 100644
+index 45d33163bc89fe6de93eae28215e0ebd0f783ae9..823c1dd2685c17cc4da39250ac59de91e44ee5c4 100644
 --- a/codex-rs/tui/src/app_server_session/rollout_history.rs
 +++ b/codex-rs/tui/src/app_server_session/rollout_history.rs
 @@ -17,12 +17,11 @@ use codex_app_server_protocol::ClientRequest;
@@ -1909,10 +1839,10 @@ index 861d655..dab4aa9 100644
  use codex_utils_absolute_path::AbsolutePathBuf;
  use color_eyre::eyre::Result;
 diff --git a/codex-rs/tui/src/chatwidget/input_flow.rs b/codex-rs/tui/src/chatwidget/input_flow.rs
-index 04cccce..d0ee783 100644
+index 24803b2c79c3e2a4bdb8ca63972ab922529f1868..cb193ffda6106de56686dcdda5bf7eda037ce7e0 100644
 --- a/codex-rs/tui/src/chatwidget/input_flow.rs
 +++ b/codex-rs/tui/src/chatwidget/input_flow.rs
-@@ -170,7 +170,7 @@ impl ChatWidget {
+@@ -171,7 +171,7 @@ impl ChatWidget {
          }
          if self.input_queue.managed.enabled() {
              self.prepare_managed_queue_input(user_message, action, pending_pastes);
@@ -1922,7 +1852,7 @@ index 04cccce..d0ee783 100644
          let should_run_now = self.is_session_configured()
              && !self.is_user_turn_pending_or_running()
 diff --git a/codex-rs/tui/src/chatwidget/managed_queue.rs b/codex-rs/tui/src/chatwidget/managed_queue.rs
-index fba99c0..66bbdf9 100644
+index fba99c0b76f9e683bd5b6e3e56e5b43b16673e4d..66bbdf9085c8667ea6f35930bc1bbfbb83f1e0e5 100644
 --- a/codex-rs/tui/src/chatwidget/managed_queue.rs
 +++ b/codex-rs/tui/src/chatwidget/managed_queue.rs
 @@ -244,7 +244,13 @@ impl ChatWidget {
@@ -1941,7 +1871,7 @@ index fba99c0..66bbdf9 100644
                  name: "[Unconfirmed retention] Input preserved locally".into(),
                  description: Some(backup.input.text.clone()),
 diff --git a/codex-rs/tui/src/chatwidget/permission_popups.rs b/codex-rs/tui/src/chatwidget/permission_popups.rs
-index 0a342e2..060a2d4 100644
+index b15f761509a634ba7734a1236632857c0c259ec9..472c539b90749790c321ba0d2fbf169f02161467 100644
 --- a/codex-rs/tui/src/chatwidget/permission_popups.rs
 +++ b/codex-rs/tui/src/chatwidget/permission_popups.rs
 @@ -322,12 +322,15 @@ impl ChatWidget {
@@ -1989,10 +1919,10 @@ index 0a342e2..060a2d4 100644
          let is_cyber_model = self.model_catalog.try_list_models().is_ok_and(|models| {
              models.iter().any(|model| {
 diff --git a/codex-rs/tui/src/chatwidget/settings.rs b/codex-rs/tui/src/chatwidget/settings.rs
-index 2a13c8c..31f76d3 100644
+index a5e913118f25a09f09d12d1b1a96d5e09599ff00..402fe1af653d2963d300b504fa724409cd9cbd04 100644
 --- a/codex-rs/tui/src/chatwidget/settings.rs
 +++ b/codex-rs/tui/src/chatwidget/settings.rs
-@@ -455,7 +455,8 @@ impl ChatWidget {
+@@ -531,7 +531,8 @@ impl ChatWidget {
  
          let permission_profile = settings.permission_profile.take().unwrap_or_else(|| {
              PermissionProfile::from_legacy_sandbox_policy_for_cwd(
@@ -2003,7 +1933,7 @@ index 2a13c8c..31f76d3 100644
          });
          let permission_snapshot = PermissionProfileSnapshot::from_session_snapshot(
 diff --git a/codex-rs/tui/src/chatwidget/tests/managed_queue.rs b/codex-rs/tui/src/chatwidget/tests/managed_queue.rs
-index f02b157..eb23b34 100644
+index f02b157d0334a06bc442aea79cd35704b78cdba3..eb23b345e9bbf8ba6e6ca797f80d54fb3f533314 100644
 --- a/codex-rs/tui/src/chatwidget/tests/managed_queue.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/managed_queue.rs
 @@ -225,34 +225,70 @@ async fn managed_permissions_uncertain_input_requires_positive_same_thread_queue
@@ -2095,10 +2025,10 @@ index f02b157..eb23b34 100644
      assert!(operations.try_recv().is_err());
  }
 diff --git a/codex-rs/tui/src/chatwidget/tests/permission_shortcuts_tests.rs b/codex-rs/tui/src/chatwidget/tests/permission_shortcuts_tests.rs
-index 1b1d5fc..fb85db9 100644
+index 96cdafd3720310a689b9356bfd63be0bbdd0dc4c..4cdfdb470e2482f75d570801ec55212ef8befff2 100644
 --- a/codex-rs/tui/src/chatwidget/tests/permission_shortcuts_tests.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/permission_shortcuts_tests.rs
-@@ -151,21 +151,30 @@ async fn managed_permissions_popup_emits_one_named_intent_without_optimistic_eve
+@@ -197,21 +197,30 @@ async fn managed_permissions_popup_emits_one_named_intent_without_optimistic_eve
      chat.set_managed_queue_thread(Some(thread_id));
      while rx.try_recv().is_ok() {}
      let presets = builtin_approval_presets();
@@ -2134,7 +2064,7 @@ index 1b1d5fc..fb85db9 100644
  #[tokio::test]
  async fn managed_permissions_parent_owned_child_cannot_open_the_legacy_permissions_menu() {
      let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(None).await;
-@@ -174,8 +183,14 @@ async fn managed_permissions_parent_owned_child_cannot_open_the_legacy_permissio
+@@ -220,8 +229,14 @@ async fn managed_permissions_parent_owned_child_cannot_open_the_legacy_permissio
      let original = chat.config.permissions.active_permission_profile();
      chat.open_permissions_popup();
      assert!(chat.bottom_pane.no_modal_or_popup_active());
@@ -2152,7 +2082,7 @@ index 1b1d5fc..fb85db9 100644
      assert!(rx.try_recv().is_err());
  }
 diff --git a/codex-rs/tui/src/chatwidget/turn_runtime.rs b/codex-rs/tui/src/chatwidget/turn_runtime.rs
-index 7259743..ab675ca 100644
+index 55cf1b4a225f2823c305a28677e44e6869206ec2..1d53434f290daed83ff33efefd442d3f5b00a1b5 100644
 --- a/codex-rs/tui/src/chatwidget/turn_runtime.rs
 +++ b/codex-rs/tui/src/chatwidget/turn_runtime.rs
 @@ -384,29 +384,45 @@ impl ChatWidget {
@@ -2209,7 +2139,7 @@ index 7259743..ab675ca 100644
                  }
                  self.add_info_message("Queue retention is unconfirmed. Your full input is preserved locally without resending it. Refresh the shared queue to reconcile; an empty queue does not prove it was never submitted.".into(), None);
                  self.refresh_managed_queue(false);
-@@ -503,7 +519,10 @@ impl ChatWidget {
+@@ -531,7 +547,10 @@ impl ChatWidget {
          message: String,
          codex_error_info: Option<AppServerCodexErrorInfo>,
      ) {
@@ -2222,10 +2152,10 @@ index 7259743..ab675ca 100644
              return;
          }
 diff --git a/codex-rs/tui/src/lib.rs b/codex-rs/tui/src/lib.rs
-index f0333b2..ea11893 100644
+index 11d6037eede7b2e0dc99e87a7f7af950afd11436..31a4bbb2df6e57fa74e0f473ff309e08c62b9a03 100644
 --- a/codex-rs/tui/src/lib.rs
 +++ b/codex-rs/tui/src/lib.rs
-@@ -129,8 +129,8 @@ pub(crate) mod custom_terminal;
+@@ -136,8 +136,8 @@ pub(crate) mod custom_terminal;
  mod daybreak;
  mod experimental_features;
  mod markdown_copy;
@@ -2236,7 +2166,7 @@ index f0333b2..ea11893 100644
  mod security_setup;
  mod worktree_browser;
 diff --git a/codex-rs/tui/src/onboarding/directory_trust.rs b/codex-rs/tui/src/onboarding/directory_trust.rs
-index fde87b6..0a0917d 100644
+index fde87b6c0a52bc1c8b1f7e993f788cf36c31f8f6..0a0917d321be336202c2f08d035fea8e888bc1db 100644
 --- a/codex-rs/tui/src/onboarding/directory_trust.rs
 +++ b/codex-rs/tui/src/onboarding/directory_trust.rs
 @@ -140,6 +140,7 @@ pub(crate) async fn check_directory_trust(
@@ -2248,7 +2178,7 @@ index fde87b6..0a0917d 100644
                      include_turns: false,
                  },
 diff --git a/codex-rs/tui/src/screen_reader.rs b/codex-rs/tui/src/screen_reader.rs
-index e4bc391..2d5cf23 100644
+index 10d24217f4a2dfdf0d2031b07dd935c51891b353..73fa17f77c55c68154bf9c644a4e8d1983b0b43b 100644
 --- a/codex-rs/tui/src/screen_reader.rs
 +++ b/codex-rs/tui/src/screen_reader.rs
 @@ -23,6 +23,16 @@ pub(crate) async fn initialize(stack: &ConfigLayerStack) -> anyhow::Result<()> {
@@ -2269,10 +2199,10 @@ index e4bc391..2d5cf23 100644
      ANIMATION_DEFAULT
          .get()
 diff --git a/codex-rs/tui/src/startup_orchestration.rs b/codex-rs/tui/src/startup_orchestration.rs
-index a0ff9cb..bd7f6cc 100644
+index c29d464adcb2f52a7a6dc38329e19319217cc3ad..b8b08abe043038f2e737e60b8278a2cd9ddb5fbe 100644
 --- a/codex-rs/tui/src/startup_orchestration.rs
 +++ b/codex-rs/tui/src/startup_orchestration.rs
-@@ -324,7 +324,18 @@ pub(super) async fn run_main_inner(
+@@ -333,7 +333,18 @@ pub(super) async fn run_main_inner(
      )?;
      // The pre-paint bootstrap used these same local/remote config inputs. Reuse it here;
      // implicit daemon discovery above changes transport, not the client configuration cwd.
@@ -2293,7 +2223,7 @@ index a0ff9cb..bd7f6cc 100644
              .run_until(screen_reader::initialize(
                  &bootstrap_config.config_layer_stack,
 diff --git a/codex-rs/tui/src/thread_transcript.rs b/codex-rs/tui/src/thread_transcript.rs
-index b3aa239..8050fe1 100644
+index b3aa2396b3ba83064e6ccfac5f288ae06946e2f0..8050fe16afadbdc5bd22d8f4488416ea53639559 100644
 --- a/codex-rs/tui/src/thread_transcript.rs
 +++ b/codex-rs/tui/src/thread_transcript.rs
 @@ -305,14 +305,25 @@ fn item_to_cells(
@@ -2327,7 +2257,7 @@ index b3aa239..8050fe1 100644
          }
          ThreadItem::Reasoning {
 diff --git a/codex-rs/tui/src/thread_transcript/other_items.rs b/codex-rs/tui/src/thread_transcript/other_items.rs
-index 6811613..f5fae2d 100644
+index 68116133904ebb2f3d8ada3c24255f7111dc02d0..f5fae2d0edcefa10ff4181af51cbb09518a269f7 100644
 --- a/codex-rs/tui/src/thread_transcript/other_items.rs
 +++ b/codex-rs/tui/src/thread_transcript/other_items.rs
 @@ -132,6 +132,7 @@ pub(super) fn cells(item: ThreadItem, cwd: &AbsolutePathBuf) -> TranscriptCells
@@ -2339,7 +2269,7 @@ index 6811613..f5fae2d 100644
          | ThreadItem::FunctionCallOutput { .. }
          | ThreadItem::Plan { .. }
 diff --git a/codex-rs/tui/src/worktree_browser.rs b/codex-rs/tui/src/worktree_browser.rs
-index aa3664d..43be04f 100644
+index aa3664d09746ae4eb8c4e0e643e9b2d9f261f2ec..43be04fa785eb0a2f339b8e1726f290626d60221 100644
 --- a/codex-rs/tui/src/worktree_browser.rs
 +++ b/codex-rs/tui/src/worktree_browser.rs
 @@ -64,6 +64,7 @@ pub(crate) fn fetch(

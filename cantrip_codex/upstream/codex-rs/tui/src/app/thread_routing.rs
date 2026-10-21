@@ -486,7 +486,8 @@ impl App {
             | AppCommand::RealtimeConversationStop { thread_id } = &op
                 && self.chat_widget.thread_id() == Some(*thread_id)
             {
-                self.chat_widget.record_realtime_failure();
+                self.chat_widget
+                    .record_realtime_failure(crate::chatwidget::RealtimeFailureCause::LocalRequest);
                 self.chat_widget.reset_realtime_conversation();
             }
             self.chat_widget
@@ -512,7 +513,8 @@ impl App {
             | AppCommand::RealtimeConversationStop { thread_id } = &op
                 && self.chat_widget.thread_id() == Some(*thread_id)
             {
-                self.chat_widget.record_realtime_failure();
+                self.chat_widget
+                    .record_realtime_failure(crate::chatwidget::RealtimeFailureCause::LocalRequest);
                 self.chat_widget.reset_realtime_conversation();
             }
             self.chat_widget.add_error_message(
@@ -530,10 +532,7 @@ impl App {
 
         crate::session_log::log_outbound_op(&op);
 
-        if self
-            .try_resolve_app_server_request(app_server, thread_id, &op)
-            .await?
-        {
+        if self.try_resolve_app_server_request(thread_id, &op).await? {
             return Ok(());
         }
 
@@ -746,7 +745,6 @@ impl App {
                 service_tier,
                 final_output_json_schema,
                 collaboration_mode,
-                personality,
             } => {
                 let mut should_start_turn = true;
                 if let Some(turn_id) = self.active_turn_id_for_thread(thread_id).await {
@@ -826,8 +824,34 @@ impl App {
                     }
                 }
                 if should_start_turn {
+                    let enabled = self.chat_widget.daybreak_enabled
+                        && !self.chat_widget.side_conversation_active()
+                        && !self.side_threads.contains_key(&thread_id);
+                    let eligible_account = self.chat_widget.daybreak_account_eligible();
+                    let cyber_access_program = match crate::daybreak::program_for_turn(
+                        &self.chat_widget.model_catalog().models,
+                        model,
+                        eligible_account,
+                        enabled,
+                    ) {
+                        Ok(program) => program,
+                        Err(message) => {
+                            if !self
+                                .chat_widget
+                                .handle_turn_start_rejection(message.clone())
+                            {
+                                self.chat_widget.add_error_message(message);
+                            }
+                            return Ok(true);
+                        }
+                    };
                     let config = self.chat_widget.config_ref();
-                    let selected_profile = self.pending_server_profiles.get(&thread_id);
+                    let selected_profile =
+                        self.pending_server_profiles.get(&thread_id).or_else(|| {
+                            self.agents_overview
+                                .requested_permission_profiles
+                                .get(&thread_id)
+                        });
                     let selected_active = selected_profile
                         .map(|profile| ActivePermissionProfile::new(profile.profile_id.clone()));
                     let (turn_approval_policy, turn_approvals_reviewer) =
@@ -885,8 +909,8 @@ impl App {
                             *summary,
                             service_tier.clone(),
                             collaboration_mode.clone(),
-                            *personality,
                             final_output_json_schema.clone(),
+                            cyber_access_program.map(Into::into),
                         )
                         .await?;
                     if self.active_thread_id == Some(thread_id)
@@ -1063,37 +1087,33 @@ impl App {
 
     pub(super) async fn try_resolve_app_server_request(
         &mut self,
-        app_server: &AppServerSession,
         thread_id: ThreadId,
         op: &AppCommand,
     ) -> Result<bool> {
         let Some(resolution) = self
             .pending_app_server_requests
-            .take_resolution(&thread_id.to_string(), op)
+            .take_resolution_record(&thread_id.to_string(), op)
             .map_err(|err| color_eyre::eyre::eyre!(err))?
         else {
             return Ok(false);
         };
+        let Some(reply) = resolution.request.reply else {
+            return Err(color_eyre::eyre::eyre!(
+                "Missing original app-server connection for pending request"
+            ));
+        };
 
-        match app_server
-            .resolve_server_request(resolution.request_id, resolution.result)
-            .await
-        {
-            Ok(()) => {
-                if ThreadEventStore::op_can_change_pending_replay_state(op) {
-                    self.note_thread_outbound_op(thread_id, op).await;
-                    self.refresh_pending_thread_approvals().await;
-                    self.refresh_side_parent_status_from_store(thread_id).await;
-                }
-                Ok(true)
-            }
-            Err(err) => {
-                self.chat_widget.add_error_message(format!(
-                    "Failed to resolve app-server request for thread {thread_id}: {err}"
-                ));
-                Ok(false)
-            }
+        if let Err(err) = reply.resolve(resolution.result).await {
+            self.chat_widget.add_error_message(format!(
+                "Failed to resolve app-server request for thread {thread_id}: {err}"
+            ));
         }
+        if ThreadEventStore::op_can_change_pending_replay_state(op) {
+            self.note_thread_outbound_op(thread_id, op).await;
+            self.refresh_pending_thread_approvals().await;
+            self.refresh_side_parent_status_from_store(thread_id).await;
+        }
+        Ok(true)
     }
 
     pub(super) async fn refresh_pending_thread_approvals(&mut self) {
@@ -1196,6 +1216,11 @@ impl App {
             if self
                 .pending_server_profiles
                 .get(&thread_id)
+                .or_else(|| {
+                    self.agents_overview
+                        .requested_permission_profiles
+                        .get(&thread_id)
+                })
                 .is_some_and(|selected| {
                     notification
                         .thread_settings
@@ -1210,7 +1235,11 @@ impl App {
                         })
                 })
             {
-                confirmed_profile = self.pending_server_profiles.remove(&thread_id);
+                confirmed_profile = self.pending_server_profiles.remove(&thread_id).or_else(|| {
+                    self.agents_overview
+                        .requested_permission_profiles
+                        .remove(&thread_id)
+                });
             }
         }
         let inferred_session = if let ServerNotification::ThreadStarted(started) = &notification
@@ -1298,41 +1327,9 @@ impl App {
                 .on_thread_settings_updated(settings.clone());
             notification = None;
         }
-        if let Some(selected) = confirmed_profile {
+        if confirmed_profile.is_some() {
             if self.chat_widget.thread_id() == Some(thread_id) {
-                if selected.approvals_reviewer.is_some() {
-                    self.runtime_approvals_reviewer_override = None;
-                }
-                self.runtime_permission_profile_override = None;
-            }
-            if self.chat_widget.thread_id() == Some(thread_id)
-                && let Some(profile) = self
-                    .chat_widget
-                    .config_ref()
-                    .permissions
-                    .active_permission_profile()
-                && profile.id.starts_with(':')
-            {
-                let config = self.chat_widget.config_ref();
-                let network = config
-                    .network_proxy_spec_for_active_permission_profile(
-                        &profile,
-                        config.permissions.permission_profile(),
-                    )
-                    .unwrap_or_else(|err| {
-                        tracing::warn!(%err, "failed to refresh local permission network settings");
-                        None
-                    });
-                self.chat_widget.set_permission_network(network);
-                self.config.permissions = self.chat_widget.config_ref().permissions.clone();
-                self.config.approvals_reviewer = self.chat_widget.config_ref().approvals_reviewer;
-                self.runtime_approval_policy_override =
-                    Some(RuntimeApprovalPolicyOverride::Explicit(
-                        self.config.permissions.approval_policy.value().into(),
-                    ));
-                self.runtime_approvals_reviewer_override = Some(self.config.approvals_reviewer);
-                self.runtime_permission_profile_override =
-                    Some(RuntimePermissionProfileOverride::from_config(&self.config));
+                self.adopt_server_permissions();
             }
             self.app_event_tx.send(AppEvent::SettingsSelectionSettled);
         }
@@ -1416,6 +1413,7 @@ impl App {
     ) -> Option<ThreadSessionState> {
         let mut session = self.primary_session_configured.clone()?;
         session.thread_id = thread_id;
+        session.daybreak_enabled = notification.thread.daybreak_enabled.unwrap_or(false);
         session.windows_sandbox_host = crate::windows_sandbox::host_from_environments(
             notification.thread.environments.as_deref(),
         );
@@ -1574,6 +1572,9 @@ impl App {
 
         let thread_id = session.thread_id;
         self.pending_server_profiles.remove(&thread_id);
+        self.agents_overview
+            .requested_permission_profiles
+            .remove(&thread_id);
         if self.primary_thread_id != Some(thread_id) {
             self.recap.reset_for_new_thread(Instant::now());
         }
@@ -2169,12 +2170,9 @@ impl App {
             self.mark_agent_picker_thread_closed(closed_thread_id);
             if self.side_threads.contains_key(&closed_thread_id) {
                 self.discard_closed_side_thread(closed_thread_id).await;
-                self.select_agent_thread(tui, app_server, primary_thread_id)
-                    .await?;
-            } else {
-                self.select_agent_thread_and_discard_side(tui, app_server, primary_thread_id)
-                    .await?;
             }
+            self.select_agent_thread(tui, app_server, primary_thread_id)
+                .await?;
             if self.active_thread_id == Some(primary_thread_id) {
                 self.chat_widget.add_info_message(
                     format!(
@@ -2236,8 +2234,7 @@ impl App {
         {
             self.chat_widget.pre_draw_tick();
             self.render_chat_widget_frame(tui, tui.terminal.last_known_screen_size)?;
-            tui.discard_pending_input_before_interactive_screen()?;
-            self.startup_pending_protected_request = false;
+            self.discard_startup_modal_input(tui)?;
         }
         if self.backtrack_render_pending {
             tui.frame_requester().schedule_frame();

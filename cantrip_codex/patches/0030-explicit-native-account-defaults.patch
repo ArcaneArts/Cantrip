@@ -1,8 +1,8 @@
 diff --git a/codex-rs/tui/src/app.rs b/codex-rs/tui/src/app.rs
-index d1e7ca8..a5bd65a 100644
+index 28f5582f53e0c3c7713308c90b542faa750273b2..dccb424c3169c340f4c5c6ad20eb9bc965c20a75 100644
 --- a/codex-rs/tui/src/app.rs
 +++ b/codex-rs/tui/src/app.rs
-@@ -208,6 +208,7 @@ mod agents_overview_usage;
+@@ -210,6 +210,7 @@ mod agents_overview_usage;
  mod agents_overview_view;
  pub(crate) use agents_overview::AGENTS_OVERVIEW_VIEW_ID;
  mod activity_groups;
@@ -10,8 +10,8 @@ index d1e7ca8..a5bd65a 100644
  mod app_server_event_targets;
  mod app_server_events;
  pub(crate) mod app_server_requests;
-@@ -237,9 +238,9 @@ pub(crate) use new_session::has_launch_setting;
- mod clipboard;
+@@ -243,9 +244,9 @@ mod clipboard;
+ mod footer_selection;
  mod native_history;
  mod owned_transcript;
 +mod managed_permission_changes;
@@ -21,7 +21,7 @@ index d1e7ca8..a5bd65a 100644
  mod pets;
  mod platform_actions;
  mod plugin_mentions;
-@@ -547,6 +548,7 @@ pub(crate) struct App {
+@@ -557,6 +558,7 @@ pub(crate) struct App {
      /// In-flight remote selections; confirmed settings live in each task's server snapshot.
      pending_server_profiles: HashMap<ThreadId, PermissionProfileSelection>,
      pending_permission_changes: HashMap<String, managed_permission_changes::PendingPermissionChange>,
@@ -31,7 +31,7 @@ index d1e7ca8..a5bd65a 100644
      pub(crate) file_search: FileSearchManager,
 diff --git a/codex-rs/tui/src/app/account_defaults.rs b/codex-rs/tui/src/app/account_defaults.rs
 new file mode 100644
-index 0000000..50d2d98
+index 0000000000000000000000000000000000000000..50d2d98464caded4584b6f4aaa0296fc4b6d5aaf
 --- /dev/null
 +++ b/codex-rs/tui/src/app/account_defaults.rs
 @@ -0,0 +1,148 @@
@@ -184,10 +184,10 @@ index 0000000..50d2d98
 +    }
 +}
 diff --git a/codex-rs/tui/src/app/event_dispatch.rs b/codex-rs/tui/src/app/event_dispatch.rs
-index 1cfcdf3..032353d 100644
+index ded1376b8d35678f383b1064ecfe8c6c99ec1cce..91fcb9f7fc02fbd892358b6ada5349794b7154e8 100644
 --- a/codex-rs/tui/src/app/event_dispatch.rs
 +++ b/codex-rs/tui/src/app/event_dispatch.rs
-@@ -2942,6 +2942,10 @@ impl App {
+@@ -3198,6 +3198,10 @@ impl App {
                      self.chat_widget.add_error_message(err);
                  }
              }
@@ -199,10 +199,10 @@ index 1cfcdf3..032353d 100644
                  if self.reject_pending_permission_change() {
                      return Ok(AppRunControl::Continue);
 diff --git a/codex-rs/tui/src/app/startup.rs b/codex-rs/tui/src/app/startup.rs
-index 0fbd91b..db3d2f2 100644
+index 9400a28b369c6040a7472490e5114a2b32c976e8..3c2bb5e985a62fd72282a0e5e9af83d3ee69a75e 100644
 --- a/codex-rs/tui/src/app/startup.rs
 +++ b/codex-rs/tui/src/app/startup.rs
-@@ -842,6 +842,7 @@ See the Codex keymap documentation for supported actions and examples."
+@@ -952,6 +952,7 @@ See the Codex keymap documentation for supported actions and examples."
              pending_server_profiles: HashMap::new(),
          pending_permission_changes: HashMap::new(),
          observed_native_settings: HashMap::new(),
@@ -211,10 +211,10 @@ index 0fbd91b..db3d2f2 100644
              enhanced_keys_supported,
              keymap: runtime_keymap,
 diff --git a/codex-rs/tui/src/app/test_support.rs b/codex-rs/tui/src/app/test_support.rs
-index 409f256..2e1f8d3 100644
+index d99a3306fb1817a675bbc2650f58f19f7f6af986..6e0ba628471aa437d45a8c267417df9f449bbcea 100644
 --- a/codex-rs/tui/src/app/test_support.rs
 +++ b/codex-rs/tui/src/app/test_support.rs
-@@ -38,6 +38,7 @@ pub(crate) async fn make_test_app() -> App {
+@@ -43,6 +43,7 @@ pub(crate) async fn make_test_app() -> Box<App> {
          runtime_permission_profile_override: None,
          pending_server_profiles: HashMap::new(),
          pending_permission_changes: HashMap::new(),
@@ -223,10 +223,10 @@ index 409f256..2e1f8d3 100644
          file_search,
          transcript_cells: Vec::new(),
 diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
-index 22f526a..ef32fc8 100644
+index fc398932a63fd1addb84a1cdface9d946d58e553..0f7e5088660a57f78b8cb60f2ae631af57be4eb5 100644
 --- a/codex-rs/tui/src/app/tests.rs
 +++ b/codex-rs/tui/src/app/tests.rs
-@@ -45,6 +45,8 @@ mod key_chords;
+@@ -48,6 +48,8 @@ mod key_chords;
  mod local_command_scroll_tests;
  #[path = "tests/luna_reserve_recovery_tests.rs"]
  mod luna_reserve_recovery_tests;
@@ -235,7 +235,7 @@ index 22f526a..ef32fc8 100644
  #[path = "tests/mcp_startup.rs"]
  mod mcp_startup;
  #[path = "tests/misalignment_policy_tests.rs"]
-@@ -67,8 +69,6 @@ mod unavailable_commands;
+@@ -70,8 +72,6 @@ mod unavailable_commands;
  mod history_hydration_tests;
  #[path = "tests/permission_shortcuts_tests.rs"]
  mod permission_shortcuts_tests;
@@ -244,7 +244,7 @@ index 22f526a..ef32fc8 100644
  mod plugin_catalog;
  mod rate_limits;
  #[path = "tests/realtime_handoff_e2e.rs"]
-@@ -6017,6 +6017,7 @@ async fn make_test_app() -> Box<App> {
+@@ -6282,6 +6282,7 @@ async fn make_test_app() -> Box<App> {
          runtime_approvals_reviewer_override: None,
          runtime_permission_profile_override: None,
          pending_permission_changes: HashMap::new(),
@@ -252,7 +252,7 @@ index 22f526a..ef32fc8 100644
          observed_native_settings: HashMap::new(),
          file_search,
          transcript_cells: Vec::new(),
-@@ -6136,6 +6137,7 @@ pub(super) async fn make_test_app_with_channels() -> (
+@@ -6409,6 +6410,7 @@ pub(super) async fn make_test_app_with_channels() -> (
              runtime_approvals_reviewer_override: None,
              runtime_permission_profile_override: None,
              pending_permission_changes: HashMap::new(),
@@ -261,10 +261,10 @@ index 22f526a..ef32fc8 100644
              file_search,
              transcript_cells: Vec::new(),
 diff --git a/codex-rs/tui/src/app_event.rs b/codex-rs/tui/src/app_event.rs
-index 1337ebb..1085c7e 100644
+index 4950b2e7d0438d8e36babc3d65eb97bdbb737e8a..73f6541de08c51c231e3f672f6cc3a1005c42169 100644
 --- a/codex-rs/tui/src/app_event.rs
 +++ b/codex-rs/tui/src/app_event.rs
-@@ -1451,6 +1451,16 @@ pub(crate) enum AppEvent {
+@@ -1548,6 +1548,16 @@ pub(crate) enum AppEvent {
  
      /// Re-open the permissions presets popup.
      OpenPermissionsPopup,
@@ -282,10 +282,10 @@ index 1337ebb..1085c7e 100644
      /// Open the branch picker option from the review popup.
      OpenReviewBranchPicker(PathBuf),
 diff --git a/codex-rs/tui/src/app_server_session.rs b/codex-rs/tui/src/app_server_session.rs
-index 4a004f2..99ffb11 100644
+index 95b64cfeb41dc6b68cd37e9e18aed47926a1e429..62d3911436a438c37dee8c60a035efdbe7ea72ba 100644
 --- a/codex-rs/tui/src/app_server_session.rs
 +++ b/codex-rs/tui/src/app_server_session.rs
-@@ -316,6 +316,7 @@ pub(crate) struct AppServerBootstrap {
+@@ -324,6 +324,7 @@ pub(crate) struct AppServerBootstrap {
  pub(crate) struct AppServerSession {
      client: AppServerClient,
      next_request_id: i64,
@@ -293,7 +293,7 @@ index 4a004f2..99ffb11 100644
      history_pagination: HashMap<ThreadId, history::ThreadHistoryPagination>,
      task_tool_threads: HashSet<ThreadId>,
      task_tool_capabilities_dir: Option<AbsolutePathBuf>,
-@@ -421,6 +422,7 @@ impl AppServerSession {
+@@ -432,6 +433,7 @@ impl AppServerSession {
          Self {
              client,
              next_request_id: 1,
@@ -301,7 +301,7 @@ index 4a004f2..99ffb11 100644
              history_pagination: HashMap::new(),
              task_tool_threads: HashSet::new(),
              task_tool_capabilities_dir: None,
-@@ -1703,6 +1705,10 @@ impl AppServerSession {
+@@ -1838,6 +1840,10 @@ impl AppServerSession {
          self.client.shutdown().await
      }
  
@@ -313,10 +313,10 @@ index 4a004f2..99ffb11 100644
          self.client.request_handle()
      }
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index 5b8bdc2..d2eae41 100644
+index 427bc1e416a817cc8ff6e67ef3ae2dc0eba88bcf..49617199cc3bd166a3eb82b632fc8330b0810d85 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
-@@ -1083,6 +1083,33 @@ impl ChatWidget {
+@@ -1092,6 +1092,33 @@ impl ChatWidget {
          });
      }
  
@@ -351,10 +351,10 @@ index 5b8bdc2..d2eae41 100644
          if !self.config.features.enabled(Feature::MemoryTool) {
              self.open_feature_enable_prompt(Feature::MemoryTool);
 diff --git a/codex-rs/tui/src/chatwidget/slash_dispatch.rs b/codex-rs/tui/src/chatwidget/slash_dispatch.rs
-index 4fe2ed0..09db66f 100644
+index 5327f805cf5d3e78d283cd558be3a40e8c569966..392c9472300f4ea7e595be658a5cf0c1a16e0fd1 100644
 --- a/codex-rs/tui/src/chatwidget/slash_dispatch.rs
 +++ b/codex-rs/tui/src/chatwidget/slash_dispatch.rs
-@@ -336,6 +336,9 @@ impl ChatWidget {
+@@ -374,6 +374,9 @@ impl ChatWidget {
                      .counter("codex.thread.rename", /*inc*/ 1, &[]);
                  self.show_rename_prompt();
              }
@@ -364,7 +364,7 @@ index 4fe2ed0..09db66f 100644
              SlashCommand::Model => {
                  self.open_model_popup();
                  self.defer_input_until_settings_applied();
-@@ -1255,6 +1258,7 @@ impl ChatWidget {
+@@ -1315,6 +1318,7 @@ impl ChatWidget {
              | SlashCommand::Compact
              | SlashCommand::Review
              | SlashCommand::Model
@@ -373,10 +373,10 @@ index 4fe2ed0..09db66f 100644
              | SlashCommand::Goal
              | SlashCommand::Side
 diff --git a/codex-rs/tui/src/lib.rs b/codex-rs/tui/src/lib.rs
-index 9ecbe9c..a2fba39 100644
+index a88d8025f89f6aca71767b2eac61485fe5afac32..3ebb6a7c201178b0b1fde11aa990dc349c5a83aa 100644
 --- a/codex-rs/tui/src/lib.rs
 +++ b/codex-rs/tui/src/lib.rs
-@@ -130,6 +130,7 @@ mod daybreak;
+@@ -137,6 +137,7 @@ mod daybreak;
  mod experimental_features;
  mod markdown_copy;
  mod permission_discovery;
@@ -386,7 +386,7 @@ index 9ecbe9c..a2fba39 100644
  mod worktree_browser;
 diff --git a/codex-rs/tui/src/native_account_defaults.rs b/codex-rs/tui/src/native_account_defaults.rs
 new file mode 100644
-index 0000000..46d9dd1
+index 0000000000000000000000000000000000000000..46d9dd103047d4f8677723ccce40d1d9a61fe49e
 --- /dev/null
 +++ b/codex-rs/tui/src/native_account_defaults.rs
 @@ -0,0 +1,136 @@
@@ -527,29 +527,29 @@ index 0000000..46d9dd1
 +    }
 +}
 diff --git a/codex-rs/tui/src/slash_command.rs b/codex-rs/tui/src/slash_command.rs
-index 301de2e..f3a93c6 100644
+index afb372bb7b9bc4e6f32ee82d6f86c32b4c40b97d..35fe3da052d16aaa96827ce15a5ae76624640e8c 100644
 --- a/codex-rs/tui/src/slash_command.rs
 +++ b/codex-rs/tui/src/slash_command.rs
-@@ -13,6 +13,7 @@ pub enum SlashCommand {
-     // DO NOT ALPHA-SORT! Enum order is presentation order in the popup, so
+@@ -14,6 +14,7 @@ pub enum SlashCommand {
      // more frequently used commands should be listed first.
      Model,
+     Daybreak,
 +    Defaults,
      Ide,
      Permissions,
      Keymap,
-@@ -128,6 +129,7 @@ impl SlashCommand {
+@@ -131,6 +132,7 @@ impl SlashCommand {
              SlashCommand::Stop => "stop all background terminals",
              SlashCommand::MemoryDrop => "DO NOT USE",
              SlashCommand::MemoryUpdate => "DO NOT USE",
 +            SlashCommand::Defaults => "read and explicitly save native account defaults",
              SlashCommand::Model => "choose what model and reasoning effort to use",
+             SlashCommand::Daybreak => "turn Daybreak on or off",
              SlashCommand::Ide => {
-                 "include current selection, open files, and other context from your IDE"
-@@ -264,6 +266,7 @@ impl SlashCommand {
-             SlashCommand::Diff
+@@ -269,6 +271,7 @@ impl SlashCommand {
              | SlashCommand::Resume
              | SlashCommand::Model
+             | SlashCommand::Daybreak
 +            | SlashCommand::Defaults
              | SlashCommand::Permissions
              | SlashCommand::Copy

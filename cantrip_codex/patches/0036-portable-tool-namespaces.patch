@@ -1,5 +1,5 @@
 diff --git a/codex-rs/core/src/stream_events_utils.rs b/codex-rs/core/src/stream_events_utils.rs
-index 20ea780..8d0784c 100644
+index 2081c42cd2c828864d1672c0603eacf54a71320d..a43c2ce2e97ab2b468b8333e4b2644d2482b2d62 100644
 --- a/codex-rs/core/src/stream_events_utils.rs
 +++ b/codex-rs/core/src/stream_events_utils.rs
 @@ -322,7 +322,10 @@ pub(crate) async fn handle_output_item_done(
@@ -15,7 +15,7 @@ index 20ea780..8d0784c 100644
                  ctx.sess.thread_id,
                  &call.tool_name,
 diff --git a/codex-rs/core/src/tools/mod.rs b/codex-rs/core/src/tools/mod.rs
-index 41ed018..5a97a60 100644
+index 501ce5fe4eb8395ae84f8b7a1b7f14b530a22e5e..b04ee757afd5d54bcecdd2597dcca039897cf65e 100644
 --- a/codex-rs/core/src/tools/mod.rs
 +++ b/codex-rs/core/src/tools/mod.rs
 @@ -15,6 +15,7 @@ mod multi_agent_tool;
@@ -27,10 +27,10 @@ index 41ed018..5a97a60 100644
  pub(crate) mod router;
  pub(crate) mod runtimes;
 diff --git a/codex-rs/core/src/tools/parallel.rs b/codex-rs/core/src/tools/parallel.rs
-index 0a7afc5..bad3d43 100644
+index e0b50c48dd7ed4558b4423d25bae6e62d99ccea5..add53a2b4043132347dd6695d8ef180ccdfd8c51 100644
 --- a/codex-rs/core/src/tools/parallel.rs
 +++ b/codex-rs/core/src/tools/parallel.rs
-@@ -64,6 +64,13 @@ impl ToolCallRuntime {
+@@ -65,6 +65,13 @@ impl ToolCallRuntime {
          }
      }
  
@@ -44,7 +44,7 @@ index 0a7afc5..bad3d43 100644
      pub(crate) fn create_diff_consumer(
          &self,
          tool_name: &codex_tools::ToolName,
-@@ -80,6 +87,8 @@ impl ToolCallRuntime {
+@@ -81,6 +88,8 @@ impl ToolCallRuntime {
          cancellation_token: CancellationToken,
      ) -> impl std::future::Future<Output = Result<ResponseItemEnvelope, CodexErr>> {
          let error_call = call.clone();
@@ -55,7 +55,7 @@ index 0a7afc5..bad3d43 100644
          let recorded_call = recorder.prepare_direct_call(&call, &source, &self.step_context);
 diff --git a/codex-rs/core/src/tools/portable_namespaces.rs b/codex-rs/core/src/tools/portable_namespaces.rs
 new file mode 100644
-index 0000000..52d4712
+index 0000000000000000000000000000000000000000..52d4712d1745f72ae08cf557340fe40cb8e72316
 --- /dev/null
 +++ b/codex-rs/core/src/tools/portable_namespaces.rs
 @@ -0,0 +1,202 @@
@@ -262,7 +262,7 @@ index 0000000..52d4712
 +    }
 +}
 diff --git a/codex-rs/core/src/tools/router.rs b/codex-rs/core/src/tools/router.rs
-index 75753e0..af4ba76 100644
+index d816611443e5cd9c49efcaa388f0cf9dd10db44c..0fbeab2a65ed83de4ff71882bae86bcb49d84e60 100644
 --- a/codex-rs/core/src/tools/router.rs
 +++ b/codex-rs/core/src/tools/router.rs
 @@ -10,6 +10,7 @@ use crate::tools::context::ToolInvocation;
@@ -271,9 +271,9 @@ index 75753e0..af4ba76 100644
  use crate::tools::handlers::ToolSearchHandlerCache;
 +use crate::tools::portable_namespaces::PortableNamespaces;
  use crate::tools::registry::AnyToolResult;
- use crate::tools::registry::CoreToolRuntime;
+ use crate::tools::registry::RegisteredTool;
  use crate::tools::registry::ToolArgumentDiffConsumer;
-@@ -74,6 +75,7 @@ pub(crate) fn tool_log_payload<'a>(
+@@ -85,6 +86,7 @@ pub(crate) fn tool_log_payload<'a>(
  pub struct ToolRouter {
      registry: ToolRegistry,
      model_visible_specs: Arc<[ToolSpec]>,
@@ -281,7 +281,7 @@ index 75753e0..af4ba76 100644
      tool_mode: ToolMode,
      code_mode_tool_names: BTreeMap<String, ToolName>,
      tool_namespaces_info: Option<TurnToolNamespacesInfo>,
-@@ -122,6 +124,7 @@ impl ToolRouter {
+@@ -133,6 +135,7 @@ impl ToolRouter {
          let mut router = Self {
              registry,
              model_visible_specs: model_visible_specs.into(),
@@ -289,7 +289,7 @@ index 75753e0..af4ba76 100644
              tool_mode,
              code_mode_tool_names,
              tool_namespaces_info,
-@@ -135,7 +138,22 @@ impl ToolRouter {
+@@ -146,7 +149,22 @@ impl ToolRouter {
      }
  
      pub(crate) fn model_visible_specs(&self) -> Arc<[ToolSpec]> {
@@ -313,7 +313,7 @@ index 75753e0..af4ba76 100644
      }
  
      pub(crate) fn tool_mode(&self) -> ToolMode {
-@@ -231,17 +249,18 @@ impl ToolRouter {
+@@ -240,17 +258,18 @@ impl ToolRouter {
          &self,
          tool_name: &ToolName,
      ) -> Option<Box<dyn ToolArgumentDiffConsumer>> {
@@ -329,13 +329,13 @@ index 75753e0..af4ba76 100644
              .unwrap_or(false)
      }
  
-     pub(crate) fn tool_runtime(&self, tool_name: &ToolName) -> Option<Arc<dyn CoreToolRuntime>> {
--        self.registry.tool(tool_name)
-+        self.registry.tool(&self.canonical_tool_name(tool_name))
+     pub(crate) fn registered_tool(&self, tool_name: &ToolName) -> Option<&RegisteredTool> {
+-        self.registry.registered_tool(tool_name)
++        self.registry.registered_tool(&self.canonical_tool_name(tool_name))
      }
  
      #[instrument(level = "trace", skip_all, err)]
-@@ -375,7 +394,7 @@ impl ToolRouter {
+@@ -384,7 +403,7 @@ impl ToolRouter {
              cancellation_token,
              tracker,
              call_id,
@@ -345,31 +345,78 @@ index 75753e0..af4ba76 100644
              payload,
          };
 diff --git a/codex-rs/core/src/tools/spec_plan.rs b/codex-rs/core/src/tools/spec_plan.rs
-index bb1474f..cae5792 100644
+index fd5b5e14eeeb57b5be78af53d3f855702167dcc7..149e83f9b1a91069c9e1e37cb6584e87b211aa13 100644
 --- a/codex-rs/core/src/tools/spec_plan.rs
 +++ b/codex-rs/core/src/tools/spec_plan.rs
-@@ -514,7 +514,11 @@ pub(crate) fn finalize_tool_router(
-             .into());
-         }
-     }
--    Ok(router)
+@@ -542,14 +542,41 @@ pub(crate) fn finalize_tool_router(
+         .filter(|info| !info.is_empty());
+     let child_management_tools = required_child_management_tool_names(turn_context, model_info);
+ 
+-    Ok(ToolRouter::from_parts(
++    let router = ToolRouter::from_parts(
+         registry,
+         model_visible_specs,
+         tool_mode,
+         code_mode_tool_names,
+         tool_namespaces_info,
+         &child_management_tools,
+-    ))
++    );
++    // Internal workers can inherit MAv2 configuration without using the board.
++    if multi_agent_v2_enabled(turn_context)
++        && collab_tools_enabled(turn_context, model_info)
++        && turn_context.config.multi_agent_v2.disable_direct_message
++        && !turn_context.session_source.is_internal()
++    {
++        let post_tool = ToolName::new(
++            turn_context.config.multi_agent_v2.tool_namespace.clone(),
++            "post",
++        );
++        if !router.exposes_tool(&post_tool) {
++            return Err(CodexErrorDetails::InvalidRequest(
++                "disable_direct_message requires an available agent message board in this session"
++                    .to_owned(),
++            )
++            .into());
++        }
++    }
 +    Ok(if namespace_tools_enabled(turn_context) {
 +        router
 +    } else {
 +        router.with_portable_namespaces()
 +    })
++}
++
++fn namespace_tools_enabled(turn_context: &TurnContext) -> bool {
++    turn_context.provider.capabilities().namespace_tools
  }
  
  fn apply_direct_model_only_namespace_overrides(
-@@ -583,11 +587,6 @@ fn build_model_visible_specs(
-     specs.extend(hosted_specs);
- 
-     merge_into_namespaces(specs)
--        .into_iter()
--        .filter(|spec| {
--            namespace_tools_enabled(turn_context) || !matches!(spec, ToolSpec::Namespace(_))
--        })
--        .collect()
- }
- 
- fn spec_for_model_request(
+diff --git a/codex-rs/model-provider/src/capabilities.rs b/codex-rs/model-provider/src/capabilities.rs
+index 0f8b6e9b930f0e343e04cde8b8ff77423a6bea13..2e76fca007f9152ea29fff19f2346a4b22cf6a56 100644
+--- a/codex-rs/model-provider/src/capabilities.rs
++++ b/codex-rs/model-provider/src/capabilities.rs
+@@ -10,6 +10,7 @@ use codex_model_provider_info::RemoteCompactionSupport;
+ /// can further restrict the functionality exposed to the model.
+ #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+ pub struct ProviderCapabilities {
++    pub namespace_tools: bool,
+     pub image_generation: bool,
+     pub web_search: bool,
+     pub external_web_access: bool,
+@@ -19,6 +20,7 @@ pub struct ProviderCapabilities {
+ impl Default for ProviderCapabilities {
+     fn default() -> Self {
+         Self {
++            namespace_tools: true,
+             image_generation: true,
+             web_search: true,
+             external_web_access: true,
+@@ -32,6 +34,7 @@ impl ProviderCapabilities {
+         let supports_openai_extensions = info.is_openai()
+             || is_azure_responses_provider(&info.name, info.base_url.as_deref());
+         let defaults = Self {
++            namespace_tools: supports_openai_extensions,
+             image_generation: supports_openai_extensions,
+             remote_compaction: if supports_openai_extensions {
+                 RemoteCompactionSupport::V2

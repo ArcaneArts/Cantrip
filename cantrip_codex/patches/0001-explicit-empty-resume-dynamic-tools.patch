@@ -1,8 +1,8 @@
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/tests.rs b/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
-index 5bc5405..e6558ba 100644
+index 404cba091f3652c9d54570f8cd9a6b20101fc87b..9e5163e78959fe7040d6f886f5af5170ade17ab8 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
-@@ -191,6 +191,22 @@ fn thread_sources_round_trip_as_scalar_labels() {
+@@ -208,6 +208,22 @@ fn thread_sources_round_trip_as_scalar_labels() {
      }
  }
  
@@ -26,7 +26,7 @@ index 5bc5405..e6558ba 100644
  fn approvals_reviewer_serializes_auto_review_and_accepts_legacy_guardian_subagent() {
      assert_eq!(
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-index 2e166d5..3fd4bf3 100644
+index 1746ceb7bcf4ed50ceca643170ffc65dada37f41..1e04232e1bba3917cb766e33bb7834c2748b8aec 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 @@ -416,6 +416,15 @@ pub struct ThreadResumeParams {
@@ -46,10 +46,10 @@ index 2e166d5..3fd4bf3 100644
      /// populating `thread.turns`. This is useful when the client plans to call
      /// `thread/turns/list` immediately after resuming. Full-history hydration
 diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
-index 289cb63..6284c4e 100644
+index 9563a250cc43bf5691537ed009199112265a5548..dcc2a6fbfe57bc488fc8931515e5dab3e46191e4 100644
 --- a/codex-rs/app-server/src/request_processors/thread_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
-@@ -3719,6 +3719,7 @@ impl ThreadRequestProcessor {
+@@ -3919,6 +3919,7 @@ impl ThreadRequestProcessor {
              base_instructions,
              developer_instructions,
              personality,
@@ -57,16 +57,16 @@ index 289cb63..6284c4e 100644
              exclude_turns,
              initial_turns_page,
          } = params.clone();
-@@ -3748,7 +3749,7 @@ impl ThreadRequestProcessor {
+@@ -3948,7 +3949,7 @@ impl ThreadRequestProcessor {
                  Err(error) => Err(error),
              }
          };
 -        let (thread_history, resume_source_thread) = resume_result?;
 +        let (mut thread_history, resume_source_thread) = resume_result?;
-         if let InitialHistory::Resumed(resumed) = &thread_history
-             && self
-                 .pending_thread_unloads
-@@ -3761,6 +3762,10 @@ impl ThreadRequestProcessor {
+         // Path-based resume can use an empty request thread ID. Coordinate once its real
+         // identity is known; unrelated loaded threads never wait for this cold startup.
+         let _goal_resume_guard = if let InitialHistory::Resumed(resumed) = &thread_history {
+@@ -3972,6 +3973,10 @@ impl ThreadRequestProcessor {
                  resumed.conversation_id
              )));
          }
@@ -78,10 +78,10 @@ index 289cb63..6284c4e 100644
              matches!(thread.history_mode, ThreadHistoryMode::Paginated).then_some(thread.thread_id)
          });
 diff --git a/codex-rs/app-server/src/request_processors/thread_processor_tests.rs b/codex-rs/app-server/src/request_processors/thread_processor_tests.rs
-index 237c58e..1271a64 100644
+index f1bd1bfe92fe996e39d9c2b333460424bf51f37b..06ffa446796b4d89280414458129179123128abf 100644
 --- a/codex-rs/app-server/src/request_processors/thread_processor_tests.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_processor_tests.rs
-@@ -678,6 +678,7 @@ mod thread_processor_behavior_tests {
+@@ -680,6 +680,7 @@ mod thread_processor_behavior_tests {
              base_instructions: None,
              developer_instructions: None,
              personality: None,
@@ -90,10 +90,10 @@ index 237c58e..1271a64 100644
              initial_turns_page: None,
          };
 diff --git a/codex-rs/history/src/lib.rs b/codex-rs/history/src/lib.rs
-index 090ca91..1f8ec4c 100644
+index 826669cc3335dc23102e6a5bdbf2d62c1cb22fa4..a0424439733826507eb0d74da474c81c720b7a42 100644
 --- a/codex-rs/history/src/lib.rs
 +++ b/codex-rs/history/src/lib.rs
-@@ -371,6 +371,23 @@ pub enum InitialHistory {
+@@ -393,6 +393,23 @@ pub enum InitialHistory {
  }
  
  impl InitialHistory {

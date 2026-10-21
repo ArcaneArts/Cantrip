@@ -1,5 +1,5 @@
 diff --git a/codex-rs/app-server-protocol/src/protocol/thread_history_metadata.rs b/codex-rs/app-server-protocol/src/protocol/thread_history_metadata.rs
-index db01ef1..2ea196b 100644
+index db01ef193b531ad92aeb46e774479f04b026a169..2ea196b17f975a6dc7cdf18b3a1e460978207e6f 100644
 --- a/codex-rs/app-server-protocol/src/protocol/thread_history_metadata.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/thread_history_metadata.rs
 @@ -12,6 +12,7 @@ struct TurnEvidence<'a> {
@@ -127,10 +127,10 @@ index db01ef1..2ea196b 100644
      fn canonical_identity_does_not_claim_unavailable_retention() {
          let mut thread = thread(&["old"]);
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-index 794449f..8e4c9bb 100644
+index 17492ee9f964b7a9198c03c3bea9c0204220715b..6d742af52927a0739c6d9b39445817aab342952b 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-@@ -2257,6 +2257,11 @@ pub struct ThreadHistoryTurnMetadata {
+@@ -2374,6 +2374,11 @@ pub struct ThreadHistoryTurnMetadata {
      /// `partial` has a retained canonical prefix or gap; `unavailable` predates retention.
      /// This is independent of item identity and the turn's execution status.
      pub retention: String,
@@ -142,7 +142,7 @@ index 794449f..8e4c9bb 100644
      pub items: Vec<ThreadHistoryItemMetadata>,
      pub usage: Option<ThreadHistoryUsage>,
      /// Null means retention is unavailable or gapped. An empty list on a contiguous
-@@ -2267,6 +2272,17 @@ pub struct ThreadHistoryTurnMetadata {
+@@ -2384,6 +2389,17 @@ pub struct ThreadHistoryTurnMetadata {
  #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
  #[serde(rename_all = "camelCase")]
  #[ts(export_to = "v2/")]
