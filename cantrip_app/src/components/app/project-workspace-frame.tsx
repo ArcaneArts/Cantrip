@@ -70,6 +70,7 @@ import {
   ProjectPaneTabStrip,
   surfaceCanDelete,
   surfaceDeleteLabel,
+  surfaceIsRunning,
   surfaceNeedsApproval,
 } from "@/components/workspace/project-tab-bar";
 import {
@@ -180,7 +181,8 @@ function SortableDockRailTab({
         ? "Collapse"
         : "Focus";
   const needsApproval = surfaceNeedsApproval(surface);
-  const actionLabel = `${action} ${surface.title}${needsApproval ? " (Approval required)" : ""}`;
+  const running = surfaceIsRunning(surface);
+  const actionLabel = `${action} ${surface.title}${needsApproval ? " (Approval required)" : running ? " (Running)" : ""}`;
   return (
     <div
       className={expanded ? "h-10 w-40 shrink-0" : "size-10 shrink-0"}
@@ -211,6 +213,7 @@ function SortableDockRailTab({
               <TooltipButton
                 aria-label={`${actionLabel} in ${region} dock`}
                 aria-pressed={active}
+                data-agent-running={running}
                 className={cn(
                   "tab-color-content flex h-10 w-full min-w-0 shrink-0 items-center rounded-none border-0 text-muted-foreground transition-colors duration-150 hover:bg-muted/60 hover:text-foreground motion-reduce:transition-none [&_svg]:shrink-0",
                   expanded ? "justify-start gap-2 px-3" : "justify-center p-0",
