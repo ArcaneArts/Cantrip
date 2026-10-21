@@ -131,6 +131,16 @@ export function installChatBasicRoutes(
           error: "Chat files are available only for standalone Chats.",
         });
       }
+      if (
+        input.data.binding &&
+        (input.data.binding.workerId !== context.workerId ||
+          input.data.binding.scratchRootId !== context.scratchRootId)
+      ) {
+        return reply.code(409).send({
+          error:
+            "This Chat moved to another scratch workspace. Reopen the file there; your draft has not been saved.",
+        });
+      }
       const worker = await repository.getWorker(ownerId, context.workerId);
       if (!worker?.standaloneChat.files[input.data.intent]) {
         return reply.code(409).send({

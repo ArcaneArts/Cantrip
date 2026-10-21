@@ -31,6 +31,7 @@ import {
   type CodeWorkbenchStage,
 } from "@/lib/code-workbench-frame";
 import { errorMessage } from "@/lib/error-message";
+import { createNativeExplorerWindowBroker } from "./native-explorer-window-broker";
 
 type PreparedEditorAttachment = PreferredCodeAttachment;
 
@@ -43,6 +44,7 @@ export interface DesktopExplorerWindowBroker {
 }
 
 export interface DesktopExplorerWindowBrokerOptions {
+  editor?: "native" | "vscode";
   configureInitialFile?: boolean;
   signal?: AbortSignal;
 }
@@ -100,6 +102,8 @@ export function createDesktopExplorerWindowBroker(
   input: Omit<DesktopExplorerWindowContext, "requestedAtMs">,
   options: DesktopExplorerWindowBrokerOptions = {},
 ): DesktopExplorerWindowBroker {
+  if (options.editor !== "vscode")
+    return createNativeExplorerWindowBroker(input, options);
   const launchId = crypto.randomUUID();
   let context: DesktopExplorerWindowContext = {
     ...input,
@@ -574,6 +578,7 @@ export function createDesktopExplorerWindowBroker(
       }
       return;
     }
+    if (request.type === "editor.open-vscode") return;
     if (request.type === "editor.workbench-mounted") {
       if (request.nonce === expectedWorkbenchNonce) return;
       expectedWorkbenchNonce = request.nonce;
@@ -675,4 +680,17 @@ export function createDesktopExplorerWindowBroker(
     ready,
     dispose,
   };
+}
+
+export function createDesktopExplorerCodeWindowBroker(
+  input: Omit<DesktopExplorerWindowContext, "requestedAtMs">,
+  options: DesktopExplorerWindowBrokerOptions = {},
+): DesktopExplorerWindowBroker {
+  return createDesktopExplorerWindowBroker(
+    { ...input, editor: "vscode" },
+    {
+      ...options,
+      editor: "vscode",
+    },
+  );
 }

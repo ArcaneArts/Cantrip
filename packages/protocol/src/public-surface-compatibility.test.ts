@@ -299,6 +299,11 @@ const managedWorkerCommands = [
   "task.message.protect",
   "terminal.prepare-state",
 ];
+const editorBindingExports = [
+  "explorerFileBindingSchema",
+  "explorerOperationWireRequestSchema",
+  "standaloneChatFileBindingSchema",
+];
 
 describe("protocol public surface compatibility", () => {
   it("preserves the root runtime export baseline with reviewed CUA and managed-session additions", () => {
@@ -312,10 +317,14 @@ describe("protocol public surface compatibility", () => {
         !taskGoalHandoffExports.includes(name) &&
         !taskConversationExports.includes(name) &&
         !chatFileReferencesExports.includes(name) &&
+        !editorBindingExports.includes(name) &&
         !labelingExports.includes(name),
     );
 
-    expect(exportNames).toHaveLength(2_140);
+    expect(exportNames).toHaveLength(2_143);
+    expect(
+      exportNames.filter((name) => editorBindingExports.includes(name)),
+    ).toEqual(editorBindingExports);
     expect(
       exportNames.filter((name) => taskConversationExports.includes(name)),
     ).toEqual(taskConversationExports);

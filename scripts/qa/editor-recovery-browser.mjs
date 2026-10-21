@@ -570,6 +570,15 @@ try {
       await page
         .getByRole("treeitem", { name: "qa.txt", exact: true })
         .click({ timeout: 90_000 });
+      await page
+        .getByRole("textbox", { name: "Edit qa.txt", exact: true })
+        .waitFor({ timeout: 90_000 });
+      await page
+        .getByRole("button", { name: "Edit mode", exact: true })
+        .click();
+      await page
+        .getByRole("menuitem", { name: "Open in VS Code", exact: true })
+        .click();
       await waitForText("Cantrip editor recovery baseline");
       const fileRenderedAt = Date.now();
       await page

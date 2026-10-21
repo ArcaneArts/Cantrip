@@ -20,11 +20,15 @@ export async function seedEditorRepository(directory, workerId) {
     path.join(repository, "second.txt"),
     "Cantrip second preview file\n",
   );
+  await writeFile(
+    path.join(repository, "unknown.cantrip-source"),
+    "\uFEFFfirst\r\nsecond\r\n",
+  );
   const git = (...args) => exec("git", ["-C", repository, ...args]);
   await git("init", "--initial-branch=main");
   await git("config", "user.name", "Cantrip QA");
   await git("config", "user.email", "qa@cantrip.invalid");
-  await git("add", "qa.txt", "second.txt");
+  await git("add", "qa.txt", "second.txt", "unknown.cantrip-source");
   await git("commit", "-m", "Initialize disposable worktree fixture");
   // Direct attachment validates the configured identity locally. Nothing is
   // created at this synthetic remote and the fixture never pushes to it.
@@ -53,12 +57,23 @@ export function editorRepositoryFixturePlugin(seed) {
       return {
         code: `${source}\nimport { createGithubProject as qaCreateProject, getProjects as qaGetProjects } from '@/lib/project-encryption';
 import { createProjectWorktree as qaCreateWorktree, getProjectWorktrees as qaGetWorktrees } from '@/lib/api/worktrees';
+import { getExplorers as qaGetExplorers } from '@/lib/api/explorers';
+import { createDesktopExplorerWindowBroker as qaCreateFileBroker } from '@/lib/desktop-explorer-window-broker';
+import { desktopExplorerFileSearch as qaFileSearch } from '@/lib/desktop-popout';
+const qaFileBrokers = new Set();
 let qaProjectId = sessionStorage.getItem("__qaRepositoryProjectId");
 globalThis.__qaRepositoryFixture = {
   async create() { const project = await qaCreateProject(${JSON.stringify(seed.input)}); qaProjectId = project.id; sessionStorage.setItem("__qaRepositoryProjectId", project.id); return project; },
   async project() { return (await qaGetProjects()).find(project => project.id === qaProjectId); },
   async worktrees() { return qaGetWorktrees(qaProjectId); },
   async createWorktree(input) { return qaCreateWorktree(qaProjectId, input); },
+  async popout(path) {
+    const [explorer] = await qaGetExplorers(qaProjectId);
+    const broker = qaCreateFileBroker({ appearance: 'dark', explorer, path });
+    qaFileBrokers.add(broker);
+    return qaFileSearch({ explorerId: explorer.id, projectId: qaProjectId, path }, broker.launchId);
+  },
+  async closePopouts() { await Promise.all([...qaFileBrokers].map(broker => broker.dispose())); qaFileBrokers.clear(); },
 };\n`,
         map: null,
       };

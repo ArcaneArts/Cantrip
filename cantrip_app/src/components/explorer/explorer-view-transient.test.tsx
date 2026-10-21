@@ -37,8 +37,16 @@ vi.mock("@/components/explorer/retained-explorer-code-editor", () => ({
   }) =>
     createElement("div", {
       "data-path": path,
-      "data-retained-code-editor": true,
+      "data-native-code-editor": true,
       "data-visible": visible,
+    }),
+}));
+vi.mock("@/components/editor/native-code-editor", () => ({
+  NativeCodeEditor: ({ path, active }: { path: string; active: boolean }) =>
+    createElement("div", {
+      "data-native-code-editor": true,
+      "data-path": path,
+      "data-visible": active,
     }),
 }));
 vi.mock("@/components/explorer/use-explorer-worker-encryption", () => ({
@@ -63,7 +71,12 @@ vi.mock("@/components/git/git-graph", () => ({
   },
 }));
 vi.mock("@/lib/api", () => ({
-  getExplorerFile: vi.fn(),
+  getExplorerFile: vi.fn(async (_id: string, path: string) => ({
+    path,
+    content: `content for ${path}`,
+    version: "one",
+    markdown: false,
+  })),
   loadExplorerMedia: vi.fn(),
   saveExplorerFile: vi.fn(),
   updateExplorerViewState: vi.fn(),
@@ -159,13 +172,19 @@ describe("ExplorerView transient selection", () => {
       );
     });
 
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
     expect(
-      renderer.root.findByProps({ "data-retained-code-editor": true }).props[
+      renderer.root.findByProps({ "data-native-code-editor": true }).props[
         "data-path"
       ],
     ).toBe("src/requested.ts");
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
     expect(
-      renderer.root.findByProps({ "data-retained-code-editor": true }).props[
+      renderer.root.findByProps({ "data-native-code-editor": true }).props[
         "data-visible"
       ],
     ).toBe(true);
@@ -219,13 +238,19 @@ describe("ExplorerView transient selection", () => {
     });
     await act(async () => renderer.update(render(pinned)));
 
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
     expect(
-      renderer.root.findByProps({ "data-retained-code-editor": true }).props[
+      renderer.root.findByProps({ "data-native-code-editor": true }).props[
         "data-path"
       ],
     ).toBe("src/requested.ts");
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
     expect(
-      renderer.root.findByProps({ "data-retained-code-editor": true }).props[
+      renderer.root.findByProps({ "data-native-code-editor": true }).props[
         "data-visible"
       ],
     ).toBe(true);
@@ -265,8 +290,11 @@ describe("ExplorerView transient selection", () => {
       );
     });
 
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
     const editor = renderer.root.findByProps({
-      "data-retained-code-editor": true,
+      "data-native-code-editor": true,
     });
     const surface = renderer.root.findByProps({
       "data-slot": "explorer-view",

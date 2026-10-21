@@ -50,10 +50,11 @@ cross the server only as opaque worker routing handles. See the
   See [the Run environment guide](docs/RUN_CONFIGURATIONS.md).
 - Finder-style Explorer tabs with a lazy expandable directory tree and file
   sizes. Git-backed projects also show local Git state and asynchronously
-  hydrated last-commit metadata. Files open in preview or structured visual
-  mode and can switch to a persistent Monaco editor with conflict-safe saves;
-  the selected file, draft, cursor, scroll position, and undo history survive
-  ordinary tab changes.
+  hydrated last-commit metadata. Text files open in Cantrip's owned lightweight
+  editor with syntax highlighting, line numbers, and version-checked saves.
+  Drafts, selection, scrolling, and undo history survive ordinary tab changes.
+  Preview and structured visual modes remain available, and the file mode menu
+  offers explicit VS Code access. See [the editor guide](docs/CODE_EDITOR.md).
 - Embedded Cantrip Code tabs backed by the selected worker and checkout, with the project pretrusted, Cantrip's chosen theme applied on startup, and unnecessary onboarding/chat surfaces hidden.
 - Worker-streamed Browser tabs for project-related web pages, with
   WorkerLink-routed keyboard, mouse, wheel, and mobile touch input while

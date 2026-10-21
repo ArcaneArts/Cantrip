@@ -73,7 +73,15 @@ vi.mock("@/lib/client-log-relay", () => ({
   },
 }));
 
-import { ExplorerView } from "./explorer-view";
+import { ExplorerView, type ExplorerHeaderState } from "./explorer-view";
+vi.stubGlobal(
+  "ResizeObserver",
+  class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  },
+);
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
@@ -110,12 +118,16 @@ async function renderPreview(
     selectedPath: null,
     worktreeId: "worktree-one",
   } as ExplorerSummary;
+  let header: ExplorerHeaderState | null = null;
   await act(async () => {
     root.render(
       <QueryClientProvider client={client}>
         <ExplorerView
           appearance="dark"
           explorer={explorer}
+          onHeaderChange={(state) => {
+            header = state;
+          }}
           onOpenFile={onOpenFile}
           onOpenGraphFile={onOpenGraphFile}
           repositoryGraphAvailable={false}
@@ -124,6 +136,10 @@ async function renderPreview(
       </QueryClientProvider>,
     );
   });
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  });
+  await act(async () => header!.setFileMode("preview"));
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
   });

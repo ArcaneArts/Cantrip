@@ -53,6 +53,14 @@ let root: Root;
 let client: QueryClient;
 let container: HTMLDivElement;
 let header: ExplorerHeaderState | null;
+vi.stubGlobal(
+  "ResizeObserver",
+  class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  },
+);
 afterEach(async () => {
   await act(async () => root?.unmount());
   client?.clear();
@@ -137,7 +145,7 @@ describe("Explorer transient renderer modes", () => {
     async (path) => {
       await setup(path);
       expect(
-        container.querySelector('[data-code-visible="true"]'),
+        container.querySelector('[data-native-code-editor="true"]'),
       ).not.toBeNull();
       await choose("visual");
       expect(
@@ -156,13 +164,13 @@ describe("Explorer transient renderer modes", () => {
       ).toBeNull();
       await choose("edit");
       expect(
-        container.querySelector('[data-code-visible="true"]'),
+        container.querySelector('[data-native-code-editor="true"]'),
       ).not.toBeNull();
       expect(api.saveExplorerFile).not.toHaveBeenCalled();
       expect(api.updateExplorerViewState).not.toHaveBeenCalled();
     },
   );
-  it("keeps a Visual draft across View, then saves it to the same path before Edit", async () => {
+  it("keeps a Visual draft across View/Edit and saves only on an explicit save", async () => {
     await setup("data/settings.yaml");
     await choose("visual");
     await act(async () =>
@@ -181,6 +189,11 @@ describe("Explorer transient renderer modes", () => {
       version: "two",
     } as Awaited<ReturnType<typeof api.saveExplorerFile>>);
     await choose("edit");
+    expect(api.saveExplorerFile).not.toHaveBeenCalled();
+    expect(container.querySelector("textarea")?.value).toContain("false");
+    await act(async () => {
+      await header!.save();
+    });
     expect(api.saveExplorerFile).toHaveBeenCalledWith(
       "explorer-one",
       expect.objectContaining({
@@ -188,6 +201,11 @@ describe("Explorer transient renderer modes", () => {
         content: expect.stringContaining("false"),
         version: "one",
       }),
+      {
+        workerId: explorer.activeWorkerId,
+        projectId: explorer.projectId,
+        worktreeId: explorer.worktreeId,
+      },
     );
   });
   it("preserves selected mode for the same transient path during persisted metadata updates", async () => {
@@ -221,10 +239,8 @@ describe("Explorer transient renderer modes", () => {
     await render(original, "data/settings.json");
     expect(header!.fileMode).toBe("edit");
     expect(
-      container
-        .querySelector('[data-code-visible="true"]')
-        ?.getAttribute("data-code-path"),
-    ).toBe("data/settings.json");
+      container.querySelector("textarea")?.getAttribute("aria-label"),
+    ).toBe("Edit settings.json");
     await render(original, null);
     expect(header!.selectedPath).toBe("README.md");
     expect(header!.fileMode).toBe("preview");
@@ -250,7 +266,7 @@ describe("Explorer transient renderer modes", () => {
           null,
       ).toBe(fileMode === "visual");
       expect(
-        container.querySelector('[data-code-visible="true"]') !== null,
+        container.querySelector('[data-native-code-editor="true"]') !== null,
       ).toBe(fileMode === "edit");
       expect(api.saveExplorerFile).not.toHaveBeenCalled();
     },

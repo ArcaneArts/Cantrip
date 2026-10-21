@@ -1548,7 +1548,7 @@ function surfaceStreamRouteBoundaryAudit(routes, applicationText) {
     [
       "POST",
       "/api/explorers/:explorerId/operation",
-      "surfaceStreamWireRequestSchema",
+      "explorerOperationWireRequestSchema",
       "opaque-explorer-operation",
     ],
     [

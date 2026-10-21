@@ -15,6 +15,10 @@ type PendingRequest = {
 };
 
 export interface DesktopExplorerWindowClientCallbacks {
+  onVsCodeLaunch?(
+    launchId: string,
+    context: DesktopExplorerWindowContext,
+  ): void;
   onContext(context: DesktopExplorerWindowContext): void;
   onEditorEndpoint(attachment: CodeAttachment, preparedAtMs: number): void;
   onEditorError(
@@ -35,6 +39,7 @@ export class DesktopExplorerWindowClient {
   readonly #pending = new Map<string, PendingRequest>();
   #configuredSignature: string | null = null;
   #contextReceived = false;
+  #context: DesktopExplorerWindowContext | null = null;
   #contextSignature: string | null = null;
   #disposed = false;
   #endpointSignature: string | null = null;
@@ -69,6 +74,15 @@ export class DesktopExplorerWindowClient {
 
   readFile(): Promise<ExplorerFile> {
     return this.#request<ExplorerFile>({ type: "file.read" });
+  }
+  openInVsCode(context = this.#context): void {
+    if (this.#disposed) return;
+    this.#channel.postMessage({
+      launchId: this.#launchId,
+      type: "editor.open-vscode",
+      path: context?.path,
+      requestedAtMs: context?.requestedAtMs,
+    } satisfies DesktopExplorerWindowRequest);
   }
 
   editorWorkbenchReady(nonce: string): void {
@@ -112,8 +126,15 @@ export class DesktopExplorerWindowClient {
     return this.#request<Blob>({ type: "media.read" });
   }
 
-  saveFile(content: string, version: string): Promise<ExplorerFile> {
-    return this.#request<ExplorerFile>({ content, type: "file.save", version });
+  saveFile(
+    content: string,
+    version: string,
+    context = this.#context,
+  ): Promise<ExplorerFile> {
+    return this.#request<ExplorerFile>(
+      { content, type: "file.save", version },
+      context,
+    );
   }
 
   dispose(): void {
@@ -139,6 +160,7 @@ export class DesktopExplorerWindowClient {
       return;
     }
     if (response.type === "launch.ready") {
+      this.#context = response.context;
       if (!this.#contextReceived) {
         this.#contextReceived = true;
         if (this.#launchRetry) clearInterval(this.#launchRetry);
@@ -151,6 +173,10 @@ export class DesktopExplorerWindowClient {
       this.#contextSignature = signature;
       this.#configuredSignature = null;
       this.#callbacks.onContext(response.context);
+      return;
+    }
+    if (response.type === "editor.vscode-launch") {
+      this.#callbacks.onVsCodeLaunch?.(response.nextLaunchId, response.context);
       return;
     }
     if (response.type === "editor.endpoint-ready") {
@@ -206,6 +232,7 @@ export class DesktopExplorerWindowClient {
     request:
       | { type: "file.read" | "media.read" }
       | { content: string; type: "file.save"; version: string },
+    context = this.#context,
   ): Promise<T> {
     if (this.#disposed) {
       return Promise.reject(new Error("The editor window is closed."));
@@ -223,6 +250,8 @@ export class DesktopExplorerWindowClient {
       });
       this.#channel.postMessage({
         ...request,
+        path: context?.path,
+        requestedAtMs: context?.requestedAtMs,
         launchId: this.#launchId,
         requestId,
       } satisfies DesktopExplorerWindowRequest);

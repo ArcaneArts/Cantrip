@@ -37,6 +37,7 @@ export class EditorDocumentSession {
   readonly history = new EditorInputHistory();
   private format: ReturnType<typeof textFileFormat>;
   private pendingSave: Promise<boolean> | null = null;
+  private pendingContent: string | null = null;
 
   constructor(
     readonly id: string,
@@ -52,11 +53,26 @@ export class EditorDocumentSession {
   get dirty(): boolean {
     return this.text !== this.baseline;
   }
+  get saving(): boolean {
+    return this.pendingSave !== null;
+  }
   edit(text: string): void {
     if (this.text !== text) {
       this.text = text;
       this.revision++;
     }
+  }
+  /** Structured controls share the native editor's document and undo history. */
+  editExternal(text: string): void {
+    if (text === this.text) return;
+    const next = {
+      ...this.selection,
+      start: Math.min(this.selection.start, text.length),
+      end: Math.min(this.selection.end, text.length),
+    };
+    this.history.record(this.text, text, this.selection, next);
+    this.selection = next;
+    this.edit(text);
   }
 
   /** A refresh can observe a new revision, but never overwrites a dirty draft. */
@@ -79,23 +95,29 @@ export class EditorDocumentSession {
       version: string;
     }) => Promise<{ version: string }>,
   ): Promise<boolean> {
-    if (this.pendingSave) return this.pendingSave;
-    if (!this.dirty) return Promise.resolve(true);
-    const content = this.text,
-      version = this.version;
-    const encoded = this.format.encode(content);
-    const pending = Promise.resolve()
-      .then(() => write({ content: encoded, version }))
-      .then((result) => {
-        this.format = textFileFormat(encoded);
-        this.baseline = content;
-        this.version = result.version;
-        return true;
-      });
+    if (this.pendingSave && this.pendingContent === this.text)
+      return this.pendingSave;
+    if (!this.pendingSave && !this.dirty) return Promise.resolve(true);
+    // Each explicit request captures its text. Later requests wait for the
+    // accepted revision; typing alone never schedules another write.
+    const content = this.text;
+    const commit = async () => {
+      const encoded = this.format.encode(content);
+      const result = await write({ content: encoded, version: this.version });
+      this.format = textFileFormat(encoded);
+      this.baseline = content;
+      this.version = result.version;
+      return true;
+    };
+    const pending = (this.pendingSave ?? Promise.resolve()).then(commit);
     this.pendingSave = pending;
+    this.pendingContent = content;
     void pending
       .finally(() => {
-        if (this.pendingSave === pending) this.pendingSave = null;
+        if (this.pendingSave === pending) {
+          this.pendingSave = null;
+          this.pendingContent = null;
+        }
       })
       .catch(() => {});
     return pending;
@@ -104,7 +126,18 @@ export class EditorDocumentSession {
 
 export class EditorSessionStore {
   private sessions = new Map<string, EditorDocumentSession>();
+  private scope: string | null = null;
   constructor(private readonly cleanLimit = 16) {}
+  resetScope(scope: string): void {
+    if (this.scope === scope) return;
+    this.sessions.clear();
+    this.scope = scope;
+  }
+  get hasDirtyDocuments(): boolean {
+    return [...this.sessions.values()].some(
+      (session) => session.dirty || session.saving,
+    );
+  }
   get(id: string): EditorDocumentSession | undefined {
     const session = this.sessions.get(id);
     if (session) {
@@ -123,11 +156,11 @@ export class EditorSessionStore {
   }
   private trim(activeId: string): void {
     let clean = [...this.sessions.values()].filter(
-      (session) => !session.dirty,
+      (session) => !session.dirty && !session.saving,
     ).length;
     for (const [id, session] of this.sessions) {
       if (clean <= this.cleanLimit) break;
-      if (id !== activeId && !session.dirty) {
+      if (id !== activeId && !session.dirty && !session.saving) {
         this.sessions.delete(id);
         clean--;
       }
@@ -135,9 +168,17 @@ export class EditorSessionStore {
   }
   close(id: string): boolean {
     const session = this.sessions.get(id);
-    if (session?.dirty) return false;
+    if (session?.dirty || session?.saving) return false;
     this.sessions.delete(id);
     return true;
+  }
+  /** Call only after the owning UI has explicitly confirmed discarding edits. */
+  discard(id: string): void {
+    this.sessions.delete(id);
+  }
+  /** The owning UI must obtain explicit discard confirmation first. */
+  discardAll(): void {
+    this.sessions.clear();
   }
 }
 

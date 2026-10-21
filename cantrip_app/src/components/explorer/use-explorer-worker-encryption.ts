@@ -2,6 +2,7 @@ import {
   workerEncryptionMaterialFingerprint,
   type ExplorerSummary,
   type WorkerSummary,
+  type WorkerEncryptionStatus,
 } from "@cantrip/protocol";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -29,7 +30,7 @@ type ExplorerEncryptionBinding = Pick<
 >;
 
 type ExplorerWorkerEncryptionLease = {
-  promise: Promise<void>;
+  promise: Promise<WorkerEncryptionStatus>;
   release(): void;
 };
 
@@ -37,7 +38,7 @@ type ExplorerWorkerEncryptionRequest = {
   cancelled: boolean;
   consumers: number;
   evictionTimer: ReturnType<typeof setTimeout> | null;
-  promise: Promise<void>;
+  promise: Promise<WorkerEncryptionStatus>;
 };
 
 const EXPLORER_ENCRYPTION_RELEASE_GRACE_MS = 1_500;
@@ -134,7 +135,7 @@ function acquireExplorerWorkerEncryption(
       cancelled: false,
       consumers: 0,
       evictionTimer: null,
-      promise: Promise.resolve(),
+      promise: Promise.resolve(worker.encryption),
     };
     const created = request;
     let initialWorker: ExplorerWorkerSecurityDescriptor | undefined = worker;
@@ -150,7 +151,7 @@ function acquireExplorerWorkerEncryption(
           (candidate) => candidate.workerId === worker.workerId,
         );
       },
-    }).then(() => undefined);
+    });
     explorerWorkerEncryptionRequests.set(authorizationKey, created);
     const clearFailure = () => {
       if (explorerWorkerEncryptionRequests.get(authorizationKey) === created) {
@@ -258,6 +259,7 @@ export function useExplorerWorkerEncryption(
   const [readyBinding, setReadyBinding] = useState<{
     attempt: number;
     bindingKey: string;
+    status: WorkerEncryptionStatus;
   } | null>(null);
   const [errorBinding, setErrorBinding] = useState<{
     bindingKey: string;
@@ -301,11 +303,12 @@ export function useExplorerWorkerEncryption(
       initialWorker,
     );
     void lease.promise
-      .then(() => {
+      .then((status) => {
         if (!disposed) {
           setReadyBinding({
             attempt,
             bindingKey,
+            status,
           });
         }
       })
@@ -350,7 +353,12 @@ export function useExplorerWorkerEncryption(
         : null),
     ready: Boolean(
       authorizationEnabled &&
-      workerReadiness === "ready" &&
+      worker &&
+      readyBinding &&
+      surfacePrivateStateWorkerReadiness(
+        { ...worker, encryption: readyBinding.status },
+        encryption,
+      ) === "ready" &&
       bindingKey &&
       readyBinding?.attempt === attempt &&
       explorerWorkerEncryptionBindingReady(
