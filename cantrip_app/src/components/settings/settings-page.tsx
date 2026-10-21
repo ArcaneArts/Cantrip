@@ -1,6 +1,7 @@
 import { ComputerUseEffectsSettings } from "./computer-use-effects-settings";
 import { LabelingSettings } from "./labeling-settings";
 import { Monitor } from "lucide-react";
+import { FileChangeSettings } from "./file-change-settings";
 import { TabDisplaySettings } from "./tab-display-settings";
 import type {
   CodeAppearance,
@@ -1641,7 +1642,7 @@ export function SettingsPage({
     !generalSearch ||
     matchesSearch(
       generalSearch,
-      "appearance theme system light dark high contrast pro mode opacity transparency vibrancy blur macos operating system elite experimental reveal effects configure tab bar top bottom rail icons tabs hybrid display",
+      "appearance theme system light dark high contrast pro mode opacity transparency vibrancy blur macos operating system elite experimental reveal effects configure tab bar top bottom rail icons tabs hybrid display file change shimmer animation added modified deleted",
     );
   const desktopStreamingMatches =
     !generalSearch ||
@@ -1765,6 +1766,7 @@ export function SettingsPage({
                   <section>
                     <div className="px-3 py-3">
                       <TabDisplaySettings />
+                      <FileChangeSettings />
                     </div>
                     <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-3">
                       <div className="flex min-w-0 items-center gap-2.5">

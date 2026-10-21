@@ -327,6 +327,14 @@ describe("account settings", () => {
     expect(markup).not.toContain('aria-label="Configure Elite Mode"');
   });
 
+  it("exposes file change shimmer in Appearance, enabled by default", () => {
+    const markup = renderSettings("appearance");
+    expect(markup).toContain("File change shimmer");
+    expect(markup).toContain(
+      "green for added, yellow for modified, and red for deleted",
+    );
+  });
+
   it("uses a compact brightness dropdown in Appearance", () => {
     const markup = renderSettings("appearance");
 

@@ -42,6 +42,7 @@ import {
   StyledContextMenuItem,
 } from "@/components/ui/styled-menu";
 import { cn } from "@/lib/utils";
+import { useFileChangeActivity } from "./use-file-change-activity";
 import { requestGitFileHistory } from "@/lib/git-history-navigation";
 
 const SIDEBAR_FILE_TREE_INDENT_PX = 6;
@@ -281,7 +282,9 @@ function SidebarFileRow({
             value={renameValue}
           />
         ) : (
-          <span className="truncate">{entry.name}</span>
+          <span className="truncate" data-file-change-path={entry.path}>
+            {entry.name}
+          </span>
         )}
         {editing && renamePending ? (
           <Loader2 className="ml-auto size-3 shrink-0 animate-spin" />
@@ -687,6 +690,11 @@ export function ProjectSidebarFileTree({
   const [deleteTarget, setDeleteTarget] = useState<ExplorerEntry | null>(null);
   const [deletePending, setDeletePending] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const activityRef = useFileChangeActivity({
+    projectId: explorer?.projectId,
+    worktreeId: explorer?.worktreeId,
+    workerId: explorer?.activeWorkerId,
+  });
   const [filesCollapsed, setFilesCollapsed] = useState(false);
   useEffect(() => {
     const ancestors = sidebarFileAncestorPaths(activePath);
@@ -936,6 +944,7 @@ export function ProjectSidebarFileTree({
   return (
     <>
       <section
+        ref={activityRef}
         className="mt-2 flex min-h-0 flex-1 flex-col border-t border-transparent pt-2 transition-colors duration-150 group-hover/sidebar-shell:border-border/70"
         aria-label="Files"
       >
@@ -945,7 +954,9 @@ export function ProjectSidebarFileTree({
           onClick={() => setFilesCollapsed((collapsed) => !collapsed)}
           type="button"
         >
-          <span className="min-w-0 flex-1 truncate">Files</span>
+          <span className="min-w-0 flex-1 truncate" data-file-change-path="">
+            Files
+          </span>
           {!filesCollapsed && pinningPath ? (
             <Loader2 className="size-3 animate-spin" />
           ) : null}

@@ -31,6 +31,7 @@ import {
   listGitConflicts,
   readGitStatus,
 } from "./git.js";
+import { WorktreeFileActivity } from "./worktree-file-activity.js";
 
 const execFileAsync = promisify(execFile);
 const GIT_BUFFER = 16 * 1024 * 1024;
@@ -295,6 +296,7 @@ export class WorktreeManager {
   private readonly mutationQueues = new Map<string, Promise<void>>();
   private readonly observationFingerprints = new Map<string, string>();
   private readonly observationFilesystemChanges = new Set<string>();
+  private readonly fileActivity = new Map<string, WorktreeFileActivity>();
   private readonly observationHeads = new Map<string, string | null>();
   private readonly observationInventoryFingerprints = new Map<string, string>();
   private readonly operationObservationFingerprints = new Map<string, string>();
@@ -359,6 +361,7 @@ export class WorktreeManager {
       if (next.has(key)) continue;
       this.observationFingerprints.delete(key);
       this.observationFilesystemChanges.delete(key);
+      this.fileActivity.delete(key);
       this.observationHeads.delete(key);
       this.operationObservationFingerprints.delete(key);
     }
@@ -411,6 +414,7 @@ export class WorktreeManager {
     this.observationWatchers.clear();
     this.observationTargets.clear();
     this.observationFilesystemChanges.clear();
+    this.fileActivity.clear();
     this.observationHeads.clear();
     this.operationObservationFingerprints.clear();
   }
@@ -420,16 +424,28 @@ export class WorktreeManager {
     target: ObservedWorktree,
   ): Promise<void> {
     const watchers: FSWatcher[] = [];
+    const activity = new WorktreeFileActivity(target.worktreePath, (args) =>
+      gitRaw(target.worktreePath, args),
+    );
+    this.fileActivity.set(key, activity);
+    await activity.initialize();
+    if (
+      !this.observationTargets.has(key) ||
+      this.fileActivity.get(key) !== activity
+    )
+      return;
     const install = (watchedPath: string, reportsFiles: boolean): void => {
       if (this.observationWatchers.get(key) !== watchers) return;
       const watcher = watch(
         watchedPath,
         { recursive: true },
-        (_eventType, filename) =>
+        (_eventType, filename) => {
+          if (reportsFiles) activity.record(filename);
           this.scheduleObservedTarget(
             key,
             reportsFiles && worktreeWatchEventTouchesFiles(filename),
-          ),
+          );
+        },
       );
       watcher.on("error", () => {
         const current = this.observationWatchers.get(key);
@@ -478,12 +494,21 @@ export class WorktreeManager {
       if (this.observationFilesystemChanges.delete(key)) {
         const target = this.observationTargets.get(key);
         if (target) {
-          this.observationEmitter({
-            type: "worktree.filesystem.changed",
-            projectId: target.projectId,
-            worktreeId: target.worktreeId,
-            sourcePath: target.sourcePath,
-            worktreePath: target.worktreePath,
+          const activity = this.fileActivity.get(key);
+          void (activity?.flush() ?? Promise.resolve([])).then((changes) => {
+            if (
+              this.fileActivity.get(key) !== activity ||
+              !this.observationTargets.has(key)
+            )
+              return;
+            this.observationEmitter({
+              type: "worktree.filesystem.changed",
+              projectId: target.projectId,
+              worktreeId: target.worktreeId,
+              sourcePath: target.sourcePath,
+              worktreePath: target.worktreePath,
+              changes,
+            });
           });
         }
       }
@@ -621,6 +646,22 @@ export class WorktreeManager {
       status: await readGitStatus(target.worktree.path),
     });
     this.observationHeads.set(key, result.status.head);
+    const activity = this.fileActivity.get(key);
+    const changes = await activity?.observeHead(result.status.head);
+    if (
+      changes?.length &&
+      this.fileActivity.get(key) === activity &&
+      this.observationTargets.has(key)
+    ) {
+      this.observationEmitter({
+        type: "worktree.filesystem.changed",
+        projectId: target.projectId,
+        worktreeId: target.worktreeId,
+        sourcePath: target.sourcePath,
+        worktreePath: target.worktreePath,
+        changes,
+      });
+    }
     const fingerprint = JSON.stringify(result);
     if (
       (force || fingerprint !== this.observationFingerprints.get(key)) &&
