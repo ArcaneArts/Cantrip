@@ -30,6 +30,9 @@ Language families load on demand in a module worker. Document/revision fences
 reject stale responses. Line checkpoints allow incremental tokenization until
 lexical state converges, while the highlighted DOM covers the viewport plus
 overscan. Long-line token output is bounded without truncating editable text.
+Hidden editors retire their highlighting workers and restore selection and
+scrolling when shown again. Editing an extensionless file's shebang updates its
+language without reopening the file.
 
 ## Drafts and saving
 
@@ -39,6 +42,12 @@ not silently evicted. Account/server changes clear their cached sessions.
 Sessions distinguish workers, projects, worktrees, and paths. Standalone Chat
 reads and writes pin the worker and scratch root that supplied the document.
 The server rejects requests whose expected checkout or scratch binding moved.
+Standalone Chat sessions also survive in-app navigation that unmounts their
+preview. Reopening a dirty file restores its original scratch binding, even
+when the Chat has moved; an actual read or save failure retains the draft.
+Confirmed closing/discarding removes the retained draft. Account identity
+changes clear these in-memory sessions, and hidden dirty Chat drafts still
+participate in the page-unload warning.
 
 File access uses the existing encrypted app-to-server-to-worker operations and
 loaded revision checks. Supported BOM and line endings are preserved across
@@ -74,11 +83,19 @@ Native desktop file windows use the main window's existing encrypted APIs
 through the existing BroadcastChannel handoff, without obtaining their own
 file authority or editor server.
 
+To add a language, extend the language IDs and the appropriate programming/data
+definition family, then update filename, extension, shebang, and fence aliases
+as applicable. Add lexical-state handling only when the shared scanner cannot
+express the construct. Include complete and incomplete fixtures, multiline
+edits, and incremental-versus-fresh-scan assertions. Keep definitions lazy and
+plain text available when detection or highlighting fails.
+
 After normal workspace setup, run:
 
 ```sh
 pnpm qa:native-editor
 pnpm qa:native-editor:integration
+pnpm qa:native-editor:bundle
 ```
 
 The component fixture tests Chromium and WebKit at desktop and phone sizes,
@@ -88,6 +105,41 @@ server and worker using the repository's configured development runtimes. It
 tests normal file opening, saves, continuity, restart recovery, conflicts, and
 file-window messaging. Generated evidence lives in ignored `.qa/` directories.
 It does not access a user's project or make model calls.
+
+The component runner additionally exercises deterministic composition events
+with native insertion, Unicode, indentation/history, saves concurrent with
+typing, touch focus, four theme combinations, forced colors, viewport resizing,
+hidden-worker disposal, and a 10,025-character line. It reports small/large-file
+input-to-paint, warm switching, and large-file scroll/highlight timings.
+Composition events and resized viewports do not reproduce a physical IME or
+software keyboard. The integration runner restarts both real server and worker
+processes, then verifies explicit saves after reconnection. It also creates an
+actual alternate worktree, saves there through the native file window, and
+verifies that the Primary file did not change.
+
+The bundle command emits `.qa/native-editor-bundle/report.json` with production
+asset sizes and module attribution. Whole shared chunks are not incremental
+editor cost. Module character counts precede final chunk minification and
+cannot be added to gzip sizes. Compare measurements under the same conditions;
+neither fixture timings nor worker sizes represent full-client startup cost.
+
+An October 21, 2026 macOS arm64 sample using Node 24.14.0 and headless
+Chromium/WebKit measured component-fixture opening at 118–278 ms and warm file
+switching at 36–60 ms across desktop/phone layouts. Input-event-to-two-animation-
+frame samples were 11–19 ms for the small document and 35–44 ms for the
+20,001-line document; scrolling to its final line took 39–54 ms, with coloring
+arriving at 87–137 ms. These are individual fixture samples, not production
+latency guarantees, and the broad repository checks were running concurrently.
+The full production-client fixture records its own file-open/API timings,
+which also include encrypted worker connection setup.
+
+The corresponding production attribution recorded 19,491 rendered characters
+for the ten owned client editor modules before final chunk minification. The
+standalone worker was 11,825 raw / 4,361 gzip bytes; its two lazy grammar families
+were 6,386 raw / 2,849 gzip bytes combined. Editor CSS was 3,102 raw / 1,098 gzip
+bytes. The chunk named `native-code-editor` also contained 227 other modules;
+its complete size is not the incremental editor cost. Preserve the generated
+report when comparing later builds rather than inferring cost from filenames.
 
 The integration runner accepts `--phone` for a focused Chromium phone run and
 defaults to Chromium desktop when invoked directly without `--all`. Phone

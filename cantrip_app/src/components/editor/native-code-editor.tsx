@@ -34,6 +34,8 @@ export function NativeCodeEditor({
   active?: boolean;
 }) {
   const input = useRef<HTMLTextAreaElement>(null);
+  const activeRef = useRef(active);
+  activeRef.current = active;
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const composing = useRef(false);
@@ -56,6 +58,7 @@ export function NativeCodeEditor({
     session.revision,
     viewport.first,
     viewport.last,
+    active,
   );
   const gutterWidth = `${Math.max(3, String(lines.length).length) + 2}ch`;
   const notify = () => {
@@ -103,7 +106,7 @@ export function NativeCodeEditor({
     };
     node.addEventListener("beforeinput", onBeforeInput);
     const rememberSelection = () => {
-      session.selection = selection(node);
+      if (activeRef.current) session.selection = selection(node);
     };
     node.addEventListener("select", rememberSelection);
     const observer = new ResizeObserver(() => {
@@ -112,9 +115,11 @@ export function NativeCodeEditor({
     observer.observe(node);
     setHeight(node.clientHeight);
     return () => {
-      session.selection = selection(node);
-      session.scrollTop = node.scrollTop;
-      session.scrollLeft = node.scrollLeft;
+      if (activeRef.current) {
+        session.selection = selection(node);
+        session.scrollTop = node.scrollTop;
+        session.scrollLeft = node.scrollLeft;
+      }
       observer.disconnect();
       node.removeEventListener("beforeinput", onBeforeInput);
       node.removeEventListener("select", rememberSelection);
@@ -134,7 +139,16 @@ export function NativeCodeEditor({
     }
   });
   useLayoutEffect(() => {
-    if (active) input.current?.dispatchEvent(new Event("scroll"));
+    const node = input.current;
+    if (!active || !node) return;
+    node.setSelectionRange(
+      session.selection.start,
+      session.selection.end,
+      session.selection.direction,
+    );
+    node.scrollTop = session.scrollTop;
+    node.scrollLeft = session.scrollLeft;
+    node.dispatchEvent(new Event("scroll"));
   }, [active]);
 
   return (
@@ -204,12 +218,14 @@ export function NativeCodeEditor({
           className="cantrip-editor-input"
           defaultValue={session.text}
           onScroll={(event) => {
+            if (!activeRef.current) return;
             session.scrollTop = event.currentTarget.scrollTop;
             session.scrollLeft = event.currentTarget.scrollLeft;
             redraw((value) => value + 1);
           }}
           onSelect={(event) => {
-            session.selection = selection(event.currentTarget);
+            if (activeRef.current)
+              session.selection = selection(event.currentTarget);
           }}
           onCompositionStart={(event) => {
             composing.current = true;

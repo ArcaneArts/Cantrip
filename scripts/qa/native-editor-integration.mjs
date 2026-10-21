@@ -409,44 +409,118 @@ for (const [name, engine, mobile] of selected) {
     record(mobile ? "native.mode-continuity" : "native.tab-continuity", {
       status: "pass",
     });
-    const restartAt = Date.now();
-    await fixture.inject({ type: "restart", process: "server" });
-    assert.equal(await input.inputValue(), draft);
-    await input.press("ControlOrMeta+s");
-    let saveAttempts = 1;
-    const firstSaveSucceeded = await saveOutcome("unsaved native marker");
-    const connectionDeadline = Date.now() + 30000;
-    while (
-      !fixture.events.some(
-        (event) =>
-          event.type === "socket.open" &&
-          event.path?.startsWith("/api/internal/workers/connect") &&
-          Date.parse(event.timestamp) > restartAt,
+    for (const processName of ["server", "worker"]) {
+      const marker =
+        processName === "server"
+          ? "unsaved native marker"
+          : "worker restart draft";
+      if (processName === "worker")
+        await input.pressSequentially(`\n${marker}\n`);
+      const retainedDraft = await input.inputValue();
+      const restartAt = Date.now();
+      await fixture.inject({ type: "restart", process: processName });
+      assert.equal(await input.inputValue(), retainedDraft);
+      await input.press("ControlOrMeta+s");
+      let saveAttempts = 1;
+      const firstSaveSucceeded = await saveOutcome(marker);
+      const connectionDeadline = Date.now() + 30000;
+      while (
+        !fixture.events.some(
+          (event) =>
+            event.type === "socket.open" &&
+            event.path?.startsWith("/api/internal/workers/connect") &&
+            Date.parse(event.timestamp) > restartAt,
+        )
+      ) {
+        if (Date.now() > connectionDeadline)
+          throw new Error(
+            "The actual worker command connection did not recover",
+          );
+        await delay(50);
+      }
+      if (!firstSaveSucceeded) {
+        await page
+          .getByRole("button", { name: "Reload from disk", exact: true })
+          .waitFor();
+        assert.equal(await input.inputValue(), retainedDraft);
+        await page
+          .getByRole("button", { name: "Save file", exact: true })
+          .click();
+        saveAttempts++;
+      }
+      const deadline = Date.now() + 15000;
+      while (
+        !(await readFile(file, "utf8")).includes(marker) &&
+        Date.now() < deadline
       )
-    ) {
-      if (Date.now() > connectionDeadline)
-        throw new Error("The actual worker command connection did not recover");
-      await delay(50);
-    }
-    if (!firstSaveSucceeded) {
+        await delay(50);
+      assert.ok((await readFile(file, "utf8")).includes(marker));
       await page
-        .getByRole("button", { name: "Reload from disk", exact: true })
+        .getByRole("button", { name: "File is saved", exact: true })
         .waitFor();
-      assert.equal(await input.inputValue(), draft);
-      await page
-        .getByRole("button", { name: "Save file", exact: true })
-        .click();
-      saveAttempts++;
+      record(`native.${processName}-restart`, { status: "pass", saveAttempts });
+      await saveMarker(`\npost-${processName}-restart second edit\n`);
     }
-    const deadline = Date.now() + 15000;
+    const createdWorktree = await page.evaluate(() =>
+      window.__qaRepositoryFixture.createWorktree({
+        name: "native-editor-alternate",
+        mode: {
+          type: "newBranch",
+          branch: "qa/native-editor-alternate",
+          startPoint: "HEAD",
+        },
+      }),
+    );
+    await page.waitForFunction(
+      async (id) =>
+        (await window.__qaRepositoryFixture.worktrees()).some(
+          (worktree) =>
+            worktree.id === id && worktree.lifecycleState === "ready",
+        ),
+      createdWorktree.id,
+      { timeout: 30000 },
+    );
+    const alternate = await page.evaluate(
+      async (id) =>
+        (await window.__qaRepositoryFixture.worktrees()).find(
+          (worktree) => worktree.id === id,
+        ),
+      createdWorktree.id,
+    );
+    const primaryBeforeAlternateSave = await readFile(file, "utf8");
+    const alternatePage = await context.newPage();
+    const alternateSearch = await page.evaluate(
+      (id) => window.__qaRepositoryFixture.popout("qa.txt", id),
+      alternate.id,
+    );
+    await alternatePage.goto(`${fixture.origin}/${alternateSearch}`, {
+      waitUntil: "domcontentloaded",
+    });
+    const alternateInput = alternatePage.getByRole("textbox", {
+      name: "Edit qa.txt",
+      exact: true,
+    });
+    await alternateInput.waitFor();
+    assert.equal(
+      await alternateInput.inputValue(),
+      "Cantrip editor recovery baseline\n",
+    );
+    await alternateInput.fill("alternate worktree native save\n");
+    await alternateInput.press("ControlOrMeta+s");
+    const alternateDeadline = Date.now() + 15000;
     while (
-      !(await readFile(file, "utf8")).includes("unsaved native marker") &&
-      Date.now() < deadline
-    )
+      (await readFile(path.join(alternate.path, "qa.txt"), "utf8")) !==
+      "alternate worktree native save\n"
+    ) {
+      if (Date.now() > alternateDeadline)
+        throw new Error("The alternate worktree file was not saved");
       await delay(50);
-    assert.match(await readFile(file, "utf8"), /unsaved native marker/u);
-    record("native.server-restart", { status: "pass", saveAttempts });
-    await saveMarker("\npost-restart second edit\n");
+    }
+    assert.equal(await readFile(file, "utf8"), primaryBeforeAlternateSave);
+    assert.equal(await alternatePage.locator("iframe").count(), 0);
+    await alternatePage.close();
+    await page.evaluate(() => window.__qaRepositoryFixture.closePopouts());
+    record("native.alternate-worktree", { status: "pass" });
     await input.pressSequentially("conflicting draft");
     const conflictDraft = await input.inputValue();
     await writeFile(file, "external edit\n");

@@ -12,6 +12,7 @@ function Fixture() {
   const [session, setSession] = useState<EditorDocumentSession | null>(null);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("loading");
+  const [visible, setVisible] = useState(true);
   const [, redraw] = useState(0);
   useEffect(() => {
     let cancelled = false;
@@ -82,6 +83,9 @@ function Fixture() {
           </button>
         ))}
         <button onClick={() => void save()}>Save</button>
+        <button onClick={() => setVisible((value) => !value)}>
+          {visible ? "Hide editor" : "Show editor"}
+        </button>
         <button
           onClick={() => {
             document.documentElement.classList.toggle("dark");
@@ -89,14 +93,19 @@ function Fixture() {
         >
           Theme
         </button>
-        <output aria-label="Save state">{status}</output>
+        <output aria-label="Save state" data-saving={session?.saving ?? false}>
+          {status}
+        </output>
         <output aria-label="Error">{error}</output>
       </nav>
-      <section style={{ minHeight: 0, flex: 1, display: "flex" }}>
+      <section
+        style={{ minHeight: 0, flex: 1, display: visible ? "flex" : "none" }}
+      >
         {session && session.id === path && (
           <NativeCodeEditor
             session={session}
             path={path}
+            active={visible}
             onSave={() => void save()}
             onChange={() => {
               setStatus(session.dirty ? "unsaved" : "saved");

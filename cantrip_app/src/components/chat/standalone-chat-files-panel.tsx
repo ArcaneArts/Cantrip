@@ -19,6 +19,8 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ChatFilePreview } from "./standalone-chat-file-preview";
+import { chatEditorSessions } from "./standalone-chat-editor-sessions";
+import type { EditorDocumentSession } from "@/components/editor/document-session";
 import { formatExplorerSize } from "@/components/explorer/explorer-entry-metadata";
 import { Button } from "@/components/ui/button";
 import {
@@ -422,6 +424,7 @@ export function StandaloneChatFilesPanel({
   );
   const [openError, setOpenError] = useState<unknown>(null);
   const fileDirty = useRef(false);
+  const fileDocument = useRef<EditorDocumentSession | null>(null);
   const worker = workers.data?.find(
     (candidate) => candidate.workerId === chat.activeWorkerId,
   );
@@ -447,6 +450,11 @@ export function StandaloneChatFilesPanel({
         !window.confirm("Open another file and discard its unsaved changes?")
       )
         return;
+      if (!desktopRuntime && fileDocument.current) {
+        chatEditorSessions.discard(fileDocument.current.id);
+        fileDocument.current = null;
+        fileDirty.current = false;
+      }
       setSelectedEntry(entry);
       if (!desktopRuntime) return;
       setOpenError(null);
@@ -628,6 +636,9 @@ export function StandaloneChatFilesPanel({
                 )
                   return;
                 fileDirty.current = false;
+                if (fileDocument.current)
+                  chatEditorSessions.discard(fileDocument.current.id);
+                fileDocument.current = null;
                 setSelectedEntry(null);
               }}
               size="icon"
@@ -643,8 +654,9 @@ export function StandaloneChatFilesPanel({
               chat={chat}
               key={selectedEntry.path}
               entry={selectedEntry}
-              onDirtyChange={(dirty) => {
+              onDirtyChange={(dirty, document) => {
                 fileDirty.current = dirty;
+                fileDocument.current = document;
               }}
               onSaved={() => void invalidate()}
             />

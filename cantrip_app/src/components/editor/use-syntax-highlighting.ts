@@ -13,6 +13,7 @@ export function useSyntaxHighlighting(
   revision: number,
   first: number,
   last: number,
+  active = true,
 ): HighlightedLine[] {
   const [result, setResult] = useState<SyntaxResponse | null>(null);
   const current = useRef({ documentId, revision, first });
@@ -24,6 +25,7 @@ export function useSyntaxHighlighting(
     revision: number;
   } | null>(null);
   useEffect(() => {
+    if (!active) return;
     let worker: Worker;
     try {
       worker = new Worker(
@@ -51,9 +53,11 @@ export function useSyntaxHighlighting(
     };
     return () => {
       transport.current = null;
+      worker.onmessage = null;
+      worker.onerror = null;
       worker.terminate();
     };
-  }, []);
+  }, [active]);
   useEffect(() => {
     const target = transport.current;
     if (!target) return;
@@ -75,7 +79,7 @@ export function useSyntaxHighlighting(
     target.documentId = documentId;
     target.text = text;
     target.revision = revision;
-  }, [documentId, path, text, revision, first, last]);
+  }, [active, documentId, path, text, revision, first, last]);
   return result && isCurrentHighlight(result, documentId, revision, first)
     ? result.lines
     : [];

@@ -3,6 +3,11 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { chromium, webkit } from "playwright-core";
 import { startNativeEditorFixture } from "./native-editor-fixture.mjs";
+import {
+  checkNativeEditorInput,
+  checkNativeEditorLongLine,
+  measureNativeInputPaint,
+} from "./native-editor-input-acceptance.mjs";
 
 const results = [];
 const output = path.resolve("test-results/native-editor");
@@ -22,6 +27,29 @@ for (const [name, browserType] of [
           : { width: 1280, height: 800 },
         hasTouch: mobile,
       });
+      await context.addInitScript(() => {
+        const stats = { active: 0, created: 0 };
+        window.__qaSyntaxWorkers = stats;
+        window.Worker = new Proxy(window.Worker, {
+          construct(Target, args) {
+            const worker = Reflect.construct(Target, args);
+            let tracked = String(args[0]).includes("syntax.worker");
+            if (tracked) {
+              stats.active++;
+              stats.created++;
+            }
+            const terminate = worker.terminate.bind(worker);
+            worker.terminate = () => {
+              if (tracked) {
+                stats.active--;
+                tracked = false;
+              }
+              terminate();
+            };
+            return worker;
+          },
+        });
+      });
       const page = await context.newPage();
       const errors = [];
       page.on("pageerror", (error) => errors.push(error.message));
@@ -33,6 +61,24 @@ for (const [name, browserType] of [
       await input.waitFor();
       const openMs = performance.now() - started;
       await page.locator(".syntax-keyword").first().waitFor();
+      assert.equal(
+        await page.evaluate(() => window.__qaSyntaxWorkers.active),
+        1,
+      );
+      await page
+        .getByRole("button", { name: "Hide editor", exact: true })
+        .click();
+      await page.waitForFunction(
+        () => window.__qaSyntaxWorkers.active === 0,
+        undefined,
+        {
+          timeout: 3000,
+        },
+      );
+      await page
+        .getByRole("button", { name: "Show editor", exact: true })
+        .click();
+      await page.waitForFunction(() => window.__qaSyntaxWorkers.active === 1);
       const original = await input.inputValue();
       await input.focus();
       await input.press(
@@ -56,15 +102,22 @@ for (const [name, browserType] of [
       const draft = await input.inputValue();
       await page.getByRole("button", { name: "other.py", exact: true }).click();
       await page.getByRole("textbox", { name: "Edit other.py" }).waitFor();
+      const warmSwitchStarted = performance.now();
       await page.getByRole("button", { name: "main.tsx", exact: true }).click();
       assert.equal(
         await page.getByRole("textbox", { name: "Edit main.tsx" }).inputValue(),
         draft,
       );
+      const warmSwitchMs = performance.now() - warmSwitchStarted;
       await input.press("ControlOrMeta+z");
       assert.notEqual(await input.inputValue(), draft);
       await input.press("ControlOrMeta+Shift+z");
       assert.equal(await input.inputValue(), draft);
+      const inputAcceptance = await checkNativeEditorInput(
+        page,
+        fixture,
+        path.join(output, `${name}-${mobile ? "phone" : "desktop"}-input.png`),
+      );
       await writeFile(
         path.join(fixture.directory, "main.tsx"),
         "external change\n",
@@ -121,6 +174,49 @@ for (const [name, browserType] of [
       assert.equal(metrics.inputLineHeight, metrics.paintLineHeight);
       assert.ok(metrics.gutterWidth > 0);
       if (mobile) assert.equal(metrics.fontSize, "16px");
+      const longLineAcceptance = await checkNativeEditorLongLine(page, input);
+      const retainedPosition = await input.evaluate((node) => {
+        node.setSelectionRange(
+          node.value.length - 10,
+          node.value.length - 5,
+          "backward",
+        );
+        node.dispatchEvent(new Event("select", { bubbles: true }));
+        return [
+          node.scrollTop,
+          node.scrollLeft,
+          node.selectionStart,
+          node.selectionEnd,
+          node.selectionDirection,
+        ];
+      });
+      await page
+        .getByRole("button", { name: "Hide editor", exact: true })
+        .click();
+      await page.waitForFunction(() => window.__qaSyntaxWorkers.active === 0);
+      await page
+        .getByRole("button", { name: "Show editor", exact: true })
+        .click();
+      await input.waitFor();
+      assert.deepEqual(
+        await input.evaluate((node) => [
+          node.scrollTop,
+          node.scrollLeft,
+          node.selectionStart,
+          node.selectionEnd,
+          node.selectionDirection,
+        ]),
+        retainedPosition,
+      );
+      await input.focus();
+      await input.press(
+        process.platform === "darwin" ? "Meta+ArrowDown" : "Control+End",
+      );
+      const largeBeforeTyping = await input.inputValue();
+      const largeInputToPaintMs = await measureNativeInputPaint(page, "x");
+      assert.equal(await input.inputValue(), largeBeforeTyping + "x");
+      await input.press("ControlOrMeta+z");
+      assert.equal(await input.inputValue(), largeBeforeTyping);
       assert.deepEqual(errors, []);
       assert.equal(
         resources.some((url) =>
@@ -137,8 +233,12 @@ for (const [name, browserType] of [
         openMs,
         scrollMs,
         highlightMs,
+        warmSwitchMs,
+        largeInputToPaintMs,
         visibleLines: await page.locator("[data-editor-line]").count(),
         initialCharacters: original.length,
+        inputAcceptance,
+        longLineAcceptance,
         status: "pass",
       });
       await context.close();
