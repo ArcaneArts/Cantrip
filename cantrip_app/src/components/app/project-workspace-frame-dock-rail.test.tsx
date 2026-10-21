@@ -295,6 +295,45 @@ describe("dock rail tabs", () => {
     },
   );
 
+  it.each(["right", "bottom"] as const)(
+    "marks an inactive chat awaiting approval in the %s dock",
+    async (region) => {
+      const chat = surface("chat", "agent", "Agent chat", 0);
+      if (chat.kind !== "chat") throw new Error("Expected a chat surface");
+      chat.entity.status = "waiting-for-approval";
+      const onSelect = vi.fn();
+      let renderer!: TestRenderer.ReactTestRenderer;
+      await act(async () => {
+        renderer = renderRail({
+          activeTabKey: null,
+          onSelect,
+          region,
+          surfaces: [chat],
+        });
+      });
+
+      const label = "Focus Agent chat (Approval required)";
+      const button = renderer.root
+        .findAllByType("button")
+        .find(
+          (node) => node.props["aria-label"] === `${label} in ${region} dock`,
+        );
+      expect(button).toBeDefined();
+      expect(button!.props["aria-pressed"]).toBe(false);
+      expect(button!.props["data-tooltip"]).toBe(label);
+      expect(
+        button!.findAll(
+          (node) =>
+            node.type === "svg" &&
+            node.props.className.includes("text-amber-500"),
+        ),
+      ).toHaveLength(1);
+      await act(async () => button!.props.onClick());
+      expect(onSelect).toHaveBeenCalledWith(chat, false);
+      await act(async () => renderer.unmount());
+    },
+  );
+
   it("closes rail views and deletes resources without confirmation", async () => {
     const browser = surface("browser", "one", "Browser", 0);
     const terminal = surface("terminal", "two", "Terminal", 1);
