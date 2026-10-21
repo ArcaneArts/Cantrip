@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cantrip editor QA</title>
+    <style>
+      :root {
+        --background: #ffffff;
+        --foreground: #20242a;
+        --muted-foreground: #667085;
+        --border: #d5d9df;
+        --primary: #7355c6;
+        --ring: #7355c6;
+      }
+      :root.dark {
+        --background: #17191d;
+        --foreground: #e7e9ed;
+        --muted-foreground: #a1aab8;
+        --border: #363b45;
+      }
+      body {
+        margin: 0;
+        background: var(--background);
+        color: var(--foreground);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script
+      type="module"
+      src="/src/components/editor/qa/native-editor-fixture.tsx"
+    ></script>
+  </body>
+</html>

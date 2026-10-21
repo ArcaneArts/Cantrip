@@ -83,6 +83,7 @@
     "check": "pnpm check:large-files && pnpm check:app-decomposition && pnpm check:server-repository-decomposition && pnpm verify:workflow-removal && pnpm audit:run-configurations && pnpm audit:server-boundaries && pnpm verify:network-tranche-one && pnpm verify:network-tranche-two && pnpm network:acceptance:check && pnpm code:source:verify && pnpm codex:verify && pnpm skill-templates:verify && pnpm cli:check && pnpm cua:check && pnpm typecheck && pnpm test && pnpm format:check",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "qa:native-editor": "node scripts/qa/native-editor-browser.mjs",
     "qa:editor-recovery": "node scripts/qa/editor-recovery-browser.mjs",
     "qa:editor-fixture": "node scripts/qa/editor-recovery-fixture.mjs"
   },
