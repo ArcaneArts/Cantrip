@@ -20,6 +20,12 @@ import {
 
 import { Markdown } from "@/components/chat/markdown";
 import {
+  EditorSessionStore,
+  editorDocumentId,
+  type EditorDocumentSession,
+} from "@/components/editor/document-session";
+import { NativeCodeEditor } from "@/components/editor/native-code-editor";
+import {
   structuredFileFormatForPath,
   type VisualFileFormat,
 } from "@/components/explorer/explorer-file-language";
@@ -43,6 +49,7 @@ import {
 } from "@/lib/desktop-explorer-window-protocol";
 import {
   desktopPopoutTitlebarLeftInset,
+  desktopExplorerFileSearch,
   isMacosDesktopRuntime,
   updateDesktopWindowTitle,
 } from "@/lib/desktop-popout";
@@ -51,6 +58,10 @@ import { cn } from "@/lib/utils";
 const StructuredFileVisual = lazy(async () => {
   const module = await import("@/components/explorer/structured-file-visual");
   return { default: module.StructuredFileVisual };
+});
+const BrowserCodeEditor = lazy(async () => {
+  const module = await import("./retained-explorer-code-editor");
+  return { default: module.RetainedExplorerCodeEditor };
 });
 
 const languageByExtension: Record<string, Language> = {
@@ -415,6 +426,16 @@ export function DesktopExplorerFileWindow({
   const [contentError, setContentError] = useState<string | null>(null);
   const [contentLoading, setContentLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const sessions = useRef<EditorSessionStore | null>(null);
+  sessions.current ??= new EditorSessionStore();
+  const [nativeDocument, setNativeDocument] =
+    useState<EditorDocumentSession | null>(null);
+  const nativeDocumentRef = useRef(nativeDocument);
+  nativeDocumentRef.current = nativeDocument;
+  const changeDraft = useCallback((text: string) => {
+    nativeDocumentRef.current?.editExternal(text);
+    setDraft(text);
+  }, []);
   const overlayTitlebar = useMemo(() => isMacosDesktopRuntime(), []);
   const client = useMemo(
     () =>
@@ -425,6 +446,7 @@ export function DesktopExplorerFileWindow({
           setConfiguredAtMs(null);
           setEditorError(null);
           setFile(null);
+          setNativeDocument(null);
           setDraft("");
           setMedia(null);
           setContentError(null);
@@ -447,6 +469,18 @@ export function DesktopExplorerFileWindow({
         onEditorReady: setConfiguredAtMs,
         onEditorError: setEditorError,
         onLaunchError: setLaunchError,
+        onVsCodeLaunch: (nextLaunchId, target) => {
+          window.location.replace(
+            desktopExplorerFileSearch(
+              {
+                explorerId: target.explorer.id,
+                projectId: target.explorer.projectId,
+                path: target.path,
+              },
+              nextLaunchId,
+            ) + "&cantrip-explorer-editor=vscode",
+          );
+        },
       }),
     [launchId],
   );
@@ -479,7 +513,13 @@ export function DesktopExplorerFileWindow({
     : null;
   const availableModes = desktopExplorerWindowModes(path);
   useEffect(() => {
-    if (!context || mode === "edit") return;
+    if (context)
+      sessions.current!.resetScope(
+        JSON.stringify([context.serverId, context.ownerId]),
+      );
+  }, [context?.serverId, context?.ownerId]);
+  useEffect(() => {
+    if (!context || (mode === "edit" && context.editor !== "native")) return;
     if ((mediaType && media) || (!mediaType && file)) return;
     let cancelled = false;
     setContentLoading(true);
@@ -492,7 +532,23 @@ export function DesktopExplorerFileWindow({
           setMedia(result);
         } else {
           setFile(result);
-          setDraft(result.content);
+          if (context.editor === "native") {
+            const id = editorDocumentId({
+              server: context.serverId ?? "",
+              account: context.ownerId ?? "",
+              worker: context.explorer.activeWorkerId,
+              project: context.explorer.projectId,
+              worktree: context.explorer.worktreeId,
+              path: context.path,
+            });
+            const document = sessions.current!.open(
+              id,
+              result.content,
+              result.version,
+            );
+            setNativeDocument(document);
+            setDraft(document.text);
+          } else setDraft(result.content);
         }
       })
       .catch((error: unknown) => {
@@ -512,9 +568,12 @@ export function DesktopExplorerFileWindow({
     };
   }, [client, context, file, media, mediaType, mode]);
 
-  const dirty = Boolean(file && draft !== file.content);
+  const dirty =
+    context?.editor === "native"
+      ? (nativeDocument?.dirty ?? false)
+      : Boolean(file && draft !== file.content);
   useEffect(() => {
-    if (!dirty) return;
+    if (!dirty && !sessions.current!.hasDirtyDocuments) return;
     const warn = (event: BeforeUnloadEvent) => event.preventDefault();
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
@@ -528,17 +587,35 @@ export function DesktopExplorerFileWindow({
   }, [context?.projectTitle, path]);
 
   const save = async () => {
-    if (!file || !dirty) return;
+    if (!file) return false;
+    if (!dirty && !nativeDocument?.saving) return true;
     setSaving(true);
     setContentError(null);
     try {
-      const saved = await client.saveFile(draft, file.version);
-      setFile(saved);
-      setDraft(saved.content);
+      if (nativeDocument) {
+        let saved: ExplorerFile | undefined;
+        await nativeDocument.save(async (input) => {
+          saved = await client.saveFile(input.content, input.version, context);
+          return saved;
+        });
+        if (nativeDocumentRef.current === nativeDocument) {
+          if (saved) setFile(saved);
+          setDraft(nativeDocument.text);
+        }
+      } else {
+        const submitted = draft;
+        const saved = await client.saveFile(submitted, file.version);
+        setFile(saved);
+        setDraft((current) =>
+          current === submitted ? saved.content : current,
+        );
+      }
+      return !nativeDocument?.dirty;
     } catch (error) {
       setContentError(
         error instanceof Error ? error.message : "File could not be saved.",
       );
+      return false;
     } finally {
       setSaving(false);
     }
@@ -549,6 +626,29 @@ export function DesktopExplorerFileWindow({
       <DesktopExplorerWindowHeader
         actions={
           <>
+            {context?.editor === "native" && !mediaType ? (
+              <Button
+                aria-label="Open in VS Code"
+                className="h-7 px-2 text-xs"
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  void (async () => {
+                    if (
+                      (dirty || nativeDocument?.saving) &&
+                      !window.confirm(
+                        "Save this file's changes before opening it in VS Code?",
+                      )
+                    )
+                      return;
+                    if (!(await save())) return;
+                    client.openInVsCode(context);
+                  })();
+                }}
+              >
+                VS Code
+              </Button>
+            ) : null}
             <div className="flex items-center gap-0.5 rounded-md bg-muted/40 p-0.5">
               <ModeButton
                 active={mode === "preview"}
@@ -579,7 +679,7 @@ export function DesktopExplorerFileWindow({
                 </ModeButton>
               ) : null}
             </div>
-            {mode === "visual" && dirty ? (
+            {(mode === "visual" || context?.editor === "native") && dirty ? (
               <Button
                 className="ml-1 h-7 px-2.5 text-xs"
                 onClick={() => void save()}
@@ -611,18 +711,36 @@ export function DesktopExplorerFileWindow({
             <Loader2 className="size-5 animate-spin text-muted-foreground" />
           )}
         </div>
-      ) : mode === "edit" ? (
+      ) : mode === "edit" && context.editor !== "native" ? (
         <div className="flex min-h-0 flex-1">
-          <EditorPane
-            attachment={attachment}
-            configuredAtMs={configuredAtMs}
-            context={context}
-            error={editorError}
-            onWorkbenchFailed={editorWorkbenchFailed}
-            onWorkbenchMounted={editorWorkbenchMounted}
-            onWorkbenchReady={editorWorkbenchReady}
-            preparedAtMs={preparedAtMs}
-          />
+          {!("__TAURI_INTERNALS__" in window) ? (
+            <Suspense
+              fallback={<Loader2 className="m-auto size-5 animate-spin" />}
+            >
+              <BrowserCodeEditor
+                appearance={context.appearance}
+                explorerId={context.explorer.id}
+                path={context.path}
+                retained
+                visible
+                prewarm={false}
+                workerOnline
+                workerId={context.explorer.activeWorkerId}
+                worktreeId={context.explorer.worktreeId}
+              />
+            </Suspense>
+          ) : (
+            <EditorPane
+              attachment={attachment}
+              configuredAtMs={configuredAtMs}
+              context={context}
+              error={editorError}
+              onWorkbenchFailed={editorWorkbenchFailed}
+              onWorkbenchMounted={editorWorkbenchMounted}
+              onWorkbenchReady={editorWorkbenchReady}
+              preparedAtMs={preparedAtMs}
+            />
+          )}
         </div>
       ) : (
         <section className="relative min-h-0 flex-1 overflow-hidden">
@@ -635,6 +753,13 @@ export function DesktopExplorerFileWindow({
             <div className="grid h-full place-items-center">
               <Loader2 className="size-5 animate-spin text-muted-foreground" />
             </div>
+          ) : mode === "edit" && nativeDocument ? (
+            <NativeCodeEditor
+              session={nativeDocument}
+              path={path}
+              onChange={changeDraft}
+              onSave={() => void save()}
+            />
           ) : mediaType && media ? (
             <MediaView
               blob={media}
@@ -653,7 +778,7 @@ export function DesktopExplorerFileWindow({
               <StructuredFileVisual
                 content={draft}
                 format={structuredFormat}
-                onChange={setDraft}
+                onChange={changeDraft}
                 onSave={() => void save()}
                 path={path}
               />

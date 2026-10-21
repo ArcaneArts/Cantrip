@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   EditorDocumentSession,
   EditorSessionStore,
@@ -10,6 +10,21 @@ import { EditorLineIndex, editorViewport } from "./viewport";
 import { isCurrentHighlight } from "./syntax/worker-protocol";
 
 describe("endpoint document sessions", () => {
+  it("keeps structured edits in the same undo history without duplicating native edits", () => {
+    const session = new EditorDocumentSession("file", "original", "v1");
+    session.history.record(
+      session.text,
+      "native edit",
+      session.selection,
+      session.selection,
+    );
+    session.edit("native edit");
+    session.editExternal("native edit");
+    session.editExternal("visual edit");
+    expect(session.history.undo(session.text)?.text).toBe("native edit");
+    expect(session.history.undo("native edit")?.text).toBe("original");
+    expect(session.history.undo("original")).toBeNull();
+  });
   it("isolates all placement and identity dimensions", () => {
     const identity = {
       server: "s",
@@ -81,6 +96,60 @@ describe("endpoint document sessions", () => {
     expect(session.version).toBe("v1");
     expect(session.text).toBe("draft");
     expect(session.dirty).toBe(true);
+  });
+  it("serializes explicit saves of newer text while leaving subsequent typing unsaved", async () => {
+    const session = new EditorDocumentSession("id", "original", "v1");
+    let complete!: (value: { version: string }) => void;
+    const calls: { content: string; version: string }[] = [];
+    session.edit("first");
+    const first = session.save(async (input) => {
+      calls.push(input);
+      return new Promise((resolve) => {
+        complete = resolve;
+      });
+    });
+    await Promise.resolve();
+    session.edit("second");
+    const second = session.save(async (input) => {
+      calls.push(input);
+      return { version: "v3" };
+    });
+    session.edit("third typed without saving");
+    expect(calls).toHaveLength(1);
+    complete({ version: "v2" });
+    await Promise.all([first, second]);
+    expect(calls).toEqual([
+      { content: "first", version: "v1" },
+      { content: "second", version: "v2" },
+    ]);
+    expect(session.baseline).toBe("second");
+    expect(session.text).toBe("third typed without saving");
+    expect(session.dirty).toBe(true);
+  });
+  it("keeps queued drafts after a conflict and does not dispatch the dependent write", async () => {
+    const session = new EditorDocumentSession("id", "original", "v1");
+    let fail!: (error: Error) => void;
+    session.edit("first");
+    const first = session.save(
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+    await Promise.resolve();
+    session.edit("second");
+    const write = vi.fn();
+    const second = session.save(write);
+    fail(new Error("conflict"));
+    const outcomes = await Promise.allSettled([first, second]);
+    expect(outcomes.map((value) => value.status)).toEqual([
+      "rejected",
+      "rejected",
+    ]);
+    expect(write).not.toHaveBeenCalled();
+    expect(session.text).toBe("second");
+    expect(session.version).toBe("v1");
+    expect(session.saving).toBe(false);
   });
   it("preserves BOM and CRLF through textarea normalization", async () => {
     const session = new EditorDocumentSession(

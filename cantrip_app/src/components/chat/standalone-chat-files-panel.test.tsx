@@ -1,4 +1,6 @@
+// @vitest-environment jsdom
 import { standaloneChatSummarySchema } from "@cantrip/protocol";
+import type { EditorDocumentSession } from "@/components/editor/document-session";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createElement, type ReactNode } from "react";
 import TestRenderer, { act } from "react-test-renderer";
@@ -46,12 +48,19 @@ const api = vi.hoisted(() => ({
       workerId: "worker-one",
     },
   ]),
+  getStandaloneChats: vi.fn(async () => []),
   loadStandaloneChatFileMedia: vi.fn(),
   saveStandaloneChatFile: vi.fn(),
 }));
 const desktop = vi.hoisted(() => ({
   openDesktopStandaloneChatFile: vi.fn(async () => "created" as const),
 }));
+const editor = vi.hoisted(() => ({ current: null as unknown }));
+interface EditorProps {
+  session: EditorDocumentSession;
+  onChange(text: string): void;
+  onSave(): void;
+}
 
 vi.mock("@/components/chat/markdown", () => ({
   Markdown: () => createElement("div", { "data-markdown": true }),
@@ -66,8 +75,11 @@ vi.mock("@/components/ui/styled-menu", () => ({
     children,
   StyledContextMenuItem: ({ children }: { children?: ReactNode }) => children,
 }));
-vi.mock("@/components/explorer/monaco-file-editor", () => ({
-  MonacoFileEditor: () => createElement("div", { "data-editor": true }),
+vi.mock("@/components/editor/native-code-editor", () => ({
+  NativeCodeEditor: (props: EditorProps) => {
+    editor.current = props;
+    return createElement("div", { "data-editor": true });
+  },
 }));
 vi.mock("@/components/explorer/structured-file-visual", () => ({
   StructuredFileVisual: () => createElement("div", { "data-visual": true }),
@@ -150,7 +162,71 @@ async function renderPanel(desktopRuntime: boolean) {
 }
 
 describe("standalone Chat files panel", () => {
-  beforeEach(() => desktop.openDesktopStandaloneChatFile.mockClear());
+  beforeEach(() => {
+    desktop.openDesktopStandaloneChatFile.mockClear();
+    api.saveStandaloneChatFile.mockReset();
+    api.saveStandaloneChatFile.mockResolvedValue({
+      path: "notes.txt",
+      content: "saved",
+      version: "version-two",
+      markdown: false,
+    });
+  });
+
+  it("saves an owned document against its exact worker and scratch root and confirms dirty close", async () => {
+    const { client, renderer } = await renderPanel(false);
+    await act(async () =>
+      renderer.root
+        .findByProps({ "data-chat-file-path": "notes.txt" })
+        .props.onClick(),
+    );
+    await vi.waitFor(() =>
+      expect(
+        renderer.root.findAllByProps({ "data-editor": true }),
+      ).toHaveLength(1),
+    );
+    await act(async () =>
+      (editor.current as EditorProps).onChange("first draft"),
+    );
+    await act(async () => (editor.current as EditorProps).onSave());
+    await vi.waitFor(() =>
+      expect(api.saveStandaloneChatFile).toHaveBeenCalledWith(
+        chat.id,
+        { path: "notes.txt", content: "first draft", version: "version-one" },
+        {
+          workerId: chat.activeWorkerId,
+          scratchRootId: chat.activeScratchRootId,
+        },
+      ),
+    );
+    await act(async () =>
+      (editor.current as EditorProps).onChange("unsaved after save"),
+    );
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    await act(async () =>
+      renderer.root
+        .findByProps({ "aria-label": "Close Chat file" })
+        .props.onClick(),
+    );
+    expect(renderer.root.findAllByProps({ "data-editor": true })).toHaveLength(
+      1,
+    );
+    expect((editor.current as EditorProps).session.text).toBe(
+      "unsaved after save",
+    );
+    confirm.mockReturnValue(true);
+    await act(async () =>
+      renderer.root
+        .findByProps({ "aria-label": "Close Chat file" })
+        .props.onClick(),
+    );
+    expect(renderer.root.findAllByProps({ "data-editor": true })).toHaveLength(
+      0,
+    );
+    confirm.mockRestore();
+    await act(async () => renderer.unmount());
+    client.clear();
+  });
 
   it("renders only the file tree until a browser file is opened full screen", async () => {
     const { client, renderer } = await renderPanel(false);

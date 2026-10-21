@@ -27,7 +27,7 @@ const desktopCode = vi.hoisted(() => ({
 vi.mock("@/lib/api", () => api);
 vi.mock("@/lib/desktop-code", () => desktopCode);
 
-import { createDesktopExplorerWindowBroker } from "./desktop-explorer-window-broker";
+import { createDesktopExplorerCodeWindowBroker as createDesktopExplorerWindowBroker } from "./desktop-explorer-window-broker";
 import { DesktopExplorerWindowClient } from "./desktop-explorer-window-client";
 
 const attachment = {

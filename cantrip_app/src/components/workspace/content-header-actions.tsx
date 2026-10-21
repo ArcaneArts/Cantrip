@@ -243,6 +243,11 @@ function ExplorerHeaderActions({
                       <Check className="size-3.5" />
                     ) : null}
                   </StyledDropdownMenuItem>
+                  {header.openInVsCode ? (
+                    <StyledDropdownMenuItem onSelect={header.openInVsCode}>
+                      Open in VS Code
+                    </StyledDropdownMenuItem>
+                  ) : null}
                 </StyledDropdownMenuContent>
               </DropdownMenuPrimitive.Portal>
             </DropdownMenuPrimitive.Root>

@@ -102,14 +102,22 @@ export function NativeCodeEditor({
       } else beforeInput.current = selection(node);
     };
     node.addEventListener("beforeinput", onBeforeInput);
+    const rememberSelection = () => {
+      session.selection = selection(node);
+    };
+    node.addEventListener("select", rememberSelection);
     const observer = new ResizeObserver(() => {
       setHeight(node.clientHeight);
     });
     observer.observe(node);
     setHeight(node.clientHeight);
     return () => {
+      session.selection = selection(node);
+      session.scrollTop = node.scrollTop;
+      session.scrollLeft = node.scrollLeft;
       observer.disconnect();
       node.removeEventListener("beforeinput", onBeforeInput);
+      node.removeEventListener("select", rememberSelection);
     };
     // A document owns its input lifetime; ordinary typing must not replace it.
     // eslint-disable-next-line react-hooks/exhaustive-deps

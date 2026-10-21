@@ -1,3 +1,4 @@
+import { explorerMediaTypeForPath } from "@cantrip/protocol";
 import type {
   CodeAppearance,
   CodeAttachment,
@@ -8,13 +9,15 @@ import type {
 
 import {
   defaultExplorerFileMode,
-  monacoLanguageForPath,
   structuredFileFormatForPath,
 } from "@/components/explorer/explorer-file-language";
 
 export const desktopExplorerWindowLaunchParameter = "cantrip-explorer-launch";
 
 export interface DesktopExplorerWindowContext {
+  editor?: "native" | "vscode";
+  serverId?: string;
+  ownerId?: string;
   appearance: CodeAppearance;
   explorer: ExplorerSummary;
   path: string;
@@ -22,8 +25,9 @@ export interface DesktopExplorerWindowContext {
   requestedAtMs: number;
 }
 
-export type DesktopExplorerWindowRequest =
+export type DesktopExplorerWindowRequest = (
   | { launchId: string; type: "launch.request" }
+  | { launchId: string; type: "editor.open-vscode" }
   | { launchId: string; nonce: string; type: "editor.workbench-mounted" }
   | { launchId: string; nonce: string; type: "editor.workbench-ready" }
   | {
@@ -41,9 +45,16 @@ export type DesktopExplorerWindowRequest =
       requestId: string;
       type: "file.save";
       version: string;
-    };
+    }
+) & { path?: string; requestedAtMs?: number };
 
 export type DesktopExplorerWindowResponse =
+  | {
+      launchId: string;
+      nextLaunchId: string;
+      context: DesktopExplorerWindowContext;
+      type: "editor.vscode-launch";
+    }
   | {
       context: DesktopExplorerWindowContext;
       launchId: string;
@@ -95,7 +106,7 @@ export function desktopExplorerWindowChannelName(launchId: string): string {
 export function desktopExplorerWindowModes(path: string): ExplorerFileMode[] {
   const modes: ExplorerFileMode[] = ["preview"];
   if (structuredFileFormatForPath(path)) modes.push("visual");
-  if (monacoLanguageForPath(path)) modes.push("edit");
+  if (!explorerMediaTypeForPath(path)) modes.push("edit");
   return modes;
 }
 
@@ -115,6 +126,7 @@ export function isDesktopExplorerWindowRequest(
   const message = value as Record<string, unknown>;
   if (typeof message.launchId !== "string") return false;
   if (message.type === "launch.request") return true;
+  if (message.type === "editor.open-vscode") return true;
   if (
     message.type === "editor.workbench-mounted" ||
     message.type === "editor.workbench-ready"
@@ -153,7 +165,15 @@ export function isDesktopExplorerWindowResponse(
   ) {
     return false;
   }
-  if (message.type === "launch.ready") {
+  if (
+    message.type === "launch.ready" ||
+    message.type === "editor.vscode-launch"
+  ) {
+    if (
+      message.type === "editor.vscode-launch" &&
+      typeof message.nextLaunchId !== "string"
+    )
+      return false;
     if (!message.context || typeof message.context !== "object") return false;
     const context = message.context as Record<string, unknown>;
     return (

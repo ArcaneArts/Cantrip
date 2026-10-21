@@ -84,6 +84,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "qa:native-editor": "node scripts/qa/native-editor-browser.mjs",
+    "qa:native-editor:integration": "node scripts/qa/native-editor-integration.mjs --all",
     "qa:editor-recovery": "node scripts/qa/editor-recovery-browser.mjs",
     "qa:editor-fixture": "node scripts/qa/editor-recovery-fixture.mjs"
   },

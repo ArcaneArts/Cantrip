@@ -2539,6 +2539,48 @@ describe.sequential("server worktree control plane", () => {
       sequence: 0,
     });
 
+    const boundFilePayload = {
+      intent: "write",
+      operationId: randomUUID(),
+      sequence: 0,
+      binding: {
+        workerId: context.workerId,
+        scratchRootId: context.scratchRootId,
+      },
+      protectedRequest: {
+        formatVersion: 1,
+        keyRevision: 1,
+        envelope: {
+          version: 1,
+          algorithm: "AES-256-GCM",
+          keyRevision: 1,
+          nonce: "AAAAAAAAAAAAAAAA",
+          ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+        },
+      },
+    };
+    const routedBefore = standaloneChatFileOperationCommands.length;
+    for (const binding of [
+      { ...boundFilePayload.binding, workerId: "previous-worker" },
+      { ...boundFilePayload.binding, scratchRootId: randomUUID() },
+    ]) {
+      const staleSave = await app.inject({
+        method: "POST",
+        url: `/api/chats/${chat.id}/files/operation`,
+        payload: { ...boundFilePayload, binding },
+      });
+      expect(staleSave.statusCode, staleSave.body).toBe(409);
+      expect(staleSave.json().error).toContain("another scratch workspace");
+    }
+    expect(standaloneChatFileOperationCommands).toHaveLength(routedBefore);
+    const boundSave = await app.inject({
+      method: "POST",
+      url: `/api/chats/${chat.id}/files/operation`,
+      payload: boundFilePayload,
+    });
+    expect(boundSave.statusCode, boundSave.body).toBe(200);
+    expect(standaloneChatFileOperationCommands).toHaveLength(routedBefore + 1);
+
     const before = standaloneChatTurnCommands.length;
     const allTurnsBefore = chatTurnCommands.length;
     const started = await app.inject({

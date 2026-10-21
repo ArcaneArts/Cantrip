@@ -235,9 +235,36 @@ export const standaloneChatFileOperationIntentSchema = z.enum([
   "archive",
 ]);
 
+export const explorerFileBindingSchema = z
+  .object({
+    workerId: z.string().min(1),
+    projectId: z.string().uuid(),
+    worktreeId: z.string().uuid(),
+  })
+  .strict();
+export type ExplorerFileBinding = z.infer<typeof explorerFileBindingSchema>;
+export const explorerOperationWireRequestSchema = surfaceStreamWireRequestSchema
+  .extend({
+    binding: explorerFileBindingSchema.optional(),
+  })
+  .strict();
+
+export const standaloneChatFileBindingSchema = z
+  .object({
+    workerId: z.string().min(1),
+    scratchRootId: z.string().uuid(),
+  })
+  .strict();
+export type StandaloneChatFileBinding = z.infer<
+  typeof standaloneChatFileBindingSchema
+>;
+
 export const standaloneChatFileWireRequestSchema =
   surfaceStreamWireRequestSchema
-    .extend({ intent: standaloneChatFileOperationIntentSchema })
+    .extend({
+      intent: standaloneChatFileOperationIntentSchema,
+      binding: standaloneChatFileBindingSchema.optional(),
+    })
     .strict();
 
 const standaloneChatFilePathSchema = z.string().max(8_192);

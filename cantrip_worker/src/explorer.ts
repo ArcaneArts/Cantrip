@@ -26,7 +26,6 @@ import {
   explorerMediaFileChunkSchema,
   explorerMediaFileSchema,
   explorerMediaTypeForPath,
-  explorerTextFileForPath,
   type ExplorerDirectoryCommits,
   type ExplorerDirectory,
   type ExplorerEntry,
@@ -37,6 +36,7 @@ import {
   type ExplorerMediaFile,
   type ExplorerMediaFileChunk,
 } from "@cantrip/protocol";
+import { decodeEditableFileText } from "./editable-file-text.js";
 
 const DIRECTORY_LIMIT = 1_000;
 const FILE_SIZE_LIMIT = 2 * 1024 * 1024;
@@ -47,14 +47,6 @@ const execFileAsync = promisify(execFile);
 
 function markdownFile(name: string): boolean {
   return explorerMarkdownFileForPath(name);
-}
-
-function textFile(name: string): boolean {
-  return explorerTextFileForPath(name);
-}
-
-function viewableFile(name: string): boolean {
-  return textFile(name) || explorerMediaTypeForPath(name) !== null;
 }
 
 function fileSearchScore(relativePath: string, query: string): number | null {
@@ -324,7 +316,7 @@ export async function listExplorerDirectory(
         kind,
         size: kind === "file" ? entryMetadata.size : null,
         modifiedAt: entryMetadata.mtime.toISOString(),
-        viewable: kind === "file" && viewableFile(entry.name),
+        viewable: kind === "file",
         markdown: kind === "file" && markdownFile(entry.name),
         symbolicLink,
       } as const;
@@ -578,20 +570,14 @@ export async function readExplorerFile(
   relativePath: string,
 ): Promise<ExplorerFile> {
   const { metadata, targetPath } = await resolveEntry(root, relativePath);
-  if (!metadata.isFile() || !textFile(path.basename(targetPath))) {
+  if (!metadata.isFile()) {
     throw new Error("This file type is not available for preview.");
   }
   if (metadata.size > FILE_SIZE_LIMIT) {
     throw new Error("Text previews are limited to 2 MB.");
   }
   const bytes = await readFile(targetPath);
-  if (bytes.includes(0)) throw new Error("Binary files cannot be previewed.");
-  let content: string;
-  try {
-    content = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  } catch {
-    throw new Error("Only UTF-8 text files can be previewed.");
-  }
+  const content = decodeEditableFileText(bytes);
   return explorerFileSchema.parse({
     path: relativePath,
     content,
@@ -691,6 +677,7 @@ export async function writeExplorerFile(
   if (bytes.byteLength > FILE_SIZE_LIMIT) {
     throw new Error("Text files are limited to 2 MB.");
   }
+  decodeEditableFileText(bytes);
   const { targetPath } = await resolveEntry(root, relativePath);
   const handle = await open(
     targetPath,
@@ -698,7 +685,7 @@ export async function writeExplorerFile(
   );
   try {
     const metadata = await handle.stat();
-    if (!metadata.isFile() || !textFile(path.basename(targetPath))) {
+    if (!metadata.isFile()) {
       throw new Error("This file type is not available for editing.");
     }
     if (metadata.size > FILE_SIZE_LIMIT) {
@@ -726,6 +713,7 @@ export async function writeExplorerFile(
         "This file changed on disk. Reload it before saving your edits.",
       );
     }
+    decodeEditableFileText(currentBytes);
     await handle.truncate(0);
     await handle.writeFile(bytes);
     await handle.sync();

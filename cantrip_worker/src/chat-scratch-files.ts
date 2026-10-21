@@ -31,6 +31,7 @@ import {
   type StandaloneChatFileDownloadKind,
   type StandaloneChatFileDownloadPrepared,
 } from "@cantrip/protocol";
+import { decodeEditableFileText } from "./editable-file-text.js";
 
 const DIRECTORY_ENTRY_LIMIT = 1_000;
 const FILE_PREVIEW_LIMIT = 2 * 1024 * 1024;
@@ -399,10 +400,7 @@ export class ChatScratchFileManager {
           path: entryPath,
           size: kind === "file" ? metadata.size : null,
           symbolicLink,
-          viewable:
-            kind === "file" &&
-            (textFile(entry.name) ||
-              explorerMediaTypeForPath(entry.name) !== null),
+          viewable: kind === "file",
         } as const;
       }),
     );
@@ -424,7 +422,7 @@ export class ChatScratchFileManager {
     const bytes = await readFile(resolved.absolutePath);
     return explorerFileSchema.parse({
       path: relativePath,
-      content: bytes.toString("utf8"),
+      content: decodeEditableFileText(bytes),
       size: bytes.byteLength,
       markdown: markdownFile(relativePath),
       version: fileVersion(bytes),
@@ -485,10 +483,12 @@ export class ChatScratchFileManager {
         "Chat file changed since it was opened. Reload it first.",
       );
     }
+    decodeEditableFileText(current);
     const bytes = Buffer.from(content, "utf8");
     if (bytes.byteLength > FILE_PREVIEW_LIMIT) {
       throw new Error("Chat file content exceeds the write limit.");
     }
+    decodeEditableFileText(bytes);
     const temporary = path.join(
       path.dirname(resolved.absolutePath),
       `.${path.basename(resolved.absolutePath)}.${randomUUID()}.tmp`,

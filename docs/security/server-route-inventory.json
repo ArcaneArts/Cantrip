@@ -1369,7 +1369,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-basic-routes.ts",
-      "line": 167,
+      "line": 177,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/completion/read",
@@ -1382,7 +1382,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-basic-routes.ts",
-      "line": 182,
+      "line": 192,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/composer-draft",
@@ -1395,7 +1395,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-basic-routes.ts",
-      "line": 195,
+      "line": 205,
       "method": "PUT",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/composer-draft",

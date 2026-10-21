@@ -168,7 +168,7 @@ describe("project explorer", () => {
       writeExplorerFile(root, "README.md", "# Stale\n", original.version),
     ).rejects.toThrow("changed on disk");
     await expect(readExplorerFile(root, "image.png")).rejects.toThrow(
-      "not available for preview",
+      "Binary files cannot be previewed.",
     );
     await expect(
       statExplorerMediaFile(root, "image.png"),

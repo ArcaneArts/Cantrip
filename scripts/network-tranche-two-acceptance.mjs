@@ -236,7 +236,8 @@ export const featureMatrix = [
       ),
       evidence(
         "cantrip_app/src/components/explorer/persistent-explorer-code-ownership.test.tsx",
-        "promotes a prewarmed owner without replacing its editor",
+        "keeps the same dirty document session, selection, and undo history while inactive",
+        "creates a workbench only after the explicit Open in VS Code action",
       ),
       evidence(
         "cantrip_app/src/components/explorer/explorer-code-editor-lifecycle.test.tsx",
