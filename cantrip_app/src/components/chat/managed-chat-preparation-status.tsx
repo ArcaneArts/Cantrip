@@ -73,8 +73,16 @@ export function ManagedChatPreparationStatus({
         ? 1000
         : false,
   });
+  // Console preparation begins only after the agent thread is usable. Its
+  // optional terminal can fail or exit while chat continues to work, so the
+  // chat notice should finish normally instead of retaining a terminal error.
+  const phase =
+    state.data?.phase === "console" ||
+    (state.data?.phase === "failed" && state.data.failedPhase === "console")
+      ? "ready"
+      : state.data?.phase;
   const readyKey =
-    !state.error && state.data?.phase === "ready"
+    !state.error && state.data && phase === "ready"
       ? JSON.stringify([identityKey, chatId, state.data.generation])
       : null;
   useEffect(() => {
@@ -112,26 +120,18 @@ export function ManagedChatPreparationStatus({
           : {
               pending: "Preparing agent session…",
               thread: "Preparing agent session…",
-              console: "Starting attached CLI…",
               ready: "Session prepared",
               "needs-model":
                 "Choose or configure a model in Settings → Models to start this session.",
-              failed:
-                state.data?.failedPhase === "console"
-                  ? "Session prepared, but the CLI is unavailable."
-                  : "The agent session could not be prepared.",
-            }[state.data!.phase]}
+              failed: "The agent session could not be prepared.",
+            }[phase!]}
       </span>
-      {!state.error &&
-      state.data?.phase === "needs-model" &&
-      onConfigureModels ? (
+      {!state.error && phase === "needs-model" && onConfigureModels ? (
         <Button variant="ghost" onClick={onConfigureModels}>
           Configure models
         </Button>
       ) : null}
-      {state.error ||
-      state.data?.phase === "failed" ||
-      state.data?.phase === "needs-model" ? (
+      {state.error || phase === "failed" || phase === "needs-model" ? (
         <Button
           variant="ghost"
           disabled={retrying}
@@ -156,7 +156,7 @@ export function ManagedChatPreparationStatus({
             }
           }}
         >
-          {!state.error && state.data?.phase === "needs-model"
+          {!state.error && phase === "needs-model"
             ? "Check again"
             : "Retry preparation"}
         </Button>
