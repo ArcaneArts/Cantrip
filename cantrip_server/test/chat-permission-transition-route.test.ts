@@ -35,6 +35,7 @@ async function fixture() {
         desired: null,
         pending: [],
       }),
+      lookup: vi.fn().mockResolvedValue(null),
     },
   };
   const bridge = {
@@ -53,6 +54,83 @@ async function fixture() {
   return { app, repository, bridge };
 }
 describe("bound permission setting route", () => {
+  it("returns a pending conflict from the actual rejected command instead of a 500", async () => {
+    const f = await fixture();
+    try {
+      f.bridge.request.mockRejectedValue(
+        new Error(
+          "Native command admission rejected: permission-transition-pending",
+        ),
+      );
+      f.repository.nativeCommands.lookup.mockResolvedValue({
+        chatId: "chat",
+        method: "thread/settings/update",
+        status: "rejected",
+        rejectionCode: "permission-transition-pending",
+      });
+      const response = await f.app.inject({
+        method: "PATCH",
+        url: "/api/chats/chat/permission-profile",
+        payload: {
+          id: ":yolo",
+          operationId: "operation",
+          bindingId: "binding",
+          expectedRevision: "0",
+        },
+      });
+      expect(f.bridge.request).toHaveBeenCalledTimes(1);
+      expect(f.repository.nativeCommands.lookup).toHaveBeenCalledWith(
+        "owner",
+        "worker",
+        "operation",
+      );
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toEqual({
+        code: "permission-transition-pending",
+        error:
+          "A permission change is already pending. Check the permission menu for its status.",
+      });
+    } finally {
+      await f.app.close();
+    }
+  });
+  it.each([
+    null,
+    {
+      chatId: "another-chat",
+      method: "thread/settings/update",
+      status: "rejected",
+      rejectionCode: "permission-transition-pending",
+    },
+    {
+      chatId: "chat",
+      method: "thread/settings/update",
+      status: "applied",
+      rejectionCode: null,
+    },
+  ])(
+    "does not invent a rejection when the command did not reject: %s",
+    async (record) => {
+      const f = await fixture();
+      try {
+        f.bridge.request.mockRejectedValue(new Error("worker disconnected"));
+        f.repository.nativeCommands.lookup.mockResolvedValue(record);
+        const response = await f.app.inject({
+          method: "PATCH",
+          url: "/api/chats/chat/permission-profile",
+          payload: {
+            id: ":yolo",
+            operationId: "operation",
+            bindingId: "binding",
+            expectedRevision: "0",
+          },
+        });
+        expect(response.statusCode).toBe(500);
+      } finally {
+        await f.app.close();
+      }
+    },
+  );
   it("routes an exact-source durable transition and does not mutate confirmed selection or probe capability", async () => {
     const f = await fixture();
     try {

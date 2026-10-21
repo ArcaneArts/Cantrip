@@ -31,6 +31,30 @@ const preference = chatPermissionProfileStateSchema.parse({
   forcedByWorktreePolicy: true,
 });
 describe("bound permission presentation", () => {
+  it.each(["rejected", "uncertain"] as const)(
+    "keeps the accepted choice visible after a competing request is %s",
+    (status) => {
+      const current = session();
+      current.localPermission = {
+        permissionSelection: { id: ":workspace", expectedRevision: "0" },
+        status,
+      } as NativeSettingsController["localPermission"];
+      const result = nativePermissionControlState(current, {
+        ...preference,
+        transition: {
+          selectedId: ":yolo",
+          resolvedSelectedId: ":yolo",
+          effectiveId: ":yolo",
+          expectedRevision: "0",
+          operationId: "accepted-permission",
+          status: "dispatched",
+        },
+      });
+      expect(result.requestedLabel).toBe("YOLO mode");
+      expect(result.status).toBe("queued");
+      expect(result.confirmedPresetId).toBe(":workspace");
+    },
+  );
   it("does not replace actual native security with a requested or Primary-forced profile label", () => {
     const result = nativePermissionControlState(session(), preference);
     expect(result.confirmedPresetId).toBe(":workspace");

@@ -194,12 +194,38 @@ export function useNativeSettingsController(input: {
         }),
     });
   };
-  const submitPermission = (
+  const submitPermission = async (
     id: string | null,
     expectedRevision: string,
     expectedBindingId: string,
-  ) =>
-    submitOperation({
+  ) => {
+    // Selecting the already accepted choice keeps that request. A different
+    // choice or an uncertain outcome still goes through the real mutation.
+    const lastLocal = [...local]
+      .reverse()
+      .find((entry) => entry.permissionSelection);
+    const pending = [...(observed.state.data?.pending ?? [])]
+      .reverse()
+      .find((entry) => entry.intent.permissionTransition);
+    if (
+      identity &&
+      clientSessionIdentityMatches(identity) &&
+      binding?.bindingId === expectedBindingId &&
+      ((lastLocal?.identity === identity &&
+        lastLocal.bindingId === expectedBindingId &&
+        lastLocal.status === "queued" &&
+        lastLocal.permissionSelection?.id === id &&
+        lastLocal.permissionSelection.expectedRevision === expectedRevision) ||
+        (pending?.bindingId === expectedBindingId &&
+          (pending.status === "accepted" || pending.status === "dispatched") &&
+          pending.intent.permissionTransition?.selectedId === id &&
+          pending.intent.permissionTransition.expectedRevision ===
+            expectedRevision))
+    ) {
+      setUpdateError(null);
+      return null;
+    }
+    return submitOperation({
       patch: {},
       expectedBindingId,
       permissionSelection: { id, expectedRevision },
@@ -216,6 +242,7 @@ export function useNativeSettingsController(input: {
           request,
         }),
     });
+  };
   const pendingPatches = useMemo(() => {
     if (!binding) return [];
     const result: NativeSettingsPatch[] = observed.intents
