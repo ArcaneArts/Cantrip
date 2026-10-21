@@ -221,6 +221,67 @@ afterEach(async () => {
   await act(async () => cleanups.splice(0).forEach((cleanup) => cleanup()));
 });
 describe("bound GUI native model picker", () => {
+  it("keeps an acknowledged permission choice when selected again", async () => {
+    const mounted = await mount();
+    await act(async () => {
+      await mounted
+        .controller()
+        .session.submitPermission(":yolo", "0", "binding");
+    });
+    await act(async () => {
+      await mounted
+        .controller()
+        .session.submitPermission(":yolo", "0", "binding");
+    });
+    expect(runtime.sendPermission).toHaveBeenCalledTimes(1);
+    expect(mounted.controller().session.localPermission?.status).toBe("queued");
+    await act(async () => {
+      await mounted
+        .controller()
+        .session.submitPermission(":workspace", "0", "binding");
+    });
+    expect(runtime.sendPermission).toHaveBeenCalledTimes(2);
+  });
+  it.each(["dispatched", "uncertain"] as const)(
+    "only reuses a confirmed pending choice from the current source (%s)",
+    async (status) => {
+      const current = observed();
+      current.state.data.pending = [
+        {
+          bindingId: binding.bindingId,
+          status,
+          desiredRevision: "1",
+          intent: {
+            operationId: "existing-permission",
+            permissionTransition: {
+              selectedId: ":yolo",
+              expectedRevision: "0",
+            },
+          },
+        },
+      ] as NativeSettingsState["pending"];
+      runtime.observed = current;
+      const mounted = await mount();
+      await act(async () => {
+        await mounted
+          .controller()
+          .session.submitPermission(":yolo", "0", "binding");
+      });
+      expect(runtime.sendPermission).toHaveBeenCalledTimes(
+        status === "dispatched" ? 0 : 1,
+      );
+      current.state.data.pending[0]!.bindingId = "retired-binding";
+      await mounted.rerender();
+      await act(async () => {
+        await mounted
+          .controller()
+          .session.submitPermission(":yolo", "1", "binding");
+      });
+      expect(runtime.sendPermission).toHaveBeenCalledTimes(
+        status === "dispatched" ? 1 : 2,
+      );
+    },
+  );
   it("shares one source-owned submission lane across permissions and model/mode controls", async () => {
     const mounted = await mount();
     let release!: (value: unknown) => void;

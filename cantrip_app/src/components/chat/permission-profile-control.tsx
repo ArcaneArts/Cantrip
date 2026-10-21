@@ -83,6 +83,10 @@ export function PermissionProfileControl({
         ? permissionProfileLabel(state.selectedId)
         : "Permissions";
   const actualId = native ? native.confirmedPresetId : state?.effectiveId;
+  const queued = native?.status === "queued";
+  const queuedLabel = queued
+    ? `${native.requestedLabel ?? "Permission change"} after this turn`
+    : null;
   const title = native
     ? `${selectedLabel}${native.requestedLabel ? `; requested ${native.requestedLabel}` : ""}${state?.forcedByWorktreePolicy ? `; Primary policy requires ${permissionProfileLabel(state.effectiveId)}` : ""}`
     : !available
@@ -100,6 +104,7 @@ export function PermissionProfileControl({
           variant="ghost"
           className={cn(
             "size-7 shrink-0 text-foreground/80",
+            queued && "w-auto min-w-0 shrink gap-1.5 px-2",
             actualId &&
               isUnrestrictedProfile(actualId) &&
               "text-amber-600 dark:text-amber-400",
@@ -108,11 +113,16 @@ export function PermissionProfileControl({
           aria-label={`Agent permissions: ${selectedLabel}`}
           title={title}
         >
-          {pending ? (
+          {pending || queued ? (
             <Loader2 className="size-3.5 animate-spin" />
           ) : (
             <Lock className="size-3.5" />
           )}
+          {queuedLabel ? (
+            <span role="status" className="truncate text-xs">
+              {queuedLabel}
+            </span>
+          ) : null}
         </Button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
@@ -210,9 +220,13 @@ export function PermissionProfileControl({
               {native.requestedLabel ? (
                 <p>Requested: {native.requestedLabel}</p>
               ) : null}
-              {native.status === "requesting" || native.status === "queued" ? (
+              {native.status === "requesting" ? (
+                <p role="status">Saving permission change…</p>
+              ) : null}
+              {queued ? (
                 <p role="status">
-                  Permission change is awaiting native confirmation.
+                  {native.requestedLabel ?? "The permission change"} will apply
+                  when the current turn and its agents finish.
                 </p>
               ) : null}
               {native.status === "rejected" ? (

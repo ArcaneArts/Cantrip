@@ -85,5 +85,31 @@ describe("permissionProfileLabel", () => {
     expect(markup).toContain("Agent permissions: Workspace");
     expect(markup).toContain("requested YOLO mode");
     expect(markup).not.toContain("Agent permissions: YOLO mode");
+    expect(markup).toContain("YOLO mode after this turn");
+    expect(markup).toContain('role="status"');
+    expect(markup).toContain("animate-spin");
+  });
+  it("clears the queued notice when YOLO mode is confirmed", () => {
+    const markup = renderToStaticMarkup(
+      createElement(PermissionProfileControl, {
+        pending: false,
+        state: undefined,
+        onChange: () => undefined,
+        native: {
+          confirmed: {
+            profileId: ":danger-full-access",
+            approvalPolicy: "never",
+            approvalsReviewer: "user",
+            sandboxPolicy: { type: "dangerFullAccess" },
+          },
+          confirmedPresetId: ":yolo",
+          requestedLabel: "YOLO mode",
+          status: "applied",
+        },
+      }),
+    );
+    expect(markup).toContain("Agent permissions: YOLO mode");
+    expect(markup).not.toContain("after this turn");
+    expect(markup).not.toContain("animate-spin");
   });
 });
