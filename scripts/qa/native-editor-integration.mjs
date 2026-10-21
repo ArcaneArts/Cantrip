@@ -620,6 +620,51 @@ for (const [name, engine, mobile] of selected) {
     await page.screenshot({
       path: path.join(fixture.directory, "native-editor.png"),
     });
+    const revokedWindow = await context.newPage();
+    const revokedSearch = await page.evaluate(() =>
+      window.__qaRepositoryFixture.popout("second.txt"),
+    );
+    await revokedWindow.goto(`${fixture.origin}/${revokedSearch}`, {
+      waitUntil: "domcontentloaded",
+    });
+    const revokedInput = revokedWindow.getByRole("textbox", {
+      name: "Edit second.txt",
+      exact: true,
+    });
+    await revokedInput.waitFor();
+    await revokedInput.fill("private draft from the retired account");
+    const beforeRevocation = await readFile(
+      path.join(fixture.repositorySeed.repository, "second.txt"),
+      "utf8",
+    );
+    await page.evaluate(() => window.__qaRepositoryFixture.revokeOwner());
+    await revokedWindow
+      .getByText(
+        "The editor's account changed. Reopen this file from Cantrip.",
+        { exact: true },
+      )
+      .waitFor();
+    assert.equal(
+      await revokedInput.inputValue(),
+      "private draft from the retired account",
+    );
+    await revokedInput.press("ControlOrMeta+s");
+    await revokedWindow
+      .getByText("The editor window is closed.", { exact: true })
+      .waitFor();
+    assert.equal(
+      await revokedInput.inputValue(),
+      "private draft from the retired account",
+    );
+    assert.equal(
+      await readFile(
+        path.join(fixture.repositorySeed.repository, "second.txt"),
+        "utf8",
+      ),
+      beforeRevocation,
+    );
+    await revokedWindow.close();
+    record("native.account-revocation", { status: "pass" });
     assert.deepEqual(errors, []);
   } catch (error) {
     record("native.failed", {

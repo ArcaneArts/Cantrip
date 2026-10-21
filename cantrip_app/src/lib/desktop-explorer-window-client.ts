@@ -15,6 +15,7 @@ type PendingRequest = {
 };
 
 export interface DesktopExplorerWindowClientCallbacks {
+  onContextRevoked?(error: string): void;
   onVsCodeLaunch?(
     launchId: string,
     context: DesktopExplorerWindowContext,
@@ -152,11 +153,18 @@ export class DesktopExplorerWindowClient {
   }
 
   readonly #onMessage = (event: MessageEvent<unknown>) => {
+    if (this.#disposed) return;
     const response = event.data;
     if (
       !isDesktopExplorerWindowResponse(response) ||
       response.launchId !== this.#launchId
     ) {
+      return;
+    }
+    if (response.type === "context.revoked") {
+      this.#context = null;
+      this.dispose();
+      this.#callbacks.onContextRevoked?.(response.error);
       return;
     }
     if (response.type === "launch.ready") {

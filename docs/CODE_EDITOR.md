@@ -38,7 +38,7 @@ language without reopening the file.
 
 Document sessions retain text, selection, scrolling, and undo history across
 ordinary tab and mode changes. Clean caches are bounded; dirty documents are
-not silently evicted. Account/server changes clear their cached sessions.
+not silently evicted. Views reset their sessions when switching account/server.
 Sessions distinguish workers, projects, worktrees, and paths. Standalone Chat
 reads and writes pin the worker and scratch root that supplied the document.
 The server rejects requests whose expected checkout or scratch binding moved.
@@ -48,6 +48,15 @@ when the Chat has moved; an actual read or save failure retains the draft.
 Confirmed closing/discarding removes the retained draft. Account identity
 changes clear these in-memory sessions, and hidden dirty Chat drafts still
 participate in the page-unload warning.
+
+Native file windows also intercept Tauri's titlebar close request. Clean windows
+close immediately; dirty documents or pending saves require **Keep editing** or
+**Close and discard**. A failed native close keeps the document available and
+offers a retry. Explicit VS Code-only windows retain their existing close path.
+If an Explorer popout's account/server changes, its file authority retires and
+late responses cannot rebind it. Dirty buffers remain in their original window
+and scope for copying or explicit discard; they cannot save through another
+account. Clean retired windows clear their cache and close.
 
 File access uses the existing encrypted app-to-server-to-worker operations and
 loaded revision checks. Supported BOM and line endings are preserved across
@@ -60,6 +69,10 @@ confirm discarding the draft. Reconnects and background reads cannot replace
 dirty text. Each Save request captures its submitted text. Repeated requests
 wait for earlier saves and use their returned revision; typing alone never
 schedules another save.
+A failed save remains dirty even if the user has reverted the text to its
+loaded baseline: the write may have reached disk before its acknowledgement
+failed. An explicit retry still uses the loaded revision, and background reads
+or clean-cache eviction cannot discard that uncertain draft.
 
 ## VS Code remains available
 
@@ -96,6 +109,7 @@ After normal workspace setup, run:
 pnpm qa:native-editor
 pnpm qa:native-editor:integration
 pnpm qa:native-editor:bundle
+pnpm qa:native-editor:close
 ```
 
 The component fixture tests Chromium and WebKit at desktop and phone sizes,
@@ -119,6 +133,16 @@ verifies that the Primary file did not change.
 It also provisions a standalone Chat through the normal API, seeds a disposable
 scratch file after the worker creates its root, and reads/saves that file using
 the actual Chat file-window route.
+The account-revocation case also proves that an independent popout retains its
+draft while rejected saves leave the worker file unchanged.
+
+The close runner uses the actual installed Tauri JavaScript SDK against an
+explicit simulated native host in Chromium/WebKit desktop/phone layouts. It
+checks cancellation, repeated requests, failed-close retry, pending saves,
+actual disposable disk writes, and clean closing. This does not replace a
+native Tauri shell run. The Tauri build validates the capability declarations;
+file windows have narrowly scoped close/destroy permission, and Chat file
+windows share the existing popout capabilities.
 
 The bundle command emits `.qa/native-editor-bundle/report.json` with production
 asset sizes and module attribution. Whole shared chunks are not incremental
@@ -136,13 +160,14 @@ latency guarantees, and the broad repository checks were running concurrently.
 The full production-client fixture records its own file-open/API timings,
 which also include encrypted worker connection setup.
 
-The corresponding production attribution recorded 19,509 rendered characters
+The corresponding production attribution recorded 19,644 rendered characters
 for the ten owned client editor modules before final chunk minification. The
 standalone worker was 11,825 raw / 4,361 gzip bytes; its two lazy grammar families
 were 6,386 raw / 2,849 gzip bytes combined. Editor CSS was 3,102 raw / 1,098 gzip
-bytes. The chunk named `native-code-editor` also contained 227 other modules;
-its complete size is not the incremental editor cost. Preserve the generated
-report when comparing later builds rather than inferring cost from filenames.
+bytes. The shared chunk containing those editor modules also contained 229
+other modules; its complete size is not the incremental editor cost. Preserve
+the generated report when comparing later builds rather than inferring cost
+from filenames.
 
 The integration runner accepts `--phone` for a focused Chromium phone run and
 defaults to Chromium desktop when invoked directly without `--all`. Phone

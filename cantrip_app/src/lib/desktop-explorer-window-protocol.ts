@@ -49,6 +49,7 @@ export type DesktopExplorerWindowRequest = (
 ) & { path?: string; requestedAtMs?: number };
 
 export type DesktopExplorerWindowResponse =
+  | { type: "context.revoked"; launchId: string; error: string }
   | {
       launchId: string;
       nextLaunchId: string;
@@ -165,6 +166,8 @@ export function isDesktopExplorerWindowResponse(
   ) {
     return false;
   }
+  if (message.type === "context.revoked")
+    return typeof message.error === "string";
   if (
     message.type === "launch.ready" ||
     message.type === "editor.vscode-launch"

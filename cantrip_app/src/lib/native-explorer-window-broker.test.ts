@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const state = vi.hoisted(() => ({
   tauri: false,
   session: { serverId: "server-one", user: { id: "owner-one" } },
+  identityListeners: new Set<() => void>(),
 }));
 const api = vi.hoisted(() => ({
   getExplorerFile: vi.fn(),
@@ -15,6 +16,10 @@ vi.mock("@/lib/api", () => api);
 vi.mock("@/lib/desktop-code", () => ({}));
 vi.mock("@/lib/client-session", () => ({
   getClientSession: () => state.session,
+  onClientSessionIdentityChanged: (listener: () => void) => {
+    state.identityListeners.add(listener);
+    return () => state.identityListeners.delete(listener);
+  },
 }));
 vi.mock("@tauri-apps/api/core", async (original) => ({
   ...(await original<typeof import("@tauri-apps/api/core")>()),
@@ -39,6 +44,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   state.tauri = false;
   state.session = { serverId: "server-one", user: { id: "owner-one" } };
+  state.identityListeners.clear();
   api.getExplorerFile.mockImplementation(async (_id, path) => ({
     content: "original",
     path,
@@ -70,6 +76,7 @@ async function connect() {
     onEditorError: vi.fn(),
     onLaunchError: vi.fn(),
     onVsCodeLaunch: vi.fn(),
+    onContextRevoked: vi.fn(),
   };
   const client = new DesktopExplorerWindowClient(broker.launchId, callbacks);
   cleanups.push(() => client.dispose());
@@ -79,6 +86,56 @@ async function connect() {
 }
 
 describe("native desktop file broker", () => {
+  it.each(["server", "account"] as const)(
+    "revokes the popup and rejects pending reads when its %s changes",
+    async (scope) => {
+      let finish!: (value: {
+        content: string;
+        path: string;
+        version: string;
+      }) => void;
+      api.getExplorerFile.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      );
+      const { broker, client, callbacks } = await connect();
+      const pending = client.readFile();
+      const rejected = expect(pending).rejects.toThrow("closed");
+      await vi.waitFor(() =>
+        expect(api.getExplorerFile).toHaveBeenCalledTimes(1),
+      );
+      state.session =
+        scope === "server"
+          ? { serverId: "server-two", user: { id: "owner-one" } }
+          : { serverId: "server-one", user: { id: "owner-two" } };
+      for (const listener of [...state.identityListeners]) listener();
+      await rejected;
+      expect(callbacks.onContextRevoked).toHaveBeenCalledWith(
+        expect.stringContaining("account changed"),
+      );
+      expect(broker.failed).toBe(true);
+      finish({
+        content: "late private response",
+        path: "src/main.ts",
+        version: "one",
+      });
+      await expect(client.readFile()).rejects.toThrow("closed");
+      expect(state.identityListeners.size).toBe(0);
+    },
+  );
+
+  it("keeps the native broker alive when session refresh retains its account and server", async () => {
+    const { client, callbacks, broker } = await connect();
+    state.session = { serverId: "server-one", user: { id: "owner-one" } };
+    for (const listener of state.identityListeners) listener();
+    await expect(client.readFile()).resolves.toMatchObject({
+      content: "original",
+    });
+    expect(callbacks.onContextRevoked).not.toHaveBeenCalled();
+    expect(broker.failed).toBe(false);
+  });
   it("creates and retires a legacy broker only after an explicit VS Code request", async () => {
     state.tauri = true;
     const dispose = vi.fn().mockResolvedValue(undefined);

@@ -165,6 +165,64 @@ describe("endpoint document sessions", () => {
     });
     expect(session.dirty).toBe(false);
   });
+
+  it("keeps an undone draft dirty after a write whose acknowledgement fails", async () => {
+    const fs = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const path = await import("node:path");
+    const directory = await fs.mkdtemp(
+      path.join(tmpdir(), "cantrip-editor-ack-"),
+    );
+    const file = path.join(directory, "file.txt");
+    try {
+      await fs.writeFile(file, "original");
+      const store = new EditorSessionStore(1);
+      const session = store.open("id", "original", "v1");
+      session.edit("submitted");
+      let fail!: (error: Error) => void;
+      let wrote!: () => void;
+      const written = new Promise<void>((resolve) => {
+        wrote = resolve;
+      });
+      const pending = session.save(async ({ content }) => {
+        await fs.writeFile(file, content);
+        wrote();
+        return new Promise((_resolve, reject) => {
+          fail = reject;
+        });
+      });
+      const rejected = expect(pending).rejects.toThrow("acknowledgement lost");
+      await written;
+      session.edit("original");
+      fail(new Error("acknowledgement lost"));
+      await rejected;
+      expect(await fs.readFile(file, "utf8")).toBe("submitted");
+      expect(session.text).toBe("original");
+      expect(session.dirty).toBe(true);
+      session.reconcile("submitted", "v2");
+      store.open("other", "other", "v1");
+      store.open("third", "third", "v1");
+      expect(store.get("id")).toBe(session);
+      expect(session.text).toBe("original");
+      expect(session.version).toBe("v1");
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("allows an explicit retry of reverted text after a failed save", async () => {
+    const session = new EditorDocumentSession("id", "original", "v1");
+    session.edit("submitted");
+    const pending = session.save(async () => {
+      throw new Error("write failed");
+    });
+    session.edit("original");
+    await expect(pending).rejects.toThrow("write failed");
+    const retry = vi.fn(async () => ({ version: "v1" }));
+    await session.save(retry);
+    expect(retry).toHaveBeenCalledWith({ content: "original", version: "v1" });
+    expect(session.dirty).toBe(false);
+  });
   it("round-trips mixed newline conventions without edits", () => {
     const content = "a\r\nb\nc\rd";
     const format = textFileFormat(content);

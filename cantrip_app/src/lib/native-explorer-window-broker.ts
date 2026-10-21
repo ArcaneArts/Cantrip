@@ -3,7 +3,10 @@ import {
   loadExplorerMedia,
   saveExplorerFile,
 } from "@/lib/api";
-import { getClientSession } from "@/lib/client-session";
+import {
+  getClientSession,
+  onClientSessionIdentityChanged,
+} from "@/lib/client-session";
 import {
   desktopExplorerWindowChannelName,
   isDesktopExplorerWindowRequest,
@@ -35,6 +38,7 @@ export function createNativeExplorerWindowBroker(
     desktopExplorerWindowChannelName(launchId),
   );
   let disposed = false;
+  let removeIdentityListener: (() => void) | undefined;
   let vsCodeBroker: DesktopExplorerWindowBroker | null = null;
   const send = (message: DesktopExplorerWindowResponse) => {
     if (!disposed) channel.postMessage(message);
@@ -161,7 +165,18 @@ export function createNativeExplorerWindowBroker(
   };
   const dispose = async () => {
     if (disposed) return;
+    const current = getClientSession();
+    if (
+      current?.serverId !== context.serverId ||
+      current?.user.id !== context.ownerId
+    )
+      channel.postMessage({
+        type: "context.revoked",
+        launchId,
+        error: "The editor's account changed. Reopen this file from Cantrip.",
+      } satisfies DesktopExplorerWindowResponse);
     disposed = true;
+    removeIdentityListener?.();
     channel.removeEventListener("message", receive);
     channel.close();
     options.signal?.removeEventListener("abort", abort);
@@ -171,6 +186,17 @@ export function createNativeExplorerWindowBroker(
     void dispose();
   };
   channel.addEventListener("message", receive);
+  removeIdentityListener = onClientSessionIdentityChanged(() => {
+    const current = getClientSession();
+    if (
+      current?.serverId !== context.serverId ||
+      current?.user.id !== context.ownerId
+    )
+      // Authority retires before legacy cleanup, which the
+      // retired account might no longer authorize. Explicit dispose callers
+      // still receive cleanup errors.
+      void dispose().catch(() => undefined);
+  });
   options.signal?.addEventListener("abort", abort, { once: true });
   if (options.signal?.aborted) abort();
   return {

@@ -61,6 +61,7 @@ import { getExplorers as qaGetExplorers, createExplorer as qaCreateExplorer } fr
 import { createDesktopExplorerWindowBroker as qaCreateFileBroker } from '@/lib/desktop-explorer-window-broker';
 import { desktopExplorerFileSearch as qaFileSearch, desktopStandaloneChatFileSearch as qaChatFileSearch } from '@/lib/desktop-popout';
 import { createStandaloneChat as qaCreateChat } from '@/lib/api/chats';
+import { clearClientSession as qaClearSession } from '@/lib/client-session';
 const qaFileBrokers = new Set();
 let qaProjectId = sessionStorage.getItem("__qaRepositoryProjectId");
 globalThis.__qaRepositoryFixture = {
@@ -70,6 +71,7 @@ globalThis.__qaRepositoryFixture = {
   async createWorktree(input) { return qaCreateWorktree(qaProjectId, input); },
   async createChat() { return qaCreateChat('Native editor QA Chat'); },
   chatFileSearch(chatId, path) { return qaChatFileSearch({ chatId, path }); },
+  revokeOwner() { qaClearSession(); },
   async popout(path, worktreeId) {
     const explorer = worktreeId
       ? await qaCreateExplorer(qaProjectId, 'Native editor worktree QA', worktreeId, undefined, undefined, { attachToTabLayout: false })

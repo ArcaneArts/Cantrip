@@ -235,6 +235,44 @@ describe("native Explorer document integration", () => {
     );
     expect(header().dirty).toBe(false);
   });
+  it("keeps reverted text visibly dirty and retryable after an uncertain save", async () => {
+    await render();
+    await edit("submitted draft");
+    let fail!: (error: Error) => void;
+    api.saveExplorerFile.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+    let pending!: Promise<boolean>;
+    await act(async () => {
+      pending = header().save();
+    });
+    await edit("original\n");
+    await act(async () => {
+      fail(new Error("acknowledgement lost"));
+      expect(await pending).toBe(false);
+    });
+    await settle();
+    expect(input().session.dirty).toBe(true);
+    expect(header().dirty).toBe(true);
+    expect((state.lifecycle as ExplorerLifecycleActions).dirty).toBe(true);
+    await act(async () => {
+      expect(await header().save()).toBe(true);
+    });
+    expect(api.saveExplorerFile).toHaveBeenCalledTimes(2);
+    expect(api.saveExplorerFile).toHaveBeenLastCalledWith(
+      summary.id,
+      { content: "original\n", path: "source.ts", version: "version-one" },
+      {
+        workerId: summary.activeWorkerId,
+        projectId: summary.projectId,
+        worktreeId: summary.worktreeId,
+      },
+    );
+    expect(header().dirty).toBe(false);
+  });
   it("keeps a dirty draft when a fresh server snapshot arrives", async () => {
     await render();
     await edit("private draft");
