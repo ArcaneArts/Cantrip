@@ -487,6 +487,8 @@ export interface ManagedExecutionGateHandler {
 }
 
 export interface ManagedNativeGuiCommand {
+  /** Editing the objective does not authorize resuming paused automation. */
+  goalObjectiveOnly?: boolean;
   permissionTransition?: PermissionTransition;
   operationId?: string;
   /** Server-issued settings source; metadata, never a native API parameter. */

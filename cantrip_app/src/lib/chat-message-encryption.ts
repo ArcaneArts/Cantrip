@@ -6,6 +6,7 @@ import {
   encryptQueuedPromptProtectedContent,
 } from "@cantrip/crypto";
 import {
+  chatGoalCreateSchema,
   chatMessageContentSchema,
   chatMessageSchema,
   encryptedQueuedPromptSchema,
@@ -65,6 +66,75 @@ function messageContent(text: string, attachments: ChatAttachmentSummary[]) {
       attachment,
     })),
   ]);
+}
+
+export async function protectChatGoalObjective(
+  objective: string,
+  options: TrustedOptions = {},
+) {
+  objective = chatGoalCreateSchema.shape.objective.parse(objective);
+  const context = encryptionContext(options);
+  const componentKey = context.service.componentKey({
+    component: "chat-content",
+    identity: context.identity,
+    keyRevision: context.keyRevision,
+  });
+  const id = crypto.randomUUID();
+  const classification = {
+    role: "user" as const,
+    mode: "goal" as const,
+    attachmentIds: [],
+  };
+  try {
+    return chatMessageOpaqueContentSchema.parse({
+      id,
+      classification,
+      protectedContent: await encryptChatMessageProtectedContent({
+        ownerId: context.identity.ownerId,
+        messageId: id,
+        keyRevision: context.keyRevision,
+        componentKey,
+        content: {
+          version: 1,
+          classification,
+          content: messageContent(objective, []),
+        },
+      }),
+      reasoningEffort: null,
+      idempotencyKey: `goal-edit:${id}`,
+    });
+  } finally {
+    clearSensitiveBytes(componentKey);
+  }
+}
+
+export async function openChatGoalObjective(
+  raw: unknown,
+  options: TrustedOptions = {},
+) {
+  const message = chatMessageOpaqueContentSchema.parse(raw);
+  const context = encryptionContext(options);
+  const componentKey = context.service.componentKey({
+    component: "chat-content",
+    identity: context.identity,
+    keyRevision: message.protectedContent.keyRevision,
+  });
+  try {
+    const opened = await decryptChatMessageProtectedContent({
+      ownerId: context.identity.ownerId,
+      messageId: message.id,
+      keyRevision: message.protectedContent.keyRevision,
+      componentKey,
+      encrypted: message.protectedContent,
+      publicClassification: message.classification,
+    });
+    return chatMessageContentSchema
+      .parse(opened.content)
+      .flatMap((item) => (item.type === "text" ? [item.text] : []))
+      .join("\n\n");
+  } finally {
+    clearSensitiveBytes(componentKey);
+  }
 }
 
 export async function createEncryptedChatTurn(

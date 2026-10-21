@@ -265,7 +265,8 @@ export interface CodexRuntime {
   ): Promise<ChatGoalResponse>;
   updateGoal(
     options: GoalRuntimeOptions & {
-      status: "active" | "paused";
+      status?: "active" | "paused";
+      objective?: string;
       threadId: string;
       configureTaskPermissions?: boolean;
     },

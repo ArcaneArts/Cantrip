@@ -720,6 +720,7 @@ export class ManagedNativeCommandSession {
     const operationId = command.operationId ?? randomUUID();
     const operation: ManagedNativeOperation = {
       operationId,
+      ...(command.goalObjectiveOnly ? { goalObjectiveOnly: true } : {}),
       ...(command.settingsBindingId === undefined
         ? {}
         : { settingsBindingId: command.settingsBindingId }),

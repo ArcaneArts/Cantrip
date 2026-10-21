@@ -6,6 +6,8 @@ import type { ClientSessionContext } from "./client-session";
 import { ClientEncryptionService } from "./client-encryption";
 import {
   createEncryptedChatTurn,
+  protectChatGoalObjective,
+  openChatGoalObjective,
   openChatMessageOpaqueSummary,
   openQueuedPromptOpaqueSummary,
   replaceEncryptedQueuedPrompt,
@@ -29,6 +31,20 @@ function readyService() {
 }
 
 describe("ordinary chat trusted-endpoint encryption", () => {
+  it("encrypts goal edits and opens the full objective only at the trusted endpoint", async () => {
+    const options = { service: readyService(), session };
+    const objective =
+      "SENTINEL private goal\nKeep the paused state and current progress.";
+    const protectedObjective = await protectChatGoalObjective(
+      objective,
+      options,
+    );
+    expect(JSON.stringify(protectedObjective)).not.toContain("SENTINEL");
+    await expect(
+      openChatGoalObjective(protectedObjective, options),
+    ).resolves.toBe(objective);
+    await expect(protectChatGoalObjective("   ", options)).rejects.toThrow();
+  });
   it("keeps the native input envelope and shared revision when editing or freezing a CLI queue entry", async () => {
     const options = { service: readyService(), session };
     const turn = await createEncryptedChatTurn(

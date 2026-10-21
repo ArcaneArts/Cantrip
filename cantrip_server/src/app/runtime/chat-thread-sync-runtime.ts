@@ -176,7 +176,6 @@ export function createChatThreadSyncRuntime({
     ) {
       return;
     }
-    await reconcileChatThread(context);
     if (changes.includes("goal")) {
       publishChatInvalidation(chatId, "chat-goal", null, context);
     }
@@ -186,6 +185,8 @@ export function createChatThreadSyncRuntime({
     if (changes.includes("plan")) {
       publishChatInvalidation(chatId, "chat-plan", null, context);
     }
+    // Status controls remain observable even if native history is unavailable.
+    await reconcileChatThread(context);
   };
 
   return { reconcileChatThread, reconcileObservedChatThread };

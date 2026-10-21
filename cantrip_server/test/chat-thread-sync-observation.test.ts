@@ -69,6 +69,36 @@ const context: ChatExecutionContext = {
 };
 
 describe("observational custom-child thread reconciliation", () => {
+  it("publishes goal status even when native history synchronization fails", async () => {
+    const publishChatInvalidation = vi.fn();
+    const sync = createChatThreadSyncRuntime({
+      applicationOwnerId: () => "owner",
+      repository: {
+        getChatExecutionContext: vi.fn().mockResolvedValue(context),
+      },
+      bridge: {
+        isConnected: () => true,
+        request: vi
+          .fn()
+          .mockRejectedValue(
+            new Error("Native history open failed with HTTP 404."),
+          ),
+      },
+      runtimeForContext: async () => root,
+      publishChatInvalidation,
+    } as unknown as ChatThreadSyncRuntimeDependencies);
+    await expect(
+      sync.reconcileObservedChatThread("chat", "worker", "native-thread", [
+        "goal",
+      ]),
+    ).rejects.toThrow("HTTP 404");
+    expect(publishChatInvalidation).toHaveBeenCalledWith(
+      "chat",
+      "chat-goal",
+      null,
+      context,
+    );
+  });
   it.each(["requested", "notified"])(
     "sends a %s history read when actual child execution routing fails",
     async (source) => {

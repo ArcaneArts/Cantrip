@@ -4,6 +4,7 @@ import {
   type ComposerAttachmentState,
 } from "./composer-draft-attachments";
 import { useChatExecutionControls } from "./use-chat-execution-controls";
+import { chatGoalQueryOptions } from "@/lib/chat-goal-query";
 import { nativePermissionControlState } from "./native-permission-control-state";
 import type {
   AgentInteractionResponse,
@@ -139,7 +140,6 @@ import {
   deleteQueuedPrompt,
   forkChat,
   getChatComposerDraft,
-  getChatGoal,
   getChatPermissionProfiles,
   getChatPlan,
   getChatReasoning,
@@ -676,11 +676,8 @@ export function useChatTranscriptController({
     data: queuedPromptState.data?.items,
   };
   const goalState = useQuery({
+    ...chatGoalQueryOptions(chat.id, chat.status),
     enabled: capabilities.modes === "agent-modes",
-    queryFn: () => getChatGoal(chat.id),
-    queryKey: ["goal", chat.id],
-    refetchInterval: chatRefreshInterval,
-    retry: false,
   });
   const planState = useQuery({
     enabled: capabilities.modes === "agent-modes",
@@ -1399,9 +1396,10 @@ export function useChatTranscriptController({
     mutationFn: () => compactChat(chat.id),
   });
   const updateGoal = useMutation({
-    mutationFn: (status: "active" | "paused") =>
-      updateChatGoal(chat.id, { status }),
-    onSuccess: async () => {
+    mutationFn: (input: { status?: "active" | "paused"; objective?: string }) =>
+      updateChatGoal(chat.id, input),
+    onSuccess: async (result) => {
+      queryClient.setQueryData(["goal", chat.id], result);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["goal", chat.id] }),
         queryClient.invalidateQueries({ queryKey: ["messages", chat.id] }),
@@ -1412,6 +1410,7 @@ export function useChatTranscriptController({
   const clearGoal = useMutation({
     mutationFn: () => clearChatGoal(chat.id),
     onSuccess: async () => {
+      queryClient.setQueryData(["goal", chat.id], { goal: null });
       await queryClient.invalidateQueries({ queryKey: ["goal", chat.id] });
     },
   });

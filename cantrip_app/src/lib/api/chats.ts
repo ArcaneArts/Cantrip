@@ -75,6 +75,8 @@ import {
 import {
   openChatMessageOpaqueSummary,
   createEncryptedChatTurn,
+  protectChatGoalObjective,
+  openChatGoalObjective,
   openQueuedPromptOpaqueSummary,
 } from "@/lib/chat-message-encryption";
 import {
@@ -294,6 +296,18 @@ export async function compactChat(chatId: string) {
 
 async function openChatGoalWireResponse(raw: unknown) {
   const response = chatGoalWireResponseSchema.parse(raw);
+  if ("kind" in response && response.kind === "chat-encrypted") {
+    return chatGoalResponseSchema.parse({
+      goal: response.goal
+        ? {
+            ...response.goal,
+            objective: await openChatGoalObjective(
+              response.goal.protectedObjective,
+            ),
+          }
+        : null,
+    });
+  }
   return chatGoalResponseSchema.parse({
     goal:
       "kind" in response && response.kind === "task-encrypted" && response.goal
@@ -304,7 +318,7 @@ async function openChatGoalWireResponse(raw: unknown) {
 
 export async function getChatGoal(chatId: string) {
   return openChatGoalWireResponse(
-    await request(`/api/chats/${encodeURIComponent(chatId)}/goal`),
+    await request(`/api/chats/${encodeURIComponent(chatId)}/goal?encrypted=1`),
   );
 }
 
@@ -317,13 +331,34 @@ export async function createChatGoal(chatId: string, input: ChatGoalCreate) {
   );
 }
 
-export async function updateChatGoal(chatId: string, input: ChatGoalUpdate) {
-  return openChatGoalWireResponse(
-    await request(`/api/chats/${encodeURIComponent(chatId)}/goal`, {
+export async function updateChatGoal(
+  chatId: string,
+  input: Pick<ChatGoalUpdate, "status"> & { objective?: string },
+) {
+  const protectedObjective =
+    input.objective === undefined
+      ? undefined
+      : await protectChatGoalObjective(input.objective);
+  const result = await openChatGoalWireResponse(
+    await request(`/api/chats/${encodeURIComponent(chatId)}/goal?encrypted=1`, {
       method: "PATCH",
-      body: JSON.stringify(chatGoalUpdateSchema.parse(input)),
+      body: JSON.stringify(
+        chatGoalUpdateSchema.parse({
+          status: input.status,
+          protectedObjective,
+        }),
+      ),
     }),
   );
+  if (
+    input.objective !== undefined &&
+    result.goal?.objective !== input.objective.trim()
+  ) {
+    throw new Error(
+      "The goal edit was not applied. Your changes are still in the editor.",
+    );
+  }
+  return result;
 }
 
 export async function clearChatGoal(chatId: string) {

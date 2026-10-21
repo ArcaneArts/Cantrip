@@ -94,6 +94,14 @@ describe("managed native payload policy", () => {
   });
   it("derives goal pause and resume solely from actual explicit native status", async () => {
     const context = await fixture();
+    const edit = operation("thread/goal/set", {
+      threadId: "thread",
+      objective: "Revised objective",
+    });
+    edit.goalObjectiveOnly = true;
+    expect(
+      (await managedNativeCommandIntent(edit, context)).resumeAutonomy,
+    ).toBeUndefined();
     expect(
       await managedNativeCommandIntent(
         operation("thread/goal/set", { threadId: "thread", status: "paused" }),

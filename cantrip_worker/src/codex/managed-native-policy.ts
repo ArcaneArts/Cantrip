@@ -100,7 +100,9 @@ export async function managedNativeCommandIntent(
     operation.method === "thread/queue/start" ||
     (operation.method === "thread/goal/set" &&
       (params.status === "active" ||
-        (params.status == null && typeof params.objective === "string"))) ||
+        (params.status == null &&
+          typeof params.objective === "string" &&
+          !operation.goalObjectiveOnly))) ||
     (operation.method === "turn/pause" && params.paused === false)
   )
     intent.resumeAutonomy = true;
