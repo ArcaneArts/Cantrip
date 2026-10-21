@@ -354,7 +354,7 @@ it("serializes duplicate recovery and observes a recovered pending operation app
     f.tracker.recoverPermissions(recover),
     f.tracker.recoverPermissions(recover),
   ]);
-  expect(readOperation).toHaveBeenCalledTimes(1);
+  expect(readOperation).toHaveBeenCalledTimes(2);
   f.observations.notification("thread/settings/updated", {
     threadId: scope.threadId,
     operationId: scope.nativeOperationId,
@@ -519,4 +519,38 @@ it("reawakens late retained input from a captured native rejection without inven
   expect(readOperation).not.toHaveBeenCalled();
   expect(readSettings).toHaveBeenCalledTimes(1);
   expect(f.applied).not.toHaveBeenCalled();
+});
+
+it("reads a live queued permission journal again and recovers a missed application notification", async () => {
+  const f = await fixture(false);
+  const liveScope = { ...scope, runtimeGeneration: binding.runtimeGeneration };
+  await f.tracker.track(liveScope, transition, {
+    ...source,
+    runtimeGeneration: binding.runtimeGeneration,
+  });
+  await f.tracker.acknowledge(scope.nativeOperationId, {
+    result: {
+      operationId: scope.nativeOperationId,
+      submissionId: "submission",
+    },
+  });
+  const readOperation = vi
+    .fn()
+    .mockResolvedValueOnce({
+      ...journal,
+      phase: "pending",
+      threadSettings: null,
+    })
+    .mockResolvedValueOnce({ ...journal, threadSettings: current });
+  const readSettings = vi.fn(async () => current);
+  const recovery = { binding, readOperation, readSettings, assertCurrent() {} };
+  await f.tracker.recoverPermissions(recovery);
+  expect(readOperation).toHaveBeenCalledTimes(1);
+  expect(readSettings).not.toHaveBeenCalled();
+  expect(f.applied).not.toHaveBeenCalled();
+  // No thread/settings/updated notification arrives between these actual reads.
+  await f.tracker.recoverPermissions(recovery);
+  await expect.poll(() => f.applied.mock.calls.length).toBe(1);
+  expect(readOperation).toHaveBeenCalledTimes(2);
+  expect(f.applied.mock.calls[0]).toEqual([liveScope, transition, current]);
 });

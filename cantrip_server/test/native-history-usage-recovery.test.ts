@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/pglite";
 import {
   type NativeHistoryBinding,
   type NativeHistoryUsage,
@@ -145,6 +146,46 @@ async function live(extra: Record<string, unknown> = {}) {
 const rows = () => fixture.db.select().from(schema.tokenUsageRecords);
 
 describe("native history usage recovery", () => {
+  it("encodes dates in usage upserts for the PostgreSQL wire driver", async () => {
+    let upserts = 0;
+    const db = drizzle(fixture.client, {
+      schema,
+      logger: {
+        logQuery(query, params) {
+          if (!query.startsWith('insert into "token_usage_records"')) return;
+          upserts += 1;
+          // PGlite accepts raw Date values, but postgres-js rejects these in SQL
+          // expressions. Inspect the same encoded parameters sent to either driver.
+          expect(params.some((value) => value instanceof Date)).toBe(false);
+        },
+      },
+    });
+    const telemetry = new TelemetryRepository(db);
+    const record = {
+      sourceKey: "wire-dates",
+      providerAccountId: binding.providerAccountId,
+      nativeUsage: evidence(["one"]),
+      nativeModelAttribution: capture,
+      projectId: binding.projectId,
+      chatId: binding.chatId,
+      modelRouteId: binding.modelRouteId!,
+      workerId: binding.workerId,
+      turnId: "turn",
+      usage: counts,
+      startedAt: new Date(1000),
+      completedAt: new Date(11000),
+      finalizedAt: new Date(12000),
+      attemptStatus: "completed" as const,
+    };
+    await telemetry.recordTokenUsage(LOCAL_USER_ID, record);
+    await telemetry.recordTokenUsage(LOCAL_USER_ID, record);
+    expect(upserts).toBe(2);
+    expect((await rows())[0]).toMatchObject({
+      startedAt: record.startedAt,
+      completedAt: record.completedAt,
+      finalizedAt: record.finalizedAt,
+    });
+  });
   it("recovers multiple responses without live telemetry and retains them across restart", async () => {
     const input = await ingest(evidence(["one", "two"]));
     expect(await rows()).toHaveLength(1);

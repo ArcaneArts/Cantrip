@@ -248,6 +248,7 @@ import {
   normalizeAgentMessage,
   normalizeCodexThreadItem,
   normalizeCodexThreadReadResponse,
+  observedCodexThreadStatus,
   normalizeCodexThreadTurn,
   normalizeNoticeActivity,
   normalizeRateLimitActivity,
@@ -3590,6 +3591,8 @@ export class CodexAppServer implements CodexRuntime {
       { thread: { ...response.thread, turns: sourceTurns } },
       options.cwd,
     );
+    // Message deduplication must not erase the current native lifecycle.
+    sync.status = observedCodexThreadStatus(response.thread);
     for (const turn of sync.turns) {
       if (turn.status !== "inProgress") baseline?.add(turn.id);
     }

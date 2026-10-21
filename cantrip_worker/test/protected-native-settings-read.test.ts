@@ -43,6 +43,30 @@ function setup() {
   return { runtime, target };
 }
 describe("read protection for the selected managed runtime", () => {
+  it("reconciles pending permission evidence before reading the resulting settings", async () => {
+    const { target, runtime } = setup();
+    const recovered = vi.fn(async () => {
+      runtime.readNativeThreadSettings.mockResolvedValueOnce({
+        confirmed: {
+          sequence: 2,
+          operationId: null,
+          submissionId: null,
+          settings: nativeThreadSettings({
+            settingsVersion: { epoch: "core", revision: "2" },
+          }),
+        },
+        requests: [],
+      });
+    });
+    target.reconcilePermissions = recovered;
+    const result = await readProtectedNativeSettings({
+      scope,
+      service,
+      resolve: () => target,
+    });
+    expect(recovered).toHaveBeenCalledTimes(1);
+    expect(result.context.settingsVersion.revision).toBe("2");
+  });
   it("performs exactly one native read and binds the encrypted result to its runtime", async () => {
     const { target, runtime } = setup();
     const snapshot = await readProtectedNativeSettings({

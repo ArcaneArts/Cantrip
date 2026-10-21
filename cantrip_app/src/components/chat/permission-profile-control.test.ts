@@ -85,7 +85,7 @@ describe("permissionProfileLabel", () => {
     expect(markup).toContain("Agent permissions: Workspace");
     expect(markup).toContain("requested YOLO mode");
     expect(markup).not.toContain("Agent permissions: YOLO mode");
-    expect(markup).toContain("YOLO mode after this turn");
+    expect(markup).toContain("YOLO mode pending");
     expect(markup).toContain('role="status"');
     expect(markup).toContain("animate-spin");
   });
@@ -109,7 +109,7 @@ describe("permissionProfileLabel", () => {
       }),
     );
     expect(markup).toContain("Agent permissions: YOLO mode");
-    expect(markup).not.toContain("after this turn");
+    expect(markup).not.toContain("YOLO mode pending");
     expect(markup).not.toContain("animate-spin");
   });
 });

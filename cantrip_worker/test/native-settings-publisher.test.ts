@@ -137,6 +137,24 @@ type NativeSettingsPublisherConstructorClient = ConstructorParameters<
 >[0]["client"];
 
 describe("automatic native settings publication", () => {
+  it("reconciles operation journals on explicit reads and rebinds after stale evidence", async () => {
+    const recover = vi.fn().mockResolvedValue(undefined);
+    const f = fixture(recover);
+    f.publisher.start();
+    await vi.waitFor(() => expect(recover).toHaveBeenCalledTimes(1));
+    await f.publisher.reconcilePermissions();
+    expect(recover).toHaveBeenCalledTimes(2);
+    expect(f.client.refreshSettings).toHaveBeenCalledTimes(1);
+    recover.mockRejectedValueOnce(new Error("binding replaced"));
+    await expect(f.publisher.reconcilePermissions()).resolves.toBeUndefined();
+    await vi.waitFor(() =>
+      expect(f.client.refreshSettings).toHaveBeenCalledTimes(2),
+    );
+    await vi.waitFor(() => expect(recover).toHaveBeenCalledTimes(4));
+    f.retire();
+    await f.publisher.reconcilePermissions();
+    expect(recover).toHaveBeenCalledTimes(4);
+  });
   it("retries failed binding recovery before publishing later settings", async () => {
     const recover = vi
       .fn()

@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   NativeSettingsState,
@@ -60,17 +66,32 @@ export function useNativeSettingsState(chatId: string, enabled: boolean) {
     clientEncryption.getSnapshot,
   );
   const queryKey = nativeSettingsQueryKey(chatId, identity);
+  const lastNativeRefresh = useRef<{ scope: string; at: number } | null>(null);
   useAppLiveScope(enabled && identity ? { kind: "chat", chatId } : null);
   const state = useQuery({
     queryKey,
     enabled: enabled && identity !== null,
     queryFn: ({ signal }) => {
       if (!identity) throw new Error("A signed-in account is required.");
-      return readNativeSettingsState({ chatId, identity, signal });
+      const previous = queryClient.getQueryData<NativeSettingsState>(queryKey);
+      const scope = JSON.stringify([chatId, identityKey]);
+      const now = Date.now();
+      // Refresh publishes an invalidation itself. Coalesce those reads so a
+      // pending operation cannot create a native-read/invalidation feedback loop.
+      const refresh =
+        Boolean(previous?.pending.length) &&
+        (lastNativeRefresh.current?.scope !== scope ||
+          now - lastNativeRefresh.current.at >= 3_000);
+      if (refresh) lastNativeRefresh.current = { scope, at: now };
+      return readNativeSettingsState({ chatId, identity, signal, refresh });
     },
     structuralSharing: (previous, next) =>
       retainLatestNativeSettings(previous, next as NativeSettingsState),
     retry: false,
+    refetchInterval: (query) =>
+      query.state.data?.pending.length || query.state.status === "error"
+        ? 3_000
+        : false,
   });
   const refresh = useMutation({
     mutationFn: async () => {

@@ -3017,6 +3017,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     return {
       runtime,
       generation: entry.generation,
+      reconcilePermissions: async () => {
+        await settingsPublishers.get(chatId)?.publisher.reconcilePermissions();
+      },
       scope: {
         chatId,
         threadId,

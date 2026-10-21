@@ -652,7 +652,7 @@ export function useChatTranscriptController({
     ),
     queryFn: async () => {
       const result = await syncChat(chat.id);
-      if (result.turns.length > 0) {
+      if (result.turns.length > 0 || result.statusSource === "native-thread") {
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ["messages", chat.id] }),
           queryClient.invalidateQueries({
@@ -663,7 +663,9 @@ export function useChatTranscriptController({
       return result;
     },
     queryKey: ["chat-sync", chat.id],
-    refetchInterval: chatRefreshInterval,
+    // A live socket can remain healthy while a turn's lifecycle publication
+    // was lost. Observe the actual runtime even when there are no new messages.
+    refetchInterval: 5_000,
     retry: false,
   });
   const queuedPromptState = useQuery({
@@ -885,8 +887,11 @@ export function useChatTranscriptController({
     [agentProjection.rootMessages],
   );
   const latestLiveActivityGroupKey = useMemo(
-    () => findLatestLiveActivityGroupKey(timeline),
-    [timeline],
+    () =>
+      chat.status === "running" || chat.status === "waiting-for-approval"
+        ? findLatestLiveActivityGroupKey(timeline)
+        : null,
+    [timeline, chat.status],
   );
   const latestEditableMessage = useMemo(
     () =>

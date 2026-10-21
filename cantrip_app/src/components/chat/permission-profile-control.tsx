@@ -85,7 +85,7 @@ export function PermissionProfileControl({
   const actualId = native ? native.confirmedPresetId : state?.effectiveId;
   const queued = native?.status === "queued";
   const queuedLabel = queued
-    ? `${native.requestedLabel ?? "Permission change"} after this turn`
+    ? `${native.requestedLabel ?? "Permission change"} pending`
     : null;
   const title = native
     ? `${selectedLabel}${native.requestedLabel ? `; requested ${native.requestedLabel}` : ""}${state?.forcedByWorktreePolicy ? `; Primary policy requires ${permissionProfileLabel(state.effectiveId)}` : ""}`
