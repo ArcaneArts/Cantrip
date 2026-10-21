@@ -357,9 +357,11 @@ describe("client encryption key custody", () => {
       status: "ready",
     });
     service.lock();
-    const differentValue = `${device.publicKey.value.slice(0, -1)}${
-      device.publicKey.value.endsWith("A") ? "B" : "A"
-    }`;
+    const otherDevice = await provider.create({
+      installationId: "cf3f0338-9b28-4430-b225-94352582dab5",
+      keyAlias:
+        "cantrip.installation.cf3f0338-9b28-4430-b225-94352582dab5.hpke.v1",
+    });
     await expect(
       service.unlockWithKeyProvider({
         ...authorization(clientId, device.publicKey, wrapper),
@@ -367,7 +369,7 @@ describe("client encryption key custody", () => {
         identity,
         principal: {
           ...authorization(clientId, device.publicKey, wrapper).principal,
-          publicKey: { ...device.publicKey, value: differentValue },
+          publicKey: otherDevice.publicKey,
         },
         provider,
       }),

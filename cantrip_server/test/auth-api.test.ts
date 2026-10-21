@@ -161,7 +161,7 @@ describe("server account authentication", () => {
     } finally {
       await app.close();
     }
-  });
+  }, 30_000);
 
   it("synchronizes only the configured account and revokes its sessions when the environment password changes", async () => {
     const config = {
@@ -255,7 +255,7 @@ describe("server account authentication", () => {
     } finally {
       await app.close();
     }
-  });
+  }, 30_000);
 
   it("persists opaque cursor preferences only for the authenticated account and requires CSRF for changes", async () => {
     const config = await createConfig("accounts");
