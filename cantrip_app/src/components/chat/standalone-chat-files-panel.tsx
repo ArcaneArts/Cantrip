@@ -19,6 +19,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ChatFilePreview } from "./standalone-chat-file-preview";
+import { NativeFileWindowCloseGuard } from "@/components/app/native-file-window-close-guard";
 import { chatEditorSessions } from "./standalone-chat-editor-sessions";
 import type { EditorDocumentSession } from "@/components/editor/document-session";
 import { formatExplorerSize } from "@/components/explorer/explorer-entry-metadata";
@@ -371,6 +372,9 @@ export function StandaloneChatFileWindow({
   }, [entry.name]);
   return (
     <main className="flex h-svh min-h-0 flex-col overflow-hidden bg-background text-foreground">
+      <NativeFileWindowCloseGuard
+        hasUnsavedChanges={() => chatEditorSessions.hasDirtyDocuments}
+      />
       <header
         className="relative flex h-9 shrink-0 items-center border-b border-border/70 bg-background pr-2"
         data-tauri-drag-region=""

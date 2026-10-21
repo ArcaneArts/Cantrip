@@ -19,6 +19,8 @@ import {
 } from "react";
 
 import { Markdown } from "@/components/chat/markdown";
+import { NativeFileWindowCloseGuard } from "@/components/app/native-file-window-close-guard";
+import { closeRevokedNativeFileWindow } from "@/lib/native-file-window-close";
 import {
   EditorSessionStore,
   editorDocumentId,
@@ -420,6 +422,7 @@ export function DesktopExplorerFileWindow({
   const [configuredAtMs, setConfiguredAtMs] = useState<number | null>(null);
   const [editorError, setEditorError] = useState<string | null>(null);
   const [launchError, setLaunchError] = useState<string | null>(null);
+  const [authorityError, setAuthorityError] = useState<string | null>(null);
   const [file, setFile] = useState<ExplorerFile | null>(null);
   const [draft, setDraft] = useState("");
   const [media, setMedia] = useState<Blob | null>(null);
@@ -432,7 +435,19 @@ export function DesktopExplorerFileWindow({
     useState<EditorDocumentSession | null>(null);
   const nativeDocumentRef = useRef(nativeDocument);
   nativeDocumentRef.current = nativeDocument;
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const fileRef = useRef(file);
+  fileRef.current = file;
+  const savingRef = useRef(saving);
+  savingRef.current = saving;
+  const hasUnsavedChanges = () =>
+    sessions.current!.hasDirtyDocuments ||
+    savingRef.current ||
+    (!nativeDocumentRef.current &&
+      Boolean(fileRef.current && draftRef.current !== fileRef.current.content));
   const changeDraft = useCallback((text: string) => {
+    draftRef.current = text;
     nativeDocumentRef.current?.editExternal(text);
     setDraft(text);
   }, []);
@@ -440,7 +455,25 @@ export function DesktopExplorerFileWindow({
   const client = useMemo(
     () =>
       new DesktopExplorerWindowClient(launchId, {
+        onContextRevoked: (error) => {
+          setAuthorityError(error);
+          if (hasUnsavedChanges()) return;
+          sessions.current!.discardAll();
+          nativeDocumentRef.current = null;
+          setNativeDocument(null);
+          setContext(null);
+          setFile(null);
+          setDraft("");
+          setMedia(null);
+          setLaunchError(error);
+          void closeRevokedNativeFileWindow().catch((failure: unknown) => {
+            setLaunchError(
+              `${error} ${failure instanceof Error ? failure.message : "The window could not close."}`,
+            );
+          });
+        },
         onContext: (next) => {
+          setAuthorityError(null);
           setMode(desktopExplorerWindowInitialMode(next.path));
           setContext(next);
           setConfiguredAtMs(null);
@@ -590,6 +623,7 @@ export function DesktopExplorerFileWindow({
     if (!file) return false;
     if (!dirty && !nativeDocument?.saving) return true;
     setSaving(true);
+    savingRef.current = true;
     setContentError(null);
     try {
       if (nativeDocument) {
@@ -618,15 +652,20 @@ export function DesktopExplorerFileWindow({
       return false;
     } finally {
       setSaving(false);
+      savingRef.current = false;
     }
   };
 
   return (
     <main className="flex h-svh min-h-0 flex-col overflow-hidden bg-background text-foreground">
+      <NativeFileWindowCloseGuard
+        enabled={context?.editor === "native" || hasUnsavedChanges()}
+        hasUnsavedChanges={hasUnsavedChanges}
+      />
       <DesktopExplorerWindowHeader
         actions={
           <>
-            {context?.editor === "native" && !mediaType ? (
+            {context?.editor === "native" && !mediaType && !authorityError ? (
               <Button
                 aria-label="Open in VS Code"
                 className="h-7 px-2 text-xs"
@@ -701,6 +740,18 @@ export function DesktopExplorerFileWindow({
         )}
       />
 
+      {context && authorityError ? (
+        <div
+          role="alert"
+          className="border-b border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
+        >
+          <p>{authorityError}</p>
+          <p>
+            Your draft is kept here. Copy it before closing; reopen the file in
+            its original account to save.
+          </p>
+        </div>
+      ) : null}
       {!context ? (
         <div className="grid min-h-0 flex-1 place-items-center bg-background p-6">
           {launchError ? (

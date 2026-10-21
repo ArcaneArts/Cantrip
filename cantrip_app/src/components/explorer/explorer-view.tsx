@@ -585,7 +585,10 @@ export function ExplorerView({
     path: string | null;
     transient: boolean;
   } | null>(null);
-  const dirty = draftVersion !== null && draft !== baselineContent;
+  const dirty =
+    nativeDocument?.id === nativeDocumentId
+      ? nativeDocument.dirty
+      : draftVersion !== null && draft !== baselineContent;
   const hasDirtyDocuments = dirty || sessions.current!.hasDirtyDocuments;
   dirtyRef.current = dirty;
   const changeDraft = useCallback((text: string) => {

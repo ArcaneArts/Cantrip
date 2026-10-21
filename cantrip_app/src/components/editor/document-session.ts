@@ -38,6 +38,7 @@ export class EditorDocumentSession {
   private format: ReturnType<typeof textFileFormat>;
   private pendingSave: Promise<boolean> | null = null;
   private pendingContent: string | null = null;
+  private saveFailed = false;
 
   constructor(
     readonly id: string,
@@ -51,7 +52,7 @@ export class EditorDocumentSession {
   }
 
   get dirty(): boolean {
-    return this.text !== this.baseline;
+    return this.text !== this.baseline || this.saveFailed;
   }
   get saving(): boolean {
     return this.pendingSave !== null;
@@ -107,9 +108,17 @@ export class EditorDocumentSession {
       this.format = textFileFormat(encoded);
       this.baseline = content;
       this.version = result.version;
+      this.saveFailed = false;
       return true;
     };
-    const pending = (this.pendingSave ?? Promise.resolve()).then(commit);
+    const pending = (this.pendingSave ?? Promise.resolve())
+      .then(commit)
+      .catch((error: unknown) => {
+        // A failed acknowledgement cannot prove that the write did not happen.
+        // Even text reverted to the loaded baseline must remain retryable.
+        this.saveFailed = true;
+        throw error;
+      });
     this.pendingSave = pending;
     this.pendingContent = content;
     void pending
