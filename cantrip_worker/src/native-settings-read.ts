@@ -15,6 +15,7 @@ export interface NativeSettingsReadTarget {
   scope: NativeSettingsReadScope;
   runtime: Runtime;
   generation: string;
+  reconcilePermissions?(): Promise<void>;
 }
 
 /** Reads the selected managed runtime, never creates/resumes one or acquires input authority. */
@@ -39,6 +40,8 @@ export async function readProtectedNativeSettings(input: {
         "The settings read no longer refers to the current managed runtime.",
       );
   };
+  assertCurrent();
+  await target!.reconcilePermissions?.();
   assertCurrent();
   const settings = (
     await target!.runtime.readNativeThreadSettings(scope.threadId)

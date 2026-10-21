@@ -451,7 +451,7 @@ export class TelemetryRepository {
             : {}),
           ...(input.startedAt !== undefined && input.startedAt !== null
             ? {
-                startedAt: sql`CASE WHEN ${schema.tokenUsageRecords.nativeUsage} IS NOT NULL THEN COALESCE(${schema.tokenUsageRecords.startedAt}, ${input.startedAt}) ELSE ${input.startedAt} END`,
+                startedAt: sql`CASE WHEN ${schema.tokenUsageRecords.nativeUsage} IS NOT NULL THEN COALESCE(${schema.tokenUsageRecords.startedAt}, ${sql.param(input.startedAt, schema.tokenUsageRecords.startedAt)}) ELSE ${sql.param(input.startedAt, schema.tokenUsageRecords.startedAt)} END`,
               }
             : {}),
           projectId: input.projectId,
@@ -515,14 +515,14 @@ export class TelemetryRepository {
           ...(input.completedAt !== undefined
             ? {
                 completedAt: input.nativeUsage
-                  ? sql`COALESCE(${schema.tokenUsageRecords.completedAt}, ${input.completedAt})`
+                  ? sql`COALESCE(${schema.tokenUsageRecords.completedAt}, ${sql.param(input.completedAt, schema.tokenUsageRecords.completedAt)})`
                   : input.completedAt,
               }
             : {}),
           ...(input.finalizedAt !== undefined
             ? {
                 finalizedAt: input.nativeUsage
-                  ? sql`COALESCE(${schema.tokenUsageRecords.finalizedAt}, ${input.finalizedAt})`
+                  ? sql`COALESCE(${schema.tokenUsageRecords.finalizedAt}, ${sql.param(input.finalizedAt, schema.tokenUsageRecords.finalizedAt)})`
                   : input.finalizedAt,
               }
             : {}),

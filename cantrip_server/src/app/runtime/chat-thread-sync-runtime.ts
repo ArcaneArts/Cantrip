@@ -138,7 +138,7 @@ export function createChatThreadSyncRuntime({
         syncAttribution,
       );
     }
-    if (sync.turns.length > 0) {
+    if (sync.turns.length > 0 || sync.statusSource === "native-thread") {
       if (syncExecution.executionLaneId && sync.status !== "running") {
         await repository.finishChatExecutionLane(
           context.chatId,

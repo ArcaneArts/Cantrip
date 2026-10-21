@@ -127,6 +127,23 @@ export class NativeSettingsPublisher {
     this.kick();
   }
 
+  /** Reconcile outstanding operation evidence on an explicit settings read.
+   * The native journal is authoritative; this never resubmits a permission edit. */
+  async reconcilePermissions(): Promise<void> {
+    const binding = this.binding;
+    if (!binding || !this.current()) return;
+    try {
+      await this.options.onBinding?.(binding, this.lifetime.signal);
+    } catch (error) {
+      // A stale publication binding must not block the actual settings read.
+      // Re-establish it through the existing reconnect recovery path.
+      if (!this.current()) return;
+      this.binding = null;
+      this.refreshGeneration += 1;
+      this.failed(error);
+    }
+  }
+
   close(): void {
     if (this.lifetime.signal.aborted) return;
     this.lifetime.abort();

@@ -219,15 +219,14 @@ export class ManagedNativeSettings {
     for (const registration of registrations) {
       const { scope, transition } = registration;
       const existing = this.commands.get(scope.nativeOperationId);
+      // Registration may still be dispatching the native request. Once queued,
+      // re-read its journal even in the same runtime: the completion notification
+      // may have been lost while the operation itself applied successfully.
       if (
         existing &&
-        ((!existing.recoveryBindingId &&
-          existing.scope.runtimeGeneration ===
-            input.binding.runtimeGeneration &&
-          (existing.phase === "registering" || existing.phase === "queued")) ||
-          (existing.recoveryBindingId === input.binding.bindingId &&
-            existing.recoveryComplete &&
-            existing.phase === "queued"))
+        !existing.recoveryBindingId &&
+        existing.scope.runtimeGeneration === input.binding.runtimeGeneration &&
+        existing.phase === "registering"
       )
         continue;
       const publicationScope = {
