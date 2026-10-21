@@ -131,6 +131,7 @@ describe("WorkerObservationHub", () => {
       worktreeId: "worktree-one",
       sourcePath: "/repo",
       worktreePath: "/repo/worktree",
+      changes: [{ path: "src/private-file.ts", kind: "modified" }],
     };
     expect(hub.publishNotification(filesystem)).toBe(true);
     expect(

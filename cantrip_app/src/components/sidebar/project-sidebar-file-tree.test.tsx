@@ -4,6 +4,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import TestRenderer, { act } from "react-test-renderer";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("./use-file-change-activity", () => ({
+  useFileChangeActivity: () => ({ current: null }),
+}));
+
 const runtime = vi.hoisted(() => {
   const entry = {
     kind: "file",

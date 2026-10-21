@@ -432,6 +432,19 @@ export const workerNotificationSchema = z.discriminatedUnion("type", [
       worktreeId: worktreeObservationTargetSchema.shape.worktreeId,
       sourcePath: worktreeObservationTargetSchema.shape.sourcePath,
       worktreePath: worktreeObservationTargetSchema.shape.worktreePath,
+      // Sent over the encrypted filesystem observation stream. Optional for
+      // compatibility with workers that only invalidate directory listings.
+      changes: z
+        .array(
+          z
+            .object({
+              path: z.string().min(1).max(8_192),
+              kind: z.enum(["added", "modified", "deleted"]),
+            })
+            .strict(),
+        )
+        .max(2_000)
+        .optional(),
     })
     .strict(),
   z

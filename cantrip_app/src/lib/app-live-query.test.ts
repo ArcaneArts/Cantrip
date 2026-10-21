@@ -15,6 +15,7 @@ import type {
 import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { subscribeFileChangeActivity } from "./file-change-activity";
 import { clientEncryption } from "./client-encryption";
 import { clearClientSession, setClientSession } from "./client-session";
 import { createTaskMessageOpaqueContent } from "./task-message-encryption";
@@ -93,6 +94,31 @@ afterEach(() => {
 });
 
 describe("application live query bridge", () => {
+  it("publishes exact file changes from encrypted observations without replaying cached activity", async () => {
+    const client = new QueryClient();
+    const bridge = new AppLiveQueryBridge(client);
+    const listener = vi.fn();
+    const unsubscribe = subscribeFileChangeActivity(client, listener);
+    const envelope = directFilesystemObservation(1);
+    if (envelope.payload.topic !== "filesystem")
+      throw new Error("Expected filesystem observation");
+    if (envelope.payload.notification.type !== "worktree.filesystem.changed")
+      throw new Error("Expected file changes");
+    envelope.payload.notification.changes = [
+      { path: "src/app.ts", kind: "modified" },
+    ];
+    await bridge.handleWorkerObservation("worker-one", envelope);
+    expect(listener).toHaveBeenCalledWith({
+      workerId: "worker-one",
+      notification: envelope.payload.notification,
+    });
+    unsubscribe();
+    const next = vi.fn();
+    const release = subscribeFileChangeActivity(client, next);
+    expect(next).not.toHaveBeenCalled();
+    release();
+    client.clear();
+  });
   it("projects direct chat messages provisionally and removes them when canonical state arrives", async () => {
     const queryClient = new QueryClient();
     const bridge = new AppLiveQueryBridge(queryClient);

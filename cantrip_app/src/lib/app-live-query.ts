@@ -1,3 +1,4 @@
+import { publishFileChangeActivity } from "./file-change-activity";
 import {
   chatMessageSchema,
   codeGraphProjectStatusSchema,
@@ -726,6 +727,12 @@ export class AppLiveQueryBridge {
         ["codegraph", status.projectId, status.worktreeId],
         status,
       );
+    }
+    if (envelope.payload.notification.type === "worktree.filesystem.changed") {
+      publishFileChangeActivity(this.#queryClient, {
+        workerId,
+        notification: envelope.payload.notification,
+      });
     }
     const queryKeys = directObservationQueryKeys(envelope);
     this.#rememberWorkerObservationKeys(workerId, queryKeys);

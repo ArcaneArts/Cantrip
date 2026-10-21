@@ -1,0 +1,37 @@
+[data-file-change-kind="added"] {
+  --file-change-accent: #15803d;
+}
+[data-file-change-kind="modified"] {
+  --file-change-accent: #a16207;
+}
+[data-file-change-kind="deleted"] {
+  --file-change-accent: #dc2626;
+}
+.dark [data-file-change-kind="added"] {
+  --file-change-accent: #4ade80;
+}
+.dark [data-file-change-kind="modified"] {
+  --file-change-accent: #facc15;
+}
+.dark [data-file-change-kind="deleted"] {
+  --file-change-accent: #f87171;
+}
+[data-file-change-kind] {
+  color: transparent;
+  background-image: linear-gradient(
+    105deg,
+    var(--file-change-base) 25%,
+    var(--file-change-accent) 42%,
+    var(--file-change-accent) 58%,
+    var(--file-change-base) 75%
+  );
+  background-size: 250% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-file-change-kind] {
+    color: var(--file-change-base);
+    background: none;
+  }
+}
