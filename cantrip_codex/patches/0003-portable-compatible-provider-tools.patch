@@ -1,36 +1,32 @@
+diff --git a/codex-rs/model-provider/src/capabilities.rs b/codex-rs/model-provider/src/capabilities.rs
+index f8e8891fb048278e9d890cff7124910cb9be0e32..0f8b6e9b930f0e343e04cde8b8ff77423a6bea13 100644
+--- a/codex-rs/model-provider/src/capabilities.rs
++++ b/codex-rs/model-provider/src/capabilities.rs
+@@ -29,10 +29,11 @@ impl Default for ProviderCapabilities {
+ 
+ impl ProviderCapabilities {
+     pub(crate) fn from_config(info: &ModelProviderInfo) -> Self {
++        let supports_openai_extensions = info.is_openai()
++            || is_azure_responses_provider(&info.name, info.base_url.as_deref());
+         let defaults = Self {
+-            remote_compaction: if info.is_openai()
+-                || is_azure_responses_provider(&info.name, info.base_url.as_deref())
+-            {
++            image_generation: supports_openai_extensions,
++            remote_compaction: if supports_openai_extensions {
+                 RemoteCompactionSupport::V2
+             } else {
+                 RemoteCompactionSupport::Unsupported
 diff --git a/codex-rs/model-provider/src/provider.rs b/codex-rs/model-provider/src/provider.rs
-index 7d99c55..0bc7344 100644
+index f8f0790dde816a26b9e10b38df5d3030d4fc2f95..05f854038819f7c3630c10e4aacb51612b774c9f 100644
 --- a/codex-rs/model-provider/src/provider.rs
 +++ b/codex-rs/model-provider/src/provider.rs
-@@ -459,15 +459,19 @@ impl ModelProvider for ConfiguredModelProvider {
-     }
- 
-     fn capabilities(&self) -> ProviderCapabilities {
--        let remote_compaction = if self.info.is_openai()
--            || is_azure_responses_provider(&self.info.name, self.info.base_url.as_deref())
--        {
-+        let supports_openai_extensions = self.info.is_openai()
-+            || is_azure_responses_provider(&self.info.name, self.info.base_url.as_deref());
-+        let remote_compaction = if supports_openai_extensions {
-             RemoteCompactionSupport::V2
-         } else {
-             RemoteCompactionSupport::Unsupported
-         };
- 
-         ProviderCapabilities {
-+            // OpenAI's namespace and image-generation tool types are not part
-+            // of the portable Responses surface implemented by compatible providers.
-+            namespace_tools: supports_openai_extensions,
-+            image_generation: supports_openai_extensions,
-             remote_compaction,
-             ..ProviderCapabilities::default()
-         }
-@@ -768,6 +772,28 @@ mod tests {
+@@ -725,6 +725,27 @@ mod tests {
          );
      }
  
 +    #[test]
-+    fn configured_compatible_provider_disables_openai_extension_tools() {
++    fn configured_compatible_provider_disables_openai_image_generation() {
 +        let provider = create_model_provider(
 +            ModelProviderInfo {
 +                name: "Compatible".to_string(),
@@ -43,7 +39,6 @@ index 7d99c55..0bc7344 100644
 +        assert_eq!(
 +            provider.capabilities(),
 +            ProviderCapabilities {
-+                namespace_tools: false,
 +                image_generation: false,
 +                remote_compaction: RemoteCompactionSupport::Unsupported,
 +                ..ProviderCapabilities::default()

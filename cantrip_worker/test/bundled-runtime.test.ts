@@ -11,9 +11,9 @@ import {
 } from "../src/codex/bundled-runtime.js";
 
 const temporaryDirectories: string[] = [];
-const PINNED_CODEX_VERSION = "0.160.1";
-const PINNED_CODEX_REF = "rust-v0.160.1";
-const PINNED_CODEX_COMMIT = "d27764b82f7118f674371e6d6e76271d9d606edb";
+const PINNED_CODEX_VERSION = "0.163.0";
+const PINNED_CODEX_REF = "rust-v0.163.0";
+const PINNED_CODEX_COMMIT = "83086188ae0614bd882818ff1aa23f3194962012";
 const BUNDLED_MODELS_PATH = fileURLToPath(
   new URL(
     "../../cantrip_codex/upstream/codex-rs/models-manager/models.json",

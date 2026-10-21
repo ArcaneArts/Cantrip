@@ -6,24 +6,24 @@ to Codex App Server directly.
 
 ## Tested range
 
-Cantrip currently pins and builds `codex-cli 0.160.1` from the official
-`rust-v0.160.1` source tag at `d27764b82f7118f674371e6d6e76271d9d606edb`. Its imported source manifest and
+Cantrip currently pins and builds `codex-cli 0.163.0` from the official
+`rust-v0.163.0` source tag at `83086188ae0614bd882818ff1aa23f3194962012`. Its imported source manifest and
 manual update workflow live under `cantrip_codex/`. The protocol validators and
 fixtures were checked against the TypeScript and JSON Schema bindings generated
-by that CLI on October 5, 2026:
+by that CLI on October 21, 2026:
 
 ```sh
 codex app-server generate-ts --experimental --out <temporary-directory>
 codex app-server generate-json-schema --experimental --out <temporary-directory>
 ```
 
-The adapter's compatibility range is `>=0.160.1 <0.161.0`, but packaged
-workers contain exactly `0.160.1`; they do not select another compatible patch
+The adapter's compatibility range is `>=0.163.0 <0.164.0`, but packaged
+workers contain exactly `0.163.0`; they do not select another compatible patch
 from the host. Advancing even within the tested range is a Cantrip source and
 worker release. Expanding the range requires regenerating the bindings,
 reviewing schema changes, and updating compatibility tests.
 
-The 0.160.1 catalog lists `gpt-6-astra` and now gives `gpt-6.1-sol` the highest
+The 0.163.0 catalog lists `gpt-6-astra` and now gives `gpt-6.1-sol` the highest
 priority, making Sol the bundled Codex default when no model is explicitly configured. Cantrip
 continues to use its server-owned model configuration for managed turns.
 
@@ -34,8 +34,8 @@ polling or repeatedly launching the worker. The phase comes from the model
 resolver's explicit missing-selection result, not a separate readiness gate.
 Provider-route and native runtime failures retain their normal failure states.
 
-All 39 existing Cantrip source patches are rebased onto this tag. A final
-compatibility patch adapts the new native interfaces and regenerates both
+All 42 existing Cantrip source patches are rebased onto this tag. Patch `0044`
+adapts the new native interfaces and regenerates both
 stable and experimental protocol exports. Managed TUI attachment keeps the new
 screen-reader probe read-only, preserving account preferences. The GUI's
 precise history revert uses `thread/revert`; upstream removed `thread/rollback`.
@@ -49,10 +49,9 @@ reasoning objects, removes OpenAI-only tools from compatible-provider requests,
 adds the active-turn pause boundary used by Cantrip, and normalizes whole-number
 tool arguments that providers encode as floating-point JSON values. The managed
 CUA configuration uses `tool_timeout_sec: 0`; a narrow patch maps that explicit
-value to untimed MCP calls, while other servers retain their configured deadlines. Codex 0.153
-now natively exposes MCP namespace tools as portable function aliases for
-providers without namespace support, so the former downstream compatibility
-patch has been retired without removing that behavior. Cantrip sends the empty
+value to untimed MCP calls, while other servers retain their configured deadlines.
+Patch `0036` preserves MCP namespace tools as portable function aliases for
+compatible providers without namespace support. Cantrip sends the empty
 dynamic-tool override and its managed-MCP-first developer instruction on both
 thread start and resume, migrating pre-cutover chats without discarding their
 conversation history. `dynamicTools: []` clears legacy declarations; it does
@@ -215,10 +214,10 @@ external thread. See
 
 ## Endpoint-protected ChatGPT authentication
 
-Portable ChatGPT accounts depend on an experimental Codex 0.160 App Server
+Portable ChatGPT accounts depend on an experimental Codex 0.163 App Server
 surface. Before starting a portable ChatGPT runtime, the worker requires:
 
-- semantic version `>=0.160.1 <0.161.0`;
+- semantic version `>=0.163.0 <0.164.0`;
 - `initialize.capabilities.experimentalApi` support; and
 - an available `account/login/start` method.
 

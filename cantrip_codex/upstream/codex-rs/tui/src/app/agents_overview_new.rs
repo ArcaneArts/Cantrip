@@ -31,9 +31,10 @@ impl App {
     fn agents_overview_retained_worktree_error(
         &mut self,
         checkout: &codex_worktree::ManagedWorktree,
+        title: Option<&'static str>,
         reason: impl std::fmt::Display,
     ) {
-        self.add_agents_overview_error(format!("{reason} A checkout was retained at {}; remove it with `git worktree remove <checkout-path>` from the source repository if it is no longer needed.", checkout.root.display()));
+        self.show_agents_overview_error(title, format!("{reason} A checkout was retained at {}; remove it with `git worktree remove <checkout-path>` from the source repository if it is no longer needed.", checkout.root.display()));
     }
 
     pub(in crate::app) async fn new_agents_overview_session(
@@ -61,7 +62,10 @@ impl App {
         if let Some(cwd) = cwd.as_ref() {
             display_config.cwd = cwd.clone();
         }
-        draft.apply_config(&display_config);
+        draft.apply_settings(
+            &crate::local_settings::LocalSettings::from(&display_config),
+            display_config.cwd.as_path(),
+        );
         draft.show(tui)?;
         // Keep the large session-start future off the TUI's stack in dev builds.
         let result = Box::pin(self.start_agents_overview_session(
@@ -103,6 +107,7 @@ impl App {
             if let Some((_, checkout)) = &managed_worktree {
                 self.agents_overview_retained_worktree_error(
                     checkout,
+                    /*title*/ None,
                     "Could not start the session.",
                 );
             }
@@ -115,12 +120,20 @@ impl App {
             if let Some((_, checkout)) = &managed_worktree {
                 self.agents_overview_retained_worktree_error(
                     checkout,
+                    /*title*/ None,
                     "Could not load the new session settings.",
                 );
             }
             return Ok(AppRunControl::Continue);
         };
         let selected_profile = self.chat_widget.thread_id().and_then(|thread_id| {
+            if let Some(selection) = self
+                .agents_overview
+                .requested_permission_profiles
+                .get(&thread_id)
+            {
+                return Some(selection.clone());
+            }
             let source = self.chat_widget.config_ref();
             let active = source.permissions.active_permission_profile()?;
             (self
@@ -137,7 +150,7 @@ impl App {
         });
         let local_settings = self.local_settings.reloaded(&config);
         if let Some(draft) = startup_draft.as_deref_mut() {
-            draft.apply_config(&config);
+            draft.apply_settings(&local_settings, config.cwd.as_path());
         }
         let result = StartupDraftPump::run_with_optional_draft(
             startup_draft.as_deref_mut(),
@@ -154,13 +167,34 @@ impl App {
         let started = match result {
             Ok(started) => started,
             Err(error) => {
-                if let Some((_, checkout)) = &managed_worktree {
-                    self.agents_overview_retained_worktree_error(
-                        checkout,
-                        format!("Failed to start session: {error}"),
+                // Older servers omit the reason. Only use their specific message when
+                // data is absent, so other invalid requests aren't misclassified.
+                let (title, message) = if matches!(
+                    error.downcast_ref::<TypedRequestError>(),
+                    Some(TypedRequestError::Server { source, .. })
+                        if source.code == -32600
+                            && match &source.data {
+                                Some(data) => data.get("reason").and_then(serde_json::Value::as_str)
+                                    == Some("serverShuttingDown"),
+                                None => source.message == "Server is draining; retry after reconnecting",
+                            }
+                ) {
+                    let mut message = String::from(
+                        "New sessions are paused while active turns finish or are canceled. The default shutdown wait is up to one minute.",
                     );
+                    if !matches!(self.app_server_target, AppServerTarget::Embedded) {
+                        message.push_str(
+                            " If the server restarts, Codex will reconnect automatically.",
+                        );
+                    }
+                    (Some("Codex's background server is shutting down"), message)
                 } else {
-                    self.add_agents_overview_error(format!("Failed to start session: {error}"));
+                    (None, format!("Failed to start session: {error}"))
+                };
+                if let Some((_, checkout)) = &managed_worktree {
+                    self.agents_overview_retained_worktree_error(checkout, title, message);
+                } else {
+                    self.show_agents_overview_error(title, message);
                 }
                 return Ok(AppRunControl::Continue);
             }
@@ -183,7 +217,7 @@ impl App {
                 };
             if let Err(error) = result {
                 let _ = app_server.thread_unsubscribe(thread_id).await;
-                self.agents_overview_retained_worktree_error(checkout, error);
+                self.agents_overview_retained_worktree_error(checkout, /*title*/ None, error);
                 return Ok(AppRunControl::Continue);
             }
         }
@@ -206,6 +240,7 @@ impl App {
             if let Some((_, checkout)) = &managed_worktree {
                 self.agents_overview_retained_worktree_error(
                     checkout,
+                    /*title*/ None,
                     "Could not open the new session.",
                 );
             }

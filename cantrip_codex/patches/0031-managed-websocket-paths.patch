@@ -1,8 +1,8 @@
 diff --git a/codex-rs/tui/src/lib.rs b/codex-rs/tui/src/lib.rs
-index a2fba39..f0333b2 100644
+index 3ebb6a7c201178b0b1fde11aa990dc349c5a83aa..11d6037eede7b2e0dc99e87a7f7af950afd11436 100644
 --- a/codex-rs/tui/src/lib.rs
 +++ b/codex-rs/tui/src/lib.rs
-@@ -429,7 +429,7 @@ fn remote_addr_has_explicit_port(addr: &str, parsed: &Url) -> bool {
+@@ -439,7 +439,7 @@ fn remote_addr_has_explicit_port(addr: &str, parsed: &Url) -> bool {
          "wss" => 443,
          _ => return false,
      };
@@ -11,7 +11,7 @@ index a2fba39..f0333b2 100644
          format!("[{host}]")
      } else {
          host.to_string()
-@@ -471,7 +471,6 @@ pub fn resolve_remote_addr(addr: &str) -> color_eyre::Result<RemoteAppServerEndp
+@@ -481,7 +481,6 @@ pub fn resolve_remote_addr(addr: &str) -> color_eyre::Result<RemoteAppServerEndp
      if matches!(parsed.scheme(), "ws" | "wss")
          && parsed.host_str().is_some()
          && remote_addr_has_explicit_port(addr, &parsed)
@@ -19,7 +19,7 @@ index a2fba39..f0333b2 100644
          && parsed.query().is_none()
          && parsed.fragment().is_none()
      {
-@@ -2960,6 +2959,48 @@ requires_openai_auth = {requires_openai_auth}
+@@ -3019,6 +3018,48 @@ requires_openai_auth = {requires_openai_auth}
          );
      }
  

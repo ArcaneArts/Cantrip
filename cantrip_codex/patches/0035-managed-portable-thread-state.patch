@@ -1,9 +1,9 @@
 diff --git a/codex-rs/state/src/lib.rs b/codex-rs/state/src/lib.rs
-index be969b0..7606694 100644
+index d1de678a862ec11f563e6f350a6571ce89203bfa..daf77618ae16360247390623aeda7389cbbfbce0 100644
 --- a/codex-rs/state/src/lib.rs
 +++ b/codex-rs/state/src/lib.rs
-@@ -35,6 +35,7 @@ pub use model::RolloutMigrationSkippedRollout;
- pub use model::RolloutMigrationState;
+@@ -40,6 +40,7 @@ pub use runtime::MAX_GUARDIAN_REVIEW_RECORDS;
+ pub use runtime::MAX_GUARDIAN_REVIEW_RECORDS_PER_THREAD;
  /// Preferred entrypoint: owns configuration and metrics.
  pub use runtime::StateRuntime;
 +pub use runtime::portable_thread::PortableThreadState;
@@ -11,7 +11,7 @@ index be969b0..7606694 100644
  
  pub use audit::ThreadStateAuditRow;
 diff --git a/codex-rs/state/src/model/thread_goal.rs b/codex-rs/state/src/model/thread_goal.rs
-index 93d8c3f..354f761 100644
+index 93d8c3f42a199b0884828dabc43966416e69b329..354f7619f3ccebdc3109e56a8968716f1305a9c1 100644
 --- a/codex-rs/state/src/model/thread_goal.rs
 +++ b/codex-rs/state/src/model/thread_goal.rs
 @@ -3,13 +3,14 @@ use anyhow::anyhow;
@@ -40,10 +40,10 @@ index 93d8c3f..354f761 100644
      pub thread_id: ThreadId,
      pub goal_id: String,
 diff --git a/codex-rs/state/src/runtime.rs b/codex-rs/state/src/runtime.rs
-index 14fcd2d..4d48c05 100644
+index 244f219cd571f229dc9b1968acb9f1c39414f932..9a9b73e03498d5ed7345bb12d6c3474cdf984b0d 100644
 --- a/codex-rs/state/src/runtime.rs
 +++ b/codex-rs/state/src/runtime.rs
-@@ -46,6 +46,7 @@ mod logs;
+@@ -48,6 +48,7 @@ mod logs_maintenance;
  mod memories;
  mod memory_versions;
  mod projects;
@@ -52,7 +52,7 @@ index 14fcd2d..4d48c05 100644
  pub(crate) mod reclamation;
  pub(crate) mod recovery;
 diff --git a/codex-rs/state/src/runtime/goals.rs b/codex-rs/state/src/runtime/goals.rs
-index 939659c..0881abf 100644
+index 939659c6dca6fabe5affb9e16a37899b65db60aa..0881abf7cb75c7d0e106926b4f4b9899abc0f08a 100644
 --- a/codex-rs/state/src/runtime/goals.rs
 +++ b/codex-rs/state/src/runtime/goals.rs
 @@ -66,6 +66,53 @@ WHERE thread_id = ?
@@ -111,7 +111,7 @@ index 939659c..0881abf 100644
          goal: &crate::ThreadGoal,
 diff --git a/codex-rs/state/src/runtime/portable_thread.rs b/codex-rs/state/src/runtime/portable_thread.rs
 new file mode 100644
-index 0000000..acb8c99
+index 0000000000000000000000000000000000000000..acb8c99dee254c8685488148d91cb82a9e5bdadf
 --- /dev/null
 +++ b/codex-rs/state/src/runtime/portable_thread.rs
 @@ -0,0 +1,185 @@
@@ -301,7 +301,7 @@ index 0000000..acb8c99
 +    }
 +}
 diff --git a/codex-rs/state/src/runtime/threads.rs b/codex-rs/state/src/runtime/threads.rs
-index 1c8e971..782e7d8 100644
+index a44ab7cdc87adc2cf2feaf8b9ebc28b134c0df21..39c05ae11b42d10f399e18999c09734681da1d12 100644
 --- a/codex-rs/state/src/runtime/threads.rs
 +++ b/codex-rs/state/src/runtime/threads.rs
 @@ -367,7 +367,7 @@ ON CONFLICT(child_thread_id) DO NOTHING
@@ -313,7 +313,7 @@ index 1c8e971..782e7d8 100644
          &self,
          child_thread_id: ThreadId,
          source: &str,
-@@ -611,6 +611,22 @@ ON CONFLICT(child_thread_id) DO NOTHING
+@@ -615,6 +615,22 @@ ON CONFLICT(child_thread_id) DO NOTHING
      pub async fn insert_thread_if_absent(
          &self,
          metadata: &crate::ThreadMetadata,
@@ -336,7 +336,7 @@ index 1c8e971..782e7d8 100644
      ) -> anyhow::Result<bool> {
          let updated_at = self.allocate_thread_updated_at(metadata.updated_at)?;
          let recency_at = self.allocate_thread_recency_at(metadata.recency_at)?;
-@@ -709,13 +725,11 @@ ON CONFLICT(id) DO NOTHING
+@@ -713,13 +729,11 @@ ON CONFLICT(id) DO NOTHING
          .bind(metadata.git_sha.as_deref())
          .bind(metadata.git_branch.as_deref())
          .bind(metadata.git_origin_url.as_deref())
@@ -353,7 +353,7 @@ index 1c8e971..782e7d8 100644
      }
  
 diff --git a/codex-rs/thread-store/src/local/portable_history.rs b/codex-rs/thread-store/src/local/portable_history.rs
-index 1e6d0c8..8332f89 100644
+index 1e6d0c859ca788970a78029322274eb0fc3bcabe..8332f89b3fc6f27003fb5d384c4ecf7a6888dbe7 100644
 --- a/codex-rs/thread-store/src/local/portable_history.rs
 +++ b/codex-rs/thread-store/src/local/portable_history.rs
 @@ -96,10 +96,15 @@ pub(super) async fn export(
@@ -374,7 +374,7 @@ index 1e6d0c8..8332f89 100644
          queue,
      })
 diff --git a/codex-rs/thread-store/src/local/portable_history_import.rs b/codex-rs/thread-store/src/local/portable_history_import.rs
-index baf6960..36e611e 100644
+index baf6960e5ef50ae81aa28bb1c8ad2a1cec7a3f50..36e611ea194ef2bff1407aa673f8f30d3093c27f 100644
 --- a/codex-rs/thread-store/src/local/portable_history_import.rs
 +++ b/codex-rs/thread-store/src/local/portable_history_import.rs
 @@ -156,7 +156,7 @@ pub(super) async fn import(
@@ -412,7 +412,7 @@ index baf6960..36e611e 100644
          let suffix = if meta.meta.id == segment.rollout_id {
              String::new()
 diff --git a/codex-rs/thread-store/src/portable_history.rs b/codex-rs/thread-store/src/portable_history.rs
-index 7e5d55d..6f8ffbf 100644
+index 7e5d55de76c263dc8356ee3871f13e3eee8962eb..6f8ffbf08b6d990473e765d491356b9e9a528c3f 100644
 --- a/codex-rs/thread-store/src/portable_history.rs
 +++ b/codex-rs/thread-store/src/portable_history.rs
 @@ -12,6 +12,7 @@ pub struct PortableThreadHistory {

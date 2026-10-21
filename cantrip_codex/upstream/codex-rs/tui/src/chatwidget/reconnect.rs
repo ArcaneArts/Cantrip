@@ -6,18 +6,24 @@ use super::*;
 use crate::bottom_pane::RestrictedInputMode;
 
 impl ChatWidget {
-    pub(crate) fn pause_for_disconnect(&mut self) {
-        self.cancel_startup_submission();
-        self.cancel_image_submission();
-        // The app-server transport can fail while the separate WebRTC helper
-        // still sends microphone audio. Retire local media before showing offline UI.
+    pub(crate) fn record_realtime_disconnect_failure(&mut self) {
         if matches!(
             self.realtime_conversation.phase,
             RealtimeConversationPhase::Starting | RealtimeConversationPhase::Active
         ) || self.realtime_retry_cleanup_pending()
         {
-            self.record_realtime_failure();
+            self.record_realtime_failure(RealtimeFailureCause::AppServerDisconnect);
         }
+    }
+
+    pub(crate) fn pause_for_disconnect(&mut self) {
+        self.permission_discovery = None;
+        self.invalidate_permission_discovery();
+        self.cancel_startup_submission();
+        self.cancel_image_submission();
+        // The app-server transport can fail while the separate WebRTC helper
+        // still sends microphone audio. Retire local media before showing offline UI.
+        self.record_realtime_disconnect_failure();
         let _ = self.reset_realtime_conversation();
         if let Some(questions) = &mut self.bottom_pane.questions {
             questions.delivery_enabled = false;
@@ -31,7 +37,10 @@ impl ChatWidget {
         self.bottom_pane
             .set_interrupt_hint_visible(/*visible*/ false);
         self.set_status_header("Reconnecting to server…".to_string());
-        self.set_footer_hint_override(Some(vec![("ctrl+c".into(), "quit".into())]));
+        self.set_footer_hint_override(Some(vec![(
+            crate::key_hint::ctrl(KeyCode::Char('c')).display_label(),
+            "quit".into(),
+        )]));
     }
 
     /// Restore local input only after replay, which can otherwise move interrupted queues into the draft.
@@ -152,8 +161,35 @@ impl ChatWidget {
         self.refresh_pending_input_preview();
     }
 
-    pub(crate) fn handle_disconnected_view_key(&mut self, key: KeyEvent) {
-        self.bottom_pane.handle_key_event(key);
+    pub(crate) fn handle_disconnected_view_key(
+        &mut self,
+        key: KeyEvent,
+        activation_key: Option<crate::key_hint::KeyBinding>,
+    ) {
+        if crate::key_hint::ctrl(KeyCode::Char('c')).is_press(key) {
+            let _ = self.cancel_active_disconnected_view();
+        } else {
+            self.bottom_pane
+                .handle_key_event_with_activation_key(key, activation_key);
+        }
+    }
+
+    pub(crate) fn active_view_accepts_input_when_disconnected(&self) -> bool {
+        self.bottom_pane
+            .active_view_accepts_input_when_disconnected()
+    }
+
+    pub(crate) fn cancel_active_disconnected_view(&mut self) -> bool {
+        let had_view = self.active_view_accepts_input_when_disconnected();
+        if had_view {
+            self.revert_terminal_title_setup_preview();
+            let _ = self.bottom_pane.on_ctrl_c();
+        }
+        had_view
+    }
+
+    pub(crate) fn active_view_is(&self, view_id: &'static str) -> bool {
+        self.bottom_pane.active_view_id() == Some(view_id)
     }
 
     pub(crate) fn handle_restricted_key(&mut self, key: KeyEvent, mode: RestrictedInputMode) {

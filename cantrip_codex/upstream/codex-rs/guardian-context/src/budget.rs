@@ -10,6 +10,7 @@ use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::TruncationPolicy;
 
 use crate::ComposedContext;
+use crate::composition::SectionContent;
 use crate::composition::SectionDelivery;
 use crate::composition::SectionOutput;
 
@@ -95,7 +96,7 @@ pub struct SectionCost {
 impl SectionCost {
     fn add_content(mut self, item: &ContentItem) -> Self {
         match item {
-            ContentItem::InputText { text } | ContentItem::OutputText { text } => {
+            ContentItem::InputText { text } | ContentItem::OutputText { text, .. } => {
                 self.text_bytes = self.text_bytes.saturating_add(text.len());
             }
             ContentItem::InputImage {
@@ -151,8 +152,15 @@ impl ComposedContext {
                 SectionDelivery::UserContent(content) => content
                     .iter()
                     .map(|item| &item.content)
-                    .fold(SectionCost::default(), SectionCost::add_content),
-                SectionDelivery::Message(message) => match message.content.as_ref() {
+                    .fold(SectionCost::default(), |mut cost, item| match item {
+                        SectionContent::Transcript(text) => {
+                            cost.text_bytes =
+                                cost.text_bytes.saturating_add(text.rendered().text_bytes);
+                            cost
+                        }
+                        SectionContent::Other(item) => cost.add_content(item),
+                    }),
+                SectionDelivery::Message(message) => match &message.content.item {
                     ResponseItem::Message { content, .. } => content
                         .iter()
                         .fold(SectionCost::default(), SectionCost::add_content),
@@ -178,15 +186,55 @@ impl ComposedContext {
     }
 }
 
-/// Conservative estimate including roles, framing, metadata and opaque checkpoints.
+/// Coarse estimate including roles, framing, metadata and opaque checkpoints.
 /// Images reserve tokens separately from their wire bytes. This is a budgeting
 /// heuristic, not the model's tokenizer or a measurement of server-side usage.
 pub fn estimate_input_tokens(item: &ResponseItem) -> usize {
+    estimate_input_tokens_from_serialized_len(item, ByteCount::item(item))
+}
+
+/// Estimate input tokens while reusing the length of an existing serialization.
+/// `serialized_len` must be the byte length of the item's `serde_json` encoding.
+pub fn estimate_input_tokens_from_serialized_len(
+    item: &ResponseItem,
+    serialized_len: usize,
+) -> usize {
+    if serialized_len == usize::MAX {
+        return usize::MAX;
+    }
+    if let Some(encrypted_content) = compaction_ciphertext(item) {
+        let framing =
+            TruncationPolicy::Bytes(serialized_len.saturating_sub(encrypted_content.len()))
+                .token_budget();
+        let content =
+            codex_protocol::protocol::estimate_compaction_content_length(encrypted_content.len());
+        return framing.saturating_add(TruncationPolicy::Bytes(content).token_budget());
+    }
     let content = match item {
         ResponseItem::Message { content, .. } => content.as_slice(),
         _ => &[],
     };
-    adjusted_tokens(ByteCount::item(item), content)
+    adjusted_tokens(serialized_len, content)
+}
+
+fn compaction_ciphertext(item: &ResponseItem) -> Option<&str> {
+    match item {
+        ResponseItem::Compaction {
+            encrypted_content, ..
+        }
+        | ResponseItem::ContextCompaction {
+            encrypted_content: Some(encrypted_content),
+            ..
+        } => Some(encrypted_content),
+        _ => None,
+    }
+}
+
+pub(super) fn section_content_tokens(item: &SectionContent) -> usize {
+    match item {
+        SectionContent::Transcript(record) => record.rendered().tokens,
+        SectionContent::Other(item) => content_tokens(item),
+    }
 }
 
 pub(super) fn content_tokens(item: &ContentItem) -> usize {
@@ -212,9 +260,9 @@ pub(super) fn section_tokens(section: &SectionOutput) -> usize {
     match &section.delivery {
         SectionDelivery::UserContent(content) => content
             .iter()
-            .map(|item| content_tokens(&item.content))
+            .map(|item| section_content_tokens(&item.content))
             .fold(content_framing_tokens(content.len()), usize::saturating_add),
-        SectionDelivery::Message(message) => estimate_input_tokens(&message.content),
+        SectionDelivery::Message(message) => estimate_input_tokens(&message.content.item),
     }
 }
 

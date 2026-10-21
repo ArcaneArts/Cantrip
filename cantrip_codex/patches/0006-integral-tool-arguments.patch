@@ -1,5 +1,5 @@
 diff --git a/codex-rs/core/src/tools/code_mode/wait_handler.rs b/codex-rs/core/src/tools/code_mode/wait_handler.rs
-index b0e4479..4821c67 100644
+index b0e447913434a4052153ee45f683995a77f49160..4821c675c6cf99ac3fe0402296480e3ae0a6de2e 100644
 --- a/codex-rs/core/src/tools/code_mode/wait_handler.rs
 +++ b/codex-rs/core/src/tools/code_mode/wait_handler.rs
 @@ -5,6 +5,7 @@ use crate::tools::context::ToolInvocation;
@@ -27,7 +27,7 @@ index b0e4479..4821c67 100644
      fn tool_name(&self) -> ToolName {
          ToolName::plain(WAIT_TOOL_NAME)
 diff --git a/codex-rs/core/src/tools/code_mode/wait_spec.rs b/codex-rs/core/src/tools/code_mode/wait_spec.rs
-index 01b713e..34f93d8 100644
+index 01b713e515c1aed3a43d4aac5e0afae84db07958..34f93d8bd324ae2d577dd37c5a714f828834bf21 100644
 --- a/codex-rs/core/src/tools/code_mode/wait_spec.rs
 +++ b/codex-rs/core/src/tools/code_mode/wait_spec.rs
 @@ -14,13 +14,13 @@ pub(crate) fn create_wait_tool(
@@ -65,10 +65,10 @@ index 01b713e..34f93d8 100644
                                      .to_string(),
                              )),
 diff --git a/codex-rs/core/src/tools/handlers/mod.rs b/codex-rs/core/src/tools/handlers/mod.rs
-index 2d0b617..5099142 100644
+index 710c089b8a5481b6a69b19047d677e7f19bf419c..aba9718c59c90b3219bc438f744e6b6ffbc3556c 100644
 --- a/codex-rs/core/src/tools/handlers/mod.rs
 +++ b/codex-rs/core/src/tools/handlers/mod.rs
-@@ -43,8 +43,9 @@ use codex_sandboxing::policy_transforms::normalize_additional_permissions_with_c
+@@ -44,8 +44,9 @@ use codex_sandboxing::policy_transforms::normalize_additional_permissions_with_c
  use codex_utils_absolute_path::AbsolutePathBuf;
  use codex_utils_absolute_path::AbsolutePathBufGuard;
  use codex_utils_path_uri::PathUri;
@@ -78,7 +78,7 @@ index 2d0b617..5099142 100644
 +use serde_json::Number;
  use serde_json::Value;
  
- use crate::environment_selection::TurnEnvironmentSnapshot;
+ use crate::function_tool::FunctionCallError;
 @@ -85,11 +86,71 @@ pub use wait_for_environment::WaitForEnvironmentToolConfig;
  
  pub(crate) fn parse_arguments<T>(arguments: &str) -> Result<T, FunctionCallError>
@@ -164,7 +164,7 @@ index 2d0b617..5099142 100644
  {
      let _guard = AbsolutePathBufGuard::new(base_path);
      parse_arguments(arguments)
-@@ -385,6 +446,7 @@ mod tests {
+@@ -399,6 +460,7 @@ mod tests {
      use super::EffectiveAdditionalPermissions;
      use super::implicit_granted_permissions;
      use super::normalize_and_validate_additional_permissions;
@@ -172,7 +172,7 @@ index 2d0b617..5099142 100644
      use super::preapproved_permission_profile;
      use crate::sandboxing::SandboxPermissions;
      use codex_protocol::models::AdditionalPermissionProfile;
-@@ -402,8 +464,39 @@ mod tests {
+@@ -416,8 +478,39 @@ mod tests {
      use codex_utils_absolute_path::AbsolutePathBuf;
      use codex_utils_path_uri::PathUri;
      use pretty_assertions::assert_eq;
@@ -213,10 +213,10 @@ index 2d0b617..5099142 100644
          AdditionalPermissionProfile {
              network: Some(NetworkPermissions {
 diff --git a/codex-rs/core/src/tools/handlers/multi_agents_spec.rs b/codex-rs/core/src/tools/handlers/multi_agents_spec.rs
-index 52c24f8..17cff84 100644
+index edc9467b4d02cc023d8961373637116cf8ba6f6f..fdeab4ced37e6ef7011860965164f4af66870eee 100644
 --- a/codex-rs/core/src/tools/handlers/multi_agents_spec.rs
 +++ b/codex-rs/core/src/tools/handlers/multi_agents_spec.rs
-@@ -860,7 +860,7 @@ fn wait_agent_tool_parameters_v1(options: WaitAgentTimeoutOptions) -> JsonSchema
+@@ -900,7 +900,7 @@ fn wait_agent_tool_parameters_v1(options: WaitAgentTimeoutOptions) -> JsonSchema
          ),
          (
              "timeout_ms".to_string(),
@@ -225,7 +225,7 @@ index 52c24f8..17cff84 100644
                  "Timeout in milliseconds. Defaults to {}, min {}, max {}. Prefer longer waits (minutes) to avoid busy polling.",
                  options.default_timeout_ms, options.min_timeout_ms, options.max_timeout_ms,
              ))),
-@@ -877,7 +877,7 @@ fn wait_agent_tool_parameters_v1(options: WaitAgentTimeoutOptions) -> JsonSchema
+@@ -917,7 +917,7 @@ fn wait_agent_tool_parameters_v1(options: WaitAgentTimeoutOptions) -> JsonSchema
  fn wait_agent_tool_parameters_v2(options: WaitAgentTimeoutOptions) -> JsonSchema {
      let properties = BTreeMap::from([(
          "timeout_ms".to_string(),
@@ -235,10 +235,10 @@ index 52c24f8..17cff84 100644
              options.default_timeout_ms, options.min_timeout_ms, options.max_timeout_ms,
          ))),
 diff --git a/codex-rs/core/src/tools/handlers/multi_agents_spec_tests.rs b/codex-rs/core/src/tools/handlers/multi_agents_spec_tests.rs
-index e2f943c..1fe9740 100644
+index ad685919f91fe7fa3ac9b6ec301a8863898a3515..a1e3928a5044fc93665245db245262e0424f3cfa 100644
 --- a/codex-rs/core/src/tools/handlers/multi_agents_spec_tests.rs
 +++ b/codex-rs/core/src/tools/handlers/multi_agents_spec_tests.rs
-@@ -458,6 +458,12 @@ fn wait_agent_tool_v2_uses_timeout_only_summary_output() {
+@@ -346,6 +346,12 @@ fn wait_agent_tool_v2_uses_timeout_only_summary_output() {
          .expect("wait_agent should use object params");
      assert!(!properties.contains_key("targets"));
      assert!(properties.contains_key("timeout_ms"));
@@ -252,7 +252,7 @@ index e2f943c..1fe9740 100644
          "Does not return the content; returns either a summary of which agents have updates (if any)"
      ));
 diff --git a/codex-rs/core/src/tools/handlers/shell_spec.rs b/codex-rs/core/src/tools/handlers/shell_spec.rs
-index cabe62c..3b578bb 100644
+index ac3dcf992655b18ea42bfa9c068d7b9b11b989d7..3f3b4e082d9658ff47ccef194c7c757c4924db85 100644
 --- a/codex-rs/core/src/tools/handlers/shell_spec.rs
 +++ b/codex-rs/core/src/tools/handlers/shell_spec.rs
 @@ -53,11 +53,11 @@ pub(crate) fn create_exec_command_tool_with_environment_id(
@@ -295,10 +295,10 @@ index cabe62c..3b578bb 100644
              )),
          ),
 diff --git a/codex-rs/core/src/tools/handlers/shell_spec_tests.rs b/codex-rs/core/src/tools/handlers/shell_spec_tests.rs
-index ee2886a..03a4fba 100644
+index c3d1afffffd49a7e8b22ea481ce2b55bc267317f..691e5c63a2f585d8313be52967021e14ecf8216d 100644
 --- a/codex-rs/core/src/tools/handlers/shell_spec_tests.rs
 +++ b/codex-rs/core/src/tools/handlers/shell_spec_tests.rs
-@@ -62,11 +62,11 @@ fn exec_command_tool_matches_expected_spec() {
+@@ -55,11 +55,11 @@ fn exec_command_tool_matches_expected_spec() {
          ),
          (
              "yield_time_ms".to_string(),
@@ -312,7 +312,7 @@ index ee2886a..03a4fba 100644
                      "Output token budget. Defaults to 10000 tokens; larger requests may be capped by policy.".to_string(),
                  )),
          ),
-@@ -121,7 +121,7 @@ fn write_stdin_tool_matches_expected_spec() {
+@@ -98,7 +98,7 @@ fn write_stdin_tool_matches_expected_spec() {
      let properties = BTreeMap::from([
          (
              "session_id".to_string(),
@@ -321,7 +321,7 @@ index ee2886a..03a4fba 100644
                  "Identifier of the running unified exec session.".to_string(),
              )),
          ),
-@@ -133,13 +133,13 @@ fn write_stdin_tool_matches_expected_spec() {
+@@ -110,13 +110,13 @@ fn write_stdin_tool_matches_expected_spec() {
          ),
          (
              "yield_time_ms".to_string(),
@@ -338,7 +338,7 @@ index ee2886a..03a4fba 100644
              )),
          ),
 diff --git a/codex-rs/core/src/tools/handlers/sleep.rs b/codex-rs/core/src/tools/handlers/sleep.rs
-index 45db1a3..0b32f97 100644
+index 45db1a3b5795c7bc89701b6c4af670a2dc2c0dc2..0b32f97d38a4758bf5cdde0ea08070601f5fc70a 100644
 --- a/codex-rs/core/src/tools/handlers/sleep.rs
 +++ b/codex-rs/core/src/tools/handlers/sleep.rs
 @@ -38,7 +38,7 @@ struct SleepArgs {
@@ -351,7 +351,7 @@ index 45db1a3..0b32f97 100644
          ))),
      )]);
 diff --git a/codex-rs/core/src/tools/handlers/test_sync_spec.rs b/codex-rs/core/src/tools/handlers/test_sync_spec.rs
-index 33bd720..f01991a 100644
+index 33bd720c94fe0bfa62226ca2e14fb11945034abd..f01991adadcdd27b069fc2a901080ef8f7f2db1b 100644
 --- a/codex-rs/core/src/tools/handlers/test_sync_spec.rs
 +++ b/codex-rs/core/src/tools/handlers/test_sync_spec.rs
 @@ -13,13 +13,13 @@ pub fn create_test_sync_tool() -> ToolSpec {
@@ -387,7 +387,7 @@ index 33bd720..f01991a 100644
              )),
          ),
 diff --git a/codex-rs/core/src/tools/handlers/test_sync_spec_tests.rs b/codex-rs/core/src/tools/handlers/test_sync_spec_tests.rs
-index adcb2a2..d21e36e 100644
+index adcb2a2eebe31722672b74ae910c0bfe6c3f226d..d21e36e87dbebc3e2d247d5a23fb748be84caaca 100644
 --- a/codex-rs/core/src/tools/handlers/test_sync_spec_tests.rs
 +++ b/codex-rs/core/src/tools/handlers/test_sync_spec_tests.rs
 @@ -27,14 +27,14 @@ fn test_sync_tool_matches_expected_spec() {
@@ -425,7 +425,7 @@ index adcb2a2..d21e36e 100644
                          )),
                      ),
 diff --git a/codex-rs/core/src/tools/handlers/tool_search_spec.rs b/codex-rs/core/src/tools/handlers/tool_search_spec.rs
-index c607ae0..51a253f 100644
+index c607ae0762be2b08c3b95d169a7e77285ffb6e1c..51a253f279212dc63c1bdf77bdd53f4f43e4123b 100644
 --- a/codex-rs/core/src/tools/handlers/tool_search_spec.rs
 +++ b/codex-rs/core/src/tools/handlers/tool_search_spec.rs
 @@ -25,7 +25,7 @@ pub(crate) fn create_tool_search_tool(
@@ -447,10 +447,10 @@ index c607ae0..51a253f 100644
                                          .to_string(),
                                  ),),
 diff --git a/codex-rs/core/src/tools/router.rs b/codex-rs/core/src/tools/router.rs
-index d9f1f63..75753e0 100644
+index a7a192815b6a2f45e96b6903f133e5564306a419..d816611443e5cd9c49efcaa388f0cf9dd10db44c 100644
 --- a/codex-rs/core/src/tools/router.rs
 +++ b/codex-rs/core/src/tools/router.rs
-@@ -270,11 +270,13 @@ impl ToolRouter {
+@@ -279,11 +279,13 @@ impl ToolRouter {
                  ..
              } if execution == "client" => {
                  let arguments: SearchToolCallParams =
@@ -470,10 +470,10 @@ index d9f1f63..75753e0 100644
                      tool_name: ToolName::plain("tool_search"),
                      call_id,
 diff --git a/codex-rs/core/src/tools/router_tests.rs b/codex-rs/core/src/tools/router_tests.rs
-index 05a1e2e..d3fd3ca 100644
+index aff6d416600a75ce43c72aa32c580db10d9d97de..df71d5b491dea8362f8d33f98e8cc35cc537a8d1 100644
 --- a/codex-rs/core/src/tools/router_tests.rs
 +++ b/codex-rs/core/src/tools/router_tests.rs
-@@ -239,6 +239,29 @@ async fn build_tool_call_uses_namespace_for_registry_name() -> anyhow::Result<()
+@@ -241,6 +241,29 @@ async fn build_tool_call_uses_namespace_for_registry_name() -> anyhow::Result<()
      Ok(())
  }
  

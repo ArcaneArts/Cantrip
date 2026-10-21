@@ -52,11 +52,20 @@ impl Overlay {
         cells: Vec<Arc<dyn HistoryCell>>,
         keymap: PagerKeymap,
         copy_on_select: bool,
+        mouse_scroll_speed: f64,
     ) -> Self {
         let mut overlay = TranscriptOverlay::new(cells, keymap);
         overlay.view.copy_on_select = copy_on_select;
+        overlay.view.mouse_scroll_speed = mouse_scroll_speed;
         overlay.view.primary_selection = crate::clipboard_copy::primary::available();
         Self::Transcript(overlay)
+    }
+
+    pub(crate) fn with_copy_on_select_clear_selection(mut self, enabled: bool) -> Self {
+        if let Self::Transcript(overlay) = &mut self {
+            overlay.view.copy_on_select_clear_selection = enabled;
+        }
+        self
     }
 
     pub(crate) fn new_static_with_lines(

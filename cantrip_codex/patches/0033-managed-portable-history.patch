@@ -1,10 +1,10 @@
 diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
-index 5488981..4bf7bc8 100644
+index 3588bcf11fb777b07fc5cecb0979b54e66e018ee..ccc582c73cdd9ac58670c4f0902e6c601a57b182 100644
 --- a/codex-rs/app-server-protocol/src/protocol/common.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/common.rs
-@@ -902,6 +902,16 @@ client_request_definitions! {
+@@ -927,6 +927,16 @@ client_request_definitions! {
          serialization: None,
-         response: v2::ThreadItemsListResponse,
+         response: v2::ThreadItemsReadResponse,
      },
 +    ThreadManagedHistoryExport => "thread/managedHistory/export" {
 +        params: v2::ThreadManagedHistoryExportParams,
@@ -20,10 +20,10 @@ index 5488981..4bf7bc8 100644
      ThreadManagedContextReset => "thread/managedContext/reset" {
          params: v2::ThreadManagedContextResetParams,
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-index 223f0b2..f02c602 100644
+index 67cdd7085fb59897cd56f9c180a5456b8df239ff..a8a7c4e7bd64ce64e57ff38a2892675feb39d9a9 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-@@ -2519,3 +2519,46 @@ pub struct ThreadManagedContextResetParams {
+@@ -2636,3 +2636,46 @@ pub struct ThreadManagedContextResetParams {
  #[serde(rename_all = "camelCase")]
  #[ts(export_to = "v2/")]
  pub struct ThreadManagedContextResetResponse {}
@@ -71,10 +71,10 @@ index 223f0b2..f02c602 100644
 +    pub path: String,
 +}
 diff --git a/codex-rs/app-server/src/message_processor.rs b/codex-rs/app-server/src/message_processor.rs
-index 4452856..5601448 100644
+index 4701335d2ad093309d26a31049559c224f5d4fea..5535a356629750cef500f001005614504c591a31 100644
 --- a/codex-rs/app-server/src/message_processor.rs
 +++ b/codex-rs/app-server/src/message_processor.rs
-@@ -1672,6 +1672,16 @@ impl MessageProcessor {
+@@ -1695,6 +1695,16 @@ impl MessageProcessor {
                      )
                      .await
              }
@@ -92,7 +92,7 @@ index 4452856..5601448 100644
                  self.turn_processor
                      .thread_managed_context_reset(&request_id, params)
 diff --git a/codex-rs/app-server/src/request_processors.rs b/codex-rs/app-server/src/request_processors.rs
-index f07b149..95c8276 100644
+index e8c3ebebb03bfc4e736f0cb506cb781509f666eb..6b682e0da124130e39fe96541afe042007e7b038 100644
 --- a/codex-rs/app-server/src/request_processors.rs
 +++ b/codex-rs/app-server/src/request_processors.rs
 @@ -1,4 +1,5 @@
@@ -103,7 +103,7 @@ index f07b149..95c8276 100644
  use crate::command_exec::CommandExecManager;
 diff --git a/codex-rs/app-server/src/request_processors/managed_history_transfer.rs b/codex-rs/app-server/src/request_processors/managed_history_transfer.rs
 new file mode 100644
-index 0000000..3f9d1a1
+index 0000000000000000000000000000000000000000..3f9d1a13fb8e773a44f67fe21dbed1beeafd71bc
 --- /dev/null
 +++ b/codex-rs/app-server/src/request_processors/managed_history_transfer.rs
 @@ -0,0 +1,74 @@
@@ -182,10 +182,10 @@ index 0000000..3f9d1a1
 +    tokio::task::spawn_blocking(move || Ok(serde_json::from_reader(fs::File::open(path)?)?)).await?
 +}
 diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
-index ea2cb8b..20c4bba 100644
+index 3e5a4efa155a411c44a867dd7ad92fd0b6c5f8f2..052cf6c097ad14f7fad0e166ee91215ffa6dd62f 100644
 --- a/codex-rs/app-server/src/request_processors/thread_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
-@@ -484,6 +484,39 @@ enum RunningThreadResumeResult {
+@@ -489,6 +489,39 @@ enum RunningThreadResumeResult {
  }
  
  impl ThreadRequestProcessor {
@@ -226,10 +226,10 @@ index ea2cb8b..20c4bba 100644
      pub(crate) fn new(
          auth_manager: Arc<AuthManager>,
 diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/codex-rs/app-server/src/request_processors/turn_processor.rs
-index 41d57bb..5dc0ea6 100644
+index 8643523dee9a692ba568e2af186faf5fdf9285cf..342b0cd381742103f57a93a281eca3eaee063978 100644
 --- a/codex-rs/app-server/src/request_processors/turn_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/turn_processor.rs
-@@ -194,6 +194,41 @@ impl TurnRequestProcessor {
+@@ -197,6 +197,41 @@ impl TurnRequestProcessor {
          .map(|response| Some(response.into()))
      }
  
@@ -271,7 +271,7 @@ index 41d57bb..5dc0ea6 100644
      pub(crate) async fn thread_managed_context_reset(
          &self,
          request_id: &ConnectionRequestId,
-@@ -209,7 +244,9 @@ impl TurnRequestProcessor {
+@@ -212,7 +247,9 @@ impl TurnRequestProcessor {
                  CodexErrorDetails::InvalidRequest(message) => invalid_request(message.clone()),
                  _ => internal_error(format!("failed to reset managed model context: {err}")),
              })?;
@@ -283,10 +283,10 @@ index 41d57bb..5dc0ea6 100644
  
      pub(crate) async fn thread_inject_items(
 diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
-index e5a82ff..95940fa 100644
+index d0b07d1264e67cc69c96af190188617deae3c41f..a92136a00cf37deff5597dd43f203642403746cf 100644
 --- a/codex-rs/core/src/codex_thread.rs
 +++ b/codex-rs/core/src/codex_thread.rs
-@@ -931,6 +931,15 @@ impl CodexThread {
+@@ -1009,6 +1009,15 @@ impl CodexThread {
          Ok(())
      }
  
@@ -303,7 +303,7 @@ index e5a82ff..95940fa 100644
      pub async fn reset_managed_model_context(
          &self,
 diff --git a/codex-rs/core/src/session/managed_context.rs b/codex-rs/core/src/session/managed_context.rs
-index be6cf38..02fe92e 100644
+index be6cf3828a4c40d3c79dc414e119a1a026900b5f..02fe92e528b8ba0bc09d7c95006a0a8859f4a07d 100644
 --- a/codex-rs/core/src/session/managed_context.rs
 +++ b/codex-rs/core/src/session/managed_context.rs
 @@ -3,6 +3,37 @@
@@ -345,7 +345,7 @@ index be6cf38..02fe92e 100644
          &self,
          expected_last_turn_id: Option<&str>,
 diff --git a/codex-rs/state/src/model/queued_item.rs b/codex-rs/state/src/model/queued_item.rs
-index ae7ec0c..221b4c8 100644
+index ae7ec0c0bdb1ee743722c1676c955c567f6d53a2..221b4c8266220aa6c1d6a55d127a2fb5edd8f6e3 100644
 --- a/codex-rs/state/src/model/queued_item.rs
 +++ b/codex-rs/state/src/model/queued_item.rs
 @@ -4,7 +4,7 @@ use sqlx::Row;
@@ -358,7 +358,7 @@ index ae7ec0c..221b4c8 100644
      pub id: String,
      pub thread_id: ThreadId,
 diff --git a/codex-rs/state/src/model/thread_metadata.rs b/codex-rs/state/src/model/thread_metadata.rs
-index a1b900a..71edf80 100644
+index 9237a573240b672ac6a763e4f1e0d164e1e41eb8..27da57211cea4264187d503777a9e2b63c3f58fd 100644
 --- a/codex-rs/state/src/model/thread_metadata.rs
 +++ b/codex-rs/state/src/model/thread_metadata.rs
 @@ -121,7 +121,7 @@ pub struct ExtractionOutcome {
@@ -371,7 +371,7 @@ index a1b900a..71edf80 100644
      /// Originator recorded at creation, if available.
      pub originator: Option<String>,
 diff --git a/codex-rs/state/src/runtime/queued_items.rs b/codex-rs/state/src/runtime/queued_items.rs
-index d9d8139..0cdc4e0 100644
+index d9d8139d71ce7cdb323b50edb98c772ab8729cc8..0cdc4e024c32af2f5c23873e796d01a8b055e3ac 100644
 --- a/codex-rs/state/src/runtime/queued_items.rs
 +++ b/codex-rs/state/src/runtime/queued_items.rs
 @@ -74,6 +74,42 @@ impl SqliteQueueStore {
@@ -418,7 +418,7 @@ index d9d8139..0cdc4e0 100644
          &self,
          thread_id: ThreadId,
 diff --git a/codex-rs/thread-store/src/lib.rs b/codex-rs/thread-store/src/lib.rs
-index 037c80e..bb4ca5c 100644
+index 8a71629af0cdbdceda053174f3760994f8bb5a16..6254ba67b9ee43ef9b1a10e4fbca2d677609bdd8 100644
 --- a/codex-rs/thread-store/src/lib.rs
 +++ b/codex-rs/thread-store/src/lib.rs
 @@ -8,6 +8,7 @@ mod error;
@@ -429,7 +429,7 @@ index 037c80e..bb4ca5c 100644
  mod projects;
  mod queue_store;
  mod store;
-@@ -39,6 +40,8 @@ pub use local::RolloutMigrationOutcome;
+@@ -42,6 +43,8 @@ pub use local::RolloutMigrationOutcome;
  pub use local::RolloutMigrationProgress;
  pub use local::RolloutMigrationReport;
  pub use local::RolloutMigrationStatus;
@@ -439,10 +439,10 @@ index 037c80e..bb4ca5c 100644
  pub use projects::CreatedProject;
  pub use projects::DeletedProject;
 diff --git a/codex-rs/thread-store/src/live_thread.rs b/codex-rs/thread-store/src/live_thread.rs
-index bad5f8f..91ea91b 100644
+index db3cf7ed055b8599a87e89cd08a032a7014df654..33756c733c26aad919e29abb7585fcbf2cc7c171 100644
 --- a/codex-rs/thread-store/src/live_thread.rs
 +++ b/codex-rs/thread-store/src/live_thread.rs
-@@ -373,6 +373,15 @@ impl LiveThread {
+@@ -355,6 +355,15 @@ impl LiveThread {
          }))
      }
  
@@ -459,10 +459,10 @@ index bad5f8f..91ea91b 100644
          &self,
          include_archived: bool,
 diff --git a/codex-rs/thread-store/src/local/mod.rs b/codex-rs/thread-store/src/local/mod.rs
-index 3b15752..8e79ae6 100644
+index 7f21cd2f1b052a6ef9c2319a8b568d5bb1544d06..e0e5558162e81204b97c913d5dbb006a263b2183 100644
 --- a/codex-rs/thread-store/src/local/mod.rs
 +++ b/codex-rs/thread-store/src/local/mod.rs
-@@ -8,6 +8,8 @@ mod model_context;
+@@ -9,6 +9,8 @@ mod model_context;
  mod move_thread_to_section;
  mod paginated_fork;
  mod pending_thread_metadata;
@@ -471,7 +471,7 @@ index 3b15752..8e79ae6 100644
  mod projects;
  mod read_thread;
  mod revert_thread;
-@@ -578,6 +580,21 @@ impl ThreadStore for LocalThreadStore {
+@@ -585,6 +587,21 @@ impl ThreadStore for LocalThreadStore {
          Box::pin(LocalThreadStore::load_history(self, params))
      }
  
@@ -495,7 +495,7 @@ index 3b15752..8e79ae6 100644
          params: LoadThreadHistoryParams,
 diff --git a/codex-rs/thread-store/src/local/portable_history.rs b/codex-rs/thread-store/src/local/portable_history.rs
 new file mode 100644
-index 0000000..1e6d0c8
+index 0000000000000000000000000000000000000000..1e6d0c859ca788970a78029322274eb0fc3bcabe
 --- /dev/null
 +++ b/codex-rs/thread-store/src/local/portable_history.rs
 @@ -0,0 +1,125 @@
@@ -626,7 +626,7 @@ index 0000000..1e6d0c8
 +}
 diff --git a/codex-rs/thread-store/src/local/portable_history_import.rs b/codex-rs/thread-store/src/local/portable_history_import.rs
 new file mode 100644
-index 0000000..baf6960
+index 0000000000000000000000000000000000000000..baf6960e5ef50ae81aa28bb1c8ad2a1cec7a3f50
 --- /dev/null
 +++ b/codex-rs/thread-store/src/local/portable_history_import.rs
 @@ -0,0 +1,306 @@
@@ -938,7 +938,7 @@ index 0000000..baf6960
 +}
 diff --git a/codex-rs/thread-store/src/local/portable_history_tests.rs b/codex-rs/thread-store/src/local/portable_history_tests.rs
 new file mode 100644
-index 0000000..4df43ee
+index 0000000000000000000000000000000000000000..4df43ee405690166da66391ea9dc800255fc2009
 --- /dev/null
 +++ b/codex-rs/thread-store/src/local/portable_history_tests.rs
 @@ -0,0 +1,297 @@
@@ -1240,10 +1240,10 @@ index 0000000..4df43ee
 +    }
 +}
 diff --git a/codex-rs/thread-store/src/local/thread_history_materialization_tests.rs b/codex-rs/thread-store/src/local/thread_history_materialization_tests.rs
-index c042a04..29a9210 100644
+index 055358c85e4d2273c95e05b3cbc1acdf1a8bb326..67e52c7f53ea551b470731836e0d15aae43d3807 100644
 --- a/codex-rs/thread-store/src/local/thread_history_materialization_tests.rs
 +++ b/codex-rs/thread-store/src/local/thread_history_materialization_tests.rs
-@@ -2796,3 +2796,6 @@ fn append_suffix(rollout_path: &std::path::Path, suffix: &str) {
+@@ -2994,3 +2994,6 @@ fn append_suffix(rollout_path: &std::path::Path, suffix: &str) {
  
  #[path = "history_snapshot_tests.rs"]
  mod history_snapshot_tests;
@@ -1252,7 +1252,7 @@ index c042a04..29a9210 100644
 +mod portable_history_tests;
 diff --git a/codex-rs/thread-store/src/portable_history.rs b/codex-rs/thread-store/src/portable_history.rs
 new file mode 100644
-index 0000000..7e5d55d
+index 0000000000000000000000000000000000000000..7e5d55de76c263dc8356ee3871f13e3eee8962eb
 --- /dev/null
 +++ b/codex-rs/thread-store/src/portable_history.rs
 @@ -0,0 +1,27 @@
@@ -1284,10 +1284,10 @@ index 0000000..7e5d55d
 +    pub content: String,
 +}
 diff --git a/codex-rs/thread-store/src/store.rs b/codex-rs/thread-store/src/store.rs
-index b05a931..4694b60 100644
+index d37d82311bd6be804ea770ba70930d0dd5f3de5c..86410c56468810865591bac32525ed14c7f41316 100644
 --- a/codex-rs/thread-store/src/store.rs
 +++ b/codex-rs/thread-store/src/store.rs
-@@ -204,6 +204,34 @@ pub trait ThreadStore: Any + Send + Sync {
+@@ -218,6 +218,34 @@ pub trait ThreadStore: Any + Send + Sync {
          })
      }
  

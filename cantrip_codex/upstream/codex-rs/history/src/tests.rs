@@ -134,6 +134,8 @@ fn older_thread_settings_snapshot_defaults_disabled_plugins_to_empty() -> Result
 #[test]
 fn response_item_envelope_accessors_preserve_item() {
     let expected_item = ResponseItem::Message {
+        status: None,
+        encrypted_content: None,
         id: None,
         role: "user".to_string(),
         content: vec![ContentItem::InputText {
@@ -148,9 +150,13 @@ fn response_item_envelope_accessors_preserve_item() {
     let borrowed: &ResponseItem = envelope.borrow();
     assert_eq!(borrowed, &expected_item);
     let replacement_item = ResponseItem::Message {
+        status: None,
+        encrypted_content: None,
         id: None,
         role: "assistant".to_string(),
         content: vec![ContentItem::OutputText {
+            annotations: None,
+            logprobs: None,
             text: "goodbye".to_string(),
         }],
         phase: None,
@@ -299,7 +305,7 @@ fn delivered_assistant_rollout_survives_an_earlier_read_and_rewrite() -> Result<
         // The preceding client's Guardian projection excludes commentary.
         assert_eq!(phase, &None);
         assert_eq!(metadata.user_input_order, Some(7));
-        let [ContentItem::OutputText { text }] = content.as_slice() else {
+        let [ContentItem::OutputText { text, .. }] = content.as_slice() else {
             panic!("older readers need plain assistant text");
         };
         if complete {
@@ -580,6 +586,7 @@ fn compacted_resume_metadata_presence_round_trips_empty_values() -> Result<()> {
     let resume_metadata = CompactionResumeMetadata {
         multi_agent_version: None,
         last_started_turn_id: None,
+        turn_attribution: None,
         previous_turn_settings: None,
     };
     let item = CompactedItem {
@@ -690,6 +697,7 @@ fn compacted_metadata_remains_compatible_with_legacy_response_item_readers() -> 
         resume_metadata: Some(CompactionResumeMetadata {
             multi_agent_version: Some(MultiAgentVersion::V2),
             last_started_turn_id: Some("turn-1".to_string()),
+            turn_attribution: None,
             previous_turn_settings: None,
         }),
     }))?;
@@ -875,6 +883,8 @@ fn rollout_item_schema_matches_tagged_payload_and_sibling_metadata() -> Result<(
 
 fn response_message(role: &str) -> ResponseItem {
     ResponseItem::Message {
+        status: None,
+        encrypted_content: None,
         id: None,
         role: role.to_string(),
         content: vec![ContentItem::InputText {
@@ -959,6 +969,7 @@ fn copied_history_uses_persisted_history_mode() -> Result<()> {
         git: None,
     });
     let history = InitialHistory::Resumed(ResumedHistory {
+        history_revision: None,
         conversation_id: thread_id,
         history: Arc::new(vec![session_meta.clone()]),
         rollout_path: None,
@@ -978,6 +989,7 @@ fn copied_history_uses_persisted_history_mode() -> Result<()> {
     );
     assert_eq!(
         InitialHistory::Resumed(ResumedHistory {
+            history_revision: None,
             conversation_id: thread_id,
             history: Arc::new(Vec::new()),
             rollout_path: None,
