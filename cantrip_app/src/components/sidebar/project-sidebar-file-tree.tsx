@@ -43,6 +43,7 @@ import {
 } from "@/components/ui/styled-menu";
 import { cn } from "@/lib/utils";
 import { useFileChangeActivity } from "./use-file-change-activity";
+import { useSidebarFolderExpansion } from "./use-sidebar-folder-expansion";
 import { requestGitFileHistory } from "@/lib/git-history-navigation";
 
 const SIDEBAR_FILE_TREE_INDENT_PX = 6;
@@ -677,11 +678,8 @@ export function ProjectSidebarFileTree({
       path,
     });
   };
-  const [expandedPaths, setExpandedPaths] = useState<ReadonlySet<string>>(
-    () => new Set(sidebarFileAncestorPaths(activePath)),
-  );
-  const activePathRef = useRef(activePath);
-  activePathRef.current = activePath;
+  const { expandedPaths, setExpandedPaths, toggle, expandChild } =
+    useSidebarFolderExpansion(explorer);
   const [renameTarget, setRenameTarget] = useState<ExplorerEntry | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [renamePending, setRenamePending] = useState(false);
@@ -704,7 +702,7 @@ export function ProjectSidebarFileTree({
       return missing.length > 0 ? new Set([...current, ...missing]) : current;
     });
     setFilesCollapsed(false);
-  }, [activePath]);
+  }, [activePath, setExpandedPaths]);
   const streamEncryption = useExplorerWorkerEncryption(
     explorer,
     !filesCollapsed,
@@ -802,10 +800,6 @@ export function ProjectSidebarFileTree({
   ]);
 
   useEffect(() => {
-    setExpandedPaths(new Set(sidebarFileAncestorPaths(activePathRef.current)));
-  }, [explorer?.activeWorkerId, explorer?.projectId, explorer?.worktreeId]);
-
-  useEffect(() => {
     setRenameTarget(null);
     setRenameError(null);
     setDeleteTarget(null);
@@ -820,23 +814,6 @@ export function ProjectSidebarFileTree({
       isCurrent: () => mutationBindingKeyRef.current === bindingKey,
     } satisfies ExplorerFileMutationAuthorization;
   };
-
-  const toggle = (path: string) => {
-    setExpandedPaths((current) => {
-      const next = new Set(current);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
-      return next;
-    });
-  };
-
-  const expandChild = useCallback((parentPath: string, path: string) => {
-    setExpandedPaths((current) =>
-      current.has(parentPath) && !current.has(path)
-        ? new Set([...current, path])
-        : current,
-    );
-  }, []);
 
   const beginRename = (entry: ExplorerEntry) => {
     setRenameError(null);
