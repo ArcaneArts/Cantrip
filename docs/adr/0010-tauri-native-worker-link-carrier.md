@@ -3,6 +3,10 @@
 - Status: Accepted
 - Date: 2026-08-26
 
+> Scope update: The embedded workbench has been retired. Its editor-specific
+> sessions and adapters below describe the earlier implementation; the common
+> transport and authorization rules continue to apply to active features.
+
 ## Context
 
 Tauri owns operating-system localhost listeners used by Cantrip Code, saved

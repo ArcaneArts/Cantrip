@@ -265,18 +265,16 @@ owner and worker.
 
 ## 6. Runtime transport and data-plane boundaries
 
-| Plane                         | Current binding                                                                                                                                                           | Required revocation boundary                       |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| Application live hub          | Request owner plus authorized resource scope                                                                                                                              | Account session                                    |
-| Worker control bridge         | Owner, worker ID, scope, and individual credential                                                                                                                        | Individual worker credential                       |
-| WorkerLink session and grants | Server identity/generation, owner, account session, client instance, worker/process generation, optional attachment, exact resources, operations, lanes, count, and lease | App session, worker generation, session, or grant  |
-| Cantrip Code tunnel           | Protected attachment carried by an exact WorkerLink grant and browser adapter/root lease or native loopback                                                               | Attachment, app session, worker, or editor session |
-| Project-share/tunnel framing  | Application-encrypted root, credentials, and data key opened by the authorized worker and carried inside a WorkerLink reliable stream                                     | Attachment, app session, worker, or project        |
+| Plane                         | Current binding                                                                                                                                                           | Required revocation boundary                      |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| Application live hub          | Request owner plus authorized resource scope                                                                                                                              | Account session                                   |
+| Worker control bridge         | Owner, worker ID, scope, and individual credential                                                                                                                        | Individual worker credential                      |
+| WorkerLink session and grants | Server identity/generation, owner, account session, client instance, worker/process generation, optional attachment, exact resources, operations, lanes, count, and lease | App session, worker generation, session, or grant |
+| Project-share/tunnel framing  | Application-encrypted root, credentials, and data key opened by the authorized worker and carried inside a WorkerLink reliable stream                                     | Attachment, app session, worker, or project       |
 
-Code and project-share data do not use a second public server origin. Browser
-Code is exposed only through an application-origin virtual adapter whose
-browser-local root lease and exact iframe binding are checked before requests
-enter the tunnel. Native Code and project-share clients use loopback forwards.
+Native Code tabs use protected worker file operations with the same owner and
+checkout binding as Explorer. Project-share desktop clients use authorized
+loopback forwards.
 Protected route material and bearer capabilities must never be logged,
 persisted in ordinary browser storage, or accepted for a different binding.
 

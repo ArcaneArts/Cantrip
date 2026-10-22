@@ -42,10 +42,10 @@ checkout:
 pnpm install --frozen-lockfile
 ```
 
-The first native build is large. Keep at least 30 GB free and expect Codex and
-Cantrip Code to take most of the build time. Cargo, npm, and Cantrip Code build
-outputs are cached, so later builds on the same machine are substantially
-faster. Cloning near the root of a drive also reduces path-length pressure.
+The first native build is large. Keep at least 30 GB free and expect the pinned
+Codex runtime to account for most of the build time. Cargo and package downloads
+are cached for later builds. Cloning near the root of a drive also reduces
+path-length pressure.
 
 The normal verification command is:
 
@@ -173,16 +173,15 @@ From a short path such as `C:\src\Cantrip`:
 ```powershell
 pnpm install --frozen-lockfile
 pnpm codex:verify
-pnpm code:source:verify
 pnpm check
 pnpm bundle
 ```
 
 `pnpm bundle` builds the standalone server and worker, all patched Codex
-executables, the Cantrip CLI, Cantrip Code and its native Node modules, the
-Tauri application, and the Windows installers. The Tauri configuration
-currently requests all Windows bundle formats, so a complete build creates both
-an NSIS setup executable and an MSI where the local Windows configuration
+executables, the Cantrip CLI, CUA, the Tauri application, and the Windows
+installers. The Tauri configuration currently requests all Windows bundle
+formats, so a complete build creates both an NSIS setup executable and an MSI
+where the local Windows configuration
 supports it. Set `CANTRIP_WINDOWS_BUNDLE=nsis` or
 `CANTRIP_WINDOWS_BUNDLE=msi` to request only one installer format; the bootstrap
 script uses `nsis` by default.
@@ -299,10 +298,10 @@ If Xcode was upgraded and native builds begin failing, run Xcode once, confirm
 
 ## Linux
 
-Linux builds are host-native. `linux-x64`, `linux-arm64`, and `linux-armhf` are
-recognized by the Cantrip Code build layer, but x64 on Debian/Ubuntu is the
-recommended starting point. Linux artifacts are not currently part of the
-automated release matrix, so validate them on the oldest distribution version
+Linux builds are host-native. Packaging target normalization accepts
+`linux-x64`, `linux-arm64`, and `linux-armhf`; validate native runtime support for
+the selected target on the build host. Linux artifacts are not currently part of
+the automated release matrix, so validate them on the oldest distribution version
 you intend to support.
 
 Tauri recommends building against an older compatible glibc baseline rather
@@ -489,11 +488,10 @@ server reachable from the simulator or device rather than assuming the device's
 
 ## Clean rebuilds
 
-Use the focused clean commands before deleting broad dependency trees:
+Use the focused Codex clean command before deleting broad dependency trees:
 
 ```shell
 pnpm codex:clean
-pnpm code:clean
 ```
 
 Rust outputs can be cleaned independently when necessary:

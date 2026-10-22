@@ -31,8 +31,8 @@ terminate or replace the target service's certificate.
 
 ## Managed tunnels
 
-Browser local-open, project share, and Cantrip Code reuse the same tunnel and
-WorkerLink primitives. Managed definitions can be mutated only through their
+Browser local-open and project share reuse the same tunnel and WorkerLink
+primitives. Managed definitions can be mutated only through their
 owning feature. An eligible Browser route may be copied to a user-managed
 tunnel.
 

@@ -447,7 +447,7 @@ development stacks and artifacts in more detail.
 | ------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | `pnpm build`        | Build every workspace package, including the browser app and marketing site production bundles.                    |
 | `pnpm typecheck`    | Type-check every workspace package without running tests.                                                          |
-| `pnpm test`         | Run Cantrip Code script and extension tests plus every workspace test suite.                                       |
+| `pnpm test`         | Run script, CLI/CUA, and workspace test suites.                                                                    |
 | `pnpm check`        | Run the complete pre-commit gate: safety checks, pinned-source verification, type-checking, tests, and formatting. |
 | `pnpm format`       | Format the repository with Prettier.                                                                               |
 | `pnpm format:check` | Check formatting without changing files.                                                                           |
@@ -457,7 +457,7 @@ development stacks and artifacts in more detail.
 | Command                        | Artifact                                                                                         |
 | ------------------------------ | ------------------------------------------------------------------------------------------------ |
 | `pnpm package:server`          | Standalone server tree for the current platform.                                                 |
-| `pnpm package:worker`          | Standalone worker tree with Codex and Cantrip Code for the current platform.                     |
+| `pnpm package:worker`          | Standalone worker with Codex, the Cantrip CLI, and CUA for the current platform.                 |
 | `pnpm package:services`        | Both standalone service trees.                                                                   |
 | `pnpm package:desktop-runtime` | Local server and worker runtime staged for Tauri.                                                |
 | `pnpm package:app`             | Native Tauri installer or application bundle.                                                    |
@@ -707,7 +707,7 @@ and stapled. Both desktop targets publish separately signed Tauri updater
 payloads; the release remains a draft until every platform artifact, signature,
 the TestFlight upload, and the static `latest.json` manifest have completed.
 Release packaging runs only when that branch advances, uses
-content-addressed caches for the pinned Codex and Cantrip Code runtimes, and
+content-addressed caches for the pinned Codex runtime, and
 tags releases with the repository's `major.minor.commit-count` version. The
 command never force-pushes a divergent release branch. The same invocation
 validates and reapplies the DigitalOcean App Platform specification without
@@ -764,10 +764,9 @@ Run the complete repository check before committing:
 pnpm check
 ```
 
-That command rejects oversized tracked files, verifies the pinned Cantrip Code
-and Codex source trees, type-checks every package, runs the Cantrip Code script
-and extension tests plus all workspace test suites, and finishes with the
-Prettier check. Useful focused commands include:
+That command rejects oversized tracked files, verifies the pinned Codex source
+tree, type-checks every package, runs script, CLI/CUA, and workspace test suites,
+and finishes with the Prettier check. Useful focused commands include:
 
 ```shell
 pnpm typecheck
@@ -806,9 +805,9 @@ cargo check --manifest-path cantrip_app/src-tauri/Cargo.toml
 ## Pinned runtime maintenance
 
 `pnpm dev` and `pnpm devtop` call `pnpm dev:prepare` automatically. That
-preparation builds the shared protocol and pinned Codex runtime, then reuses or
-builds the fingerprinted Cantrip Code distribution. A matching cached Code
-build remains a fast no-op; missing or stale builds are repaired automatically.
+preparation builds the shared packages, Cantrip CLI, CUA helper, and pinned Codex
+runtime. Codex reuses its verified cache when the build inputs match; missing or
+stale builds are repaired automatically. The editor is compiled with the client.
 Most contributors do not need to invoke the lower-level runtime commands
 directly.
 

@@ -16,9 +16,9 @@ docker compose --env-file deploy/hosted.env \
   -f deploy/compose.hosted.yml config --quiet
 ```
 
-`pnpm check` verifies pinned Codex and Cantrip Code sources, type-checks every
-workspace, runs the server, worker, protocol, app, extension, and release-script
-test suites, checks formatting, and rejects stale generated boundary evidence.
+`pnpm check` verifies pinned Codex sources, type-checks every workspace, runs
+script, CLI/CUA, and workspace test suites, checks formatting, and rejects stale
+generated boundary evidence.
 The checked-in route inventory must report zero `legacyLocalOwnerRoutes`.
 
 ## Guarantee matrix

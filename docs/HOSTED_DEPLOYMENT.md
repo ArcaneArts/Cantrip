@@ -12,9 +12,9 @@ processes, and desktop state. The server never becomes a shared filesystem.
 This guide describes the supported container boundary and equivalent native
 service operation. A deployment exposes one public HTTPS origin, such as
 `api.cantrip.example`, for HTTP, AppLive, worker control, and WorkerLink relay
-traffic. Cantrip Code is a server-authorized WorkerLink resource, not a second
-public listener or `code.` origin. Each separately hosted application origin
-must appear exactly in `CANTRIP_APP_ORIGINS`.
+traffic. Native Code tabs use the same protected worker file operations as
+Explorer through that server-authorized connection. Each separately hosted
+application origin must appear exactly in `CANTRIP_APP_ORIGINS`.
 
 ## Production Droplet release
 
@@ -97,7 +97,7 @@ Requirements:
 - public DNS for the API name;
 - ports 80 and 443 reaching the proxy host;
 - a separately hosted Cantrip web app or a native Cantrip client;
-- enough build capacity for the pinned Codex and Cantrip Code toolchains.
+- enough build capacity for the pinned Codex, CLI, and CUA toolchains.
 
 Create the operator environment without committing it:
 

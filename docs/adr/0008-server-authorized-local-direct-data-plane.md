@@ -3,6 +3,10 @@
 - Status: Accepted
 - Date: 2026-08-12
 
+> Scope update: The embedded workbench has been retired. Its editor-specific
+> sessions and adapters below describe the earlier implementation; the common
+> transport and authorization rules continue to apply to active features.
+
 > Amendment: this proof and authorization design is now the WorkerLink LOCAL
 > carrier. Supported Terminal and native tunnel paths use the shared WorkerLink
 > manager and bounded native bridge. Browser and Remote Desktop use LOCAL where

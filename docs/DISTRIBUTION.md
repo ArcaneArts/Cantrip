@@ -103,7 +103,7 @@ download cache, toolchain or extension bundle.
 Before advancing `release`, install the Blacksmith GitHub App for this
 repository so jobs with `blacksmith-*` runner labels can be provisioned. The
 first run for each platform is expected to be cold; later releases reuse cache
-entries whenever the pinned Codex and Cantrip Code inputs remain unchanged.
+entries whenever the pinned Codex inputs remain unchanged.
 
 ### Mobile release lanes
 

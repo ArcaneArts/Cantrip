@@ -2423,8 +2423,8 @@ class, protocol class, endpoint routing kinds, adapters and resource IDs,
 assigned worker IDs, desired/current lifecycle state, counters, timestamps,
 stable error codes, and the opaque protected record. It no longer stores tunnel
 names, descriptions, full endpoint JSON, TCP hosts or ports, attachment-local
-listener hosts or ports, or free-form tunnel/attachment errors. Cantrip Code and
-project-share presentation is fixed product text derived by the client rather
+listener hosts or ports, or free-form tunnel/attachment errors. Project-share
+presentation is fixed product text derived by the client rather
 than user-controlled data copied into the tunnel row. Project-share roots,
 capability paths, Digest credentials, realms, and data-plane keys also exist
 only inside the protected record. Local desktop listener coordinates remain in
