@@ -24,10 +24,8 @@ import {
   Target,
   Trash2,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
-import { AgentInspectContent } from "@/components/chat/agent-inspect-content";
-import { formatGoalElapsed } from "@/components/chat/goal-panel";
 import { Markdown } from "@/components/chat/markdown";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -45,6 +43,7 @@ import { cn } from "@/lib/utils";
 import { taskCanBeDeleted } from "./task-deletion";
 import { TaskInteractionRequests } from "./task-interaction-requests";
 import { TaskListBackButton } from "./task-list-back-button";
+import { TaskOverviewSummary } from "./task-overview-summary";
 
 const goalLabels: Record<TaskGoalSnapshot["status"], string> = {
   active: "Running",
@@ -274,10 +273,6 @@ export function TaskImplementationDashboard({
     chat.status === "waiting-for-approval",
     chat.automationPaused,
   );
-  const tokenProgress =
-    goal?.tokenBudget && goal.tokenBudget > 0
-      ? Math.min(100, (goal.tokensUsed / goal.tokenBudget) * 100)
-      : null;
   const showResume = taskImplementationCanResume(
     task,
     goal,
@@ -290,7 +285,6 @@ export function TaskImplementationDashboard({
     chat.automationPaused,
   );
   const showPause = task.planGoalEnabled && showLiveActivity;
-  const latestMessages = useMemo(() => messages.data ?? [], [messages.data]);
   const placement = dashboard.data?.placement;
   const directFolder = placement?.kind === "folder";
 
@@ -316,8 +310,8 @@ export function TaskImplementationDashboard({
             </div>
             <p className="mt-0.5 truncate text-xs text-muted-foreground">
               {task.planGoalEnabled
-                ? "Goal mode on this Task's underlying Chat"
-                : "Normal agent turn from the saved Task prompt"}
+                ? "Goal mode"
+                : "Running the saved Task prompt"}
             </p>
           </div>
           <Button
@@ -460,32 +454,15 @@ export function TaskImplementationDashboard({
           ) : null}
         </section>
 
-        {goal ? (
-          <section className="border-b py-4" aria-label="Goal usage">
-            <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted-foreground">
-              <span>{formatGoalElapsed(goal.timeUsedSeconds)} elapsed</span>
-              <span>
-                {goal.tokensUsed.toLocaleString()} tokens
-                {goal.tokenBudget
-                  ? ` / ${goal.tokenBudget.toLocaleString()}`
-                  : ""}
-              </span>
-            </div>
-            {tokenProgress !== null ? (
-              <div className="mt-2 h-1 overflow-hidden rounded-full bg-muted">
-                <div
-                  aria-label="Goal token budget used"
-                  aria-valuemax={100}
-                  aria-valuemin={0}
-                  aria-valuenow={Math.round(tokenProgress)}
-                  className="h-full rounded-full bg-violet-500 transition-[width]"
-                  role="progressbar"
-                  style={{ width: `${tokenProgress}%` }}
-                />
-              </div>
-            ) : null}
-          </section>
-        ) : dashboard.data?.goalUnavailableReason ? (
+        <TaskOverviewSummary
+          chat={chat}
+          task={task}
+          goal={goal}
+          messages={messages.data}
+          historyIncomplete={messages.hasOlder}
+          visible={visible}
+        />
+        {dashboard.data?.goalUnavailableReason ? (
           <p className="border-b py-3 text-xs text-muted-foreground">
             {dashboard.data.goalUnavailableReason}
           </p>
@@ -527,67 +504,12 @@ export function TaskImplementationDashboard({
           </section>
         ) : null}
 
-        {showLiveActivity ? (
-          <section
-            className="border-b py-5"
-            aria-labelledby="task-activity-heading"
-          >
-            <h3
-              id="task-activity-heading"
-              className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
-            >
-              Latest activity
-            </h3>
-            <div className="min-h-48 overflow-hidden [&_[data-slot=trajectory-event-viewport]]:overscroll-y-auto">
-              <AgentInspectContent
-                active={active}
-                messages={latestMessages}
-                trajectoryEventOrder="newest-first"
-                visible={visible}
-              />
-            </div>
-          </section>
-        ) : null}
-
-        {placement && !directFolder ? (
-          <section className="border-b py-5" aria-labelledby="task-pr-heading">
-            <div className="flex items-center gap-2">
-              <h3
-                id="task-pr-heading"
-                className="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
-              >
-                Implementation pull requests
-              </h3>
-              {dashboard.data?.pullRequests.length ? (
-                <Badge variant="outline" className="h-5 text-[10px]">
-                  {dashboard.data.pullRequests.length}
-                </Badge>
-              ) : null}
-            </div>
-            {dashboard.data?.pullRequests.length ? (
-              <div className="mt-2 divide-y">
-                {dashboard.data.pullRequests.map((pullRequest) => (
-                  <PullRequestRow
-                    key={pullRequest.number}
-                    pullRequest={pullRequest}
-                  />
-                ))}
-              </div>
-            ) : (
-              <p className="mt-2 text-sm text-muted-foreground">
-                {dashboard.data?.pullRequestsUnavailableReason ??
-                  "No Task-associated pull requests detected yet."}
-              </p>
-            )}
-          </section>
-        ) : null}
-
         <section className="py-6" aria-labelledby="task-plan-heading">
           <h3
             id="task-plan-heading"
             className="mb-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
           >
-            {task.planGoalEnabled ? "Final plan" : "Task prompt"}
+            {task.planGoalEnabled ? "Goal plan" : "Task prompt"}
           </h3>
           <Markdown>
             {task.planGoalEnabled
@@ -623,6 +545,38 @@ export function TaskImplementationDashboard({
             </details>
           ) : null}
         </section>
+        {placement && !directFolder ? (
+          <section className="border-b py-5" aria-labelledby="task-pr-heading">
+            <div className="flex items-center gap-2">
+              <h3
+                id="task-pr-heading"
+                className="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+              >
+                Implementation pull requests
+              </h3>
+              {dashboard.data?.pullRequests.length ? (
+                <Badge variant="outline" className="h-5 text-[10px]">
+                  {dashboard.data.pullRequests.length}
+                </Badge>
+              ) : null}
+            </div>
+            {dashboard.data?.pullRequests.length ? (
+              <div className="mt-2 divide-y">
+                {dashboard.data.pullRequests.map((pullRequest) => (
+                  <PullRequestRow
+                    key={pullRequest.number}
+                    pullRequest={pullRequest}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="mt-2 text-sm text-muted-foreground">
+                {dashboard.data?.pullRequestsUnavailableReason ??
+                  "No Task-associated pull requests detected yet."}
+              </p>
+            )}
+          </section>
+        ) : null}
       </div>
     </div>
   );

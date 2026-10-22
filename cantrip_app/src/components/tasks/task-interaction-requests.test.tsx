@@ -105,11 +105,11 @@ describe("Task interaction requests", () => {
     expect(markup).not.toContain("Allow for session");
   });
 
-  it("keeps approval controls above the implementation activity", () => {
+  it("keeps approval controls above the implementation overview", () => {
     const markup = render([request()], "waiting-for-approval", undefined, true);
     expect(markup).toContain("Needs approval");
     expect(markup.indexOf("Action required")).toBeLessThan(
-      markup.indexOf("Latest activity"),
+      markup.indexOf('aria-label="Task progress"'),
     );
   });
 

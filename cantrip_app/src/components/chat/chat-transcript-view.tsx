@@ -1184,7 +1184,7 @@ export function ChatTranscriptView({
       </form>
       {effectiveInspectOnly ? (
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 border-t bg-background/95 px-4 py-2 text-center text-[11px] text-muted-foreground backdrop-blur">
-          Task planning controls are available in Task view.
+          Task planning controls are available in Overview.
         </div>
       ) : null}
       {capabilities.inspect ? (

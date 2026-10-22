@@ -134,7 +134,6 @@ export function projectPaneRenderBindings(
     activeProjectOverviewSection,
     activeProjectTaskChat: focused ? bindings.activeProjectTaskChat : undefined,
     activeProjectTaskChatId: focused ? bindings.activeProjectTaskChatId : null,
-    activeProjectTaskView: focused ? bindings.activeProjectTaskView : "task",
     codeSurfaceVisible: activeSurface?.kind === "code",
     currentRelocation:
       bindings.selectedSurface?.tabKey === activeTabKey

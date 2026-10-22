@@ -102,8 +102,6 @@ export function ApplicationShellRender({
     activeExplorerHeader,
     activePopout,
     activeProjectOverviewPopout,
-    activeProjectTaskChat,
-    activeProjectTaskView,
     activeRelocation,
     agentInspectOpenChats,
     appMode,
@@ -142,7 +140,6 @@ export function ApplicationShellRender({
     selectedProject,
     selectedStandaloneTerminal,
     selectedTerminal,
-    setActiveProjectTaskView,
     setAgentInspectOpen,
     setAppToast,
     setChatConsoleOpen,
@@ -251,12 +248,6 @@ export function ApplicationShellRender({
             open: popOutActiveView,
           }
         : null,
-    task: activeProjectTaskChat
-      ? {
-          change: setActiveProjectTaskView,
-          view: activeProjectTaskView,
-        }
-      : null,
     chat:
       appMode === "ide" &&
       activeChat &&

@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  TrajectoryActivityBar,
   TrajectoryTimeline,
   trajectoryEventAtTime,
   trajectoryKeyboardAction,
@@ -78,6 +79,24 @@ const turn: TrajectoryTurn = {
 };
 
 describe("trajectory timeline navigation", () => {
+  it("shows only a thin event strip in the overview, without axes or controls", () => {
+    const markup = renderToStaticMarkup(
+      <TrajectoryActivityBar
+        turn={{
+          ...turn,
+          events: [
+            event("reasoning", 1_100, 1_200, 1),
+            event("latest", 2_000, 2_000, 2),
+          ],
+        }}
+      />,
+    );
+    expect(markup).toContain('aria-label="Recent task activity"');
+    expect(markup).toContain('viewBox="0 0 1000 8"');
+    expect(markup.match(/<rect/g)).toHaveLength(2);
+    expect(markup).toContain('x="997"');
+    expect(markup).not.toMatch(/<line|<text|<button|role="slider"|tabindex/i);
+  });
   it("prefers the smallest containing interval, then after, then before", () => {
     const events = [
       event("wide", 1_000, 1_800, 1),

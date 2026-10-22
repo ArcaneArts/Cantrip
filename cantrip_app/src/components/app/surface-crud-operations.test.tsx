@@ -116,7 +116,6 @@ function DeleteHarness({
     selectedProjectId: projectId,
     setChatConsoleOpen: vi.fn(),
     setProjectTaskChatIds: vi.fn(),
-    setTaskChatViewIds: vi.fn(),
     surfaceClose,
   });
   return (
