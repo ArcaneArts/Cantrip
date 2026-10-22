@@ -13,6 +13,7 @@ function Fixture() {
   const [error, setError] = useState("");
   const [status, setStatus] = useState("loading");
   const [visible, setVisible] = useState(true);
+  const [readOnly, setReadOnly] = useState(false);
   const [, redraw] = useState(0);
   useEffect(() => {
     let cancelled = false;
@@ -83,6 +84,9 @@ function Fixture() {
           </button>
         ))}
         <button onClick={() => void save()}>Save</button>
+        <button onClick={() => setReadOnly((value) => !value)}>
+          {readOnly ? "Edit code" : "View code"}
+        </button>
         <button onClick={() => setVisible((value) => !value)}>
           {visible ? "Hide editor" : "Show editor"}
         </button>
@@ -106,6 +110,7 @@ function Fixture() {
             session={session}
             path={path}
             active={visible}
+            readOnly={readOnly}
             onSave={() => void save()}
             onChange={() => {
               setStatus(session.dirty ? "unsaved" : "saved");

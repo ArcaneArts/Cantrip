@@ -6,7 +6,6 @@ import {
   type ExplorerMediaKind,
 } from "@cantrip/protocol";
 import { Code2, Eye, Loader2, Save, SlidersHorizontal } from "lucide-react";
-import { Highlight, themes, type Language } from "prism-react-renderer";
 import {
   lazy,
   Suspense,
@@ -68,95 +67,8 @@ const BrowserCodeEditor = lazy(async () => {
   return { default: module.RetainedExplorerCodeEditor };
 });
 
-const languageByExtension: Record<string, Language> = {
-  c: "c",
-  cc: "cpp",
-  cpp: "cpp",
-  cs: "csharp",
-  css: "css",
-  dart: "dart",
-  go: "go",
-  graphql: "graphql",
-  h: "c",
-  hpp: "cpp",
-  html: "markup",
-  java: "java",
-  js: "javascript",
-  json: "json",
-  jsx: "jsx",
-  kt: "kotlin",
-  kts: "kotlin",
-  lua: "lua",
-  md: "markdown",
-  mdx: "markdown",
-  py: "python",
-  rb: "ruby",
-  rs: "rust",
-  scss: "scss",
-  sh: "bash",
-  sol: "solidity",
-  sql: "sql",
-  swift: "swift",
-  toml: "toml",
-  ts: "typescript",
-  tsx: "tsx",
-  vue: "markup",
-  xml: "xml",
-  yaml: "yaml",
-  yml: "yaml",
-};
-
 function fileName(path: string): string {
   return path.split("/").at(-1) || path;
-}
-
-function fileLanguage(path: string): Language {
-  const extension = path.split(".").at(-1)?.toLowerCase() ?? "";
-  return languageByExtension[extension] ?? "plain";
-}
-
-function SourceView({ code, path }: { code: string; path: string }) {
-  const [dark, setDark] = useState(() =>
-    document.documentElement.classList.contains("dark"),
-  );
-  useEffect(() => {
-    const observer = new MutationObserver(() =>
-      setDark(document.documentElement.classList.contains("dark")),
-    );
-    observer.observe(document.documentElement, {
-      attributeFilter: ["class"],
-      attributes: true,
-    });
-    return () => observer.disconnect();
-  }, []);
-  return (
-    <Highlight
-      code={code}
-      language={fileLanguage(path)}
-      theme={dark ? themes.vsDark : themes.github}
-    >
-      {({ className, getLineProps, getTokenProps, style, tokens }) => (
-        <pre
-          className={cn(
-            className,
-            "min-h-full min-w-max p-4 font-mono text-xs leading-5",
-          )}
-          style={{ ...style, margin: 0, background: "transparent" }}
-        >
-          {tokens.map((line, lineIndex) => (
-            <div key={lineIndex} {...getLineProps({ line })}>
-              <span className="mr-5 inline-block w-8 select-none text-right text-muted-foreground/50">
-                {lineIndex + 1}
-              </span>
-              {line.map((token, tokenIndex) => (
-                <span key={tokenIndex} {...getTokenProps({ token })} />
-              ))}
-            </div>
-          ))}
-        </pre>
-      )}
-    </Highlight>
-  );
 }
 
 function MediaView({
@@ -572,23 +484,21 @@ export function DesktopExplorerFileWindow({
           setMedia(result);
         } else {
           setFile(result);
-          if (context.editor === "native") {
-            const id = editorDocumentId({
-              server: context.serverId ?? "",
-              account: context.ownerId ?? "",
-              worker: context.explorer.activeWorkerId,
-              project: context.explorer.projectId,
-              worktree: context.explorer.worktreeId,
-              path: context.path,
-            });
-            const document = sessions.current!.open(
-              id,
-              result.content,
-              result.version,
-            );
-            setNativeDocument(document);
-            setDraft(document.text);
-          } else setDraft(result.content);
+          const id = editorDocumentId({
+            server: context.serverId ?? "",
+            account: context.ownerId ?? "",
+            worker: context.explorer.activeWorkerId,
+            project: context.explorer.projectId,
+            worktree: context.explorer.worktreeId,
+            path: context.path,
+          });
+          const document = sessions.current!.open(
+            id,
+            result.content,
+            result.version,
+          );
+          setNativeDocument(document);
+          setDraft(document.text);
         }
       })
       .catch((error: unknown) => {
@@ -843,16 +753,14 @@ export function DesktopExplorerFileWindow({
                 path={path}
               />
             </Suspense>
-          ) : file ? (
+          ) : file?.markdown ? (
             <div className="h-full overflow-auto">
-              {file.markdown ? (
-                <article className="px-4" data-content-gutter="markdown">
-                  <Markdown>{draft}</Markdown>
-                </article>
-              ) : (
-                <SourceView code={draft} path={path} />
-              )}
+              <article className="px-4" data-content-gutter="markdown">
+                <Markdown>{draft}</Markdown>
+              </article>
             </div>
+          ) : file && nativeDocument ? (
+            <NativeCodeEditor session={nativeDocument} path={path} readOnly />
           ) : null}
         </section>
       )}

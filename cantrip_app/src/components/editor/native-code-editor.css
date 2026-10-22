@@ -163,3 +163,6 @@
     caret-color: CanvasText;
   }
 }
+.cantrip-editor-input[readonly] {
+  caret-color: transparent;
+}
