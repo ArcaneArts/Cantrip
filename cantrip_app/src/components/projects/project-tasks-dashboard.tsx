@@ -31,6 +31,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { TooltipButton } from "@/components/ui/tooltip";
+import { TaskDetailTabs } from "@/components/tasks/task-detail-tabs";
 import { PersistentTaskViews } from "@/components/tasks/persistent-task-views";
 import { TaskDialog } from "@/components/tasks/task-dialog";
 import type { TaskSurfaceHandle } from "@/components/tasks/task-surface";
@@ -544,7 +545,6 @@ export function ProjectTasksDashboard({
   settings,
   taskCreationError,
   taskChatContent,
-  taskDialogActions,
   workers,
 }: {
   active: boolean;
@@ -560,7 +560,6 @@ export function ProjectTasksDashboard({
   settings: SettingsBundle | undefined;
   taskCreationError: unknown;
   taskChatContent?: ReactNode;
-  taskDialogActions?: ReactNode;
   workers: WorkerSummary[];
 }) {
   const queryClient = useQueryClient();
@@ -689,35 +688,30 @@ export function ProjectTasksDashboard({
       <TaskDialog
         key={activeTask?.id}
         beforeClose={() => taskSurfaceRef.current?.prepareClose()}
-        headerActions={taskDialogActions}
         onClose={onCloseTask}
         open={active && Boolean(activeTask)}
         title={activeTask?.title ?? "Task"}
       >
-        <div
-          className={cn(
-            "min-h-0 flex-1 flex-col",
-            taskChatContent ? "hidden" : "flex",
-          )}
-          aria-hidden={Boolean(taskChatContent)}
-        >
-          <PersistentTaskViews
-            visible={active && !taskChatContent}
-            activeTask={
-              activeTask ? { chat: activeTask, worker: activeTaskWorker } : null
-            }
-            deleting={deleteTaskMutation.isPending}
-            settings={settings}
-            surfaceRef={taskSurfaceRef}
-            onDelete={
-              activeTask
-                ? () => requestDeleteTask(activeTask.id, activeTask.title)
-                : undefined
-            }
-            onRename={onRenameTask}
+        {activeTask ? (
+          <TaskDetailTabs
+            chat={activeTask}
+            chatContent={taskChatContent}
+            visible={active}
+            overview={(visible) => (
+              <PersistentTaskViews
+                visible={visible}
+                activeTask={{ chat: activeTask, worker: activeTaskWorker }}
+                deleting={deleteTaskMutation.isPending}
+                settings={settings}
+                surfaceRef={taskSurfaceRef}
+                onDelete={() =>
+                  requestDeleteTask(activeTask.id, activeTask.title)
+                }
+                onRename={onRenameTask}
+              />
+            )}
           />
-        </div>
-        {taskChatContent}
+        ) : null}
       </TaskDialog>
       {deleteTaskDialog}
     </>

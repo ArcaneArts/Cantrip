@@ -10,8 +10,6 @@ import {
   FileClock,
   Info,
   Loader2,
-  ListTodo,
-  MessageSquare,
   Bot,
   Pencil,
   RefreshCw,
@@ -66,11 +64,6 @@ interface ChatHeaderActions {
   toggleInspect(): void;
 }
 
-interface TaskViewAction {
-  change(view: "task" | "chat"): void;
-  view: "task" | "chat";
-}
-
 export interface ContentHeaderActionsProps {
   chat?: ChatHeaderActions | null;
   code?: { header: CodeHeaderState | null } | null;
@@ -78,7 +71,6 @@ export interface ContentHeaderActionsProps {
   explorer?: ExplorerHeaderState | null;
   git?: GitHistoryHeaderState | null;
   popout?: PopoutAction | null;
-  task?: TaskViewAction | null;
   terminalService?: TerminalServiceAction | null;
 }
 
@@ -259,7 +251,6 @@ export function ContentHeaderActions({
   explorer,
   git,
   popout,
-  task,
   terminalService,
 }: ContentHeaderActionsProps) {
   return (
@@ -350,42 +341,6 @@ export function ContentHeaderActions({
           )}
           <span className="sr-only">Open this tab in a new window</span>
         </TooltipButton>
-      ) : null}
-      {task ? (
-        <div
-          aria-label="Task view"
-          className="flex h-7 items-center rounded-md bg-muted/60 p-0.5"
-          role="group"
-        >
-          <TooltipButton
-            aria-pressed={task.view === "task"}
-            className={cn(
-              "h-6 gap-1 px-1.5 text-[10px]",
-              task.view === "task" && "bg-background shadow-sm",
-            )}
-            onClick={() => task.change("task")}
-            size="sm"
-            tooltip="Show Task"
-            variant="ghost"
-          >
-            <ListTodo className="size-3" />
-            {!compact ? "Task" : <span className="sr-only">Task</span>}
-          </TooltipButton>
-          <TooltipButton
-            aria-pressed={task.view === "chat"}
-            className={cn(
-              "h-6 gap-1 px-1.5 text-[10px]",
-              task.view === "chat" && "bg-background shadow-sm",
-            )}
-            onClick={() => task.change("chat")}
-            size="sm"
-            tooltip="Show Task chat"
-            variant="ghost"
-          >
-            <MessageSquare className="size-3" />
-            {!compact ? "Chat" : <span className="sr-only">Chat</span>}
-          </TooltipButton>
-        </div>
       ) : null}
       {chat ? (
         <>

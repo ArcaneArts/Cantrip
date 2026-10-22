@@ -38,7 +38,6 @@ import { ProjectSettingsPage } from "@/components/projects/project-settings-page
 import { ProjectOverview } from "@/components/projects/project-overview";
 import { ProjectOverviewWorkspace } from "./project-overview-workspace";
 import { ProjectTasksDashboard } from "@/components/projects/project-tasks-dashboard";
-import { ContentHeaderActions } from "@/components/workspace/content-header-actions";
 import { ProjectCreateMenu } from "@/components/projects/project-create-menu";
 import { RepositoryImporter } from "@/components/projects/repository-importer";
 import { SettingsPage } from "@/components/settings/settings-page";
@@ -111,7 +110,6 @@ export function GlobalContentHost({
     activeProjectOverviewSection,
     activeProjectTaskChat,
     activeProjectTaskChatId,
-    activeProjectTaskView,
     activeProjectWorkspace,
     agentInspectOpenChats,
     appMode,
@@ -962,19 +960,7 @@ export function GlobalContentHost({
                       onRenameTask={(chatId, title) =>
                         renameChatMutation.mutate({ chatId, title })
                       }
-                      taskDialogActions={
-                        activeProjectTaskChat ? (
-                          <ContentHeaderActions
-                            compact
-                            task={{
-                              view: activeProjectTaskView,
-                              change: bindings.setActiveProjectTaskView,
-                            }}
-                          />
-                        ) : null
-                      }
                       taskChatContent={
-                        activeProjectTaskView === "chat" &&
                         activeProjectTaskChat ? (
                           <ChatTranscript
                             key={`task-chat-${activeProjectTaskChat.id}`}

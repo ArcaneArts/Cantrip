@@ -45,7 +45,6 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
     activeChat,
     activeExplorerHeader,
     activeProjectOverviewSection,
-    activeProjectTaskChat,
     activeProjectWorkspace,
     activeWorktree,
     activeWorktreeId,
@@ -239,17 +238,7 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
         projectOverviewSelected &&
         selectedProject ? (
         <MobileProjectHeader
-          actions={
-            <>
-              {activeProjectTaskChat ? (
-                <ContentHeaderActions
-                  compact
-                  task={contentHeaderActions.task}
-                />
-              ) : null}
-              {renderProjectRunConfigurationControl(true)}
-            </>
-          }
+          actions={<>{renderProjectRunConfigurationControl(true)}</>}
           appMode={appMode}
           context={
             selectedProject.github?.nameWithOwner ??

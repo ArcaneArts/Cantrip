@@ -49,7 +49,8 @@ import {
   MAX_COMPOSER_ATTACHMENTS,
   shouldAttachPastedText,
 } from "@/components/chat/attachment-utils";
-import { AgentInspectContent } from "@/components/chat/agent-inspect-content";
+import { Markdown } from "@/components/chat/markdown";
+import { TaskOverviewSummary } from "./task-overview-summary";
 import {
   dataTransferHasFiles,
   filesFromDataTransfer,
@@ -725,13 +726,19 @@ export function TaskSurface({
         <div className="shrink-0 px-4 sm:px-6">
           <TaskInteractionRequests chat={chat} visible={visible} />
         </div>
-        <div className="min-h-0 flex-1 overflow-hidden p-4 sm:p-6">
-          <AgentInspectContent
-            active
-            messages={messages.data ?? []}
-            trajectoryEventOrder="newest-first"
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 sm:px-6">
+          <TaskOverviewSummary
+            chat={chat}
+            task={task.data}
+            goal={null}
+            messages={messages.data}
             visible={visible}
           />
+          <section className="py-6" aria-label="Task prompt">
+            <Markdown>
+              {task.data.planMarkdown ?? task.data.briefMarkdown}
+            </Markdown>
+          </section>
         </div>
       </div>
     );

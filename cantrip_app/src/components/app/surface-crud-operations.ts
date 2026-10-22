@@ -188,14 +188,12 @@ export function useChatDeleteOperation({
   selectedProjectId,
   setChatConsoleOpen,
   setProjectTaskChatIds,
-  setTaskChatViewIds,
   surfaceClose,
 }: {
   queryClient: QueryClient;
   selectedProjectId: string | null;
   setChatConsoleOpen: (chatId: string, open: boolean) => void;
   setProjectTaskChatIds: Dispatch<SetStateAction<ReadonlyMap<string, string>>>;
-  setTaskChatViewIds: Dispatch<SetStateAction<ReadonlySet<string>>>;
   surfaceClose: ProjectSurfaceCloseCoordinator;
 }) {
   return useImmediateProjectSurfaceDelete({
@@ -210,12 +208,6 @@ export function useChatDeleteOperation({
     onSuccess: async (_value, input, projectId) => {
       const deletedId = typeof input === "string" ? input : input.chatId;
       setChatConsoleOpen(deletedId, false);
-      setTaskChatViewIds((current) => {
-        if (!current.has(deletedId)) return current;
-        const next = new Set(current);
-        next.delete(deletedId);
-        return next;
-      });
       setProjectTaskChatIds((current) => {
         const next = new Map(
           [...current].filter(([, chatId]) => chatId !== deletedId),
