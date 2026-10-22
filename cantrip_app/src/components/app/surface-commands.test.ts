@@ -188,5 +188,10 @@ describe("surface command controller", () => {
     expect(operationSet.crud.chat.delete.mutate).toHaveBeenCalledWith(
       "agent-1",
     );
+    controller.deleteSurfaceResource(agent, true);
+    expect(operationSet.crud.chat.delete.mutate).toHaveBeenLastCalledWith({
+      chatId: "agent-1",
+      stopRunning: true,
+    });
   });
 });

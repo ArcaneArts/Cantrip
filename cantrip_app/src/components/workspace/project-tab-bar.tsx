@@ -17,6 +17,7 @@ import {
   useTabDisplay,
 } from "@/lib/tab-display";
 import "./tab-display.css";
+import { useAgentTabCloseConfirmation } from "./use-agent-tab-close-confirmation";
 
 import {
   ProjectSurfaceCreateMenu,
@@ -61,7 +62,7 @@ export interface ProjectPaneTabStripProps {
   onCreate(kind: ProjectSurfaceCreateKind, target?: ExecutionTarget): void;
   onOpenRunning?(terminalId: string): void;
   onClose(surface: ProjectSurface): void;
-  onDelete(surface: ProjectSurface): void;
+  onDelete(surface: ProjectSurface, stopRunning?: true): void;
   onRename(surface: ProjectSurface, title: string): void;
   onMoveToRegion?(
     surface: ProjectSurface,
@@ -152,6 +153,7 @@ export function ProjectPaneTabStrip({
   );
   const [renameValue, setRenameValue] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<ProjectSurface | null>(null);
+  const agentClose = useAgentTabCloseConfirmation(onDelete);
   const lastSurface = surfaces.at(-1);
   const paneId = explicitPaneId ?? lastSurface?.paneId ?? "empty";
   const projectId =
@@ -307,7 +309,7 @@ export function ProjectPaneTabStrip({
                             onAuxClick={(event) =>
                               closeTabOnMiddleClick(event, () =>
                                 surface.kind === "chat"
-                                  ? onDelete(surface)
+                                  ? agentClose.requestClose(surface)
                                   : closeImmediately(surface),
                               )
                             }
@@ -486,6 +488,7 @@ export function ProjectPaneTabStrip({
           />
         </div>
       </div>
+      {agentClose.confirmation}
       <ConfirmDialog
         confirmLabel={
           deleteTarget ? surfaceDeleteLabel(deleteTarget) : "Delete Resource"

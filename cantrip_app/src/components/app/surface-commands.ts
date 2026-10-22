@@ -6,6 +6,7 @@ import type {
 
 import type { ProjectSurfaceCreateKind } from "@/components/workspace/project-surface-create-menu";
 import type { ProjectSurface } from "@/lib/project-surface";
+import type { AgentChatRemoval } from "@/lib/remove-agent-chat";
 
 interface MutationOperation<Input> {
   mutate(input: Input): void;
@@ -50,7 +51,7 @@ export interface SurfaceCrudOperations {
     }>;
   };
   chat: {
-    delete: MutationOperation<string>;
+    delete: MutationOperation<AgentChatRemoval>;
     rename: MutationOperation<{ chatId: string; title: string }>;
   };
   code: {
@@ -143,9 +144,15 @@ export function createSurfaceCommandController({
     if (surface.kind === "chat") return;
     views.close.mutate(surface);
   };
-  const deleteSurfaceResource = (surface: ProjectSurface) => {
+  const deleteSurfaceResource = (
+    surface: ProjectSurface,
+    stopRunning?: true,
+  ) => {
     if (surface.kind === "builtin") return;
-    if (surface.kind === "chat") crud.chat.delete.mutate(surface.tabId);
+    if (surface.kind === "chat")
+      crud.chat.delete.mutate(
+        stopRunning ? { chatId: surface.tabId, stopRunning } : surface.tabId,
+      );
     else if (surface.kind === "terminal")
       crud.terminal.delete.mutate(surface.tabId);
     else if (surface.kind === "explorer")

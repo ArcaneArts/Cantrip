@@ -11,6 +11,31 @@ import {
 
 import { DockRail } from "./project-workspace-frame";
 
+vi.mock("@/components/ui/confirm-dialog", () => ({
+  ConfirmDialog: ({
+    open,
+    onConfirm,
+    onOpenChange,
+    description,
+  }: {
+    open: boolean;
+    onConfirm(): void;
+    onOpenChange(open: boolean): void;
+    description: string;
+  }) =>
+    open ? (
+      <div data-agent-close-confirmation>
+        <p>{description}</p>
+        <button data-confirm-agent-close onClick={onConfirm}>
+          Stop and remove
+        </button>
+        <button data-cancel-agent-close onClick={() => onOpenChange(false)}>
+          Cancel
+        </button>
+      </div>
+    ) : null,
+}));
+
 const sortableState = vi.hoisted(() => ({
   contexts: [] as Array<{ items: string[]; strategy: string }>,
   options: [] as Array<Record<string, unknown>>,
@@ -485,6 +510,58 @@ describe("dock rail tabs", () => {
     expect(onClose).not.toHaveBeenCalled();
     await act(async () => renderer.unmount());
   });
+
+  it.each(["right", "bottom"] as const)(
+    "confirms running agent removal from the %s rail",
+    async (region) => {
+      const agent = surface("chat", "agent", "Agent", 0);
+      if (agent.kind === "chat") agent.entity.status = "running";
+      const onDelete = vi.fn();
+      const onSelect = vi.fn();
+      let renderer!: TestRenderer.ReactTestRenderer;
+      await act(async () => {
+        renderer = renderRail({
+          activeTabKey: null,
+          region,
+          onDelete,
+          onSelect,
+          surfaces: [agent],
+        });
+      });
+      const middleClick = () =>
+        renderer.root
+          .findByProps({
+            "data-dock-rail-tab": agent.tabKey,
+          })
+          .props.onAuxClick({
+            button: 1,
+            preventDefault: vi.fn(),
+            stopPropagation: vi.fn(),
+          });
+      await act(async () => middleClick());
+      expect(onDelete).not.toHaveBeenCalled();
+      expect(
+        textContent(
+          renderer.root.findByProps({ "data-agent-close-confirmation": true }),
+        ),
+      ).toContain("Are you sure you want to stop and remove this agent tab?");
+      await act(async () =>
+        renderer.root
+          .findByProps({ "data-cancel-agent-close": true })
+          .props.onClick(),
+      );
+      expect(onDelete).not.toHaveBeenCalled();
+      await act(async () => middleClick());
+      await act(async () =>
+        renderer.root
+          .findByProps({ "data-confirm-agent-close": true })
+          .props.onClick(),
+      );
+      expect(onDelete).toHaveBeenCalledExactlyOnceWith(agent, true);
+      expect(onSelect).not.toHaveBeenCalled();
+      await act(async () => renderer.unmount());
+    },
+  );
 
   it("shows a live insertion placeholder for a cross-rail drag", async () => {
     const browser = surface("browser", "one", "Browser", 0);
