@@ -23,7 +23,7 @@ import {
   type ManagedWebRuntimeStatus,
 } from "@cantrip/protocol";
 
-import { spawnGuardedProcess } from "../code/process-guard.js";
+import { spawnGuardedProcess } from "../process-guard.js";
 import { workerLogErrorIdentity, workerLogger } from "../logger.js";
 import {
   ManagedRuntimeInstaller,

@@ -1,9 +1,6 @@
 import { z } from "zod";
 
-import {
-  codeTransportSchema,
-  remoteSurfaceTransportSchema,
-} from "./runtime-capabilities.js";
+import { remoteSurfaceTransportSchema } from "./runtime-capabilities.js";
 
 export const protocolVersionSchema = z.literal(1);
 export const cantripVersionSchema = z
@@ -298,11 +295,6 @@ export const serverBootstrapSchema = z.object({
       enabled: z.boolean(),
       transports: z.array(remoteSurfaceTransportSchema).min(1),
       relayOnly: z.boolean(),
-    }),
-    code: z.object({
-      enabled: z.boolean(),
-      transport: codeTransportSchema,
-      isolatedOrigin: z.literal(true),
     }),
   }),
 });

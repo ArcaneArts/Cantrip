@@ -62,15 +62,6 @@ function worker(): WorkerSummary {
       transports: ["websocket"],
       maxSessions: 1,
     },
-    code: {
-      available: false,
-      version: null,
-      upstreamRevision: null,
-      patchset: null,
-      transport: "web-proxy",
-      maxSessions: 0,
-      reason: "Unavailable",
-    },
     projectReplicas: {
       provision: true,
       synchronize: true,

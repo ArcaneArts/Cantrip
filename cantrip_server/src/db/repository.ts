@@ -55,7 +55,6 @@ import {
   type AttachmentProtectedMetadata,
   type ChatAttachmentOpaqueSummary,
 } from "@cantrip/protocol/attachment-content";
-import { CodeSettingsRepository } from "./code-settings.js";
 import type { SecretVault } from "../security/secret-vault.js";
 import { AccountResourceUsageRepository } from "./account-resource-usage.js";
 import { DesktopUpdateStateRepository } from "./repository/desktop-update-state.js";
@@ -216,10 +215,7 @@ export {
 } from "./repository/chat-attachments.js";
 export type { TerminalExecutionContext } from "./repository/terminals.js";
 export type { ExplorerExecutionContext } from "./repository/explorers.js";
-export {
-  CodeCapabilityUnavailableError,
-  type CodeTabExecutionContext,
-} from "./repository/code-surfaces.js";
+export { type CodeTabExecutionContext } from "./repository/code-surfaces.js";
 export { SurfacePrivateStateConflictError } from "./repository/browsers.js";
 export type { RemoteSurfaceExecutionContext } from "./repository/remote-surfaces.js";
 export type {
@@ -331,7 +327,6 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
   readonly chatImportJobs: ChatImportJobRepository;
   readonly chatRelocationJobs: ChatRelocationJobRepository;
   readonly encryptionRegistry: EncryptionRegistryRepository;
-  readonly codeSettings: CodeSettingsRepository;
   readonly projectAutomations: ProjectAutomationRepository;
   readonly policies: PolicyRepository;
   readonly tasks: TaskRepository;
@@ -655,7 +650,6 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
     this.chatImportJobs = new ChatImportJobRepository(database);
     this.chatRelocationJobs = new ChatRelocationJobRepository(database);
     this.encryptionRegistry = new EncryptionRegistryRepository(database);
-    this.codeSettings = new CodeSettingsRepository(database);
     this.projectAutomations = new ProjectAutomationRepository(database);
     this.policies = new PolicyRepository(database);
     this.accounts = new AccountRepository(database, {

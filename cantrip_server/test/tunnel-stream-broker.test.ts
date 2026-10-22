@@ -59,7 +59,6 @@ const identity = {
 
 function setup(
   options: ConstructorParameters<typeof TunnelStreamBroker>[0] = {},
-  authoritativeRootRequired = false,
 ) {
   const broker = new TunnelStreamBroker(options);
   const source = new FakeEndpoint("worker-a-listener", {
@@ -73,7 +72,6 @@ function setup(
   broker.registerRoute({
     tunnelId: identity.tunnelId,
     attachmentId: identity.attachmentId,
-    authoritativeRootRequired,
     source,
     destination,
     destinationTarget: { kind: "tcp", host: "127.0.0.1", port: 5173 },
@@ -131,43 +129,6 @@ describe("generic tunnel stream broker", () => {
     });
 
     expect(destination.sent).toHaveLength(0);
-    expect(broker.stats().activeConnections).toBe(0);
-    broker.close();
-  });
-
-  it("fails closed when a Code route lacks its exact local root authority", () => {
-    const activity: Array<[string, string, boolean]> = [];
-    const { broker, destination, source } = setup(
-      {
-        onActivity: (tunnelId, attachmentId, authoritativeRootRequired) => {
-          activity.push([tunnelId, attachmentId, authoritativeRootRequired]);
-          return !authoritativeRootRequired;
-        },
-      },
-      true,
-    );
-
-    source.emit({
-      ...identity,
-      connectionId: "missing-root",
-      sequence: 0,
-      kind: "open",
-      initialCreditBytes: 8,
-    });
-
-    expect(activity).toEqual([
-      [identity.tunnelId, identity.attachmentId, true],
-    ]);
-    expect(destination.sent).toHaveLength(0);
-    expect(source.sent).toEqual([
-      expect.objectContaining({
-        header: expect.objectContaining({
-          connectionId: "missing-root",
-          kind: "rejected",
-          code: "unauthorized",
-        }),
-      }),
-    ]);
     expect(broker.stats().activeConnections).toBe(0);
     broker.close();
   });

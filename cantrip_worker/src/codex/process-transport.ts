@@ -1,7 +1,7 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import readline from "node:readline";
 import WebSocket from "ws";
-import { spawnGuardedProcess } from "../code/process-guard.js";
+import { spawnGuardedProcess } from "../process-guard.js";
 import { workerLogger } from "../logger.js";
 import {
   codexEndpointFromLine,

@@ -6,7 +6,6 @@ import { readBoundedJsonResponse } from "./mcp/http.js";
 import os from "node:os";
 
 import {
-  type CodeCapabilities,
   type CodeGraphWorkerStatus,
   type CodexRuntimeReport,
   type DirectBrokerAdvertisement,
@@ -15,7 +14,6 @@ import {
   type RemoteSurfaceCapabilities,
   type WorkerHeartbeat,
   type WorkerEncryptionStatus,
-  unavailableCodeCapabilities,
   unavailableCodeGraphWorkerStatus,
   unavailableManagedWebRuntimeCapabilities,
   unavailableWorkerEncryptionStatus,
@@ -37,7 +35,6 @@ export function createHeartbeat(
     iceTransportPolicies: ["relay"],
     maxSessions: 4,
   },
-  code: CodeCapabilities = unavailableCodeCapabilities,
   directBroker: DirectBrokerAdvertisement = { available: false },
   codegraph: CodeGraphWorkerStatus = unavailableCodeGraphWorkerStatus,
   encryption: WorkerEncryptionStatus = unavailableWorkerEncryptionStatus,
@@ -62,7 +59,6 @@ export function createHeartbeat(
     codexVersion: codexRuntime.version?.raw ?? null,
     codexRuntime,
     remoteSurfaces,
-    code,
     directBroker,
     projectReplicas,
     managedFolders: {

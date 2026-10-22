@@ -18,7 +18,7 @@ import type {
   PrivateDisplayLabelOpaque,
 } from "@cantrip/protocol";
 
-export type ExecutionTargetCapability = "browser" | "code" | "desktop" | null;
+export type ExecutionTargetCapability = "browser" | "desktop" | null;
 
 export type FocusedExecutionTargetResourceKind = Extract<
   ExecutionTargetResourceKind,
@@ -186,7 +186,6 @@ export function executionTargetAvailability(
   }
   const capabilityAvailable =
     capability === null ||
-    (capability === "code" && worker.code.available) ||
     (capability === "browser" && worker.remoteSurfaces.browser) ||
     (capability === "desktop" && worker.remoteSurfaces.desktop);
   if (!capabilityAvailable) {
@@ -293,7 +292,7 @@ export function buildExecutionTargetCatalog(input: {
     const workerId = surface.activeWorkerId ?? worktree?.workerId;
     if (!worktree || !workerId || worktree.workerId !== workerId) return;
     append({
-      capability: surface.resourceKind === "code" ? "code" : null,
+      capability: null,
       placement: {
         projectId: input.projectId,
         workerId,
@@ -446,7 +445,7 @@ export function buildExecutionTargetCatalog(input: {
       activeWorkerId: codeTab.activeWorkerId,
       id: codeTab.id,
       resourceKind: "code",
-      status: codeTab.status,
+      status: null,
       titleProtection: codeTab.titleProtection,
       worktreeId: codeTab.worktreeId,
     });

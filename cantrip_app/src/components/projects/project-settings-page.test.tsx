@@ -16,7 +16,6 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-
 import {
   ProjectSettingsPage,
   projectSettingsSections,
@@ -261,10 +260,6 @@ describe("project settings", () => {
       position: 4,
       activeWorkerId: "worker-1",
       worktreeId: worktree.id,
-      profileId: "default",
-      themeMode: "follow-cantrip",
-      status: "idle",
-      lastError: null,
       createdAt: now,
       updatedAt: now,
     } satisfies CodeTabSummary;

@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 import {
   DEFAULT_PERMISSION_PROFILE_ID,
   type AgentActivity,
@@ -48,13 +46,6 @@ export function effectivePermissionProfile(context: ChatExecutionContext) {
       : context.permissionProfileId === null,
     forcedByWorktreePolicy,
   };
-}
-
-export function scopedCodeProfileId(
-  ownerId: string,
-  profileId: string,
-): string {
-  return createHash("sha256").update(`${ownerId}\0${profileId}`).digest("hex");
 }
 
 export function canFailOverRoute(error: unknown): boolean {

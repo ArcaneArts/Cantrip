@@ -1,14 +1,9 @@
-import { randomUUID } from "node:crypto";
-
 import type {
   ArchivedChatWireSummary,
   ArchivedStandaloneChatWireSummary,
   BrowserWireSummary,
   ChatExecutionLaneSummary,
   ChatWireSummary,
-  CodeEditorBuild,
-  CodeRuntimeStatus,
-  CodeSessionSummary,
   CodeTabWireSummary,
   EncryptedBrowserCreate,
   EncryptedBrowserUpdate,
@@ -1534,43 +1529,6 @@ export abstract class ProjectExecutionRepositoryFacade extends IdentityModelRepo
     codeTabId: string,
   ): Promise<CodeTabExecutionContext | null> {
     return this.codeSurfaces.deleteCodeTab(ownerId, codeTabId);
-  }
-
-  async listCodeSessions(
-    ownerId: string,
-    codeTabId: string,
-  ): Promise<CodeSessionSummary[] | null> {
-    return this.codeSurfaces.listCodeSessions(ownerId, codeTabId);
-  }
-
-  async getOrCreateCodeSession(
-    ownerId: string,
-    codeTabId: string,
-    editorBuild: CodeEditorBuild,
-    preferredSessionId: string = randomUUID(),
-  ): Promise<CodeSessionSummary | null> {
-    return this.codeSurfaces.getOrCreateCodeSession(
-      ownerId,
-      codeTabId,
-      editorBuild,
-      preferredSessionId,
-    );
-  }
-
-  async updateCodeSessionRuntime(
-    ownerId: string,
-    codeTabId: string,
-    sessionId: string,
-    runtime: CodeRuntimeStatus,
-    attached = false,
-  ): Promise<CodeSessionSummary | null> {
-    return this.codeSurfaces.updateCodeSessionRuntime(
-      ownerId,
-      codeTabId,
-      sessionId,
-      runtime,
-      attached,
-    );
   }
 
   async listBrowsers(

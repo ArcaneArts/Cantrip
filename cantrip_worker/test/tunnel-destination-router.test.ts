@@ -18,7 +18,6 @@ vi.mock("../src/tunnel-data-protection.js", async (importOriginal) => {
   return { ...actual, sealTunnelDataFrame: tunnelProtection.seal };
 });
 
-import type { CodeDirectEndpointManager } from "../src/code/direct-endpoint.js";
 import { subscribeWorkerLogs } from "../src/logger.js";
 import type { ProjectShareManager } from "../src/project-share-manager.js";
 import { TunnelDestinationRouter } from "../src/tunnel-destination-router.js";
@@ -49,7 +48,7 @@ function protectedConnect(
     initialCreditBytes: 1_024,
     target: {
       kind: "protected-tunnel",
-      targetKind: "code",
+      targetKind: "tcp",
       recordId: "tunnel-1",
       protectedRecord: {
         operationId: "11111111-1111-4111-8111-111111111111",
@@ -116,11 +115,6 @@ function fixture() {
     get: vi.fn().mockReturnValue(null),
     open: vi.fn(),
   } as unknown as ProjectShareManager;
-  const codeEndpoints = {
-    bindProtectedConnection: vi.fn(),
-    prepareProtected: vi.fn(),
-    prepareSharedProtected: vi.fn(),
-  } as unknown as CodeDirectEndpointManager;
   const encryption = {
     componentKey: vi.fn(() => ({ key: new Uint8Array(32), keyRevision: 1 })),
     ownerId: vi.fn(() => "owner-1"),
@@ -130,7 +124,6 @@ function fixture() {
   const router = new TunnelDestinationRouter(
     tcp,
     projectShares,
-    codeEndpoints,
     encryption,
     "worker-1",
   );
@@ -138,36 +131,25 @@ function fixture() {
   const records: Array<{ context?: unknown }> = [];
   const unsubscribe = subscribeWorkerLogs((record) => records.push(record));
   subscriptions.push(unsubscribe);
-  return { codeEndpoints, emitted, projectShares, records, router, tcp };
+  return { emitted, projectShares, records, router, tcp };
 }
 
-function codeContent() {
+function tcpContent() {
   return {
-    name: "Code",
+    name: "TCP tunnel",
     description: null,
     source: { kind: "desktop-loopback" as const },
     destination: {
-      kind: "worker-code" as const,
+      kind: "worker-tcp" as const,
       workerId: "worker-1",
-      resourceId: "tunnel-1",
-      sessionId: "session-1",
+      host: "127.0.0.1" as const,
+      port: 43_210,
     },
     dataProtection: {
       formatVersion: 1 as const,
       algorithm: "AES-256-GCM" as const,
       keyRevision: 1,
       key: "A".repeat(43),
-    },
-  };
-}
-
-function sharedCodeContent() {
-  return {
-    ...codeContent(),
-    destination: {
-      kind: "worker-code-transport" as const,
-      workerId: "worker-1",
-      resourceId: "tunnel-1",
     },
   };
 }
@@ -200,13 +182,8 @@ function chatShareContent() {
 
 describe("TunnelDestinationRouter protected target diagnostics", () => {
   it("closes an unsealable protected response without retrying it as congestion", async () => {
-    tunnelContent.open.mockResolvedValue(codeContent());
-    const { codeEndpoints, emitted, router, tcp } = fixture();
-    vi.mocked(codeEndpoints.prepareProtected).mockResolvedValue({
-      kind: "tcp",
-      host: "127.0.0.1",
-      port: 43_210,
-    });
+    tunnelContent.open.mockResolvedValue(tcpContent());
+    const { emitted, router, tcp } = fixture();
     const connect = protectedConnect();
     router.handleFrame(connect, new Uint8Array());
     await vi.waitFor(() => expect(tcp.handleFrame).toHaveBeenCalledOnce());
@@ -251,138 +228,6 @@ describe("TunnelDestinationRouter protected target diagnostics", () => {
         }),
       ]),
     );
-  });
-
-  it("correlates a validated Code target through endpoint preparation", async () => {
-    tunnelContent.open.mockResolvedValue(codeContent());
-    const { codeEndpoints, records, router, tcp } = fixture();
-    vi.mocked(codeEndpoints.prepareProtected).mockResolvedValue({
-      kind: "tcp",
-      host: "127.0.0.1",
-      port: 43_210,
-    });
-    const header = protectedConnect();
-    header.diagnosticTraceId = "11111111-1111-4111-8111-111111111111";
-    const diagnosticTraceId = "22222222-2222-4222-8222-222222222222";
-
-    router.handleFrame(header, new Uint8Array(), { diagnosticTraceId });
-
-    await vi.waitFor(() =>
-      expect(codeEndpoints.prepareProtected).toHaveBeenCalledWith(
-        "tunnel-1",
-        "session-1",
-        {
-          attachmentId: "attachment-1",
-          connectionId: "connection-1",
-          diagnosticTraceId,
-        },
-      ),
-    );
-    expect(tcp.handleFrame).toHaveBeenCalledWith(
-      expect.objectContaining({
-        kind: "connect",
-        target: { kind: "tcp", host: "127.0.0.1", port: 43_210 },
-      }),
-      new Uint8Array(),
-      expect.any(Function),
-    );
-    const onConnected = vi.mocked(tcp.handleFrame).mock.calls[0]?.[2];
-    expect(onConnected).toBeTypeOf("function");
-    onConnected?.(54_321);
-    expect(codeEndpoints.bindProtectedConnection).toHaveBeenCalledWith(
-      "tunnel-1",
-      43_210,
-      54_321,
-      {
-        attachmentId: "attachment-1",
-        connectionId: "connection-1",
-        diagnosticTraceId,
-      },
-    );
-    expect(records).not.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          context: expect.objectContaining({
-            event: "tunnel.protected-target.routed",
-          }),
-        }),
-      ]),
-    );
-  });
-
-  it("hands an authorized shared Code transport to one session-independent endpoint", async () => {
-    const { codeEndpoints, router, tcp } = fixture();
-    vi.mocked(codeEndpoints.prepareSharedProtected).mockResolvedValue({
-      kind: "tcp",
-      host: "127.0.0.1",
-      port: 43_211,
-    });
-    const header = protectedConnect();
-    if (header.target.kind !== "protected-tunnel") {
-      throw new Error("Expected a protected tunnel target.");
-    }
-    const transportId = header.target.protectedRecord.operationId;
-    header.tunnelId = transportId;
-    header.target.recordId = transportId;
-    tunnelContent.open.mockResolvedValue({
-      ...sharedCodeContent(),
-      destination: {
-        ...sharedCodeContent().destination,
-        resourceId: transportId,
-      },
-    });
-    const diagnosticTraceId = "22222222-2222-4222-8222-222222222222";
-
-    router.handleFrame(header, new Uint8Array(), { diagnosticTraceId });
-
-    await vi.waitFor(() =>
-      expect(codeEndpoints.prepareSharedProtected).toHaveBeenCalledWith(
-        transportId,
-        {
-          ownerId: "owner-1",
-          protectedKeyRevision: 1,
-          serverId: "https://cantrip.test",
-        },
-        {
-          attachmentId: "attachment-1",
-          connectionId: "connection-1",
-          diagnosticTraceId,
-        },
-      ),
-    );
-    expect(codeEndpoints.prepareProtected).not.toHaveBeenCalled();
-    expect(tcp.handleFrame).toHaveBeenCalledWith(
-      expect.objectContaining({
-        kind: "connect",
-        target: { kind: "tcp", host: "127.0.0.1", port: 43_211 },
-      }),
-      new Uint8Array(),
-      expect.any(Function),
-    );
-  });
-
-  it("rejects a shared Code record whose resource escaped its tunnel", async () => {
-    const { codeEndpoints, emitted, router, tcp } = fixture();
-    const header = protectedConnect();
-    if (header.target.kind !== "protected-tunnel") {
-      throw new Error("Expected a protected tunnel target.");
-    }
-    const transportId = header.target.protectedRecord.operationId;
-    header.tunnelId = transportId;
-    header.target.recordId = transportId;
-    tunnelContent.open.mockResolvedValue({
-      ...sharedCodeContent(),
-      destination: {
-        ...sharedCodeContent().destination,
-        resourceId: "another-tunnel",
-      },
-    });
-
-    router.handleFrame(header, new Uint8Array());
-
-    await vi.waitFor(() => expect(emitted).toHaveBeenCalledOnce());
-    expect(codeEndpoints.prepareSharedProtected).not.toHaveBeenCalled();
-    expect(tcp.handleFrame).not.toHaveBeenCalled();
   });
 
   it("routes a Chat share only after its exact root-bound share was prepared", async () => {
@@ -501,70 +346,26 @@ describe("TunnelDestinationRouter protected target diagnostics", () => {
     );
   });
 
-  it("preserves the Code endpoint preparation failure stage", async () => {
-    tunnelContent.open.mockResolvedValue(codeContent());
-    const { codeEndpoints, emitted, records, router } = fixture();
-    vi.mocked(codeEndpoints.prepareProtected).mockRejectedValue(
-      Object.assign(new Error("endpoint unavailable"), { code: "EADDRINUSE" }),
-    );
-
-    const diagnosticTraceId = "22222222-2222-4222-8222-222222222222";
-    router.handleFrame(protectedConnect(), new Uint8Array(), {
-      diagnosticTraceId,
-    });
-
-    await vi.waitFor(() => expect(emitted).toHaveBeenCalledOnce());
-    expect(emitted).toHaveBeenCalledWith(
-      expect.objectContaining({
-        kind: "rejected",
-        code: "protected-endpoint-unavailable",
-      }),
-      new Uint8Array(),
-    );
-    expect(records).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          context: expect.objectContaining({
-            event: "tunnel.protected-target.rejected",
-            reasonCode: "code-endpoint-preparation-failed",
-            errorCode: "EADDRINUSE",
-            diagnosticTraceId,
-            sessionId: "session-1",
-            tunnelId: "tunnel-1",
-            connectionId: "connection-1",
-          }),
-        }),
-      ]),
-    );
-  });
-
   it("cancels a delayed protected record open and permits a fresh connection", async () => {
-    const firstRecord = deferred<ReturnType<typeof codeContent>>();
+    const firstRecord = deferred<ReturnType<typeof tcpContent>>();
     tunnelContent.open
       .mockImplementationOnce(() => firstRecord.promise)
-      .mockResolvedValue(codeContent());
-    const { codeEndpoints, emitted, router, tcp } = fixture();
-    vi.mocked(codeEndpoints.prepareProtected).mockResolvedValue({
-      kind: "tcp",
-      host: "127.0.0.1",
-      port: 43_210,
-    });
+      .mockResolvedValue(tcpContent());
+    const { emitted, router, tcp } = fixture();
     const first = protectedConnect();
 
     router.handleFrame(first, new Uint8Array());
     await vi.waitFor(() => expect(tunnelContent.open).toHaveBeenCalledOnce());
     router.handleFrame(closeConnection(first), new Uint8Array());
-    expect(codeEndpoints.prepareProtected).not.toHaveBeenCalled();
     expect(tcp.handleFrame).not.toHaveBeenCalled();
     expect(emitted).not.toHaveBeenCalled();
 
     const second = protectedConnect();
     router.handleFrame(second, new Uint8Array());
     await vi.waitFor(() => expect(tcp.handleFrame).toHaveBeenCalledOnce());
-    firstRecord.resolve(codeContent());
+    firstRecord.resolve(tcpContent());
     await nextTurn();
 
-    expect(codeEndpoints.prepareProtected).toHaveBeenCalledOnce();
     expect(tcp.handleFrame).toHaveBeenCalledOnce();
     expect(tcp.handleFrame).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -572,77 +373,21 @@ describe("TunnelDestinationRouter protected target diagnostics", () => {
         target: { kind: "tcp", host: "127.0.0.1", port: 43_210 },
       }),
       new Uint8Array(),
-      expect.any(Function),
+      undefined,
     );
   });
 
-  it("cancels delayed Code preparation without binding or leaking into a fresh connection", async () => {
-    tunnelContent.open.mockResolvedValue(codeContent());
-    const firstEndpoint = deferred<{
-      kind: "tcp";
-      host: string;
-      port: number;
-    }>();
-    const { codeEndpoints, emitted, router, tcp } = fixture();
-    vi.mocked(codeEndpoints.prepareProtected)
-      .mockImplementationOnce(() => firstEndpoint.promise)
-      .mockResolvedValue({
-        kind: "tcp",
-        host: "127.0.0.1",
-        port: 43_211,
-      });
-    const first = protectedConnect();
-
-    router.handleFrame(first, new Uint8Array());
-    await vi.waitFor(() =>
-      expect(codeEndpoints.prepareProtected).toHaveBeenCalledOnce(),
-    );
-    router.handleFrame(closeConnection(first), new Uint8Array());
-    firstEndpoint.resolve({
-      kind: "tcp",
-      host: "127.0.0.1",
-      port: 43_210,
-    });
-    await nextTurn();
-
-    expect(tcp.handleFrame).not.toHaveBeenCalled();
-    expect(codeEndpoints.bindProtectedConnection).not.toHaveBeenCalled();
-    expect(emitted).not.toHaveBeenCalled();
-
-    const second = protectedConnect({ connectionId: "connection-2" });
-    router.handleFrame(second, new Uint8Array());
-    await vi.waitFor(() => expect(tcp.handleFrame).toHaveBeenCalledOnce());
-    const onConnected = vi.mocked(tcp.handleFrame).mock.calls[0]?.[2];
-    onConnected?.(54_321);
-    expect(codeEndpoints.bindProtectedConnection).toHaveBeenCalledWith(
-      "tunnel-1",
-      43_211,
-      54_321,
-      expect.objectContaining({ connectionId: "connection-2" }),
-    );
-  });
-
-  it("invalidates delayed protected preparation when the router disconnects", async () => {
-    tunnelContent.open.mockResolvedValue(codeContent());
-    const endpoint = deferred<{
-      kind: "tcp";
-      host: string;
-      port: number;
-    }>();
-    const { codeEndpoints, emitted, router, tcp } = fixture();
-    vi.mocked(codeEndpoints.prepareProtected).mockReturnValue(endpoint.promise);
-
+  it("invalidates a delayed protected record when the router disconnects", async () => {
+    const record = deferred<ReturnType<typeof tcpContent>>();
+    tunnelContent.open.mockReturnValue(record.promise);
+    const { emitted, router, tcp } = fixture();
     router.handleFrame(protectedConnect(), new Uint8Array());
-    await vi.waitFor(() =>
-      expect(codeEndpoints.prepareProtected).toHaveBeenCalledOnce(),
-    );
+    await vi.waitFor(() => expect(tunnelContent.open).toHaveBeenCalledOnce());
     router.disconnect();
-    endpoint.resolve({ kind: "tcp", host: "127.0.0.1", port: 43_210 });
+    record.resolve(tcpContent());
     await nextTurn();
-
     expect(tcp.disconnect).toHaveBeenCalledOnce();
     expect(tcp.handleFrame).not.toHaveBeenCalled();
-    expect(codeEndpoints.bindProtectedConnection).not.toHaveBeenCalled();
     expect(emitted).not.toHaveBeenCalled();
   });
 });

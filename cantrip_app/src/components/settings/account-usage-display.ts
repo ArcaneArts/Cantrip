@@ -91,7 +91,7 @@ const bandwidthLabels: Record<AccountBandwidthChannel, string> = {
   "remote-surface-relay": "Remote surfaces",
   "tunnel-relay": "Tunnel relay",
   "attachment-transfer": "Attachments",
-  "code-relay": "Code relay",
+  "code-relay": "Legacy editor relay",
   "project-share-relay": "Project sharing",
   other: "Other server traffic",
 };

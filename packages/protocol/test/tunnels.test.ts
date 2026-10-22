@@ -68,59 +68,6 @@ describe("tunnel protocol", () => {
     ).toMatchObject({ kind: "protected-tunnel", recordId: tunnelId });
   });
 
-  it("projects a protected Code session to opaque server routing metadata", () => {
-    const content = tunnelContentRecordSchema.parse({
-      name: "Cantrip Code",
-      description: null,
-      source: { kind: "desktop-loopback" },
-      destination: {
-        kind: "worker-code",
-        workerId: "worker-b",
-        resourceId: "code-tab-1",
-        sessionId: "session-private-1",
-      },
-      dataProtection: {
-        formatVersion: 1,
-        algorithm: "AES-256-GCM",
-        keyRevision: 1,
-        key: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-      },
-    });
-
-    expect(tunnelPublicDestinationEndpoint(content.destination)).toEqual({
-      kind: "worker-adapter",
-      workerId: "worker-b",
-      adapter: "code",
-      resourceId: "code-tab-1",
-    });
-    expect(
-      JSON.stringify(tunnelPublicDestinationEndpoint(content.destination)),
-    ).not.toContain("session-private-1");
-    expect(
-      tunnelDataPlaneTargetSchema.parse({
-        kind: "protected-tunnel",
-        targetKind: "code",
-        recordId: "code-tab-1",
-        protectedRecord: {
-          operationId: "11111111-1111-4111-8111-111111111111",
-          revision: 1,
-          protectedContent: {
-            formatVersion: 1,
-            domain: "tunnel-content",
-            keyRevision: 1,
-            envelope: {
-              version: 1,
-              algorithm: "AES-256-GCM",
-              keyRevision: 1,
-              nonce: "AAAAAAAAAAAAAAAA",
-              ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
-            },
-          },
-        },
-      }),
-    ).toMatchObject({ targetKind: "code" });
-  });
-
   it("keeps standalone Chat root identity inside protected share content", () => {
     const content = tunnelContentRecordSchema.parse({
       name: "Chat scratch files",
@@ -255,7 +202,7 @@ describe("tunnel protocol", () => {
     expect(() =>
       tunnelManagedRegistrationSchema.parse({
         name: "Mismatched adapter",
-        origin: "code",
+        origin: "system",
         management: "managed-durable",
         protocolHint: "http",
         source: { kind: "desktop-loopback" },
@@ -265,7 +212,7 @@ describe("tunnel protocol", () => {
           adapter: "project-share",
           resourceId: "share-1",
         },
-        managedBy: { kind: "project-share", id: "share-1" },
+        managedBy: { kind: "system", id: "share-1" },
       }),
     ).toThrow(/origin|adapter/i);
   });
@@ -273,21 +220,21 @@ describe("tunnel protocol", () => {
   it("requires coherent managed ownership and attachment endpoints", () => {
     const summary = {
       id: "tunnel-1",
-      name: "Cantrip Code",
+      name: "Project files",
       description: null,
       projectId: "project-1",
       position: 0,
-      origin: "code",
+      origin: "project-share",
       management: "managed-durable",
       protocolHint: "http-websocket",
       source: { kind: "desktop-loopback" },
       destination: {
         kind: "worker-adapter",
         workerId: "worker-1",
-        adapter: "code",
-        resourceId: "code-1",
+        adapter: "project-share",
+        resourceId: "share-1",
       },
-      managedBy: { kind: "code", id: "code-1" },
+      managedBy: { kind: "project-share", id: "share-1" },
       desiredState: "started",
       status: "active",
       lastError: null,

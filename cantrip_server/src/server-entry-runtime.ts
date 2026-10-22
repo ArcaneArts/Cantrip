@@ -5,7 +5,6 @@ import { cantripVersion } from "@cantrip/version";
 import { buildApp } from "./app.js";
 import type { BuildAppOptions } from "./app/options.js";
 import { readServerConfig, resolveServerDataDirectory } from "./config.js";
-import { CodeTunnelBroker } from "./code/tunnel.js";
 import { connectDatabase } from "./db/index.js";
 import { RedisRelayCoordinator } from "./coordination/relay-coordinator.js";
 import { RelayQuotaManager } from "./operations/relay-quotas.js";
@@ -71,10 +70,8 @@ async function start(options: ServerStartOptions): Promise<void> {
       })
     : new WorkerBridge();
   const relayQuotas = new RelayQuotaManager(config);
-  const codeTunnel = new CodeTunnelBroker(workerBridge);
   const projectShareTunnel = new ProjectShareTunnelBroker(workerBridge);
   const app = await buildApp({
-    codeTunnel,
     config,
     coordinator,
     database,

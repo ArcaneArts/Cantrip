@@ -77,7 +77,7 @@ class AttachmentVisibilitySocket extends TestWorkerSocket {
 
   activate(): boolean {
     this.dispatch = this.bridge
-      .request("worker-1", { type: "code.probe" })
+      .request("worker-1", { type: "worker.version" })
       .then(
         () => undefined,
         () => undefined,
@@ -224,7 +224,7 @@ describe("WorkerBridge Remote Surface transport", () => {
     const socket = new TestWorkerSocket();
     bridge.attach("worker-1", socket);
 
-    const response = bridge.request("worker-1", { type: "code.probe" });
+    const response = bridge.request("worker-1", { type: "worker.version" });
     const request = JSON.parse(String(socket.sent.at(-1))) as {
       requestId: string;
     };
@@ -248,7 +248,7 @@ describe("WorkerBridge Remote Surface transport", () => {
       code: "project-source-unavailable",
       message: "Project source is unavailable.",
       name: WorkerCommandError.name,
-      operation: "code.probe",
+      operation: "worker.version",
       requestId: request.requestId,
       workerId: "worker-1",
     });
@@ -260,7 +260,7 @@ describe("WorkerBridge Remote Surface transport", () => {
     const firstSocket = new TestWorkerSocket();
     bridge.attach("worker-1", firstSocket);
 
-    const response = bridge.request("worker-1", { type: "code.probe" });
+    const response = bridge.request("worker-1", { type: "worker.version" });
     const request = JSON.parse(String(firstSocket.sent.at(-1))) as {
       requestId: string;
     };
@@ -290,7 +290,7 @@ describe("WorkerBridge Remote Surface transport", () => {
     const socket = new TestWorkerSocket();
     bridge.attach("worker-1", socket);
 
-    const response = bridge.request("worker-1", { type: "code.probe" });
+    const response = bridge.request("worker-1", { type: "worker.version" });
     socket.close(1006, "network loss");
 
     await expect(response).rejects.toThrow(/disconnected/i);
@@ -308,7 +308,7 @@ describe("WorkerBridge Remote Surface transport", () => {
       bridge.subscribeWorkerOffline("worker-1", offline);
       bridge.attach("worker-1", firstSocket, "owner-1", continuityIdentity);
 
-      const response = bridge.request("worker-1", { type: "code.probe" });
+      const response = bridge.request("worker-1", { type: "worker.version" });
       const rejected = expect(response).rejects.toThrow(/disconnected/i);
       firstSocket.close(1006, "first flap");
       expect(reconnecting).toHaveBeenCalledOnce();
@@ -342,7 +342,7 @@ describe("WorkerBridge Remote Surface transport", () => {
       const offline = vi.fn();
       bridge.subscribeWorkerOffline("worker-1", offline);
       bridge.attach("worker-1", firstSocket, "owner-1", continuityIdentity);
-      const pending = bridge.request("worker-1", { type: "code.probe" });
+      const pending = bridge.request("worker-1", { type: "worker.version" });
       const rejected = pending.catch((error: unknown) => {
         expect(error).toBeInstanceOf(Error);
         expect((error as Error).message).toMatch(/disconnected/i);
@@ -404,7 +404,7 @@ describe("WorkerBridge Remote Surface transport", () => {
     bridge.subscribeWorkerDisconnect("worker-1", reconnecting);
     bridge.subscribeWorkerOffline("worker-1", offline);
     bridge.attach("worker-1", firstSocket, "owner-1", continuityIdentity);
-    const pending = bridge.request("worker-1", { type: "code.probe" });
+    const pending = bridge.request("worker-1", { type: "worker.version" });
     const rejected = expect(pending).rejects.toThrow(/identity changed/i);
 
     const replacementSocket = new TestWorkerSocket();
@@ -441,7 +441,7 @@ describe("WorkerBridge Remote Surface transport", () => {
 
     const replacementSocket = new TestWorkerSocket();
     bridge.attach("worker-1", replacementSocket, "owner-1", continuityIdentity);
-    const response = bridge.request("worker-1", { type: "code.probe" });
+    const response = bridge.request("worker-1", { type: "worker.version" });
     const request = JSON.parse(String(replacementSocket.sent.at(-1))) as {
       requestId: string;
     };
@@ -500,7 +500,7 @@ describe("WorkerBridge Remote Surface transport", () => {
 
     const response = bridge.request(
       "worker-1",
-      { type: "code.probe" },
+      { type: "worker.version" },
       {
         onEvent: async (event) => {
           await Promise.resolve();
@@ -547,7 +547,7 @@ describe("WorkerBridge Remote Surface transport", () => {
 
     const response = bridge.request(
       "worker-1",
-      { type: "code.probe" },
+      { type: "worker.version" },
       {
         timeoutMs: 100,
         onEvent: () => {

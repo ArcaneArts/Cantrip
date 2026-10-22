@@ -11,7 +11,6 @@ import {
 } from "./credential-store.js";
 
 export interface WorkerConfig {
-  codeIdleTimeoutMs: number;
   codexBinary: string;
   codexInstallation: CodexInstallation;
   dataDirectory: string;
@@ -22,17 +21,6 @@ export interface WorkerConfig {
   token: string;
   tokenSource: "development" | "enrollment" | "environment" | "persisted";
   workerId: string;
-}
-
-function positiveMilliseconds(value: string | undefined, fallback: number) {
-  if (value === undefined) return fallback;
-  const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed < 1_000) {
-    throw new Error(
-      "CANTRIP_CODE_IDLE_TIMEOUT_MS must be an integer of at least 1000 milliseconds.",
-    );
-  }
-  return parsed;
 }
 
 export function resolveWorkerDataDirectory(): string {
@@ -145,10 +133,6 @@ export function readWorkerConfig(): WorkerConfig {
       ? `local-${os.hostname()}`
       : loadOrCreateWorkerIdentity(dataDirectory));
   return {
-    codeIdleTimeoutMs: positiveMilliseconds(
-      process.env.CANTRIP_CODE_IDLE_TIMEOUT_MS,
-      30 * 60_000,
-    ),
     codexBinary: codexInstallation.binary,
     codexInstallation,
     dataDirectory,

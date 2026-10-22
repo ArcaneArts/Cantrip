@@ -8,10 +8,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   chatMessageRelayResultSchema,
-  codeAgentTurnNotificationResultSchema,
-  codeAgentTurnPreparationResultSchema,
   worktreeStatusResultSchema,
-  type ChatMessage,
   type WorkerNotification,
 } from "@cantrip/protocol";
 import { taskMessageRelayResultSchema } from "@cantrip/protocol/tasks";
@@ -277,88 +274,6 @@ export function createChatRecoveryRuntime({
       throw new Error("Attachments belong to another worker.");
     }
     return attachments;
-  };
-
-  const prepareCodeEditorsForTurn = async (
-    context: ChatExecutionContext,
-    timeoutMs?: number | null,
-  ): Promise<void> => {
-    const result = codeAgentTurnPreparationResultSchema.parse(
-      await bridge.request(
-        context.workerId,
-        {
-          type: "code.prepareAgentTurn",
-          cwd: context.cwd,
-        },
-        timeoutMs === undefined ? undefined : { timeoutMs },
-      ),
-    );
-    if (result.prepared) return;
-    const blocked = result.sessions.filter((session) => !session.allowed);
-    const files = [
-      ...new Set(
-        blocked.flatMap((session) =>
-          session.dirtyEditors.map(
-            (editor) => editor.relativePath ?? editor.uri,
-          ),
-        ),
-      ),
-    ];
-    const reason =
-      blocked.find((session) => session.reason)?.reason ??
-      "Cantrip Code could not establish a saved-file boundary.";
-    app.log.warn(
-      {
-        event: "code.agent-turn-preparation-blocked",
-        subsystem: "code",
-        operation: "prepare-agent-turn",
-        status: "blocked",
-        reasonCode: "saved-file-boundary-unavailable",
-        chatId: context.chatId,
-        projectId: context.projectId,
-        workerId: context.workerId,
-        counts: {
-          blockedSessions: blocked.length,
-          dirtyEditors: files.length,
-          failedEditors: blocked.reduce(
-            (total, session) => total + session.failed.length,
-            0,
-          ),
-        },
-        err: new Error(reason),
-      },
-      "Cantrip Code blocked agent turn preparation",
-    );
-    throw new Error(
-      `${reason}${files.length ? ` Dirty editors: ${files.slice(0, 10).join(", ")}${files.length > 10 ? ` and ${files.length - 10} more` : ""}.` : ""}`,
-    );
-  };
-
-  const notifyCodeAgentState = async (
-    context: Pick<ChatExecutionContext, "chatId" | "cwd" | "workerId">,
-    phase: "started" | "completed" | "failed",
-    paths: Iterable<string> = [],
-    timeoutMs?: number | null,
-  ): Promise<void> => {
-    try {
-      codeAgentTurnNotificationResultSchema.parse(
-        await bridge.request(
-          context.workerId,
-          {
-            type: "code.agentTurnState",
-            cwd: context.cwd,
-            phase,
-            paths: [...paths].slice(0, 5_000),
-          },
-          { timeoutMs },
-        ),
-      );
-    } catch (error) {
-      app.log.warn(
-        { chatId: context.chatId, err: error, phase },
-        "Could not synchronize the agent turn with Cantrip Code",
-      );
-    }
   };
 
   const dispatchNextQueuedPrompt = async (chatId: string): Promise<void> => {
@@ -908,16 +823,6 @@ export function createChatRecoveryRuntime({
         recoveredFailedStatus = true;
       }
     }
-    if (notification.contextKind === "project" && "worktree" in laneContext) {
-      await notifyCodeAgentState(
-        {
-          chatId: notification.chatId,
-          cwd: laneContext.worktree.path,
-          workerId,
-        },
-        recoveredOutcomeOk ? "completed" : "failed",
-      );
-    }
     publishChatTurnBoundary(
       notification.chatId,
       laneContext.chat.projectId,
@@ -971,8 +876,6 @@ export function createChatRecoveryRuntime({
   return {
     continuePendingWorktreeTransition,
     dispatchNextQueuedPrompt,
-    notifyCodeAgentState,
-    prepareCodeEditorsForTurn,
     recoverChatTurnOutcome,
     resolvePromptAttachments,
     resumePendingWorktreeTransitionsForWorker,

@@ -1,30 +1,10 @@
 import { installManagedNativeRoutes } from "./routes/internal-native.js";
 import { installNativeHistoryRuntime } from "./runtime/native-history-runtime.js";
-import { randomBytes, randomUUID } from "node:crypto";
-import {
-  encryptedBrowserUpdateSchema,
-  chatMessageCreateSchema,
-  chatMessageListSchema,
-  chatPromptSteerResultSchema,
-  chatPromptSubmitResultSchema,
-  chatTurnCreateSchema,
-  explorerCodeAttachmentCreateSchema,
-  gitManagedOperationWorkerStateSchema,
-  gitRelativePathSchema,
-  orderedIdsSchema,
-  queuedPromptCreateSchema,
-  queuedPromptListSchema,
-  queuedPromptSchema,
-  queuedPromptUpdateSchema,
-  tunnelWireSummarySchema,
-} from "@cantrip/protocol";
-import { endpointContentOpaqueSchema } from "@cantrip/protocol/endpoint-content";
-import type { GitOperationObservationState } from "@cantrip/protocol";
-import { cantripVersion } from "@cantrip/version";
+import { randomUUID } from "node:crypto";
 
 import { installRequestPrincipal } from "../auth/principal.js";
 import { ensureConfiguredAdministrator } from "../auth/configured-administrator.js";
-import { hashSecret, UserSessionService } from "../auth/service.js";
+import { UserSessionService } from "../auth/service.js";
 import {
   ChatThreadChangeReconciler,
   type ChatThreadChangeNotification,
@@ -33,25 +13,10 @@ import {
   ChatTurnOutcomeRecoveryScheduler,
   chatTurnOutcomeRecoveryKey,
 } from "../chats/turn-outcome-recovery.js";
-import {
-  type CodeAttachmentRootIdentity,
-  CodeTunnelBroker,
-} from "../code/tunnel.js";
 import { ProjectShareTunnelBroker } from "../project-shares/tunnel.js";
 import { requireProjectCapability } from "../projects/capabilities.js";
-import {
-  SurfacePrivateStateConflictError,
-  LOCAL_USER_ID,
-  ProjectWorkspaceInvariantError,
-  type ChatLiveRouting,
-  type ModelRuntime,
-  type TunnelAttachmentAuthorization,
-} from "../db/repository.js";
-import { prepareRuntimesForReasoning } from "../models/reasoning.js";
-import { WorkerUnavailableError } from "../workers/bridge.js";
+import { LOCAL_USER_ID, type ModelRuntime } from "../db/repository.js";
 import { RemoteSurfaceRelay } from "../remote-surfaces/relay.js";
-import { WorktreeCreateMutationError } from "../worktrees/coordinator.js";
-import { errorMessage, invalidBody } from "../http/request-helpers.js";
 import { createAuditAppender, installMutationAuditHook } from "./http/audit.js";
 import { installAuthenticationGuard } from "./http/auth-guard.js";
 import { installBandwidthHooks } from "./http/bandwidth-hooks.js";
@@ -100,13 +65,10 @@ import { installWorkerEnrollmentRoute } from "./routes/worker-enrollment.js";
 import { installChatWorktreeAndExecutionLaneRoutes } from "./routes/chat-worktree-and-execution-lanes.js";
 import { installProviderAccountAuthRoutes } from "./routes/provider-account-auth.js";
 import { installProjectWorktreeGitCommitSignatureRoute } from "./routes/project-worktree-git-commit-signature.js";
-import { CliCommandRequestError } from "../agent-tools/errors.js";
-import { encodedFrameBytes } from "../account-usage/frame-bandwidth.js";
 import { WorkerLinkCoordinator } from "../worker-links/coordinator.js";
 import { WorkerLinkRelay } from "../worker-links/relay.js";
 import { WorkerLinkService } from "../worker-links/service.js";
 import { isAccountProviderKind } from "../models/account-provider.js";
-import { persistProviderQuotaSnapshot } from "../models/provider-quota.js";
 import type { BuildAppOptions } from "./options.js";
 import { createAgentOperationRuntime } from "./runtime/agent-operation-runtime.js";
 import { createApplicationServiceFoundation } from "./runtime/application-service-foundation.js";
@@ -124,21 +86,13 @@ import { createInteractiveSurfaceRuntime } from "./runtime/interactive-surface-r
 import { createModelRoutingRuntime } from "./runtime/model-routing-runtime.js";
 import { createTaskGoalRuntime } from "./runtime/task-goal-runtime.js";
 import { createSessionSocketRuntime } from "./runtime/session-socket-runtime.js";
-import {
-  createRunConfigurationRuntime,
-  type ExecutionOperationContext,
-} from "./runtime/run-configuration-runtime.js";
+import { createRunConfigurationRuntime } from "./runtime/run-configuration-runtime.js";
 import { installSettingsRouteRuntime } from "./runtime/settings-routes.js";
 import { installTaskRouteRuntime } from "./runtime/task-routes.js";
 import { createTunnelControlPlaneRuntime } from "./runtime/tunnel-control-plane-runtime.js";
 import { createWorkerNotificationRuntime } from "./runtime/worker-notification-runtime.js";
 import { createWorkerObservationPublicationRuntime } from "./runtime/worker-observation-publication-runtime.js";
-import {
-  AGENT_INTERACTION_EXPIRY_SWEEP_MS,
-  ATTACHMENT_CHUNK_BYTES,
-  FINITE_WORKER_COMMAND_TIMEOUT_MS,
-} from "./shared/constants.js";
-import { ProviderAccountReconnectRequiredError } from "./shared/errors.js";
+import { AGENT_INTERACTION_EXPIRY_SWEEP_MS } from "./shared/constants.js";
 import { installMutationLiveInvalidationHook } from "./http/mutation-live-invalidation.js";
 import { installCoreInfrastructureRoutes } from "./routes/core-infrastructure-registry.js";
 import { installInteractiveWorkspaceRoutes } from "./routes/interactive-workspace-registry.js";
@@ -146,7 +100,6 @@ import { installProjectRoutes } from "./routes/project-route-registry.js";
 
 export async function buildApp({
   config,
-  codeTunnel: providedCodeTunnel,
   database,
   logger = true,
   projectShareTunnel: providedProjectShareTunnel,
@@ -223,7 +176,6 @@ export async function buildApp({
       bridge,
     });
   const revokedWorkerCredentialIds = new Set<string>();
-  const codeTunnel = providedCodeTunnel ?? new CodeTunnelBroker(bridge);
   const projectShareTunnel =
     providedProjectShareTunnel ?? new ProjectShareTunnelBroker(bridge);
   const surfaceRelay = new RemoteSurfaceRelay(
@@ -266,7 +218,6 @@ export async function buildApp({
     accountUsageMeter,
     app,
     bridge,
-    codeTunnel,
     directAttachments,
     projectShareTunnel,
     publishLiveInvalidation,
@@ -486,42 +437,6 @@ export async function buildApp({
           workerLinkRelay.revokeOwner(scope.ownerId);
       }
     });
-  const authorizedCodeAttachmentRootIdentity = (
-    authorization: Pick<
-      TunnelAttachmentAuthorization,
-      "destination" | "origin" | "ownerId" | "protectedRecord" | "tunnelId"
-    >,
-    authSessionId: string | null,
-  ): CodeAttachmentRootIdentity | null => {
-    if (authorization.origin !== "code") return null;
-    return {
-      authSessionId,
-      ownerId: authorization.ownerId,
-      protectedKeyRevision:
-        authorization.protectedRecord.protectedContent.keyRevision,
-      rootAttachmentId: authorization.tunnelId,
-      serverId,
-      tunnelId: authorization.tunnelId,
-      workerId: authorization.destination.workerId,
-    };
-  };
-  const acquireAuthorizedCodeAttachmentRootLease = (
-    authorization: Pick<
-      TunnelAttachmentAuthorization,
-      "destination" | "origin" | "ownerId" | "protectedRecord" | "tunnelId"
-    >,
-    authSessionId: string | null,
-  ) => {
-    const identity = authorizedCodeAttachmentRootIdentity(
-      authorization,
-      authSessionId,
-    );
-    if (!identity) return { lease: null, managed: false } as const;
-    const acquired = codeTunnel.acquireAttachmentRootLease(identity);
-    return acquired.managed
-      ? acquired
-      : ({ lease: null, managed: true } as const);
-  };
   if (localUser) {
     await repository.ensureAccountConfiguration(LOCAL_USER_ID);
     await repository.ensureBrowserRemoteSurfaces(LOCAL_USER_ID);
@@ -628,7 +543,6 @@ export async function buildApp({
       : runtime.routeId;
   const interactiveSurfaceRuntime = createInteractiveSurfaceRuntime({
     bridge,
-    codeTunnel,
     directAttachments,
     publishLiveInvalidation,
     repository,
@@ -637,13 +551,11 @@ export async function buildApp({
   });
   const {
     applyBrowserUpdate,
-    codeTabWorkerRuntime,
     publishWorkerPresence,
     scheduleWorkerOfflineInvalidation,
     surfaceAttachmentCounts,
     synchronizeTerminalServicesForWorker,
     terminalServiceRuntime,
-    updateCodeSessionRuntime,
     updateRemoteSurfaceStatus,
     updateTerminalStatus,
     workerPresenceFingerprints,
@@ -776,8 +688,6 @@ export async function buildApp({
   const {
     continuePendingWorktreeTransition,
     dispatchNextQueuedPrompt,
-    notifyCodeAgentState,
-    prepareCodeEditorsForTurn,
     recoverChatTurnOutcome,
     resolvePromptAttachments,
     resumePendingWorktreeTransitionsForWorker,
@@ -818,8 +728,6 @@ export async function buildApp({
     continuePendingWorktreeTransition,
     dispatchNextQueuedPrompt,
     interruptLiveAgentInteractionRequests,
-    notifyCodeAgentState,
-    prepareCodeEditorsForTurn,
     publishChatSummary,
     publishChatTurnBoundary,
     publishInferenceProgress,
@@ -877,15 +785,12 @@ export async function buildApp({
 
   installCoreInfrastructureRoutes(app, {
     accountUsageMeter,
-    acquireAuthorizedCodeAttachmentRootLease,
     appendAudit,
     applicationOwnerId,
     authRateLimiter,
-    authorizedCodeAttachmentRootIdentity,
     availableModelRuntimes,
     bridge,
     closeSessionSockets,
-    codeTunnel,
     config,
     coordinationStats,
     coordinator,
@@ -902,7 +807,6 @@ export async function buildApp({
     normalizedAdminEmail,
     operationalMetrics,
     publishChatSummary,
-    publishLiveInvalidation,
     publishTunnelRuntimeChange,
     publishWorkerAvailability: (workerId) =>
       publishLiveInvalidation("worker-availability", { entityId: workerId }),
@@ -912,7 +816,6 @@ export async function buildApp({
     registerSessionSocket,
     relayQuotas,
     repository,
-    runAsOwner,
     serverId,
     sessionService,
     sessionSockets,
@@ -995,7 +898,6 @@ export async function buildApp({
     chatGptCatalogService,
     checkedCustomizationRequest,
     checkedCustomizationResponse,
-    codeTunnel,
     configuredRoutePairsForDefaults,
     customizationScopesMatch,
     grokCatalogService,
@@ -1092,14 +994,11 @@ export async function buildApp({
     appendAudit,
     applicationOwnerId,
     bridge,
-    codeTunnel,
-    codeTabWorkerRuntime,
     config,
     directAttachments,
     installProjectRunConfigurationRoutes: (routeApp) =>
       runConfigurationRuntime.installProjectRoutes(routeApp),
     isWorkerConnected: (workerId) => bridge.isConnected(workerId),
-    lifecycle: codeTunnel,
     publishRunConfigurationInvalidation: (projectId) =>
       publishLiveInvalidation("run-configuration", {
         entityId: null,
@@ -1121,7 +1020,6 @@ export async function buildApp({
     surfaceAttachmentCounts,
     surfaceRelay,
     terminalServiceRuntime,
-    updateCodeSessionRuntime,
     applyBrowserUpdate,
     tunnelRuntime,
     updateRemoteSurfaceStatus,
@@ -1376,7 +1274,6 @@ export async function buildApp({
   });
 
   installInternalWorkerHttpControlRoutes(app, {
-    codeTunnel,
     config,
     publishWorkerPresence,
     repository,
@@ -1462,16 +1359,6 @@ export async function buildApp({
       "Application live transport stopped",
     );
     liveHub.close();
-    let codeTunnelCloseError: unknown;
-    try {
-      await codeTunnel.close();
-    } catch (error) {
-      codeTunnelCloseError = error;
-      app.log.error(
-        { err: error },
-        "Cantrip Code attachment cleanup failed during shutdown",
-      );
-    }
     await projectShareTunnel.close();
     tunnelRuntime.close();
     await directAttachments.close();
@@ -1491,7 +1378,6 @@ export async function buildApp({
     await chatRelocationJobExecutor.drain();
     await chatImportJobExecutor.drain();
     await database.close();
-    if (codeTunnelCloseError) throw codeTunnelCloseError;
   });
 
   return app;

@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 
 import {
-  unavailableCodeCapabilities,
   unavailableCodeGraphWorkerStatus,
   unavailableManagedFolderCapabilities,
   unavailableManagedWebRuntimeCapabilities,
@@ -87,7 +86,6 @@ export function toWorkerSummary(
     codexRuntime: worker.codexRuntime,
     remoteSurfaces: worker.remoteSurfaceCapabilities,
     directBroker: worker.directBrokerAdvertisement,
-    code: worker.codeCapabilities,
     codegraph: worker.codegraphStatus,
     webRuntimes: worker.webRuntimeCapabilities,
     encryption: worker.encryptionStatus,
@@ -370,7 +368,6 @@ export class WorkerRepository {
         codexRuntime: input.heartbeat.codexRuntime,
         remoteSurfaceCapabilities: input.heartbeat.remoteSurfaces,
         directBrokerAdvertisement: input.heartbeat.directBroker,
-        codeCapabilities: input.heartbeat.code ?? unavailableCodeCapabilities,
         codegraphStatus:
           input.heartbeat.codegraph ?? unavailableCodeGraphWorkerStatus,
         webRuntimeCapabilities:
@@ -603,7 +600,6 @@ export class WorkerRepository {
       codexRuntime: heartbeat.codexRuntime,
       remoteSurfaceCapabilities: heartbeat.remoteSurfaces,
       directBrokerAdvertisement: heartbeat.directBroker,
-      codeCapabilities: heartbeat.code ?? unavailableCodeCapabilities,
       codegraphStatus: heartbeat.codegraph ?? unavailableCodeGraphWorkerStatus,
       webRuntimeCapabilities:
         heartbeat.webRuntimes ?? unavailableManagedWebRuntimeCapabilities,

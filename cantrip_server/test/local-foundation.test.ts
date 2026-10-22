@@ -45,7 +45,6 @@ import {
   githubRepositoryOwnerListSchema,
   githubRepositorySchema,
   githubIssueDetailSchema,
-  githubIssueListSchema,
   githubPullRequestCreateResultSchema,
   githubPullRequestCheckoutResultSchema,
   githubPullRequestDetailSchema,
@@ -2081,15 +2080,6 @@ describe("local server foundation", () => {
           desktop: true,
           transports: ["websocket"],
           maxSessions: 4,
-        },
-        code: {
-          available: true,
-          version: codeEditorBuild.version,
-          upstreamRevision: codeEditorBuild.upstreamRevision,
-          patchset: codeEditorBuild.patchset,
-          transport: "web-proxy",
-          maxSessions: 4,
-          reason: null,
         },
         projectReplicas: {
           provision: true,

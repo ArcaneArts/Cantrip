@@ -361,11 +361,6 @@ describe("server connections", () => {
                 transports: ["websocket"],
                 relayOnly: true,
               },
-              code: {
-                enabled: true,
-                transport: "web-proxy",
-                isolatedOrigin: true,
-              },
             },
           }),
           { headers: { "content-type": "application/json" } },

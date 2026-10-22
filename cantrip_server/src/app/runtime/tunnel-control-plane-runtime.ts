@@ -2,7 +2,6 @@ import type { AppLiveResource } from "@cantrip/protocol";
 import type { FastifyInstance } from "fastify";
 
 import type { AccountUsageMeter } from "../../account-usage/bandwidth-meter.js";
-import type { CodeTunnelBroker } from "../../code/tunnel.js";
 import type { ServerRepository } from "../../db/repository.js";
 import type { DirectAttachmentCoordinator } from "../../direct-attachments/coordinator.js";
 import type { RelayQuotaManager } from "../../operations/relay-quotas.js";
@@ -24,7 +23,6 @@ export interface TunnelControlPlaneRuntimeDependencies {
   accountUsageMeter: AccountUsageMeter;
   app: Pick<FastifyInstance, "log">;
   bridge: LimitedWorkerCommandBus;
-  codeTunnel: CodeTunnelBroker;
   directAttachments: DirectAttachmentCoordinator;
   projectShareTunnel: ProjectShareTunnelBroker;
   publishLiveInvalidation: (
@@ -48,7 +46,6 @@ export function createTunnelControlPlaneRuntime({
   accountUsageMeter,
   app,
   bridge,
-  codeTunnel,
   directAttachments,
   projectShareTunnel,
   publishLiveInvalidation,
@@ -69,9 +66,6 @@ export function createTunnelControlPlaneRuntime({
   const tunnelStreamBroker = new TunnelStreamBroker({
     consumeRelayBytes: (ownerId, workerId, bytes) =>
       relayQuotas.consumeRelay(ownerId, workerId, bytes),
-    onActivity: (tunnelId, attachmentId, authoritativeRootRequired) =>
-      !authoritativeRootRequired ||
-      codeTunnel.allowRelayAttachmentActivity(attachmentId, tunnelId),
   });
   const tunnelRuntime = new TunnelRuntimeManager(
     repository,
@@ -113,14 +107,6 @@ export function createTunnelControlPlaneRuntime({
       },
     );
   };
-  codeTunnel.configureControlPlane(
-    repository,
-    publishTunnelRuntimeChange,
-    async (ownerId, tunnelId, reason, code) => {
-      tunnelRuntime.closeTunnel(tunnelId, reason, code);
-      await directAttachments.revokeResource(ownerId, "tunnel", tunnelId);
-    },
-  );
   const tunnelAttachmentExpiryTimer = setInterval(() => {
     void repository
       .expireDesktopTunnelDirectLeases()
@@ -139,7 +125,6 @@ export function createTunnelControlPlaneRuntime({
       .expireDesktopTunnelAttachments()
       .then((expired) => {
         for (const attachment of expired) {
-          codeTunnel.releaseRelayAttachment(attachment.attachmentId);
           tunnelRuntime.closeActive(
             attachment.attachmentId,
             "Attachment expired",

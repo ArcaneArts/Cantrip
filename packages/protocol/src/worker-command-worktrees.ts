@@ -4,14 +4,6 @@ import { modelProviderKindSchema } from "./providers.js";
 import { projectRootKindSchema } from "./project-foundation.js";
 import { repositoryRelativePathSchema } from "./repository-paths.js";
 import {
-  codeThemeModeSchema,
-  codePresentationSchema,
-  codeAppearanceSchema,
-  codeTransportRouteAuthorizeCommandSchema,
-  codeTransportRouteRevokeCommandSchema,
-  codeTransportRevokeCommandSchema,
-} from "./code-surfaces.js";
-import {
   worktreeCreateModeSchema,
   worktreeObservationTargetsSchema,
   codeGraphObservationTargetsSchema,
@@ -25,7 +17,7 @@ import {
   protectedCustomizationWorkerRequestFields,
 } from "./worker-command-shared.js";
 
-export const workerWorktreeCodeCommandSchemas = [
+export const workerWorktreeCommandSchemas = [
   z.object({
     type: z.literal("worktree.list"),
     sourcePath: z.string().min(1),
@@ -108,72 +100,7 @@ export const workerWorktreeCodeCommandSchemas = [
     })
     .extend(surfaceStreamWireRequestSchema.shape)
     .strict(),
-  z.object({ type: z.literal("code.probe") }),
-  codeTransportRouteAuthorizeCommandSchema,
-  codeTransportRouteRevokeCommandSchema,
-  codeTransportRevokeCommandSchema,
-  z.object({
-    type: z.literal("code.settings.workbench.open"),
-    sessionId: z.string().uuid(),
-    profileId: z.string().min(1).max(200),
-    appearance: codeAppearanceSchema,
-  }),
-  z.object({
-    type: z.literal("code.open"),
-    sessionId: z.string().min(1),
-    codeTabId: z.string().min(1),
-    projectId: z.string().min(1),
-    worktreeId: z.string().min(1),
-    worktreeName: z.string().trim().min(1).max(200).optional(),
-    cwd: z.string().min(1),
-    profileId: z.string().min(1).max(200),
-    initialFile: repositoryRelativePathSchema.optional(),
-    themeMode: codeThemeModeSchema,
-    appearance: codeAppearanceSchema,
-    presentation: codePresentationSchema.default("workbench"),
-  }),
-  z.object({
-    type: z.literal("code.status"),
-    sessionId: z.string().min(1),
-  }),
-  z.object({
-    type: z.literal("code.stop"),
-    sessionId: z.string().min(1),
-    expectedSessionIncarnationId: z.string().uuid().optional(),
-  }),
-  z.object({
-    type: z.literal("code.endpoint.revoke"),
-    tunnelId: z.string().uuid(),
-  }),
-  z.object({
-    type: z.literal("code.saveAll"),
-    sessionId: z.string().min(1),
-  }),
-  z.object({
-    type: z.literal("code.openFile"),
-    sessionId: z.string().min(1),
-    path: repositoryRelativePathSchema,
-  }),
-  z.object({
-    type: z.literal("code.getDirtyEditors"),
-    sessionId: z.string().min(1),
-  }),
-  z.object({
-    type: z.literal("code.setTheme"),
-    sessionId: z.string().min(1),
-    themeMode: codeThemeModeSchema,
-    appearance: codeAppearanceSchema,
-  }),
-  z.object({
-    type: z.literal("code.prepareAgentTurn"),
-    cwd: z.string().min(1),
-  }),
-  z.object({
-    type: z.literal("code.agentTurnState"),
-    cwd: z.string().min(1),
-    phase: z.enum(["started", "completed", "failed"]),
-    paths: z.array(z.string().min(1).max(8_192)).max(5_000).default([]),
-  }),
+
   z.object({
     type: z.literal("skills.list"),
     ...customizationWorkerContentFields,

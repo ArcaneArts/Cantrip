@@ -3,7 +3,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
-  unavailableCodeCapabilities,
   unprobedCodexRuntimeReport,
   workerCredentialListSchema,
   workerEnrollmentCodeResultSchema,
@@ -54,7 +53,6 @@ function heartbeat(workerId: string): WorkerHeartbeat {
       transports: ["websocket"],
       maxSessions: 4,
     },
-    code: unavailableCodeCapabilities,
     startedAt: new Date().toISOString(),
   };
 }

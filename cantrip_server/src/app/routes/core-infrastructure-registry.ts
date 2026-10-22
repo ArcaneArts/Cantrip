@@ -8,7 +8,6 @@ import { installApiMetadataRoute } from "./api-metadata.js";
 import { installAuthSessionRoutes } from "./auth-sessions.js";
 import { installDirectAttachmentControlRoutes } from "./direct-attachment-control.js";
 import { installInternalProviderCredentialRoutes } from "./internal-provider-credentials.js";
-import { installInternalWorkerCodeSettingsRoutes } from "./internal-worker-code-settings.js";
 import { installRepositoryOperationRoutes } from "./repository-operations.js";
 import { installStandaloneChatCatalogRoutes } from "./chat-catalogs.js";
 import { installSystemStatusRoutes } from "./system-status.js";
@@ -34,9 +33,8 @@ type AccountSecurityRouteDependencies = Parameters<
 >[1];
 
 export type CoreInfrastructureRouteDependencies = Parameters<
-  typeof installInternalWorkerCodeSettingsRoutes
+  typeof installAccountLiveTrafficRoute
 >[1] &
-  Parameters<typeof installAccountLiveTrafficRoute>[1] &
   Parameters<typeof installInternalProviderCredentialRoutes>[1] &
   Omit<
     AuthSessionRouteDependencies,
@@ -72,8 +70,6 @@ export function installCoreInfrastructureRoutes(
     authRateLimiter: dependencies.authRateLimiter,
     config: dependencies.config,
   });
-
-  installInternalWorkerCodeSettingsRoutes(app, dependencies);
 
   installInternalProviderCredentialRoutes(app, dependencies);
 

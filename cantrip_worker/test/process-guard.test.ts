@@ -6,7 +6,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { spawnGuardedProcess } from "../src/code/process-guard.js";
+import { spawnGuardedProcess } from "../src/process-guard.js";
 
 const temporaryDirectories: string[] = [];
 

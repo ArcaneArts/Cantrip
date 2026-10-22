@@ -506,7 +506,7 @@ describe("worker generic tunnel data transport", () => {
       JSON.stringify({
         kind: "request",
         requestId: "request-1",
-        command: { type: "code.probe" },
+        command: { type: "worker.version" },
       }),
     );
     await commandStarted;
@@ -1198,7 +1198,7 @@ describe("worker generic tunnel data transport", () => {
       encodeWorkerRequestEnvelope({
         kind: "request",
         requestId: "legacy-request",
-        command: { type: "code.probe" },
+        command: { type: "worker.version" },
       }),
     );
 

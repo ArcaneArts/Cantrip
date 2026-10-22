@@ -4,7 +4,6 @@ import path from "node:path";
 
 import {
   unprobedCodexRuntimeReport,
-  unavailableCodeCapabilities,
   type WorkerHeartbeat,
 } from "@cantrip/protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -78,7 +77,6 @@ describe("worker credential persistence", () => {
         transports: ["websocket"],
         maxSessions: 1,
       },
-      code: unavailableCodeCapabilities,
       startedAt: "2026-08-11T12:00:00.000Z",
     };
     const fetch = vi.fn().mockResolvedValue(

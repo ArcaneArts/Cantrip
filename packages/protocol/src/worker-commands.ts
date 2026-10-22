@@ -3,7 +3,7 @@ import { generateLabelCommandSchema } from "./labeling.js";
 import { workerCoreCommandSchemas } from "./worker-command-core.js";
 import { workerGithubProjectCommandSchemas } from "./worker-command-github-project.js";
 import { workerGitCommandSchemas } from "./worker-command-git.js";
-import { workerWorktreeCodeCommandSchemas } from "./worker-command-worktree-code.js";
+import { workerWorktreeCommandSchemas } from "./worker-command-worktrees.js";
 import { workerSurfaceCommandSchemas } from "./worker-command-surfaces.js";
 import { workerChatCommandSchemas } from "./worker-command-chat.js";
 import {
@@ -25,7 +25,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   ...workerCoreCommandSchemas,
   ...workerGithubProjectCommandSchemas,
   ...workerGitCommandSchemas,
-  ...workerWorktreeCodeCommandSchemas,
+  ...workerWorktreeCommandSchemas,
   ...workerSurfaceCommandSchemas,
   ...workerChatCommandSchemas,
   generateLabelCommandSchema,

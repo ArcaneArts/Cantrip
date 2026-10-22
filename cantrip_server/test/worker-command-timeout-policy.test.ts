@@ -96,7 +96,7 @@ it("expires a finite command and releases its pending request at the deadline", 
   try {
     const request = bridge.request(
       "timeout-worker",
-      { type: "code.probe" },
+      { type: "worker.version" },
       { timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },
     );
     const rejected = expect(request).rejects.toMatchObject({
@@ -122,7 +122,7 @@ it("keeps streaming work alive past the finite budget and releases it on actual 
   try {
     const request = bridge.request(
       "stream-worker",
-      { type: "code.probe" },
+      { type: "worker.version" },
       { timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS, onEvent },
     );
     const { requestId } = JSON.parse(String(socket.sent.at(-1)));

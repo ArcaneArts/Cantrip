@@ -110,7 +110,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
     "601cfa1ef62b1fe37e7779ace69d80961404ad97ddc2089da85eef315183f9d9",
   applicationRoutes:
-    "8c2887f3fcae7532df6199424e2920cb030d32ce5c582655852c7274fe7bc5e3",
+    "da5c3d8352e16c6aee635cc260afcbcc4013d5585e0f948f4dc61ee559b4db03",
   clientControlCommands:
     "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
   cliCommands:
@@ -118,7 +118,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   liveResources:
     "60a4250f1562ae48ad8b931cc0324b2e1653b9cb59bc5cc31cb357349a4063a1",
   workerCommands:
-    "273b424c6d0265a5efe73c2153b85f41ee9e18b885c32ce9366ae7dc9e14982a",
+    "0093e633365ddfcc196c62bb16c9d3e683dd5bb28b925268532477beeb6adf54",
   tunnelFrameKinds:
     "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8",
 };
@@ -197,8 +197,6 @@ const DURABLE_TABLE_CLASSIFICATIONS = {
   terminals: "endpoint-protected",
   explorers: "endpoint-protected",
   codeTabs: "endpoint-protected",
-  codeSessions: "intentionally-public-control-plane",
-  codeSettingsProfiles: "endpoint-protected",
   browsers: "endpoint-protected",
   remoteSurfaces: "endpoint-protected",
   projectViews: "endpoint-protected",
@@ -3837,7 +3835,7 @@ async function surfaceStreamProtocolBoundaryAudit(streamProtocolText) {
       Promise.all([
         resolve(
           repositoryRoot,
-          "packages/protocol/src/worker-command-worktree-code.ts",
+          "packages/protocol/src/worker-command-worktrees.ts",
         ),
         resolve(
           repositoryRoot,

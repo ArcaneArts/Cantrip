@@ -143,16 +143,6 @@ export interface ChatTurnRuntimeDependencies
   ) => void;
   continuePendingWorktreeTransition: (chatId: string) => Promise<boolean>;
   dispatchNextQueuedPrompt: (chatId: string) => Promise<void>;
-  notifyCodeAgentState: (
-    context: Pick<ChatExecutionContext, "chatId" | "cwd" | "workerId">,
-    phase: "started" | "completed" | "failed",
-    paths?: Iterable<string>,
-    timeoutMs?: number | null,
-  ) => Promise<void>;
-  prepareCodeEditorsForTurn: (
-    context: ChatExecutionContext,
-    timeoutMs?: number | null,
-  ) => Promise<void>;
   repository: ServerRepository;
   resolvePromptAttachments: (
     context: ChatExecutionContext,

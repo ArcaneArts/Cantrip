@@ -52,8 +52,7 @@ language without reopening the file.
 as `LICENSE.md` and `LICENSE-MIT` open in a readable, wrapping document view
 without line numbers. Explorer, sidebar previews, file windows and standalone
 Chat files share the view. Choose Edit/Editor to change the original text;
-Preview/Read only shows that same draft, and saving remains explicit. Opening
-the license explicitly in VS Code still uses VS Code.
+Preview/Read only shows that same draft, and saving remains explicit.
 
 Recognized license text gets a summary card above the complete original file.
 The initial catalog covers MIT, Apache 2.0, BSD 2-Clause, BSD 3-Clause, ISC,
@@ -90,8 +89,7 @@ participate in the page-unload warning.
 Native file windows also intercept Tauri's titlebar close request. Clean windows
 close immediately; dirty documents or pending saves require **Keep editing** or
 **Close and discard**. A failed native close keeps the document available and
-offers a retry. Explicit VS Code-only windows retain their existing close path.
-If an Explorer popout's account/server changes, its file authority retires and
+offers a retry. If an Explorer popout's account/server changes, its file authority retires and
 late responses cannot rebind it. Dirty buffers remain in their original window
 and scope for copying or explicit discard; they cannot save through another
 account. Clean retired windows clear their cache and close.
@@ -128,9 +126,13 @@ cache pressure and require save/discard decisions before closing or moving to
 another checkout/window. An externally moved tab keeps its original draft for
 copying, and stale checkout bindings cannot redirect a save.
 
-The native editor contains no third-party editor or syntax engine. Server and
-worker workbench endpoints, native transport pooling, vendored sources, and
-build/packaging scripts are the remaining removal work.
+The native editor contains no third-party editor or syntax engine. The server
+and worker no longer create editor runtimes, workbench attachments,
+profiles, extension hosts, or settings synchronization. Code tabs carry only
+native tab metadata and checkout placement; an upgrade migration preserves
+their encrypted labels and layouts while retiring old sessions and tunnels.
+Native desktop transport pooling, vendored sources, and build/packaging
+scripts remain to be removed.
 
 ## Development and verification
 
