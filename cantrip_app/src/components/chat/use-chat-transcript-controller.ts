@@ -207,7 +207,7 @@ export function useChatTranscriptController({
   onForked(chat: ChatSummary | StandaloneChatSummary): void;
   onFilesOpenChange?(open: boolean): void;
   onInspectOpenChange(open: boolean): void;
-  onOpenFile(path: string): void;
+  onOpenFile(path: string, worktreeId?: string | null): void;
   onRename(title: string): void;
   onOpenRelocation(): void;
   onConfigureModels?(): void;

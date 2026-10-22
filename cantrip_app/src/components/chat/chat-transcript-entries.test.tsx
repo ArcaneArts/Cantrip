@@ -28,6 +28,7 @@ vi.mock("./message-content", async () => {
 });
 
 import { ChatTranscriptEntries } from "./chat-transcript-entries";
+import { MessageFileSummary } from "./message-file-summary";
 
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -234,6 +235,52 @@ function ComposerRenderHarness() {
 }
 
 describe("ChatTranscriptEntries render isolation", () => {
+  it("preserves the original checkout when opening a file-summary link", async () => {
+    const onOpenFile = vi.fn();
+    const message = {
+      ...messages[0]!,
+      worktreeId: "original-task",
+      content: [
+        { type: "text" as const, text: "[Baseline](docs/BASELINE.md)" },
+      ],
+    };
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        <ChatTranscriptEntries
+          copiedMessageId={null}
+          editedMessageRef={editedMessageRef}
+          editingSentMessage={null}
+          entries={[
+            {
+              type: "timeline",
+              entry: { type: "message", message, turnMetadata: null },
+            },
+          ]}
+          forkPending={false}
+          latestEditableMessageId={null}
+          latestLiveActivityGroupKey={null}
+          retryPending={false}
+          onCancelEditingMessage={noAction}
+          onChangeEditingMessage={noAction}
+          onCopyResponse={noAsyncAction}
+          onEditMessage={noAction}
+          onForkMessage={noAction}
+          onOpenFile={onOpenFile}
+          onSubmitEditedMessage={noAction}
+        />,
+      );
+    });
+    renderer.root
+      .findByType(MessageFileSummary)
+      .props.onOpenFile("docs/BASELINE.md");
+    expect(onOpenFile).toHaveBeenCalledExactlyOnceWith(
+      "docs/BASELINE.md",
+      "original-task",
+    );
+    await act(async () => renderer.unmount());
+  });
+
   it("groups completed operations around visibly spaced thoughts", async () => {
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => {
