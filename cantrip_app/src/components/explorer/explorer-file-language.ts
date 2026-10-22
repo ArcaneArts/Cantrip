@@ -1,5 +1,6 @@
 import {
   explorerTextLanguageForPath,
+  explorerMarkdownFileForPath,
   explorerMediaTypeForPath,
   type ExplorerFileMode,
 } from "@cantrip/protocol";
@@ -35,7 +36,9 @@ export function structuredFileFormatForPath(
 }
 
 export function defaultExplorerFileMode(path: string): ExplorerFileMode {
-  return explorerMediaTypeForPath(path) || isLicenseFile(path)
+  return explorerMediaTypeForPath(path) ||
+    explorerMarkdownFileForPath(path) ||
+    isLicenseFile(path)
     ? "preview"
     : "edit";
 }

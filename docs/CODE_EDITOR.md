@@ -3,8 +3,8 @@
 Text files open in Cantrip's own editor in Explorer, sidebar file previews,
 desktop file windows, and standalone Chat files. It uses native textarea input
 with an owned highlighting layer, line-number gutter, and monospace font.
-Media keeps its existing preview. Markdown preview and structured visual modes
-remain available through the existing mode controls.
+Media keeps its existing preview. Markdown files open in View mode by default;
+Edit and structured visual modes remain available through the mode controls.
 
 Save explicitly with the existing Save control or Command/Ctrl+S. Tab and
 Shift+Tab indent and unindent; Escape releases keyboard focus. The editor uses

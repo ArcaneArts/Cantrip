@@ -13,7 +13,10 @@ import {
   chatFileDocumentId,
   retainedChatFileBinding,
 } from "./standalone-chat-editor-sessions";
-import { structuredFileFormatForPath } from "@/components/explorer/explorer-file-language";
+import {
+  defaultExplorerFileMode,
+  structuredFileFormatForPath,
+} from "@/components/explorer/explorer-file-language";
 import { StructuredFileVisual } from "@/components/explorer/structured-file-visual";
 import { formatExplorerSize } from "@/components/explorer/explorer-entry-metadata";
 import { Button } from "@/components/ui/button";
@@ -157,7 +160,7 @@ export function ChatFilePreview({
   const [content, setContent] = useState("");
   const [version, setVersion] = useState("");
   const [mode, setMode] = useState<PreviewMode>(() =>
-    isLicenseFile(entry?.path ?? "") ? "preview" : "edit",
+    defaultExplorerFileMode(entry?.path ?? ""),
   );
   const [document, setDocument] = useState<EditorDocumentSession | null>(null);
   const documentRef = useRef(document);
@@ -184,7 +187,7 @@ export function ChatFilePreview({
     setDocument(cached);
     setContent(cached?.text ?? "");
     setVersion(cached?.version ?? "");
-    setMode(isLicenseFile(entry?.path ?? "") ? "preview" : "edit");
+    setMode(defaultExplorerFileMode(entry?.path ?? ""));
   }, [documentId]);
   useEffect(() => {
     if (!query.data || query.data.path !== entry?.path) return;
@@ -198,7 +201,7 @@ export function ChatFilePreview({
     setContent(next.text);
     setVersion(next.version);
     if (switched)
-      setMode(isLicenseFile(entry?.path ?? "") ? "preview" : "edit");
+      setMode(defaultExplorerFileMode(entry?.path ?? ""));
   }, [query.data, documentId, entry?.path]);
   const save = useMutation({
     mutationFn: async () => {

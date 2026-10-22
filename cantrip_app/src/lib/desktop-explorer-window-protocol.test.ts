@@ -34,7 +34,7 @@ describe("desktop Explorer window protocol", () => {
 
   it("opens files in the same default mode as the embedded Explorer", () => {
     expect(desktopExplorerWindowInitialMode("src/index.ts")).toBe("edit");
-    expect(desktopExplorerWindowInitialMode("README.md")).toBe("edit");
+    expect(desktopExplorerWindowInitialMode("README.md")).toBe("preview");
     expect(desktopExplorerWindowInitialMode("LICENSE")).toBe("preview");
     expect(desktopExplorerWindowInitialMode("LICENSE.md", "native")).toBe(
       "preview",
