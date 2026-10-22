@@ -7,13 +7,8 @@ import * as ContextMenu from "@radix-ui/react-context-menu";
 import {
   ChevronDown,
   ChevronRight,
-  File,
-  FileCode2,
   FileClock,
   FilePlus2,
-  FileText,
-  Folder,
-  FolderOpen,
   FolderPlus,
   Link2,
   Loader2,
@@ -46,6 +41,7 @@ import { cn } from "@/lib/utils";
 import { useFileChangeActivity } from "./use-file-change-activity";
 import { useSidebarFolderExpansion } from "./use-sidebar-folder-expansion";
 import { requestGitFileHistory } from "@/lib/git-history-navigation";
+import { FileTypeIcon } from "@/components/files/file-type-icon";
 import {
   SidebarNewFileRow,
   useSidebarNewFile,
@@ -74,13 +70,6 @@ export type ExplorerFileMutationAuthorization = {
   bindingKey: string;
   isCurrent(): boolean;
 };
-
-function entryIcon(entry: ExplorerEntry, expanded: boolean) {
-  if (entry.kind === "directory") return expanded ? FolderOpen : Folder;
-  if (entry.markdown) return FileText;
-  if (entry.viewable) return FileCode2;
-  return File;
-}
 
 function SidebarFilesContextMenu({
   children,
@@ -215,7 +204,6 @@ function SidebarFileRow({
   renameValue: string;
   revealLabel?: string;
 }) {
-  const Icon = entryIcon(entry, expanded);
   const openable = entry.kind === "directory" || entry.viewable;
   const renameInputRef = useRef<HTMLInputElement>(null);
   const rowRef = useRef<HTMLDivElement>(null);
@@ -286,7 +274,12 @@ function SidebarFileRow({
         ) : (
           <span className="size-3 shrink-0" aria-hidden="true" />
         )}
-        <Icon className="size-3.5 shrink-0" />
+        <FileTypeIcon
+          path={entry.name}
+          kind={entry.kind}
+          expanded={expanded}
+          className="size-3.5"
+        />
         {editing ? (
           <input
             aria-label={`Rename ${entry.name}`}

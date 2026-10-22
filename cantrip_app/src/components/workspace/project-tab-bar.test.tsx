@@ -521,7 +521,7 @@ describe("project pane tab strip", () => {
   it("renders only the pinned file presentation", () => {
     const markup = renderTabs(fileSurface());
 
-    expect(markup).toContain("lucide-file-code-corner");
+    expect(markup).toContain('data-file-icon="typescript"');
     expect(markup).toContain("index.ts");
     expect(markup).toContain('aria-label="Project pane tabs"');
   });
