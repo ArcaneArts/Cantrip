@@ -31,7 +31,6 @@ export interface TunnelDataPlaneEndpoint {
 
 export interface TunnelRouteRegistration {
   attachmentId: string;
-  authoritativeRootRequired?: boolean;
   diagnosticTraceId?: string;
   destination: TunnelDataPlaneEndpoint;
   destinationTarget: TunnelDataPlaneTarget;
@@ -54,11 +53,7 @@ export interface TunnelStreamBrokerOptions {
   maxLifetimeMs?: number;
   maxRoutes?: number;
   now?: () => number;
-  onActivity?(
-    tunnelId: string,
-    attachmentId: string,
-    authoritativeRootRequired: boolean,
-  ): boolean;
+  onActivity?(tunnelId: string, attachmentId: string): boolean;
   sweepIntervalMs?: number;
 }
 
@@ -75,7 +70,6 @@ export interface TunnelStreamBrokerStats {
 
 interface Route {
   attachmentId: string;
-  authoritativeRootRequired: boolean;
   diagnosticTraceId?: string;
   destination: TunnelDataPlaneEndpoint;
   destinationTarget: TunnelDataPlaneTarget;
@@ -189,8 +183,6 @@ export class TunnelStreamBroker {
     }
     const route: Route = {
       ...registration,
-      authoritativeRootRequired:
-        registration.authoritativeRootRequired ?? false,
       key,
       unsubscribe: [],
     };
@@ -226,16 +218,9 @@ export class TunnelStreamBroker {
     return routes.length;
   }
 
-  recordRouteActivity(
-    tunnelId: string,
-    attachmentId: string,
-    authoritativeRootRequired: boolean,
-  ): boolean {
+  recordRouteActivity(tunnelId: string, attachmentId: string): boolean {
     const route = this.#routes.get(routeKey(tunnelId, attachmentId));
-    if (
-      !route ||
-      route.authoritativeRootRequired !== authoritativeRootRequired
-    ) {
+    if (!route) {
       return false;
     }
     return this.#recordRouteActivity(route);
@@ -533,11 +518,8 @@ export class TunnelStreamBroker {
 
   #recordRouteActivity(route: Route): boolean {
     return (
-      this.#onActivity(
-        route.tunnelId,
-        route.attachmentId,
-        route.authoritativeRootRequired,
-      ) && this.#routes.get(route.key) === route
+      this.#onActivity(route.tunnelId, route.attachmentId) &&
+      this.#routes.get(route.key) === route
     );
   }
 

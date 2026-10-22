@@ -15,7 +15,6 @@ export async function settleChatTurnFailure({
   dependencies: {
     app,
     repository,
-    notifyCodeAgentState,
     appendLiveChatMessage,
     cancelChatTurnOutcomeRecovery,
     publishChatTurnBoundary,
@@ -40,7 +39,6 @@ export async function settleChatTurnFailure({
     ChatTurnRuntimeDependencies,
     | "app"
     | "repository"
-    | "notifyCodeAgentState"
     | "appendLiveChatMessage"
     | "cancelChatTurnOutcomeRecovery"
     | "publishChatTurnBoundary"
@@ -82,14 +80,6 @@ export async function settleChatTurnFailure({
         "Could not persist a failed Task planning operation",
       );
     }
-  }
-  if (execution.contextKind === "project") {
-    await notifyCodeAgentState(
-      execution,
-      "failed",
-      changedPaths,
-      options.preflightWorkerCommandTimeoutMs,
-    );
   }
   if (!anyActivity && execution.modelRouteId) {
     await repository.updateChatRuntime(

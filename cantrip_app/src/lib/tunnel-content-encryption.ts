@@ -133,40 +133,6 @@ function stableErrorMessage(
 
 type TunnelPresentation = Omit<TunnelContentRecord, "dataProtection">;
 
-function managedPresentation(tunnel: TunnelWireSummary): TunnelPresentation {
-  const presentation =
-    tunnel.origin === "code"
-      ? {
-          name: "Cantrip Code",
-          description: "Isolated editor access for the owning Code tab.",
-        }
-      : tunnel.origin === "project-share"
-        ? {
-            name: "Project files",
-            description: "Secure WebDAV access to this project's files.",
-          }
-        : {
-            name: `${tunnel.origin[0]?.toUpperCase() ?? ""}${tunnel.origin.slice(1)} tunnel`,
-            description: null,
-          };
-  if (
-    tunnel.source.kind === "worker-listener" ||
-    tunnel.destination.kind === "worker-tcp" ||
-    (tunnel.destination.kind === "worker-adapter" &&
-      tunnel.destination.adapter === "project-share")
-  ) {
-    throw new Error("Private tunnel configuration is unavailable.");
-  }
-  return {
-    ...presentation,
-    source: tunnel.source,
-    destination:
-      tunnel.destination.kind === "worker-adapter"
-        ? { ...tunnel.destination, adapter: "code" }
-        : tunnel.destination,
-  };
-}
-
 function publicEndpointsMatch(
   wire: TunnelWireSummary,
   content: TunnelPresentation,
@@ -181,13 +147,14 @@ function publicEndpointsMatch(
 
 export async function openTunnelSummary(raw: unknown): Promise<TunnelSummary> {
   const wire = tunnelWireSummarySchema.parse(raw);
-  const content = wire.protectedRecord
-    ? await openTunnelContentRecord({
-        tunnelId: wire.id,
-        record: wire.protectedRecord,
-        workerId: wire.destination.workerId,
-      })
-    : managedPresentation(wire);
+  if (!wire.protectedRecord) {
+    throw new Error("Private tunnel configuration is unavailable.");
+  }
+  const content = await openTunnelContentRecord({
+    tunnelId: wire.id,
+    record: wire.protectedRecord,
+    workerId: wire.destination.workerId,
+  });
   if (!publicEndpointsMatch(wire, content)) {
     throw new Error(
       "Protected tunnel content does not match its routing record.",

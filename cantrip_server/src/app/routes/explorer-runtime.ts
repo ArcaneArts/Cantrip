@@ -6,7 +6,6 @@ import {
 } from "@cantrip/protocol";
 import type { FastifyInstance } from "fastify";
 
-import type { CodeTunnelBroker } from "../../code/tunnel.js";
 import type { ServerRepository } from "../../db/repository.js";
 import { invalidBody } from "../../http/request-helpers.js";
 import { sendWorkerRequestFailure } from "../../http/worker-request-failures.js";
@@ -14,7 +13,6 @@ import type { WorkerCommandBus } from "../../workers/bridge.js";
 
 export interface ExplorerWorktreeRouteDependencies {
   applicationOwnerId: () => string;
-  lifecycle: Pick<CodeTunnelBroker, "mutateExplorer">;
   repository: Pick<
     ServerRepository,
     "getExplorerExecutionContext" | "updateExplorerWorktree"
@@ -24,7 +22,6 @@ export interface ExplorerWorktreeRouteDependencies {
 
 export interface ExplorerDeleteRouteDependencies {
   applicationOwnerId: () => string;
-  lifecycle: Pick<CodeTunnelBroker, "mutateExplorer">;
   repository: Pick<ServerRepository, "deleteExplorer">;
 }
 
@@ -40,7 +37,6 @@ export function installExplorerWorktreeRoute(
   app: FastifyInstance,
   {
     applicationOwnerId,
-    lifecycle,
     repository,
     requireProjectWorktrees,
   }: ExplorerWorktreeRouteDependencies,
@@ -60,16 +56,10 @@ export function installExplorerWorktreeRoute(
         request.params.explorerId,
       );
       if (context) await requireProjectWorktrees(context.projectId);
-      const explorer = await lifecycle.mutateExplorer(
+      const explorer = await repository.updateExplorerWorktree(
         ownerId,
         request.params.explorerId,
-        () =>
-          repository.updateExplorerWorktree(
-            ownerId,
-            request.params.explorerId,
-            input.data,
-          ),
-        (result) => result !== null,
+        input.data,
       );
       return explorer
         ? reply.send(explorerWireSummarySchema.parse(explorer))
@@ -81,21 +71,15 @@ export function installExplorerWorktreeRoute(
 /** Registers Explorer deletion after view-state mutations. */
 export function installExplorerDeleteRoute(
   app: FastifyInstance,
-  {
-    applicationOwnerId,
-    lifecycle,
-    repository,
-  }: ExplorerDeleteRouteDependencies,
+  { applicationOwnerId, repository }: ExplorerDeleteRouteDependencies,
 ): void {
   app.delete<{ Params: { explorerId: string } }>(
     "/api/explorers/:explorerId",
     async (request, reply) => {
       const ownerId = applicationOwnerId();
-      return (await lifecycle.mutateExplorer(
+      return (await repository.deleteExplorer(
         ownerId,
         request.params.explorerId,
-        () => repository.deleteExplorer(ownerId, request.params.explorerId),
-        () => true,
       ))
         ? reply.code(204).send()
         : reply.code(404).send({ error: "Explorer not found." });

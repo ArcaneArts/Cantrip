@@ -54,15 +54,6 @@ function worker(): WorkerSummary {
       maxSessions: 1,
     },
     directBroker: { available: false },
-    code: {
-      available: false,
-      version: null,
-      upstreamRevision: null,
-      patchset: null,
-      transport: "web-proxy",
-      maxSessions: 1,
-      reason: "Unavailable",
-    },
     projectReplicas: {
       provision: false,
       synchronize: false,

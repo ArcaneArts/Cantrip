@@ -31,7 +31,6 @@ import {
   cantripMcpClientNotifyInputSchema,
   cantripMcpClientNotifyResultSchema,
   cantripMcpClientShowInteractionInputSchema,
-  clientControlCommandSchema,
   cantripMcpConnectionDocumentSchema,
   cantripMcpContextGetResultSchema,
   cantripMcpExplorerReadInputSchema,
@@ -78,9 +77,6 @@ import {
   chatRelocationCreateSchema,
   chatRelocationJobSummarySchema,
   chatTurnCreateSchema,
-  codeAttachmentCreateSchema,
-  codeRuntimeStatusSchema,
-  codeTabSummarySchema,
   decodeWorkerConnectionEnvelope,
   decodeWorkerRequestEnvelope,
   decodeWorkerServerEnvelope,
@@ -454,7 +450,7 @@ describe("worker channel JSON codec", () => {
     const request = {
       kind: "request" as const,
       requestId: "request-codec",
-      command: { type: "code.probe" as const },
+      command: { type: "worker.version" as const },
     };
     const response = {
       kind: "response" as const,
@@ -5672,183 +5668,6 @@ describe("Cantrip protocol", () => {
         },
       ],
     });
-  });
-
-  it("validates Cantrip Code capabilities, durable tabs, and worker commands", () => {
-    expect(
-      codeAttachmentCreateSchema.parse({
-        appearance: "dark",
-        expectedWorkerId: "code-worker",
-        expectedWorktreeId: "worktree-1",
-      }),
-    ).toMatchObject({
-      expectedWorkerId: "code-worker",
-      expectedWorktreeId: "worktree-1",
-    });
-    expect(
-      codeAttachmentCreateSchema.safeParse({ appearance: "dark" }).success,
-    ).toBe(false);
-    const heartbeat = workerHeartbeatSchema.parse({
-      architecture: "arm64",
-      codexVersion: "codex-cli 1.0.0",
-      name: "Code Worker",
-      platform: "darwin",
-      startedAt: "2026-08-07T12:00:00.000Z",
-      workerId: "code-worker",
-      code: {
-        available: true,
-        version: "1.109.5",
-        upstreamRevision: "4ffe2270acdf711bbefecc3e8c79f4b3631640e5",
-        patchset: 1,
-        transport: "web-proxy",
-        maxSessions: 4,
-        reason: null,
-      },
-    });
-    expect(heartbeat.code).toMatchObject({ available: true, patchset: 1 });
-    expect(
-      codeTabSummarySchema.parse({
-        id: "code-1",
-        projectId: "project-1",
-        title: "Code",
-        position: 3,
-        activeWorkerId: "code-worker",
-        worktreeId: "worktree-1",
-        profileId: "default",
-        themeMode: "follow-cantrip",
-        status: "running",
-        lastError: null,
-        createdAt: "2026-08-07T12:00:00.000Z",
-        updatedAt: "2026-08-07T12:00:00.000Z",
-      }),
-    ).toMatchObject({ status: "running", themeMode: "follow-cantrip" });
-    expect(
-      workerCommandSchema.parse({
-        type: "code.open",
-        sessionId: "session-1",
-        codeTabId: "code-1",
-        projectId: "project-1",
-        worktreeId: "worktree-1",
-        cwd: "/workspace/Cantrip",
-        profileId: "default",
-        initialFile: "packages/protocol/src/index.ts",
-        themeMode: "follow-cantrip",
-        appearance: "high-contrast-dark",
-      }),
-    ).toMatchObject({
-      type: "code.open",
-      initialFile: "packages/protocol/src/index.ts",
-      presentation: "workbench",
-    });
-    expect(
-      workerCommandSchema.parse({
-        type: "code.openFile",
-        sessionId: "session-1",
-        path: "packages/protocol/src/index.ts",
-      }).type,
-    ).toBe("code.openFile");
-    expect(
-      workerCommandSchema.parse({
-        type: "code.endpoint.revoke",
-        tunnelId: "11111111-1111-4111-8111-111111111111",
-      }).type,
-    ).toBe("code.endpoint.revoke");
-    expect(
-      workerCommandSchema.parse({
-        type: "code.stop",
-        sessionId: "session-1",
-        expectedSessionIncarnationId: "11111111-1111-4111-8111-111111111111",
-      }),
-    ).toMatchObject({
-      type: "code.stop",
-      expectedSessionIncarnationId: "11111111-1111-4111-8111-111111111111",
-    });
-    expect(
-      workerCommandSchema.parse({
-        type: "code.prepareAgentTurn",
-        cwd: "/workspace/Cantrip",
-      }).type,
-    ).toBe("code.prepareAgentTurn");
-    expect(
-      workerCommandSchema.parse({
-        type: "code.agentTurnState",
-        cwd: "/workspace/Cantrip",
-        phase: "completed",
-        paths: ["packages/protocol/src/index.ts"],
-      }).type,
-    ).toBe("code.agentTurnState");
-    expect(
-      codeRuntimeStatusSchema.parse({
-        sessionId: "session-1",
-        sessionIncarnationId: "11111111-1111-4111-8111-111111111111",
-        status: "running",
-        editorBuild: {
-          version: "1.109.5",
-          upstreamRevision: "4ffe2270acdf711bbefecc3e8c79f4b3631640e5",
-          patchset: 1,
-          fingerprint: "a".repeat(64),
-        },
-        processInstanceId: "process-1",
-        bridgeConnected: true,
-        dirtyEditors: [],
-        workbench: {
-          activeEditor: null,
-          git: null,
-          conflicts: [],
-          savePolicy: "always",
-          agentStatus: "idle",
-        },
-        startedAt: "2026-08-07T12:00:00.000Z",
-        lastActivityAt: "2026-08-07T12:00:00.000Z",
-        lastError: null,
-      }),
-    ).toMatchObject({
-      sessionIncarnationId: "11111111-1111-4111-8111-111111111111",
-      workbench: { savePolicy: "always" },
-    });
-    expect(
-      codeRuntimeStatusSchema.parse({
-        sessionId: "legacy-session",
-        status: "stopped",
-        editorBuild: {
-          version: "1.109.5",
-          upstreamRevision: "4ffe2270acdf711bbefecc3e8c79f4b3631640e5",
-          patchset: 1,
-          fingerprint: "a".repeat(64),
-        },
-        processInstanceId: null,
-        bridgeConnected: false,
-        dirtyEditors: [],
-        workbench: {
-          activeEditor: null,
-          git: null,
-          conflicts: [],
-          savePolicy: "always",
-          agentStatus: "idle",
-        },
-        startedAt: null,
-        lastActivityAt: null,
-        lastError: null,
-      }),
-    ).not.toHaveProperty("sessionIncarnationId");
-    expect(
-      codeRuntimeStatusSchema.safeParse({
-        sessionId: "session-1",
-        status: "running",
-        editorBuild: {
-          version: "1.109.5",
-          upstreamRevision: "short-sha",
-          patchset: 1,
-          fingerprint: "a".repeat(64),
-        },
-        processInstanceId: "process-1",
-        bridgeConnected: false,
-        dirtyEditors: [],
-        startedAt: null,
-        lastActivityAt: null,
-        lastError: null,
-      }).success,
-    ).toBe(false);
   });
 
   it("validates one-click managed desktops without client configuration", () => {

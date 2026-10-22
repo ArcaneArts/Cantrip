@@ -13,7 +13,6 @@ export function workerPresenceFingerprint(worker: WorkerSummary): string {
     worker.codexRuntime,
     worker.remoteSurfaces,
     worker.directBroker,
-    worker.code,
     worker.projectReplicas,
     worker.managedFolders,
     worker.standaloneChat,

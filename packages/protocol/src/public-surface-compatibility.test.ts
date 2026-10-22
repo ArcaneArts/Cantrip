@@ -58,6 +58,89 @@ function stableFingerprint(value: unknown) {
   return `${firstHex}${secondHex}:${input.length}`;
 }
 
+// Reviewed removal of the embedded workbench. Adding these names back only to
+// the historical fingerprint keeps every unrelated compatibility assertion intact.
+const retiredWorkbenchExports = [
+  "CODE_MAX_WEBSOCKET_MESSAGE_BYTES",
+  "CODE_SETTINGS_OPERATION",
+  "CODE_SETTINGS_PROFILE_ID",
+  "codeAgentTurnNotificationResultSchema",
+  "codeAgentTurnPreparationResultSchema",
+  "codeAgentTurnPreparationSessionSchema",
+  "codeAttachmentCreateSchema",
+  "codeAttachmentSchema",
+  "codeCapabilitiesSchema",
+  "codeDirtyEditorSchema",
+  "codeEditorBuildSchema",
+  "codeInstallVsixResultSchema",
+  "codeOpenExtensionsRequestSchema",
+  "codeOpenExtensionsResultSchema",
+  "codeOpenFileRequestSchema",
+  "codeOpenFileResultSchema",
+  "codeOpenSettingsRequestSchema",
+  "codeOpenSettingsResultSchema",
+  "codePresentationSchema",
+  "codePresentationUpdateSchema",
+  "codeProbeResultSchema",
+  "codeProtectedAttachmentCreateSchema",
+  "codeProtectedAttachmentIntentSchema",
+  "codeProtectedAttachmentWireSchema",
+  "codeRuntimeStatusSchema",
+  "codeSaveAllResultSchema",
+  "codeSaveBeforeAgentTurnSchema",
+  "codeSessionAttachmentCreateSchema",
+  "codeSessionAttachmentWireSchema",
+  "codeSessionListSchema",
+  "codeSessionRouteBasePath",
+  "codeSessionRouteGrantSchema",
+  "codeSessionStatusSchema",
+  "codeSessionSummarySchema",
+  "codeSettingsContentContext",
+  "codeSettingsInvalidationSchema",
+  "codeSettingsPayloadSchema",
+  "codeSettingsProfileIdSchema",
+  "codeSettingsPublicStatusSchema",
+  "codeSettingsReservedKeys",
+  "codeSettingsResolutionSchema",
+  "codeSettingsResolveRequestSchema",
+  "codeSettingsRevisionConflictSchema",
+  "codeSettingsScopeId",
+  "codeSettingsStoredProfileSchema",
+  "codeSettingsSyncStateSchema",
+  "codeSettingsSynchronizeRequestSchema",
+  "codeSettingsUploadSchema",
+  "codeSettingsWorkbenchAttachmentCreateSchema",
+  "codeSettingsWorkbenchAttachmentWireSchema",
+  "codeSettingsWorkbenchOpenResultSchema",
+  "codeSettingsWorkbenchSessionAttachmentCreateSchema",
+  "codeSettingsWorkbenchSharedAttachmentWireSchema",
+  "codeSettingsWorkerStatusSchema",
+  "codeSharedAttachmentWireSchema",
+  "codeSharedTransportProtocolVersionSchema",
+  "codeTabStatusSchema",
+  "codeThemeModeSchema",
+  "codeThemeUpdateSchema",
+  "codeTransportCandidateSchema",
+  "codeTransportRevokeCommandSchema",
+  "codeTransportRevokeResultSchema",
+  "codeTransportRouteAuthorizeCommandSchema",
+  "codeTransportRouteAuthorizeResultSchema",
+  "codeTransportRouteRevokeCommandSchema",
+  "codeTransportRouteRevokeResultSchema",
+  "codeTransportSchema",
+  "codeTransportWireSchema",
+  "codeWorkbenchActiveEditorSchema",
+  "codeWorkbenchAgentStatusSchema",
+  "codeWorkbenchGitStateSchema",
+  "codeWorkbenchStateSchema",
+  "explorerCodeAttachmentCreateSchema",
+  "explorerCodeProtectedAttachmentCreateSchema",
+  "explorerCodeSessionAttachmentCreateSchema",
+  "isForwardableCodeWebSocketCloseCode",
+  "parseCodeSessionRoutePath",
+  "protectedCodeSettingsRecordSchema",
+  "unavailableCodeCapabilities",
+];
 const cuaRuntimeExports = [
   "CUA_CHUNK_BYTES",
   "CUA_CONTROL_BYTES",
@@ -308,20 +391,26 @@ const editorBindingExports = [
 describe("protocol public surface compatibility", () => {
   it("preserves the root runtime export baseline with reviewed CUA and managed-session additions", () => {
     const exportNames = Object.keys(protocol).sort();
-    const baselineNames = exportNames.filter(
-      (name) =>
-        !cuaRuntimeExports.includes(name) &&
-        !managedRuntimeExports.includes(name) &&
-        !accountCreditsExports.includes(name) &&
-        !browserCursorExports.includes(name) &&
-        !taskGoalHandoffExports.includes(name) &&
-        !taskConversationExports.includes(name) &&
-        !chatFileReferencesExports.includes(name) &&
-        !editorBindingExports.includes(name) &&
-        !labelingExports.includes(name),
-    );
+    const baselineNames = [
+      ...retiredWorkbenchExports,
+      ...exportNames.filter(
+        (name) =>
+          !cuaRuntimeExports.includes(name) &&
+          !managedRuntimeExports.includes(name) &&
+          !accountCreditsExports.includes(name) &&
+          !browserCursorExports.includes(name) &&
+          !taskGoalHandoffExports.includes(name) &&
+          !taskConversationExports.includes(name) &&
+          !chatFileReferencesExports.includes(name) &&
+          !editorBindingExports.includes(name) &&
+          !labelingExports.includes(name),
+      ),
+    ].sort();
 
-    expect(exportNames).toHaveLength(2_143);
+    expect(
+      exportNames.filter((name) => retiredWorkbenchExports.includes(name)),
+    ).toEqual([]);
+    expect(exportNames).toHaveLength(2064);
     expect(
       exportNames.filter((name) => editorBindingExports.includes(name)),
     ).toEqual(editorBindingExports);
@@ -364,7 +453,8 @@ describe("protocol public surface compatibility", () => {
       (option) => option.shape.type.value,
     );
 
-    expect(commandTypes).toHaveLength(295);
+    expect(commandTypes).toHaveLength(276);
+    expect(commandTypes.some((type) => type.startsWith("code."))).toBe(false);
     expect(
       commandTypes.filter((type) => type === "chat.files.references"),
     ).toHaveLength(1);
@@ -382,7 +472,7 @@ describe("protocol public surface compatibility", () => {
         type !== "chat.files.references" &&
         type !== "label.generate",
     );
-    expect(baselineCommands).toHaveLength(278);
+    expect(baselineCommands).toHaveLength(259);
     expect(baselineCommands[0]).toBe("computer-use.operation");
     expect(baselineCommands[1]).toBe("computer-use.approval.respond");
     expect(baselineCommands.slice(2, 5)).toEqual([
@@ -391,7 +481,7 @@ describe("protocol public surface compatibility", () => {
       "computer-use.preview.revoke",
     ]);
     expect(stableFingerprint(baselineCommands.slice(5))).toBe(
-      "9715f45e8704a82a:7004",
+      "ee8ee6fa79872956:6594",
     );
     expect(eventTypes).toHaveLength(22);
     expect(

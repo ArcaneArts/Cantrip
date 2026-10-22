@@ -2,10 +2,8 @@ import type {
   TunnelDataPlaneFrameHeader,
   TunnelDataPlaneRejectionCode,
 } from "@cantrip/protocol";
-import { clearSensitiveBytes } from "@cantrip/crypto";
 import type { TunnelDataProtectionConfiguration } from "@cantrip/protocol/tunnel-content";
 
-import type { CodeDirectEndpointManager } from "./code/direct-endpoint.js";
 import type { ProjectShareManager } from "./project-share-manager.js";
 import { workerLogErrorIdentity, workerLogger } from "./logger.js";
 import { openWorkerTunnelContentRecord } from "./tunnel-content-encryption.js";
@@ -38,8 +36,6 @@ type ProtectedTargetRejectionReason =
   | "worker-id-mismatch"
   | "target-kind-mismatch"
   | "tcp-target-handoff-failed"
-  | "code-endpoint-preparation-failed"
-  | "code-endpoint-handoff-failed"
   | "project-share-preparation-failed"
   | "project-share-handoff-failed";
 
@@ -54,8 +50,6 @@ function protectedTargetRejectionCode(
     case "protected-record-open-failed":
       return "protected-record-unavailable";
     case "tcp-target-handoff-failed":
-    case "code-endpoint-preparation-failed":
-    case "code-endpoint-handoff-failed":
     case "project-share-preparation-failed":
     case "project-share-handoff-failed":
       return "protected-endpoint-unavailable";
@@ -70,7 +64,6 @@ export class TunnelDestinationRouter {
   constructor(
     private readonly tcp: TunnelTcpDestinationAdapter,
     private readonly projectShares: ProjectShareManager,
-    private readonly codeEndpoints: CodeDirectEndpointManager,
     private readonly encryption: WorkerEncryptionService,
     private readonly workerId: string,
   ) {}
@@ -191,7 +184,6 @@ export class TunnelDestinationRouter {
   ): Promise<void> {
     const key = connectionKey(header);
     let reasonCode: ProtectedTargetRejectionReason = "invalid-target-binding";
-    let sessionId: string | undefined;
     const targetKind =
       header.target.kind === "protected-tunnel"
         ? header.target.targetKind
@@ -201,7 +193,6 @@ export class TunnelDestinationRouter {
       attachmentId: header.attachmentId,
       connectionId: header.connectionId,
       mode: targetKind,
-      ...(sessionId ? { sessionId } : {}),
       ...(diagnostics.diagnosticTraceId
         ? { diagnosticTraceId: diagnostics.diagnosticTraceId }
         : {}),
@@ -226,9 +217,6 @@ export class TunnelDestinationRouter {
       if (content.destination.workerId !== this.workerId) {
         throw new Error("Protected tunnel target belongs to another endpoint.");
       }
-      if (content.destination.kind === "worker-code") {
-        sessionId = content.destination.sessionId;
-      }
       reasonCode = "target-kind-mismatch";
       if (
         content.destination.kind === "worker-tcp" &&
@@ -249,99 +237,6 @@ export class TunnelDestinationRouter {
           payload,
           content.dataProtection,
           diagnostics,
-        );
-        return;
-      }
-      if (
-        content.destination.kind === "worker-code" &&
-        header.target.targetKind === "code" &&
-        content.destination.resourceId === header.tunnelId
-      ) {
-        reasonCode = "code-endpoint-preparation-failed";
-        const endpoint = await this.codeEndpoints.prepareProtected(
-          header.tunnelId,
-          content.destination.sessionId,
-          {
-            attachmentId: header.attachmentId,
-            connectionId: header.connectionId,
-            diagnosticTraceId: diagnostics.diagnosticTraceId,
-          },
-        );
-        if (!this.#isPendingProtection(key, generation)) return;
-        reasonCode = "code-endpoint-handoff-failed";
-        this.#handoffProtectedConnect(
-          key,
-          generation,
-          { ...header, target: endpoint },
-          payload,
-          content.dataProtection,
-          diagnostics,
-          (remotePort) =>
-            this.codeEndpoints.bindProtectedConnection(
-              header.tunnelId,
-              endpoint.port,
-              remotePort,
-              {
-                attachmentId: header.attachmentId,
-                connectionId: header.connectionId,
-                diagnosticTraceId: diagnostics.diagnosticTraceId,
-              },
-            ),
-        );
-        return;
-      }
-      if (
-        content.destination.kind === "worker-code-transport" &&
-        header.target.targetKind === "code" &&
-        content.destination.resourceId === header.tunnelId &&
-        header.target.protectedRecord.operationId === header.tunnelId &&
-        header.target.protectedRecord.revision === 1
-      ) {
-        reasonCode = "code-endpoint-preparation-failed";
-        const activeKey = this.encryption.componentKey("tunnel-content");
-        const protectedKeyRevision = activeKey.keyRevision;
-        clearSensitiveBytes(activeKey.key);
-        if (
-          header.target.protectedRecord.protectedContent.keyRevision !==
-          protectedKeyRevision
-        ) {
-          throw new Error(
-            "The protected Code transport key revision is no longer active.",
-          );
-        }
-        const endpoint = await this.codeEndpoints.prepareSharedProtected(
-          header.tunnelId,
-          {
-            ownerId: this.encryption.ownerId(),
-            serverId: this.encryption.serverIdentity(),
-            protectedKeyRevision,
-          },
-          {
-            attachmentId: header.attachmentId,
-            connectionId: header.connectionId,
-            diagnosticTraceId: diagnostics.diagnosticTraceId,
-          },
-        );
-        if (!this.#isPendingProtection(key, generation)) return;
-        reasonCode = "code-endpoint-handoff-failed";
-        this.#handoffProtectedConnect(
-          key,
-          generation,
-          { ...header, target: endpoint },
-          payload,
-          content.dataProtection,
-          diagnostics,
-          (remotePort) =>
-            this.codeEndpoints.bindProtectedConnection(
-              header.tunnelId,
-              endpoint.port,
-              remotePort,
-              {
-                attachmentId: header.attachmentId,
-                connectionId: header.connectionId,
-                diagnosticTraceId: diagnostics.diagnosticTraceId,
-              },
-            ),
         );
         return;
       }

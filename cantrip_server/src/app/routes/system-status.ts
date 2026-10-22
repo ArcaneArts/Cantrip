@@ -143,11 +143,6 @@ export function installSystemStatusRoutes(
             relayOnly:
               config.remoteSurfaceWebRtc?.iceTransportPolicy === "relay",
           },
-          code: {
-            enabled: true,
-            transport: "web-proxy",
-            isolatedOrigin: true,
-          },
         },
       }),
     );

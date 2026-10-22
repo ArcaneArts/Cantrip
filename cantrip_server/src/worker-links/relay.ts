@@ -648,8 +648,6 @@ function relayBandwidthChannel(
     case "browser":
     case "remote-desktop":
       return "remote-surface-relay";
-    case "code":
-      return "code-relay";
     case "project-share":
       return "project-share-relay";
     case "tunnel":

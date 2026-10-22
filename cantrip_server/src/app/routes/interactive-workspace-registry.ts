@@ -7,23 +7,14 @@ import {
 } from "./browser-management.js";
 import {
   installCodeTabDeleteRoute,
-  installCodeTabProtectedAttachmentRoutes,
   installCodeTabWorktreeRoute,
-} from "./code-tab-attachments.js";
-import {
-  installCodeTabManagementRoutes,
-  installCodeTabSessionListRoute,
-} from "./code-tab-management.js";
-import {
-  installCodeTabRuntimeReadRoute,
-  installCodeTabWorkerControlRoutes,
-} from "./code-tab-worker-controls.js";
+} from "./code-tab-lifecycle.js";
+import { installCodeTabManagementRoutes } from "./code-tab-management.js";
 import {
   installExplorerBasicManagementRoutes,
   installExplorerListRoute,
   installExplorerViewStateRoute,
 } from "./explorer-management.js";
-import { installExplorerProtectedCodeAttachmentRoute } from "./explorer-protected-code-attachments.js";
 import {
   installExplorerDeleteRoute,
   installExplorerOperationRoute,
@@ -37,7 +28,6 @@ import { installRemoteDesktopReadRoutes } from "./remote-desktop-read.js";
 import { installRemoteSurfaceConnectionRoute } from "./remote-surface-connection.js";
 import { installRemoteSurfaceManagementRoutes } from "./remote-surface-management.js";
 import { installRunConfigurationSecretRoutes } from "./run-configuration-secrets.js";
-import { installSharedCodeSessionAttachmentRoutes } from "./shared-code-session-attachments.js";
 import { installTabLayoutRoutes } from "./tab-layouts.js";
 import {
   installChatLinkedConsoleRoute,
@@ -65,10 +55,6 @@ type TerminalManagementDependencies = Parameters<
 type CodeTabManagementDependencies = Parameters<
   typeof installCodeTabManagementRoutes
 >[1];
-type CodeTabWorkerDependencies = Parameters<
-  typeof installCodeTabRuntimeReadRoute
->[1] &
-  Parameters<typeof installCodeTabWorkerControlRoutes>[1];
 type ExplorerManagementDependencies = Parameters<
   typeof installExplorerBasicManagementRoutes
 >[1];
@@ -85,10 +71,7 @@ export type InteractiveWorkspaceRouteDependencies = Parameters<
   Parameters<typeof installExplorerListRoute>[1] &
   Omit<CodeTabManagementDependencies, "runtime"> &
   Parameters<typeof installCodeTabWorktreeRoute>[1] &
-  Parameters<typeof installCodeTabProtectedAttachmentRoutes>[1] &
   Parameters<typeof installCodeTabDeleteRoute>[1] &
-  Parameters<typeof installCodeTabSessionListRoute>[1] &
-  Omit<CodeTabWorkerDependencies, "runtime"> &
   Parameters<typeof installBrowserListRoute>[1] &
   Parameters<typeof installProjectExportRoutes>[1] &
   Parameters<typeof installProjectExternalChatHistoryRoute>[1] &
@@ -103,11 +86,6 @@ export type InteractiveWorkspaceRouteDependencies = Parameters<
   Parameters<typeof installExplorerWorktreeRoute>[1] &
   Parameters<typeof installExplorerViewStateRoute>[1] &
   Parameters<typeof installExplorerDeleteRoute>[1] &
-  Parameters<typeof installExplorerProtectedCodeAttachmentRoute>[1] &
-  Omit<
-    Parameters<typeof installSharedCodeSessionAttachmentRoutes>[1],
-    "relayCoordinationEnabled"
-  > &
   Parameters<typeof installExplorerOperationRoute>[1] &
   Parameters<typeof installWorkerLinkObservationGrantRoute>[1] &
   Parameters<typeof installWorkerLinkTunnelAttachmentGrantRoute>[1] &
@@ -119,7 +97,6 @@ export type InteractiveWorkspaceRouteDependencies = Parameters<
     "appOrigins" | "usageRecorder"
   > &
   Parameters<typeof installTabLayoutRoutes>[1] & {
-    codeTabWorkerRuntime: CodeTabWorkerDependencies["runtime"];
     installProjectRunConfigurationRoutes: (app: FastifyInstance) => void;
     isWorkerConnected: CodeTabManagementDependencies["runtime"]["isWorkerConnected"] &
       ExplorerManagementDependencies["runtime"]["isWorkerConnected"];
@@ -166,23 +143,6 @@ export function installInteractiveWorkspaceRoutes(
   const codeTabAttachmentRouteDependencies = dependencies;
   installCodeTabWorktreeRoute(app, codeTabAttachmentRouteDependencies);
 
-  installCodeTabSessionListRoute(app, dependencies);
-
-  installCodeTabRuntimeReadRoute(app, {
-    ...dependencies,
-    runtime: dependencies.codeTabWorkerRuntime,
-  });
-
-  installCodeTabProtectedAttachmentRoutes(
-    app,
-    codeTabAttachmentRouteDependencies,
-  );
-
-  installCodeTabWorkerControlRoutes(app, {
-    ...dependencies,
-    runtime: dependencies.codeTabWorkerRuntime,
-  });
-
   installCodeTabDeleteRoute(app, codeTabAttachmentRouteDependencies);
 
   installBrowserListRoute(app, dependencies);
@@ -215,13 +175,6 @@ export function installInteractiveWorkspaceRoutes(
   installExplorerViewStateRoute(app, dependencies);
 
   installExplorerDeleteRoute(app, dependencies);
-
-  installExplorerProtectedCodeAttachmentRoute(app, dependencies);
-
-  installSharedCodeSessionAttachmentRoutes(app, {
-    ...dependencies,
-    relayCoordinationEnabled: dependencies.relayCoordinationEnabled,
-  });
 
   installExplorerOperationRoute(app, dependencies);
 

@@ -67,11 +67,6 @@ import {
   type WorkerEvent,
   type WorkerNotification,
 } from "@cantrip/protocol";
-import { clearSensitiveBytes } from "@cantrip/crypto";
-import {
-  codeSettingsWorkerStatusSchema,
-  type CodeSettingsWorkerStatus,
-} from "@cantrip/protocol/code-settings";
 import {
   chatFileReferencesRequestContentSchema,
   chatFileReferencesResultContentSchema,
@@ -169,19 +164,6 @@ import { requestComputerUseAuthority } from "./computer-use/authority-client.js"
 import { BrowserRemoteSurfaceAdapter } from "./browser/browser-adapter.js";
 import { discoverBrowserServices } from "./browser/service-discovery.js";
 import { discoverMcpConfigurations } from "./mcp/discovery.js";
-import { discoverCantripCode } from "./code/installation.js";
-import {
-  codePrewarmEncryptionFingerprint,
-  createCoalescingCodePrewarmScheduler,
-  ownerScopedCodeProfileId,
-  prewarmDefaultCodeProfileAfterEncryptionRefresh,
-} from "./code/prewarm.js";
-import { CodeSupervisor } from "./code/supervisor.js";
-import {
-  CodeSettingsSynchronizer,
-  codeSettingsAuthorizationFingerprint,
-} from "./code-settings-sync.js";
-import { CodeDirectEndpointManager } from "./code/direct-endpoint.js";
 import { CodeGraphRuntimeManager } from "./codegraph/runtime.js";
 import { CodeGraphProjectSupervisor } from "./codegraph/supervisor.js";
 import { codeGraphWorkerStatus } from "./codegraph/status.js";
@@ -345,7 +327,6 @@ import { SkillManager } from "./skill-manager.js";
 import { WorkerConnection } from "./transport.js";
 import { WorkerEncryptionService } from "./worker-encryption.js";
 import { WorktreeManager } from "./worktrees.js";
-import { handleCodeCommand } from "./commands/code.js";
 import { handleWorkerLinkCommand } from "./commands/worker-link.js";
 import { handleGithubCommand } from "./commands/github.js";
 import { handleGitCommand } from "./commands/git.js";
@@ -626,50 +607,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     () => desktopAdapter.initialize(),
     { workerId: config.workerId },
   );
-  const codeDiscovery = await workerStartupPhase(
-    "discover-code-runtime",
-    () => discoverCantripCode(),
-    { workerId: config.workerId },
-  );
-  let codeSettingsSynchronizer: CodeSettingsSynchronizer | null = null;
-  let codeSettingsSynchronizerOpening: Promise<CodeSettingsSynchronizer | null> | null =
-    null;
-  let defaultCodeProfileId: string | null = null;
-  let lastBackgroundCodeSettingsAuthorization: string | null = null;
-  let backgroundCodeSettingsPreparedForPrewarm = false;
-  let ensureCodeSettingsSynchronizer: (options?: {
-    forceAuthorizationResume?: boolean;
-  }) => Promise<CodeSettingsSynchronizer | null> = async () => null;
-  const code = new CodeSupervisor({
-    capabilities: codeDiscovery.capabilities,
-    dataDirectory: config.dataDirectory,
-    deferRestoredProfilePrewarm: true,
-    idleTimeoutMs: config.codeIdleTimeoutMs,
-    installation: codeDiscovery.installation,
-    prepareProfile: async (profileId) => {
-      const synchronizer =
-        codeSettingsSynchronizer ?? (await ensureCodeSettingsSynchronizer());
-      if (
-        synchronizer &&
-        defaultCodeProfileId === profileId &&
-        !backgroundCodeSettingsPreparedForPrewarm
-      ) {
-        await synchronizer.synchronize({
-          initializeIfMissing: false,
-        });
-      }
-    },
-    workerId: config.workerId,
-    workerName: config.name,
-    workerProcessGeneration,
-  });
-  await workerStartupPhase("start-code-supervisor", () => code.start(), {
-    workerId: config.workerId,
-  });
-  const codeDirectEndpoints = new CodeDirectEndpointManager(code, {
-    vsixTempDirectory: code.vsixTempDirectory(),
-    workerProcessGeneration,
-  });
   const cliBroker = new CantripCliBroker(config);
   // The shared helper was constructed above; construction does not launch it.
   const mcpBroker = new CantripMcpBroker(config);
@@ -803,33 +740,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       workerLinkGateway.handleFrame(header, payload, respond),
     (respond) => workerLinkGateway.disconnectResponder(respond),
   );
-  const activeCodeTransportSecurityIdentity = () => {
-    const tunnelContentKey = workerEncryption.componentKey("tunnel-content");
-    const protectedKeyRevision = tunnelContentKey.keyRevision;
-    clearSensitiveBytes(tunnelContentKey.key);
-    return {
-      ownerId: workerEncryption.ownerId(),
-      serverId: workerEncryption.serverIdentity(),
-      protectedKeyRevision,
-    };
-  };
-  const reconcileCodeTransportSecurityIdentity = () => {
-    try {
-      codeDirectEndpoints.synchronizeSecurityIdentity(
-        activeCodeTransportSecurityIdentity(),
-      );
-    } catch {
-      codeDirectEndpoints.invalidateSecurityIdentity();
-    }
-  };
-  const activeCodeSettingsAuthorizationFingerprint = () =>
-    codeSettingsAuthorizationFingerprint(workerEncryption);
-  const reconcileCodeSettingsAuthorization = () => {
-    const fingerprint = activeCodeSettingsAuthorizationFingerprint();
-    codeSettingsSynchronizer?.updateAuthorization(fingerprint);
-    if (!fingerprint) lastBackgroundCodeSettingsAuthorization = null;
-    return fingerprint;
-  };
   const refreshWorkerEncryption = async () => {
     try {
       return await workerEncryption.refresh({ credential: config.token });
@@ -838,166 +748,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       // existing routes valid. Authoritative revocation, malformed bootstrap,
       // or a missing tunnel grant clears that key and must retire every shared
       // route immediately.
-      reconcileCodeTransportSecurityIdentity();
-      reconcileCodeSettingsAuthorization();
       void workerLinkGateway.reconcileSecurityIdentity();
     }
   };
-  const unavailableCodeSettingsStatus = (): CodeSettingsWorkerStatus =>
-    codeSettingsWorkerStatusSchema.parse({
-      profileId: "default",
-      state: "unavailable",
-      revision: null,
-      conflictCount: 0,
-      initializedFromWorker: false,
-      backupCreated: false,
-      lastSynchronizedAt: null,
-      error:
-        "Code settings synchronization requires an active customization-content grant.",
-    });
-  ensureCodeSettingsSynchronizer = async (options = {}) => {
-    const authorizationFingerprint =
-      activeCodeSettingsAuthorizationFingerprint();
-    if (!authorizationFingerprint) {
-      codeSettingsSynchronizer?.updateAuthorization(null);
-      return null;
-    }
-    if (codeSettingsSynchronizer) {
-      codeSettingsSynchronizer.updateAuthorization(authorizationFingerprint, {
-        forceResume: options.forceAuthorizationResume,
-      });
-      return codeSettingsSynchronizer;
-    }
-    if (codeSettingsSynchronizerOpening) {
-      return codeSettingsSynchronizerOpening;
-    }
-    const opening = (async () => {
-      defaultCodeProfileId = ownerScopedCodeProfileId(
-        workerEncryption.ownerId(),
-        "default",
-      );
-      const synchronizer = new CodeSettingsSynchronizer({
-        authorizationFingerprint,
-        credential: () => config.token,
-        serverUrl: config.serverUrl,
-        service: workerEncryption,
-        settingsPath: code.profileSettingsPath(defaultCodeProfileId),
-        statePath: path.join(
-          config.dataDirectory,
-          "code",
-          "settings-sync",
-          "default.json",
-        ),
-        workerId: config.workerId,
-      });
-      await synchronizer.start();
-      const currentFingerprint = activeCodeSettingsAuthorizationFingerprint();
-      synchronizer.updateAuthorization(currentFingerprint);
-      codeSettingsSynchronizer = synchronizer;
-      return currentFingerprint ? synchronizer : null;
-    })();
-    codeSettingsSynchronizerOpening = opening;
-    try {
-      return await opening;
-    } finally {
-      if (codeSettingsSynchronizerOpening === opening) {
-        codeSettingsSynchronizerOpening = null;
-      }
-    }
-  };
-  const synchronizeAndPrewarmCode = async () => {
-    const authorizationFingerprint =
-      activeCodeSettingsAuthorizationFingerprint();
-    if (
-      authorizationFingerprint &&
-      authorizationFingerprint !== lastBackgroundCodeSettingsAuthorization
-    ) {
-      try {
-        const synchronizer = await ensureCodeSettingsSynchronizer();
-        if (synchronizer) {
-          lastBackgroundCodeSettingsAuthorization = authorizationFingerprint;
-          await synchronizer.synchronize({ initializeIfMissing: false });
-        }
-      } catch (error) {
-        workerLogger.rateLimited(
-          `code-settings-start-failed:${config.workerId}`,
-          "warn",
-          "Global Code settings synchronization could not start",
-          {
-            event: "code.settings.start-failed",
-            subsystem: "code-settings",
-            operation: "start",
-            reasonCode: "initialization-failed",
-            status: "degraded",
-            error: workerLogError(error),
-          },
-        );
-      }
-    }
-    // The background synchronization above already prepared the shared
-    // settings file. Profile prewarm must not turn the same authorization
-    // signal into additional GETs through CodeSupervisor.prepareProfile.
-    backgroundCodeSettingsPreparedForPrewarm = true;
-    try {
-      await code.prewarmRestoredProfiles().catch(() => undefined);
-      await prewarmDefaultCodeProfileAfterEncryptionRefresh({
-        identity: {
-          ownerId: workerEncryption.ownerId(),
-          serverId: workerEncryption.serverIdentity(),
-        },
-        prewarmProfile: (profileId) => code.prewarmProfile(profileId),
-        status: workerEncryption.status(),
-      });
-    } finally {
-      backgroundCodeSettingsPreparedForPrewarm = false;
-    }
-  };
-  const scheduleCodePrewarm = createCoalescingCodePrewarmScheduler<
-    "startup-refresh" | "command-refresh" | "heartbeat"
-  >({
-    fingerprint: () => {
-      try {
-        const fingerprint = codePrewarmEncryptionFingerprint({
-          identity: {
-            ownerId: workerEncryption.ownerId(),
-            serverId: workerEncryption.serverIdentity(),
-          },
-          status: workerEncryption.status(),
-        });
-        return fingerprint;
-      } catch {
-        return null;
-      }
-    },
-    onError: (error, trigger) => {
-      workerLogger.rateLimited(
-        `code-profile-prewarm-schedule-failed:${config.workerId}`,
-        "warn",
-        "Cantrip Code profile prewarm scheduling failed",
-        {
-          event: "code.profile.prewarm-schedule-failed",
-          subsystem: "code",
-          operation: "prewarm-profile",
-          reasonCode: "synchronization-failed",
-          status: "retrying",
-          observationTrigger: trigger,
-          workerId: config.workerId,
-          error: workerLogError(error),
-        },
-      );
-    },
-    run: async (trigger) => {
-      workerLogger.event("debug", "Cantrip Code profile prewarm scheduled", {
-        event: "code.profile.prewarm-scheduled",
-        subsystem: "code",
-        operation: "prewarm-profile",
-        status: "started",
-        observationTrigger: trigger,
-        workerId: config.workerId,
-      });
-      await synchronizeAndPrewarmCode();
-    },
-  });
   const surfaceStreamReplay = new SurfaceStreamReplayGuard();
   const repositoryOperationReplay = new RepositoryOperationReplayGuard();
   const customizationContentReplay = new CustomizationContentReplayGuard();
@@ -1061,7 +814,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       iceTransportPolicies: ["all", "relay"],
       maxSessions: 4,
     },
-    codeDiscovery.capabilities,
     directBroker.advertisement,
     codeGraphWorkerStatus(codegraphRuntime, null, codegraphPreparationError),
     workerEncryption.status(),
@@ -1123,9 +875,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       },
     );
   });
-  if (workerEncryption.status().state === "ready") {
-    scheduleCodePrewarm("startup-refresh");
-  }
   cliBroker.setSurfacePrivateStateService(workerEncryption);
   cliBroker.setPolicyEncryptionService(workerEncryption);
   cliBroker.setRunEncryptionService(workerEncryption);
@@ -1215,7 +964,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   const tunnelDestinations = new TunnelDestinationRouter(
     tunnelTcpDestination,
     projectShares,
-    codeDirectEndpoints,
     workerEncryption,
     config.workerId,
   );
@@ -3365,7 +3113,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   const handleCommand = async (
     command: WorkerCommand,
     emit: (event: WorkerEvent) => void,
-    context: { codeTransportLifecycleGeneration?: number } = {},
   ): Promise<unknown> => {
     const protectedRuntimeProvider =
       "provider" in command
@@ -3434,41 +3181,12 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return workerRestartAcknowledgementSchema.parse({ restarting: true });
       case "worker.encryption.refresh": {
         const status = await refreshWorkerEncryption();
-        if (command.component === "customization-content") {
-          lastBackgroundCodeSettingsAuthorization = null;
-          codeSettingsSynchronizer?.updateAuthorization(
-            activeCodeSettingsAuthorizationFingerprint(),
-            { forceResume: true },
-          );
-        }
-        if (status.state === "ready") {
-          scheduleCodePrewarm("command-refresh");
-        }
         return workerEncryptionRefreshResultSchema.parse({
           component: command.component,
           keyRevision: command.keyRevision,
           status,
         });
       }
-      case "code.settings.synchronize":
-      case "code.settings.invalidate":
-      case "code.settings.status":
-      case "code.settings.resolve":
-      case "code.settings.workbench.open":
-        return handleCodeCommand(
-          command,
-          {
-            ensureCodeSettingsSynchronizer: (options) =>
-              ensureCodeSettingsSynchronizer(options),
-            unavailableCodeSettingsStatus,
-            getCodeSettingsSynchronizer: () => codeSettingsSynchronizer,
-            getDefaultCodeProfileId: () => defaultCodeProfileId,
-            code,
-            codeDirectEndpoints,
-            activeCodeTransportSecurityIdentity,
-          },
-          context,
-        );
       case "diagnostics.logs.read":
       case "diagnostics.logs.stream.start":
       case "diagnostics.logs.stream.renew":
@@ -4343,7 +4061,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                   "Nested repository operations are not allowed.",
                 );
               }
-              let result = await handleCommand(trustedCommand, emit, context);
+              let result = await handleCommand(trustedCommand, emit);
               if (
                 [
                   "git.operation.start",
@@ -4573,34 +4291,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           surfaceStreamReplay,
           workerEncryption,
         });
-      case "code.probe":
-      case "code.open":
-      case "code.status":
-      case "code.stop":
-      case "code.endpoint.revoke":
-      case "code.transport.route.authorize":
-      case "code.transport.route.revoke":
-      case "code.transport.revoke":
-      case "code.saveAll":
-      case "code.openFile":
-      case "code.getDirtyEditors":
-      case "code.setTheme":
-      case "code.prepareAgentTurn":
-      case "code.agentTurnState":
-        return handleCodeCommand(
-          command,
-          {
-            ensureCodeSettingsSynchronizer: (options) =>
-              ensureCodeSettingsSynchronizer(options),
-            unavailableCodeSettingsStatus,
-            getCodeSettingsSynchronizer: () => codeSettingsSynchronizer,
-            getDefaultCodeProfileId: () => defaultCodeProfileId,
-            code,
-            codeDirectEndpoints,
-            activeCodeTransportSecurityIdentity,
-          },
-          context,
-        );
       case "skills.list":
       case "skills.settings.list":
       case "skills.settings.read":
@@ -6927,15 +6617,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   const commandConnection = new WorkerConnection(
     config,
     async (command, emit) => {
-      const codeTransportLifecycleGeneration =
-        codeDirectEndpoints.lifecycleGeneration();
       try {
         const resolved = await routingRegistry.resolveCommand(command);
         return await routingRegistry.protectResult(
           command.type,
-          await handleCommand(resolved, emit, {
-            codeTransportLifecycleGeneration,
-          }),
+          await handleCommand(resolved, emit),
         );
       } catch (error) {
         throw routingRegistry.protectError(command.type, error);
@@ -6953,36 +6639,22 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       tunnelDestinations.disconnect();
       directBroker.revokeAll();
       void workerLinkGateway.revokeAll("endpoint-disconnected");
-      codeDirectEndpoints.disconnect();
       computerUseAgents.disconnect();
       computerUsePreviews.disconnect();
       computerUse.disconnect();
       computerUseApprovals.disconnect();
     },
     undefined,
-    (serverControlPlaneGeneration) => {
+    () => {
       if (managedGuiBridgeLifetime.signal.aborted)
         managedGuiBridgeLifetime = new AbortController();
-      if (serverControlPlaneGeneration) {
-        codeDirectEndpoints.synchronizeControlPlaneGeneration(
-          serverControlPlaneGeneration,
-        );
-      } else {
-        codeDirectEndpoints.invalidateControlPlaneGeneration();
-      }
       for (const [chatId, entry] of settingsPublishers) {
         if (entry.publisher.closed)
           observeManagedSettings(chatId, entry.runtime, entry.threadId);
         else entry.publisher.wake();
       }
-      codeDirectEndpoints.reconnect();
       computerUse.reconnect();
       providerAuthObserver.reemitAll();
-      if (codeSettingsSynchronizer) {
-        void codeSettingsSynchronizer.synchronize({
-          initializeIfMissing: false,
-        });
-      }
     },
     {
       connectionGeneration: workerProcessGeneration,
@@ -7063,9 +6735,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       codegraphAvailable: codegraphStatus?.cliAvailable ?? false,
       codegraphState: codegraphStatus?.state ?? "unavailable",
       codegraphVersion: codegraphStatus?.installedVersion ?? null,
-      codeAvailable: codeDiscovery.capabilities.available,
-      codeVersion: codeDiscovery.capabilities.version ?? null,
-      codeSource: codeDiscovery.installation?.source ?? null,
       codexAvailable: codexRuntime.compatibility !== "missing",
       codexCompatibility: codexRuntime.compatibility,
       codexSource: config.codexInstallation.source,
@@ -7086,8 +6755,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   const publishHeartbeat = async () => {
     const attemptStartedAtMs = Date.now();
     try {
-      const previousCodeSettingsAuthorization =
-        activeCodeSettingsAuthorizationFingerprint();
       await refreshWorkerEncryption().catch((error) => {
         workerLogger.rateLimited(
           `worker-encryption-refresh-failed:${config.workerId}`,
@@ -7111,7 +6778,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           codexRuntime,
           heartbeat.startedAt,
           heartbeat.remoteSurfaces,
-          heartbeat.code,
           directBroker.advertisement,
           codeGraphWorkerStatus(
             codegraphRuntime,
@@ -7124,15 +6790,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         ),
       );
       if (effectPreferences) void computerUse.effects.update(effectPreferences);
-      const codeSettingsAuthorizationChanged =
-        previousCodeSettingsAuthorization !==
-        activeCodeSettingsAuthorizationFingerprint();
-      if (
-        workerEncryption.status().state === "ready" &&
-        (!connected || codeSettingsAuthorizationChanged)
-      ) {
-        scheduleCodePrewarm("heartbeat");
-      }
       if (!connected) {
         workerLogger.event("info", "Worker heartbeat connected to server", {
           event: heartbeatFailureStartedAtMs
@@ -7231,11 +6888,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       trigger,
     });
     if (heartbeatTimer) clearInterval(heartbeatTimer);
-    const openingCodeSettingsSynchronizer =
-      await codeSettingsSynchronizerOpening?.catch(() => null);
-    await (
-      codeSettingsSynchronizer ?? openingCodeSettingsSynchronizer
-    )?.close();
     await computerUseClosed;
     for (const pending of await managedHistory.stop())
       workerLogger.event(
@@ -7299,7 +6951,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     await workerLinkGateway.close();
     await directBroker.close();
     terminalDirectEndpoints.close();
-    codeDirectEndpoints.close();
     for (const client of codexAuthClients.values()) client.close();
     for (const client of grokAuthClients.values()) client.close();
     for (const client of serverManagedGrokClients.values()) client.close();
@@ -7310,7 +6961,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     managedNativeGateways.clear();
     tunnelDestinations.close();
     await projectShares.closeAll();
-    await code.close();
     await remoteSurfaces.closeAll();
     await desktopAdapter.shutdown();
     await mcpBroker.close();

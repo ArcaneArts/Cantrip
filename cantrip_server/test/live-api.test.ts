@@ -62,15 +62,6 @@ const liveTestHeartbeat = {
   architecture: "arm64",
   codexVersion: "0.146.1",
   codexRuntime: unprobedCodexRuntimeReport,
-  code: {
-    available: false as const,
-    version: null,
-    upstreamRevision: null,
-    patchset: 0,
-    transport: "web-proxy" as const,
-    maxSessions: 1,
-    reason: "Not needed by the live API test.",
-  },
   remoteSurfaces: {
     browser: false,
     desktop: false,

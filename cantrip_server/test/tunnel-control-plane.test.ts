@@ -10,17 +10,12 @@ import {
   tunnelWireListSchema,
   tunnelWireSummarySchema,
   unprobedCodexRuntimeReport,
-  workerLinkSessionSchema,
-  workerLinkTunnelGrantSchema,
-  type CodeRuntimeStatus,
   type WorkerCommand,
 } from "@cantrip/protocol";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { WebSocket } from "ws";
 
 import { buildApp } from "../src/app.js";
-import { hashSecret } from "../src/auth/service.js";
-import { CodeTunnelBroker } from "../src/code/tunnel.js";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
@@ -85,31 +80,6 @@ const workerBridge: WorkerCommandBus = {
     throw new Error(`Unexpected worker command ${command.type}.`);
   },
 };
-const codeTunnel = new CodeTunnelBroker(workerBridge, { idleTtlMs: 60_000 });
-const codeRuntime: CodeRuntimeStatus = {
-  sessionId: "tunnel-control-plane-code-session",
-  workspaceUri: "file:///worker/state/project.code-workspace",
-  status: "running",
-  editorBuild: {
-    version: "1.109.5-cantrip.1",
-    upstreamRevision: "a".repeat(40),
-    patchset: 1,
-    fingerprint: "b".repeat(64),
-  },
-  processInstanceId: "tunnel-control-plane-code-process",
-  bridgeConnected: true,
-  dirtyEditors: [],
-  workbench: {
-    activeEditor: null,
-    git: null,
-    conflicts: [],
-    savePolicy: "always",
-    agentStatus: "idle",
-  },
-  startedAt: "2026-08-08T12:00:00.000Z",
-  lastActivityAt: "2026-08-08T12:00:00.000Z",
-  lastError: null,
-};
 
 let app: Awaited<ReturnType<typeof buildApp>>;
 let database: DatabaseConnection;
@@ -117,7 +87,6 @@ let projectId: string;
 let userTunnelId: string;
 let managedTunnelId: string;
 let otherOwnerId: string;
-let codeAttachment: ReturnType<typeof tunnelAttachmentCreateResultSchema.parse>;
 
 function protectedRecord(operationId: string, revision: number) {
   return {
@@ -189,7 +158,6 @@ beforeAll(async () => {
   });
   projectId = project.id;
   app = await buildApp({
-    codeTunnel,
     config,
     database,
     logger: false,
@@ -577,22 +545,22 @@ describe.sequential("tunnel control plane", () => {
       }),
     ).rejects.toThrow(/protected content/u);
 
-    const protectedCodeTunnelId = randomUUID();
+    const protectedShareTunnelId = randomUUID();
     const registration = {
-      name: "Cantrip Code",
+      name: "Project share",
       description: null,
       projectId,
-      origin: "code" as const,
+      origin: "project-share" as const,
       management: "managed-durable" as const,
       protocolHint: "http-websocket" as const,
       source: { kind: "desktop-loopback" as const },
       destination: {
         kind: "worker-adapter" as const,
         workerId: "worker-b",
-        adapter: "code" as const,
-        resourceId: protectedCodeTunnelId,
+        adapter: "project-share" as const,
+        resourceId: protectedShareTunnelId,
       },
-      managedBy: { kind: "code" as const, id: protectedCodeTunnelId },
+      managedBy: { kind: "project-share" as const, id: protectedShareTunnelId },
       desiredState: "started" as const,
       status: "active" as const,
     };
@@ -600,15 +568,15 @@ describe.sequential("tunnel control plane", () => {
       LOCAL_USER_ID,
       registration,
       {
-        id: protectedCodeTunnelId,
-        protectedRecord: protectedRecord(protectedCodeTunnelId, 1),
+        id: protectedShareTunnelId,
+        protectedRecord: protectedRecord(protectedShareTunnelId, 1),
       },
     );
     const second = await database.repository.registerManagedTunnel(
       LOCAL_USER_ID,
       { ...registration, name: "Renamed by owner" },
       {
-        id: protectedCodeTunnelId,
+        id: protectedShareTunnelId,
         protectedRecord: protectedRecord(randomUUID(), 2),
       },
     );
@@ -1299,347 +1267,45 @@ describe.sequential("tunnel control plane", () => {
     }
   });
 
-  it("fails closed for an orphaned Code tunnel without its broker root", async () => {
-    const tunnelId = randomUUID();
+  it("preserves the relay credential after direct route activation", async () => {
+    const shareId = randomUUID();
     await database.repository.registerManagedTunnel(
       LOCAL_USER_ID,
       {
-        name: "Orphaned Cantrip Code",
+        name: "Project files",
         description: null,
         projectId,
-        origin: "code",
+        origin: "project-share",
         management: "managed-ephemeral",
-        protocolHint: "http-websocket",
+        protocolHint: "webdav",
         source: { kind: "desktop-loopback" },
         destination: {
           kind: "worker-adapter",
           workerId: "worker-b",
-          adapter: "code",
-          resourceId: tunnelId,
+          adapter: "project-share",
+          resourceId: shareId,
         },
-        managedBy: { kind: "code", id: tunnelId },
+        managedBy: { kind: "project-share", id: shareId },
         desiredState: "started",
-        status: "starting",
+        status: "active",
       },
-      { id: tunnelId, protectedRecord: protectedRecord(tunnelId, 1) },
+      { id: shareId, protectedRecord: protectedRecord(shareId, 1) },
     );
-
-    const response = await app.inject({
+    const createdShareAttachment = await app.inject({
       method: "POST",
-      url: `/api/tunnels/${tunnelId}/attachments`,
-      payload: { clientId: "orphaned-code-client" },
+      url: `/api/tunnels/${shareId}/attachments`,
+      payload: { clientId: "native-file-share" },
     });
-    expect(response.statusCode, response.body).toBe(409);
-    const orphanedSecret = "orphaned-code-secret".repeat(2);
-    const orphanedAttachment =
-      await database.repository.createDesktopTunnelAttachment(
-        LOCAL_USER_ID,
-        tunnelId,
-        {
-          clientId: "orphaned-code-client",
-          expiresAt: new Date(Date.now() + 60_000),
-          secretExpiresAt: new Date(Date.now() + 30_000),
-          secretHash: hashSecret(orphanedSecret),
-        },
-      );
-    expect(orphanedAttachment).not.toBeNull();
-    expect(
-      await app.inject({
-        method: "POST",
-        url: `/api/tunnel-attachments/${orphanedAttachment!.attachmentId}/lease`,
-      }),
-    ).toMatchObject({ statusCode: 409 });
-    let orphanedClose: Promise<number>;
-    const orphanedSocket = await app.injectWS(
-      `/api/tunnel-attachments/${orphanedAttachment!.attachmentId}/connect`,
-      { headers: { authorization: `Bearer ${orphanedSecret}` } },
-      {
-        onInit(client) {
-          orphanedClose = new Promise((resolve) =>
-            client.once("close", resolve),
-          );
-        },
-      },
+    expect(createdShareAttachment.statusCode, createdShareAttachment.body).toBe(
+      201,
     );
-    expect(await orphanedClose!).toBe(1008);
-    orphanedSocket.terminate();
-    await database.repository.stopDesktopTunnelAttachment(
-      LOCAL_USER_ID,
-      orphanedAttachment!.attachmentId,
+    const shareAttachment = tunnelAttachmentCreateResultSchema.parse(
+      createdShareAttachment.json(),
     );
-    await database.repository.removeManagedTunnel(LOCAL_USER_ID, {
-      kind: "code",
-      id: tunnelId,
-    });
-  });
-
-  it("attaches desktops to protected Cantrip Code tunnels", async () => {
-    const tunnelId = randomUUID();
-    await codeTunnel.createProtectedAttachment({
-      authSessionId: null,
-      codeTabId: "tunnel-control-plane-code-tab",
-      ownerId: LOCAL_USER_ID,
-      projectId,
-      protectedRecord: protectedRecord(tunnelId, 1),
-      runtime: codeRuntime,
-      serverId: await database.repository.getOrCreateServerId(),
-      sessionId: codeRuntime.sessionId,
-      tunnelId,
-      workerId: "worker-b",
-      worktreeId: "tunnel-control-plane-worktree",
-      worktreePath: "/test/tunnel-control-plane-worktree",
-    });
-
-    const response = await app.inject({
-      method: "POST",
-      url: `/api/tunnels/${tunnelId}/attachments`,
-      payload: { clientId: "desktop-code-test" },
-    });
-    expect(response.statusCode).toBe(201);
-    const attachment = tunnelAttachmentCreateResultSchema.parse(
-      response.json(),
-    );
-    codeAttachment = attachment;
-    expect(attachment.tunnelId).toBe(tunnelId);
-    expect(
-      await app.inject({
-        method: "POST",
-        url: `/api/tunnel-attachments/${attachment.attachmentId}/lease`,
-      }),
-    ).toMatchObject({ statusCode: 204 });
-    await expect(
-      database.repository.getDesktopTunnelAttachment(
-        LOCAL_USER_ID,
-        attachment.attachmentId,
-      ),
-    ).resolves.toMatchObject({
-      destination: {
-        kind: "worker-adapter",
-        workerId: "worker-b",
-        adapter: "code",
-        resourceId: tunnelId,
-      },
-      tunnelId,
-    });
-  });
-
-  it("authorizes an exact protected Cantrip Code attachment for WorkerLink", async () => {
-    const mismatchedSessionResponse = await app.inject({
-      method: "POST",
-      url: "/api/workers/worker-a/worker-link/sessions",
-      payload: { clientInstanceId: "wrong-worker-code-worker-link" },
-    });
-    expect(
-      mismatchedSessionResponse.statusCode,
-      mismatchedSessionResponse.body,
-    ).toBe(201);
-    const mismatchedSession = workerLinkSessionSchema.parse(
-      mismatchedSessionResponse.json(),
-    );
-    const installCountBeforeMismatch = workerCommands.filter(
-      (command) => command.type === "worker-link.grant.install",
-    ).length;
-    const mismatchResponse = await app.inject({
-      method: "POST",
-      url: `/api/worker-links/${mismatchedSession.sessionId}/tunnel-attachments/${codeAttachment.attachmentId}/grant`,
-      payload: { diagnosticTraceId: randomUUID() },
-    });
-    expect(mismatchResponse.statusCode, mismatchResponse.body).toBe(409);
-    expect(mismatchResponse.json()).toEqual({
-      error: "Tunnel placement does not match the WorkerLink session.",
-    });
-    expect(
-      workerCommands.filter(
-        (command) => command.type === "worker-link.grant.install",
-      ),
-    ).toHaveLength(installCountBeforeMismatch);
-
-    const sessionResponse = await app.inject({
-      method: "POST",
-      url: "/api/workers/worker-b/worker-link/sessions",
-      payload: { clientInstanceId: "desktop-code-worker-link" },
-    });
-    expect(sessionResponse.statusCode, sessionResponse.body).toBe(201);
-    const session = workerLinkSessionSchema.parse(sessionResponse.json());
-
-    const missingResponse = await app.inject({
-      method: "POST",
-      url: `/api/worker-links/${session.sessionId}/tunnel-attachments/${randomUUID()}/grant`,
-      payload: { diagnosticTraceId: randomUUID() },
-    });
-    expect(missingResponse.statusCode, missingResponse.body).toBe(404);
-    expect(missingResponse.json()).toEqual({
-      error: "Tunnel attachment not found.",
-    });
-
-    const grantResponse = await app.inject({
-      method: "POST",
-      url: `/api/worker-links/${session.sessionId}/tunnel-attachments/${codeAttachment.attachmentId}/grant`,
-      payload: { diagnosticTraceId: randomUUID() },
-    });
-    expect(grantResponse.statusCode, grantResponse.body).toBe(201);
-    const issued = workerLinkTunnelGrantSchema.parse(grantResponse.json());
-    expect(issued.grant.binding).toMatchObject({
-      sessionId: session.sessionId,
-      resource: {
-        kind: "tunnel",
-        resourceId: codeAttachment.tunnelId,
-        attachmentId: codeAttachment.attachmentId,
-      },
-      lanes: ["stream"],
-      maxChannels: 1,
-    });
-    expect(issued.route).toMatchObject({
-      tunnelId: codeAttachment.tunnelId,
-      attachmentId: codeAttachment.attachmentId,
-      target: {
-        kind: "protected-tunnel",
-        targetKind: "code",
-        recordId: codeAttachment.tunnelId,
-      },
-    });
-    expect(
-      workerCommands.some(
-        (command) =>
-          command.type === "worker-link.grant.install" &&
-          command.grant.binding.grantId === issued.grant.binding.grantId,
-      ),
-    ).toBe(true);
-    await expect(
-      database.repository.getDesktopTunnelAttachment(
-        LOCAL_USER_ID,
-        codeAttachment.attachmentId,
-      ),
-    ).resolves.toMatchObject({
-      attachmentId: codeAttachment.attachmentId,
-      ownerId: LOCAL_USER_ID,
-      origin: "code",
-      destination: {
-        kind: "worker-adapter",
-        workerId: "worker-b",
-        adapter: "code",
-        resourceId: codeAttachment.tunnelId,
-      },
-    });
-
-    const revokeResponse = await app.inject({
-      method: "DELETE",
-      url: `/api/worker-links/${session.sessionId}/grants/${issued.grant.binding.grantId}`,
-    });
-    expect(revokeResponse.statusCode, revokeResponse.body).toBe(204);
-    expect(workerCommands).toContainEqual(
-      expect.objectContaining({
-        type: "worker-link.grant.revoke",
-        sessionId: session.sessionId,
-        grantId: issued.grant.binding.grantId,
-      }),
-    );
-  });
-
-  it("does not revoke a newer shared attachment after a stale root-bind failure", async () => {
-    const bind = vi
-      .spyOn(codeTunnel, "bindRelayAttachment")
-      .mockReturnValueOnce(false);
-    const failed = await app.inject({
-      method: "POST",
-      url: `/api/tunnels/${codeAttachment.tunnelId}/attachments`,
-      payload: { clientId: "desktop-code-test" },
-    });
-    bind.mockRestore();
-
-    expect(failed.statusCode, failed.body).toBe(409);
-    await expect(
-      database.repository.getDesktopTunnelAttachment(
-        LOCAL_USER_ID,
-        codeAttachment.attachmentId,
-      ),
-    ).resolves.toBeNull();
-
-    const recovered = await app.inject({
-      method: "POST",
-      url: `/api/tunnels/${codeAttachment.tunnelId}/attachments`,
-      payload: { clientId: "desktop-code-test" },
-    });
-    expect(recovered.statusCode, recovered.body).toBe(201);
-    codeAttachment = tunnelAttachmentCreateResultSchema.parse(recovered.json());
-  });
-
-  it("does not stop or unbind a newer credential generation after an older root-bind failure", async () => {
-    const bind = vi
-      .spyOn(codeTunnel, "bindRelayAttachment")
-      .mockReturnValueOnce(false);
-    const originalStop = database.repository.stopDesktopTunnelAttachment.bind(
-      database.repository,
-    );
-    const stopStarted = deferred();
-    const releaseStop = deferred();
-    let heldStop = true;
-    const stop = vi
-      .spyOn(database.repository, "stopDesktopTunnelAttachment")
-      .mockImplementation(async (...args) => {
-        if (heldStop && args[1] === codeAttachment.attachmentId) {
-          heldStop = false;
-          stopStarted.resolve();
-          await releaseStop.promise;
-        }
-        return originalStop(...args);
-      });
-
-    try {
-      const staleFailure = app.inject({
-        method: "POST",
-        url: `/api/tunnels/${codeAttachment.tunnelId}/attachments`,
-        payload: { clientId: "desktop-code-test" },
-      });
-      await stopStarted.promise;
-
-      const newerResponse = await app.inject({
-        method: "POST",
-        url: `/api/tunnels/${codeAttachment.tunnelId}/attachments`,
-        payload: { clientId: "desktop-code-test" },
-      });
-      expect(newerResponse.statusCode, newerResponse.body).toBe(201);
-      const newerAttachment = tunnelAttachmentCreateResultSchema.parse(
-        newerResponse.json(),
-      );
-
-      releaseStop.resolve();
-      const failedResponse = await staleFailure;
-      expect(failedResponse.statusCode, failedResponse.body).toBe(409);
-      await expect(
-        database.repository.getDesktopTunnelAttachment(
-          LOCAL_USER_ID,
-          newerAttachment.attachmentId,
-        ),
-      ).resolves.toMatchObject({
-        attachmentId: newerAttachment.attachmentId,
-        secretExpiresAt: new Date(newerAttachment.secretExpiresAt),
-      });
-      expect(
-        codeTunnel.allowRelayAttachmentActivity(
-          newerAttachment.attachmentId,
-          newerAttachment.tunnelId,
-        ),
-      ).toBe(true);
-      expect(
-        await app.inject({
-          method: "POST",
-          url: `/api/tunnel-attachments/${newerAttachment.attachmentId}/lease`,
-        }),
-      ).toMatchObject({ statusCode: 204 });
-      codeAttachment = newerAttachment;
-    } finally {
-      releaseStop.resolve();
-      stop.mockRestore();
-      bind.mockRestore();
-    }
-  });
-
-  it("preserves the relay credential after direct route activation", async () => {
     const commandCount = workerCommands.length;
     const invalid = await app.inject({
       method: "POST",
-      url: `/api/tunnel-attachments/${codeAttachment.attachmentId}/direct`,
+      url: `/api/tunnel-attachments/${shareAttachment.attachmentId}/direct`,
       payload: { diagnosticTraceId: "not-a-uuid" },
     });
     expect(invalid.statusCode).toBe(400);
@@ -1648,7 +1314,7 @@ describe.sequential("tunnel control plane", () => {
     const diagnosticTraceId = randomUUID();
     const response = await app.inject({
       method: "POST",
-      url: `/api/tunnel-attachments/${codeAttachment.attachmentId}/direct`,
+      url: `/api/tunnel-attachments/${shareAttachment.attachmentId}/direct`,
       payload: { diagnosticTraceId },
     });
     expect(response.statusCode, response.body).toBe(201);
@@ -1664,12 +1330,12 @@ describe.sequential("tunnel control plane", () => {
     const responseBody = response.json();
     expect(responseBody).not.toHaveProperty("diagnosticTraceId");
     const ticket = directTunnelTicketSchema.parse(responseBody);
-    expect(ticket.binding.attachmentId).toBe(codeAttachment.attachmentId);
+    expect(ticket.binding.attachmentId).toBe(shareAttachment.attachmentId);
     expect(ticket.binding).not.toHaveProperty("diagnosticTraceId");
 
     const activation = await app.inject({
       method: "POST",
-      url: `/api/tunnel-attachments/${codeAttachment.attachmentId}/direct-activate`,
+      url: `/api/tunnel-attachments/${shareAttachment.attachmentId}/direct-activate`,
       payload: { capabilityId: ticket.binding.capabilityId },
     });
     expect(activation.statusCode, activation.body).toBe(204);
@@ -1691,13 +1357,13 @@ describe.sequential("tunnel control plane", () => {
       workerCommands.filter(
         (candidate) => candidate.type === "direct.capability.renew",
       ),
-    ).toHaveLength(renewalsBefore + 1);
+    ).toHaveLength(renewalsBefore);
 
     let relayClient: WebSocket | null = null;
     const readyMessages: unknown[] = [];
     const relaySocket = await app.injectWS(
-      codeAttachment.connectPath,
-      { headers: { authorization: `Bearer ${codeAttachment.secret}` } },
+      shareAttachment.connectPath,
+      { headers: { authorization: `Bearer ${shareAttachment.secret}` } },
       {
         onInit(client) {
           relayClient = client;
@@ -1709,12 +1375,12 @@ describe.sequential("tunnel control plane", () => {
     );
     if (!relayClient) throw new Error("Relay socket did not initialize.");
     relayClient.send(
-      JSON.stringify({ type: "initialize", clientId: "desktop-code-test" }),
+      JSON.stringify({ type: "initialize", clientId: "native-file-share" }),
     );
     await expect.poll(() => readyMessages.length).toBe(1);
     expect(tunnelAttachmentReadySchema.parse(readyMessages[0])).toMatchObject({
-      attachmentId: codeAttachment.attachmentId,
-      tunnelId: codeAttachment.tunnelId,
+      attachmentId: shareAttachment.attachmentId,
+      tunnelId: shareAttachment.tunnelId,
     });
 
     const releaseDirect = await app.inject({

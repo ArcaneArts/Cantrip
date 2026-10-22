@@ -4,7 +4,6 @@ import path from "node:path";
 
 import {
   appLiveServerMessageSchema,
-  unavailableCodeCapabilities,
   unprobedCodexRuntimeReport,
   workerEnrollmentResultSchema,
   workerListSchema,
@@ -41,7 +40,6 @@ function heartbeat(workerId: string, name: string): WorkerHeartbeat {
     architecture: "x64",
     codexVersion: null,
     codexRuntime: unprobedCodexRuntimeReport,
-    code: unavailableCodeCapabilities,
     remoteSurfaces: {
       browser: false,
       desktop: false,

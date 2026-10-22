@@ -103,8 +103,6 @@ export function createChatTurnRuntime({
   continuePendingWorktreeTransition,
   dispatchNextQueuedPrompt,
   interruptLiveAgentInteractionRequests,
-  notifyCodeAgentState,
-  prepareCodeEditorsForTurn,
   publishChatSummary,
   publishChatTurnBoundary,
   publishInferenceProgress,
@@ -235,17 +233,6 @@ export function createChatTurnRuntime({
       );
     if (context.contextKind === "project" && !effectivePolicies) {
       throw new Error("The chat project is no longer available.");
-    }
-    if (
-      context.contextKind === "project" &&
-      (!options.structuredResult || directTaskOperation)
-    ) {
-      await observeTaskTurnBootstrapStage("prepare-code-editors", () =>
-        prepareCodeEditorsForTurn(
-          context,
-          options.preflightWorkerCommandTimeoutMs,
-        ),
-      );
     }
     const mcpServers =
       options.structuredResult && !directTaskOperation
@@ -569,16 +556,6 @@ export function createChatTurnRuntime({
         : null;
       taskDispatchHeartbeat?.unref();
       try {
-        if (execution.contextKind === "project") {
-          await observeTaskTurnBootstrapStage("notify-code-agent-started", () =>
-            notifyCodeAgentState(
-              execution,
-              "started",
-              [],
-              options.preflightWorkerCommandTimeoutMs,
-            ),
-          );
-        }
         for (const [index, runtime] of runtimes.entries()) {
           const executionAttemptId = `${userMessage.id}:${runtime.routeId}:${index}`;
           const tokenUsageSourceKey = `chat-attempt:${executionAttemptId}`;
@@ -1597,9 +1574,6 @@ export function createChatTurnRuntime({
               result.turnId ?? null,
             );
             quotaFollowupsScheduled = true;
-            if (execution.contextKind === "project") {
-              await notifyCodeAgentState(execution, "completed", changedPaths);
-            }
             routeCooldowns.delete(runtimeCooldownKey(runtime));
             await repository.updateChatRuntime(
               execution.chatId,
@@ -1915,7 +1889,6 @@ export function createChatTurnRuntime({
           dependencies: {
             app,
             repository,
-            notifyCodeAgentState,
             appendLiveChatMessage,
             cancelChatTurnOutcomeRecovery,
             publishChatTurnBoundary,

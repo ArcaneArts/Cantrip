@@ -303,15 +303,6 @@ beforeAll(async () => {
       publicKey: "a".repeat(43),
       fingerprint: "b".repeat(64),
     },
-    code: {
-      available: true,
-      version: "1.109.5",
-      upstreamRevision: "4ffe2270acdf711bbefecc3e8c79f4b3631640e5",
-      patchset: 1,
-      transport: "web-proxy",
-      maxSessions: 4,
-      reason: null,
-    },
     remoteSurfaces: {
       browser: true,
       desktop: true,
@@ -1055,7 +1046,12 @@ describe.sequential("project execution placement API", () => {
       LOCAL_USER_ID,
       tab.id,
     );
-    expect(metadata?.capabilities.available).toBe(false);
+    expect(metadata).toMatchObject({
+      codeTab: { id: tab.id, projectId },
+      workerId: "worker-beta",
+      worktreeId: betaWorktreeId,
+    });
+    expect(metadata).not.toHaveProperty("capabilities");
     expect(
       await database.repository.getExplorerExecutionContext(
         LOCAL_USER_ID,

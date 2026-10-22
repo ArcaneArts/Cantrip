@@ -1317,10 +1317,6 @@ export function createShellProjectNavigationCommands({
       openCreatedTab(tunnel.projectId, "browser", tunnel.managedBy.id);
       return;
     }
-    if (tunnel.managedBy.kind === "code") {
-      openCreatedTab(tunnel.projectId, "code", tunnel.managedBy.id);
-      return;
-    }
     openProjectSettings(tunnel.projectId);
   };
 

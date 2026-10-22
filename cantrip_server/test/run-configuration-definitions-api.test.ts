@@ -13,7 +13,6 @@ import path from "node:path";
 import {
   appLiveServerMessageSchema,
   terminalWireListSchema,
-  unavailableCodeCapabilities,
   unprobedCodexRuntimeReport,
   type AppLiveServerMessage,
   type WorkerCommand,
@@ -231,7 +230,6 @@ function heartbeat(): WorkerHeartbeat {
       iceTransportPolicies: ["all"],
       maxSessions: 4,
     },
-    code: unavailableCodeCapabilities,
     startedAt: new Date().toISOString(),
   };
 }

@@ -109,10 +109,6 @@ describe("surface title encryption adapter", () => {
       ),
       activeWorkerId: "worker-a",
       worktreeId: "worktree-a",
-      profileId: "default",
-      themeMode: "follow-cantrip",
-      status: "idle",
-      lastError: null,
     };
     const browser: BrowserWireSummary = {
       ...common,

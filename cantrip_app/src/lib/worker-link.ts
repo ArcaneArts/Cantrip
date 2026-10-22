@@ -971,9 +971,9 @@ class ClientWorkerLink implements WorkerLink {
     for (const route of [...this.#carriers.keys()]) {
       // The loopback transport is independent of network topology. Closing it
       // on every focus/resume or network notification retires every logical
-      // stream (including retained Code workbenches) even while the local
-      // carrier is healthy. Actual socket or lease failure still reaches the
-      // carrier close handler and performs the normal recovery path.
+      // stream even while the local carrier is healthy. Actual socket or lease
+      // failure still reaches the carrier close handler and performs the normal
+      // recovery path.
       if (route !== "relay" && !(preserveLocalCarrier && route === "local")) {
         this.#detachCarrier(route, "route-replaced");
       }

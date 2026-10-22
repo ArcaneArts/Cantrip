@@ -1,12 +1,9 @@
 import type {
   AppLiveResource,
-  CodeRuntimeStatus,
-  CodeThemeUpdate,
   EncryptedBrowserUpdate,
   WorkerSummary,
 } from "@cantrip/protocol";
 
-import type { CodeTunnelBroker } from "../../code/tunnel.js";
 import {
   WORKER_ONLINE_WINDOW_MS,
   type ServerRepository,
@@ -19,29 +16,8 @@ import {
 } from "../../workers/bridge.js";
 import type { ApplicationOwnerContext } from "../http/owner-context.js";
 
-export interface CodeTabWorkerRuntime {
-  isWorkerConnected: (workerId: string) => boolean;
-  readStatus: (workerId: string, sessionId: string) => Promise<unknown>;
-  saveAll: (workerId: string, sessionId: string) => Promise<unknown>;
-  stop: (workerId: string, sessionId: string) => Promise<unknown>;
-  setTheme: (
-    workerId: string,
-    sessionId: string,
-    appearance: CodeThemeUpdate["appearance"],
-  ) => Promise<unknown>;
-  revokeTunnelSession: (sessionId: string) => Promise<void>;
-  revokeDirectSession: (ownerId: string, sessionId: string) => Promise<void>;
-  recordSessionRuntime: (
-    ownerId: string,
-    codeTabId: string,
-    sessionId: string,
-    runtime: CodeRuntimeStatus,
-  ) => Promise<unknown>;
-}
-
 export interface InteractiveSurfaceRuntimeDependencies {
   bridge: WorkerCommandBus;
-  codeTunnel: Pick<CodeTunnelBroker, "revokeSession">;
   directAttachments: Pick<DirectAttachmentCoordinator, "revokeResource">;
   publishLiveInvalidation: (
     resource: AppLiveResource,
@@ -59,7 +35,6 @@ export interface InteractiveSurfaceRuntimeDependencies {
 /** Owns shared state and operations for browser, terminal, Code, and worker-presence surfaces. */
 export function createInteractiveSurfaceRuntime({
   bridge,
-  codeTunnel,
   directAttachments,
   publishLiveInvalidation,
   repository,
@@ -226,34 +201,6 @@ export function createInteractiveSurfaceRuntime({
       );
     },
   };
-  const updateCodeSessionRuntime = async (
-    ...input: Parameters<typeof repository.updateCodeSessionRuntime>
-  ) => {
-    const result = await repository.updateCodeSessionRuntime(...input);
-    publishLiveInvalidation("code-tab");
-    return result;
-  };
-  const codeTabWorkerRuntime: CodeTabWorkerRuntime = {
-    isWorkerConnected: (workerId) => bridge.isConnected(workerId),
-    readStatus: (workerId, sessionId) =>
-      bridge.request(workerId, { type: "code.status", sessionId }),
-    saveAll: (workerId, sessionId) =>
-      bridge.request(workerId, { type: "code.saveAll", sessionId }),
-    stop: (workerId, sessionId) =>
-      bridge.request(workerId, { type: "code.stop", sessionId }),
-    setTheme: (workerId, sessionId, appearance) =>
-      bridge.request(workerId, {
-        type: "code.setTheme",
-        sessionId,
-        themeMode: "follow-cantrip",
-        appearance,
-      }),
-    revokeTunnelSession: (sessionId) => codeTunnel.revokeSession(sessionId),
-    revokeDirectSession: async (ownerId, sessionId) => {
-      await directAttachments.revokeResource(ownerId, "code", sessionId);
-    },
-    recordSessionRuntime: updateCodeSessionRuntime,
-  };
 
   return {
     applyBrowserUpdate,
@@ -261,13 +208,11 @@ export function createInteractiveSurfaceRuntime({
       for (const timer of workerOfflineTimers.values()) clearTimeout(timer);
       workerOfflineTimers.clear();
     },
-    codeTabWorkerRuntime,
     publishWorkerPresence,
     scheduleWorkerOfflineInvalidation,
     surfaceAttachmentCounts,
     synchronizeTerminalServicesForWorker,
     terminalServiceRuntime,
-    updateCodeSessionRuntime,
     updateRemoteSurfaceStatus,
     updateTerminalStatus,
     workerPresenceFingerprints,
