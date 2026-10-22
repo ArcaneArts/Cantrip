@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, State};
 
 use crate::direct_probe::{DirectBrokerAdvertisement, DirectCapabilityBinding};
 
@@ -35,8 +35,6 @@ pub struct StartTunnelForwardRequest {
     pub preferred_local_port: Option<u16>,
     pub relay: Option<RelayTunnelRequest>,
     pub tunnel_id: String,
-    #[serde(default)]
-    pub code_pool_generation: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -68,87 +66,6 @@ pub struct WorkerLinkTunnelBridge {
 pub struct WorkerLinkTunnelForwardPreparation {
     pub bridge: WorkerLinkTunnelBridge,
     pub forward: TunnelForwardSummary,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WorkerLinkCodeTransportForwardCompletion {
-    pub bridge: WorkerLinkTunnelBridge,
-    pub forward: TunnelForwardSummary,
-    pub generation: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct CodeTransportPoolIdentity {
-    pub account_id: Option<String>,
-    pub client_identity_generation: u64,
-    pub client_identity_incarnation_id: String,
-    pub connection_id: Option<String>,
-    pub protected_key_revision: u64,
-    pub security_scope_id: String,
-    pub server_control_plane_generation: String,
-    pub server_id: String,
-    pub server_url: String,
-    pub transport_id: String,
-    pub user_id: String,
-    pub worker_id: String,
-    pub worker_process_generation: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct CodeTransportClientIdentity {
-    pub account_id: Option<String>,
-    pub client_identity_incarnation_id: String,
-    pub connection_id: Option<String>,
-    pub server_id: String,
-    pub server_url: String,
-    pub user_id: String,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AcquireCodeTransportForwardRequest {
-    pub acquisition_id: String,
-    pub consumer_id: String,
-    pub identity: CodeTransportPoolIdentity,
-    pub window_instance_id: String,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(tag = "state")]
-pub enum CodeTransportForwardAcquisition {
-    #[serde(rename = "leader")]
-    Leader {
-        generation: String,
-        #[serde(rename = "reservationId")]
-        reservation_id: String,
-    },
-    #[serde(rename = "waiting")]
-    Waiting { generation: String },
-    #[serde(rename = "ready")]
-    Ready {
-        forward: TunnelForwardSummary,
-        generation: String,
-        #[serde(rename = "leaseId")]
-        lease_id: String,
-    },
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CodeTransportForwardCompletion {
-    pub forward: TunnelForwardSummary,
-    pub generation: String,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CodeTransportForwardRelease {
-    pub released: bool,
-    pub remaining_leases: usize,
-    pub stopped: Option<TunnelForwardTerminalSnapshot>,
 }
 
 #[derive(Clone, Deserialize)]
@@ -204,7 +121,6 @@ pub struct TunnelForwardSummary {
     pub connections_closed: u64,
     pub connections_opened: u64,
     pub destination_rejected_count: u64,
-    pub code_pool_generation: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -242,15 +158,7 @@ pub struct TunnelForwards {
     #[cfg(desktop)]
     forwards: Mutex<HashMap<String, desktop::ForwardHandle>>,
     #[cfg(desktop)]
-    forward_starts: Mutex<HashMap<String, Option<String>>>,
-    #[cfg(desktop)]
-    code_pool: Mutex<desktop::CodeTransportPool>,
-    #[cfg(desktop)]
-    invalidated_code_client_identities: Mutex<HashSet<CodeTransportClientIdentity>>,
-    #[cfg(desktop)]
-    code_windows: Mutex<HashMap<String, String>>,
-    #[cfg(desktop)]
-    retired_code_window_instances: Mutex<HashSet<String>>,
+    forward_starts: Mutex<HashSet<String>>,
     #[cfg(mobile)]
     _unavailable: Mutex<()>,
 }
@@ -261,15 +169,7 @@ impl Default for TunnelForwards {
             #[cfg(desktop)]
             forwards: Mutex::new(HashMap::new()),
             #[cfg(desktop)]
-            forward_starts: Mutex::new(HashMap::new()),
-            #[cfg(desktop)]
-            code_pool: Mutex::new(desktop::CodeTransportPool::default()),
-            #[cfg(desktop)]
-            invalidated_code_client_identities: Mutex::new(HashSet::new()),
-            #[cfg(desktop)]
-            code_windows: Mutex::new(HashMap::new()),
-            #[cfg(desktop)]
-            retired_code_window_instances: Mutex::new(HashSet::new()),
+            forward_starts: Mutex::new(HashSet::new()),
             #[cfg(mobile)]
             _unavailable: Mutex::new(()),
         }
@@ -289,64 +189,6 @@ impl TunnelForwards {
         if let Ok(mut starts) = self.forward_starts.lock() {
             starts.clear();
         }
-        #[cfg(desktop)]
-        if let Ok(mut pool) = self.code_pool.lock() {
-            pool.clear();
-        }
-        #[cfg(desktop)]
-        if let Ok(mut invalidated) = self.invalidated_code_client_identities.lock() {
-            invalidated.clear();
-        }
-        #[cfg(desktop)]
-        if let Ok(mut windows) = self.code_windows.lock() {
-            windows.clear();
-        }
-        #[cfg(desktop)]
-        if let Ok(mut retired) = self.retired_code_window_instances.lock() {
-            retired.clear();
-        }
-    }
-}
-
-#[tauri::command]
-pub async fn register_code_transport_window_instance(
-    window: tauri::WebviewWindow,
-    state: State<'_, TunnelForwards>,
-    window_instance_id: String,
-) -> Result<(), String> {
-    #[cfg(desktop)]
-    {
-        let app = window.app_handle().clone();
-        let window_label = window.label().to_string();
-        let retired = desktop::register_code_transport_window_instance(
-            &state,
-            &window_label,
-            &window_instance_id,
-        )?;
-        if let Some(retired) = retired {
-            desktop::release_code_transport_window(&app, &state, &window_label, &retired).await;
-        }
-        return Ok(());
-    }
-    #[cfg(mobile)]
-    {
-        let _ = (window, state, window_instance_id);
-        Err("Shared Code transports are only available in the desktop app.".into())
-    }
-}
-
-#[tauri::command]
-pub async fn invalidate_code_transport_pool(
-    app: AppHandle,
-    state: State<'_, TunnelForwards>,
-    identity: CodeTransportClientIdentity,
-) -> Result<(), String> {
-    #[cfg(desktop)]
-    return desktop::invalidate_code_transport_pool(&app, &state, &identity).await;
-    #[cfg(mobile)]
-    {
-        let _ = (app, state, identity);
-        Err("Shared Code transports are only available in the desktop app.".into())
     }
 }
 
@@ -376,80 +218,6 @@ pub async fn prepare_worker_link_tunnel_forward(
     #[cfg(mobile)]
     {
         let _ = (app, state, request);
-        Err("Local tunnel attachments are only available in the desktop app.".into())
-    }
-}
-
-#[tauri::command]
-pub async fn complete_worker_link_code_transport_forward(
-    app: AppHandle,
-    window: tauri::WebviewWindow,
-    state: State<'_, TunnelForwards>,
-    transport_id: String,
-    generation: String,
-    reservation_id: String,
-    window_instance_id: String,
-    request: PrepareWorkerLinkTunnelForwardRequest,
-) -> Result<WorkerLinkCodeTransportForwardCompletion, String> {
-    #[cfg(desktop)]
-    return desktop::complete_worker_link_code_transport_forward(
-        &app,
-        &state,
-        window.label(),
-        &transport_id,
-        &generation,
-        &reservation_id,
-        &window_instance_id,
-        request,
-    )
-    .await;
-    #[cfg(mobile)]
-    {
-        let _ = (
-            app,
-            window,
-            state,
-            transport_id,
-            generation,
-            reservation_id,
-            window_instance_id,
-            request,
-        );
-        Err("Shared Code transports are only available in the desktop app.".into())
-    }
-}
-
-#[tauri::command]
-pub fn claim_worker_link_tunnel_bridge(
-    window: tauri::WebviewWindow,
-    state: State<'_, TunnelForwards>,
-    tunnel_id: String,
-    attachment_id: String,
-    code_pool_generation: String,
-    lease_id: String,
-    window_instance_id: String,
-) -> Result<Option<WorkerLinkTunnelBridge>, String> {
-    #[cfg(desktop)]
-    return desktop::claim_worker_link_bridge(
-        &state,
-        &tunnel_id,
-        &attachment_id,
-        &code_pool_generation,
-        window.label(),
-        &lease_id,
-        &window_instance_id,
-    );
-    #[cfg(mobile)]
-    {
-        let _ = (
-            window,
-            state,
-            tunnel_id,
-            attachment_id,
-            code_pool_generation,
-            lease_id,
-            window_instance_id,
-        );
         Err("Local tunnel attachments are only available in the desktop app.".into())
     }
 }
@@ -519,306 +287,6 @@ pub fn refresh_worker_link_tunnel_forward(
 }
 
 #[tauri::command]
-pub fn acquire_code_transport_forward(
-    app: AppHandle,
-    window: tauri::WebviewWindow,
-    state: State<'_, TunnelForwards>,
-    request: AcquireCodeTransportForwardRequest,
-) -> Result<CodeTransportForwardAcquisition, String> {
-    #[cfg(desktop)]
-    return desktop::acquire_code_transport_forward(&app, &state, window.label(), request);
-    #[cfg(mobile)]
-    {
-        let _ = (app, window, state, request);
-        Err("Shared Code transports are only available in the desktop app.".into())
-    }
-}
-
-#[tauri::command]
-pub fn claim_code_transport_maintenance(
-    window: tauri::WebviewWindow,
-    state: State<'_, TunnelForwards>,
-    transport_id: String,
-    generation: String,
-    lease_id: String,
-    window_instance_id: String,
-) -> Result<Option<TunnelForwardSummary>, String> {
-    #[cfg(desktop)]
-    return desktop::claim_code_transport_maintenance(
-        &state,
-        window.label(),
-        &transport_id,
-        &generation,
-        &lease_id,
-        &window_instance_id,
-    );
-    #[cfg(mobile)]
-    {
-        let _ = (
-            window,
-            state,
-            transport_id,
-            generation,
-            lease_id,
-            window_instance_id,
-        );
-        Err("Shared Code transports are only available in the desktop app.".into())
-    }
-}
-
-#[tauri::command]
-pub async fn retire_code_transport_forward(
-    app: AppHandle,
-    window: tauri::WebviewWindow,
-    state: State<'_, TunnelForwards>,
-    transport_id: String,
-    generation: String,
-    lease_id: String,
-    window_instance_id: String,
-) -> Result<Option<TunnelForwardTerminalSnapshot>, String> {
-    #[cfg(desktop)]
-    return desktop::retire_code_transport_forward(
-        &app,
-        &state,
-        window.label(),
-        &transport_id,
-        &generation,
-        &lease_id,
-        &window_instance_id,
-    )
-    .await;
-    #[cfg(mobile)]
-    {
-        let _ = (
-            app,
-            window,
-            state,
-            transport_id,
-            generation,
-            lease_id,
-            window_instance_id,
-        );
-        Err("Shared Code transports are only available in the desktop app.".into())
-    }
-}
-
-#[tauri::command]
-pub async fn wait_code_transport_forward(
-    state: State<'_, TunnelForwards>,
-    transport_id: String,
-    generation: String,
-) -> Result<bool, String> {
-    #[cfg(desktop)]
-    return desktop::wait_code_transport_forward(&state, &transport_id, &generation).await;
-    #[cfg(mobile)]
-    {
-        let _ = (state, transport_id, generation);
-        Err("Shared Code transports are only available in the desktop app.".into())
-    }
-}
-
-#[tauri::command]
-pub async fn complete_code_transport_forward(
-    app: AppHandle,
-    window: tauri::WebviewWindow,
-    state: State<'_, TunnelForwards>,
-    transport_id: String,
-    generation: String,
-    reservation_id: String,
-    window_instance_id: String,
-    mut request: StartTunnelForwardRequest,
-) -> Result<CodeTransportForwardCompletion, String> {
-    #[cfg(desktop)]
-    {
-        request.code_pool_generation = Some(generation.clone());
-        return desktop::complete_code_transport_forward(
-            &app,
-            &state,
-            window.label(),
-            &transport_id,
-            &generation,
-            &reservation_id,
-            &window_instance_id,
-            request,
-        )
-        .await;
-    }
-    #[cfg(mobile)]
-    {
-        let _ = (
-            app,
-            window,
-            state,
-            transport_id,
-            generation,
-            reservation_id,
-            window_instance_id,
-            request,
-        );
-        Err("Shared Code transports are only available in the desktop app.".into())
-    }
-}
-
-#[tauri::command]
-pub fn publish_code_transport_forward(
-    window: tauri::WebviewWindow,
-    state: State<'_, TunnelForwards>,
-    transport_id: String,
-    generation: String,
-    reservation_id: String,
-    window_instance_id: String,
-) -> Result<CodeTransportForwardAcquisition, String> {
-    #[cfg(desktop)]
-    return desktop::publish_code_transport_forward(
-        &state,
-        window.label(),
-        &transport_id,
-        &generation,
-        &reservation_id,
-        &window_instance_id,
-    );
-    #[cfg(mobile)]
-    {
-        let _ = (
-            window,
-            state,
-            transport_id,
-            generation,
-            reservation_id,
-            window_instance_id,
-        );
-        Err("Shared Code transports are only available in the desktop app.".into())
-    }
-}
-
-#[tauri::command]
-pub fn reconcile_code_transport_forward(
-    window: tauri::WebviewWindow,
-    state: State<'_, TunnelForwards>,
-    acquisition_id: String,
-    consumer_id: String,
-    transport_id: String,
-    generation: String,
-    reservation_id: String,
-    window_instance_id: String,
-) -> Result<Option<CodeTransportForwardAcquisition>, String> {
-    #[cfg(desktop)]
-    return desktop::reconcile_code_transport_forward(
-        &state,
-        window.label(),
-        &acquisition_id,
-        &consumer_id,
-        &transport_id,
-        &generation,
-        &reservation_id,
-        &window_instance_id,
-    );
-    #[cfg(mobile)]
-    {
-        let _ = (
-            window,
-            state,
-            acquisition_id,
-            consumer_id,
-            transport_id,
-            generation,
-            reservation_id,
-            window_instance_id,
-        );
-        Err("Shared Code transports are only available in the desktop app.".into())
-    }
-}
-
-#[tauri::command]
-pub async fn fail_code_transport_forward(
-    app: AppHandle,
-    window: tauri::WebviewWindow,
-    state: State<'_, TunnelForwards>,
-    transport_id: String,
-    generation: String,
-    reservation_id: String,
-    window_instance_id: String,
-) -> Result<(), String> {
-    #[cfg(desktop)]
-    return desktop::fail_code_transport_forward(
-        &app,
-        &state,
-        window.label(),
-        &transport_id,
-        &generation,
-        &reservation_id,
-        Some(&window_instance_id),
-    )
-    .await;
-    #[cfg(mobile)]
-    {
-        let _ = (
-            app,
-            window,
-            state,
-            transport_id,
-            generation,
-            reservation_id,
-            window_instance_id,
-        );
-        Err("Shared Code transports are only available in the desktop app.".into())
-    }
-}
-
-#[tauri::command]
-pub async fn release_code_transport_forward(
-    app: AppHandle,
-    window: tauri::WebviewWindow,
-    state: State<'_, TunnelForwards>,
-    transport_id: String,
-    generation: String,
-    lease_id: String,
-    window_instance_id: String,
-) -> Result<CodeTransportForwardRelease, String> {
-    #[cfg(desktop)]
-    desktop::validate_code_transport_window_instance(&state, window.label(), &window_instance_id)?;
-    return desktop::release_code_transport_forward(
-        &app,
-        &state,
-        &transport_id,
-        &generation,
-        &lease_id,
-    )
-    .await;
-    #[cfg(mobile)]
-    {
-        let _ = (
-            app,
-            window,
-            state,
-            transport_id,
-            generation,
-            lease_id,
-            window_instance_id,
-        );
-        Err("Shared Code transports are only available in the desktop app.".into())
-    }
-}
-
-#[cfg(desktop)]
-pub async fn desktop_release_code_transport_window(
-    app: &AppHandle,
-    state: &TunnelForwards,
-    window_label: &str,
-    window_instance_id: &str,
-) {
-    desktop::release_code_transport_window(app, state, window_label, window_instance_id).await;
-}
-
-#[cfg(desktop)]
-pub fn desktop_retire_code_transport_window(
-    state: &TunnelForwards,
-    window_label: &str,
-) -> Option<String> {
-    desktop::retire_code_transport_window_instance(state, window_label)
-}
-
-#[tauri::command]
 pub async fn stop_tunnel_forward(
     app: AppHandle,
     state: State<'_, TunnelForwards>,
@@ -841,7 +309,6 @@ pub async fn stop_tunnel_forward(
         expected_attachment_id.as_deref(),
         expected_diagnostic_trace_id.as_deref(),
         expected_direct_capability_id.as_deref(),
-        None,
         reason,
     )
     .await;
@@ -928,14 +395,11 @@ pub fn refresh_tunnel_forward_relay(
 #[cfg(desktop)]
 mod desktop {
     use super::{
-        AcquireCodeTransportForwardRequest, CodeTransportClientIdentity,
-        CodeTransportForwardAcquisition, CodeTransportForwardCompletion,
-        CodeTransportForwardRelease, CodeTransportPoolIdentity,
         PrepareWorkerLinkTunnelForwardRequest, RelayTunnelRequest, StartTunnelForwardRequest,
         TunnelDataProtectionRequest, TunnelForwardSummary, TunnelForwardTerminalEvent,
         TunnelForwardTerminalSnapshot, TunnelForwards, TunnelRelayRefreshOutcome,
-        TunnelRelayRefreshResult, WorkerLinkCodeTransportForwardCompletion, WorkerLinkTunnelBridge,
-        WorkerLinkTunnelForwardPreparation, TUNNEL_FORWARD_TERMINAL_EVENT,
+        TunnelRelayRefreshResult, WorkerLinkTunnelBridge, WorkerLinkTunnelForwardPreparation,
+        TUNNEL_FORWARD_TERMINAL_EVENT,
     };
     use aes_gcm::aead::{Aead, AeadCore, KeyInit, OsRng, Payload};
     use aes_gcm::{Aes256Gcm, Nonce};
@@ -945,13 +409,13 @@ mod desktop {
     use serde::{Deserialize, Serialize};
     use serde_json::{json, Value};
     use std::cmp::min;
-    use std::collections::{HashMap, HashSet};
+    use std::collections::HashMap;
     use std::convert::TryFrom;
     use std::future::Future;
     use std::net::{Ipv4Addr, SocketAddr};
     use std::pin::Pin;
     use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
-    use std::sync::{Arc, Mutex, MutexGuard};
+    use std::sync::{Arc, Mutex};
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
     use tauri::async_runtime::JoinHandle as TauriJoinHandle;
     use tauri::{AppHandle, Emitter, Manager, State};
@@ -986,17 +450,12 @@ mod desktop {
     const SESSION_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(20);
     const SESSION_PONG_TIMEOUT: Duration = Duration::from_secs(10);
     const SESSION_SEND_TIMEOUT: Duration = Duration::from_secs(10);
-    const CODE_TRANSPORT_RESERVATION_TIMEOUT: Duration = Duration::from_secs(30);
-    const CODE_TRANSPORT_MAINTENANCE_LEASE: Duration = Duration::from_secs(15);
-    const CODE_TRANSPORT_TERMINAL_RETENTION: Duration = Duration::from_secs(10 * 60);
-    const MAX_TERMINATED_CODE_TRANSPORTS: usize = 256;
     const WORKER_LINK_BRIDGE_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
     const WORKER_LINK_BRIDGE_CLAIM_LIFETIME: Duration = Duration::from_secs(30);
     const WORKER_LINK_BRIDGE_MAX_INVALID_ATTEMPTS: usize = 8;
     const WORKER_LINK_BRIDGE_INVALID_BACKOFF: Duration = Duration::from_secs(1);
 
     pub struct ForwardHandle {
-        code_pool_generation: Option<String>,
         counters: Arc<ForwardCounters>,
         relay_refresh: watch::Sender<Option<Arc<RelayRoute>>>,
         route_control: mpsc::Sender<RouteControl>,
@@ -1060,7 +519,6 @@ mod desktop {
     }
 
     struct ForwardStartReservation<'a> {
-        code_pool_generation: Option<String>,
         state: &'a TunnelForwards,
         tunnel_id: String,
     }
@@ -1068,9 +526,7 @@ mod desktop {
     impl Drop for ForwardStartReservation<'_> {
         fn drop(&mut self) {
             if let Ok(mut starts) = self.state.forward_starts.lock() {
-                if starts.get(&self.tunnel_id) == Some(&self.code_pool_generation) {
-                    starts.remove(&self.tunnel_id);
-                }
+                starts.remove(&self.tunnel_id);
             }
         }
     }
@@ -1078,127 +534,18 @@ mod desktop {
     fn reserve_forward_start<'a>(
         state: &'a TunnelForwards,
         tunnel_id: &str,
-        code_pool_generation: Option<&str>,
     ) -> Result<ForwardStartReservation<'a>, String> {
         let mut starts = state
             .forward_starts
             .lock()
             .map_err(|_| "The local tunnel startup registry is unavailable.".to_string())?;
-        if starts.contains_key(tunnel_id) {
+        if !starts.insert(tunnel_id.to_string()) {
             return Err("The tunnel already has a forward starting.".into());
         }
-        let forwards = state
-            .forwards
-            .lock()
-            .map_err(|_| "The local tunnel manager is unavailable.".to_string())?;
-        match code_pool_generation {
-            Some(_) if forwards.contains_key(tunnel_id) => {
-                return Err("The shared Code transport already has a forward.".into());
-            }
-            None if forwards
-                .get(tunnel_id)
-                .is_some_and(|forward| forward.code_pool_generation.is_some()) =>
-            {
-                return Err(
-                    "A shared Code transport cannot be replaced by a generic forward.".into(),
-                );
-            }
-            _ => {}
-        }
-        drop(forwards);
-        let generation = code_pool_generation.map(str::to_string);
-        starts.insert(tunnel_id.to_string(), generation.clone());
         Ok(ForwardStartReservation {
-            code_pool_generation: generation,
             state,
             tunnel_id: tunnel_id.to_string(),
         })
-    }
-
-    struct CodeTransportLease {
-        acquisition_id: String,
-        consumer_id: String,
-        window_label: String,
-        window_instance_id: String,
-    }
-
-    struct StartingCodeTransport {
-        changes: watch::Sender<u64>,
-        completing: bool,
-        created_at: Instant,
-        forward: Option<TunnelForwardSummary>,
-        generation: String,
-        identity: CodeTransportPoolIdentity,
-        leader_acquisition_id: String,
-        leader_consumer_id: String,
-        leader_window_label: String,
-        leader_window_instance_id: String,
-        retirement_fence: Arc<ForwardRetirementFence>,
-        reservation_id: String,
-    }
-
-    struct ActiveCodeTransport {
-        changes: watch::Sender<u64>,
-        forward: TunnelForwardSummary,
-        generation: String,
-        identity: CodeTransportPoolIdentity,
-        leases: HashMap<String, CodeTransportLease>,
-        maintenance: Option<(String, Instant)>,
-        publication_acquisition_id: String,
-        publication_reservation_id: String,
-        retirement_fence: Arc<ForwardRetirementFence>,
-    }
-
-    struct StoppingCodeTransport {
-        changes: watch::Sender<u64>,
-        generation: String,
-        identity: CodeTransportPoolIdentity,
-    }
-
-    struct TerminatedCodeTransport {
-        cleanup: Option<TunnelForwardTerminalSnapshot>,
-        created_at: Instant,
-        identity: CodeTransportPoolIdentity,
-        leases: HashMap<String, CodeTransportLease>,
-    }
-
-    enum CodeTransportPoolEntry {
-        Starting(StartingCodeTransport),
-        Active(ActiveCodeTransport),
-        Stopping(StoppingCodeTransport),
-    }
-
-    enum CodeTransportReleasePlan {
-        Completed(CodeTransportForwardRelease),
-        Stop(TunnelForwardSummary),
-    }
-
-    #[derive(Default)]
-    struct ForwardRetirementFence {
-        retiring: AtomicBool,
-    }
-
-    impl ForwardRetirementFence {
-        fn retire(&self) {
-            self.retiring.store(true, Ordering::Release);
-        }
-
-        fn is_retiring(&self) -> bool {
-            self.retiring.load(Ordering::Acquire)
-        }
-    }
-
-    #[derive(Default)]
-    pub struct CodeTransportPool {
-        entries: HashMap<String, CodeTransportPoolEntry>,
-        terminated: HashMap<(String, String), TerminatedCodeTransport>,
-    }
-
-    impl CodeTransportPool {
-        pub fn clear(&mut self) {
-            self.entries.clear();
-            self.terminated.clear();
-        }
     }
 
     #[derive(Default)]
@@ -1714,11 +1061,6 @@ mod desktop {
         Stopped,
     }
 
-    enum ForwardSessionResolution {
-        Outcome(Result<SessionOutcome, String>),
-        RetirementFenced,
-    }
-
     enum RelayConnectOutcome<T> {
         Connected(T),
         Refreshed,
@@ -1764,1532 +1106,6 @@ mod desktop {
         CancellationRequested { reason: &'static str },
     }
 
-    fn code_transport_client_identity(
-        identity: &CodeTransportPoolIdentity,
-    ) -> CodeTransportClientIdentity {
-        CodeTransportClientIdentity {
-            account_id: identity.account_id.clone(),
-            client_identity_incarnation_id: identity.client_identity_incarnation_id.clone(),
-            connection_id: identity.connection_id.clone(),
-            server_id: identity.server_id.clone(),
-            server_url: identity.server_url.clone(),
-            user_id: identity.user_id.clone(),
-        }
-    }
-
-    fn validate_code_transport_client_identity(
-        identity: &CodeTransportClientIdentity,
-    ) -> Result<(), String> {
-        Uuid::parse_str(&identity.client_identity_incarnation_id)
-            .map_err(|_| "The shared Code client identity incarnation is invalid.".to_string())?;
-        for (label, value) in [
-            ("account", identity.account_id.as_deref()),
-            ("connection", identity.connection_id.as_deref()),
-        ] {
-            if value.is_some_and(|value| value.is_empty() || value.len() > 2_000) {
-                return Err(format!("The shared Code {label} identity is invalid."));
-            }
-        }
-        for (label, value) in [
-            ("server", identity.server_id.as_str()),
-            ("user", identity.user_id.as_str()),
-        ] {
-            if value.is_empty() || value.len() > 2_000 {
-                return Err(format!("The shared Code {label} identity is invalid."));
-            }
-        }
-        let server_url = Url::parse(&identity.server_url)
-            .map_err(|_| "The shared Code server URL is invalid.".to_string())?;
-        if !matches!(server_url.scheme(), "http" | "https")
-            || server_url.host_str().is_none()
-            || !server_url.username().is_empty()
-            || server_url.password().is_some()
-            || server_url.query().is_some()
-            || server_url.fragment().is_some()
-        {
-            return Err("The shared Code server URL is invalid.".into());
-        }
-        Ok(())
-    }
-
-    fn validate_code_transport_pool_identity(
-        identity: &CodeTransportPoolIdentity,
-        acquisition_id: &str,
-        consumer_id: &str,
-    ) -> Result<(), String> {
-        validate_code_transport_client_identity(&code_transport_client_identity(identity))?;
-        for (label, value) in [
-            ("transport", identity.transport_id.as_str()),
-            ("security scope", identity.security_scope_id.as_str()),
-            (
-                "server control-plane generation",
-                identity.server_control_plane_generation.as_str(),
-            ),
-            (
-                "worker process generation",
-                identity.worker_process_generation.as_str(),
-            ),
-            ("acquisition", acquisition_id),
-            ("consumer", consumer_id),
-        ] {
-            Uuid::parse_str(value)
-                .map_err(|_| format!("The shared Code {label} identity is invalid."))?;
-        }
-        if identity.client_identity_generation == 0 {
-            return Err("The shared Code client identity generation is invalid.".into());
-        }
-        if identity.protected_key_revision == 0 {
-            return Err("The shared Code key revision is invalid.".into());
-        }
-        for (label, value) in [("worker", identity.worker_id.as_str())] {
-            if value.is_empty() || value.len() > 2_000 {
-                return Err(format!("The shared Code {label} identity is invalid."));
-            }
-        }
-        Ok(())
-    }
-
-    pub fn register_code_transport_window_instance(
-        state: &TunnelForwards,
-        window_label: &str,
-        window_instance_id: &str,
-    ) -> Result<Option<String>, String> {
-        Uuid::parse_str(window_instance_id)
-            .map_err(|_| "The shared Code window instance is invalid.".to_string())?;
-        if state
-            .retired_code_window_instances
-            .lock()
-            .map_err(|_| "The shared Code window registry is unavailable.".to_string())?
-            .contains(window_instance_id)
-        {
-            return Err("The shared Code window instance has been retired.".into());
-        }
-        let mut windows = state
-            .code_windows
-            .lock()
-            .map_err(|_| "The shared Code window registry is unavailable.".to_string())?;
-        if let Some(previous) = windows.get(window_label).cloned() {
-            if previous == window_instance_id {
-                return Ok(None);
-            }
-            // Hot module replacement preserves and reuses the same exact
-            // token and JS lease registry. A different token therefore means
-            // the old renderer state is gone and its opaque native ownership
-            // must be retired, never silently transferred to a renderer that
-            // cannot adopt its lease or reservation ids.
-            state
-                .retired_code_window_instances
-                .lock()
-                .map_err(|_| "The shared Code window registry is unavailable.".to_string())?
-                .insert(previous);
-        }
-        let retired = windows.insert(window_label.to_string(), window_instance_id.to_string());
-        Ok(retired)
-    }
-
-    pub fn validate_code_transport_window_instance(
-        state: &TunnelForwards,
-        window_label: &str,
-        window_instance_id: &str,
-    ) -> Result<(), String> {
-        if state
-            .code_windows
-            .lock()
-            .map_err(|_| "The shared Code window registry is unavailable.".to_string())?
-            .get(window_label)
-            .is_some_and(|current| current == window_instance_id)
-        {
-            Ok(())
-        } else {
-            Err("The shared Code window instance is no longer active.".into())
-        }
-    }
-
-    pub fn retire_code_transport_window_instance(
-        state: &TunnelForwards,
-        window_label: &str,
-    ) -> Option<String> {
-        let retired_instance = state
-            .code_windows
-            .lock()
-            .ok()
-            .and_then(|mut windows| windows.remove(window_label));
-        if let Some(retired_instance) = retired_instance.as_ref() {
-            if let Ok(mut retired) = state.retired_code_window_instances.lock() {
-                retired.insert(retired_instance.clone());
-            }
-        }
-        retired_instance
-    }
-
-    fn pool_entry_generation(entry: &CodeTransportPoolEntry) -> &str {
-        match entry {
-            CodeTransportPoolEntry::Starting(entry) => &entry.generation,
-            CodeTransportPoolEntry::Active(entry) => &entry.generation,
-            CodeTransportPoolEntry::Stopping(entry) => &entry.generation,
-        }
-    }
-
-    fn pool_entry_identity(entry: &CodeTransportPoolEntry) -> &CodeTransportPoolIdentity {
-        match entry {
-            CodeTransportPoolEntry::Starting(entry) => &entry.identity,
-            CodeTransportPoolEntry::Active(entry) => &entry.identity,
-            CodeTransportPoolEntry::Stopping(entry) => &entry.identity,
-        }
-    }
-
-    fn same_code_transport_security_identity(
-        left: &CodeTransportPoolIdentity,
-        right: &CodeTransportPoolIdentity,
-    ) -> bool {
-        left.account_id == right.account_id
-            && left.client_identity_incarnation_id == right.client_identity_incarnation_id
-            && left.connection_id == right.connection_id
-            && left.protected_key_revision == right.protected_key_revision
-            && left.security_scope_id == right.security_scope_id
-            && left.server_control_plane_generation == right.server_control_plane_generation
-            && left.server_id == right.server_id
-            && left.server_url == right.server_url
-            && left.transport_id == right.transport_id
-            && left.user_id == right.user_id
-            && left.worker_id == right.worker_id
-            && left.worker_process_generation == right.worker_process_generation
-    }
-
-    fn pool_entry_changes(entry: &CodeTransportPoolEntry) -> &watch::Sender<u64> {
-        match entry {
-            CodeTransportPoolEntry::Starting(entry) => &entry.changes,
-            CodeTransportPoolEntry::Active(entry) => &entry.changes,
-            CodeTransportPoolEntry::Stopping(entry) => &entry.changes,
-        }
-    }
-
-    fn signal_pool_change(changes: &watch::Sender<u64>) {
-        let next = changes.borrow().saturating_add(1);
-        let _ = changes.send(next);
-    }
-
-    fn code_transport_pool_for_acquire<'a>(
-        state: &'a TunnelForwards,
-        client_identity: &CodeTransportClientIdentity,
-    ) -> Result<
-        (
-            MutexGuard<'a, HashSet<CodeTransportClientIdentity>>,
-            MutexGuard<'a, CodeTransportPool>,
-        ),
-        String,
-    > {
-        let invalidated = state
-            .invalidated_code_client_identities
-            .lock()
-            .map_err(|_| "The shared Code identity registry is unavailable.".to_string())?;
-        if invalidated.contains(client_identity) {
-            return Err("The shared Code transport security identity was invalidated.".into());
-        }
-        let pool = state
-            .code_pool
-            .lock()
-            .map_err(|_| "The shared Code transport pool is unavailable.".to_string())?;
-        Ok((invalidated, pool))
-    }
-
-    pub fn acquire_code_transport_forward(
-        app: &AppHandle,
-        state: &State<'_, TunnelForwards>,
-        window_label: &str,
-        request: AcquireCodeTransportForwardRequest,
-    ) -> Result<CodeTransportForwardAcquisition, String> {
-        // Hold the live-window fence through the ownership mutation. Window
-        // destruction blocks here and then snapshots the committed lease or
-        // reservation, so a queued acquire cannot land after cleanup.
-        let window_instances = state
-            .code_windows
-            .lock()
-            .map_err(|_| "The shared Code window registry is unavailable.".to_string())?;
-        if !window_instances
-            .get(window_label)
-            .is_some_and(|current| current == &request.window_instance_id)
-        {
-            return Err("The shared Code window instance is no longer active.".into());
-        }
-        validate_code_transport_pool_identity(
-            &request.identity,
-            &request.acquisition_id,
-            &request.consumer_id,
-        )?;
-        let transport_id = request.identity.transport_id.clone();
-        let authoritative_forward = state
-            .forwards
-            .lock()
-            .map_err(|_| "The local tunnel manager is unavailable.".to_string())?
-            .get(&transport_id)
-            .map(|forward| {
-                let mut summary = forward.summary.clone();
-                forward.counters.apply(&mut summary);
-                summary
-            });
-        // Hold the incarnation tombstone fence until the pool lookup/insert is
-        // complete. Invalidation takes these locks in the same order, making
-        // its tombstone and selective drain atomic with respect to acquire.
-        let client_identity = code_transport_client_identity(&request.identity);
-        let (invalidated_incarnations, mut pool) =
-            code_transport_pool_for_acquire(state, &client_identity)?;
-        if let Some(entry) = pool.entries.get_mut(&transport_id) {
-            if !same_code_transport_security_identity(pool_entry_identity(entry), &request.identity)
-            {
-                return Err(
-                    "The shared Code transport belongs to another security identity.".into(),
-                );
-            }
-            return match entry {
-                CodeTransportPoolEntry::Starting(entry) => {
-                    if entry.created_at.elapsed() > CODE_TRANSPORT_RESERVATION_TIMEOUT
-                        && !entry.completing
-                        && entry.forward.is_none()
-                    {
-                        let changes = entry.changes.clone();
-                        pool.entries.remove(&transport_id);
-                        signal_pool_change(&changes);
-                        drop(pool);
-                        drop(invalidated_incarnations);
-                        drop(window_instances);
-                        acquire_code_transport_forward(app, state, window_label, request)
-                    } else {
-                        Ok(CodeTransportForwardAcquisition::Waiting {
-                            generation: entry.generation.clone(),
-                        })
-                    }
-                }
-                CodeTransportPoolEntry::Active(entry) => {
-                    if authoritative_forward.as_ref().is_some_and(|forward| {
-                        forward.code_pool_generation.as_deref() == Some(entry.generation.as_str())
-                    }) {
-                        entry.forward = authoritative_forward.clone().unwrap();
-                    }
-                    if let Some((lease_id, _)) = entry.leases.iter().find(|(_, lease)| {
-                        lease.acquisition_id == request.acquisition_id
-                            && lease.consumer_id == request.consumer_id
-                            && lease.window_label == window_label
-                            && lease.window_instance_id == request.window_instance_id
-                    }) {
-                        return Ok(CodeTransportForwardAcquisition::Ready {
-                            forward: entry.forward.clone(),
-                            generation: entry.generation.clone(),
-                            lease_id: lease_id.clone(),
-                        });
-                    }
-                    let lease_id = Uuid::new_v4().to_string();
-                    entry.leases.insert(
-                        lease_id.clone(),
-                        CodeTransportLease {
-                            acquisition_id: request.acquisition_id,
-                            consumer_id: request.consumer_id,
-                            window_label: window_label.to_string(),
-                            window_instance_id: request.window_instance_id,
-                        },
-                    );
-                    Ok(CodeTransportForwardAcquisition::Ready {
-                        forward: entry.forward.clone(),
-                        generation: entry.generation.clone(),
-                        lease_id,
-                    })
-                }
-                CodeTransportPoolEntry::Stopping(entry) => {
-                    Ok(CodeTransportForwardAcquisition::Waiting {
-                        generation: entry.generation.clone(),
-                    })
-                }
-            };
-        }
-
-        let (changes, _) = watch::channel(0_u64);
-        let generation = Uuid::new_v4().to_string();
-        let reservation_id = Uuid::new_v4().to_string();
-        pool.entries.insert(
-            transport_id.clone(),
-            CodeTransportPoolEntry::Starting(StartingCodeTransport {
-                changes,
-                completing: false,
-                created_at: Instant::now(),
-                forward: None,
-                generation: generation.clone(),
-                identity: request.identity,
-                leader_acquisition_id: request.acquisition_id,
-                leader_consumer_id: request.consumer_id,
-                leader_window_label: window_label.to_string(),
-                leader_window_instance_id: request.window_instance_id,
-                retirement_fence: Arc::new(ForwardRetirementFence::default()),
-                reservation_id: reservation_id.clone(),
-            }),
-        );
-        let watchdog_app = app.clone();
-        let watchdog_transport_id = transport_id.clone();
-        let watchdog_generation = generation.clone();
-        tauri::async_runtime::spawn(async move {
-            sleep(CODE_TRANSPORT_RESERVATION_TIMEOUT).await;
-            let state = watchdog_app.state::<TunnelForwards>();
-            let staged = state.code_pool.lock().ok().and_then(|mut pool| {
-                let expired = matches!(
-                    pool.entries.get(&watchdog_transport_id),
-                    Some(CodeTransportPoolEntry::Starting(entry))
-                        if entry.generation == watchdog_generation
-                            && entry.created_at.elapsed()
-                                >= CODE_TRANSPORT_RESERVATION_TIMEOUT
-                );
-                if !expired {
-                    return None;
-                }
-                match pool.entries.remove(&watchdog_transport_id) {
-                    Some(CodeTransportPoolEntry::Starting(entry)) => {
-                        signal_pool_change(&entry.changes);
-                        entry.forward
-                    }
-                    _ => None,
-                }
-            });
-            if let Some(forward) = staged {
-                let _ = stop(
-                    &watchdog_app,
-                    &state,
-                    &watchdog_transport_id,
-                    Some(&forward.attachment_id),
-                    forward.diagnostic_trace_id.as_deref(),
-                    forward.direct_capability_id.as_deref(),
-                    Some(&watchdog_generation),
-                    "code-pool-reservation-expired",
-                )
-                .await;
-            }
-        });
-        Ok(CodeTransportForwardAcquisition::Leader {
-            generation,
-            reservation_id,
-        })
-    }
-
-    pub fn claim_code_transport_maintenance(
-        state: &State<'_, TunnelForwards>,
-        window_label: &str,
-        transport_id: &str,
-        generation: &str,
-        lease_id: &str,
-        window_instance_id: &str,
-    ) -> Result<Option<TunnelForwardSummary>, String> {
-        validate_code_transport_window_instance(state, window_label, window_instance_id)?;
-        Uuid::parse_str(lease_id)
-            .map_err(|_| "The shared Code transport lease is invalid.".to_string())?;
-        let authoritative = {
-            let forwards = state
-                .forwards
-                .lock()
-                .map_err(|_| "The local tunnel manager is unavailable.".to_string())?;
-            let Some(forward) = forwards.get(transport_id) else {
-                return Ok(None);
-            };
-            if forward.code_pool_generation.as_deref() != Some(generation) {
-                return Ok(None);
-            }
-            let mut summary = forward.summary.clone();
-            forward.counters.apply(&mut summary);
-            summary
-        };
-        let mut pool = state
-            .code_pool
-            .lock()
-            .map_err(|_| "The shared Code transport pool is unavailable.".to_string())?;
-        let Some(CodeTransportPoolEntry::Active(active)) = pool.entries.get_mut(transport_id)
-        else {
-            return Ok(None);
-        };
-        if active.generation != generation
-            || !active.leases.get(lease_id).is_some_and(|lease| {
-                lease.window_label == window_label && lease.window_instance_id == window_instance_id
-            })
-        {
-            return Ok(None);
-        }
-        let now = Instant::now();
-        if active
-            .maintenance
-            .as_ref()
-            .is_some_and(|(owner, expires_at)| owner != lease_id && *expires_at > now)
-        {
-            return Ok(None);
-        }
-        active.maintenance = Some((lease_id.to_string(), now + CODE_TRANSPORT_MAINTENANCE_LEASE));
-        active.forward = authoritative.clone();
-        Ok(Some(authoritative))
-    }
-
-    fn begin_code_transport_retirement(
-        state: &State<'_, TunnelForwards>,
-        window_label: &str,
-        transport_id: &str,
-        generation: &str,
-        lease_id: &str,
-        window_instance_id: &str,
-    ) -> Result<Option<TunnelForwardSummary>, String> {
-        validate_code_transport_window_instance(state, window_label, window_instance_id)?;
-        Uuid::parse_str(lease_id)
-            .map_err(|_| "The shared Code transport lease is invalid.".to_string())?;
-        let mut pool = state
-            .code_pool
-            .lock()
-            .map_err(|_| "The shared Code transport pool is unavailable.".to_string())?;
-        Ok(take_code_transport_generation_for_retirement(
-            &mut pool,
-            window_label,
-            transport_id,
-            generation,
-            lease_id,
-            window_instance_id,
-        ))
-    }
-
-    fn take_code_transport_generation_for_retirement(
-        pool: &mut CodeTransportPool,
-        window_label: &str,
-        transport_id: &str,
-        generation: &str,
-        lease_id: &str,
-        window_instance_id: &str,
-    ) -> Option<TunnelForwardSummary> {
-        let Some(entry) = pool.entries.remove(transport_id) else {
-            return None;
-        };
-        let CodeTransportPoolEntry::Active(active) = entry else {
-            pool.entries.insert(transport_id.to_string(), entry);
-            return None;
-        };
-        let authorized = active.generation == generation
-            && active.leases.get(lease_id).is_some_and(|lease| {
-                lease.window_label == window_label && lease.window_instance_id == window_instance_id
-            });
-        if !authorized {
-            pool.entries.insert(
-                transport_id.to_string(),
-                CodeTransportPoolEntry::Active(active),
-            );
-            return None;
-        }
-
-        active.retirement_fence.retire();
-        let forward = active.forward.clone();
-        let identity = active.identity.clone();
-        let changes = active.changes;
-        pool.terminated.insert(
-            (transport_id.to_string(), generation.to_string()),
-            TerminatedCodeTransport {
-                cleanup: None,
-                created_at: Instant::now(),
-                identity: identity.clone(),
-                leases: active.leases,
-            },
-        );
-        prune_terminated_code_transports(pool);
-        pool.entries.insert(
-            transport_id.to_string(),
-            CodeTransportPoolEntry::Stopping(StoppingCodeTransport {
-                changes,
-                generation: generation.to_string(),
-                identity,
-            }),
-        );
-        Some(forward)
-    }
-
-    pub async fn retire_code_transport_forward(
-        app: &AppHandle,
-        state: &State<'_, TunnelForwards>,
-        window_label: &str,
-        transport_id: &str,
-        generation: &str,
-        lease_id: &str,
-        window_instance_id: &str,
-    ) -> Result<Option<TunnelForwardTerminalSnapshot>, String> {
-        let Some(forward) = begin_code_transport_retirement(
-            state,
-            window_label,
-            transport_id,
-            generation,
-            lease_id,
-            window_instance_id,
-        )?
-        else {
-            return Ok(None);
-        };
-        let stopped = stop(
-            app,
-            state,
-            transport_id,
-            Some(&forward.attachment_id),
-            forward.diagnostic_trace_id.as_deref(),
-            forward.direct_capability_id.as_deref(),
-            Some(generation),
-            "attachment-invalidated",
-        )
-        .await;
-        // `stop` normally clears this exact stopping generation after the
-        // forward task exits. Also clear it when the authoritative forward was
-        // already gone so followers cannot wait forever on a stale generation.
-        code_transport_forward_terminated(state, transport_id, generation, None);
-        stopped
-    }
-
-    pub async fn wait_code_transport_forward(
-        state: &State<'_, TunnelForwards>,
-        transport_id: &str,
-        generation: &str,
-    ) -> Result<bool, String> {
-        let mut changes = {
-            let pool = state
-                .code_pool
-                .lock()
-                .map_err(|_| "The shared Code transport pool is unavailable.".to_string())?;
-            let Some(entry) = pool.entries.get(transport_id) else {
-                return Ok(true);
-            };
-            if pool_entry_generation(entry) != generation {
-                return Ok(true);
-            }
-            pool_entry_changes(entry).subscribe()
-        };
-        Ok(
-            timeout(CODE_TRANSPORT_RESERVATION_TIMEOUT, changes.changed())
-                .await
-                .is_ok(),
-        )
-    }
-
-    fn validate_code_transport_start_request(
-        identity: &CodeTransportPoolIdentity,
-        generation: &str,
-        request: &StartTunnelForwardRequest,
-    ) -> Result<(), String> {
-        if request.tunnel_id != identity.transport_id
-            || request.code_pool_generation.as_deref() != Some(generation)
-            || request
-                .data_protection
-                .as_ref()
-                .map(|protection| protection.key_revision)
-                != Some(identity.protected_key_revision)
-            || request
-                .relay
-                .as_ref()
-                .map(|relay| relay.server_url.as_str())
-                != Some(identity.server_url.as_str())
-        {
-            return Err("The shared Code forward preparation changed security identity.".into());
-        }
-        Ok(())
-    }
-
-    pub async fn complete_code_transport_forward(
-        app: &AppHandle,
-        state: &State<'_, TunnelForwards>,
-        window_label: &str,
-        transport_id: &str,
-        generation: &str,
-        reservation_id: &str,
-        window_instance_id: &str,
-        request: StartTunnelForwardRequest,
-    ) -> Result<CodeTransportForwardCompletion, String> {
-        validate_code_transport_window_instance(state, window_label, window_instance_id)?;
-        {
-            let mut pool = state
-                .code_pool
-                .lock()
-                .map_err(|_| "The shared Code transport pool is unavailable.".to_string())?;
-            let Some(CodeTransportPoolEntry::Starting(entry)) = pool.entries.get_mut(transport_id)
-            else {
-                return Err("The shared Code forward reservation is unavailable.".into());
-            };
-            if entry.generation != generation
-                || entry.reservation_id != reservation_id
-                || entry.leader_window_label != window_label
-                || entry.leader_window_instance_id != window_instance_id
-                || entry.completing
-                || entry.forward.is_some()
-            {
-                return Err("The shared Code forward reservation changed.".into());
-            }
-            validate_code_transport_start_request(&entry.identity, generation, &request)?;
-            entry.completing = true;
-            signal_pool_change(&entry.changes);
-        }
-
-        let started = match start(app, state, request).await {
-            Ok(started) => started,
-            Err(error) => {
-                let mut pool = state
-                    .code_pool
-                    .lock()
-                    .map_err(|_| "The shared Code transport pool is unavailable.".to_string())?;
-                if pool
-                    .entries
-                    .get(transport_id)
-                    .is_some_and(|entry| pool_entry_generation(entry) == generation)
-                {
-                    if let Some(entry) = pool.entries.remove(transport_id) {
-                        signal_pool_change(pool_entry_changes(&entry));
-                    }
-                }
-                return Err(error);
-            }
-        };
-
-        let window_current =
-            validate_code_transport_window_instance(state, window_label, window_instance_id)
-                .is_ok();
-        let accepted = {
-            let mut pool = state
-                .code_pool
-                .lock()
-                .map_err(|_| "The shared Code transport pool is unavailable.".to_string())?;
-            if !window_current {
-                let exact = matches!(
-                    pool.entries.get(transport_id),
-                    Some(CodeTransportPoolEntry::Starting(entry))
-                        if entry.generation == generation
-                            && entry.reservation_id == reservation_id
-                            && entry.leader_window_label == window_label
-                            && entry.leader_window_instance_id == window_instance_id
-                );
-                if exact {
-                    if let Some(entry) = pool.entries.remove(transport_id) {
-                        signal_pool_change(pool_entry_changes(&entry));
-                    }
-                }
-                false
-            } else {
-                match pool.entries.get_mut(transport_id) {
-                    Some(CodeTransportPoolEntry::Starting(entry))
-                        if entry.generation == generation
-                            && entry.reservation_id == reservation_id
-                            && entry.leader_window_label == window_label
-                            && entry.leader_window_instance_id == window_instance_id =>
-                    {
-                        entry.completing = false;
-                        entry.forward = Some(started.clone());
-                        signal_pool_change(&entry.changes);
-                        true
-                    }
-                    _ => false,
-                }
-            }
-        };
-        if !accepted {
-            let _ = stop(
-                app,
-                state,
-                transport_id,
-                Some(&started.attachment_id),
-                started.diagnostic_trace_id.as_deref(),
-                started.direct_capability_id.as_deref(),
-                Some(generation),
-                "stale-code-pool-completion",
-            )
-            .await;
-            return Err("The shared Code forward completed after its reservation ended.".into());
-        }
-        Ok(CodeTransportForwardCompletion {
-            forward: started,
-            generation: generation.to_string(),
-        })
-    }
-
-    pub async fn complete_worker_link_code_transport_forward(
-        app: &AppHandle,
-        state: &State<'_, TunnelForwards>,
-        window_label: &str,
-        transport_id: &str,
-        generation: &str,
-        reservation_id: &str,
-        window_instance_id: &str,
-        request: PrepareWorkerLinkTunnelForwardRequest,
-    ) -> Result<WorkerLinkCodeTransportForwardCompletion, String> {
-        validate_code_transport_window_instance(state, window_label, window_instance_id)?;
-        {
-            let mut pool = state
-                .code_pool
-                .lock()
-                .map_err(|_| "The shared Code transport pool is unavailable.".to_string())?;
-            let Some(CodeTransportPoolEntry::Starting(entry)) = pool.entries.get_mut(transport_id)
-            else {
-                return Err("The shared Code forward reservation is unavailable.".into());
-            };
-            if entry.generation != generation
-                || entry.reservation_id != reservation_id
-                || entry.leader_window_label != window_label
-                || entry.leader_window_instance_id != window_instance_id
-                || entry.completing
-                || entry.forward.is_some()
-                || request.tunnel_id != entry.identity.transport_id
-                || request.tunnel_id != transport_id
-                || request.data_protection.key_revision != entry.identity.protected_key_revision
-                || request.server_url != entry.identity.server_url
-                || request.worker_id != entry.identity.worker_id
-            {
-                return Err(
-                    "The shared Code WorkerLink preparation changed security identity.".into(),
-                );
-            }
-            entry.completing = true;
-            signal_pool_change(&entry.changes);
-        }
-
-        let prepared = match prepare_worker_link_with_generation(
-            app,
-            state,
-            request,
-            Some(generation),
-        )
-        .await
-        {
-            Ok(prepared) => prepared,
-            Err(error) => {
-                let mut pool = state
-                    .code_pool
-                    .lock()
-                    .map_err(|_| "The shared Code transport pool is unavailable.".to_string())?;
-                if pool
-                    .entries
-                    .get(transport_id)
-                    .is_some_and(|entry| pool_entry_generation(entry) == generation)
-                {
-                    if let Some(entry) = pool.entries.remove(transport_id) {
-                        signal_pool_change(pool_entry_changes(&entry));
-                    }
-                }
-                return Err(error);
-            }
-        };
-
-        let window_current =
-            validate_code_transport_window_instance(state, window_label, window_instance_id)
-                .is_ok();
-        let accepted = {
-            let mut pool = state
-                .code_pool
-                .lock()
-                .map_err(|_| "The shared Code transport pool is unavailable.".to_string())?;
-            if !window_current {
-                let exact = matches!(
-                    pool.entries.get(transport_id),
-                    Some(CodeTransportPoolEntry::Starting(entry))
-                        if entry.generation == generation
-                            && entry.reservation_id == reservation_id
-                            && entry.leader_window_label == window_label
-                            && entry.leader_window_instance_id == window_instance_id
-                );
-                if exact {
-                    if let Some(entry) = pool.entries.remove(transport_id) {
-                        signal_pool_change(pool_entry_changes(&entry));
-                    }
-                }
-                false
-            } else {
-                match pool.entries.get_mut(transport_id) {
-                    Some(CodeTransportPoolEntry::Starting(entry))
-                        if entry.generation == generation
-                            && entry.reservation_id == reservation_id
-                            && entry.leader_window_label == window_label
-                            && entry.leader_window_instance_id == window_instance_id =>
-                    {
-                        entry.completing = false;
-                        entry.forward = Some(prepared.forward.clone());
-                        signal_pool_change(&entry.changes);
-                        true
-                    }
-                    _ => false,
-                }
-            }
-        };
-        if !accepted {
-            let _ = stop(
-                app,
-                state,
-                transport_id,
-                Some(&prepared.forward.attachment_id),
-                prepared.forward.diagnostic_trace_id.as_deref(),
-                None,
-                Some(generation),
-                "stale-code-pool-completion",
-            )
-            .await;
-            return Err("The shared Code forward completed after its reservation ended.".into());
-        }
-        Ok(WorkerLinkCodeTransportForwardCompletion {
-            bridge: prepared.bridge,
-            forward: prepared.forward,
-            generation: generation.to_string(),
-        })
-    }
-
-    pub fn publish_code_transport_forward(
-        state: &TunnelForwards,
-        window_label: &str,
-        transport_id: &str,
-        generation: &str,
-        reservation_id: &str,
-        window_instance_id: &str,
-    ) -> Result<CodeTransportForwardAcquisition, String> {
-        let window_instances = state
-            .code_windows
-            .lock()
-            .map_err(|_| "The shared Code window registry is unavailable.".to_string())?;
-        if !window_instances
-            .get(window_label)
-            .is_some_and(|current| current == window_instance_id)
-        {
-            return Err("The shared Code window instance is no longer active.".into());
-        }
-        let mut pool = state
-            .code_pool
-            .lock()
-            .map_err(|_| "The shared Code transport pool is unavailable.".to_string())?;
-        if let Some(CodeTransportPoolEntry::Active(active)) = pool.entries.get(transport_id) {
-            if active.generation == generation
-                && active.publication_reservation_id == reservation_id
-            {
-                if let Some((lease_id, _)) = active.leases.iter().find(|(_, lease)| {
-                    lease.acquisition_id == active.publication_acquisition_id
-                        && lease.window_label == window_label
-                        && lease.window_instance_id == window_instance_id
-                }) {
-                    return Ok(CodeTransportForwardAcquisition::Ready {
-                        forward: active.forward.clone(),
-                        generation: active.generation.clone(),
-                        lease_id: lease_id.clone(),
-                    });
-                }
-            }
-            return Err("The shared Code forward reservation changed.".into());
-        }
-        let Some(entry) = pool.entries.remove(transport_id) else {
-            return Err("The shared Code forward reservation is unavailable.".into());
-        };
-        let CodeTransportPoolEntry::Starting(starting) = entry else {
-            pool.entries.insert(transport_id.to_string(), entry);
-            return Err("The shared Code forward reservation changed.".into());
-        };
-        if starting.generation != generation
-            || starting.reservation_id != reservation_id
-            || starting.leader_window_label != window_label
-            || starting.leader_window_instance_id != window_instance_id
-            || starting.completing
-        {
-            pool.entries.insert(
-                transport_id.to_string(),
-                CodeTransportPoolEntry::Starting(starting),
-            );
-            return Err("The shared Code forward reservation changed.".into());
-        }
-        let Some(forward) = starting.forward.clone() else {
-            pool.entries.insert(
-                transport_id.to_string(),
-                CodeTransportPoolEntry::Starting(starting),
-            );
-            return Err("The shared Code forward is not ready to publish.".into());
-        };
-        let lease_id = Uuid::new_v4().to_string();
-        let mut leases = HashMap::new();
-        leases.insert(
-            lease_id.clone(),
-            CodeTransportLease {
-                acquisition_id: starting.leader_acquisition_id.clone(),
-                consumer_id: starting.leader_consumer_id.clone(),
-                window_label: starting.leader_window_label.clone(),
-                window_instance_id: starting.leader_window_instance_id.clone(),
-            },
-        );
-        signal_pool_change(&starting.changes);
-        pool.entries.insert(
-            transport_id.to_string(),
-            CodeTransportPoolEntry::Active(ActiveCodeTransport {
-                changes: starting.changes,
-                forward: forward.clone(),
-                generation: starting.generation.clone(),
-                identity: starting.identity,
-                leases,
-                maintenance: None,
-                publication_acquisition_id: starting.leader_acquisition_id,
-                publication_reservation_id: starting.reservation_id,
-                retirement_fence: starting.retirement_fence,
-            }),
-        );
-        Ok(CodeTransportForwardAcquisition::Ready {
-            forward,
-            generation: generation.to_string(),
-            lease_id,
-        })
-    }
-
-    pub fn reconcile_code_transport_forward(
-        state: &TunnelForwards,
-        window_label: &str,
-        acquisition_id: &str,
-        consumer_id: &str,
-        transport_id: &str,
-        generation: &str,
-        reservation_id: &str,
-        window_instance_id: &str,
-    ) -> Result<Option<CodeTransportForwardAcquisition>, String> {
-        for (label, value) in [
-            ("acquisition", acquisition_id),
-            ("consumer", consumer_id),
-            ("transport", transport_id),
-            ("generation", generation),
-            ("reservation", reservation_id),
-            ("window instance", window_instance_id),
-        ] {
-            Uuid::parse_str(value)
-                .map_err(|_| format!("The shared Code {label} identity is invalid."))?;
-        }
-        validate_code_transport_window_instance(state, window_label, window_instance_id)?;
-        let pool = state
-            .code_pool
-            .lock()
-            .map_err(|_| "The shared Code transport pool is unavailable.".to_string())?;
-        let Some(CodeTransportPoolEntry::Active(active)) = pool.entries.get(transport_id) else {
-            return Ok(None);
-        };
-        if active.generation != generation
-            || active.publication_reservation_id != reservation_id
-            || active.publication_acquisition_id != acquisition_id
-        {
-            return Ok(None);
-        }
-        Ok(active
-            .leases
-            .iter()
-            .find(|(_, lease)| {
-                lease.acquisition_id == acquisition_id
-                    && lease.consumer_id == consumer_id
-                    && lease.window_label == window_label
-                    && lease.window_instance_id == window_instance_id
-            })
-            .map(|(lease_id, _)| CodeTransportForwardAcquisition::Ready {
-                forward: active.forward.clone(),
-                generation: active.generation.clone(),
-                lease_id: lease_id.clone(),
-            }))
-    }
-
-    fn take_failed_code_transport_forward(
-        state: &TunnelForwards,
-        window_label: &str,
-        transport_id: &str,
-        generation: &str,
-        reservation_id: &str,
-        window_instance_id: Option<&str>,
-    ) -> Result<Option<TunnelForwardSummary>, String> {
-        let mut pool = state
-            .code_pool
-            .lock()
-            .map_err(|_| "The shared Code transport pool is unavailable.".to_string())?;
-        let exact = matches!(
-            pool.entries.get(transport_id),
-            Some(CodeTransportPoolEntry::Starting(entry))
-                if entry.generation == generation
-                    && entry.reservation_id == reservation_id
-                    && entry.leader_window_label == window_label
-                    && window_instance_id.is_none_or(|expected| {
-                        entry.leader_window_instance_id == expected
-                    })
-        );
-        if !exact {
-            return Ok(None);
-        }
-        Ok(match pool.entries.remove(transport_id) {
-            Some(CodeTransportPoolEntry::Starting(entry)) => {
-                signal_pool_change(&entry.changes);
-                entry.forward
-            }
-            _ => None,
-        })
-    }
-
-    async fn fail_code_transport_forward_exact(
-        app: &AppHandle,
-        state: &State<'_, TunnelForwards>,
-        window_label: &str,
-        transport_id: &str,
-        generation: &str,
-        reservation_id: &str,
-        window_instance_id: Option<&str>,
-    ) -> Result<(), String> {
-        let forward = take_failed_code_transport_forward(
-            state,
-            window_label,
-            transport_id,
-            generation,
-            reservation_id,
-            window_instance_id,
-        )?;
-        if let Some(forward) = forward {
-            let _ = stop(
-                app,
-                state,
-                transport_id,
-                Some(&forward.attachment_id),
-                forward.diagnostic_trace_id.as_deref(),
-                forward.direct_capability_id.as_deref(),
-                Some(generation),
-                "code-pool-preparation-failed",
-            )
-            .await;
-        }
-        Ok(())
-    }
-
-    pub async fn fail_code_transport_forward(
-        app: &AppHandle,
-        state: &State<'_, TunnelForwards>,
-        window_label: &str,
-        transport_id: &str,
-        generation: &str,
-        reservation_id: &str,
-        window_instance_id: Option<&str>,
-    ) -> Result<(), String> {
-        if let Some(window_instance_id) = window_instance_id {
-            validate_code_transport_window_instance(state, window_label, window_instance_id)?;
-        }
-        fail_code_transport_forward_exact(
-            app,
-            state,
-            window_label,
-            transport_id,
-            generation,
-            reservation_id,
-            window_instance_id,
-        )
-        .await
-    }
-
-    pub async fn release_code_transport_forward(
-        app: &AppHandle,
-        state: &State<'_, TunnelForwards>,
-        transport_id: &str,
-        generation: &str,
-        lease_id: &str,
-    ) -> Result<CodeTransportForwardRelease, String> {
-        Uuid::parse_str(lease_id)
-            .map_err(|_| "The shared Code transport lease is invalid.".to_string())?;
-        let release_plan = {
-            let mut pool = state
-                .code_pool
-                .lock()
-                .map_err(|_| "The shared Code transport pool is unavailable.".to_string())?;
-            if let Some(result) = release_terminated_code_transport_lease(
-                &mut pool,
-                transport_id,
-                generation,
-                lease_id,
-            ) {
-                return Ok(result);
-            }
-            release_code_transport_pool_lease(&mut pool, transport_id, generation, lease_id)
-        };
-        let stop_identity = match release_plan {
-            CodeTransportReleasePlan::Completed(result) => return Ok(result),
-            CodeTransportReleasePlan::Stop(forward) => forward,
-        };
-
-        let stopped = stop(
-            app,
-            state,
-            transport_id,
-            Some(&stop_identity.attachment_id),
-            stop_identity.diagnostic_trace_id.as_deref(),
-            stop_identity.direct_capability_id.as_deref(),
-            Some(generation),
-            "last-code-transport-lease-released",
-        )
-        .await?;
-        let mut pool = state
-            .code_pool
-            .lock()
-            .map_err(|_| "The shared Code transport pool is unavailable.".to_string())?;
-        if pool.entries.get(transport_id).is_some_and(|entry| {
-            pool_entry_generation(entry) == generation
-                && matches!(entry, CodeTransportPoolEntry::Stopping(_))
-        }) {
-            pool.entries.remove(transport_id);
-        }
-        Ok(CodeTransportForwardRelease {
-            released: true,
-            remaining_leases: 0,
-            stopped,
-        })
-    }
-
-    fn release_terminated_code_transport_lease(
-        pool: &mut CodeTransportPool,
-        transport_id: &str,
-        generation: &str,
-        lease_id: &str,
-    ) -> Option<CodeTransportForwardRelease> {
-        let key = (transport_id.to_string(), generation.to_string());
-        let replacement_exists = pool
-            .entries
-            .get(transport_id)
-            .is_some_and(|entry| pool_entry_generation(entry) != generation);
-        let terminated = pool.terminated.get_mut(&key)?;
-        if terminated.leases.remove(lease_id).is_none() {
-            return Some(CodeTransportForwardRelease {
-                released: false,
-                remaining_leases: terminated.leases.len(),
-                stopped: None,
-            });
-        }
-        let cleanup = terminated.cleanup.take();
-        let result = CodeTransportForwardRelease {
-            released: true,
-            remaining_leases: terminated.leases.len(),
-            // A replacement reuses the same server attachment identity. Never
-            // hand old-generation cleanup to JS after that replacement has
-            // started: deleting the old attachment would revoke the winner's
-            // freshly rotated credential too.
-            stopped: if replacement_exists { None } else { cleanup },
-        };
-        if terminated.leases.is_empty() && terminated.cleanup.is_none() {
-            pool.terminated.remove(&key);
-        }
-        Some(result)
-    }
-
-    fn release_code_transport_pool_lease(
-        pool: &mut CodeTransportPool,
-        transport_id: &str,
-        generation: &str,
-        lease_id: &str,
-    ) -> CodeTransportReleasePlan {
-        let Some(entry) = pool.entries.remove(transport_id) else {
-            return CodeTransportReleasePlan::Completed(CodeTransportForwardRelease {
-                released: false,
-                remaining_leases: 0,
-                stopped: None,
-            });
-        };
-        let CodeTransportPoolEntry::Active(mut active) = entry else {
-            pool.entries.insert(transport_id.to_string(), entry);
-            return CodeTransportReleasePlan::Completed(CodeTransportForwardRelease {
-                released: false,
-                remaining_leases: 0,
-                stopped: None,
-            });
-        };
-        if active.generation != generation {
-            let remaining_leases = active.leases.len();
-            pool.entries.insert(
-                transport_id.to_string(),
-                CodeTransportPoolEntry::Active(active),
-            );
-            return CodeTransportReleasePlan::Completed(CodeTransportForwardRelease {
-                released: false,
-                remaining_leases,
-                stopped: None,
-            });
-        }
-        if active.leases.remove(lease_id).is_none() {
-            let remaining_leases = active.leases.len();
-            pool.entries.insert(
-                transport_id.to_string(),
-                CodeTransportPoolEntry::Active(active),
-            );
-            return CodeTransportReleasePlan::Completed(CodeTransportForwardRelease {
-                released: false,
-                remaining_leases,
-                stopped: None,
-            });
-        }
-        if active
-            .maintenance
-            .as_ref()
-            .is_some_and(|(owner, _)| owner == lease_id)
-        {
-            active.maintenance = None;
-        }
-        let remaining_leases = active.leases.len();
-        if remaining_leases > 0 {
-            pool.entries.insert(
-                transport_id.to_string(),
-                CodeTransportPoolEntry::Active(active),
-            );
-            return CodeTransportReleasePlan::Completed(CodeTransportForwardRelease {
-                released: true,
-                remaining_leases,
-                stopped: None,
-            });
-        }
-        let forward = active.forward.clone();
-        active.retirement_fence.retire();
-        signal_pool_change(&active.changes);
-        pool.entries.insert(
-            transport_id.to_string(),
-            CodeTransportPoolEntry::Stopping(StoppingCodeTransport {
-                changes: active.changes,
-                generation: active.generation,
-                identity: active.identity,
-            }),
-        );
-        CodeTransportReleasePlan::Stop(forward)
-    }
-
-    fn prune_terminated_code_transports(pool: &mut CodeTransportPool) {
-        pool.terminated.retain(|_, terminated| {
-            terminated.created_at.elapsed() <= CODE_TRANSPORT_TERMINAL_RETENTION
-        });
-        while pool.terminated.len() > MAX_TERMINATED_CODE_TRANSPORTS {
-            let Some(oldest) = pool
-                .terminated
-                .iter()
-                .min_by_key(|(_, terminated)| terminated.created_at)
-                .map(|(key, _)| key.clone())
-            else {
-                break;
-            };
-            pool.terminated.remove(&oldest);
-        }
-    }
-
-    fn code_transport_forward_terminated(
-        state: &TunnelForwards,
-        transport_id: &str,
-        generation: &str,
-        cleanup: Option<TunnelForwardTerminalSnapshot>,
-    ) {
-        if let Ok(mut pool) = state.code_pool.lock() {
-            let exact = pool
-                .entries
-                .get(transport_id)
-                .is_some_and(|entry| pool_entry_generation(entry) == generation);
-            if exact {
-                if let Some(entry) = pool.entries.remove(transport_id) {
-                    signal_pool_change(pool_entry_changes(&entry));
-                    if let (CodeTransportPoolEntry::Active(active), Some(cleanup)) =
-                        (entry, cleanup)
-                    {
-                        pool.terminated.insert(
-                            (transport_id.to_string(), generation.to_string()),
-                            TerminatedCodeTransport {
-                                cleanup: Some(cleanup),
-                                created_at: Instant::now(),
-                                identity: active.identity,
-                                leases: active.leases,
-                            },
-                        );
-                        prune_terminated_code_transports(&mut pool);
-                    }
-                }
-            }
-        }
-    }
-
-    fn invalidate_code_transport_incarnation(
-        pool: &mut CodeTransportPool,
-        client_identity: &CodeTransportClientIdentity,
-    ) -> Vec<(String, String, TunnelForwardSummary)> {
-        pool.terminated.retain(|_, terminated| {
-            code_transport_client_identity(&terminated.identity) != *client_identity
-        });
-        let transport_ids = pool
-            .entries
-            .iter()
-            .filter(|(_, entry)| {
-                code_transport_client_identity(pool_entry_identity(entry)) == *client_identity
-            })
-            .map(|(transport_id, _)| transport_id.clone())
-            .collect::<Vec<_>>();
-        transport_ids
-            .into_iter()
-            .filter_map(|transport_id| {
-                let entry = pool.entries.remove(&transport_id)?;
-                signal_pool_change(pool_entry_changes(&entry));
-                match entry {
-                    CodeTransportPoolEntry::Starting(starting) => starting
-                        .forward
-                        .map(|forward| (transport_id, starting.generation, forward)),
-                    CodeTransportPoolEntry::Active(active) => {
-                        Some((transport_id, active.generation, active.forward))
-                    }
-                    CodeTransportPoolEntry::Stopping(_) => None,
-                }
-            })
-            .collect()
-    }
-
-    fn tombstone_and_invalidate_code_transport_incarnation(
-        state: &TunnelForwards,
-        client_identity: &CodeTransportClientIdentity,
-    ) -> Result<Vec<(String, String, TunnelForwardSummary)>, String> {
-        validate_code_transport_client_identity(client_identity)?;
-        // Tombstoning and draining share one lock boundary with acquire's
-        // tombstone check and pool mutation. A stale acquire therefore cannot
-        // commit after invalidation, while an unrelated fresh identity is
-        // never caught in the old identity's drain.
-        let mut invalidated = state
-            .invalidated_code_client_identities
-            .lock()
-            .map_err(|_| "The shared Code identity registry is unavailable.".to_string())?;
-        let mut pool = state
-            .code_pool
-            .lock()
-            .map_err(|_| "The shared Code transport pool is unavailable.".to_string())?;
-        invalidated.insert(client_identity.clone());
-        Ok(invalidate_code_transport_incarnation(
-            &mut pool,
-            client_identity,
-        ))
-    }
-
-    pub async fn invalidate_code_transport_pool(
-        app: &AppHandle,
-        state: &TunnelForwards,
-        client_identity: &CodeTransportClientIdentity,
-    ) -> Result<(), String> {
-        let stops = tombstone_and_invalidate_code_transport_incarnation(state, client_identity)?;
-        let mut failures = Vec::new();
-        let managed_state = app.state::<TunnelForwards>();
-        for (transport_id, generation, forward) in stops {
-            if let Err(error) = stop(
-                app,
-                &managed_state,
-                &transport_id,
-                Some(&forward.attachment_id),
-                forward.diagnostic_trace_id.as_deref(),
-                forward.direct_capability_id.as_deref(),
-                Some(&generation),
-                "attachment-invalidated",
-            )
-            .await
-            {
-                failures.push(error);
-            }
-        }
-        if failures.is_empty() {
-            Ok(())
-        } else {
-            Err(format!(
-                "Could not invalidate every shared Code transport: {}",
-                failures.join("; ")
-            ))
-        }
-    }
-
-    fn code_transport_window_actions(
-        pool: &CodeTransportPool,
-        window_label: &str,
-        window_instance_id: &str,
-    ) -> Vec<(String, String, Option<String>, Option<String>)> {
-        let mut actions = pool
-            .entries
-            .iter()
-            .flat_map(|(transport_id, entry)| match entry {
-                CodeTransportPoolEntry::Active(active) => active
-                    .leases
-                    .iter()
-                    .filter(|(_, lease)| {
-                        lease.window_label == window_label
-                            && lease.window_instance_id == window_instance_id
-                    })
-                    .map(|(lease_id, _)| {
-                        (
-                            transport_id.clone(),
-                            active.generation.clone(),
-                            Some(lease_id.clone()),
-                            None,
-                        )
-                    })
-                    .collect::<Vec<_>>(),
-                CodeTransportPoolEntry::Starting(starting)
-                    if starting.leader_window_label == window_label
-                        && starting.leader_window_instance_id == window_instance_id =>
-                {
-                    vec![(
-                        transport_id.clone(),
-                        starting.generation.clone(),
-                        None,
-                        Some(starting.reservation_id.clone()),
-                    )]
-                }
-                _ => Vec::new(),
-            })
-            .collect::<Vec<_>>();
-        actions.extend(pool.terminated.iter().flat_map(
-            |((transport_id, generation), terminated)| {
-                terminated
-                    .leases
-                    .iter()
-                    .filter(|(_, lease)| {
-                        lease.window_label == window_label
-                            && lease.window_instance_id == window_instance_id
-                    })
-                    .map(|(lease_id, _)| {
-                        (
-                            transport_id.clone(),
-                            generation.clone(),
-                            Some(lease_id.clone()),
-                            None,
-                        )
-                    })
-                    .collect::<Vec<_>>()
-            },
-        ));
-        actions
-    }
-
-    pub async fn release_code_transport_window(
-        app: &AppHandle,
-        state: &TunnelForwards,
-        window_label: &str,
-        window_instance_id: &str,
-    ) {
-        // Re-snapshot after every exact cleanup. A completion or publication
-        // already queued by the destroyed webview may transition Starting to
-        // Active between the snapshot and the command; the next pass catches
-        // the resulting lease without touching another window's ownership.
-        for _ in 0..8 {
-            let actions = state
-                .code_pool
-                .lock()
-                .ok()
-                .map(|pool| code_transport_window_actions(&pool, window_label, window_instance_id))
-                .unwrap_or_default();
-            if actions.is_empty() {
-                break;
-            }
-            for (transport_id, generation, lease_id, reservation_id) in actions {
-                let state = app.state::<TunnelForwards>();
-                if let Some(lease_id) = lease_id {
-                    let _ = release_code_transport_forward(
-                        app,
-                        &state,
-                        &transport_id,
-                        &generation,
-                        &lease_id,
-                    )
-                    .await;
-                } else if let Some(reservation_id) = reservation_id {
-                    // The renderer token was intentionally retired before this
-                    // cleanup began. Trust only the exact native owner tuple;
-                    // public IPC still requires the token to be current.
-                    let _ = fail_code_transport_forward_exact(
-                        app,
-                        &state,
-                        window_label,
-                        &transport_id,
-                        &generation,
-                        &reservation_id,
-                        Some(window_instance_id),
-                    )
-                    .await;
-                }
-            }
-        }
-    }
-
     pub async fn start(
         app: &AppHandle,
         state: &State<'_, TunnelForwards>,
@@ -3297,42 +1113,8 @@ mod desktop {
     ) -> Result<TunnelForwardSummary, String> {
         validate_identifiers(&request)?;
         let relay_fallback_available = request.relay.is_some();
-        let retirement_fence = match request.code_pool_generation.as_deref() {
-            Some(generation) => {
-                let pool = state
-                    .code_pool
-                    .lock()
-                    .map_err(|_| "The shared Code transport pool is unavailable.".to_string())?;
-                let Some(CodeTransportPoolEntry::Starting(starting)) =
-                    pool.entries.get(&request.tunnel_id)
-                else {
-                    return Err("The shared Code forward reservation is unavailable.".into());
-                };
-                if starting.generation != generation {
-                    return Err("The shared Code forward reservation changed.".into());
-                }
-                starting.retirement_fence.clone()
-            }
-            None => Arc::new(ForwardRetirementFence::default()),
-        };
-        let _start_reservation = reserve_forward_start(
-            state,
-            &request.tunnel_id,
-            request.code_pool_generation.as_deref(),
-        )?;
-        if request.code_pool_generation.is_none() {
-            let _ = stop(
-                app,
-                state,
-                &request.tunnel_id,
-                None,
-                None,
-                None,
-                None,
-                "replaced",
-            )
-            .await?;
-        }
+        let _start_reservation = reserve_forward_start(state, &request.tunnel_id)?;
+        let _ = stop(app, state, &request.tunnel_id, None, None, None, "replaced").await?;
         let listener = match bind_listener(request.preferred_local_port).await {
             Ok(listener) => listener,
             Err(error) => {
@@ -3383,7 +1165,6 @@ mod desktop {
             request.tunnel_id.clone(),
         );
         let tunnel_id = request.tunnel_id.clone();
-        let code_pool_generation = request.code_pool_generation.clone();
         let counters = Arc::new(ForwardCounters::default());
         let (stop_sender, stop_receiver) = oneshot::channel();
         let (ready_sender, ready_receiver) = oneshot::channel();
@@ -3396,9 +1177,6 @@ mod desktop {
             reason_code: "route-terminated",
             tunnel_id: request.tunnel_id.clone(),
         };
-        let terminal_code_pool_generation = code_pool_generation.clone();
-        let terminal_summary = Arc::new(Mutex::new(None::<TunnelForwardSummary>));
-        let task_terminal_summary = terminal_summary.clone();
         let task_app = app.clone();
         let task_counters = counters.clone();
         let task = tauri::async_runtime::spawn(async move {
@@ -3407,7 +1185,6 @@ mod desktop {
                 listener,
                 request,
                 task_counters.clone(),
-                retirement_fence,
                 stop_receiver,
                 ready_sender,
                 relay_refresh_receiver,
@@ -3437,19 +1214,6 @@ mod desktop {
                     exact
                 });
             if removed {
-                if let Some(generation) = terminal_code_pool_generation.as_deref() {
-                    let cleanup = task_terminal_summary
-                        .lock()
-                        .ok()
-                        .and_then(|summary| summary.clone())
-                        .map(|summary| task_counters.terminal_snapshot(&summary));
-                    code_transport_forward_terminated(
-                        &task_app.state::<TunnelForwards>(),
-                        &terminal_event.tunnel_id,
-                        generation,
-                        cleanup,
-                    );
-                }
                 emit_forward_terminal(&task_app, &terminal_event);
             }
         });
@@ -3491,11 +1255,7 @@ mod desktop {
             connections_closed: 0,
             connections_opened: 0,
             destination_rejected_count: 0,
-            code_pool_generation: code_pool_generation.clone(),
         };
-        if let Ok(mut published) = terminal_summary.lock() {
-            *published = Some(summary.clone());
-        }
         let mut forwards = state
             .forwards
             .lock()
@@ -3508,7 +1268,6 @@ mod desktop {
         forwards.insert(
             tunnel_id,
             ForwardHandle {
-                code_pool_generation,
                 counters,
                 relay_refresh: relay_refresh_sender,
                 route_control: route_control_sender,
@@ -3527,15 +1286,6 @@ mod desktop {
         state: &State<'_, TunnelForwards>,
         request: PrepareWorkerLinkTunnelForwardRequest,
     ) -> Result<WorkerLinkTunnelForwardPreparation, String> {
-        prepare_worker_link_with_generation(app, state, request, None).await
-    }
-
-    async fn prepare_worker_link_with_generation(
-        app: &AppHandle,
-        state: &State<'_, TunnelForwards>,
-        request: PrepareWorkerLinkTunnelForwardRequest,
-        code_pool_generation: Option<&str>,
-    ) -> Result<WorkerLinkTunnelForwardPreparation, String> {
         validate_worker_link_forward_identifiers(&request)?;
         let PrepareWorkerLinkTunnelForwardRequest {
             attachment_id,
@@ -3548,8 +1298,8 @@ mod desktop {
             worker_id,
         } = request;
         let protection = data_protection(Some(protection_request))?;
-        let _start_reservation = reserve_forward_start(state, &tunnel_id, code_pool_generation)?;
-        let _ = stop(app, state, &tunnel_id, None, None, None, None, "replaced").await?;
+        let _start_reservation = reserve_forward_start(state, &tunnel_id)?;
+        let _ = stop(app, state, &tunnel_id, None, None, None, "replaced").await?;
         let listener = bind_listener(preferred_local_port).await?;
         let local_port = listener
             .local_addr()
@@ -3573,7 +1323,6 @@ mod desktop {
             url: format!("ws://127.0.0.1:{bridge_port}/worker-link-tunnel"),
         };
         let exposed_bridge = bridge.expose()?;
-        let code_pool_generation = code_pool_generation.map(str::to_string);
         let counters = Arc::new(ForwardCounters::default());
         counters.route_state.store(3, Ordering::Relaxed);
         let summary = TunnelForwardSummary {
@@ -3595,7 +1344,6 @@ mod desktop {
             connections_closed: 0,
             connections_opened: 0,
             destination_rejected_count: 0,
-            code_pool_generation: code_pool_generation.clone(),
         };
         let terminal_event = TunnelForwardTerminalEvent {
             attachment_id: attachment_id.clone(),
@@ -3609,9 +1357,6 @@ mod desktop {
         let (route_control_sender, _route_control_receiver) = mpsc::channel(1);
         let task_app = app.clone();
         let task_counters = counters.clone();
-        let terminal_code_pool_generation = code_pool_generation.clone();
-        let terminal_counters = counters.clone();
-        let terminal_summary = summary.clone();
         let task = tauri::async_runtime::spawn(async move {
             run_worker_link_forward(
                 Some(task_app.clone()),
@@ -3648,14 +1393,6 @@ mod desktop {
                     exact
                 });
             if removed {
-                if let Some(generation) = terminal_code_pool_generation.as_deref() {
-                    code_transport_forward_terminated(
-                        &task_app.state::<TunnelForwards>(),
-                        &terminal_event.tunnel_id,
-                        generation,
-                        Some(terminal_counters.terminal_snapshot(&terminal_summary)),
-                    );
-                }
                 emit_forward_terminal(&task_app, &terminal_event);
             }
         });
@@ -3671,7 +1408,6 @@ mod desktop {
         forwards.insert(
             summary.tunnel_id.clone(),
             ForwardHandle {
-                code_pool_generation,
                 counters,
                 relay_refresh: relay_refresh_sender,
                 route_control: route_control_sender,
@@ -3702,54 +1438,6 @@ mod desktop {
             bridge: exposed_bridge,
             forward: summary,
         })
-    }
-
-    pub fn claim_worker_link_bridge(
-        state: &TunnelForwards,
-        tunnel_id: &str,
-        attachment_id: &str,
-        code_pool_generation: &str,
-        window_label: &str,
-        lease_id: &str,
-        window_instance_id: &str,
-    ) -> Result<Option<WorkerLinkTunnelBridge>, String> {
-        validate_code_transport_window_instance(state, window_label, window_instance_id)?;
-        let pool = state
-            .code_pool
-            .lock()
-            .map_err(|_| "The shared Code transport pool is unavailable.".to_string())?;
-        let authorized = matches!(
-            pool.entries.get(tunnel_id),
-            Some(CodeTransportPoolEntry::Active(active))
-                if active.generation == code_pool_generation
-                    && active.leases.get(lease_id).is_some_and(|lease| {
-                        lease.window_label == window_label
-                            && lease.window_instance_id == window_instance_id
-                    })
-        );
-        if !authorized {
-            return Ok(None);
-        }
-        drop(pool);
-        let mut forwards = state
-            .forwards
-            .lock()
-            .map_err(|_| "The local tunnel manager is unavailable.".to_string())?;
-        let Some(forward) = forwards.get_mut(tunnel_id) else {
-            return Ok(None);
-        };
-        if forward.summary.attachment_id != attachment_id
-            || forward.code_pool_generation.as_deref() != Some(code_pool_generation)
-            || forward.summary.direct_capability_id.is_some()
-            || forward.summary.relay_fallback_available
-            || forward.counters.route_state.load(Ordering::Relaxed) != 3
-        {
-            return Ok(None);
-        }
-        let Some(bridge) = forward.worker_link_bridge.as_ref() else {
-            return Ok(None);
-        };
-        bridge.rotate(None, None, lease_id)
     }
 
     pub fn rotate_worker_link_bridge_claim(
@@ -3796,67 +1484,31 @@ mod desktop {
             "relay" => 2,
             _ => return Err("The WorkerLink tunnel route is invalid.".into()),
         };
-        let summary = {
-            let mut forwards = state
-                .forwards
-                .lock()
-                .map_err(|_| "The local tunnel manager is unavailable.".to_string())?;
-            let Some(forward) = forwards.get_mut(tunnel_id) else {
-                return Ok(false);
-            };
-            if forward.worker_link_bridge.is_none()
-                || forward.summary.attachment_id != attachment_id
-                || forward.summary.direct_capability_id.is_some()
-                || forward.summary.relay_fallback_available
-            {
-                return Ok(false);
-            }
-            forward
-                .counters
-                .route_state
-                .store(route_state, Ordering::Relaxed);
-            forward.summary.effective_route = Some(route.to_string());
-            forward.summary.route_state = match route {
-                "local" | "lan" | "wan" => "local-direct",
-                "relay" => "relayed",
-                _ => unreachable!(),
-            };
-            forward.summary.clone()
-        };
-        synchronize_code_pool_worker_link_forward(state, &summary)?;
-        Ok(true)
-    }
-
-    fn synchronize_code_pool_worker_link_forward(
-        state: &TunnelForwards,
-        summary: &TunnelForwardSummary,
-    ) -> Result<(), String> {
-        let Some(generation) = summary.code_pool_generation.as_deref() else {
-            return Ok(());
-        };
-        let mut pool = state
-            .code_pool
+        let mut forwards = state
+            .forwards
             .lock()
-            .map_err(|_| "The shared Code transport pool is unavailable.".to_string())?;
-        match pool.entries.get_mut(&summary.tunnel_id) {
-            Some(CodeTransportPoolEntry::Starting(entry))
-                if entry.generation == generation
-                    && entry
-                        .forward
-                        .as_ref()
-                        .is_some_and(|forward| forward.attachment_id == summary.attachment_id) =>
-            {
-                entry.forward = Some(summary.clone());
-            }
-            Some(CodeTransportPoolEntry::Active(entry))
-                if entry.generation == generation
-                    && entry.forward.attachment_id == summary.attachment_id =>
-            {
-                entry.forward = summary.clone();
-            }
-            _ => {}
+            .map_err(|_| "The local tunnel manager is unavailable.".to_string())?;
+        let Some(forward) = forwards.get_mut(tunnel_id) else {
+            return Ok(false);
+        };
+        if forward.worker_link_bridge.is_none()
+            || forward.summary.attachment_id != attachment_id
+            || forward.summary.direct_capability_id.is_some()
+            || forward.summary.relay_fallback_available
+        {
+            return Ok(false);
         }
-        Ok(())
+        forward
+            .counters
+            .route_state
+            .store(route_state, Ordering::Relaxed);
+        forward.summary.effective_route = Some(route.to_string());
+        forward.summary.route_state = match route {
+            "local" | "lan" | "wan" => "local-direct",
+            "relay" => "relayed",
+            _ => unreachable!(),
+        };
+        Ok(true)
     }
 
     pub fn refresh_worker_link_forward(
@@ -3868,25 +1520,21 @@ mod desktop {
         if expires_at.len() > 64 || chrono::DateTime::parse_from_rfc3339(expires_at).is_err() {
             return Err("The WorkerLink tunnel expiration is invalid.".into());
         }
-        let summary = {
-            let mut forwards = state
-                .forwards
-                .lock()
-                .map_err(|_| "The local tunnel manager is unavailable.".to_string())?;
-            let Some(forward) = forwards.get_mut(tunnel_id) else {
-                return Ok(false);
-            };
-            if forward.worker_link_bridge.is_none()
-                || forward.summary.attachment_id != attachment_id
-                || forward.summary.direct_capability_id.is_some()
-                || forward.summary.relay_fallback_available
-            {
-                return Ok(false);
-            }
-            forward.summary.expires_at = expires_at.to_string();
-            forward.summary.clone()
+        let mut forwards = state
+            .forwards
+            .lock()
+            .map_err(|_| "The local tunnel manager is unavailable.".to_string())?;
+        let Some(forward) = forwards.get_mut(tunnel_id) else {
+            return Ok(false);
         };
-        synchronize_code_pool_worker_link_forward(state, &summary)?;
+        if forward.worker_link_bridge.is_none()
+            || forward.summary.attachment_id != attachment_id
+            || forward.summary.direct_capability_id.is_some()
+            || forward.summary.relay_fallback_available
+        {
+            return Ok(false);
+        }
+        forward.summary.expires_at = expires_at.to_string();
         Ok(true)
     }
 
@@ -4099,7 +1747,6 @@ mod desktop {
         expected_attachment_id: Option<&str>,
         expected_diagnostic_trace_id: Option<&str>,
         expected_direct_capability_id: Option<&str>,
-        expected_code_pool_generation: Option<&str>,
         reason: &'static str,
     ) -> Result<Option<TunnelForwardTerminalSnapshot>, String> {
         let forward = {
@@ -4113,13 +1760,11 @@ mod desktop {
                 expected_attachment_id,
                 expected_diagnostic_trace_id,
                 expected_direct_capability_id,
-                expected_code_pool_generation,
             )
         };
         let Some(mut forward) = forward else {
             return Ok(None);
         };
-        let code_pool_generation = forward.code_pool_generation.clone();
         abort_forward(&mut forward);
         log_forward_stopping(app, &forward, reason);
         let _ = (&mut forward.task).await;
@@ -4127,9 +1772,6 @@ mod desktop {
         let snapshot = forward.counters.terminal_snapshot(&forward.summary);
         log_forward_snapshot(app, &forward, &snapshot, reason);
         log_forward_stopped(app, &forward, reason);
-        if let Some(generation) = code_pool_generation.as_deref() {
-            code_transport_forward_terminated(state, tunnel_id, generation, None);
-        }
         if matches!(reason, "attachment-invalidated" | "replaced") {
             emit_forward_terminal(
                 app,
@@ -4154,12 +1796,8 @@ mod desktop {
         expected_attachment_id: Option<&str>,
         expected_diagnostic_trace_id: Option<&str>,
         expected_direct_capability_id: Option<&str>,
-        expected_code_pool_generation: Option<&str>,
     ) -> Option<ForwardHandle> {
         let candidate = forwards.get(tunnel_id)?;
-        if candidate.code_pool_generation.as_deref() != expected_code_pool_generation {
-            return None;
-        }
         if !stop_fence_matches(
             &candidate.summary,
             expected_attachment_id,
@@ -4294,20 +1932,7 @@ mod desktop {
             .forwards
             .lock()
             .map_err(|_| "The local tunnel manager is unavailable.".to_string())?;
-        let finished = forwards
-            .iter()
-            .filter(|(_, forward)| forward.task.inner().is_finished())
-            .map(|(tunnel_id, forward)| {
-                (
-                    tunnel_id.clone(),
-                    forward.code_pool_generation.clone(),
-                    forward.counters.terminal_snapshot(&forward.summary),
-                )
-            })
-            .collect::<Vec<_>>();
-        for (tunnel_id, _, _) in &finished {
-            forwards.remove(tunnel_id);
-        }
+        forwards.retain(|_, forward| !forward.task.inner().is_finished());
         let mut summaries = forwards
             .values()
             .map(|forward| {
@@ -4317,12 +1942,6 @@ mod desktop {
             })
             .collect::<Vec<_>>();
         summaries.sort_by(|left, right| left.tunnel_id.cmp(&right.tunnel_id));
-        drop(forwards);
-        for (tunnel_id, generation, cleanup) in finished {
-            if let Some(generation) = generation {
-                code_transport_forward_terminated(state, &tunnel_id, &generation, Some(cleanup));
-            }
-        }
         Ok(summaries)
     }
 
@@ -4944,7 +2563,6 @@ mod desktop {
         listener: TcpListener,
         mut request: StartTunnelForwardRequest,
         counters: Arc<ForwardCounters>,
-        retirement_fence: Arc<ForwardRetirementFence>,
         mut stop: oneshot::Receiver<()>,
         ready: oneshot::Sender<Result<StartupRoute, String>>,
         mut relay_refreshes: watch::Receiver<Option<Arc<RelayRoute>>>,
@@ -4970,9 +2588,6 @@ mod desktop {
         let mut direct_fallback_reason = None;
         let mut pending_relay_fallback: Option<oneshot::Sender<Result<(), String>>> = None;
         loop {
-            if retirement_fence.is_retiring() {
-                return;
-            }
             if direct.is_none() {
                 if let Some(latest) = relay_refreshes.borrow_and_update().clone() {
                     relay = Some(latest);
@@ -5046,9 +2661,6 @@ mod desktop {
                     RelayConnectOutcome::Stopped => return,
                 }
             };
-            if retirement_fence.is_retiring() {
-                return;
-            }
             let (web_socket, identity, startup) = match connected {
                 Ok(connected) => connected,
                 Err(error) => {
@@ -5153,16 +2765,6 @@ mod desktop {
             );
             let result =
                 run_session_with_relay_refresh(session, &mut relay, &mut relay_refreshes).await;
-            let result = match retirement_fenced_session_outcome(result, &retirement_fence) {
-                ForwardSessionResolution::Outcome(result) => result,
-                ForwardSessionResolution::RetirementFenced => {
-                    // The pool already owns the terminal transition. Wait for
-                    // its exact stop so this task cannot win the authoritative
-                    // forward-map cleanup race or emit a false terminal event.
-                    let _ = (&mut stop).await;
-                    return;
-                }
-            };
             match result {
                 Ok(SessionOutcome::Stopped) => return,
                 Ok(SessionOutcome::ForceRelay(completed)) => {
@@ -5204,19 +2806,6 @@ mod desktop {
                     counters.route_state.store(3, Ordering::Relaxed);
                 }
             }
-        }
-    }
-
-    fn retirement_fenced_session_outcome(
-        outcome: Result<SessionOutcome, String>,
-        retirement_fence: &ForwardRetirementFence,
-    ) -> ForwardSessionResolution {
-        if matches!(outcome, Ok(SessionOutcome::Stopped)) {
-            ForwardSessionResolution::Outcome(outcome)
-        } else if retirement_fence.is_retiring() {
-            ForwardSessionResolution::RetirementFenced
-        } else {
-            ForwardSessionResolution::Outcome(outcome)
         }
     }
 
@@ -6123,91 +3712,19 @@ mod desktop {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         use tokio_tungstenite::accept_hdr_async;
 
-        const LARGE_CODE_RESPONSE_BYTES: usize = 16 * 1_024 * 1_024 + 137;
+        const LARGE_RESPONSE_BYTES: usize = 16 * 1_024 * 1_024 + 137;
 
-        fn test_code_pool_identity() -> CodeTransportPoolIdentity {
-            CodeTransportPoolIdentity {
-                account_id: Some("account-one".into()),
-                client_identity_generation: 1,
-                client_identity_incarnation_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".into(),
-                connection_id: Some("connection-one".into()),
-                protected_key_revision: 1,
-                security_scope_id: "11111111-1111-4111-8111-111111111111".into(),
-                server_control_plane_generation: "22222222-2222-4222-8222-222222222222".into(),
-                server_id: "server-one".into(),
-                server_url: "https://server.example.test".into(),
-                transport_id: "33333333-3333-4333-8333-333333333333".into(),
-                user_id: "user-one".into(),
-                worker_id: "worker-one".into(),
-                worker_process_generation: "44444444-4444-4444-8444-444444444444".into(),
-            }
-        }
-
-        fn test_code_pool_forward() -> TunnelForwardSummary {
-            TunnelForwardSummary {
-                attachment_id: "physical-attachment-one".into(),
-                diagnostic_trace_id: Some("55555555-5555-4555-8555-555555555555".into()),
-                expires_at: "2099-01-01T00:00:00.000Z".into(),
-                local_host: "127.0.0.1",
-                local_port: 43_123,
-                effective_route: Some("local".into()),
-                route_state: "local-direct",
-                relay_fallback_available: true,
-                relay_credential_expires_at_epoch_ms: Some(u64::MAX),
-                direct_capability_id: Some("capability-one".into()),
-                direct_fallback_reason: None,
-                last_destination_rejection_code: None,
-                tunnel_id: "33333333-3333-4333-8333-333333333333".into(),
-                bytes_from_local: 0,
-                bytes_to_local: 0,
-                connections_closed: 0,
-                connections_opened: 0,
-                destination_rejected_count: 0,
-                code_pool_generation: Some("77777777-7777-4777-8777-777777777777".into()),
-            }
-        }
-
-        fn test_worker_link_code_pool_forward() -> TunnelForwardSummary {
-            TunnelForwardSummary {
-                attachment_id: "physical-attachment-one".into(),
-                diagnostic_trace_id: Some("55555555-5555-4555-8555-555555555555".into()),
-                expires_at: "2099-01-01T00:00:00.000Z".into(),
-                local_host: "127.0.0.1",
-                local_port: 43_123,
-                effective_route: None,
-                route_state: "degraded",
-                relay_fallback_available: false,
-                relay_credential_expires_at_epoch_ms: None,
-                direct_capability_id: None,
-                direct_fallback_reason: None,
-                last_destination_rejection_code: None,
-                tunnel_id: "33333333-3333-4333-8333-333333333333".into(),
-                bytes_from_local: 0,
-                bytes_to_local: 0,
-                connections_closed: 0,
-                connections_opened: 0,
-                destination_rejected_count: 0,
-                code_pool_generation: Some("77777777-7777-4777-8777-777777777777".into()),
-            }
-        }
-
-        fn test_active_code_pool_entry(
-            identity: CodeTransportPoolIdentity,
-            forward: TunnelForwardSummary,
-            generation: &str,
-        ) -> CodeTransportPoolEntry {
-            let (changes, _) = watch::channel(0_u64);
-            CodeTransportPoolEntry::Active(ActiveCodeTransport {
-                changes,
-                forward,
-                generation: generation.into(),
-                identity,
-                leases: HashMap::new(),
-                maintenance: None,
-                publication_acquisition_id: "99999999-9999-4999-8999-999999999999".into(),
-                publication_reservation_id: "88888888-8888-4888-8888-888888888888".into(),
-                retirement_fence: Arc::new(ForwardRetirementFence::default()),
-            })
+        #[test]
+        fn forward_start_reservations_exclude_duplicates_and_release_on_drop() {
+            let state = TunnelForwards::default();
+            let first = reserve_forward_start(&state, "tunnel-one").unwrap();
+            assert!(reserve_forward_start(&state, "tunnel-one").is_err());
+            let other = reserve_forward_start(&state, "tunnel-two").unwrap();
+            drop(first);
+            let replacement = reserve_forward_start(&state, "tunnel-one").unwrap();
+            drop(replacement);
+            drop(other);
+            assert!(state.forward_starts.lock().unwrap().is_empty());
         }
 
         #[test]
@@ -6261,135 +3778,6 @@ mod desktop {
                 )
                 .unwrap()
                 .is_none());
-        }
-
-        #[test]
-        fn worker_link_route_and_expiration_updates_reach_the_exact_code_pool_generation() {
-            let state = TunnelForwards::default();
-            let transport_id = "33333333-3333-4333-8333-333333333333";
-            let generation = "77777777-7777-4777-8777-777777777777";
-            state.code_pool.lock().unwrap().entries.insert(
-                transport_id.into(),
-                test_active_code_pool_entry(
-                    test_code_pool_identity(),
-                    test_worker_link_code_pool_forward(),
-                    generation,
-                ),
-            );
-            let mut updated = test_worker_link_code_pool_forward();
-            updated.route_state = "relayed";
-            updated.expires_at = "2099-02-01T00:00:00.000Z".into();
-
-            synchronize_code_pool_worker_link_forward(&state, &updated).unwrap();
-
-            assert!(matches!(
-                state.code_pool.lock().unwrap().entries.get(transport_id),
-                Some(CodeTransportPoolEntry::Active(active))
-                    if active.forward.route_state == "relayed"
-                        && active.forward.expires_at == "2099-02-01T00:00:00.000Z"
-            ));
-        }
-
-        #[tokio::test]
-        async fn degraded_code_worker_link_bridge_requires_the_exact_live_window_lease() {
-            let state = TunnelForwards::default();
-            let transport_id = "33333333-3333-4333-8333-333333333333";
-            let generation = "77777777-7777-4777-8777-777777777777";
-            let lease_id = "88888888-8888-4888-8888-888888888888";
-            let window_instance = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-            register_code_transport_window_instance(&state, "main", window_instance).unwrap();
-            let mut entry = match test_active_code_pool_entry(
-                test_code_pool_identity(),
-                test_worker_link_code_pool_forward(),
-                generation,
-            ) {
-                CodeTransportPoolEntry::Active(entry) => entry,
-                _ => unreachable!(),
-            };
-            entry.leases.insert(
-                lease_id.into(),
-                CodeTransportLease {
-                    acquisition_id: "99999999-9999-4999-8999-999999999999".into(),
-                    consumer_id: "consumer-one".into(),
-                    window_label: "main".into(),
-                    window_instance_id: window_instance.into(),
-                },
-            );
-            state
-                .code_pool
-                .lock()
-                .unwrap()
-                .entries
-                .insert(transport_id.into(), CodeTransportPoolEntry::Active(entry));
-            let counters = Arc::new(ForwardCounters::default());
-            counters.route_state.store(3, Ordering::Relaxed);
-            let (relay_refresh, _) = watch::channel(None);
-            let (route_control, _) = mpsc::channel(1);
-            let (stop, _) = oneshot::channel();
-            let task = tauri::async_runtime::spawn(async {
-                std::future::pending::<()>().await;
-            });
-            state.forwards.lock().unwrap().insert(
-                transport_id.into(),
-                ForwardHandle {
-                    code_pool_generation: Some(generation.into()),
-                    counters: counters.clone(),
-                    relay_refresh,
-                    route_control,
-                    stop: Some(stop),
-                    summary: test_worker_link_code_pool_forward(),
-                    task,
-                    worker_link_bridge: Some(StoredWorkerLinkBridge {
-                        claim: Arc::new(Mutex::new(WorkerLinkBridgeClaim {
-                            generation: 1,
-                            id: "66666666-6666-4666-8666-666666666666".into(),
-                            expires_at_epoch_ms: u64::MAX,
-                            token: Zeroizing::new("bridge-secret".into()),
-                        })),
-                        native_forward_generation: "55555555-5555-4555-8555-555555555555".into(),
-                        url: "ws://127.0.0.1:43210/worker-link-tunnel".into(),
-                    }),
-                },
-            );
-
-            let claimed = claim_worker_link_bridge(
-                &state,
-                transport_id,
-                "physical-attachment-one",
-                generation,
-                "main",
-                lease_id,
-                window_instance,
-            )
-            .unwrap()
-            .unwrap();
-            assert_eq!(claimed.claim_generation, 2);
-            assert_eq!(claimed.claim_id, lease_id);
-            assert_ne!(claimed.token, "bridge-secret");
-            assert!(claim_worker_link_bridge(
-                &state,
-                transport_id,
-                "physical-attachment-one",
-                generation,
-                "main",
-                "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
-                window_instance,
-            )
-            .unwrap()
-            .is_none());
-
-            counters.route_state.store(2, Ordering::Relaxed);
-            assert!(claim_worker_link_bridge(
-                &state,
-                transport_id,
-                "physical-attachment-one",
-                generation,
-                "main",
-                lease_id,
-                window_instance,
-            )
-            .unwrap()
-            .is_none());
         }
 
         #[tokio::test]
@@ -6479,732 +3867,6 @@ mod desktop {
             assert!(consumed.token.is_empty());
         }
 
-        #[test]
-        fn shared_code_pool_identity_fences_client_auth_incarnations() {
-            let identity = test_code_pool_identity();
-            assert!(validate_code_transport_pool_identity(
-                &identity,
-                "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-                "66666666-6666-4666-8666-666666666666"
-            )
-            .is_ok());
-
-            let mut replacement = identity.clone();
-            replacement.client_identity_generation += 1;
-            assert_ne!(replacement, identity);
-            assert!(same_code_transport_security_identity(
-                &replacement,
-                &identity
-            ));
-
-            replacement.client_identity_incarnation_id =
-                "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb".into();
-            assert!(!same_code_transport_security_identity(
-                &replacement,
-                &identity
-            ));
-
-            let mut invalid = identity;
-            invalid.client_identity_generation = 0;
-            assert_eq!(
-                validate_code_transport_pool_identity(
-                    &invalid,
-                    "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-                    "66666666-6666-4666-8666-666666666666"
-                )
-                .unwrap_err(),
-                "The shared Code client identity generation is invalid."
-            );
-        }
-
-        #[test]
-        fn delayed_identity_invalidation_preserves_same_incarnation_on_another_origin() {
-            let state = TunnelForwards::default();
-            let old_identity = test_code_pool_identity();
-            let old_client_identity = code_transport_client_identity(&old_identity);
-            let old_transport = old_identity.transport_id.clone();
-            let mut fresh_identity = old_identity.clone();
-            fresh_identity.connection_id = Some("connection-two".into());
-            fresh_identity.server_url = "https://other.example.test".into();
-            fresh_identity.transport_id = "cccccccc-cccc-4ccc-8ccc-cccccccccccc".into();
-            let fresh_transport = fresh_identity.transport_id.clone();
-            let mut fresh_forward = test_code_pool_forward();
-            fresh_forward.tunnel_id = fresh_transport.clone();
-            fresh_forward.code_pool_generation =
-                Some("dddddddd-dddd-4ddd-8ddd-dddddddddddd".into());
-            state.code_pool.lock().unwrap().entries.extend([
-                (
-                    old_transport.clone(),
-                    test_active_code_pool_entry(
-                        old_identity,
-                        test_code_pool_forward(),
-                        "77777777-7777-4777-8777-777777777777",
-                    ),
-                ),
-                (
-                    fresh_transport.clone(),
-                    test_active_code_pool_entry(
-                        fresh_identity.clone(),
-                        fresh_forward,
-                        "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
-                    ),
-                ),
-            ]);
-
-            let stops =
-                tombstone_and_invalidate_code_transport_incarnation(&state, &old_client_identity)
-                    .unwrap();
-            assert_eq!(stops.len(), 1);
-            assert_eq!(stops[0].0, old_transport);
-            assert!(state
-                .code_pool
-                .lock()
-                .unwrap()
-                .entries
-                .contains_key(&fresh_transport));
-            assert!(code_transport_pool_for_acquire(&state, &old_client_identity).is_err());
-            assert!(code_transport_pool_for_acquire(
-                &state,
-                &code_transport_client_identity(&fresh_identity)
-            )
-            .is_ok());
-        }
-
-        #[test]
-        fn identity_invalidation_serializes_after_an_in_flight_acquire_commit() {
-            use std::sync::mpsc;
-            use std::thread;
-
-            let state = Arc::new(TunnelForwards::default());
-            let identity = test_code_pool_identity();
-            let client_identity = code_transport_client_identity(&identity);
-            let transport_id = identity.transport_id.clone();
-            let (acquire_locked_tx, acquire_locked_rx) = mpsc::channel();
-            let (commit_tx, commit_rx) = mpsc::channel();
-            let acquisition_state = Arc::clone(&state);
-            let acquisition = thread::spawn(move || {
-                let (_identity_fence, mut pool) =
-                    code_transport_pool_for_acquire(&acquisition_state, &client_identity).unwrap();
-                acquire_locked_tx.send(()).unwrap();
-                commit_rx.recv().unwrap();
-                pool.entries.insert(
-                    transport_id,
-                    test_active_code_pool_entry(
-                        identity,
-                        test_code_pool_forward(),
-                        "77777777-7777-4777-8777-777777777777",
-                    ),
-                );
-            });
-            acquire_locked_rx.recv().unwrap();
-
-            let invalidation_state = Arc::clone(&state);
-            let old_client_identity = code_transport_client_identity(&test_code_pool_identity());
-            let (invalidation_started_tx, invalidation_started_rx) = mpsc::channel();
-            let invalidation = thread::spawn(move || {
-                invalidation_started_tx.send(()).unwrap();
-                tombstone_and_invalidate_code_transport_incarnation(
-                    &invalidation_state,
-                    &old_client_identity,
-                )
-                .unwrap()
-            });
-            invalidation_started_rx.recv().unwrap();
-            commit_tx.send(()).unwrap();
-            acquisition.join().unwrap();
-            let stops = invalidation.join().unwrap();
-
-            assert_eq!(stops.len(), 1);
-            assert!(state.code_pool.lock().unwrap().entries.is_empty());
-            assert!(state
-                .invalidated_code_client_identities
-                .lock()
-                .unwrap()
-                .contains(&code_transport_client_identity(&test_code_pool_identity())));
-        }
-
-        #[test]
-        fn shared_code_pool_releases_only_the_exact_generation_and_lease() {
-            let transport_id = "33333333-3333-4333-8333-333333333333";
-            let generation = "77777777-7777-4777-8777-777777777777";
-            let first_lease = "88888888-8888-4888-8888-888888888888";
-            let second_lease = "99999999-9999-4999-8999-999999999999";
-            let (changes, _) = watch::channel(0_u64);
-            let retirement_fence = Arc::new(ForwardRetirementFence::default());
-            let mut pool = CodeTransportPool {
-                entries: HashMap::from([(
-                    transport_id.into(),
-                    CodeTransportPoolEntry::Active(ActiveCodeTransport {
-                        changes,
-                        forward: test_code_pool_forward(),
-                        generation: generation.into(),
-                        identity: test_code_pool_identity(),
-                        leases: HashMap::from([
-                            (
-                                first_lease.into(),
-                                CodeTransportLease {
-                                    acquisition_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".into(),
-                                    consumer_id: "consumer-one".into(),
-                                    window_label: "main".into(),
-                                    window_instance_id: "11111111-1111-4111-8111-111111111111"
-                                        .into(),
-                                },
-                            ),
-                            (
-                                second_lease.into(),
-                                CodeTransportLease {
-                                    acquisition_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb".into(),
-                                    consumer_id: "consumer-two".into(),
-                                    window_label: "popout".into(),
-                                    window_instance_id: "22222222-2222-4222-8222-222222222222"
-                                        .into(),
-                                },
-                            ),
-                        ]),
-                        maintenance: None,
-                        publication_acquisition_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".into(),
-                        publication_reservation_id: "33333333-3333-4333-8333-333333333333".into(),
-                        retirement_fence: retirement_fence.clone(),
-                    }),
-                )]),
-                ..CodeTransportPool::default()
-            };
-
-            let CodeTransportReleasePlan::Completed(stale_generation) =
-                release_code_transport_pool_lease(
-                    &mut pool,
-                    transport_id,
-                    "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-                    first_lease,
-                )
-            else {
-                panic!("a stale generation must not stop the active transport")
-            };
-            assert!(!stale_generation.released);
-            assert_eq!(stale_generation.remaining_leases, 2);
-            assert!(!retirement_fence.is_retiring());
-
-            let CodeTransportReleasePlan::Completed(first) =
-                release_code_transport_pool_lease(&mut pool, transport_id, generation, first_lease)
-            else {
-                panic!("the first of two leases must retain the transport")
-            };
-            assert!(first.released);
-            assert_eq!(first.remaining_leases, 1);
-            assert!(!retirement_fence.is_retiring());
-            assert!(matches!(
-                pool.entries.get(transport_id),
-                Some(CodeTransportPoolEntry::Active(active))
-                    if active.leases.contains_key(second_lease)
-                        && !active.leases.contains_key(first_lease)
-            ));
-
-            let CodeTransportReleasePlan::Stop(stopped) = release_code_transport_pool_lease(
-                &mut pool,
-                transport_id,
-                generation,
-                second_lease,
-            ) else {
-                panic!("the exact last lease must stop the transport")
-            };
-            assert_eq!(stopped.tunnel_id, transport_id);
-            assert!(retirement_fence.is_retiring());
-            assert!(matches!(
-                pool.entries.get(transport_id),
-                Some(CodeTransportPoolEntry::Stopping(entry))
-                    if entry.generation == generation
-            ));
-        }
-
-        #[test]
-        fn retirement_fence_before_remote_close_resolves_session_as_stopped() {
-            let retirement_fence = ForwardRetirementFence::default();
-            retirement_fence.retire();
-
-            assert!(matches!(
-                retirement_fenced_session_outcome(
-                    Ok(SessionOutcome::Disconnected),
-                    &retirement_fence,
-                ),
-                ForwardSessionResolution::RetirementFenced
-            ));
-        }
-
-        #[test]
-        fn remote_close_before_stop_delivery_observes_synchronous_last_lease_fence() {
-            let transport_id = "33333333-3333-4333-8333-333333333333";
-            let generation = "77777777-7777-4777-8777-777777777777";
-            let lease_id = "88888888-8888-4888-8888-888888888888";
-            let retirement_fence = Arc::new(ForwardRetirementFence::default());
-            let remote_close = Ok(SessionOutcome::Disconnected);
-            let mut entry = match test_active_code_pool_entry(
-                test_code_pool_identity(),
-                test_code_pool_forward(),
-                generation,
-            ) {
-                CodeTransportPoolEntry::Active(entry) => entry,
-                _ => unreachable!(),
-            };
-            entry.retirement_fence = retirement_fence.clone();
-            entry.leases.insert(
-                lease_id.into(),
-                CodeTransportLease {
-                    acquisition_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".into(),
-                    consumer_id: "consumer-one".into(),
-                    window_label: "main".into(),
-                    window_instance_id: "11111111-1111-4111-8111-111111111111".into(),
-                },
-            );
-            let mut pool = CodeTransportPool {
-                entries: HashMap::from([(
-                    transport_id.into(),
-                    CodeTransportPoolEntry::Active(entry),
-                )]),
-                ..CodeTransportPool::default()
-            };
-
-            assert!(matches!(
-                release_code_transport_pool_lease(&mut pool, transport_id, generation, lease_id,),
-                CodeTransportReleasePlan::Stop(_)
-            ));
-            assert!(retirement_fence.is_retiring());
-            assert!(matches!(
-                retirement_fenced_session_outcome(remote_close, &retirement_fence),
-                ForwardSessionResolution::RetirementFenced
-            ));
-        }
-
-        #[test]
-        fn unexpected_remote_close_without_retirement_still_recovers() {
-            let retirement_fence = ForwardRetirementFence::default();
-
-            assert!(matches!(
-                retirement_fenced_session_outcome(
-                    Ok(SessionOutcome::Disconnected),
-                    &retirement_fence,
-                ),
-                ForwardSessionResolution::Outcome(Ok(SessionOutcome::Disconnected))
-            ));
-        }
-
-        #[test]
-        fn explicit_code_retirement_fences_reuse_and_preserves_leases() {
-            let transport_id = "33333333-3333-4333-8333-333333333333";
-            let generation = "77777777-7777-4777-8777-777777777777";
-            let lease_id = "88888888-8888-4888-8888-888888888888";
-            let window_instance_id = "11111111-1111-4111-8111-111111111111";
-            let retirement_fence = Arc::new(ForwardRetirementFence::default());
-            let mut pool = CodeTransportPool::default();
-            let (changes, _) = watch::channel(0_u64);
-            pool.entries.insert(
-                transport_id.into(),
-                CodeTransportPoolEntry::Active(ActiveCodeTransport {
-                    changes,
-                    forward: test_code_pool_forward(),
-                    generation: generation.into(),
-                    identity: test_code_pool_identity(),
-                    leases: HashMap::from([(
-                        lease_id.into(),
-                        CodeTransportLease {
-                            acquisition_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".into(),
-                            consumer_id: "consumer-one".into(),
-                            window_label: "main".into(),
-                            window_instance_id: window_instance_id.into(),
-                        },
-                    )]),
-                    maintenance: None,
-                    publication_acquisition_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".into(),
-                    publication_reservation_id: "33333333-3333-4333-8333-333333333333".into(),
-                    retirement_fence: retirement_fence.clone(),
-                }),
-            );
-
-            let retired = take_code_transport_generation_for_retirement(
-                &mut pool,
-                "main",
-                transport_id,
-                generation,
-                lease_id,
-                window_instance_id,
-            );
-
-            assert!(retired.is_some());
-            assert!(retirement_fence.is_retiring());
-            assert!(matches!(
-                pool.entries.get(transport_id),
-                Some(CodeTransportPoolEntry::Stopping(entry))
-                    if entry.generation == generation
-            ));
-            assert!(pool
-                .terminated
-                .get(&(transport_id.into(), generation.into()))
-                .is_some_and(|entry| entry.leases.contains_key(lease_id)));
-        }
-
-        #[test]
-        fn unexpected_code_terminal_preserves_one_exact_cleanup_claim() {
-            let transport_id = "33333333-3333-4333-8333-333333333333";
-            let generation = "77777777-7777-4777-8777-777777777777";
-            let first_lease = "88888888-8888-4888-8888-888888888888";
-            let second_lease = "99999999-9999-4999-8999-999999999999";
-            let state = TunnelForwards::default();
-            let (changes, _) = watch::channel(0_u64);
-            state.code_pool.lock().unwrap().entries.insert(
-                transport_id.into(),
-                CodeTransportPoolEntry::Active(ActiveCodeTransport {
-                    changes,
-                    forward: test_code_pool_forward(),
-                    generation: generation.into(),
-                    identity: test_code_pool_identity(),
-                    leases: HashMap::from([
-                        (
-                            first_lease.into(),
-                            CodeTransportLease {
-                                acquisition_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".into(),
-                                consumer_id: "consumer-one".into(),
-                                window_label: "main".into(),
-                                window_instance_id: "11111111-1111-4111-8111-111111111111".into(),
-                            },
-                        ),
-                        (
-                            second_lease.into(),
-                            CodeTransportLease {
-                                acquisition_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb".into(),
-                                consumer_id: "consumer-two".into(),
-                                window_label: "popout".into(),
-                                window_instance_id: "22222222-2222-4222-8222-222222222222".into(),
-                            },
-                        ),
-                    ]),
-                    maintenance: None,
-                    publication_acquisition_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".into(),
-                    publication_reservation_id: "33333333-3333-4333-8333-333333333333".into(),
-                    retirement_fence: Arc::new(ForwardRetirementFence::default()),
-                }),
-            );
-            let cleanup = ForwardCounters::default().terminal_snapshot(&test_code_pool_forward());
-
-            code_transport_forward_terminated(&state, transport_id, generation, Some(cleanup));
-
-            let mut pool = state.code_pool.lock().unwrap();
-            assert!(!pool.entries.contains_key(transport_id));
-            // A new generation is not blocked by the old cleanup record and
-            // fences its shared server attachment from old cleanup.
-            let (changes, _) = watch::channel(0_u64);
-            pool.entries.insert(
-                transport_id.into(),
-                CodeTransportPoolEntry::Stopping(StoppingCodeTransport {
-                    changes,
-                    generation: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".into(),
-                    identity: test_code_pool_identity(),
-                }),
-            );
-            let first = release_terminated_code_transport_lease(
-                &mut pool,
-                transport_id,
-                generation,
-                first_lease,
-            )
-            .unwrap();
-            assert!(first.released);
-            assert!(first.stopped.is_none());
-            let second = release_terminated_code_transport_lease(
-                &mut pool,
-                transport_id,
-                generation,
-                second_lease,
-            )
-            .unwrap();
-            assert!(second.released);
-            assert!(second.stopped.is_none());
-            assert!(matches!(
-                pool.entries.get(transport_id),
-                Some(CodeTransportPoolEntry::Stopping(entry))
-                    if entry.generation == "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
-            ));
-        }
-
-        #[test]
-        fn destroyed_code_window_instances_cannot_reacquire_after_label_reuse() {
-            let state = TunnelForwards::default();
-            let first = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-            let second = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
-            register_code_transport_window_instance(&state, "main", first).unwrap();
-            validate_code_transport_window_instance(&state, "main", first).unwrap();
-            retire_code_transport_window_instance(&state, "main");
-            assert!(validate_code_transport_window_instance(&state, "main", first).is_err());
-            assert!(register_code_transport_window_instance(&state, "main", first).is_err());
-            register_code_transport_window_instance(&state, "main", second).unwrap();
-            validate_code_transport_window_instance(&state, "main", second).unwrap();
-            assert!(validate_code_transport_window_instance(&state, "main", first).is_err());
-        }
-
-        #[test]
-        fn renderer_reload_rotates_window_token_and_returns_old_ownership_for_cleanup() {
-            let state = TunnelForwards::default();
-            let first = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-            let second = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
-            let transport_id = "33333333-3333-4333-8333-333333333333";
-            let generation = "77777777-7777-4777-8777-777777777777";
-            let reservation_id = "88888888-8888-4888-8888-888888888888";
-            register_code_transport_window_instance(&state, "main", first).unwrap();
-            let (changes, _) = watch::channel(0_u64);
-            state.code_pool.lock().unwrap().entries.insert(
-                transport_id.into(),
-                CodeTransportPoolEntry::Starting(StartingCodeTransport {
-                    changes,
-                    completing: false,
-                    created_at: Instant::now(),
-                    forward: None,
-                    generation: generation.into(),
-                    identity: test_code_pool_identity(),
-                    leader_acquisition_id: "99999999-9999-4999-8999-999999999999".into(),
-                    leader_consumer_id: "66666666-6666-4666-8666-666666666666".into(),
-                    leader_window_instance_id: first.into(),
-                    leader_window_label: "main".into(),
-                    retirement_fence: Arc::new(ForwardRetirementFence::default()),
-                    reservation_id: reservation_id.into(),
-                }),
-            );
-
-            assert_eq!(
-                register_code_transport_window_instance(&state, "main", second)
-                    .unwrap()
-                    .as_deref(),
-                Some(first)
-            );
-
-            let pool = state.code_pool.lock().unwrap();
-            assert_eq!(
-                code_transport_window_actions(&pool, "main", first),
-                vec![(
-                    transport_id.into(),
-                    generation.into(),
-                    None,
-                    Some(reservation_id.into()),
-                )]
-            );
-            assert!(code_transport_window_actions(&pool, "main", second).is_empty());
-            drop(pool);
-            assert!(validate_code_transport_window_instance(&state, "main", first).is_err());
-            validate_code_transport_window_instance(&state, "main", second).unwrap();
-
-            take_failed_code_transport_forward(
-                &state,
-                "main",
-                transport_id,
-                generation,
-                reservation_id,
-                Some(first),
-            )
-            .unwrap();
-            assert!(state.code_pool.lock().unwrap().entries.is_empty());
-            validate_code_transport_window_instance(&state, "main", second).unwrap();
-        }
-
-        #[test]
-        fn destroyed_window_cleanup_does_not_match_same_label_replacement() {
-            let state = TunnelForwards::default();
-            let first = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-            let second = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
-            let transport_id = "33333333-3333-4333-8333-333333333333";
-            register_code_transport_window_instance(&state, "main", first).unwrap();
-            assert_eq!(
-                retire_code_transport_window_instance(&state, "main").as_deref(),
-                Some(first)
-            );
-            register_code_transport_window_instance(&state, "main", second).unwrap();
-            let (changes, _) = watch::channel(0_u64);
-            state.code_pool.lock().unwrap().entries.insert(
-                transport_id.into(),
-                CodeTransportPoolEntry::Starting(StartingCodeTransport {
-                    changes,
-                    completing: false,
-                    created_at: Instant::now(),
-                    forward: None,
-                    generation: "77777777-7777-4777-8777-777777777777".into(),
-                    identity: test_code_pool_identity(),
-                    leader_acquisition_id: "99999999-9999-4999-8999-999999999999".into(),
-                    leader_consumer_id: "66666666-6666-4666-8666-666666666666".into(),
-                    leader_window_instance_id: second.into(),
-                    leader_window_label: "main".into(),
-                    retirement_fence: Arc::new(ForwardRetirementFence::default()),
-                    reservation_id: "88888888-8888-4888-8888-888888888888".into(),
-                }),
-            );
-
-            let pool = state.code_pool.lock().unwrap();
-            assert!(code_transport_window_actions(&pool, "main", first).is_empty());
-            assert_eq!(
-                code_transport_window_actions(&pool, "main", second).len(),
-                1
-            );
-        }
-
-        #[test]
-        fn destroyed_window_exact_cleanup_removes_its_starting_reservation() {
-            let state = TunnelForwards::default();
-            let window_instance = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-            let transport_id = "33333333-3333-4333-8333-333333333333";
-            let generation = "77777777-7777-4777-8777-777777777777";
-            let reservation_id = "88888888-8888-4888-8888-888888888888";
-            register_code_transport_window_instance(&state, "main", window_instance).unwrap();
-            let (changes, _) = watch::channel(0_u64);
-            state.code_pool.lock().unwrap().entries.insert(
-                transport_id.into(),
-                CodeTransportPoolEntry::Starting(StartingCodeTransport {
-                    changes,
-                    completing: false,
-                    created_at: Instant::now(),
-                    forward: None,
-                    generation: generation.into(),
-                    identity: test_code_pool_identity(),
-                    leader_acquisition_id: "99999999-9999-4999-8999-999999999999".into(),
-                    leader_consumer_id: "66666666-6666-4666-8666-666666666666".into(),
-                    leader_window_instance_id: window_instance.into(),
-                    leader_window_label: "main".into(),
-                    retirement_fence: Arc::new(ForwardRetirementFence::default()),
-                    reservation_id: reservation_id.into(),
-                }),
-            );
-
-            assert_eq!(
-                retire_code_transport_window_instance(&state, "main").as_deref(),
-                Some(window_instance)
-            );
-            assert!(
-                validate_code_transport_window_instance(&state, "main", window_instance).is_err()
-            );
-            take_failed_code_transport_forward(
-                &state,
-                "main",
-                transport_id,
-                generation,
-                reservation_id,
-                Some(window_instance),
-            )
-            .unwrap();
-            assert!(state.code_pool.lock().unwrap().entries.is_empty());
-        }
-
-        #[test]
-        fn forward_start_reservation_excludes_generic_and_pooled_interleavings() {
-            let state = TunnelForwards::default();
-            let transport_id = "33333333-3333-4333-8333-333333333333";
-            let generation = "77777777-7777-4777-8777-777777777777";
-            let generic = reserve_forward_start(&state, transport_id, None).unwrap();
-            assert!(reserve_forward_start(&state, transport_id, None).is_err());
-            assert!(reserve_forward_start(&state, transport_id, Some(generation)).is_err());
-            drop(generic);
-            let pooled = reserve_forward_start(&state, transport_id, Some(generation)).unwrap();
-            assert!(reserve_forward_start(&state, transport_id, None).is_err());
-            drop(pooled);
-            assert!(reserve_forward_start(&state, transport_id, None).is_ok());
-        }
-
-        #[test]
-        fn publication_is_idempotent_after_native_commit() {
-            let state = TunnelForwards::default();
-            let window_instance = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-            let transport_id = "33333333-3333-4333-8333-333333333333";
-            let generation = "77777777-7777-4777-8777-777777777777";
-            let reservation_id = "88888888-8888-4888-8888-888888888888";
-            register_code_transport_window_instance(&state, "main", window_instance).unwrap();
-            let (changes, _) = watch::channel(0_u64);
-            state.code_pool.lock().unwrap().entries.insert(
-                transport_id.into(),
-                CodeTransportPoolEntry::Starting(StartingCodeTransport {
-                    changes,
-                    completing: false,
-                    created_at: Instant::now(),
-                    forward: Some(test_code_pool_forward()),
-                    generation: generation.into(),
-                    identity: test_code_pool_identity(),
-                    leader_acquisition_id: "99999999-9999-4999-8999-999999999999".into(),
-                    leader_consumer_id: "66666666-6666-4666-8666-666666666666".into(),
-                    leader_window_instance_id: window_instance.into(),
-                    leader_window_label: "main".into(),
-                    retirement_fence: Arc::new(ForwardRetirementFence::default()),
-                    reservation_id: reservation_id.into(),
-                }),
-            );
-
-            let first = publish_code_transport_forward(
-                &state,
-                "main",
-                transport_id,
-                generation,
-                reservation_id,
-                window_instance,
-            )
-            .unwrap();
-            let second = publish_code_transport_forward(
-                &state,
-                "main",
-                transport_id,
-                generation,
-                reservation_id,
-                window_instance,
-            )
-            .unwrap();
-            let reconciled = reconcile_code_transport_forward(
-                &state,
-                "main",
-                "99999999-9999-4999-8999-999999999999",
-                "66666666-6666-4666-8666-666666666666",
-                transport_id,
-                generation,
-                reservation_id,
-                window_instance,
-            )
-            .unwrap();
-            let (
-                CodeTransportForwardAcquisition::Ready {
-                    lease_id: first_lease,
-                    ..
-                },
-                CodeTransportForwardAcquisition::Ready {
-                    lease_id: second_lease,
-                    ..
-                },
-            ) = (first, second)
-            else {
-                panic!("publication must return the exact ready lease")
-            };
-            assert_eq!(first_lease, second_lease);
-            assert!(matches!(
-                reconciled,
-                Some(CodeTransportForwardAcquisition::Ready { lease_id, .. })
-                    if lease_id == first_lease
-            ));
-            assert!(matches!(
-                state.code_pool.lock().unwrap().entries.get(transport_id),
-                Some(CodeTransportPoolEntry::Active(active)) if active.leases.len() == 1
-            ));
-        }
-
-        #[test]
-        fn publication_reconciliation_never_elects_a_replacement_leader() {
-            let state = TunnelForwards::default();
-            let window_instance = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-            register_code_transport_window_instance(&state, "main", window_instance).unwrap();
-
-            let reconciled = reconcile_code_transport_forward(
-                &state,
-                "main",
-                "99999999-9999-4999-8999-999999999999",
-                "66666666-6666-4666-8666-666666666666",
-                "33333333-3333-4333-8333-333333333333",
-                "77777777-7777-4777-8777-777777777777",
-                "88888888-8888-4888-8888-888888888888",
-                window_instance,
-            )
-            .unwrap();
-
-            assert!(reconciled.is_none());
-            assert!(state.code_pool.lock().unwrap().entries.is_empty());
-        }
-
         fn test_data_protection() -> Arc<DataProtection> {
             Arc::new(DataProtection {
                 key_revision: 3,
@@ -7224,7 +3886,7 @@ mod desktop {
             )
         }
 
-        struct CodeTransportHarness {
+        struct TunnelTransportHarness {
             child: Child,
             input: ChildStdin,
             output: BufReader<ChildStdout>,
@@ -7232,7 +3894,7 @@ mod desktop {
 
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
-        struct CodeTransportHarnessReady {
+        struct TunnelTransportHarnessReady {
             broker: Value,
             relay_path: String,
             relay_port: u16,
@@ -7240,43 +3902,41 @@ mod desktop {
 
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
-        struct CodeTransportHarnessSnapshot {
-            active_streams: usize,
+        struct TunnelTransportHarnessSnapshot {
+            active_upstream_connections: usize,
             hanging_request_closed: bool,
             hanging_request_reached: bool,
-            observed_requests: Vec<CodeTransportObservedRequest>,
-            relay_stats: CodeTransportRelayStats,
+            observed_requests: Vec<TunnelTransportObservedRequest>,
+            relay_stats: TunnelTransportRelayStats,
             worker_contexts: Vec<Value>,
         }
 
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
-        struct CodeTransportObservedRequest {
-            authenticated: bool,
-            forwarded_prefix: Option<String>,
+        struct TunnelTransportObservedRequest {
             url: String,
         }
 
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
-        struct CodeTransportRelayStats {
+        struct TunnelTransportRelayStats {
             active_connections: u64,
             closed_connections: u64,
             opened_connections: u64,
             rejected_connections: u64,
         }
 
-        impl CodeTransportHarness {
-            fn start(configuration: &Value) -> (Self, CodeTransportHarnessReady) {
+        impl TunnelTransportHarness {
+            fn start(configuration: &Value) -> (Self, TunnelTransportHarnessReady) {
                 let repository = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                     .parent()
                     .and_then(|path| path.parent())
                     .expect("repository root")
                     .to_path_buf();
-                let executable = repository.join("node_modules/.bin/tsx");
                 let fixture =
-                    repository.join("cantrip_worker/test/fixtures/code-transport-e2e-harness.ts");
-                let mut child = Command::new(executable)
+                    repository.join("cantrip_worker/test/fixtures/tunnel-transport-e2e-harness.ts");
+                let mut child = Command::new("node")
+                    .args(["--import", "tsx"])
                     .arg(fixture)
                     .current_dir(repository)
                     .stdin(Stdio::piped())
@@ -7292,7 +3952,7 @@ mod desktop {
                     output,
                 };
                 harness.send(configuration);
-                let ready = harness.read("CANTRIP_CODE_E2E_READY ");
+                let ready = harness.read("CANTRIP_TUNNEL_E2E_READY ");
                 (harness, ready)
             }
 
@@ -7313,15 +3973,15 @@ mod desktop {
                     if let Some(value) = line.strip_prefix(prefix) {
                         return serde_json::from_str(value).expect("valid harness response");
                     }
-                    if let Some(value) = line.strip_prefix("CANTRIP_CODE_E2E_FATAL ") {
+                    if let Some(value) = line.strip_prefix("CANTRIP_TUNNEL_E2E_FATAL ") {
                         panic!("transport harness failed: {value}");
                     }
                 }
             }
 
-            fn snapshot(&mut self) -> CodeTransportHarnessSnapshot {
+            fn snapshot(&mut self) -> TunnelTransportHarnessSnapshot {
                 self.send(&json!({ "type": "snapshot" }));
-                self.read("CANTRIP_CODE_E2E_SNAPSHOT ")
+                self.read("CANTRIP_TUNNEL_E2E_SNAPSHOT ")
             }
 
             fn revoke_direct(&mut self, capability_id: &str) {
@@ -7329,21 +3989,21 @@ mod desktop {
                     "type": "revoke-direct",
                     "capabilityId": capability_id,
                 }));
-                let response: Value = self.read("CANTRIP_CODE_E2E_DIRECT_REVOKED ");
+                let response: Value = self.read("CANTRIP_TUNNEL_E2E_DIRECT_REVOKED ");
                 assert_eq!(response["capabilityId"], capability_id);
                 assert_eq!(response["revoked"], true);
             }
 
-            fn shutdown(mut self) -> CodeTransportHarnessSnapshot {
+            fn shutdown(mut self) -> TunnelTransportHarnessSnapshot {
                 self.send(&json!({ "type": "shutdown" }));
-                let snapshot = self.read("CANTRIP_CODE_E2E_DONE ");
+                let snapshot = self.read("CANTRIP_TUNNEL_E2E_DONE ");
                 let status = self.child.wait().expect("wait for harness shutdown");
                 assert!(status.success(), "transport harness shutdown failed");
                 snapshot
             }
         }
 
-        impl Drop for CodeTransportHarness {
+        impl Drop for TunnelTransportHarness {
             fn drop(&mut self) {
                 let _ = self.child.kill();
                 let _ = self.child.wait();
@@ -7388,7 +4048,7 @@ mod desktop {
             stream
                 .write_all(
                     format!(
-                        "GET {path} HTTP/1.1\r\nHost: cantrip-code.local\r\nConnection: close\r\n\r\n"
+                        "GET {path} HTTP/1.1\r\nHost: cantrip-tunnel.test\r\nConnection: close\r\n\r\n"
                     )
                     .as_bytes(),
                 )
@@ -7397,7 +4057,12 @@ mod desktop {
             let mut response = Vec::new();
             let read = timeout(Duration::from_secs(30), stream.read_to_end(&mut response))
                 .await
-                .expect("loopback HTTP response deadline");
+                .unwrap_or_else(|error| {
+                    panic!(
+                        "loopback HTTP response deadline for {path}: {error}; received {} bytes",
+                        response.len()
+                    )
+                });
             if let Err(error) = read {
                 assert_eq!(
                     error.kind(),
@@ -7408,7 +4073,7 @@ mod desktop {
             response
         }
 
-        fn assert_large_code_response(response: &[u8]) {
+        fn assert_large_tunnel_response(response: &[u8]) {
             let header_end = response
                 .windows(4)
                 .position(|window| window == b"\r\n\r\n")
@@ -7419,9 +4084,9 @@ mod desktop {
             assert!(headers.starts_with("HTTP/1.1 200"));
             assert!(headers
                 .to_ascii_lowercase()
-                .contains(&format!("content-length: {LARGE_CODE_RESPONSE_BYTES}")));
+                .contains(&format!("content-length: {LARGE_RESPONSE_BYTES}")));
             let body = &response[header_end..];
-            assert_eq!(body.len(), LARGE_CODE_RESPONSE_BYTES);
+            assert_eq!(body.len(), LARGE_RESPONSE_BYTES);
             assert!(
                 body.iter()
                     .enumerate()
@@ -7431,13 +4096,12 @@ mod desktop {
         }
 
         #[tokio::test]
-        async fn native_loopback_reaches_real_protected_code_route_and_falls_back_to_relay() {
+        async fn native_loopback_reaches_protected_tcp_and_falls_back_to_relay() {
             let tunnel_id = Uuid::new_v4().to_string();
             let attachment_id = Uuid::new_v4().to_string();
             let worker_id = format!("worker-{}", Uuid::new_v4());
             let client_id = format!("client-{}", Uuid::new_v4());
             let owner_id = format!("owner-{}", Uuid::new_v4());
-            let session_id = Uuid::new_v4().to_string();
             let good_capability_id = Uuid::new_v4().to_string();
             let bad_capability_id = Uuid::new_v4().to_string();
             let good_diagnostic_trace_id = Uuid::new_v4().to_string();
@@ -7470,18 +4134,17 @@ mod desktop {
                 "ownerId": owner_id,
                 "relaySecret": relay_secret,
                 "serverId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-                "sessionId": session_id,
                 "tunnelId": tunnel_id,
                 "workerId": worker_id,
             });
-            let (mut harness, ready) = CodeTransportHarness::start(&configuration);
+            let (mut harness, ready) = TunnelTransportHarness::start(&configuration);
             let protection = Arc::new(DataProtection {
                 key_revision: 1,
                 key: Zeroizing::new(vec![14_u8; 32]),
             });
 
             // The successful direct pass starts at a real native loopback TCP
-            // listener and ends at the worker's OpenVSCode-compatible upstream.
+            // listener and ends at the worker's protected TCP destination.
             let broker = serde_json::from_value(ready.broker.clone()).unwrap();
             let good_connection = connect_verified(DirectProbeRequest {
                 broker,
@@ -7518,14 +4181,14 @@ mod desktop {
             };
             let direct_response = local_http(
                 direct_port,
-                "/code/?folder=%2Fworker%2Fescape&preserved=direct",
+                "/?document=%2Fworker%2Fexample&preserved=direct",
             )
             .await;
             let direct_text = String::from_utf8(direct_response).unwrap();
             assert!(direct_text.starts_with("HTTP/1.1 200"));
-            assert!(direct_text.contains("openvscode-compatible-workbench"));
-            let direct_large_response = local_http(direct_port, "/code/large").await;
-            assert_large_code_response(&direct_large_response);
+            assert!(direct_text.contains("native-tunnel-fixture"));
+            let direct_large_response = local_http(direct_port, "/large").await;
+            assert_large_tunnel_response(&direct_large_response);
 
             // A second in-flight upstream is cancelled by shutting down the
             // native route. This must close both proxy legs and stream state.
@@ -7534,7 +4197,7 @@ mod desktop {
                 .unwrap();
             hanging
                 .write_all(
-                    b"GET /code/hang HTTP/1.1\r\nHost: cantrip-code.local\r\nConnection: keep-alive\r\n\r\n",
+                    b"GET /hang HTTP/1.1\r\nHost: cantrip-tunnel.test\r\nConnection: keep-alive\r\n\r\n",
                 )
                 .await
                 .unwrap();
@@ -7600,7 +4263,7 @@ mod desktop {
                     .await
                 })
             };
-            let rejected = local_http(fallback_port, "/code/_cantrip/health").await;
+            let rejected = local_http(fallback_port, "/health").await;
             assert!(rejected.is_empty());
             assert_eq!(
                 fallback_counters
@@ -7650,7 +4313,6 @@ mod desktop {
                     server_url: format!("http://127.0.0.1:{}", ready.relay_port),
                 }),
                 tunnel_id: tunnel_id.clone(),
-                code_pool_generation: None,
             };
             let relay = relay_request.relay.as_ref().unwrap();
             let relay_url = web_socket_url(&relay.server_url, &relay.connect_path).unwrap();
@@ -7684,14 +4346,14 @@ mod desktop {
             };
             let relay_response = local_http(
                 fallback_port,
-                "/code/?workspace=%2Fworker%2Fescape.code-workspace&preserved=relay",
+                "/?document=%2Fworker%2Fexample&preserved=relay",
             )
             .await;
             let relay_text = String::from_utf8(relay_response).unwrap();
             assert!(relay_text.starts_with("HTTP/1.1 200"));
-            assert!(relay_text.contains("openvscode-compatible-workbench"));
-            let relay_large_response = local_http(fallback_port, "/code/large").await;
-            assert_large_code_response(&relay_large_response);
+            assert!(relay_text.contains("native-tunnel-fixture"));
+            let relay_large_response = local_http(fallback_port, "/large").await;
+            assert_large_tunnel_response(&relay_large_response);
             relay_stop.send(()).unwrap();
             assert!(matches!(
                 relay_task.await.unwrap().unwrap(),
@@ -7709,19 +4371,14 @@ mod desktop {
             assert_eq!(fallback_counters.route_fallbacks.load(Ordering::Acquire), 1);
 
             let snapshot = harness.snapshot();
-            assert_eq!(snapshot.active_streams, 0);
+            assert_eq!(snapshot.active_upstream_connections, 0);
             assert!(snapshot.hanging_request_reached);
             assert!(snapshot.hanging_request_closed);
-            assert!(snapshot.observed_requests.iter().all(|request| {
-                request.authenticated && request.forwarded_prefix.as_deref() == Some("/code")
+            assert!(snapshot.observed_requests.iter().any(|request| {
+                request.url == "/?document=%2Fworker%2Fexample&preserved=direct"
             }));
             assert!(snapshot.observed_requests.iter().any(|request| {
-                request.url
-                    == "/?preserved=direct&workspace=%2Fworker%2Fprivate%2Fproject.code-workspace"
-            }));
-            assert!(snapshot.observed_requests.iter().any(|request| {
-                request.url
-                    == "/?preserved=relay&workspace=%2Fworker%2Fprivate%2Fproject.code-workspace"
+                request.url == "/?document=%2Fworker%2Fexample&preserved=relay"
             }));
             assert_eq!(snapshot.relay_stats.opened_connections, 2);
             assert_eq!(snapshot.relay_stats.closed_connections, 2);
@@ -7733,24 +4390,24 @@ mod desktop {
                     && context["diagnosticTraceId"] == bad_diagnostic_trace_id
                     && context["tunnelId"] == tunnel_id
             }));
-            assert!(snapshot.worker_contexts.iter().any(|context| {
-                context["event"] == "code.direct.http-upstream-responded"
-                    && context["diagnosticTraceId"] == good_diagnostic_trace_id
-                    && context["tunnelId"] == tunnel_id
-            }));
-            assert!(snapshot.worker_contexts.iter().any(|context| {
-                context["event"] == "code.direct.http-upstream-responded"
-                    && context["diagnosticTraceId"] == bad_diagnostic_trace_id
-                    && context["tunnelId"] == tunnel_id
-            }));
+            assert_eq!(
+                snapshot
+                    .worker_contexts
+                    .iter()
+                    .filter(|context| {
+                        context["event"] == "tunnel.destination.connected"
+                            && context["attachmentId"] == attachment_id
+                            && context["tunnelId"] == tunnel_id
+                    })
+                    .count(),
+                5
+            );
             let diagnostics = serde_json::to_string(&snapshot.worker_contexts).unwrap();
             for secret in [&good_secret, &bad_secret, &relay_secret, &data_key] {
                 assert!(!diagnostics.contains(secret));
             }
-            assert!(!diagnostics.contains("openvscode-e2e-token-must-stay-private"));
-            assert!(!diagnostics.contains("/worker/private/project.code-workspace"));
             let final_snapshot = harness.shutdown();
-            assert_eq!(final_snapshot.active_streams, 0);
+            assert_eq!(final_snapshot.active_upstream_connections, 0);
         }
 
         #[tokio::test]
@@ -7760,7 +4417,6 @@ mod desktop {
             let worker_id = format!("worker-{}", Uuid::new_v4());
             let client_id = format!("client-{}", Uuid::new_v4());
             let owner_id = format!("owner-{}", Uuid::new_v4());
-            let session_id = Uuid::new_v4().to_string();
             let good_capability_id = Uuid::new_v4().to_string();
             let bad_capability_id = Uuid::new_v4().to_string();
             let good_diagnostic_trace_id = Uuid::new_v4().to_string();
@@ -7793,11 +4449,10 @@ mod desktop {
                 "ownerId": owner_id,
                 "relaySecret": relay_secret,
                 "serverId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-                "sessionId": session_id,
                 "tunnelId": tunnel_id,
                 "workerId": worker_id,
             });
-            let (mut harness, ready) = CodeTransportHarness::start(&configuration);
+            let (mut harness, ready) = TunnelTransportHarness::start(&configuration);
             let listener = bind_listener(None).await.unwrap();
             let local_port = listener.local_addr().unwrap().port();
             let counters = Arc::new(ForwardCounters::default());
@@ -7836,7 +4491,6 @@ mod desktop {
                     server_url: format!("http://127.0.0.1:{}", ready.relay_port),
                 }),
                 tunnel_id: tunnel_id.clone(),
-                code_pool_generation: None,
             };
             let forward_counters = counters.clone();
             let forward = tokio::spawn(run_forward(
@@ -7844,7 +4498,6 @@ mod desktop {
                 listener,
                 request,
                 forward_counters,
-                Arc::new(ForwardRetirementFence::default()),
                 stop_receiver,
                 ready_sender,
                 relay_refresh_receiver,
@@ -7857,10 +4510,10 @@ mod desktop {
                 .expect("native route startup channel")
                 .expect("native direct route startup");
             assert_eq!(startup.state, "local-direct");
-            let direct_response = local_http(local_port, "/code/?preserved=direct-loop").await;
+            let direct_response = local_http(local_port, "/?preserved=direct-loop").await;
             assert!(String::from_utf8(direct_response)
                 .unwrap()
-                .contains("openvscode-compatible-workbench"));
+                .contains("native-tunnel-fixture"));
             assert_eq!(
                 publish_test_relay_refresh(
                     &relay_refresh_sender,
@@ -7888,10 +4541,10 @@ mod desktop {
                 TunnelRelayRefreshOutcome::Accepted
             );
             let direct_response_after_refresh =
-                local_http(local_port, "/code/?preserved=direct-after-refresh").await;
+                local_http(local_port, "/?preserved=direct-after-refresh").await;
             assert!(String::from_utf8(direct_response_after_refresh)
                 .unwrap()
-                .contains("openvscode-compatible-workbench"));
+                .contains("native-tunnel-fixture"));
             assert_eq!(counters.route_state.load(Ordering::Acquire), 1);
             assert_eq!(counters.route_selections.load(Ordering::Acquire), 1);
             harness.revoke_direct(&good_capability_id);
@@ -7904,10 +4557,10 @@ mod desktop {
             .await
             .expect("refreshed relay restored the native route");
 
-            let relay_response = local_http(local_port, "/code/?preserved=relay-loop").await;
+            let relay_response = local_http(local_port, "/?preserved=relay-loop").await;
             assert!(String::from_utf8(relay_response)
                 .unwrap()
-                .contains("openvscode-compatible-workbench"));
+                .contains("native-tunnel-fixture"));
             assert_eq!(counters.route_disconnects.load(Ordering::Acquire), 1);
             assert_eq!(counters.route_fallbacks.load(Ordering::Acquire), 1);
             assert_eq!(counters.route_selections.load(Ordering::Acquire), 2);
@@ -7919,19 +4572,19 @@ mod desktop {
                 .expect("native route task");
             counters.wait_for_connections_drained().await;
             let final_snapshot = harness.shutdown();
-            assert_eq!(final_snapshot.active_streams, 0);
-            assert!(final_snapshot.observed_requests.iter().any(|request| {
-                request.url
-                    == "/?preserved=direct-loop&workspace=%2Fworker%2Fprivate%2Fproject.code-workspace"
-            }));
-            assert!(final_snapshot.observed_requests.iter().any(|request| {
-                request.url
-                    == "/?preserved=direct-after-refresh&workspace=%2Fworker%2Fprivate%2Fproject.code-workspace"
-            }));
-            assert!(final_snapshot.observed_requests.iter().any(|request| {
-                request.url
-                    == "/?preserved=relay-loop&workspace=%2Fworker%2Fprivate%2Fproject.code-workspace"
-            }));
+            assert_eq!(final_snapshot.active_upstream_connections, 0);
+            assert!(final_snapshot
+                .observed_requests
+                .iter()
+                .any(|request| { request.url == "/?preserved=direct-loop" }));
+            assert!(final_snapshot
+                .observed_requests
+                .iter()
+                .any(|request| { request.url == "/?preserved=direct-after-refresh" }));
+            assert!(final_snapshot
+                .observed_requests
+                .iter()
+                .any(|request| { request.url == "/?preserved=relay-loop" }));
         }
 
         #[test]
@@ -8244,7 +4897,6 @@ mod desktop {
                     server_url: format!("http://127.0.0.1:{server_port}"),
                 }),
                 tunnel_id: "tunnel".into(),
-                code_pool_generation: None,
             };
             let relay = request.relay.as_ref().unwrap();
             let url = web_socket_url(&relay.server_url, &relay.connect_path).unwrap();
@@ -8384,7 +5036,6 @@ mod desktop {
                     server_url: format!("http://127.0.0.1:{direct_port}"),
                 }),
                 tunnel_id: "tunnel".into(),
-                code_pool_generation: None,
             };
             let direct = request.relay.as_ref().unwrap();
             let direct_url = web_socket_url(&direct.server_url, &direct.connect_path).unwrap();
@@ -8735,7 +5386,6 @@ mod desktop {
                 preferred_local_port: None,
                 relay: None,
                 tunnel_id: "tunnel".into(),
-                code_pool_generation: None,
             };
             let relay = RelayRoute {
                 expires_at_epoch_ms: 1_000,
@@ -9015,7 +5665,6 @@ mod desktop {
                 connections_closed: 0,
                 connections_opened: 0,
                 destination_rejected_count: 1,
-                code_pool_generation: None,
             };
 
             assert!(!confirm_direct_retired_summary(
@@ -9059,7 +5708,6 @@ mod desktop {
                 connections_closed: 0,
                 connections_opened: 0,
                 destination_rejected_count: 0,
-                code_pool_generation: None,
             };
 
             assert!(stop_fence_matches(
@@ -9126,7 +5774,6 @@ mod desktop {
                 connections_closed: 0,
                 connections_opened: 0,
                 destination_rejected_count: 0,
-                code_pool_generation: None,
             };
             let (relay_refresh, _relay_refresh_receiver) =
                 watch::channel::<Option<Arc<RelayRoute>>>(None);
@@ -9136,7 +5783,6 @@ mod desktop {
             let mut forwards = HashMap::from([(
                 "tunnel".to_string(),
                 ForwardHandle {
-                    code_pool_generation: None,
                     counters: Arc::new(ForwardCounters::default()),
                     relay_refresh,
                     route_control,
@@ -9153,7 +5799,6 @@ mod desktop {
                 Some("stale-attachment"),
                 Some("replacement-trace"),
                 Some("replacement-capability"),
-                None,
             )
             .is_none());
             assert_eq!(
@@ -9169,7 +5814,6 @@ mod desktop {
                 Some("replacement-attachment"),
                 Some("stale-trace"),
                 Some("replacement-capability"),
-                None,
             )
             .is_none());
             assert!(forwards.contains_key("tunnel"));
@@ -9180,7 +5824,6 @@ mod desktop {
                 Some("replacement-attachment"),
                 Some("replacement-trace"),
                 Some("stale-capability"),
-                None,
             )
             .is_none());
             assert!(forwards.contains_key("tunnel"));
@@ -9191,7 +5834,6 @@ mod desktop {
                 Some("replacement-attachment"),
                 Some("replacement-trace"),
                 Some("replacement-capability"),
-                None,
             )
             .expect("the exact replacement identity should remove the forward");
             assert!(forwards.is_empty());

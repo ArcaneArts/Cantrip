@@ -51,7 +51,6 @@ export interface DesktopTunnelWorkerLinkSummary {
   connectionsClosed?: number;
   connectionsOpened?: number;
   destinationRejectedCount?: number;
-  codePoolGeneration?: string | null;
 }
 
 export interface DesktopTunnelWorkerLinkBridge {
@@ -165,32 +164,6 @@ export async function startDesktopTunnelWorkerLinkForward(
         tunnelId: input.tunnelId,
       })
       .catch(() => undefined);
-    throw error;
-  }
-}
-
-export async function attachDesktopTunnelWorkerLinkForward(
-  input: Pick<
-    StartDesktopTunnelWorkerLinkInput,
-    "attachmentId" | "diagnosticTraceId" | "tunnelId" | "workerId"
-  >,
-  bridge: DesktopTunnelWorkerLinkBridge,
-  dependencies: DesktopTunnelWorkerLinkDependencies = defaultDependencies,
-): Promise<WorkerLinkRoute> {
-  await stopDesktopTunnelWorkerLinkForward(input.tunnelId);
-  const controller = new DesktopTunnelWorkerLinkController(
-    input,
-    bridge,
-    dependencies,
-  );
-  activeForwards.set(input.tunnelId, controller);
-  try {
-    return await controller.start();
-  } catch (error) {
-    if (activeForwards.get(input.tunnelId) === controller) {
-      activeForwards.delete(input.tunnelId);
-    }
-    controller.stop();
     throw error;
   }
 }

@@ -5,6 +5,11 @@ on:
     paths:
       - ".github/workflows/desktop-native-tests.yml"
       - "cantrip_app/src-tauri/**"
+      - "cantrip_worker/test/fixtures/tunnel-transport-e2e-harness.ts"
+      - "cantrip_worker/src/tunnel-*.ts"
+      - "cantrip_worker/src/direct-broker.ts"
+      - "cantrip_server/src/tunnels/**"
+      - "packages/protocol/src/tunnel-*.ts"
       - "scripts/fixtures/installation-update/**"
 
 permissions:
@@ -26,3 +31,30 @@ jobs:
           workspaces: cantrip_app/src-tauri -> target
       - name: Open and decrypt the frozen installation fixture
         run: cargo test --manifest-path cantrip_app/src-tauri/Cargo.toml frozen_version_one_fixture_opens_and_decrypts_with_current_runtime --lib
+
+  native-transports:
+    name: Native tunnel transport (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: desktop-native-transports-${{ matrix.os }}
+          workspaces: cantrip_app/src-tauri -> target
+      - name: Native protected TCP, relay recovery and cleanup
+        run: cargo test --locked --manifest-path cantrip_app/src-tauri/Cargo.toml tunnel_forward -- --test-threads=2
