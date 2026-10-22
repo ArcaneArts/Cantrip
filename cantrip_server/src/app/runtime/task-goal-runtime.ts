@@ -579,7 +579,14 @@ export function createTaskGoalRuntime({
       await retainTaskGoalLease(lease);
       return;
     }
-    if (!["paused", "blocked", "complete", "failed"].includes(state)) return;
+    if (state === "paused") {
+      // A paused Goal is resumable work, not a successful dispatch. Project
+      // pause has already released capacity; an individual Chat pause keeps
+      // its running dispatch leased until that Chat is resumed.
+      await retainTaskGoalLease(lease);
+      return;
+    }
+    if (!["blocked", "complete", "failed"].includes(state)) return;
     releaseTaskGoalLease(lease.cycleId);
     try {
       await repository.taskDispatch.heartbeat(lease);
@@ -641,7 +648,7 @@ export function createTaskGoalRuntime({
     if (synchronized && synchronized.rowVersion !== task.rowVersion) {
       publishChatInvalidation(context.chatId, "task", null, context);
     }
-    const nextTask = synchronized ?? task;
+    const nextTask = { ...(synchronized ?? task), dispatch: task.dispatch };
     await reconcileTaskGoalDispatch(task, nextTask.state);
     return { ...result, task: nextTask };
   };

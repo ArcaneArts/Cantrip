@@ -1,7 +1,6 @@
 import {
   chatInterruptAcceptedSchema,
   chatModelConfigurationUpdateSchema,
-  chatPauseRuntimeStateSchema,
   contextualChatWireSummarySchema,
   encryptedTaskCreateSchema,
   githubIssueListFiltersSchema,
@@ -63,6 +62,8 @@ import {
 import { TaskStateTransitionError } from "../../tasks/state.js";
 import { createTaskLabeler } from "../../chats/automatic-labeling.js";
 import { createTaskOperationQueue } from "./task-operation-queue.js";
+import { createChatAutomationPauseRuntime } from "./chat-automation-pause-runtime.js";
+import { createProjectTaskPauseRuntime } from "./project-task-pause-runtime.js";
 import { installTaskWorkloadRoute } from "./task-workload-route.js";
 import { WorkerUnavailableError } from "../../workers/bridge.js";
 
@@ -111,6 +112,18 @@ export function installTaskRouteRuntime(
     taskDispatchCycleLease,
   } = dependencies;
   const nameTask = createTaskLabeler(dependencies);
+  const setChatAutomationPause = createChatAutomationPauseRuntime(
+    dependencies,
+    app,
+  );
+  const setProjectTasksPaused = createProjectTaskPauseRuntime({
+    repository,
+    releaseTaskGoalLease,
+    taskDispatchCycleLease,
+    publishChatInvalidation,
+    setChatAutomationPause,
+    publishChatSummary,
+  });
   app.post<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/tasks",
     async (request, reply) => {
@@ -1088,12 +1101,13 @@ export function installTaskRouteRuntime(
         ) {
           throw new Error("The paused Task placement is no longer available.");
         }
-        const resumed = chatPauseRuntimeStateSchema.parse(
-          await bridge.request(
-            context.workerId,
-            { type: "chat.pause.set", chatId: context.chatId, paused: false },
-            { timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS },
-          ),
+        const resumed = await setChatAutomationPause(
+          ownerId,
+          context.chatId,
+          false,
+          {
+            resumeAutomation: false,
+          },
         );
         if (resumed.paused) {
           throw new Error("The worker did not resume the paused Task.");
@@ -1110,7 +1124,7 @@ export function installTaskRouteRuntime(
           const task = await repository.tasks.get(ownerId, context.chatId);
           if (
             claim.cycle.operationKind === "finalize" &&
-            task?.state === "implementing"
+            (task?.state === "implementing" || task?.state === "paused")
           ) {
             await retainTaskGoalLease(claim.lease);
             await resumeChatAutomation(context.chatId);
@@ -1124,13 +1138,9 @@ export function installTaskRouteRuntime(
         publishChatInvalidation(context.chatId, "task", null, context);
       } catch (error) {
         if (context && bridge.isConnected(context.workerId)) {
-          await bridge
-            .request(
-              context.workerId,
-              { type: "chat.pause.set", chatId: context.chatId, paused: true },
-              { timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS },
-            )
-            .catch(() => undefined);
+          await setChatAutomationPause(ownerId, context.chatId, true).catch(
+            () => undefined,
+          );
         }
         try {
           await repository.taskDispatch.pause(claim.lease, {
@@ -1168,80 +1178,6 @@ export function installTaskRouteRuntime(
     nameTask,
   });
 
-  const pauseProjectTaskDispatches = async (
-    ownerId: string,
-    projectId: string,
-  ): Promise<void> => {
-    const cycles = (await repository.taskDispatch.list(ownerId)).filter(
-      (cycle) => cycle.state === "claimed" || cycle.state === "running",
-    );
-    const scoped = (
-      await Promise.all(
-        cycles.map(async (cycle) => ({
-          cycle,
-          context: await repository.getChatExecutionContext(
-            ownerId,
-            cycle.chatId,
-          ),
-        })),
-      )
-    ).filter(({ context }) => context?.projectId === projectId);
-    const results = await Promise.allSettled(
-      scoped.map(async ({ context, cycle }) => {
-        if (!context || context.experience !== "task") return;
-        const lease = taskDispatchCycleLease(cycle);
-        if (!lease) return;
-        if (cycle.state === "claimed" && !chatIsExecuting(context.status)) {
-          releaseTaskGoalLease(cycle.id);
-          try {
-            await repository.taskDispatch.pauseUnstarted(lease, {
-              threadId: cycle.codexThreadId ?? context.threadId,
-              turnId: cycle.turnId,
-            });
-            publishChatInvalidation(context.chatId, "task", null, context);
-          } catch (error) {
-            if (!(error instanceof TaskDispatchConflictError)) throw error;
-          }
-          return;
-        }
-        if (!bridge.isConnected(context.workerId)) {
-          throw new Error("A running Task's physical Worker is offline.");
-        }
-        const paused = chatPauseRuntimeStateSchema.parse(
-          await bridge.request(
-            context.workerId,
-            { type: "chat.pause.set", chatId: context.chatId, paused: true },
-            { timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS },
-          ),
-        );
-        if (!paused.paused) {
-          throw new Error("The worker did not acknowledge the Task pause.");
-        }
-        releaseTaskGoalLease(cycle.id);
-        try {
-          await repository.taskDispatch.pause(lease, {
-            threadId:
-              paused.active?.threadId ??
-              cycle.codexThreadId ??
-              context.threadId,
-            turnId: paused.active?.turnId ?? cycle.turnId,
-          });
-          publishChatInvalidation(context.chatId, "task", null, context);
-        } catch (error) {
-          if (!(error instanceof TaskDispatchConflictError)) throw error;
-        }
-      }),
-    );
-    const failures = results.filter(
-      (result): result is PromiseRejectedResult => result.status === "rejected",
-    );
-    if (failures.length > 0) {
-      throw new Error(
-        `${failures.length} running Task${failures.length === 1 ? "" : "s"} could not pause at a safe boundary.`,
-      );
-    }
-  };
-
   installTaskWorkloadRoute(app, { applicationOwnerId, repository });
 
   app.get<{ Params: { projectId: string } }>(
@@ -1273,24 +1209,23 @@ export function installTaskRouteRuntime(
         if (!state) {
           return reply.code(404).send({ error: "Project not found." });
         }
-        if (state.paused) {
-          try {
-            await pauseProjectTaskDispatches(
-              applicationOwnerId(),
-              request.params.projectId,
-            );
-          } catch (error) {
-            return reply.code(409).send({
-              error: errorMessage(error),
-              pauseState: projectTaskPauseStateSchema.parse(state),
-            });
-          }
-        } else {
-          queueTaskScheduleTick();
+        try {
+          await setProjectTasksPaused(
+            applicationOwnerId(),
+            request.params.projectId,
+            state.paused,
+          );
+        } catch (error) {
+          return reply.code(409).send({
+            error: errorMessage(error),
+            pauseState: projectTaskPauseStateSchema.parse(state),
+          });
+        } finally {
+          if (!state.paused) queueTaskScheduleTick();
+          publishLiveInvalidation("task", {
+            projectId: request.params.projectId,
+          });
         }
-        publishLiveInvalidation("task", {
-          projectId: request.params.projectId,
-        });
         return reply
           .code(state.paused ? 200 : 202)
           .send(projectTaskPauseStateSchema.parse(state));

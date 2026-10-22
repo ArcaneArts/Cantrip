@@ -114,6 +114,8 @@ let failNextGoalCreation = false;
 let finalizerTurnCount = 0;
 let continuedPromptSawAnswer = false;
 let pauseTestEnabled = false;
+let pauseGoalTestEnabled = false;
+let pauseTestTurnId = "turn-direct";
 let pauseTestTurnStarted = false;
 let resumePauseTestTurn: (() => void) | null = null;
 let rejectNextNativeTurn = false;
@@ -366,6 +368,7 @@ async function encryptedTaskTurn(
         const kind = command.resultMode.operation.classification.kind;
         if (kind === "finalize") finalizerTurnCount += 1;
         if (kind === "direct" && pauseTestEnabled) {
+          pauseTestTurnId = "turn-direct";
           pauseTestTurnStarted = true;
           await new Promise<void>((resolve) => {
             resumePauseTestTurn = resolve;
@@ -464,6 +467,13 @@ async function encryptedTaskTurn(
           text: `${sentinel} blocker explanation`,
           status: "completed",
         },
+      });
+    }
+    if (pauseGoalTestEnabled) {
+      pauseTestTurnId = "turn-goal-implementation";
+      pauseTestTurnStarted = true;
+      await new Promise<void>((resolve) => {
+        resumePauseTestTurn = resolve;
       });
     }
     const result = await encryptTaskTurnResult({
@@ -651,7 +661,7 @@ const workerBridge: WorkerCommandBus = {
       return {
         paused: command.paused,
         active: pauseTestTurnStarted
-          ? { threadId, turnId: "turn-direct" }
+          ? { threadId, turnId: pauseTestTurnId }
           : null,
       };
     }
@@ -1523,6 +1533,9 @@ describe.sequential("Task E2EE closure lifecycle", () => {
         activeOperationKind: "direct",
         lastError: null,
       });
+      expect(
+        await database.repository.getChatExecutionContext(ownerId, chatId),
+      ).toMatchObject({ automationPaused: true, status: "running" });
       if (scope === "project") {
         expect(paused.dispatch).toMatchObject({
           codexThreadId: threadId,
@@ -1571,6 +1584,9 @@ describe.sequential("Task E2EE closure lifecycle", () => {
           operationId: running.activeOperationId!,
         }),
       ).toMatchObject({ round: { status: "completed" } });
+      expect(
+        await database.repository.getChatExecutionContext(ownerId, chatId),
+      ).toMatchObject({ automationPaused: false });
       expect(pauseCommands).toEqual([true, false]);
       pauseTestEnabled = false;
     },
@@ -1913,6 +1929,9 @@ describe.sequential("Task E2EE closure lifecycle", () => {
       ),
     });
     const finalizationRound = task.planningRound;
+    pauseGoalTestEnabled = true;
+    pauseTestTurnStarted = false;
+    pauseCommands.length = 0;
     const retryResponse = await app!.inject({
       method: "POST",
       url: `/api/tasks/${chatId}/retry`,
@@ -1926,10 +1945,46 @@ describe.sequential("Task E2EE closure lifecycle", () => {
     expect(finalizerTurnCount).toBe(finalizersBeforeImplementation + 1);
     expect(task.lastError).toBeNull();
 
+    await vi.waitFor(() => expect(pauseTestTurnStarted).toBe(true));
+    const pauseState = await app!.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/tasks/pause`,
+    });
+    const pausedResponse = await app!.inject({
+      method: "PATCH",
+      url: `/api/projects/${projectId}/tasks/pause`,
+      payload: { paused: true, rowVersion: pauseState.json().rowVersion },
+    });
+    expect(pausedResponse.statusCode, pausedResponse.body).toBe(200);
+    expect(
+      await database.repository.getChatExecutionContext(ownerId, chatId),
+    ).toMatchObject({ automationPaused: true });
+    const pausedDashboard = await app!.inject({
+      method: "GET",
+      url: `/api/tasks/${chatId}/dashboard`,
+    });
+    expect(pausedDashboard.statusCode).toBe(200);
+    expect(pausedDashboard.json().task).toMatchObject({
+      state: "paused",
+      dispatch: { state: "paused" },
+    });
+    expect(goalCompleted).toBe(false);
+    const resumedResponse = await app!.inject({
+      method: "PATCH",
+      url: `/api/projects/${projectId}/tasks/pause`,
+      payload: { paused: false, rowVersion: pausedResponse.json().rowVersion },
+    });
+    expect(resumedResponse.statusCode, resumedResponse.body).toBe(202);
+
     for (let attempt = 0; attempt < 200 && !goalCompleted; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
     expect(goalCompleted).toBe(true);
+    pauseGoalTestEnabled = false;
+    expect(pauseCommands).toEqual([true, false]);
+    expect(
+      await database.repository.getChatExecutionContext(ownerId, chatId),
+    ).toMatchObject({ automationPaused: false });
     const completedTask = await waitForTask(chatId, "complete");
     expect(completedTask.dispatch).toMatchObject({
       operationId: finalOperationId,

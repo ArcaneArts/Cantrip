@@ -602,9 +602,25 @@ export function ProjectTasksDashboard({
     },
     onSuccess: (next) => {
       queryClient.setQueryData(["project-task-pause", projectId], next);
-      void queryClient.invalidateQueries({
-        queryKey: ["project-task-workload", projectId],
-      });
+    },
+    onSettled: async () => {
+      const taskIds = workload.data?.items.map(({ task }) => task.chatId) ?? [];
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["project-task-pause", projectId],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["project-task-workload", projectId],
+        }),
+        queryClient.invalidateQueries({ queryKey: ["chats", projectId] }),
+        ...taskIds.flatMap((chatId) => [
+          queryClient.invalidateQueries({ queryKey: ["task", chatId] }),
+          queryClient.invalidateQueries({
+            queryKey: ["task-dashboard", chatId],
+          }),
+          queryClient.invalidateQueries({ queryKey: ["goal", chatId] }),
+        ]),
+      ]);
     },
   });
   const deleteTaskMutation = useMutation({

@@ -1,3 +1,4 @@
+import type { TaskOpaqueSummary } from "@cantrip/protocol/tasks";
 import { describe, expect, it, vi } from "vitest";
 import { modelConfigurationSchema, type ChatMessage } from "@cantrip/protocol";
 import {
@@ -167,6 +168,40 @@ describe("Task Goal worker interruption", () => {
         }),
         expect.any(String),
       );
+    },
+  );
+
+  it.each(["paused", "running"] as const)(
+    "does not complete a %s dispatch when reading a paused Goal",
+    async (dispatchState) => {
+      const heartbeat = vi.fn();
+      const settle = vi.fn();
+      const runtime = createTaskGoalRuntime({
+        repository: { taskDispatch: { heartbeat, settle } },
+      } as unknown as TaskGoalRuntimeDependencies);
+      try {
+        await runtime.reconcileTaskGoalDispatch(
+          {
+            chatId: context.chatId,
+            dispatch: {
+              id: lease.cycleId,
+              operationId: lease.operationId,
+              operationKind: "finalize",
+              state: dispatchState,
+              leaseOwner: lease.leaseOwner,
+              leaseExpiresAt: lease.leaseExpiresAt,
+              fencingToken: lease.fencingToken,
+            },
+          } as TaskOpaqueSummary,
+          "paused",
+        );
+        expect(settle).not.toHaveBeenCalled();
+        expect(heartbeat).toHaveBeenCalledTimes(
+          dispatchState === "running" ? 1 : 0,
+        );
+      } finally {
+        runtime.close();
+      }
     },
   );
 
