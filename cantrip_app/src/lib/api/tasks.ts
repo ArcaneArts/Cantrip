@@ -177,6 +177,12 @@ export async function getTask(chatId: string) {
   );
 }
 
+export async function recoverTaskImplementation(chatId: string) {
+  return openTaskOpaqueSummary(
+    await post(`/api/tasks/${encodeURIComponent(chatId)}/recover`, {}),
+  );
+}
+
 export async function deleteTask(chatId: string) {
   await request(`/api/tasks/${encodeURIComponent(chatId)}`, {
     method: "DELETE",

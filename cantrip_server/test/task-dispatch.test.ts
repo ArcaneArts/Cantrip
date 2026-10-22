@@ -157,6 +157,120 @@ const eligible = async () => ({
 });
 
 describe("Task dispatch scheduling", () => {
+  it("recovers an expired retained Goal with a new fence without replaying its finalized operation", async () => {
+    const f = await fixture();
+    try {
+      const task = await addTask(f, {
+        createdAt: new Date(),
+        planGoalEnabled: true,
+      });
+      await f.database
+        .update(schema.tasks)
+        .set({
+          state: "failed",
+          implementationStartedAt: new Date(),
+          hasFinalPlan: true,
+          hasGoalPrompt: true,
+        })
+        .where(eq(schema.tasks.chatId, task.chatId));
+      const id = randomUUID();
+      await f.database.insert(schema.taskDispatchCycles).values({
+        id,
+        ownerId: LOCAL_USER_ID,
+        chatId: task.chatId,
+        operationId: randomUUID(),
+        operationKind: "finalize",
+        state: "expired",
+        fifoCreatedAt: new Date(),
+        startedAt: new Date(),
+        completedAt: new Date(),
+        fencingToken: 2,
+        codexThreadId: "retained-thread",
+        worktreeId: task.worktreeId,
+        physicalWorkerId: f.physicalWorkerId,
+        eligibilityCode: "reconciliation-required",
+      });
+      const expired = (await f.repository.taskDispatch.get(LOCAL_USER_ID, id))!;
+      await expect(
+        f.repository.taskDispatch.recoverStartedGoal(
+          "other-owner",
+          expired,
+          "new-server",
+        ),
+      ).rejects.toMatchObject({ code: "stale-lease" });
+      const recovered = await f.repository.taskDispatch.recoverStartedGoal(
+        LOCAL_USER_ID,
+        expired,
+        "new-server",
+      );
+      expect(recovered.fencingToken).toBe(3);
+      expect(recovered.leaseOwner).toBe("new-server");
+      expect(
+        await f.repository.taskDispatch.get(LOCAL_USER_ID, id),
+      ).toMatchObject({
+        state: "running",
+        codexThreadId: "retained-thread",
+        attemptCount: 0,
+        eligibilityCode: null,
+        completedAt: null,
+      });
+      await expect(
+        f.repository.taskDispatch.recoverStartedGoal(
+          LOCAL_USER_ID,
+          expired,
+          "stale-server",
+        ),
+      ).rejects.toMatchObject({ code: "stale-lease" });
+      await f.repository.taskDispatch.heartbeat(recovered);
+      const live = (await f.repository.taskDispatch.get(LOCAL_USER_ID, id))!;
+      expect(
+        await f.repository.taskDispatch.recoverStartedGoal(
+          LOCAL_USER_ID,
+          live,
+          "another-server",
+        ),
+      ).toMatchObject({ fencingToken: 3, leaseOwner: "new-server" });
+      await f.repository.taskDispatch.settle(recovered, "succeeded");
+      const complete = (await f.repository.taskDispatch.get(
+        LOCAL_USER_ID,
+        id,
+      ))!;
+      await expect(
+        f.repository.taskDispatch.recoverStartedGoal(
+          LOCAL_USER_ID,
+          complete,
+          "new-server",
+        ),
+      ).rejects.toMatchObject({ code: "stale-lease" });
+      await f.database
+        .update(schema.taskDispatchCycles)
+        .set({ state: "expired" })
+        .where(eq(schema.taskDispatchCycles.id, id));
+      const superseded = (await f.repository.taskDispatch.get(
+        LOCAL_USER_ID,
+        id,
+      ))!;
+      await f.database.insert(schema.taskDispatchCycles).values({
+        id: randomUUID(),
+        ownerId: LOCAL_USER_ID,
+        chatId: task.chatId,
+        operationId: randomUUID(),
+        operationKind: "finalize",
+        state: "queued",
+        fifoCreatedAt: new Date(),
+        createdAt: new Date(Date.now() + 1000),
+      });
+      await expect(
+        f.repository.taskDispatch.recoverStartedGoal(
+          LOCAL_USER_ID,
+          superseded,
+          "new-server",
+        ),
+      ).rejects.toMatchObject({ code: "stale-lease" });
+    } finally {
+      await f.client.close();
+    }
+  });
   it("keeps a negative-priority Task queued behind the actual branch lease, then runs it", async () => {
     const value = await fixture();
     try {

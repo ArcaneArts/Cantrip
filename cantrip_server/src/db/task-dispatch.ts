@@ -1072,6 +1072,101 @@ export class TaskDispatchRepository {
     return toTaskDispatchCycleSummary(rows[0]);
   }
 
+  /** Re-fence an observed, retained Goal; never enqueue or replay its operation. */
+  async recoverStartedGoal(
+    ownerId: string,
+    expected: TaskDispatchCycleSummary,
+    leaseOwner: string,
+    now = new Date(),
+  ): Promise<TaskDispatchWorkerLease> {
+    return this.database.transaction(async (transaction) => {
+      // Same owner/task/cycle lock order as enqueue and claim; a recovery may
+      // not overtake a newer user operation for this Task.
+      await transaction
+        .select({ id: schema.users.id })
+        .from(schema.users)
+        .where(eq(schema.users.id, ownerId))
+        .for("update")
+        .limit(1);
+      const tasks = await transaction
+        .select()
+        .from(schema.tasks)
+        .where(eq(schema.tasks.chatId, expected.chatId))
+        .for("update")
+        .limit(1);
+      const rows = await transaction
+        .select()
+        .from(schema.taskDispatchCycles)
+        .where(
+          and(
+            eq(schema.taskDispatchCycles.ownerId, ownerId),
+            eq(schema.taskDispatchCycles.id, expected.id),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      const row = rows[0];
+      const task = tasks[0];
+      const latest = await transaction
+        .select({ id: schema.taskDispatchCycles.id })
+        .from(schema.taskDispatchCycles)
+        .where(
+          and(
+            eq(schema.taskDispatchCycles.ownerId, ownerId),
+            eq(schema.taskDispatchCycles.chatId, expected.chatId),
+          ),
+        )
+        .orderBy(
+          sql`${schema.taskDispatchCycles.createdAt} DESC`,
+          sql`${schema.taskDispatchCycles.id} DESC`,
+        )
+        .limit(1);
+      if (
+        !row ||
+        latest[0]?.id !== row.id ||
+        row.operationKind !== "finalize" ||
+        !row.startedAt ||
+        !task?.implementationStartedAt ||
+        !task.planGoalEnabled ||
+        !task.hasFinalPlan ||
+        !task.hasGoalPrompt ||
+        row.operationId !== expected.operationId ||
+        row.fencingToken !== expected.fencingToken ||
+        row.codexThreadId !== expected.codexThreadId ||
+        row.worktreeId !== expected.worktreeId ||
+        !["running", "expired", "failed"].includes(row.state)
+      )
+        throw this.staleLease();
+      const live =
+        row.state === "running" &&
+        row.leaseExpiresAt &&
+        row.leaseExpiresAt > now;
+      const owner = live ? row.leaseOwner! : leaseOwner;
+      const fencingToken = live ? row.fencingToken : row.fencingToken + 1;
+      const leaseExpiresAt = new Date(now.getTime() + TASK_DISPATCH_LEASE_MS);
+      await transaction
+        .update(schema.taskDispatchCycles)
+        .set({
+          state: "running",
+          leaseOwner: owner,
+          fencingToken,
+          leaseExpiresAt,
+          lastHeartbeatAt: now,
+          completedAt: null,
+          eligibilityCode: null,
+          updatedAt: now,
+        })
+        .where(eq(schema.taskDispatchCycles.id, row.id));
+      return taskDispatchWorkerLeaseSchema.parse({
+        cycleId: row.id,
+        operationId: row.operationId,
+        leaseOwner: owner,
+        fencingToken,
+        leaseExpiresAt: iso(leaseExpiresAt),
+      });
+    });
+  }
+
   async requeueExpiredLeases(
     ownerId: string,
     now = new Date(),

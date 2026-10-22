@@ -1103,6 +1103,13 @@ export const taskGoalWorkerResultSchema = z
     goal: taskGoalObjectiveOpaqueSnapshotSchema.nullable(),
     task: taskOpaqueContentSchema,
     message: taskMessageOpaqueContentSchema.nullable(),
+    execution: z
+      .object({
+        threadId: z.string().min(1),
+        status: z.enum(["running", "idle", "failed"]),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine((value, context) => {
@@ -1118,6 +1125,9 @@ export const taskGoalWorkerResultSchema = z
       });
     }
   });
+
+/** Recovery selects an existing owned session; it never accepts a new prompt. */
+export const taskRecoveryStartSchema = z.object({}).strict();
 
 export const taskImplementationOpaqueDashboardSchema =
   taskImplementationDashboardSchema

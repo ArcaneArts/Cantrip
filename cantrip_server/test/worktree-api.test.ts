@@ -1691,7 +1691,7 @@ const workerBridge = {
         };
       case "chat.pause.set":
         chatPauseCommands.push({ ...command, timeoutMs: options?.timeoutMs });
-        return { paused: command.paused };
+        return { paused: command.paused, active: null };
       case "chat.message.protect":
         protectedMessageCommands.push(command);
         return {

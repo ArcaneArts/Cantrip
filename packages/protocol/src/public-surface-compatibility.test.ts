@@ -393,6 +393,7 @@ const editorBindingExports = [
   "explorerOperationWireRequestSchema",
   "standaloneChatFileBindingSchema",
 ];
+const taskRecoveryExports = ["taskRecoveryStartSchema"];
 
 describe("protocol public surface compatibility", () => {
   it("preserves the root runtime export baseline with reviewed CUA and managed-session additions", () => {
@@ -406,6 +407,7 @@ describe("protocol public surface compatibility", () => {
           !accountCreditsExports.includes(name) &&
           !browserCursorExports.includes(name) &&
           !taskGoalHandoffExports.includes(name) &&
+          !taskRecoveryExports.includes(name) &&
           !taskConversationExports.includes(name) &&
           !chatFileReferencesExports.includes(name) &&
           !editorBindingExports.includes(name) &&
@@ -417,10 +419,13 @@ describe("protocol public surface compatibility", () => {
     expect(
       exportNames.filter((name) => retiredWorkbenchExports.includes(name)),
     ).toEqual([]);
-    expect(exportNames).toHaveLength(2066);
+    expect(exportNames).toHaveLength(2067);
     expect(
       exportNames.filter((name) => gitChangeSummaryExports.includes(name)),
     ).toEqual(gitChangeSummaryExports);
+    expect(
+      exportNames.filter((name) => taskRecoveryExports.includes(name)),
+    ).toEqual(taskRecoveryExports);
     expect(
       exportNames.filter((name) => editorBindingExports.includes(name)),
     ).toEqual(editorBindingExports);

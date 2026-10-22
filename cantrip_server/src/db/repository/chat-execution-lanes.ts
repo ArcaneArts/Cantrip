@@ -350,6 +350,30 @@ export class ChatExecutionLaneRepository {
       for (const lane of interruptedPrimaryLanes) {
         await releaseChatLogicalBranchLease(transaction, lane.id);
       }
+      // The worker/native Goal may still be running. A server restart alone
+      // is not evidence of implementation failure; recovery observes it next.
+      await transaction
+        .update(schema.chats)
+        .set({ status: "offline", updatedAt: now })
+        .where(
+          and(
+            eq(schema.chats.experience, "task"),
+            eq(schema.chats.automationPaused, false),
+            inArray(schema.chats.status, ["running", "waiting-for-approval"]),
+            inArray(
+              schema.chats.id,
+              transaction
+                .select({ chatId: schema.tasks.chatId })
+                .from(schema.tasks)
+                .where(
+                  and(
+                    eq(schema.tasks.planGoalEnabled, true),
+                    isNotNull(schema.tasks.implementationStartedAt),
+                  ),
+                ),
+            ),
+          ),
+        );
       await transaction
         .update(schema.chats)
         .set({

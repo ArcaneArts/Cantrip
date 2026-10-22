@@ -16,6 +16,7 @@ import {
   resumeTaskImplementation,
   stopTaskImplementation,
   taskImplementationCanResume,
+  taskImplementationCanRecover,
   taskImplementationPlacementLabel,
   taskImplementationShowsLiveActivity,
   taskImplementationStatusLabel,
@@ -30,6 +31,33 @@ const goal = {
 } as TaskGoalSnapshot;
 
 describe("Task implementation dashboard presentation", () => {
+  it("offers recovery even when the failed Task has lost its Goal view", () => {
+    const retained = {
+      ...task,
+      state: "failed",
+      implementationStartedAt: "2026-10-22T20:00:00Z",
+      dispatch: { state: "expired" },
+    } as TaskDetail;
+    expect(taskImplementationCanRecover(retained)).toBe(true);
+    expect(
+      taskImplementationCanRecover({ ...retained, state: "complete" }),
+    ).toBe(false);
+    expect(
+      taskImplementationCanRecover({
+        ...retained,
+        implementationStartedAt: null,
+      }),
+    ).toBe(false);
+    expect(
+      taskImplementationCanRecover({ ...retained, planGoalEnabled: false }),
+    ).toBe(false);
+    expect(
+      taskImplementationCanRecover({
+        ...retained,
+        dispatch: { ...retained.dispatch!, state: "cancelled" },
+      }),
+    ).toBe(false);
+  });
   it("allows explicit Resume for retained implementation Goals, but not failed planning or completed Goals", () => {
     const failed = {
       ...task,
@@ -51,6 +79,17 @@ describe("Task implementation dashboard presentation", () => {
     ).toBe(false);
   });
   it("shows a deferred launch as queued instead of still starting", () => {
+    expect(
+      taskImplementationStatusLabel(
+        task,
+        null,
+        false,
+        false,
+        false,
+        false,
+        true,
+      ),
+    ).toBe("Reconnecting");
     expect(
       taskImplementationStatusLabel(
         {

@@ -1183,6 +1183,13 @@ export class TaskRepository {
       }
       if (
         current.state !== next.classification.state &&
+        !(
+          current.state === "failed" &&
+          next.classification.state === "complete" &&
+          current.implementationStartedAt &&
+          current.hasFinalPlan &&
+          current.hasGoalPrompt
+        ) &&
         !canTransitionTaskState(current.state, next.classification.state)
       ) {
         throw new TaskStateTransitionError(

@@ -68,6 +68,10 @@ export async function interruptChatAcrossRuntimes(
 }
 
 export interface CodexRuntime {
+  readThreadExecution(threadId: string): Promise<{
+    threadId: string;
+    status: "running" | "idle" | "failed";
+  }>;
   readonly compatibility: CodexRuntimeReport;
   readonly transportGeneration: string | null;
 

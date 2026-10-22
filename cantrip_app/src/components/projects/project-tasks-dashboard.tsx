@@ -17,6 +17,7 @@ import {
   Pause,
   Play,
   Plus,
+  RefreshCw,
   Settings2,
   Trash2,
 } from "lucide-react";
@@ -36,6 +37,7 @@ import { PersistentTaskViews } from "@/components/tasks/persistent-task-views";
 import { TaskDialog } from "@/components/tasks/task-dialog";
 import type { TaskSurfaceHandle } from "@/components/tasks/task-surface";
 import { taskCanBeDeleted } from "@/components/tasks/task-deletion";
+import { taskImplementationCanRecover } from "@/components/tasks/task-implementation-dashboard";
 import {
   EmptyState,
   EmptyStateActions,
@@ -51,6 +53,7 @@ import {
   getProjectTaskWorkload,
   getTaskWorkers,
   setProjectTaskPauseState,
+  recoverTaskImplementation,
 } from "@/lib/api";
 import { errorMessage } from "@/lib/error-message";
 import { cn } from "@/lib/utils";
@@ -116,6 +119,17 @@ export function projectTaskWorkloadPresentation(
       tone: "completed",
     };
   }
+  if (
+    task.planGoalEnabled &&
+    task.state === "implementing" &&
+    chat?.status === "offline"
+  )
+    return {
+      band: "running",
+      label: "Reconnecting",
+      paused: false,
+      tone: "muted",
+    };
   if (
     (chat?.status === "waiting-for-approval" && !chat.automationPaused) ||
     (chat?.status === "failed" && dispatch?.state !== "queued")
@@ -623,6 +637,43 @@ export function ProjectTasksDashboard({
       ]);
     },
   });
+  const recoveryCandidates = (workload.data?.items ?? []).filter(
+    ({ task }) =>
+      taskImplementationCanRecover(task) &&
+      (task.state === "failed" ||
+        ["expired", "failed"].includes(task.dispatch?.state ?? "") ||
+        ["failed", "offline"].includes(
+          chats.find((chat) => chat.id === task.chatId)?.status ?? "",
+        )),
+  );
+  const recoveryMutation = useMutation({
+    mutationFn: async () => {
+      const results = await Promise.allSettled(
+        recoveryCandidates.map(({ task }) =>
+          recoverTaskImplementation(task.chatId),
+        ),
+      );
+      const errors = results.flatMap((result) =>
+        result.status === "rejected" ? [errorMessage(result.reason)] : [],
+      );
+      if (errors.length) throw new Error(errors.join("; "));
+    },
+    onSettled: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["project-task-workload", projectId],
+        }),
+        queryClient.invalidateQueries({ queryKey: ["chats", projectId] }),
+        ...recoveryCandidates.flatMap(({ task }) => [
+          queryClient.invalidateQueries({ queryKey: ["task", task.chatId] }),
+          queryClient.invalidateQueries({
+            queryKey: ["task-dashboard", task.chatId],
+          }),
+          queryClient.invalidateQueries({ queryKey: ["goal", task.chatId] }),
+        ]),
+      ]);
+    },
+  });
   const deleteTaskMutation = useMutation({
     mutationFn: deleteTask,
     onSuccess: async (_result, chatId) => {
@@ -830,17 +881,35 @@ export function ProjectTasksDashboard({
                 <Pause aria-hidden="true" className="size-4" />
               )}
             </TooltipButton>
+            <TooltipButton
+              className="size-8"
+              size="icon"
+              variant="ghost"
+              tooltip="Retry interrupted Tasks"
+              pending={recoveryMutation.isPending}
+              disabled={
+                recoveryCandidates.length === 0 || pauseMutation.isPending
+              }
+              onClick={() => recoveryMutation.mutate()}
+            >
+              <RefreshCw aria-hidden="true" className="size-4" />
+            </TooltipButton>
           </div>
         </header>
-        {error || pauseMutation.isError || taskCreationError ? (
+        {error ||
+        pauseMutation.isError ||
+        recoveryMutation.isError ||
+        taskCreationError ? (
           <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
             {error instanceof Error
               ? error.message
               : pauseMutation.error instanceof Error
                 ? pauseMutation.error.message
-                : taskCreationError instanceof Error
-                  ? taskCreationError.message
-                  : "The Task workload could not be loaded."}
+                : recoveryMutation.error instanceof Error
+                  ? recoveryMutation.error.message
+                  : taskCreationError instanceof Error
+                    ? taskCreationError.message
+                    : "The Task workload could not be loaded."}
           </div>
         ) : null}
         {workload.isSuccess &&

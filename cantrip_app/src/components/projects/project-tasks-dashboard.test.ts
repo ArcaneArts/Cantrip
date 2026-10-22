@@ -170,12 +170,14 @@ describe("flat Task list", () => {
       const buttons = [
         ...header!.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g),
       ].map((match) => match[0]);
-      expect(buttons).toHaveLength(2);
+      expect(buttons).toHaveLength(3);
       expect(buttons[0]).toContain('aria-label="Add Task"');
       expect(buttons[1]).toContain(
         `aria-label="${paused ? "Resume Tasks" : "Pause Tasks"}"`,
       );
       expect(buttons[1]).toContain(paused ? "lucide-play" : "lucide-pause");
+      expect(buttons[2]).toContain('aria-label="Retry interrupted Tasks"');
+      expect(buttons[2]).toContain("disabled");
       for (const button of buttons) {
         expect(button).toContain("size-8");
         expect(button.replace(/<[^>]+>/g, "").trim()).toBe("");

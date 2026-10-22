@@ -110,6 +110,7 @@ export {
   getTask,
   deleteTask,
   getTaskImplementationDashboard,
+  recoverTaskImplementation,
   getTaskAttachments,
   updateTaskDraft,
   startTaskPlanning,

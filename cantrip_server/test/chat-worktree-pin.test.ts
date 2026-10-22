@@ -288,4 +288,40 @@ describe("worktree pinning against the migrated database schema", () => {
       spy.mockRestore();
     }
   });
+
+  it("does not let recovery replace a newer placement", async () => {
+    const chat = await createChat();
+    const read = database.repository.getProjectWorktreeContext.bind(
+      database.repository,
+    );
+    const spy = vi
+      .spyOn(database.repository, "getProjectWorktreeContext")
+      .mockImplementationOnce(async (...args) => {
+        await database.repository.updateChatWorktree(LOCAL_USER_ID, chat.id, {
+          worktreeId: consoleGuardId,
+          mode: "pinned",
+        });
+        return read(...args);
+      });
+    try {
+      await expect(
+        database.repository.updateChatWorktree(
+          LOCAL_USER_ID,
+          chat.id,
+          { worktreeId: primaryId, mode: "agent-managed" },
+          primaryId,
+        ),
+      ).rejects.toThrow("placement changed during recovery");
+      expect(
+        (
+          await database.repository.getChatExecutionContext(
+            LOCAL_USER_ID,
+            chat.id,
+          )
+        )?.worktreeId,
+      ).toBe(consoleGuardId);
+    } finally {
+      spy.mockRestore();
+    }
+  });
 });

@@ -110,7 +110,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
     "601cfa1ef62b1fe37e7779ace69d80961404ad97ddc2089da85eef315183f9d9",
   applicationRoutes:
-    "da5c3d8352e16c6aee635cc260afcbcc4013d5585e0f948f4dc61ee559b4db03",
+    "80786c8fd1d6d3a502aa5546278cb9bad6c3905505040baebea3572c78615d34",
   clientControlCommands:
     "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
   cliCommands:
@@ -1002,6 +1002,12 @@ function taskRouteBoundaryAudit(routes) {
       "opaque-create",
     ],
     ["GET", "/api/tasks/:chatId", "taskOpaqueSummarySchema", "opaque-read"],
+    [
+      "POST",
+      "/api/tasks/:chatId/recover",
+      "taskOpaqueSummarySchema",
+      "minimized-recovery-control",
+    ],
     [
       "GET",
       "/api/tasks/:chatId/dashboard",

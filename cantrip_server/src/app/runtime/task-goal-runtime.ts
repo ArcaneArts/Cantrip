@@ -609,6 +609,8 @@ export function createTaskGoalRuntime({
       idempotencyKey: string;
       kind: "resume" | "start";
     } | null = null,
+    observeExecution = false,
+    activateGoal = false,
   ) => {
     if (!context.threadId) {
       return { goal: null, message: null, task };
@@ -617,7 +619,9 @@ export function createTaskGoalRuntime({
     if (!runtime) throw new Error("Selected model was not found.");
     const result = taskGoalWorkerResultSchema.parse(
       await bridge.request(context.workerId, {
-        type: "chat.goal.get",
+        ...(activateGoal
+          ? { type: "chat.goal.update" as const, status: "active" as const }
+          : { type: "chat.goal.get" as const, observeExecution }),
         chatId: context.chatId,
         cwd: context.cwd,
         threadId: context.threadId,
@@ -634,6 +638,8 @@ export function createTaskGoalRuntime({
     );
     if (
       result.goal?.chatId !== context.chatId ||
+      result.goal.threadId !== context.threadId ||
+      (result.execution && result.execution.threadId !== context.threadId) ||
       (message &&
         (result.message?.id !== message.id ||
           result.message.idempotencyKey !== message.idempotencyKey))
@@ -649,7 +655,8 @@ export function createTaskGoalRuntime({
       publishChatInvalidation(context.chatId, "task", null, context);
     }
     const nextTask = { ...(synchronized ?? task), dispatch: task.dispatch };
-    await reconcileTaskGoalDispatch(task, nextTask.state);
+    if (!observeExecution)
+      await reconcileTaskGoalDispatch(task, nextTask.state);
     return { ...result, task: nextTask };
   };
 
@@ -722,7 +729,11 @@ export function createTaskGoalRuntime({
     taskDispatchLease: lease,
   });
 
-  const resumeChatAutomation = async (chatId: string): Promise<void> => {
+  const resumeChatAutomation = async (
+    chatId: string,
+    activateGoal = false,
+    worktreeReconciled = false,
+  ): Promise<void> => {
     let context = await repository.getChatExecutionContext(
       applicationOwnerId(),
       chatId,
@@ -735,7 +746,11 @@ export function createTaskGoalRuntime({
     ) {
       return;
     }
-    if (await continuePendingWorktreeTransition(chatId)) return;
+    if (
+      !worktreeReconciled &&
+      (await continuePendingWorktreeTransition(chatId))
+    )
+      return;
     context = await repository.getChatExecutionContext(
       applicationOwnerId(),
       chatId,
@@ -782,11 +797,17 @@ export function createTaskGoalRuntime({
         if (!task) return;
         const messageId = randomUUID();
         const idempotencyKey = `task-goal-resume:${messageId}`;
-        const result = await readEncryptedTaskGoal(context, task, {
-          id: messageId,
-          idempotencyKey,
-          kind: "resume",
-        });
+        const result = await readEncryptedTaskGoal(
+          context,
+          task,
+          {
+            id: messageId,
+            idempotencyKey,
+            kind: "resume",
+          },
+          false,
+          activateGoal,
+        );
         if (result.goal?.status === "active" && result.message) {
           const dispatchLease = taskGoalDispatchLease(task);
           if (dispatchLease) await retainTaskGoalLease(dispatchLease);
