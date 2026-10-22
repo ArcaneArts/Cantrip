@@ -19,6 +19,7 @@ import {
   explorerDirectorySchema,
   explorerEntryMutationResultSchema,
   explorerEntryRenameSchema,
+  explorerEntryNameSchema,
   explorerEntrySchema,
   explorerFileSchema,
   explorerFileSearchSchema,
@@ -236,6 +237,47 @@ async function resolveMutableDirectory(root: string, relativePath: string) {
     throw new Error("Explorer path is not a directory.");
   }
   return { directoryPath, rootPath };
+}
+
+export async function createExplorerFile(
+  root: string,
+  relativePath: string,
+  requestedName: string,
+): Promise<ExplorerEntry> {
+  const name = explorerEntryNameSchema.parse(requestedName);
+  const { directoryPath } = await resolveMutableDirectory(root, relativePath);
+  let handle;
+  try {
+    // Creating and checking for collisions is one filesystem operation. Never
+    // truncate an existing file or follow an existing link at the destination.
+    handle = await open(
+      path.join(directoryPath, name),
+      constants.O_WRONLY |
+        constants.O_CREAT |
+        constants.O_EXCL |
+        constants.O_NOFOLLOW,
+      0o600,
+    );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST")
+      throw new Error("An entry with that name already exists.");
+    throw error;
+  }
+  try {
+    const metadata = await handle.stat();
+    return explorerEntrySchema.parse({
+      kind: "file",
+      markdown: markdownFile(name),
+      modifiedAt: metadata.mtime.toISOString(),
+      name,
+      path: [...pathSegments(relativePath), name].join("/"),
+      size: 0,
+      symbolicLink: false,
+      viewable: true,
+    });
+  } finally {
+    await handle.close();
+  }
 }
 
 export async function createExplorerDirectory(

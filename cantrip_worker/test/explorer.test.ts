@@ -16,6 +16,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   createExplorerDirectory,
+  createExplorerFile,
   deleteExplorerEntry,
   listExplorerDirectoryCommits,
   listExplorerDirectory,
@@ -97,6 +98,78 @@ describe("project explorer", () => {
       name: "New Folder",
       path: "src/New Folder",
     });
+  });
+
+  it.each([
+    ["", "README.md"],
+    ["src", "example.test.ts"],
+    ["", ".env"],
+  ])("creates an empty named file in %j", async (parentPath, name) => {
+    const root = await mkdtemp(path.join(tmpdir(), "cantrip-explorer-test-"));
+    directories.push(root);
+    if (parentPath) await mkdir(path.join(root, parentPath));
+    const relativePath = parentPath ? `${parentPath}/${name}` : name;
+    await expect(
+      createExplorerFile(root, parentPath, name),
+    ).resolves.toMatchObject({
+      kind: "file",
+      name,
+      path: relativePath,
+      size: 0,
+      symbolicLink: false,
+      viewable: true,
+      markdown: name.endsWith(".md"),
+    });
+    await expect(readFile(path.join(root, relativePath), "utf8")).resolves.toBe(
+      "",
+    );
+  });
+
+  it("never overwrites existing files, directories or symbolic links when creating a file", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "cantrip-explorer-test-"));
+    directories.push(root);
+    await writeFile(path.join(root, "keep.txt"), "keep me");
+    await mkdir(path.join(root, "folder"));
+    await symlink(path.join(root, "keep.txt"), path.join(root, "link.txt"));
+    await symlink(path.join(root, "missing"), path.join(root, "broken.txt"));
+    for (const name of ["keep.txt", "folder", "link.txt", "broken.txt"])
+      await expect(createExplorerFile(root, "", name)).rejects.toThrow(
+        "already exists",
+      );
+    await expect(readFile(path.join(root, "keep.txt"), "utf8")).resolves.toBe(
+      "keep me",
+    );
+    const concurrent = await Promise.allSettled([
+      createExplorerFile(root, "", "once.txt"),
+      createExplorerFile(root, "", "once.txt"),
+    ]);
+    expect(
+      concurrent.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+    expect(
+      concurrent.filter((result) => result.status === "rejected"),
+    ).toHaveLength(1);
+  });
+
+  it("rejects invalid file names and parent paths instead of creating outside the chosen directory", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "cantrip-explorer-test-"));
+    directories.push(root);
+    for (const name of [
+      "",
+      ".",
+      "..",
+      "../escape.txt",
+      "sub/name.txt",
+      "sub\\name.txt",
+      "nul\0.txt",
+    ])
+      await expect(createExplorerFile(root, "", name)).rejects.toThrow();
+    await expect(createExplorerFile(root, "..", "escape.txt")).rejects.toThrow(
+      "traversal",
+    );
+    await expect(createExplorerFile(root, root, "escape.txt")).rejects.toThrow(
+      "relative",
+    );
   });
 
   it("lists folders and reads supported UTF-8 text files", async () => {
@@ -309,6 +382,9 @@ describe("project explorer", () => {
     ).rejects.toThrow("cannot follow links outside");
     await expect(
       createExplorerDirectory(root, "linked-directory"),
+    ).rejects.toThrow("cannot follow links outside");
+    await expect(
+      createExplorerFile(root, "linked-directory", "new.txt"),
     ).rejects.toThrow("cannot follow links outside");
     await expect(
       deleteExplorerEntry(root, "linked-directory"),

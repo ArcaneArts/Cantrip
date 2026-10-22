@@ -558,6 +558,29 @@ export async function saveExplorerFile(
   return explorerFileSchema.parse(result.value);
 }
 
+export async function createExplorerFile(
+  explorerId: string,
+  input: Omit<
+    Extract<ExplorerOperationRequestContent, { type: "explorer.file.create" }>,
+    "type"
+  >,
+  binding?: ExplorerFileBinding,
+): Promise<ExplorerEntry> {
+  const result = await executeExplorerOperation(
+    explorerId,
+    {
+      type: "explorer.file.create",
+      ...input,
+    },
+    undefined,
+    undefined,
+    binding,
+  );
+  if (result.type !== "explorer.file.created")
+    throw new Error("Explorer returned an unexpected created file result.");
+  return explorerEntrySchema.parse(result.value);
+}
+
 export async function createExplorerDirectory(
   explorerId: string,
   input: ExplorerDirectoryCreate,

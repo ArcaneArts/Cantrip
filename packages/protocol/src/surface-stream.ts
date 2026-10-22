@@ -8,6 +8,7 @@ import {
   explorerEntrySchema,
   explorerEntryMutationResultSchema,
   explorerEntryRenameSchema,
+  explorerEntryNameSchema,
   explorerFileSchema,
   explorerFileSearchSchema,
   explorerFileWriteSchema,
@@ -165,6 +166,13 @@ export const explorerOperationRequestContentSchema = z.discriminatedUnion(
       .extend(explorerDirectoryCreateSchema.shape)
       .strict(),
     z
+      .object({
+        type: z.literal("explorer.file.create"),
+        path: explorerDirectoryCreateSchema.shape.path,
+        name: explorerEntryNameSchema,
+      })
+      .strict(),
+    z
       .object({ type: z.literal("explorer.entry.rename") })
       .extend(explorerEntryRenameSchema.shape)
       .strict(),
@@ -202,6 +210,12 @@ export const explorerOperationResultContentSchema = z.discriminatedUnion(
     z
       .object({
         type: z.literal("explorer.directory.created"),
+        value: explorerEntrySchema,
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("explorer.file.created"),
         value: explorerEntrySchema,
       })
       .strict(),

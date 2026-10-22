@@ -15,6 +15,7 @@ import {
   readExplorerFile,
   writeExplorerFile,
   createExplorerDirectory,
+  createExplorerFile,
   renameExplorerEntry,
   deleteExplorerEntry,
   readExplorerMediaFile,
@@ -112,6 +113,19 @@ export async function handleExplorerCommand(
                   request.path,
                   request.content,
                   request.version,
+                ),
+              },
+            };
+            break;
+          case "explorer.file.create":
+            outcome = {
+              ok: true as const,
+              result: {
+                type: "explorer.file.created" as const,
+                value: await createExplorerFile(
+                  command.root,
+                  request.path,
+                  request.name,
                 ),
               },
             };

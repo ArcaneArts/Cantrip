@@ -3590,6 +3590,47 @@ describe("Cantrip protocol", () => {
     );
   });
 
+  it("accepts named Explorer file creation but rejects paths in the filename and overwrite options", () => {
+    expect(
+      explorerOperationRequestContentSchema.parse({
+        type: "explorer.file.create",
+        path: "",
+        name: " README.md ",
+      }),
+    ).toEqual({ type: "explorer.file.create", path: "", name: "README.md" });
+    expect(
+      explorerOperationRequestContentSchema.parse({
+        type: "explorer.file.create",
+        path: "src",
+        name: ".env",
+      }),
+    ).toMatchObject({ path: "src", name: ".env" });
+    for (const name of [
+      "",
+      ".",
+      "..",
+      "../escape.ts",
+      "sub/name.ts",
+      "sub\\name.ts",
+      "bad\0name",
+    ])
+      expect(
+        explorerOperationRequestContentSchema.safeParse({
+          type: "explorer.file.create",
+          path: "",
+          name,
+        }).success,
+      ).toBe(false);
+    expect(
+      explorerOperationRequestContentSchema.safeParse({
+        type: "explorer.file.create",
+        path: "",
+        name: "keep.ts",
+        overwrite: true,
+      }).success,
+    ).toBe(false);
+  });
+
   it("classifies browser-native Explorer media and bounds chunk reads", () => {
     expect(explorerMediaTypeForPath("assets/cover.PNG")).toEqual({
       kind: "image",
