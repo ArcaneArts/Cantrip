@@ -2,7 +2,22 @@ import type { ExplorerEntry, ExplorerSummary } from "@cantrip/protocol";
 import { createElement, type ComponentProps, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import TestRenderer, { act } from "react-test-renderer";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const identity = vi.hoisted(() => ({
+  current: { serverId: "server-a", user: { id: "owner-a" } },
+  listeners: new Set<() => void>(),
+}));
+vi.mock("@/lib/client-session", () => ({
+  getClientSession: () => identity.current,
+  onClientSessionIdentityChanged: (listener: () => void) => {
+    identity.listeners.add(listener);
+    return () => identity.listeners.delete(listener);
+  },
+}));
+
+let storedFolders: Map<string, string>;
+let testIdentity = 0;
 
 vi.mock("./use-file-change-activity", () => ({
   useFileChangeActivity: () => ({ current: null }),
@@ -256,6 +271,21 @@ async function clickFolder(
 
 describe("project sidebar file tree encryption gate", () => {
   beforeEach(() => {
+    storedFolders = new Map();
+    identity.current = {
+      serverId: "server-a",
+      user: { id: `owner-${++testIdentity}` },
+    };
+    vi.stubGlobal(
+      "window",
+      Object.assign(new EventTarget(), {
+        localStorage: {
+          getItem: (key: string) => storedFolders.get(key) ?? null,
+          setItem: (key: string, value: string) =>
+            storedFolders.set(key, value),
+        },
+      }),
+    );
     runtime.directory.mockClear();
     runtime.entriesByPath.clear();
     runtime.pendingPaths.clear();
@@ -265,6 +295,199 @@ describe("project sidebar file tree encryption gate", () => {
     runtime.gate.error = null;
     runtime.gate.ready = true;
     runtime.gate.retry.mockClear();
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("restores saved folders after remount, skipping missing folders while others load", async () => {
+    runtime.entriesByPath.set("", [
+      folder("src"),
+      folder("docs"),
+      folder("gone"),
+    ]);
+    runtime.entriesByPath.set("src", [
+      folder("src/components"),
+      folder("src/lib"),
+    ]);
+    runtime.entriesByPath.set("src/components", [runtime.entry]);
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(() => {
+      renderer = TestRenderer.create(tree());
+    });
+    for (const path of ["src", "components", "docs", "gone"]) {
+      await clickFolder(renderer, path);
+    }
+    expect([...storedFolders.values()]).toEqual([
+      '["src","src/components","docs","gone"]',
+    ]);
+    await act(() => renderer.unmount());
+    runtime.directory.mockClear();
+
+    runtime.entriesByPath.set("", [folder("src"), folder("docs")]);
+    runtime.pendingPaths.add("src");
+    await act(() => {
+      renderer = TestRenderer.create(tree({ explorer: null, loading: true }));
+    });
+    await act(() => renderer.update(tree()));
+    expect(fileRow(renderer, "src").props["aria-expanded"]).toBe(true);
+    expect(fileRow(renderer, "docs").props["aria-expanded"]).toBe(true);
+    expect(fileRow(renderer, "gone")).toBeUndefined();
+    expect(fileRow(renderer, "components")).toBeUndefined();
+    runtime.pendingPaths.delete("src");
+    await act(() => renderer.update(tree()));
+    expect(fileRow(renderer, "components").props["aria-expanded"]).toBe(true);
+    expect(fileRow(renderer, "example.ts")).toBeDefined();
+    expect(runtime.directory).not.toHaveBeenCalledWith(
+      expect.objectContaining({ enabled: true, path: "gone" }),
+    );
+    await act(() => renderer.unmount());
+  });
+
+  it("remembers a collapsed child instead of automatically reopening it on reload", async () => {
+    runtime.entriesByPath.set("", [folder("src")]);
+    runtime.entriesByPath.set("src", [folder("src/components")]);
+    runtime.entriesByPath.set("src/components", [runtime.entry]);
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(() => {
+      renderer = TestRenderer.create(tree());
+    });
+    await clickFolder(renderer, "src");
+    await clickFolder(renderer, "components");
+    await act(() => renderer.unmount());
+    await act(() => {
+      renderer = TestRenderer.create(tree());
+    });
+    expect(fileRow(renderer, "src").props["aria-expanded"]).toBe(true);
+    expect(fileRow(renderer, "components").props["aria-expanded"]).toBe(false);
+    expect(fileRow(renderer, "example.ts")).toBeUndefined();
+    await act(() => renderer.unmount());
+  });
+
+  it.each(["projectId", "worktreeId"] as const)(
+    "keeps expansion separate when switching %s",
+    async (field) => {
+      runtime.entriesByPath.set("", [folder("src"), folder("docs")]);
+      const other = { ...explorer, [field]: "other" };
+      let renderer!: TestRenderer.ReactTestRenderer;
+      await act(() => {
+        renderer = TestRenderer.create(tree());
+      });
+      await clickFolder(renderer, "src");
+      await act(() => renderer.update(tree({ explorer: other })));
+      expect(fileRow(renderer, "src").props["aria-expanded"]).toBe(false);
+      await clickFolder(renderer, "docs");
+      await act(() => renderer.update(tree()));
+      expect(fileRow(renderer, "src").props["aria-expanded"]).toBe(true);
+      expect(fileRow(renderer, "docs").props["aria-expanded"]).toBe(false);
+      await act(() => renderer.update(tree({ explorer: other })));
+      expect(fileRow(renderer, "docs").props["aria-expanded"]).toBe(true);
+      await act(() => renderer.unmount());
+    },
+  );
+
+  it.each(["server", "account"])(
+    "restores the correct folders after a %s switch",
+    async (field) => {
+      runtime.entriesByPath.set("", [folder("src"), folder("docs")]);
+      const original = identity.current;
+      let renderer!: TestRenderer.ReactTestRenderer;
+      await act(() => {
+        renderer = TestRenderer.create(tree());
+      });
+      await clickFolder(renderer, "src");
+      await act(() => {
+        identity.current =
+          field === "server"
+            ? { ...original, serverId: "server-b" }
+            : { ...original, user: { id: "other-owner" } };
+        identity.listeners.forEach((listener) => listener());
+      });
+      expect(fileRow(renderer, "src").props["aria-expanded"]).toBe(false);
+      await clickFolder(renderer, "docs");
+      await act(() => {
+        identity.current = original;
+        identity.listeners.forEach((listener) => listener());
+      });
+      expect(fileRow(renderer, "src").props["aria-expanded"]).toBe(true);
+      expect(fileRow(renderer, "docs").props["aria-expanded"]).toBe(false);
+      await act(() => renderer.unmount());
+    },
+  );
+
+  it("keeps folders open through worker rebinding and temporary Explorer loss", async () => {
+    runtime.entriesByPath.set("", [folder("src")]);
+    runtime.entriesByPath.set("src", [runtime.entry]);
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(() => {
+      renderer = TestRenderer.create(tree());
+    });
+    await clickFolder(renderer, "src");
+    await act(() => renderer.update(tree({ explorer: null })));
+    runtime.gate.bindingKey = "binding-b";
+    await act(() =>
+      renderer.update(
+        tree({
+          explorer: {
+            ...explorer,
+            id: "replacement",
+            activeWorkerId: "worker-b",
+          },
+        }),
+      ),
+    );
+    expect(fileRow(renderer, "src").props["aria-expanded"]).toBe(true);
+    expect(fileRow(renderer, "example.ts")).toBeDefined();
+    await act(() => renderer.unmount());
+  });
+
+  it("keeps expansion usable when browser storage cannot be read or written", async () => {
+    vi.spyOn(window.localStorage, "getItem").mockImplementation(() => {
+      throw new Error("denied");
+    });
+    vi.spyOn(window.localStorage, "setItem").mockImplementation(() => {
+      throw new Error("quota");
+    });
+    runtime.entriesByPath.set("", [folder("src")]);
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(() => {
+      renderer = TestRenderer.create(tree());
+    });
+    await clickFolder(renderer, "src");
+    await act(() => renderer.unmount());
+    await act(() => {
+      renderer = TestRenderer.create(tree());
+    });
+    expect(fileRow(renderer, "src").props["aria-expanded"]).toBe(true);
+    await clickFolder(renderer, "src");
+    expect(fileRow(renderer, "src").props["aria-expanded"]).toBe(false);
+    await act(() => renderer.unmount());
+  });
+
+  it("ignores malformed cache entries and responds to another window's changes", async () => {
+    runtime.entriesByPath.set("", [folder("src"), folder("docs")]);
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(() => {
+      renderer = TestRenderer.create(tree());
+    });
+    await clickFolder(renderer, "src");
+    const key = [...storedFolders.keys()][0]!;
+    for (const value of [
+      "broken json",
+      '{"src":true}',
+      '[null,7,"docs",false]',
+    ]) {
+      storedFolders.set(key, value);
+      await act(() => {
+        window.dispatchEvent(Object.assign(new Event("storage"), { key }));
+      });
+      expect(fileRow(renderer, "src").props["aria-expanded"]).toBe(false);
+      expect(fileRow(renderer, "docs").props["aria-expanded"]).toBe(
+        value.startsWith("["),
+      );
+    }
+    await clickFolder(renderer, "src");
+    expect(JSON.parse(storedFolders.get(key)!)).toEqual(["docs", "src"]);
+    await act(() => renderer.unmount());
   });
 
   it("expands an entire package chain and keeps manual collapse usable", async () => {
