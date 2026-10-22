@@ -8,7 +8,8 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { FileCode2, Info, MoreHorizontal, Plus, X } from "lucide-react";
+import { Info, MoreHorizontal, Plus, X } from "lucide-react";
+import { FileTypeIcon } from "@/components/files/file-type-icon";
 import type { ExecutionTarget, ProjectPaneRegion } from "@cantrip/protocol";
 import { Fragment, useCallback, useState, type ReactNode } from "react";
 import {
@@ -119,7 +120,7 @@ function SurfaceTabIcon({ surface }: { surface: ProjectSurface }) {
       definitionId={surface.entity.definitionId}
     />
   ) : surface.kind === "explorer" && surface.entity.selectedPath ? (
-    <FileCode2 className="size-3.5 shrink-0" />
+    <FileTypeIcon path={surface.entity.selectedPath} className="size-3.5" />
   ) : (
     <ProjectSurfaceIcon className="size-3.5 shrink-0" kind={surface.kind} />
   );
@@ -432,7 +433,10 @@ export function ProjectPaneTabStrip({
                       role="tab"
                       type="button"
                     >
-                      <FileCode2 className="size-3.5 shrink-0" />
+                      <FileTypeIcon
+                        path={previewFile.path}
+                        className="size-3.5"
+                      />
                       <span className="truncate">{previewFile.title}</span>
                     </button>
                     <button

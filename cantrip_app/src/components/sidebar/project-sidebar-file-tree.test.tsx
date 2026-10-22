@@ -300,6 +300,37 @@ describe("project sidebar file tree encryption gate", () => {
 
   afterEach(() => vi.unstubAllGlobals());
 
+  it("uses filename icons in the tree without mistaking directories for code", async () => {
+    const examples: [string, string][] = [
+      ["lib.rs", "rust"],
+      ["Cargo.toml", "rust"],
+      ["settings.json", "json"],
+      ["config.toml", "toml"],
+      ["config.yaml", "yaml"],
+      ["notes.txt", "text"],
+      [".gitignore", "git"],
+    ];
+    runtime.entriesByPath.set("", [
+      ...examples.map(([name]) => ({ ...runtime.entry, name, path: name })),
+      folder("folder.rs"),
+    ]);
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(() => {
+      renderer = TestRenderer.create(tree());
+    });
+    for (const [name, icon] of [
+      ...examples,
+      ["folder.rs", "folder"] as const,
+    ]) {
+      expect(
+        fileRow(renderer, name)
+          .findAllByType("svg")
+          .some((svg) => svg.props["data-file-icon"] === icon),
+      ).toBe(true);
+    }
+    await act(() => renderer.unmount());
+  });
+
   it("restores saved folders after remount, skipping missing folders while others load", async () => {
     runtime.entriesByPath.set("", [
       folder("src"),

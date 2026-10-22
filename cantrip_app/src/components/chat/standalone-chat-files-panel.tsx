@@ -5,12 +5,7 @@ import {
   ChevronDown,
   ChevronRight,
   Download,
-  File,
-  FileCode2,
-  FileText,
   Folder,
-  FolderOpen,
-  Image as ImageIcon,
   Loader2,
   RefreshCw,
   Trash2,
@@ -54,6 +49,7 @@ import {
 import { listDesktopWorkers } from "@/lib/desktop-worker";
 import { getActiveServerUrl } from "@/lib/server-connections";
 import { cn } from "@/lib/utils";
+import { FileTypeIcon } from "@/components/files/file-type-icon";
 
 function downloadBlob(blob: Blob, fileName: string): void {
   const url = URL.createObjectURL(blob);
@@ -65,13 +61,6 @@ function downloadBlob(blob: Blob, fileName: string): void {
   anchor.click();
   anchor.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
-}
-
-function entryIcon(entry: ExplorerEntry, expanded: boolean) {
-  if (entry.kind === "directory") return expanded ? FolderOpen : Folder;
-  if (entry.markdown) return FileText;
-  if (entry.viewable) return FileCode2;
-  return File;
 }
 
 function ChatFileRow({
@@ -104,7 +93,6 @@ function ChatFileRow({
   selected: boolean;
 }) {
   const preferLocalRevealRef = useRef(false);
-  const Icon = entryIcon(entry, expanded);
   const row = (
     <button
       aria-expanded={entry.kind === "directory" ? expanded : undefined}
@@ -165,7 +153,12 @@ function ChatFileRow({
       ) : (
         <span className="size-3.5 shrink-0" />
       )}
-      <Icon className="size-3.5 shrink-0" />
+      <FileTypeIcon
+        path={entry.name}
+        kind={entry.kind}
+        expanded={expanded}
+        className="size-3.5"
+      />
       <span className="min-w-0 flex-1 truncate">{entry.name}</span>
       <span className="shrink-0 text-[9px] text-muted-foreground/60">
         {entry.size === null ? "" : formatExplorerSize(entry.size)}

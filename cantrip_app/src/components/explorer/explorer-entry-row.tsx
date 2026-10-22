@@ -3,12 +3,7 @@ import * as ContextMenu from "@radix-ui/react-context-menu";
 import {
   ChevronDown,
   ChevronRight,
-  File,
-  FileCode2,
   FileClock,
-  FileText,
-  Folder,
-  FolderOpen,
   Link2,
   Network,
   SquareTerminal,
@@ -26,13 +21,7 @@ import {
 } from "@/components/ui/styled-menu";
 import { NativeFolderRevealIcon } from "@/components/ui/native-folder-reveal-icon";
 import { cn } from "@/lib/utils";
-
-function entryIcon(entry: ExplorerEntry, expanded: boolean) {
-  if (entry.kind === "directory") return expanded ? FolderOpen : Folder;
-  if (entry.markdown) return FileText;
-  if (entry.viewable) return FileCode2;
-  return File;
-}
+import { FileTypeIcon } from "@/components/files/file-type-icon";
 
 function changeTone(change: ExplorerChangeSummary): string {
   if (change.kind === "added") {
@@ -78,7 +67,6 @@ export function ExplorerEntryRow({
 }) {
   const rowRef = useRef<HTMLButtonElement>(null);
   const revealLocalFolder = useRef(false);
-  const Icon = entryIcon(entry, expanded);
   const metadata = commit ? explorerCommitMetadata(commit) : null;
   const openable = entry.kind === "directory" || entry.viewable;
   const title = [
@@ -129,7 +117,7 @@ export function ExplorerEntryRow({
         ) : (
           <span className="size-3.5 shrink-0" aria-hidden="true" />
         )}
-        <Icon className="size-4 shrink-0" />
+        <FileTypeIcon path={entry.name} kind={entry.kind} expanded={expanded} />
         <span className="min-w-0 flex-1">
           <span className="flex min-w-0 items-center gap-1.5">
             <span className="min-w-0 flex-1 truncate">{entry.name}</span>
