@@ -13,7 +13,7 @@ import type {
   ExecutionTarget,
   WorktreeSelection,
 } from "@cantrip/protocol";
-import { and, asc, desc, eq, notInArray } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 
 import * as schema from "../schema.js";
 import {
@@ -155,28 +155,12 @@ export class CodeSurfaceRepository {
       await this.collaborators.resolveProjectExecutionPlacement(
         ownerId,
         projectId,
-        "code",
+        "explorer",
         target,
         isWorkerConnected,
       );
     const workerId = placement.workerId;
     const worktreeId = placement.worktreeId!;
-    const workerRows = await this.database
-      .select({ codeCapabilities: schema.workers.codeCapabilities })
-      .from(schema.workers)
-      .where(
-        and(
-          eq(schema.workers.id, workerId),
-          eq(schema.workers.ownerId, ownerId),
-        ),
-      )
-      .limit(1);
-    const capabilities = workerRows[0]?.codeCapabilities;
-    if (!capabilities?.available) {
-      throw new CodeCapabilityUnavailableError(
-        capabilities?.reason ?? "Cantrip Code is unavailable on this worker.",
-      );
-    }
     const position = await this.collaborators.nextProjectTabPosition(projectId);
     return this.database.transaction(async (transaction) => {
       const result = await transaction
@@ -279,12 +263,6 @@ export class CodeSurfaceRepository {
       codeTabId,
     );
     if (!context) return null;
-    if (
-      context.codeTab.status === "starting" ||
-      context.codeTab.status === "running"
-    ) {
-      throw new Error("Stop Cantrip Code before changing its worktree.");
-    }
     const target = await this.collaborators.getProjectWorktreeContext(
       ownerId,
       context.codeTab.projectId,
@@ -306,7 +284,6 @@ export class CodeSurfaceRepository {
           eq(schema.codeTabs.activeWorkerId, context.workerId),
           eq(schema.codeTabs.worktreeId, context.worktreeId),
           eq(schema.codeTabs.profileId, context.codeTab.profileId),
-          notInArray(schema.codeTabs.status, ["starting", "running"]),
         ),
       )
       .returning();

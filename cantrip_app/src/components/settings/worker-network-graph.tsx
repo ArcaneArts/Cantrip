@@ -398,7 +398,6 @@ function workerNode(
   const local = worker.internal || localWorkerIds.has(worker.workerId);
   const route = workerNetworkRoutePresentation(worker.online, status);
   const capabilities = [
-    worker.code.available ? "Code" : null,
     worker.remoteSurfaces.browser ? "Browser" : null,
     worker.remoteSurfaces.desktop ? "Desktop" : null,
   ].filter(Boolean);

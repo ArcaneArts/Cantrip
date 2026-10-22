@@ -120,9 +120,17 @@ File windows exchange only context, file/media reads, and revision-checked saves
 they do not create editor servers or embedded workbenches. The former editor
 extension settings and dormant Monaco editor have been removed.
 
-The native editor contains no third-party editor or syntax engine. Legacy
-project Code tabs and their server/worker runtime are the remaining migration
-work; they are separate from native file opening.
+Project Code tabs also use the native file browser and editor. Existing IDs,
+encrypted titles, tab placement, and checkout bindings remain in use; file
+operations resolve the owned Code tab through the same encrypted worker API.
+No embedded editor session or transport is created. Dirty editors survive
+cache pressure and require save/discard decisions before closing or moving to
+another checkout/window. An externally moved tab keeps its original draft for
+copying, and stale checkout bindings cannot redirect a save.
+
+The native editor contains no third-party editor or syntax engine. Server and
+worker workbench endpoints, native transport pooling, vendored sources, and
+build/packaging scripts are the remaining removal work.
 
 ## Development and verification
 

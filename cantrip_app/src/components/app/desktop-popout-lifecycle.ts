@@ -1,3 +1,4 @@
+import { prepareNativeCodeTransfer } from "@/components/code/native-code-lifecycle";
 import type {
   ExplorerSummary,
   ProjectSummary,
@@ -218,6 +219,25 @@ export function useDesktopPopoutModel({
         );
         return;
       }
+      const layout = queryClient.getQueryData<ProjectTabLayoutSummary>([
+        "project-tab-layout",
+        activePopout.target.projectId,
+      ]);
+      const codeTabs =
+        layout?.panes
+          .find((pane) => pane.id === activePopout.target.paneId)
+          ?.members.filter((member) => member.tabKind === "code")
+          .map((member) => member.tabId) ??
+        (currentSurface?.tabKey.startsWith("code:")
+          ? [currentSurface.tabKey.slice(5)]
+          : []);
+      for (const id of codeTabs)
+        if (!(await prepareNativeCodeTransfer(id))) {
+          status.setPopoutError(
+            "Save the Code tab's files before opening this pop-out.",
+          );
+          return;
+        }
       status.setPopoutPending(true);
       status.setPopoutError(null);
       try {

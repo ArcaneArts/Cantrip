@@ -68,7 +68,6 @@ async function availablePort() {
 /** Runs production entrypoints with state and browser origins owned by this run. */
 export async function startEditorRecoveryFixture({
   requireExplicitBootstrapRefresh = false,
-  logicalCreditControl = false,
   repositoryProject = false,
 } = {}) {
   const runId = randomUUID();
@@ -276,13 +275,6 @@ export async function startEditorRecoveryFixture({
       cacheDir: path.join(directory, "vite-cache"),
       configFile: path.join(root, "cantrip_app/vite.config.ts"),
       plugins: [
-        ...(logicalCreditControl
-          ? [
-              (
-                await import("./editor-logical-credit.mjs")
-              ).logicalCreditFixturePlugin(),
-            ]
-          : []),
         ...(repositorySeed
           ? [
               (
@@ -312,7 +304,6 @@ export async function startEditorRecoveryFixture({
     trackSockets(vite.httpServer);
     const childEnvironment = {
       ...process.env,
-      ...(logicalCreditControl ? { CANTRIP_LOG_LEVEL: "debug" } : {}),
       CANTRIP_SERVER_HOST: "127.0.0.1",
       CANTRIP_SERVER_PORT: String(serverPort),
       CANTRIP_PUBLIC_ORIGIN: origin,

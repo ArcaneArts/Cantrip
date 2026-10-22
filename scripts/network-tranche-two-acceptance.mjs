@@ -211,42 +211,6 @@ export const featureMatrix = [
     ],
   },
   {
-    id: "code-http-websocket-hmr",
-    evidence: [
-      evidence(
-        "cantrip_app/src/lib/browser-code-tunnel.test.ts",
-        "retains the browser transport registry across HMR state reuse",
-        "keeps the request stream open until the proxied HTTP response closes",
-        "accepts WebSocket requests from descendants of the exact bound frame",
-        "reconnects a transient relay close without replacing the retained session",
-      ),
-      evidence(
-        "cantrip_app/src/lib/browser-code-worker-link-socket.test.ts",
-        "adapts a %s WorkerLink stream to the existing Code socket boundary",
-      ),
-    ],
-  },
-  {
-    id: "code-explorer-lifecycle",
-    evidence: [
-      evidence(
-        "cantrip_app/src/components/app/sidebar-explorer-controller.test.ts",
-        "provisions one bounded warm successor while a sidebar Explorer owns preview navigation",
-        "keeps the promoted preview surface addressable without returning it to the file tree under Strict Mode",
-      ),
-      evidence(
-        "cantrip_app/src/components/explorer/persistent-explorer-code-ownership.test.tsx",
-        "keeps the same dirty document session, selection, and undo history while inactive",
-        "creates a workbench only after the explicit Open in VS Code action",
-      ),
-      evidence(
-        "cantrip_app/src/components/explorer/explorer-code-editor-lifecycle.test.tsx",
-        "reconnects a terminal shared transport without replacing its editor session or frame",
-        "caps pending in-flight retries across repeated worker-online flaps",
-      ),
-    ],
-  },
-  {
     id: "generic-tcp",
     evidence: [
       evidence(
@@ -456,15 +420,14 @@ export const targetedTests = {
     "src/lib/worker-link-peer-carrier.test.ts",
     "src/lib/terminal-worker-link.test.ts",
     "src/lib/tunnel-worker-link.test.ts",
-    "src/lib/browser-code-worker-link-socket.test.ts",
-    "src/lib/browser-code-tunnel.test.ts",
     "src/lib/desktop-tunnel-worker-link.test.ts",
     "src/lib/remote-surface-worker-link.test.ts",
     "src/lib/worker-observation-client.test.ts",
     "src/components/app/sidebar-explorer-controller.test.ts",
     "src/components/browser/browser-view.test.ts",
-    "src/components/explorer/explorer-code-editor-lifecycle.test.tsx",
     "src/components/explorer/persistent-explorer-code-ownership.test.tsx",
+    "src/components/explorer/explorer-native-session.test.tsx",
+    "src/components/code/code-view.test.tsx",
     "src/components/remote-desktop/managed-remote-desktop-view.test.ts",
     "src/components/settings/worker-network-graph.test.tsx",
   ],

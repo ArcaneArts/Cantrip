@@ -1012,10 +1012,10 @@ describe.sequential("project execution placement API", () => {
       workerBridge.isConnected.bind(workerBridge),
     );
     expect(code).toMatchObject({
-      selection: "default-worker",
+      selection: "project-preference",
       placement: {
-        workerId: "worker-alpha",
-        worktreeId: alphaWorktreeId,
+        workerId: "worker-beta",
+        worktreeId: betaWorktreeId,
       },
     });
 
@@ -1041,6 +1041,40 @@ describe.sequential("project execution placement API", () => {
     });
   });
 
+  it("creates a native Code tab and file context on a worker without VS Code", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/code-tabs`,
+      payload: protectedDisplayLabelFields("code-tab"),
+    });
+    expect(response.statusCode, response.body).toBe(201);
+    const tab = response.json();
+    expect(tab.activeWorkerId).toBe("worker-beta");
+    expect(tab.worktreeId).toBe(betaWorktreeId);
+    const metadata = await database.repository.getCodeTabExecutionContext(
+      LOCAL_USER_ID,
+      tab.id,
+    );
+    expect(metadata?.capabilities.available).toBe(false);
+    expect(
+      await database.repository.getExplorerExecutionContext(
+        LOCAL_USER_ID,
+        tab.id,
+      ),
+    ).toMatchObject({
+      explorerId: tab.id,
+      projectId,
+      workerId: "worker-beta",
+      worktreeId: betaWorktreeId,
+    });
+    expect(
+      await database.repository.getExplorerExecutionContext(
+        randomUUID(),
+        tab.id,
+      ),
+    ).toBeNull();
+  });
+
   it("trusts a live worker connection when its persisted heartbeat is stale", async () => {
     const dateNow = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 31_000);
 
@@ -1054,10 +1088,10 @@ describe.sequential("project execution placement API", () => {
           workerBridge.isConnected.bind(workerBridge),
         ),
       ).toMatchObject({
-        selection: "default-worker",
+        selection: "project-preference",
         placement: {
-          workerId: "worker-alpha",
-          worktreeId: alphaWorktreeId,
+          workerId: "worker-beta",
+          worktreeId: betaWorktreeId,
         },
       });
 

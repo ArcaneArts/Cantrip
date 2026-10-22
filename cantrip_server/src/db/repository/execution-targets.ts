@@ -336,7 +336,7 @@ export class ExecutionTargetRepository {
             context.workerId,
             surface,
           );
-          capability = "code";
+          capability = null;
           break;
         }
         case "browser":

@@ -750,7 +750,6 @@ export function App() {
     prepareExplorerRebind,
     requestBindWorktree,
   } = useWorktreeOperations({
-    codeHeader,
     explorerLifecycleRef,
     queryClient,
     setWorktreeActionError,

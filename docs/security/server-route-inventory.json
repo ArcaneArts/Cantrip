@@ -11600,223 +11600,223 @@
     },
     {
       "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
-      "line": 1441,
+      "line": 1460,
       "method": "updateExplorer",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
-      "line": 1449,
+      "line": 1468,
       "method": "pinExplorer",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
-      "line": 1457,
+      "line": 1476,
       "method": "updateExplorerViewState",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
-      "line": 1465,
+      "line": 1484,
       "method": "deleteExplorer",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
-      "line": 1469,
+      "line": 1488,
       "method": "listCodeTabs",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
-      "line": 1476,
+      "line": 1495,
       "method": "createCodeTab",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
-      "line": 1490,
+      "line": 1509,
       "method": "getCodeTabExecutionContext",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
-      "line": 1497,
+      "line": 1516,
       "method": "updateCodeTab",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
-      "line": 1505,
+      "line": 1524,
       "method": "updateCodeTabWorktree",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
-      "line": 1513,
+      "line": 1532,
       "method": "deleteCodeTab",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
-      "line": 1520,
+      "line": 1539,
       "method": "listCodeSessions",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
-      "line": 1527,
+      "line": 1546,
       "method": "getOrCreateCodeSession",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
-      "line": 1541,
+      "line": 1560,
       "method": "updateCodeSessionRuntime",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
-      "line": 1557,
+      "line": 1576,
       "method": "listBrowsers",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
-      "line": 1564,
+      "line": 1583,
       "method": "createBrowser",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
-      "line": 1578,
+      "line": 1597,
       "method": "updateBrowser",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
-      "line": 1586,
+      "line": 1605,
       "method": "deleteBrowser",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
-      "line": 1590,
+      "line": 1609,
       "method": "ensureBrowserRemoteSurfaces",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
-      "line": 1594,
+      "line": 1613,
       "method": "listRemoteSurfaces",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
-      "line": 1601,
+      "line": 1620,
       "method": "createRemoteSurface",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
-      "line": 1609,
+      "line": 1628,
       "method": "getRemoteSurfaceExecutionContext",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
-      "line": 1619,
+      "line": 1638,
       "method": "updateRemoteSurface",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
-      "line": 1627,
+      "line": 1646,
       "method": "setRemoteSurfaceStatus",
       "ownerEvidence": "delegated-or-missing-review"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
-      "line": 1639,
+      "line": 1658,
       "method": "resetTransientRemoteSurfaceStatuses",
       "ownerEvidence": "system-lifecycle"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
-      "line": 1643,
+      "line": 1662,
       "method": "deleteRemoteSurface",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
-      "line": 1650,
+      "line": 1669,
       "method": "listRemoteDesktops",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
-      "line": 1657,
+      "line": 1676,
       "method": "getRemoteDesktop",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
-      "line": 1664,
+      "line": 1683,
       "method": "createRemoteDesktop",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
-      "line": 1685,
+      "line": 1704,
       "method": "listProjectViews",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
-      "line": 1692,
+      "line": 1711,
       "method": "getProjectViewProjectId",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
-      "line": 1699,
+      "line": 1718,
       "method": "createProjectView",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
-      "line": 1707,
+      "line": 1726,
       "method": "updateProjectView",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
-      "line": 1715,
+      "line": 1734,
       "method": "updateProjectViewWorktree",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
-      "line": 1723,
+      "line": 1742,
       "method": "deleteProjectView",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
-      "line": 1733,
+      "line": 1752,
       "method": "deleteTerminal",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
-      "line": 1740,
+      "line": 1759,
       "method": "getTerminalExecutionContext",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
-      "line": 1747,
+      "line": 1766,
       "method": "setTerminalStatus",
       "ownerEvidence": "delegated-or-missing-review"
     },

@@ -95,7 +95,6 @@ function capabilityReason(
   worker: WorkerSummary,
 ): string | null {
   if (!worker.online) return "Offline";
-  if (kind === "code" && !worker.code.available) return "Code unavailable";
   if (kind === "browser" && !worker.remoteSurfaces.browser) {
     return "Browser unavailable";
   }

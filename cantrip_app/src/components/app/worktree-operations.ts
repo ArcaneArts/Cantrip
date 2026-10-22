@@ -10,8 +10,7 @@ import type {
 import { useMutation, type QueryClient } from "@tanstack/react-query";
 
 import type { WorktreeBindingTarget } from "@/components/app/application-shell-model";
-import type { CodeHeaderState } from "@/components/code/code-view";
-import { runCodeWorktreeChange } from "@/components/code/code-worktree-change";
+import { prepareNativeCodeTransfer } from "@/components/code/native-code-lifecycle";
 import { prepareExplorerRebind as prepareExplorerRebindLifecycle } from "@/components/explorer/explorer-lifecycle";
 import type { ExplorerLifecycleActions } from "@/components/explorer/explorer-view";
 import {
@@ -26,12 +25,10 @@ import {
 import { errorMessage as errorText } from "@/lib/error-message";
 
 export function useWorktreeOperations({
-  codeHeader,
   explorerLifecycleRef,
   queryClient,
   setWorktreeActionError,
 }: {
-  codeHeader: CodeHeaderState | null;
   explorerLifecycleRef: { current: Map<string, ExplorerLifecycleActions> };
   queryClient: QueryClient;
   setWorktreeActionError: (error: string | null) => void;
@@ -210,25 +207,17 @@ export function useWorktreeOperations({
     mode?: "agent-managed" | "pinned";
   }) => {
     if (!(await prepareExplorerRebind(input.target))) return false;
-    const codeNeedsPause =
+    if (
       input.target.kind === "code" &&
-      Boolean(
-        codeHeader?.runtime ||
-        codeHeader?.status === "starting" ||
-        codeHeader?.status === "running",
-      );
-    return runCodeWorktreeChange({
-      active: codeNeedsPause,
-      header: codeHeader,
-      rebind: async () => {
-        try {
-          await bindWorktreeMutation.mutateAsync(input);
-          return true;
-        } catch {
-          return false;
-        }
-      },
-    });
+      !(await prepareNativeCodeTransfer(input.target.tabId))
+    )
+      return false;
+    try {
+      await bindWorktreeMutation.mutateAsync(input);
+      return true;
+    } catch {
+      return false;
+    }
   };
   const createWorktreeMutation = useMutation({
     mutationFn: ({

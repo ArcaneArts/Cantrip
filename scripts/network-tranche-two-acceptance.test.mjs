@@ -86,8 +86,6 @@ test("Tranche Two feature matrix covers every migrated fabric consumer", () => {
   assert.deepEqual(featureMatrix.map((entry) => entry.id).sort(), [
     "browser-capacitor-peer-carrier",
     "browser-remote-surface",
-    "code-explorer-lifecycle",
-    "code-http-websocket-hmr",
     "generic-tcp",
     "mixed-routes",
     "multiple-clients-per-worker",

@@ -1,3 +1,4 @@
+import { confirmNativeCodeDiscard } from "@/components/code/native-code-lifecycle";
 import type { ProjectTabLayoutSummary } from "@cantrip/protocol";
 import { useMutation, type QueryClient } from "@tanstack/react-query";
 import {
@@ -224,6 +225,8 @@ export function useProjectSurfaceViewOperations({
       );
     },
     onMutate: async (surface) => {
+      if (surface.kind === "code" && !confirmNativeCodeDiscard(surface.tabId))
+        throw new Error("Code tab close canceled.");
       surfaceClose.begin(closeInputForSurface(surface));
       await beforeClose?.(surface);
     },

@@ -126,7 +126,6 @@ export class PlacementRepository {
       surfaceKind === "explorer" ||
       surfaceKind === "code";
     const workerSupportsSurface = (worker: WorkerRow): boolean => {
-      if (surfaceKind === "code") return worker.codeCapabilities.available;
       if (surfaceKind === "browser") {
         return worker.remoteSurfaceCapabilities.browser;
       }
