@@ -139,10 +139,7 @@ async function renderPreview(
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
   });
-  await act(async () => header!.setFileMode("preview"));
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  });
+  expect(header!.fileMode).toBe("preview");
   return { explorer, onOpenFile };
 }
 async function clickLink(name: string) {
