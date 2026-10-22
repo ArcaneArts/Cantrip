@@ -53,8 +53,18 @@ pub(super) struct Window {
     pub bounds: Bounds,
 }
 pub(super) fn windows() -> Vec<Window> {
+    read_windows(1 | 16, 0)
+}
+/// Include the exact window even when it is occluded or offscreen. Input must
+/// not inherit the onscreen-only filtering used by the presentation renderer.
+pub(super) fn window(id: u32) -> Option<Window> {
+    read_windows(1 << 3, id)
+        .into_iter()
+        .find(|window| window.id == id)
+}
+fn read_windows(options: u32, relative: u32) -> Vec<Window> {
     unsafe {
-        let array = CGWindowListCopyWindowInfo(1 | 16, 0);
+        let array = CGWindowListCopyWindowInfo(options, relative);
         if array.is_null() {
             return vec![];
         }

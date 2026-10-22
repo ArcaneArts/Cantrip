@@ -162,8 +162,12 @@ export class RemoteSurfaceWorkerLinkClient {
     this.#beginConnect();
   }
 
-  send(channel: RemoteSurfaceChannel, payload: Uint8Array): boolean {
-    return this.#active?.send(channel, payload) ?? false;
+  send(
+    channel: RemoteSurfaceChannel,
+    payload: Uint8Array,
+    coalesceKey?: string,
+  ): boolean {
+    return this.#active?.send(channel, payload, coalesceKey) ?? false;
   }
 
   close(): void {
@@ -348,7 +352,8 @@ interface PendingOutboundFrame {
   readonly channel: RemoteSurfaceChannel;
   frameId: number | null;
   offset: number;
-  readonly payload: Uint8Array;
+  payload: Uint8Array;
+  readonly coalesceKey?: string;
   readonly sequence: number;
 }
 
@@ -409,8 +414,28 @@ class ActiveRemoteSurfaceWorkerLink {
     this.#scheduleRenewal(grant.binding.lease);
   }
 
-  send(channel: RemoteSurfaceChannel, payload: Uint8Array): boolean {
+  send(
+    channel: RemoteSurfaceChannel,
+    payload: Uint8Array,
+    coalesceKey?: string,
+  ): boolean {
     if (this.#closed || channel !== "control") return false;
+    const last = this.#outbound.at(-1);
+    // Only replace adjacent disposable state which has not started encryption
+    // or transmission. The head and all discrete input barriers stay ordered.
+    if (
+      coalesceKey &&
+      last?.coalesceKey === coalesceKey &&
+      last !== this.#outbound[0] &&
+      !last.bytes
+    ) {
+      const bytes =
+        this.#outboundBytes - last.payload.byteLength + payload.byteLength;
+      if (bytes > MAX_PENDING_OUTBOUND_BYTES) return false;
+      last.payload = payload.slice();
+      this.#outboundBytes = bytes;
+      return true;
+    }
     if (
       this.#outbound.length >= MAX_PENDING_OUTBOUND_FRAMES ||
       this.#outboundBytes + payload.byteLength > MAX_PENDING_OUTBOUND_BYTES
@@ -426,6 +451,7 @@ class ActiveRemoteSurfaceWorkerLink {
       frameId: null,
       offset: 0,
       payload: copy,
+      coalesceKey,
       sequence,
     });
     this.#outboundBytes += copy.byteLength;
