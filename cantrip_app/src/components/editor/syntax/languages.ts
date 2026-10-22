@@ -71,6 +71,7 @@ export function languageForFile(path: string, prefix = ""): LanguageId {
   if (/^(?:gnumakefile|makefile)(?:\..*)?$/u.test(name)) return "makefile";
   if (name === ".env" || name.startsWith(".env.")) return "env";
   if (["gemfile", "rakefile", "podfile"].includes(name)) return "ruby";
+  if (name === "cargo.lock") return "toml";
   const extension = extensions[name.split(".").at(-1) ?? ""];
   if (extension) return extension;
   const shebang = prefix.slice(0, 256).split("\n", 1)[0] ?? "";
