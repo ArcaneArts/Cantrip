@@ -643,7 +643,7 @@ execution still requires release QA on its host platform:
 - Clean online start, cached offline start, first offline start, corrupt
   download, and bad release rollback.
 - Primary and secondary worktrees on different branches with edits from an
-  agent, terminal, Explorer, and Cantrip Code.
+  agent, terminal, Explorer, and native Code tabs.
 - Two simultaneous agents on one worktree and agents on two different
   worktrees.
 - Local server/worker, hosted server with local worker, and two-worker project

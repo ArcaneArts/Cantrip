@@ -112,7 +112,7 @@ root, never a worktree.
 - Terminal tabs and supervised terminal services;
 - Explorer browsing, preview, structured views, native editing, and
   conflict-safe saves;
-- Cantrip Code tabs;
+- native Code tabs;
 - Browser and Remote Desktop tabs on the owning worker;
 - project tunnels and desktop project shares;
 - Agent Policies, skills, MCP configuration, provider routing, and permission
@@ -385,7 +385,7 @@ rather than presenting them as failed lookups.
 | Agent / Task                  | Runs in the folder root with direct writes.                                            |
 | Terminal                      | Starts in the folder or requested safe subdirectory.                                   |
 | Explorer                      | Full read/write support; commit metadata reports unavailable.                          |
-| Code                          | Opens the folder root in the existing isolated Cantrip Code session.                   |
+| Code                          | Browses and edits the folder root with the built-in editor.                            |
 | Browser                       | Runs on the owning worker.                                                             |
 | Remote Desktop                | Shows and controls the owning worker.                                                  |
 | Tunnels                       | Existing project-associated tunnel routing remains available on the owning worker.     |

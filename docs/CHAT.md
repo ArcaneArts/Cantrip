@@ -27,8 +27,8 @@ Chat conversations never appear in an IDE project's surface list.
 Each standalone conversation receives private scratch space on one worker.
 Codex can use its built-in shell and file tools there to compile programs,
 download data, transform files, and perform other ordinary agent work. The user
-can inspect and manage those files from a lightweight Chat file surface without
-opening Cantrip Code.
+can inspect and manage those files from a lightweight Chat file surface using
+Cantrip's built-in editor.
 
 This contract deliberately keeps standalone and project chats close at the
 message, runtime, and encryption layers. A later feature may move or link a
@@ -581,7 +581,6 @@ recognize the directory.
 
 For standalone Chat, the worker:
 
-- skips Cantrip Code preparation and agent-state notification;
 - skips CodeGraph observation/preparation;
 - injects managed Cantrip with exactly `tool_help`, `web_search`, and
   `web_read`, and omits managed CodeGraph MCP;

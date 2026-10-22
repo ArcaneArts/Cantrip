@@ -1,5 +1,8 @@
 # Editor loading measurements
 
+> Historical measurements of the retired embedded workbench. These timings do
+> not describe the current [native editor](CODE_EDITOR.md).
+
 Measured on darwin-arm64 with Node 24.14.0 and the actual bundled Cantrip Code
 build `ba05010e28f214852ff3f4359d20f66a32927ff3f55a759b34d8a5e03e380eae`.
 The production app, browser storage, database, worker, Git directory, and browser

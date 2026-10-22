@@ -403,11 +403,9 @@ carrier implementations.
 
 WebRTC is the common direct carrier for browser and Capacitor and also serves
 renderer-owned Tauri channels. The renderer's default `WorkerLinkManager`
-installs the feature-neutral `PeerCarrier`; Terminal, generic in-app tunnels,
-and Cantrip Code therefore inherit LAN or WAN whenever that carrier wins without
-changing their feature-facing APIs. Code retains its existing same-origin
-service-worker and WebSocket-shim boundary, while the physical socket beneath
-that shim is a WorkerLink stream.
+installs the feature-neutral `PeerCarrier`; Terminal and generic in-app tunnels
+inherit LAN or WAN whenever that carrier wins, preserving their feature-facing
+APIs.
 
 Apple platforms declare a local-network usage description for the Capacitor iOS
 app and the packaged macOS Tauri app. Cantrip does not browse or advertise a
@@ -677,14 +675,12 @@ server WebSocket. WebRTC is a shared WorkerLink carrier, while the legacy
 feature-specific Remote Surface transport remains only as a compatibility
 surface during the documented soak period.
 
-### Cantrip Code
+### Native code editor
 
-Code HTTP and WebSocket traffic uses `stream`:
-
-- Tauri retains a stable localhost forwarding URL;
-- browser and Capacitor use the Code service-worker and WebSocket shims backed
-  by WorkerLink; and
-- raw editor ports and credentials remain worker-private.
+Code tabs and file views use protected worker file commands. The client owns
+editing and syntax highlighting. The server authorizes the project checkout or
+Chat scratch scope and its assigned worker; the worker owns file reads and
+version-checked saves. See [the editor guide](CODE_EDITOR.md).
 
 ### Generic tunnels
 
@@ -736,7 +732,6 @@ Peer latency: 3.4 ms
 
 Terminal             LAN
 Chat progress         LAN
-Cantrip Code          LAN
 Remote Desktop        LAN
 Generic TCP tunnel    RELAY - existing reliable stream remains pinned until reconnect
 ```

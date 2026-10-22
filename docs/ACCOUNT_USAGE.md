@@ -116,7 +116,7 @@ The bounded channels are:
 | `remote-surface-relay`     | Browser/desktop control and media frames using the server WebSocket relay          |
 | `tunnel-relay`             | Generic unified tunnel data-plane frames                                           |
 | `attachment-transfer`      | Attachment upload and download bodies                                              |
-| `code-relay`               | Unified tunnel frames for managed Cantrip Code                                     |
+| `code-relay`               | Historical editor relay usage retained for existing accounting records             |
 | `project-share-relay`      | Unified tunnel frames for project network shares                                   |
 | `other`                    | A bounded fallback for attributable server application payload added in the future |
 

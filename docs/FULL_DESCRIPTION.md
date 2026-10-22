@@ -30,7 +30,7 @@ The product is split into three main runtime roles:
   scheduling, worker enrollment, routing, and audit/telemetry.
 - **Worker:** execution/data plane running near project files. It owns managed
   folders, repository checkouts, worktrees, Git processes, PTYs, Codex
-  processes, Cantrip Code, browser automation, desktop capture/input, and local
+  processes, browser automation, desktop capture/input, and local
   tool access.
 
 In local desktop development these roles can run together on one machine, but
@@ -222,7 +222,6 @@ project-scoped commands including:
 - run bounded Git/GitHub operations;
 - create and retain PTYs;
 - launch/supervise Codex;
-- host the browser-native Cantrip Code workbench;
 - run Chromium browser profiles and stream frames/input;
 - enumerate/capture/control desktop targets;
 - provide project network shares and managed tunnels;
@@ -1113,7 +1112,6 @@ origin, and a pairing code—not the user's password or a reusable session.
 - uncommitted and non-Git project files;
 - live Codex processes and worker-local runtime caches;
 - PTYs and service processes;
-- Cantrip Code runtime/profile data;
 - Chromium profiles;
 - desktop capture/input resources;
 - local Ollama models;

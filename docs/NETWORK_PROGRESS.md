@@ -2,9 +2,9 @@
 
 > Historical execution ledger. Test counts, baseline failures, blockers, and
 > observations described as “current” below record the tranche work through PR
-> #1213; they are not a live repository-health report. The current structural
-> acceptance check has four stale Code/Explorer test-name markers and stops
-> before running its matrix.
+> #1213; they are not a live repository-health report. Workbench references
+> below describe the retired embedded editor; native Code tabs now use protected
+> file operations. See [the editor guide](CODE_EDITOR.md).
 
 - Tranche One: Stabilized
 - Tranche Two: Stabilized
