@@ -87,6 +87,7 @@
     "qa:native-editor:integration": "node scripts/qa/native-editor-integration.mjs --all",
     "qa:native-editor:bundle": "node scripts/qa/native-editor-bundle.mjs",
     "qa:native-editor:close": "node scripts/qa/native-editor-close-browser.mjs",
+    "qa:editor-file-polish": "node scripts/qa/editor-file-polish-browser.mjs",
     "qa:editor-recovery": "node scripts/qa/editor-recovery-browser.mjs",
     "qa:editor-fixture": "node scripts/qa/editor-recovery-fixture.mjs"
   },

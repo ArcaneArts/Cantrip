@@ -58,6 +58,10 @@ export const definitions: LanguageCatalog = {
     { multilineQuotes: ['\"\"\"'] },
     "record sealed permits non-sealed throws strictfp assert module requires opens provides uses",
   ),
+  groovy: language(
+    { multilineQuotes: ['"""', "'''"], template: true },
+    "def as assert in trait implements package import throws synchronized transient volatile strictfp",
+  ),
   kotlin: language(
     { multilineQuotes: ['\"\"\"'], nestedComments: true, template: true },
     "fun val object companion data sealed when internal open lateinit suspend inline reified crossinline noinline out by init annotation expect actual",

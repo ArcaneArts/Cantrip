@@ -38,6 +38,11 @@ describe("explorer file editing", () => {
     expect(defaultExplorerFileMode("ChangeLog.txt")).toBe("edit");
     expect(defaultExplorerFileMode("assets/photo.png")).toBe("preview");
     expect(defaultExplorerFileMode("recording.mp4")).toBe("preview");
+    expect(defaultExplorerFileMode("LICENSE")).toBe("preview");
+    expect(defaultExplorerFileMode("LICENSE.md")).toBe("preview");
+    expect(defaultExplorerFileMode("COPYING.GPL")).toBe("preview");
+    expect(defaultExplorerFileMode("build.gradle")).toBe("edit");
+    expect(defaultExplorerFileMode("gradlew.bat")).toBe("edit");
   });
 
   it("routes edit mode through Cantrip Code", () => {

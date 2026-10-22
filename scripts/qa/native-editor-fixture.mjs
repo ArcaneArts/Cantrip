@@ -15,11 +15,18 @@ export const fileVersion = (text) =>
   createHash("sha256").update(text).digest("hex");
 
 /** Disposable actual filesystem fixture; no project files or account data. */
-export async function startNativeEditorFixture() {
+export async function startNativeEditorFixture(extraFiles = {}) {
   const directory = await mkdtemp(
     path.join(tmpdir(), "cantrip-native-editor-qa-"),
   );
-  const files = new Set(["main.tsx", "other.py", "large.ts"]);
+  const files = new Set([
+    "main.tsx",
+    "other.py",
+    "large.ts",
+    ...Object.keys(extraFiles),
+  ]);
+  for (const [name, content] of Object.entries(extraFiles))
+    await writeFile(path.join(directory, name), content);
   await writeFile(
     path.join(directory, "main.tsx"),
     'const message = "Hello Cantrip";\nexport function Card() {\n  return <div title={message}>😀 hello</div>;\n}\n',

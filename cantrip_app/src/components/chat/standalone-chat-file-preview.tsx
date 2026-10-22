@@ -5,6 +5,8 @@ import { File, Loader2, Save } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Markdown } from "@/components/chat/markdown";
 import { NativeCodeEditor } from "@/components/editor/native-code-editor";
+import { isLicenseFile } from "@/components/editor/license-file";
+import { LicenseFileView } from "@/components/editor/license-file-view";
 import type { EditorDocumentSession } from "@/components/editor/document-session";
 import {
   chatEditorSessions,
@@ -154,7 +156,9 @@ export function ChatFilePreview({
   });
   const [content, setContent] = useState("");
   const [version, setVersion] = useState("");
-  const [mode, setMode] = useState<PreviewMode>("edit");
+  const [mode, setMode] = useState<PreviewMode>(() =>
+    isLicenseFile(entry?.path ?? "") ? "preview" : "edit",
+  );
   const [document, setDocument] = useState<EditorDocumentSession | null>(null);
   const documentRef = useRef(document);
   documentRef.current = document;
@@ -180,7 +184,7 @@ export function ChatFilePreview({
     setDocument(cached);
     setContent(cached?.text ?? "");
     setVersion(cached?.version ?? "");
-    setMode("edit");
+    setMode(isLicenseFile(entry?.path ?? "") ? "preview" : "edit");
   }, [documentId]);
   useEffect(() => {
     if (!query.data || query.data.path !== entry?.path) return;
@@ -193,7 +197,8 @@ export function ChatFilePreview({
     setDocument(next);
     setContent(next.text);
     setVersion(next.version);
-    if (switched) setMode("edit");
+    if (switched)
+      setMode(isLicenseFile(entry?.path ?? "") ? "preview" : "edit");
   }, [query.data, documentId, entry?.path]);
   const save = useMutation({
     mutationFn: async () => {
@@ -283,7 +288,7 @@ export function ChatFilePreview({
         >
           {entry.name}
         </span>
-        {entry.markdown ? (
+        {entry.markdown || isLicenseFile(entry.path) ? (
           <Button
             size="sm"
             variant={mode === "preview" ? "outline" : "ghost"}
@@ -329,7 +334,9 @@ export function ChatFilePreview({
         </p>
       ) : null}
       <div className="min-h-0 flex-1 overflow-hidden">
-        {mode === "preview" && entry.markdown ? (
+        {mode === "preview" && isLicenseFile(entry.path) ? (
+          <LicenseFileView path={entry.path} content={content} />
+        ) : mode === "preview" && entry.markdown ? (
           <div className="h-full overflow-auto" data-content-gutter="markdown">
             <Markdown>{content}</Markdown>
           </div>

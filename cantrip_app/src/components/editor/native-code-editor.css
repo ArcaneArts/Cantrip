@@ -25,6 +25,9 @@
   font-kerning: none;
   tab-size: 2;
 }
+.pro-mode .cantrip-editor {
+  background: transparent;
+}
 .cantrip-editor,
 .cantrip-editor * {
   box-sizing: border-box;
@@ -81,6 +84,7 @@
   border: 0;
   border-radius: 0;
   outline: none;
+  box-shadow: none;
   resize: none;
   overflow: auto;
   background: transparent;
@@ -98,9 +102,6 @@
 }
 .cantrip-editor-input::selection {
   background: color-mix(in srgb, var(--primary) 25%, transparent);
-}
-.cantrip-editor-input:focus-visible {
-  box-shadow: inset 0 0 0 1px var(--ring);
 }
 .cantrip-editor .syntax-comment {
   color: var(--syntax-comment);

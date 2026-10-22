@@ -1,4 +1,9 @@
 import { languageForFence, plainDefinition } from "./languages";
+import {
+  batchTokenAt,
+  batchVariable,
+  groovyStringAt,
+} from "./additional-tokens";
 import type {
   LanguageCatalog,
   LanguageId,
@@ -111,10 +116,23 @@ export function tokenizeLine(
         emit(text.length, "string");
         continue;
       }
-      if (frame.escaped) {
+      const variable = frame.language === "batch" ? batchVariable(rest) : null;
+      if (variable) {
+        emit(index + variable.length, "variable");
+      } else if (
+        frame.start === "groovy-dollar" &&
+        (rest.startsWith("$$") || rest.startsWith("$/"))
+      ) {
+        emit(index + 2, "string");
+      } else if (frame.escaped) {
         frame.escaped = false;
         emit(index + 1, "string");
-      } else if (rest.startsWith("\\") && !frame.start?.startsWith("raw")) {
+      } else if (
+        rest.startsWith("\\") &&
+        frame.language !== "batch" &&
+        frame.start !== "groovy-dollar" &&
+        !frame.start?.startsWith("raw")
+      ) {
         frame.escaped = true;
         emit(index + 1, "string");
       } else if (frame.end && rest.startsWith(frame.end)) {
@@ -338,6 +356,21 @@ export function tokenizeLine(
       emit(text.length, "comment");
       continue;
     }
+    if (frame.language === "batch") {
+      const batch = batchTokenAt(text, index);
+      if (batch) {
+        emit(index + batch.length, batch.kind);
+        continue;
+      }
+    }
+    if (frame.language === "groovy") {
+      const string = groovyStringAt(text, index);
+      if (string) {
+        emit(index + (string.start === "groovy-dollar" ? 2 : 1), "string");
+        frames.push(string);
+        continue;
+      }
+    }
     const raw =
       frame.language === "rust" ? /^(?:br|r)(#{0,32})"/u.exec(rest) : null;
     if (raw) {
@@ -408,7 +441,10 @@ export function tokenizeLine(
         language: frame.language,
         end,
         multiline: Boolean(multiline) || quote === "`",
-        interpolate: definition.template && quote !== "'",
+        interpolate:
+          definition.template &&
+          quote !== "'" &&
+          (frame.language !== "groovy" || !quote.startsWith("'")),
       });
       continue;
     }
@@ -470,7 +506,8 @@ export function tokenizeLine(
             : definition.types?.has(normalized) ||
                 /^[A-Z][\w$]*$/u.test(identifier)
               ? "type"
-              : /^\s*\(/u.test(after)
+              : /^\s*\(/u.test(after) ||
+                  (frame.language === "groovy" && /^\s*\{/u.test(after))
                 ? "function"
                 : [
                       "json",

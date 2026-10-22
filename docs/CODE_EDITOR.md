@@ -12,6 +12,10 @@ horizontal scrolling and native selection, clipboard, touch, and composition
 input. It intentionally has no autocomplete, semantic services, diagnostics,
 folding, or minimap.
 
+In Pro mode the editor stays transparent over the app's existing backdrop tint.
+Clicking into its text does not add a focus rectangle; the caret and selection
+remain visible.
+
 ## Syntax highlighting
 
 The first-party lexical engine covers JavaScript, TypeScript, JSX, TSX, Rust,
@@ -19,6 +23,10 @@ Dart, Python, Go, Java, Kotlin, Swift, C, C++, C#, Ruby, PHP, Lua, HTML, XML,
 CSS, SCSS, JSON, JSONC, YAML, TOML, Markdown, shell, SQL, Dockerfile, Makefile,
 environment files, INI, and properties files. Filename/extension detection and
 bounded shebang inspection select a language. Unknown text remains editable.
+Gradle `.gradle` files use Groovy highlighting, including closures, multiline
+and interpolated strings, and slashy strings. `.gradle.kts` remains Kotlin.
+Windows `.bat` and `.cmd` files highlight commands, comments, labels, parameters
+and variable expansion, including variables inside quoted Windows paths.
 
 The engine carries multiline state and handles embedded scripts/styles,
 JSX expressions, and fenced Markdown code. Class/type/function colors use
@@ -33,6 +41,32 @@ overscan. Long-line token output is bounded without truncating editable text.
 Hidden editors retire their highlighting workers and restore selection and
 scrolling when shown again. Editing an extensionless file's shebang updates its
 language without reopening the file.
+
+## License documents
+
+`LICENSE`, `LICENCE`, `COPYING`, `UNLICENSE`, and common suffixed variants such
+as `LICENSE.md` and `LICENSE-MIT` open in a readable, wrapping document view
+without line numbers. Explorer, sidebar previews, file windows and standalone
+Chat files share the view. Choose Edit/Editor to change the original text;
+Preview/Read only shows that same draft, and saving remains explicit. Opening
+the license explicitly in VS Code still uses VS Code.
+
+Recognized license text gets a summary card above the complete original file.
+The initial catalog covers MIT, Apache 2.0, BSD 2-Clause, BSD 3-Clause, ISC,
+Unlicense, GPLv3 and MPL 2.0, plus bare "All rights reserved" copyright notices.
+Custom or modified terms keep the document view without a guessed summary.
+Detection uses local SHA-256 fingerprints of full canonical texts after
+normalizing whitespace, known short headings and leading copyright notices.
+Names, SPDX tags and incomplete excerpts do not establish a match. Summary
+descriptions and fingerprints load on demand; file text is visible immediately,
+and detection failure does not prevent reading, editing or saving. No file
+content is uploaded for identification. The original terms remain authoritative.
+
+Canonical SPDX comparison texts and their pinned source revision live under
+`cantrip_app/src/components/editor/licenses/` as test fixtures and are excluded
+from the production client. Descriptions link to Choose a License references.
+The GPLv3 document alone does not determine whether a project's grant includes
+an "or later" option.
 
 ## Drafts and saving
 
@@ -110,6 +144,7 @@ pnpm qa:native-editor
 pnpm qa:native-editor:integration
 pnpm qa:native-editor:bundle
 pnpm qa:native-editor:close
+pnpm qa:editor-file-polish
 ```
 
 The component fixture tests Chromium and WebKit at desktop and phone sizes,
@@ -144,6 +179,13 @@ native Tauri shell run. The Tauri build validates the capability declarations;
 file windows have narrowly scoped close/destroy permission, and Chat file
 windows share the existing popout capabilities.
 
+The file-polish runner exercises the actual file-window component with its
+BroadcastChannel client and a disposable HTTP file owner. Chromium/WebKit
+desktop and phone layouts check license cards, unknown/custom text, Preview/Edit
+draft continuity and actual disk saving, Groovy/batch worker highlighting, and
+the editor's computed transparency and absence of a focus border. This is a
+browser fixture; it does not run a native shell or an account server.
+
 The bundle command emits `.qa/native-editor-bundle/report.json` with production
 asset sizes and module attribution. Whole shared chunks are not incremental
 editor cost. Module character counts precede final chunk minification and
@@ -160,14 +202,17 @@ latency guarantees, and the broad repository checks were running concurrently.
 The full production-client fixture records its own file-open/API timings,
 which also include encrypted worker connection setup.
 
-The corresponding production attribution recorded 19,644 rendered characters
-for the ten owned client editor modules before final chunk minification. The
-standalone worker was 11,825 raw / 4,361 gzip bytes; its two lazy grammar families
-were 6,386 raw / 2,849 gzip bytes combined. Editor CSS was 3,102 raw / 1,098 gzip
-bytes. The shared chunk containing those editor modules also contained 229
-other modules; its complete size is not the incremental editor cost. Preserve
-the generated report when comparing later builds rather than inferring cost
-from filenames.
+Production attribution after the Gradle, batch and license-view additions
+recorded 28,599 rendered characters for fourteen owned client editor modules
+before final chunk minification, including lazy license identification. The
+worker entry was 13,243 raw / 4,788 gzip bytes; its two lazy grammar families
+were 6,940 raw / 3,077 gzip bytes combined. Editor CSS was 3,084 raw / 1,090 gzip
+bytes. The lazy license summary/identification chunk was 4,043 raw / 1,697 gzip
+bytes. Full license comparison fixtures were absent from emitted assets. The
+shared chunk containing eleven of the editor modules also contained 231 other
+modules; its complete size is not the incremental editor cost. Preserve the
+generated report when comparing later builds rather than inferring cost from
+filenames.
 
 The integration runner accepts `--phone` for a focused Chromium phone run and
 defaults to Chromium desktop when invoked directly without `--all`. Phone

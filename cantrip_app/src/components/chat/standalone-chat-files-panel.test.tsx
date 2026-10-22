@@ -105,6 +105,7 @@ vi.mock("@/lib/desktop-popout", () => ({
 }));
 
 import { StandaloneChatFilesPanel } from "./standalone-chat-files-panel";
+import { ChatFilePreview } from "./standalone-chat-file-preview";
 import { chatEditorSessions } from "./standalone-chat-editor-sessions";
 
 (
@@ -173,6 +174,90 @@ describe("standalone Chat files panel", () => {
       version: "version-two",
       markdown: false,
     });
+  });
+
+  it("opens a license preview and preserves its editable draft and explicit save binding", async () => {
+    const content = "Copyright (c) 2026 Arcane Arts\nAll rights reserved.\n";
+    api.getStandaloneChatFile.mockResolvedValueOnce({
+      content,
+      path: "LICENSE",
+      markdown: false,
+      version: "version-one",
+    });
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        <QueryClientProvider client={client}>
+          <ChatFilePreview
+            chatId={chat.id}
+            chat={chat}
+            onSaved={() => undefined}
+            entry={{
+              kind: "file",
+              name: "LICENSE",
+              path: "LICENSE",
+              markdown: false,
+              viewable: true,
+              symbolicLink: false,
+              size: content.length,
+              modifiedAt: "2026-10-21T00:00:00Z",
+            }}
+          />
+        </QueryClientProvider>,
+      );
+    });
+    try {
+      await vi.waitFor(() =>
+        expect(
+          renderer.root.findAllByProps({ "data-license-view": "true" }),
+        ).toHaveLength(1),
+      );
+      expect(
+        renderer.root.findAllByProps({ "data-editor": true }),
+      ).toHaveLength(0);
+      const click = async (text: string) =>
+        act(async () =>
+          renderer.root
+            .findAllByType("button")
+            .find((button) => button.children.includes(text))!
+            .props.onClick(),
+        );
+      await click("Edit");
+      const document = (editor.current as EditorProps).session;
+      await act(async () =>
+        (editor.current as EditorProps).onChange("custom license draft"),
+      );
+      await click("Preview");
+      expect(
+        renderer.root
+          .findByProps({ "aria-label": "License text" })
+          .children.join(""),
+      ).toBe("custom license draft");
+      expect(api.saveStandaloneChatFile).not.toHaveBeenCalled();
+      await click("Edit");
+      expect((editor.current as EditorProps).session).toBe(document);
+      await act(async () => (editor.current as EditorProps).onSave());
+      await vi.waitFor(() =>
+        expect(api.saveStandaloneChatFile).toHaveBeenCalledWith(
+          chat.id,
+          {
+            path: "LICENSE",
+            content: "custom license draft",
+            version: "version-one",
+          },
+          {
+            workerId: chat.activeWorkerId,
+            scratchRootId: chat.activeScratchRootId,
+          },
+        ),
+      );
+    } finally {
+      await act(async () => renderer.unmount());
+      client.clear();
+    }
   });
 
   it("saves an owned document against its exact worker and scratch root and confirms dirty close", async () => {
