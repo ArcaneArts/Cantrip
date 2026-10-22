@@ -25,7 +25,6 @@ import type { ExplorerLifecycleActions } from "@/components/explorer/explorer-vi
 import {
   acknowledgeChatCompletion,
   deleteBrowser,
-  deleteChat,
   deleteCodeTab,
   deleteExplorer,
   deleteProjectView,
@@ -40,6 +39,10 @@ import {
   updateCodeTab,
 } from "@/lib/api";
 import { CantripApiError } from "@/lib/api-client";
+import {
+  removeAgentChat,
+  type AgentChatRemoval,
+} from "@/lib/remove-agent-chat";
 import {
   browserUpdateForPageState,
   type BrowserPageStateUpdate,
@@ -196,10 +199,16 @@ export function useChatDeleteOperation({
   surfaceClose: ProjectSurfaceCloseCoordinator;
 }) {
   return useImmediateProjectSurfaceDelete({
-    getTabId: (tabId: string) => tabId,
+    getTabId: (input: AgentChatRemoval) =>
+      typeof input === "string" ? input : input.chatId,
     kind: "chat",
-    mutationFn: deleteChat,
-    onSuccess: async (_value, deletedId, projectId) => {
+    mutationFn: (input: AgentChatRemoval) =>
+      removeAgentChat(
+        typeof input === "string" ? input : input.chatId,
+        typeof input !== "string" && input.stopRunning,
+      ),
+    onSuccess: async (_value, input, projectId) => {
+      const deletedId = typeof input === "string" ? input : input.chatId;
       setChatConsoleOpen(deletedId, false);
       setTaskChatViewIds((current) => {
         if (!current.has(deletedId)) return current;

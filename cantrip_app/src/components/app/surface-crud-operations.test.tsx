@@ -12,6 +12,7 @@ import {
 const api = vi.hoisted(() => ({
   deleteChat: vi.fn(),
   deleteExplorer: vi.fn(),
+  interruptChat: vi.fn(),
 }));
 vi.mock("@/lib/api", () => api);
 vi.mock("@/lib/run-configuration-api", () => ({
@@ -93,7 +94,13 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-function DeleteHarness({ queryClient }: { queryClient: QueryClient }) {
+function DeleteHarness({
+  queryClient,
+  stopRunning,
+}: {
+  queryClient: QueryClient;
+  stopRunning?: true;
+}) {
   const [selection, setSelection] = useState<WorkspaceSelection>({
     activeTabByPane: { "group-1": "chat:agent-1" },
     destination: "surface" as const,
@@ -114,7 +121,14 @@ function DeleteHarness({ queryClient }: { queryClient: QueryClient }) {
   });
   return (
     <>
-      <button id="close" onClick={() => mutation.mutate(chat.id)} />
+      <button
+        id="close"
+        onClick={() =>
+          mutation.mutate(
+            stopRunning ? { chatId: chat.id, stopRunning } : chat.id,
+          )
+        }
+      />
       <span id="pending">{[...surfaceClose.pendingTabKeys].join(",")}</span>
       <span id="selected">{selectedWorkspaceTabKey(selection)}</span>
     </>
@@ -161,12 +175,12 @@ function ExplorerDeleteHarness({
   );
 }
 
-async function renderHarness(queryClient: QueryClient) {
+async function renderHarness(queryClient: QueryClient, stopRunning?: true) {
   let renderer!: TestRenderer.ReactTestRenderer;
   await act(async () => {
     renderer = TestRenderer.create(
       <QueryClientProvider client={queryClient}>
-        <DeleteHarness queryClient={queryClient} />
+        <DeleteHarness queryClient={queryClient} stopRunning={stopRunning} />
       </QueryClientProvider>,
     );
   });
@@ -181,6 +195,7 @@ describe("immediate project surface deletion", () => {
   beforeEach(() => {
     api.deleteChat.mockReset();
     api.deleteExplorer.mockReset();
+    api.interruptChat.mockReset();
   });
 
   it("hides and switches tabs while the backend deletion is unresolved", async () => {
@@ -205,6 +220,56 @@ describe("immediate project surface deletion", () => {
     });
     expect(text(renderer, "pending")).toBe("");
     expect(queryClient.getQueryData(["chats", projectId])).toEqual([]);
+    await act(async () => renderer.unmount());
+  });
+
+  it.each(["running", "waiting-for-approval"] as const)(
+    "stops a %s agent before removing its tab when confirmed",
+    async (status) => {
+      const interruption = deferred<void>();
+      api.interruptChat.mockReturnValue(interruption.promise);
+      const queryClient = new QueryClient();
+      queryClient.setQueryData(["chats", projectId], [{ ...chat, status }]);
+      queryClient.setQueryData(["project-tab-layout", projectId], layout);
+      const renderer = await renderHarness(queryClient, true);
+      act(() => renderer.root.findByProps({ id: "close" }).props.onClick());
+      await act(async () => Promise.resolve());
+      expect(api.interruptChat).toHaveBeenCalledExactlyOnceWith(chat.id);
+      expect(api.deleteChat).not.toHaveBeenCalled();
+      expect(text(renderer, "pending")).toBe("chat:agent-1");
+      await act(async () => {
+        interruption.resolve();
+        await interruption.promise;
+      });
+      await vi.waitFor(() =>
+        expect(api.deleteChat).toHaveBeenCalledExactlyOnceWith(chat.id),
+      );
+      expect(text(renderer, "pending")).toBe("");
+      await act(async () => renderer.unmount());
+    },
+  );
+
+  it("restores the removed agent tab when stopping fails", async () => {
+    api.interruptChat.mockRejectedValue(new Error("Worker unavailable"));
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(
+      ["chats", projectId],
+      [{ ...chat, status: "running" }],
+    );
+    queryClient.setQueryData(["project-tab-layout", projectId], layout);
+    const renderer = await renderHarness(queryClient, true);
+    await act(async () =>
+      renderer.root.findByProps({ id: "close" }).props.onClick(),
+    );
+    await vi.waitFor(() => expect(text(renderer, "pending")).toBe(""));
+    expect(api.deleteChat).not.toHaveBeenCalled();
+    const restored = queryClient.getQueryData<ProjectTabLayoutSummary>([
+      "project-tab-layout",
+      projectId,
+    ]);
+    expect(
+      restored?.panes[0]?.members.some((member) => member.tabId === chat.id),
+    ).toBe(true);
     await act(async () => renderer.unmount());
   });
 
