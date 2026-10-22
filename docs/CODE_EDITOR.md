@@ -5,6 +5,10 @@ desktop file windows, and standalone Chat files. It uses native textarea input
 with an owned highlighting layer, line-number gutter, and monospace font.
 Media keeps its existing preview. Markdown files open in View mode by default;
 Edit and structured visual modes remain available through the mode controls.
+Code in View mode uses the same native editor, syntax highlighting, font, and
+line numbers with editing and the caret disabled. Selection, copying, scrolling,
+and keyboard navigation remain available; switching back to Edit retains the
+document draft and undo history.
 
 Save explicitly with the existing Save control or Command/Ctrl+S. Tab and
 Shift+Tab indent and unindent; Escape releases keyboard focus. The editor uses

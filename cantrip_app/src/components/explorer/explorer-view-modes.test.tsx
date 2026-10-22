@@ -158,7 +158,9 @@ describe("Explorer transient renderer modes", () => {
           ?.getAttribute("aria-checked"),
       ).toBe("true");
       await choose("preview");
-      expect(container.querySelector("pre")?.textContent).toContain("enabled");
+      expect(container.querySelector("textarea")?.value).toContain("enabled");
+      expect(container.querySelector("textarea")?.readOnly).toBe(true);
+      expect(container.querySelector("pre")).toBeNull();
       expect(
         container.querySelector('[aria-label="Search structured values"]'),
       ).toBeNull();
@@ -166,6 +168,7 @@ describe("Explorer transient renderer modes", () => {
       expect(
         container.querySelector('[data-native-code-editor="true"]'),
       ).not.toBeNull();
+      expect(container.querySelector("textarea")?.readOnly).toBe(false);
       expect(api.saveExplorerFile).not.toHaveBeenCalled();
       expect(api.updateExplorerViewState).not.toHaveBeenCalled();
     },
@@ -180,7 +183,29 @@ describe("Explorer transient renderer modes", () => {
     );
     expect(header!.dirty).toBe(true);
     await choose("preview");
-    expect(container.querySelector("pre")?.textContent).toContain("false");
+    expect(container.querySelector("textarea")?.value).toContain("false");
+    expect(container.querySelector("textarea")?.readOnly).toBe(true);
+    const input = container.querySelector("textarea")!;
+    await act(async () => {
+      for (const key of ["z", "y", "s"]) {
+        const event = new KeyboardEvent("keydown", {
+          key,
+          ctrlKey: true,
+          bubbles: true,
+          cancelable: true,
+        });
+        input.dispatchEvent(event);
+        expect(event.defaultPrevented).toBe(true);
+      }
+      const event = new InputEvent("beforeinput", {
+        inputType: "historyUndo",
+        bubbles: true,
+        cancelable: true,
+      });
+      input.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(true);
+    });
+    expect(input.value).toContain("false");
     expect(api.saveExplorerFile).not.toHaveBeenCalled();
     vi.mocked(api.saveExplorerFile).mockResolvedValue({
       path: "data/settings.yaml",
@@ -189,6 +214,8 @@ describe("Explorer transient renderer modes", () => {
       version: "two",
     } as Awaited<ReturnType<typeof api.saveExplorerFile>>);
     await choose("edit");
+    expect(container.querySelector("textarea")).toBe(input);
+    expect(input.readOnly).toBe(false);
     expect(api.saveExplorerFile).not.toHaveBeenCalled();
     expect(container.querySelector("textarea")?.value).toContain("false");
     await act(async () => {

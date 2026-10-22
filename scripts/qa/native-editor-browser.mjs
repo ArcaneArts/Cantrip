@@ -6,6 +6,7 @@ import { startNativeEditorFixture } from "./native-editor-fixture.mjs";
 import {
   checkNativeEditorInput,
   checkNativeEditorLongLine,
+  checkNativeEditorReadOnly,
   measureNativeInputPaint,
 } from "./native-editor-input-acceptance.mjs";
 
@@ -113,6 +114,16 @@ for (const [name, browserType] of [
       assert.notEqual(await input.inputValue(), draft);
       await input.press("ControlOrMeta+Shift+z");
       assert.equal(await input.inputValue(), draft);
+      const readOnlyAcceptance = await checkNativeEditorReadOnly(
+        page,
+        fixture,
+        {
+          screenshotPath: path.join(
+            output,
+            `${name}-${mobile ? "phone" : "desktop"}-readonly.png`,
+          ),
+        },
+      );
       const inputAcceptance = await checkNativeEditorInput(
         page,
         fixture,
@@ -238,6 +249,7 @@ for (const [name, browserType] of [
         visibleLines: await page.locator("[data-editor-line]").count(),
         initialCharacters: original.length,
         inputAcceptance,
+        readOnlyAcceptance,
         longLineAcceptance,
         status: "pass",
       });

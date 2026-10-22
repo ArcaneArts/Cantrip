@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { chromium, webkit } from "playwright-core";
 import { startNativeEditorFixture } from "./native-editor-fixture.mjs";
+import { checkNativeEditorReadOnly } from "./native-editor-input-acceptance.mjs";
 
 const mit = (
   await readFile("cantrip_app/src/components/editor/licenses/MIT.txt", "utf8")
@@ -169,6 +170,18 @@ for (const [name, engine] of [
       assert.equal(style.background, "rgba(0, 0, 0, 0)");
       await input.press("x");
       assert.notEqual(await input.inputValue(), gradle);
+      const readOnlyAcceptance = await checkNativeEditorReadOnly(
+        page,
+        fixture,
+        {
+          viewButton: "Read only",
+          editButton: "Editor",
+          screenshotPath: path.join(
+            directory,
+            `${name}-${phone ? "phone" : "desktop"}-code-view.png`,
+          ),
+        },
+      );
       await input.press("ControlOrMeta+z");
       assert.equal(await input.inputValue(), gradle);
       await page
@@ -207,6 +220,7 @@ for (const [name, engine] of [
         proEditor: style,
         realLicenseDiskSave: true,
         actualDesktopFileComponent: true,
+        readOnlyAcceptance,
       });
       await context.close();
     }

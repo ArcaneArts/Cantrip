@@ -26,16 +26,20 @@ export function NativeCodeEditor({
   onChange,
   onSave,
   active = true,
+  readOnly = false,
 }: {
   session: EditorDocumentSession;
   path: string;
   onChange?(value: string): void;
-  onSave(): void;
+  onSave?(): void;
   active?: boolean;
+  readOnly?: boolean;
 }) {
   const input = useRef<HTMLTextAreaElement>(null);
   const activeRef = useRef(active);
   activeRef.current = active;
+  const readOnlyRef = useRef(readOnly);
+  readOnlyRef.current = readOnly;
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const composing = useRef(false);
@@ -96,6 +100,10 @@ export function NativeCodeEditor({
     node.scrollTop = session.scrollTop;
     node.scrollLeft = session.scrollLeft;
     const onBeforeInput = (event: InputEvent) => {
+      if (readOnlyRef.current) {
+        event.preventDefault();
+        return;
+      }
       if (
         event.inputType === "historyUndo" ||
         event.inputType === "historyRedo"
@@ -208,8 +216,13 @@ export function NativeCodeEditor({
         </div>
         <textarea
           ref={input}
-          aria-label={`Edit ${path.split("/").at(-1) ?? path}`}
-          aria-description="Press Escape to leave the editor. Tab indents text."
+          aria-label={`${readOnly ? "View" : "Edit"} ${path.split("/").at(-1) ?? path}`}
+          aria-description={
+            readOnly
+              ? "Read only. Select and copy text. Press Escape to leave the viewer."
+              : "Press Escape to leave the editor. Tab indents text."
+          }
+          readOnly={readOnly}
           autoCapitalize="off"
           autoComplete="off"
           autoCorrect="off"
@@ -228,6 +241,7 @@ export function NativeCodeEditor({
               session.selection = selection(event.currentTarget);
           }}
           onCompositionStart={(event) => {
+            if (readOnly) return;
             composing.current = true;
             compositionStart.current = {
               text: session.text,
@@ -238,6 +252,10 @@ export function NativeCodeEditor({
             const start = compositionStart.current;
             composing.current = false;
             compositionStart.current = null;
+            if (readOnly) {
+              event.currentTarget.value = session.text;
+              return;
+            }
             if (start)
               session.history.record(
                 start.text,
@@ -251,6 +269,10 @@ export function NativeCodeEditor({
           }}
           onChange={(event) => {
             const node = event.currentTarget;
+            if (readOnly) {
+              node.value = session.text;
+              return;
+            }
             if (!composing.current)
               session.history.record(
                 session.text,
@@ -269,9 +291,20 @@ export function NativeCodeEditor({
               return;
             }
             const modifier = event.metaKey || event.ctrlKey;
+            if (readOnly) {
+              if (
+                event.key === "Backspace" ||
+                event.key === "Delete" ||
+                (modifier &&
+                  !event.altKey &&
+                  ["s", "z", "y"].includes(event.key.toLowerCase()))
+              )
+                event.preventDefault();
+              return;
+            }
             if (modifier && !event.altKey && event.key.toLowerCase() === "s") {
               event.preventDefault();
-              onSave();
+              onSave?.();
             } else if (
               modifier &&
               !event.altKey &&
