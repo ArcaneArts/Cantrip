@@ -130,6 +130,31 @@ function message(
 }
 
 describe("AgentTrajectory", () => {
+  it("lets the shell show through the timeline surface and agent labels", () => {
+    const markup = renderToStaticMarkup(
+      <AgentTrajectory
+        active={false}
+        messages={[
+          message("transparent-user", 1, "user", 1_000, [
+            { type: "text", text: "Inspect the turn" },
+          ]),
+        ]}
+        visible
+      />,
+    );
+    for (const slot of [
+      "trajectory-timeline-surface",
+      "trajectory-agent-labels",
+    ]) {
+      const surface = markup.match(
+        new RegExp(`<[^>]+data-slot="${slot}"[^>]*>`),
+      )?.[0];
+      expect(surface).toBeDefined();
+      const classes = surface?.match(/class="([^"]*)"/)?.[1]?.split(/\s+/);
+      expect(classes).toContain("bg-transparent");
+    }
+  });
+
   it("reuses the trajectory across filter and parent renders but still advances its live clock", async () => {
     const messages = [
       message("clock-user", 1, "user", 1_000, [

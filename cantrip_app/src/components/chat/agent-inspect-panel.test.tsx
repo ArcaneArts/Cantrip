@@ -17,6 +17,30 @@ import {
 } from "./agent-inspect-panel";
 
 describe("AgentInspectPanel", () => {
+  it.each([true, false])(
+    "leaves both desktop surfaces transparent when open=%s",
+    (open) => {
+      const markup = renderToStaticMarkup(
+        <AgentInspectPanelShell
+          onOpenChange={vi.fn()}
+          open={open}
+          overlay={false}
+        />,
+      );
+      const surfaces = [
+        ...markup.matchAll(
+          /<[^>]+data-slot="(?:agent-inspect-panel|agent-inspect-panel-surface)"[^>]*>/g,
+        ),
+      ];
+      expect(surfaces).toHaveLength(2);
+      for (const [surface] of surfaces) {
+        const classes = surface.match(/class="([^"]*)"/)?.[1]?.split(/\s+/);
+        expect(classes).toContain("bg-transparent");
+        expect(classes).not.toContain("bg-background");
+      }
+    },
+  );
+
   it("keeps its child surface mounted independently of agent state", () => {
     const markup = renderToStaticMarkup(
       <AgentInspectPanel onClose={vi.fn()}>

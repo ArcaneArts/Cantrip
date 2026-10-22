@@ -107,10 +107,11 @@ export function AgentInspectPanel({
   onClose(): void;
   title?: string;
 }) {
+  // The containing app shell (or mobile dialog) owns the base background.
   return (
     <aside
       aria-label={ariaLabel}
-      className="relative flex h-full min-h-0 w-full flex-col bg-background"
+      className="relative flex h-full min-h-0 w-full flex-col bg-transparent"
       data-slot="agent-inspect-panel"
     >
       <header
@@ -235,7 +236,7 @@ export function AgentInspectPanelShell({
           ? "true"
           : undefined,
       }}
-      surfaceClassName="max-w-full bg-background"
+      surfaceClassName="max-w-full bg-transparent"
       surfaceDataSlot="agent-inspect-panel-surface"
       title={`Drag to resize ${panelTitle} sidebar`}
     >
