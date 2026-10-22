@@ -24,10 +24,8 @@ let app: Awaited<ReturnType<typeof buildApp>> | undefined;
 let f: Awaited<ReturnType<typeof createNativeSettingsFixture>> | undefined;
 const pending: Promise<unknown>[] = [];
 let release: () => void = () => {};
-let releaseCode: () => void = () => {};
 afterEach(async () => {
   release();
-  releaseCode();
   await Promise.allSettled(pending.splice(0));
   await app?.close();
   await f?.close();
@@ -62,13 +60,9 @@ function turn() {
     },
   });
 }
-async function fixture({ consoleFailure = false, holdCode = false } = {}) {
+async function fixture({ consoleFailure = false } = {}) {
   app = undefined;
   f = undefined;
-  const code = new Promise<void>((resolve) => {
-    releaseCode = resolve;
-  });
-  if (!holdCode) releaseCode();
   f = await createNativeSettingsFixture();
   const repository = f.repository;
   const context = (await repository.getChatExecutionContext(owner, f.chatId))!;
@@ -110,11 +104,6 @@ async function fixture({ consoleFailure = false, holdCode = false } = {}) {
       if (command.type === "terminal.detach") {
         attachments.get(command.attachmentId)?.();
         return { status: "detached" };
-      }
-      if (command.type === "code.agentTurnState") return { notified: true };
-      if (command.type === "code.prepareAgentTurn") {
-        await code;
-        return { prepared: true, sessions: [] };
       }
       if (command.type === "chat.turn")
         throw new Error("Fixture records dispatch but does not run a model.");
@@ -278,38 +267,30 @@ it("accepts the first GUI message despite a CLI-only failure and returns the sam
   ).toHaveLength(1);
 }, 60000);
 
-it("Stop during Code preparation also cancels input after native startup has finished", async () => {
-  const { chatId, repository, commands } = await fixture({ holdCode: true });
+it("dispatches the first GUI message through native startup without editor preparation", async () => {
+  const { chatId, repository, commands } = await fixture();
   release();
   const input = turn();
-  const response = app!.inject({
+  const response = await app!.inject({
     method: "POST",
     url: `/api/chats/${chatId}/turns`,
     payload: input,
   });
-  pending.push(response);
+  expect(response.statusCode, response.body).toBe(202);
+  expect(response.json().message.id).toBe(input.message.id);
   await vi.waitFor(() =>
     expect(
-      commands.some((command) => command.type === "code.prepareAgentTurn"),
-    ).toBe(true),
+      commands.filter((command) => command.type === "chat.turn"),
+    ).toHaveLength(1),
   );
-  const stopped = await app!.inject({
-    method: "POST",
-    url: `/api/chats/${chatId}/interrupt`,
-  });
-  expect(stopped.statusCode, stopped.body).toBe(200);
-  releaseCode();
-  const result = await response;
-  expect(result.statusCode, result.body).toBe(409);
-  expect(result.json().code).toBe("cancelled-before-admission");
-  expect(
-    commands.filter((command) => command.type === "chat.turn"),
-  ).toHaveLength(0);
+  expect(commands.some((command) => command.type.startsWith("code."))).toBe(
+    false,
+  );
   expect(
     await repository.getEncryptedMessageByIdempotencyKey(
       owner,
       chatId,
       input.message.idempotencyKey,
     ),
-  ).toBeNull();
+  ).toMatchObject({ id: input.message.id });
 }, 60000);

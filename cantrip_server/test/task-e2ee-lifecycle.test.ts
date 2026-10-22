@@ -116,19 +116,14 @@ let continuedPromptSawAnswer = false;
 let pauseTestEnabled = false;
 let pauseTestTurnStarted = false;
 let resumePauseTestTurn: (() => void) | null = null;
-let rejectNextAgentTurnPreparation = false;
-let holdNextAgentTurnPreparation = false;
-let heldAgentTurnPreparationStarted = false;
-let releaseHeldAgentTurnPreparation: (() => void) | null = null;
-let holdNextAgentTurnState = false;
-let heldAgentTurnStateStarted = false;
-let releaseHeldAgentTurnState: (() => void) | null = null;
+let rejectNextNativeTurn = false;
+let holdNextTaskPreparation = false;
+let heldTaskPreparationStarted = false;
+let releaseHeldTaskPreparation: (() => void) | null = null;
 const pauseCommands: boolean[] = [];
 const serverObservedPayloads: string[] = [];
 const workerErrors: string[] = [];
 const taskOperationPrepareTimeouts: Array<number | null | undefined> = [];
-const codeAgentPrepareTimeouts: Array<number | null | undefined> = [];
-const codeAgentStateTimeouts: Array<number | null | undefined> = [];
 
 function workerComponentKey() {
   return { key: new Uint8Array(workerTaskKey), keyRevision: 1 };
@@ -522,56 +517,15 @@ const workerBridge: WorkerCommandBus = {
         reused: false,
       };
     }
-    if (command.type === "code.agentTurnState") {
-      if (command.phase === "started") {
-        codeAgentStateTimeouts.push(options?.timeoutMs);
-        if (holdNextAgentTurnState) {
-          holdNextAgentTurnState = false;
-          heldAgentTurnStateStarted = true;
-          await new Promise<void>((resolve) => {
-            releaseHeldAgentTurnState = resolve;
-          });
-        }
-      }
-      return { notifiedSessions: 0, refreshed: [], conflicts: [] };
-    }
-    if (command.type === "code.prepareAgentTurn") {
-      codeAgentPrepareTimeouts.push(options?.timeoutMs);
-      if (holdNextAgentTurnPreparation) {
-        holdNextAgentTurnPreparation = false;
-        heldAgentTurnPreparationStarted = true;
-        await new Promise<void>((resolve) => {
-          releaseHeldAgentTurnPreparation = resolve;
-        });
-      }
-      if (rejectNextAgentTurnPreparation) {
-        rejectNextAgentTurnPreparation = false;
-        return {
-          prepared: false,
-          sessions: [
-            {
-              sessionId: "blocked-code-session",
-              bridgeConnected: false,
-              allowed: false,
-              policy: null,
-              dirtyEditors: [
-                {
-                  uri: "file:///repository/src/unsaved.ts",
-                  relativePath: "src/unsaved.ts",
-                },
-              ],
-              saved: [],
-              failed: [],
-              reason:
-                "Cantrip Code has unsaved editors, but its workbench bridge is not connected.",
-            },
-          ],
-        };
-      }
-      return { prepared: true, sessions: [] };
-    }
     if (command.type === "task.operation.prepare") {
       taskOperationPrepareTimeouts.push(options?.timeoutMs);
+      if (holdNextTaskPreparation) {
+        holdNextTaskPreparation = false;
+        heldTaskPreparationStarted = true;
+        await new Promise<void>((resolve) => {
+          releaseHeldTaskPreparation = resolve;
+        });
+      }
       try {
         return await prepareEncryptedTaskOperation({
           getComponentKey: workerComponentKey,
@@ -590,6 +544,10 @@ const workerBridge: WorkerCommandBus = {
       }
     }
     if (command.type === "chat.turn") {
+      if (rejectNextNativeTurn) {
+        rejectNextNativeTurn = false;
+        throw new Error("Fixture native Task turn dispatch failed.");
+      }
       try {
         return await encryptedTaskTurn(command, options?.onEvent);
       } catch (error) {
@@ -1060,11 +1018,11 @@ describe.sequential("Task E2EE closure lifecycle", () => {
       admission.mockRestore();
     }
   });
-  it("does not report launch success before the worker turn dispatch begins", async () => {
-    holdNextAgentTurnState = true;
-    heldAgentTurnStateStarted = false;
-    releaseHeldAgentTurnState = null;
-    codeAgentStateTimeouts.length = 0;
+  it("does not attach execution before native operation preparation completes", async () => {
+    holdNextTaskPreparation = true;
+    heldTaskPreparationStarted = false;
+    releaseHeldTaskPreparation = null;
+    taskOperationPrepareTimeouts.length = 0;
     const chatId = randomUUID();
     const initialTask = await sealTask(chatId, {
       version: 1,
@@ -1123,22 +1081,28 @@ describe.sequential("Task E2EE closure lifecycle", () => {
       expect(started.statusCode).toBe(202);
       for (
         let attempt = 0;
-        attempt < 200 && !heldAgentTurnStateStarted;
+        attempt < 200 && !heldTaskPreparationStarted;
         attempt += 1
       ) {
         await new Promise((resolve) => setTimeout(resolve, 10));
       }
-      expect(heldAgentTurnStateStarted).toBe(true);
+      expect(heldTaskPreparationStarted).toBe(true);
       expect(operationExecutionAttached).toBe(false);
-      expect(codeAgentStateTimeouts).toEqual([
+      expect(
+        serverObservedPayloads.some((payload) => payload.includes(chatId)),
+      ).toBe(false);
+      expect(taskOperationPrepareTimeouts).toEqual([
         TASK_LAUNCH_PREFLIGHT_TIMEOUT_MS,
       ]);
 
-      releaseHeldAgentTurnState?.();
+      releaseHeldTaskPreparation?.();
       await waitForTask(chatId, "complete");
       expect(operationExecutionAttached).toBe(true);
+      expect(
+        serverObservedPayloads.some((payload) => payload.includes(chatId)),
+      ).toBe(true);
     } finally {
-      releaseHeldAgentTurnState?.();
+      releaseHeldTaskPreparation?.();
       tasks.attachOperationExecution = originalAttachOperationExecution;
     }
   });
@@ -1232,8 +1196,7 @@ describe.sequential("Task E2EE closure lifecycle", () => {
 
   it("fails a blocked launch without retaining Task Worker capacity", async () => {
     taskOperationPrepareTimeouts.length = 0;
-    codeAgentPrepareTimeouts.length = 0;
-    rejectNextAgentTurnPreparation = true;
+    rejectNextNativeTurn = true;
     const blockedChatId = randomUUID();
     const blockedTask = await sealTask(blockedChatId, {
       version: 1,
@@ -1333,10 +1296,6 @@ describe.sequential("Task E2EE closure lifecycle", () => {
       TASK_LAUNCH_PREFLIGHT_TIMEOUT_MS,
       TASK_LAUNCH_PREFLIGHT_TIMEOUT_MS,
     ]);
-    expect(codeAgentPrepareTimeouts).toEqual([
-      TASK_LAUNCH_PREFLIGHT_TIMEOUT_MS,
-      TASK_LAUNCH_PREFLIGHT_TIMEOUT_MS,
-    ]);
     const failedDraft = await openTask(await taskSummary(blockedChatId));
     const edited = await app!.inject({
       method: "PATCH",
@@ -1371,10 +1330,7 @@ describe.sequential("Task E2EE closure lifecycle", () => {
     });
   });
 
-  it("pauses a claimed Task while launch preflight has no runtime", async () => {
-    holdNextAgentTurnPreparation = true;
-    heldAgentTurnPreparationStarted = false;
-    releaseHeldAgentTurnPreparation = null;
+  it("pauses a claimed Task after preparation and before native dispatch", async () => {
     pauseCommands.length = 0;
     const chatId = randomUUID();
     const initialTask = await sealTask(chatId, {
@@ -1412,52 +1368,70 @@ describe.sequential("Task E2EE closure lifecycle", () => {
     });
     expect(createdResponse.statusCode).toBe(201);
     const created = taskWireCreateResultSchema.parse(createdResponse.json());
-    const queued = await app!.inject({
-      method: "POST",
-      url: `/api/tasks/${chatId}/start`,
-      payload: {
-        operationId: randomUUID(),
-        rowVersion: created.task.rowVersion,
-      },
+    const tasks = database.repository.tasks;
+    const originalBeginOperation = tasks.beginOperation.bind(tasks);
+    let prepared = false;
+    let releasePrepared: () => void = () => {};
+    const preparedGate = new Promise<void>((resolve) => {
+      releasePrepared = resolve;
     });
-    expect(queued.statusCode).toBe(202);
-    for (
-      let attempt = 0;
-      attempt < 200 && !heldAgentTurnPreparationStarted;
-      attempt += 1
-    ) {
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-    expect(heldAgentTurnPreparationStarted).toBe(true);
+    const beginOperation = vi
+      .spyOn(tasks, "beginOperation")
+      .mockImplementation(async (...args) => {
+        const result = await originalBeginOperation(...args);
+        if (args[1] === chatId) {
+          prepared = true;
+          await preparedGate;
+        }
+        return result;
+      });
+    try {
+      const queued = await app!.inject({
+        method: "POST",
+        url: `/api/tasks/${chatId}/start`,
+        payload: {
+          operationId: randomUUID(),
+          rowVersion: created.task.rowVersion,
+        },
+      });
+      expect(queued.statusCode).toBe(202);
+      for (let attempt = 0; attempt < 200 && !prepared; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(prepared).toBe(true);
 
-    const initialPause = await app!.inject({
-      method: "GET",
-      url: `/api/projects/${projectId}/tasks/pause`,
-    });
-    const pausedResponse = await app!.inject({
-      method: "PATCH",
-      url: `/api/projects/${projectId}/tasks/pause`,
-      payload: { paused: true, rowVersion: initialPause.json().rowVersion },
-    });
-    expect(pausedResponse.statusCode).toBe(200);
-    expect((await waitForDispatchState(chatId, "paused")).dispatch?.state).toBe(
-      "paused",
-    );
-    expect(pauseCommands).toEqual([]);
-    releaseHeldAgentTurnPreparation?.();
-    const resumeResponse = await app!.inject({
-      method: "PATCH",
-      url: `/api/projects/${projectId}/tasks/pause`,
-      payload: {
-        paused: false,
-        rowVersion: pausedResponse.json().rowVersion,
-      },
-    });
-    expect(resumeResponse.statusCode).toBe(202);
-    expect((await waitForTask(chatId, "complete")).dispatch?.state).toBe(
-      "succeeded",
-    );
-    expect(pauseCommands).toEqual([false]);
+      const initialPause = await app!.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/tasks/pause`,
+      });
+      const pausedResponse = await app!.inject({
+        method: "PATCH",
+        url: `/api/projects/${projectId}/tasks/pause`,
+        payload: { paused: true, rowVersion: initialPause.json().rowVersion },
+      });
+      expect(pausedResponse.statusCode).toBe(200);
+      expect(
+        (await waitForDispatchState(chatId, "paused")).dispatch?.state,
+      ).toBe("paused");
+      expect(pauseCommands).toEqual([]);
+      releasePrepared();
+      const resumeResponse = await app!.inject({
+        method: "PATCH",
+        url: `/api/projects/${projectId}/tasks/pause`,
+        payload: {
+          paused: false,
+          rowVersion: pausedResponse.json().rowVersion,
+        },
+      });
+      expect(resumeResponse.statusCode).toBe(202);
+      expect((await waitForTask(chatId, "complete")).dispatch?.state).toBe(
+        "succeeded",
+      );
+      expect(pauseCommands).toEqual([false]);
+    } finally {
+      releasePrepared();
+      beginOperation.mockRestore();
+    }
   });
 
   it.each(["project", "task"] as const)(

@@ -222,7 +222,7 @@ describe("account bandwidth network boundaries", () => {
     const bridge = new MeteredWorkerCommandBus(new WorkerBridge(), meter);
     const socket = new TestWorkerSocket();
     bridge.attach("worker-1", socket, "owner-1");
-    const response = bridge.request("worker-1", { type: "code.probe" });
+    const response = bridge.request("worker-1", { type: "worker.version" });
     const request = JSON.parse(String(socket.sent.at(-1))) as {
       requestId: string;
     };

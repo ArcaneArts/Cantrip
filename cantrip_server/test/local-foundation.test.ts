@@ -348,12 +348,6 @@ const relayedSurfaceFrames: Array<{
 const surfaceAttachCommands: Array<
   Extract<WorkerCommand, { type: "surface.attach" }>
 > = [];
-const codeEditorBuild = {
-  version: "1.109.5-cantrip.1",
-  upstreamRevision: "a".repeat(40),
-  patchset: 1,
-  fingerprint: "b".repeat(64),
-};
 const attachmentUploads = new Map<
   string,
   { chunks: Buffer[]; fileName: string; sizeBytes: number }
@@ -1209,67 +1203,6 @@ const workerBridge = {
           ],
           reason: null,
         };
-      case "code.probe":
-        return {
-          capabilities: {
-            available: true,
-            version: codeEditorBuild.version,
-            upstreamRevision: codeEditorBuild.upstreamRevision,
-            patchset: codeEditorBuild.patchset,
-            transport: "web-proxy",
-            maxSessions: 4,
-            reason: null,
-          },
-          editorBuild: codeEditorBuild,
-        };
-      case "code.open":
-      case "code.status":
-      case "code.setTheme":
-        return {
-          sessionId: command.sessionId,
-          status: "running",
-          editorBuild: codeEditorBuild,
-          processInstanceId: "code-process-1",
-          bridgeConnected: true,
-          dirtyEditors: [],
-          workbench: {
-            activeEditor: null,
-            git: null,
-            conflicts: [],
-            savePolicy: "always",
-            agentStatus: "idle",
-          },
-          startedAt: "2026-08-08T12:00:00.000Z",
-          lastActivityAt: "2026-08-08T12:01:00.000Z",
-          lastError: null,
-        };
-      case "code.stop":
-        return {
-          sessionId: command.sessionId,
-          status: "stopped",
-          editorBuild: codeEditorBuild,
-          processInstanceId: "code-process-1",
-          bridgeConnected: false,
-          dirtyEditors: [],
-          workbench: {
-            activeEditor: null,
-            git: null,
-            conflicts: [],
-            savePolicy: "always",
-            agentStatus: "idle",
-          },
-          startedAt: "2026-08-08T12:00:00.000Z",
-          lastActivityAt: "2026-08-08T12:02:00.000Z",
-          lastError: null,
-        };
-      case "code.saveAll":
-        return { saved: ["file:///workspace/Cantrip/README.md"], failed: [] };
-      case "code.openFile":
-        return { relativePath: command.path };
-      case "code.prepareAgentTurn":
-        return { prepared: true, sessions: [] };
-      case "code.agentTurnState":
-        return { notifiedSessions: 0, refreshed: [], conflicts: [] };
       case "terminal.open":
         return { status: "detached" };
       case "terminal.detach":
