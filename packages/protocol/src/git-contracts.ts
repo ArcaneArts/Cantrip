@@ -604,6 +604,24 @@ export const gitStatusSchema = z.object({
   branches: z.array(gitBranchSchema),
 });
 
+/** Git history in a task's time window plus the current checkout changes. */
+export const gitChangeSummaryRequestSchema = z.object({
+  since: z.iso.datetime(),
+  until: z.iso.datetime().nullable().default(null),
+});
+
+export const gitChangeSummarySchema = z.object({
+  filesChanged: z.number().int().nonnegative(),
+  additions: z.number().int().nonnegative(),
+  deletions: z.number().int().nonnegative(),
+  commits: z.number().int().nonnegative(),
+  uncommittedFiles: z.number().int().nonnegative(),
+  binaryFiles: z.number().int().nonnegative(),
+  partial: z.boolean(),
+  observedAt: z.iso.datetime(),
+});
+export type GitChangeSummary = z.infer<typeof gitChangeSummarySchema>;
+
 export const gitDiffScopeSchema = z.enum(["unstaged", "staged"]);
 
 export const gitDiffContextLinesSchema = z.number().int().min(0).max(1_000);

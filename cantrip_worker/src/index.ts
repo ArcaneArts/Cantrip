@@ -4149,6 +4149,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           ...(workspaceRootAttachment ? { workspaceRootAttachment } : {}),
         });
       }
+      case "git.change-summary":
       case "git.history":
       case "git.graph.snapshot":
       case "git.graph.metrics":

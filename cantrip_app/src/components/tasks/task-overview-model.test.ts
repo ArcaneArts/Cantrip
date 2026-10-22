@@ -90,49 +90,6 @@ describe("Task overview metrics", () => {
     ];
     expect(taskOverviewMetrics(messages)).toEqual({
       turns: 2,
-      files: 1,
-      added: 4,
-      removed: 2,
-    });
-  });
-
-  it("does not count failed or unfinished edits", () => {
-    expect(
-      taskOverviewMetrics([
-        message(1, [
-          edit("pending", "turn-1", "running"),
-          edit("failed", "turn-1", "failed"),
-        ]),
-      ]),
-    ).toMatchObject({ files: 0, added: 0, removed: 0 });
-  });
-
-  it("uses workspace snapshots for file coverage without duplicating line totals", () => {
-    const snapshot = edit(
-      "snapshot",
-      "turn-1",
-      "completed",
-      "cantrip/workspaceSnapshot",
-    );
-    if (snapshot.type === "activity" && snapshot.activity.type === "fileChange")
-      snapshot.activity.changes.push({
-        path: "README.md",
-        kind: "add",
-        diffPreview: "+docs",
-      });
-    expect(
-      taskOverviewMetrics([message(1, [edit("patch"), snapshot])]),
-    ).toMatchObject({ files: 2, added: 2, removed: 1 });
-  });
-
-  it("does not invent line totals when a file has no diff preview", () => {
-    const patch = edit("patch");
-    if (patch.type === "activity" && patch.activity.type === "fileChange")
-      patch.activity.changes = [{ path: "image.png", kind: "add" }];
-    expect(taskOverviewMetrics([message(1, [patch])])).toMatchObject({
-      files: 1,
-      added: 0,
-      removed: 0,
     });
   });
 

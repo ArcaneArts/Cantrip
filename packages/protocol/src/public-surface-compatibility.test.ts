@@ -343,6 +343,12 @@ const labelingExports = [
   "normalizeGeneratedLabel",
 ];
 
+// Reviewed read-only Git summary for Task counters; preserve legacy exports.
+const gitChangeSummaryExports = [
+  "gitChangeSummaryRequestSchema",
+  "gitChangeSummarySchema",
+];
+
 const browserCursorExports = [
   "browserAgentCursorSchema",
   "cantripMcpWebSessionPointerInputSchema",
@@ -403,14 +409,18 @@ describe("protocol public surface compatibility", () => {
           !taskConversationExports.includes(name) &&
           !chatFileReferencesExports.includes(name) &&
           !editorBindingExports.includes(name) &&
-          !labelingExports.includes(name),
+          !labelingExports.includes(name) &&
+          !gitChangeSummaryExports.includes(name),
       ),
     ].sort();
 
     expect(
       exportNames.filter((name) => retiredWorkbenchExports.includes(name)),
     ).toEqual([]);
-    expect(exportNames).toHaveLength(2064);
+    expect(exportNames).toHaveLength(2066);
+    expect(
+      exportNames.filter((name) => gitChangeSummaryExports.includes(name)),
+    ).toEqual(gitChangeSummaryExports);
     expect(
       exportNames.filter((name) => editorBindingExports.includes(name)),
     ).toEqual(editorBindingExports);
@@ -453,7 +463,10 @@ describe("protocol public surface compatibility", () => {
       (option) => option.shape.type.value,
     );
 
-    expect(commandTypes).toHaveLength(276);
+    expect(commandTypes).toHaveLength(277);
+    expect(
+      commandTypes.filter((type) => type === "git.change-summary"),
+    ).toHaveLength(1);
     expect(commandTypes.some((type) => type.startsWith("code."))).toBe(false);
     expect(
       commandTypes.filter((type) => type === "chat.files.references"),
@@ -470,7 +483,8 @@ describe("protocol public surface compatibility", () => {
       (type) =>
         !managedWorkerCommands.includes(type) &&
         type !== "chat.files.references" &&
-        type !== "label.generate",
+        type !== "label.generate" &&
+        type !== "git.change-summary",
     );
     expect(baselineCommands).toHaveLength(259);
     expect(baselineCommands[0]).toBe("computer-use.operation");

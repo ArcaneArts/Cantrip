@@ -1,3 +1,4 @@
+import { readGitChangeSummary } from "../git-change-summary.js";
 import {
   readGitHistory,
   readGitCommitDetail,
@@ -65,6 +66,7 @@ export type GitCommand = Extract<
   {
     type:
       | "git.history"
+      | "git.change-summary"
       | "git.graph.snapshot"
       | "git.graph.metrics"
       | "git.graph.commit-overlay"
@@ -126,6 +128,8 @@ export type GitCommand = Extract<
 // Services are owned by the worker entry point; this handler only executes commands.
 export async function handleGitCommand(command: GitCommand): Promise<unknown> {
   switch (command.type) {
+    case "git.change-summary":
+      return readGitChangeSummary(command.cwd, command);
     case "git.history":
       return readGitHistory(
         command.cwd,
