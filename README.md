@@ -53,9 +53,10 @@ cross the server only as opaque worker routing handles. See the
   hydrated last-commit metadata. Text files open in Cantrip's owned lightweight
   editor with syntax highlighting, line numbers, and version-checked saves.
   Drafts, selection, scrolling, and undo history survive ordinary tab changes.
-  Preview and structured visual modes remain available, and the file mode menu
-  offers explicit VS Code access. See [the editor guide](docs/CODE_EDITOR.md).
-- Embedded Cantrip Code tabs backed by the selected worker and checkout, with the project pretrusted, Cantrip's chosen theme applied on startup, and unnecessary onboarding/chat surfaces hidden.
+  View mode uses the same editor with editing and the caret disabled; Markdown
+  and structured previews remain available. See [the editor guide](docs/CODE_EDITOR.md).
+- Native Code tabs browse and edit the selected worker checkout with the same
+  built-in editor, retained drafts, and guarded saves as Explorer.
 - Worker-streamed Browser tabs for project-related web pages, with
   WorkerLink-routed keyboard, mouse, wheel, and mobile touch input while
   Chromium and its persistent profile remain on the worker.
@@ -382,7 +383,6 @@ Cantrip/
 ├── cantrip_worker/    # Codex runtime, terminals, files, Git, and GitHub access
 ├── cantrip_cli/       # Worker-authenticated Rust command-line interface
 ├── cantrip_codex/     # Pinned upstream Codex source and source manifest
-├── cantrip_code/      # Pinned browser-native Code OSS distribution
 ├── packages/          # Protocol, crypto, logging, version, and shared UI packages
 ├── managed_runtimes/  # Pinned portable web/search runtimes
 ├── deploy/            # Hosted services, containers, and proxy examples
@@ -812,22 +812,13 @@ build remains a fast no-op; missing or stale builds are repaired automatically.
 Most contributors do not need to invoke the lower-level runtime commands
 directly.
 
-| Command                    | Purpose                                                     |
-| -------------------------- | ----------------------------------------------------------- |
-| `pnpm codex:verify`        | Verify the vendored Codex source manifest.                  |
-| `pnpm codex:build`         | Build the pinned Codex CLI for the host platform.           |
-| `pnpm codex:clean`         | Remove the local pinned Codex build output.                 |
-| `pnpm code:source:verify`  | Verify the vendored Cantrip Code source and patch manifest. |
-| `pnpm code:build`          | Build the fingerprinted Cantrip Code distribution.          |
-| `pnpm code:ready`          | Fast-check that the expected Cantrip Code build exists.     |
-| `pnpm code:verify`         | Fully verify Cantrip Code source and build contents.        |
-| `pnpm code:extension:test` | Run the Cantrip Code workbench extension tests.             |
-| `pnpm code:dev`            | Run the ready Cantrip Code distribution on port 9888.       |
-| `pnpm code:clean`          | Remove local Cantrip Code build and development output.     |
+| Command             | Purpose                                           |
+| ------------------- | ------------------------------------------------- |
+| `pnpm codex:verify` | Verify the vendored Codex source manifest.        |
+| `pnpm codex:build`  | Build the pinned Codex CLI for the host platform. |
+| `pnpm codex:clean`  | Remove the local pinned Codex build output.       |
 
-Updating either pinned upstream is a deliberate maintainer workflow. Follow
-[the Cantrip Code guide](docs/CODE.md) before using `code:fetch`, `code:merge`,
-`code:patch`, or `code:divergence`, and follow
+Updating the pinned Codex upstream is a deliberate maintainer workflow. Follow
 [the Codex runtime policy](docs/CODEX_RUNTIME_COMPATIBILITY.md) before using
 `codex:sync`.
 

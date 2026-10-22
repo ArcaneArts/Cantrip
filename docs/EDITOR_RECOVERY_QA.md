@@ -1,84 +1,47 @@
-# Automated editor recovery QA
+# Native editor recovery QA
 
-`pnpm qa:editor-recovery` starts the production server and worker with disposable
-state, builds an immutable app for this run, and drives the actual bundled
-Cantrip Code editor in an isolated sandboxed Chromium context. Each run has its
-own `*.localhost` origin, ports, Vite cache, database, worker directory, and
-browser storage. It does not adopt a desktop development profile.
+`pnpm qa:editor-recovery` and `pnpm qa:native-editor:integration` run the same
+native file-editor integration suite. The harness starts the real server and
+worker with disposable state, builds an immutable client for the run, and drives
+Chromium and WebKit in desktop and phone viewports. Viewport coverage does not
+claim a physical phone or installed native application run.
 
-Prepare the shared packages and actual runtimes, then run the browser suite:
+Prepare the shared packages, CLI and browsers, then run:
 
 ```sh
 pnpm install --frozen-lockfile
 pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
 pnpm cli:build
-pnpm code:build
-pnpm exec playwright-core install chromium
+pnpm exec playwright-core install chromium webkit
 pnpm qa:editor-recovery
 ```
 
-Select individual scenarios in a fresh fixture:
+Run a single browser/viewport directly when investigating a failure:
 
 ```sh
-pnpm qa:editor-recovery --case transient-renewal
-pnpm qa:editor-recovery --case hard-expiry,explicit-revocation
+node scripts/qa/native-editor-integration.mjs
+node scripts/qa/native-editor-integration.mjs --phone
+node scripts/qa/native-editor-integration.mjs --webkit
+node scripts/qa/native-editor-integration.mjs --webkit --phone
 ```
 
-Cases cover cold/warm use, delayed readiness, worker/service-worker/server
-restarts, carrier loss, Pong loss, renewal, expiry/revocation, forced relay route
-replacement, congestion, preview/pin, and worktree navigation. Blocked setup and
-failed behavior are distinguished. Exit codes are zero for pass, one for failed
-behavior, and two when only blocked/unknown cases remain. Worktree and logical
-congestion setup currently have explicit automated follow-ups in the ledger.
+The suite checks actual encrypted saves reaching the worker, unknown files,
+BOM/line-ending preservation, View/Edit continuity, file windows, server and
+worker restarts, alternate checkouts, standalone Chat files, conflicts, native
+Code-tab creation/editing/read-only viewing, and account revocation. A retained
+local draft alone does not prove a successful save. Failed behavior produces a
+nonzero exit code.
 
-An existing CLI or Code installation can be selected through the worker's
-normal `CANTRIP_CLI_BIN` / `CANTRIP_CODE_ROOT` overrides. The worker performs its
-normal runtime discovery and authorization. On this macOS host, native builds
-use `DEVELOPER_DIR=/Library/Developer/CommandLineTools`.
+`pnpm qa:editor-fixture` leaves an owned fixture running for interactive testing
+through ordinary onboarding and project/file controls. Stop it with SIGINT or
+SIGTERM. Fixture controls can restart owned services and interrupt transports;
+only fixture-owned processes and connections are cleaned up.
 
-For interactive agent QA, `pnpm qa:editor-fixture` leaves the owned services
-running and prints their browser origin. Open it with the browser tool and use
-the normal application onboarding and project/file controls. Stop the fixture
-with SIGINT or SIGTERM. Its private control origin and bearer token are written
-to `.qa/editor-<run-id>/fixture.json`; control operations can interrupt carriers,
-restart an owned service, drop Pong responses, fail renewals, and deny replacement session creation. The
-fixture uses real 45-second session leases through the production server factory;
-production startup retains its normal defaults and authority checks.
+Results, screenshots and correlated logs remain under ignored `.qa/editor-*`
+directories. Disposable account recovery files and fixture control credentials
+stay local. The native editor has no separate server, distribution build,
+workspace profile or extension settings to prepare.
 
-The browser runner verifies rendered text, real typing, saves reaching the
-worker-owned file, retained frames, and unsaved content. It disables autosave
-only in the fixture's generated Code workspace so dirty-buffer assertions have
-a defined meaning. Save attempts during reconnect are retried within a bounded
-deadline; seeing text locally never proves transport recovery.
-
-Results, accessibility snapshots, screenshots, console/request errors, and
-correlated server/worker logs remain in the ignored `.qa/` directory. Recovery
-files and control credentials belong to the disposable account and stay local.
-The runner reports failed cases and continues independent cases; failures are
-not converted to passes. Cleanup terminates only processes and connections
-created by this fixture.
-
-`pnpm network:acceptance` runs the protocol, app, worker, server, and native
-behavioral groups before metadata audits, collects independent failures, and
-returns a nonzero exit code if any stage fails. `network:acceptance:check` is a
-metadata audit; it does not claim runtime or browser coverage.
-
-See [the stability ledger](STABILITY_PASS.md) for observed results, tracker
-follow-ups, and portions still awaiting execution.
-
-Loading measurements are available through:
-
-```sh
-node scripts/qa/editor-loading-benchmark.mjs --label current --warmups 1 --iterations 3 --output /tmp/editor-loading-current.json
-node --expose-gc scripts/qa/editor-http-buffer-benchmark.mjs
-```
-
-The browser benchmark repeats cold typing/save, warm retained reopening, and
-transient-renewal recovery in fresh owned fixtures. It captures verified
-workbench stages, actual network/handshake timing, worker endpoint and extension
-bridge readiness, presentation/file completion, file-open rendering, and renderer
-heap metrics. Onboarding remains part of the
-cold-case total; individual phases overlap and must not be summed. Unknown service-worker byte sizes are explicitly reported; bridge timing begins
-at session registration and can overlap browser document/workbench startup. The parser benchmark executes production parser functions,
-checks output/ownership, and reports local allocations and timing; it is not an
-end-to-end startup benchmark.
+Additional component, document, bundle and close-window checks are documented in
+[the editor guide](CODE_EDITOR.md). `pnpm network:acceptance:check` audits
+metadata; it does not claim runtime or browser coverage.

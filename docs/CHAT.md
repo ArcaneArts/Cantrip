@@ -305,8 +305,8 @@ deterministically named Tauri file window on desktop or a full-screen overlay
 on browser and Capacitor. Text/source editing, structured visualization, media
 preview, size limits, and conflict-safe saves are handled in that file surface.
 
-This is not Cantrip Code and does not start or embed an OpenVSCode server. The
-panel reuses Explorer read/write/preview primitives where safe, but all API and
+The native file panel reuses Explorer read/write/preview primitives where safe,
+but all API and
 worker authorization is rooted in the standalone Chat identity rather than a
 project Explorer surface.
 
@@ -775,7 +775,7 @@ worktree, pull-request, and auto-merge protocol.
 ### Milestone 6: Chat files
 
 - add the Files header action and right-side tree;
-- reuse minimal Monaco, media, and visual previews;
+- reuse native code, media, and visual previews;
 - implement conflict-safe writes and guarded deletes;
 - implement local reveal and remote-only download visibility;
 - stream bounded file/folder/all downloads and safe ZIPs; and

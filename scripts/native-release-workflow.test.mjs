@@ -29,9 +29,9 @@ test("caches verified heavyweight runtimes and publishes the requested assets", 
     workflow,
     /cantrip_codex\/\.build\/\$\{\{ matrix\.target \}\}\/bundle/u,
   );
-  assert.match(
+  assert.doesNotMatch(
     workflow,
-    /\.cantrip-code\/cache\/builds\/\$\{\{ matrix\.target \}\}\/\$\{\{ steps\.code-fingerprint\.outputs\.value \}\}/u,
+    /cantrip-code\b|code:build\b|code-fingerprint/u,
   );
   assert.match(workflow, /CANTRIP_WINDOWS_BUNDLE: nsis/u);
   assert.match(workflow, /artifacts\/bundles\/darwin-arm64\/\*\.dmg/u);
@@ -185,28 +185,26 @@ test("reuses matching iOS development and distribution identities", async () => 
   assert.match(workflow, /"\$development_team_id" != "\$team_id"/u);
 });
 
-test("saves Codex before building Cantrip Code", async () => {
+test("saves Codex before packaging the worker", async () => {
   const workflow = await readWorkflow();
 
   const codexBuild = workflow.indexOf("- name: Build Codex runtime");
   const codexSave = workflow.indexOf("- name: Save verified Codex runtime");
-  const codeBuild = workflow.indexOf("- name: Build Cantrip Code");
+  const workerPackage = workflow.indexOf(
+    "- name: Package worker from verified runtimes",
+  );
   assert.ok(codexBuild >= 0);
   assert.ok(codexSave > codexBuild);
-  assert.ok(codeBuild > codexSave);
+  assert.ok(workerPackage > codexSave);
   assert.match(workflow, /uses: actions\/cache\/restore@v4/u);
   assert.match(workflow, /uses: actions\/cache\/save@v4/u);
 });
 
-test("installs the native libraries required by Windows Code modules", async () => {
+test("installs the Windows assembler required by native runtimes", async () => {
   const workflow = await readWorkflow();
 
-  assert.match(
-    workflow,
-    /Microsoft\.VisualStudio\.Component\.VC\.Runtimes\.x86\.x64\.Spectre/u,
-  );
-  assert.match(workflow, /setup\.exe/u);
-  assert.match(workflow, /Visual Studio Spectre libraries found at/u);
+  assert.match(workflow, /choco install nasm --no-progress --yes/u);
+  assert.match(workflow, /nasm -v/u);
 });
 
 test("fails closed while signing and notarizing the macOS updater and DMG", async () => {

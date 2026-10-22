@@ -2,12 +2,8 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import {
-  assertHostTarget,
-  normalizeTarget,
-} from "./cantrip-code/build-lib.mjs";
+import { normalizeTarget } from "./native-target.mjs";
 import { pnpmCommand } from "./pnpm-command.mjs";
-import { verifyPackagedCantripCode } from "./cantrip-code/packaged-manifest.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 let requestedTarget;
@@ -30,7 +26,6 @@ for (let index = 2; index < process.argv.length; index += 1) {
 }
 
 const target = normalizeTarget(requestedTarget);
-assertHostTarget(target);
 
 function run(command, arguments_) {
   const result = spawnSync(command, arguments_, {
@@ -88,19 +83,6 @@ if (target.platform === "darwin") {
     ]);
   }
 }
-await verifyPackagedCantripCode(
-  path.join(
-    root,
-    "cantrip_app",
-    "src-tauri",
-    "resources",
-    "runtime",
-    "worker",
-    "resources",
-    "cantrip-code",
-  ),
-  target.id,
-);
 const appBuild = pnpmCommand(["--filter", "@cantrip/app", "tauri:build"]);
 run(appBuild.command, appBuild.arguments);
 if (target.platform === "darwin") {
