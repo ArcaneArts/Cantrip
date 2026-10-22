@@ -6,16 +6,8 @@ import {
 } from "@cantrip/protocol";
 import { isLicenseFile } from "@/components/editor/license-file";
 
-export function monacoLanguageForPath(path: string): string | null {
+export function textLanguageForPath(path: string): string | null {
   return explorerTextLanguageForPath(path);
-}
-
-export function monacoModelPath(explorerId: string, path: string): string {
-  const encodedPath = path
-    .split("/")
-    .map((segment) => encodeURIComponent(segment))
-    .join("/");
-  return `cantrip://explorer/${encodeURIComponent(explorerId)}/${encodedPath}`;
 }
 
 export type { ExplorerFileMode } from "@cantrip/protocol";
@@ -48,11 +40,4 @@ export function markdownPreviewUsesPlainText(path: string): boolean {
   return /^(?:copying|licen[cs]e)(?:[-_.](?:apache|bsd|gpl|lgpl|mit|mpl|v?\d+(?:\.\d+)*))*\.md$/u.test(
     filename,
   );
-}
-
-export function usesCantripCodeEditor(
-  path: string,
-  mode: ExplorerFileMode,
-): boolean {
-  return mode === "edit" && monacoLanguageForPath(path) !== null;
 }

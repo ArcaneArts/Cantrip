@@ -19,7 +19,7 @@ describe("ExplorerFilePopout", () => {
 
     expect(markup).not.toContain('title="Close file"');
     expect(markup).not.toContain("Close file</span>");
-    expect(markup).not.toContain("example.ts");
+    expect(markup).toContain("example.ts");
     expect(markup).toContain("data-tauri-drag-region");
   });
 });

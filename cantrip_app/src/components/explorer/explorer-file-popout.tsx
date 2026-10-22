@@ -1,8 +1,14 @@
 import type { CodeAppearance, ExplorerSummary } from "@cantrip/protocol";
 import { Loader2 } from "lucide-react";
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { ExplorerCodeEditor } from "@/components/explorer/explorer-code-editor";
+import {
+  ExplorerView,
+  type ExplorerHeaderState,
+  type ExplorerLifecycleActions,
+} from "./explorer-view";
+import { ContentHeaderActions } from "@/components/workspace/content-header-actions";
+import { NativeFileWindowCloseGuard } from "@/components/app/native-file-window-close-guard";
 import {
   desktopPopoutTitlebarLeftInset,
   updateDesktopWindowTitle,
@@ -31,6 +37,14 @@ export function ExplorerFilePopout({
   projectTitle?: string;
 }) {
   const title = fileName(path);
+  const [header, setHeader] = useState<ExplorerHeaderState | null>(null);
+  const lifecycle = useRef<ExplorerLifecycleActions | null>(null);
+  const onLifecycleChange = useCallback(
+    (_id: string, actions: ExplorerLifecycleActions | null) => {
+      lifecycle.current = actions;
+    },
+    [],
+  );
 
   useEffect(() => {
     const windowTitle = [title, projectTitle, "Cantrip"]
@@ -57,6 +71,13 @@ export function ExplorerFilePopout({
         />
       ) : null}
 
+      <NativeFileWindowCloseGuard
+        hasUnsavedChanges={() => lifecycle.current?.dirty ?? false}
+      />
+      <header className="flex h-9 shrink-0 items-center gap-2 border-b px-3">
+        <span className="min-w-0 flex-1 truncate text-xs">{title}</span>
+        <ContentHeaderActions explorer={header} />
+      </header>
       {loading ? (
         <div className="grid min-h-0 flex-1 place-items-center text-muted-foreground">
           <Loader2 className="size-5 animate-spin" />
@@ -68,12 +89,13 @@ export function ExplorerFilePopout({
           </p>
         </div>
       ) : explorer ? (
-        <ExplorerCodeEditor
+        <ExplorerView
           appearance={appearance}
-          explorerId={explorer.id}
-          path={path}
-          worktreeId={explorer.worktreeId}
-          workerId={explorer.activeWorkerId}
+          explorer={explorer}
+          transientFile={{ path, close: () => window.close() }}
+          onHeaderChange={setHeader}
+          onLifecycleChange={onLifecycleChange}
+          repositoryGraphAvailable={false}
         />
       ) : null}
     </main>

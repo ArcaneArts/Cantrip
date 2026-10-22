@@ -38,14 +38,7 @@ vi.mock("@/components/editor/native-code-editor", () => ({
     });
   },
 }));
-vi.mock("@/components/explorer/retained-explorer-code-editor", () => ({
-  RetainedExplorerCodeEditor: ({ path }: { path: string }) => {
-    useEffect(() => {
-      owners.code.push(path);
-    }, [path]);
-    return createElement("div", { "data-vscode-path": path });
-  },
-}));
+
 vi.mock("@/components/chat/markdown", () => ({
   Markdown: () => createElement("div"),
 }));
@@ -273,18 +266,6 @@ describe("Persistent Explorer native ownership and explicit VS Code", () => {
         "data-native-path": second.selectedPath,
       }).props["data-active"],
     ).toBe(true);
-    await state.close();
-  });
-  it("creates a workbench only after the explicit Open in VS Code action", async () => {
-    const first = explorer("first", "src/first.ts");
-    let header: ExplorerHeaderState | null = null;
-    const state = await mounted(first, [first], null, null, (value) => {
-      header = value;
-    });
-    expect(owners.code).toEqual([]);
-    await act(async () => header!.openInVsCode!());
-    await settle();
-    expect(owners.code).toEqual([first.selectedPath]);
     await state.close();
   });
 });

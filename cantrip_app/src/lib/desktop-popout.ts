@@ -774,7 +774,7 @@ async function createExplorerEditorWarmSlot(
       ...context,
       path: explorerEditorPrewarmPath,
     },
-    { configureInitialFile: false, signal },
+    { signal },
   );
   const label = desktopExplorerEditorWarmWindowLabel(key, broker.launchId);
   const registration = { broker, identityEpoch };

@@ -1,6 +1,5 @@
 import {
   explorerMediaTypeForPath,
-  type CodeAttachment,
   type ExplorerFile,
   type ExplorerFileMode,
   type ExplorerMediaKind,
@@ -36,14 +35,6 @@ import { DesktopExplorerWindowHeader } from "@/components/explorer/desktop-explo
 import { ExplorerImageViewport } from "@/components/explorer/explorer-image-viewport";
 import { Button } from "@/components/ui/button";
 import { clientLogger } from "@/lib/client-log-relay";
-import {
-  CODE_WORKBENCH_READY_TIMEOUT_MS,
-  CodeWorkbenchFrameLoadTracker,
-  codeWorkbenchFrameFailure,
-  codeWorkbenchStageError,
-  createCodeWorkbenchFrameMount,
-  isCodeWorkbenchReadyEvent,
-} from "@/lib/code-workbench-frame";
 import { DesktopExplorerWindowClient } from "@/lib/desktop-explorer-window-client";
 import {
   desktopExplorerWindowInitialMode,
@@ -52,7 +43,6 @@ import {
 } from "@/lib/desktop-explorer-window-protocol";
 import {
   desktopPopoutTitlebarLeftInset,
-  desktopExplorerFileSearch,
   isMacosDesktopRuntime,
   updateDesktopWindowTitle,
 } from "@/lib/desktop-popout";
@@ -61,10 +51,6 @@ import { cn } from "@/lib/utils";
 const StructuredFileVisual = lazy(async () => {
   const module = await import("@/components/explorer/structured-file-visual");
   return { default: module.StructuredFileVisual };
-});
-const BrowserCodeEditor = lazy(async () => {
-  const module = await import("./retained-explorer-code-editor");
-  return { default: module.RetainedExplorerCodeEditor };
 });
 
 function fileName(path: string): string {
@@ -141,183 +127,6 @@ function ModeButton({
   );
 }
 
-function EditorPane({
-  attachment,
-  configuredAtMs,
-  context,
-  error,
-  onWorkbenchFailed,
-  onWorkbenchMounted,
-  onWorkbenchReady,
-  preparedAtMs,
-}: {
-  attachment: CodeAttachment | null;
-  configuredAtMs: number | null;
-  context: DesktopExplorerWindowContext;
-  error: string | null;
-  onWorkbenchFailed(
-    nonce: string,
-    error: string,
-    stage: "frame" | "workbench",
-  ): void;
-  onWorkbenchMounted(nonce: string): void;
-  onWorkbenchReady(nonce: string): void;
-  preparedAtMs: number | null;
-}) {
-  const frameRef = useRef<HTMLIFrameElement>(null);
-  const [frameDocumentVersion, setFrameDocumentVersion] = useState(0);
-  const mount = useMemo(
-    () => (attachment ? createCodeWorkbenchFrameMount(attachment.url) : null),
-    [attachment?.attachmentId, attachment?.url, frameDocumentVersion],
-  );
-  const [frameFailureNonce, setFrameFailureNonce] = useState<string | null>(
-    null,
-  );
-  const frameFailureNonceRef = useRef<string | null>(null);
-  const frameLoadsRef = useRef(new CodeWorkbenchFrameLoadTracker());
-  const [workbenchNonce, setWorkbenchNonce] = useState<string | null>(null);
-  useLayoutEffect(() => {
-    setWorkbenchNonce(null);
-    if (!mount || frameFailureNonce === mount.nonce) return;
-    if (frameFailureNonceRef.current !== mount.nonce) {
-      frameFailureNonceRef.current = null;
-    }
-    let settled = false;
-    const fail = (reason?: unknown) => {
-      if (settled) return;
-      settled = true;
-      frameFailureNonceRef.current = mount.nonce;
-      const failure = codeWorkbenchStageError("workbench", reason);
-      setFrameFailureNonce(mount.nonce);
-      onWorkbenchFailed(mount.nonce, failure.message, "workbench");
-    };
-    const receiveReady = (event: MessageEvent<unknown>) => {
-      if (settled || frameFailureNonceRef.current === mount.nonce) return;
-      const failure = codeWorkbenchFrameFailure(
-        event,
-        frameRef.current?.contentWindow ?? null,
-        mount,
-      );
-      if (failure) {
-        settled = true;
-        clearTimeout(timeout);
-        frameFailureNonceRef.current = mount.nonce;
-        setFrameFailureNonce(mount.nonce);
-        onWorkbenchFailed(mount.nonce, failure.message, "frame");
-        return;
-      }
-      if (
-        !isCodeWorkbenchReadyEvent(
-          event,
-          frameRef.current?.contentWindow ?? null,
-          mount,
-        )
-      ) {
-        return;
-      }
-      settled = true;
-      setWorkbenchNonce(mount.nonce);
-      onWorkbenchReady(mount.nonce);
-    };
-    window.addEventListener("message", receiveReady);
-    onWorkbenchMounted(mount.nonce);
-    const timeout = setTimeout(
-      () => fail("The embedded editor timed out after its endpoint loaded."),
-      CODE_WORKBENCH_READY_TIMEOUT_MS,
-    );
-    return () => {
-      settled = true;
-      clearTimeout(timeout);
-      window.removeEventListener("message", receiveReady);
-    };
-  }, [
-    frameFailureNonce,
-    mount,
-    onWorkbenchFailed,
-    onWorkbenchMounted,
-    onWorkbenchReady,
-  ]);
-  const ready = workbenchNonce === mount?.nonce && configuredAtMs !== null;
-  useEffect(() => {
-    if (!ready) return;
-    clientLogger.info("Explorer editor window rendered", {
-      configuredAtMs,
-      durationMs: Date.now() - context.requestedAtMs,
-      event: "surface.explorer.editor-window.rendered",
-      operation: "render-editor",
-      preparedAtMs,
-      status: "ready",
-      subsystem: "explorer",
-    });
-  }, [configuredAtMs, context.requestedAtMs, preparedAtMs, ready]);
-  return (
-    <div className="relative min-h-0 flex-1 overflow-hidden bg-background">
-      {attachment ? (
-        <iframe
-          key={mount?.nonce}
-          allow="clipboard-read; clipboard-write"
-          aria-hidden={!ready}
-          className={cn(
-            "size-full border-0 bg-background",
-            !ready && "pointer-events-none",
-          )}
-          onError={() => {
-            if (!mount) return;
-            frameFailureNonceRef.current = mount.nonce;
-            setFrameFailureNonce(mount.nonce);
-            onWorkbenchFailed(
-              mount.nonce,
-              codeWorkbenchStageError(
-                "frame",
-                "The embedded editor document could not load.",
-              ).message,
-              "frame",
-            );
-          }}
-          onLoad={() => {
-            if (mount && frameLoadsRef.current.observe(mount.nonce)) {
-              setWorkbenchNonce(null);
-              setFrameFailureNonce(null);
-              frameFailureNonceRef.current = null;
-              setFrameDocumentVersion((version) => version + 1);
-              return;
-            }
-            clientLogger.debug("Explorer editor workbench frame loaded", {
-              durationMs: Date.now() - context.requestedAtMs,
-              event: "surface.explorer.editor-window.frame-loaded",
-              operation: "load-workbench-frame",
-              preparedAtMs,
-              status: "completed",
-              subsystem: "explorer",
-            });
-          }}
-          ref={frameRef}
-          referrerPolicy="no-referrer"
-          src={mount?.url}
-          tabIndex={ready ? 0 : -1}
-          title={`Cantrip Code — ${context.path}`}
-        />
-      ) : null}
-      {ready && error ? (
-        <p className="absolute inset-x-4 top-4 z-10 border border-destructive/30 bg-background/95 p-3 text-sm text-destructive shadow-lg">
-          {error}
-        </p>
-      ) : null}
-      {!ready ? (
-        <div className="absolute inset-0 grid place-items-center bg-background p-6">
-          {error ? (
-            <p className="max-w-lg border-y border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
-              {error}
-            </p>
-          ) : (
-            <Loader2 className="size-5 animate-spin text-muted-foreground" />
-          )}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 export function DesktopExplorerFileWindow({
   initialPath,
   launchId,
@@ -331,10 +140,6 @@ export function DesktopExplorerFileWindow({
   const [mode, setMode] = useState<ExplorerFileMode>(() =>
     desktopExplorerWindowInitialMode(initialPath),
   );
-  const [attachment, setAttachment] = useState<CodeAttachment | null>(null);
-  const [preparedAtMs, setPreparedAtMs] = useState<number | null>(null);
-  const [configuredAtMs, setConfiguredAtMs] = useState<number | null>(null);
-  const [editorError, setEditorError] = useState<string | null>(null);
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [authorityError, setAuthorityError] = useState<string | null>(null);
   const [file, setFile] = useState<ExplorerFile | null>(null);
@@ -388,15 +193,8 @@ export function DesktopExplorerFileWindow({
         },
         onContext: (next) => {
           setAuthorityError(null);
-          setMode(
-            desktopExplorerWindowInitialMode(
-              next.path,
-              next.editor ?? "vscode",
-            ),
-          );
+          setMode(desktopExplorerWindowInitialMode(next.path));
           setContext(next);
-          setConfiguredAtMs(null);
-          setEditorError(null);
           setFile(null);
           setNativeDocument(null);
           setDraft("");
@@ -412,27 +210,7 @@ export function DesktopExplorerFileWindow({
             subsystem: "explorer",
           });
         },
-        onEditorEndpoint: (next, prepared) => {
-          setAttachment(next);
-          setPreparedAtMs(prepared);
-          setConfiguredAtMs(null);
-          setEditorError(null);
-        },
-        onEditorReady: setConfiguredAtMs,
-        onEditorError: setEditorError,
         onLaunchError: setLaunchError,
-        onVsCodeLaunch: (nextLaunchId, target) => {
-          window.location.replace(
-            desktopExplorerFileSearch(
-              {
-                explorerId: target.explorer.id,
-                projectId: target.explorer.projectId,
-                path: target.path,
-              },
-              nextLaunchId,
-            ) + "&cantrip-explorer-editor=vscode",
-          );
-        },
       }),
     [launchId],
   );
@@ -441,23 +219,6 @@ export function DesktopExplorerFileWindow({
     client.start();
     return () => client.dispose();
   }, [client]);
-  const editorWorkbenchReady = useCallback(
-    (nonce: string) => client.editorWorkbenchReady(nonce),
-    [client],
-  );
-  const editorWorkbenchMounted = useCallback(
-    (nonce: string) => {
-      setConfiguredAtMs(null);
-      client.editorWorkbenchMounted(nonce);
-    },
-    [client],
-  );
-  const editorWorkbenchFailed = useCallback(
-    (nonce: string, error: string, stage: "frame" | "workbench") =>
-      client.editorWorkbenchFailed(nonce, error, stage),
-    [client],
-  );
-
   const path = context?.path ?? initialPath;
   const mediaType = context ? explorerMediaTypeForPath(path) : null;
   const structuredFormat: VisualFileFormat | null = context
@@ -471,7 +232,7 @@ export function DesktopExplorerFileWindow({
       );
   }, [context?.serverId, context?.ownerId]);
   useEffect(() => {
-    if (!context || (mode === "edit" && context.editor !== "native")) return;
+    if (!context) return;
     if ((mediaType && media) || (!mediaType && file)) return;
     let cancelled = false;
     setContentLoading(true);
@@ -518,10 +279,7 @@ export function DesktopExplorerFileWindow({
     };
   }, [client, context, file, media, mediaType, mode]);
 
-  const dirty =
-    context?.editor === "native"
-      ? (nativeDocument?.dirty ?? false)
-      : Boolean(file && draft !== file.content);
+  const dirty = nativeDocument?.dirty ?? false;
   useEffect(() => {
     if (!dirty && !sessions.current!.hasDirtyDocuments) return;
     const warn = (event: BeforeUnloadEvent) => event.preventDefault();
@@ -575,36 +333,10 @@ export function DesktopExplorerFileWindow({
 
   return (
     <main className="flex h-svh min-h-0 flex-col overflow-hidden bg-background text-foreground">
-      <NativeFileWindowCloseGuard
-        enabled={context?.editor === "native" || hasUnsavedChanges()}
-        hasUnsavedChanges={hasUnsavedChanges}
-      />
+      <NativeFileWindowCloseGuard hasUnsavedChanges={hasUnsavedChanges} />
       <DesktopExplorerWindowHeader
         actions={
           <>
-            {context?.editor === "native" && !mediaType && !authorityError ? (
-              <Button
-                aria-label="Open in VS Code"
-                className="h-7 px-2 text-xs"
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  void (async () => {
-                    if (
-                      (dirty || nativeDocument?.saving) &&
-                      !window.confirm(
-                        "Save this file's changes before opening it in VS Code?",
-                      )
-                    )
-                      return;
-                    if (!(await save())) return;
-                    client.openInVsCode(context);
-                  })();
-                }}
-              >
-                VS Code
-              </Button>
-            ) : null}
             <div className="flex items-center gap-0.5 rounded-md bg-muted/40 p-0.5">
               <ModeButton
                 active={mode === "preview"}
@@ -635,7 +367,7 @@ export function DesktopExplorerFileWindow({
                 </ModeButton>
               ) : null}
             </div>
-            {(mode === "visual" || context?.editor === "native") && dirty ? (
+            {dirty ? (
               <Button
                 className="ml-1 h-7 px-2.5 text-xs"
                 onClick={() => void save()}
@@ -677,37 +409,6 @@ export function DesktopExplorerFileWindow({
             </p>
           ) : (
             <Loader2 className="size-5 animate-spin text-muted-foreground" />
-          )}
-        </div>
-      ) : mode === "edit" && context.editor !== "native" ? (
-        <div className="flex min-h-0 flex-1">
-          {!("__TAURI_INTERNALS__" in window) ? (
-            <Suspense
-              fallback={<Loader2 className="m-auto size-5 animate-spin" />}
-            >
-              <BrowserCodeEditor
-                appearance={context.appearance}
-                explorerId={context.explorer.id}
-                path={context.path}
-                retained
-                visible
-                prewarm={false}
-                workerOnline
-                workerId={context.explorer.activeWorkerId}
-                worktreeId={context.explorer.worktreeId}
-              />
-            </Suspense>
-          ) : (
-            <EditorPane
-              attachment={attachment}
-              configuredAtMs={configuredAtMs}
-              context={context}
-              error={editorError}
-              onWorkbenchFailed={editorWorkbenchFailed}
-              onWorkbenchMounted={editorWorkbenchMounted}
-              onWorkbenchReady={editorWorkbenchReady}
-              preparedAtMs={preparedAtMs}
-            />
           )}
         </div>
       ) : (

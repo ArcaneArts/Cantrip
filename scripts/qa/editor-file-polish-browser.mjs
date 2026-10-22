@@ -49,6 +49,10 @@ for (const [name, engine] of [
         await page.goto(url.href);
       };
       await open("LICENSE");
+      assert.equal(
+        await page.getByRole("button", { name: /VS Code/u }).count(),
+        0,
+      );
       await page
         .getByRole("heading", { name: "MIT License", exact: true })
         .waitFor();

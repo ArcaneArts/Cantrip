@@ -58,13 +58,7 @@ async function start(): Promise<void> {
   const explorerWindowTarget = parseDesktopExplorerFileTarget(
     window.location.search,
   );
-  const authenticatedExplorerWindow =
-    explorerWindowTarget?.launchId &&
-    new URLSearchParams(window.location.search).get(
-      "cantrip-explorer-editor",
-    ) === "vscode" &&
-    !("__TAURI_INTERNALS__" in window);
-  if (explorerWindowTarget?.launchId && !authenticatedExplorerWindow) {
+  if (explorerWindowTarget?.launchId) {
     void initializeClientLogPersistence().catch(() => undefined);
     const root = createRoot(document.getElementById("root")!);
     const overlayTitlebar = isMacosDesktopRuntime();
@@ -138,16 +132,6 @@ async function start(): Promise<void> {
   const { ApplicationSession } =
     await import("@/components/auth/application-session");
   let authenticatedContent: ReactNode;
-  if (authenticatedExplorerWindow && explorerWindowTarget?.launchId) {
-    const { DesktopExplorerFileWindow } =
-      await import("@/components/explorer/desktop-explorer-file-window");
-    authenticatedContent = (
-      <DesktopExplorerFileWindow
-        initialPath={explorerWindowTarget.path}
-        launchId={explorerWindowTarget.launchId}
-      />
-    );
-  }
   if (standaloneChatFileTarget) {
     const { StandaloneChatFileWindow } =
       await import("@/components/chat/standalone-chat-files-panel");

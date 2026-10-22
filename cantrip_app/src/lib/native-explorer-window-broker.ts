@@ -18,7 +18,6 @@ import type {
   DesktopExplorerWindowBrokerOptions,
 } from "./desktop-explorer-window-broker";
 import { errorMessage } from "./error-message";
-import { isTauri } from "@tauri-apps/api/core";
 
 /** Main-window authorization and encrypted file APIs, without a Code runtime. */
 export function createNativeExplorerWindowBroker(
@@ -29,7 +28,6 @@ export function createNativeExplorerWindowBroker(
   const launchId = crypto.randomUUID();
   let context: DesktopExplorerWindowContext = {
     ...input,
-    editor: "native",
     serverId: session?.serverId,
     ownerId: session?.user.id,
     requestedAtMs: Date.now(),
@@ -39,7 +37,6 @@ export function createNativeExplorerWindowBroker(
   );
   let disposed = false;
   let removeIdentityListener: (() => void) | undefined;
-  let vsCodeBroker: DesktopExplorerWindowBroker | null = null;
   const send = (message: DesktopExplorerWindowResponse) => {
     if (!disposed) channel.postMessage(message);
   };
@@ -58,7 +55,6 @@ export function createNativeExplorerWindowBroker(
     if (
       request.type !== "file.read" &&
       request.type !== "file.save" &&
-      request.type !== "editor.open-vscode" &&
       request.type !== "media.read"
     )
       return;
@@ -80,38 +76,6 @@ export function createNativeExplorerWindowBroker(
           throw new Error(
             "This file request belongs to a previous editor view.",
           );
-        if (request.type === "editor.open-vscode") {
-          if (!isTauri()) {
-            // A browser frame must own its authenticated transport in the
-            // same window. The main window retains only file-operation authority.
-            context = {
-              ...target,
-              editor: "vscode",
-              requestedAtMs: Date.now(),
-            };
-            send({
-              launchId,
-              type: "editor.vscode-launch",
-              nextLaunchId: launchId,
-              context,
-            });
-            return;
-          }
-          const { createDesktopExplorerCodeWindowBroker } =
-            await import("./desktop-explorer-window-broker");
-          if (disposed || context !== target)
-            throw new Error("The file changed before VS Code opened.");
-          vsCodeBroker ??= createDesktopExplorerCodeWindowBroker(target, {
-            signal: options.signal,
-          });
-          send({
-            launchId,
-            type: "editor.vscode-launch",
-            nextLaunchId: vsCodeBroker.launchId,
-            context: target,
-          });
-          return;
-        }
         if (request.type === "media.read") {
           send({
             blob: await loadExplorerMedia(target.explorer.id, target.path),
@@ -145,15 +109,6 @@ export function createNativeExplorerWindowBroker(
           });
         }
       } catch (error) {
-        if (request.type === "editor.open-vscode") {
-          send({
-            launchId,
-            type: "editor.failed",
-            stage: "endpoint",
-            error: errorMessage(error),
-          });
-          return;
-        }
         send({
           error: errorMessage(error),
           launchId,
@@ -180,7 +135,6 @@ export function createNativeExplorerWindowBroker(
     channel.removeEventListener("message", receive);
     channel.close();
     options.signal?.removeEventListener("abort", abort);
-    await vsCodeBroker?.dispose();
   };
   const abort = () => {
     void dispose();
@@ -192,9 +146,6 @@ export function createNativeExplorerWindowBroker(
       current?.serverId !== context.serverId ||
       current?.user.id !== context.ownerId
     )
-      // Authority retires before legacy cleanup, which the
-      // retired account might no longer authorize. Explicit dispose callers
-      // still receive cleanup errors.
       void dispose().catch(() => undefined);
   });
   options.signal?.addEventListener("abort", abort, { once: true });
@@ -202,13 +153,13 @@ export function createNativeExplorerWindowBroker(
   return {
     launchId,
     get failed() {
-      return disposed || Boolean(vsCodeBroker?.failed);
+      return disposed;
     },
     ready: Promise.resolve(),
     dispose,
     async openFile(path, requestedAtMs = Date.now()) {
       if (disposed) throw new Error("The editor window is closed.");
-      context = { ...context, path, requestedAtMs, editor: "native" };
+      context = { ...context, path, requestedAtMs };
       send({ context, launchId, type: "launch.ready" });
     },
   };

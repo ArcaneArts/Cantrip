@@ -288,65 +288,6 @@ for (const [name, engine, mobile] of selected) {
           throw new Error("File-window save did not reach its worker file");
         await delay(50);
       }
-      if (process.argv.includes("--vscode")) {
-        await popout
-          .getByRole("button", { name: "Open in VS Code", exact: true })
-          .click();
-        const codeLines = popout
-          .frameLocator("iframe:visible")
-          .locator(".monaco-editor .view-lines")
-          .filter({ hasText: "native file window saved" });
-        let retries = 0;
-        await (async () => {
-          for (;;) {
-            const outcome = await Promise.race([
-              codeLines.waitFor({ timeout: 90000 }).then(
-                () => "ready",
-                () => "timeout",
-              ),
-              popout
-                .getByRole("button", { name: "Retry", exact: true })
-                .waitFor({ timeout: 90000 })
-                .then(
-                  () => "retry",
-                  () => "timeout",
-                ),
-            ]);
-            if (outcome === "ready") return;
-            if (outcome !== "retry" || retries >= 2)
-              throw new Error(
-                "The explicit VS Code window did not render its actual file",
-              );
-            // Retry only a visible failure from the real operation, using the
-            // existing product control rather than readiness metadata.
-            retries++;
-            record("native.vscode-window-retry", { attempt: retries });
-            await delay(1000);
-            await popout
-              .getByRole("button", { name: "Retry", exact: true })
-              .click();
-          }
-        })().catch(async (error) => {
-          await writeFile(
-            path.join(fixture.directory, "vscode-file-window-failed.aria.txt"),
-            await popout
-              .locator("body")
-              .ariaSnapshot({ timeout: 5000 })
-              .catch(() => ""),
-          );
-          await popout
-            .screenshot({
-              path: path.join(
-                fixture.directory,
-                "vscode-file-window-failed.png",
-              ),
-              timeout: 5000,
-            })
-            .catch(() => {});
-          throw error;
-        });
-        record("native.explicit-vscode-window", { status: "pass", retries });
-      }
       const staleInput = stalePopout.getByRole("textbox", {
         name: "Edit second.txt",
         exact: true,
@@ -611,12 +552,11 @@ for (const [name, engine, mobile] of selected) {
     assert.equal(await input.inputValue(), conflictDraft);
     assert.equal(await readFile(file, "utf8"), "external edit\n");
     record("native.conflict", { status: "pass" });
-    if (!process.argv.includes("--vscode"))
-      assert.equal(
-        usedCode(),
-        false,
-        "Ordinary file routes across every window must not create Code tabs/attachments or load Monaco",
-      );
+    assert.equal(
+      usedCode(),
+      false,
+      "Ordinary file routes across every window must not create Code tabs/attachments or load Monaco",
+    );
     await page.screenshot({
       path: path.join(fixture.directory, "native-editor.png"),
     });

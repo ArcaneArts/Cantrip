@@ -112,17 +112,17 @@ loaded baseline: the write may have reached disk before its acknowledgement
 failed. An explicit retry still uses the loaded revision, and background reads
 or clean-cache eviction cannot discard that uncertain draft.
 
-## VS Code remains available
+## Native file surfaces
 
-In Explorer, open the file mode menu and choose **Open in VS Code**, or use
-the **VS Code** button in a desktop file window. A dirty
-file requires explicit confirmation to save first; cancellation or a failed
-save keeps the native draft. Explicit Code tabs and the existing workbench,
-runtime, settings, and packaging remain supported.
+Explorer, sidebar previews, and file popouts use the native editor exclusively.
+Their mode controls offer View, Edit, and supported structured Visual modes.
+File windows exchange only context, file/media reads, and revision-checked saves;
+they do not create editor servers or embedded workbenches. The former editor
+extension settings and dormant Monaco editor have been removed.
 
-Ordinary file opening does not attach an inline workbench or load Monaco.
-The new editor contains no third-party editor or syntax engine. Existing
-preview renderers and explicit VS Code functionality retain their dependencies.
+The native editor contains no third-party editor or syntax engine. Legacy
+project Code tabs and their server/worker runtime are the remaining migration
+work; they are separate from native file opening.
 
 ## Development and verification
 
