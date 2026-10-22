@@ -142,6 +142,26 @@ function props(
 }
 
 describe("Models provider navigation", () => {
+  it.each(["general", "provider:local"] as const)(
+    "leaves the tab strip transparent with %s selected",
+    async (activeTab) => {
+      let view!: TestRenderer.ReactTestRenderer;
+      await act(async () => {
+        view = TestRenderer.create(
+          <ModelsSettings {...props({ activeTab })} />,
+        );
+      });
+      const strip = view.root.findByProps({ role: "tablist" }).parent!;
+      const classes = (strip.props.className as string).split(/\s+/);
+      expect(classes.filter((name) => name.startsWith("bg-"))).toEqual([
+        "bg-transparent",
+      ]);
+      expect(classes).toContain("sticky");
+      expect(classes).toContain("border-b");
+      await act(async () => view.unmount());
+    },
+  );
+
   it("scrolls the selected provider into view after tab changes", async () => {
     const scrollIntoView = vi.fn();
     const inputs = props();
