@@ -4,10 +4,16 @@ import {
   splitPreviewMessages,
 } from "./computer-use-activity";
 import type { AgentActivity, ChatMessage } from "@cantrip/protocol";
+import {
+  formatTokenRate,
+  turnTokenRates,
+  type TurnTokenPerformance,
+} from "@/lib/native-turn-token-performance";
 
 export interface ChatTurnMetadata {
   durationMs: number | null;
   totalTokens: number | null;
+  tokenPerformance?: TurnTokenPerformance;
 }
 
 export interface ChatTurnIdentity {
@@ -197,16 +203,28 @@ function activityTurnMetadata(
 ): ChatTurnMetadata | null {
   const usage = [...activities]
     .reverse()
-    .find((activity) => activity.type === "usage");
+    .find(
+      (activity) =>
+        activity.type === "usage" && (activity.agentScope?.isRoot ?? true),
+    );
   const summary = [...activities]
     .reverse()
     .find(
       (activity) =>
-        activity.type === "turnSummary" && activity.status !== "running",
+        activity.type === "turnSummary" &&
+        activity.status !== "running" &&
+        (activity.agentScope?.isRoot ?? true),
     );
+  const tokenPerformance =
+    summary?.type === "turnSummary" ? summary.tokenPerformance : undefined;
   const metadata = {
-    durationMs: summary?.type === "turnSummary" ? summary.durationMs : null,
-    totalTokens: usage?.type === "usage" ? usage.last.totalTokens : null,
+    durationMs:
+      tokenPerformance?.durationMs ??
+      (summary?.type === "turnSummary" ? summary.durationMs : null),
+    totalTokens:
+      tokenPerformance?.totalTokens ??
+      (usage?.type === "usage" ? usage.last.totalTokens : null),
+    ...(tokenPerformance ? { tokenPerformance } : {}),
   };
   return metadata.durationMs !== null || metadata.totalTokens !== null
     ? metadata
@@ -221,6 +239,9 @@ function mergeTurnMetadata(
   return {
     durationMs: next.durationMs ?? current?.durationMs ?? null,
     totalTokens: next.totalTokens ?? current?.totalTokens ?? null,
+    ...((next.tokenPerformance ?? current?.tokenPerformance)
+      ? { tokenPerformance: next.tokenPerformance ?? current?.tokenPerformance }
+      : {}),
   };
 }
 
@@ -634,11 +655,16 @@ export function formatTurnMetadata(
   metadata: ChatTurnMetadata | null,
 ): string | null {
   if (!metadata) return null;
+  const realRate = turnTokenRates(
+    metadata.tokenPerformance,
+    metadata.durationMs,
+  ).real;
   const parts = [
     metadata.totalTokens === null
       ? null
       : `${metadata.totalTokens.toLocaleString()}tok`,
     metadata.durationMs === null ? null : formatDuration(metadata.durationMs),
+    realRate !== null ? `${formatTokenRate(realRate)} real` : null,
   ].filter((part): part is string => part !== null);
   return parts.length > 0 ? parts.join(" · ") : null;
 }

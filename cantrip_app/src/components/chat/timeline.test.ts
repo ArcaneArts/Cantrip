@@ -962,6 +962,30 @@ describe("chat activity timeline", () => {
       "1m 2s",
     );
     expect(formatTurnMetadata(null)).toBeNull();
+    expect(
+      formatTurnMetadata({
+        durationMs: 20_000,
+        totalTokens: 21_000,
+        tokenPerformance: {
+          durationMs: 20_000,
+          totalTokens: 21_000,
+          outputTokens: 1_000,
+          outputDurationMs: 10_000,
+        },
+      }),
+    ).toBe("21,000tok · 20s · 50 tok/s real");
+    expect(
+      formatTurnMetadata({
+        durationMs: 0,
+        totalTokens: 21_000,
+        tokenPerformance: {
+          durationMs: 0,
+          totalTokens: 21_000,
+          outputTokens: 1_000,
+          outputDurationMs: null,
+        },
+      }),
+    ).toBe("21,000tok · 0ms");
   });
 
   it("does not show rate-limit telemetry in the chat timeline", () => {

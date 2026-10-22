@@ -1,4 +1,9 @@
 import { type NativeTurnSettingsEvidence } from "./native-turn-settings-evidence";
+import {
+  nativeTurnTokenPerformance,
+  mergeTurnTokenPerformance,
+  type TurnTokenPerformance,
+} from "./native-turn-token-performance";
 export {
   nativeCorrelatedTurnIdentities,
   nativeTurnSettingsForMessages,
@@ -70,7 +75,7 @@ function initialEvidence(
 }
 
 /** Decrypted archive bodies and component key copies never enter query caches.
- * Only immutable initial-selection evidence escapes for existing turn grouping. */
+ * Only initial-selection evidence and aggregate token/timing statistics escape. */
 export async function openNativeTurnSettings(input: {
   chatId: string;
   response: NativeHistoryTurnReadResponse;
@@ -109,6 +114,7 @@ export async function openNativeTurnSettings(input: {
       turnId: string;
       conflict: boolean;
       values: NativeInitialTurnSettings[];
+      performance: TurnTokenPerformance[];
     }
   >();
   for (const entry of response.turns) {
@@ -119,19 +125,24 @@ export async function openNativeTurnSettings(input: {
       keyRevision: entry.turn.metadata.keyRevision,
     });
     let observed: ReturnType<typeof initialEvidence>;
+    let performance: TurnTokenPerformance | undefined;
     try {
-      observed = initialEvidence(
-        await decryptNativeHistoryTurn({
-          ownerId: identity.userId,
-          serverId: identity.serverId,
-          componentKey,
-          chatId: input.chatId,
-          bindingId: entry.bindingId,
-          workerId: entry.workerId,
-          turn: entry.turn,
-        }),
-        entry.turn.turnId,
-      );
+      const source = await decryptNativeHistoryTurn({
+        ownerId: identity.userId,
+        serverId: identity.serverId,
+        componentKey,
+        chatId: input.chatId,
+        bindingId: entry.bindingId,
+        workerId: entry.workerId,
+        turn: entry.turn,
+      });
+      observed = initialEvidence(source, entry.turn.turnId);
+      performance = nativeTurnTokenPerformance({
+        source,
+        threadId: entry.turn.threadId,
+        turnId: entry.turn.turnId,
+        usage: entry.turn.usage,
+      });
     } finally {
       clearSensitiveBytes(componentKey);
     }
@@ -142,23 +153,37 @@ export async function openNativeTurnSettings(input: {
       turnId: entry.turn.turnId,
       conflict: false,
       values: [],
+      performance: [],
     };
     group.conflict ||= observed.conflict;
     if (observed.value) group.values.push(observed.value);
+    if (performance) group.performance.push(performance);
     groups.set(id, group);
   }
-  return [...groups.values()].map(({ threadId, turnId, conflict, values }) => {
-    if (
-      conflict ||
-      values.some(
-        (value) => JSON.stringify(value) !== JSON.stringify(values[0]),
+  return [...groups.values()].map(
+    ({ threadId, turnId, conflict, values, performance }) => {
+      const mergedPerformance = mergeTurnTokenPerformance(performance);
+      const tokenPerformance = mergedPerformance
+        ? { tokenPerformance: mergedPerformance }
+        : {};
+      if (
+        conflict ||
+        values.some(
+          (value) => JSON.stringify(value) !== JSON.stringify(values[0]),
+        )
       )
-    )
-      return { threadId, turnId, status: "conflict" };
-    return values[0]
-      ? { threadId, turnId, status: "available", initialSettings: values[0] }
-      : { threadId, turnId, status: "unavailable" };
-  });
+        return { threadId, turnId, status: "conflict", ...tokenPerformance };
+      return values[0]
+        ? {
+            threadId,
+            turnId,
+            status: "available",
+            initialSettings: values[0],
+            ...tokenPerformance,
+          }
+        : { threadId, turnId, status: "unavailable", ...tokenPerformance };
+    },
+  );
 }
 
 // Existing archives include whole reduced turns. Bound response/decryption
@@ -202,8 +227,8 @@ export async function readNativeTurnSettings(input: {
   return results;
 }
 
-/** Enrich only an existing native summary, leaving all IDs, order, lifecycle and
- * user/assistant messages intact. Conflicts cannot be revived by older evidence. */
+/** Enrich existing summaries with settings and token performance, preserving
+ * IDs, order, lifecycle and text. Settings conflicts cannot be revived. */
 export function enrichNativeTurnSummaries(
   messages: ChatMessage[],
   evidence: NativeTurnSettingsEvidence[],
@@ -214,7 +239,7 @@ export function enrichNativeTurnSummaries(
     const content = message.content.map((item) => {
       if (item.type !== "activity" || item.activity.type !== "turnSummary")
         return item;
-      const activity = item.activity;
+      let activity = item.activity;
       const correlation = activity.correlation;
       if (
         !correlation?.threadId ||
@@ -226,7 +251,13 @@ export function enrichNativeTurnSummaries(
       const observed = byTurn.get(
         key({ threadId: correlation.threadId, turnId: correlation.turnId }),
       );
-      if (!observed || observed.status === "unavailable") return item;
+      if (!observed) return item;
+      if (observed.tokenPerformance) {
+        changed = true;
+        activity = { ...activity, tokenPerformance: observed.tokenPerformance };
+      }
+      const enriched = { ...item, activity };
+      if (observed.status === "unavailable") return enriched;
       const conflict =
         activity.initialSettingsConflict === true ||
         observed.status === "conflict" ||
@@ -249,7 +280,7 @@ export function enrichNativeTurnSummaries(
           activity: { ...activity, initialSettings: observed.initialSettings },
         };
       }
-      return item;
+      return enriched;
     });
     return changed ? { ...message, content } : message;
   });
