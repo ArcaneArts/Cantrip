@@ -683,7 +683,10 @@ function AgentTrajectoryVisible({
 
       <NativeTurnSettingsDetails entries={turn.nativeTurnSettings ?? []} />
 
-      <div className="shrink-0 border-b bg-muted/10">
+      <div
+        className="shrink-0 border-b bg-transparent"
+        data-slot="trajectory-timeline-surface"
+      >
         <TrajectoryTimeline
           agents={turn.agents.filter((agent) => !hiddenAgents.has(agent.key))}
           events={events}

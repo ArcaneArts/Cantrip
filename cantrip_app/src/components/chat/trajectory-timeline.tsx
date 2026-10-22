@@ -251,7 +251,8 @@ export function TrajectoryTimeline({
               ? "Trajectory actors"
               : "Trajectory agents"
           }
-          className="relative w-28 shrink-0 border-r bg-background/40"
+          className="relative w-28 shrink-0 border-r bg-transparent"
+          data-slot="trajectory-agent-labels"
         >
           {tracks.map((agent, index) => (
             <div
