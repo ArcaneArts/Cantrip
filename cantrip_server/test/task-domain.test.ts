@@ -165,7 +165,6 @@ const config: ServerConfig = {
 };
 
 let observedTurn: Extract<WorkerCommand, { type: "chat.turn" }> | null = null;
-let preparedAgentTurns = 0;
 const observedWorkerCommandTypes: string[] = [];
 const workerBridge: WorkerCommandBus = {
   attach() {},
@@ -193,13 +192,6 @@ const workerBridge: WorkerCommandBus = {
         displayPath: `managed-folders/${command.projectId}`,
         reused: false,
       };
-    }
-    if (command.type === "code.agentTurnState") {
-      return { notifiedSessions: 0, refreshed: [], conflicts: [] };
-    }
-    if (command.type === "code.prepareAgentTurn") {
-      preparedAgentTurns += 1;
-      return { prepared: true, sessions: [] };
     }
     if (command.type === "chat.interrupt") {
       return { interrupted: true };
@@ -638,7 +630,9 @@ describe.sequential("opaque encrypted Task persistence", () => {
     const reviewed = await waitForState(chatId, "review");
     expect(reviewed).toMatchObject({ planningRound: 1, hasPlan: true });
     expect(observedTurn?.resultMode.kind).toBe("task-encrypted");
-    expect(preparedAgentTurns).toBe(0);
+    expect(
+      observedWorkerCommandTypes.some((type) => type.startsWith("code.")),
+    ).toBe(false);
     expect(JSON.stringify(observedTurn)).not.toContain(sentinel);
 
     const duplicate = await app.inject({
@@ -714,7 +708,9 @@ describe.sequential("opaque encrypted Task persistence", () => {
     expect(startResponse.statusCode, JSON.stringify(startResponse.json())).toBe(
       202,
     );
-    expect(preparedAgentTurns).toBe(1);
+    expect(
+      observedWorkerCommandTypes.some((type) => type.startsWith("code.")),
+    ).toBe(false);
     const completed = await waitForState(chatId, "complete");
     expect(completed).toMatchObject({
       planGoalEnabled: false,
