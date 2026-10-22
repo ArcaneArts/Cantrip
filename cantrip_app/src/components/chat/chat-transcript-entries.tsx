@@ -125,7 +125,7 @@ export interface ChatTranscriptEntriesProps {
   onCopyResponse(messageId: string, text: string): Promise<void>;
   onEditMessage(message: ChatMessage): void;
   onForkMessage(messageId: string): void;
-  onOpenFile(path: string): void;
+  onOpenFile(path: string, worktreeId?: string | null): void;
   onSubmitEditedMessage(message: ChatMessage, event?: FormEvent): void;
   onViewSubagent?: (agentKey: string) => void;
   onViewTrajectory?: (turnKey: string) => void;
@@ -378,10 +378,13 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
               <ChatMessageFileSummary
                 chatId={chatId}
                 model={fileSummary}
-                onOpenFile={onOpenFile}
+                onOpenFile={(path) => onOpenFile(path, message.worktreeId)}
               />
             ) : (
-              <MessageFileSummary model={fileSummary} onOpenFile={onOpenFile} />
+              <MessageFileSummary
+                model={fileSummary}
+                onOpenFile={(path) => onOpenFile(path, message.worktreeId)}
+              />
             )
           ) : null}
           {user && modelLabels.has(message.id) ? (

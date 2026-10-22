@@ -776,8 +776,8 @@ export function GlobalContentHost({
               onInspectOpenChange={(open) =>
                 setAgentInspectOpen(selectedChat.id, open)
               }
-              onOpenFile={(reference) =>
-                openChatFileLink(selectedChat, reference)
+              onOpenFile={(reference, worktreeId) =>
+                openChatFileLink(selectedChat, reference, worktreeId)
               }
               onOpenRelocation={() => setChatRelocationOpen(true)}
               onToast={showAppToast}
@@ -1019,8 +1019,12 @@ export function GlobalContentHost({
                                 open,
                               )
                             }
-                            onOpenFile={(reference) =>
-                              openChatFileLink(activeProjectTaskChat, reference)
+                            onOpenFile={(reference, worktreeId) =>
+                              openChatFileLink(
+                                activeProjectTaskChat,
+                                reference,
+                                worktreeId,
+                              )
                             }
                             onOpenRelocation={() => setChatRelocationOpen(true)}
                             onToast={showAppToast}

@@ -16,7 +16,7 @@ import {
   type SidebarFilePinHandoffState,
 } from "@/components/app/application-shell-model";
 import type { ShellEnvironment } from "@/components/app/shell-environment";
-import { projectFilePath } from "@/components/chat/markdown-file-link";
+import { resolveChatFileReferenceTarget } from "@/components/app/chat-file-reference-target";
 import { defaultExplorerFileMode } from "@/components/explorer/explorer-file-language";
 import type {
   ExplorerGraphRequest,
@@ -26,7 +26,7 @@ import type { AppToastInput } from "@/components/ui/app-toast";
 import {
   createExplorer,
   getProjectTabLayout,
-  getProjectWorktreeStatus,
+  getProjectWorktrees,
   pinExplorer,
   updateExplorerViewState,
 } from "@/lib/api";
@@ -425,32 +425,6 @@ export type SidebarExplorerMutations = ReturnType<
   typeof useSidebarExplorerMutations
 >;
 
-const PROTECTED_PATH_UNAVAILABLE = "Protected path unavailable";
-
-export async function resolveChatFileReferencePath({
-  reference,
-  sourcePath,
-  worktreePath,
-  refreshWorktreePath,
-}: {
-  reference: string;
-  sourcePath: string | null;
-  worktreePath: string | null;
-  refreshWorktreePath(): Promise<string | null>;
-}): Promise<{ path: string; refreshedWorktreePath: string | null } | null> {
-  const relative = projectFilePath(reference, null);
-  if (relative) return { path: relative, refreshedWorktreePath: null };
-  for (const root of [worktreePath, sourcePath]) {
-    if (!root || root === PROTECTED_PATH_UNAVAILABLE) continue;
-    const path = projectFilePath(reference, root);
-    if (path) return { path, refreshedWorktreePath: null };
-  }
-  const refreshedWorktreePath = await refreshWorktreePath().catch(() => null);
-  if (!refreshedWorktreePath) return null;
-  const path = projectFilePath(reference, refreshedWorktreePath);
-  return path ? { path, refreshedWorktreePath } : null;
-}
-
 export function createProjectExplorerFileOpening({
   codeAppearance,
   desktopRuntime,
@@ -485,6 +459,7 @@ export function createProjectExplorerFileOpening({
     void (async () => {
       let explorer = (explorers ?? []).find(
         (candidate) =>
+          candidate.projectId === projectId &&
           candidate.worktreeId === worktreeId &&
           (desktopRuntime ||
             !explorerLifecycleRef.current.get(candidate.id)?.dirty),
@@ -530,43 +505,39 @@ export function createProjectExplorerFileOpening({
       openCreatedTab(updated.projectId, "explorer", updated.id);
     })().catch((error: unknown) => setPopoutError(errorText(error)));
   };
-  const openChatFileLink = (chat: ChatSummary, reference: string) => {
-    const worktree = (worktrees ?? []).find(
-      (candidate) => candidate.id === chat.activeWorktreeId,
-    );
-    void resolveChatFileReferencePath({
+  const openChatFileLink = (
+    chat: ChatSummary,
+    reference: string,
+    messageWorktreeId?: string | null,
+  ) => {
+    void resolveChatFileReferenceTarget({
       reference,
-      sourcePath:
-        selectedProject?.id === chat.projectId
-          ? (selectedProject.source?.path ?? null)
-          : null,
-      worktreePath: worktree?.path ?? null,
-      refreshWorktreePath: async () => {
-        const refreshed = await getProjectWorktreeStatus(
+      projectId: chat.projectId,
+      activeWorktreeId: chat.activeWorktreeId,
+      messageWorktreeId,
+      source:
+        selectedProject?.id === chat.projectId ? selectedProject.source : null,
+      worktrees:
+        queryClient.getQueryData<ProjectWorktreeSummary[]>([
+          "worktrees",
           chat.projectId,
-          chat.activeWorktreeId,
-        );
+        ]) ??
+        worktrees ??
+        [],
+      refreshWorktrees: async () => {
+        const refreshed = await getProjectWorktrees(chat.projectId);
         queryClient.setQueryData<ProjectWorktreeSummary[]>(
           ["worktrees", chat.projectId],
-          (current = []) =>
-            current.map((candidate) =>
-              candidate.id === chat.activeWorktreeId
-                ? {
-                    ...candidate,
-                    path: refreshed.worktree.path,
-                    displayPath: refreshed.worktree.path,
-                  }
-                : candidate,
-            ),
+          refreshed,
         );
-        return refreshed.worktree.path;
+        return refreshed;
       },
     })
       .then((resolved) => {
         if (!resolved) {
           showAppToast({
             message:
-              "The worker could not resolve this link inside the active project folder.",
+              "This link could not be matched to a checkout of this project. Its original worktree may no longer be available.",
             title: "Could not open file link",
             tone: "error",
           });
@@ -574,7 +545,7 @@ export function createProjectExplorerFileOpening({
         }
         openProjectExplorerFile(
           chat.projectId,
-          chat.activeWorktreeId,
+          resolved.worktreeId,
           resolved.path,
         );
       })

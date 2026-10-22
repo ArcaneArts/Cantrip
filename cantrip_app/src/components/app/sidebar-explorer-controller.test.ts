@@ -1,16 +1,17 @@
 import type {
+  ChatSummary,
   ExplorerSummary,
   ProjectSummary,
   ProjectTabLayoutSummary,
   ProjectWorktreeSummary,
 } from "@cantrip/protocol";
+import { QueryClient } from "@tanstack/react-query";
 import { createElement, StrictMode } from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
 
 import {
   createProjectExplorerFileOpening,
-  resolveChatFileReferencePath,
   sidebarExplorerProvisioningDetails,
   sidebarFilePinCompletion,
   useSidebarExplorerModel,
@@ -28,49 +29,70 @@ const project = {
   capabilities: { worktrees: true },
 } as ProjectSummary;
 
-describe("chat file reference resolution", () => {
-  it("refreshes a protected or stale worktree path before rejecting an absolute link", async () => {
-    const refresh = vi
-      .fn()
-      .mockResolvedValue(
-        "/Users/test/Library/Application Support/art.cantrip/repositories/project",
+describe("project file opening", () => {
+  it.each([false, true])(
+    "opens chat links under the resolved checkout ID (desktop=%s)",
+    async (desktopRuntime) => {
+      const openSidebarFilePreviewPath = vi.fn(() => true);
+      const setPopoutError = vi.fn();
+      const showAppToast = vi.fn();
+      const queryClient = new QueryClient();
+      const worktrees = [
+        {
+          id: "primary",
+          projectId: project.id,
+          path: "/project",
+          displayPath: "/project",
+          isPrimary: true,
+        },
+        {
+          id: "task",
+          projectId: project.id,
+          path: "/managed/task",
+          displayPath: "/managed/task",
+          isPrimary: false,
+        },
+      ] as ProjectWorktreeSummary[];
+      // A task checkout may have been registered since this shell last rendered.
+      queryClient.setQueryData(["worktrees", project.id], worktrees);
+      const { openChatFileLink } = createProjectExplorerFileOpening({
+        codeAppearance: "dark",
+        desktopRuntime,
+        explorers: [],
+        explorerLifecycleRef: { current: new Map() },
+        openCreatedTab: vi.fn(),
+        openSidebarFilePreviewPath,
+        queryClient,
+        selectedProject: project,
+        setPopoutError,
+        showAppToast,
+        worktrees: [],
+      });
+      const chat = {
+        projectId: project.id,
+        activeWorktreeId: "primary",
+      } as ChatSummary;
+
+      openChatFileLink(chat, "/managed/task/docs/BASELINE.md:14");
+      await Promise.resolve();
+      expect(openSidebarFilePreviewPath).toHaveBeenLastCalledWith(
+        "task",
+        "docs/BASELINE.md",
       );
 
-    await expect(
-      resolveChatFileReferencePath({
-        reference:
-          "/Users/test/Library/Application Support/art.cantrip/repositories/project/README.md",
-        sourcePath: "Protected path unavailable",
-        worktreePath: "Protected path unavailable",
-        refreshWorktreePath: refresh,
-      }),
-    ).resolves.toEqual({
-      path: "README.md",
-      refreshedWorktreePath:
-        "/Users/test/Library/Application Support/art.cantrip/repositories/project",
-    });
-    expect(refresh).toHaveBeenCalledOnce();
-  });
+      openChatFileLink(chat, "src/app.ts", "task");
+      await Promise.resolve();
+      expect(openSidebarFilePreviewPath).toHaveBeenLastCalledWith(
+        "task",
+        "src/app.ts",
+      );
+      expect(setPopoutError).not.toHaveBeenCalled();
+      expect(showAppToast).not.toHaveBeenCalled();
+      expect(chat.activeWorktreeId).toBe("primary");
+      queryClient.clear();
+    },
+  );
 
-  it("opens safe relative references without private path hydration", async () => {
-    const refresh = vi.fn();
-
-    await expect(
-      resolveChatFileReferencePath({
-        reference: "docs/README.md:14",
-        sourcePath: null,
-        worktreePath: "Protected path unavailable",
-        refreshWorktreePath: refresh,
-      }),
-    ).resolves.toEqual({
-      path: "docs/README.md",
-      refreshedWorktreePath: null,
-    });
-    expect(refresh).not.toHaveBeenCalled();
-  });
-});
-
-describe("project file opening", () => {
   it("uses the sidebar editor preview before the desktop pop-out fallback", async () => {
     const openSidebarFilePreviewPath = vi.fn(() => true);
     const openCreatedTab = vi.fn();
