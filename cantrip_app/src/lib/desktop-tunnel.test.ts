@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  attachDesktopTunnelWorkerLinkForward: vi.fn(),
   createTunnelAttachment: vi.fn(),
   deleteDirectAttachment: vi.fn(),
   deleteTunnelAttachment: vi.fn(),
@@ -30,8 +29,6 @@ vi.mock("@/lib/api", () => ({
   renewTunnelAttachmentLease: mocks.renewTunnelAttachmentLease,
 }));
 vi.mock("@/lib/desktop-tunnel-worker-link", () => ({
-  attachDesktopTunnelWorkerLinkForward:
-    mocks.attachDesktopTunnelWorkerLinkForward,
   refreshDesktopTunnelWorkerLinkForward:
     mocks.refreshDesktopTunnelWorkerLinkForward,
   startDesktopTunnelWorkerLinkForward:
@@ -106,7 +103,6 @@ beforeEach(() => {
     directFallbackReason: null,
     tunnelId: "tunnel-1",
   });
-  mocks.attachDesktopTunnelWorkerLinkForward.mockResolvedValue("relay");
   mocks.refreshDesktopTunnelWorkerLinkForward.mockResolvedValue(true);
   mocks.stopDesktopTunnelWorkerLinkForward.mockResolvedValue(undefined);
   mocks.recordDirectAttachmentTelemetry.mockResolvedValue(undefined);

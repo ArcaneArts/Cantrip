@@ -1037,19 +1037,6 @@ pub fn run() {
             project_share::reveal_local_chat_scratch,
             project_share::reveal_chat_share,
             project_share::reveal_project_share,
-            tunnel_forward::acquire_code_transport_forward,
-            tunnel_forward::claim_code_transport_maintenance,
-            tunnel_forward::claim_worker_link_tunnel_bridge,
-            tunnel_forward::retire_code_transport_forward,
-            tunnel_forward::register_code_transport_window_instance,
-            tunnel_forward::invalidate_code_transport_pool,
-            tunnel_forward::wait_code_transport_forward,
-            tunnel_forward::complete_code_transport_forward,
-            tunnel_forward::complete_worker_link_code_transport_forward,
-            tunnel_forward::publish_code_transport_forward,
-            tunnel_forward::reconcile_code_transport_forward,
-            tunnel_forward::fail_code_transport_forward,
-            tunnel_forward::release_code_transport_forward,
             tunnel_forward::start_tunnel_forward,
             tunnel_forward::prepare_worker_link_tunnel_forward,
             tunnel_forward::rotate_worker_link_tunnel_bridge_claim,
@@ -1185,32 +1172,6 @@ pub fn run() {
                 api.prevent_exit();
                 request_quit_confirmation(handle);
             }
-        }
-        #[cfg(desktop)]
-        if let RunEvent::WindowEvent {
-            label,
-            event: WindowEvent::Destroyed,
-            ..
-        } = &event
-        {
-            let tunnel_state = handle.state::<TunnelForwards>();
-            let retired_window_instance =
-                tunnel_forward::desktop_retire_code_transport_window(&tunnel_state, label);
-            let handle = handle.clone();
-            let label = label.clone();
-            tauri::async_runtime::spawn(async move {
-                let Some(retired_window_instance) = retired_window_instance else {
-                    return;
-                };
-                let state = handle.state::<TunnelForwards>();
-                tunnel_forward::desktop_release_code_transport_window(
-                    &handle,
-                    &state,
-                    &label,
-                    &retired_window_instance,
-                )
-                .await;
-            });
         }
         #[cfg(desktop)]
         if let RunEvent::WindowEvent {

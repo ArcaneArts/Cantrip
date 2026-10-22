@@ -131,8 +131,10 @@ and worker no longer create editor runtimes, workbench attachments,
 profiles, extension hosts, or settings synchronization. Code tabs carry only
 native tab metadata and checkout placement; an upgrade migration preserves
 their encrypted labels and layouts while retiring old sessions and tunnels.
-Native desktop transport pooling, vendored sources, and build/packaging
-scripts remain to be removed.
+The desktop app no longer exposes workbench transport pools or editor window
+leases. Native file windows use the existing file API handoff; ordinary desktop
+tunnels retain their WorkerLink bridge and attachment lifecycle. Vendored
+sources and build/packaging scripts remain to be removed.
 
 ## Development and verification
 

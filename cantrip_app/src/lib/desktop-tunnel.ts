@@ -47,7 +47,6 @@ export interface DesktopTunnelForwardSummary {
   connectionsOpened?: number;
   destinationRejectedCount?: number;
   // Exclude forwards left by an older desktop host until its pool is removed.
-  codePoolGeneration?: string | null;
 }
 
 export interface DesktopTunnelForwardIdentity {
@@ -525,7 +524,6 @@ export function isDesktopTunnelWorkerLinkForward(
   forward: DesktopTunnelForwardSummary,
 ): boolean {
   return (
-    forward.codePoolGeneration == null &&
     forward.directCapabilityId == null &&
     forward.relayFallbackAvailable === false
   );
