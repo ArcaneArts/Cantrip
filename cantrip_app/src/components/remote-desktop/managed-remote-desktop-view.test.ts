@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { remoteDesktopClientMessageSchema } from "@cantrip/protocol";
 
 import {
   desktopPointerCoordinates,
@@ -7,10 +8,55 @@ import {
   remoteDesktopRouteLabel,
   remoteDesktopTargetLabel,
   remoteDesktopTargetMatches,
+  remoteDesktopInputCoalescingKey,
 } from "./managed-remote-desktop-view";
 import { filterRemoteDesktopFleetTargets } from "./remote-desktop-fleet-panel";
 
 describe("managed Remote Desktop geometry", () => {
+  it("coalesces only hover motion within the same input epoch and modifier state", () => {
+    const pointer = {
+      type: "pointer",
+      event: "move",
+      x: 10,
+      y: 20,
+      buttons: 0,
+      inputEpoch: "11111111-1111-4111-8111-111111111111",
+      inputSequence: 1,
+    };
+    const parse = (fields: object = {}) =>
+      remoteDesktopClientMessageSchema.parse({ ...pointer, ...fields });
+    expect(remoteDesktopInputCoalescingKey(parse())).toBe(
+      "desktop-hover:11111111-1111-4111-8111-111111111111:0",
+    );
+    expect(
+      remoteDesktopInputCoalescingKey(
+        parse({ inputEpoch: "22222222-2222-4222-8222-222222222222" }),
+      ),
+    ).not.toBe(remoteDesktopInputCoalescingKey(parse()));
+    expect(remoteDesktopInputCoalescingKey(parse({ modifiers: 8 }))).not.toBe(
+      remoteDesktopInputCoalescingKey(parse()),
+    );
+    for (const fields of [
+      { buttons: 1 },
+      { event: "down" },
+      { event: "up" },
+      { event: "wheel" },
+      { inputEpoch: undefined },
+    ]) {
+      expect(remoteDesktopInputCoalescingKey(parse(fields))).toBeUndefined();
+    }
+    expect(
+      remoteDesktopInputCoalescingKey(
+        remoteDesktopClientMessageSchema.parse({
+          type: "key",
+          event: "down",
+          key: "a",
+          code: "KeyA",
+        }),
+      ),
+    ).toBeUndefined();
+  });
+
   it("letterboxes a worker display without distorting its aspect ratio", () => {
     expect(
       fitDesktopSize(

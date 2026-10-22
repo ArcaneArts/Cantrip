@@ -230,11 +230,7 @@ impl Participants {
                 let result = (|| {
                     cancel.check()?;
                     let state = self.live.get_mut(&handle).unwrap();
-                    let target = backend.resolve_target(
-                        &state.target.id,
-                        state.target.generation,
-                        cancel,
-                    )?;
+                    let target = backend.resolve_interaction_target(&state.target, cancel)?;
                     target.validate()?;
                     if target.id != state.target.id
                         || target.generation != state.target.generation
@@ -306,6 +302,8 @@ mod tests {
         presented: Vec<CursorPresentation<Target>>,
         fail: bool,
         replaced: bool,
+        inventory_reads: usize,
+        input_resolutions: usize,
     }
     impl CaptureBackend for Backend {
         fn name(&self) -> &'static str {
@@ -315,6 +313,7 @@ mod tests {
             true
         }
         fn targets(&mut self, cancel: &Cancellation) -> Result<Vec<Target>> {
+            self.inventory_reads += 1;
             let mut targets = self.fake.targets(cancel)?;
             if self.replaced {
                 for target in &mut targets {
@@ -322,6 +321,22 @@ mod tests {
                 }
             }
             Ok(targets)
+        }
+        fn resolve_interaction_target(
+            &mut self,
+            target: &Target,
+            cancel: &Cancellation,
+        ) -> Result<Target> {
+            self.input_resolutions += 1;
+            // This test backend refreshes the exact target without an inventory
+            // operation, while preserving the same stale-generation failures.
+            let mut current = self
+                .fake
+                .resolve_target(&target.id, target.generation, cancel)?;
+            if self.replaced {
+                current.generation += 1;
+            }
+            Ok(current)
         }
         fn capture(&mut self, target: &Target, cancel: &Cancellation) -> Result<Capture> {
             self.fake.capture(target, cancel)
@@ -384,6 +399,39 @@ mod tests {
                 repeat: false,
             },
         }
+    }
+    #[test]
+    fn continuous_input_refreshes_its_destination_without_relisting_capture_inventory() {
+        let mut participants = Participants::default();
+        let mut backend = Backend::default();
+        let handle = open(&mut participants, &mut backend, "a");
+        for sequence in 1..=120 {
+            participants
+                .execute(
+                    &mut backend,
+                    Request::Input {
+                        binding: binding("a"),
+                        handle,
+                        sequence,
+                        event: InputEvent::PointerMove {
+                            point: Point {
+                                x: sequence as f64,
+                                y: 20.0,
+                            },
+                            modifiers: vec![],
+                        },
+                    },
+                    &Cancellation::default(),
+                    sequence,
+                )
+                .unwrap();
+        }
+        assert_eq!(
+            backend.inventory_reads, 1,
+            "discovery happens at open, not per movement"
+        );
+        assert_eq!(backend.input_resolutions, 120);
+        assert_eq!(backend.posts.len(), 120);
     }
     #[test]
     fn participant_handles_scope_reconnect_cleanup_and_sequence_fences() {

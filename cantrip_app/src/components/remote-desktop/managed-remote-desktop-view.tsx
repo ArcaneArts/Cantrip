@@ -166,6 +166,18 @@ function ApplicationIcon({ source }: { source?: string | null }) {
   );
 }
 
+/** Hover motion is disposable; clicks, drags, wheel and key events are not. */
+export function remoteDesktopInputCoalescingKey(
+  message: RemoteDesktopClientMessage,
+): string | undefined {
+  return message.type === "pointer" &&
+    message.event === "move" &&
+    message.buttons === 0 &&
+    message.inputEpoch
+    ? `desktop-hover:${message.inputEpoch}:${message.modifiers}`
+    : undefined;
+}
+
 export function ManagedRemoteDesktopView({
   desktop,
   fleetDiscovery = false,
@@ -423,6 +435,7 @@ export function ManagedRemoteDesktopView({
         encoder.encode(
           JSON.stringify(remoteDesktopClientMessageSchema.parse(message)),
         ),
+        remoteDesktopInputCoalescingKey(message),
       );
     },
     [sendFrame],

@@ -44,7 +44,11 @@ export interface UseRemoteSurfaceWorkerLinkResult {
   connectionState: RemoteSurfaceWorkerLinkConnectionState;
   error: string | null;
   retry(): void;
-  sendFrame(channel: RemoteSurfaceChannel, payload: Uint8Array): boolean;
+  sendFrame(
+    channel: RemoteSurfaceChannel,
+    payload: Uint8Array,
+    coalesceKey?: string,
+  ): boolean;
   setError: Dispatch<SetStateAction<string | null>>;
 }
 
@@ -108,8 +112,11 @@ export function useRemoteSurfaceWorkerLink(
 
   const retry = useCallback(() => clientRef.current?.retry(), []);
   const sendFrame = useCallback(
-    (channel: RemoteSurfaceChannel, payload: Uint8Array) =>
-      clientRef.current?.send(channel, payload) ?? false,
+    (
+      channel: RemoteSurfaceChannel,
+      payload: Uint8Array,
+      coalesceKey?: string,
+    ) => clientRef.current?.send(channel, payload, coalesceKey) ?? false,
     [],
   );
 
