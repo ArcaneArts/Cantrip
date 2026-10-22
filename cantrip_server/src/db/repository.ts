@@ -722,8 +722,14 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
     ownerId: string,
     chatId: string,
     input: ChatWorktreeUpdate,
+    expectedWorktreeId?: string,
   ): Promise<ChatWireSummary | null> {
-    return this.chatState.updateChatWorktree(ownerId, chatId, input);
+    return this.chatState.updateChatWorktree(
+      ownerId,
+      chatId,
+      input,
+      expectedWorktreeId,
+    );
   }
   async deleteChat(
     ownerId: string,

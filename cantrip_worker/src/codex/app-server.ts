@@ -3787,6 +3787,28 @@ export class CodexAppServer implements CodexRuntime {
     return this.refreshGoal(options.threadId);
   }
 
+  /** Read native lifecycle without exporting transcript content or resuming it. */
+  async readThreadExecution(threadId: string) {
+    const response = (await this.request("thread/read", {
+      threadId,
+      includeTurns: false,
+    })) as CodexThreadReadResponse;
+    if (response.thread?.id !== threadId)
+      throw new Error(
+        "Native execution observation belongs to another thread.",
+      );
+    if (
+      !["active", "idle", "notLoaded", "systemError"].includes(
+        response.thread.status?.type,
+      )
+    )
+      throw new Error("Native execution status could not be observed.");
+    return {
+      threadId,
+      status: observedCodexThreadStatus({ ...response.thread, turns: [] }),
+    };
+  }
+
   async createGoal(
     options: GoalRuntimeOptions & {
       objective: string;

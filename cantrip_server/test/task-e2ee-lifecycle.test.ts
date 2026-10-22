@@ -112,6 +112,7 @@ let goalObjective = `${sentinel} goal not initialized`;
 let goalCompleted = false;
 let failNextGoalCreation = false;
 let finalizerTurnCount = 0;
+let implementationTurnCount = 0;
 let continuedPromptSawAnswer = false;
 let pauseTestEnabled = false;
 let pauseGoalTestEnabled = false;
@@ -469,6 +470,7 @@ async function encryptedTaskTurn(
         },
       });
     }
+    implementationTurnCount++;
     if (pauseGoalTestEnabled) {
       pauseTestTurnId = "turn-goal-implementation";
       pauseTestTurnStarted = true;
@@ -632,9 +634,16 @@ const workerBridge: WorkerCommandBus = {
         throw new Error("Expected an encrypted Task Goal context.");
       }
       serverObservedPayloads.push(JSON.stringify(command));
-      return protectTaskGoalResult({
+      const protectedResult = await protectTaskGoalResult({
         chatId: command.chatId,
-        context: command.taskContext,
+        context: {
+          ...command.taskContext,
+          chatStatus: command.observeExecution
+            ? goalCompleted
+              ? "idle"
+              : "running"
+            : command.taskContext.chatStatus,
+        },
         getComponentKey: workerComponentKey,
         ownerId,
         rawResult: {
@@ -654,6 +663,17 @@ const workerBridge: WorkerCommandBus = {
           },
         },
       });
+      return {
+        ...protectedResult,
+        ...(command.observeExecution
+          ? {
+              execution: {
+                threadId,
+                status: goalCompleted ? "idle" : "running",
+              },
+            }
+          : {}),
+      };
     }
     if (command.type === "chat.pause.set") {
       pauseCommands.push(command.paused);
@@ -1946,6 +1966,36 @@ describe.sequential("Task E2EE closure lifecycle", () => {
     expect(task.lastError).toBeNull();
 
     await vi.waitFor(() => expect(pauseTestTurnStarted).toBe(true));
+    const startedTurns = implementationTurnCount;
+    await database.repository.resetInterruptedChatExecutions();
+    expect(
+      await database.repository.getChatExecutionContext(ownerId, chatId),
+    ).toMatchObject({ status: "offline", threadId });
+    await database.repository.taskDispatch.expireStartedLeases(
+      ownerId,
+      new Date(Date.now() + 180_000),
+    );
+    const recoveries = await Promise.all(
+      [1, 2].map(() =>
+        app!.inject({
+          method: "POST",
+          url: `/api/tasks/${chatId}/recover`,
+          payload: {},
+        }),
+      ),
+    );
+    for (const response of recoveries) {
+      expect(response.statusCode, response.body).toBe(200);
+      expect(response.json()).toMatchObject({
+        state: "implementing",
+        dispatch: { state: "running" },
+      });
+      expect(response.body).not.toContain(sentinel);
+    }
+    expect(implementationTurnCount).toBe(startedTurns);
+    expect(
+      await database.repository.getChatExecutionContext(ownerId, chatId),
+    ).toMatchObject({ threadId, status: "running" });
     const pauseState = await app!.inject({
       method: "GET",
       url: `/api/projects/${projectId}/tasks/pause`,

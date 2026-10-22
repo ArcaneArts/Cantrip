@@ -33,6 +33,7 @@ import {
   getTaskImplementationDashboard,
   setChatPaused,
   updateChatGoal,
+  recoverTaskImplementation,
 } from "@/lib/api";
 import { errorMessage } from "@/lib/error-message";
 import { useAppLiveStatus } from "@/lib/app-live-react";
@@ -54,6 +55,15 @@ const goalLabels: Record<TaskGoalSnapshot["status"], string> = {
   complete: "Complete",
 };
 
+export function taskImplementationCanRecover(task: TaskDetail): boolean {
+  return Boolean(
+    task.planGoalEnabled &&
+    task.implementationStartedAt &&
+    task.state !== "complete" &&
+    ["running", "expired", "failed"].includes(task.dispatch?.state ?? ""),
+  );
+}
+
 export function taskImplementationStatusLabel(
   task: TaskDetail,
   goal: TaskGoalSnapshot | null,
@@ -61,9 +71,11 @@ export function taskImplementationStatusLabel(
   chatFailed = false,
   awaitingApproval = false,
   automationPaused = false,
+  reconnecting = false,
 ): string {
   if (task.state === "failed" || chatFailed) return "Failed";
   if (task.state === "complete") return "Complete";
+  if (reconnecting) return "Reconnecting";
   if (task.dispatch?.state === "queued") return "Queued";
   if (task.state === "paused" || automationPaused) return "Paused";
   if (task.state === "blocked")
@@ -248,6 +260,9 @@ export function TaskImplementationDashboard({
       queryClient.invalidateQueries({ queryKey: ["goal", chat.id] }),
       queryClient.invalidateQueries({ queryKey: ["messages", chat.id] }),
       queryClient.invalidateQueries({ queryKey: ["chats", chat.projectId] }),
+      queryClient.invalidateQueries({
+        queryKey: ["project-task-workload", chat.projectId],
+      }),
     ]);
   };
   const pause = useMutation({
@@ -263,8 +278,14 @@ export function TaskImplementationDashboard({
     mutationFn: () => stopTaskImplementation(chat.id),
     onSettled: settleControls,
   });
-  const controlError = pause.error ?? resume.error ?? stop.error;
-  const controlPending = pause.isPending || resume.isPending || stop.isPending;
+  const recover = useMutation({
+    mutationFn: () => recoverTaskImplementation(chat.id),
+    onSettled: settleControls,
+  });
+  const controlError =
+    pause.error ?? resume.error ?? stop.error ?? recover.error;
+  const controlPending =
+    pause.isPending || resume.isPending || stop.isPending || recover.isPending;
   const statusLabel = taskImplementationStatusLabel(
     task,
     goal,
@@ -272,6 +293,7 @@ export function TaskImplementationDashboard({
     chat.status === "failed",
     chat.status === "waiting-for-approval",
     chat.automationPaused,
+    task.planGoalEnabled && chat.status === "offline",
   );
   const showResume = taskImplementationCanResume(
     task,
@@ -371,6 +393,22 @@ export function TaskImplementationDashboard({
                 <Pause className="size-3.5" />
               )}
               Pause
+            </Button>
+          ) : null}
+          {taskImplementationCanRecover(task) ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={controlPending}
+              title="Reconnect to the existing session, or resume its retained Goal. Keeps history and completed work."
+              onClick={() => recover.mutate()}
+            >
+              {recover.isPending ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="size-3.5" />
+              )}
+              Retry / resume
             </Button>
           ) : null}
           {active && !chat.automationPaused ? (

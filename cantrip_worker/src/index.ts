@@ -6182,29 +6182,39 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         });
       }
       case "chat.goal.get": {
-        const result = await (
+        const runtime =
           currentManagedRuntime(command.chatId, command.threadId) ??
           runtimeFor({
             ...managedRuntimeTarget(command),
             model: command.model,
             provider: provider(),
-          })
-        ).getGoal({
+          });
+        const result = await runtime.getGoal({
           cwd: command.cwd,
           model: command.model,
           permissionProfileId: command.permissionProfileId,
           provider: provider(),
           threadId: command.threadId,
         });
+        const execution = command.observeExecution
+          ? await runtime.readThreadExecution(command.threadId)
+          : undefined;
         return command.taskContext
-          ? protectTaskGoalResult({
-              chatId: command.chatId,
-              context: command.taskContext,
-              getComponentKey: () =>
-                workerEncryption.componentKey("task-content"),
-              ownerId: workerEncryption.ownerId(),
-              rawResult: result,
-            })
+          ? {
+              ...(await protectTaskGoalResult({
+                chatId: command.chatId,
+                context: {
+                  ...command.taskContext,
+                  chatStatus:
+                    execution?.status ?? command.taskContext.chatStatus,
+                },
+                getComponentKey: () =>
+                  workerEncryption.componentKey("task-content"),
+                ownerId: workerEncryption.ownerId(),
+                rawResult: result,
+              })),
+              ...(execution ? { execution } : {}),
+            }
           : command.protectObjective
             ? protectChatGoalResponse(result, workerEncryption)
             : result;

@@ -17,6 +17,7 @@ import {
   taskOpaqueMutationSchema,
   taskOpaqueSummarySchema,
   taskOperationStartSchema,
+  taskRecoveryStartSchema,
   type TaskAssociatedPullRequest,
   type TaskEncryptedOperationStart,
   type TaskOpaqueSummary,
@@ -66,6 +67,7 @@ import { createChatAutomationPauseRuntime } from "./chat-automation-pause-runtim
 import { createProjectTaskPauseRuntime } from "./project-task-pause-runtime.js";
 import { installTaskWorkloadRoute } from "./task-workload-route.js";
 import { WorkerUnavailableError } from "../../workers/bridge.js";
+import { createTaskExecutionRecovery } from "./task-execution-recovery.js";
 
 import {
   STREAMING_WORKER_COMMAND_TIMEOUT_MS,
@@ -115,6 +117,63 @@ export function installTaskRouteRuntime(
   const setChatAutomationPause = createChatAutomationPauseRuntime(
     dependencies,
     app,
+  );
+  const taskRecovery = createTaskExecutionRecovery({
+    repository,
+    bridge,
+    ownerId: applicationOwnerId,
+    leaseOwner: `${serverId}:${serverInstanceId}`,
+    goals: {
+      readEncryptedTaskGoal: dependencies.readEncryptedTaskGoal,
+      retainTaskGoalLease,
+      resumeChatAutomation,
+      reconcileTaskGoalDispatch: dependencies.reconcileTaskGoalDispatch,
+    },
+    publish: (chatId, projectId) => {
+      publishChatSummary(chatId, projectId);
+      publishChatInvalidation(chatId, "task", null, {
+        experience: "task",
+        projectId,
+      });
+    },
+    unpause: (ownerId, chatId) =>
+      setChatAutomationPause(ownerId, chatId, false, {
+        resumeAutomation: false,
+      }),
+    reportFailure: (chatId, error) =>
+      app.log.warn(
+        { chatId, err: error },
+        "Could not observe a retained Task session for recovery",
+      ),
+  });
+  app.post<{ Params: { chatId: string } }>(
+    "/api/tasks/:chatId/recover",
+    async (request, reply) => {
+      const input = taskRecoveryStartSchema.safeParse(request.body ?? {});
+      if (!input.success)
+        return reply.code(400).send(invalidBody(input.error.issues));
+      const owner = applicationOwnerId();
+      const context = await repository.getChatExecutionContext(
+        owner,
+        request.params.chatId,
+      );
+      if (!context || context.experience !== "task")
+        return reply.code(404).send({ error: "Task not found." });
+      try {
+        if (!(await taskRecovery.recover(context.chatId, true)))
+          return reply.code(409).send({
+            error:
+              "No retained implementation session was found. Use Retry implementation from the plan to start it.",
+          });
+        return reply.send(
+          taskOpaqueSummarySchema.parse(
+            await repository.tasks.get(owner, context.chatId),
+          ),
+        );
+      } catch (error) {
+        return sendWorkerRequestFailure(reply, error);
+      }
+    },
   );
   const setProjectTasksPaused = createProjectTaskPauseRuntime({
     repository,
@@ -564,6 +623,8 @@ export function installTaskRouteRuntime(
         const ownerId = schedulerOwner.ownerId;
         const plan = taskDispatchSchedulerPlan(schedulerOwner);
         await runAsOwner(ownerId, async () => {
+          if (plan.reconcileStartedLeases)
+            await taskRecovery.reconcile(ownerId);
           const requeued = plan.reconcileUnstartedClaims
             ? await repository.taskDispatch.requeueExpiredLeases(ownerId)
             : [];
@@ -1892,6 +1953,8 @@ export function installTaskRouteRuntime(
     },
   );
   return {
+    recoverTaskExecution: taskRecovery.recover,
+    reconcileTaskExecutions: taskRecovery.reconcile,
     queueTaskScheduleTick,
     taskScheduleTimer,
     waitForActiveTaskScheduleTick: () => activeTaskScheduleTick,

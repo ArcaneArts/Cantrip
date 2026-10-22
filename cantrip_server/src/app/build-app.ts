@@ -699,6 +699,10 @@ export async function buildApp({
     applicationOwnerId,
     availableModelRuntimes,
     beginTurn: (...args) => beginTurn(...args),
+    recoverTaskExecution: (chatId) =>
+      taskRouteRuntime.recoverTaskExecution(chatId),
+    reconcileTaskExecutions: (ownerId) =>
+      taskRouteRuntime.reconcileTaskExecutions(ownerId),
     bridge,
     deleteLiveQueuedPrompt,
     failTaskGoalLaunch: (...args) => failTaskGoalLaunch(...args),
@@ -962,6 +966,7 @@ export async function buildApp({
   });
 
   const taskRouteRuntime = installTaskRouteRuntime(app, {
+    reconcileTaskGoalDispatch,
     appendLiveTaskMessage,
     applicationOwnerId,
     availableModelRuntimes,

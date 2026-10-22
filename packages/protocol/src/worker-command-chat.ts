@@ -465,6 +465,7 @@ export const workerChatCommandSchemas = [
   }),
   z.object({
     type: z.literal("chat.goal.get"),
+    observeExecution: z.boolean().optional(),
     protectObjective: z.boolean().optional(),
     chatId: z.string().min(1),
     cwd: z.string().min(1),

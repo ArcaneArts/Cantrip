@@ -5,13 +5,17 @@ import {
 } from "../../terminals/managed-session.js";
 import { effectivePermissionProfile } from "../../chats/execution-helpers.js";
 import { randomUUID } from "node:crypto";
+import { protectChatInput } from "./protect-chat-input.js";
 
 import {
   chatMessageRelayResultSchema,
   worktreeStatusResultSchema,
   type WorkerNotification,
 } from "@cantrip/protocol";
-import { taskMessageRelayResultSchema } from "@cantrip/protocol/tasks";
+import {
+  taskMessageRelayResultSchema,
+  taskMessageOpaqueContentSchema,
+} from "@cantrip/protocol/tasks";
 import type { FastifyInstance } from "fastify";
 
 import { chatIsExecuting } from "../../chats/execution-helpers.js";
@@ -59,6 +63,8 @@ export interface ChatRecoveryRuntimeDependencies
   app: Pick<FastifyInstance, "log">;
   applicationOwnerId: () => string;
   beginTurn: BeginChatTurn;
+  recoverTaskExecution?: (chatId: string) => Promise<boolean>;
+  reconcileTaskExecutions?: (ownerId: string) => Promise<void>;
   bridge: LimitedWorkerCommandBus;
   failTaskGoalLaunch: (
     chatId: string,
@@ -86,6 +92,8 @@ export function createChatRecoveryRuntime({
   applicationOwnerId,
   availableModelRuntimes,
   beginTurn,
+  recoverTaskExecution,
+  reconcileTaskExecutions,
   bridge,
   deleteLiveQueuedPrompt,
   failTaskGoalLaunch,
@@ -122,6 +130,14 @@ export function createChatRecoveryRuntime({
       if (current.contextKind !== "project") return false;
       if (current.automationPaused) return true;
       if (!bridge.isConnected(pending.worktree.workerId)) return true;
+      // Native Goals may keep working while server state is being recovered.
+      // Observe/adopt them before an old pending handoff changes placement.
+      if (
+        current.experience === "task" &&
+        (current.status === "offline" || current.status === "failed") &&
+        (await recoverTaskExecution?.(chatId))
+      )
+        return true;
 
       try {
         const modelId = await resolveModelId(current);
@@ -191,18 +207,46 @@ export function createChatRecoveryRuntime({
           ? `Returned to Primary after releasing the previous worktree. Continue the user's request from this checkout.`
           : `Continued in ${applied.worktree.name}${applied.worktree.branch ? ` (${applied.worktree.branch})` : ""}. Continue the user's request from this checkout.`;
       try {
-        await beginTurn(
-          next,
-          {
-            text: transitionText,
-            idempotencyKey: `worktree-continuation:${pending.lane.id}`,
-          },
-          {
-            acquiringActor: "agent",
-            messageRole: "system",
-            purpose: `Controlled ${applied.transitionKind} continuation`,
-          },
+        const input = {
+          text: transitionText,
+          mode: "default" as const,
+          idempotencyKey: `worktree-continuation:${pending.lane.id}`,
+        };
+        const protectedMessage = await protectChatInput(
+          bridge,
+          next.workerId,
+          input,
+          [],
+          next.reasoningEffort,
+          "system",
         );
+        const response = {
+          id: randomUUID(),
+          idempotencyKey: `assistant:${protectedMessage.id}`,
+        };
+        await beginTurn(next, input, {
+          ...(next.experience === "task"
+            ? {
+                encryptedTaskMessages: {
+                  userMessage: taskMessageOpaqueContentSchema.parse(
+                    await bridge.request(next.workerId, {
+                      type: "task.message.protect",
+                      message: protectedMessage,
+                    }),
+                  ),
+                  response,
+                },
+              }
+            : {
+                encryptedChatMessages: {
+                  userMessage: protectedMessage,
+                  response,
+                },
+              }),
+          acquiringActor: "agent",
+          messageRole: "system",
+          purpose: `Controlled ${applied.transitionKind} continuation`,
+        });
       } catch (error) {
         app.log.error(
           { chatId, err: error },
@@ -238,6 +282,7 @@ export function createChatRecoveryRuntime({
     workerId: string,
   ): Promise<void> => {
     if (!bridge.isConnected(workerId)) return;
+    await runAsOwner(ownerId, () => reconcileTaskExecutions?.(ownerId));
     const chatIds = await repository.listPendingWorktreeTransitionChatIds(
       ownerId,
       workerId,
