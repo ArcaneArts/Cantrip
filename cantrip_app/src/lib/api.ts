@@ -476,6 +476,7 @@ export {
   loadExplorerMedia,
   saveExplorerFile,
   createExplorerDirectory,
+  createExplorerFile,
   renameExplorerEntry,
   deleteExplorerEntry,
 } from "./api/files";

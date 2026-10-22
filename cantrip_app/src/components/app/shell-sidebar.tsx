@@ -95,6 +95,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
     bootstrap,
     createSidebarExplorerMutation,
     createSidebarFolder,
+    createSidebarFile,
     deleteSidebarFileEntry,
     desktopSidebarDrawer,
     desktopSidebarDrawerOpen,
@@ -427,6 +428,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                     fileRevealLabel={projectRevealButtonLabel ?? undefined}
                     onFilePin={pinSidebarFile}
                     onFileCreateFolder={createSidebarFolder}
+                    onFileCreateFile={createSidebarFile}
                     onFileDelete={deleteSidebarFileEntry}
                     onFileOpenGraph={openSidebarFolderGraph}
                     onFileOpenNative={openSidebarFolderNative}

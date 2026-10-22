@@ -204,6 +204,7 @@ function tree(
     explorer,
     loading: false,
     onCreateFolder: async () => runtime.directoryEntry,
+    onCreateFile: async () => runtime.entry,
     onDelete: async () => undefined,
     onPin: () => undefined,
     onPreview: () => undefined,
@@ -1132,6 +1133,256 @@ describe("project sidebar file tree encryption gate", () => {
     expect(
       renderer.root.findByProps({ "aria-label": "Rename New Folder" }),
     ).toBeDefined();
+    await act(async () => renderer.unmount());
+  });
+
+  it.each(["", "src", "src/nested"])(
+    "names a new file inline in %j before creating it on Enter",
+    async (parentPath) => {
+      runtime.entriesByPath.set("", [folder("src")]);
+      runtime.entriesByPath.set("src", [folder("src/nested")]);
+      const onCreateFile = vi.fn(async (_parent, name) => ({
+        ...runtime.entry,
+        name,
+        path: parentPath ? `${parentPath}/${name}` : name,
+      }));
+      const focus = vi.fn();
+      let renderer!: TestRenderer.ReactTestRenderer;
+      await act(async () => {
+        renderer = TestRenderer.create(tree({ onCreateFile }), {
+          createNodeMock: (element) =>
+            element.type === "input" ? { focus } : null,
+        });
+      });
+      if (parentPath === "src/nested") await clickFolder(renderer, "src");
+      const label = parentPath
+        ? `Create file in ${parentPath}`
+        : "Create file in project root";
+      await act(async () =>
+        buttonWithAriaLabel(renderer, label).props.onClick({ shiftKey: false }),
+      );
+      expect(onCreateFile).not.toHaveBeenCalled();
+      expect(focus).toHaveBeenCalled();
+      const input = () =>
+        renderer.root.findByProps({ "aria-label": "New file name" });
+      expect(input().props.value).toBe("");
+      expect(input().props.placeholder).toBe("filename.ext");
+      await act(async () =>
+        input().props.onChange({ target: { value: "test.config.ts" } }),
+      );
+      await act(async () =>
+        input().props.onKeyDown({
+          key: "Enter",
+          nativeEvent: {},
+          stopPropagation: vi.fn(),
+          preventDefault: vi.fn(),
+        }),
+      );
+      expect(onCreateFile).toHaveBeenCalledExactlyOnceWith(
+        parentPath,
+        "test.config.ts",
+        expect.objectContaining({ bindingKey: "binding-a" }),
+      );
+      expect(
+        renderer.root.findAllByProps({ "aria-label": "New file name" }),
+      ).toHaveLength(0);
+      await act(async () => renderer.unmount());
+    },
+  );
+
+  it("offers New File in an empty project root and waits until IME composition finishes", async () => {
+    runtime.entriesByPath.set("", []);
+    const onCreateFile = vi.fn(async () => runtime.entry);
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(tree({ onCreateFile }));
+    });
+    await act(async () =>
+      buttonWithAriaLabel(
+        renderer,
+        "Create file in project root",
+      ).props.onClick({ shiftKey: false }),
+    );
+    const input = () =>
+      renderer.root.findByProps({ "aria-label": "New file name" });
+    await act(async () =>
+      input().props.onChange({ target: { value: "new.ts" } }),
+    );
+    await act(async () =>
+      input().props.onKeyDown({
+        key: "Enter",
+        nativeEvent: { isComposing: true },
+        stopPropagation: vi.fn(),
+        preventDefault: vi.fn(),
+      }),
+    );
+    expect(onCreateFile).not.toHaveBeenCalled();
+    await act(async () =>
+      input().props.onKeyDown({
+        key: "Enter",
+        nativeEvent: { isComposing: false },
+        stopPropagation: vi.fn(),
+        preventDefault: vi.fn(),
+      }),
+    );
+    expect(onCreateFile).toHaveBeenCalledExactlyOnceWith(
+      "",
+      "new.ts",
+      expect.anything(),
+    );
+    await act(async () => renderer.unmount());
+  });
+
+  it("keeps the root context menu from taking focus away from the new file name", async () => {
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(tree());
+    });
+    await act(async () =>
+      buttonWithAriaLabel(
+        renderer,
+        "Create file in project root",
+      ).props.onClick({ shiftKey: false }),
+    );
+    const content = renderer.root
+      .findAllByProps({ "data-context-menu-content": true })
+      .find(
+        (node) =>
+          node.findAllByProps({ "aria-label": "Create file in project root" })
+            .length > 0,
+      )!;
+    const preventDefault = vi.fn();
+    content.props.onCloseAutoFocus({ preventDefault });
+    expect(preventDefault).toHaveBeenCalledOnce();
+    await act(async () => renderer.unmount());
+  });
+
+  it.each(["Escape", "blur"])(
+    "cancels a new filename on %s without creating a placeholder file",
+    async (action) => {
+      const onCreateFile = vi.fn();
+      let renderer!: TestRenderer.ReactTestRenderer;
+      await act(async () => {
+        renderer = TestRenderer.create(tree({ onCreateFile }));
+      });
+      await act(async () =>
+        buttonWithAriaLabel(
+          renderer,
+          "Create file in project root",
+        ).props.onClick({ shiftKey: false }),
+      );
+      const input = renderer.root.findByProps({
+        "aria-label": "New file name",
+      });
+      await act(async () =>
+        action === "blur"
+          ? input.props.onBlur()
+          : input.props.onKeyDown({
+              key: action,
+              nativeEvent: {},
+              stopPropagation: vi.fn(),
+              preventDefault: vi.fn(),
+            }),
+      );
+      expect(onCreateFile).not.toHaveBeenCalled();
+      expect(
+        renderer.root.findAllByProps({ "aria-label": "New file name" }),
+      ).toHaveLength(0);
+      await act(async () => renderer.unmount());
+    },
+  );
+
+  it("rejects invalid names, preserves failed filenames for retry, and submits only once while pending", async () => {
+    let reject!: (error: Error) => void;
+    const onCreateFile = vi.fn(
+      () =>
+        new Promise<ExplorerEntry>((_resolve, fail) => {
+          reject = fail;
+        }),
+    );
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(tree({ onCreateFile }));
+    });
+    await act(async () =>
+      buttonWithAriaLabel(
+        renderer,
+        "Create file in project root",
+      ).props.onClick({ shiftKey: false }),
+    );
+    const input = () =>
+      renderer.root.findByProps({ "aria-label": "New file name" });
+    const enter = () =>
+      input().props.onKeyDown({
+        key: "Enter",
+        nativeEvent: {},
+        stopPropagation: vi.fn(),
+        preventDefault: vi.fn(),
+      });
+    await act(async () => {
+      input().props.onChange({ target: { value: "../escape.ts" } });
+    });
+    await act(async () => enter());
+    expect(onCreateFile).not.toHaveBeenCalled();
+    expect(input().props["aria-invalid"]).toBe(true);
+    await act(async () => {
+      input().props.onChange({ target: { value: "existing.ts" } });
+    });
+    await act(async () => {
+      enter();
+      enter();
+    });
+    expect(onCreateFile).toHaveBeenCalledOnce();
+    expect(input().props.disabled).toBe(true);
+    await act(async () =>
+      reject(new Error("An entry with that name already exists.")),
+    );
+    expect(input().props.disabled).toBe(false);
+    expect(input().props.value).toBe("existing.ts");
+    expect(
+      textContent(renderer.root.findByProps({ role: "alert" }).props.children),
+    ).toContain("already exists");
+    await act(async () => {
+      input().props.onChange({ target: { value: "next.ts" } });
+    });
+    await act(async () => enter());
+    expect(onCreateFile).toHaveBeenCalledTimes(2);
+    await act(async () => reject(new Error("offline")));
+    await act(async () => renderer.unmount());
+  });
+
+  it("drops an unfinished new filename when its Explorer authorization changes", async () => {
+    const onCreateFile = vi.fn();
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(tree({ onCreateFile }));
+    });
+    await act(async () =>
+      buttonWithAriaLabel(
+        renderer,
+        "Create file in project root",
+      ).props.onClick({ shiftKey: false }),
+    );
+    const stale = renderer.root.findByProps({ "aria-label": "New file name" });
+    await act(async () =>
+      stale.props.onChange({ target: { value: "stale.ts" } }),
+    );
+    const submit = renderer.root.findByProps({ "aria-label": "New file name" })
+      .props.onKeyDown;
+    runtime.gate.bindingKey = "binding-b";
+    await act(async () => renderer.update(tree({ onCreateFile })));
+    await act(async () =>
+      submit({
+        key: "Enter",
+        nativeEvent: {},
+        stopPropagation: vi.fn(),
+        preventDefault: vi.fn(),
+      }),
+    );
+    expect(onCreateFile).not.toHaveBeenCalled();
+    expect(
+      renderer.root.findAllByProps({ "aria-label": "New file name" }),
+    ).toHaveLength(0);
     await act(async () => renderer.unmount());
   });
 });

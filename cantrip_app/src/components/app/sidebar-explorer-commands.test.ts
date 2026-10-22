@@ -5,7 +5,8 @@ import type {
   ProjectTabLayoutSummary,
   ProjectWorktreeSummary,
 } from "@cantrip/protocol";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import * as api from "@/lib/api";
 
 import type { SidebarFilePinHandoffState } from "./application-shell-model";
 import { createSidebarExplorerCommands } from "./sidebar-explorer-commands";
@@ -26,6 +27,7 @@ const entry = {
 const previewOwner = {
   id: "explorer-preview",
   projectId: "project-1",
+  activeWorkerId: "worker-1",
   selectedPath: "src/first.ts",
   worktreeId: "worktree-1",
 } as ExplorerSummary;
@@ -105,6 +107,7 @@ function commandHarness({
     revealWorkspace,
     setSidebarFilePreview,
     setWorkspaceSelection,
+    queryClient: input.queryClient,
   };
 }
 
@@ -124,6 +127,45 @@ function layout(tabbedExplorerIds: string[]): ProjectTabLayoutSummary {
 }
 
 describe("sidebar Explorer ownership commands", () => {
+  afterEach(() => vi.restoreAllMocks());
+  it("creates a named file through the selected Explorer and refreshes its worktree entries", async () => {
+    const create = vi.spyOn(api, "createExplorerFile").mockResolvedValue(entry);
+    const { commands, queryClient } = commandHarness({ layout: layout([]) });
+    const authorization = { bindingKey: "binding", isCurrent: () => true };
+    await expect(
+      commands.createSidebarFile(previewOwner, "src", "next.ts", authorization),
+    ).resolves.toBe(entry);
+    expect(create).toHaveBeenCalledExactlyOnceWith(
+      previewOwner.id,
+      {
+        path: "src",
+        name: "next.ts",
+      },
+      {
+        projectId: previewOwner.projectId,
+        worktreeId: previewOwner.worktreeId,
+        workerId: previewOwner.activeWorkerId,
+      },
+    );
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: [
+        "explorer-directory",
+        previewOwner.projectId,
+        previewOwner.worktreeId,
+      ],
+    });
+  });
+  it("does not create a file after its authorization becomes stale", async () => {
+    const create = vi.spyOn(api, "createExplorerFile");
+    const { commands } = commandHarness({ layout: layout([]) });
+    await expect(
+      commands.createSidebarFile(previewOwner, "", "no.ts", {
+        bindingKey: "old",
+        isCurrent: () => false,
+      }),
+    ).rejects.toThrow("authorization changed");
+    expect(create).not.toHaveBeenCalled();
+  });
   it("reveals a folder from the Explorer's active worktree", () => {
     revealProjectInNativeFileManager.mockResolvedValue(undefined);
     const project = {
