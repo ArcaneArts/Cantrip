@@ -14,9 +14,7 @@ import {
   MessageSquare,
   Bot,
   Pencil,
-  Power,
   RefreshCw,
-  RotateCcw,
   Save,
   ServerCog,
   SquareTerminal,
@@ -82,90 +80,6 @@ export interface ContentHeaderActionsProps {
   popout?: PopoutAction | null;
   task?: TaskViewAction | null;
   terminalService?: TerminalServiceAction | null;
-}
-
-function CodeHeaderActions({ header }: { header: CodeHeaderState | null }) {
-  const runtimeIssue =
-    header?.error ??
-    (header?.status === "failed" || header?.status === "offline"
-      ? `Editor ${header.status}.`
-      : null);
-
-  return (
-    <div className="flex items-center gap-1.5">
-      {runtimeIssue ? (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span
-              className="grid size-8 place-items-center text-destructive"
-              role="status"
-            >
-              <CircleAlert className="size-4" />
-              <span className="sr-only">{runtimeIssue}</span>
-            </span>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">{runtimeIssue}</TooltipContent>
-        </Tooltip>
-      ) : header?.isBusy ? (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span
-              className="grid size-8 place-items-center text-muted-foreground"
-              role="status"
-            >
-              <Loader2 className="size-4 animate-spin" />
-              <span className="sr-only">Connecting to editor</span>
-            </span>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">Connecting to editor</TooltipContent>
-        </Tooltip>
-      ) : null}
-      <TooltipButton
-        size="icon"
-        variant="ghost"
-        className="size-8"
-        disabled={!header || header.isBusy || !header.runtime}
-        onClick={() => void header?.saveAll()}
-        tooltip="Save all editors"
-      >
-        <Save className="size-4" />
-        <span className="sr-only">Save all editors</span>
-      </TooltipButton>
-      <TooltipButton
-        size="icon"
-        variant="ghost"
-        className="size-8"
-        disabled={!header || header.isBusy}
-        onClick={header?.reload}
-        tooltip="Reload editor surface"
-      >
-        <RefreshCw className="size-4" />
-        <span className="sr-only">Reload editor surface</span>
-      </TooltipButton>
-      <TooltipButton
-        size="icon"
-        variant="ghost"
-        className="size-8"
-        disabled={!header || header.isBusy}
-        onClick={() => void header?.restart()}
-        tooltip="Restart editor"
-      >
-        <RotateCcw className="size-4" />
-        <span className="sr-only">Restart editor</span>
-      </TooltipButton>
-      <TooltipButton
-        size="icon"
-        variant="ghost"
-        className="size-8"
-        disabled={!header || header.isBusy || !header.runtime}
-        onClick={() => void header?.stop()}
-        tooltip="Stop editor"
-      >
-        <Power className="size-4" />
-        <span className="sr-only">Stop editor</span>
-      </TooltipButton>
-    </div>
-  );
 }
 
 function ExplorerHeaderActions({
@@ -399,7 +313,15 @@ export function ContentHeaderActions({
       {explorer ? (
         <ExplorerHeaderActions compact={compact} header={explorer} />
       ) : null}
-      {code ? <CodeHeaderActions header={code.header} /> : null}
+      {code?.header?.explorer ? (
+        <>
+          <ExplorerFileCloseButton header={code.header.explorer} />
+          <ExplorerHeaderActions
+            compact={compact}
+            header={code.header.explorer}
+          />
+        </>
+      ) : null}
       {terminalService ? (
         <TooltipButton
           size="icon"

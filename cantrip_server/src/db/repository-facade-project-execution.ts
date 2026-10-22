@@ -1435,7 +1435,26 @@ export abstract class ProjectExecutionRepositoryFacade extends IdentityModelRepo
     ownerId: string,
     explorerId: string,
   ): Promise<ExplorerExecutionContext | null> {
-    return this.explorers.getExplorerExecutionContext(ownerId, explorerId);
+    const explorer = await this.explorers.getExplorerExecutionContext(
+      ownerId,
+      explorerId,
+    );
+    if (explorer) return explorer;
+    // Native project Code tabs use the same encrypted worker file operations.
+    // The Code-tab lookup applies the same owner/project authorization.
+    const code = await this.codeSurfaces.getCodeTabExecutionContext(
+      ownerId,
+      explorerId,
+    );
+    return code
+      ? {
+          explorerId,
+          projectId: code.codeTab.projectId,
+          root: code.cwd,
+          workerId: code.workerId,
+          worktreeId: code.worktreeId,
+        }
+      : null;
   }
 
   async updateExplorer(

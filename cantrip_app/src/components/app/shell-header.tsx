@@ -396,9 +396,7 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
                       bindWorktreeMutation.isPending ||
                       activeChat?.status === "running" ||
                       selectedTerminal?.status === "running" ||
-                      ((selectedCodeTab?.status === "running" ||
-                        selectedCodeTab?.status === "starting") &&
-                        !codeHeader),
+                      (Boolean(selectedCodeTab) && !codeHeader),
                     error: worktreeActionError,
                     onCreate: () =>
                       setWorktreeCreateTarget(activeWorktreeTarget),
@@ -504,7 +502,9 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
               ) : selectedProjectView?.kind === "remote-desktop" ? (
                 "Managed project-worker desktop"
               ) : selectedCodeTab ? (
-                `${activeWorktree?.displayPath ?? selectedProject?.source?.displayPath ?? "Code"} · ${selectedCodeTab.profileId}`
+                (activeWorktree?.displayPath ??
+                selectedProject?.source?.displayPath ??
+                "Code")
               ) : selectedBrowser ? (
                 selectedBrowser.url
               ) : selectedExplorer ? (

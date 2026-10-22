@@ -11,7 +11,8 @@ on:
       - cantrip_app/src/lib/cantrip-code-*.test.ts
       - cantrip_worker/src/tunnel-tcp-adapter.ts
       - cantrip_worker/test/tunnel-tcp-adapter.test.ts
-      - cantrip_app/src/lib/browser-code-tunnel*
+      - cantrip_app/src/components/code/**
+      - cantrip_app/src/components/editor/**
       - cantrip_worker/src/code/workbench-bridge.ts
       - cantrip_worker/src/code/supervisor.ts
       - cantrip_worker/test/code-supervisor.test.ts
@@ -54,14 +55,10 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
-      - run: node --check scripts/qa/editor-recovery-browser.mjs
       - run: node --check scripts/qa/editor-recovery-fixture.mjs
       - run: node --check scripts/qa/editor-repository-fixture.mjs
-      - run: node --check scripts/qa/editor-loading-benchmark.mjs
-      - run: node --check scripts/qa/editor-http-buffer-benchmark.mjs
       - run: node --test scripts/network-tranche-two-acceptance.test.mjs scripts/codex-built-runtime.test.mjs
-      - run: node --test scripts/qa/editor-logical-credit.test.mjs
-      - run: pnpm --filter @cantrip/app exec vitest run src/lib/worker-link-peer-carrier.test.ts src/lib/browser-code-tunnel.test.ts src/lib/cantrip-code-service-worker.test.ts src/lib/cantrip-code-websocket-shim.test.ts src/components/settings/settings-page.test.tsx --maxWorkers=2
+      - run: pnpm --filter @cantrip/app exec vitest run src/lib/worker-link-peer-carrier.test.ts src/components/editor src/components/code src/lib/native-explorer-window-broker.test.ts src/components/settings/settings-page.test.tsx --maxWorkers=2
       - run: pnpm --filter @cantrip/worker exec vitest run test/code-workbench-bridge.test.ts test/code-supervisor.test.ts test/tunnel-tcp-adapter.test.ts --maxWorkers=1
       - run: pnpm --filter @cantrip/server exec vitest run test/server-shutdown.test.ts test/server-shutdown-handlers.test.ts test/code-tunnel.test.ts test/shared-code-transport.test.ts test/logger-archive.test.ts --maxWorkers=2
       - name: Managed runtime shutdown and ownership

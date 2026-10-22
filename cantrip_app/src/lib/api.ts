@@ -453,31 +453,12 @@ export {
 } from "./api/project-views";
 export {
   getCodeTabs,
-  getInternalExplorerEditorCodeTabs,
   createCodeTab,
   updateCodeTab,
   updateCodeTabWorktree,
   deleteCodeTab,
-  explorerCodeSessionBindingCurrent,
-  assertCreatedExplorerCodeSessionIdentity,
-  sharedCodeTransportDestination,
-  createProtectedCodeSettingsAttachment,
-  getCodeSettingsWorkerStatus,
-  resolveCodeSettingsWorker,
-  synchronizeCodeSettingsWorker,
-  createProtectedCodeAttachment,
-  createProtectedExplorerCodeAttachment,
-  createProtectedExplorerCodeSessionAttachment,
-  releaseProtectedExplorerCodeSessionAttachment,
-  assertRenewedExplorerCodeSessionIdentity,
-  renewProtectedExplorerCodeSessionAttachment,
-  getCodeRuntime,
-  releaseCodeAttachment,
-  saveAllCodeTab,
-  stopCodeTab,
-  setCodeTabTheme,
 } from "./api/code";
-export type { BoundExplorerCodeSessionAttachment } from "./api/code";
+
 export {
   getChatFileReferences,
   getStandaloneChatFileDirectory,

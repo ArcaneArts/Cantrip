@@ -1,3 +1,4 @@
+import { confirmNativeCodeDiscard } from "@/components/code/native-code-lifecycle";
 import type {
   BrowserSummary,
   ChatSummary,
@@ -555,7 +556,22 @@ export function useCodeSurfaceOperations({
     selectedProjectId,
     surfaceClose,
   });
-  return { deleteCodeTabMutation, updateCodeTabMutation } as const;
+  const guardedDelete: typeof deleteCodeTabMutation = {
+    ...deleteCodeTabMutation,
+    mutate(id, options) {
+      if (confirmNativeCodeDiscard(id))
+        deleteCodeTabMutation.mutate(id, options);
+    },
+    mutateAsync(id, options) {
+      return confirmNativeCodeDiscard(id)
+        ? deleteCodeTabMutation.mutateAsync(id, options)
+        : Promise.resolve();
+    },
+  };
+  return {
+    deleteCodeTabMutation: guardedDelete,
+    updateCodeTabMutation,
+  } as const;
 }
 
 export function useProjectViewSurfaceOperations({

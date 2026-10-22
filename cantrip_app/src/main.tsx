@@ -1,3 +1,4 @@
+import { retireLegacyEditorWorker } from "@/lib/retire-legacy-editor-worker";
 import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -27,6 +28,7 @@ installClientLogCapture();
 installNativeTooltipSuppression(document);
 
 async function start(): Promise<void> {
+  void retireLegacyEditorWorker().catch(() => undefined);
   const startupThemePreference = readStartupThemePreference();
   if (startupThemePreference) {
     void updateDesktopWindowTheme(
