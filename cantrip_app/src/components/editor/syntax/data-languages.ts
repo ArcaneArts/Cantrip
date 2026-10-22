@@ -46,6 +46,13 @@ export const definitions: LanguageCatalog = {
       "if then else elif fi for while until do done in case esac function select time coproc return break continue export local readonly declare typeset unset source alias unalias set trap exec eval shift read printf echo exit test",
     ),
   },
+  batch: {
+    keywords: words(
+      "assoc break call cd chcp chdir cls cmd color copy date del dir do echo else endlocal erase errorlevel exist exit for ftype goto if in md mkdir mklink move not path pause popd prompt pushd rd rem ren rename rmdir set setlocal shift start time title type ver verify vol defined equ neq lss leq gtr geq enabledelayedexpansion disabledelayedexpansion",
+    ),
+    quotes: ['"'],
+    caseInsensitive: true,
+  },
   sql: {
     ...data,
     lineComments: ["--"],

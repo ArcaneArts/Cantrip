@@ -113,8 +113,12 @@ export function desktopExplorerWindowModes(path: string): ExplorerFileMode[] {
 
 export function desktopExplorerWindowInitialMode(
   path: string,
+  editor: "native" | "vscode" = "native",
 ): ExplorerFileMode {
-  const preferred = defaultExplorerFileMode(path);
+  const preferred =
+    editor === "vscode" && !explorerMediaTypeForPath(path)
+      ? "edit"
+      : defaultExplorerFileMode(path);
   return desktopExplorerWindowModes(path).includes(preferred)
     ? preferred
     : "preview";

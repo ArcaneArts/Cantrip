@@ -24,6 +24,7 @@ const samples: [LanguageId, string, string, TokenKind][] = [
   ["python", "def greet(name): # note", "def", "keyword"],
   ["go", "func main() { defer done() }", "func", "keyword"],
   ["java", "public record Person(String name) {}", "record", "keyword"],
+  ["groovy", "def version = '1.0'", "def", "keyword"],
   ["kotlin", 'suspend fun greet() = "hello"', "suspend", "keyword"],
   ["swift", "guard let value = item else { return }", "guard", "keyword"],
   ["c", "#include <stdio.h>", "#include", "keyword"],
@@ -42,6 +43,7 @@ const samples: [LanguageId, string, string, TokenKind][] = [
   ["toml", 'name = "Cantrip"', "name", "attribute"],
   ["markdown", "# Heading", "# Heading", "heading"],
   ["shell", "export NAME=$USER", "export", "keyword"],
+  ["batch", "@ECHO OFF", "ECHO", "keyword"],
   ["sql", "SELECT name FROM people;", "SELECT", "keyword"],
   ["dockerfile", "FROM node:24", "FROM", "keyword"],
   ["makefile", "include shared.mk", "include", "keyword"],
@@ -69,6 +71,11 @@ describe("owned syntax catalog", () => {
     ["script", "#!/usr/bin/env python3\n", "python"],
     ["script", "#!/bin/bash\n", "shell"],
     ["unknown.thing", "const x = 1", "plain"],
+    ["build.gradle", "", "groovy"],
+    ["settings.gradle", "", "groovy"],
+    ["build.gradle.kts", "", "kotlin"],
+    ["gradlew.BAT", "", "batch"],
+    ["scripts/build.cmd", "", "batch"],
   ])("resolves %s", (path, prefix, language) =>
     expect(languageForFile(path, prefix)).toBe(language),
   );
@@ -188,6 +195,84 @@ describe("owned syntax catalog", () => {
 });
 
 describe("incremental syntax document", () => {
+  it("handles Gradle closures, interpolated and multiline Groovy strings, slashy strings and division", async () => {
+    const lines = await scan(
+      "groovy",
+      [
+        "repositories { mavenCentral() }",
+        'def version = "value ${project.version}"',
+        "def literal = '''first",
+        "${stillLiteral}",
+        "last'''",
+        "def regex = /a\\/b/",
+        "def path = $/first $$ dollar",
+        "C:\\workspace /$; def count = 6 / 2",
+      ].join("\n"),
+    );
+    expect(lines[0]!.colored).toContainEqual(["repositories", "function"]);
+    expect(lines[1]!.colored).toContainEqual(["${", "punctuation"]);
+    expect(lines[3]!.colored).toEqual([["${stillLiteral}", "string"]]);
+    expect(lines[5]!.colored).toContainEqual(["/a\\/b/", "string"]);
+    expect(lines[7]!.colored).toContainEqual(["C:\\workspace /$", "string"]);
+    expect(lines[7]!.colored).toContainEqual(["/", "operator"]);
+    expect(lines[7]!.colored).toContainEqual(["def", "keyword"]);
+  });
+  it("handles batch comments, labels, parameters and variables inside Windows paths", async () => {
+    const lines = await scan(
+      "batch",
+      [
+        "@REM Gradle launcher",
+        ":: alternative comment",
+        ":run",
+        'set "JAVA_EXE=%JAVA_HOME%\\bin\\java.exe"',
+        'echo "%~dp0" !JAVA_EXE! %%~fG %1 %*',
+        "echo rem is text ^%escaped^%",
+        'echo "C:\\directory\\" & ECHO done',
+      ].join("\n"),
+    );
+    expect(lines[0]!.colored).toContainEqual([
+      "REM Gradle launcher",
+      "comment",
+    ]);
+    expect(lines[1]!.colored).toEqual([[":: alternative comment", "comment"]]);
+    expect(lines[2]!.colored).toEqual([[":run", "function"]]);
+    expect(lines[3]!.colored).toContainEqual(["%JAVA_HOME%", "variable"]);
+    for (const value of ["%~dp0", "!JAVA_EXE!", "%%~fG", "%1", "%*"])
+      expect(lines[4]!.colored).toContainEqual([value, "variable"]);
+    expect(
+      lines[5]!.colored.some(
+        ([, kind]) => kind === "comment" || kind === "variable",
+      ),
+    ).toBe(false);
+    expect(lines[6]!.colored).toContainEqual(["ECHO", "keyword"]);
+  });
+  it.each(["groovy", "batch"] as const)(
+    "keeps incremental %s scans consistent through multiline edits",
+    async (language) => {
+      const catalog = await loadLanguage(language);
+      let text =
+        language === "groovy"
+          ? "def text = '''one\ntwo\nthree'''\ndef value = 1"
+          : '@echo off\nset "ROOT=%~dp0"\nrem launcher\necho !ROOT!';
+      const document = new SyntaxDocument(text, language, catalog);
+      document.highlight(0, document.lines.length);
+      for (const next of [
+        text.replace("two", "''' two"),
+        "\n" + text,
+        text.slice(0, 8),
+        text,
+      ]) {
+        document.apply(textChange(text, next));
+        text = next;
+        expect(document.highlight(0, document.lines.length)).toEqual(
+          new SyntaxDocument(text, language, catalog).highlight(
+            0,
+            document.lines.length,
+          ),
+        );
+      }
+    },
+  );
   it("keeps YAML block scalars as strings until indentation returns", async () => {
     const lines = await scan(
       "yaml",

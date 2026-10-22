@@ -3,6 +3,7 @@ import {
   explorerMediaTypeForPath,
   type ExplorerFileMode,
 } from "@cantrip/protocol";
+import { isLicenseFile } from "@/components/editor/license-file";
 
 export function monacoLanguageForPath(path: string): string | null {
   return explorerTextLanguageForPath(path);
@@ -34,7 +35,9 @@ export function structuredFileFormatForPath(
 }
 
 export function defaultExplorerFileMode(path: string): ExplorerFileMode {
-  return explorerMediaTypeForPath(path) ? "preview" : "edit";
+  return explorerMediaTypeForPath(path) || isLicenseFile(path)
+    ? "preview"
+    : "edit";
 }
 
 export function markdownPreviewUsesPlainText(path: string): boolean {

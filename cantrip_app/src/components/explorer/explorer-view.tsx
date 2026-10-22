@@ -38,6 +38,8 @@ import {
   type EditorDocumentSession,
 } from "@/components/editor/document-session";
 import { NativeCodeEditor } from "@/components/editor/native-code-editor";
+import { isLicenseFile } from "@/components/editor/license-file";
+import { LicenseFileView } from "@/components/editor/license-file-view";
 import { getClientSession } from "@/lib/client-session";
 import { useExplorerWorkerEncryption } from "@/components/explorer/use-explorer-worker-encryption";
 import {
@@ -1441,6 +1443,13 @@ export function ExplorerView({
                     ? file.error.message
                     : "File could not be loaded."}
                 </p>
+              ) : file.data &&
+                fileMode === "preview" &&
+                isLicenseFile(file.data.path) ? (
+                <LicenseFileView
+                  content={draftVersion === null ? file.data.content : draft}
+                  path={file.data.path}
+                />
               ) : file.data && fileMode === "visual" && structuredFormat ? (
                 <Suspense
                   fallback={

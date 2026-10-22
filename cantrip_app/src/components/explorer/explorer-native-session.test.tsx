@@ -151,6 +151,35 @@ afterEach(async () => {
 });
 
 describe("native Explorer document integration", () => {
+  it("opens licenses as documents and retains the same editable draft across Preview/Edit", async () => {
+    state.transientPath = "LICENSE";
+    state.content = "Copyright (c) 2026 Arcane Arts\nAll rights reserved.\n";
+    await render();
+    expect(header().fileMode).toBe("preview");
+    expect(renderer!.root.findAllByType("textarea")).toHaveLength(0);
+    expect(
+      renderer!.root
+        .findByProps({ "aria-label": "License text" })
+        .children.join(""),
+    ).toBe(state.content);
+    await act(async () => header().setFileMode("edit"));
+    const original = input().session;
+    await edit(state.content + "\nA custom notice.");
+    await act(async () => header().setFileMode("preview"));
+    expect(
+      renderer!.root
+        .findByProps({ "aria-label": "License text" })
+        .children.join(""),
+    ).toBe(original.text);
+    expect(api.saveExplorerFile).not.toHaveBeenCalled();
+    await act(async () => header().setFileMode("edit"));
+    expect(input().session).toBe(original);
+    expect(header().dirty).toBe(true);
+    await act(async () => {
+      expect(await header().save()).toBe(true);
+    });
+    expect(api.saveExplorerFile).toHaveBeenCalledTimes(1);
+  });
   it("does not install the previous file's cached read into a newly requested sidebar document", async () => {
     await render();
     expect(input().session.text).toBe("original\n");

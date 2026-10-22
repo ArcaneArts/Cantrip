@@ -27,6 +27,8 @@ import {
   type EditorDocumentSession,
 } from "@/components/editor/document-session";
 import { NativeCodeEditor } from "@/components/editor/native-code-editor";
+import { isLicenseFile } from "@/components/editor/license-file";
+import { LicenseFileView } from "@/components/editor/license-file-view";
 import {
   structuredFileFormatForPath,
   type VisualFileFormat,
@@ -474,7 +476,12 @@ export function DesktopExplorerFileWindow({
         },
         onContext: (next) => {
           setAuthorityError(null);
-          setMode(desktopExplorerWindowInitialMode(next.path));
+          setMode(
+            desktopExplorerWindowInitialMode(
+              next.path,
+              next.editor ?? "vscode",
+            ),
+          );
           setContext(next);
           setConfiguredAtMs(null);
           setEditorError(null);
@@ -818,6 +825,8 @@ export function DesktopExplorerFileWindow({
               mimeType={mediaType.mimeType}
               path={path}
             />
+          ) : file && mode === "preview" && isLicenseFile(path) ? (
+            <LicenseFileView content={draft} path={path} />
           ) : mode === "visual" && file && structuredFormat ? (
             <Suspense
               fallback={
