@@ -586,6 +586,7 @@ describe("application live query bridge", () => {
         }),
       ),
     ).toEqual([
+      ["task-git-changes", "project-one"],
       ["worktree-status", "project-one"],
       ["worktree-history", "project-one"],
       ["git-graph-snapshot", "project-one"],
@@ -609,6 +610,7 @@ describe("application live query bridge", () => {
         }),
       ),
     ).toEqual([
+      ["task-git-changes", "project-one", "worktree-one"],
       ["worktree-status", "project-one", "worktree-one"],
       ["worktree-history", "project-one", "worktree-one"],
       ["git-graph-snapshot", "project-one", "worktree-one"],
@@ -1473,7 +1475,9 @@ describe("application live query bridge", () => {
     expect(queryClient.getQueryData<GitStatus>(queryKey)?.files).toHaveLength(
       1,
     );
-    expect(invalidate).not.toHaveBeenCalled();
+    expect(invalidate).toHaveBeenCalledExactlyOnceWith({
+      queryKey: ["task-git-changes", "project-one", "worktree-one"],
+    });
   });
 
   it("applies workspace repository discovery progress without polling", () => {

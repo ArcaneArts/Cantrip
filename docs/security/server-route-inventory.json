@@ -208,7 +208,7 @@
     "workerCredentialRoutes": 38,
     "durableTables": 107,
     "agentOperations": 46,
-    "workerCommands": 276,
+    "workerCommands": 277,
     "liveResources": 44,
     "clientControlCommands": 4,
     "cliCommands": 35,
@@ -228,7 +228,7 @@
     "cliCommands": "dac89683226ba9ee6f6211eba252fb0b83a5a022aa9150f107315733a4e44251",
     "clientControlCommands": "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
     "liveResources": "60a4250f1562ae48ad8b931cc0324b2e1653b9cb59bc5cc31cb357349a4063a1",
-    "workerCommands": "0093e633365ddfcc196c62bb16c9d3e683dd5bb28b925268532477beeb6adf54",
+    "workerCommands": "23c6dcf548cd2a4c274263f5ca6fb7e58276d3a326df4bf8e3d984bcbab9d066",
     "tunnelFrameKinds": "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8"
   },
   "durableTables": [
@@ -7737,6 +7737,7 @@
     "git.branch.action.apply",
     "git.branch.action.preview",
     "git.branch.list",
+    "git.change-summary",
     "git.commit.action.apply",
     "git.commit.action.preview",
     "git.commit.get",
@@ -8376,6 +8377,11 @@
     },
     {
       "command": "git.branch.list",
+      "classification": "endpoint-protected",
+      "rationale": "operation-bound protected worker contract"
+    },
+    {
+      "command": "git.change-summary",
       "classification": "endpoint-protected",
       "rationale": "operation-bound protected worker contract"
     },
@@ -12755,6 +12761,7 @@
     },
     "protectedOperationTypes": [
       "git.history",
+      "git.change-summary",
       "git.graph.snapshot",
       "git.graph.metrics",
       "git.graph.commit-overlay",

@@ -4,15 +4,24 @@ import type {
   TaskDetail,
   TaskGoalSnapshot,
 } from "@cantrip/protocol";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import TestRenderer, { act } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { TaskOverviewSummary } from "./task-overview-summary";
+import { TaskOverviewSummary as Summary } from "./task-overview-summary";
 
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
+function TaskOverviewSummary(props: ComponentProps<typeof Summary>) {
+  return (
+    <QueryClientProvider client={new QueryClient()}>
+      <Summary {...props} />
+    </QueryClientProvider>
+  );
+}
 const chat = { status: "running", automationPaused: false } as ChatSummary;
 const task = {
   createdAt: "2026-10-22T10:00:00Z",

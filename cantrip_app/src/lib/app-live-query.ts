@@ -172,6 +172,9 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
       return projectId
         ? [
             event.entityId
+              ? ["task-git-changes", projectId, event.entityId]
+              : ["task-git-changes", projectId],
+            event.entityId
               ? ["worktree-status", projectId, event.entityId]
               : ["worktree-status", projectId],
             event.entityId
@@ -640,6 +643,7 @@ function directObservationQueryKeys(
         ["worktrees", ...projectScope],
         ["worktree-status", ...worktreeScope],
         ["worktree-history", ...worktreeScope],
+        ["task-git-changes", ...worktreeScope],
         ["git-graph-snapshot", ...worktreeScope],
         ["git-graph-metrics", ...worktreeScope],
         ["git-graph-commit-overlay", ...worktreeScope],

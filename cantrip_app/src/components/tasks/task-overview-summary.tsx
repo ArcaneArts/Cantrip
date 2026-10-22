@@ -6,6 +6,7 @@ import type {
 } from "@cantrip/protocol";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { TaskGitChangeMetrics } from "./task-git-change-metrics";
 import { formatGoalElapsed } from "@/components/chat/goal-panel";
 import { projectTrajectory } from "@/components/chat/trajectory-model";
 import { TrajectoryActivityBar } from "@/components/chat/trajectory-timeline";
@@ -18,6 +19,7 @@ export function TaskOverviewSummary({
   chat,
   goal,
   historyIncomplete = false,
+  gitWorktreeId,
   messages,
   task,
   visible,
@@ -25,6 +27,7 @@ export function TaskOverviewSummary({
   chat: ChatSummary;
   goal: TaskGoalSnapshot | null;
   historyIncomplete?: boolean;
+  gitWorktreeId?: string | null;
   messages: readonly ChatMessage[];
   task: TaskDetail;
   visible: boolean;
@@ -87,29 +90,12 @@ export function TaskOverviewSummary({
             {count(metrics.turns)}
           </dd>
         </div>
-        <div title="Distinct files in recorded agent edits">
-          <dt className="text-xs text-muted-foreground">Files changed</dt>
-          <dd className="mt-1 text-xl font-medium tabular-nums">
-            {count(metrics.files)}
-          </dd>
-        </div>
-        <div title="Added and removed lines in recorded edit previews. Large edits may be truncated.">
-          <dt className="text-xs text-muted-foreground">Recorded lines</dt>
-          <dd className="mt-1 flex gap-3 text-xl font-medium tabular-nums">
-            <span
-              className="text-emerald-500"
-              aria-label={`${metrics.added} added lines`}
-            >
-              +{metrics.added.toLocaleString()}
-            </span>
-            <span
-              className="text-rose-500"
-              aria-label={`${metrics.removed} removed lines`}
-            >
-              −{metrics.removed.toLocaleString()}
-            </span>
-          </dd>
-        </div>
+        <TaskGitChangeMetrics
+          chat={chat}
+          task={task}
+          visible={visible}
+          worktreeId={gitWorktreeId}
+        />
       </dl>
       {goal ? (
         <div

@@ -573,6 +573,29 @@ edits and cached data, then refresh stale queries when shown again. Filter and
 unrelated parent renders reuse trajectory projections until the messages,
 projection inputs, or live clock change.
 
+## Task overview change counts
+
+**Files changed** and **Lines changed** come from Git on the physical Worker in
+that Task's bound worktree, independently of the worktree selected elsewhere in
+the IDE. They do not use transcript edit previews. The worker combines distinct
+file paths and cumulative added/removed lines from commits on the checkout's
+current first-parent history during implementation (or planning before
+implementation starts), plus current staged, unstaged, and untracked changes.
+Completed Tasks bound the commit time window at completion. The uncommitted
+portion always describes the current checkout, including for completed Tasks.
+Merge commits include incoming changes once. Binary files count as changed
+files without adding text-line totals.
+
+Commit attribution is based on the worktree, branch, and commit time window;
+it is not proof that only this Task authored every change. Other processes in
+the same checkout are included. Commits on unrelated branches or removed
+worktrees are not scanned. The Overview shows the included commit count and
+marks bounded scans as partial; unavailable worker/Git data displays an
+unavailable state instead of zero. Counts refresh on worktree status events
+and every ten seconds while the Overview is visible. History totals are cached
+by worktree HEAD and time window. Requests and results use the existing
+end-to-end encrypted repository-operation channel.
+
 ## Failure, recovery, and fairness
 
 - Duplicate scheduler wakeups and worker completions are idempotent.

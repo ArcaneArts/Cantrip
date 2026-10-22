@@ -460,6 +460,13 @@ export function TaskImplementationDashboard({
           goal={goal}
           messages={messages.data}
           historyIncomplete={messages.hasOlder}
+          gitWorktreeId={
+            placement?.kind === "git"
+              ? placement.worktreeId
+              : placement?.kind === "folder"
+                ? null
+                : undefined
+          }
           visible={visible}
         />
         {dashboard.data?.goalUnavailableReason ? (

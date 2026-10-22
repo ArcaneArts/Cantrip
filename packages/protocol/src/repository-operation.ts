@@ -95,6 +95,7 @@ export const repositoryMetadataResultSchema = z
 
 export const repositoryOperationTypeSchema = z.enum([
   "git.history",
+  "git.change-summary",
   "git.graph.snapshot",
   "git.graph.metrics",
   "git.graph.commit-overlay",
@@ -201,6 +202,7 @@ export type RepositoryOperationAccess = z.infer<
 
 const repositoryOperationAccessByType = {
   "git.history": "read",
+  "git.change-summary": "read",
   "git.graph.snapshot": "read",
   "git.graph.metrics": "read",
   "git.graph.commit-overlay": "read",
