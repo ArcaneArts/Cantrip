@@ -201,9 +201,8 @@ fn build_steps() -> Vec<SyntheticBuildStep> {
         ("install-dependencies", "Install dependencies", 8),
         ("build-codex", "Build Codex runtime", 18),
         ("build-cli", "Build Cantrip CLI", 6),
-        ("build-code", "Build Cantrip Code", 18),
         ("build-services", "Build Cantrip services", 14),
-        ("build-desktop", "Package Cantrip desktop", 18),
+        ("build-desktop", "Package Cantrip desktop", 36),
         ("verify-artifact", "Verify synthetic artifact", 4),
         ("stage-install", "Stage synthetic artifact", 2),
     ]
@@ -358,7 +357,6 @@ fn sanitized_build_command(
         .env("CANTRIP_WINDOWS_BUNDLE", "nsis")
         .env("CARGO_HOME", &toolchain.cargo_home)
         .env("CARGO_TARGET_DIR", root.join("stores/cargo-target"))
-        .env("CANTRIP_CODE_CACHE_DIR", root.join("stores/cantrip-code"))
         .env("PATH", toolchain.path()?)
         .env("RUSTUP_HOME", &toolchain.rustup_home)
         .env("RUSTUP_TOOLCHAIN", RUST_VERSION)

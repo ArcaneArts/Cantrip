@@ -155,7 +155,7 @@ async function mounted(
   };
 }
 
-describe("Persistent Explorer native ownership and explicit VS Code", () => {
+describe("Persistent Explorer native editor ownership", () => {
   beforeEach(() => {
     owners.created.length = 0;
     owners.released.length = 0;

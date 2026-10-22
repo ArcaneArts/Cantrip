@@ -195,7 +195,6 @@ synthetic-builds/
     npm/
     pnpm/
     cargo-target/
-    cantrip-code/
   jobs/current.json
   jobs/<id>/job.json
   jobs/<id>/build.log

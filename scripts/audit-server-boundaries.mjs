@@ -3501,15 +3501,6 @@ function applicationRouteContentClassification(route) {
       rationale: "opaque tunnel configuration and minimized routing metadata",
     };
   }
-  if (
-    /\/(?:code-session-attachments|code-transports)(?:\/|$)/u.test(route.path)
-  ) {
-    return {
-      classification: "endpoint-protected",
-      rationale:
-        "authenticated shared Code transport and opaque route-grant lifecycle",
-    };
-  }
   if (/^\/api\/auth\//u.test(route.path)) {
     return {
       classification: "hashed-validator",
@@ -3609,18 +3600,6 @@ function workerCommandContentClassification(command) {
       classification: "intentionally-public-control-plane",
       rationale:
         "bounded revision-checked Git-shared definition with secret references only",
-    };
-  }
-  if (/^code\.settings\./u.test(command)) {
-    return {
-      classification: "endpoint-protected",
-      rationale: "worker-owned encrypted global Code settings lifecycle",
-    };
-  }
-  if (/^code\.transport\./u.test(command)) {
-    return {
-      classification: "endpoint-protected",
-      rationale: "server-authorized opaque Code session route-grant lifecycle",
     };
   }
   if (/^project\.script-commands(?:\.inspect)?$/u.test(command)) {
@@ -4514,14 +4493,6 @@ async function buildInventory() {
     ...tunnelFrameContentClassification(kind),
   }));
   const externalTransports = [
-    {
-      boundary: "application-principal",
-      contentClassification: "endpoint-protected",
-      implementation: "cantrip_server/src/code/tunnel.ts",
-      name: "Protected Cantrip Code tunnel control plane",
-      ownerBinding:
-        "authenticated owner, project, assigned worker, opaque revision-bound tunnel record, and desktop attachment",
-    },
     {
       boundary: "application-principal",
       contentClassification: "endpoint-protected",

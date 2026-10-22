@@ -419,7 +419,6 @@ it.skipIf(!binary || !helper || process.platform === "win32").each(
             CANTRIP_SERVER_URL: serverUrl,
             CANTRIP_WORKER_DEVELOPMENT_BOOTSTRAP: "true",
             CANTRIP_WORKER_TOKEN: token,
-            CANTRIP_CODE_ROOT: path.join(root, "no-code-installation"),
           },
           detached: true,
           stdio: ["ignore", "pipe", "pipe"],

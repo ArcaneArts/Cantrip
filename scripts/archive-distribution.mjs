@@ -4,10 +4,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-import {
-  assertHostTarget,
-  normalizeTarget,
-} from "./cantrip-code/build-lib.mjs";
+import { normalizeTarget } from "./native-target.mjs";
 
 const scriptRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -153,7 +150,7 @@ const isMain =
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
   const input = parseArguments(process.argv.slice(2));
-  assertHostTarget(input.target);
+
   const result = await archiveDistribution(input);
   console.log(
     `Archived ${input.kind}: ${path.relative(scriptRoot, result.archive)}`,

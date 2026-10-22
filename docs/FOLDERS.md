@@ -110,7 +110,7 @@ root, never a worktree.
 - prompt queues, steering, pause, resume, stop, compaction, forks, and
   attachments;
 - Terminal tabs and supervised terminal services;
-- Explorer browsing, preview, structured views, Monaco editing, and
+- Explorer browsing, preview, structured views, native editing, and
   conflict-safe saves;
 - Cantrip Code tabs;
 - Browser and Remote Desktop tabs on the owning worker;

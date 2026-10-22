@@ -133,8 +133,9 @@ native tab metadata and checkout placement; an upgrade migration preserves
 their encrypted labels and layouts while retiring old sessions and tunnels.
 The desktop app no longer exposes workbench transport pools or editor window
 leases. Native file windows use the existing file API handoff; ordinary desktop
-tunnels retain their WorkerLink bridge and attachment lifecycle. Vendored
-sources and build/packaging scripts remain to be removed.
+tunnels retain their WorkerLink bridge and attachment lifecycle. The editor is
+compiled with the client; builds do not fetch, build or package a separate editor
+distribution.
 
 ## Development and verification
 

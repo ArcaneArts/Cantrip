@@ -77,9 +77,9 @@ const surfaces: Array<{
   {
     icon: Code2,
     title: "Code editor",
-    meta: "MONACO · PREVIEW · PERSISTENT",
+    meta: "HIGHLIGHTING · PREVIEW · SAVE",
     description:
-      "Edit with Monaco, keep drafts, cursor, scroll, and undo state across tabs, and guard every save against stale revisions.",
+      "Edit code with syntax highlighting and line numbers, keep drafts and undo history across tabs, and guard every save against stale revisions.",
   },
   {
     icon: FolderTree,
@@ -111,10 +111,10 @@ const surfaces: Array<{
   },
   {
     icon: AppWindow,
-    title: "Full VS Code workbench",
-    meta: "EXTENSIONS · TERMINALS · PERSISTENT",
+    title: "Native file windows",
+    meta: "DESKTOP · BROWSER · PHONE",
     description:
-      "Open a warm, worker-hosted VS Code environment with durable settings, extensions, terminals, theme, and project context.",
+      "Open the same lightweight file editor in your desktop workspace, a separate file window, the browser, or your phone.",
   },
   {
     icon: Globe2,
@@ -141,14 +141,14 @@ const ideHighlights: Array<{
 }> = [
   {
     icon: Code2,
-    label: "COMPLETE EDITOR",
-    title: "Write code in an IDE—not a chat window with a file pane.",
+    label: "BUILT-IN EDITOR",
+    title: "Keep your code, files, and tools together.",
     description:
-      "Cantrip pairs a fast built-in editor and rich previews with a complete, persistent VS Code workbench when you need the full environment.",
+      "Cantrip combines a fast built-in code editor, rich file previews, and worker-owned tools across desktop, browser, and phone.",
     features: [
-      "Monaco editing with durable drafts, cursor, scroll, and undo state",
+      "Code editing with retained drafts, selection, scroll, and undo history",
       "Git-aware Explorer with source, Markdown, image, and media previews",
-      "Warm VS Code sessions with settings, extensions, and terminals",
+      "Syntax highlighting, line numbers, and explicit guarded saves",
     ],
   },
   {
@@ -278,20 +278,20 @@ const toolkitFeatures: Array<{
       "Explorer loads directories on demand, streams rich previews, and connects the tree to live Git and repository-graph context.",
     features: [
       "Source, rendered Markdown, image, and media preview",
-      "Persistent Monaco editing with guarded saves",
+      "Built-in code editing with retained drafts and guarded saves",
       "CodeGraph and commit overlays stay aligned with worktrees",
     ],
   },
   {
     icon: Code2,
-    label: "FULL IDE",
-    title: "Cantrip Code stays warm",
+    label: "PROJECT CODE",
+    title: "Code stays with its checkout",
     description:
-      "Keep a complete worker-hosted workbench beside the chat instead of rebuilding editor context for every task.",
+      "Browse and edit the selected checkout in a Code tab, with the same file controls and saved drafts as Explorer.",
     features: [
-      "Project and worktree-aware sessions",
-      "Persistent settings, extensions, terminals, and theme",
-      "Direct local desktop transport with relay fallback",
+      "Project and worktree-aware file access",
+      "Syntax highlighting and matching app appearance",
+      "View and Edit modes across desktop, browser, and phone",
     ],
   },
   {
@@ -995,9 +995,9 @@ function App() {
                 <div>
                   <Code2 size={17} />
                   <span>
-                    <strong>A complete editor at the center.</strong>
+                    <strong>A built-in editor at the center.</strong>
                     <small>
-                      Monaco for speed. VS Code when you want it all.
+                      Syntax highlighting, line numbers, and guarded saves.
                     </small>
                   </span>
                 </div>

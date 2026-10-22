@@ -26,12 +26,13 @@ for (const [name, engine, mobile] of selected) {
     errors = [],
     requests = [],
     codeCreations = [];
-  const usedCode = () =>
+  const usedLegacyEditor = () =>
     requests.some((url) =>
       /monaco|editor\.api|code-attachments|code-session|\/code-tabs\/[^/]+\/(?:protected-attachment|sessions)/u.test(
         url,
       ),
-    ) || codeCreations.length > 0;
+    );
+  const usedCode = () => usedLegacyEditor() || codeCreations.length > 0;
   const record = (event, details = {}) => {
     const entry = {
       event,
@@ -560,6 +561,71 @@ for (const [name, engine, mobile] of selected) {
     await page.screenshot({
       path: path.join(fixture.directory, "native-editor.png"),
     });
+    const nativeTabFile = path.join(
+      fixture.repositorySeed.repository,
+      "native-tab.ts",
+    );
+    await writeFile(nativeTabFile, "export const nativeTab = true;\n");
+    if (mobile) {
+      await page
+        .getByRole("button", { name: "Choose project tab", exact: true })
+        .click();
+      await page.getByRole("button", { name: "Code", exact: true }).click();
+    } else {
+      await page
+        .getByRole("button", { name: "Add project surface", exact: true })
+        .click();
+      await page.getByRole("menuitem", { name: "Code", exact: true }).click();
+    }
+    await page
+      .getByRole("tree", { name: "Project files", exact: true })
+      .getByRole("treeitem", { name: /^native-tab\.ts .*B$/u })
+      .click();
+    const nativeTabInput = page.getByRole("textbox", {
+      name: "Edit native-tab.ts",
+      exact: true,
+    });
+    await nativeTabInput.waitFor();
+    assert.equal(
+      await nativeTabInput.inputValue(),
+      "export const nativeTab = true;\n",
+    );
+    const nativeTabText = "export const nativeTab = 'saved 😀';\n";
+    await nativeTabInput.fill(nativeTabText);
+    await nativeTabInput.press("ControlOrMeta+s");
+    const nativeTabSaveDeadline = Date.now() + 15000;
+    while ((await readFile(nativeTabFile, "utf8")) !== nativeTabText) {
+      if (Date.now() > nativeTabSaveDeadline)
+        throw new Error("Native Code tab save did not reach the worker file");
+      await delay(50);
+    }
+    await page.getByRole("button", { name: "Edit mode", exact: true }).click();
+    await page.getByRole("menuitem", { name: "View", exact: true }).click();
+    const nativeTabViewer = page.getByRole("textbox", {
+      name: "View native-tab.ts",
+      exact: true,
+    });
+    await nativeTabViewer.waitFor();
+    assert.equal(await nativeTabViewer.inputValue(), nativeTabText);
+    assert.deepEqual(
+      await nativeTabViewer.evaluate((node) => ({
+        readOnly: node.readOnly,
+        caret: getComputedStyle(node).caretColor,
+      })),
+      { readOnly: true, caret: "rgba(0, 0, 0, 0)" },
+    );
+    await nativeTabViewer.press("x");
+    await nativeTabViewer.press("Backspace");
+    await nativeTabViewer.press("ControlOrMeta+s");
+    assert.equal(await nativeTabViewer.inputValue(), nativeTabText);
+    assert.equal(await readFile(nativeTabFile, "utf8"), nativeTabText);
+    assert.equal(codeCreations.length, 1);
+    assert.equal(usedLegacyEditor(), false);
+    assert.equal(await page.locator("iframe").count(), 0);
+    await page.screenshot({
+      path: path.join(fixture.directory, "native-code-tab.png"),
+    });
+    record("native.code-tab", { status: "pass" });
     const revokedWindow = await context.newPage();
     const revokedSearch = await page.evaluate(() =>
       window.__qaRepositoryFixture.popout("second.txt"),

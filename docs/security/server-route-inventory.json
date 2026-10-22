@@ -12902,13 +12902,6 @@
     {
       "boundary": "application-principal",
       "contentClassification": "endpoint-protected",
-      "implementation": "cantrip_server/src/code/tunnel.ts",
-      "name": "Protected Cantrip Code tunnel control plane",
-      "ownerBinding": "authenticated owner, project, assigned worker, opaque revision-bound tunnel record, and desktop attachment"
-    },
-    {
-      "boundary": "application-principal",
-      "contentClassification": "endpoint-protected",
       "implementation": "cantrip_server/src/project-shares/tunnel.ts",
       "name": "Protected project-share tunnel control plane",
       "ownerBinding": "authenticated owner, project, assigned worker, opaque revision-bound tunnel record, and desktop attachment"

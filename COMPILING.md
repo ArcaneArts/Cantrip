@@ -7,13 +7,12 @@ otherwise.
 
 Cantrip's desktop bundle is a host-native build. It includes the React client,
 Tauri shell, server, worker, a platform-matched Node runtime, the Rust Cantrip
-CLI, the patched Codex runtime, and the patched Cantrip Code/OpenVSCode
-distribution. Native dependencies mean that a complete Windows bundle is built
-on Windows, a complete macOS bundle on macOS, and a complete Linux bundle on
-Linux.
+CLI, portable CUA runtime, and patched Codex runtime. Native dependencies mean
+that a complete Windows bundle is built on Windows, a complete macOS bundle on
+macOS, and a complete Linux bundle on Linux.
 
 The Capacitor applications are clients only. They do not contain the Cantrip
-server, worker, Codex, or Cantrip Code and must connect to a reachable Cantrip
+server, worker, or Codex and must connect to a reachable Cantrip
 server after installation.
 
 ## Shared requirements
@@ -61,7 +60,7 @@ pnpm bundle
 ```
 
 Do not pass a different operating-system target to `pnpm bundle`. The worker,
-Codex, Cantrip Code, and embedded Node runtime must match the machine executing
+Codex, CUA, and embedded Node runtime must match the machine executing
 the build.
 
 Successful bundles are collected under:
@@ -215,8 +214,8 @@ Use `pnpm dev` instead for the browser client.
   complete Python installation.
 - `failed to run light.exe`: enable the VBSCRIPT optional feature or build only
   an NSIS installer while diagnosing MSI tooling.
-- Path-too-long or missing-file errors inside `node_modules`, `cantrip_codex`,
-  or `cantrip_code`: enable Windows long paths and move the checkout closer to
+- Path-too-long or missing-file errors inside `node_modules` or `cantrip_codex`:
+  enable Windows long paths and move the checkout closer to
   the drive root.
 - Patch verification errors immediately after upgrading an older checkout:
   ensure the patch files have no local edits. A fresh clone honors the

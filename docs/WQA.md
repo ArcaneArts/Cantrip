@@ -370,8 +370,8 @@ Shared controls are tested in their real feature contexts.
 | Tasks, `cantrip_server/src/db/task-scheduling.ts`, dispatch and worker task execution | TASK                    |
 | external-history discovery, import jobs, project export adapters and native history   | DATA                    |
 | Policies/skills/MCP, worker tool catalog, CodeGraph                                   | CUSTOM, TOOL            |
-| Explorer/Monaco, structured/tabular/image viewers, worker Explorer                    | EXP                     |
-| Code iframe/lifecycle, worker Code, encrypted settings synchronization                | CODE                    |
+| Explorer/native editor, structured/tabular/image viewers, worker Explorer             | EXP                     |
+| Native Code tabs, file authority, retained drafts and guarded saves                   | CODE                    |
 | PTY/canonical terminal state, linked console, CLI broker                              | TERM, TOOL              |
 | Run controls/editor, definitions and worker providers/supervisor                      | RUN                     |
 | Git/GitHub surfaces, repository graph, worker operations and operation journals       | GIT, GRAPH, GH          |
@@ -681,7 +681,7 @@ test as completion. Use current `tool_help`/CLI help for exact inputs.
 | EXP-02 | —     | Open README/Unicode Markdown and use local links/code-copy.                                            | Rendering and link routing correct; Unicode/spaces preserved.                                                  |
 | EXP-03 | —     | Open JSON/YAML/TOML and CSV in visual mode; switch text/editor and back.                               | Structured/table content correct, including quoted commas/newlines; view switches do not alter bytes.          |
 | EXP-04 | —     | Open malformed JSON, empty file, binary, small/large PNG and long text.                                | Supported preview or explicit bounded/unsupported state; image zoom/pan works; no crash or fake empty success. |
-| EXP-05 | —     | Edit text in Monaco, Save, reload and inspect exact file from terminal.                                | Bytes match saved edit; dirty indicator clears only on successful save.                                        |
+| EXP-05 | —     | Edit text in the native editor, Save, reload and inspect exact file from terminal.                     | Bytes match saved edit; dirty indicator clears only on successful save.                                        |
 | EXP-06 | —     | Leave unsaved text/cursor/scroll/undo; switch tabs/projects and return.                                | Editor session survives normal navigation; undo targets correct file.                                          |
 | EXP-07 | —     | Edit same file in two clients; save A then stale B; use offered conflict recovery.                     | Optimistic concurrency prevents silent overwrite; both versions remain recoverable.                            |
 | EXP-08 | —     | Change/delete/rename open fixture from UI terminal; refresh editor.                                    | Actual conflict/missing-file state; no save to unintended renamed/new path.                                    |
@@ -692,27 +692,19 @@ test as completion. Use current `tool_help`/CLI help for exact inputs.
 | EXP-13 | —     | Reopen many files then close active preview and editor; monitor retained hosts.                        | No orphan blank surface, duplicate editor or lost unrelated draft.                                             |
 | EXP-14 | N     | Pop out Explorer file, edit/save, reopen from main.                                                    | Single coherent file session/ownership, including native close and reload behavior.                            |
 
-## CODE — project workbench and global customization
+## CODE — native project file editor
 
-References: [Code](CODE.md), [Code settings](CODE_SETTINGS.md). Use the embedded
-workbench's native controls, not a guessed DOM inside an unobserved iframe.
+Reference: [Code editor](CODE_EDITOR.md). Code tabs use the built-in file tree
+and editor with the selected worker checkout.
 
-| ID      | Needs | Browser procedure                                                                                                                                | Expected observations                                                                                                                   |
-| ------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
-| CODE-01 | —     | Open Code on F2/F3; observe loading/readiness, files and startup theme.                                                                          | Correct worker/root; pretrusted workspace; useful editor without hidden onboarding/chat chrome.                                         |
-| CODE-02 | —     | Open/edit/save fixture in Code; inspect from Explorer and terminal.                                                                              | Same file bytes; correct error/dirty state and expected editor keyboard behavior.                                                       |
-| CODE-03 | —     | Switch projects/tabs 20 times with Code open, return and type.                                                                                   | Workbench session retained; no repeated startup, lost caret/draft or duplicate connection.                                              |
-| CODE-04 | —     | Open Code hidden in a dock, reveal after prewarm; resize/split and reload.                                                                       | Hidden readiness/timeout transitions settle; editor fits and accepts input when visible.                                                |
-| CODE-05 | —     | Lose worker connection/authorized attachment; use Retry after recovery.                                                                          | Honest recoverable error; renewed attachment does not expose old/wrong workspace.                                                       |
-| CODE-06 | —     | Open Settings → Code with no project; alternate Settings/Extensions rapidly.                                                                     | One folderless workbench/attachment; requested subtab wins; unrelated workbench chrome hidden.                                          |
-| CODE-07 | —     | Change a harmless editor preference; leave global Settings and return; reload.                                                                   | Same retained iframe where applicable; preference persists via encrypted canonical settings.                                            |
-| CODE-08 | W     | Edit different settings keys on two workers, then conflicting same key.                                                                          | Disjoint merge succeeds; divergent same-key state explicitly conflicts rather than last-write-wins.                                     |
-| CODE-09 | W     | Resolve each conflict choice in separate attempts; inspect profile recovery copy locally.                                                        | Selected canonical/local decision publishes revision; losing local settings backed up.                                                  |
-| CODE-10 | —     | Search Open VSX, open details, install/disable/enable/uninstall a benign QA extension.                                                           | State survives worker restart; native progress/errors retained; no Microsoft Marketplace or automatic update assumption.                |
-| CODE-11 | —     | Use Upload VSIX with a benign QA package; try invalid/oversized VSIX.                                                                            | Bounded upload and actionable validation; valid extension appears on selected worker only.                                              |
-| CODE-12 | —     | Manually check extension updates and any reload/extension-host prompt.                                                                           | Explicit actions work; update/reload failures leave workbench recoverable.                                                              |
-| CODE-13 | —     | Change Code worker in global settings and reopen project Code.                                                                                   | Folderless profile switches explicitly; project Code remains on its actual authorized source.                                           |
-| CODE-14 | —     | Retire only QA workbench attachment through its normal lifecycle, then reveal/reload the view and retry after a real root-document HTTP failure. | Actual failed frame navigation is reported promptly with recoverable state; separate reachability guesses do not hide the true failure. |
+| ID       | Needs | Browser procedure                                                    | Expected observations                                                             |
+| -------- | ----- | -------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| CODE-N01 | —     | Create Code on F2/F3 and open a text file.                           | Correct worker/root, highlighting and line numbers; no separate editor startup.   |
+| CODE-N02 | —     | Edit, Save and inspect the file from Explorer and terminal.          | Exact bytes on the worker; dirty state clears only after acknowledgment.          |
+| CODE-N03 | —     | Switch tabs and View/Edit modes with a dirty file.                   | Draft, selection, scroll and undo survive; View has no editing caret.             |
+| CODE-N04 | —     | Change checkout or close a dirty file; cancel, save or discard.      | Draft retained until an explicit decision; stale binding cannot redirect writes.  |
+| CODE-N05 | N     | Open a file window and use browser/phone viewports.                  | Consistent native editor, selection/copy and guarded saves.                       |
+| CODE-N06 | —     | View Gradle, batch and license files in standard and Pro appearance. | Language coloring, readable license documents and no extra editor tint/focus box. |
 
 ## TERM — PTYs, consoles and terminal services
 

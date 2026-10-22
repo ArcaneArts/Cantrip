@@ -15,7 +15,7 @@ import { gunzipSync } from "node:zlib";
 
 import { archiveDistribution } from "./archive-distribution.mjs";
 import { bundleNativeArtifacts, desktopWorkspaceBuilds } from "./bundle.mjs";
-import { normalizeTarget } from "./cantrip-code/build-lib.mjs";
+import { normalizeTarget } from "./native-target.mjs";
 import { serviceWorkspaceBuilds } from "./package-workspace-runtime.mjs";
 
 test("archives standalone services and native client bundles", async () => {
