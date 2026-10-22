@@ -30,7 +30,6 @@ import { explorerSurfaceSelectedPath } from "@/components/explorer/explorer-file
 import { explorerFileEntryForGraphPath } from "@/components/explorer/explorer-graph-routing";
 import { ExplorerImageViewport } from "@/components/explorer/explorer-image-viewport";
 import { nextExplorerEntryReplayKey } from "@/components/explorer/explorer-lifecycle";
-import type { ExplorerCodeEditorLifecycleActions } from "@/components/explorer/explorer-code-editor";
 import {
   EditorSessionStore,
   editorDocumentId,
@@ -65,11 +64,6 @@ import { cn } from "@/lib/utils";
 const StructuredFileVisual = lazy(async () => {
   const module = await import("@/components/explorer/structured-file-visual");
   return { default: module.StructuredFileVisual };
-});
-const RetainedExplorerCodeEditor = lazy(async () => {
-  const module =
-    await import("@/components/explorer/retained-explorer-code-editor");
-  return { default: module.RetainedExplorerCodeEditor };
 });
 
 function ExplorerMediaView({
@@ -175,7 +169,6 @@ export interface ExplorerHeaderState {
   back(): void;
   refresh(): void;
   openFileHistory?(): void;
-  openInVsCode?(): void;
   save(): Promise<boolean>;
   setFileMode(mode: ExplorerFileMode): void;
 }
@@ -256,14 +249,6 @@ export function ExplorerView({
   const transientFilePath = transientFile?.path;
   const transientFileCloseRef = useRef(transientFile?.close);
   transientFileCloseRef.current = transientFile?.close;
-  const codeEditorLifecycleRef =
-    useRef<ExplorerCodeEditorLifecycleActions | null>(null);
-  const handleCodeEditorLifecycleChange = useCallback(
-    (actions: ExplorerCodeEditorLifecycleActions | null) => {
-      codeEditorLifecycleRef.current = actions;
-    },
-    [],
-  );
   const previousActiveRef = useRef(active);
   const [entryReplayKey, setEntryReplayKey] = useState(0);
   const [selectedPath, setSelectedPath] = useState(() =>
@@ -317,15 +302,11 @@ export function ExplorerView({
     useState<EditorDocumentSession | null>(null);
   const nativeDocumentRef = useRef<EditorDocumentSession | null>(null);
   nativeDocumentRef.current = nativeDocument;
-  const [explicitVsCode, setExplicitVsCode] = useState(false);
   const [baselineContent, setBaselineContent] = useState("");
   const [draftVersion, setDraftVersion] = useState<string | null>(null);
   const [mediaRevision, setMediaRevision] = useState(0);
   const [viewStatePending, setViewStatePending] = useState(0);
   const [viewStateError, setViewStateError] = useState<string | null>(null);
-  // Sidebar prewarming may prepare file authorization. A workbench belongs
-  // only to a file explicitly opened in VS Code.
-  const retainInlineWorkbench = explicitVsCode;
   const streamEncryption = useExplorerWorkerEncryption(
     explorer,
     active ||
@@ -451,7 +432,6 @@ export function ExplorerView({
     setDraft("");
     setBaselineContent("");
     setDraftVersion(null);
-    setExplicitVsCode(false);
   }, [accountScope]);
   const nativeDocumentId = displayedSelectedPath
     ? editorDocumentId({
@@ -476,16 +456,9 @@ export function ExplorerView({
   const mediaType = displayedSelectedPath
     ? explorerMediaTypeForPath(displayedSelectedPath)
     : null;
-  const codeEditorVisible = displayedSelectedPath
-    ? explicitVsCode && fileMode === "edit" && !mediaType
-    : false;
   const graphVisible = graphRootPath !== undefined;
-  const codeEditorPath =
-    !graphVisible && codeEditorVisible ? displayedSelectedPath : null;
-  const codeEditorVisibleOnSurface = Boolean(active && codeEditorPath);
   const surfaceLifecycleState = {
     active,
-    codeEditorVisible: codeEditorVisibleOnSurface,
     keepInlineCodeWarm,
     pathPresent: displayedSelectedPath !== null,
     transient: transientFilePath !== undefined,
@@ -494,7 +467,6 @@ export function ExplorerView({
   surfaceLifecycleStateRef.current = surfaceLifecycleState;
   const previousSurfaceLifecycleStateRef = useRef<{
     active: boolean;
-    codeEditorVisible: boolean;
     keepInlineCodeWarm: boolean;
     path: string | null;
     transient: boolean;
@@ -567,7 +539,6 @@ export function ExplorerView({
     };
   }, [
     active,
-    codeEditorVisibleOnSurface,
     displayedSelectedPath,
     explorer.id,
     explorer.projectId,
@@ -611,16 +582,11 @@ export function ExplorerView({
     nativeDocument,
   ]);
   useEffect(() => {
-    if (
-      nativeDocument?.id === nativeDocumentId &&
-      !explicitVsCode &&
-      streamEncryptionReady
-    )
+    if (nativeDocument?.id === nativeDocumentId && streamEncryptionReady)
       onInlineCodeReady?.();
   }, [
     nativeDocument,
     nativeDocumentId,
-    explicitVsCode,
     streamEncryptionReady,
     onInlineCodeReady,
   ]);
@@ -686,7 +652,6 @@ export function ExplorerView({
       const previous = nativeDocumentRef.current;
       if (previous && discardDraft) sessions.current!.discard(previous.id);
       setNativeDocument(null);
-      setExplicitVsCode(false);
       setDraft("");
       setBaselineContent("");
       setDraftVersion(null);
@@ -1003,7 +968,6 @@ export function ExplorerView({
     const document = nativeDocumentRef.current;
     if (dirtyRef.current && document) sessions.current!.discard(document.id);
     setNativeDocument(null);
-    setExplicitVsCode(false);
     setDraft("");
     setBaselineContent("");
     setDraftVersion(null);
@@ -1028,25 +992,6 @@ export function ExplorerView({
     },
     [persistViewState],
   );
-
-  const openInVsCode = useCallback(() => {
-    void (async () => {
-      if (
-        dirtyRef.current &&
-        !window.confirm(
-          "Save this file's changes before opening it in VS Code?",
-        )
-      )
-        return;
-      if (!(await saveDraft())) return;
-      setExplicitVsCode(true);
-      if (selectedPathRef.current)
-        await persistViewState({
-          selectedPath: selectedPathRef.current,
-          fileMode: "edit",
-        });
-    })();
-  }, [persistViewState, saveDraft]);
 
   useEffect(() => {
     if (!active) return;
@@ -1080,10 +1025,6 @@ export function ExplorerView({
               })
           : undefined,
       save: saveDraft,
-      openInVsCode:
-        !graphVisible && !mediaType && selectedPath && !explicitVsCode
-          ? openInVsCode
-          : undefined,
       selectedPath: graphVisible ? null : selectedPath,
       setFileMode: changeFileMode,
     });
@@ -1109,9 +1050,7 @@ export function ExplorerView({
     selectedPath,
     structuredFormat,
     viewStatePending,
-    explicitVsCode,
     mediaType,
-    openInVsCode,
   ]);
 
   useEffect(() => {
@@ -1120,14 +1059,8 @@ export function ExplorerView({
     };
   }, [active, onHeaderChange]);
 
-  const prepareClose = useCallback(
-    () => codeEditorLifecycleRef.current?.prepareClose() ?? Promise.resolve(),
-    [],
-  );
-  const cancelClose = useCallback(
-    () => codeEditorLifecycleRef.current?.cancelClose(),
-    [],
-  );
+  const prepareClose = useCallback(() => Promise.resolve(), []);
+  const cancelClose = useCallback(() => {}, []);
   const lifecycle = useMemo<ExplorerLifecycleActions>(
     () => ({
       cancelClose,
@@ -1196,7 +1129,6 @@ export function ExplorerView({
       return;
     }
     setNativeDocument(null);
-    setExplicitVsCode(false);
     setDraft("");
     setBaselineContent("");
     setDraftVersion(null);
@@ -1250,8 +1182,7 @@ export function ExplorerView({
       )}
       data-slot="explorer-view"
     >
-      {!streamEncryptionReady &&
-      !(nativeDocument?.id === nativeDocumentId && !explicitVsCode) ? (
+      {!streamEncryptionReady && !(nativeDocument?.id === nativeDocumentId) ? (
         <div className="grid h-full flex-1 place-items-center p-6 text-sm text-muted-foreground">
           {streamEncryption.error ? (
             <div className="space-y-3 text-center">
@@ -1291,25 +1222,6 @@ export function ExplorerView({
               </Button>
             </div>
           ) : null}
-          {explicitVsCode ? (
-            <Suspense
-              fallback={<Loader2 className="m-auto size-5 animate-spin" />}
-            >
-              <RetainedExplorerCodeEditor
-                appearance={appearance}
-                explorerId={explorer.id}
-                onLifecycleChange={handleCodeEditorLifecycleChange}
-                onReady={onInlineCodeReady}
-                path={codeEditorPath}
-                prewarm={false}
-                retained={retainInlineWorkbench}
-                visible={codeEditorVisibleOnSurface}
-                workerOnline={workerOnline}
-                worktreeId={explorer.worktreeId}
-                workerId={explorer.activeWorkerId}
-              />
-            </Suspense>
-          ) : null}
           {graphVisible ? (
             <GitRepositoryGraphView
               projectId={explorer.projectId}
@@ -1325,7 +1237,7 @@ export function ExplorerView({
               }}
               onStatusChange={setGraphStatus}
             />
-          ) : selectedPath && !codeEditorVisible ? (
+          ) : selectedPath ? (
             <div className="min-h-0 flex-1 overflow-hidden">
               {mediaType ? (
                 <ExplorerMediaView

@@ -22,7 +22,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { SyntaxHighlightedCode } from "@/components/chat/markdown-code";
 import { Button } from "@/components/ui/button";
-import { monacoLanguageForPath } from "@/components/explorer/explorer-file-language";
+import { textLanguageForPath } from "@/components/explorer/explorer-file-language";
 import { openExternalUrl } from "@/lib/external-url";
 import { cn } from "@/lib/utils";
 
@@ -88,7 +88,7 @@ export function gitDiffImagePreviewFromUrl(
 }
 
 function languageClassName(path: string): string | undefined {
-  const language = monacoLanguageForPath(path);
+  const language = textLanguageForPath(path);
   if (!language || language === "plaintext") return undefined;
   const aliases: Record<string, string> = {
     bat: "bash",

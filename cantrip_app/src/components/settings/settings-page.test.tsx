@@ -227,7 +227,6 @@ describe("account settings", () => {
     const general = markup.indexOf(">General<");
     const appearance = markup.indexOf(">Appearance<");
     const usage = markup.indexOf(">Usage<");
-    const code = markup.indexOf(">Code<");
     const models = markup.indexOf(">Models<");
     const tasks = markup.indexOf(">Tasks<");
     const workers = markup.indexOf(">Workers<");
@@ -236,8 +235,8 @@ describe("account settings", () => {
     expect(general).toBeGreaterThanOrEqual(0);
     expect(appearance).toBeGreaterThan(general);
     expect(markup).not.toContain(">Elite<");
-    expect(code).toBeGreaterThan(appearance);
-    expect(usage).toBeGreaterThan(code);
+    expect(markup).not.toContain(">Code<");
+    expect(usage).toBeGreaterThan(appearance);
     expect(models).toBeGreaterThan(usage);
     expect(tasks).toBeGreaterThan(models);
     expect(workers).toBeGreaterThan(tasks);
@@ -266,9 +265,7 @@ describe("account settings", () => {
     ]);
     expect(
       settingsSearchResults("VSIX marketplace", settingsNavigationSections),
-    ).toEqual([
-      expect.objectContaining({ id: "extensions", sectionId: "code" }),
-    ]);
+    ).toEqual([]);
     expect(
       settingsSearchResults("brightness", settingsNavigationSections),
     ).toEqual([
@@ -302,16 +299,13 @@ describe("account settings", () => {
     ]);
   });
 
-  it("mounts the retained Code settings workbench only after Code is activated", () => {
-    expect(renderSettings("general")).not.toContain(
-      'data-slot="code-settings-surface"',
-    );
-    const code = renderSettings("code");
-    expect(code).toContain('data-slot="code-settings-surface"');
-    expect(code).toContain("Starting the Code customization workbench…");
-    expect(code).toContain("Editor and extensions");
-    expect(code).toContain("Code customization worker");
-    expect(code).not.toContain("VS Code settings</p>");
+  it("does not expose editor extension settings", () => {
+    expect(
+      settingsNavigationSections.some(
+        (section) => String(section.id) === "code",
+      ),
+    ).toBe(false);
+    expect(renderSettings("general")).not.toContain("Editor and extensions");
   });
 
   it("keeps the Elite configuration entry in Appearance without Pro Mode", () => {
@@ -361,9 +355,6 @@ describe("account settings", () => {
       'aria-label="Content gutters" type="checkbox" class="size-3.5 accent-primary" checked=""',
     );
     expect(enabled).toContain('data-content-gutter="standard"');
-    expect(
-      renderSettings("code", settingsWithContentGutters(true)),
-    ).not.toContain('data-content-gutter="standard"');
   });
 
   it("keeps random agent names disabled by default", () => {

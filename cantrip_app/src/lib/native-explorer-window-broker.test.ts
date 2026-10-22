@@ -26,7 +26,6 @@ vi.mock("@tauri-apps/api/core", async (original) => ({
   isTauri: () => state.tauri,
 }));
 import { createDesktopExplorerWindowBroker } from "./desktop-explorer-window-broker";
-import * as brokers from "./desktop-explorer-window-broker";
 import { DesktopExplorerWindowClient } from "./desktop-explorer-window-client";
 import {
   desktopExplorerWindowChannelName,
@@ -71,11 +70,7 @@ async function connect() {
     onContext: (value: DesktopExplorerWindowContext) => {
       context = value;
     },
-    onEditorEndpoint: vi.fn(),
-    onEditorReady: vi.fn(),
-    onEditorError: vi.fn(),
     onLaunchError: vi.fn(),
-    onVsCodeLaunch: vi.fn(),
     onContextRevoked: vi.fn(),
   };
   const client = new DesktopExplorerWindowClient(broker.launchId, callbacks);
@@ -136,55 +131,10 @@ describe("native desktop file broker", () => {
     expect(callbacks.onContextRevoked).not.toHaveBeenCalled();
     expect(broker.failed).toBe(false);
   });
-  it("creates and retires a legacy broker only after an explicit VS Code request", async () => {
-    state.tauri = true;
-    const dispose = vi.fn().mockResolvedValue(undefined);
-    const launch = vi
-      .spyOn(brokers, "createDesktopExplorerCodeWindowBroker")
-      .mockReturnValue({
-        launchId: "explicit-code-launch",
-        ready: Promise.resolve(),
-        failed: false,
-        dispose,
-        openFile: vi.fn(),
-      });
-    try {
-      const { broker, client, callbacks } = await connect();
-      expect(launch).not.toHaveBeenCalled();
-      client.openInVsCode();
-      await vi.waitFor(() =>
-        expect(callbacks.onVsCodeLaunch).toHaveBeenCalledWith(
-          "explicit-code-launch",
-          expect.objectContaining({ path: "src/main.ts", explorer }),
-        ),
-      );
-      expect(launch).toHaveBeenCalledOnce();
-      await broker.dispose();
-      expect(dispose).toHaveBeenCalledOnce();
-    } finally {
-      launch.mockRestore();
-    }
-  });
-  it("hands a browser window its own authenticated Code route without a main-window workbench", async () => {
-    const launch = vi.spyOn(brokers, "createDesktopExplorerCodeWindowBroker");
-    try {
-      const { broker, client, callbacks } = await connect();
-      client.openInVsCode();
-      await vi.waitFor(() =>
-        expect(callbacks.onVsCodeLaunch).toHaveBeenCalledWith(
-          broker.launchId,
-          expect.objectContaining({ editor: "vscode", path: "src/main.ts" }),
-        ),
-      );
-      expect(launch).not.toHaveBeenCalled();
-    } finally {
-      launch.mockRestore();
-    }
-  });
+
   it("opens, reads, and revision-saves through existing file APIs without creating a workbench", async () => {
     const { broker, client, callbacks, context } = await connect();
     await broker.ready;
-    expect(context.editor).toBe("native");
     expect(context.serverId).toBe("server-one");
     expect(context.ownerId).toBe("owner-one");
     expect(await client.readFile()).toMatchObject({
@@ -211,7 +161,6 @@ describe("native desktop file broker", () => {
     expect(
       api.createProtectedExplorerCodeSessionAttachment,
     ).not.toHaveBeenCalled();
-    expect(callbacks.onEditorEndpoint).not.toHaveBeenCalled();
   });
   it("routes a new path after the client receives its exact context", async () => {
     const { broker, client } = await connect();

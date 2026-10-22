@@ -27,20 +27,7 @@ vi.mock("@/components/explorer/explorer-file-browser", () => ({
 vi.mock("@/components/explorer/explorer-image-viewport", () => ({
   ExplorerImageViewport: () => createElement("div"),
 }));
-vi.mock("@/components/explorer/retained-explorer-code-editor", () => ({
-  RetainedExplorerCodeEditor: ({
-    path,
-    visible,
-  }: {
-    path: string | null;
-    visible: boolean;
-  }) =>
-    createElement("div", {
-      "data-path": path,
-      "data-native-code-editor": true,
-      "data-visible": visible,
-    }),
-}));
+
 vi.mock("@/components/editor/native-code-editor", () => ({
   NativeCodeEditor: ({ path, active }: { path: string; active: boolean }) =>
     createElement("div", {
@@ -57,9 +44,7 @@ vi.mock("@/components/explorer/use-explorer-worker-encryption", () => ({
     retry: vi.fn(),
   }),
 }));
-vi.mock("@/components/explorer/use-retained-inline-workbench", () => ({
-  useRetainedInlineWorkbench: () => true,
-}));
+
 vi.mock("@/components/git/git-graph", () => ({
   GitRepositoryGraphView: ({
     onActivateFile,

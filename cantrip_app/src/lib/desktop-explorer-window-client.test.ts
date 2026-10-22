@@ -29,9 +29,6 @@ describe("DesktopExplorerWindowClient", () => {
     const callbacks = {
       onContext: vi.fn(),
       onContextRevoked: vi.fn(),
-      onEditorEndpoint: vi.fn(),
-      onEditorError: vi.fn(),
-      onEditorReady: vi.fn(),
       onLaunchError: vi.fn(),
     };
     const client = new DesktopExplorerWindowClient(launchId, callbacks);
@@ -85,15 +82,6 @@ describe("DesktopExplorerWindowClient", () => {
       const request = event.data as DesktopExplorerWindowRequest;
       if (request.type === "launch.request") {
         broker.postMessage({ context, launchId, type: "launch.ready" });
-      } else if (request.type === "editor.workbench-ready") {
-        broker.postMessage({
-          configuredAtMs: 123,
-          launchId,
-          nonce: request.nonce,
-          path: context.path,
-          requestedAtMs: context.requestedAtMs,
-          type: "editor.ready",
-        });
       } else if (request.type === "file.read") {
         broker.postMessage({
           file,
@@ -110,61 +98,14 @@ describe("DesktopExplorerWindowClient", () => {
         resolveContext = resolve;
       },
     );
-    let resolveConfigured!: (value: number) => void;
-    const configured = new Promise<number>((resolve) => {
-      resolveConfigured = resolve;
-    });
     const client = new DesktopExplorerWindowClient(launchId, {
       onContext: resolveContext,
-      onEditorEndpoint: vi.fn(),
-      onEditorError: vi.fn(),
-      onEditorReady: resolveConfigured,
       onLaunchError: vi.fn(),
     });
     client.start();
-    client.editorWorkbenchMounted("mount_nonce_1234567890");
-    client.editorWorkbenchReady("mount_nonce_1234567890");
 
     await expect(receivedContext).resolves.toEqual(context);
-    await expect(configured).resolves.toBe(123);
     await expect(client.readFile()).resolves.toEqual(file);
-
-    client.dispose();
-    broker.close();
-  });
-
-  it("reports only verified workbench mount readiness and failure stages", async () => {
-    const launchId = crypto.randomUUID();
-    const broker = new BroadcastChannel(
-      desktopExplorerWindowChannelName(launchId),
-    );
-    const messages: DesktopExplorerWindowRequest[] = [];
-    broker.addEventListener("message", (event) => {
-      const request = event.data as DesktopExplorerWindowRequest;
-      if (request.type.startsWith("editor.")) messages.push(request);
-    });
-    const client = new DesktopExplorerWindowClient(launchId, {
-      onContext: vi.fn(),
-      onEditorEndpoint: vi.fn(),
-      onEditorError: vi.fn(),
-      onEditorReady: vi.fn(),
-      onLaunchError: vi.fn(),
-    });
-    client.start();
-
-    client.editorWorkbenchMounted("mount_nonce_1234567890");
-    client.editorWorkbenchReady("mount_nonce_1234567890");
-    client.editorWorkbenchFailed(
-      "mount_nonce_1234567890",
-      "frame failed",
-      "frame",
-    );
-    await vi.waitFor(() => expect(messages).toHaveLength(3));
-    expect(messages.map((message) => message.type)).toEqual([
-      "editor.workbench-mounted",
-      "editor.workbench-ready",
-      "editor.workbench-failed",
-    ]);
 
     client.dispose();
     broker.close();
@@ -186,9 +127,6 @@ describe("DesktopExplorerWindowClient", () => {
     );
     const client = new DesktopExplorerWindowClient(launchId, {
       onContext: resolveContext,
-      onEditorEndpoint: vi.fn(),
-      onEditorError: vi.fn(),
-      onEditorReady: vi.fn(),
       onLaunchError: vi.fn(),
     });
     client.start();
@@ -238,9 +176,6 @@ describe("DesktopExplorerWindowClient", () => {
     const onContext = vi.fn();
     const client = new DesktopExplorerWindowClient(launchId, {
       onContext,
-      onEditorEndpoint: vi.fn(),
-      onEditorError: vi.fn(),
-      onEditorReady: vi.fn(),
       onLaunchError: vi.fn(),
     });
     client.start();

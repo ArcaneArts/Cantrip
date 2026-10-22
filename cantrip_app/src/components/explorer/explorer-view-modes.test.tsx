@@ -9,20 +9,7 @@ import { ExplorerView, type ExplorerHeaderState } from "./explorer-view";
 vi.mock("@/components/explorer/explorer-file-browser", () => ({
   ExplorerFileBrowser: () => createElement("div"),
 }));
-vi.mock("@/components/explorer/retained-explorer-code-editor", () => ({
-  RetainedExplorerCodeEditor: ({
-    path,
-    visible,
-  }: {
-    path: string | null;
-    visible: boolean;
-  }) =>
-    createElement(
-      "div",
-      { "data-code-path": path, "data-code-visible": visible },
-      visible ? "Code endpoint failed (fixture)" : null,
-    ),
-}));
+
 vi.mock("@/components/explorer/use-explorer-worker-encryption", () => ({
   useExplorerWorkerEncryption: () => ({
     bindingKey: "binding-one",
@@ -31,9 +18,7 @@ vi.mock("@/components/explorer/use-explorer-worker-encryption", () => ({
     retry: vi.fn(),
   }),
 }));
-vi.mock("@/components/explorer/use-retained-inline-workbench", () => ({
-  useRetainedInlineWorkbench: () => true,
-}));
+
 vi.mock("@/components/git/git-graph", () => ({
   GitRepositoryGraphView: () => createElement("div"),
 }));

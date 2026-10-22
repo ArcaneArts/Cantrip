@@ -14,7 +14,6 @@ const channel = new BroadcastChannel(
   desktopExplorerWindowChannelName(launchId),
 );
 const context = {
-  editor: "native",
   serverId: "qa-server",
   ownerId: "qa-owner",
   appearance: "dark",
