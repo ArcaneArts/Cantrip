@@ -888,10 +888,11 @@ export function useChatTranscriptController({
   );
   const latestLiveActivityGroupKey = useMemo(
     () =>
-      chat.status === "running" || chat.status === "waiting-for-approval"
+      !chat.automationPaused &&
+      (chat.status === "running" || chat.status === "waiting-for-approval")
         ? findLatestLiveActivityGroupKey(timeline)
         : null,
-    [timeline, chat.status],
+    [timeline, chat.status, chat.automationPaused],
   );
   const latestEditableMessage = useMemo(
     () =>
