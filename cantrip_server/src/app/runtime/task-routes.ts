@@ -68,6 +68,11 @@ import { createProjectTaskPauseRuntime } from "./project-task-pause-runtime.js";
 import { installTaskWorkloadRoute } from "./task-workload-route.js";
 import { WorkerUnavailableError } from "../../workers/bridge.js";
 import { createTaskExecutionRecovery } from "./task-execution-recovery.js";
+import {
+  createTaskAutomaticRetry,
+  retryTaskOperation,
+} from "./task-automatic-retry.js";
+import { classifyTaskFailure } from "../../tasks/automatic-retry.js";
 
 import {
   STREAMING_WORKER_COMMAND_TIMEOUT_MS,
@@ -161,6 +166,7 @@ export function installTaskRouteRuntime(
       if (!context || context.experience !== "task")
         return reply.code(404).send({ error: "Task not found." });
       try {
+        await repository.taskRetries.reset(owner, context.chatId);
         if (!(await taskRecovery.recover(context.chatId, true)))
           return reply.code(409).send({
             error:
@@ -320,6 +326,11 @@ export function installTaskRouteRuntime(
                 request.operationId,
                 assistantMessage.id,
               );
+              if (request.classification.kind !== "finalize")
+                await repository.taskRetries.clearPending(
+                  ownerId,
+                  context.chatId,
+                );
               publishChatInvalidation(context.chatId, "task", null, context);
             },
             async afterCompleted() {
@@ -618,6 +629,7 @@ export function installTaskRouteRuntime(
   const queueTaskScheduleTick = (): void => {
     if (activeTaskScheduleTick) return;
     activeTaskScheduleTick = (async () => {
+      await automaticRetry.tick();
       const schedulerOwners =
         await repository.taskDispatch.listSchedulerOwners();
       for (const schedulerOwner of schedulerOwners) {
@@ -763,6 +775,7 @@ export function installTaskRouteRuntime(
   const finishClaimedTaskFailure = async (
     ownerId: string,
     claim: ClaimedTaskDispatch,
+    failure?: unknown,
   ): Promise<void> => {
     let cleanupError: unknown = null;
     try {
@@ -801,6 +814,13 @@ export function installTaskRouteRuntime(
         claim.lease,
         completed ? "succeeded" : "failed",
       );
+      if (!completed)
+        await repository.taskRetries.noteFailure(
+          ownerId,
+          claim.cycle.chatId,
+          `dispatch:${claim.cycle.id}:${claim.lease.fencingToken}`,
+          classifyTaskFailure(failure),
+        );
       publishChatInvalidation(claim.cycle.chatId, "task", null, {
         experience: "task",
         projectId: claim.projectId,
@@ -918,6 +938,13 @@ export function installTaskRouteRuntime(
                   throw dispatchError;
                 }
               }
+              publishChatInvalidation(context.chatId, "task", null, context);
+              await repository.taskRetries.noteFailure(
+                ownerId,
+                context.chatId,
+                `goal-launch:${claim.cycle.id}:${claim.lease.fencingToken}`,
+                classifyTaskFailure(error),
+              );
               publishChatInvalidation(context.chatId, "task", null, context);
               queueTaskScheduleTick();
             }
@@ -1065,6 +1092,10 @@ export function installTaskRouteRuntime(
                           assistantMessage.id,
                         );
                         if (request.classification.kind !== "finalize") {
+                          await repository.taskRetries.clearPending(
+                            ownerId,
+                            context.chatId,
+                          );
                           await repository.taskDispatch.settle(
                             claim.lease,
                             "succeeded",
@@ -1082,8 +1113,8 @@ export function installTaskRouteRuntime(
                         if (request.classification.kind !== "finalize") return;
                         await launchClaimedGoal(request.operationId);
                       },
-                      async onFailed() {
-                        await finishClaimedTaskFailure(ownerId, claim);
+                      async onFailed({ error }) {
+                        await finishClaimedTaskFailure(ownerId, claim, error);
                       },
                     },
                   },
@@ -1138,7 +1169,7 @@ export function installTaskRouteRuntime(
           },
           "Scheduled Task operation failed to start",
         );
-        await finishClaimedTaskFailure(ownerId, claim);
+        await finishClaimedTaskFailure(ownerId, claim, error);
       }
     });
   };
@@ -1225,13 +1256,6 @@ export function installTaskRouteRuntime(
     });
   };
 
-  const taskScheduleTimer = setInterval(
-    queueTaskScheduleTick,
-    TASK_SCHEDULE_POLL_MS,
-  );
-  taskScheduleTimer.unref();
-  queueTaskScheduleTick();
-
   const queueTaskOperation = createTaskOperationQueue({
     repository,
     applicationOwnerId,
@@ -1239,6 +1263,31 @@ export function installTaskRouteRuntime(
     queueTaskScheduleTick,
     nameTask,
   });
+  const automaticRetry = createTaskAutomaticRetry({
+    repository,
+    recover: taskRecovery.recover,
+    queue: (chatId, input, kind) =>
+      queueTaskOperation(chatId, input, kind, { automatic: true }),
+    runAsOwner,
+    observe: (context, task) =>
+      readEncryptedTaskGoal(context, task, null, true, false, undefined, true),
+    publish: (chatId, projectId) =>
+      publishChatInvalidation(chatId, "task", null, {
+        experience: "task",
+        projectId,
+      }),
+    report: (chatId, error) =>
+      app.log.warn(
+        { chatId, err: error },
+        "Automatic Task retry did not start; history is retained",
+      ),
+  });
+  const taskScheduleTimer = setInterval(
+    queueTaskScheduleTick,
+    TASK_SCHEDULE_POLL_MS,
+  );
+  taskScheduleTimer.unref();
+  queueTaskScheduleTick();
 
   installTaskWorkloadRoute(app, { applicationOwnerId, repository });
 
@@ -1899,32 +1948,10 @@ export function installTaskRouteRuntime(
           .send({ error: "This Task has no failed operation to retry." });
       }
       try {
-        if (task.lastError.operationKind === "finalize") {
-          const rounds = await repository.tasks.listRounds(
-            applicationOwnerId(),
-            request.params.chatId,
-          );
-          const latest = rounds.find(
-            (round) => round.ordinal === task.planningRound,
-          );
-          const prepared = latest
-            ? await repository.tasks.getOperationContext(
-                applicationOwnerId(),
-                request.params.chatId,
-                { operationId: latest.id },
-              )
-            : null;
-          if (prepared?.relayResult?.goal) {
-            const retried = await queueTaskOperation(
-              request.params.chatId,
-              { operationId: latest.id, rowVersion: input.rowVersion },
-              "finalize",
-            );
-            return retried
-              ? reply.code(202).send(taskOpaqueSummarySchema.parse(retried))
-              : reply.code(404).send({ error: "Task not found." });
-          }
-        }
+        await repository.taskRetries.reset(
+          applicationOwnerId(),
+          request.params.chatId,
+        );
         if (task.lastError.operationKind === "implementation") {
           return reply.code(409).send({
             error:
@@ -1939,10 +1966,12 @@ export function installTaskRouteRuntime(
             error: "The encrypted retry does not match the failed operation.",
           });
         }
-        const retried = await queueTaskOperation(
-          request.params.chatId,
-          input,
-          task.lastError.operationKind,
+        const retried = await retryTaskOperation(
+          repository,
+          applicationOwnerId(),
+          { ...task, rowVersion: input.rowVersion },
+          queueTaskOperation,
+          input.operationId,
         );
         return retried
           ? reply.code(202).send(taskOpaqueSummarySchema.parse(retried))
@@ -1959,6 +1988,10 @@ export function installTaskRouteRuntime(
     reconcileTaskExecutions: taskRecovery.reconcile,
     queueTaskScheduleTick,
     taskScheduleTimer,
-    waitForActiveTaskScheduleTick: () => activeTaskScheduleTick,
+    stopAutomaticRetries: automaticRetry.stop,
+    waitForActiveTaskScheduleTick: async () => {
+      await activeTaskScheduleTick;
+      await automaticRetry.drain();
+    },
   };
 }

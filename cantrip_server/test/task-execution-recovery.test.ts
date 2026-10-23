@@ -105,6 +105,40 @@ function fixture(
 }
 
 describe("Task session recovery", () => {
+  it("never turns an automatic retry into a manual unpause", async () => {
+    const f = fixture({ paused: true, native: "idle" });
+    expect(await f.recovery.recover("chat", true, true)).toBe(true);
+    expect(f.unpause).not.toHaveBeenCalled();
+    expect(f.goals.resumeChatAutomation).not.toHaveBeenCalled();
+  });
+  it.each(["blocked", "paused", "usageLimited", "budgetLimited"])(
+    "does not automatically resume native %s",
+    async (status) => {
+      const f = fixture({ native: "idle" });
+      f.goals.readEncryptedTaskGoal.mockResolvedValue({
+        goal: { threadId: "thread", status },
+        execution: { threadId: "thread", status: "idle" },
+        task: { ...f.task, state: status === "blocked" ? "blocked" : "failed" },
+      } as never);
+      expect(await f.recovery.recover("chat", true, true)).toBe(true);
+      expect(f.goals.resumeChatAutomation).not.toHaveBeenCalled();
+      expect(
+        f.repository.taskDispatch.recoverStartedGoal,
+      ).not.toHaveBeenCalled();
+    },
+  );
+  it("reacquires real capacity for automatic retries after a released failure", async () => {
+    const f = fixture({ native: "idle" });
+    f.task.dispatch.state = "failed";
+    await f.recovery.recover("chat", true, true);
+    expect(f.repository.taskDispatch.recoverStartedGoal).toHaveBeenCalledWith(
+      "owner",
+      f.task.dispatch,
+      "server:new",
+      expect.any(Date),
+      { allowSettled: true },
+    );
+  });
   it("does not misreport an unavailable checkout as a different worker", async () => {
     const f = fixture();
     f.repository.getProjectWorktreeContext.mockResolvedValue(null as never);
@@ -237,10 +271,21 @@ describe("Task session recovery", () => {
       true,
     );
   });
-  it.each(["offline", "replacement", "failed", "unobserved"])(
+  it("retries a native system error on the same thread instead of refusing the actual turn", async () => {
+    const f = fixture({ native: "failed" });
+    expect(await f.recovery.recover("chat", true, true)).toBe(true);
+    expect(f.repository.updateChatWorktree).not.toHaveBeenCalled();
+    expect(f.repository.setChatStatus).toHaveBeenCalledWith("chat", "idle");
+    expect(f.goals.resumeChatAutomation).toHaveBeenCalledWith(
+      "chat",
+      true,
+      true,
+    );
+  });
+  it.each(["offline", "replacement", "unobserved"])(
     "does not replace or launch a session after %s",
     async (kind) => {
-      const f = fixture({ native: kind === "failed" ? "failed" : "running" });
+      const f = fixture({ native: "running" });
       if (kind === "offline") f.bridge.isConnected.mockReturnValue(false);
       if (kind === "replacement") f.context.threadId = "replacement";
       if (kind === "unobserved")

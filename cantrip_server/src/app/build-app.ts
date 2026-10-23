@@ -1345,6 +1345,7 @@ export async function buildApp({
     closeSessionSockets(() => true, "Server is shutting down");
     clearInterval(agentInteractionExpiryTimer);
     clearInterval(taskScheduleTimer);
+    taskRouteRuntime.stopAutomaticRetries();
     taskGoalRuntime.close();
     clearInterval(workerCatalogRefreshTimer);
     modelRoutingRuntime.close();

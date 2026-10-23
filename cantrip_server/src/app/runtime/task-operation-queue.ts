@@ -21,6 +21,7 @@ export function createTaskOperationQueue({
     chatId: string,
     input: TaskOperationStart,
     operationKind: "direct" | "initial-plan" | "continue-plan" | "finalize",
+    { automatic = false }: { automatic?: boolean } = {},
   ): Promise<TaskOpaqueSummary | null> => {
     const ownerId = applicationOwnerId();
     await repository.taskDispatch.enqueue(
@@ -30,6 +31,7 @@ export function createTaskOperationQueue({
       operationKind,
       input.rowVersion,
     );
+    if (!automatic) await repository.taskRetries.reset(ownerId, chatId);
     publishChatInvalidation(chatId, "task");
     const task = await repository.tasks.get(ownerId, chatId);
     if (

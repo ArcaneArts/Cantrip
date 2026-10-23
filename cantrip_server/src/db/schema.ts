@@ -1,4 +1,5 @@
 import type { CuaEffectConfiguration } from "@cantrip/protocol/computer-use-effects";
+import type { TaskRetryRecord } from "../tasks/automatic-retry.js";
 import type {
   AgentInteractionRequestPayload,
   AgentInteractionResponse,
@@ -3519,6 +3520,7 @@ export const tasks = pgTable(
     }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     lastError: jsonb("last_error").$type<TaskProtectedLastErrorMetadata>(),
+    automaticRetry: jsonb("automatic_retry").$type<TaskRetryRecord>(),
     schedulerRevision: integer("scheduler_revision").notNull().default(1),
     rowVersion: integer("row_version").notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -3567,6 +3569,11 @@ export const tasks = pgTable(
       table.createdAt,
     ),
     index("tasks_last_worker_index").on(table.lastTaskWorkerId),
+    index("tasks_automatic_retry_pending_index")
+      .on(table.updatedAt)
+      .where(
+        sql`${table.automaticRetry}->>'status' IN ('scheduled', 'retrying') OR (${table.state} = 'failed' AND ${table.automaticRetry} IS NULL AND ${table.lastError} IS NOT NULL)`,
+      ),
   ],
 );
 

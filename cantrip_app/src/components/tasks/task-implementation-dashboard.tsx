@@ -45,6 +45,7 @@ import { taskCanBeDeleted } from "./task-deletion";
 import { TaskInteractionRequests } from "./task-interaction-requests";
 import { TaskListBackButton } from "./task-list-back-button";
 import { TaskOverviewSummary } from "./task-overview-summary";
+import { TaskRetryStatus, taskRetryFailureLabel } from "./task-retry-status";
 
 const goalLabels: Record<TaskGoalSnapshot["status"], string> = {
   active: "Running",
@@ -76,6 +77,17 @@ export function taskImplementationStatusLabel(
   reconnecting = false,
 ): string {
   if (task.state === "complete") return "Complete";
+  if (task.dispatch?.state === "queued")
+    return automationPaused ? "Paused" : "Queued";
+  if (
+    task.automaticRetry &&
+    !active &&
+    !automationPaused &&
+    !awaitingApproval &&
+    task.state !== "paused" &&
+    task.state !== "blocked"
+  )
+    return taskRetryFailureLabel(task);
   if (task.state === "blocked")
     return goal &&
       ["blocked", "usageLimited", "budgetLimited"].includes(goal.status)
@@ -83,7 +95,6 @@ export function taskImplementationStatusLabel(
       : "Blocked";
   if (task.state === "failed" || chatFailed) return "Failed";
   if (reconnecting) return "Reconnecting";
-  if (task.dispatch?.state === "queued") return "Queued";
   if (task.state === "paused" || automationPaused) return "Paused";
   if (awaitingApproval) return "Needs approval";
   if (!task.planGoalEnabled && active) return "Running";
@@ -325,9 +336,13 @@ export function TaskImplementationDashboard({
     statusLabel === "Paused" &&
     taskImplementationCanResume(task, goal, chat.automationPaused);
   const showRetry =
-    ["Failed", "Blocked", "Usage limited", "Budget reached"].includes(
-      statusLabel,
-    ) && taskImplementationCanRecover(task);
+    statusLabel !== "Paused" &&
+    (task.state === "failed" ||
+      Boolean(task.automaticRetry) ||
+      ["Failed", "Blocked", "Usage limited", "Budget reached"].includes(
+        statusLabel,
+      )) &&
+    taskImplementationCanRecover(task);
   const showLiveActivity = taskImplementationShowsLiveActivity(
     task,
     goal,
@@ -363,8 +378,15 @@ export function TaskImplementationDashboard({
               </h2>
               <Badge variant="outline">{statusLabel}</Badge>
             </div>
-            <p className="mt-0.5 truncate text-xs text-muted-foreground">
-              {taskImplementationStatusDescription(task, statusLabel)}
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              <TaskRetryStatus
+                task={task}
+                paused={chat.automationPaused}
+                fallback={taskImplementationStatusDescription(
+                  task,
+                  statusLabel,
+                )}
+              />
             </p>
           </div>
           <Button

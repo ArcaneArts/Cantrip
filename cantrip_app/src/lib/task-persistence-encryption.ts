@@ -192,6 +192,7 @@ export async function openTaskOpaqueSummary(
       },
     });
     return taskDetailSchema.parse({
+      automaticRetry: opaque.automaticRetry,
       chatId: opaque.chatId,
       planGoalEnabled: opaque.planGoalEnabled,
       priority: opaque.priority,

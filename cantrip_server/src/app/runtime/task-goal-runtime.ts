@@ -26,7 +26,9 @@ import {
   type TaskOpaqueContent,
   type TaskMessageOpaqueContent,
   type TaskGoalWorkerResult,
+  type TaskGoalSyncContext,
 } from "@cantrip/protocol/tasks";
+import { classifyTaskFailure } from "../../tasks/automatic-retry.js";
 import { TaskConflictError } from "../../db/tasks.js";
 import type { FastifyInstance } from "fastify";
 
@@ -93,7 +95,9 @@ export interface TaskGoalRuntimeDependencies
 
 class TaskGoalLaunchError extends Error {
   constructor(readonly failureTask: TaskOpaqueContent) {
-    super("Task Goal startup failed.");
+    super(
+      failureTask.classification.lastError?.code ?? "Task Goal startup failed.",
+    );
   }
 }
 
@@ -516,6 +520,7 @@ export function createTaskGoalRuntime({
     string,
     { lease: TaskDispatchWorkerLease; timer: ReturnType<typeof setInterval> }
   >();
+  let closing = false;
 
   const taskDispatchCycleLease = (
     dispatch: TaskDispatchCycleSummary | null,
@@ -552,6 +557,10 @@ export function createTaskGoalRuntime({
   };
 
   const retainTaskGoalLease = async (lease: TaskDispatchWorkerLease) => {
+    if (closing)
+      throw new Error(
+        "The server is shutting down; Task recovery will continue after restart.",
+      );
     const retained = retainedTaskGoalLeases.get(lease.cycleId);
     if (
       retained?.lease.fencingToken === lease.fencingToken &&
@@ -561,6 +570,10 @@ export function createTaskGoalRuntime({
     }
     releaseTaskGoalLease(lease.cycleId);
     await repository.taskDispatch.heartbeat(lease);
+    if (closing)
+      throw new Error(
+        "The server is shutting down; Task recovery will continue after restart.",
+      );
     const timer = setInterval(
       () => {
         void repository.taskDispatch.heartbeat(lease).catch((error) => {
@@ -633,6 +646,8 @@ export function createTaskGoalRuntime({
     } | null = null,
     observeExecution = false,
     activateGoal = false,
+    runtimeFailure?: TaskGoalSyncContext["runtimeFailure"],
+    observationOnly = false,
   ) => {
     if (!context.threadId) {
       return { goal: null, message: null, task };
@@ -651,6 +666,7 @@ export function createTaskGoalRuntime({
         provider: runtime.provider,
         permissionProfileId: effectivePermissionProfile(context).effectiveId,
         taskContext: {
+          ...(runtimeFailure ? { runtimeFailure } : {}),
           task: taskContentFromSummary(task),
           automationPaused: context.automationPaused,
           chatStatus: context.status,
@@ -672,7 +688,8 @@ export function createTaskGoalRuntime({
     }
     // No native Goal is a valid observation (e.g. an older handoff lost it),
     // not corrupt ciphertext and not evidence that this Task completed.
-    if (!result.goal) return { ...result, task };
+    if ((!result.goal && !runtimeFailure) || observationOnly)
+      return { ...result, task };
     let synchronized: TaskOpaqueSummary | null;
     try {
       synchronized = await repository.tasks.syncImplementationState(
@@ -736,9 +753,40 @@ export function createTaskGoalRuntime({
       return;
     }
     try {
-      await readEncryptedTaskGoal(context, task);
+      const failure = turnFailed
+        ? {
+            kind: classifyTaskFailure(turnError),
+            occurredAt: new Date().toISOString(),
+          }
+        : undefined;
+      const observed = await readEncryptedTaskGoal(
+        context,
+        task,
+        null,
+        false,
+        false,
+        failure,
+      );
+      if (failure && observed.task.state === "failed") {
+        await repository.taskRetries.noteFailure(
+          applicationOwnerId(),
+          chatId,
+          `goal:${context.threadId}:${failure.occurredAt}`,
+          classifyTaskFailure(observed.task.lastError?.code ?? failure.kind),
+        );
+        publishChatInvalidation(chatId, "task", null, context);
+      } else if (["complete", "blocked"].includes(observed.task.state)) {
+        await repository.taskRetries.clearPending(applicationOwnerId(), chatId);
+        publishChatInvalidation(chatId, "task", null, context);
+      }
     } catch (error) {
       if (!turnFailed) throw error;
+      await repository.taskRetries.noteFailure(
+        applicationOwnerId(),
+        chatId,
+        `goal-observation:${lease.cycleId}:${Date.now()}`,
+        classifyTaskFailure(turnError ?? error),
+      );
       releaseTaskGoalLease(lease.cycleId);
       try {
         await repository.taskDispatch.heartbeat(lease);
@@ -927,6 +975,7 @@ export function createTaskGoalRuntime({
   };
 
   const close = (): void => {
+    closing = true;
     for (const { timer } of retainedTaskGoalLeases.values()) {
       clearInterval(timer);
     }

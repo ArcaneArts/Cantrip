@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  taskAutomaticRetrySchema,
+  taskFailureKindSchema,
+} from "./task-retry.js";
+export * from "./task-retry.js";
 
 import {
   taskDispatchCycleSummarySchema,
@@ -175,6 +180,7 @@ export const taskLastErrorSchema = z.object({
 });
 
 export const taskDetailSchema = z.object({
+  automaticRetry: taskAutomaticRetrySchema.nullable().optional(),
   chatId: z.string().min(1),
   planGoalEnabled: z.boolean(),
   priority: taskPrioritySchema.default(0),
@@ -910,6 +916,10 @@ export const taskMessageRelayResultSchema = z
 
 export const taskGoalSyncContextSchema = z
   .object({
+    runtimeFailure: z
+      .object({ kind: taskFailureKindSchema, occurredAt: z.iso.datetime() })
+      .strict()
+      .optional(),
     task: taskOpaqueContentSchema,
     automationPaused: z.boolean(),
     chatStatus: z.enum([
@@ -1017,6 +1027,7 @@ export const taskEncryptedOperationStartSchema = z
 
 export const taskOpaqueSummarySchema = taskProtectedClassificationSchema
   .extend({
+    automaticRetry: taskAutomaticRetrySchema.nullable().optional(),
     chatId: z.string().min(1).max(200),
     planGoalEnabled: z.boolean(),
     priority: taskPrioritySchema.default(0),

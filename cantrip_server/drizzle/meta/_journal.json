@@ -1611,6 +1611,13 @@
       "when": 1792653208625,
       "tag": "0229_remove_vscode_runtime",
       "breakpoints": true
+    },
+    {
+      "idx": 230,
+      "version": "7",
+      "when": 1792728000000,
+      "tag": "0230_task_automatic_retry",
+      "breakpoints": true
     }
   ]
 }

@@ -156,6 +156,37 @@ function fixture() {
 }
 
 describe("encrypted Task Goal observation and handoff", () => {
+  it("persists a real failed turn even when its Goal attachment has disappeared", async () => {
+    const f = fixture();
+    const failed = {
+      ...f.opaque,
+      classification: { ...f.opaque.classification, state: "failed" },
+    };
+    f.request.mockResolvedValue({
+      goal: null,
+      task: failed,
+      message: null,
+    } as never);
+    f.repository.tasks.syncImplementationState.mockResolvedValue({
+      ...f.task,
+      state: "failed",
+    });
+    const result = await f.goals.readEncryptedTaskGoal(
+      f.context,
+      f.task,
+      null,
+      false,
+      false,
+      { kind: "timeout", occurredAt: "2026-10-22T00:00:00.000Z" },
+    );
+    expect(result.goal).toBeNull();
+    expect(result.task.state).toBe("failed");
+    expect(f.repository.tasks.syncImplementationState).toHaveBeenCalledWith(
+      "owner",
+      "chat",
+      { rowVersion: 1, task: failed },
+    );
+  });
   it("accepts an absent Goal without synchronizing or inventing completion", async () => {
     const f = fixture();
     f.request.mockResolvedValue({
