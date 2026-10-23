@@ -9,13 +9,13 @@ const directory = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  worker: { format: "es" },
   optimizeDeps: {
     exclude: ["@xterm/addon-fit", "@xterm/xterm"],
   },
   resolve: {
     alias: {
       "@": path.resolve(directory, "src"),
-      "monaco-vs": path.resolve(directory, "node_modules/monaco-editor/esm/vs"),
     },
   },
   server: {

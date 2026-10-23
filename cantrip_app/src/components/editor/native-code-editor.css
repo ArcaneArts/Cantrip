@@ -1,0 +1,179 @@
+.cantrip-editor {
+  --syntax-comment: #667085;
+  --syntax-keyword: #8540a6;
+  --syntax-string: #1c713f;
+  --syntax-number: #a34c09;
+  --syntax-type: #176c87;
+  --syntax-function: #79521e;
+  --syntax-tag: #a42b45;
+  display: flex;
+  flex: 1;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--background);
+  color: var(--foreground);
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    monospace;
+  font-size: 14px;
+  line-height: 24px;
+  font-variant-ligatures: none;
+  font-kerning: none;
+  tab-size: 2;
+}
+.pro-mode .cantrip-editor {
+  background: transparent;
+}
+.cantrip-editor,
+.cantrip-editor * {
+  box-sizing: border-box;
+}
+.dark .cantrip-editor {
+  --syntax-comment: #94a3b8;
+  --syntax-keyword: #c4a1ef;
+  --syntax-string: #92cf9b;
+  --syntax-number: #efb987;
+  --syntax-type: #87cddb;
+  --syntax-function: #e4cb8e;
+  --syntax-tag: #f19aa7;
+}
+.cantrip-editor-gutter {
+  flex: 0 0 var(--editor-gutter-width);
+  width: var(--editor-gutter-width);
+  overflow: hidden;
+  user-select: none;
+  color: var(--muted-foreground);
+  text-align: right;
+  padding-right: 1ch;
+  border-right: 1px solid transparent;
+  transition: border-color 150ms;
+}
+@media (hover: hover) {
+  .cantrip-editor:hover .cantrip-editor-gutter {
+    border-right-color: var(--border);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cantrip-editor-gutter {
+    transition: none;
+  }
+}
+.cantrip-editor-body {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+.cantrip-editor-paint {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.cantrip-editor-code {
+  width: max-content;
+  min-width: 100%;
+  padding: 0 12px;
+  white-space: pre;
+}
+.cantrip-editor-line {
+  height: 24px;
+  line-height: 24px;
+  white-space: pre;
+}
+.cantrip-editor-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 12px;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  box-shadow: none;
+  resize: none;
+  overflow: auto;
+  background: transparent;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  caret-color: var(--foreground);
+  font: inherit;
+  line-height: 24px;
+  letter-spacing: inherit;
+  tab-size: inherit;
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
+  overscroll-behavior: contain;
+}
+.cantrip-editor-input::selection {
+  background: color-mix(in srgb, var(--primary) 25%, transparent);
+}
+.cantrip-editor .syntax-comment {
+  color: var(--syntax-comment);
+}
+.cantrip-editor .syntax-keyword,
+.cantrip-editor .syntax-literal {
+  color: var(--syntax-keyword);
+}
+.cantrip-editor .syntax-string {
+  color: var(--syntax-string);
+}
+.cantrip-editor .syntax-number {
+  color: var(--syntax-number);
+}
+.cantrip-editor .syntax-type,
+.cantrip-editor .syntax-attribute,
+.cantrip-editor .syntax-variable {
+  color: var(--syntax-type);
+}
+.cantrip-editor .syntax-function {
+  color: var(--syntax-function);
+}
+.cantrip-editor .syntax-tag {
+  color: var(--syntax-tag);
+}
+.cantrip-editor .syntax-heading {
+  color: var(--syntax-keyword);
+}
+.high-contrast .cantrip-editor {
+  --syntax-comment: #525252;
+  --syntax-keyword: #6414a3;
+  --syntax-string: #006b2d;
+  --syntax-number: #923c00;
+  --syntax-type: #005b76;
+  --syntax-function: #6b4500;
+  --syntax-tag: #a00028;
+}
+.dark.high-contrast .cantrip-editor {
+  --syntax-comment: #c0c0c0;
+  --syntax-keyword: #e1bcff;
+  --syntax-string: #a8ffba;
+  --syntax-number: #ffd5a7;
+  --syntax-type: #9beaff;
+  --syntax-function: #fff0a3;
+  --syntax-tag: #ffb7ca;
+}
+@media (pointer: coarse), (max-width: 640px) {
+  .cantrip-editor {
+    font-size: 16px;
+  }
+}
+@media (forced-colors: active) {
+  .cantrip-editor-paint {
+    display: none;
+  }
+  .cantrip-editor-input {
+    color: CanvasText;
+    -webkit-text-fill-color: CanvasText;
+    caret-color: CanvasText;
+  }
+}
+.cantrip-editor-input[readonly] {
+  caret-color: transparent;
+}

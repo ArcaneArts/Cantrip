@@ -34,10 +34,12 @@ describe("Explorer lifecycle preparation", () => {
   });
 
   it("flushes view state only after a dirty rebind is confirmed", async () => {
-    const actions = lifecycle({ dirty: true });
+    const actions = lifecycle({ dirty: true, discard: vi.fn() });
     expect(await prepareExplorerRebind(actions, () => false)).toBe("cancelled");
+    expect(actions.discard).not.toHaveBeenCalled();
     expect(actions.flushViewState).not.toHaveBeenCalled();
     expect(await prepareExplorerRebind(actions, () => true)).toBe("ready");
+    expect(actions.discard).toHaveBeenCalledOnce();
     expect(actions.flushViewState).toHaveBeenCalledOnce();
   });
 

@@ -25,7 +25,11 @@ import {
 import * as schema from "../src/db/schema.js";
 import { SecretVault } from "../src/security/secret-vault.js";
 
-import { protectedProjectFields } from "./private-label-fixture.js";
+import {
+  protectedChatFields,
+  protectedProjectFields,
+} from "./private-label-fixture.js";
+import { reconcileTaskTurnPlacement } from "../src/app/runtime/task-turn-placement.js";
 
 const migrationsFolder = fileURLToPath(new URL("../drizzle", import.meta.url));
 const encryptedTaskContent = {
@@ -157,6 +161,385 @@ const eligible = async () => ({
 });
 
 describe("Task dispatch scheduling", () => {
+  it("admits a follow-up after a blocked Task's secondary checkout was cleaned up", async () => {
+    const f = await fixture();
+    try {
+      const task = await addTask(f, {
+        createdAt: new Date(),
+        planGoalEnabled: true,
+      });
+      await f.database
+        .update(schema.chats)
+        .set({
+          protectedLabel: protectedChatFields(task.chatId).titleProtection,
+        })
+        .where(eq(schema.chats.id, task.chatId));
+      const primary = (
+        await f.repository.listProjectWorktrees(LOCAL_USER_ID, task.projectId)
+      )[0]!;
+      const secondaryId = randomUUID();
+      await f.database.insert(schema.projectWorktrees).values({
+        id: secondaryId,
+        projectSourceId: primary.projectSourceId,
+        workerId: primary.workerId,
+        name: "Completed work",
+        absolutePath: "/completed-work",
+        displayPath: "/completed-work",
+        origin: "agent",
+        lifecycleState: "ready",
+      });
+      await f.repository.updateChatWorktree(LOCAL_USER_ID, task.chatId, {
+        worktreeId: secondaryId,
+        mode: "agent-managed",
+      });
+      await f.repository.updateChatRuntime(
+        task.chatId,
+        primary.workerId,
+        secondaryId,
+        "historical-thread",
+        DEFAULT_MODEL_ROUTE_ID,
+        "ready",
+      );
+      await f.database
+        .update(schema.tasks)
+        .set({ state: "blocked" })
+        .where(eq(schema.tasks.chatId, task.chatId));
+      await f.database
+        .update(schema.projectWorktrees)
+        .set({ lifecycleState: "missing" })
+        .where(eq(schema.projectWorktrees.id, secondaryId));
+      const before = (await f.repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        task.chatId,
+      ))!;
+      await expect(
+        f.repository.startChatExecutionLane(
+          LOCAL_USER_ID,
+          task.chatId,
+          "user",
+          "Follow-up",
+        ),
+      ).rejects.toThrow("not ready");
+      // A user pin arriving after the recovery snapshot must win even when
+      // the worktree ID itself did not change.
+      await f.database
+        .update(schema.chats)
+        .set({ worktreeMode: "pinned" })
+        .where(eq(schema.chats.id, task.chatId));
+      await expect(
+        f.repository.updateChatWorktree(
+          LOCAL_USER_ID,
+          task.chatId,
+          {
+            worktreeId: primary.id,
+            mode: "agent-managed",
+          },
+          secondaryId,
+        ),
+      ).rejects.toThrow("placement changed");
+      expect(
+        (await f.repository.getChatExecutionContext(LOCAL_USER_ID, task.chatId))
+          ?.worktreeId,
+      ).toBe(secondaryId);
+      await f.database
+        .update(schema.chats)
+        .set({ worktreeMode: "agent-managed" })
+        .where(eq(schema.chats.id, task.chatId));
+      const prepared = await reconcileTaskTurnPlacement(
+        f.repository,
+        {
+          isConnected: () => true,
+          request: async () => ({
+            sourcePath: primary.path,
+            primaryPath: primary.path,
+            gitCommonDir: `${primary.path}/.git`,
+            managedRoot: "/managed",
+            repositoryFingerprint: "a".repeat(64),
+            worktrees: [
+              {
+                path: primary.path,
+                head: null,
+                branch: "main",
+                detached: false,
+                isPrimary: true,
+                managed: false,
+                locked: false,
+                lockReason: null,
+                prunable: false,
+                pruneReason: null,
+                missing: false,
+              },
+            ],
+          }),
+        } as never,
+        LOCAL_USER_ID,
+        before,
+      );
+      expect(prepared).toMatchObject({
+        chatId: task.chatId,
+        workerId: primary.workerId,
+        worktreeId: primary.id,
+      });
+      expect(
+        (await f.repository.tasks.get(LOCAL_USER_ID, task.chatId))?.state,
+      ).toBe("blocked");
+      const historical = await f.database
+        .select()
+        .from(schema.chatRuntimeSessions)
+        .where(eq(schema.chatRuntimeSessions.worktreeId, secondaryId));
+      expect(historical[0]?.codexThreadId).toBe("historical-thread");
+      const execution = await f.repository.startChatExecutionLane(
+        LOCAL_USER_ID,
+        task.chatId,
+        "user",
+        "Follow-up",
+      );
+      expect(execution?.executionLaneId).toBeTruthy();
+      expect(execution?.worktreeId).toBe(primary.id);
+    } finally {
+      await f.client.close();
+    }
+  });
+  it("reopens a settled handoff only with real worker capacity and records its new session affinity", async () => {
+    const f = await fixture();
+    try {
+      const worker = await f.repository.taskScheduling.createTaskWorker(
+        LOCAL_USER_ID,
+        workerInput("One slot", { allowsPlanGoal: true }),
+      );
+      const task = await addTask(f, {
+        createdAt: new Date(),
+        planGoalEnabled: true,
+      });
+      await f.database
+        .update(schema.tasks)
+        .set({
+          state: "blocked",
+          implementationStartedAt: new Date(),
+          hasFinalPlan: true,
+          hasGoalPrompt: true,
+        })
+        .where(eq(schema.tasks.chatId, task.chatId));
+      const id = randomUUID();
+      await f.database.insert(schema.taskDispatchCycles).values({
+        id,
+        ownerId: LOCAL_USER_ID,
+        chatId: task.chatId,
+        operationId: randomUUID(),
+        operationKind: "finalize",
+        state: "succeeded",
+        fifoCreatedAt: new Date(),
+        startedAt: new Date(),
+        completedAt: new Date(),
+        fencingToken: 2,
+        codexThreadId: "source-thread",
+        worktreeId: task.worktreeId,
+        physicalWorkerId: f.physicalWorkerId,
+        selectedTaskWorkerId: worker.id,
+      });
+      const cycle = (await f.repository.taskDispatch.get(LOCAL_USER_ID, id))!;
+      const recover = () =>
+        f.repository.taskDispatch.recoverStartedGoal(
+          LOCAL_USER_ID,
+          cycle,
+          "recovery",
+          new Date(),
+          { allowSettled: true },
+        );
+      await expect(
+        f.repository.taskDispatch.recoverStartedGoal(
+          LOCAL_USER_ID,
+          cycle,
+          "passive",
+        ),
+      ).rejects.toMatchObject({ code: "stale-lease" });
+      await f.database
+        .update(schema.taskWorkers)
+        .set({ enabled: false })
+        .where(eq(schema.taskWorkers.id, worker.id));
+      await expect(recover()).rejects.toMatchObject({
+        code: "active-operation",
+      });
+      await f.database
+        .update(schema.taskWorkers)
+        .set({ enabled: true })
+        .where(eq(schema.taskWorkers.id, worker.id));
+      await f.database
+        .update(schema.taskWorkers)
+        .set({ allowsPlanGoal: false })
+        .where(eq(schema.taskWorkers.id, worker.id));
+      await expect(recover()).rejects.toThrow("no longer allows Plan + Goal");
+      await f.database
+        .update(schema.taskWorkers)
+        .set({ allowsPlanGoal: true })
+        .where(eq(schema.taskWorkers.id, worker.id));
+      const other = await addTask(f, { createdAt: new Date() });
+      const occupied = randomUUID();
+      await f.database.insert(schema.taskDispatchCycles).values({
+        id: occupied,
+        ownerId: LOCAL_USER_ID,
+        chatId: other.chatId,
+        operationId: randomUUID(),
+        operationKind: "direct",
+        state: "claimed",
+        fifoCreatedAt: new Date(),
+        selectedTaskWorkerId: worker.id,
+      });
+      await expect(recover()).rejects.toMatchObject({
+        code: "active-operation",
+      });
+      await f.database
+        .update(schema.taskDispatchCycles)
+        .set({ state: "succeeded" })
+        .where(eq(schema.taskDispatchCycles.id, occupied));
+      await f.database
+        .update(schema.tasks)
+        .set({ state: "complete" })
+        .where(eq(schema.tasks.chatId, task.chatId));
+      await expect(recover()).rejects.toMatchObject({ code: "stale-lease" });
+      await f.database
+        .update(schema.tasks)
+        .set({ state: "blocked" })
+        .where(eq(schema.tasks.chatId, task.chatId));
+      const lease = await recover();
+      expect(lease.fencingToken).toBe(3);
+      await f.repository.taskDispatch.markRunning(lease, {
+        turnId: "destination-turn",
+        affinity: {
+          worktreeId: other.worktreeId,
+          threadId: "destination-thread",
+          modelRouteId: DEFAULT_MODEL_ROUTE_ID,
+          providerAccountId: null,
+        },
+      });
+      expect(
+        await f.repository.taskDispatch.get(LOCAL_USER_ID, id),
+      ).toMatchObject({
+        state: "running",
+        codexThreadId: "destination-thread",
+        worktreeId: other.worktreeId,
+        turnId: "destination-turn",
+        fencingToken: 3,
+      });
+      await expect(recover()).rejects.toMatchObject({ code: "stale-lease" });
+    } finally {
+      await f.client.close();
+    }
+  });
+  it("recovers an expired retained Goal with a new fence without replaying its finalized operation", async () => {
+    const f = await fixture();
+    try {
+      const task = await addTask(f, {
+        createdAt: new Date(),
+        planGoalEnabled: true,
+      });
+      await f.database
+        .update(schema.tasks)
+        .set({
+          state: "failed",
+          implementationStartedAt: new Date(),
+          hasFinalPlan: true,
+          hasGoalPrompt: true,
+        })
+        .where(eq(schema.tasks.chatId, task.chatId));
+      const id = randomUUID();
+      await f.database.insert(schema.taskDispatchCycles).values({
+        id,
+        ownerId: LOCAL_USER_ID,
+        chatId: task.chatId,
+        operationId: randomUUID(),
+        operationKind: "finalize",
+        state: "expired",
+        fifoCreatedAt: new Date(),
+        startedAt: new Date(),
+        completedAt: new Date(),
+        fencingToken: 2,
+        codexThreadId: "retained-thread",
+        worktreeId: task.worktreeId,
+        physicalWorkerId: f.physicalWorkerId,
+        eligibilityCode: "reconciliation-required",
+      });
+      const expired = (await f.repository.taskDispatch.get(LOCAL_USER_ID, id))!;
+      await expect(
+        f.repository.taskDispatch.recoverStartedGoal(
+          "other-owner",
+          expired,
+          "new-server",
+        ),
+      ).rejects.toMatchObject({ code: "stale-lease" });
+      const recovered = await f.repository.taskDispatch.recoverStartedGoal(
+        LOCAL_USER_ID,
+        expired,
+        "new-server",
+      );
+      expect(recovered.fencingToken).toBe(3);
+      expect(recovered.leaseOwner).toBe("new-server");
+      expect(
+        await f.repository.taskDispatch.get(LOCAL_USER_ID, id),
+      ).toMatchObject({
+        state: "running",
+        codexThreadId: "retained-thread",
+        attemptCount: 0,
+        eligibilityCode: null,
+        completedAt: null,
+      });
+      await expect(
+        f.repository.taskDispatch.recoverStartedGoal(
+          LOCAL_USER_ID,
+          expired,
+          "stale-server",
+        ),
+      ).rejects.toMatchObject({ code: "stale-lease" });
+      await f.repository.taskDispatch.heartbeat(recovered);
+      const live = (await f.repository.taskDispatch.get(LOCAL_USER_ID, id))!;
+      expect(
+        await f.repository.taskDispatch.recoverStartedGoal(
+          LOCAL_USER_ID,
+          live,
+          "another-server",
+        ),
+      ).toMatchObject({ fencingToken: 3, leaseOwner: "new-server" });
+      await f.repository.taskDispatch.settle(recovered, "succeeded");
+      const complete = (await f.repository.taskDispatch.get(
+        LOCAL_USER_ID,
+        id,
+      ))!;
+      await expect(
+        f.repository.taskDispatch.recoverStartedGoal(
+          LOCAL_USER_ID,
+          complete,
+          "new-server",
+        ),
+      ).rejects.toMatchObject({ code: "stale-lease" });
+      await f.database
+        .update(schema.taskDispatchCycles)
+        .set({ state: "expired" })
+        .where(eq(schema.taskDispatchCycles.id, id));
+      const superseded = (await f.repository.taskDispatch.get(
+        LOCAL_USER_ID,
+        id,
+      ))!;
+      await f.database.insert(schema.taskDispatchCycles).values({
+        id: randomUUID(),
+        ownerId: LOCAL_USER_ID,
+        chatId: task.chatId,
+        operationId: randomUUID(),
+        operationKind: "finalize",
+        state: "queued",
+        fifoCreatedAt: new Date(),
+        createdAt: new Date(Date.now() + 1000),
+      });
+      await expect(
+        f.repository.taskDispatch.recoverStartedGoal(
+          LOCAL_USER_ID,
+          superseded,
+          "new-server",
+        ),
+      ).rejects.toMatchObject({ code: "stale-lease" });
+    } finally {
+      await f.client.close();
+    }
+  });
   it("keeps a negative-priority Task queued behind the actual branch lease, then runs it", async () => {
     const value = await fixture();
     try {

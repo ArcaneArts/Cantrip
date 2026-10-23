@@ -24,10 +24,8 @@ import {
   Target,
   Trash2,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
-import { AgentInspectContent } from "@/components/chat/agent-inspect-content";
-import { formatGoalElapsed } from "@/components/chat/goal-panel";
 import { Markdown } from "@/components/chat/markdown";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,6 +33,7 @@ import {
   getTaskImplementationDashboard,
   setChatPaused,
   updateChatGoal,
+  recoverTaskImplementation,
 } from "@/lib/api";
 import { errorMessage } from "@/lib/error-message";
 import { useAppLiveStatus } from "@/lib/app-live-react";
@@ -45,6 +44,8 @@ import { cn } from "@/lib/utils";
 import { taskCanBeDeleted } from "./task-deletion";
 import { TaskInteractionRequests } from "./task-interaction-requests";
 import { TaskListBackButton } from "./task-list-back-button";
+import { TaskOverviewSummary } from "./task-overview-summary";
+import { TaskRetryStatus, taskRetryFailureLabel } from "./task-retry-status";
 
 const goalLabels: Record<TaskGoalSnapshot["status"], string> = {
   active: "Running",
@@ -55,6 +56,17 @@ const goalLabels: Record<TaskGoalSnapshot["status"], string> = {
   complete: "Complete",
 };
 
+export function taskImplementationCanRecover(task: TaskDetail): boolean {
+  return Boolean(
+    task.planGoalEnabled &&
+    task.implementationStartedAt &&
+    task.state !== "complete" &&
+    ["running", "expired", "failed", "succeeded"].includes(
+      task.dispatch?.state ?? "",
+    ),
+  );
+}
+
 export function taskImplementationStatusLabel(
   task: TaskDetail,
   goal: TaskGoalSnapshot | null,
@@ -62,13 +74,28 @@ export function taskImplementationStatusLabel(
   chatFailed = false,
   awaitingApproval = false,
   automationPaused = false,
+  reconnecting = false,
 ): string {
-  if (task.state === "failed" || chatFailed) return "Failed";
   if (task.state === "complete") return "Complete";
-  if (task.dispatch?.state === "queued") return "Queued";
-  if (task.state === "paused" || automationPaused) return "Paused";
+  if (task.dispatch?.state === "queued")
+    return automationPaused ? "Paused" : "Queued";
+  if (
+    task.automaticRetry &&
+    !active &&
+    !automationPaused &&
+    !awaitingApproval &&
+    task.state !== "paused" &&
+    task.state !== "blocked"
+  )
+    return taskRetryFailureLabel(task);
   if (task.state === "blocked")
-    return goal ? goalLabels[goal.status] : "Blocked";
+    return goal &&
+      ["blocked", "usageLimited", "budgetLimited"].includes(goal.status)
+      ? goalLabels[goal.status]
+      : "Blocked";
+  if (task.state === "failed" || chatFailed) return "Failed";
+  if (reconnecting) return "Reconnecting";
+  if (task.state === "paused" || automationPaused) return "Paused";
   if (awaitingApproval) return "Needs approval";
   if (!task.planGoalEnabled && active) return "Running";
   return goal ? goalLabels[goal.status] : "Starting";
@@ -78,6 +105,31 @@ export function taskImplementationPlacementLabel(
   placement: TaskImplementationPlacement,
 ) {
   return placement.kind === "folder" ? "Direct folder" : "Git worktree";
+}
+
+export function taskImplementationStatusDescription(
+  task: TaskDetail,
+  label: string,
+): string {
+  if (label === "Complete") return "Implementation completed.";
+  if (
+    label === "Blocked" ||
+    label === "Usage limited" ||
+    label === "Budget reached"
+  )
+    return "Not running. Review the blocker in Chat before resuming.";
+  if (label === "Failed")
+    return "Not running. Use Retry to recover the saved implementation.";
+  if (label === "Paused")
+    return "Paused. Resume when you are ready to continue.";
+  if (label === "Running") return "Implementation is running.";
+  if (label === "Reconnecting")
+    return "Worker disconnected; execution status is not yet confirmed.";
+  if (label === "Queued") return "Waiting for an available Task Worker.";
+  if (label === "Needs approval") return "Waiting for your approval.";
+  return task.planGoalEnabled
+    ? "Waiting for implementation status; completion has not been confirmed."
+    : "Running the saved Task prompt";
 }
 
 export function taskImplementationShowsLiveActivity(
@@ -98,21 +150,12 @@ export function taskImplementationCanResume(
   goal: TaskGoalSnapshot | null,
   automationPaused = false,
 ): boolean {
-  if (task.state === "complete") return false;
-  if (task.state === "failed") {
-    return (
-      task.planGoalEnabled &&
-      task.lastError?.code === "implementation-runtime-failed" &&
-      (goal?.status === "active" ||
-        goal?.status === "paused" ||
-        goal?.status === "blocked")
-    );
-  }
+  if (["complete", "failed", "blocked"].includes(task.state)) return false;
+  if (goal && !["active", "paused"].includes(goal.status)) return false;
   return (
     automationPaused ||
     task.state === "paused" ||
-    (task.planGoalEnabled &&
-      (goal?.status === "paused" || goal?.status === "blocked"))
+    (task.planGoalEnabled && goal?.status === "paused")
   );
 }
 
@@ -249,6 +292,9 @@ export function TaskImplementationDashboard({
       queryClient.invalidateQueries({ queryKey: ["goal", chat.id] }),
       queryClient.invalidateQueries({ queryKey: ["messages", chat.id] }),
       queryClient.invalidateQueries({ queryKey: ["chats", chat.projectId] }),
+      queryClient.invalidateQueries({
+        queryKey: ["project-task-workload", chat.projectId],
+      }),
     ]);
   };
   const pause = useMutation({
@@ -256,16 +302,27 @@ export function TaskImplementationDashboard({
     onSettled: settleControls,
   });
   const resume = useMutation({
-    mutationFn: () =>
-      resumeTaskImplementation(chat.id, chat.automationPaused, goal),
+    mutationFn: async () => {
+      if (!goal && taskImplementationCanRecover(task)) {
+        await recoverTaskImplementation(chat.id);
+      } else {
+        await resumeTaskImplementation(chat.id, chat.automationPaused, goal);
+      }
+    },
     onSettled: settleControls,
   });
   const stop = useMutation({
     mutationFn: () => stopTaskImplementation(chat.id),
     onSettled: settleControls,
   });
-  const controlError = pause.error ?? resume.error ?? stop.error;
-  const controlPending = pause.isPending || resume.isPending || stop.isPending;
+  const recover = useMutation({
+    mutationFn: () => recoverTaskImplementation(chat.id),
+    onSettled: settleControls,
+  });
+  const controlError =
+    pause.error ?? resume.error ?? stop.error ?? recover.error;
+  const controlPending =
+    pause.isPending || resume.isPending || stop.isPending || recover.isPending;
   const statusLabel = taskImplementationStatusLabel(
     task,
     goal,
@@ -273,24 +330,31 @@ export function TaskImplementationDashboard({
     chat.status === "failed",
     chat.status === "waiting-for-approval",
     chat.automationPaused,
+    task.planGoalEnabled && chat.status === "offline",
   );
-  const tokenProgress =
-    goal?.tokenBudget && goal.tokenBudget > 0
-      ? Math.min(100, (goal.tokensUsed / goal.tokenBudget) * 100)
-      : null;
-  const showResume = taskImplementationCanResume(
-    task,
-    goal,
-    chat.automationPaused,
-  );
+  const showResume =
+    statusLabel === "Paused" &&
+    taskImplementationCanResume(task, goal, chat.automationPaused);
+  const showRetry =
+    statusLabel !== "Paused" &&
+    (task.state === "failed" ||
+      Boolean(task.automaticRetry) ||
+      ["Failed", "Blocked", "Usage limited", "Budget reached"].includes(
+        statusLabel,
+      )) &&
+    taskImplementationCanRecover(task);
   const showLiveActivity = taskImplementationShowsLiveActivity(
     task,
     goal,
     active,
     chat.automationPaused,
   );
-  const showPause = task.planGoalEnabled && showLiveActivity;
-  const latestMessages = useMemo(() => messages.data ?? [], [messages.data]);
+  const showPause =
+    statusLabel === "Running" && task.planGoalEnabled && showLiveActivity;
+  const showStop =
+    active &&
+    !chat.automationPaused &&
+    ["Running", "Needs approval", "Starting"].includes(statusLabel);
   const placement = dashboard.data?.placement;
   const directFolder = placement?.kind === "folder";
 
@@ -314,10 +378,15 @@ export function TaskImplementationDashboard({
               </h2>
               <Badge variant="outline">{statusLabel}</Badge>
             </div>
-            <p className="mt-0.5 truncate text-xs text-muted-foreground">
-              {task.planGoalEnabled
-                ? "Goal mode on this Task's underlying Chat"
-                : "Normal agent turn from the saved Task prompt"}
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              <TaskRetryStatus
+                task={task}
+                paused={chat.automationPaused}
+                fallback={taskImplementationStatusDescription(
+                  task,
+                  statusLabel,
+                )}
+              />
             </p>
           </div>
           <Button
@@ -379,7 +448,23 @@ export function TaskImplementationDashboard({
               Pause
             </Button>
           ) : null}
-          {active && !chat.automationPaused ? (
+          {showRetry ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={controlPending}
+              title="Reconnect to the existing session, or resume its retained Goal. Keeps history and completed work."
+              onClick={() => recover.mutate()}
+            >
+              {recover.isPending ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="size-3.5" />
+              )}
+              Retry
+            </Button>
+          ) : null}
+          {showStop ? (
             <Button
               size="sm"
               variant="outline"
@@ -392,7 +477,7 @@ export function TaskImplementationDashboard({
               ) : (
                 <CircleStop className="size-3.5" />
               )}
-              {task.planGoalEnabled ? "Stop & pause" : "Stop"}
+              Stop
             </Button>
           ) : null}
         </header>
@@ -460,32 +545,22 @@ export function TaskImplementationDashboard({
           ) : null}
         </section>
 
-        {goal ? (
-          <section className="border-b py-4" aria-label="Goal usage">
-            <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted-foreground">
-              <span>{formatGoalElapsed(goal.timeUsedSeconds)} elapsed</span>
-              <span>
-                {goal.tokensUsed.toLocaleString()} tokens
-                {goal.tokenBudget
-                  ? ` / ${goal.tokenBudget.toLocaleString()}`
-                  : ""}
-              </span>
-            </div>
-            {tokenProgress !== null ? (
-              <div className="mt-2 h-1 overflow-hidden rounded-full bg-muted">
-                <div
-                  aria-label="Goal token budget used"
-                  aria-valuemax={100}
-                  aria-valuemin={0}
-                  aria-valuenow={Math.round(tokenProgress)}
-                  className="h-full rounded-full bg-violet-500 transition-[width]"
-                  role="progressbar"
-                  style={{ width: `${tokenProgress}%` }}
-                />
-              </div>
-            ) : null}
-          </section>
-        ) : dashboard.data?.goalUnavailableReason ? (
+        <TaskOverviewSummary
+          chat={chat}
+          task={task}
+          goal={goal}
+          messages={messages.data}
+          historyIncomplete={messages.hasOlder}
+          gitWorktreeId={
+            placement?.kind === "git"
+              ? placement.worktreeId
+              : placement?.kind === "folder"
+                ? null
+                : undefined
+          }
+          visible={visible}
+        />
+        {dashboard.data?.goalUnavailableReason ? (
           <p className="border-b py-3 text-xs text-muted-foreground">
             {dashboard.data.goalUnavailableReason}
           </p>
@@ -527,67 +602,12 @@ export function TaskImplementationDashboard({
           </section>
         ) : null}
 
-        {showLiveActivity ? (
-          <section
-            className="border-b py-5"
-            aria-labelledby="task-activity-heading"
-          >
-            <h3
-              id="task-activity-heading"
-              className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
-            >
-              Latest activity
-            </h3>
-            <div className="min-h-48 overflow-hidden [&_[data-slot=trajectory-event-viewport]]:overscroll-y-auto">
-              <AgentInspectContent
-                active={active}
-                messages={latestMessages}
-                trajectoryEventOrder="newest-first"
-                visible={visible}
-              />
-            </div>
-          </section>
-        ) : null}
-
-        {placement && !directFolder ? (
-          <section className="border-b py-5" aria-labelledby="task-pr-heading">
-            <div className="flex items-center gap-2">
-              <h3
-                id="task-pr-heading"
-                className="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
-              >
-                Implementation pull requests
-              </h3>
-              {dashboard.data?.pullRequests.length ? (
-                <Badge variant="outline" className="h-5 text-[10px]">
-                  {dashboard.data.pullRequests.length}
-                </Badge>
-              ) : null}
-            </div>
-            {dashboard.data?.pullRequests.length ? (
-              <div className="mt-2 divide-y">
-                {dashboard.data.pullRequests.map((pullRequest) => (
-                  <PullRequestRow
-                    key={pullRequest.number}
-                    pullRequest={pullRequest}
-                  />
-                ))}
-              </div>
-            ) : (
-              <p className="mt-2 text-sm text-muted-foreground">
-                {dashboard.data?.pullRequestsUnavailableReason ??
-                  "No Task-associated pull requests detected yet."}
-              </p>
-            )}
-          </section>
-        ) : null}
-
         <section className="py-6" aria-labelledby="task-plan-heading">
           <h3
             id="task-plan-heading"
             className="mb-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
           >
-            {task.planGoalEnabled ? "Final plan" : "Task prompt"}
+            {task.planGoalEnabled ? "Goal plan" : "Task prompt"}
           </h3>
           <Markdown>
             {task.planGoalEnabled
@@ -623,6 +643,38 @@ export function TaskImplementationDashboard({
             </details>
           ) : null}
         </section>
+        {placement && !directFolder ? (
+          <section className="border-b py-5" aria-labelledby="task-pr-heading">
+            <div className="flex items-center gap-2">
+              <h3
+                id="task-pr-heading"
+                className="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+              >
+                Implementation pull requests
+              </h3>
+              {dashboard.data?.pullRequests.length ? (
+                <Badge variant="outline" className="h-5 text-[10px]">
+                  {dashboard.data.pullRequests.length}
+                </Badge>
+              ) : null}
+            </div>
+            {dashboard.data?.pullRequests.length ? (
+              <div className="mt-2 divide-y">
+                {dashboard.data.pullRequests.map((pullRequest) => (
+                  <PullRequestRow
+                    key={pullRequest.number}
+                    pullRequest={pullRequest}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="mt-2 text-sm text-muted-foreground">
+                {dashboard.data?.pullRequestsUnavailableReason ??
+                  "No Task-associated pull requests detected yet."}
+              </p>
+            )}
+          </section>
+        ) : null}
       </div>
     </div>
   );

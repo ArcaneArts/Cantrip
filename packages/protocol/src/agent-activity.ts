@@ -414,6 +414,14 @@ export const agentActivitySchema = z.discriminatedUnion("type", [
   z.object({
     ...agentActivityBaseShape,
     type: z.literal("turnSummary"),
+    tokenPerformance: z
+      .object({
+        totalTokens: z.number().int().nonnegative().safe(),
+        outputTokens: z.number().int().nonnegative().safe(),
+        outputDurationMs: z.number().nonnegative().finite().nullable(),
+        durationMs: z.number().nonnegative().finite().nullable(),
+      })
+      .optional(),
     nativeModelAttribution: nativeTurnModelAttributionSchema.optional(),
     initialSettings: nativeInitialTurnSettingsSchema.optional(),
     initialSettingsConflict: z.boolean().optional(),

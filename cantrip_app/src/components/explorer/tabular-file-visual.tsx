@@ -200,12 +200,15 @@ function CsvVisual({
   const minimumWidth = Math.max(640, parsed.value.headers.length * 180 + 48);
 
   return (
-    <div className="min-h-0 flex-1 overflow-auto p-4">
-      <div className="mx-auto max-w-full overflow-hidden rounded-lg border border-border/70 bg-card/20 shadow-sm">
-        <table
-          className="w-full border-collapse"
-          style={{ minWidth: `${minimumWidth}px` }}
-        >
+    <div
+      className="min-h-0 flex-1 overflow-auto py-4"
+      data-content-gutter="standard"
+    >
+      <div
+        className="overflow-hidden rounded-lg border border-border/70 bg-card/20 shadow-sm"
+        style={{ minWidth: `${minimumWidth}px` }}
+      >
+        <table className="w-full border-collapse">
           <thead className="sticky top-0 z-10 bg-muted/95 text-[10px] font-medium uppercase tracking-wider text-muted-foreground backdrop-blur">
             <tr>
               <th
@@ -406,9 +409,12 @@ function PropertyVisual({
   };
 
   return (
-    <div className="min-h-0 flex-1 overflow-auto p-4">
+    <div
+      className="min-h-0 flex-1 overflow-auto py-4"
+      data-content-gutter="standard"
+    >
       <div
-        className="mx-auto min-w-[36rem] max-w-6xl overflow-hidden rounded-lg border border-border/70 bg-card/20 shadow-sm"
+        className="min-w-[36rem] overflow-hidden rounded-lg border border-border/70 bg-card/20 shadow-sm"
         role="table"
       >
         <div
@@ -530,7 +536,10 @@ export function TabularFileVisual({
       className="flex h-full min-h-0 flex-col"
       onKeyDown={handleSaveShortcut}
     >
-      <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border/60 bg-background/95 px-4 py-2.5 backdrop-blur">
+      <div
+        className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border/60 px-4 py-2.5"
+        data-slot="file-visual-toolbar"
+      >
         <SearchBar
           label={`Search ${noun}`}
           onChange={setQuery}

@@ -8,6 +8,7 @@ import {
   explorerEntrySchema,
   explorerEntryMutationResultSchema,
   explorerEntryRenameSchema,
+  explorerEntryNameSchema,
   explorerFileSchema,
   explorerFileSearchSchema,
   explorerFileWriteSchema,
@@ -165,6 +166,13 @@ export const explorerOperationRequestContentSchema = z.discriminatedUnion(
       .extend(explorerDirectoryCreateSchema.shape)
       .strict(),
     z
+      .object({
+        type: z.literal("explorer.file.create"),
+        path: explorerDirectoryCreateSchema.shape.path,
+        name: explorerEntryNameSchema,
+      })
+      .strict(),
+    z
       .object({ type: z.literal("explorer.entry.rename") })
       .extend(explorerEntryRenameSchema.shape)
       .strict(),
@@ -207,6 +215,12 @@ export const explorerOperationResultContentSchema = z.discriminatedUnion(
       .strict(),
     z
       .object({
+        type: z.literal("explorer.file.created"),
+        value: explorerEntrySchema,
+      })
+      .strict(),
+    z
+      .object({
         type: z.literal("explorer.media"),
         value: explorerMediaFileChunkSchema,
       })
@@ -235,9 +249,36 @@ export const standaloneChatFileOperationIntentSchema = z.enum([
   "archive",
 ]);
 
+export const explorerFileBindingSchema = z
+  .object({
+    workerId: z.string().min(1),
+    projectId: z.string().uuid(),
+    worktreeId: z.string().uuid(),
+  })
+  .strict();
+export type ExplorerFileBinding = z.infer<typeof explorerFileBindingSchema>;
+export const explorerOperationWireRequestSchema = surfaceStreamWireRequestSchema
+  .extend({
+    binding: explorerFileBindingSchema.optional(),
+  })
+  .strict();
+
+export const standaloneChatFileBindingSchema = z
+  .object({
+    workerId: z.string().min(1),
+    scratchRootId: z.string().uuid(),
+  })
+  .strict();
+export type StandaloneChatFileBinding = z.infer<
+  typeof standaloneChatFileBindingSchema
+>;
+
 export const standaloneChatFileWireRequestSchema =
   surfaceStreamWireRequestSchema
-    .extend({ intent: standaloneChatFileOperationIntentSchema })
+    .extend({
+      intent: standaloneChatFileOperationIntentSchema,
+      binding: standaloneChatFileBindingSchema.optional(),
+    })
     .strict();
 
 const standaloneChatFilePathSchema = z.string().max(8_192);

@@ -1015,6 +1015,14 @@ export function normalizeCodexThreadTurn(
   };
 }
 
+export function observedCodexThreadStatus(
+  thread: CodexThreadReadResponse["thread"],
+): AgentThreadSync["status"] {
+  if (thread.status.type === "active") return "running";
+  if (thread.status.type === "systemError") return "failed";
+  return thread.turns.at(-1)?.status === "failed" ? "failed" : "idle";
+}
+
 export function normalizeCodexThreadReadResponse(
   response: CodexThreadReadResponse,
   cwd: string,
@@ -1028,14 +1036,10 @@ export function normalizeCodexThreadReadResponse(
       externalAttachmentIdsByItemId,
     ),
   );
-  const status = turns.some((turn) => turn.status === "inProgress")
-    ? "running"
-    : turns.some((turn) => turn.status === "failed")
-      ? "failed"
-      : "idle";
   return agentThreadSyncSchema.parse({
     threadId: response.thread.id,
-    status,
+    status: observedCodexThreadStatus(response.thread),
+    statusSource: "native-thread",
     turns,
   });
 }

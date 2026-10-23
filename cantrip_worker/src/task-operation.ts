@@ -56,6 +56,7 @@ import {
   type TaskStableState,
   type TaskState,
 } from "@cantrip/protocol/tasks";
+import { taskFailureKindForError } from "@cantrip/protocol/tasks";
 
 import type { WorkerEncryptionService } from "./worker-encryption.js";
 import { materializeTaskGoalContext } from "./task-goal-context.js";
@@ -77,6 +78,16 @@ Effective Cantrip Policy summaries are supplied as application context. Prefer t
 
 const FALLBACK_TASK_GOAL_PROMPT =
   "Implement the complete final plan, validate the finished result, and continue until every acceptance criterion is satisfied.";
+
+export function protectedTaskRuntimeError(
+  error: unknown,
+  scope: "turn" | "operation" = "turn",
+) {
+  const kind = taskFailureKindForError(error);
+  return new Error(
+    `Encrypted Task ${scope} failed${kind === "runtime" ? "." : `: task-${kind}.`}`,
+  );
+}
 
 export class EncryptedTaskEventSealer {
   readonly #ids = new Map<string, string>();
@@ -705,23 +716,59 @@ function implementationProjection(input: {
   context: TaskGoalSyncContext;
   goal: ReturnType<typeof chatGoalResponseSchema.parse>["goal"];
 }) {
-  if (input.context.chatStatus === "failed") {
+  if (input.goal?.status === "complete")
+    return { state: "complete" as const, code: null, message: null };
+  if (input.context.automationPaused || input.goal?.status === "paused")
+    return { state: "paused" as const, code: null, message: null };
+  const priorCode = input.context.task.classification.lastError?.code;
+  const failure =
+    input.context.runtimeFailure?.kind ??
+    (input.context.task.classification.state === "failed" &&
+      !input.context.message &&
+      !(
+        input.goal?.status === "active" &&
+        input.context.chatStatus === "running"
+      ) &&
+      priorCode?.match(
+        /^implementation-(timeout|capacity|rate-limit|connection|runtime)(?:-failed)?$/,
+      )?.[1]);
+  if (
+    failure &&
+    !(failure === "runtime" && input.goal?.status === "blocked") &&
+    !["usageLimited", "budgetLimited"].includes(input.goal?.status ?? "")
+  ) {
+    const labels: Record<string, string> = {
+      timeout: "The implementation timed out.",
+      capacity: "The provider is temporarily at capacity.",
+      "rate-limit": "The provider temporarily rate-limited the implementation.",
+      connection: "The implementation lost its connection.",
+      runtime: "The implementation runtime failed.",
+      "needs-input": "The implementation needs your input.",
+      configuration: "The implementation needs a configuration change.",
+      "usage-limit": "The implementation reached a provider usage limit.",
+      "budget-limit": "The implementation reached its token budget.",
+    };
+    return {
+      state:
+        failure === "needs-input" ? ("blocked" as const) : ("failed" as const),
+      code: `implementation-${failure}`,
+      message: labels[failure]!,
+    };
+  }
+  // Native terminal state wins over a stale failed chat flag (for example an
+  // encrypted-result rejection after the worker already finished the turn).
+  const nativeTerminal =
+    input.goal && !["active", "paused"].includes(input.goal.status);
+  if (input.context.chatStatus === "failed" && !nativeTerminal) {
     return {
       state: "failed" as const,
       code: "implementation-runtime-failed",
       message: "The implementation runtime failed.",
     };
   }
-  if (input.context.automationPaused) {
-    return { state: "paused" as const, code: null, message: null };
-  }
   switch (input.goal?.status) {
     case "active":
       return { state: "implementing" as const, code: null, message: null };
-    case "paused":
-      return { state: "paused" as const, code: null, message: null };
-    case "complete":
-      return { state: "complete" as const, code: null, message: null };
     case "blocked":
       return {
         state: "blocked" as const,
@@ -730,13 +777,13 @@ function implementationProjection(input: {
       };
     case "usageLimited":
       return {
-        state: "blocked" as const,
+        state: "failed" as const,
         code: "goal-usage-limited",
         message: "The Goal reached a provider usage limit.",
       };
     case "budgetLimited":
       return {
-        state: "blocked" as const,
+        state: "failed" as const,
         code: "goal-budget-limited",
         message: "The Goal reached its token budget.",
       };
@@ -772,7 +819,9 @@ export async function protectTaskGoalResult(input: {
     if (projection) {
       const keepError =
         current.lastError?.code === projection.code &&
-        current.lastError.operationKind === "implementation";
+        current.lastError.operationKind === "implementation" &&
+        (!context.runtimeFailure ||
+          current.lastError.occurredAt === context.runtimeFailure.occurredAt);
       const lastError = projection.code
         ? keepError
           ? current.lastError
@@ -780,7 +829,8 @@ export async function protectTaskGoalResult(input: {
               code: projection.code,
               message: projection.message!,
               operationKind: "implementation" as const,
-              occurredAt: new Date().toISOString(),
+              occurredAt:
+                context.runtimeFailure?.occurredAt ?? new Date().toISOString(),
             }
         : null;
       const classification = {
@@ -1115,8 +1165,8 @@ export async function executeEncryptedTaskOperation(input: {
       text: "",
       structuredResult: relayResult,
     });
-  } catch {
-    throw new Error("Encrypted Task operation failed.");
+  } catch (error) {
+    throw protectedTaskRuntimeError(error, "operation");
   } finally {
     clearSensitiveBytes(component.key);
   }
@@ -1147,8 +1197,12 @@ export async function protectTaskGoalLaunchFailure(input: {
     if (!current) throw new Error("The finalized Task is unavailable.");
     const reason =
       input.error instanceof Error ? input.error.message.trim() : "";
+    const failureKind = taskFailureKindForError(input.error);
     const lastError = {
-      code: "task-goal-start-failed",
+      code:
+        failureKind === "runtime"
+          ? "task-goal-start-failed"
+          : `task-goal-start-${failureKind}`,
       message:
         `Goal startup failed${reason ? `: ${reason}` : ". Implementation has not started."} You can retry implementation without regenerating the saved plan.`.slice(
           0,

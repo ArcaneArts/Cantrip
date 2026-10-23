@@ -180,11 +180,28 @@ describe.skipIf(!binary)("native stateless labeling", () => {
       for (const [index, body] of bodies.entries()) {
         expect(body.model).toBe("gpt-5");
         expect(body.tools).toEqual([]);
-        expect(body.instructions).toBe("Return only a three-word title.");
-        expect(body.input).toHaveLength(1);
-        expect(JSON.stringify(body.input)).toContain(
-          index === 0 ? "Repair login fields" : "Repair login validation",
-        );
+        // 0.163 sends base instructions as a developer input, not the old
+        // top-level instructions property. Keep the request exactly bounded.
+        expect(body.instructions).toBeUndefined();
+        expect(body.input).toHaveLength(2);
+        expect(body.input[0]).toMatchObject({
+          type: "message",
+          role: "developer",
+          content: [
+            { type: "input_text", text: "Return only a three-word title." },
+          ],
+        });
+        expect(body.input[1]).toMatchObject({
+          type: "message",
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text:
+                index === 0 ? "Repair login fields" : "Repair login validation",
+            },
+          ],
+        });
         expect(JSON.stringify(body)).not.toMatch(
           /INSTRUCTION_MUST_NOT_BE_SENT|You are Codex|forbidden/,
         );

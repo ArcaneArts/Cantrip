@@ -1,9 +1,51 @@
+// @vitest-environment jsdom
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
+import type { VisualFileFormat } from "./explorer-file-language";
 import { StructuredFileVisual } from "./structured-file-visual";
 
 describe("StructuredFileVisual", () => {
+  it.each<[VisualFileFormat, string]>([
+    ["json", '{"name":"Cantrip"}'],
+    ["toml", 'name = "Cantrip"'],
+    ["yaml", "name: Cantrip"],
+    ["csv", "name\nCantrip\n"],
+    ["env", "NAME=Cantrip\n"],
+    ["properties", "name=Cantrip\n"],
+  ])(
+    "uses opt-in gutters and a transparent search/status bar for %s",
+    (format, content) => {
+      const root = document.createElement("div");
+      root.innerHTML = renderToStaticMarkup(
+        <StructuredFileVisual
+          content={content}
+          format={format}
+          onChange={vi.fn()}
+          onSave={vi.fn()}
+          path={`example.${format}`}
+        />,
+      );
+      const viewport = root.querySelector('[data-content-gutter="standard"]');
+      expect(viewport).not.toBeNull();
+      expect(viewport!.className).toContain("overflow-auto");
+      expect(
+        viewport!.className
+          .split(/\s+/u)
+          .some((name) => /^(?:p-|px-|pl-|pr-)/u.test(name)),
+      ).toBe(false);
+      const table = viewport!.querySelector('[role="table"], table')!;
+      expect(table).not.toBeNull();
+      expect(table.parentElement!.className).not.toMatch(
+        /\b(?:mx-auto|max-w-6xl)\b/u,
+      );
+      expect(table.className).not.toMatch(/\b(?:mx-auto|max-w-6xl)\b/u);
+      const toolbar = root.querySelector('[data-slot="file-visual-toolbar"]');
+      expect(toolbar).not.toBeNull();
+      expect(toolbar!.className).not.toMatch(/\b(?:bg-|backdrop-blur)/u);
+    },
+  );
+
   it("renders searchable value-only rows and expandable sections", () => {
     const markup = renderToStaticMarkup(
       <StructuredFileVisual

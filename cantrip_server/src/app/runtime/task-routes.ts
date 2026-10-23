@@ -1,7 +1,6 @@
 import {
   chatInterruptAcceptedSchema,
   chatModelConfigurationUpdateSchema,
-  chatPauseRuntimeStateSchema,
   contextualChatWireSummarySchema,
   encryptedTaskCreateSchema,
   githubIssueListFiltersSchema,
@@ -18,6 +17,7 @@ import {
   taskOpaqueMutationSchema,
   taskOpaqueSummarySchema,
   taskOperationStartSchema,
+  taskRecoveryStartSchema,
   type TaskAssociatedPullRequest,
   type TaskEncryptedOperationStart,
   type TaskOpaqueSummary,
@@ -63,8 +63,16 @@ import {
 import { TaskStateTransitionError } from "../../tasks/state.js";
 import { createTaskLabeler } from "../../chats/automatic-labeling.js";
 import { createTaskOperationQueue } from "./task-operation-queue.js";
+import { createChatAutomationPauseRuntime } from "./chat-automation-pause-runtime.js";
+import { createProjectTaskPauseRuntime } from "./project-task-pause-runtime.js";
 import { installTaskWorkloadRoute } from "./task-workload-route.js";
 import { WorkerUnavailableError } from "../../workers/bridge.js";
+import { createTaskExecutionRecovery } from "./task-execution-recovery.js";
+import {
+  createTaskAutomaticRetry,
+  retryTaskOperation,
+} from "./task-automatic-retry.js";
+import { classifyTaskFailure } from "../../tasks/automatic-retry.js";
 
 import {
   STREAMING_WORKER_COMMAND_TIMEOUT_MS,
@@ -111,6 +119,77 @@ export function installTaskRouteRuntime(
     taskDispatchCycleLease,
   } = dependencies;
   const nameTask = createTaskLabeler(dependencies);
+  const setChatAutomationPause = createChatAutomationPauseRuntime(
+    dependencies,
+    app,
+  );
+  const taskRecovery = createTaskExecutionRecovery({
+    repository,
+    bridge,
+    ownerId: applicationOwnerId,
+    leaseOwner: `${serverId}:${serverInstanceId}`,
+    goals: {
+      continueTaskGoalInWorktree: dependencies.continueTaskGoalInWorktree,
+      readEncryptedTaskGoal: dependencies.readEncryptedTaskGoal,
+      retainTaskGoalLease,
+      resumeChatAutomation,
+      reconcileTaskGoalDispatch: dependencies.reconcileTaskGoalDispatch,
+    },
+    publish: (chatId, projectId) => {
+      publishChatSummary(chatId, projectId);
+      publishChatInvalidation(chatId, "task", null, {
+        experience: "task",
+        projectId,
+      });
+    },
+    unpause: (ownerId, chatId) =>
+      setChatAutomationPause(ownerId, chatId, false, {
+        resumeAutomation: false,
+      }),
+    reportFailure: (chatId, error) =>
+      app.log.warn(
+        { chatId, err: error },
+        "Could not observe a retained Task session for recovery",
+      ),
+  });
+  app.post<{ Params: { chatId: string } }>(
+    "/api/tasks/:chatId/recover",
+    async (request, reply) => {
+      const input = taskRecoveryStartSchema.safeParse(request.body ?? {});
+      if (!input.success)
+        return reply.code(400).send(invalidBody(input.error.issues));
+      const owner = applicationOwnerId();
+      const context = await repository.getChatExecutionContext(
+        owner,
+        request.params.chatId,
+      );
+      if (!context || context.experience !== "task")
+        return reply.code(404).send({ error: "Task not found." });
+      try {
+        await repository.taskRetries.reset(owner, context.chatId);
+        if (!(await taskRecovery.recover(context.chatId, true)))
+          return reply.code(409).send({
+            error:
+              "No retained implementation session was found. Use Retry implementation from the plan to start it.",
+          });
+        return reply.send(
+          taskOpaqueSummarySchema.parse(
+            await repository.tasks.get(owner, context.chatId),
+          ),
+        );
+      } catch (error) {
+        return sendWorkerRequestFailure(reply, error);
+      }
+    },
+  );
+  const setProjectTasksPaused = createProjectTaskPauseRuntime({
+    repository,
+    releaseTaskGoalLease,
+    taskDispatchCycleLease,
+    publishChatInvalidation,
+    setChatAutomationPause,
+    publishChatSummary,
+  });
   app.post<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/tasks",
     async (request, reply) => {
@@ -247,6 +326,11 @@ export function installTaskRouteRuntime(
                 request.operationId,
                 assistantMessage.id,
               );
+              if (request.classification.kind !== "finalize")
+                await repository.taskRetries.clearPending(
+                  ownerId,
+                  context.chatId,
+                );
               publishChatInvalidation(context.chatId, "task", null, context);
             },
             async afterCompleted() {
@@ -545,12 +629,15 @@ export function installTaskRouteRuntime(
   const queueTaskScheduleTick = (): void => {
     if (activeTaskScheduleTick) return;
     activeTaskScheduleTick = (async () => {
+      await automaticRetry.tick();
       const schedulerOwners =
         await repository.taskDispatch.listSchedulerOwners();
       for (const schedulerOwner of schedulerOwners) {
         const ownerId = schedulerOwner.ownerId;
         const plan = taskDispatchSchedulerPlan(schedulerOwner);
         await runAsOwner(ownerId, async () => {
+          if (plan.reconcileStartedLeases)
+            await taskRecovery.reconcile(ownerId);
           const requeued = plan.reconcileUnstartedClaims
             ? await repository.taskDispatch.requeueExpiredLeases(ownerId)
             : [];
@@ -688,6 +775,7 @@ export function installTaskRouteRuntime(
   const finishClaimedTaskFailure = async (
     ownerId: string,
     claim: ClaimedTaskDispatch,
+    failure?: unknown,
   ): Promise<void> => {
     let cleanupError: unknown = null;
     try {
@@ -726,6 +814,13 @@ export function installTaskRouteRuntime(
         claim.lease,
         completed ? "succeeded" : "failed",
       );
+      if (!completed)
+        await repository.taskRetries.noteFailure(
+          ownerId,
+          claim.cycle.chatId,
+          `dispatch:${claim.cycle.id}:${claim.lease.fencingToken}`,
+          classifyTaskFailure(failure),
+        );
       publishChatInvalidation(claim.cycle.chatId, "task", null, {
         experience: "task",
         projectId: claim.projectId,
@@ -843,6 +938,13 @@ export function installTaskRouteRuntime(
                   throw dispatchError;
                 }
               }
+              publishChatInvalidation(context.chatId, "task", null, context);
+              await repository.taskRetries.noteFailure(
+                ownerId,
+                context.chatId,
+                `goal-launch:${claim.cycle.id}:${claim.lease.fencingToken}`,
+                classifyTaskFailure(error),
+              );
               publishChatInvalidation(context.chatId, "task", null, context);
               queueTaskScheduleTick();
             }
@@ -990,6 +1092,10 @@ export function installTaskRouteRuntime(
                           assistantMessage.id,
                         );
                         if (request.classification.kind !== "finalize") {
+                          await repository.taskRetries.clearPending(
+                            ownerId,
+                            context.chatId,
+                          );
                           await repository.taskDispatch.settle(
                             claim.lease,
                             "succeeded",
@@ -1007,8 +1113,8 @@ export function installTaskRouteRuntime(
                         if (request.classification.kind !== "finalize") return;
                         await launchClaimedGoal(request.operationId);
                       },
-                      async onFailed() {
-                        await finishClaimedTaskFailure(ownerId, claim);
+                      async onFailed({ error }) {
+                        await finishClaimedTaskFailure(ownerId, claim, error);
                       },
                     },
                   },
@@ -1063,7 +1169,7 @@ export function installTaskRouteRuntime(
           },
           "Scheduled Task operation failed to start",
         );
-        await finishClaimedTaskFailure(ownerId, claim);
+        await finishClaimedTaskFailure(ownerId, claim, error);
       }
     });
   };
@@ -1088,12 +1194,13 @@ export function installTaskRouteRuntime(
         ) {
           throw new Error("The paused Task placement is no longer available.");
         }
-        const resumed = chatPauseRuntimeStateSchema.parse(
-          await bridge.request(
-            context.workerId,
-            { type: "chat.pause.set", chatId: context.chatId, paused: false },
-            { timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS },
-          ),
+        const resumed = await setChatAutomationPause(
+          ownerId,
+          context.chatId,
+          false,
+          {
+            resumeAutomation: false,
+          },
         );
         if (resumed.paused) {
           throw new Error("The worker did not resume the paused Task.");
@@ -1110,7 +1217,7 @@ export function installTaskRouteRuntime(
           const task = await repository.tasks.get(ownerId, context.chatId);
           if (
             claim.cycle.operationKind === "finalize" &&
-            task?.state === "implementing"
+            (task?.state === "implementing" || task?.state === "paused")
           ) {
             await retainTaskGoalLease(claim.lease);
             await resumeChatAutomation(context.chatId);
@@ -1124,13 +1231,9 @@ export function installTaskRouteRuntime(
         publishChatInvalidation(context.chatId, "task", null, context);
       } catch (error) {
         if (context && bridge.isConnected(context.workerId)) {
-          await bridge
-            .request(
-              context.workerId,
-              { type: "chat.pause.set", chatId: context.chatId, paused: true },
-              { timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS },
-            )
-            .catch(() => undefined);
+          await setChatAutomationPause(ownerId, context.chatId, true).catch(
+            () => undefined,
+          );
         }
         try {
           await repository.taskDispatch.pause(claim.lease, {
@@ -1153,13 +1256,6 @@ export function installTaskRouteRuntime(
     });
   };
 
-  const taskScheduleTimer = setInterval(
-    queueTaskScheduleTick,
-    TASK_SCHEDULE_POLL_MS,
-  );
-  taskScheduleTimer.unref();
-  queueTaskScheduleTick();
-
   const queueTaskOperation = createTaskOperationQueue({
     repository,
     applicationOwnerId,
@@ -1167,80 +1263,31 @@ export function installTaskRouteRuntime(
     queueTaskScheduleTick,
     nameTask,
   });
-
-  const pauseProjectTaskDispatches = async (
-    ownerId: string,
-    projectId: string,
-  ): Promise<void> => {
-    const cycles = (await repository.taskDispatch.list(ownerId)).filter(
-      (cycle) => cycle.state === "claimed" || cycle.state === "running",
-    );
-    const scoped = (
-      await Promise.all(
-        cycles.map(async (cycle) => ({
-          cycle,
-          context: await repository.getChatExecutionContext(
-            ownerId,
-            cycle.chatId,
-          ),
-        })),
-      )
-    ).filter(({ context }) => context?.projectId === projectId);
-    const results = await Promise.allSettled(
-      scoped.map(async ({ context, cycle }) => {
-        if (!context || context.experience !== "task") return;
-        const lease = taskDispatchCycleLease(cycle);
-        if (!lease) return;
-        if (cycle.state === "claimed" && !chatIsExecuting(context.status)) {
-          releaseTaskGoalLease(cycle.id);
-          try {
-            await repository.taskDispatch.pauseUnstarted(lease, {
-              threadId: cycle.codexThreadId ?? context.threadId,
-              turnId: cycle.turnId,
-            });
-            publishChatInvalidation(context.chatId, "task", null, context);
-          } catch (error) {
-            if (!(error instanceof TaskDispatchConflictError)) throw error;
-          }
-          return;
-        }
-        if (!bridge.isConnected(context.workerId)) {
-          throw new Error("A running Task's physical Worker is offline.");
-        }
-        const paused = chatPauseRuntimeStateSchema.parse(
-          await bridge.request(
-            context.workerId,
-            { type: "chat.pause.set", chatId: context.chatId, paused: true },
-            { timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS },
-          ),
-        );
-        if (!paused.paused) {
-          throw new Error("The worker did not acknowledge the Task pause.");
-        }
-        releaseTaskGoalLease(cycle.id);
-        try {
-          await repository.taskDispatch.pause(lease, {
-            threadId:
-              paused.active?.threadId ??
-              cycle.codexThreadId ??
-              context.threadId,
-            turnId: paused.active?.turnId ?? cycle.turnId,
-          });
-          publishChatInvalidation(context.chatId, "task", null, context);
-        } catch (error) {
-          if (!(error instanceof TaskDispatchConflictError)) throw error;
-        }
+  const automaticRetry = createTaskAutomaticRetry({
+    repository,
+    recover: taskRecovery.recover,
+    queue: (chatId, input, kind) =>
+      queueTaskOperation(chatId, input, kind, { automatic: true }),
+    runAsOwner,
+    observe: (context, task) =>
+      readEncryptedTaskGoal(context, task, null, true, false, undefined, true),
+    publish: (chatId, projectId) =>
+      publishChatInvalidation(chatId, "task", null, {
+        experience: "task",
+        projectId,
       }),
-    );
-    const failures = results.filter(
-      (result): result is PromiseRejectedResult => result.status === "rejected",
-    );
-    if (failures.length > 0) {
-      throw new Error(
-        `${failures.length} running Task${failures.length === 1 ? "" : "s"} could not pause at a safe boundary.`,
-      );
-    }
-  };
+    report: (chatId, error) =>
+      app.log.warn(
+        { chatId, err: error },
+        "Automatic Task retry did not start; history is retained",
+      ),
+  });
+  const taskScheduleTimer = setInterval(
+    queueTaskScheduleTick,
+    TASK_SCHEDULE_POLL_MS,
+  );
+  taskScheduleTimer.unref();
+  queueTaskScheduleTick();
 
   installTaskWorkloadRoute(app, { applicationOwnerId, repository });
 
@@ -1273,24 +1320,23 @@ export function installTaskRouteRuntime(
         if (!state) {
           return reply.code(404).send({ error: "Project not found." });
         }
-        if (state.paused) {
-          try {
-            await pauseProjectTaskDispatches(
-              applicationOwnerId(),
-              request.params.projectId,
-            );
-          } catch (error) {
-            return reply.code(409).send({
-              error: errorMessage(error),
-              pauseState: projectTaskPauseStateSchema.parse(state),
-            });
-          }
-        } else {
-          queueTaskScheduleTick();
+        try {
+          await setProjectTasksPaused(
+            applicationOwnerId(),
+            request.params.projectId,
+            state.paused,
+          );
+        } catch (error) {
+          return reply.code(409).send({
+            error: errorMessage(error),
+            pauseState: projectTaskPauseStateSchema.parse(state),
+          });
+        } finally {
+          if (!state.paused) queueTaskScheduleTick();
+          publishLiveInvalidation("task", {
+            projectId: request.params.projectId,
+          });
         }
-        publishLiveInvalidation("task", {
-          projectId: request.params.projectId,
-        });
         return reply
           .code(state.paused ? 200 : 202)
           .send(projectTaskPauseStateSchema.parse(state));
@@ -1399,7 +1445,8 @@ export function installTaskRouteRuntime(
           goal = response.goal;
           task = response.task;
           if (!goal) {
-            goalUnavailableReason = "Codex no longer reports an active Goal.";
+            goalUnavailableReason =
+              "No Goal is attached to this session. Completion has not been confirmed. Use Retry / resume to restore the saved implementation Goal.";
           }
         } catch {
           goalUnavailableReason = "Encrypted Goal status is unavailable.";
@@ -1901,32 +1948,10 @@ export function installTaskRouteRuntime(
           .send({ error: "This Task has no failed operation to retry." });
       }
       try {
-        if (task.lastError.operationKind === "finalize") {
-          const rounds = await repository.tasks.listRounds(
-            applicationOwnerId(),
-            request.params.chatId,
-          );
-          const latest = rounds.find(
-            (round) => round.ordinal === task.planningRound,
-          );
-          const prepared = latest
-            ? await repository.tasks.getOperationContext(
-                applicationOwnerId(),
-                request.params.chatId,
-                { operationId: latest.id },
-              )
-            : null;
-          if (prepared?.relayResult?.goal) {
-            const retried = await queueTaskOperation(
-              request.params.chatId,
-              { operationId: latest.id, rowVersion: input.rowVersion },
-              "finalize",
-            );
-            return retried
-              ? reply.code(202).send(taskOpaqueSummarySchema.parse(retried))
-              : reply.code(404).send({ error: "Task not found." });
-          }
-        }
+        await repository.taskRetries.reset(
+          applicationOwnerId(),
+          request.params.chatId,
+        );
         if (task.lastError.operationKind === "implementation") {
           return reply.code(409).send({
             error:
@@ -1941,10 +1966,12 @@ export function installTaskRouteRuntime(
             error: "The encrypted retry does not match the failed operation.",
           });
         }
-        const retried = await queueTaskOperation(
-          request.params.chatId,
-          input,
-          task.lastError.operationKind,
+        const retried = await retryTaskOperation(
+          repository,
+          applicationOwnerId(),
+          { ...task, rowVersion: input.rowVersion },
+          queueTaskOperation,
+          input.operationId,
         );
         return retried
           ? reply.code(202).send(taskOpaqueSummarySchema.parse(retried))
@@ -1957,8 +1984,14 @@ export function installTaskRouteRuntime(
     },
   );
   return {
+    recoverTaskExecution: taskRecovery.recover,
+    reconcileTaskExecutions: taskRecovery.reconcile,
     queueTaskScheduleTick,
     taskScheduleTimer,
-    waitForActiveTaskScheduleTick: () => activeTaskScheduleTick,
+    stopAutomaticRetries: automaticRetry.stop,
+    waitForActiveTaskScheduleTick: async () => {
+      await activeTaskScheduleTick;
+      await automaticRetry.drain();
+    },
   };
 }

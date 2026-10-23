@@ -564,7 +564,6 @@ function Main {
 
         Write-Step "Verifying patched upstream sources"
         Invoke-Native "pnpm.cmd" @("codex:verify")
-        Invoke-Native "pnpm.cmd" @("code:source:verify")
 
         if (!$SkipChecks) {
             Write-Step "Running Cantrip checks"

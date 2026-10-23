@@ -382,6 +382,17 @@ export const chatGoalResponseSchema = z.object({
 export const chatGoalWireResponseSchema = z.union([
   z
     .object({
+      kind: z.literal("chat-encrypted"),
+      goal: threadGoalSchema
+        .omit({ objective: true })
+        .extend({
+          protectedObjective: chatMessageOpaqueContentSchema,
+        })
+        .nullable(),
+    })
+    .strict(),
+  z
+    .object({
       kind: z.literal("task-encrypted"),
       goal: taskGoalObjectiveOpaqueSnapshotSchema.nullable(),
     })
@@ -394,9 +405,19 @@ export const chatGoalCreateSchema = z.object({
   tokenBudget: z.number().int().positive().nullable().optional(),
 });
 
-export const chatGoalUpdateSchema = z.object({
-  status: z.enum(["active", "paused"]),
-});
+export const chatGoalUpdateSchema = z
+  .object({
+    status: z.enum(["active", "paused"]).optional(),
+    protectedObjective: chatMessageOpaqueContentSchema.optional(),
+  })
+  .strict()
+  .refine(
+    (input) =>
+      input.status !== undefined || input.protectedObjective !== undefined,
+    {
+      message: "A goal update needs a status or encrypted objective.",
+    },
+  );
 
 export const chatGoalClearSchema = z.object({
   cleared: z.boolean(),

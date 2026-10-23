@@ -3,6 +3,10 @@
 - Status: Accepted
 - Date: 2026-08-09
 
+> Scope update: The embedded workbench has been retired. Its editor-specific
+> sessions and adapters below describe the earlier implementation; the common
+> transport and authorization rules continue to apply to active features.
+
 > Amendment: App Live remains the durable-state invalidation and bounded
 > client-control channel. Supported Terminal, Remote Surface, Code, and tunnel
 > bytes now use WorkerLink instead of feature-specific WebSockets. Cross-server

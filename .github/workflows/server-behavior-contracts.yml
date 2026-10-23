@@ -8,6 +8,10 @@ on:
       - cantrip_server/test/**
       - cantrip_server/drizzle/**
       - packages/protocol/src/**
+      - cantrip_worker/src/task-operation*
+      - cantrip_app/src/lib/chat-goal-query*
+      - cantrip_app/src/components/tasks/task-implementation-dashboard*
+      - cantrip_app/src/components/projects/project-tasks-dashboard*
       - pnpm-lock.yaml
   workflow_dispatch:
 
@@ -36,6 +40,30 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
       - run: pnpm --filter @cantrip/server typecheck
+      - name: Encrypted Task Goal continuity, recovery fencing and lifecycle
+        if: ${{ !cancelled() }}
+        # These cold PGlite migration/transaction fixtures exceed Vitest's
+        # five-second unit-test default on shared macOS/Windows runners.
+        run: >-
+          pnpm --filter @cantrip/server exec vitest run
+          test/task-goal-observation.test.ts test/task-execution-recovery.test.ts
+          test/task-goal-worker-interruption.test.ts test/task-dispatch.test.ts
+          test/task-e2ee-lifecycle.test.ts --maxWorkers=2
+          --testTimeout=30000 --hookTimeout=30000
+      - name: Task Goal status rendering and encrypted native projections
+        if: ${{ !cancelled() }}
+        run: >-
+          pnpm --filter @cantrip/app exec vitest run
+          src/lib/chat-goal-query.test.ts
+          src/components/tasks/task-implementation-dashboard.test.ts
+          src/components/tasks/task-recovery-controls.test.tsx
+          src/components/projects/project-tasks-dashboard.test.ts --maxWorkers=2
+      - name: Task Goal worker encryption and permission handoff
+        if: ${{ !cancelled() }}
+        run: >-
+          pnpm --filter @cantrip/worker exec vitest run
+          src/task-operation.test.ts src/task-goal-context.test.ts
+          test/task-permission-handoff.test.ts --maxWorkers=2
       - name: Encrypted identity, ownership, migration and request contracts
         if: ${{ !cancelled() }}
         run: >-

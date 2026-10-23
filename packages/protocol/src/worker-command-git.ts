@@ -3,6 +3,7 @@ import { repositoryOperationWireRequestSchema } from "./repository-operation.js"
 import { mcpServerOpaqueRuntimeSchema } from "./protected-secrets.js";
 import {
   gitRelativePathSchema,
+  gitChangeSummaryRequestSchema,
   gitComparisonModeSchema,
   gitGraphRequestSchema,
   gitGraphCommitOverlayRequestSchema,
@@ -54,6 +55,10 @@ import { workerRepositoryNameSchema } from "./worker-command-shared.js";
 const gitRevisionInputSchema = z.string().trim().min(1).max(1_024);
 
 export const workerGitCommandSchemas = [
+  gitChangeSummaryRequestSchema.extend({
+    type: z.literal("git.change-summary"),
+    cwd: z.string().min(1),
+  }),
   z.object({
     type: z.literal("git.history"),
     cwd: z.string().min(1),

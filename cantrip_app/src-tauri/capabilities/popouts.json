@@ -6,6 +6,7 @@
     "cantrip-pane-*",
     "cantrip-group-*",
     "cantrip-editor-*",
+    "cantrip-chat-file-*",
     "synthetic-build-progress"
   ],
   "permissions": [

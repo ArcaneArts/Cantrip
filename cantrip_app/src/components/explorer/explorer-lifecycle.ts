@@ -15,7 +15,10 @@ export function confirmExplorerDiscard(
   actions: ExplorerLifecycleActions | null | undefined,
   confirmDiscard: () => boolean,
 ): boolean {
-  return !actions?.dirty || confirmDiscard();
+  if (!actions?.dirty) return true;
+  if (!confirmDiscard()) return false;
+  actions.discard?.();
+  return true;
 }
 
 export async function prepareExplorerRebind(

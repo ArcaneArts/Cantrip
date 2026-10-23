@@ -129,12 +129,6 @@ describe("hosted chat owner context", () => {
           terminals.get(command.attachmentId)?.();
           return { status: "detached" };
         }
-        if (command.type === "code.prepareAgentTurn") {
-          return { prepared: true, sessions: [] };
-        }
-        if (command.type === "code.agentTurnState") {
-          return { notifiedSessions: 0, refreshed: [], conflicts: [] };
-        }
         if (command.type === "chat.turn") {
           if (!options?.onEvent) {
             throw new Error("Expected the chat turn event callback.");

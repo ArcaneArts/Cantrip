@@ -1,3 +1,8 @@
+import { PanelToolbar } from "@/components/workspace/panel-toolbar";
+import {
+  ExplorerFileCloseButton,
+  ExplorerHeaderActions,
+} from "@/components/workspace/content-header-actions";
 import {
   explorerMediaTypeForPath,
   type CodeAppearance,
@@ -14,7 +19,6 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
-import { Highlight, themes, type Language } from "prism-react-renderer";
 import {
   lazy,
   Suspense,
@@ -31,16 +35,20 @@ import { explorerSurfaceSelectedPath } from "@/components/explorer/explorer-file
 import { explorerFileEntryForGraphPath } from "@/components/explorer/explorer-graph-routing";
 import { ExplorerImageViewport } from "@/components/explorer/explorer-image-viewport";
 import { nextExplorerEntryReplayKey } from "@/components/explorer/explorer-lifecycle";
-import type { ExplorerCodeEditorLifecycleActions } from "@/components/explorer/explorer-code-editor";
-import { RetainedExplorerCodeEditor } from "@/components/explorer/retained-explorer-code-editor";
+import {
+  EditorSessionStore,
+  editorDocumentId,
+  type EditorDocumentSession,
+} from "@/components/editor/document-session";
+import { NativeCodeEditor } from "@/components/editor/native-code-editor";
+import { isLicenseFile } from "@/components/editor/license-file";
+import { LicenseFileView } from "@/components/editor/license-file-view";
+import { getClientSession } from "@/lib/client-session";
 import { useExplorerWorkerEncryption } from "@/components/explorer/use-explorer-worker-encryption";
-import { useRetainedInlineWorkbench } from "@/components/explorer/use-retained-inline-workbench";
 import {
   defaultExplorerFileMode,
   markdownPreviewUsesPlainText,
-  monacoLanguageForPath,
   structuredFileFormatForPath,
-  usesCantripCodeEditor,
 } from "@/components/explorer/explorer-file-language";
 import {
   GitRepositoryGraphView,
@@ -62,93 +70,6 @@ const StructuredFileVisual = lazy(async () => {
   const module = await import("@/components/explorer/structured-file-visual");
   return { default: module.StructuredFileVisual };
 });
-
-const languageByExtension: Record<string, Language> = {
-  c: "c",
-  cc: "cpp",
-  cpp: "cpp",
-  cs: "csharp",
-  css: "css",
-  dart: "dart",
-  go: "go",
-  graphql: "graphql",
-  h: "c",
-  hpp: "cpp",
-  html: "markup",
-  java: "java",
-  js: "javascript",
-  json: "json",
-  jsx: "jsx",
-  kt: "kotlin",
-  kts: "kotlin",
-  lua: "lua",
-  md: "markdown",
-  mdx: "markdown",
-  py: "python",
-  rb: "ruby",
-  rs: "rust",
-  scss: "scss",
-  sh: "bash",
-  sol: "solidity",
-  sql: "sql",
-  swift: "swift",
-  toml: "toml",
-  ts: "typescript",
-  tsx: "tsx",
-  vue: "markup",
-  xml: "markup",
-  yaml: "yaml",
-  yml: "yaml",
-};
-
-function fileLanguage(path: string): Language {
-  const extension = path.split(".").at(-1)?.toLowerCase() ?? "";
-  return languageByExtension[extension] ?? "plain";
-}
-
-function SourceView({ code, path }: { code: string; path: string }) {
-  const [dark, setDark] = useState(() =>
-    document.documentElement.classList.contains("dark"),
-  );
-  useEffect(() => {
-    const observer = new MutationObserver(() =>
-      setDark(document.documentElement.classList.contains("dark")),
-    );
-    observer.observe(document.documentElement, {
-      attributeFilter: ["class"],
-      attributes: true,
-    });
-    return () => observer.disconnect();
-  }, []);
-  return (
-    <Highlight
-      code={code}
-      language={fileLanguage(path)}
-      theme={dark ? themes.vsDark : themes.github}
-    >
-      {({ className, getLineProps, getTokenProps, style, tokens }) => (
-        <pre
-          className={cn(
-            className,
-            "min-h-full min-w-max p-4 font-mono text-xs leading-5",
-          )}
-          style={{ ...style, margin: 0, background: "transparent" }}
-        >
-          {tokens.map((line, lineIndex) => (
-            <div key={lineIndex} {...getLineProps({ line })}>
-              <span className="mr-5 inline-block w-8 select-none text-right text-muted-foreground/50">
-                {lineIndex + 1}
-              </span>
-              {line.map((token, tokenIndex) => (
-                <span key={tokenIndex} {...getTokenProps({ token })} />
-              ))}
-            </div>
-          ))}
-        </pre>
-      )}
-    </Highlight>
-  );
-}
 
 function ExplorerMediaView({
   explorerId,
@@ -250,6 +171,7 @@ export interface ExplorerHeaderState {
   isFetching: boolean;
   isSaving: boolean;
   selectedPath: string | null;
+  showFileClose?: boolean;
   back(): void;
   refresh(): void;
   openFileHistory?(): void;
@@ -259,6 +181,7 @@ export interface ExplorerHeaderState {
 
 export interface ExplorerLifecycleActions {
   cancelClose(): void;
+  discard?(): void;
   dirty: boolean;
   flushViewState(): Promise<boolean>;
   prepareClose(): Promise<void>;
@@ -295,6 +218,7 @@ export function ExplorerView({
   onOpenTerminal,
   prewarmInlineCode = false,
   repositoryGraphAvailable,
+  showToolbar = true,
   transientFile,
   workerOnline = true,
 }: {
@@ -325,6 +249,7 @@ export function ExplorerView({
   onOpenTerminal?(explorer: ExplorerSummary, entry: ExplorerEntry): void;
   prewarmInlineCode?: boolean;
   repositoryGraphAvailable: boolean;
+  showToolbar?: boolean;
   transientFile?: TransientExplorerFile;
   workerOnline?: boolean;
 }) {
@@ -332,14 +257,6 @@ export function ExplorerView({
   const transientFilePath = transientFile?.path;
   const transientFileCloseRef = useRef(transientFile?.close);
   transientFileCloseRef.current = transientFile?.close;
-  const codeEditorLifecycleRef =
-    useRef<ExplorerCodeEditorLifecycleActions | null>(null);
-  const handleCodeEditorLifecycleChange = useCallback(
-    (actions: ExplorerCodeEditorLifecycleActions | null) => {
-      codeEditorLifecycleRef.current = actions;
-    },
-    [],
-  );
   const previousActiveRef = useRef(active);
   const [entryReplayKey, setEntryReplayKey] = useState(0);
   const [selectedPath, setSelectedPath] = useState(() =>
@@ -387,26 +304,24 @@ export function ExplorerView({
       : explorer.fileMode,
   );
   const [draft, setDraft] = useState("");
+  const sessions = useRef<EditorSessionStore | null>(null);
+  sessions.current ??= new EditorSessionStore();
+  const [nativeDocument, setNativeDocument] =
+    useState<EditorDocumentSession | null>(null);
+  const nativeDocumentRef = useRef<EditorDocumentSession | null>(null);
+  nativeDocumentRef.current = nativeDocument;
   const [baselineContent, setBaselineContent] = useState("");
   const [draftVersion, setDraftVersion] = useState<string | null>(null);
   const [mediaRevision, setMediaRevision] = useState(0);
   const [viewStatePending, setViewStatePending] = useState(0);
   const [viewStateError, setViewStateError] = useState<string | null>(null);
-  // Layout-backed tabs own an already-open workbench until the tab closes.
-  // Only the controller's bounded sidebar pool may seed a hidden workbench.
-  const retainInlineWorkbench = useRetainedInlineWorkbench(
-    active || prewarmInlineCode,
-    [
-      explorer.id,
-      explorer.projectId,
-      explorer.worktreeId,
-      explorer.activeWorkerId,
-    ].join("\0"),
-    keepInlineCodeWarm,
-  );
   const streamEncryption = useExplorerWorkerEncryption(
     explorer,
-    retainInlineWorkbench,
+    active ||
+      prewarmInlineCode ||
+      keepInlineCodeWarm ||
+      selectedPath !== null ||
+      nativeDocument !== null,
   );
   const streamEncryptionReady = streamEncryption.ready;
   const workerWasOnlineRef = useRef(workerOnline);
@@ -472,14 +387,21 @@ export function ExplorerView({
       explorer.id,
     ],
   });
+  const fileBinding = useMemo(
+    () => ({
+      workerId: explorer.activeWorkerId,
+      projectId: explorer.projectId,
+      worktreeId: explorer.worktreeId,
+    }),
+    [explorer.activeWorkerId, explorer.projectId, explorer.worktreeId],
+  );
   const file = useQuery({
     enabled: Boolean(
       streamEncryptionReady &&
       selectedPath &&
-      !usesCantripCodeEditor(selectedPath, fileMode) &&
       explorerMediaTypeForPath(selectedPath) === null,
     ),
-    queryFn: () => getExplorerFile(explorer.id, selectedPath!),
+    queryFn: () => getExplorerFile(explorer.id, selectedPath!, fileBinding),
     queryKey: [
       "explorer-file",
       explorer.id,
@@ -493,21 +415,45 @@ export function ExplorerView({
       explorerId,
       path,
       version,
+      binding,
     }: {
       content: string;
       explorerId: string;
       path: string;
       version: string;
-    }) => saveExplorerFile(explorerId, { content, path, version }),
+      binding: typeof fileBinding;
+    }) => saveExplorerFile(explorerId, { content, path, version }, binding),
   });
   const saveFileError = saveFile.error;
   const saveFilePending = saveFile.isPending;
   const mutateSaveFile = saveFile.mutateAsync;
   const resetSaveFile = saveFile.reset;
   const displayedSelectedPath = transientFilePath ?? selectedPath;
+  const clientSession = getClientSession();
+  const accountScope = JSON.stringify([
+    clientSession?.serverId,
+    clientSession?.user.id,
+  ]);
+  useEffect(() => {
+    sessions.current!.resetScope(accountScope);
+    setNativeDocument(null);
+    setDraft("");
+    setBaselineContent("");
+    setDraftVersion(null);
+  }, [accountScope]);
+  const nativeDocumentId = displayedSelectedPath
+    ? editorDocumentId({
+        server: clientSession?.serverId ?? "",
+        account: clientSession?.user.id ?? "",
+        worker: explorer.activeWorkerId,
+        project: explorer.projectId,
+        worktree: explorer.worktreeId,
+        path: displayedSelectedPath,
+      })
+    : null;
   const editableLanguage = displayedSelectedPath
     ? explorerMediaTypeForPath(displayedSelectedPath) === null
-      ? monacoLanguageForPath(displayedSelectedPath)
+      ? "text"
       : null
     : null;
   const structuredFormat = displayedSelectedPath
@@ -518,16 +464,9 @@ export function ExplorerView({
   const mediaType = displayedSelectedPath
     ? explorerMediaTypeForPath(displayedSelectedPath)
     : null;
-  const codeEditorVisible = displayedSelectedPath
-    ? usesCantripCodeEditor(displayedSelectedPath, fileMode)
-    : false;
   const graphVisible = graphRootPath !== undefined;
-  const codeEditorPath =
-    !graphVisible && codeEditorVisible ? displayedSelectedPath : null;
-  const codeEditorVisibleOnSurface = Boolean(active && codeEditorPath);
   const surfaceLifecycleState = {
     active,
-    codeEditorVisible: codeEditorVisibleOnSurface,
     keepInlineCodeWarm,
     pathPresent: displayedSelectedPath !== null,
     transient: transientFilePath !== undefined,
@@ -536,13 +475,20 @@ export function ExplorerView({
   surfaceLifecycleStateRef.current = surfaceLifecycleState;
   const previousSurfaceLifecycleStateRef = useRef<{
     active: boolean;
-    codeEditorVisible: boolean;
     keepInlineCodeWarm: boolean;
     path: string | null;
     transient: boolean;
   } | null>(null);
-  const dirty = draftVersion !== null && draft !== baselineContent;
+  const dirty =
+    nativeDocument?.id === nativeDocumentId
+      ? nativeDocument.dirty
+      : draftVersion !== null && draft !== baselineContent;
+  const hasDirtyDocuments = dirty || sessions.current!.hasDirtyDocuments;
   dirtyRef.current = dirty;
+  const changeDraft = useCallback((text: string) => {
+    nativeDocumentRef.current?.editExternal(text);
+    setDraft(text);
+  }, []);
   draftRef.current = draft;
   draftVersionRef.current = draftVersion;
   selectedPathRef.current = selectedPath;
@@ -601,7 +547,6 @@ export function ExplorerView({
     };
   }, [
     active,
-    codeEditorVisibleOnSurface,
     displayedSelectedPath,
     explorer.id,
     explorer.projectId,
@@ -621,14 +566,38 @@ export function ExplorerView({
     if (
       !file.data ||
       file.data.path !== selectedPath ||
-      draftVersion !== null
+      file.data.path !== displayedSelectedPath ||
+      (draftVersion !== null && nativeDocument?.id === nativeDocumentId)
     ) {
       return;
     }
-    setDraft(file.data.content);
-    setBaselineContent(file.data.content);
-    setDraftVersion(file.data.version);
-  }, [draftVersion, file.data, selectedPath]);
+    if (!nativeDocumentId) return;
+    const document = sessions.current!.open(
+      nativeDocumentId,
+      file.data.content,
+      file.data.version,
+    );
+    setNativeDocument(document);
+    setDraft(document.text);
+    setBaselineContent(document.baseline);
+    setDraftVersion(document.version);
+  }, [
+    draftVersion,
+    file.data,
+    selectedPath,
+    displayedSelectedPath,
+    nativeDocumentId,
+    nativeDocument,
+  ]);
+  useEffect(() => {
+    if (nativeDocument?.id === nativeDocumentId && streamEncryptionReady)
+      onInlineCodeReady?.();
+  }, [
+    nativeDocument,
+    nativeDocumentId,
+    streamEncryptionReady,
+    onInlineCodeReady,
+  ]);
 
   const applyViewState = useCallback(
     (next: { selectedPath: string | null; fileMode: ExplorerFileMode }) => {
@@ -686,8 +655,11 @@ export function ExplorerView({
   );
 
   const loadFile = useCallback(
-    async (path: string) => {
+    async (path: string, discardDraft = false) => {
       const bindingKey = streamEncryptionBindingRef.current;
+      const previous = nativeDocumentRef.current;
+      if (previous && discardDraft) sessions.current!.discard(previous.id);
+      setNativeDocument(null);
       setDraft("");
       setBaselineContent("");
       setDraftVersion(null);
@@ -702,8 +674,8 @@ export function ExplorerView({
         queryKey: ["explorer-file", explorer.id, path, bindingKey],
         refetchType: "none",
       });
-      const loaded = await queryClient.fetchQuery({
-        queryFn: () => getExplorerFile(explorer.id, path),
+      await queryClient.fetchQuery({
+        queryFn: () => getExplorerFile(explorer.id, path, fileBinding),
         queryKey: ["explorer-file", explorer.id, path, bindingKey],
       });
       if (
@@ -713,11 +685,9 @@ export function ExplorerView({
       ) {
         return;
       }
-      setDraft(loaded.content);
-      setBaselineContent(loaded.content);
-      setDraftVersion(loaded.version);
+      // The query result is installed by the identity-fenced document effect.
     },
-    [explorer.id, queryClient, resetSaveFile],
+    [explorer.id, queryClient, resetSaveFile, fileBinding],
   );
 
   useEffect(() => {
@@ -784,11 +754,14 @@ export function ExplorerView({
 
   const saveDraft = useCallback(async (): Promise<boolean> => {
     const bindingKey = streamEncryptionBindingRef.current;
-    if (!streamEncryptionReadyRef.current || !bindingKey) return false;
     const path = selectedPathRef.current;
     const version = draftVersionRef.current;
-    if (!path || !version || !dirtyRef.current) return true;
-    if (saveFilePending) return false;
+    if (
+      !path ||
+      !version ||
+      (!dirtyRef.current && !nativeDocumentRef.current?.saving)
+    )
+      return true;
     const startedAt = performance.now();
     clientLogger.info("Explorer file save started", {
       event: "explorer.file.save.started",
@@ -797,24 +770,32 @@ export function ExplorerView({
       surfaceId: explorer.id,
     });
     try {
-      const savedFile = await mutateSaveFile({
-        content: draftRef.current,
-        explorerId: explorer.id,
-        path,
-        version,
+      const document = nativeDocumentRef.current;
+      if (!document || document.id !== nativeDocumentId) return false;
+      let savedFile: Awaited<ReturnType<typeof saveExplorerFile>> | undefined;
+      await document.save(async (input) => {
+        savedFile = await mutateSaveFile({
+          ...input,
+          explorerId: explorer.id,
+          path,
+          binding: fileBinding,
+        });
+        return savedFile;
       });
-      queryClient.setQueryData(
-        ["explorer-file", explorer.id, savedFile.path, bindingKey],
-        savedFile,
-      );
+      if (!savedFile) return !document.dirty;
+      if (bindingKey)
+        queryClient.setQueryData(
+          ["explorer-file", explorer.id, savedFile.path, bindingKey],
+          savedFile,
+        );
       if (
         mountedRef.current &&
         selectedPathRef.current === savedFile.path &&
         streamEncryptionBindingRef.current === bindingKey
       ) {
-        setDraft(savedFile.content);
-        setBaselineContent(savedFile.content);
-        setDraftVersion(savedFile.version);
+        setDraft(document.text);
+        setBaselineContent(document.baseline);
+        setDraftVersion(document.version);
       }
       await Promise.all([
         queryClient.invalidateQueries({
@@ -850,7 +831,7 @@ export function ExplorerView({
         subsystem: "explorer",
         surfaceId: explorer.id,
       });
-      return true;
+      return !document.dirty;
     } catch {
       clientLogger.warn("Explorer file save failed", {
         durationMs: Math.round(performance.now() - startedAt),
@@ -870,6 +851,8 @@ export function ExplorerView({
     queryClient,
     mutateSaveFile,
     saveFilePending,
+    nativeDocumentId,
+    fileBinding,
   ]);
 
   const reconcile = useCallback(
@@ -935,9 +918,7 @@ export function ExplorerView({
     if (!streamEncryptionReadyRef.current) return;
     if (
       dirtyRef.current &&
-      !window.confirm(
-        "Reload this Explorer and discard its unsaved file changes?",
-      )
+      !window.confirm("Reload this file and discard its unsaved changes?")
     ) {
       return;
     }
@@ -963,7 +944,7 @@ export function ExplorerView({
         queryKey: ["worktree-status", explorer.projectId, explorer.worktreeId],
       }),
       selectedPathRef.current
-        ? loadFile(selectedPathRef.current)
+        ? loadFile(selectedPathRef.current, true)
         : Promise.resolve(),
     ]);
   }, [
@@ -987,9 +968,14 @@ export function ExplorerView({
       return;
     }
     if (transientFilePath) {
+      const document = nativeDocumentRef.current;
+      if (dirtyRef.current && document) sessions.current!.discard(document.id);
       transientFileCloseRef.current?.();
       return;
     }
+    const document = nativeDocumentRef.current;
+    if (dirtyRef.current && document) sessions.current!.discard(document.id);
+    setNativeDocument(null);
     setDraft("");
     setBaselineContent("");
     setDraftVersion(null);
@@ -1002,29 +988,21 @@ export function ExplorerView({
       const path = selectedPathRef.current;
       if (
         !path ||
-        (mode === "edit" && !monacoLanguageForPath(path)) ||
+        (mode === "edit" && explorerMediaTypeForPath(path) !== null) ||
         (mode === "visual" && !structuredFileFormatForPath(path))
       ) {
         return;
       }
       void (async () => {
-        if (mode === "edit" && !(await saveDraft())) return;
         if (selectedPathRef.current !== path) return;
-        if (mode === "edit") {
-          setDraft("");
-          setBaselineContent("");
-          setDraftVersion(null);
-          resetSaveFile();
-        }
         await persistViewState({ selectedPath: path, fileMode: mode });
       })();
     },
-    [persistViewState, resetSaveFile, saveDraft],
+    [persistViewState],
   );
 
-  useEffect(() => {
-    if (!active) return;
-    onHeaderChange?.({
+  const panelHeader = useMemo<ExplorerHeaderState>(
+    () => ({
       backLabel: graphVisible ? "Close graph" : undefined,
       back,
       canEdit: !graphVisible && editableLanguage !== null,
@@ -1055,31 +1033,41 @@ export function ExplorerView({
           : undefined,
       save: saveDraft,
       selectedPath: graphVisible ? null : selectedPath,
+      // Persisted file selections have their own workspace tab close control.
+      // Transient previews still need a way back to their containing Explorer.
+      showFileClose: Boolean(transientFilePath) || !explorer.selectedPath,
       setFileMode: changeFileMode,
-    });
-  }, [
-    active,
-    back,
-    changeFileMode,
-    commitFetches,
-    directoryFetches,
-    dirty,
-    editableLanguage,
-    explorer.projectId,
-    explorer.worktreeId,
-    file.isFetching,
-    fileMode,
-    graphRootPath,
-    graphStatus?.isFetching,
-    graphVisible,
-    onHeaderChange,
-    refreshExplorer,
-    saveDraft,
-    saveFilePending,
-    selectedPath,
-    structuredFormat,
-    viewStatePending,
-  ]);
+    }),
+    [
+      active,
+      back,
+      changeFileMode,
+      commitFetches,
+      directoryFetches,
+      dirty,
+      editableLanguage,
+      explorer.projectId,
+      explorer.selectedPath,
+      explorer.worktreeId,
+      file.isFetching,
+      fileMode,
+      graphRootPath,
+      graphStatus?.isFetching,
+      graphVisible,
+      refreshExplorer,
+      saveDraft,
+      saveFilePending,
+      selectedPath,
+      structuredFormat,
+      transientFilePath,
+      viewStatePending,
+      mediaType,
+    ],
+  );
+
+  useEffect(() => {
+    if (active) onHeaderChange?.(panelHeader);
+  }, [active, onHeaderChange, panelHeader]);
 
   useEffect(() => {
     return () => {
@@ -1087,24 +1075,42 @@ export function ExplorerView({
     };
   }, [active, onHeaderChange]);
 
-  const prepareClose = useCallback(
-    () => codeEditorLifecycleRef.current?.prepareClose() ?? Promise.resolve(),
-    [],
-  );
-  const cancelClose = useCallback(
-    () => codeEditorLifecycleRef.current?.cancelClose(),
-    [],
-  );
+  const prepareClose = useCallback(() => Promise.resolve(), []);
+  const cancelClose = useCallback(() => {}, []);
   const lifecycle = useMemo<ExplorerLifecycleActions>(
     () => ({
       cancelClose,
-      dirty,
+      discard: () => {
+        sessions.current!.discardAll();
+        setNativeDocument(null);
+        setDraft("");
+        setBaselineContent("");
+        setDraftVersion(null);
+        resetSaveFile();
+      },
+      dirty: hasDirtyDocuments,
       flushViewState: () => viewStateQueueRef.current,
       prepareClose,
       reconcile,
-      save: saveDraft,
+      save: async () => {
+        if (!(await saveDraft())) return false;
+        if (sessions.current!.hasDirtyDocuments) {
+          setViewStateError(
+            "Other files in this Explorer still have unsaved changes. Open them to save before closing or switching worktrees.",
+          );
+          return false;
+        }
+        return true;
+      },
     }),
-    [cancelClose, dirty, prepareClose, reconcile, saveDraft],
+    [
+      cancelClose,
+      hasDirtyDocuments,
+      prepareClose,
+      reconcile,
+      saveDraft,
+      resetSaveFile,
+    ],
   );
 
   useEffect(() => {
@@ -1116,11 +1122,11 @@ export function ExplorerView({
   );
 
   useEffect(() => {
-    if (!dirty) return;
+    if (!hasDirtyDocuments) return;
     const warn = (event: BeforeUnloadEvent) => event.preventDefault();
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty]);
+  }, [hasDirtyDocuments]);
 
   const openEntry = (entry: ExplorerEntry) => {
     if (entry.kind !== "file" || !entry.viewable) return;
@@ -1138,6 +1144,7 @@ export function ExplorerView({
       );
       return;
     }
+    setNativeDocument(null);
     setDraft("");
     setBaselineContent("");
     setDraftVersion(null);
@@ -1186,12 +1193,30 @@ export function ExplorerView({
       aria-hidden={!active}
       inert={active ? undefined : true}
       className={cn(
-        "min-h-0 flex-1 overflow-hidden",
+        "min-h-0 flex-1 flex-col overflow-hidden",
         active ? "flex" : "pointer-events-none invisible absolute inset-0 flex",
       )}
       data-slot="explorer-view"
     >
-      {!streamEncryptionReady ? (
+      {showToolbar ? (
+        <PanelToolbar aria-label="File controls">
+          <span
+            className="min-w-0 flex-1 truncate text-muted-foreground"
+            title={
+              graphVisible
+                ? (graphRootPath ?? "Repository graph")
+                : (selectedPath ?? explorer.title)
+            }
+          >
+            {graphVisible
+              ? graphRootPath || "Repository graph"
+              : (selectedPath ?? explorer.title)}
+          </span>
+          <ExplorerHeaderActions compact header={panelHeader} />
+          <ExplorerFileCloseButton header={panelHeader} />
+        </PanelToolbar>
+      ) : null}
+      {!streamEncryptionReady && !(nativeDocument?.id === nativeDocumentId) ? (
         <div className="grid h-full flex-1 place-items-center p-6 text-sm text-muted-foreground">
           {streamEncryption.error ? (
             <div className="space-y-3 text-center">
@@ -1231,19 +1256,6 @@ export function ExplorerView({
               </Button>
             </div>
           ) : null}
-          <RetainedExplorerCodeEditor
-            appearance={appearance}
-            explorerId={explorer.id}
-            onLifecycleChange={handleCodeEditorLifecycleChange}
-            onReady={onInlineCodeReady}
-            path={codeEditorPath}
-            prewarm={prewarmInlineCode}
-            retained={retainInlineWorkbench}
-            visible={codeEditorVisibleOnSurface}
-            workerOnline={workerOnline}
-            worktreeId={explorer.worktreeId}
-            workerId={explorer.activeWorkerId}
-          />
           {graphVisible ? (
             <GitRepositoryGraphView
               projectId={explorer.projectId}
@@ -1259,7 +1271,7 @@ export function ExplorerView({
               }}
               onStatusChange={setGraphStatus}
             />
-          ) : selectedPath && !codeEditorVisible ? (
+          ) : selectedPath ? (
             <div className="min-h-0 flex-1 overflow-hidden">
               {mediaType ? (
                 <ExplorerMediaView
@@ -1269,6 +1281,15 @@ export function ExplorerView({
                   mimeType={mediaType.mimeType}
                   path={selectedPath}
                   revision={mediaRevision}
+                />
+              ) : nativeDocument?.id === nativeDocumentId &&
+                fileMode === "edit" ? (
+                <NativeCodeEditor
+                  session={nativeDocument}
+                  path={selectedPath}
+                  active={active}
+                  onChange={changeDraft}
+                  onSave={() => void saveDraft()}
                 />
               ) : file.isLoading ? (
                 <div className="grid h-full place-items-center text-muted-foreground">
@@ -1280,6 +1301,13 @@ export function ExplorerView({
                     ? file.error.message
                     : "File could not be loaded."}
                 </p>
+              ) : file.data &&
+                fileMode === "preview" &&
+                isLicenseFile(file.data.path) ? (
+                <LicenseFileView
+                  content={draftVersion === null ? file.data.content : draft}
+                  path={file.data.path}
+                />
               ) : file.data && fileMode === "visual" && structuredFormat ? (
                 <Suspense
                   fallback={
@@ -1291,7 +1319,7 @@ export function ExplorerView({
                   <StructuredFileVisual
                     content={draftVersion === null ? file.data.content : draft}
                     format={structuredFormat}
-                    onChange={setDraft}
+                    onChange={changeDraft}
                     onSave={() => void saveDraft()}
                     path={file.data.path}
                   />
@@ -1300,31 +1328,37 @@ export function ExplorerView({
                 (fileMode === "preview" ||
                   editableLanguage === null ||
                   fileMode === "visual") ? (
-                <div className="h-full overflow-auto">
-                  {file.data.markdown &&
-                  markdownPreviewUsesPlainText(file.data.path) ? (
-                    <pre
-                      className="min-h-full whitespace-pre-wrap break-words px-4 font-mono text-xs leading-5"
-                      data-content-gutter="markdown"
-                    >
-                      {draft}
-                    </pre>
-                  ) : file.data.markdown ? (
-                    <ExplorerMarkdown
-                      path={file.data.path}
-                      onOpenFile={(path) => {
-                        setViewStateError(null);
-                        if (onOpenGraphFile) onOpenGraphFile(explorer, path);
-                        else openEntry(explorerFileEntryForGraphPath(path));
-                      }}
-                      onError={setViewStateError}
-                    >
-                      {draft}
-                    </ExplorerMarkdown>
-                  ) : (
-                    <SourceView code={draft} path={file.data.path} />
-                  )}
-                </div>
+                file.data.markdown ? (
+                  <div className="h-full overflow-auto">
+                    {markdownPreviewUsesPlainText(file.data.path) ? (
+                      <pre
+                        className="min-h-full whitespace-pre-wrap break-words px-4 font-mono text-xs leading-5"
+                        data-content-gutter="markdown"
+                      >
+                        {draft}
+                      </pre>
+                    ) : (
+                      <ExplorerMarkdown
+                        path={file.data.path}
+                        onOpenFile={(path) => {
+                          setViewStateError(null);
+                          if (onOpenGraphFile) onOpenGraphFile(explorer, path);
+                          else openEntry(explorerFileEntryForGraphPath(path));
+                        }}
+                        onError={setViewStateError}
+                      >
+                        {draft}
+                      </ExplorerMarkdown>
+                    )}
+                  </div>
+                ) : nativeDocument?.id === nativeDocumentId ? (
+                  <NativeCodeEditor
+                    session={nativeDocument}
+                    path={file.data.path}
+                    active={active}
+                    readOnly
+                  />
+                ) : null
               ) : null}
             </div>
           ) : !selectedPath ? (

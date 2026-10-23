@@ -1,6 +1,7 @@
 .git
 .github
 .cantrip
+# Legacy workbench caches must not enter Docker build contexts.
 .cantrip-code
 **/.DS_Store
 **/.env
@@ -14,13 +15,8 @@ artifacts
 cantrip_app/android
 cantrip_app/ios
 cantrip_app/src-tauri/resources/runtime
-cantrip_code/.build
-cantrip_code/.cache
-cantrip_code/.prepared
-cantrip_code/upstream/.build
-cantrip_code/upstream/.cache
-cantrip_code/upstream/node_modules
-cantrip_code/upstream/out*
+# Exclude retired editor source/build leftovers from older checkouts.
+cantrip_code
 cantrip_codex/.build
 coverage
 logs

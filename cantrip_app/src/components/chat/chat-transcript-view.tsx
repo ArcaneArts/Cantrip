@@ -138,6 +138,7 @@ export function ChatTranscriptView({
     onFilesOpenChange,
     onOpenFile,
     onOpenRelocation,
+    onConfigureModels,
     permissionProfiles,
     nativePermissions,
     planImplementationDisabled,
@@ -304,6 +305,7 @@ export function ChatTranscriptView({
           key={chat.id}
           chatId={chat.id}
           projectId={chat.projectId}
+          onConfigureModels={onConfigureModels}
         />
       ) : null}
       <div
@@ -615,39 +617,63 @@ export function ChatTranscriptView({
             />
           ) : null}
           {capabilities.modes === "agent-modes" ? (
-            <GoalPanel
-              automationPaused={chat.automationPaused}
-              executionFailed={chat.status === "failed"}
-              error={
-                updateGoal.isError
-                  ? errorText(updateGoal.error)
-                  : clearGoal.isError
-                    ? errorText(clearGoal.error)
-                    : setAutomationPaused.isError
-                      ? errorText(setAutomationPaused.error)
-                      : null
-              }
-              goal={goalState.data?.goal ?? null}
-              pending={
-                updateGoal.isPending ||
-                clearGoal.isPending ||
-                setAutomationPaused.isPending
-              }
-              onClear={() => clearGoal.mutate()}
-              onUpdate={(status) => {
-                if (status === "active" && chat.automationPaused) {
-                  setAutomationPaused.mutate(false, {
-                    onSuccess: () => {
-                      if (goalState.data?.goal?.status !== "active") {
-                        updateGoal.mutate("active");
-                      }
-                    },
-                  });
-                } else {
-                  updateGoal.mutate(status);
+            <>
+              {goalState.statusError ? (
+                <div
+                  role="alert"
+                  className="mb-2 flex items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-[var(--popover-solid)] px-3 py-2 text-xs"
+                >
+                  <span>
+                    Could not load goal status.{" "}
+                    {errorText(goalState.statusError)}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={goalState.isFetching}
+                    onClick={() => void goalState.refetch()}
+                  >
+                    Retry goal status
+                  </Button>
+                </div>
+              ) : null}
+              <GoalPanel
+                key={chat.id}
+                automationPaused={chat.automationPaused}
+                executionFailed={chat.status === "failed"}
+                error={
+                  updateGoal.isError
+                    ? errorText(updateGoal.error)
+                    : clearGoal.isError
+                      ? errorText(clearGoal.error)
+                      : setAutomationPaused.isError
+                        ? errorText(setAutomationPaused.error)
+                        : null
                 }
-              }}
-            />
+                goal={goalState.data?.goal ?? null}
+                pending={
+                  updateGoal.isPending ||
+                  clearGoal.isPending ||
+                  setAutomationPaused.isPending
+                }
+                onClear={() => clearGoal.mutate()}
+                onEdit={(objective) => updateGoal.mutateAsync({ objective })}
+                onUpdate={(status) => {
+                  if (status === "active" && chat.automationPaused) {
+                    setAutomationPaused.mutate(false, {
+                      onSuccess: () => {
+                        if (goalState.data?.goal?.status !== "active") {
+                          updateGoal.mutate({ status: "active" });
+                        }
+                      },
+                    });
+                  } else {
+                    updateGoal.mutate({ status });
+                  }
+                }}
+              />
+            </>
           ) : null}
           <AgentInteractionPanel
             requests={interactionRequests.data ?? []}
@@ -1159,7 +1185,7 @@ export function ChatTranscriptView({
       </form>
       {effectiveInspectOnly ? (
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 border-t bg-background/95 px-4 py-2 text-center text-[11px] text-muted-foreground backdrop-blur">
-          Task planning controls are available in Task view.
+          Task planning controls are available in Overview.
         </div>
       ) : null}
       {capabilities.inspect ? (

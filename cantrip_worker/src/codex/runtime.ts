@@ -68,6 +68,10 @@ export async function interruptChatAcrossRuntimes(
 }
 
 export interface CodexRuntime {
+  readThreadExecution(threadId: string): Promise<{
+    threadId: string;
+    status: "running" | "idle" | "failed";
+  }>;
   readonly compatibility: CodexRuntimeReport;
   readonly transportGeneration: string | null;
 
@@ -265,7 +269,8 @@ export interface CodexRuntime {
   ): Promise<ChatGoalResponse>;
   updateGoal(
     options: GoalRuntimeOptions & {
-      status: "active" | "paused";
+      status?: "active" | "paused";
+      objective?: string;
       threadId: string;
       configureTaskPermissions?: boolean;
     },

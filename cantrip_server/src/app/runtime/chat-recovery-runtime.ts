@@ -5,13 +5,11 @@ import {
 } from "../../terminals/managed-session.js";
 import { effectivePermissionProfile } from "../../chats/execution-helpers.js";
 import { randomUUID } from "node:crypto";
+import { protectChatInput } from "./protect-chat-input.js";
 
 import {
   chatMessageRelayResultSchema,
-  codeAgentTurnNotificationResultSchema,
-  codeAgentTurnPreparationResultSchema,
   worktreeStatusResultSchema,
-  type ChatMessage,
   type WorkerNotification,
 } from "@cantrip/protocol";
 import { taskMessageRelayResultSchema } from "@cantrip/protocol/tasks";
@@ -62,6 +60,12 @@ export interface ChatRecoveryRuntimeDependencies
   app: Pick<FastifyInstance, "log">;
   applicationOwnerId: () => string;
   beginTurn: BeginChatTurn;
+  continueTaskGoalInWorktree?: (
+    context: ChatExecutionContext,
+    input: { text: string; idempotencyKey: string },
+  ) => Promise<boolean>;
+  recoverTaskExecution?: (chatId: string) => Promise<boolean>;
+  reconcileTaskExecutions?: (ownerId: string) => Promise<void>;
   bridge: LimitedWorkerCommandBus;
   failTaskGoalLaunch: (
     chatId: string,
@@ -89,6 +93,9 @@ export function createChatRecoveryRuntime({
   applicationOwnerId,
   availableModelRuntimes,
   beginTurn,
+  continueTaskGoalInWorktree,
+  recoverTaskExecution,
+  reconcileTaskExecutions,
   bridge,
   deleteLiveQueuedPrompt,
   failTaskGoalLaunch,
@@ -125,6 +132,14 @@ export function createChatRecoveryRuntime({
       if (current.contextKind !== "project") return false;
       if (current.automationPaused) return true;
       if (!bridge.isConnected(pending.worktree.workerId)) return true;
+      // Native Goals may keep working while server state is being recovered.
+      // Observe/adopt them before an old pending handoff changes placement.
+      if (
+        current.experience === "task" &&
+        (current.status === "offline" || current.status === "failed") &&
+        (await recoverTaskExecution?.(chatId))
+      )
+        return true;
 
       try {
         const modelId = await resolveModelId(current);
@@ -194,18 +209,36 @@ export function createChatRecoveryRuntime({
           ? `Returned to Primary after releasing the previous worktree. Continue the user's request from this checkout.`
           : `Continued in ${applied.worktree.name}${applied.worktree.branch ? ` (${applied.worktree.branch})` : ""}. Continue the user's request from this checkout.`;
       try {
-        await beginTurn(
-          next,
-          {
-            text: transitionText,
-            idempotencyKey: `worktree-continuation:${pending.lane.id}`,
-          },
-          {
-            acquiringActor: "agent",
-            messageRole: "system",
-            purpose: `Controlled ${applied.transitionKind} continuation`,
-          },
+        const input = {
+          text: transitionText,
+          mode: "default" as const,
+          idempotencyKey: `worktree-continuation:${pending.lane.id}`,
+        };
+        if (
+          next.experience === "task" &&
+          (await continueTaskGoalInWorktree?.(next, input))
+        )
+          return true;
+        const protectedMessage = await protectChatInput(
+          bridge,
+          next.workerId,
+          input,
+          [],
+          next.reasoningEffort,
+          "system",
         );
+        const response = {
+          id: randomUUID(),
+          idempotencyKey: `assistant:${protectedMessage.id}`,
+        };
+        await beginTurn(next, input, {
+          // beginTurn converts Task conversation inputs on the worker and
+          // forwards their authenticated mode instead of defaulting to Goal.
+          encryptedChatMessages: { userMessage: protectedMessage, response },
+          acquiringActor: "agent",
+          messageRole: "system",
+          purpose: `Controlled ${applied.transitionKind} continuation`,
+        });
       } catch (error) {
         app.log.error(
           { chatId, err: error },
@@ -241,6 +274,7 @@ export function createChatRecoveryRuntime({
     workerId: string,
   ): Promise<void> => {
     if (!bridge.isConnected(workerId)) return;
+    await runAsOwner(ownerId, () => reconcileTaskExecutions?.(ownerId));
     const chatIds = await repository.listPendingWorktreeTransitionChatIds(
       ownerId,
       workerId,
@@ -277,88 +311,6 @@ export function createChatRecoveryRuntime({
       throw new Error("Attachments belong to another worker.");
     }
     return attachments;
-  };
-
-  const prepareCodeEditorsForTurn = async (
-    context: ChatExecutionContext,
-    timeoutMs?: number | null,
-  ): Promise<void> => {
-    const result = codeAgentTurnPreparationResultSchema.parse(
-      await bridge.request(
-        context.workerId,
-        {
-          type: "code.prepareAgentTurn",
-          cwd: context.cwd,
-        },
-        timeoutMs === undefined ? undefined : { timeoutMs },
-      ),
-    );
-    if (result.prepared) return;
-    const blocked = result.sessions.filter((session) => !session.allowed);
-    const files = [
-      ...new Set(
-        blocked.flatMap((session) =>
-          session.dirtyEditors.map(
-            (editor) => editor.relativePath ?? editor.uri,
-          ),
-        ),
-      ),
-    ];
-    const reason =
-      blocked.find((session) => session.reason)?.reason ??
-      "Cantrip Code could not establish a saved-file boundary.";
-    app.log.warn(
-      {
-        event: "code.agent-turn-preparation-blocked",
-        subsystem: "code",
-        operation: "prepare-agent-turn",
-        status: "blocked",
-        reasonCode: "saved-file-boundary-unavailable",
-        chatId: context.chatId,
-        projectId: context.projectId,
-        workerId: context.workerId,
-        counts: {
-          blockedSessions: blocked.length,
-          dirtyEditors: files.length,
-          failedEditors: blocked.reduce(
-            (total, session) => total + session.failed.length,
-            0,
-          ),
-        },
-        err: new Error(reason),
-      },
-      "Cantrip Code blocked agent turn preparation",
-    );
-    throw new Error(
-      `${reason}${files.length ? ` Dirty editors: ${files.slice(0, 10).join(", ")}${files.length > 10 ? ` and ${files.length - 10} more` : ""}.` : ""}`,
-    );
-  };
-
-  const notifyCodeAgentState = async (
-    context: Pick<ChatExecutionContext, "chatId" | "cwd" | "workerId">,
-    phase: "started" | "completed" | "failed",
-    paths: Iterable<string> = [],
-    timeoutMs?: number | null,
-  ): Promise<void> => {
-    try {
-      codeAgentTurnNotificationResultSchema.parse(
-        await bridge.request(
-          context.workerId,
-          {
-            type: "code.agentTurnState",
-            cwd: context.cwd,
-            phase,
-            paths: [...paths].slice(0, 5_000),
-          },
-          { timeoutMs },
-        ),
-      );
-    } catch (error) {
-      app.log.warn(
-        { chatId: context.chatId, err: error, phase },
-        "Could not synchronize the agent turn with Cantrip Code",
-      );
-    }
   };
 
   const dispatchNextQueuedPrompt = async (chatId: string): Promise<void> => {
@@ -908,16 +860,6 @@ export function createChatRecoveryRuntime({
         recoveredFailedStatus = true;
       }
     }
-    if (notification.contextKind === "project" && "worktree" in laneContext) {
-      await notifyCodeAgentState(
-        {
-          chatId: notification.chatId,
-          cwd: laneContext.worktree.path,
-          workerId,
-        },
-        recoveredOutcomeOk ? "completed" : "failed",
-      );
-    }
     publishChatTurnBoundary(
       notification.chatId,
       laneContext.chat.projectId,
@@ -971,8 +913,6 @@ export function createChatRecoveryRuntime({
   return {
     continuePendingWorktreeTransition,
     dispatchNextQueuedPrompt,
-    notifyCodeAgentState,
-    prepareCodeEditorsForTurn,
     recoverChatTurnOutcome,
     resolvePromptAttachments,
     resumePendingWorktreeTransitionsForWorker,

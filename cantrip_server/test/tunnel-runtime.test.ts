@@ -293,18 +293,18 @@ describe("desktop tunnel runtime", () => {
     runtime.close();
   });
 
-  it("classifies managed Code and project-share data planes", () => {
+  it("classifies generic worker-adapter and project-share data planes", () => {
     expect(
       tunnelBandwidthChannel({
         ...authorization,
         destination: {
           kind: "worker-adapter",
           workerId: "worker-b",
-          adapter: "code",
-          resourceId: "code-1",
+          adapter: "custom-adapter",
+          resourceId: "resource-1",
         },
       }),
-    ).toBe("code-relay");
+    ).toBe("tunnel-relay");
     expect(
       tunnelBandwidthChannel({
         ...authorization,
@@ -904,7 +904,6 @@ describe("desktop tunnel runtime", () => {
       expect(activity).toHaveBeenCalledWith(
         healthyAuthorization.tunnelId,
         healthyAuthorization.attachmentId,
-        true,
       );
 
       await vi.advanceTimersByTimeAsync(250);

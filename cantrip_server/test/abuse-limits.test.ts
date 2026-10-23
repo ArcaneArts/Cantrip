@@ -110,15 +110,15 @@ describe("hosted relay abuse limits", () => {
       workerConcurrency: 1,
       workerRatePerMinute: 10,
     });
-    const first = limited.request("worker-1", { type: "code.probe" });
+    const first = limited.request("worker-1", { type: "worker.version" });
     await vi.waitFor(() => expect(delegate.pending).toHaveLength(1));
     await expect(
-      limited.request("worker-1", { type: "code.probe" }),
+      limited.request("worker-1", { type: "worker.version" }),
     ).rejects.toBeInstanceOf(RelayLimitError);
     delegate.pending[0]!.resolve({ ok: true });
     await expect(first).resolves.toEqual({ ok: true });
 
-    const next = limited.request("worker-1", { type: "code.probe" });
+    const next = limited.request("worker-1", { type: "worker.version" });
     await vi.waitFor(() => expect(delegate.pending).toHaveLength(2));
     delegate.pending[1]!.resolve({ ok: true });
     await expect(next).resolves.toEqual({ ok: true });
@@ -133,12 +133,12 @@ describe("hosted relay abuse limits", () => {
       workerConcurrency: 2,
       workerRatePerMinute: 1,
     });
-    const first = limited.request("worker-1", { type: "code.probe" });
+    const first = limited.request("worker-1", { type: "worker.version" });
     await vi.waitFor(() => expect(delegate.pending).toHaveLength(1));
     delegate.pending[0]!.resolve({ ok: true });
     await expect(first).resolves.toEqual({ ok: true });
     await expect(
-      limited.request("worker-1", { type: "code.probe" }),
+      limited.request("worker-1", { type: "worker.version" }),
     ).rejects.toMatchObject({
       name: "RelayLimitError",
       retryAfterSeconds: expect.any(Number),
@@ -158,7 +158,7 @@ describe("hosted relay abuse limits", () => {
     });
 
     await expect(
-      limited.request("worker-1", { type: "code.probe" }),
+      limited.request("worker-1", { type: "worker.version" }),
     ).rejects.toBeInstanceOf(RelayLimitError);
     expect(consumeRelayBytes).toHaveBeenCalledWith(
       "owner-1",

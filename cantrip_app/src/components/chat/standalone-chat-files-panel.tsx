@@ -1,36 +1,23 @@
-import type {
-  ExplorerEntry,
-  ExplorerFile,
-  StandaloneChatSummary,
-} from "@cantrip/protocol";
+import type { ExplorerEntry, StandaloneChatSummary } from "@cantrip/protocol";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronDown,
   ChevronRight,
   Download,
-  File,
-  FileCode2,
-  FileText,
   Folder,
-  FolderOpen,
-  Image as ImageIcon,
   Loader2,
   RefreshCw,
-  Save,
   Trash2,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { Markdown } from "@/components/chat/markdown";
-import {
-  monacoLanguageForPath,
-  structuredFileFormatForPath,
-} from "@/components/explorer/explorer-file-language";
+import { ChatFilePreview } from "./standalone-chat-file-preview";
+import { NativeFileWindowCloseGuard } from "@/components/app/native-file-window-close-guard";
+import { chatEditorSessions } from "./standalone-chat-editor-sessions";
+import type { EditorDocumentSession } from "@/components/editor/document-session";
 import { formatExplorerSize } from "@/components/explorer/explorer-entry-metadata";
-import { MonacoFileEditor } from "@/components/explorer/monaco-file-editor";
-import { StructuredFileVisual } from "@/components/explorer/structured-file-visual";
 import { Button } from "@/components/ui/button";
 import {
   NativeFolderRevealIcon,
@@ -43,11 +30,8 @@ import {
 import {
   deleteStandaloneChatFileEntry,
   downloadStandaloneChatFiles,
-  getStandaloneChatFile,
   getStandaloneChatFileDirectory,
   getWorkers,
-  loadStandaloneChatFileMedia,
-  saveStandaloneChatFile,
 } from "@/lib/api";
 import {
   chatFilesAreLocalToDesktop,
@@ -65,8 +49,7 @@ import {
 import { listDesktopWorkers } from "@/lib/desktop-worker";
 import { getActiveServerUrl } from "@/lib/server-connections";
 import { cn } from "@/lib/utils";
-
-type PreviewMode = "edit" | "preview" | "visual";
+import { FileTypeIcon } from "@/components/files/file-type-icon";
 
 function downloadBlob(blob: Blob, fileName: string): void {
   const url = URL.createObjectURL(blob);
@@ -78,13 +61,6 @@ function downloadBlob(blob: Blob, fileName: string): void {
   anchor.click();
   anchor.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
-}
-
-function entryIcon(entry: ExplorerEntry, expanded: boolean) {
-  if (entry.kind === "directory") return expanded ? FolderOpen : Folder;
-  if (entry.markdown) return FileText;
-  if (entry.viewable) return FileCode2;
-  return File;
 }
 
 function ChatFileRow({
@@ -117,7 +93,6 @@ function ChatFileRow({
   selected: boolean;
 }) {
   const preferLocalRevealRef = useRef(false);
-  const Icon = entryIcon(entry, expanded);
   const row = (
     <button
       aria-expanded={entry.kind === "directory" ? expanded : undefined}
@@ -178,7 +153,12 @@ function ChatFileRow({
       ) : (
         <span className="size-3.5 shrink-0" />
       )}
-      <Icon className="size-3.5 shrink-0" />
+      <FileTypeIcon
+        path={entry.name}
+        kind={entry.kind}
+        expanded={expanded}
+        className="size-3.5"
+      />
       <span className="min-w-0 flex-1 truncate">{entry.name}</span>
       <span className="shrink-0 text-[9px] text-muted-foreground/60">
         {entry.size === null ? "" : formatExplorerSize(entry.size)}
@@ -358,251 +338,6 @@ function ChatFileDirectory({
   );
 }
 
-function ChatFileMediaPreview({
-  chatId,
-  entry,
-}: {
-  chatId: string;
-  entry: ExplorerEntry;
-}) {
-  const media = useQuery({
-    queryFn: () => loadStandaloneChatFileMedia(chatId, entry.path),
-    queryKey: [
-      "standalone-chat-file-media",
-      chatId,
-      entry.path,
-      entry.modifiedAt,
-    ],
-  });
-  const source = useMemo(
-    () => (media.data ? URL.createObjectURL(media.data) : null),
-    [media.data],
-  );
-  useEffect(
-    () => () => {
-      if (source) URL.revokeObjectURL(source);
-    },
-    [source],
-  );
-  if (media.isLoading) {
-    return (
-      <Loader2 className="m-auto size-5 animate-spin text-muted-foreground" />
-    );
-  }
-  if (media.isError || !media.data || !source) {
-    return (
-      <p className="m-auto p-4 text-xs text-destructive">
-        Media preview unavailable.
-      </p>
-    );
-  }
-  const type = media.data.type;
-  if (type.startsWith("image/")) {
-    return (
-      <img
-        alt={entry.name}
-        className="m-auto max-h-full max-w-full object-contain p-3"
-        src={source}
-      />
-    );
-  }
-  if (type.startsWith("audio/")) {
-    return (
-      <audio
-        aria-label={entry.name}
-        className="m-auto w-[90%]"
-        controls
-        src={source}
-      />
-    );
-  }
-  return (
-    <video
-      aria-label={entry.name}
-      className="m-auto max-h-full max-w-full p-3"
-      controls
-      playsInline
-      src={source}
-    />
-  );
-}
-
-function ChatFilePreview({
-  chatId,
-  entry,
-  onSaved,
-}: {
-  chatId: string;
-  entry: ExplorerEntry | null;
-  onSaved(): void;
-}) {
-  const query = useQuery({
-    enabled: Boolean(
-      entry?.viewable &&
-      !entry.symbolicLink &&
-      !entry.path.match(
-        /\.(?:aac|apng|avif|bmp|flac|gif|ico|jpe?g|m4[av]|mov|mp3|mp4|oga|ogg|ogv|opus|png|svg|wav|weba|webm|webp)$/iu,
-      ),
-    ),
-    queryFn: () => getStandaloneChatFile(chatId, entry!.path),
-    queryKey: ["standalone-chat-file", chatId, entry?.path, entry?.modifiedAt],
-  });
-  const [content, setContent] = useState("");
-  const [version, setVersion] = useState("");
-  const [mode, setMode] = useState<PreviewMode>("edit");
-  useEffect(() => {
-    if (!query.data) return;
-    setContent(query.data.content);
-    setVersion(query.data.version);
-    setMode(
-      structuredFileFormatForPath(query.data.path)
-        ? "visual"
-        : query.data.markdown
-          ? "preview"
-          : "edit",
-    );
-  }, [query.data]);
-  const save = useMutation({
-    mutationFn: () =>
-      saveStandaloneChatFile(chatId, {
-        path: entry!.path,
-        content,
-        version,
-      }),
-    onSuccess: (saved: ExplorerFile) => {
-      setContent(saved.content);
-      setVersion(saved.version);
-      onSaved();
-    },
-  });
-  if (!entry) {
-    return (
-      <div className="grid h-full place-items-center p-5 text-center text-xs text-muted-foreground">
-        Select a file to preview or edit it.
-      </div>
-    );
-  }
-  const media = entry.path.match(
-    /\.(?:aac|apng|avif|bmp|flac|gif|ico|jpe?g|m4[av]|mov|mp3|mp4|oga|ogg|ogv|opus|png|svg|wav|weba|webm|webp)$/iu,
-  );
-  if (media) return <ChatFileMediaPreview chatId={chatId} entry={entry} />;
-  if (!entry.viewable) {
-    return (
-      <div className="grid h-full place-items-center p-5 text-center text-xs text-muted-foreground">
-        <div>
-          <File className="mx-auto mb-2 size-6" />
-          <p className="font-medium text-foreground">Preview unavailable</p>
-          <p className="mt-1">
-            {formatExplorerSize(entry.size ?? 0)} · {entry.path}
-          </p>
-        </div>
-      </div>
-    );
-  }
-  if (query.isLoading && !query.data) {
-    return (
-      <Loader2 className="m-auto size-5 animate-spin text-muted-foreground" />
-    );
-  }
-  if (query.isError || !query.data) {
-    return (
-      <div className="m-auto max-w-full p-5 text-center text-xs text-muted-foreground">
-        <File className="mx-auto mb-2 size-6" />
-        <p className="font-medium text-destructive">
-          {query.error instanceof Error
-            ? query.error.message
-            : "File preview unavailable."}
-        </p>
-        <p className="mt-1 break-all">
-          {formatExplorerSize(entry.size ?? 0)} · {entry.path}
-        </p>
-      </div>
-    );
-  }
-  const format = structuredFileFormatForPath(entry.path);
-  const language = monacoLanguageForPath(entry.path) ?? "plaintext";
-  const dirty = content !== query.data.content;
-  return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex h-9 shrink-0 items-center gap-1 border-b px-2">
-        <span
-          className="min-w-0 flex-1 truncate text-[11px] font-medium"
-          title={entry.path}
-        >
-          {entry.name}
-        </span>
-        {entry.markdown ? (
-          <Button
-            size="sm"
-            variant={mode === "preview" ? "outline" : "ghost"}
-            onClick={() => setMode("preview")}
-          >
-            Preview
-          </Button>
-        ) : null}
-        {format ? (
-          <Button
-            size="sm"
-            variant={mode === "visual" ? "outline" : "ghost"}
-            onClick={() => setMode("visual")}
-          >
-            Visual
-          </Button>
-        ) : null}
-        <Button
-          size="sm"
-          variant={mode === "edit" ? "outline" : "ghost"}
-          onClick={() => setMode("edit")}
-        >
-          Edit
-        </Button>
-        <Button
-          aria-label="Save Chat file"
-          disabled={!dirty || save.isPending}
-          onClick={() => save.mutate()}
-          size="icon"
-          title="Save (⌘S / Ctrl+S)"
-          variant="ghost"
-        >
-          {save.isPending ? (
-            <Loader2 className="size-3.5 animate-spin" />
-          ) : (
-            <Save className="size-3.5" />
-          )}
-        </Button>
-      </div>
-      {save.isError ? (
-        <p className="border-b border-destructive/30 bg-destructive/5 px-3 py-2 text-[10px] text-destructive">
-          {save.error instanceof Error ? save.error.message : "Save failed."}
-        </p>
-      ) : null}
-      <div className="min-h-0 flex-1 overflow-hidden">
-        {mode === "preview" && entry.markdown ? (
-          <div className="h-full overflow-auto" data-content-gutter="markdown">
-            <Markdown>{content}</Markdown>
-          </div>
-        ) : mode === "visual" && format ? (
-          <StructuredFileVisual
-            content={content}
-            format={format}
-            onChange={setContent}
-            onSave={() => save.mutate()}
-            path={entry.path}
-          />
-        ) : (
-          <MonacoFileEditor
-            language={language}
-            modelPath={`cantrip://chat-files/${encodeURIComponent(chatId)}/${entry.path.split("/").map(encodeURIComponent).join("/")}`}
-            onChange={setContent}
-            onSave={() => save.mutate()}
-            value={content}
-          />
-        )}
-      </div>
-    </div>
-  );
-}
-
 function chatFileEntry(path: string): ExplorerEntry {
   const parts = path.split("/");
   return {
@@ -630,6 +365,9 @@ export function StandaloneChatFileWindow({
   }, [entry.name]);
   return (
     <main className="flex h-svh min-h-0 flex-col overflow-hidden bg-background text-foreground">
+      <NativeFileWindowCloseGuard
+        hasUnsavedChanges={() => chatEditorSessions.hasDirtyDocuments}
+      />
       <header
         className="relative flex h-9 shrink-0 items-center border-b border-border/70 bg-background pr-2"
         data-tauri-drag-region=""
@@ -682,6 +420,8 @@ export function StandaloneChatFilesPanel({
     null,
   );
   const [openError, setOpenError] = useState<unknown>(null);
+  const fileDirty = useRef(false);
+  const fileDocument = useRef<EditorDocumentSession | null>(null);
   const worker = workers.data?.find(
     (candidate) => candidate.workerId === chat.activeWorkerId,
   );
@@ -701,6 +441,17 @@ export function StandaloneChatFilesPanel({
   );
   const openFile = useCallback(
     (entry: ExplorerEntry) => {
+      if (
+        !desktopRuntime &&
+        fileDirty.current &&
+        !window.confirm("Open another file and discard its unsaved changes?")
+      )
+        return;
+      if (!desktopRuntime && fileDocument.current) {
+        chatEditorSessions.discard(fileDocument.current.id);
+        fileDocument.current = null;
+        fileDirty.current = false;
+      }
       setSelectedEntry(entry);
       if (!desktopRuntime) return;
       setOpenError(null);
@@ -873,7 +624,20 @@ export function StandaloneChatFilesPanel({
             </span>
             <Button
               aria-label="Close Chat file"
-              onClick={() => setSelectedEntry(null)}
+              onClick={() => {
+                if (
+                  fileDirty.current &&
+                  !window.confirm(
+                    "Close this file and discard its unsaved changes?",
+                  )
+                )
+                  return;
+                fileDirty.current = false;
+                if (fileDocument.current)
+                  chatEditorSessions.discard(fileDocument.current.id);
+                fileDocument.current = null;
+                setSelectedEntry(null);
+              }}
               size="icon"
               title="Close file"
               variant="ghost"
@@ -884,7 +648,13 @@ export function StandaloneChatFilesPanel({
           <div className="min-h-0 flex-1">
             <ChatFilePreview
               chatId={chat.id}
+              chat={chat}
+              key={selectedEntry.path}
               entry={selectedEntry}
+              onDirtyChange={(dirty, document) => {
+                fileDirty.current = dirty;
+                fileDocument.current = document;
+              }}
               onSaved={() => void invalidate()}
             />
           </div>

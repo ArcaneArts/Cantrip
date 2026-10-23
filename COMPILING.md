@@ -7,13 +7,12 @@ otherwise.
 
 Cantrip's desktop bundle is a host-native build. It includes the React client,
 Tauri shell, server, worker, a platform-matched Node runtime, the Rust Cantrip
-CLI, the patched Codex runtime, and the patched Cantrip Code/OpenVSCode
-distribution. Native dependencies mean that a complete Windows bundle is built
-on Windows, a complete macOS bundle on macOS, and a complete Linux bundle on
-Linux.
+CLI, portable CUA runtime, and patched Codex runtime. Native dependencies mean
+that a complete Windows bundle is built on Windows, a complete macOS bundle on
+macOS, and a complete Linux bundle on Linux.
 
 The Capacitor applications are clients only. They do not contain the Cantrip
-server, worker, Codex, or Cantrip Code and must connect to a reachable Cantrip
+server, worker, or Codex and must connect to a reachable Cantrip
 server after installation.
 
 ## Shared requirements
@@ -43,10 +42,10 @@ checkout:
 pnpm install --frozen-lockfile
 ```
 
-The first native build is large. Keep at least 30 GB free and expect Codex and
-Cantrip Code to take most of the build time. Cargo, npm, and Cantrip Code build
-outputs are cached, so later builds on the same machine are substantially
-faster. Cloning near the root of a drive also reduces path-length pressure.
+The first native build is large. Keep at least 30 GB free and expect the pinned
+Codex runtime to account for most of the build time. Cargo and package downloads
+are cached for later builds. Cloning near the root of a drive also reduces
+path-length pressure.
 
 The normal verification command is:
 
@@ -61,7 +60,7 @@ pnpm bundle
 ```
 
 Do not pass a different operating-system target to `pnpm bundle`. The worker,
-Codex, Cantrip Code, and embedded Node runtime must match the machine executing
+Codex, CUA, and embedded Node runtime must match the machine executing
 the build.
 
 Successful bundles are collected under:
@@ -174,16 +173,15 @@ From a short path such as `C:\src\Cantrip`:
 ```powershell
 pnpm install --frozen-lockfile
 pnpm codex:verify
-pnpm code:source:verify
 pnpm check
 pnpm bundle
 ```
 
 `pnpm bundle` builds the standalone server and worker, all patched Codex
-executables, the Cantrip CLI, Cantrip Code and its native Node modules, the
-Tauri application, and the Windows installers. The Tauri configuration
-currently requests all Windows bundle formats, so a complete build creates both
-an NSIS setup executable and an MSI where the local Windows configuration
+executables, the Cantrip CLI, CUA, the Tauri application, and the Windows
+installers. The Tauri configuration currently requests all Windows bundle
+formats, so a complete build creates both an NSIS setup executable and an MSI
+where the local Windows configuration
 supports it. Set `CANTRIP_WINDOWS_BUNDLE=nsis` or
 `CANTRIP_WINDOWS_BUNDLE=msi` to request only one installer format; the bootstrap
 script uses `nsis` by default.
@@ -215,8 +213,8 @@ Use `pnpm dev` instead for the browser client.
   complete Python installation.
 - `failed to run light.exe`: enable the VBSCRIPT optional feature or build only
   an NSIS installer while diagnosing MSI tooling.
-- Path-too-long or missing-file errors inside `node_modules`, `cantrip_codex`,
-  or `cantrip_code`: enable Windows long paths and move the checkout closer to
+- Path-too-long or missing-file errors inside `node_modules` or `cantrip_codex`:
+  enable Windows long paths and move the checkout closer to
   the drive root.
 - Patch verification errors immediately after upgrading an older checkout:
   ensure the patch files have no local edits. A fresh clone honors the
@@ -300,10 +298,10 @@ If Xcode was upgraded and native builds begin failing, run Xcode once, confirm
 
 ## Linux
 
-Linux builds are host-native. `linux-x64`, `linux-arm64`, and `linux-armhf` are
-recognized by the Cantrip Code build layer, but x64 on Debian/Ubuntu is the
-recommended starting point. Linux artifacts are not currently part of the
-automated release matrix, so validate them on the oldest distribution version
+Linux builds are host-native. Packaging target normalization accepts
+`linux-x64`, `linux-arm64`, and `linux-armhf`; validate native runtime support for
+the selected target on the build host. Linux artifacts are not currently part of
+the automated release matrix, so validate them on the oldest distribution version
 you intend to support.
 
 Tauri recommends building against an older compatible glibc baseline rather
@@ -490,11 +488,10 @@ server reachable from the simulator or device rather than assuming the device's
 
 ## Clean rebuilds
 
-Use the focused clean commands before deleting broad dependency trees:
+Use the focused Codex clean command before deleting broad dependency trees:
 
 ```shell
 pnpm codex:clean
-pnpm code:clean
 ```
 
 Rust outputs can be cleaned independently when necessary:

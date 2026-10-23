@@ -37,7 +37,7 @@ versions, checksums, and revisions remain exactly as pinned upstream, and the
 tracked source snapshot is never modified. The runtime manifest fingerprints
 the ordered patch set so changing a patch invalidates cached binaries.
 
-Codex 0.160.1 continues to use Rusty V8's heap sandbox for the code-mode host.
+Codex 0.163.0 continues to use Rusty V8's heap sandbox for the code-mode host.
 Those artifacts are published on a separate official OpenAI Codex release
 rather than the upstream Rusty V8 release. The build resolves the pinned `v8`
 crate version and native Rust host target, downloads the same archive and
@@ -52,12 +52,16 @@ generated experimental protocol includes the Cantrip settings, pause, canonical
 history, and portable history/context extensions. Native release jobs also run
 this check against the worker's packaged `bin/` directory on macOS and Windows.
 
-The 0.160.1 upgrade rebases all 39 existing patches and adds `0041` for native
+The 0.163.0 upgrade rebases all 42 existing patches and adds `0044` for native
 interface adaptations and regenerated stable/experimental protocol exports.
 It preserves Cantrip's managed history, settings, queue, permission transitions,
 pause, account configuration, and TUI admission paths alongside upstream's
 updated MCP, settings, and TUI interfaces. The imported upstream snapshot
 remains unpatched; these adaptations belong only to the build copy.
+
+Upstream 0.163.0 retired numeric fork-history selection and the patched-zsh
+executor. Their obsolete compatibility tests are removed; supported full-history
+forks and standard shell execution follow the new upstream interfaces.
 
 ## Lightweight automatic titles
 
@@ -95,8 +99,9 @@ contents, native authentication plumbing, absent tools/project context, no new
 durable threads, and validation/provider failures. It does not establish live
 ChatGPT account latency or full GUI behavior. The native release verifier also
 requires this RPC in the executable's generated experimental protocol.
-Upstream production schema export uses embedded precomputed archives; patch
-`0043` includes the regenerated experimental archive as well as the RPC source.
+Upstream production schema export uses embedded precomputed archives. Patch
+`0043` defines the RPC; `0044` regenerates both 0.163.0 archives with all Cantrip
+extensions, including the experimental inference method.
 Native protocol tests check that the method and types are exported only with
 the experimental API and that the archive matches freshly generated schemas.
 

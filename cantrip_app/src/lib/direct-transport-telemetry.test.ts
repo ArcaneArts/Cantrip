@@ -13,11 +13,9 @@ const mocks = vi.hoisted(() => ({
   invalidateDesktopTunnelForward: vi.fn(),
   isDesktopTunnelWorkerLinkForward: vi.fn(
     (forward: {
-      codePoolGeneration?: string | null;
       directCapabilityId?: string | null;
       relayFallbackAvailable?: boolean;
     }) =>
-      forward.codePoolGeneration == null &&
       forward.directCapabilityId == null &&
       forward.relayFallbackAvailable === false,
   ),
@@ -62,28 +60,6 @@ beforeEach(() => {
 });
 
 describe("reportDesktopDirectTransportTelemetry", () => {
-  it("never maintains a pooled Code forward with renderer-global credentials", async () => {
-    mocks.listDesktopTunnelsWithOptions.mockResolvedValue([
-      {
-        attachmentId: "shared-attachment",
-        codePoolGeneration: "shared-generation",
-        routeState: "local-direct",
-        relayFallbackAvailable: true,
-        relayCredentialExpiresAtEpochMs: Date.now() + 1,
-        directCapabilityId: "shared-capability",
-        tunnelId: "shared-transport",
-      },
-    ]);
-
-    await reportDesktopDirectTransportTelemetry();
-
-    expect(mocks.recordDirectAttachmentTelemetry).not.toHaveBeenCalled();
-    expect(mocks.renewTunnelAttachmentLease).not.toHaveBeenCalled();
-    expect(mocks.refreshDesktopTunnelRelay).not.toHaveBeenCalled();
-    expect(mocks.forceDesktopTunnelRelay).not.toHaveBeenCalled();
-    expect(mocks.invalidateDesktopTunnelForward).not.toHaveBeenCalled();
-  });
-
   it("keeps each tunnel renewal margin stable and bounded", () => {
     const first = relayCredentialRenewalMarginMs("tunnel-1");
 

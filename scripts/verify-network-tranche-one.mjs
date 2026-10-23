@@ -13,14 +13,6 @@ const migratedConsumers = [
     required: ["openTerminalWorkerLink"],
   },
   {
-    path: "cantrip_app/src/lib/browser-code-tunnel.ts",
-    required: ["createBrowserCodeWorkerLinkSocket"],
-  },
-  {
-    path: "cantrip_app/src/lib/desktop-code.ts",
-    required: ["startDesktopTunnel"],
-  },
-  {
     path: "cantrip_app/src/lib/desktop-project-share.ts",
     required: ["startDesktopTunnel"],
   },
@@ -49,10 +41,6 @@ const migratedConsumers = [
   {
     path: "cantrip_app/src/lib/tunnel-worker-link.ts",
     required: ["workerLinkManager", 'openStream(issued.grant, "stream")'],
-  },
-  {
-    path: "cantrip_app/src/lib/browser-code-worker-link-socket.ts",
-    required: ["openTunnelWorkerLink"],
   },
   {
     path: "cantrip_app/src/lib/remote-surface-worker-link.ts",
@@ -167,6 +155,6 @@ if (violations.length > 0) {
   process.exitCode = 1;
 } else {
   console.log(
-    "Renderer Terminal, tunnels, project shares, Code, Browser, and Remote Desktop inherit WorkerLink-owned LOCAL/LAN/WAN/RELAY topology",
+    "Renderer Terminal, tunnels, project shares, Browser, and Remote Desktop inherit WorkerLink-owned LOCAL/LAN/WAN/RELAY topology",
   );
 }

@@ -82,6 +82,9 @@ export const agentThreadSyncItemSchema = z.discriminatedUnion("type", [
 export const agentThreadSyncSchema = z.object({
   threadId: z.string().min(1),
   status: z.enum(["idle", "running", "failed"]),
+  // A native thread read remains authoritative when all its messages are
+  // already owned by the encrypted history stream and omitted from this reply.
+  statusSource: z.literal("native-thread").optional(),
   turns: z.array(
     z.object({
       id: z.string().min(1),

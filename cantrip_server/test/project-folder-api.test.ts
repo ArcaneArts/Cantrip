@@ -339,15 +339,6 @@ beforeAll(async () => {
       convertExternalGitToGithub: true,
       remove: true,
     },
-    code: {
-      available: true,
-      version: "1.109.5",
-      upstreamRevision: "4ffe2270acdf711bbefecc3e8c79f4b3631640e5",
-      patchset: 1,
-      transport: "web-proxy",
-      maxSessions: 4,
-      reason: null,
-    },
     remoteSurfaces: {
       browser: true,
       desktop: true,

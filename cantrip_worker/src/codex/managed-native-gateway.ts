@@ -32,6 +32,7 @@ export interface ManagedNativeGatewayIdentity extends ManagedSessionIdentity {
   providerAccountId: string | null;
 }
 export interface ManagedNativeOperation {
+  goalObjectiveOnly?: boolean;
   permissionTransition?: PermissionTransition;
   settingsBindingId?: string;
   operationId: string;

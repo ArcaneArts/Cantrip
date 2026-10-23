@@ -183,7 +183,15 @@ afterEach(async () => {
   container.remove();
   vi.unstubAllGlobals();
 });
-async function mount(worktrees: boolean, standalone = false) {
+async function mount(
+  worktrees: boolean,
+  standalone = false,
+  selection: {
+    worktreeId: string;
+    worktrees: ProjectWorktreeSummary[];
+  } = { worktreeId: "primary", worktrees: [primary] },
+  focused = true,
+) {
   await act(async () => {
     root.render(
       <QueryClientProvider client={client}>
@@ -201,7 +209,7 @@ async function mount(worktrees: boolean, standalone = false) {
             onCreateHistory={ignore}
             onCreateTerminal={ignore}
             onHeaderChange={(value) => {
-              header = value;
+              if (focused) header = value;
             }}
             onArchiveChat={async () => undefined}
             onOpenChat={ignore}
@@ -217,8 +225,8 @@ async function mount(worktrees: boolean, standalone = false) {
                 name: "QA",
               } as WorkerSummary,
             ]}
-            worktreeId="primary"
-            worktrees={[primary]}
+            worktreeId={selection.worktreeId}
+            worktrees={selection.worktrees}
             standalone={standalone}
           />
         </TooltipProvider>
@@ -233,7 +241,10 @@ function button(name: string) {
   const result = [
     ...document.querySelectorAll<HTMLButtonElement>("button"),
   ].find(
-    (b) => b.textContent?.trim() === name || b.getAttribute("title") === name,
+    (b) =>
+      b.textContent?.trim() === name ||
+      b.getAttribute("title") === name ||
+      b.getAttribute("aria-label") === name,
   );
   expect(result, `Missing button ${name}`).toBeDefined();
   return result!;
@@ -280,6 +291,105 @@ async function input(placeholder: string, value: string) {
 }
 
 describe("History managed-worktree capabilities", () => {
+  it.each(["missing", "prunable", "removing"] as const)(
+    "loads Primary history when the selected worktree is %s",
+    async (lifecycleState) => {
+      await mount(true, false, {
+        worktreeId: "stale",
+        worktrees: [
+          {
+            ...primary,
+            id: "stale",
+            name: "Protected worktree",
+            isPrimary: false,
+            isDefault: false,
+            lifecycleState,
+          },
+          primary,
+        ],
+      });
+      expect(container.textContent).toContain("Local history stays usable");
+      expect(container.textContent).not.toContain(
+        "Protected worktree is unavailable",
+      );
+      expect(api.getProjectWorktreeHistory).toHaveBeenCalledWith(
+        "project-one",
+        "primary",
+        0,
+        expect.anything(),
+      );
+      expect(select).toHaveBeenCalledExactlyOnceWith("primary");
+    },
+  );
+
+  it("loads Primary history when the selected worktree was removed from the inventory", async () => {
+    await mount(true, false, { worktreeId: "deleted", worktrees: [primary] });
+    expect(container.textContent).toContain("Local history stays usable");
+    expect(select).toHaveBeenCalledExactlyOnceWith("primary");
+  });
+
+  it("prefers the Primary checkout on the missing worktree's own project source", async () => {
+    await mount(true, false, {
+      worktreeId: "stale",
+      worktrees: [
+        { ...primary, id: "other-primary", projectSourceId: "other-source" },
+        primary,
+        {
+          ...primary,
+          id: "stale",
+          isPrimary: false,
+          isDefault: false,
+          lifecycleState: "missing",
+        },
+      ],
+    });
+    expect(container.textContent).toContain("Local history stays usable");
+    expect(select).toHaveBeenCalledExactlyOnceWith("primary");
+  });
+
+  it("does not select another missing checkout when no usable fallback exists", async () => {
+    await mount(true, false, {
+      worktreeId: "stale",
+      worktrees: [{ ...primary, lifecycleState: "missing" }],
+    });
+    expect(api.getProjectWorktreeHistory).not.toHaveBeenCalled();
+    expect(select).not.toHaveBeenCalled();
+  });
+
+  it("keeps an existing ready worktree selected", async () => {
+    await mount(true, false, {
+      worktreeId: "secondary",
+      worktrees: [
+        primary,
+        { ...primary, id: "secondary", isPrimary: false, isDefault: false },
+      ],
+    });
+    expect(api.getProjectWorktreeHistory).toHaveBeenCalledWith(
+      "project-one",
+      "secondary",
+      0,
+      expect.anything(),
+    );
+    expect(select).not.toHaveBeenCalled();
+  });
+
+  it("waits for a selected worktree that is still being created", async () => {
+    await mount(true, false, {
+      worktreeId: "creating",
+      worktrees: [
+        primary,
+        {
+          ...primary,
+          id: "creating",
+          isPrimary: false,
+          lifecycleState: "creating",
+        },
+      ],
+    });
+    expect(api.getProjectWorktreeHistory).not.toHaveBeenCalled();
+    expect(select).not.toHaveBeenCalled();
+  });
+
   it("keeps local history readable while disabling create and prune with a reason", async () => {
     await mount(false);
     expect(container.textContent).toContain("Local history stays usable");
@@ -298,11 +408,14 @@ describe("History managed-worktree capabilities", () => {
   it.each([false, true])(
     "refreshes local history without managed reconciliation (standalone=%s)",
     async (standalone) => {
-      await mount(false, standalone);
+      await mount(false, standalone, undefined, false);
+      expect(header).toBeNull();
+      expect(
+        container.querySelector('[role="toolbar"][aria-label="Git controls"]'),
+      ).not.toBeNull();
       vi.mocked(api.getProjectWorktreeHistory).mockClear();
       await act(async () => {
-        if (standalone) button("Refresh Git history").click();
-        else header!.refresh();
+        button("Refresh Git history").click();
       });
       expect(api.getProjectWorktreeHistory).toHaveBeenCalled();
       expect(api.reconcileProjectWorktrees).not.toHaveBeenCalled();

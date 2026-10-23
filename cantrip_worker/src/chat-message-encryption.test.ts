@@ -9,12 +9,63 @@ import {
   encryptChatTurnResult,
   openEncryptedChatTurn,
   protectChatMessage,
+  protectChatGoalResponse,
   protectChatTurn,
   reprotectChatMessages,
 } from "./chat-message-encryption.js";
 import type { WorkerEncryptionService } from "./worker-encryption.js";
 
 describe("worker chat message encryption", () => {
+  it("keeps the objective encrypted in goal status and edit responses", async () => {
+    const componentKey = new Uint8Array(32).fill(7);
+    const ownerId = "goal-owner";
+    const service = {
+      ownerId: () => ownerId,
+      componentKey: () => ({
+        key: new Uint8Array(componentKey),
+        keyRevision: 1,
+      }),
+    } as unknown as WorkerEncryptionService;
+    const response = await protectChatGoalResponse(
+      {
+        goal: {
+          threadId: "thread",
+          objective: "SENTINEL private objective",
+          status: "paused",
+          tokenBudget: 5000,
+          tokensUsed: 125,
+          timeUsedSeconds: 45,
+          createdAt: 1,
+          updatedAt: 2,
+        },
+      },
+      service,
+    );
+    expect(JSON.stringify(response)).not.toContain("SENTINEL");
+    expect(response).toMatchObject({
+      kind: "chat-encrypted",
+      goal: { status: "paused", tokensUsed: 125 },
+    });
+    if (
+      !("kind" in response) ||
+      response.kind !== "chat-encrypted" ||
+      !response.goal
+    )
+      throw new Error("Expected protected goal");
+    const message = response.goal.protectedObjective;
+    await expect(
+      decryptChatMessageProtectedContent({
+        ownerId,
+        componentKey,
+        keyRevision: 1,
+        messageId: message.id,
+        encrypted: message.protectedContent,
+        publicClassification: message.classification,
+      }),
+    ).resolves.toMatchObject({
+      content: [{ type: "text", text: "SENTINEL private objective" }],
+    });
+  });
   it("publishes long child activity identities once across sealer recovery", async () => {
     const ownerId = "owner-long-child";
     const componentKey = new Uint8Array(32).fill(8);

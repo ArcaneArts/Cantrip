@@ -50,11 +50,13 @@ cross the server only as opaque worker routing handles. See the
   See [the Run environment guide](docs/RUN_CONFIGURATIONS.md).
 - Finder-style Explorer tabs with a lazy expandable directory tree and file
   sizes. Git-backed projects also show local Git state and asynchronously
-  hydrated last-commit metadata. Files open in preview or structured visual
-  mode and can switch to a persistent Monaco editor with conflict-safe saves;
-  the selected file, draft, cursor, scroll position, and undo history survive
-  ordinary tab changes.
-- Embedded Cantrip Code tabs backed by the selected worker and checkout, with the project pretrusted, Cantrip's chosen theme applied on startup, and unnecessary onboarding/chat surfaces hidden.
+  hydrated last-commit metadata. Text files open in Cantrip's owned lightweight
+  editor with syntax highlighting, line numbers, and version-checked saves.
+  Drafts, selection, scrolling, and undo history survive ordinary tab changes.
+  View mode uses the same editor with editing and the caret disabled; Markdown
+  and structured previews remain available. See [the editor guide](docs/CODE_EDITOR.md).
+- Native Code tabs browse and edit the selected worker checkout with the same
+  built-in editor, retained drafts, and guarded saves as Explorer.
 - Worker-streamed Browser tabs for project-related web pages, with
   WorkerLink-routed keyboard, mouse, wheel, and mobile touch input while
   Chromium and its persistent profile remain on the worker.
@@ -381,7 +383,6 @@ Cantrip/
 ├── cantrip_worker/    # Codex runtime, terminals, files, Git, and GitHub access
 ├── cantrip_cli/       # Worker-authenticated Rust command-line interface
 ├── cantrip_codex/     # Pinned upstream Codex source and source manifest
-├── cantrip_code/      # Pinned browser-native Code OSS distribution
 ├── packages/          # Protocol, crypto, logging, version, and shared UI packages
 ├── managed_runtimes/  # Pinned portable web/search runtimes
 ├── deploy/            # Hosted services, containers, and proxy examples
@@ -446,7 +447,7 @@ development stacks and artifacts in more detail.
 | ------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | `pnpm build`        | Build every workspace package, including the browser app and marketing site production bundles.                    |
 | `pnpm typecheck`    | Type-check every workspace package without running tests.                                                          |
-| `pnpm test`         | Run Cantrip Code script and extension tests plus every workspace test suite.                                       |
+| `pnpm test`         | Run script, CLI/CUA, and workspace test suites.                                                                    |
 | `pnpm check`        | Run the complete pre-commit gate: safety checks, pinned-source verification, type-checking, tests, and formatting. |
 | `pnpm format`       | Format the repository with Prettier.                                                                               |
 | `pnpm format:check` | Check formatting without changing files.                                                                           |
@@ -456,7 +457,7 @@ development stacks and artifacts in more detail.
 | Command                        | Artifact                                                                                         |
 | ------------------------------ | ------------------------------------------------------------------------------------------------ |
 | `pnpm package:server`          | Standalone server tree for the current platform.                                                 |
-| `pnpm package:worker`          | Standalone worker tree with Codex and Cantrip Code for the current platform.                     |
+| `pnpm package:worker`          | Standalone worker with Codex, the Cantrip CLI, and CUA for the current platform.                 |
 | `pnpm package:services`        | Both standalone service trees.                                                                   |
 | `pnpm package:desktop-runtime` | Local server and worker runtime staged for Tauri.                                                |
 | `pnpm package:app`             | Native Tauri installer or application bundle.                                                    |
@@ -603,6 +604,11 @@ pnpm devtop
 
 `devtop` runs the same protocol, server, and worker development stack, but launches the frontend inside the Tauri desktop window instead of asking you to open the standalone browser app. Tauri starts its Vite hot-reload server on <http://127.0.0.1:1420>, separately from the browser-development port.
 
+Use the sidebar server switcher to select **Local**, a saved server such as
+**Winterhold**, or **Add server**. The selected server persists across reloads
+and restarts, so the development desktop can test hosted sign-in, pairing, and
+project flows while the local development stack remains available.
+
 The default Tauri development identity is a named profile stored in shared Git
 metadata, not in a build directory or individual worktree. Its application
 identifier, native installation catalog, and profile key therefore survive
@@ -701,7 +707,7 @@ and stapled. Both desktop targets publish separately signed Tauri updater
 payloads; the release remains a draft until every platform artifact, signature,
 the TestFlight upload, and the static `latest.json` manifest have completed.
 Release packaging runs only when that branch advances, uses
-content-addressed caches for the pinned Codex and Cantrip Code runtimes, and
+content-addressed caches for the pinned Codex runtime, and
 tags releases with the repository's `major.minor.commit-count` version. The
 command never force-pushes a divergent release branch. The same invocation
 validates and reapplies the DigitalOcean App Platform specification without
@@ -758,10 +764,9 @@ Run the complete repository check before committing:
 pnpm check
 ```
 
-That command rejects oversized tracked files, verifies the pinned Cantrip Code
-and Codex source trees, type-checks every package, runs the Cantrip Code script
-and extension tests plus all workspace test suites, and finishes with the
-Prettier check. Useful focused commands include:
+That command rejects oversized tracked files, verifies the pinned Codex source
+tree, type-checks every package, runs script, CLI/CUA, and workspace test suites,
+and finishes with the Prettier check. Useful focused commands include:
 
 ```shell
 pnpm typecheck
@@ -800,28 +805,19 @@ cargo check --manifest-path cantrip_app/src-tauri/Cargo.toml
 ## Pinned runtime maintenance
 
 `pnpm dev` and `pnpm devtop` call `pnpm dev:prepare` automatically. That
-preparation builds the shared protocol and pinned Codex runtime, then reuses or
-builds the fingerprinted Cantrip Code distribution. A matching cached Code
-build remains a fast no-op; missing or stale builds are repaired automatically.
+preparation builds the shared packages, Cantrip CLI, CUA helper, and pinned Codex
+runtime. Codex reuses its verified cache when the build inputs match; missing or
+stale builds are repaired automatically. The editor is compiled with the client.
 Most contributors do not need to invoke the lower-level runtime commands
 directly.
 
-| Command                    | Purpose                                                     |
-| -------------------------- | ----------------------------------------------------------- |
-| `pnpm codex:verify`        | Verify the vendored Codex source manifest.                  |
-| `pnpm codex:build`         | Build the pinned Codex CLI for the host platform.           |
-| `pnpm codex:clean`         | Remove the local pinned Codex build output.                 |
-| `pnpm code:source:verify`  | Verify the vendored Cantrip Code source and patch manifest. |
-| `pnpm code:build`          | Build the fingerprinted Cantrip Code distribution.          |
-| `pnpm code:ready`          | Fast-check that the expected Cantrip Code build exists.     |
-| `pnpm code:verify`         | Fully verify Cantrip Code source and build contents.        |
-| `pnpm code:extension:test` | Run the Cantrip Code workbench extension tests.             |
-| `pnpm code:dev`            | Run the ready Cantrip Code distribution on port 9888.       |
-| `pnpm code:clean`          | Remove local Cantrip Code build and development output.     |
+| Command             | Purpose                                           |
+| ------------------- | ------------------------------------------------- |
+| `pnpm codex:verify` | Verify the vendored Codex source manifest.        |
+| `pnpm codex:build`  | Build the pinned Codex CLI for the host platform. |
+| `pnpm codex:clean`  | Remove the local pinned Codex build output.       |
 
-Updating either pinned upstream is a deliberate maintainer workflow. Follow
-[the Cantrip Code guide](docs/CODE.md) before using `code:fetch`, `code:merge`,
-`code:patch`, or `code:divergence`, and follow
+Updating the pinned Codex upstream is a deliberate maintainer workflow. Follow
 [the Codex runtime policy](docs/CODEX_RUNTIME_COMPATIBILITY.md) before using
 `codex:sync`.
 

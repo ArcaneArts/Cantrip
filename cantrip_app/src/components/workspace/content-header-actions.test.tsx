@@ -1,4 +1,3 @@
-import type { CodeRuntimeStatus } from "@cantrip/protocol";
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
@@ -12,31 +11,6 @@ import {
   ContentHeaderActions,
   ExplorerFileCloseButton,
 } from "./content-header-actions";
-
-const runtime = {
-  sessionId: "session-1",
-  workspaceUri: "file:///worker/project.code-workspace",
-  status: "running",
-  editorBuild: {
-    version: "1.109.5-cantrip.1",
-    upstreamRevision: "a".repeat(40),
-    patchset: 1,
-    fingerprint: "b".repeat(64),
-  },
-  processInstanceId: "process-1",
-  bridgeConnected: true,
-  dirtyEditors: [],
-  workbench: {
-    activeEditor: null,
-    git: null,
-    conflicts: [],
-    savePolicy: "always",
-    agentStatus: "idle",
-  },
-  startedAt: "2026-08-11T12:00:00.000Z",
-  lastActivityAt: "2026-08-11T12:00:00.000Z",
-  lastError: null,
-} satisfies CodeRuntimeStatus;
 
 function gitHeader(canPush = true): GitHistoryHeaderState {
   return {
@@ -60,17 +34,7 @@ function gitHeader(canPush = true): GitHistoryHeaderState {
 
 function codeHeader(): CodeHeaderState {
   return {
-    attachmentExpiresAt: null,
-    error: null,
-    isBusy: false,
-    runtime,
-    status: "running",
-    reload: vi.fn(),
-    prepareWorktreeChange: vi.fn(),
-    restart: vi.fn(),
-    resumeAfterWorktreeChange: vi.fn(),
-    saveAll: vi.fn(),
-    stop: vi.fn(),
+    explorer: explorerHeader(),
   };
 }
 
@@ -106,7 +70,6 @@ describe("ContentHeaderActions", () => {
         code={{ header: codeHeader() }}
         terminalService={{ active: true, open: vi.fn() }}
         popout={{ error: null, pending: false, open: vi.fn() }}
-        task={{ change: vi.fn(), view: "task" }}
         chat={{
           consoleActive: false,
           consolePending: false,
@@ -134,13 +97,13 @@ describe("ContentHeaderActions", () => {
     expect(markup).toContain("Unsaved");
     expect(markup).toContain('aria-label="Save file"');
     expect(markup).toContain('aria-label="Refresh Explorer"');
-    expect(markup).toContain('aria-label="Save all editors"');
+    expect(markup).toContain('aria-label="Save file"');
     expect(markup).toContain('aria-pressed="true"');
     expect(markup).toContain('aria-label="Configure terminal service"');
     expect(markup).toContain('aria-label="Open this tab in a new window"');
-    expect(markup).toContain('aria-label="Show Task"');
-    expect(markup).toContain('aria-label="Show Task chat"');
-    expect(markup).toContain('aria-label="Task view"');
+    expect(markup).not.toContain('aria-label="Show Task"');
+    expect(markup).not.toContain('aria-label="Show Task chat"');
+    expect(markup).not.toContain('aria-label="Task view"');
     expect(markup).toContain('aria-label="Inspect Codex customizations"');
     expect(markup).toContain('aria-label="View agent move progress"');
     expect(markup).toContain('aria-label="Show Codex console"');
@@ -175,6 +138,7 @@ describe("ContentHeaderActions", () => {
           backLabel: "Close graph",
           canGoBack: true,
           selectedPath: null,
+          showFileClose: false,
         }}
       />,
     );
@@ -182,6 +146,16 @@ describe("ContentHeaderActions", () => {
     expect(markup).not.toContain(" title=");
     expect(markup).toContain('aria-label="Close graph"');
     expect(markup).toContain(">Close graph</span>");
+  });
+
+  it("omits the redundant close action for a file with its own tab", () => {
+    expect(
+      renderActions(
+        <ExplorerFileCloseButton
+          header={{ ...explorerHeader(), showFileClose: false }}
+        />,
+      ),
+    ).toBe("");
   });
 
   it("labels the structured Explorer mode as Visual", () => {
@@ -210,18 +184,24 @@ describe("ContentHeaderActions", () => {
     expect(markup).not.toContain("Push</button>");
   });
 
-  it("omits unavailable actions and exposes Code runtime errors", () => {
-    const failedCode = codeHeader();
-    failedCode.error = "Editor connection failed.";
-    const markup = renderActions(
-      <ContentHeaderActions
-        git={gitHeader(false)}
-        code={{ header: failedCode }}
-      />,
-    );
-
-    expect(markup).not.toContain('aria-label="Push local commits"');
-    expect(markup).toContain('role="status"');
-    expect(markup).toContain("Editor connection failed.");
-  });
+  it.each([false, true])(
+    "uses file actions without a duplicate close action for Code tabs (compact: %s)",
+    (compact) => {
+      const markup = renderActions(
+        <ContentHeaderActions
+          compact={compact}
+          git={gitHeader(false)}
+          code={{ header: codeHeader() }}
+        />,
+      );
+      expect(markup).not.toContain('aria-label="Push local commits"');
+      expect(markup).toContain('aria-label="Edit mode"');
+      expect(markup).not.toContain('aria-label="Close file"');
+      expect(markup).not.toContain(">Close file</span>");
+      expect(markup).toContain('aria-label="Save file"');
+      expect(markup).toContain('aria-label="Refresh Explorer"');
+      expect(markup).not.toContain("Restart editor");
+      expect(markup).not.toContain("Stop editor");
+    },
+  );
 });

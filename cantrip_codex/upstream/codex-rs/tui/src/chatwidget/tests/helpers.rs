@@ -1,7 +1,9 @@
 use super::*;
+use crate::test_support::boxed_future;
 use codex_app_server_protocol::ImageGenerationItem;
 use codex_app_server_protocol::PluginAvailability;
 use codex_utils_absolute_path::test_support::PathExt;
+use pretty_assertions::assert_eq;
 
 pub(super) async fn test_config() -> (tempfile::TempDir, Config) {
     // Start from the built-in defaults so tests do not inherit host/system config.
@@ -374,7 +376,7 @@ pub(crate) async fn make_chatwidget_manual_with_sender() -> (
     tokio::sync::mpsc::UnboundedReceiver<AppEvent>,
     tokio::sync::mpsc::UnboundedReceiver<Op>,
 ) {
-    let (widget, rx, op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    let (widget, rx, op_rx) = boxed_future!(make_chatwidget_manual(/*model_override*/ None)).await;
     let app_event_tx = AppEventSender::new(widget.app_event_tx.app_event_tx.clone());
     (widget, app_event_tx, rx, op_rx)
 }
@@ -1130,6 +1132,7 @@ pub(super) fn app_server_turn(
 ) -> AppServerTurn {
     AppServerTurn {
         id: turn_id.to_string(),
+        root_turn_id: None,
         items_view: codex_app_server_protocol::TurnItemsView::Full,
         items: Vec::new(),
         status,
@@ -1348,7 +1351,7 @@ pub(crate) fn render_bottom_popup(chat: &ChatWidget, width: u16) -> String {
                 if symbol.is_empty() {
                     line.push(' ');
                 } else {
-                    line.push_str(symbol);
+                    line.push_str(&crate::terminal_hyperlinks::strip_osc8(symbol));
                 }
             }
             line.trim_end().to_string()
@@ -1606,9 +1609,7 @@ pub(super) fn plugins_test_detail(
                 description: format!("{name} description"),
                 short_description: None,
                 interface: None,
-                path: Some(plugins_test_absolute_path(&format!(
-                    "skills/{name}/SKILL.md"
-                ))),
+                path: Some(plugins_test_absolute_path(&format!("skills/{name}/SKILL.md")).into()),
                 enabled: true,
             })
             .collect(),
@@ -1751,11 +1752,10 @@ pub(super) fn hook_run(
     }
 }
 
-pub(super) async fn assert_hook_events_snapshot(
+pub(super) async fn assert_hook_events(
     event_name: codex_app_server_protocol::HookEventName,
     run_id: &str,
     status_message: &str,
-    snapshot_name: &str,
 ) {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.on_task_started();
@@ -1816,7 +1816,7 @@ pub(super) async fn assert_hook_events_snapshot(
         .iter()
         .map(|lines| lines_to_single_string(lines))
         .collect::<String>();
-    assert_chatwidget_snapshot!(snapshot_name, combined);
+    assert_eq!(combined, "↳ Hook · Heads up from the hook\n");
 }
 
 /// Normalize timestamps only in structurally identified completion footer cells.

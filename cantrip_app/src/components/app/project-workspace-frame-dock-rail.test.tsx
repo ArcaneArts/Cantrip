@@ -1,5 +1,5 @@
 import type { ProjectPaneSummary } from "@cantrip/protocol";
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -10,6 +10,31 @@ import {
 } from "@/components/workspace/workspace-dnd-state";
 
 import { DockRail } from "./project-workspace-frame";
+
+vi.mock("@/components/ui/confirm-dialog", () => ({
+  ConfirmDialog: ({
+    open,
+    onConfirm,
+    onOpenChange,
+    description,
+  }: {
+    open: boolean;
+    onConfirm(): void;
+    onOpenChange(open: boolean): void;
+    description: string;
+  }) =>
+    open ? (
+      <div data-agent-close-confirmation>
+        <p>{description}</p>
+        <button data-confirm-agent-close onClick={onConfirm}>
+          Stop and remove
+        </button>
+        <button data-cancel-agent-close onClick={() => onOpenChange(false)}>
+          Cancel
+        </button>
+      </div>
+    ) : null,
+}));
 
 const sortableState = vi.hoisted(() => ({
   contexts: [] as Array<{ items: string[]; strategy: string }>,
@@ -295,6 +320,73 @@ describe("dock rail tabs", () => {
     },
   );
 
+  it.each([
+    ["right", "icons"],
+    ["bottom", "icons"],
+    ["bottom", "tabs"],
+  ] as const)(
+    "updates an inactive chat's activity in the %s dock in %s mode",
+    async (region, mode) => {
+      display.mode = mode;
+      const chat = surface("chat", "agent", "Agent chat", 0);
+      if (chat.kind !== "chat") throw new Error("Expected a chat surface");
+      chat.entity.status = "waiting-for-approval";
+      const onSelect = vi.fn();
+      let renderer!: TestRenderer.ReactTestRenderer;
+      await act(async () => {
+        renderer = renderRail({
+          activeTabKey: null,
+          onSelect,
+          region,
+          surfaces: [chat],
+        });
+      });
+
+      const label = "Focus Agent chat (Approval required)";
+      const button = renderer.root
+        .findAllByType("button")
+        .find(
+          (node) => node.props["aria-label"] === `${label} in ${region} dock`,
+        );
+      expect(button).toBeDefined();
+      expect(button!.props["aria-pressed"]).toBe(false);
+      expect(button!.props["data-agent-running"]).toBe(false);
+      expect(button!.props["data-tooltip"]).toBe(label);
+      expect(
+        button!.findAll(
+          (node) =>
+            node.type === "svg" &&
+            node.props.className.includes("text-amber-500"),
+        ),
+      ).toHaveLength(1);
+      await act(async () => button!.props.onClick());
+      expect(onSelect).toHaveBeenCalledWith(chat, false);
+      const props = renderer.root.findByType(DockRail).props as ComponentProps<
+        typeof DockRail
+      >;
+      for (const status of ["running", "idle", "failed"] as const) {
+        await act(async () => {
+          renderer.update(
+            <DockRail
+              {...props}
+              surfaces={[{ ...chat, entity: { ...chat.entity, status } }]}
+            />,
+          );
+        });
+        const running = status === "running";
+        const label = `Focus Agent chat${running ? " (Running)" : ""}`;
+        const tab = renderer.root.findByProps({
+          "data-dock-rail-tab": chat.tabKey,
+        });
+        const control = tab.findAllByType("button")[0]!;
+        expect(control.props["aria-label"]).toBe(`${label} in ${region} dock`);
+        expect(control.props["data-agent-running"]).toBe(running);
+        expect(control.props["data-tooltip"]).toBe(label);
+      }
+      await act(async () => renderer.unmount());
+    },
+  );
+
   it("closes rail views and deletes resources without confirmation", async () => {
     const browser = surface("browser", "one", "Browser", 0);
     const terminal = surface("terminal", "two", "Terminal", 1);
@@ -418,6 +510,58 @@ describe("dock rail tabs", () => {
     expect(onClose).not.toHaveBeenCalled();
     await act(async () => renderer.unmount());
   });
+
+  it.each(["right", "bottom"] as const)(
+    "confirms running agent removal from the %s rail",
+    async (region) => {
+      const agent = surface("chat", "agent", "Agent", 0);
+      if (agent.kind === "chat") agent.entity.status = "running";
+      const onDelete = vi.fn();
+      const onSelect = vi.fn();
+      let renderer!: TestRenderer.ReactTestRenderer;
+      await act(async () => {
+        renderer = renderRail({
+          activeTabKey: null,
+          region,
+          onDelete,
+          onSelect,
+          surfaces: [agent],
+        });
+      });
+      const middleClick = () =>
+        renderer.root
+          .findByProps({
+            "data-dock-rail-tab": agent.tabKey,
+          })
+          .props.onAuxClick({
+            button: 1,
+            preventDefault: vi.fn(),
+            stopPropagation: vi.fn(),
+          });
+      await act(async () => middleClick());
+      expect(onDelete).not.toHaveBeenCalled();
+      expect(
+        textContent(
+          renderer.root.findByProps({ "data-agent-close-confirmation": true }),
+        ),
+      ).toContain("Are you sure you want to stop and remove this agent tab?");
+      await act(async () =>
+        renderer.root
+          .findByProps({ "data-cancel-agent-close": true })
+          .props.onClick(),
+      );
+      expect(onDelete).not.toHaveBeenCalled();
+      await act(async () => middleClick());
+      await act(async () =>
+        renderer.root
+          .findByProps({ "data-confirm-agent-close": true })
+          .props.onClick(),
+      );
+      expect(onDelete).toHaveBeenCalledExactlyOnceWith(agent, true);
+      expect(onSelect).not.toHaveBeenCalled();
+      await act(async () => renderer.unmount());
+    },
+  );
 
   it("shows a live insertion placeholder for a cross-rail drag", async () => {
     const browser = surface("browser", "one", "Browser", 0);

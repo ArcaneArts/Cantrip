@@ -11,6 +11,7 @@ import type {
   TaskMessageOpaqueContent,
   TaskOpaqueSummary,
   TaskOperationRelayRequest,
+  TaskGoalSyncContext,
 } from "@cantrip/protocol/tasks";
 import type { FastifyReply } from "fastify";
 import type {
@@ -88,6 +89,11 @@ export interface PreparedTaskDispatchEligibility {
 }
 
 export interface TaskRouteRuntimeDependencies {
+  continueTaskGoalInWorktree: (
+    context: ChatExecutionContext,
+    input: { text: string; idempotencyKey: string },
+    lease?: TaskDispatchWorkerLease,
+  ) => Promise<boolean>;
   appendLiveTaskMessage: (
     ownerId: string,
     chatId: string,
@@ -130,17 +136,34 @@ export interface TaskRouteRuntimeDependencies {
   readEncryptedTaskGoal: (
     context: ChatExecutionContext,
     task: TaskOpaqueSummary,
+    message?: {
+      id: string;
+      idempotencyKey: string;
+      kind: "resume" | "start";
+    } | null,
+    observeExecution?: boolean,
+    activateGoal?: boolean,
+    runtimeFailure?: TaskGoalSyncContext["runtimeFailure"],
+    observationOnly?: boolean,
   ) => Promise<
     Omit<TaskGoalWorkerResult, "task"> & { task: TaskOpaqueSummary }
   >;
   releaseTaskGoalLease: (cycleId: string) => void;
+  reconcileTaskGoalDispatch: (
+    task: TaskOpaqueSummary,
+    state: TaskOpaqueSummary["state"],
+  ) => Promise<void>;
   repository: ServerRepository;
   resolveModelId: (
     context: ChatExecutionContext,
     requestedModelId?: string,
   ) => Promise<string>;
   retainTaskGoalLease: (lease: TaskDispatchWorkerLease) => Promise<void>;
-  resumeChatAutomation: (chatId: string) => Promise<void>;
+  resumeChatAutomation: (
+    chatId: string,
+    activateGoal?: boolean,
+    worktreeReconciled?: boolean,
+  ) => Promise<void>;
   routePairsForConfiguration: (
     context: ChatExecutionContext,
     configuration: ModelConfiguration,

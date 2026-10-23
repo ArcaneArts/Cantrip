@@ -230,6 +230,15 @@ pub trait CaptureBackend: Send {
         }
         Ok(target)
     }
+    /// Refresh a live participant's exact input destination. Native backends
+    /// may use a direct window query instead of rebuilding capture inventory.
+    fn resolve_interaction_target(
+        &mut self,
+        target: &Target,
+        cancellation: &Cancellation,
+    ) -> Result<Target> {
+        self.resolve_target(&target.id, target.generation, cancellation)
+    }
     fn capture(&mut self, target: &Target, cancellation: &Cancellation) -> Result<Capture>;
 }
 

@@ -9,7 +9,7 @@ import {
   type CodexDeviceLogin,
 } from "@cantrip/protocol";
 
-import { spawnGuardedProcess } from "../code/process-guard.js";
+import { spawnGuardedProcess } from "../process-guard.js";
 import { workerLogger } from "../logger.js";
 
 import {

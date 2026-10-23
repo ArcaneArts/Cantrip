@@ -148,7 +148,6 @@ async function copyText(value: string): Promise<void> {
 
 function WorkerCapabilities({ worker }: { worker: WorkerManagementSummary }) {
   const capabilities = [
-    worker.code.available ? "Code" : null,
     worker.remoteSurfaces.browser ? "Browser" : null,
     worker.remoteSurfaces.desktop ? "Desktop" : null,
     `Codex ${worker.codexRuntime.compatibility}`,

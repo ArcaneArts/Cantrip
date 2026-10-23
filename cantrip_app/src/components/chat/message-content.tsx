@@ -1,5 +1,5 @@
 import type { ChatAttachmentSummary, ChatMessage } from "@cantrip/protocol";
-import { memo, useState } from "react";
+import { memo, useCallback, useState } from "react";
 
 import { Activity } from "@/components/chat/activity";
 import {
@@ -14,10 +14,14 @@ export const MessageContent = memo(function MessageContent({
   onOpenFile,
 }: {
   message: ChatMessage;
-  onOpenFile(path: string): void;
+  onOpenFile(path: string, worktreeId?: string | null): void;
 }) {
   const [viewingAttachment, setViewingAttachment] =
     useState<ChatAttachmentSummary | null>(null);
+  const openMessageFile = useCallback(
+    (path: string) => onOpenFile(path, message.worktreeId),
+    [onOpenFile, message.worktreeId],
+  );
   return (
     <>
       <div
@@ -32,10 +36,10 @@ export const MessageContent = memo(function MessageContent({
           item.type === "text" ? (
             item.phase === "commentary" ? (
               <div key={"text:" + index} className="text-muted-foreground">
-                <Markdown onOpenFile={onOpenFile}>{item.text}</Markdown>
+                <Markdown onOpenFile={openMessageFile}>{item.text}</Markdown>
               </div>
             ) : (
-              <Markdown key={"text:" + index} onOpenFile={onOpenFile}>
+              <Markdown key={"text:" + index} onOpenFile={openMessageFile}>
                 {item.text}
               </Markdown>
             )

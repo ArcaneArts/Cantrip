@@ -397,6 +397,37 @@ export function installChatRuntimeConfigurationRoutes(
             return reply
               .code(error.statusCode)
               .send({ code: error.code, error: error.message });
+          // Worker transport may only carry an error message. Read the exact
+          // attempted command's result rather than guessing from that message
+          // or rejecting a change before the worker can try it.
+          const rejected = await repository.nativeCommands.lookup(
+            applicationOwnerId(),
+            context.workerId,
+            input.data.operationId,
+          );
+          if (
+            rejected?.chatId === context.chatId &&
+            rejected.method === "thread/settings/update" &&
+            rejected.status === "rejected" &&
+            rejected.rejectionCode
+          ) {
+            const messages: Record<string, string> = {
+              "permission-transition-pending":
+                "A permission change is already pending. Check the permission menu for its status.",
+              "permission-revision-conflict":
+                "Permissions changed while saving. Select the permission mode again.",
+              "permission-policy-replaced":
+                "The permission default or project policy changed. Select the permission mode again.",
+              "settings-binding-replaced":
+                "The chat session changed. Select the permission mode again.",
+            };
+            return reply.code(409).send({
+              code: rejected.rejectionCode,
+              error:
+                messages[rejected.rejectionCode] ??
+                "The permission change was rejected. Select the permission mode again.",
+            });
+          }
           throw error;
         }
       }

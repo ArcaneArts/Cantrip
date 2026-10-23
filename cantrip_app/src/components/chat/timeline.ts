@@ -4,10 +4,16 @@ import {
   splitPreviewMessages,
 } from "./computer-use-activity";
 import type { AgentActivity, ChatMessage } from "@cantrip/protocol";
+import {
+  formatTokenRate,
+  turnTokenRates,
+  type TurnTokenPerformance,
+} from "@/lib/native-turn-token-performance";
 
 export interface ChatTurnMetadata {
   durationMs: number | null;
   totalTokens: number | null;
+  tokenPerformance?: TurnTokenPerformance;
 }
 
 export interface ChatTurnIdentity {
@@ -42,9 +48,21 @@ export type ChatTimelineEntry =
 export function findLatestLiveActivityGroupKey(
   entries: readonly ChatTimelineEntry[],
 ): string | null {
+  let latestTurnId: string | null = null;
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const entry = entries[index];
-    if (entry?.type !== "activityGroup" || entry.endedAt !== null) continue;
+    if (entry?.type === "message") {
+      latestTurnId ??= messageTurnId(entry.message);
+      if (entry.message.role === "user" || terminalMessage(entry.message))
+        return null;
+      continue;
+    }
+    if (!entry) continue;
+    if (latestTurnId && entry.turnId && entry.turnId !== latestTurnId)
+      return null;
+    latestTurnId ??= entry.turnId;
+    if (entry.kind === "turn") return null;
+    if (entry.endedAt !== null) continue;
     const groupActivities = entry.messages.flatMap(messageActivities);
     const latestActivity = groupActivities.at(-1);
     const hasRunningActivity = groupActivities.some(
@@ -134,9 +152,9 @@ export function resolveChatTurnIdentity(input: {
   }
   const openingMessage = precedingTurnAnchor(input.messages, input.startIndex);
   const turnId =
-    messageTurnId(openingMessage) ??
     input.turnMessages.map(messageTurnId).find(Boolean) ??
-    messageTurnId(input.terminalMessage);
+    messageTurnId(input.terminalMessage) ??
+    messageTurnId(openingMessage);
   if (turnId) return { turnId, turnKey: `runtime:${turnId}` };
 
   const anchorId =
@@ -185,16 +203,28 @@ function activityTurnMetadata(
 ): ChatTurnMetadata | null {
   const usage = [...activities]
     .reverse()
-    .find((activity) => activity.type === "usage");
+    .find(
+      (activity) =>
+        activity.type === "usage" && (activity.agentScope?.isRoot ?? true),
+    );
   const summary = [...activities]
     .reverse()
     .find(
       (activity) =>
-        activity.type === "turnSummary" && activity.status !== "running",
+        activity.type === "turnSummary" &&
+        activity.status !== "running" &&
+        (activity.agentScope?.isRoot ?? true),
     );
+  const tokenPerformance =
+    summary?.type === "turnSummary" ? summary.tokenPerformance : undefined;
   const metadata = {
-    durationMs: summary?.type === "turnSummary" ? summary.durationMs : null,
-    totalTokens: usage?.type === "usage" ? usage.last.totalTokens : null,
+    durationMs:
+      tokenPerformance?.durationMs ??
+      (summary?.type === "turnSummary" ? summary.durationMs : null),
+    totalTokens:
+      tokenPerformance?.totalTokens ??
+      (usage?.type === "usage" ? usage.last.totalTokens : null),
+    ...(tokenPerformance ? { tokenPerformance } : {}),
   };
   return metadata.durationMs !== null || metadata.totalTokens !== null
     ? metadata
@@ -209,6 +239,9 @@ function mergeTurnMetadata(
   return {
     durationMs: next.durationMs ?? current?.durationMs ?? null,
     totalTokens: next.totalTokens ?? current?.totalTokens ?? null,
+    ...((next.tokenPerformance ?? current?.tokenPerformance)
+      ? { tokenPerformance: next.tokenPerformance ?? current?.tokenPerformance }
+      : {}),
   };
 }
 
@@ -403,12 +436,22 @@ function buildAgentChatTimeline(messages: ChatMessage[]): ChatTimelineEntry[] {
 
     const groupedMessages = [message];
     let endIndex = index;
+    let groupedTurnId = messageTurnId(message);
     while (workMessage(messages[endIndex + 1])) {
+      const nextTurnId = messageTurnId(messages[endIndex + 1]);
+      // Goal continuations can start a new native turn without a user message.
+      if (groupedTurnId && nextTurnId && groupedTurnId !== nextTurnId) break;
+      groupedTurnId ??= nextTurnId;
       groupedMessages.push(messages[endIndex + 1]!);
       endIndex += 1;
     }
     const grouped = groupedMessages.flatMap(messageActivities);
-    const followingMessage = messages[endIndex + 1];
+    const nextMessage = messages[endIndex + 1];
+    const nextTurnId = messageTurnId(nextMessage);
+    const followingMessage =
+      groupedTurnId && nextTurnId && groupedTurnId !== nextTurnId
+        ? undefined
+        : nextMessage;
     const metadata = activityTurnMetadata(grouped);
     const turnSummary = [...grouped]
       .reverse()
@@ -420,6 +463,39 @@ function buildAgentChatTimeline(messages: ChatMessage[]): ChatTimelineEntry[] {
       followingMessage,
       turnSummary,
     );
+    const failedSummaryMessage =
+      turnSummary?.status === "failed"
+        ? groupedMessages.find((entry) =>
+            messageActivities(entry).includes(turnSummary),
+          )
+        : undefined;
+    const failureEntry: ChatTimelineEntry | null =
+      failedSummaryMessage && turnSummary
+        ? {
+            type: "message",
+            turnMetadata: null,
+            message: {
+              ...failedSummaryMessage,
+              id: `${failedSummaryMessage.id}:failure`,
+              content: [
+                {
+                  type: "activity",
+                  activity: {
+                    type: "notice",
+                    id: `${turnSummary.id}:failure`,
+                    status: "failed",
+                    correlation: turnSummary.correlation,
+                    level: "error",
+                    message: "Turn failed",
+                    details:
+                      "Review this turn’s output for details. Some steps may have completed.",
+                    willRetry: null,
+                  },
+                },
+              ],
+            },
+          }
+        : null;
     const displayedMessages = groupedMessages.flatMap((groupedMessage) => {
       const visible = visibleWorkMessage(groupedMessage, terminalStatus);
       return visible ? [visible] : [];
@@ -493,6 +569,7 @@ function buildAgentChatTimeline(messages: ChatMessage[]): ChatTimelineEntry[] {
           entries.splice(entries.length - 1, 0, ...trailingEntries);
         }
       }
+      if (failureEntry) entries.push(failureEntry);
       index = endIndex;
       continue;
     }
@@ -516,6 +593,7 @@ function buildAgentChatTimeline(messages: ChatMessage[]): ChatTimelineEntry[] {
         }),
       );
     }
+    if (failureEntry) entries.push(failureEntry);
     index = endIndex;
   }
   return entries;
@@ -577,11 +655,16 @@ export function formatTurnMetadata(
   metadata: ChatTurnMetadata | null,
 ): string | null {
   if (!metadata) return null;
+  const realRate = turnTokenRates(
+    metadata.tokenPerformance,
+    metadata.durationMs,
+  ).real;
   const parts = [
     metadata.totalTokens === null
       ? null
       : `${metadata.totalTokens.toLocaleString()}tok`,
     metadata.durationMs === null ? null : formatDuration(metadata.durationMs),
+    realRate !== null ? `${formatTokenRate(realRate)} real` : null,
   ].filter((part): part is string => part !== null);
   return parts.length > 0 ? parts.join(" · ") : null;
 }

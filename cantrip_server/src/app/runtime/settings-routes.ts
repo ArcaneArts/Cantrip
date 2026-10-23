@@ -6,11 +6,6 @@ import {
   appDestinationSchema,
   appDestinationUpdateSchema,
   chatReasoningStateSchema,
-  codeProbeResultSchema,
-  codeProtectedAttachmentWireSchema,
-  codeSettingsWorkbenchAttachmentCreateSchema,
-  codeSettingsWorkbenchAttachmentWireSchema,
-  codeSettingsWorkbenchOpenResultSchema,
   desktopUpdateActiveWorkSummarySchema,
   encryptedMcpServerCreateSchema,
   encryptedMcpServerUpdateSchema,
@@ -41,18 +36,10 @@ import {
   userSettingsUpdateSchema,
   workerProviderConnectionTestResultSchema,
   type AppLiveResource,
-  type CodeRuntimeStatus,
   type ModelConfiguration,
   type ModelProviderKind,
   type SkillSettingsContext,
 } from "@cantrip/protocol";
-import {
-  codeSettingsProfileIdSchema,
-  codeSettingsPublicStatusSchema,
-  codeSettingsResolveRequestSchema,
-  codeSettingsSynchronizeRequestSchema,
-  codeSettingsWorkerStatusSchema,
-} from "@cantrip/protocol/code-settings";
 import {
   type CustomizationContentOperation,
   type CustomizationContentScope,
@@ -62,9 +49,6 @@ import {
 import { endpointContentContextSchema } from "@cantrip/protocol/endpoint-content";
 import type { FastifyInstance, FastifyReply } from "fastify";
 
-import { authenticatedPrincipal } from "../../auth/principal.js";
-import { scopedCodeProfileId } from "../../chats/execution-helpers.js";
-import type { CodeTunnelBroker } from "../../code/tunnel.js";
 import type { ModelRuntime, ServerRepository } from "../../db/repository.js";
 import { TaskSchedulingConflictError } from "../../db/task-scheduling.js";
 import { errorMessage, invalidBody } from "../../http/request-helpers.js";
@@ -127,7 +111,6 @@ export interface SettingsRouteRuntimeDependencies {
     operation: CustomizationContentOperation;
     scope: CustomizationContentScope;
   }) => ProtectedCustomizationResponse;
-  codeTunnel: CodeTunnelBroker;
   configuredRoutePairsForDefaults: (
     configuration: ModelConfiguration,
   ) => Promise<ResolvedModelRoutePair[]>;
@@ -180,7 +163,6 @@ export function installSettingsRouteRuntime(
     chatGptCatalogService,
     checkedCustomizationRequest,
     checkedCustomizationResponse,
-    codeTunnel,
     configuredRoutePairsForDefaults,
     customizationScopesMatch,
     grokCatalogService,
@@ -214,249 +196,6 @@ export function installSettingsRouteRuntime(
     }
     return reply.send(settingsBundleWireSchema.parse(settings));
   });
-
-  app.get<{ Params: { profileId: string } }>(
-    "/api/settings/code/:profileId",
-    async (request, reply) => {
-      const profileId = codeSettingsProfileIdSchema.safeParse(
-        request.params.profileId,
-      );
-      if (!profileId.success) {
-        return reply.code(400).send(invalidBody(profileId.error.issues));
-      }
-      reply.header("cache-control", "no-store");
-      return reply.send(
-        codeSettingsPublicStatusSchema.parse(
-          await repository.codeSettings.publicStatus(
-            applicationOwnerId(),
-            profileId.data,
-          ),
-        ),
-      );
-    },
-  );
-
-  app.get<{ Params: { workerId: string } }>(
-    "/api/settings/code/workers/:workerId/status",
-    async (request, reply) => {
-      const ownerId = applicationOwnerId();
-      const worker = await repository.getWorker(
-        ownerId,
-        request.params.workerId,
-      );
-      if (!worker) {
-        return reply.code(404).send({ error: "Worker not found." });
-      }
-      if (!bridge.isConnected(worker.workerId)) {
-        return reply.code(503).send({ error: "Worker is offline." });
-      }
-      reply.header("cache-control", "no-store");
-      try {
-        return reply.send(
-          codeSettingsWorkerStatusSchema.parse(
-            await bridge.request(worker.workerId, {
-              type: "code.settings.status",
-            }),
-          ),
-        );
-      } catch (error) {
-        return sendWorkerRequestFailure(reply, error);
-      }
-    },
-  );
-
-  app.post<{ Params: { workerId: string } }>(
-    "/api/settings/code/workers/:workerId/synchronize",
-    async (request, reply) => {
-      const input = codeSettingsSynchronizeRequestSchema.safeParse(
-        request.body,
-      );
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      const ownerId = applicationOwnerId();
-      const worker = await repository.getWorker(
-        ownerId,
-        request.params.workerId,
-      );
-      if (!worker) {
-        return reply.code(404).send({ error: "Worker not found." });
-      }
-      if (!bridge.isConnected(worker.workerId)) {
-        return reply.code(503).send({ error: "Worker is offline." });
-      }
-      try {
-        return reply.send(
-          codeSettingsWorkerStatusSchema.parse(
-            await bridge.request(worker.workerId, {
-              type: "code.settings.synchronize",
-              initializeIfMissing: input.data.initializeIfMissing,
-            }),
-          ),
-        );
-      } catch (error) {
-        return sendWorkerRequestFailure(reply, error);
-      }
-    },
-  );
-
-  app.post<{ Params: { workerId: string } }>(
-    "/api/settings/code/workers/:workerId/resolve",
-    async (request, reply) => {
-      const input = codeSettingsResolveRequestSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      const ownerId = applicationOwnerId();
-      const worker = await repository.getWorker(
-        ownerId,
-        request.params.workerId,
-      );
-      if (!worker) {
-        return reply.code(404).send({ error: "Worker not found." });
-      }
-      if (!bridge.isConnected(worker.workerId)) {
-        return reply.code(503).send({ error: "Worker is offline." });
-      }
-      try {
-        return reply.send(
-          codeSettingsWorkerStatusSchema.parse(
-            await bridge.request(worker.workerId, {
-              type: "code.settings.resolve",
-              resolution: input.data.resolution,
-            }),
-          ),
-        );
-      } catch (error) {
-        return sendWorkerRequestFailure(reply, error);
-      }
-    },
-  );
-
-  app.post(
-    "/api/settings/code/protected-code-attachments",
-    async (request, reply) => {
-      const input = codeSettingsWorkbenchAttachmentCreateSchema.safeParse(
-        request.body,
-      );
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      const ownerId = applicationOwnerId();
-      const workerId = input.data.expectedWorkerId;
-      const sessionId = input.data.sessionId;
-      const registrationLease = codeTunnel.acquireRegistrationLease({
-        authSessionId: authenticatedPrincipal(request).sessionId,
-        ownerId,
-        sessionId,
-        tunnelId: input.data.tunnelId,
-      });
-      if (!registrationLease) {
-        return reply.code(409).send({
-          error: "Code settings changed while the workbench was opening.",
-        });
-      }
-      let registrationOwnership: "abort" | "binding" | "release" = "release";
-      let registrationRuntime: CodeRuntimeStatus | null = null;
-      let bindingAttachmentId: string | null = null;
-      let retainBinding = false;
-      try {
-        const worker = await repository.getWorker(ownerId, workerId);
-        if (!worker) {
-          return reply.code(404).send({ error: "Worker not found." });
-        }
-        if (!bridge.isConnected(workerId)) {
-          return reply.code(503).send({ error: "Worker is offline." });
-        }
-        let probe;
-        try {
-          probe = codeProbeResultSchema.parse(
-            await bridge.request(workerId, { type: "code.probe" }),
-          );
-        } catch (error) {
-          return reply.code(503).send({ error: errorMessage(error) });
-        }
-        if (!probe.capabilities.available || !probe.editorBuild) {
-          return reply.code(409).send({
-            error:
-              probe.capabilities.reason ??
-              "This worker has no compatible Cantrip Code build.",
-          });
-        }
-        let workbench;
-        try {
-          registrationOwnership = "abort";
-          workbench = codeSettingsWorkbenchOpenResultSchema.parse(
-            await bridge.request(workerId, {
-              type: "code.settings.workbench.open",
-              sessionId,
-              profileId: scopedCodeProfileId(ownerId, "default"),
-              appearance: input.data.appearance,
-            }),
-          );
-          registrationRuntime = workbench.runtime;
-        } catch (error) {
-          return sendWorkerRequestFailure(reply, error);
-        }
-        if (
-          workbench.runtime.sessionId !== sessionId ||
-          !codeTunnel.registrationLeaseIsActive(registrationLease)
-        ) {
-          return reply.code(409).send({
-            error: "Code settings changed while the workbench was opening.",
-          });
-        }
-        const createdAttachment = await codeTunnel.createProtectedAttachment({
-          authSessionId: authenticatedPrincipal(request).sessionId,
-          codeTabId: "global-code-settings",
-          ownerId,
-          projectId: null,
-          protectedRecord: input.data.protectedRecord,
-          runtime: workbench.runtime,
-          serverId,
-          sessionId,
-          stopSessionOnRelease: true,
-          tunnelId: input.data.tunnelId,
-          workerId,
-          worktreeId: null,
-          worktreePath: null,
-          registrationLease,
-        });
-        bindingAttachmentId = createdAttachment.attachmentId;
-        registrationOwnership = "binding";
-        const attachment =
-          codeProtectedAttachmentWireSchema.parse(createdAttachment);
-        const response = reply.code(201).send(
-          codeSettingsWorkbenchAttachmentWireSchema.parse({
-            workerId,
-            synchronization: workbench.synchronization,
-            attachment,
-          }),
-        );
-        retainBinding = true;
-        return response;
-      } catch (error) {
-        return reply.code(503).send({ error: errorMessage(error) });
-      } finally {
-        if (registrationOwnership === "abort") {
-          await codeTunnel.abortRegistrationSession({
-            lease: registrationLease,
-            runtime: registrationRuntime,
-            workerId,
-          });
-        } else {
-          codeTunnel.releaseRegistrationLease(registrationLease);
-          if (
-            registrationOwnership === "binding" &&
-            !retainBinding &&
-            bindingAttachmentId
-          ) {
-            await codeTunnel.revokeAttachment(bindingAttachmentId, ownerId);
-          }
-        }
-      }
-    },
-  );
 
   app.get("/api/desktop-update/active-work", async (_request, reply) => {
     const summary =

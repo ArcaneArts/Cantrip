@@ -91,7 +91,6 @@ export const workerLinkResourceKindSchema = z.enum([
   "terminal",
   "tunnel",
   "project-share",
-  "code",
   "browser",
   "remote-desktop",
   "observations",

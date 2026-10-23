@@ -1,3 +1,4 @@
+import { nativeCodeDirty } from "./native-code-lifecycle";
 import type { CodeAppearance, CodeTabSummary } from "@cantrip/protocol";
 import { useEffect, useMemo, useState } from "react";
 
@@ -11,9 +12,32 @@ export function retainCodeSurfaceTabs(
   retained: CodeTabSummary[],
   active: CodeTabSummary,
   limit = MAX_RETAINED_CODE_VIEWS,
+  protectedIds: ReadonlySet<string> = new Set(),
 ): CodeTabSummary[] {
   const withoutActive = retained.filter((tab) => tab.id !== active.id);
-  return [...withoutActive, active].slice(-Math.max(1, limit));
+  const candidates = [...withoutActive, active];
+  const keep = new Set([...protectedIds, active.id]);
+  const clean = candidates.filter((tab) => !keep.has(tab.id));
+  const available = Math.max(
+    0,
+    limit - candidates.filter((tab) => keep.has(tab.id)).length,
+  );
+  for (const tab of available ? clean.slice(-available) : []) keep.add(tab.id);
+  return candidates.filter((tab) => keep.has(tab.id));
+}
+
+function retainOwnedCodeTabs(
+  retained: CodeTabSummary[],
+  active: CodeTabSummary,
+): CodeTabSummary[] {
+  return retainCodeSurfaceTabs(
+    retained,
+    active,
+    MAX_RETAINED_CODE_VIEWS,
+    new Set(
+      retained.filter((tab) => nativeCodeDirty(tab.id)).map((tab) => tab.id),
+    ),
+  );
 }
 
 export function PersistentCodeViews({
@@ -50,7 +74,7 @@ export function PersistentCodeViews({
   useEffect(() => {
     setRetainedTabs((current) =>
       requestedTabs.reduce(
-        (retained, tab) => retainCodeSurfaceTabs(retained, tab),
+        (retained, tab) => retainOwnedCodeTabs(retained, tab),
         current.filter(({ id }) => !excludedIds.has(id)),
       ),
     );
@@ -59,7 +83,7 @@ export function PersistentCodeViews({
   const renderedTabs = useMemo(
     () =>
       requestedTabs.reduce(
-        (retained, tab) => retainCodeSurfaceTabs(retained, tab),
+        (retained, tab) => retainOwnedCodeTabs(retained, tab),
         retainedTabs.filter(({ id }) => !excludedIds.has(id)),
       ),
     [excludedIds, requestedTabs, retainedTabs],

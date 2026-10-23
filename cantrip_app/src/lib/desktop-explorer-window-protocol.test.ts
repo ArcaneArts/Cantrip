@@ -35,6 +35,8 @@ describe("desktop Explorer window protocol", () => {
   it("opens files in the same default mode as the embedded Explorer", () => {
     expect(desktopExplorerWindowInitialMode("src/index.ts")).toBe("edit");
     expect(desktopExplorerWindowInitialMode("README.md")).toBe("preview");
+    expect(desktopExplorerWindowInitialMode("LICENSE")).toBe("preview");
+    expect(desktopExplorerWindowInitialMode("LICENSE.md")).toBe("preview");
     expect(desktopExplorerWindowInitialMode("assets/photo.png")).toBe(
       "preview",
     );
@@ -53,7 +55,7 @@ describe("desktop Explorer window protocol", () => {
         nonce: "mount_nonce_1234567890",
         type: "editor.workbench-ready",
       }),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       isDesktopExplorerWindowRequest({
         launchId: "launch-one",
@@ -112,7 +114,7 @@ describe("desktop Explorer window protocol", () => {
         requestedAtMs: 1,
         type: "editor.ready",
       }),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       isDesktopExplorerWindowResponse({
         launchId: "launch-one",

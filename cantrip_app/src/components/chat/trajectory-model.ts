@@ -30,6 +30,7 @@ import {
   type TrajectoryTimingQuality,
 } from "./trajectory-timing";
 import { isWorkspaceSnapshot, settleRunningActivity } from "./timeline";
+import type { TurnTokenPerformance } from "@/lib/native-turn-token-performance";
 
 export type TrajectoryLane = "input" | "model" | "tools" | "changes";
 
@@ -80,6 +81,7 @@ export type TrajectoryNativeTurnSettings = NativeTurnSettingsEvidence & {
 };
 
 export interface TrajectoryTurn {
+  tokenPerformance?: TurnTokenPerformance;
   nativeTurnSettings?: TrajectoryNativeTurnSettings[];
   agents: TrajectoryAgent[];
   completed: boolean;
@@ -1291,6 +1293,9 @@ export function projectTrajectory(input: {
   return {
     agents,
     nativeTurnSettings,
+    tokenPerformance: [...summaryActivities]
+      .reverse()
+      .find((activity) => activity.tokenPerformance)?.tokenPerformance,
     completed,
     completedAtMs,
     elapsedMs: Math.max(0, endMs - startedAtMs),

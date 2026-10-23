@@ -670,7 +670,8 @@ portable fallback stores the private key in a versioned
 `worker-encryption-key.json` record under the worker data directory, written
 atomically with mode `0600`. The record binds the key to the server origin,
 owner ID, worker ID, public key, principal ID, and highest accepted revision
-per component. A record from another server, account, or worker fails closed.
+per component. A record from another transport origin or worker fails closed,
+as does an account mismatch within the same server identity.
 Future native workers can replace this file boundary with an OS-backed secret
 store without changing the wire protocol.
 
@@ -682,6 +683,16 @@ through [worker-encryption-grants.ts](../cantrip_app/src/lib/worker-encryption-g
 The server has no operation that derives a component key or manufactures a
 usable grant. The protocol makes both the Account Master Key and the
 `workspace-display-name` component structurally ungrantable to workers.
+
+When a database reset replaces the server and account IDs at the same origin,
+successful worker-authenticated bootstrap reconciles the retained binding
+automatically. The reset server must accept the worker credential and return
+the same worker principal and public key. Rebinding preserves the worker's
+private key and local repositories, clears the old component keys and revision
+history, and requires grants from the current account's unlocked client.
+Rejected credentials, mismatched worker keys, and invalid grants do not replace
+the retained binding. Normal password sign-in and machine restoration therefore
+do not require a separate encryption recovery key or manual key-file deletion.
 
 The same bootstrap endpoint returns active opaque grants after approval. The
 worker unwraps only the newest revision for each scope, rejects revision
@@ -2412,8 +2423,8 @@ class, protocol class, endpoint routing kinds, adapters and resource IDs,
 assigned worker IDs, desired/current lifecycle state, counters, timestamps,
 stable error codes, and the opaque protected record. It no longer stores tunnel
 names, descriptions, full endpoint JSON, TCP hosts or ports, attachment-local
-listener hosts or ports, or free-form tunnel/attachment errors. Cantrip Code and
-project-share presentation is fixed product text derived by the client rather
+listener hosts or ports, or free-form tunnel/attachment errors. Project-share
+presentation is fixed product text derived by the client rather
 than user-controlled data copied into the tunnel row. Project-share roots,
 capability paths, Digest credentials, realms, and data-plane keys also exist
 only inside the protected record. Local desktop listener coordinates remain in

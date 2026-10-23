@@ -335,10 +335,6 @@ describe("protected app-facing label and surface-state lifecycle", () => {
       ),
       activeWorkerId: "worker-a",
       worktreeId: "worktree-a",
-      profileId: "default",
-      themeMode: "follow-cantrip",
-      status: "idle",
-      lastError: null,
     };
     const browser: BrowserWireSummary = {
       ...common,

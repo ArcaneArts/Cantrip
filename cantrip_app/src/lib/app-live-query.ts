@@ -1,3 +1,4 @@
+import { publishFileChangeActivity } from "./file-change-activity";
 import {
   chatMessageSchema,
   codeGraphProjectStatusSchema,
@@ -170,6 +171,9 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
     case "worktree-status":
       return projectId
         ? [
+            event.entityId
+              ? ["task-git-changes", projectId, event.entityId]
+              : ["task-git-changes", projectId],
             event.entityId
               ? ["worktree-status", projectId, event.entityId]
               : ["worktree-status", projectId],
@@ -639,6 +643,7 @@ function directObservationQueryKeys(
         ["worktrees", ...projectScope],
         ["worktree-status", ...worktreeScope],
         ["worktree-history", ...worktreeScope],
+        ["task-git-changes", ...worktreeScope],
         ["git-graph-snapshot", ...worktreeScope],
         ["git-graph-metrics", ...worktreeScope],
         ["git-graph-commit-overlay", ...worktreeScope],
@@ -726,6 +731,12 @@ export class AppLiveQueryBridge {
         ["codegraph", status.projectId, status.worktreeId],
         status,
       );
+    }
+    if (envelope.payload.notification.type === "worktree.filesystem.changed") {
+      publishFileChangeActivity(this.#queryClient, {
+        workerId,
+        notification: envelope.payload.notification,
+      });
     }
     const queryKeys = directObservationQueryKeys(envelope);
     this.#rememberWorkerObservationKeys(workerId, queryKeys);

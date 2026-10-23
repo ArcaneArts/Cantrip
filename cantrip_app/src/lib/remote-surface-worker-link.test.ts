@@ -265,6 +265,134 @@ afterEach(() => {
 });
 
 describe("Remote Surface WorkerLink client", () => {
+  it("keeps only the newest adjacent unsent hover while transport credit is blocked", async () => {
+    const fixture = setup(undefined, "desktop");
+    fixture.client.start();
+    await vi.waitFor(() => expect(fixture.readyRoutes).toHaveLength(1));
+    const stream = fixture.streamSets[0]!.interactive;
+    stream.writable = false;
+    for (let i = 0; i < 2000; i += 1) {
+      expect(
+        fixture.client.send(
+          "control",
+          new TextEncoder().encode(String(i)),
+          "hover:epoch",
+        ),
+      ).toBe(true);
+    }
+    await vi.waitFor(() =>
+      expect(fixture.dependencies.protectPayload).toHaveBeenCalledTimes(1),
+    );
+    stream.writable = true;
+    for (const writable of stream.writableListeners) writable();
+    await vi.waitFor(() => expect(stream.writes).toHaveLength(2));
+    const assembler = new WorkerLinkRemoteSurfaceFrameAssembler();
+    const frames = stream.writes.map((part) =>
+      decodeRemoteSurfaceFrame(assembler.push(part)!),
+    );
+    expect(
+      frames.map((frame) => new TextDecoder().decode(frame.payload)),
+    ).toEqual(["0", "1999"]);
+    expect(frames.map((frame) => frame.header.sequence)).toEqual([0, 1]);
+    fixture.client.close();
+  });
+
+  it("does not coalesce across clicks, drag points, keys, or different motion identities", async () => {
+    const fixture = setup(undefined, "desktop");
+    fixture.client.start();
+    await vi.waitFor(() => expect(fixture.readyRoutes).toHaveLength(1));
+    const stream = fixture.streamSets[0]!.interactive;
+    stream.writable = false;
+    const events: Array<[string, string?]> = [
+      ["hover-0", "epoch-a"],
+      ["hover-1", "epoch-a"],
+      ["hover-2", "epoch-a"],
+      ["down"],
+      ["drag-1"],
+      ["drag-2"],
+      ["up"],
+      ["hover-3", "epoch-a"],
+      ["hover-4", "epoch-b"],
+      ["hover-5", "epoch-b"],
+      ["key-down"],
+      ["key-up"],
+    ];
+    for (const [event, key] of events)
+      expect(
+        fixture.client.send("control", new TextEncoder().encode(event), key),
+      ).toBe(true);
+    await vi.waitFor(() =>
+      expect(fixture.dependencies.protectPayload).toHaveBeenCalledTimes(1),
+    );
+    stream.writable = true;
+    for (const writable of stream.writableListeners) writable();
+    await vi.waitFor(() => expect(stream.writes).toHaveLength(10));
+    const assembler = new WorkerLinkRemoteSurfaceFrameAssembler();
+    const frames = stream.writes.map((part) =>
+      decodeRemoteSurfaceFrame(assembler.push(part)!),
+    );
+    expect(
+      frames.map((frame) => new TextDecoder().decode(frame.payload)),
+    ).toEqual([
+      "hover-0",
+      "hover-2",
+      "down",
+      "drag-1",
+      "drag-2",
+      "up",
+      "hover-3",
+      "hover-5",
+      "key-down",
+      "key-up",
+    ]);
+    expect(frames.map((frame) => frame.header.sequence)).toEqual(
+      Array.from({ length: 10 }, (_, i) => i),
+    );
+    fixture.client.close();
+  });
+
+  it("does not replace the frame being encrypted and snapshots its latest successor", async () => {
+    const fixture = setup(undefined, "desktop");
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    fixture.dependencies.protectPayload = vi.fn(async ({ payload }) => {
+      await gate;
+      return payload.slice();
+    });
+    fixture.client.start();
+    await vi.waitFor(() => expect(fixture.readyRoutes).toHaveLength(1));
+    fixture.client.send("control", new Uint8Array([1]), "hover");
+    fixture.client.send("control", new Uint8Array([2]), "hover");
+    const latest = new Uint8Array([3]);
+    fixture.client.send("control", latest, "hover");
+    latest[0] = 99;
+    release();
+    const stream = fixture.streamSets[0]!.interactive;
+    await vi.waitFor(() => expect(stream.writes).toHaveLength(2));
+    const assembler = new WorkerLinkRemoteSurfaceFrameAssembler();
+    expect(
+      stream.writes.map((part) => [
+        ...decodeRemoteSurfaceFrame(assembler.push(part)!).payload,
+      ]),
+    ).toEqual([[1], [3]]);
+    fixture.client.close();
+  });
+
+  it("replaces pending motion within the byte budget rather than accumulating old payload sizes", async () => {
+    const fixture = setup(undefined, "desktop");
+    fixture.client.start();
+    await vi.waitFor(() => expect(fixture.readyRoutes).toHaveLength(1));
+    fixture.streamSets[0]!.interactive.writable = false;
+    fixture.client.send("control", new Uint8Array([1]), "hover");
+    for (let i = 0; i < 80; i += 1)
+      expect(
+        fixture.client.send("control", new Uint8Array(100_000), "hover"),
+      ).toBe(true);
+    fixture.client.close();
+  });
+
   it("accepts an exact Remote Desktop grant through the same client", async () => {
     const fixture = setup({ interactive: "local", realtime: "lan" }, "desktop");
     fixture.client.start();

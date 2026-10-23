@@ -39,11 +39,21 @@ export function nativePermissionControlState(
   const nativePendingIsNewer =
     nativeIntent?.pending &&
     nativeIntent.operationId !== transition?.operationId;
-  const choice = local?.permissionSelection
-    ? { selectedId: local.permissionSelection.id, status: local.status }
-    : nativePendingIsNewer
-      ? nativeChoice
-      : (transition ?? nativeChoice);
+  const canonicalChoice = nativePendingIsNewer
+    ? nativeChoice
+    : (transition ?? nativeChoice);
+  const canonicalPending =
+    canonicalChoice &&
+    (canonicalChoice.status === "accepted" ||
+      canonicalChoice.status === "dispatched");
+  const choice =
+    local?.permissionSelection &&
+    !(
+      (local.status === "rejected" || local.status === "uncertain") &&
+      canonicalPending
+    )
+      ? { selectedId: local.permissionSelection.id, status: local.status }
+      : canonicalChoice;
   if (choice) {
     requestedLabel =
       choice.selectedId === null

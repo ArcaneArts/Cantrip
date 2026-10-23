@@ -5,7 +5,14 @@ export const managedChatPreparationSchema = z.object({
   workerId: z.string().min(1),
   terminalId: z.string().uuid(),
   generation: z.string().uuid(),
-  phase: z.enum(["pending", "thread", "console", "ready", "failed"]),
+  phase: z.enum([
+    "pending",
+    "thread",
+    "console",
+    "ready",
+    "failed",
+    "needs-model",
+  ]),
   failedPhase: z.enum(["thread", "console"]).nullable(),
   updatedAt: z.string().datetime(),
 });

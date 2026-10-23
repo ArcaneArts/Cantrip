@@ -27,8 +27,8 @@ Chat conversations never appear in an IDE project's surface list.
 Each standalone conversation receives private scratch space on one worker.
 Codex can use its built-in shell and file tools there to compile programs,
 download data, transform files, and perform other ordinary agent work. The user
-can inspect and manage those files from a lightweight Chat file surface without
-opening Cantrip Code.
+can inspect and manage those files from a lightweight Chat file surface using
+Cantrip's built-in editor.
 
 This contract deliberately keeps standalone and project chats close at the
 message, runtime, and encryption layers. A later feature may move or link a
@@ -305,8 +305,8 @@ deterministically named Tauri file window on desktop or a full-screen overlay
 on browser and Capacitor. Text/source editing, structured visualization, media
 preview, size limits, and conflict-safe saves are handled in that file surface.
 
-This is not Cantrip Code and does not start or embed an OpenVSCode server. The
-panel reuses Explorer read/write/preview primitives where safe, but all API and
+The native file panel reuses Explorer read/write/preview primitives where safe,
+but all API and
 worker authorization is rooted in the standalone Chat identity rather than a
 project Explorer surface.
 
@@ -581,7 +581,6 @@ recognize the directory.
 
 For standalone Chat, the worker:
 
-- skips Cantrip Code preparation and agent-state notification;
 - skips CodeGraph observation/preparation;
 - injects managed Cantrip with exactly `tool_help`, `web_search`, and
   `web_read`, and omits managed CodeGraph MCP;
@@ -775,7 +774,7 @@ worktree, pull-request, and auto-merge protocol.
 ### Milestone 6: Chat files
 
 - add the Files header action and right-side tree;
-- reuse minimal Monaco, media, and visual previews;
+- reuse native code, media, and visual previews;
 - implement conflict-safe writes and guarded deletes;
 - implement local reveal and remote-only download visibility;
 - stream bounded file/folder/all downloads and safe ZIPs; and

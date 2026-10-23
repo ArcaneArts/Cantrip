@@ -2,7 +2,26 @@ import type { ExplorerEntry, ExplorerSummary } from "@cantrip/protocol";
 import { createElement, type ComponentProps, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import TestRenderer, { act } from "react-test-renderer";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const identity = vi.hoisted(() => ({
+  current: { serverId: "server-a", user: { id: "owner-a" } },
+  listeners: new Set<() => void>(),
+}));
+vi.mock("@/lib/client-session", () => ({
+  getClientSession: () => identity.current,
+  onClientSessionIdentityChanged: (listener: () => void) => {
+    identity.listeners.add(listener);
+    return () => identity.listeners.delete(listener);
+  },
+}));
+
+let storedFolders: Map<string, string>;
+let testIdentity = 0;
+
+vi.mock("./use-file-change-activity", () => ({
+  useFileChangeActivity: () => ({ current: null }),
+}));
 
 const runtime = vi.hoisted(() => {
   const entry = {
@@ -185,6 +204,7 @@ function tree(
     explorer,
     loading: false,
     onCreateFolder: async () => runtime.directoryEntry,
+    onCreateFile: async () => runtime.entry,
     onDelete: async () => undefined,
     onPin: () => undefined,
     onPreview: () => undefined,
@@ -252,6 +272,21 @@ async function clickFolder(
 
 describe("project sidebar file tree encryption gate", () => {
   beforeEach(() => {
+    storedFolders = new Map();
+    identity.current = {
+      serverId: "server-a",
+      user: { id: `owner-${++testIdentity}` },
+    };
+    vi.stubGlobal(
+      "window",
+      Object.assign(new EventTarget(), {
+        localStorage: {
+          getItem: (key: string) => storedFolders.get(key) ?? null,
+          setItem: (key: string, value: string) =>
+            storedFolders.set(key, value),
+        },
+      }),
+    );
     runtime.directory.mockClear();
     runtime.entriesByPath.clear();
     runtime.pendingPaths.clear();
@@ -261,6 +296,230 @@ describe("project sidebar file tree encryption gate", () => {
     runtime.gate.error = null;
     runtime.gate.ready = true;
     runtime.gate.retry.mockClear();
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("uses filename icons in the tree without mistaking directories for code", async () => {
+    const examples: [string, string][] = [
+      ["lib.rs", "rust"],
+      ["Cargo.toml", "rust"],
+      ["settings.json", "json"],
+      ["config.toml", "toml"],
+      ["config.yaml", "yaml"],
+      ["notes.txt", "text"],
+      [".gitignore", "git"],
+    ];
+    runtime.entriesByPath.set("", [
+      ...examples.map(([name]) => ({ ...runtime.entry, name, path: name })),
+      folder("folder.rs"),
+    ]);
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(() => {
+      renderer = TestRenderer.create(tree());
+    });
+    for (const [name, icon] of [
+      ...examples,
+      ["folder.rs", "folder"] as const,
+    ]) {
+      expect(
+        fileRow(renderer, name)
+          .findAllByType("svg")
+          .some((svg) => svg.props["data-file-icon"] === icon),
+      ).toBe(true);
+    }
+    await act(() => renderer.unmount());
+  });
+
+  it("restores saved folders after remount, skipping missing folders while others load", async () => {
+    runtime.entriesByPath.set("", [
+      folder("src"),
+      folder("docs"),
+      folder("gone"),
+    ]);
+    runtime.entriesByPath.set("src", [
+      folder("src/components"),
+      folder("src/lib"),
+    ]);
+    runtime.entriesByPath.set("src/components", [runtime.entry]);
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(() => {
+      renderer = TestRenderer.create(tree());
+    });
+    for (const path of ["src", "components", "docs", "gone"]) {
+      await clickFolder(renderer, path);
+    }
+    expect([...storedFolders.values()]).toEqual([
+      '["src","src/components","docs","gone"]',
+    ]);
+    await act(() => renderer.unmount());
+    runtime.directory.mockClear();
+
+    runtime.entriesByPath.set("", [folder("src"), folder("docs")]);
+    runtime.pendingPaths.add("src");
+    await act(() => {
+      renderer = TestRenderer.create(tree({ explorer: null, loading: true }));
+    });
+    await act(() => renderer.update(tree()));
+    expect(fileRow(renderer, "src").props["aria-expanded"]).toBe(true);
+    expect(fileRow(renderer, "docs").props["aria-expanded"]).toBe(true);
+    expect(fileRow(renderer, "gone")).toBeUndefined();
+    expect(fileRow(renderer, "components")).toBeUndefined();
+    runtime.pendingPaths.delete("src");
+    await act(() => renderer.update(tree()));
+    expect(fileRow(renderer, "components").props["aria-expanded"]).toBe(true);
+    expect(fileRow(renderer, "example.ts")).toBeDefined();
+    expect(runtime.directory).not.toHaveBeenCalledWith(
+      expect.objectContaining({ enabled: true, path: "gone" }),
+    );
+    await act(() => renderer.unmount());
+  });
+
+  it("remembers a collapsed child instead of automatically reopening it on reload", async () => {
+    runtime.entriesByPath.set("", [folder("src")]);
+    runtime.entriesByPath.set("src", [folder("src/components")]);
+    runtime.entriesByPath.set("src/components", [runtime.entry]);
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(() => {
+      renderer = TestRenderer.create(tree());
+    });
+    await clickFolder(renderer, "src");
+    await clickFolder(renderer, "components");
+    await act(() => renderer.unmount());
+    await act(() => {
+      renderer = TestRenderer.create(tree());
+    });
+    expect(fileRow(renderer, "src").props["aria-expanded"]).toBe(true);
+    expect(fileRow(renderer, "components").props["aria-expanded"]).toBe(false);
+    expect(fileRow(renderer, "example.ts")).toBeUndefined();
+    await act(() => renderer.unmount());
+  });
+
+  it.each(["projectId", "worktreeId"] as const)(
+    "keeps expansion separate when switching %s",
+    async (field) => {
+      runtime.entriesByPath.set("", [folder("src"), folder("docs")]);
+      const other = { ...explorer, [field]: "other" };
+      let renderer!: TestRenderer.ReactTestRenderer;
+      await act(() => {
+        renderer = TestRenderer.create(tree());
+      });
+      await clickFolder(renderer, "src");
+      await act(() => renderer.update(tree({ explorer: other })));
+      expect(fileRow(renderer, "src").props["aria-expanded"]).toBe(false);
+      await clickFolder(renderer, "docs");
+      await act(() => renderer.update(tree()));
+      expect(fileRow(renderer, "src").props["aria-expanded"]).toBe(true);
+      expect(fileRow(renderer, "docs").props["aria-expanded"]).toBe(false);
+      await act(() => renderer.update(tree({ explorer: other })));
+      expect(fileRow(renderer, "docs").props["aria-expanded"]).toBe(true);
+      await act(() => renderer.unmount());
+    },
+  );
+
+  it.each(["server", "account"])(
+    "restores the correct folders after a %s switch",
+    async (field) => {
+      runtime.entriesByPath.set("", [folder("src"), folder("docs")]);
+      const original = identity.current;
+      let renderer!: TestRenderer.ReactTestRenderer;
+      await act(() => {
+        renderer = TestRenderer.create(tree());
+      });
+      await clickFolder(renderer, "src");
+      await act(() => {
+        identity.current =
+          field === "server"
+            ? { ...original, serverId: "server-b" }
+            : { ...original, user: { id: "other-owner" } };
+        identity.listeners.forEach((listener) => listener());
+      });
+      expect(fileRow(renderer, "src").props["aria-expanded"]).toBe(false);
+      await clickFolder(renderer, "docs");
+      await act(() => {
+        identity.current = original;
+        identity.listeners.forEach((listener) => listener());
+      });
+      expect(fileRow(renderer, "src").props["aria-expanded"]).toBe(true);
+      expect(fileRow(renderer, "docs").props["aria-expanded"]).toBe(false);
+      await act(() => renderer.unmount());
+    },
+  );
+
+  it("keeps folders open through worker rebinding and temporary Explorer loss", async () => {
+    runtime.entriesByPath.set("", [folder("src")]);
+    runtime.entriesByPath.set("src", [runtime.entry]);
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(() => {
+      renderer = TestRenderer.create(tree());
+    });
+    await clickFolder(renderer, "src");
+    await act(() => renderer.update(tree({ explorer: null })));
+    runtime.gate.bindingKey = "binding-b";
+    await act(() =>
+      renderer.update(
+        tree({
+          explorer: {
+            ...explorer,
+            id: "replacement",
+            activeWorkerId: "worker-b",
+          },
+        }),
+      ),
+    );
+    expect(fileRow(renderer, "src").props["aria-expanded"]).toBe(true);
+    expect(fileRow(renderer, "example.ts")).toBeDefined();
+    await act(() => renderer.unmount());
+  });
+
+  it("keeps expansion usable when browser storage cannot be read or written", async () => {
+    vi.spyOn(window.localStorage, "getItem").mockImplementation(() => {
+      throw new Error("denied");
+    });
+    vi.spyOn(window.localStorage, "setItem").mockImplementation(() => {
+      throw new Error("quota");
+    });
+    runtime.entriesByPath.set("", [folder("src")]);
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(() => {
+      renderer = TestRenderer.create(tree());
+    });
+    await clickFolder(renderer, "src");
+    await act(() => renderer.unmount());
+    await act(() => {
+      renderer = TestRenderer.create(tree());
+    });
+    expect(fileRow(renderer, "src").props["aria-expanded"]).toBe(true);
+    await clickFolder(renderer, "src");
+    expect(fileRow(renderer, "src").props["aria-expanded"]).toBe(false);
+    await act(() => renderer.unmount());
+  });
+
+  it("ignores malformed cache entries and responds to another window's changes", async () => {
+    runtime.entriesByPath.set("", [folder("src"), folder("docs")]);
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(() => {
+      renderer = TestRenderer.create(tree());
+    });
+    await clickFolder(renderer, "src");
+    const key = [...storedFolders.keys()][0]!;
+    for (const value of [
+      "broken json",
+      '{"src":true}',
+      '[null,7,"docs",false]',
+    ]) {
+      storedFolders.set(key, value);
+      await act(() => {
+        window.dispatchEvent(Object.assign(new Event("storage"), { key }));
+      });
+      expect(fileRow(renderer, "src").props["aria-expanded"]).toBe(false);
+      expect(fileRow(renderer, "docs").props["aria-expanded"]).toBe(
+        value.startsWith("["),
+      );
+    }
+    await clickFolder(renderer, "src");
+    expect(JSON.parse(storedFolders.get(key)!)).toEqual(["docs", "src"]);
+    await act(() => renderer.unmount());
   });
 
   it("expands an entire package chain and keeps manual collapse usable", async () => {
@@ -905,6 +1164,256 @@ describe("project sidebar file tree encryption gate", () => {
     expect(
       renderer.root.findByProps({ "aria-label": "Rename New Folder" }),
     ).toBeDefined();
+    await act(async () => renderer.unmount());
+  });
+
+  it.each(["", "src", "src/nested"])(
+    "names a new file inline in %j before creating it on Enter",
+    async (parentPath) => {
+      runtime.entriesByPath.set("", [folder("src")]);
+      runtime.entriesByPath.set("src", [folder("src/nested")]);
+      const onCreateFile = vi.fn(async (_parent, name) => ({
+        ...runtime.entry,
+        name,
+        path: parentPath ? `${parentPath}/${name}` : name,
+      }));
+      const focus = vi.fn();
+      let renderer!: TestRenderer.ReactTestRenderer;
+      await act(async () => {
+        renderer = TestRenderer.create(tree({ onCreateFile }), {
+          createNodeMock: (element) =>
+            element.type === "input" ? { focus } : null,
+        });
+      });
+      if (parentPath === "src/nested") await clickFolder(renderer, "src");
+      const label = parentPath
+        ? `Create file in ${parentPath}`
+        : "Create file in project root";
+      await act(async () =>
+        buttonWithAriaLabel(renderer, label).props.onClick({ shiftKey: false }),
+      );
+      expect(onCreateFile).not.toHaveBeenCalled();
+      expect(focus).toHaveBeenCalled();
+      const input = () =>
+        renderer.root.findByProps({ "aria-label": "New file name" });
+      expect(input().props.value).toBe("");
+      expect(input().props.placeholder).toBe("filename.ext");
+      await act(async () =>
+        input().props.onChange({ target: { value: "test.config.ts" } }),
+      );
+      await act(async () =>
+        input().props.onKeyDown({
+          key: "Enter",
+          nativeEvent: {},
+          stopPropagation: vi.fn(),
+          preventDefault: vi.fn(),
+        }),
+      );
+      expect(onCreateFile).toHaveBeenCalledExactlyOnceWith(
+        parentPath,
+        "test.config.ts",
+        expect.objectContaining({ bindingKey: "binding-a" }),
+      );
+      expect(
+        renderer.root.findAllByProps({ "aria-label": "New file name" }),
+      ).toHaveLength(0);
+      await act(async () => renderer.unmount());
+    },
+  );
+
+  it("offers New File in an empty project root and waits until IME composition finishes", async () => {
+    runtime.entriesByPath.set("", []);
+    const onCreateFile = vi.fn(async () => runtime.entry);
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(tree({ onCreateFile }));
+    });
+    await act(async () =>
+      buttonWithAriaLabel(
+        renderer,
+        "Create file in project root",
+      ).props.onClick({ shiftKey: false }),
+    );
+    const input = () =>
+      renderer.root.findByProps({ "aria-label": "New file name" });
+    await act(async () =>
+      input().props.onChange({ target: { value: "new.ts" } }),
+    );
+    await act(async () =>
+      input().props.onKeyDown({
+        key: "Enter",
+        nativeEvent: { isComposing: true },
+        stopPropagation: vi.fn(),
+        preventDefault: vi.fn(),
+      }),
+    );
+    expect(onCreateFile).not.toHaveBeenCalled();
+    await act(async () =>
+      input().props.onKeyDown({
+        key: "Enter",
+        nativeEvent: { isComposing: false },
+        stopPropagation: vi.fn(),
+        preventDefault: vi.fn(),
+      }),
+    );
+    expect(onCreateFile).toHaveBeenCalledExactlyOnceWith(
+      "",
+      "new.ts",
+      expect.anything(),
+    );
+    await act(async () => renderer.unmount());
+  });
+
+  it("keeps the root context menu from taking focus away from the new file name", async () => {
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(tree());
+    });
+    await act(async () =>
+      buttonWithAriaLabel(
+        renderer,
+        "Create file in project root",
+      ).props.onClick({ shiftKey: false }),
+    );
+    const content = renderer.root
+      .findAllByProps({ "data-context-menu-content": true })
+      .find(
+        (node) =>
+          node.findAllByProps({ "aria-label": "Create file in project root" })
+            .length > 0,
+      )!;
+    const preventDefault = vi.fn();
+    content.props.onCloseAutoFocus({ preventDefault });
+    expect(preventDefault).toHaveBeenCalledOnce();
+    await act(async () => renderer.unmount());
+  });
+
+  it.each(["Escape", "blur"])(
+    "cancels a new filename on %s without creating a placeholder file",
+    async (action) => {
+      const onCreateFile = vi.fn();
+      let renderer!: TestRenderer.ReactTestRenderer;
+      await act(async () => {
+        renderer = TestRenderer.create(tree({ onCreateFile }));
+      });
+      await act(async () =>
+        buttonWithAriaLabel(
+          renderer,
+          "Create file in project root",
+        ).props.onClick({ shiftKey: false }),
+      );
+      const input = renderer.root.findByProps({
+        "aria-label": "New file name",
+      });
+      await act(async () =>
+        action === "blur"
+          ? input.props.onBlur()
+          : input.props.onKeyDown({
+              key: action,
+              nativeEvent: {},
+              stopPropagation: vi.fn(),
+              preventDefault: vi.fn(),
+            }),
+      );
+      expect(onCreateFile).not.toHaveBeenCalled();
+      expect(
+        renderer.root.findAllByProps({ "aria-label": "New file name" }),
+      ).toHaveLength(0);
+      await act(async () => renderer.unmount());
+    },
+  );
+
+  it("rejects invalid names, preserves failed filenames for retry, and submits only once while pending", async () => {
+    let reject!: (error: Error) => void;
+    const onCreateFile = vi.fn(
+      () =>
+        new Promise<ExplorerEntry>((_resolve, fail) => {
+          reject = fail;
+        }),
+    );
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(tree({ onCreateFile }));
+    });
+    await act(async () =>
+      buttonWithAriaLabel(
+        renderer,
+        "Create file in project root",
+      ).props.onClick({ shiftKey: false }),
+    );
+    const input = () =>
+      renderer.root.findByProps({ "aria-label": "New file name" });
+    const enter = () =>
+      input().props.onKeyDown({
+        key: "Enter",
+        nativeEvent: {},
+        stopPropagation: vi.fn(),
+        preventDefault: vi.fn(),
+      });
+    await act(async () => {
+      input().props.onChange({ target: { value: "../escape.ts" } });
+    });
+    await act(async () => enter());
+    expect(onCreateFile).not.toHaveBeenCalled();
+    expect(input().props["aria-invalid"]).toBe(true);
+    await act(async () => {
+      input().props.onChange({ target: { value: "existing.ts" } });
+    });
+    await act(async () => {
+      enter();
+      enter();
+    });
+    expect(onCreateFile).toHaveBeenCalledOnce();
+    expect(input().props.disabled).toBe(true);
+    await act(async () =>
+      reject(new Error("An entry with that name already exists.")),
+    );
+    expect(input().props.disabled).toBe(false);
+    expect(input().props.value).toBe("existing.ts");
+    expect(
+      textContent(renderer.root.findByProps({ role: "alert" }).props.children),
+    ).toContain("already exists");
+    await act(async () => {
+      input().props.onChange({ target: { value: "next.ts" } });
+    });
+    await act(async () => enter());
+    expect(onCreateFile).toHaveBeenCalledTimes(2);
+    await act(async () => reject(new Error("offline")));
+    await act(async () => renderer.unmount());
+  });
+
+  it("drops an unfinished new filename when its Explorer authorization changes", async () => {
+    const onCreateFile = vi.fn();
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(tree({ onCreateFile }));
+    });
+    await act(async () =>
+      buttonWithAriaLabel(
+        renderer,
+        "Create file in project root",
+      ).props.onClick({ shiftKey: false }),
+    );
+    const stale = renderer.root.findByProps({ "aria-label": "New file name" });
+    await act(async () =>
+      stale.props.onChange({ target: { value: "stale.ts" } }),
+    );
+    const submit = renderer.root.findByProps({ "aria-label": "New file name" })
+      .props.onKeyDown;
+    runtime.gate.bindingKey = "binding-b";
+    await act(async () => renderer.update(tree({ onCreateFile })));
+    await act(async () =>
+      submit({
+        key: "Enter",
+        nativeEvent: {},
+        stopPropagation: vi.fn(),
+        preventDefault: vi.fn(),
+      }),
+    );
+    expect(onCreateFile).not.toHaveBeenCalled();
+    expect(
+      renderer.root.findAllByProps({ "aria-label": "New file name" }),
+    ).toHaveLength(0);
     await act(async () => renderer.unmount());
   });
 });

@@ -1,20 +1,20 @@
 diff --git a/codex-rs/codex-api/src/common.rs b/codex-rs/codex-api/src/common.rs
-index 8d0d929..d2a823e 100644
+index 1abc89c1b73f6d68619662745a7fda0d8192b227..956c4761fa52f268ea626119973224989259874f 100644
 --- a/codex-rs/codex-api/src/common.rs
 +++ b/codex-rs/codex-api/src/common.rs
-@@ -285,6 +285,7 @@ pub struct ResponsesApiRequest {
+@@ -288,6 +288,7 @@ pub struct ResponsesApiRequest {
      pub tools: Option<ResponsesApiTools>,
      pub tool_choice: String,
      pub parallel_tool_calls: bool,
 +    #[serde(skip_serializing_if = "Option::is_none")]
      pub reasoning: Option<Reasoning>,
      pub store: bool,
-     pub stream: bool,
+     #[serde(skip_serializing_if = "Option::is_none")]
 diff --git a/codex-rs/core/src/client.rs b/codex-rs/core/src/client.rs
-index f5ac495..f59c154 100644
+index 9ef4c0591931e00e9b195f0b47f51b850088c75f..7d4de9fbf6bec04060aff493951ef992f6e26de6 100644
 --- a/codex-rs/core/src/client.rs
 +++ b/codex-rs/core/src/client.rs
-@@ -950,9 +950,15 @@ impl ModelClient {
+@@ -1025,9 +1025,15 @@ impl ModelClient {
              }
          }
          let reasoning = self.build_reasoning(model_info, effort, summary);
@@ -31,7 +31,7 @@ index f5ac495..f59c154 100644
          .then_some(StreamOptions {
              reasoning_summary_delivery: codex_api::ReasoningSummaryDelivery::SequentialCutoff,
          });
-@@ -993,7 +999,7 @@ impl ModelClient {
+@@ -1075,7 +1081,7 @@ impl ModelClient {
              tools,
              tool_choice: "auto".to_string(),
              parallel_tool_calls: prompt.parallel_tool_calls && !model_info.use_responses_lite,
@@ -41,10 +41,10 @@ index f5ac495..f59c154 100644
              stream: true,
              stream_options,
 diff --git a/codex-rs/core/tests/suite/client.rs b/codex-rs/core/tests/suite/client.rs
-index e37725f..a2efbaa 100644
+index d443977137fab2d8f6d4a881d335f9cbf72e0c9a..b607c33fed721bb0ebf427e78190e70e2605235d 100644
 --- a/codex-rs/core/tests/suite/client.rs
 +++ b/codex-rs/core/tests/suite/client.rs
-@@ -2654,6 +2654,56 @@ async fn model_without_summary_parameter_support_omits_configured_summary() -> a
+@@ -2705,6 +2705,56 @@ async fn model_without_summary_parameter_support_omits_configured_summary() -> a
      Ok(())
  }
  

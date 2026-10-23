@@ -344,9 +344,6 @@ export function App() {
   const [projectTaskChatIds, setProjectTaskChatIds] = useState<
     ReadonlyMap<string, string>
   >(() => new Map());
-  const [taskChatViewIds, setTaskChatViewIds] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
   const setAgentInspectOpen = useCallback((chatId: string, open: boolean) => {
     setAgentInspectOpenChats((current) =>
       updateAgentInspectOpenChats(current, chatId, open),
@@ -750,7 +747,6 @@ export function App() {
     prepareExplorerRebind,
     requestBindWorktree,
   } = useWorktreeOperations({
-    codeHeader,
     explorerLifecycleRef,
     queryClient,
     setWorktreeActionError,
@@ -846,7 +842,6 @@ export function App() {
     selectedProjectId,
     setChatConsoleOpen,
     setProjectTaskChatIds,
-    setTaskChatViewIds,
     surfaceClose: projectSurfaceClose,
   });
   const {
@@ -1102,19 +1097,6 @@ export function App() {
   const activeProjectTaskChat = activeProjectTaskChatId
     ? chats.data?.find(({ id }) => id === activeProjectTaskChatId)
     : undefined;
-  const activeProjectTaskView =
-    activeProjectTaskChat && taskChatViewIds.has(activeProjectTaskChat.id)
-      ? ("chat" as const)
-      : ("task" as const);
-  const setActiveProjectTaskView = (view: "task" | "chat") => {
-    if (!activeProjectTaskChat) return;
-    setTaskChatViewIds((current) => {
-      const next = new Set(current);
-      if (view === "chat") next.add(activeProjectTaskChat.id);
-      else next.delete(activeProjectTaskChat.id);
-      return next;
-    });
-  };
   const activeChat = activeProjectTaskChat ?? selectedChat;
   const completionAcknowledgementAttemptRef = useRef<string | null>(null);
   useEffect(() => {
@@ -1902,6 +1884,7 @@ export function App() {
     activateSidebarFilePreview,
     closeSidebarFilePreview,
     createSidebarFolder,
+    createSidebarFile,
     deleteSidebarFileEntry,
     openSidebarFilePreview,
     openSidebarFilePreviewPath,
@@ -2028,13 +2011,13 @@ export function App() {
   const renderBindings = {
     activateSidebarFilePreview, activeChat, activeExplorerHeader,
     activePopout, activeProjectOverviewPopout, activeProjectOverviewSection, activeProjectTaskChat, activeProjectTaskChatId,
-    activeProjectTaskView, activeProjectWorkspace, activeRelocation, activeWorktree, activeWorktreeId,
+    activeProjectWorkspace, activeRelocation, activeWorktree, activeWorktreeId,
     activeWorktreeTarget, agentInspectOpenChats, appActionContext, appMode,
     appToast, archiveStandaloneChat, archivedStandaloneChats, beginSidebarResize, bindChatWorktree,
     bindWorktreeMutation, bootstrap, browsers, chatRelocationOpen, chatRelocations,
     chatConsoleOpenChats, chats, closeCompactProject, closeProjectTask, closeSidebarFilePreview, codeAppearance,
     codeHeader, codeTabs, commandBarOpen, compactManagedHeader, compactShell,
-    completeSidebarFilePinHandoff, contentRootRef, contentScrolled, createProjectSurface, createSidebarExplorerMutation, createSidebarFolder,
+    completeSidebarFilePinHandoff, contentRootRef, contentScrolled, createProjectSurface, createSidebarExplorerMutation, createSidebarFolder, createSidebarFile,
     createWorkspaceMutation, createWorktreeMutation, creatingSurfaceKinds, currentRelocation, deleteBrowserMutation, dockPresentationMutation,
     deleteChatMutation, deleteCodeTabMutation, deleteExplorerMutation, deleteProjectViewMutation, deleteSidebarFileEntry,
     closeSurfaceView, deleteSurfaceResource, deleteTerminalMutation, desktopRuntime, desktopSidebarDrawer,
@@ -2071,7 +2054,7 @@ export function App() {
     selectedRunLaunchAvailable, selectedRunLaunchProblem, selectedRunRuntime, selectedRunStopAvailable, selectedRunStopProblem,
     selectedProjectToolUnavailable, selectedRunTargetLabel, selectedStandaloneChat, selectedStandaloneChatId, selectedStandaloneTerminal, selectedSurface,
     selectedPane, selectedTabKey, selectedTerminal, selectedWorker,
-    setActiveProjectTaskView, setAgentInspectOpen, setAppToast, setChatConsoleOpen, setChatRelocationOpen,
+    setAgentInspectOpen, setAppToast, setChatConsoleOpen, setChatRelocationOpen,
     setCodeHeader, setCommandBarOpen, setDesktopSidebarDrawerOpen, setDismissedLongPathFailure, setExplorerHeader,
     setFolderProjectDialogMode, setFolderProjectDialogOpen, setGitHistoryHeader, setPendingSurfaceSelection,
     setPendingTerminalInputs, setProjectOverviewSection, setProjectOverviewWorktreeId, setRunConfigurationEditorId, setSettingsPolicyId,

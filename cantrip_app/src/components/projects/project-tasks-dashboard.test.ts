@@ -102,6 +102,24 @@ function dispatch(
   return value;
 }
 
+it("does not replace a blocked Goal with a stale failed chat label", () => {
+  const blocked = dispatch(
+    task({
+      chatId: "blocked",
+      state: "blocked",
+      createdAt: "2026-10-22T00:00:00Z",
+    }),
+    "succeeded",
+  );
+  expect(
+    projectTaskWorkloadPresentation(
+      blocked,
+      { status: "failed", automationPaused: false } as ChatSummary,
+      false,
+    ),
+  ).toMatchObject({ label: "Blocked", band: "attention" });
+});
+
 function renderTaskList(
   items: ProjectTaskWorkloadItem[],
   options: {
@@ -170,12 +188,14 @@ describe("flat Task list", () => {
       const buttons = [
         ...header!.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g),
       ].map((match) => match[0]);
-      expect(buttons).toHaveLength(2);
+      expect(buttons).toHaveLength(3);
       expect(buttons[0]).toContain('aria-label="Add Task"');
       expect(buttons[1]).toContain(
         `aria-label="${paused ? "Resume Tasks" : "Pause Tasks"}"`,
       );
       expect(buttons[1]).toContain(paused ? "lucide-play" : "lucide-pause");
+      expect(buttons[2]).toContain('aria-label="Retry interrupted Tasks"');
+      expect(buttons[2]).toContain("disabled");
       for (const button of buttons) {
         expect(button).toContain("size-8");
         expect(button.replace(/<[^>]+>/g, "").trim()).toBe("");

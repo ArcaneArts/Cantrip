@@ -1,11 +1,10 @@
-import type { CodeAttachment, ExplorerFile } from "@cantrip/protocol";
+import type { ExplorerFile } from "@cantrip/protocol";
 
 import {
   desktopExplorerWindowChannelName,
   isDesktopExplorerWindowResponse,
   type DesktopExplorerWindowContext,
   type DesktopExplorerWindowRequest,
-  type DesktopExplorerWindowResponse,
 } from "@/lib/desktop-explorer-window-protocol";
 
 type PendingRequest = {
@@ -15,16 +14,8 @@ type PendingRequest = {
 };
 
 export interface DesktopExplorerWindowClientCallbacks {
+  onContextRevoked?(error: string): void;
   onContext(context: DesktopExplorerWindowContext): void;
-  onEditorEndpoint(attachment: CodeAttachment, preparedAtMs: number): void;
-  onEditorError(
-    error: string,
-    stage: Extract<
-      DesktopExplorerWindowResponse,
-      { type: "editor.failed" }
-    >["stage"],
-  ): void;
-  onEditorReady(configuredAtMs: number): void;
   onLaunchError(error: string): void;
 }
 
@@ -33,14 +24,12 @@ export class DesktopExplorerWindowClient {
   readonly #channel: BroadcastChannel;
   readonly #launchId: string;
   readonly #pending = new Map<string, PendingRequest>();
-  #configuredSignature: string | null = null;
   #contextReceived = false;
+  #context: DesktopExplorerWindowContext | null = null;
   #contextSignature: string | null = null;
   #disposed = false;
-  #endpointSignature: string | null = null;
   #launchRetry: ReturnType<typeof setInterval> | null = null;
   #launchTimeout: ReturnType<typeof setTimeout> | null = null;
-  #workbenchNonce: string | null = null;
 
   constructor(
     launchId: string,
@@ -70,50 +59,19 @@ export class DesktopExplorerWindowClient {
   readFile(): Promise<ExplorerFile> {
     return this.#request<ExplorerFile>({ type: "file.read" });
   }
-
-  editorWorkbenchReady(nonce: string): void {
-    if (this.#disposed) return;
-    this.#workbenchNonce = nonce;
-    this.#configuredSignature = null;
-    this.#channel.postMessage({
-      launchId: this.#launchId,
-      nonce,
-      type: "editor.workbench-ready",
-    } satisfies DesktopExplorerWindowRequest);
-  }
-
-  editorWorkbenchMounted(nonce: string): void {
-    if (this.#disposed) return;
-    this.#workbenchNonce = nonce;
-    this.#configuredSignature = null;
-    this.#channel.postMessage({
-      launchId: this.#launchId,
-      nonce,
-      type: "editor.workbench-mounted",
-    } satisfies DesktopExplorerWindowRequest);
-  }
-
-  editorWorkbenchFailed(
-    nonce: string,
-    error: string,
-    stage: "frame" | "workbench",
-  ): void {
-    if (this.#disposed) return;
-    this.#channel.postMessage({
-      error,
-      launchId: this.#launchId,
-      nonce,
-      stage,
-      type: "editor.workbench-failed",
-    } satisfies DesktopExplorerWindowRequest);
-  }
-
   readMedia(): Promise<Blob> {
     return this.#request<Blob>({ type: "media.read" });
   }
 
-  saveFile(content: string, version: string): Promise<ExplorerFile> {
-    return this.#request<ExplorerFile>({ content, type: "file.save", version });
+  saveFile(
+    content: string,
+    version: string,
+    context = this.#context,
+  ): Promise<ExplorerFile> {
+    return this.#request<ExplorerFile>(
+      { content, type: "file.save", version },
+      context,
+    );
   }
 
   dispose(): void {
@@ -131,6 +89,7 @@ export class DesktopExplorerWindowClient {
   }
 
   readonly #onMessage = (event: MessageEvent<unknown>) => {
+    if (this.#disposed) return;
     const response = event.data;
     if (
       !isDesktopExplorerWindowResponse(response) ||
@@ -138,7 +97,14 @@ export class DesktopExplorerWindowClient {
     ) {
       return;
     }
+    if (response.type === "context.revoked") {
+      this.#context = null;
+      this.dispose();
+      this.#callbacks.onContextRevoked?.(response.error);
+      return;
+    }
     if (response.type === "launch.ready") {
+      this.#context = response.context;
       if (!this.#contextReceived) {
         this.#contextReceived = true;
         if (this.#launchRetry) clearInterval(this.#launchRetry);
@@ -149,36 +115,7 @@ export class DesktopExplorerWindowClient {
       const signature = `${response.context.requestedAtMs}\0${response.context.path}`;
       if (signature === this.#contextSignature) return;
       this.#contextSignature = signature;
-      this.#configuredSignature = null;
       this.#callbacks.onContext(response.context);
-      return;
-    }
-    if (response.type === "editor.endpoint-ready") {
-      const signature = `${response.attachment.attachmentId}\0${response.attachment.sessionId}\0${response.attachment.url}\0${response.preparedAtMs}`;
-      if (signature === this.#endpointSignature) return;
-      this.#endpointSignature = signature;
-      this.#callbacks.onEditorEndpoint(
-        response.attachment,
-        response.preparedAtMs,
-      );
-      return;
-    }
-    if (response.type === "editor.ready") {
-      if (
-        response.nonce !== this.#workbenchNonce ||
-        !this.#contextSignature ||
-        this.#contextSignature !== `${response.requestedAtMs}\0${response.path}`
-      ) {
-        return;
-      }
-      const signature = `${response.requestedAtMs}\0${response.path}\0${response.configuredAtMs}`;
-      if (signature === this.#configuredSignature) return;
-      this.#configuredSignature = signature;
-      this.#callbacks.onEditorReady(response.configuredAtMs);
-      return;
-    }
-    if (response.type === "editor.failed") {
-      this.#callbacks.onEditorError(response.error, response.stage);
       return;
     }
     const pending = this.#pending.get(response.requestId);
@@ -206,6 +143,7 @@ export class DesktopExplorerWindowClient {
     request:
       | { type: "file.read" | "media.read" }
       | { content: string; type: "file.save"; version: string },
+    context = this.#context,
   ): Promise<T> {
     if (this.#disposed) {
       return Promise.reject(new Error("The editor window is closed."));
@@ -223,6 +161,8 @@ export class DesktopExplorerWindowClient {
       });
       this.#channel.postMessage({
         ...request,
+        path: context?.path,
+        requestedAtMs: context?.requestedAtMs,
         launchId: this.#launchId,
         requestId,
       } satisfies DesktopExplorerWindowRequest);

@@ -12,6 +12,7 @@ mod input_telemetry;
 mod media;
 mod overlay;
 pub use overlay::MacOsCursorRenderer;
+mod interaction_target;
 mod pending;
 mod registry;
 mod sharing;
@@ -314,6 +315,23 @@ impl MacOsBackend {
 }
 
 impl CaptureBackend for MacOsBackend {
+    fn resolve_interaction_target(
+        &mut self,
+        target: &Target,
+        cancellation: &Cancellation,
+    ) -> Result<Target> {
+        let identity = self.registry.identity(target)?;
+        let refreshed = interaction_target::resolve(target, &identity, cancellation);
+        if refreshed.as_ref().is_err_and(|error| {
+            matches!(
+                error.code,
+                ErrorCode::TargetNotFound | ErrorCode::StaleTarget
+            )
+        }) {
+            self.registry.remove(&target.id);
+        }
+        refreshed
+    }
     fn interaction_input(
         &mut self,
         session: &str,

@@ -21,7 +21,7 @@ import {
   type ProjectPaneSummary,
 } from "@cantrip/protocol";
 import { useQueries } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
+import { Info, Plus } from "lucide-react";
 import {
   Fragment,
   useMemo,
@@ -70,6 +70,8 @@ import {
   ProjectPaneTabStrip,
   surfaceCanDelete,
   surfaceDeleteLabel,
+  surfaceIsRunning,
+  surfaceNeedsApproval,
 } from "@/components/workspace/project-tab-bar";
 import {
   ProjectSurfaceCreateMenu,
@@ -77,6 +79,7 @@ import {
   type ProjectSurfacePlacementContext,
 } from "@/components/workspace/project-surface-create-menu";
 import { ProjectSurfaceIcon } from "@/components/workspace/project-surface-icon";
+import { useAgentTabCloseConfirmation } from "@/components/workspace/use-agent-tab-close-confirmation";
 import {
   useWorkspaceDndState,
   WorkspaceDropPlaceholder,
@@ -135,7 +138,7 @@ function SortableDockRailTab({
   disabled: boolean;
   memberPosition: number;
   onClose(): void;
-  onDelete(): void;
+  onDelete(stopRunning?: true): void;
   onMoveToRegion?(
     region: Extract<ProjectPaneRegion, "center" | DockRegion>,
   ): void;
@@ -178,87 +181,108 @@ function SortableDockRailTab({
       : active
         ? "Collapse"
         : "Focus";
-  const actionLabel = `${action} ${surface.title}`;
+  const needsApproval = surfaceNeedsApproval(surface);
+  const running = surfaceIsRunning(surface);
+  const agentClose = useAgentTabCloseConfirmation((_surface, stopRunning) =>
+    onDelete(stopRunning),
+  );
+  const actionLabel = `${action} ${surface.title}${needsApproval ? " (Approval required)" : running ? " (Running)" : ""}`;
   return (
-    <div
-      className={expanded ? "h-10 w-40 shrink-0" : "size-10 shrink-0"}
-      data-dock-rail-tab={surface.tabKey}
-      data-dock-rail-tab-position={memberPosition}
-      onAuxClick={(event) => {
-        if (!disabled)
-          closeTabOnMiddleClick(
-            event,
-            surface.kind === "chat" ? onDelete : onClose,
-          );
-      }}
-      onMouseDown={preventMiddleMouseDefault}
-      ref={sortable.setNodeRef}
-      style={{
-        transform: CSS.Transform.toString(sortable.transform),
-        transition: sortable.transition,
-        opacity: sortable.isDragging ? 0.35 : 1,
-        zIndex: sortable.isDragging ? 10 : undefined,
-      }}
-      {...(disabled ? {} : sortable.attributes)}
-      {...(disabled ? {} : sortable.listeners)}
-    >
-      <TabColor colorKey={surfaceColorKey(surface)} active={active}>
-        <ContextMenu.Root>
-          <ContextMenu.Trigger asChild>
-            <div className="relative h-10 w-full min-w-0">
-              <TooltipButton
-                aria-label={`${actionLabel} in ${region} dock`}
-                aria-pressed={active}
-                className={cn(
-                  "tab-color-content flex h-10 w-full min-w-0 shrink-0 items-center rounded-none border-0 text-muted-foreground transition-colors duration-150 hover:bg-muted/60 hover:text-foreground motion-reduce:transition-none [&_svg]:shrink-0",
-                  expanded ? "justify-start gap-2 px-3" : "justify-center p-0",
-                  active && "text-foreground",
-                )}
-                disabled={disabled}
-                onClick={onSelect}
-                size="icon"
-                tooltip={actionLabel}
-                tooltipSide={tooltipSide}
-                variant="ghost"
-              >
-                {surface.kind === "builtin" ? (
-                  <ProjectBuiltInSurfaceIcon
-                    className="size-4"
-                    definitionId={surface.entity.definitionId}
-                  />
-                ) : (
-                  <ProjectSurfaceIcon className="size-4" kind={surface.kind} />
-                )}
-                {expanded ? (
-                  <span className="truncate">{surface.title}</span>
-                ) : null}
-              </TooltipButton>
-              <TabIndicator
-                active={active}
-                edge={region === "bottom" ? "top" : "left"}
-              />
-            </div>
-          </ContextMenu.Trigger>
-          <ContextMenu.Portal>
-            <StyledContextMenuContent className="min-w-40">
-              <SurfaceMenuItems
-                colorKey={surfaceColorKey(surface)}
-                deleteLabel={surfaceDeleteLabel(surface)}
-                kind="context"
-                moveTargets={surfaceMoveTargets(
-                  surface,
-                  region,
-                  onMoveToRegion,
-                )}
-                onClose={surface.kind === "chat" ? undefined : onClose}
-                onDelete={canDelete ? onDelete : undefined}
-                title={surface.title}
-              />
-            </StyledContextMenuContent>
-          </ContextMenu.Portal>
-        </ContextMenu.Root>
-      </TabColor>
-    </div>
+    <>
+      <div
+        className={expanded ? "h-10 w-40 shrink-0" : "size-10 shrink-0"}
+        data-dock-rail-tab={surface.tabKey}
+        data-dock-rail-tab-position={memberPosition}
+        onAuxClick={(event) => {
+          if (!disabled)
+            closeTabOnMiddleClick(
+              event,
+              surface.kind === "chat"
+                ? () => agentClose.requestClose(surface)
+                : onClose,
+            );
+        }}
+        onMouseDown={preventMiddleMouseDefault}
+        ref={sortable.setNodeRef}
+        style={{
+          transform: CSS.Transform.toString(sortable.transform),
+          transition: sortable.transition,
+          opacity: sortable.isDragging ? 0.35 : 1,
+          zIndex: sortable.isDragging ? 10 : undefined,
+        }}
+        {...(disabled ? {} : sortable.attributes)}
+        {...(disabled ? {} : sortable.listeners)}
+      >
+        <TabColor colorKey={surfaceColorKey(surface)} active={active}>
+          <ContextMenu.Root>
+            <ContextMenu.Trigger asChild>
+              <div className="relative h-10 w-full min-w-0">
+                <TooltipButton
+                  aria-label={`${actionLabel} in ${region} dock`}
+                  aria-pressed={active}
+                  data-agent-running={running}
+                  className={cn(
+                    "tab-color-content flex h-10 w-full min-w-0 shrink-0 items-center rounded-none border-0 text-muted-foreground transition-colors duration-150 hover:bg-muted/60 hover:text-foreground motion-reduce:transition-none [&_svg]:shrink-0",
+                    expanded
+                      ? "justify-start gap-2 px-3"
+                      : "justify-center p-0",
+                    active && "text-foreground",
+                  )}
+                  disabled={disabled}
+                  onClick={onSelect}
+                  size="icon"
+                  tooltip={actionLabel}
+                  tooltipSide={tooltipSide}
+                  variant="ghost"
+                >
+                  {needsApproval ? (
+                    <Info
+                      aria-hidden="true"
+                      className="size-4 text-amber-500"
+                    />
+                  ) : surface.kind === "builtin" ? (
+                    <ProjectBuiltInSurfaceIcon
+                      className="size-4"
+                      definitionId={surface.entity.definitionId}
+                    />
+                  ) : (
+                    <ProjectSurfaceIcon
+                      className="size-4"
+                      kind={surface.kind}
+                    />
+                  )}
+                  {expanded ? (
+                    <span className="truncate">{surface.title}</span>
+                  ) : null}
+                </TooltipButton>
+                <TabIndicator
+                  active={active}
+                  edge={region === "bottom" ? "top" : "left"}
+                />
+              </div>
+            </ContextMenu.Trigger>
+            <ContextMenu.Portal>
+              <StyledContextMenuContent className="min-w-40">
+                <SurfaceMenuItems
+                  colorKey={surfaceColorKey(surface)}
+                  deleteLabel={surfaceDeleteLabel(surface)}
+                  kind="context"
+                  moveTargets={surfaceMoveTargets(
+                    surface,
+                    region,
+                    onMoveToRegion,
+                  )}
+                  onClose={surface.kind === "chat" ? undefined : onClose}
+                  onDelete={canDelete ? () => onDelete() : undefined}
+                  title={surface.title}
+                />
+              </StyledContextMenuContent>
+            </ContextMenu.Portal>
+          </ContextMenu.Root>
+        </TabColor>
+      </div>
+      {agentClose.confirmation}
+    </>
   );
 }
 
@@ -283,7 +307,7 @@ export function DockRail({
   onCreate(kind: ProjectSurfaceCreateKind, target?: ExecutionTarget): void;
   onOpenRunning?(terminalId: string): void;
   onClose(surface: ProjectSurface): void;
-  onDelete(surface: ProjectSurface): void;
+  onDelete(surface: ProjectSurface, stopRunning?: true): void;
   onMoveToRegion?(
     surface: ProjectSurface,
     region: Extract<ProjectPaneRegion, "center" | "right" | "bottom">,
@@ -426,7 +450,9 @@ export function DockRail({
                 disabled={pending}
                 memberPosition={memberPosition}
                 onClose={() => onClose(surface)}
-                onDelete={() => onDelete(surface)}
+                onDelete={(stopRunning) =>
+                  stopRunning ? onDelete(surface, true) : onDelete(surface)
+                }
                 onMoveToRegion={
                   onMoveToRegion
                     ? (targetRegion) => onMoveToRegion(surface, targetRegion)

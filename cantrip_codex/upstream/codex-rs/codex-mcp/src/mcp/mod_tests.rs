@@ -101,9 +101,12 @@ pub(crate) fn test_mcp_config(codex_home: PathBuf) -> McpConfig {
         approval_policy: Constrained::allow_any(AskForApproval::OnRequest),
         permission_profile: PermissionProfile::default(),
         config_layer_stack: codex_config::ConfigLayerStack::default(),
+        plugins: Default::default(),
         approvals_reviewer: codex_config::types::ApprovalsReviewer::default(),
         environment_cwds: HashMap::new(),
+        environment_use_mxc: HashMap::new(),
         server_permission_profiles: HashMap::new(),
+        codex_self_exe: None,
         codex_linux_sandbox_exe: None,
         use_legacy_landlock: false,
         apps_enabled: false,
@@ -132,7 +135,7 @@ pub(crate) fn test_elicitation_config(
 }
 
 #[test]
-fn ema_catalog_supports_configured_installed_and_selected_plugins_without_widening_policy() {
+fn ema_catalog_allows_only_configured_servers_without_widening_policy() {
     let server: McpServerConfig = serde_json::from_value(serde_json::json!({
         "url": "https://resource.example/mcp", "auth": "ema_auth",
         "oauth": { "client_id": "resource-client", "authorization_server_issuer": "https://as.example" }
@@ -179,11 +182,9 @@ fn ema_catalog_supports_configured_installed_and_selected_plugins_without_wideni
         });
         let servers = effective_mcp_servers(&config, /*auth*/ None);
         for name in ["configured", "installed", "selected"] {
-            assert_eq!(servers[name].enabled(), xaa_enabled && !denied, "{name}");
-            assert_eq!(
-                servers[name].config().oauth_idp(),
-                xaa_enabled.then_some(&idp)
-            );
+            let eligible = name == "configured" && xaa_enabled;
+            assert_eq!(servers[name].enabled(), eligible && !denied, "{name}");
+            assert_eq!(servers[name].config().oauth_idp(), eligible.then_some(&idp));
             assert_eq!(servers[name].config().auth, McpServerAuth::EmaAuth);
         }
     }
@@ -295,17 +296,6 @@ fn mcp_prompt_auto_approval_honors_approved_tools_in_all_permission_modes() {
         ));
     }
 
-    assert!(!mcp_permission_prompt_is_auto_approved(
-        AskForApproval::OnRequest,
-        &PermissionProfile::read_only(),
-        McpPermissionPromptAutoApproveContext {
-            tool_approval_mode: Some(AppToolApproval::Auto),
-        },
-    ));
-}
-
-#[test]
-fn mcp_prompt_auto_approval_rejects_auto_mode_in_default_permission_mode() {
     assert!(!mcp_permission_prompt_is_auto_approved(
         AskForApproval::OnRequest,
         &PermissionProfile::read_only(),
@@ -446,6 +436,10 @@ fn codex_apps_mcp_url_for_base_url_uses_plugin_service_paths() {
     assert_eq!(
         codex_apps_mcp_url_for_base_url("https://chat.openai.com"),
         "https://chat.openai.com/backend-api/ps/mcp"
+    );
+    assert_eq!(
+        codex_apps_mcp_url_for_base_url("https://gov.chatgpt.com/backend-api/"),
+        "https://gov.chatgpt.com/backend-api/ps/mcp"
     );
     assert_eq!(
         codex_apps_mcp_url_for_base_url("http://localhost:8080/api/codex"),
@@ -605,10 +599,52 @@ fn effective_mcp_servers_require_catalog_registration() {
 }
 
 #[test]
-fn effective_mcp_servers_preserve_chatgpt_auth_for_staging() {
+fn effective_mcp_servers_preserve_chatgpt_auth_for_trusted_origins() {
+    for (base_url, server_url) in [
+        ("https://chatgpt-staging.com", "https://chatgpt-staging.com"),
+        (
+            "https://preview.chatgpt-staging.com",
+            "https://preview.chatgpt-staging.com",
+        ),
+        ("https://gov.chatgpt.com", "https://chatgpt.com"),
+        (
+            "https://chatgpt.com",
+            "https://gov.chatgpt.com/backend-api/",
+        ),
+        ("https://chatgpt.com", "https://GOV.CHATGPT.COM:443"),
+    ] {
+        let mut config = test_mcp_config(PathBuf::new());
+        config.chatgpt_base_url = base_url.to_string();
+        let server = codex_apps_mcp_server_config(
+            server_url, /*apps_mcp_product_sku*/ None, /*originator*/ None,
+        );
+        let mut catalog = ResolvedMcpCatalog::builder();
+        catalog.register(McpServerRegistration::from_config(
+            "trusted".to_string(),
+            server,
+        ));
+        config.mcp_server_catalog = catalog.build();
+
+        let effective = effective_mcp_servers(&config, /*auth*/ None);
+
+        assert_eq!(
+            effective["trusted"].config().auth,
+            McpServerAuth::ChatGpt,
+            "backend {base_url}, server {server_url}",
+        );
+    }
+}
+
+#[test]
+fn effective_mcp_servers_reject_untrusted_origins_for_chatgpt_auth() {
     for url in [
-        "https://chatgpt-staging.com",
-        "https://preview.chatgpt-staging.com",
+        "http://gov.chatgpt.com",
+        "https://gov.chatgpt.com:8443",
+        "https://gov.chatgpt.com.evil.example",
+        "https://sub.gov.chatgpt.com",
+        "https://gov.chatgpt.com.",
+        "https://gov.chatgpt.com@evil.example",
+        "https://example.com",
     ] {
         let mut config = test_mcp_config(PathBuf::new());
         config.chatgpt_base_url = url.to_string();
@@ -617,15 +653,18 @@ fn effective_mcp_servers_preserve_chatgpt_auth_for_staging() {
         );
         let mut catalog = ResolvedMcpCatalog::builder();
         catalog.register(McpServerRegistration::from_config(
-            "staging".to_string(),
-            server.clone(),
+            "untrusted".to_string(),
+            server,
         ));
         config.mcp_server_catalog = catalog.build();
-        let configured = HashMap::from([("staging".to_string(), server)]);
-        let effective =
-            effective_mcp_servers_from_configured(configured, &config, /*auth*/ None);
 
-        assert_eq!(effective["staging"].config().auth, McpServerAuth::ChatGpt);
+        let effective = effective_mcp_servers(&config, /*auth*/ None);
+
+        assert_eq!(
+            effective["untrusted"].config().auth,
+            McpServerAuth::OAuth,
+            "server {url}",
+        );
     }
 }
 

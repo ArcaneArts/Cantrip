@@ -98,6 +98,7 @@ describe("sidebar surface inventory", () => {
       onDeleteTerminal: vi.fn(),
       onDuplicateChat: vi.fn(),
       onFileCreateFolder: vi.fn(),
+      onFileCreateFile: vi.fn(),
       onFileDelete: vi.fn(),
       onFileOpenGraph: vi.fn(),
       onFileOpenNative: vi.fn(),

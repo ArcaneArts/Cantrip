@@ -1,5 +1,4 @@
 import {
-  codeSessionListSchema,
   codeTabWireListSchema,
   codeTabWireSummarySchema,
   encryptedCodeTabCreateSchema,
@@ -8,7 +7,6 @@ import {
 import type { FastifyInstance } from "fastify";
 
 import {
-  CodeCapabilityUnavailableError,
   ExecutionPlacementUnavailableError,
   type ServerRepository,
 } from "../../db/repository.js";
@@ -25,11 +23,6 @@ export interface CodeTabManagementRouteDependencies {
     "createCodeTab" | "listCodeTabs" | "updateCodeTab"
   >;
   runtime: CodeTabPlacementRuntime;
-}
-
-export interface CodeTabSessionListRouteDependencies {
-  applicationOwnerId: () => string;
-  repository: Pick<ServerRepository, "listCodeSessions">;
 }
 
 /** Registers Code-tab inventory and metadata routes before retargeting. */
@@ -65,7 +58,7 @@ export function installCodeTabManagementRoutes(
         const codeTab = await repository.createCodeTab(
           applicationOwnerId(),
           request.params.projectId,
-          { ...input.data, themeMode: "follow-cantrip" },
+          input.data,
           (workerId) => runtime.isWorkerConnected(workerId),
         );
         return codeTab
@@ -78,9 +71,6 @@ export function installCodeTabManagementRoutes(
           return reply
             .code(error.code === "project-not-found" ? 404 : 409)
             .send({ code: error.code, error: error.message });
-        }
-        if (error instanceof CodeCapabilityUnavailableError) {
-          return reply.code(409).send({ error: error.message });
         }
         throw error;
       }
@@ -97,29 +87,10 @@ export function installCodeTabManagementRoutes(
       const codeTab = await repository.updateCodeTab(
         applicationOwnerId(),
         request.params.codeTabId,
-        { ...input.data, themeMode: "follow-cantrip" },
+        input.data,
       );
       return codeTab
         ? reply.send(codeTabWireSummarySchema.parse(codeTab))
-        : reply.code(404).send({ error: "Code tab not found." });
-    },
-  );
-}
-
-/** Registers the persisted session inventory before worker-backed controls. */
-export function installCodeTabSessionListRoute(
-  app: FastifyInstance,
-  { applicationOwnerId, repository }: CodeTabSessionListRouteDependencies,
-): void {
-  app.get<{ Params: { codeTabId: string } }>(
-    "/api/code-tabs/:codeTabId/sessions",
-    async (request, reply) => {
-      const sessions = await repository.listCodeSessions(
-        applicationOwnerId(),
-        request.params.codeTabId,
-      );
-      return sessions
-        ? reply.send(codeSessionListSchema.parse(sessions))
         : reply.code(404).send({ error: "Code tab not found." });
     },
   );

@@ -227,10 +227,10 @@ impl ResponsesRequest {
     }
 
     pub fn instructions_text(&self) -> String {
-        self.body_json()["instructions"]
-            .as_str()
-            .unwrap()
-            .to_string()
+        self.message_input_texts("developer")
+            .into_iter()
+            .next()
+            .expect("base instructions developer message")
     }
 
     /// Returns all `input_text` spans from `message` inputs for the provided role.
@@ -832,6 +832,8 @@ pub fn ev_assistant_message(id: &str, text: &str) -> Value {
 
 pub fn user_message_item(text: &str) -> ResponseItem {
     ResponseItem::Message {
+        status: None,
+        encrypted_content: None,
         id: None,
         role: "user".to_string(),
         content: vec![ContentItem::InputText {

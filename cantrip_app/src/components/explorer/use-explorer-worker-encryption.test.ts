@@ -3,6 +3,7 @@ import TestRenderer, { act } from "react-test-renderer";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ClientEncryptionSnapshot } from "@/lib/client-encryption";
+import type { WorkerEncryptionStatus } from "@cantrip/protocol";
 import type { ClientSessionContext } from "@/lib/client-session";
 
 const runtime = vi.hoisted(() => {
@@ -35,7 +36,7 @@ const runtime = vi.hoisted(() => {
         error: null,
       },
     },
-    wait: vi.fn<() => Promise<void>>(async () => undefined),
+    wait: vi.fn<() => Promise<WorkerEncryptionStatus>>(),
   };
 });
 
@@ -149,12 +150,22 @@ function continuity(
     ...overrides,
   });
 }
+function acceptedStatus(): WorkerEncryptionStatus {
+  return {
+    ...runtime.worker.encryption,
+    state: "ready",
+    grants: [
+      { component: "surface-private-state", keyRevision: 3 },
+      { component: "private-surface-metadata", keyRevision: 3 },
+    ],
+  } as WorkerEncryptionStatus;
+}
 
 describe("Explorer worker encryption binding", () => {
   beforeEach(() => {
     resetExplorerWorkerEncryptionReadinessForTests();
     runtime.wait.mockReset();
-    runtime.wait.mockResolvedValue(undefined);
+    runtime.wait.mockImplementation(async () => acceptedStatus());
     runtime.worker = {
       ...runtime.worker,
       online: true,
@@ -380,7 +391,7 @@ describe("Explorer worker encryption binding", () => {
     await act(async () => renderer.unmount());
   });
 
-  it("opens once when a successful grant refresh updates worker status", async () => {
+  it("uses a successful grant reply immediately before a worker status poll catches up", async () => {
     runtime.worker = {
       ...runtime.worker,
       encryption: {
@@ -399,8 +410,8 @@ describe("Explorer worker encryption binding", () => {
     await act(async () => {
       renderer = TestRenderer.create(createElement(Probe));
     });
-    expect(observed.at(-1)).toBe(false);
-
+    expect(observed.at(-1)).toBe(true);
+    expect(runtime.worker.encryption.grants).toHaveLength(1);
     const observationsBeforeRefresh = observed.length;
     runtime.worker = {
       ...runtime.worker,
@@ -438,7 +449,7 @@ describe("Explorer worker encryption binding", () => {
     expect(observed.at(-1)).toMatchObject({ ready: false });
     expect(observed.at(-1)?.error).not.toBeNull();
 
-    runtime.wait.mockResolvedValueOnce(undefined);
+    runtime.wait.mockResolvedValueOnce(acceptedStatus());
     await act(async () => retry());
     expect(runtime.wait).toHaveBeenCalledTimes(2);
     expect(observed.at(-1)).toEqual({ error: null, ready: true });
@@ -466,10 +477,10 @@ describe("Explorer worker encryption binding", () => {
   });
 
   it("deduplicates concurrent consumers without cancelling the active lease", async () => {
-    let resolveAuthorization!: () => void;
+    let resolveAuthorization!: (status: WorkerEncryptionStatus) => void;
     runtime.wait.mockImplementationOnce(
       () =>
-        new Promise<void>((resolve) => {
+        new Promise<WorkerEncryptionStatus>((resolve) => {
           resolveAuthorization = resolve;
         }),
     );
@@ -520,7 +531,7 @@ describe("Explorer worker encryption binding", () => {
     await act(async () => renderer.update(probes(false)));
     expect(runtime.wait).toHaveBeenCalledTimes(1);
 
-    await act(async () => resolveAuthorization());
+    await act(async () => resolveAuthorization(acceptedStatus()));
     expect(observed.get("first")).toBe(false);
     expect(observed.get("second")).toBe(true);
 

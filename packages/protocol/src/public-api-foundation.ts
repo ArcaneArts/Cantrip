@@ -20,8 +20,6 @@ export * from "./tunnel-content.js";
 
 export * from "./client-control-content.js";
 
-export * from "./code-settings.js";
-
 export * from "./resource-usage.js";
 
 export * from "./elite.js";
@@ -60,10 +58,6 @@ export {
   remoteSurfaceStatusSchema,
   remoteSurfaceChannelSchema,
   remoteSurfaceCapabilitiesSchema,
-  codeTransportSchema,
-  codeSharedTransportProtocolVersionSchema,
-  codeCapabilitiesSchema,
-  unavailableCodeCapabilities,
   remoteSurfaceIceServerSchema,
   remoteSurfaceWebRtcConfigurationSchema,
   remoteSurfaceWebRtcSignalSchema,
@@ -87,9 +81,6 @@ export type {
   RemoteSurfaceIceServer,
   RemoteSurfaceWebRtcConfiguration,
   RemoteSurfaceWebRtcSignal,
-  CodeTransport,
-  CodeSharedTransportProtocolVersion,
-  CodeCapabilities,
   CodexRuntimeMethodState,
   CodexRuntimeFeatureStage,
   CodexRuntimeFeature,

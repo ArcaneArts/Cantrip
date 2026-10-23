@@ -12,7 +12,6 @@ import {
 } from "@/components/app/application-shell-model";
 import {
   ContentHeaderActions,
-  ExplorerFileCloseButton,
   type ContentHeaderActionsProps,
 } from "@/components/workspace/content-header-actions";
 import { MobileAppModeSwitch } from "@/components/mobile/mobile-app-mode-switch";
@@ -45,7 +44,6 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
     activeChat,
     activeExplorerHeader,
     activeProjectOverviewSection,
-    activeProjectTaskChat,
     activeProjectWorkspace,
     activeWorktree,
     activeWorktreeId,
@@ -239,17 +237,7 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
         projectOverviewSelected &&
         selectedProject ? (
         <MobileProjectHeader
-          actions={
-            <>
-              {activeProjectTaskChat ? (
-                <ContentHeaderActions
-                  compact
-                  task={contentHeaderActions.task}
-                />
-              ) : null}
-              {renderProjectRunConfigurationControl(true)}
-            </>
-          }
+          actions={<>{renderProjectRunConfigurationControl(true)}</>}
           appMode={appMode}
           context={
             selectedProject.github?.nameWithOwner ??
@@ -319,12 +307,6 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
               )}
               data-tauri-drag-region={overlayTitlebar ? "" : undefined}
             >
-              {appMode === "ide" && selectedExplorer ? (
-                <ExplorerFileCloseButton
-                  compact={overlayTitlebar}
-                  header={activeExplorerHeader}
-                />
-              ) : null}
               <span
                 className="truncate"
                 data-tauri-drag-region={overlayTitlebar ? "" : undefined}
@@ -396,9 +378,7 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
                       bindWorktreeMutation.isPending ||
                       activeChat?.status === "running" ||
                       selectedTerminal?.status === "running" ||
-                      ((selectedCodeTab?.status === "running" ||
-                        selectedCodeTab?.status === "starting") &&
-                        !codeHeader),
+                      (Boolean(selectedCodeTab) && !codeHeader),
                     error: worktreeActionError,
                     onCreate: () =>
                       setWorktreeCreateTarget(activeWorktreeTarget),
@@ -504,7 +484,9 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
               ) : selectedProjectView?.kind === "remote-desktop" ? (
                 "Managed project-worker desktop"
               ) : selectedCodeTab ? (
-                `${activeWorktree?.displayPath ?? selectedProject?.source?.displayPath ?? "Code"} · ${selectedCodeTab.profileId}`
+                (activeWorktree?.displayPath ??
+                selectedProject?.source?.displayPath ??
+                "Code")
               ) : selectedBrowser ? (
                 selectedBrowser.url
               ) : selectedExplorer ? (

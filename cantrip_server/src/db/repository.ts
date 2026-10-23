@@ -55,7 +55,6 @@ import {
   type AttachmentProtectedMetadata,
   type ChatAttachmentOpaqueSummary,
 } from "@cantrip/protocol/attachment-content";
-import { CodeSettingsRepository } from "./code-settings.js";
 import type { SecretVault } from "../security/secret-vault.js";
 import { AccountResourceUsageRepository } from "./account-resource-usage.js";
 import { DesktopUpdateStateRepository } from "./repository/desktop-update-state.js";
@@ -122,6 +121,7 @@ import { ProjectReplicaJobRepository } from "./project-replica-jobs.js";
 import { TaskRepository } from "./tasks.js";
 import { TaskSchedulingRepository } from "./task-scheduling.js";
 import { TaskDispatchRepository } from "./task-dispatch.js";
+import { TaskRetryRepository } from "./task-retries.js";
 import { ProjectTabLayoutRepository } from "./tab-layouts.js";
 import { WorkspaceRepositoryDiscoveryJobRepository } from "./workspace-repository-discovery-jobs.js";
 import { ProjectExecutionRepositoryFacade } from "./repository-facade-project-execution.js";
@@ -216,10 +216,7 @@ export {
 } from "./repository/chat-attachments.js";
 export type { TerminalExecutionContext } from "./repository/terminals.js";
 export type { ExplorerExecutionContext } from "./repository/explorers.js";
-export {
-  CodeCapabilityUnavailableError,
-  type CodeTabExecutionContext,
-} from "./repository/code-surfaces.js";
+export { type CodeTabExecutionContext } from "./repository/code-surfaces.js";
 export { SurfacePrivateStateConflictError } from "./repository/browsers.js";
 export type { RemoteSurfaceExecutionContext } from "./repository/remote-surfaces.js";
 export type {
@@ -331,11 +328,11 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
   readonly chatImportJobs: ChatImportJobRepository;
   readonly chatRelocationJobs: ChatRelocationJobRepository;
   readonly encryptionRegistry: EncryptionRegistryRepository;
-  readonly codeSettings: CodeSettingsRepository;
   readonly projectAutomations: ProjectAutomationRepository;
   readonly policies: PolicyRepository;
   readonly tasks: TaskRepository;
   readonly taskDispatch: TaskDispatchRepository;
+  readonly taskRetries: TaskRetryRepository;
   readonly taskScheduling: TaskSchedulingRepository;
   readonly projectReplicaJobs: ProjectReplicaJobRepository;
   readonly projectFolderSetupJobs: ProjectFolderSetupJobRepository;
@@ -655,7 +652,6 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
     this.chatImportJobs = new ChatImportJobRepository(database);
     this.chatRelocationJobs = new ChatRelocationJobRepository(database);
     this.encryptionRegistry = new EncryptionRegistryRepository(database);
-    this.codeSettings = new CodeSettingsRepository(database);
     this.projectAutomations = new ProjectAutomationRepository(database);
     this.policies = new PolicyRepository(database);
     this.accounts = new AccountRepository(database, {
@@ -666,6 +662,7 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
     });
     this.tasks = new TaskRepository(database);
     this.taskDispatch = new TaskDispatchRepository(database);
+    this.taskRetries = new TaskRetryRepository(database);
     this.taskScheduling = new TaskSchedulingRepository(database);
     this.projectReplicaJobs = new ProjectReplicaJobRepository(database);
     this.projectFolderSetupJobs = new ProjectFolderSetupJobRepository(database);
@@ -728,8 +725,14 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
     ownerId: string,
     chatId: string,
     input: ChatWorktreeUpdate,
+    expectedWorktreeId?: string,
   ): Promise<ChatWireSummary | null> {
-    return this.chatState.updateChatWorktree(ownerId, chatId, input);
+    return this.chatState.updateChatWorktree(
+      ownerId,
+      chatId,
+      input,
+      expectedWorktreeId,
+    );
   }
   async deleteChat(
     ownerId: string,

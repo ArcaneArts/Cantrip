@@ -52,7 +52,7 @@ export interface TunnelAttachmentAuthorization {
   destination:
     | Extract<TunnelPublicDestinationEndpoint, { kind: "worker-tcp" }>
     | (Extract<TunnelPublicDestinationEndpoint, { kind: "worker-adapter" }> & {
-        adapter: "code" | "project-share";
+        adapter: "project-share";
       });
   expiresAt: Date;
   ownerId: string;
@@ -117,9 +117,7 @@ function tunnelCapabilities(
   const userManaged = tunnel.management === "user-managed";
   if (!userManaged) {
     const protectedDesktopAttachment =
-      (tunnel.origin === "browser" ||
-        tunnel.origin === "code" ||
-        tunnel.origin === "project-share") &&
+      (tunnel.origin === "browser" || tunnel.origin === "project-share") &&
       tunnel.management === "managed-ephemeral" &&
       tunnel.sourceKind === "desktop-loopback";
     return {
@@ -169,7 +167,7 @@ function tunnelPublicDestination(
     return {
       kind: "worker-adapter",
       workerId: tunnel.destinationWorkerId,
-      adapter: tunnel.destinationAdapter as "code" | "project-share",
+      adapter: tunnel.destinationAdapter as "project-share",
       resourceId: tunnel.destinationResourceId,
     };
   }
@@ -893,7 +891,6 @@ export class TunnelRepository {
           tunnel.management === "user-managed" ||
           (tunnel.management === "managed-ephemeral" &&
             (tunnel.origin === "browser" ||
-              tunnel.origin === "code" ||
               tunnel.origin === "project-share") &&
             tunnel.sourceKind === "desktop-loopback")
         ) ||
@@ -1003,8 +1000,7 @@ export class TunnelRepository {
       (destination.kind !== "worker-tcp" &&
         !(
           destination.kind === "worker-adapter" &&
-          (destination.adapter === "code" ||
-            destination.adapter === "project-share")
+          destination.adapter === "project-share"
         )) ||
       !protectedRecord
     ) {
@@ -1059,8 +1055,7 @@ export class TunnelRepository {
       (destination.kind !== "worker-tcp" &&
         !(
           destination.kind === "worker-adapter" &&
-          (destination.adapter === "code" ||
-            destination.adapter === "project-share")
+          destination.adapter === "project-share"
         )) ||
       !protectedRecord
     ) {
@@ -1737,7 +1732,7 @@ export class TunnelRepository {
         }
         if (
           tunnel.management === "managed-ephemeral" &&
-          (tunnel.origin === "code" || tunnel.origin === "project-share")
+          tunnel.origin === "project-share"
         ) {
           await transaction
             .delete(schema.tunnels)

@@ -4,13 +4,10 @@ on:
   pull_request:
     paths:
       - ".github/workflows/editor-lifecycle.yml"
-      - "cantrip_app/src/lib/code-workbench*"
+      - "cantrip_app/src/components/editor/**"
       - "cantrip_app/src/lib/serialized-attachment-lifecycle*"
       - "cantrip_app/src/components/code/**"
       - "cantrip_app/src/components/explorer/*code*"
-      - "cantrip_code/patches/**"
-      - "cantrip_code/extensions/**"
-      - "scripts/cantrip-code/**"
 
 permissions:
   contents: read
@@ -36,8 +33,6 @@ jobs:
       - uses: pnpm/action-setup@v4
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
-      - name: Execute patched upstream readiness behavior
-        run: node --test scripts/cantrip-code/workbench-readiness.test.mjs
-      - name: Execute frame ownership and readiness behavior
+      - name: Execute native editor ownership and lifecycle behavior
         if: ${{ !cancelled() }}
-        run: pnpm --filter @cantrip/app exec vitest run src/lib/code-workbench-lifecycle.test.ts src/lib/code-workbench-frame.test.ts src/lib/serialized-attachment-lifecycle.test.ts src/components/code src/components/explorer/explorer-code-editor-lifecycle.test.tsx src/components/explorer/retained-explorer-code-editor.test.tsx src/components/explorer/persistent-explorer-code-ownership.test.tsx --maxWorkers=2
+        run: pnpm --filter @cantrip/app exec vitest run src/components/editor src/components/code src/components/explorer/persistent-explorer-code-ownership.test.tsx src/lib/native-explorer-window-broker.test.ts --maxWorkers=2

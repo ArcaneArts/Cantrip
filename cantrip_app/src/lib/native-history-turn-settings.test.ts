@@ -29,6 +29,10 @@ vi.mock("./client-session", () => ({
 }));
 import type { ClientEncryptionService } from "./client-encryption";
 import {
+  buildChatTimeline,
+  formatTurnMetadata,
+} from "@/components/chat/timeline";
+import {
   enrichNativeTurnSummaries,
   nativeTurnSettingsForMessages,
   nativeCorrelatedTurnIdentities,
@@ -185,6 +189,66 @@ const summary = (settings?: NativeInitialTurnSettings) =>
     ],
   }) as ChatMessage;
 describe("historical native turn settings adapter", () => {
+  it("recovers per-turn performance from encrypted history even without an initial-settings capture", async () => {
+    const usage = {
+      totalTokens: 21_000,
+      inputTokens: 20_000,
+      cachedInputTokens: 0,
+      cacheWriteInputTokens: 0,
+      outputTokens: 1_000,
+      reasoningOutputTokens: 500,
+    };
+    const current = await archived({
+      version: 2,
+      reducedTurn: {
+        id: "turn",
+        body: { id: "turn", durationMs: 20_000, startedAt: 1, completedAt: 21 },
+        conflicts: [],
+        metadata: {
+          retention: "complete",
+          usage: {
+            responses: [{ threadId: "thread", responseId: "response", usage }],
+            conflictingResponseIds: [],
+          },
+        },
+        items: [
+          {
+            body: { type: "reasoning" },
+            startedAtMs: 1000,
+            completedAtMs: 6000,
+          },
+          {
+            body: { type: "agentMessage" },
+            startedAtMs: 16000,
+            completedAtMs: 21000,
+          },
+        ],
+      },
+    });
+    const evidence = await open(response(current));
+    expect(evidence[0]).toMatchObject({
+      status: "unavailable",
+      tokenPerformance: {
+        outputTokens: 1000,
+        outputDurationMs: 10000,
+        durationMs: 20000,
+      },
+    });
+    const answer = {
+      ...summary(),
+      id: "answer",
+      content: [
+        { type: "text" as const, text: "Done", phase: "final_answer" as const },
+      ],
+    };
+    const messages = enrichNativeTurnSummaries([answer, summary()], evidence);
+    const final = buildChatTimeline(messages).find(
+      (entry) => entry.type === "message" && entry.message.id === "answer",
+    );
+    expect(
+      final?.type === "message" ? formatTurnMetadata(final.turnMetadata) : null,
+    ).toBe("21,000tok · 20s · 50 tok/s real");
+  });
   it("reconciles exact immutable settings across replaced worker archives and older omitted snapshots", async () => {
     const old = await archived({
       version: 1,

@@ -51,7 +51,7 @@ afterEach(async () => {
   client.clear();
   vi.useRealTimers();
 });
-async function mount() {
+async function mount(onConfigureModels?: () => void) {
   await act(async () => {
     renderer = TestRenderer.create(
       createElement(
@@ -60,12 +60,51 @@ async function mount() {
         createElement(ManagedChatPreparationStatus, {
           chatId: "chat",
           projectId: "project",
+          onConfigureModels,
         }),
       ),
     );
   });
   await flush();
 }
+it("shows model setup guidance instead of a preparation error and opens model settings", async () => {
+  vi.useFakeTimers();
+  const configure = vi.fn();
+  api.request.mockResolvedValue({ preparation: receipt("needs-model") });
+  await mount(configure);
+  const tree = JSON.stringify(renderer.toJSON());
+  expect(tree).toContain("Choose or configure a model in Settings → Models");
+  expect(tree).not.toContain("could not be prepared");
+  expect(tree).not.toContain("Retry preparation");
+  const buttons = renderer.root.findAllByType("button");
+  expect(buttons.map((button) => button.props.children)).toEqual([
+    "Configure models",
+    "Check again",
+  ]);
+  await act(async () => buttons[0]!.props.onClick());
+  expect(configure).toHaveBeenCalledOnce();
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(5000);
+  });
+  expect(api.request).toHaveBeenCalledTimes(1);
+  api.request.mockImplementation(async (_path, options) => ({
+    preparation: receipt(options.method === "POST" ? "pending" : "ready"),
+  }));
+  await act(async () => buttons[1]!.props.onClick());
+  await flush();
+  expect(JSON.stringify(renderer.toJSON())).toContain("Session prepared");
+  expect(renderer.root.findAllByType("button")).toHaveLength(0);
+});
+it("keeps real thread failures actionable instead of presenting model setup", async () => {
+  api.request.mockResolvedValue({ preparation: receipt("failed", "thread") });
+  await mount(vi.fn());
+  expect(JSON.stringify(renderer.toJSON())).toContain(
+    "The agent session could not be prepared.",
+  );
+  expect(renderer.root.findByType("button").props.children).toBe(
+    "Retry preparation",
+  );
+});
 it.each([null, "thread", "console", "ready"])(
   "observes %s without preparing again or opening a view",
   async (phase) => {
@@ -82,29 +121,44 @@ it.each([null, "thread", "console", "ready"])(
       expect(tree).toContain(
         {
           thread: "Preparing agent session",
-          console: "Starting attached CLI",
+          console: "Session prepared",
           ready: "Session prepared",
         }[phase],
       );
   },
 );
-it("distinguishes CLI failure and retries only when requested", async () => {
-  api.request.mockResolvedValue({ preparation: receipt("failed", "console") });
+it.each(["console", "failed"])(
+  "dismisses a usable chat's notice when the optional console is %s",
+  async (phase) => {
+    vi.useFakeTimers();
+    api.request.mockResolvedValue({
+      preparation: receipt(phase, phase === "failed" ? "console" : null),
+    });
+    await mount();
+    expect(JSON.stringify(renderer.toJSON())).toContain("Session prepared");
+    expect(JSON.stringify(renderer.toJSON())).not.toContain("CLI");
+    expect(renderer.root.findAllByType("button")).toHaveLength(0);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2300);
+    });
+    expect(renderer.toJSON()).toBeNull();
+    expect(api.request.mock.calls.every((call) => !call[1].method)).toBe(true);
+  },
+);
+it("does not bring back a dismissed chat notice when its console later exits", async () => {
+  vi.useFakeTimers();
+  api.request.mockResolvedValue({ preparation: receipt("ready") });
   await mount();
-  expect(JSON.stringify(renderer.toJSON())).toContain(
-    "Session prepared, but the CLI is unavailable",
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(2300);
+  });
+  expect(renderer.toJSON()).toBeNull();
+  api.request.mockResolvedValue({ preparation: receipt("failed", "console") });
+  await act(async () =>
+    client.invalidateQueries({ queryKey: ["managed-chat-preparation"] }),
   );
-  const button = renderer.root.findByType("button");
-  api.request.mockImplementation(async (_path, options) => ({
-    preparation: receipt(options.method === "POST" ? "pending" : "ready"),
-  }));
-  await act(async () => button.props.onClick());
   await flush();
-  expect(
-    api.request.mock.calls.filter((call) => call[1].method === "POST"),
-  ).toHaveLength(1);
-  expect(JSON.stringify(renderer.toJSON())).toContain("Session prepared");
-  expect(renderer.root.findAllByType("button")).toHaveLength(0);
+  expect(renderer.toJSON()).toBeNull();
 });
 it("dismisses the prepared notice after its fade without redisplaying it on a refresh", async () => {
   vi.useFakeTimers();
@@ -132,7 +186,7 @@ it("cancels dismissal when preparation fails and shows a new generation's succes
   await act(async () => {
     await vi.advanceTimersByTimeAsync(1000);
   });
-  api.request.mockResolvedValue({ preparation: receipt("failed", "console") });
+  api.request.mockResolvedValue({ preparation: receipt("failed", "thread") });
   await act(async () =>
     client.invalidateQueries({ queryKey: ["managed-chat-preparation"] }),
   );
@@ -140,7 +194,9 @@ it("cancels dismissal when preparation fails and shows a new generation's succes
   await act(async () => {
     await vi.advanceTimersByTimeAsync(5000);
   });
-  expect(JSON.stringify(renderer.toJSON())).toContain("CLI is unavailable");
+  expect(JSON.stringify(renderer.toJSON())).toContain(
+    "The agent session could not be prepared.",
+  );
   expect(renderer.root.findAllByType("button")).toHaveLength(1);
   api.request.mockResolvedValue({
     preparation: {

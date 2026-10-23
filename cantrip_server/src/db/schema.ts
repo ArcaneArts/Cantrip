@@ -1,4 +1,5 @@
 import type { CuaEffectConfiguration } from "@cantrip/protocol/computer-use-effects";
+import type { TaskRetryRecord } from "../tasks/automatic-retry.js";
 import type {
   AgentInteractionRequestPayload,
   AgentInteractionResponse,
@@ -11,7 +12,6 @@ import type {
   ChatRelocationProgress,
   ChatRelocationState,
   ChatTurnMode,
-  CodeCapabilities,
   CodeGraphWorkerStatus,
   CodexRuntimeReport,
   DirectBrokerAdvertisement,
@@ -152,7 +152,7 @@ const unprobedCodexRuntimeReport = {
   adapter: "app-server",
   compatibility: "missing",
   version: null,
-  testedRange: ">=0.160.1 <0.161.0",
+  testedRange: ">=0.163.0 <0.164.0",
   initialize: null,
   methods: {},
   features: [],
@@ -163,17 +163,6 @@ const unprobedCodexRuntimeReport = {
   },
   degradedReasons: ["This worker has not reported runtime compatibility."],
 } satisfies CodexRuntimeReport;
-
-const unavailableCodeCapabilities = {
-  available: false,
-  version: null,
-  upstreamRevision: null,
-  patchset: 0,
-  transport: "web-proxy",
-  sharedTransportProtocolVersion: 1,
-  maxSessions: 1,
-  reason: "This worker has not reported Cantrip Code capability.",
-} satisfies CodeCapabilities;
 
 const unavailableCodeGraphWorkerStatus = {
   supported: false,
@@ -1306,10 +1295,6 @@ export const workers = pgTable("workers", {
     .$type<DirectBrokerAdvertisement>()
     .notNull()
     .default(unavailableDirectBroker),
-  codeCapabilities: jsonb("code_capabilities")
-    .$type<CodeCapabilities>()
-    .notNull()
-    .default(unavailableCodeCapabilities),
   codegraphStatus: jsonb("codegraph_status")
     .$type<CodeGraphWorkerStatus>()
     .notNull()
@@ -1397,47 +1382,6 @@ export const skillAudiences = pgTable(
     check(
       "skill_audiences_audience_check",
       sql`${table.audience} IN ('ide', 'chat', 'both')`,
-    ),
-  ],
-);
-
-export const codeSettingsProfiles = pgTable(
-  "code_settings_profiles",
-  {
-    ownerId: text("owner_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    profileId: text("profile_id").notNull(),
-    revision: integer("revision").notNull(),
-    protectedOperationId: text("protected_operation_id").notNull(),
-    protectedContent: jsonb("protected_content")
-      .$type<EndpointContentOpaque>()
-      .notNull(),
-    updatedByWorkerId: text("updated_by_worker_id").references(
-      () => workers.id,
-      { onDelete: "set null" },
-    ),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-  },
-  (table) => [
-    primaryKey({ columns: [table.ownerId, table.profileId] }),
-    uniqueIndex("code_settings_profiles_owner_operation_unique").on(
-      table.ownerId,
-      table.protectedOperationId,
-    ),
-    check(
-      "code_settings_profiles_profile_check",
-      sql`${table.profileId} = 'default'`,
-    ),
-    check("code_settings_profiles_revision_check", sql`${table.revision} > 0`),
-    check(
-      "code_settings_profiles_domain_check",
-      sql`${table.protectedContent}->>'domain' = 'customization-content'`,
     ),
   ],
 );
@@ -1773,7 +1717,7 @@ export const tunnels = pgTable(
       .where(sql`${table.managedByKind} IS NOT NULL`),
     check(
       "tunnels_origin_check",
-      sql`${table.origin} IN ('user', 'browser', 'project-share', 'code', 'system')`,
+      sql`${table.origin} IN ('user', 'browser', 'project-share', 'system')`,
     ),
     check(
       "tunnels_management_check",
@@ -1805,7 +1749,7 @@ export const tunnels = pgTable(
     ),
     check(
       "tunnels_destination_endpoint_check",
-      sql`(${table.destinationKind} = 'worker-tcp' AND ${table.destinationAdapter} IS NULL AND ${table.destinationResourceId} IS NULL) OR (${table.destinationKind} = 'worker-adapter' AND ${table.destinationAdapter} IN ('code', 'project-share') AND ${table.destinationResourceId} IS NOT NULL)`,
+      sql`(${table.destinationKind} = 'worker-tcp' AND ${table.destinationAdapter} IS NULL AND ${table.destinationResourceId} IS NULL) OR (${table.destinationKind} = 'worker-adapter' AND ${table.destinationAdapter} IN ('project-share') AND ${table.destinationResourceId} IS NOT NULL)`,
     ),
     check(
       "tunnels_protected_content_check",
@@ -3576,6 +3520,7 @@ export const tasks = pgTable(
     }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     lastError: jsonb("last_error").$type<TaskProtectedLastErrorMetadata>(),
+    automaticRetry: jsonb("automatic_retry").$type<TaskRetryRecord>(),
     schedulerRevision: integer("scheduler_revision").notNull().default(1),
     rowVersion: integer("row_version").notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -3624,6 +3569,11 @@ export const tasks = pgTable(
       table.createdAt,
     ),
     index("tasks_last_worker_index").on(table.lastTaskWorkerId),
+    index("tasks_automatic_retry_pending_index")
+      .on(table.updatedAt)
+      .where(
+        sql`${table.automaticRetry}->>'status' IN ('scheduled', 'retrying') OR (${table.state} = 'failed' AND ${table.automaticRetry} IS NULL AND ${table.lastError} IS NOT NULL)`,
+      ),
   ],
 );
 
@@ -3911,10 +3861,6 @@ export const codeTabs = pgTable(
     worktreeId: text("worktree_id")
       .notNull()
       .references(() => projectWorktrees.id, { onDelete: "restrict" }),
-    profileId: text("profile_id").notNull().default("default"),
-    themeMode: text("theme_mode").notNull().default("follow-cantrip"),
-    status: text("status").notNull().default("idle"),
-    lastError: text("last_error"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -3926,65 +3872,6 @@ export const codeTabs = pgTable(
     index("code_tabs_project_position_index").on(
       table.projectId,
       table.position,
-    ),
-    check(
-      "code_tabs_theme_mode_check",
-      sql`${table.themeMode} IN ('follow-cantrip', 'independent')`,
-    ),
-    check(
-      "code_tabs_status_check",
-      sql`${table.status} IN ('idle', 'starting', 'running', 'stopped', 'offline', 'failed')`,
-    ),
-  ],
-);
-
-export const codeSessions = pgTable(
-  "code_sessions",
-  {
-    id: text("id").primaryKey(),
-    codeTabId: text("code_tab_id")
-      .notNull()
-      .references(() => codeTabs.id, { onDelete: "cascade" }),
-    projectId: text("project_id")
-      .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
-    workerId: text("worker_id")
-      .notNull()
-      .references(() => workers.id, { onDelete: "restrict" }),
-    worktreeId: text("worktree_id")
-      .notNull()
-      .references(() => projectWorktrees.id, { onDelete: "restrict" }),
-    profileId: text("profile_id").notNull(),
-    editorVersion: text("editor_version").notNull(),
-    editorUpstreamRevision: text("editor_upstream_revision").notNull(),
-    editorPatchset: integer("editor_patchset").notNull(),
-    editorFingerprint: text("editor_fingerprint").notNull(),
-    status: text("status").notNull().default("starting"),
-    processInstanceId: text("process_instance_id"),
-    lastAttachmentAt: timestamp("last_attachment_at", { withTimezone: true }),
-    lastStartedAt: timestamp("last_started_at", { withTimezone: true }),
-    stoppedAt: timestamp("stopped_at", { withTimezone: true }),
-    lastError: text("last_error"),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-  },
-  (table) => [
-    uniqueIndex("code_sessions_runtime_identity_unique").on(
-      table.codeTabId,
-      table.workerId,
-      table.worktreeId,
-      table.profileId,
-      table.editorFingerprint,
-    ),
-    index("code_sessions_tab_status_index").on(table.codeTabId, table.status),
-    check("code_sessions_patchset_check", sql`${table.editorPatchset} >= 0`),
-    check(
-      "code_sessions_status_check",
-      sql`${table.status} IN ('starting', 'running', 'idle', 'stopping', 'stopped', 'offline', 'failed')`,
     ),
   ],
 );
@@ -5548,7 +5435,7 @@ export const managedChatPreparations = pgTable(
     index("managed_chat_preparations_worker").on(table.ownerId, table.workerId),
     check(
       "managed_chat_preparations_phase_check",
-      sql`${table.phase} IN ('pending','thread','console','ready','failed')`,
+      sql`${table.phase} IN ('pending','thread','console','ready','failed','needs-model')`,
     ),
     check(
       "managed_chat_preparations_failed_phase_check",

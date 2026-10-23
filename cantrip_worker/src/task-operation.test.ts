@@ -29,6 +29,7 @@ import {
   prepareEncryptedTaskOperation,
   protectTaskGoalResult,
   protectTaskGoalLaunchFailure,
+  protectedTaskRuntimeError,
 } from "./task-operation.js";
 import type { WorkerEncryptionService } from "./worker-encryption.js";
 
@@ -36,6 +37,17 @@ const ownerId = "owner-worker-task-relay";
 const chatId = "chat-worker-task-relay";
 const operationId = "11111111-1111-4111-8111-111111111111";
 const keyRevision = 2;
+it("preserves an actual native overload category without publishing provider diagnostics", () => {
+  const error = Object.assign(new Error("SENTINEL provider diagnostic"), {
+    reasonCode: "serverOverloaded",
+  });
+  expect(protectedTaskRuntimeError(error).message).toBe(
+    "Encrypted Task turn failed: task-capacity.",
+  );
+  expect(
+    protectedTaskRuntimeError(new Error("SENTINEL unknown diagnostic")).message,
+  ).toBe("Encrypted Task turn failed.");
+});
 
 async function userMessage(
   componentKey: Uint8Array,
@@ -957,10 +969,55 @@ describe("worker encrypted Task operations", () => {
       },
     });
     expect(JSON.stringify(protectedGoal)).not.toContain("SENTINEL");
-    for (const [automationPaused, chatStatus, state] of [
-      [true, "idle", "paused"],
-      [false, "running", "implementing"],
-      [false, "failed", "failed"],
+    for (const [
+      automationPaused,
+      chatStatus,
+      state,
+      nativeStatus,
+      errorCode,
+      runtimeFailure,
+    ] of [
+      [true, "idle", "paused", "active", null],
+      [false, "running", "implementing", "active", null],
+      [false, "failed", "failed", "active", "implementation-runtime-failed"],
+      [false, "failed", "complete", "complete", null],
+      [true, "failed", "complete", "complete", null],
+      [false, "failed", "blocked", "blocked", "goal-blocked"],
+      [
+        false,
+        "failed",
+        "blocked",
+        "blocked",
+        "goal-blocked",
+        { kind: "runtime", occurredAt: "2026-10-22T00:00:00.000Z" },
+      ],
+      [false, "failed", "paused", "paused", null],
+      [false, "failed", "failed", "usageLimited", "goal-usage-limited"],
+      [false, "failed", "failed", "budgetLimited", "goal-budget-limited"],
+      [
+        false,
+        "failed",
+        "failed",
+        "blocked",
+        "implementation-timeout",
+        { kind: "timeout", occurredAt: "2026-10-22T00:00:00.000Z" },
+      ],
+      [
+        false,
+        "idle",
+        "failed",
+        "blocked",
+        "implementation-capacity",
+        { kind: "capacity", occurredAt: "2026-10-22T00:00:00.000Z" },
+      ],
+      [
+        true,
+        "failed",
+        "paused",
+        "blocked",
+        null,
+        { kind: "timeout", occurredAt: "2026-10-22T00:00:00.000Z" },
+      ],
     ] as const) {
       const synchronized = await protectTaskGoalResult({
         chatId,
@@ -969,6 +1026,7 @@ describe("worker encrypted Task operations", () => {
           task: protectedGoal.task,
           automationPaused,
           chatStatus,
+          ...(runtimeFailure ? { runtimeFailure } : {}),
           message: null,
         },
         getComponentKey: () => ({
@@ -979,7 +1037,7 @@ describe("worker encrypted Task operations", () => {
           goal: {
             threadId: "thread-protected-goal",
             objective: "SENTINEL dashboard Goal objective",
-            status: "active",
+            status: nativeStatus,
             tokenBudget: null,
             tokensUsed: 2,
             timeUsedSeconds: 3,
@@ -999,9 +1057,51 @@ describe("worker encrypted Task operations", () => {
       expect(opened.classification.state).toBe(state);
       expect(opened.finalPlanMarkdown).toBe(current.finalPlanMarkdown);
       expect(opened.goalPrompt).toBe(current.goalPrompt);
-      expect(opened.lastError?.code ?? null).toBe(
-        chatStatus === "failed" ? "implementation-runtime-failed" : null,
-      );
+      expect(opened.lastError?.code ?? null).toBe(errorCode);
+      if (runtimeFailure && state === "failed" && nativeStatus === "blocked") {
+        const observe = async (resume: boolean) =>
+          protectTaskGoalResult({
+            chatId,
+            ownerId,
+            context: {
+              task: synchronized.task,
+              automationPaused: false,
+              chatStatus: "idle",
+              message: resume
+                ? {
+                    id: "33333333-3333-4333-8333-333333333333",
+                    idempotencyKey: "retry",
+                    kind: "resume",
+                  }
+                : null,
+            },
+            getComponentKey: () => ({
+              key: new Uint8Array(componentKey),
+              keyRevision,
+            }),
+            rawResult: {
+              goal: {
+                threadId: "thread-protected-goal",
+                objective: "SENTINEL dashboard Goal objective",
+                status: resume ? "active" : "blocked",
+                tokenBudget: null,
+                tokensUsed: 2,
+                timeUsedSeconds: 3,
+                createdAt: 4,
+                updatedAt: 5,
+              },
+            },
+          });
+        const observed = await observe(false);
+        expect(observed.task.classification.state).toBe("failed");
+        expect(observed.task.classification.lastError?.occurredAt).toBe(
+          runtimeFailure.occurredAt,
+        );
+        const resumed = await observe(true);
+        expect(resumed.task.classification.state).toBe("implementing");
+        expect(resumed.task.classification.lastError).toBeNull();
+        expect(JSON.stringify(observed)).not.toContain("SENTINEL");
+      }
     }
     if (!protectedGoal.goal) throw new Error("Expected a protected Goal.");
     await expect(

@@ -130,10 +130,12 @@ function GitWorkbenchOverflowMenu({
 export function GitWorkbenchToolbar({
   compact = false,
   disabled,
+  responsive = false,
   tools,
 }: {
   compact?: boolean;
   disabled: boolean;
+  responsive?: boolean;
   tools: GitWorkbenchToolStates;
 }) {
   if (compact) {
@@ -150,7 +152,7 @@ export function GitWorkbenchToolbar({
   const activeTool = gitWorkbenchNavigationTools.find(
     ({ id }) => tools[id].active,
   );
-  return (
+  const navigation = (
     <>
       <NavigationTabBar<GitWorkbenchTool>
         activeTab={activeTool?.id ?? null}
@@ -170,5 +172,21 @@ export function GitWorkbenchToolbar({
         tools={tools}
       />
     </>
+  );
+  if (!responsive) return navigation;
+  return (
+    <div className="@container/git-tools min-w-8 flex-1">
+      <div className="hidden items-center justify-end gap-1 @min-[28rem]/git-tools:flex">
+        {navigation}
+      </div>
+      <div className="flex justify-end @min-[28rem]/git-tools:hidden">
+        <GitWorkbenchOverflowMenu
+          ariaLabel="Open Git tools"
+          disabled={disabled}
+          toolDefinitions={gitWorkbenchTools}
+          tools={tools}
+        />
+      </div>
+    </div>
   );
 }

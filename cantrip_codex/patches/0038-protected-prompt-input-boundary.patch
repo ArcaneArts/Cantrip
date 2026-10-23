@@ -1,17 +1,17 @@
 diff --git a/codex-rs/tui/src/app.rs b/codex-rs/tui/src/app.rs
-index a5bd65a..0fa07c8 100644
+index dccb424c3169c340f4c5c6ad20eb9bc965c20a75..ca08b529d0b124e75396cffc5a4d34497c8500ac 100644
 --- a/codex-rs/tui/src/app.rs
 +++ b/codex-rs/tui/src/app.rs
-@@ -657,6 +657,8 @@ pub(crate) struct App {
-     startup_protected_input_boundary: bool,
-     /// Keeps that boundary armed while a startup approval waits for the typing-idle timer.
+@@ -671,6 +671,8 @@ pub(crate) struct App {
+     /// Keeps that boundary armed while an approval waits for the typing-idle timer or a visible
+     /// modal's terminal input has not settled.
      startup_pending_protected_request: bool,
 +    /// The visible protected screen already discarded pre-display typeahead.
 +    startup_input_quarantined: bool,
      /// Invalidates in-flight full rate-limit reads when a newer rolling hard stop arrives.
+     account_email_request_id: Option<uuid::Uuid>,
      rate_limit_hard_stop_generation: u64,
-     rate_limit_refresh_state: rate_limit_refresh::RateLimitRefreshState,
-@@ -1090,7 +1092,6 @@ impl App {
+@@ -1155,7 +1157,6 @@ impl App {
                          return Ok(AppRunControl::Continue);
                      }
                      // Allow widgets to process any pending timers before rendering.
@@ -19,7 +19,7 @@ index a5bd65a..0fa07c8 100644
                      if let Some(owner) = self.background_voice.as_mut() {
                          owner.refresh_realtime_microphone_level();
                      }
-@@ -1103,13 +1104,6 @@ impl App {
+@@ -1168,12 +1169,7 @@ impl App {
                      {
                          self.request_owned_history(tui, app_server);
                      }
@@ -27,13 +27,13 @@ index a5bd65a..0fa07c8 100644
 -                        && self.chat_widget.has_active_modal()
 -                        && self.startup_protected_input_boundary
 -                    {
--                        tui.discard_pending_input_before_interactive_screen()?;
--                        self.startup_pending_protected_request = false;
+-                        self.discard_startup_modal_input(tui)?;
 -                    }
++
                      if self.chat_widget.ambient_pet_image_enabled() {
                          let ambient_pet_area = Rect::new(
                              /*x*/ 0,
-@@ -1161,6 +1155,17 @@ impl App {
+@@ -1225,6 +1221,15 @@ impl App {
      }
  
      fn render_chat_widget_frame(&mut self, tui: &mut tui::Tui, screen_size: Size) -> Result<Rect> {
@@ -41,10 +41,8 @@ index a5bd65a..0fa07c8 100644
 +            if !self.startup_input_quarantined {
 +                // Drain before painting the first actionable screen. Repeated startup
 +                // renders must not discard a reply to a prompt that is already visible.
-+                tui.discard_pending_input_before_interactive_screen()?;
-+                self.startup_input_quarantined = true;
++                self.discard_startup_modal_input(tui)?;
 +            }
-+            self.startup_pending_protected_request = false;
 +        } else if !self.chat_widget.has_active_modal() {
 +            self.startup_input_quarantined = false;
 +        }
@@ -52,54 +50,76 @@ index a5bd65a..0fa07c8 100644
          self.chat_widget
              .set_sparkle_terminal_focus(tui.is_terminal_focused());
 diff --git a/codex-rs/tui/src/app/startup.rs b/codex-rs/tui/src/app/startup.rs
-index db3d2f2..68b5029 100644
+index 3c2bb5e985a62fd72282a0e5e9af83d3ee69a75e..812ad28bce914a3684062894715c3782b39d75da 100644
 --- a/codex-rs/tui/src/app/startup.rs
 +++ b/codex-rs/tui/src/app/startup.rs
-@@ -927,6 +927,7 @@ See the Codex keymap documentation for supported actions and examples."
-             pending_managed_worktree_attach: None,
+@@ -198,9 +198,6 @@ impl App {
+         }
+         self.chat_widget.pre_draw_tick();
+         self.render_chat_widget_frame(tui, tui.terminal.last_known_screen_size)?;
+-        if self.chat_widget.has_active_modal() && self.startup_protected_input_boundary {
+-            self.discard_startup_modal_input(tui)?;
+-        }
+         Ok(())
+     }
+ 
+@@ -208,7 +205,10 @@ impl App {
+     /// event retries the drain instead of acting on the modal; server events can continue meanwhile.
+     pub(super) fn discard_startup_modal_input(&mut self, tui: &mut tui::Tui) -> Result<()> {
+         match tui.discard_pending_input_before_interactive_screen() {
+-            Ok(()) => self.startup_pending_protected_request = false,
++            Ok(()) => {
++                self.startup_pending_protected_request = false;
++                self.startup_input_quarantined = true;
++            }
+             Err(err) if err.kind() == std::io::ErrorKind::TimedOut => {
+                 self.startup_pending_protected_request = true;
+                 tracing::warn!(%err, "keeping startup modal input quarantined");
+@@ -1040,6 +1040,7 @@ See the Codex keymap documentation for supported actions and examples."
              startup_protected_input_boundary: true,
              startup_pending_protected_request: false,
+             account_email_request_id: None,
 +            startup_input_quarantined: false,
              rate_limit_hard_stop_generation: 0,
              rate_limit_refresh_state: Default::default(),
-             pending_plugin_enabled_writes: HashMap::new(),
+             pending_mcp_login_start: None,
 diff --git a/codex-rs/tui/src/app/test_support.rs b/codex-rs/tui/src/app/test_support.rs
-index 2e1f8d3..fff017c 100644
+index 6e0ba628471aa437d45a8c267417df9f449bbcea..1e0e50fc3e0599c924a16869a8dcb361b6586ad1 100644
 --- a/codex-rs/tui/src/app/test_support.rs
 +++ b/codex-rs/tui/src/app/test_support.rs
-@@ -115,6 +115,7 @@ pub(crate) async fn make_test_app() -> App {
-         pending_managed_worktree_attach: None,
+@@ -123,6 +123,7 @@ pub(crate) async fn make_test_app() -> Box<App> {
          startup_protected_input_boundary: false,
          startup_pending_protected_request: false,
+         account_email_request_id: None,
 +        startup_input_quarantined: false,
          rate_limit_hard_stop_generation: 0,
          rate_limit_refresh_state: Default::default(),
-         pending_plugin_enabled_writes: HashMap::new(),
+         pending_mcp_login_start: None,
 diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
-index ef32fc8..20c1839 100644
+index 0f7e5088660a57f78b8cb60f2ae631af57be4eb5..da153d13e374bf0a16ea3a1d9ed932ef03ef93fb 100644
 --- a/codex-rs/tui/src/app/tests.rs
 +++ b/codex-rs/tui/src/app/tests.rs
-@@ -6095,6 +6095,7 @@ async fn make_test_app() -> Box<App> {
-         pending_managed_worktree_attach: None,
+@@ -6363,6 +6363,7 @@ async fn make_test_app() -> Box<App> {
          startup_protected_input_boundary: false,
          startup_pending_protected_request: false,
+         account_email_request_id: None,
 +        startup_input_quarantined: false,
          rate_limit_hard_stop_generation: 0,
          rate_limit_refresh_state: Default::default(),
-         pending_plugin_enabled_writes: HashMap::new(),
-@@ -6215,6 +6216,7 @@ pub(super) async fn make_test_app_with_channels() -> (
-             pending_managed_worktree_attach: None,
+         pending_mcp_login_start: None,
+@@ -6491,6 +6492,7 @@ pub(super) async fn make_test_app_with_channels() -> (
              startup_protected_input_boundary: false,
              startup_pending_protected_request: false,
+             account_email_request_id: None,
 +            startup_input_quarantined: false,
              rate_limit_hard_stop_generation: 0,
              rate_limit_refresh_state: Default::default(),
-             pending_plugin_enabled_writes: HashMap::new(),
+             pending_mcp_login_start: None,
 diff --git a/codex-rs/tui/src/app/thread_routing.rs b/codex-rs/tui/src/app/thread_routing.rs
-index 609de36..6015a6f 100644
+index 36de3569ea0b2fae6fc611ed7ddb334692eed684..a2bf75a22884e65c755a5228f15cf2a5624990eb 100644
 --- a/codex-rs/tui/src/app/thread_routing.rs
 +++ b/codex-rs/tui/src/app/thread_routing.rs
-@@ -1192,7 +1192,11 @@ impl App {
+@@ -1212,7 +1212,11 @@ impl App {
          let mut confirmed_profile = None;
          if let ServerNotification::ThreadSettingsUpdated(notification) = &notification {
              if self.observed_native_settings.contains_key(&thread_id)
@@ -112,12 +132,12 @@ index 609de36..6015a6f 100644
              {
                  return Ok(());
              }
-@@ -2241,8 +2245,6 @@ impl App {
+@@ -2239,7 +2243,7 @@ impl App {
          {
              self.chat_widget.pre_draw_tick();
              self.render_chat_widget_frame(tui, tui.terminal.last_known_screen_size)?;
--            tui.discard_pending_input_before_interactive_screen()?;
--            self.startup_pending_protected_request = false;
+-            self.discard_startup_modal_input(tui)?;
++
          }
          if self.backtrack_render_pending {
              tui.frame_requester().schedule_frame();

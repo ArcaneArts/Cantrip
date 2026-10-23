@@ -102,12 +102,12 @@ importers:
       "@dnd-kit/utilities":
         specifier: ^3.2.2
         version: 3.2.2(react@19.2.8)
+      "@icons-pack/react-simple-icons":
+        specifier: 13.15.1
+        version: 13.15.1(react@19.2.8)
       "@mdxeditor/editor":
         specifier: ^4.2.0
         version: 4.2.0(@codemirror/language@6.12.4)(@lezer/highlight@1.2.3)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@10.2.2)(typescript@7.0.2)(yjs@13.6.32)
-      "@monaco-editor/react":
-        specifier: ^4.7.0
-        version: 4.7.0(monaco-editor@0.56.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       "@radix-ui/react-context-menu":
         specifier: ^2.3.7
         version: 2.3.7(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -165,9 +165,6 @@ importers:
       lucide-react:
         specifier: ^1.29.0
         version: 1.29.0(react@19.2.8)
-      monaco-editor:
-        specifier: ^0.56.0
-        version: 0.56.0
       prism-react-renderer:
         specifier: ^2.4.1
         version: 2.4.1(react@19.2.8)
@@ -1891,6 +1888,14 @@ packages:
       }
     engines: { node: ">=16.0.0" }
 
+  "@icons-pack/react-simple-icons@13.15.1":
+    resolution:
+      {
+        integrity: sha512-S35E7vJlJzMeoqjwwI7ZmQUJ2W+2KspnB6bc49KdoDGwp5mCgAy9L3sscfWMewQSMgBdPU8KWWwpSGq5DJyAFw==,
+      }
+    peerDependencies:
+      react: ^16.13 || ^17 || ^18 || ^19
+
   "@img/colour@1.1.0":
     resolution:
       {
@@ -2614,22 +2619,6 @@ packages:
     peerDependenciesMeta:
       "@cfworker/json-schema":
         optional: true
-
-  "@monaco-editor/loader@1.7.0":
-    resolution:
-      {
-        integrity: sha512-gIwR1HrJrrx+vfyOhYmCZ0/JcWqG5kbfG7+d3f/C1LXk2EvzAbHSg3MQ5lO2sMlo9izoAZ04shohfKLVT6crVA==,
-      }
-
-  "@monaco-editor/react@4.7.0":
-    resolution:
-      {
-        integrity: sha512-cyzXQCtO47ydzxpQtCGSQGOC8Gk3ZUeBXFAxD+CWXYFo5OqZyZUonFl0DwUlTyAfRHntBfw2p3w4s9R6oe1eCA==,
-      }
-    peerDependencies:
-      monaco-editor: ">= 0.25.0 < 1"
-      react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
-      react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
   "@mozilla/readability@0.6.0":
     resolution:
@@ -5291,12 +5280,6 @@ packages:
       }
     engines: { node: ">=20.19.0" }
 
-  dompurify@3.4.8:
-    resolution:
-      {
-        integrity: sha512-yb1cEmaOum7wFvOCSQxyfgVlv5D47Rc30iZWoMpbDIWTnJ6grDDQyu2KFJzB2k7u0pMuJcQ1zphH//fFnw2tjQ==,
-      }
-
   domutils@3.2.2:
     resolution:
       {
@@ -6840,14 +6823,6 @@ packages:
         integrity: sha512-wiYz4+JrLyb/DqW2hkFJxP7Vd7JuTDm77fvbM8VfEQdmSMqcImWeeRbHwZjBjIFki/VaMK2BhFi7oUUZeM5bqw==,
       }
 
-  marked@14.0.0:
-    resolution:
-      {
-        integrity: sha512-uIj4+faQ+MgHgwUW1l2PsPglZLOLOT1uErt06dAPtx2kjteLAkbsd/0FiYg/MGS+i7ZKLb7w2WClxHkzOOuryQ==,
-      }
-    engines: { node: ">= 18" }
-    hasBin: true
-
   math-intrinsics@1.1.0:
     resolution:
       {
@@ -7312,12 +7287,6 @@ packages:
         integrity: sha512-KZxYo1BUkWD2TVFLr0MQoM8vUUigWD3LlD83a/75BqC+4qE0Hb1Vo5v1FgcfaNXvfXzr+5EhQ6ing/CaBijTlw==,
       }
     engines: { node: ">= 18" }
-
-  monaco-editor@0.56.0:
-    resolution:
-      {
-        integrity: sha512-sXboRm3BeBeLm938eaiyLMe0OxzfXIlZvbv4ir/jVgQy1zDhWjgmny0WoN45fuDKhCCQsYMbBJrv/A6jd8aCUg==,
-      }
 
   mri@1.2.0:
     resolution:
@@ -8488,12 +8457,6 @@ packages:
     resolution:
       {
         integrity: sha512-1XMJE5fQo1jGH6Y/7ebnwPOBEkIEnT4QF32d5R1+VXdXveM0IBMJt8zfaxX1P3QhVwrYe+576+jkANtSS2mBbw==,
-      }
-
-  state-local@1.0.7:
-    resolution:
-      {
-        integrity: sha512-HTEHMNieakEnoe33shBYcZ7NX83ACUjCu8c40iOGEZsngj9zRnkqS9j1pqQPXwobB0ZcVTk27REb7COQ0UR59w==,
       }
 
   statuses@2.0.2:
@@ -10354,6 +10317,10 @@ snapshots:
     dependencies:
       "@hpke/common": 1.10.1
 
+  "@icons-pack/react-simple-icons@13.15.1(react@19.2.8)":
+    dependencies:
+      react: 19.2.8
+
   "@img/colour@1.1.0": {}
 
   "@img/sharp-darwin-arm64@0.34.4":
@@ -10986,17 +10953,6 @@ snapshots:
       zod-to-json-schema: 3.25.2(zod@3.25.76)
     transitivePeerDependencies:
       - supports-color
-
-  "@monaco-editor/loader@1.7.0":
-    dependencies:
-      state-local: 1.0.7
-
-  "@monaco-editor/react@4.7.0(monaco-editor@0.56.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)":
-    dependencies:
-      "@monaco-editor/loader": 1.7.0
-      monaco-editor: 0.56.0
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
 
   "@mozilla/readability@0.6.0": {}
 
@@ -12486,10 +12442,6 @@ snapshots:
     dependencies:
       domelementtype: 3.0.0
 
-  dompurify@3.4.8:
-    optionalDependencies:
-      "@types/trusted-types": 2.0.7
-
   domutils@3.2.2:
     dependencies:
       dom-serializer: 2.0.0
@@ -13367,8 +13319,6 @@ snapshots:
 
   markdown-table@3.0.4: {}
 
-  marked@14.0.0: {}
-
   math-intrinsics@1.1.0: {}
 
   mdast-util-directive@3.1.0(supports-color@10.2.2):
@@ -13900,11 +13850,6 @@ snapshots:
   minizlib@3.1.0:
     dependencies:
       minipass: 7.1.3
-
-  monaco-editor@0.56.0:
-    dependencies:
-      dompurify: 3.4.8
-      marked: 14.0.0
 
   mri@1.2.0: {}
 
@@ -14638,8 +14583,6 @@ snapshots:
   split2@4.2.0: {}
 
   stackback@0.0.2: {}
-
-  state-local@1.0.7: {}
 
   statuses@2.0.2: {}
 

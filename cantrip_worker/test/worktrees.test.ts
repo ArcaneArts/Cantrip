@@ -642,6 +642,39 @@ describe("worker Git worktrees", () => {
       { timeout: 10_000 },
     );
 
+    await vi.waitFor(
+      () => {
+        expect(
+          notifications.some(
+            (notification) =>
+              notification.type === "worktree.filesystem.changed" &&
+              notification.changes?.some(
+                (change) =>
+                  change.path === "observed.txt" && change.kind === "added",
+              ),
+          ),
+        ).toBe(true);
+      },
+      { timeout: 10_000 },
+    );
+    notifications.length = 0;
+    await writeFile(path.join(repository, "observed.txt"), "another edit\n");
+    await vi.waitFor(
+      () => {
+        expect(
+          notifications.some(
+            (notification) =>
+              notification.type === "worktree.filesystem.changed" &&
+              notification.changes?.some(
+                (change) =>
+                  change.path === "observed.txt" && change.kind === "modified",
+              ),
+          ),
+        ).toBe(true);
+      },
+      { timeout: 10_000 },
+    );
+    notifications.length = 0;
     await execFileAsync("git", ["-C", repository, "add", "observed.txt"]);
     await execFileAsync("git", [
       "-C",
@@ -659,6 +692,21 @@ describe("worker Git worktrees", () => {
         if (latest?.type === "worktree.status.observed") {
           expect(latest.result.status.files).toEqual([]);
         }
+      },
+      { timeout: 10_000 },
+    );
+    await vi.waitFor(
+      () => {
+        expect(
+          notifications.some(
+            (notification) =>
+              notification.type === "worktree.filesystem.changed" &&
+              notification.changes?.some(
+                (change) =>
+                  change.path === "observed.txt" && change.kind === "added",
+              ),
+          ),
+        ).toBe(true);
       },
       { timeout: 10_000 },
     );

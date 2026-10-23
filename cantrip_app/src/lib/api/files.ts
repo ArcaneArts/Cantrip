@@ -1,5 +1,6 @@
 import {
   type StandaloneChatFileOperationIntent,
+  type StandaloneChatFileBinding,
   type StandaloneChatFileOperationRequestContent,
   type StandaloneChatFileOperationResultContent,
   standaloneChatFileOperationRequestContentSchema,
@@ -10,6 +11,7 @@ import {
   chatFileReferencesResultContentSchema,
   type StandaloneChatFileDownloadKind,
   type ExplorerOperationRequestContent,
+  type ExplorerFileBinding,
   type ExplorerOperationResultContent,
   explorerOperationRequestContentSchema,
   explorerOperationResultContentSchema,
@@ -46,6 +48,7 @@ async function executeStandaloneChatFileOperation(
   content: StandaloneChatFileOperationRequestContent,
   operationId = crypto.randomUUID(),
   sequence = 0,
+  binding?: StandaloneChatFileBinding,
 ): Promise<StandaloneChatFileOperationResultContent> {
   const protectedRequest = await protectSurfaceStreamContent({
     context: {
@@ -66,6 +69,7 @@ async function executeStandaloneChatFileOperation(
         operationId,
         sequence,
         protectedRequest,
+        ...(binding ? { binding } : {}),
       }),
     }),
   );
@@ -137,11 +141,22 @@ export async function getStandaloneChatFileDirectory(
   return explorerDirectorySchema.parse(result.value);
 }
 
-export async function getStandaloneChatFile(chatId: string, path: string) {
-  const result = await executeStandaloneChatFileOperation(chatId, "read", {
-    type: "chat-files.file.read",
-    path,
-  });
+export async function getStandaloneChatFile(
+  chatId: string,
+  path: string,
+  binding?: StandaloneChatFileBinding,
+) {
+  const result = await executeStandaloneChatFileOperation(
+    chatId,
+    "read",
+    {
+      type: "chat-files.file.read",
+      path,
+    },
+    undefined,
+    undefined,
+    binding,
+  );
   if (result.type !== "chat-files.file") {
     throw new Error("Chat files returned an unexpected file result.");
   }
@@ -227,11 +242,19 @@ export async function loadStandaloneChatFileMedia(
 export async function saveStandaloneChatFile(
   chatId: string,
   input: { path: string; content: string; version: string },
+  binding?: StandaloneChatFileBinding,
 ) {
-  const result = await executeStandaloneChatFileOperation(chatId, "write", {
-    type: "chat-files.file.write",
-    ...explorerFileWriteSchema.parse(input),
-  });
+  const result = await executeStandaloneChatFileOperation(
+    chatId,
+    "write",
+    {
+      type: "chat-files.file.write",
+      ...explorerFileWriteSchema.parse(input),
+    },
+    undefined,
+    undefined,
+    binding,
+  );
   if (result.type !== "chat-files.file") {
     throw new Error("Chat files returned an unexpected saved file result.");
   }
@@ -337,6 +360,7 @@ async function executeExplorerOperation(
   content: ExplorerOperationRequestContent,
   operationId = crypto.randomUUID(),
   sequence = 0,
+  binding?: ExplorerFileBinding,
 ): Promise<ExplorerOperationResultContent> {
   const protectedRequest = await protectSurfaceStreamContent({
     context: {
@@ -354,7 +378,12 @@ async function executeExplorerOperation(
       `/api/explorers/${encodeURIComponent(explorerId)}/operation`,
       {
         method: "POST",
-        body: JSON.stringify({ operationId, sequence, protectedRequest }),
+        body: JSON.stringify({
+          operationId,
+          sequence,
+          protectedRequest,
+          ...(binding ? { binding } : {}),
+        }),
       },
     ),
   );
@@ -417,11 +446,21 @@ export async function getExplorerDirectoryCommits(
   return explorerDirectoryCommitsSchema.parse(result.value);
 }
 
-export async function getExplorerFile(explorerId: string, path: string) {
-  const result = await executeExplorerOperation(explorerId, {
-    type: "explorer.file.read",
-    path,
-  });
+export async function getExplorerFile(
+  explorerId: string,
+  path: string,
+  binding?: ExplorerFileBinding,
+) {
+  const result = await executeExplorerOperation(
+    explorerId,
+    {
+      type: "explorer.file.read",
+      path,
+    },
+    undefined,
+    undefined,
+    binding,
+  );
   if (result.type !== "explorer.file") {
     throw new Error("Explorer returned an unexpected file result.");
   }
@@ -501,15 +540,45 @@ export async function loadExplorerMedia(
 export async function saveExplorerFile(
   explorerId: string,
   input: ExplorerFileWrite,
+  binding?: ExplorerFileBinding,
 ) {
-  const result = await executeExplorerOperation(explorerId, {
-    type: "explorer.file.write",
-    ...explorerFileWriteSchema.parse(input),
-  });
+  const result = await executeExplorerOperation(
+    explorerId,
+    {
+      type: "explorer.file.write",
+      ...explorerFileWriteSchema.parse(input),
+    },
+    undefined,
+    undefined,
+    binding,
+  );
   if (result.type !== "explorer.file") {
     throw new Error("Explorer returned an unexpected saved file result.");
   }
   return explorerFileSchema.parse(result.value);
+}
+
+export async function createExplorerFile(
+  explorerId: string,
+  input: Omit<
+    Extract<ExplorerOperationRequestContent, { type: "explorer.file.create" }>,
+    "type"
+  >,
+  binding?: ExplorerFileBinding,
+): Promise<ExplorerEntry> {
+  const result = await executeExplorerOperation(
+    explorerId,
+    {
+      type: "explorer.file.create",
+      ...input,
+    },
+    undefined,
+    undefined,
+    binding,
+  );
+  if (result.type !== "explorer.file.created")
+    throw new Error("Explorer returned an unexpected created file result.");
+  return explorerEntrySchema.parse(result.value);
 }
 
 export async function createExplorerDirectory(

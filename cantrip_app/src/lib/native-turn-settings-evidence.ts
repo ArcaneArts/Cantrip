@@ -1,8 +1,10 @@
 import type { ChatMessage, NativeInitialTurnSettings } from "@cantrip/protocol";
+import type { TurnTokenPerformance } from "./native-turn-token-performance";
 
 export type NativeTurnSettingsEvidence = {
   threadId: string;
   turnId: string;
+  tokenPerformance?: TurnTokenPerformance;
 } & (
   | { status: "available"; initialSettings: NativeInitialTurnSettings }
   | { status: "conflict" | "unavailable" }

@@ -9,20 +9,7 @@ import { ExplorerView, type ExplorerHeaderState } from "./explorer-view";
 vi.mock("@/components/explorer/explorer-file-browser", () => ({
   ExplorerFileBrowser: () => createElement("div"),
 }));
-vi.mock("@/components/explorer/retained-explorer-code-editor", () => ({
-  RetainedExplorerCodeEditor: ({
-    path,
-    visible,
-  }: {
-    path: string | null;
-    visible: boolean;
-  }) =>
-    createElement(
-      "div",
-      { "data-code-path": path, "data-code-visible": visible },
-      visible ? "Code endpoint failed (fixture)" : null,
-    ),
-}));
+
 vi.mock("@/components/explorer/use-explorer-worker-encryption", () => ({
   useExplorerWorkerEncryption: () => ({
     bindingKey: "binding-one",
@@ -31,9 +18,7 @@ vi.mock("@/components/explorer/use-explorer-worker-encryption", () => ({
     retry: vi.fn(),
   }),
 }));
-vi.mock("@/components/explorer/use-retained-inline-workbench", () => ({
-  useRetainedInlineWorkbench: () => true,
-}));
+
 vi.mock("@/components/git/git-graph", () => ({
   GitRepositoryGraphView: () => createElement("div"),
 }));
@@ -53,6 +38,14 @@ let root: Root;
 let client: QueryClient;
 let container: HTMLDivElement;
 let header: ExplorerHeaderState | null;
+vi.stubGlobal(
+  "ResizeObserver",
+  class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  },
+);
 afterEach(async () => {
   await act(async () => root?.unmount());
   client?.clear();
@@ -132,12 +125,36 @@ async function choose(mode: "preview" | "edit" | "visual") {
   expect(header!.fileMode).toBe(mode);
 }
 describe("Explorer transient renderer modes", () => {
+  it("leaves file-tab closing to the tab while retaining transient preview navigation", async () => {
+    const render = await setup("README.md", {
+      ...explorer,
+      selectedPath: "README.md",
+    });
+    expect(header!.showFileClose).toBe(true);
+    expect(
+      container.querySelector('button[aria-label="Close file"]'),
+    ).not.toBeNull();
+
+    await render({ ...explorer, selectedPath: "README.md" }, null);
+    expect(header!.selectedPath).toBe("README.md");
+    expect(header!.showFileClose).toBe(false);
+    expect(
+      container.querySelector('button[aria-label="Close file"]'),
+    ).toBeNull();
+    expect(
+      container.querySelector('button[aria-label="Refresh Explorer"]'),
+    ).not.toBeNull();
+    expect(
+      container.querySelector('button[aria-label="View mode"]'),
+    ).not.toBeNull();
+  });
+
   it.each(["data/settings.yaml", "data/settings.json"])(
     "renders selected Visual/View/Edit independently of Code readiness: %s",
     async (path) => {
       await setup(path);
       expect(
-        container.querySelector('[data-code-visible="true"]'),
+        container.querySelector('[data-native-code-editor="true"]'),
       ).not.toBeNull();
       await choose("visual");
       expect(
@@ -150,19 +167,22 @@ describe("Explorer transient renderer modes", () => {
           ?.getAttribute("aria-checked"),
       ).toBe("true");
       await choose("preview");
-      expect(container.querySelector("pre")?.textContent).toContain("enabled");
+      expect(container.querySelector("textarea")?.value).toContain("enabled");
+      expect(container.querySelector("textarea")?.readOnly).toBe(true);
+      expect(container.querySelector("pre")).toBeNull();
       expect(
         container.querySelector('[aria-label="Search structured values"]'),
       ).toBeNull();
       await choose("edit");
       expect(
-        container.querySelector('[data-code-visible="true"]'),
+        container.querySelector('[data-native-code-editor="true"]'),
       ).not.toBeNull();
+      expect(container.querySelector("textarea")?.readOnly).toBe(false);
       expect(api.saveExplorerFile).not.toHaveBeenCalled();
       expect(api.updateExplorerViewState).not.toHaveBeenCalled();
     },
   );
-  it("keeps a Visual draft across View, then saves it to the same path before Edit", async () => {
+  it("keeps a Visual draft across View/Edit and saves only on an explicit save", async () => {
     await setup("data/settings.yaml");
     await choose("visual");
     await act(async () =>
@@ -172,7 +192,29 @@ describe("Explorer transient renderer modes", () => {
     );
     expect(header!.dirty).toBe(true);
     await choose("preview");
-    expect(container.querySelector("pre")?.textContent).toContain("false");
+    expect(container.querySelector("textarea")?.value).toContain("false");
+    expect(container.querySelector("textarea")?.readOnly).toBe(true);
+    const input = container.querySelector("textarea")!;
+    await act(async () => {
+      for (const key of ["z", "y", "s"]) {
+        const event = new KeyboardEvent("keydown", {
+          key,
+          ctrlKey: true,
+          bubbles: true,
+          cancelable: true,
+        });
+        input.dispatchEvent(event);
+        expect(event.defaultPrevented).toBe(true);
+      }
+      const event = new InputEvent("beforeinput", {
+        inputType: "historyUndo",
+        bubbles: true,
+        cancelable: true,
+      });
+      input.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(true);
+    });
+    expect(input.value).toContain("false");
     expect(api.saveExplorerFile).not.toHaveBeenCalled();
     vi.mocked(api.saveExplorerFile).mockResolvedValue({
       path: "data/settings.yaml",
@@ -181,6 +223,13 @@ describe("Explorer transient renderer modes", () => {
       version: "two",
     } as Awaited<ReturnType<typeof api.saveExplorerFile>>);
     await choose("edit");
+    expect(container.querySelector("textarea")).toBe(input);
+    expect(input.readOnly).toBe(false);
+    expect(api.saveExplorerFile).not.toHaveBeenCalled();
+    expect(container.querySelector("textarea")?.value).toContain("false");
+    await act(async () => {
+      await header!.save();
+    });
     expect(api.saveExplorerFile).toHaveBeenCalledWith(
       "explorer-one",
       expect.objectContaining({
@@ -188,6 +237,11 @@ describe("Explorer transient renderer modes", () => {
         content: expect.stringContaining("false"),
         version: "one",
       }),
+      {
+        workerId: explorer.activeWorkerId,
+        projectId: explorer.projectId,
+        worktreeId: explorer.worktreeId,
+      },
     );
   });
   it("preserves selected mode for the same transient path during persisted metadata updates", async () => {
@@ -221,10 +275,8 @@ describe("Explorer transient renderer modes", () => {
     await render(original, "data/settings.json");
     expect(header!.fileMode).toBe("edit");
     expect(
-      container
-        .querySelector('[data-code-visible="true"]')
-        ?.getAttribute("data-code-path"),
-    ).toBe("data/settings.json");
+      container.querySelector("textarea")?.getAttribute("aria-label"),
+    ).toBe("Edit settings.json");
     await render(original, null);
     expect(header!.selectedPath).toBe("README.md");
     expect(header!.fileMode).toBe("preview");
@@ -250,7 +302,7 @@ describe("Explorer transient renderer modes", () => {
           null,
       ).toBe(fileMode === "visual");
       expect(
-        container.querySelector('[data-code-visible="true"]') !== null,
+        container.querySelector('[data-native-code-editor="true"]') !== null,
       ).toBe(fileMode === "edit");
       expect(api.saveExplorerFile).not.toHaveBeenCalled();
     },

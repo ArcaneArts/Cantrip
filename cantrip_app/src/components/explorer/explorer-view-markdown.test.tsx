@@ -25,20 +25,7 @@ vi.mock("@/components/explorer/explorer-file-browser", () => ({
 vi.mock("@/components/explorer/explorer-image-viewport", () => ({
   ExplorerImageViewport: () => createElement("div"),
 }));
-vi.mock("@/components/explorer/retained-explorer-code-editor", () => ({
-  RetainedExplorerCodeEditor: ({
-    path,
-    visible,
-  }: {
-    path: string | null;
-    visible: boolean;
-  }) =>
-    createElement("div", {
-      "data-path": path,
-      "data-retained-code-editor": true,
-      "data-visible": visible,
-    }),
-}));
+
 vi.mock("@/components/explorer/use-explorer-worker-encryption", () => ({
   useExplorerWorkerEncryption: () => ({
     bindingKey: "binding-one",
@@ -47,9 +34,7 @@ vi.mock("@/components/explorer/use-explorer-worker-encryption", () => ({
     retry: vi.fn(),
   }),
 }));
-vi.mock("@/components/explorer/use-retained-inline-workbench", () => ({
-  useRetainedInlineWorkbench: () => true,
-}));
+
 vi.mock("@/components/git/git-graph", () => ({
   GitRepositoryGraphView: ({
     onActivateFile,
@@ -73,7 +58,15 @@ vi.mock("@/lib/client-log-relay", () => ({
   },
 }));
 
-import { ExplorerView } from "./explorer-view";
+import { ExplorerView, type ExplorerHeaderState } from "./explorer-view";
+vi.stubGlobal(
+  "ResizeObserver",
+  class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  },
+);
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
@@ -110,12 +103,16 @@ async function renderPreview(
     selectedPath: null,
     worktreeId: "worktree-one",
   } as ExplorerSummary;
+  let header: ExplorerHeaderState | null = null;
   await act(async () => {
     root.render(
       <QueryClientProvider client={client}>
         <ExplorerView
           appearance="dark"
           explorer={explorer}
+          onHeaderChange={(state) => {
+            header = state;
+          }}
           onOpenFile={onOpenFile}
           onOpenGraphFile={onOpenGraphFile}
           repositoryGraphAvailable={false}
@@ -127,6 +124,7 @@ async function renderPreview(
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
   });
+  expect(header!.fileMode).toBe("preview");
   return { explorer, onOpenFile };
 }
 async function clickLink(name: string) {

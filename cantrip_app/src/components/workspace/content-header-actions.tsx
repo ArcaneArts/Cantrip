@@ -10,13 +10,9 @@ import {
   FileClock,
   Info,
   Loader2,
-  ListTodo,
-  MessageSquare,
   Bot,
   Pencil,
-  Power,
   RefreshCw,
-  RotateCcw,
   Save,
   ServerCog,
   SquareTerminal,
@@ -68,11 +64,6 @@ interface ChatHeaderActions {
   toggleInspect(): void;
 }
 
-interface TaskViewAction {
-  change(view: "task" | "chat"): void;
-  view: "task" | "chat";
-}
-
 export interface ContentHeaderActionsProps {
   chat?: ChatHeaderActions | null;
   code?: { header: CodeHeaderState | null } | null;
@@ -80,95 +71,10 @@ export interface ContentHeaderActionsProps {
   explorer?: ExplorerHeaderState | null;
   git?: GitHistoryHeaderState | null;
   popout?: PopoutAction | null;
-  task?: TaskViewAction | null;
   terminalService?: TerminalServiceAction | null;
 }
 
-function CodeHeaderActions({ header }: { header: CodeHeaderState | null }) {
-  const runtimeIssue =
-    header?.error ??
-    (header?.status === "failed" || header?.status === "offline"
-      ? `Editor ${header.status}.`
-      : null);
-
-  return (
-    <div className="flex items-center gap-1.5">
-      {runtimeIssue ? (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span
-              className="grid size-8 place-items-center text-destructive"
-              role="status"
-            >
-              <CircleAlert className="size-4" />
-              <span className="sr-only">{runtimeIssue}</span>
-            </span>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">{runtimeIssue}</TooltipContent>
-        </Tooltip>
-      ) : header?.isBusy ? (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span
-              className="grid size-8 place-items-center text-muted-foreground"
-              role="status"
-            >
-              <Loader2 className="size-4 animate-spin" />
-              <span className="sr-only">Connecting to editor</span>
-            </span>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">Connecting to editor</TooltipContent>
-        </Tooltip>
-      ) : null}
-      <TooltipButton
-        size="icon"
-        variant="ghost"
-        className="size-8"
-        disabled={!header || header.isBusy || !header.runtime}
-        onClick={() => void header?.saveAll()}
-        tooltip="Save all editors"
-      >
-        <Save className="size-4" />
-        <span className="sr-only">Save all editors</span>
-      </TooltipButton>
-      <TooltipButton
-        size="icon"
-        variant="ghost"
-        className="size-8"
-        disabled={!header || header.isBusy}
-        onClick={header?.reload}
-        tooltip="Reload editor surface"
-      >
-        <RefreshCw className="size-4" />
-        <span className="sr-only">Reload editor surface</span>
-      </TooltipButton>
-      <TooltipButton
-        size="icon"
-        variant="ghost"
-        className="size-8"
-        disabled={!header || header.isBusy}
-        onClick={() => void header?.restart()}
-        tooltip="Restart editor"
-      >
-        <RotateCcw className="size-4" />
-        <span className="sr-only">Restart editor</span>
-      </TooltipButton>
-      <TooltipButton
-        size="icon"
-        variant="ghost"
-        className="size-8"
-        disabled={!header || header.isBusy || !header.runtime}
-        onClick={() => void header?.stop()}
-        tooltip="Stop editor"
-      >
-        <Power className="size-4" />
-        <span className="sr-only">Stop editor</span>
-      </TooltipButton>
-    </div>
-  );
-}
-
-function ExplorerHeaderActions({
+export function ExplorerHeaderActions({
   compact,
   header,
 }: {
@@ -324,6 +230,7 @@ export function ExplorerFileCloseButton({
   header: ExplorerHeaderState | null;
 }) {
   if (!header || (!header.selectedPath && !header.canGoBack)) return null;
+  if (header.selectedPath && header.showFileClose === false) return null;
   return (
     <TooltipButton
       className={compact ? "size-6 shrink-0" : "size-8 shrink-0"}
@@ -345,7 +252,6 @@ export function ContentHeaderActions({
   explorer,
   git,
   popout,
-  task,
   terminalService,
 }: ContentHeaderActionsProps) {
   return (
@@ -399,7 +305,12 @@ export function ContentHeaderActions({
       {explorer ? (
         <ExplorerHeaderActions compact={compact} header={explorer} />
       ) : null}
-      {code ? <CodeHeaderActions header={code.header} /> : null}
+      {code?.header?.explorer ? (
+        <ExplorerHeaderActions
+          compact={compact}
+          header={code.header.explorer}
+        />
+      ) : null}
       {terminalService ? (
         <TooltipButton
           size="icon"
@@ -428,42 +339,6 @@ export function ContentHeaderActions({
           )}
           <span className="sr-only">Open this tab in a new window</span>
         </TooltipButton>
-      ) : null}
-      {task ? (
-        <div
-          aria-label="Task view"
-          className="flex h-7 items-center rounded-md bg-muted/60 p-0.5"
-          role="group"
-        >
-          <TooltipButton
-            aria-pressed={task.view === "task"}
-            className={cn(
-              "h-6 gap-1 px-1.5 text-[10px]",
-              task.view === "task" && "bg-background shadow-sm",
-            )}
-            onClick={() => task.change("task")}
-            size="sm"
-            tooltip="Show Task"
-            variant="ghost"
-          >
-            <ListTodo className="size-3" />
-            {!compact ? "Task" : <span className="sr-only">Task</span>}
-          </TooltipButton>
-          <TooltipButton
-            aria-pressed={task.view === "chat"}
-            className={cn(
-              "h-6 gap-1 px-1.5 text-[10px]",
-              task.view === "chat" && "bg-background shadow-sm",
-            )}
-            onClick={() => task.change("chat")}
-            size="sm"
-            tooltip="Show Task chat"
-            variant="ghost"
-          >
-            <MessageSquare className="size-3" />
-            {!compact ? "Chat" : <span className="sr-only">Chat</span>}
-          </TooltipButton>
-        </div>
       ) : null}
       {chat ? (
         <>

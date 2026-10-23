@@ -22,7 +22,6 @@ import {
   type UserSessionService,
   verifyPassword,
 } from "../../auth/service.js";
-import type { CodeTunnelBroker } from "../../code/tunnel.js";
 import type { ServerConfig } from "../../config.js";
 import type { ServerRepository } from "../../db/repository.js";
 import type { DirectAttachmentCoordinator } from "../../direct-attachments/coordinator.js";
@@ -38,7 +37,6 @@ export interface AuthSessionRouteDependencies {
     matches: (sessionId: string, ownerId: string) => boolean,
     reason: string,
   ) => void;
-  codeTunnel: Pick<CodeTunnelBroker, "revokeAuthSession" | "revokeOwner">;
   config: ServerConfig;
   consumeAuthAttempt: (
     request: FastifyRequest,
@@ -84,7 +82,6 @@ export function installAuthSessionRoutes(
   {
     appendAudit,
     closeSessionSockets,
-    codeTunnel,
     config,
     consumeAuthAttempt,
     directAttachments,
@@ -465,7 +462,6 @@ export function installAuthSessionRoutes(
     const principal = authenticatedPrincipal(request);
     await repository.revokeUserSession(principal.sessionId!, "signed-out");
     liveHub.revokeSession(principal.sessionId!);
-    await codeTunnel.revokeAuthSession(principal.sessionId!);
     await directAttachments.revokeSession(principal.sessionId!);
     await workerLinks.revokeAccountSession(principal.sessionId!);
     closeSessionSockets(
@@ -497,7 +493,6 @@ export function installAuthSessionRoutes(
       "signed-out-all",
     );
     liveHub.revokeOwner(principal.user.id);
-    await codeTunnel.revokeOwner(principal.user.id);
     await directAttachments.revokeOwner(principal.user.id);
     await workerLinks.revokeOwner(principal.user.id);
     closeSessionSockets(

@@ -110,7 +110,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
     "601cfa1ef62b1fe37e7779ace69d80961404ad97ddc2089da85eef315183f9d9",
   applicationRoutes:
-    "8c2887f3fcae7532df6199424e2920cb030d32ce5c582655852c7274fe7bc5e3",
+    "80786c8fd1d6d3a502aa5546278cb9bad6c3905505040baebea3572c78615d34",
   clientControlCommands:
     "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
   cliCommands:
@@ -118,7 +118,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   liveResources:
     "60a4250f1562ae48ad8b931cc0324b2e1653b9cb59bc5cc31cb357349a4063a1",
   workerCommands:
-    "273b424c6d0265a5efe73c2153b85f41ee9e18b885c32ce9366ae7dc9e14982a",
+    "23c6dcf548cd2a4c274263f5ca6fb7e58276d3a326df4bf8e3d984bcbab9d066",
   tunnelFrameKinds:
     "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8",
 };
@@ -197,8 +197,6 @@ const DURABLE_TABLE_CLASSIFICATIONS = {
   terminals: "endpoint-protected",
   explorers: "endpoint-protected",
   codeTabs: "endpoint-protected",
-  codeSessions: "intentionally-public-control-plane",
-  codeSettingsProfiles: "endpoint-protected",
   browsers: "endpoint-protected",
   remoteSurfaces: "endpoint-protected",
   projectViews: "endpoint-protected",
@@ -1005,6 +1003,12 @@ function taskRouteBoundaryAudit(routes) {
     ],
     ["GET", "/api/tasks/:chatId", "taskOpaqueSummarySchema", "opaque-read"],
     [
+      "POST",
+      "/api/tasks/:chatId/recover",
+      "taskOpaqueSummarySchema",
+      "minimized-recovery-control",
+    ],
+    [
       "GET",
       "/api/tasks/:chatId/dashboard",
       "taskImplementationOpaqueDashboardSchema",
@@ -1548,7 +1552,7 @@ function surfaceStreamRouteBoundaryAudit(routes, applicationText) {
     [
       "POST",
       "/api/explorers/:explorerId/operation",
-      "surfaceStreamWireRequestSchema",
+      "explorerOperationWireRequestSchema",
       "opaque-explorer-operation",
     ],
     [
@@ -3503,15 +3507,6 @@ function applicationRouteContentClassification(route) {
       rationale: "opaque tunnel configuration and minimized routing metadata",
     };
   }
-  if (
-    /\/(?:code-session-attachments|code-transports)(?:\/|$)/u.test(route.path)
-  ) {
-    return {
-      classification: "endpoint-protected",
-      rationale:
-        "authenticated shared Code transport and opaque route-grant lifecycle",
-    };
-  }
   if (/^\/api\/auth\//u.test(route.path)) {
     return {
       classification: "hashed-validator",
@@ -3611,18 +3606,6 @@ function workerCommandContentClassification(command) {
       classification: "intentionally-public-control-plane",
       rationale:
         "bounded revision-checked Git-shared definition with secret references only",
-    };
-  }
-  if (/^code\.settings\./u.test(command)) {
-    return {
-      classification: "endpoint-protected",
-      rationale: "worker-owned encrypted global Code settings lifecycle",
-    };
-  }
-  if (/^code\.transport\./u.test(command)) {
-    return {
-      classification: "endpoint-protected",
-      rationale: "server-authorized opaque Code session route-grant lifecycle",
     };
   }
   if (/^project\.script-commands(?:\.inspect)?$/u.test(command)) {
@@ -3837,7 +3820,7 @@ async function surfaceStreamProtocolBoundaryAudit(streamProtocolText) {
       Promise.all([
         resolve(
           repositoryRoot,
-          "packages/protocol/src/worker-command-worktree-code.ts",
+          "packages/protocol/src/worker-command-worktrees.ts",
         ),
         resolve(
           repositoryRoot,
@@ -4516,14 +4499,6 @@ async function buildInventory() {
     ...tunnelFrameContentClassification(kind),
   }));
   const externalTransports = [
-    {
-      boundary: "application-principal",
-      contentClassification: "endpoint-protected",
-      implementation: "cantrip_server/src/code/tunnel.ts",
-      name: "Protected Cantrip Code tunnel control plane",
-      ownerBinding:
-        "authenticated owner, project, assigned worker, opaque revision-bound tunnel record, and desktop attachment",
-    },
     {
       boundary: "application-principal",
       contentClassification: "endpoint-protected",

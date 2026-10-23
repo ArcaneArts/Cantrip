@@ -136,9 +136,8 @@ The pipeline runs these weighted steps sequentially:
 |      8 | Install dependencies      |
 |     18 | Build Codex runtime       |
 |      6 | Build Cantrip CLI         |
-|     18 | Build Cantrip Code        |
 |     14 | Build Cantrip services    |
-|     18 | Package Cantrip desktop   |
+|     36 | Package Cantrip desktop   |
 |      4 | Verify synthetic artifact |
 |      2 | Stage synthetic artifact  |
 
@@ -195,7 +194,6 @@ synthetic-builds/
     npm/
     pnpm/
     cargo-target/
-    cantrip-code/
   jobs/current.json
   jobs/<id>/job.json
   jobs/<id>/build.log

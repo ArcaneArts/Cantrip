@@ -21,6 +21,7 @@ import { confirmExplorerDiscard } from "@/components/explorer/explorer-lifecycle
 import type { ExplorerFileMutationAuthorization } from "@/components/sidebar/project-sidebar-file-tree";
 import {
   createExplorerDirectory,
+  createExplorerFile,
   deleteExplorerEntry,
   renameExplorerEntry,
   updateExplorerViewState,
@@ -560,6 +561,32 @@ export function createSidebarExplorerCommands({
     }
     await refreshSidebarExplorerEntries(explorer);
   };
+  const createSidebarFile = async (
+    explorer: ExplorerSummary,
+    parentPath: string,
+    name: string,
+    authorization: ExplorerFileMutationAuthorization,
+  ) => {
+    if (!authorization.isCurrent())
+      throw new Error(
+        "Explorer authorization changed. Try creating the file again.",
+      );
+    const created = await createExplorerFile(
+      explorer.id,
+      {
+        path: parentPath,
+        name,
+      },
+      {
+        projectId: explorer.projectId,
+        worktreeId: explorer.worktreeId,
+        workerId: explorer.activeWorkerId,
+      },
+    );
+    if (authorization.isCurrent())
+      await refreshSidebarExplorerEntries(explorer);
+    return created;
+  };
   const createSidebarFolder = async (
     explorer: ExplorerSummary,
     parentPath: string,
@@ -738,6 +765,7 @@ export function createSidebarExplorerCommands({
     activateSidebarFilePreview,
     closeSidebarFilePreview,
     createSidebarFolder,
+    createSidebarFile,
     deleteSidebarFileEntry,
     openSidebarFilePreview,
     openSidebarFilePreviewPath,

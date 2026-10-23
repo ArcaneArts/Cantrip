@@ -256,7 +256,7 @@ export function ModelsSettings({
   });
   return (
     <div className="min-w-0 space-y-4" data-slot="models-settings">
-      <div className="sticky top-0 z-10 flex min-w-0 items-center gap-1 border-b bg-background">
+      <div className="sticky top-0 z-10 flex min-w-0 items-center gap-1 border-b bg-transparent">
         <div
           ref={tabList}
           role="tablist"

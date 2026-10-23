@@ -126,7 +126,7 @@ describe("shared relay coordination", () => {
 
     const response = bridgeA.request(
       "worker-1",
-      { type: "code.probe" },
+      { type: "worker.version" },
       { ownerId: "owner-1" },
     );
     await vi.waitFor(() => expect(workerSocket.sent).toHaveLength(1));
@@ -151,7 +151,7 @@ describe("shared relay coordination", () => {
       code: "project-source-unavailable",
       message: "Project source is unavailable.",
       name: WorkerCommandError.name,
-      operation: "code.probe",
+      operation: "worker.version",
       requestId: expect.any(String),
       workerId: "worker-1",
     });
@@ -180,7 +180,7 @@ describe("shared relay coordination", () => {
     expect(bridgeA.isConnected("worker-1")).toBe(true);
     const request = bridgeA.request(
       "worker-1",
-      { type: "code.probe" },
+      { type: "worker.version" },
       { ownerId: "owner-1" },
     );
     await vi.waitFor(() => expect(workerSocket.sent).toHaveLength(1));
@@ -443,7 +443,7 @@ describe("shared relay coordination", () => {
 
     const response = bridgeA.request(
       "worker-1",
-      { type: "code.probe" },
+      { type: "worker.version" },
       { ownerId: "owner-1" },
     );
     await vi.waitFor(() => expect(firstSocket.sent).toHaveLength(1));
@@ -684,7 +684,7 @@ describe("shared relay coordination", () => {
       reason: "Worker connection was superseded",
     });
     expect(currentSocket.readyState).toBe(1);
-    const response = bridge.request("worker-1", { type: "code.probe" });
+    const response = bridge.request("worker-1", { type: "worker.version" });
     const workerRequest = workerRequestEnvelopeSchema.parse(
       JSON.parse(String(currentSocket.sent.at(-1))),
     );
@@ -814,7 +814,7 @@ describe("shared relay coordination", () => {
 
     const response = bridgeA.request(
       "worker-1",
-      { type: "code.probe" },
+      { type: "worker.version" },
       {
         ownerId: "owner-1",
         timeoutMs: 100,
@@ -878,7 +878,7 @@ describe("shared relay coordination", () => {
     await bridgeB.attach("worker-1", workerSocket, "owner-1");
     const response = bridgeA.request(
       "worker-1",
-      { type: "code.probe" },
+      { type: "worker.version" },
       { ownerId: "owner-1", timeoutMs: 1_000 },
     );
     void response.catch(() => undefined);
@@ -930,7 +930,7 @@ describe("shared relay coordination", () => {
     await bridgeB.attach("worker-1", workerSocket, "owner-1");
     const response = bridgeA.request(
       "worker-1",
-      { type: "code.probe" },
+      { type: "worker.version" },
       { ownerId: "owner-1", timeoutMs: 1_000 },
     );
     void response.catch(() => undefined);
@@ -999,7 +999,7 @@ describe("shared relay coordination", () => {
     await bridgeB.attach("worker-1", workerSocket, "owner-1");
     const response = bridgeA.request(
       "worker-1",
-      { type: "code.probe" },
+      { type: "worker.version" },
       { ownerId: "owner-1", timeoutMs: 1_000 },
     );
     void response.catch(() => undefined);
@@ -1073,7 +1073,7 @@ describe("shared relay coordination", () => {
     );
     const response = bridgeA.request(
       "worker-1",
-      { type: "code.probe" },
+      { type: "worker.version" },
       { ownerId: "owner-1", timeoutMs: 100 },
     );
     void response.catch(() => undefined);

@@ -2,6 +2,10 @@ import type { NativeTurnSettingsEvidence } from "@/lib/native-history-turn-setti
 import { isPreviewActivity } from "./computer-use-activity";
 import type { ChatMessage, InferenceProgressSnapshot } from "@cantrip/protocol";
 import {
+  formatTokenRate,
+  turnTokenRates,
+} from "@/lib/native-turn-token-performance";
+import {
   ArrowDown,
   ArrowLeft,
   ArrowUp,
@@ -584,6 +588,13 @@ function AgentTrajectoryVisible({
     );
   }
 
+  const tokenRates = turnTokenRates(
+    turn.tokenPerformance,
+    turn.completed
+      ? (turn.tokenPerformance?.durationMs ?? turn.elapsedMs)
+      : turn.elapsedMs,
+  );
+
   return (
     <div
       className="flex h-full min-h-0 flex-col"
@@ -617,7 +628,7 @@ function AgentTrajectoryVisible({
             </Button>
           ) : null}
         </div>
-        <div className="mt-2 flex min-w-0 items-center gap-1.5">
+        <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
           <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-[10px] tabular-nums text-muted-foreground">
             {turn.events.length} events
           </span>
@@ -637,6 +648,25 @@ function AgentTrajectoryVisible({
               {turn.laneCounts.changes}{" "}
               {turn.laneCounts.changes === 1 ? "change" : "changes"}
             </span>
+          ) : null}
+          {!turn.key.startsWith("preview:") ? (
+            <>
+              <span
+                className="rounded-full bg-muted px-2 py-1 text-[10px] tabular-nums text-muted-foreground"
+                title="Estimated output tokens per second across recorded model reasoning and text output intervals. Excludes command waits. Includes reasoning tokens; unavailable when timing is incomplete."
+              >
+                Output speed{" "}
+                {tokenRates.output === null
+                  ? "—"
+                  : `≈${formatTokenRate(tokenRates.output)}`}
+              </span>
+              <span
+                className="rounded-full bg-muted px-2 py-1 text-[10px] tabular-nums text-muted-foreground"
+                title="Root agent output tokens divided by the entire turn, including prompt processing, commands, approvals, and waits. During a live turn, uses completed response totals so far."
+              >
+                Real speed {formatTokenRate(tokenRates.real)}
+              </span>
+            </>
           ) : null}
           {!turn.completed ? (
             <Button
@@ -683,7 +713,10 @@ function AgentTrajectoryVisible({
 
       <NativeTurnSettingsDetails entries={turn.nativeTurnSettings ?? []} />
 
-      <div className="shrink-0 border-b bg-muted/10">
+      <div
+        className="shrink-0 border-b bg-transparent"
+        data-slot="trajectory-timeline-surface"
+      >
         <TrajectoryTimeline
           agents={turn.agents.filter((agent) => !hiddenAgents.has(agent.key))}
           events={events}

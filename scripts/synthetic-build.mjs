@@ -137,9 +137,6 @@ await step("build-codex", "Build Codex runtime", () =>
 await step("build-cli", "Build Cantrip CLI", () =>
   runPnpm(["cli:build:release"], "Cantrip CLI build"),
 );
-await step("build-code", "Build Cantrip Code", () =>
-  runPnpm(["code:build", "--target", target], "Cantrip Code build"),
-);
 await step("build-services", "Build Cantrip services", async () => {
   await runPnpm(
     [

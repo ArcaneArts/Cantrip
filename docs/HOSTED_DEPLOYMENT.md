@@ -12,9 +12,9 @@ processes, and desktop state. The server never becomes a shared filesystem.
 This guide describes the supported container boundary and equivalent native
 service operation. A deployment exposes one public HTTPS origin, such as
 `api.cantrip.example`, for HTTP, AppLive, worker control, and WorkerLink relay
-traffic. Cantrip Code is a server-authorized WorkerLink resource, not a second
-public listener or `code.` origin. Each separately hosted application origin
-must appear exactly in `CANTRIP_APP_ORIGINS`.
+traffic. Native Code tabs use the same protected worker file operations as
+Explorer through that server-authorized connection. Each separately hosted
+application origin must appear exactly in `CANTRIP_APP_ORIGINS`.
 
 ## Production Droplet release
 
@@ -97,7 +97,7 @@ Requirements:
 - public DNS for the API name;
 - ports 80 and 443 reaching the proxy host;
 - a separately hosted Cantrip web app or a native Cantrip client;
-- enough build capacity for the pinned Codex and Cantrip Code toolchains.
+- enough build capacity for the pinned Codex, CLI, and CUA toolchains.
 
 Create the operator environment without committing it:
 
@@ -107,7 +107,7 @@ openssl rand -base64 32
 ```
 
 Use the generated value for the currently required hosted server keyring, set
-`CANTRIP_ADMIN_EMAIL` to the administrator who will create the first account,
+`CANTRIP_ADMIN_EMAIL` to the administrator,
 and set a random URL-safe PostgreSQL password in both `POSTGRES_PASSWORD` and
 `DATABASE_URL`. This server key is not the account component key used to
 protect provider or MCP content. Then validate and start the control plane:
@@ -119,6 +119,31 @@ docker compose --env-file deploy/hosted.env \
 docker compose --env-file deploy/hosted.env \
   -f deploy/compose.hosted.yml --profile proxy up -d --build
 ```
+
+### Environment-managed administrator
+
+Set `CANTRIP_ADMIN_PASSWORD` alongside `CANTRIP_ADMIN_EMAIL` in account mode to
+provision the administrator automatically. Sign in with those credentials;
+registration is not required. The password is optional, must contain 12–1024
+characters, and is used exactly as provided, including leading/trailing spaces.
+When it is absent or empty, the existing registration and stored-password
+behavior remains in effect.
+
+Every startup creates the account if needed or synchronizes the existing
+account's Argon2id password hash. The first account is an owner; an existing
+owner retains that role, and other configured administrator accounts become
+admins. An actual password change revokes that account's existing sessions;
+restarting with the same password preserves them. Password changes through the
+account API are unavailable while the environment manages this account.
+
+The production deployer forwards this optional secret from Infisical `prod`
+into the root-only service environment. Hosted Compose also passes it through.
+Update the secret and redeploy/restart to change the login password.
+
+Changing the environment password does not rewrap or delete existing
+endpoint-encrypted account keys. Existing encrypted data still requires its
+original password or an authorized device with the keys. A fresh database
+initializes encryption with the configured password on the first client login.
 
 The server's published port 4310 binds only to host loopback for diagnostics.
 The fixed internal proxy address is the only trusted forwarding peer. The

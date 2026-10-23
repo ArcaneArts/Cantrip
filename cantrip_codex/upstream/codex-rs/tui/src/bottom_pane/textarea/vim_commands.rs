@@ -119,7 +119,7 @@ impl TextArea {
         self.vim_commands.replace_steps.clear();
     }
 
-    pub(super) fn replace_vim_text(&mut self, text: &str) {
+    pub(in crate::bottom_pane) fn replace_vim_text(&mut self, text: &str) {
         for grapheme in text.graphemes(/*is_extended*/ true) {
             let cursor_before = self.cursor_pos;
             while let Some(element) = self
@@ -548,7 +548,9 @@ impl TextArea {
     pub(super) fn handle_vim_pending_command(&mut self, pending: VimPending, event: KeyEvent) {
         match pending {
             VimPending::Replace => {
-                if let Some(ch) = vim_command_char(event) {
+                if let Some(ch) = vim_command_char(event)
+                    && !(self.single_line && matches!(ch, '\r' | '\n'))
+                {
                     self.start_vim_edit(VimAction::Replace(ch));
                 }
             }

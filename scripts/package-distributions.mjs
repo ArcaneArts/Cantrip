@@ -3,13 +3,7 @@ import path from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import {
-  CODE_MANIFEST_NAME,
-  assertHostTarget,
-  getBuildIdentity,
-  normalizeTarget,
-  verifyBuild,
-} from "./cantrip-code/build-lib.mjs";
+import { normalizeTarget } from "./native-target.mjs";
 import { buildCantripCli, bundleCantripCli } from "./cantrip-cli/build.mjs";
 import { buildCantripCua, bundleCantripCua } from "./cantrip-cua/build.mjs";
 import { pnpmCommand } from "./pnpm-command.mjs";
@@ -65,7 +59,6 @@ for (let index = 3; index < process.argv.length; index += 1) {
 }
 
 const packageTarget = normalizeTarget(requestedTarget);
-assertHostTarget(packageTarget);
 
 const platform = packageTarget.id;
 const codexBuild = path.join(root, "cantrip_codex", ".build", platform);
@@ -145,32 +138,7 @@ async function packageService(name, destination, { standalone = true } = {}) {
     path.join(root, "deploy", `${name}.README.md`),
     path.join(destination, "README.md"),
   );
-  if (name === "worker") await bundleCantripCode(destination);
   console.log(`Packaged ${name}: ${path.relative(root, destination)}`);
-}
-
-async function bundleCantripCode(workerDestination) {
-  const identity = await getBuildIdentity(packageTarget);
-  let manifest;
-  try {
-    manifest = await verifyBuild(identity);
-  } catch {
-    run(process.execPath, [
-      path.join(root, "scripts", "cantrip-code", "build.mjs"),
-      "--target",
-      packageTarget.id,
-      "--force",
-    ]);
-    manifest = await verifyBuild(identity);
-  }
-  const destination = path.join(workerDestination, "resources", "cantrip-code");
-  await rm(destination, { recursive: true, force: true });
-  await mkdir(destination, { recursive: true });
-  await cp(identity.distributionDirectory, destination, { recursive: true });
-  await cp(identity.manifestPath, path.join(destination, CODE_MANIFEST_NAME));
-  console.log(
-    `Bundled Cantrip Code ${manifest.version} ${manifest.fingerprint.slice(0, 12)}`,
-  );
 }
 
 function buildServiceWorkspaces() {

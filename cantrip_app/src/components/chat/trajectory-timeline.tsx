@@ -185,6 +185,36 @@ function laneClass(event: TrajectoryEvent): string {
   return "fill-amber-500";
 }
 
+export function TrajectoryActivityBar({
+  turn,
+}: {
+  turn: TrajectoryTurn | null;
+}) {
+  const marks = turn ? trajectoryTimelineMarks(turn.events, turn) : [];
+  return (
+    <svg
+      aria-label="Recent task activity"
+      role="img"
+      data-slot="trajectory-activity-bar"
+      className="block h-2 w-full overflow-hidden"
+      viewBox={`0 0 ${SVG_WIDTH} 8`}
+      preserveAspectRatio="none"
+    >
+      {marks.map((mark) => (
+        <rect
+          key={mark.event.id}
+          x={Math.min(mark.x, SVG_WIDTH - mark.width)}
+          y={0}
+          width={mark.width}
+          height={8}
+          rx={1}
+          className={laneClass(mark.event)}
+        />
+      ))}
+    </svg>
+  );
+}
+
 export function TrajectoryTimeline({
   events,
   onMovePlayhead,
@@ -251,7 +281,8 @@ export function TrajectoryTimeline({
               ? "Trajectory actors"
               : "Trajectory agents"
           }
-          className="relative w-28 shrink-0 border-r bg-background/40"
+          className="relative w-28 shrink-0 border-r bg-transparent"
+          data-slot="trajectory-agent-labels"
         >
           {tracks.map((agent, index) => (
             <div

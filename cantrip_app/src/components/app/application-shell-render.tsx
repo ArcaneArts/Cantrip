@@ -1,4 +1,5 @@
-import type { TerminalSummary } from "@cantrip/protocol";
+import { AgentPanelActions } from "@/components/chat/agent-panel-actions";
+import type { ChatSummary, TerminalSummary } from "@cantrip/protocol";
 import { DEFAULT_ELITE_REVEAL_CONFIG } from "@cantrip/glitch";
 import { TabColorDialogHost } from "@/components/workspace/tab-color";
 import { useCallback, useEffect, useState } from "react";
@@ -98,32 +99,21 @@ export function ApplicationShellRender({
   bindings: ApplicationShellRenderBindings;
 }) {
   const {
-    activeChat,
-    activeExplorerHeader,
     activePopout,
     activeProjectOverviewPopout,
-    activeProjectTaskChat,
-    activeProjectTaskView,
-    activeRelocation,
     agentInspectOpenChats,
     appMode,
     appToast,
     bootstrap,
-    chatRelocationOpen,
     codeAppearance,
-    codeHeader,
     compactShell,
-    currentRelocation,
     desktopSidebarDrawer,
     desktopSidebarDrawerOpen,
     explorerFileTarget,
     explorers,
-    gitHistoryHeader,
-    gitHistoryProject,
     selectedPaneOwnedElsewhere,
     handleWorkspaceDrop,
     isPopout,
-    linkedConsoleChat,
     mobileProjectSelectorOpen,
     openChatConsole,
     openRunTerminal,
@@ -140,16 +130,11 @@ export function ApplicationShellRender({
     selectedExplorer,
     selectedPlacementContext,
     selectedProject,
-    selectedStandaloneTerminal,
     selectedTerminal,
-    setActiveProjectTaskView,
     setAgentInspectOpen,
     setAppToast,
     setChatConsoleOpen,
-    setChatRelocationOpen,
     setRunConfigurationEditorId,
-    setShowCustomizations,
-    setTerminalServiceTerminalId,
     setWorkspaceDragError,
     settings,
     settingsSection,
@@ -161,7 +146,6 @@ export function ApplicationShellRender({
     sidebarCollapsed,
     surfaceCreationFailure,
     tabLayout,
-    terminalServiceTerminalId,
     visibleProjects,
     workers,
     workspaceDragError,
@@ -213,31 +197,6 @@ export function ApplicationShellRender({
     setMobileSurfacePickerOpen(false);
   }, [appMode, compactShell, selectedProject]);
   const contentHeaderActions = {
-    git:
-      gitHistoryProject &&
-      (gitHistoryHeader?.section === "history" ||
-        gitHistoryHeader?.section === "graph")
-        ? gitHistoryHeader
-        : null,
-    explorer: selectedExplorer ? activeExplorerHeader : null,
-    code: selectedCodeTab ? { header: codeHeader } : null,
-    terminalService:
-      !showImporter &&
-      !showSettings &&
-      !showServerAdmin &&
-      !showProjectSettings &&
-      selectedStandaloneTerminal &&
-      selectedStandaloneTerminal.kind !== "run-configuration"
-        ? {
-            active: terminalServiceTerminalId === selectedStandaloneTerminal.id,
-            open: () =>
-              setTerminalServiceTerminalId((current: string | null) =>
-                current === selectedStandaloneTerminal.id
-                  ? null
-                  : selectedStandaloneTerminal.id,
-              ),
-          }
-        : null,
     popout: activeProjectOverviewPopout
       ? {
           error: popoutError,
@@ -245,59 +204,38 @@ export function ApplicationShellRender({
           open: popOutProjectOverviewView,
         }
       : activePopout
-        ? {
-            error: popoutError,
-            pending: popoutPending,
-            open: popOutActiveView,
-          }
+        ? { error: popoutError, pending: popoutPending, open: popOutActiveView }
         : null,
-    task: activeProjectTaskChat
-      ? {
-          change: setActiveProjectTaskView,
-          view: activeProjectTaskView,
-        }
-      : null,
-    chat:
-      appMode === "ide" &&
-      activeChat &&
-      !showImporter &&
-      !showSettings &&
-      !showServerAdmin &&
-      !showProjectSettings
-        ? {
-            consoleActive: Boolean(linkedConsoleChat),
-            consolePending: openChatConsole.isPending,
-            inspectActive: agentInspectOpenChats.has(activeChat.id),
-            inspectCustomizations: () => setShowCustomizations(true),
-            relocation: {
-              active: Boolean(activeRelocation),
-              available: Boolean(
-                selectedProject?.capabilities.relocation &&
-                bootstrap.data?.capabilities.workerSwitching &&
-                selectedPlacementContext &&
-                (selectedPlacementContext.workers.length > 1 ||
-                  currentRelocation),
-              ),
-              open: chatRelocationOpen,
-              problem: Boolean(
-                currentRelocation &&
-                (currentRelocation.state === "blocked" ||
-                  currentRelocation.state === "failed"),
-              ),
-              show: () => setChatRelocationOpen(true),
-            },
-            toggleConsole: () =>
-              linkedConsoleChat
-                ? setChatConsoleOpen(activeChat.id, false)
-                : showChatConsole(activeChat),
-            toggleInspect: () =>
-              setAgentInspectOpen(
-                activeChat.id,
-                !agentInspectOpenChats.has(activeChat.id),
-              ),
-          }
-        : null,
-  } satisfies Omit<ContentHeaderActionsProps, "compact">;
+  } satisfies Pick<ContentHeaderActionsProps, "popout">;
+  const renderAgentPanelActions = (chat: ChatSummary) => (
+    <AgentPanelActions
+      key={chat.id}
+      chat={chat}
+      consoleActive={bindings.chatConsoleOpenChats.has(chat.id)}
+      consolePending={openChatConsole.isPending}
+      inspectActive={agentInspectOpenChats.has(chat.id)}
+      onToggleConsole={() =>
+        bindings.chatConsoleOpenChats.has(chat.id)
+          ? setChatConsoleOpen(chat.id, false)
+          : showChatConsole(chat)
+      }
+      onToggleInspect={() =>
+        setAgentInspectOpen(chat.id, !agentInspectOpenChats.has(chat.id))
+      }
+      relocation={
+        selectedProject?.capabilities.relocation && selectedPlacementContext
+          ? {
+              available: Boolean(bootstrap.data?.capabilities.workerSwitching),
+              placement: selectedPlacementContext,
+              statuses: bindings.worktreeStatuses,
+              synchronizationPolicy:
+                settings.data?.preferences.automaticReplicaSynchronization ??
+                "off",
+            }
+          : undefined
+      }
+    />
+  );
   const codeSurfaceVisible = Boolean(
     appMode === "ide" &&
     selectedCodeTab &&
@@ -383,6 +321,7 @@ export function ApplicationShellRender({
     ...bindings,
     codeSurfaceVisible: codeSurfaceVisible && !bindings.showProjectOverview,
     contentHeaderActions,
+    renderAgentPanelActions,
     explorerSurfaceVisible:
       explorerSurfaceVisible && !bindings.showProjectOverview,
     mobileSettingsSectionOpen,

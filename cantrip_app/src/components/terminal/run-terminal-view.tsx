@@ -1,3 +1,4 @@
+import { PanelToolbar } from "@/components/workspace/panel-toolbar";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import type { TerminalSummary } from "@cantrip/protocol";
@@ -326,7 +327,7 @@ export function RunTerminalView({
       className="flex min-h-0 flex-1 flex-col bg-background"
       data-slot="run-terminal-view"
     >
-      <div className="flex min-h-11 shrink-0 items-center gap-3 border-b px-3">
+      <PanelToolbar aria-label="Run controls" className="min-h-11 gap-3">
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium">{terminal.title}</div>
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -408,7 +409,7 @@ export function RunTerminalView({
             Stop
           </Button>
         ) : null}
-      </div>
+      </PanelToolbar>
       {definitionMissing ? (
         <InlineAlert className="m-3 mb-0" tone="error">
           {active

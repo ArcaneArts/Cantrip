@@ -81,25 +81,35 @@ vi.mock("@/components/ui/confirm-dialog", () => ({
   ConfirmDialog: ({
     confirmLabel,
     confirmVariant,
+    description,
     onConfirm,
+    onOpenChange,
     open,
     title,
   }: {
     confirmLabel: string;
     confirmVariant?: string;
+    description: string;
     onConfirm(): void;
+    onOpenChange(open: boolean): void;
     open: boolean;
     title: string;
   }) =>
     open ? (
-      <button
-        data-confirm-label={confirmLabel}
-        data-confirm-variant={confirmVariant}
-        onClick={onConfirm}
-        type="button"
-      >
-        {title}
-      </button>
+      <>
+        <button
+          data-confirm-label={confirmLabel}
+          data-confirm-variant={confirmVariant}
+          data-description={description}
+          onClick={onConfirm}
+          type="button"
+        >
+          {title}
+        </button>
+        <button data-cancel-confirmation onClick={() => onOpenChange(false)}>
+          Cancel
+        </button>
+      </>
     ) : null,
 }));
 vi.mock("./project-surface-create-menu", () => ({
@@ -258,6 +268,73 @@ function renderTabs(surface: ProjectFileSurface) {
 }
 
 describe("project pane tab strip", () => {
+  it.each([
+    ["tabs", false],
+    ["tabs", true],
+    ["icons", false],
+    ["icons", true],
+  ] as const)(
+    "updates chat activity in %s mode with active=%s",
+    async (mode, active) => {
+      display.mode = mode;
+      const surface = chatSurface();
+      const onSelect = vi.fn();
+      const tabs = (status: typeof surface.entity.status) => (
+        <DndContext>
+          <ProjectPaneTabStrip
+            activeTabKey={active ? surface.tabKey : ""}
+            onClose={vi.fn()}
+            onCreate={vi.fn()}
+            onDelete={vi.fn()}
+            onRename={vi.fn()}
+            onSelect={onSelect}
+            surfaces={[{ ...surface, entity: { ...surface.entity, status } }]}
+          />
+        </DndContext>
+      );
+      let renderer!: TestRenderer.ReactTestRenderer;
+      await act(async () => {
+        renderer = TestRenderer.create(tabs("idle"));
+      });
+
+      for (const status of [
+        "waiting-for-approval",
+        "running",
+        "failed",
+        "idle",
+      ] as const) {
+        await act(async () => renderer.update(tabs(status)));
+        const pending = status === "waiting-for-approval";
+        const tab = renderer.root.findByProps({ role: "tab" });
+        const frame = renderer.root.findByProps({
+          "data-project-tab-key": surface.tabKey,
+        });
+        const label = pending
+          ? "Agent chat (Approval required)"
+          : status === "running"
+            ? "Agent chat (Running)"
+            : "Agent chat";
+        expect(tab.props["aria-selected"]).toBe(active);
+        expect(tab.props["data-agent-running"]).toBe(status === "running");
+        expect(tab.props["aria-label"]).toBe(label);
+        expect(frame.props.title).toBe(label);
+        expect(frame.props["data-condensed"]).toBe(mode === "icons");
+        expect(
+          tab.findAll(
+            (node) =>
+              node.type === "svg" &&
+              node.props.className.includes("text-amber-500"),
+          ),
+        ).toHaveLength(pending ? 1 : 0);
+        if (pending) {
+          await act(async () => tab.props.onClick());
+          expect(onSelect).toHaveBeenCalledWith(surface.tabKey);
+        }
+      }
+      await act(async () => renderer.unmount());
+    },
+  );
+
   it.each([
     ["tabs", 0, false],
     ["icons", 208, true],
@@ -444,7 +521,7 @@ describe("project pane tab strip", () => {
   it("renders only the pinned file presentation", () => {
     const markup = renderTabs(fileSurface());
 
-    expect(markup).toContain("lucide-file-code-corner");
+    expect(markup).toContain('data-file-icon="typescript"');
     expect(markup).toContain("index.ts");
     expect(markup).toContain('aria-label="Project pane tabs"');
   });
@@ -676,6 +753,71 @@ describe("project pane tab strip", () => {
     expect(onSelect).not.toHaveBeenCalled();
     await act(async () => renderer.unmount());
   });
+
+  it.each(["running", "waiting-for-approval"] as const)(
+    "confirms middle-click removal of a %s agent without selecting it",
+    async (status) => {
+      const surface = chatSurface();
+      surface.entity.status = status;
+      const onDelete = vi.fn();
+      const onClose = vi.fn();
+      const onSelect = vi.fn();
+      let renderer!: TestRenderer.ReactTestRenderer;
+      await act(async () => {
+        renderer = TestRenderer.create(
+          <DndContext>
+            <ProjectPaneTabStrip
+              activeTabKey="another-tab"
+              onClose={onClose}
+              onCreate={vi.fn()}
+              onDelete={onDelete}
+              onRename={vi.fn()}
+              onSelect={onSelect}
+              surfaces={[surface]}
+            />
+          </DndContext>,
+        );
+      });
+      const middleClick = () =>
+        renderer.root
+          .findByProps({
+            "data-project-tab-key": surface.tabKey,
+          })
+          .props.onAuxClick({
+            button: 1,
+            preventDefault: vi.fn(),
+            stopPropagation: vi.fn(),
+          });
+      await act(async () => middleClick());
+      expect(onDelete).not.toHaveBeenCalled();
+      const confirmation = () =>
+        renderer.root.findByProps({
+          "data-confirm-label": "Stop and remove",
+        });
+      expect(confirmation().props["data-description"]).toBe(
+        "Are you sure you want to stop and remove this agent tab?",
+      );
+      await act(async () =>
+        renderer.root
+          .findByProps({
+            "data-cancel-confirmation": true,
+          })
+          .props.onClick(),
+      );
+      expect(onDelete).not.toHaveBeenCalled();
+      expect(
+        renderer.root.findAllByProps({
+          "data-confirm-label": "Stop and remove",
+        }),
+      ).toHaveLength(0);
+      await act(async () => middleClick());
+      await act(async () => confirmation().props.onClick());
+      expect(onDelete).toHaveBeenCalledExactlyOnceWith(surface, true);
+      expect(onClose).not.toHaveBeenCalled();
+      expect(onSelect).not.toHaveBeenCalled();
+      await act(async () => renderer.unmount());
+    },
+  );
 
   it("routes middle-click and menu close through view lifecycle only", async () => {
     const onClose = vi.fn();

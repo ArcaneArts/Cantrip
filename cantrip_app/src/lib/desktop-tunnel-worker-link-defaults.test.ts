@@ -126,31 +126,43 @@ describe("desktop tunnel WorkerLink browser defaults", () => {
       tunnelRoute: route,
     };
     mocks.openLink.mockResolvedValue(connection);
-    mocks.invoke.mockResolvedValue(undefined);
+    mocks.invoke.mockImplementation(async (command) =>
+      command === "prepare_worker_link_tunnel_forward"
+        ? {
+            bridge: {
+              claimGeneration: 1,
+              claimId: "55555555-5555-4555-8555-555555555555",
+              expiresAtEpochMs: Date.now() + 30_000,
+              nativeForwardGeneration: "66666666-6666-4666-8666-666666666666",
+              token: "b".repeat(43),
+              url: "ws://127.0.0.1:43123/",
+            },
+            forward: { attachmentId, tunnelId, routeState: "degraded" },
+          }
+        : undefined,
+    );
 
     const {
-      attachDesktopTunnelWorkerLinkForward,
+      startDesktopTunnelWorkerLinkForward,
       stopDesktopTunnelWorkerLinkForward,
     } = await import("./desktop-tunnel-worker-link");
 
     await expect(
-      attachDesktopTunnelWorkerLinkForward(
-        {
-          attachmentId,
-          diagnosticTraceId: "trace-webkit-timers",
-          tunnelId,
-          workerId: "worker-1",
+      startDesktopTunnelWorkerLinkForward({
+        attachmentId,
+        diagnosticTraceId: "trace-webkit-timers",
+        tunnelId,
+        workerId: "worker-1",
+        dataProtection: {
+          formatVersion: 1,
+          algorithm: "AES-256-GCM",
+          keyRevision: 1,
+          key: "a".repeat(43),
         },
-        {
-          claimGeneration: 1,
-          claimId: "55555555-5555-4555-8555-555555555555",
-          expiresAtEpochMs: Date.now() + 30_000,
-          nativeForwardGeneration: "66666666-6666-4666-8666-666666666666",
-          token: "b".repeat(43),
-          url: "ws://127.0.0.1:43123/",
-        },
-      ),
-    ).resolves.toBe("local");
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        serverUrl: "https://cantrip.example",
+      }),
+    ).resolves.toMatchObject({ effectiveRoute: "local", tunnelId });
     expect(connection.activate).toHaveBeenCalledOnce();
 
     await stopDesktopTunnelWorkerLinkForward(tunnelId);

@@ -141,7 +141,6 @@ export class TunnelRuntimeManager {
     );
     const route = this.#broker.registerRoute({
       attachmentId: authorization.attachmentId,
-      authoritativeRootRequired: authorization.origin === "code",
       diagnosticTraceId: initialize.diagnosticTraceId,
       destination,
       destinationTarget: {
@@ -149,9 +148,7 @@ export class TunnelRuntimeManager {
         targetKind:
           authorization.destination.kind === "worker-tcp"
             ? "tcp"
-            : authorization.destination.adapter === "code"
-              ? "code"
-              : "project-share",
+            : "project-share",
         recordId: authorization.tunnelId,
         protectedRecord: authorization.protectedRecord,
       },
@@ -488,7 +485,6 @@ export class TunnelRuntimeManager {
       !this.#broker.recordRouteActivity(
         active.authorization.tunnelId,
         active.authorization.attachmentId,
-        active.authorization.origin === "code",
       )
     ) {
       this.#retireOffline(active, "Attachment authority expired", 1008);
@@ -521,12 +517,6 @@ export class TunnelRuntimeManager {
 export function tunnelBandwidthChannel(
   authorization: TunnelAttachmentAuthorization,
 ): AccountBandwidthChannel {
-  if (
-    authorization.destination.kind === "worker-adapter" &&
-    authorization.destination.adapter === "code"
-  ) {
-    return "code-relay";
-  }
   if (
     authorization.destination.kind === "worker-adapter" &&
     authorization.destination.adapter === "project-share"

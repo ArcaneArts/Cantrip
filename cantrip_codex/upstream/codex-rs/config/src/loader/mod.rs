@@ -45,6 +45,7 @@ use crate::strict_config::config_error_from_ignored_toml_value_fields;
 use crate::strict_config::ignored_config_warning;
 use crate::strict_config::ignored_toml_value_fields;
 use crate::strict_config::unknown_feature_toml_value_field;
+use crate::strict_config::unknown_tui_toml_value_path;
 use crate::thread_config::ThreadConfigContext;
 use crate::thread_config::ThreadConfigLoader;
 use codex_file_system::ExecutorFileSystem;
@@ -205,22 +206,25 @@ pub async fn load_config_layers_state(
         overrides.ignore_user_and_project_exec_policy_rules;
     let mut bundle_requirements_layers = Vec::new();
     let mut cloud_config_layers = Vec::new();
+    let mut cloud_config_binding = None;
 
-    if !overrides.ignore_managed_requirements
-        && let Some(bundle) = cloud_config_bundle.get().await.map_err(io::Error::other)?
-    {
-        let cloud_config_base_dir = AbsolutePathBuf::from_absolute_path(codex_home)?;
-        let bundle_layers = if strict_config {
-            CloudConfigBundleLayers::from_bundle_strict_config(bundle, &cloud_config_base_dir)?
-        } else {
-            CloudConfigBundleLayers::from_bundle(bundle, &cloud_config_base_dir)?
-        };
-        let CloudConfigBundleLayers {
-            enterprise_managed_config,
-            enterprise_managed_requirements,
-        } = bundle_layers;
-        bundle_requirements_layers = enterprise_managed_requirements;
-        cloud_config_layers = enterprise_managed_config;
+    if !overrides.ignore_managed_requirements {
+        let snapshot = cloud_config_bundle.get_snapshot().await;
+        cloud_config_binding = snapshot.binding;
+        if let Some(bundle) = snapshot.bundle.map_err(io::Error::other)? {
+            let cloud_config_base_dir = AbsolutePathBuf::from_absolute_path(codex_home)?;
+            let bundle_layers = if strict_config {
+                CloudConfigBundleLayers::from_bundle_strict_config(bundle, &cloud_config_base_dir)?
+            } else {
+                CloudConfigBundleLayers::from_bundle(bundle, &cloud_config_base_dir)?
+            };
+            let CloudConfigBundleLayers {
+                enterprise_managed_config,
+                enterprise_managed_requirements,
+            } = bundle_layers;
+            bundle_requirements_layers = enterprise_managed_requirements;
+            cloud_config_layers = enterprise_managed_config;
+        }
     }
 
     let (config_requirements_toml, loaded_config_layers, requirements_layers) =
@@ -395,7 +399,11 @@ pub async fn load_config_layers_state(
                 return Err(err);
             }
         };
-        apply_credential_broker_requirements(&mut project_trust_context, &config_requirements_toml);
+        apply_credential_broker_requirements(
+            &mut project_trust_context,
+            &config_requirements_toml,
+            &trusted_broker_config,
+        );
         let project_layers = load_project_layers(
             fs,
             &cwd,
@@ -491,6 +499,7 @@ pub async fn load_config_layers_state(
         config_requirements_toml.clone().try_into()?,
         config_requirements_toml.into_toml(),
     )?
+    .with_cloud_config_binding(cloud_config_binding)
     .with_user_and_project_exec_policy_rules_ignored(ignore_user_and_project_exec_policy_rules);
     config_layer_stack.is_projectless = is_projectless;
     startup_warnings.extend(ignored_config_warning(
@@ -649,16 +658,13 @@ fn validate_cli_overrides_strictly(
     base_dir: &Path,
 ) -> io::Result<()> {
     let _guard = AbsolutePathBufGuard::new(base_dir);
-    if let Some(path) = ignored_toml_value_fields::<ConfigToml>(cli_overrides_layer.clone()).first()
-    {
-        let ignored_path = path.join(".");
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("unknown configuration field `{ignored_path}` in -c/--config override"),
-        ));
-    }
-
-    if let Some(ignored_path) = unknown_feature_toml_value_field(cli_overrides_layer) {
+    let ignored_path = ignored_toml_value_fields::<ConfigToml>(cli_overrides_layer.clone())
+        .into_iter()
+        .chain(unknown_tui_toml_value_path(cli_overrides_layer))
+        .next()
+        .map(|path| path.join("."))
+        .or_else(|| unknown_feature_toml_value_field(cli_overrides_layer));
+    if let Some(ignored_path) = ignored_path {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!("unknown configuration field `{ignored_path}` in -c/--config override"),
@@ -838,7 +844,12 @@ fn windows_program_data_dir_from_known_folder() -> io::Result<PathBuf> {
     // SAFETY: SHGetKnownFolderPath initializes path_ptr with a CoTaskMem-allocated,
     // null-terminated UTF-16 string on success.
     let hr = unsafe {
-        SHGetKnownFolderPath(&FOLDERID_ProgramData, known_folder_flags, 0, &mut path_ptr)
+        SHGetKnownFolderPath(
+            &FOLDERID_ProgramData,
+            known_folder_flags,
+            std::ptr::null_mut(),
+            &mut path_ptr,
+        )
     };
     if hr != 0 {
         return Err(io::Error::other(format!(
@@ -984,16 +995,32 @@ enum CredentialBrokerProjectState {
 fn apply_credential_broker_requirements(
     context: &mut ProjectTrustContext,
     requirements: &crate::ConfigRequirementsWithSources,
+    trusted_broker_config: &TomlValue,
 ) {
-    if context.credential_broker == CredentialBrokerProjectState::Unconfigured {
-        return;
-    }
-    let enabled = requirements
+    let credential_masking_enabled = requirements
         .feature_requirements
         .as_ref()
-        .and_then(|requirements| requirements.entries.get("network_proxy"))
+        .and_then(|requirements| requirements.entries.get("credential_masking"))
         .copied()
-        .unwrap_or(context.credential_broker == CredentialBrokerProjectState::Enabled);
+        .or_else(|| {
+            trusted_broker_config
+                .get("features")
+                .and_then(|features| features.get("credential_masking"))
+                .and_then(TomlValue::as_bool)
+        })
+        .unwrap_or(false);
+    if !credential_masking_enabled
+        && context.credential_broker == CredentialBrokerProjectState::Unconfigured
+    {
+        return;
+    }
+    let enabled = credential_masking_enabled
+        || requirements
+            .feature_requirements
+            .as_ref()
+            .and_then(|requirements| requirements.entries.get("network_proxy"))
+            .copied()
+            .unwrap_or(context.credential_broker == CredentialBrokerProjectState::Enabled);
     context.credential_broker = if enabled
         && requirements
             .network
@@ -1157,7 +1184,18 @@ fn sanitize_project_config(
         {
             ignored_keys.push("features.shell_snapshot".to_string());
         }
-        for key in ["respect_system_proxy", "system_proxy_fallback"] {
+        if let Some(multi_agent) = features
+            .get_mut("multi_agent_v2")
+            .and_then(TomlValue::as_table_mut)
+            && multi_agent.remove("message_board_remote").is_some()
+        {
+            ignored_keys.push("features.multi_agent_v2.message_board_remote".to_string());
+        }
+        for key in [
+            "respect_system_proxy",
+            "system_proxy_fallback",
+            "credential_masking",
+        ] {
             if features.remove(key).is_some() {
                 ignored_keys.push(format!("features.{key}"));
             }

@@ -94,19 +94,16 @@ App Bundle and APK, signed Tauri updater artifacts, and both standalone Server
 and Worker archives for both platforms.
 
 Release caches are content-addressed and platform-specific. They retain the
-verified final Codex runtime bundle and exact-fingerprint Cantrip Code
-distribution rather than their very large intermediate build trees. Separate
-caches retain pnpm downloads, Cargo dependencies and safe incremental output,
-the OpenVSCode npm download cache, its checksum-pinned Node toolchain, and
-Codex's checksum-verified rusty_v8 downloads. A source or patch change produces
-a new key and the build scripts still validate every restored runtime before
-reusing it. Blacksmith transparently serves standard `actions/cache`,
-`setup-node`, and Rust cache action traffic from its colocated cache.
+verified Codex runtime bundle, pnpm downloads, Cargo dependencies and incremental
+output, and Codex's checksum-verified rusty_v8 downloads. Source and patch changes
+produce new keys, and build scripts validate restored runtimes before reuse.
+The editor is compiled with the client and needs no separate distribution,
+download cache, toolchain or extension bundle.
 
 Before advancing `release`, install the Blacksmith GitHub App for this
 repository so jobs with `blacksmith-*` runner labels can be provisioned. The
 first run for each platform is expected to be cold; later releases reuse cache
-entries whenever the pinned Codex and Cantrip Code inputs remain unchanged.
+entries whenever the pinned Codex inputs remain unchanged.
 
 ### Mobile release lanes
 
@@ -349,8 +346,8 @@ for prerequisites, host paths, and service operations.
 
 All lower-level packaging commands accept the native target explicitly, for example
 `pnpm package:worker --target darwin-arm64` or
-`pnpm package:app --target darwin-arm64`. Cross-compilation is rejected because
-both the Worker and Cantrip Code contain native modules. `macos-*` and
+`pnpm package:app --target darwin-arm64`. Build native binaries and dependencies
+for the requested platform before packaging. `macos-*` and
 `windows-*` are accepted aliases for the runtime target names `darwin-*` and
 `win32-*`.
 
@@ -360,26 +357,9 @@ packaged executable, so a separate host Node installation is not required.
 Desktop removes those duplicate per-service runtimes while staging and uses its
 single shared bundled Node executable instead.
 
-Worker packages contain `resources/cantrip-code/`, including the compiled
-browser-native editor, its bundled Node runtime, legal notices, and a
-content-hashed compatibility manifest. The manifest also pins the bundled
-`cantrip-workbench` extension version, and worker startup verifies that exact
-extension package before launching the editor. Packaging invokes `pnpm code:build`
-when the exact target/input fingerprint is not cached. It never downloads or
-updates the editor after the artifact is assembled. Desktop embeds the same
-worker tree, so the standalone Worker and local-only desktop use an identical
-editor compatibility unit.
-
-Local editor builds bootstrap and checksum the Node release recorded in
-`cantrip_code/upstream/.nvmrc`; it is a build-only toolchain independent from
-the Node process running Cantrip. Builds still require the platform's native VS
-Code prerequisites, npm, Git, and network access for the pinned dependency
-graph and Node toolchain. Generated source, dependencies, toolchains, caches,
-and distributions remain ignored.
-
-Cantrip Code artifacts are cached in the repository's shared
-`.cantrip-code/cache` directory across Git worktrees. Set
-`CANTRIP_CODE_CACHE_DIR` when a build host should use another cache volume.
+The native code editor is part of the client. Worker and desktop packages do
+not include a separate editor server, extension host, or editor distribution.
+Workers provide encrypted file operations to the same editor on every client.
 
 ## Standalone server
 
@@ -508,15 +488,8 @@ retaining server-owned project and conversation metadata. Pairing the same
 worker identity again restores those associations. Internal desktop/dev
 workers are labeled and cannot be renamed or unlinked.
 
-`CANTRIP_CODE_IDLE_TIMEOUT_MS` controls how long an unattached Code session
-keeps its editor process warm (30 minutes by default). Active tunnel streams,
-agent/editor coordination, and explicit Code operations refresh activity. A
-restarted worker restores compatible session identities from its data directory
-without launching them until the server authorizes a new attachment. A packaged
-worker also guards every editor process group, so an abruptly terminated worker
-cannot leave editor, extension-host, watcher, or terminal processes behind.
 Codex app-server, authentication, discovery, and import subprocesses use the
-same owner-death guard, preventing abandoned Codex servers when a worker or the
+worker-owned process guard, preventing abandoned Codex servers when a worker or the
 desktop shell terminates unexpectedly.
 
 ## Packaged desktop lifecycle
@@ -582,11 +555,8 @@ proxy. Both `127.0.0.1:5173` and `localhost:5173` are approved local application
 origins, so opening either loopback spelling does not fall into remote-server
 onboarding.
 
-Both `pnpm dev` and `pnpm devtop` ensure the fingerprinted Cantrip Code build is
-available. A matching cache is reused immediately; after cloning or whenever
-the pinned editor, patchset, product configuration, extension source, or native
-target changes, development startup builds the new distribution automatically.
-`pnpm code:ready` remains available as a strict verification-only command.
+Both `pnpm dev` and `pnpm devtop` build the client editor with the application.
+There is no editor-server build, cache preparation or separate readiness check.
 
 ## Switching servers
 

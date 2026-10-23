@@ -22,12 +22,21 @@ use ratatui::style::Color;
 use ratatui::style::Style;
 use ratatui::text::Span;
 
-#[cfg(test)]
-const ALT_LABEL: &str = "⌥";
-#[cfg(all(not(test), target_os = "macos"))]
-const ALT_LABEL: &str = "⌥";
-#[cfg(all(not(test), not(target_os = "macos")))]
-const ALT_LABEL: &str = "alt";
+#[cfg(any(test, target_os = "macos"))]
+const MODIFIER_LABELS: [(KeyModifiers, &str); 3] = [
+    (KeyModifiers::CONTROL, "⌃"),
+    (KeyModifiers::SHIFT, "⇧"),
+    (KeyModifiers::ALT, "⌥"),
+];
+#[cfg(not(any(test, target_os = "macos")))]
+const MODIFIER_LABELS: [(KeyModifiers, &str); 3] = [
+    #[cfg(target_os = "linux")]
+    (KeyModifiers::CONTROL, "^"),
+    #[cfg(not(target_os = "linux"))]
+    (KeyModifiers::CONTROL, "ctrl"),
+    (KeyModifiers::SHIFT, "shift"),
+    (KeyModifiers::ALT, "alt"),
+];
 
 /// One concrete key event that can trigger a TUI action.
 ///
@@ -82,14 +91,10 @@ impl From<KeyBinding> for ShortcutHint {
 impl KeyBinding {
     pub(crate) fn display_label(&self) -> String {
         let mut label = String::new();
-        for (modifier, name) in [
-            (KeyModifiers::CONTROL, "ctrl"),
-            (KeyModifiers::SHIFT, "shift"),
-            (KeyModifiers::ALT, ALT_LABEL),
-        ] {
+        for (modifier, name) in MODIFIER_LABELS {
             if self.modifiers.contains(modifier) {
                 label.push_str(name);
-                if !matches!(name, "⌥" | "⌘" | "^") {
+                if !matches!(name, "⌃" | "⇧" | "⌥" | "⌘" | "^") {
                     label.push('+');
                 }
             }
@@ -140,6 +145,17 @@ impl KeyBinding {
         }
     }
 
+    /// Return whether two events came from the same held key.
+    ///
+    /// Shift can change Tab into BackTab while it is held, so both codes represent Tab here.
+    pub(crate) fn is_same_physical_key(self, other: Self) -> bool {
+        let physical_code = |binding: Self| match binding.normalized_parts().0 {
+            KeyCode::BackTab => KeyCode::Tab,
+            code => code,
+        };
+        physical_code(self) == physical_code(other)
+    }
+
     pub(crate) fn spans(&self) -> Vec<Span<'static>> {
         vec![self.into()]
     }
@@ -149,6 +165,10 @@ pub(crate) fn normalize_key_parts(
     key: KeyCode,
     mut modifiers: KeyModifiers,
 ) -> (KeyCode, KeyModifiers) {
+    if key == KeyCode::BackTab || (key == KeyCode::Tab && modifiers.contains(KeyModifiers::SHIFT)) {
+        modifiers.remove(KeyModifiers::SHIFT);
+        return (KeyCode::BackTab, modifiers);
+    }
     let KeyCode::Char(ch) = key else {
         return (key, modifiers);
     };

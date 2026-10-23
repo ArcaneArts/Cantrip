@@ -3,6 +3,7 @@ import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { getExplorerDirectory } from "@/lib/api";
+import { CantripApiError } from "@/lib/api-client";
 
 import { useExplorerDirectory } from "./use-explorer-directory";
 
@@ -36,6 +37,93 @@ function DirectoryQuery({
 afterEach(() => vi.clearAllMocks());
 
 describe("Explorer directory queries", () => {
+  it("recovers a directory listing after a brief worker outage without manual Retry", async () => {
+    vi.mocked(getExplorerDirectory)
+      .mockRejectedValueOnce(new CantripApiError("Worker unavailable", 503))
+      .mockResolvedValue({ entries: [], path: "src", truncated: false });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, retryDelay: 0 } },
+    });
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(
+        <QueryClientProvider client={queryClient}>
+          <DirectoryQuery />
+        </QueryClientProvider>,
+      );
+    });
+    try {
+      await vi.waitFor(() => {
+        expect(getExplorerDirectory).toHaveBeenCalledTimes(2);
+        expect(queryClient.getQueryCache().getAll()[0]!.state.status).toBe(
+          "success",
+        );
+      });
+    } finally {
+      await act(async () => renderer.unmount());
+      queryClient.clear();
+    }
+  });
+
+  it.each([403, 404, 429])(
+    "does not retry HTTP %s directory failures",
+    async (status) => {
+      vi.mocked(getExplorerDirectory).mockRejectedValue(
+        new CantripApiError("Unavailable", status),
+      );
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false, retryDelay: 0 } },
+      });
+      let renderer!: ReactTestRenderer;
+      await act(async () => {
+        renderer = create(
+          <QueryClientProvider client={queryClient}>
+            <DirectoryQuery />
+          </QueryClientProvider>,
+        );
+      });
+      try {
+        await vi.waitFor(() =>
+          expect(queryClient.getQueryCache().getAll()[0]!.state.status).toBe(
+            "error",
+          ),
+        );
+        expect(getExplorerDirectory).toHaveBeenCalledOnce();
+      } finally {
+        await act(async () => renderer.unmount());
+        queryClient.clear();
+      }
+    },
+  );
+
+  it("bounds retries when the worker remains unavailable", async () => {
+    vi.mocked(getExplorerDirectory).mockRejectedValue(
+      new CantripApiError("Worker unavailable", 503),
+    );
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, retryDelay: 0 } },
+    });
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(
+        <QueryClientProvider client={queryClient}>
+          <DirectoryQuery />
+        </QueryClientProvider>,
+      );
+    });
+    try {
+      await vi.waitFor(() =>
+        expect(queryClient.getQueryCache().getAll()[0]!.state.status).toBe(
+          "error",
+        ),
+      );
+      expect(getExplorerDirectory).toHaveBeenCalledTimes(4);
+    } finally {
+      await act(async () => renderer.unmount());
+      queryClient.clear();
+    }
+  });
+
   it("reuses a directory listing when a collapsed folder is expanded again", async () => {
     vi.mocked(getExplorerDirectory).mockResolvedValue({
       entries: [],

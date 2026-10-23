@@ -29,6 +29,7 @@ import {
 import type { OperationalLogContext } from "@cantrip/logging";
 import WebSocket, { type RawData } from "ws";
 
+import { serverWorkerNotification } from "./worker-notification-privacy.js";
 import type { WorkerConfig } from "./config.js";
 import { workerLogError, workerLogger } from "./logger.js";
 
@@ -1001,7 +1002,10 @@ export class WorkerConnection {
     }
     try {
       socket.send(
-        encodeWorkerServerEnvelope({ kind: "notification", notification }),
+        encodeWorkerServerEnvelope({
+          kind: "notification",
+          notification: serverWorkerNotification(notification),
+        }),
       );
       return true;
     } catch {

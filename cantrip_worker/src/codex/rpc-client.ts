@@ -2,7 +2,7 @@ import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import readline from "node:readline";
 import { stripVTControlCharacters } from "node:util";
 
-import { spawnGuardedProcess } from "../code/process-guard.js";
+import { spawnGuardedProcess } from "../process-guard.js";
 import { redactCodexDiagnosticPayload } from "./diagnostic-redaction.js";
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;

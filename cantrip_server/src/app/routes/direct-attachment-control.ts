@@ -146,7 +146,6 @@ export function installDirectAttachmentControlRoutes(
           return reply.code(204).send();
         case "expired":
         case "not-active":
-        case "root-missing":
         case "worker-rejected":
           return reply.code(409).send({
             error: "Direct attachment renewal was rejected.",

@@ -13,7 +13,7 @@ Cantrip is a local-first, self-hostable workspace for software development with
 coding agents. It turns the open-source Codex CLI runtime into a persistent,
 multi-surface application rather than treating an agent as a disposable terminal
 process. A project can have agent chats, real terminals, a lazy file explorer
-and editor, an embedded VS Code-derived workbench, browser and remote-desktop
+and editor, native project Code tabs, browser and remote-desktop
 sessions, tunnels, and project automations. GitHub-backed
 projects additionally provide managed worktrees and replicas. Attached local
 Git projects provide Git, matching source attachment, and relocation; verified
@@ -30,7 +30,7 @@ The product is split into three main runtime roles:
   scheduling, worker enrollment, routing, and audit/telemetry.
 - **Worker:** execution/data plane running near project files. It owns managed
   folders, repository checkouts, worktrees, Git processes, PTYs, Codex
-  processes, Cantrip Code, browser automation, desktop capture/input, and local
+  processes, browser automation, desktop capture/input, and local
   tool access.
 
 In local desktop development these roles can run together on one machine, but
@@ -222,7 +222,6 @@ project-scoped commands including:
 - run bounded Git/GitHub operations;
 - create and retain PTYs;
 - launch/supervise Codex;
-- host the browser-native Cantrip Code workbench;
 - run Chromium browser profiles and stream frames/input;
 - enumerate/capture/control desktop targets;
 - provide project network shares and managed tunnels;
@@ -425,7 +424,7 @@ states:
 - A structured planner result stores one server-owned Markdown plan and up to
   twelve bounded questions with options, recommendations, required/freeform
   behavior, saved answers, and optional overall direction.
-- Review supports repeated Continue Planning rounds and a revision-safe Monaco
+- Review supports repeated Continue Planning rounds and a revision-safe plan editor
   Edit Plan flow. The durable planning-round history retains correlated inputs,
   outputs, messages, execution lane, turn, and bounded failure state.
 - Begin Implementation performs one structured finalization, freezes an
@@ -597,7 +596,7 @@ full-content file surface:
   structured/visual view;
 - close-file control appears beside the Explorer/worktree title;
 - Markdown supports rendered preview;
-- source/text files use Monaco when editable;
+- source/text files use the native editor for both View and Edit modes;
 - supported tabular/structured formats can provide visual editors;
 - raw preview remains available when a visual parser cannot represent a valid
   real-world document;
@@ -621,30 +620,19 @@ Saves:
 - allow Save and continue or Cancel before a dirty desktop popout;
 - cause the retained main window to refetch after the popped-out editor closes.
 
-### Cantrip Code
+### Native Code tabs
 
-The Code surface embeds **Cantrip Code**, a pinned VS Code-derived browser
-workbench built and distributed with Cantrip. It is a full workbench for users
-who prefer VS Code navigation/editing/extensions over the lightweight Explorer
-editor.
+Project Code tabs use the same built-in file browser and editor as Explorer.
+They retain their own titles, layout and selected checkout. Files load and save
+through the existing encrypted app-to-server-to-worker operations, with revision
+and checkout checks protecting writes. There is no separate editor server,
+extension host, workspace profile or settings synchronization.
 
-Cantrip-specific behavior includes:
-
-- worker prewarming so opening Code does not pay the full server startup cost;
-- one project/worktree-aware workspace per surface;
-- projects trusted by default; Workspace Trust prompts are disabled;
-- the Cantrip-selected theme is forced at initial load and on theme changes;
-- system/light/dark/high-contrast and desktop Pro appearance integration;
-- opaque editor/terminal surfaces where partial transparency would cause
-  flickering or unreadable background blending;
-- “Command Palette” instead of an internal workspace UUID in the command center;
-- AI Agent Chat and unnecessary onboarding UI hidden by default;
-- noisy language-project configuration popups suppressed where safe;
-- live reconnect and worker readiness state.
-
-Cantrip Code is built from a pinned upstream source revision plus explicit
-Cantrip patches/resources. Development validates that the built bundle matches
-the pinned source so stale Code artifacts cannot silently ship.
+The editor supplies lexical syntax highlighting, line numbers and monospace
+text without autocomplete. View mode disables editing and hides the caret while
+keeping selection, copy and scrolling. Markdown and license documents retain
+readable document views. Desktop file windows, browsers and phone viewports use
+the same file controls. See [the editor guide](CODE_EDITOR.md).
 
 ### Git and GitHub workbench
 
@@ -1124,7 +1112,6 @@ origin, and a pairing code—not the user's password or a reusable session.
 - uncommitted and non-Git project files;
 - live Codex processes and worker-local runtime caches;
 - PTYs and service processes;
-- Cantrip Code runtime/profile data;
 - Chromium profiles;
 - desktop capture/input resources;
 - local Ollama models;
@@ -1182,8 +1169,6 @@ The pnpm workspace is organized approximately as follows:
 - **packages/version/** — shared release/version helpers.
 - **packages/glitch/** — shared visual-effect components and contracts.
 - **cantrip_codex/** — pinned open-source Codex source/build with Cantrip patches.
-- **cantrip_code/** — pinned VS Code-derived Cantrip Code source/build,
-  extensions, resources, and patch metadata.
 - **scripts/** — development preparation, source verification, builds, packaging,
   release helpers, wait/ready scripts.
 - **docs/** — architecture, operations, security, protocol, and feature design.
@@ -1208,7 +1193,7 @@ Common root commands:
     pnpm dev:postgres
 
 - **dev** starts the ordinary browser-oriented development stack.
-- **devtop** prepares protocol/Codex/Cantrip Code and runs protocol, server,
+- **devtop** prepares protocol/Codex/native runtimes and runs protocol, server,
   worker, and Tauri desktop together with prefixed logs.
 - **site** runs pnpm --filter @cantrip/site dev.
 - Browser app defaults to port 5173, server to 4310, and the Tauri Vite frontend
@@ -1228,18 +1213,10 @@ Runtime source/build helpers:
     pnpm codex:verify
     pnpm codex:build
     pnpm codex:clean
-    pnpm code:source:verify
-    pnpm code:build
-    pnpm code:ready
-    pnpm code:verify
-    pnpm code:extension:test
-    pnpm code:dev
-    pnpm code:clean
 
-Development preparation runs `pnpm codex:build` and `pnpm code:build`. Matching
-caches are reused; missing or stale artifacts are rebuilt automatically.
-`pnpm code:ready` is the verification-only check that fails when the expected
-Code build is absent or stale.
+Development preparation builds the shared client/runtime packages, Cantrip
+CLI, CUA and pinned Codex runtime. The code editor is part of the client build
+and has no separate distribution or editor-server build step.
 
 Packaging/release scripts cover:
 
@@ -1296,7 +1273,7 @@ inspection can still use standard shell tools.
 - **Interaction:** durable question/approval awaiting user resolution.
 - **Surface:** Agent/Task, Terminal, Explorer, Code, Git, Browser, Remote
   Desktop.
-- **Cantrip Code:** bundled browser-native VS Code-derived workbench.
+- **Code editor:** built-in client editor with native file and checkout access.
 - **Automation:** simpler scheduled prompt with an optional single condition.
 - **Policy:** a server-owned reusable Agent instruction that is Mandatory or
   assigned to selected workspaces/projects.
@@ -1308,7 +1285,7 @@ summary:
 
 - [AGENT_INTERACTIONS.md](AGENT_INTERACTIONS.md)
 - [CLI.md](CLI.md)
-- [CODE.md](CODE.md)
+- [CODE_EDITOR.md](CODE_EDITOR.md)
 - [CODEX_CHAT_IMPORT.md](CODEX_CHAT_IMPORT.md)
 - [CODEX_EVENT_NORMALIZATION.md](CODEX_EVENT_NORMALIZATION.md)
 - [CODEX_NATIVE_CUSTOMIZATION.md](CODEX_NATIVE_CUSTOMIZATION.md)

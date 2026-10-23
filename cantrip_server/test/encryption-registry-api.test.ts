@@ -16,15 +16,14 @@ import {
   type WorkerComponentKeyGrant,
 } from "@cantrip/protocol/encryption";
 import {
-  unavailableCodeCapabilities,
   unprobedCodexRuntimeReport,
   type WorkerHeartbeat,
 } from "@cantrip/protocol";
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 
 import { buildApp } from "../src/app.js";
+import { ensureConfiguredAdministrator } from "../src/auth/configured-administrator.js";
 import { hashPassword, hashSecret } from "../src/auth/service.js";
-import { CodeTunnelBroker } from "../src/code/tunnel.js";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase } from "../src/db/index.js";
 
@@ -148,7 +147,6 @@ function workerHeartbeat(workerId: string): WorkerHeartbeat {
       iceTransportPolicies: ["relay"],
       maxSessions: 4,
     },
-    code: unavailableCodeCapabilities,
     startedAt: new Date().toISOString(),
   };
 }
@@ -217,6 +215,65 @@ afterAll(async () => {
 });
 
 describe("opaque encryption registry", () => {
+  it("keeps administrator passwords environment-managed without replacing client encryption keys", async () => {
+    const config: ServerConfig = {
+      ...(await createConfig()),
+      adminEmail: "admin@example.com",
+      adminPassword: password,
+      adminBootstrapToken: undefined,
+      licenseWhitelistEnabled: true,
+    };
+    const database = await connectDatabase(config);
+    const app = await buildApp({ config, database, logger: false });
+    try {
+      const login = await app.inject({
+        method: "POST",
+        url: "/api/auth/login",
+        headers: { origin },
+        payload: { email: config.adminEmail, password },
+      });
+      expect(login.statusCode).toBe(200);
+      const headers = authHeaders(login);
+      const initialization = initialProfile(
+        "11111111-1111-4111-8111-111111111111",
+      );
+      const initialized = await app.inject({
+        method: "POST",
+        url: "/api/encryption/profile/initialize",
+        headers,
+        payload: initialization,
+      });
+      expect(initialized.statusCode).toBe(201);
+      const profile = initialized.json().profile;
+      const changed = await app.inject({
+        method: "POST",
+        url: "/api/account/password",
+        headers,
+        payload: {
+          currentPassword: password,
+          newPassword: "a different correct password",
+          expectedProfileRevision: profile.revision,
+          passwordKdf: initialization.profile.passwordKdf,
+          passwordWrappedMasterKey:
+            initialization.profile.passwordWrappedMasterKey,
+        },
+      });
+      expect(changed.statusCode).toBe(409);
+      expect(changed.json().error).toContain("CANTRIP_ADMIN_PASSWORD");
+      await ensureConfiguredAdministrator(
+        { ...config, adminPassword: "changed environment password" },
+        database.repository,
+      );
+      expect(
+        await database.repository.encryptionRegistry.getProfile(
+          login.json().currentUser.id,
+        ),
+      ).toEqual(profile);
+    } finally {
+      await app.close();
+    }
+  });
+
   it("registers an authenticated local bootstrap worker without a credential row", async () => {
     const hostedConfig = await createConfig();
     const config: ServerConfig = {
@@ -319,27 +376,10 @@ describe("opaque encryption registry", () => {
             publicKey: replacementPublicKey,
           },
         });
-      let releaseRetirement!: () => void;
-      const heldRetirement = new Promise<void>((resolve) => {
-        releaseRetirement = resolve;
-      });
-      const retirement = vi
-        .spyOn(CodeTunnelBroker.prototype, "revokeSharedWorkerSecurity")
-        .mockReturnValue(heldRetirement);
-      let replacementResponses;
-      try {
-        replacementResponses = await Promise.all([
-          replacementRequest(),
-          replacementRequest(),
-        ]);
-        expect(retirement).toHaveBeenCalledWith(
-          initialBootstrap.ownerId,
-          workerId,
-        );
-      } finally {
-        releaseRetirement();
-        retirement.mockRestore();
-      }
+      const replacementResponses = await Promise.all([
+        replacementRequest(),
+        replacementRequest(),
+      ]);
       for (const replacementResponse of replacementResponses) {
         expect(replacementResponse.statusCode).toBe(200);
         expect(
@@ -712,43 +752,20 @@ describe("opaque encryption registry", () => {
       ).toEqual(opaqueGrant);
 
       const tunnelGrant = workerGrant(workerId, "tunnel-content", 2);
-      let releaseSecurityRetirement!: () => void;
-      const securityRetirementHeld = new Promise<void>((resolve) => {
-        releaseSecurityRetirement = resolve;
+      const tunnelGrantResponse = await app.inject({
+        method: "POST",
+        url: `/api/encryption/principals/${workerPrincipalId}/grants`,
+        headers: ownerHeaders,
+        payload: {
+          component: "tunnel-content",
+          keyRevision: 2,
+          wrappedKey: tunnelGrant,
+        },
       });
-      const securityRetirement = vi
-        .spyOn(CodeTunnelBroker.prototype, "revokeSharedWorkerSecurity")
-        .mockReturnValue(securityRetirementHeld);
-      try {
-        const tunnelGrantRequest = app.inject({
-          method: "POST",
-          url: `/api/encryption/principals/${workerPrincipalId}/grants`,
-          headers: ownerHeaders,
-          payload: {
-            component: "tunnel-content",
-            keyRevision: 2,
-            wrappedKey: tunnelGrant,
-          },
-        });
-        await vi.waitFor(() =>
-          expect(securityRetirement).toHaveBeenCalledWith(owner.id, workerId),
-        );
-        let settled = false;
-        void tunnelGrantRequest.then(() => {
-          settled = true;
-        });
-        await Promise.resolve();
-        expect(settled).toBe(false);
-        releaseSecurityRetirement();
-        const tunnelGrantResponse = await tunnelGrantRequest;
-        expect(tunnelGrantResponse.statusCode).toBe(201);
-        expect(
-          encryptionKeyGrantSchema.parse(tunnelGrantResponse.json()).wrappedKey,
-        ).toEqual(tunnelGrant);
-      } finally {
-        releaseSecurityRetirement();
-        securityRetirement.mockRestore();
-      }
+      expect(tunnelGrantResponse.statusCode).toBe(201);
+      expect(
+        encryptionKeyGrantSchema.parse(tunnelGrantResponse.json()).wrappedKey,
+      ).toEqual(tunnelGrant);
 
       const workerBootstrap = workerEncryptionBootstrapResultSchema.parse(
         (

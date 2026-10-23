@@ -37,6 +37,7 @@ function readPort(
 
 export interface ServerConfig {
   adminEmail?: string;
+  adminPassword?: string;
   adminBootstrapToken?: string;
   allowInsecureRemote: boolean;
   apiBodyLimitBytes?: number;
@@ -621,6 +622,19 @@ export function readServerConfig(): ServerConfig {
     throw new Error("CANTRIP_ADMIN_EMAIL must be a valid email address.");
   }
   const adminEmail = adminEmailResult?.data;
+  const adminPassword = process.env.CANTRIP_ADMIN_PASSWORD || undefined;
+  if (authMode === "accounts" && adminPassword !== undefined) {
+    if (!adminEmail) {
+      throw new Error("CANTRIP_ADMIN_PASSWORD requires CANTRIP_ADMIN_EMAIL.");
+    }
+    if (
+      !accountRegistrationSchema.shape.password.safeParse(adminPassword).success
+    ) {
+      throw new Error(
+        "CANTRIP_ADMIN_PASSWORD must contain 12 to 1024 characters.",
+      );
+    }
+  }
   const licenseWhitelistEnabled =
     process.env.CANTRIP_LICENSE_WHITELIST_ENABLED === undefined
       ? true
@@ -735,6 +749,7 @@ export function readServerConfig(): ServerConfig {
 
   const config: ServerConfig = {
     adminEmail,
+    adminPassword,
     adminBootstrapToken,
     allowInsecureRemote,
     apiBodyLimitBytes: readBoundedInteger(

@@ -13,8 +13,8 @@ const ignoreGitHistoryHeaderChange = (_state: unknown): void => undefined;
 
 /**
  * Adapts the focused-shell bindings for a simultaneously visible pane. The
- * focused selection remains authoritative for global header/actions, while a
- * pane body reads its own locally remembered active tab.
+ * focused selection supplies the window title and common actions. Each pane
+ * body and its surface toolbar use that pane's locally remembered active tab.
  */
 export function projectPaneRenderBindings(
   bindings: Readonly<Record<string, any>>,
@@ -134,7 +134,6 @@ export function projectPaneRenderBindings(
     activeProjectOverviewSection,
     activeProjectTaskChat: focused ? bindings.activeProjectTaskChat : undefined,
     activeProjectTaskChatId: focused ? bindings.activeProjectTaskChatId : null,
-    activeProjectTaskView: focused ? bindings.activeProjectTaskView : "task",
     codeSurfaceVisible: activeSurface?.kind === "code",
     currentRelocation:
       bindings.selectedSurface?.tabKey === activeTabKey

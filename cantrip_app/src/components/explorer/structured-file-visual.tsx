@@ -389,7 +389,10 @@ function NestedStructuredFileVisual({
       className="flex h-full min-h-0 flex-col"
       onKeyDown={handleSaveShortcut}
     >
-      <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border/60 bg-background/95 px-4 py-2.5 backdrop-blur">
+      <div
+        className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border/60 px-4 py-2.5"
+        data-slot="file-visual-toolbar"
+      >
         <div className="relative min-w-56 flex-1 sm:max-w-md">
           <Search className="pointer-events-none absolute left-2.5 top-2 size-3.5 text-muted-foreground" />
           <input
@@ -425,9 +428,12 @@ function NestedStructuredFileVisual({
           {editError}
         </div>
       ) : null}
-      <div className="min-h-0 flex-1 overflow-auto p-4">
+      <div
+        className="min-h-0 flex-1 overflow-auto py-4"
+        data-content-gutter="standard"
+      >
         <div
-          className="mx-auto min-w-[36rem] max-w-6xl overflow-hidden rounded-lg border border-border/70 bg-card/20 shadow-sm"
+          className="min-w-[36rem] overflow-hidden rounded-lg border border-border/70 bg-card/20 shadow-sm"
           role="table"
         >
           <div

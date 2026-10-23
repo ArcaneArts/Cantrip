@@ -7,12 +7,8 @@ import * as ContextMenu from "@radix-ui/react-context-menu";
 import {
   ChevronDown,
   ChevronRight,
-  File,
-  FileCode2,
   FileClock,
-  FileText,
-  Folder,
-  FolderOpen,
+  FilePlus2,
   FolderPlus,
   Link2,
   Loader2,
@@ -42,7 +38,15 @@ import {
   StyledContextMenuItem,
 } from "@/components/ui/styled-menu";
 import { cn } from "@/lib/utils";
+import { useFileChangeActivity } from "./use-file-change-activity";
+import { useSidebarFolderExpansion } from "./use-sidebar-folder-expansion";
 import { requestGitFileHistory } from "@/lib/git-history-navigation";
+import { FileTypeIcon } from "@/components/files/file-type-icon";
+import {
+  SidebarNewFileRow,
+  useSidebarNewFile,
+  type SidebarNewFileDraft,
+} from "./sidebar-new-file";
 
 const SIDEBAR_FILE_TREE_INDENT_PX = 6;
 const SIDEBAR_HIDDEN_METADATA_NAMES = new Set([".ds_store", "thumbs.db"]);
@@ -67,18 +71,12 @@ export type ExplorerFileMutationAuthorization = {
   isCurrent(): boolean;
 };
 
-function entryIcon(entry: ExplorerEntry, expanded: boolean) {
-  if (entry.kind === "directory") return expanded ? FolderOpen : Folder;
-  if (entry.markdown) return FileText;
-  if (entry.viewable) return FileCode2;
-  return File;
-}
-
 function SidebarFilesContextMenu({
   children,
   createPending,
   localFolderModifier,
   onCreateFolder,
+  onCreateFile,
   onOpenNative,
   revealLabel,
 }: {
@@ -86,16 +84,26 @@ function SidebarFilesContextMenu({
   createPending: boolean;
   localFolderModifier: boolean;
   onCreateFolder?(): void;
+  onCreateFile?(): void;
   onOpenNative?(localFolder: boolean): void;
   revealLabel?: string;
 }) {
   const revealLocalFolder = useRef(false);
-  if ((!onOpenNative || !revealLabel) && !onCreateFolder) return children;
+  const keepNewFileInputFocused = useRef(false);
+  if ((!onOpenNative || !revealLabel) && !onCreateFolder && !onCreateFile)
+    return children;
   return (
     <ContextMenu.Root>
       <ContextMenu.Trigger asChild>{children}</ContextMenu.Trigger>
       <ContextMenu.Portal>
-        <StyledContextMenuContent className="min-w-48">
+        <StyledContextMenuContent
+          className="min-w-48"
+          onCloseAutoFocus={(event) => {
+            if (!keepNewFileInputFocused.current) return;
+            keepNewFileInputFocused.current = false;
+            event.preventDefault();
+          }}
+        >
           {onOpenNative && revealLabel ? (
             <StyledContextMenuItem
               aria-label={`Open project root in ${revealLabel}`}
@@ -113,6 +121,18 @@ function SidebarFilesContextMenu({
                 localFolder={localFolderModifier}
               />
               Open in {revealLabel}
+            </StyledContextMenuItem>
+          ) : null}
+          {onCreateFile ? (
+            <StyledContextMenuItem
+              aria-label="Create file in project root"
+              disabled={createPending}
+              onSelect={() => {
+                keepNewFileInputFocused.current = true;
+                onCreateFile();
+              }}
+            >
+              <FilePlus2 className="size-4" /> New File
             </StyledContextMenuItem>
           ) : null}
           {onCreateFolder ? (
@@ -144,6 +164,8 @@ function SidebarFileRow({
   localFolderModifier,
   onDelete,
   onCreateFolder,
+  onCreateFile,
+  createPending = false,
   onOpenGraph,
   onOpenHistory,
   onOpenNative,
@@ -166,6 +188,8 @@ function SidebarFileRow({
   localFolderModifier: boolean;
   onDelete(): void;
   onCreateFolder?(): void;
+  onCreateFile?(): void;
+  createPending?: boolean;
   onOpenGraph?(): void;
   onOpenHistory?(): void;
   onOpenNative?(localFolder: boolean): void;
@@ -180,7 +204,6 @@ function SidebarFileRow({
   renameValue: string;
   revealLabel?: string;
 }) {
-  const Icon = entryIcon(entry, expanded);
   const openable = entry.kind === "directory" || entry.viewable;
   const renameInputRef = useRef<HTMLInputElement>(null);
   const rowRef = useRef<HTMLDivElement>(null);
@@ -251,7 +274,12 @@ function SidebarFileRow({
         ) : (
           <span className="size-3 shrink-0" aria-hidden="true" />
         )}
-        <Icon className="size-3.5 shrink-0" />
+        <FileTypeIcon
+          path={entry.name}
+          kind={entry.kind}
+          expanded={expanded}
+          className="size-3.5"
+        />
         {editing ? (
           <input
             aria-label={`Rename ${entry.name}`}
@@ -281,7 +309,9 @@ function SidebarFileRow({
             value={renameValue}
           />
         ) : (
-          <span className="truncate">{entry.name}</span>
+          <span className="truncate" data-file-change-path={entry.path}>
+            {entry.name}
+          </span>
         )}
         {editing && renamePending ? (
           <Loader2 className="ml-auto size-3 shrink-0 animate-spin" />
@@ -344,9 +374,22 @@ function SidebarFileRow({
               Open in Graph
             </StyledContextMenuItem>
           ) : null}
+          {entry.kind === "directory" && onCreateFile ? (
+            <StyledContextMenuItem
+              aria-label={`Create file in ${entry.path}`}
+              disabled={createPending}
+              onSelect={() => {
+                keepRenameInputFocusedRef.current = true;
+                onCreateFile();
+              }}
+            >
+              <FilePlus2 className="size-4" /> New File
+            </StyledContextMenuItem>
+          ) : null}
           {entry.kind === "directory" && onCreateFolder ? (
             <StyledContextMenuItem
               aria-label={`Create folder in ${entry.path}`}
+              disabled={createPending}
               onSelect={onCreateFolder}
             >
               <FolderPlus className="size-4" />
@@ -355,7 +398,10 @@ function SidebarFileRow({
           ) : null}
           {onOpenNative ||
           (entry.kind === "directory" &&
-            (onOpenTerminal || onOpenGraph || onCreateFolder)) ? (
+            (onOpenTerminal ||
+              onOpenGraph ||
+              onCreateFolder ||
+              onCreateFile)) ? (
             <ContextMenu.Separator className="my-1 h-px bg-border" />
           ) : null}
           <StyledContextMenuItem
@@ -389,6 +435,9 @@ function SidebarDirectoryNode({
   explorerId,
   localFolderModifier,
   onCreateFolder,
+  onCreateFile,
+  createPending,
+  newFileDraft,
   onDelete,
   onOpenGraph,
   onOpenHistory,
@@ -419,6 +468,9 @@ function SidebarDirectoryNode({
   explorerId: string;
   localFolderModifier: boolean;
   onCreateFolder(parentPath: string): void;
+  onCreateFile(parentPath: string): void;
+  createPending: boolean;
+  newFileDraft: SidebarNewFileDraft | null;
   onDelete(entry: ExplorerEntry): void;
   onOpenGraph?(entry: ExplorerEntry): void;
   onOpenHistory(path: string): void;
@@ -497,6 +549,8 @@ function SidebarDirectoryNode({
         expanded={expanded}
         localFolderModifier={localFolderModifier}
         onCreateFolder={() => onCreateFolder(entry.path)}
+        onCreateFile={() => onCreateFile(entry.path)}
+        createPending={createPending}
         onDelete={() => onDelete(entry)}
         onOpenGraph={onOpenGraph ? () => onOpenGraph(entry) : undefined}
         onOpenNative={
@@ -518,6 +572,9 @@ function SidebarDirectoryNode({
       />
       {expanded ? (
         <div role="group">
+          {newFileDraft?.parentPath === entry.path ? (
+            <SidebarNewFileRow depth={depth + 1} draft={newFileDraft} />
+          ) : null}
           {directory.isLoading ? (
             <div
               className="flex h-7 items-center gap-2 text-[10px] text-muted-foreground"
@@ -552,6 +609,9 @@ function SidebarDirectoryNode({
                   key={child.path}
                   localFolderModifier={localFolderModifier}
                   onCreateFolder={onCreateFolder}
+                  onCreateFile={onCreateFile}
+                  createPending={createPending}
+                  newFileDraft={newFileDraft}
                   editingPath={editingPath}
                   onDelete={onDelete}
                   onOpenGraph={onOpenGraph}
@@ -622,6 +682,7 @@ export function ProjectSidebarFileTree({
   explorer,
   loading,
   onCreateFolder,
+  onCreateFile,
   onDelete,
   onOpenGraph,
   onOpenNative,
@@ -642,6 +703,11 @@ export function ProjectSidebarFileTree({
   loading: boolean;
   onCreateFolder(
     parentPath: string,
+    authorization: ExplorerFileMutationAuthorization,
+  ): Promise<ExplorerEntry>;
+  onCreateFile(
+    parentPath: string,
+    name: string,
     authorization: ExplorerFileMutationAuthorization,
   ): Promise<ExplorerEntry>;
   onDelete(
@@ -674,11 +740,8 @@ export function ProjectSidebarFileTree({
       path,
     });
   };
-  const [expandedPaths, setExpandedPaths] = useState<ReadonlySet<string>>(
-    () => new Set(sidebarFileAncestorPaths(activePath)),
-  );
-  const activePathRef = useRef(activePath);
-  activePathRef.current = activePath;
+  const { expandedPaths, setExpandedPaths, toggle, expandChild } =
+    useSidebarFolderExpansion(explorer);
   const [renameTarget, setRenameTarget] = useState<ExplorerEntry | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [renamePending, setRenamePending] = useState(false);
@@ -687,6 +750,11 @@ export function ProjectSidebarFileTree({
   const [deleteTarget, setDeleteTarget] = useState<ExplorerEntry | null>(null);
   const [deletePending, setDeletePending] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const activityRef = useFileChangeActivity({
+    projectId: explorer?.projectId,
+    worktreeId: explorer?.worktreeId,
+    workerId: explorer?.activeWorkerId,
+  });
   const [filesCollapsed, setFilesCollapsed] = useState(false);
   useEffect(() => {
     const ancestors = sidebarFileAncestorPaths(activePath);
@@ -696,7 +764,7 @@ export function ProjectSidebarFileTree({
       return missing.length > 0 ? new Set([...current, ...missing]) : current;
     });
     setFilesCollapsed(false);
-  }, [activePath]);
+  }, [activePath, setExpandedPaths]);
   const streamEncryption = useExplorerWorkerEncryption(
     explorer,
     !filesCollapsed,
@@ -794,10 +862,6 @@ export function ProjectSidebarFileTree({
   ]);
 
   useEffect(() => {
-    setExpandedPaths(new Set(sidebarFileAncestorPaths(activePathRef.current)));
-  }, [explorer?.activeWorkerId, explorer?.projectId, explorer?.worktreeId]);
-
-  useEffect(() => {
     setRenameTarget(null);
     setRenameError(null);
     setDeleteTarget(null);
@@ -813,30 +877,22 @@ export function ProjectSidebarFileTree({
     } satisfies ExplorerFileMutationAuthorization;
   };
 
-  const toggle = (path: string) => {
-    setExpandedPaths((current) => {
-      const next = new Set(current);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
-      return next;
-    });
-  };
-
-  const expandChild = useCallback((parentPath: string, path: string) => {
-    setExpandedPaths((current) =>
-      current.has(parentPath) && !current.has(path)
-        ? new Set([...current, path])
-        : current,
-    );
-  }, []);
-
+  const newFile = useSidebarNewFile({
+    explorerId: explorer?.id,
+    bindingKey: mutationBindingKey,
+    authorize: currentMutationAuthorization,
+    onCreate: onCreateFile,
+  });
   const beginRename = (entry: ExplorerEntry) => {
+    if (newFile.pending) return;
+    newFile.cancel();
     setRenameError(null);
     setRenameTarget(entry);
     setRenameValue(entry.name);
   };
   const createFolder = (parentPath: string) => {
-    if (createPending || renamePending) return;
+    if (createPending || renamePending || newFile.pending) return;
+    newFile.cancel();
     const authorization = currentMutationAuthorization();
     if (!authorization) return;
     setCreatePending(true);
@@ -857,6 +913,13 @@ export function ProjectSidebarFileTree({
         );
       })
       .finally(() => setCreatePending(false));
+  };
+  const beginCreateFile = (parentPath: string) => {
+    if (createPending || renamePending || !newFile.begin(parentPath)) return;
+    setRenameTarget(null);
+    setRenameError(null);
+    if (parentPath)
+      setExpandedPaths((current) => new Set([...current, parentPath]));
   };
   const cancelRename = () => {
     if (renamePending) return;
@@ -936,6 +999,7 @@ export function ProjectSidebarFileTree({
   return (
     <>
       <section
+        ref={activityRef}
         className="mt-2 flex min-h-0 flex-1 flex-col border-t border-transparent pt-2 transition-colors duration-150 group-hover/sidebar-shell:border-border/70"
         aria-label="Files"
       >
@@ -945,7 +1009,9 @@ export function ProjectSidebarFileTree({
           onClick={() => setFilesCollapsed((collapsed) => !collapsed)}
           type="button"
         >
-          <span className="min-w-0 flex-1 truncate">Files</span>
+          <span className="min-w-0 flex-1 truncate" data-file-change-path="">
+            Files
+          </span>
           {!filesCollapsed && pinningPath ? (
             <Loader2 className="size-3 animate-spin" />
           ) : null}
@@ -1003,9 +1069,10 @@ export function ProjectSidebarFileTree({
         ) : explorer ? (
           <>
             <SidebarFilesContextMenu
-              createPending={createPending}
+              createPending={createPending || renamePending || newFile.pending}
               localFolderModifier={shiftKeyHeld}
               onCreateFolder={() => createFolder("")}
+              onCreateFile={() => beginCreateFile("")}
               onOpenNative={onOpenNativeRoot}
               revealLabel={revealLabel}
             >
@@ -1014,6 +1081,9 @@ export function ProjectSidebarFileTree({
                 role="tree"
                 aria-label="Project files"
               >
+                {newFile.draft?.parentPath === "" ? (
+                  <SidebarNewFileRow depth={0} draft={newFile.draft} />
+                ) : null}
                 {visibleEntries.map((entry) =>
                   entry.kind === "directory" ? (
                     <SidebarDirectoryNode
@@ -1027,6 +1097,11 @@ export function ProjectSidebarFileTree({
                       key={entry.path}
                       localFolderModifier={shiftKeyHeld}
                       onCreateFolder={createFolder}
+                      onCreateFile={beginCreateFile}
+                      createPending={
+                        createPending || renamePending || newFile.pending
+                      }
+                      newFileDraft={newFile.draft}
                       onDelete={setDeleteTarget}
                       onOpenGraph={onOpenGraph}
                       onOpenHistory={openFileHistory}
@@ -1075,7 +1150,8 @@ export function ProjectSidebarFileTree({
                     />
                   ),
                 )}
-                {visibleEntries.length === 0 ? (
+                {visibleEntries.length === 0 &&
+                newFile.draft?.parentPath !== "" ? (
                   <p className="px-3 py-4 text-center text-[10px] text-muted-foreground">
                     This folder is empty.
                   </p>

@@ -11,7 +11,7 @@ describe("ChatRunStatus", () => {
     { automationPaused: false, staleActivity: true },
     { automationPaused: true, staleActivity: true },
   ])(
-    "shows failure with safe guidance for %j",
+    "leaves failed turns in history instead of pinning a banner for %j",
     ({ automationPaused, staleActivity }) => {
       const markup = renderToStaticMarkup(
         <ChatRunStatus
@@ -24,13 +24,7 @@ describe("ChatRunStatus", () => {
           waitingForPlanAnswer={staleActivity}
         />,
       );
-      expect(markup).toContain('role="alert"');
-      expect(markup).toContain("Last turn failed");
-      expect(markup).toContain("Review the conversation");
-      expect(markup).toContain("before sending a follow-up");
-      expect(markup).not.toContain("Working...");
-      expect(markup).not.toContain("Responding...");
-      expect(markup).not.toContain("<button");
+      expect(markup).toBe("");
     },
   );
 
@@ -56,7 +50,7 @@ describe("ChatRunStatus", () => {
       await act(async () => {
         renderer = TestRenderer.create(view("failed"));
       });
-      expect(renderer!.root.findByProps({ role: "alert" })).toBeDefined();
+      expect(renderer!.toJSON()).toBeNull();
       await act(async () => {
         renderer!.update(view("running"));
       });
@@ -72,7 +66,7 @@ describe("ChatRunStatus", () => {
       await act(async () => {
         renderer = TestRenderer.create(view("failed"));
       });
-      expect(renderer!.root.findByProps({ role: "alert" })).toBeDefined();
+      expect(renderer!.toJSON()).toBeNull();
       expect(fetch).not.toHaveBeenCalled();
     } finally {
       await act(async () => {

@@ -45,45 +45,6 @@ export type RemoteSurfaceCapabilities = z.infer<
   typeof remoteSurfaceCapabilitiesSchema
 >;
 
-export const codeTransportSchema = z.literal("web-proxy");
-
-export type CodeTransport = z.infer<typeof codeTransportSchema>;
-export const codeSharedTransportProtocolVersionSchema = z.union([
-  z.literal(1),
-  z.literal(2),
-]);
-
-export type CodeSharedTransportProtocolVersion = z.infer<
-  typeof codeSharedTransportProtocolVersionSchema
->;
-export const codeCapabilitiesSchema = z.object({
-  available: z.boolean(),
-  version: z.string().min(1).nullable(),
-  upstreamRevision: z
-    .string()
-    .regex(/^[0-9a-f]{40}$/u)
-    .nullable(),
-  patchset: z.number().int().nonnegative(),
-  transport: codeTransportSchema,
-  sharedTransportProtocolVersion:
-    codeSharedTransportProtocolVersionSchema.default(1),
-  maxSessions: z.number().int().positive(),
-  reason: z.string().min(1).nullable(),
-});
-
-export type CodeCapabilities = z.infer<typeof codeCapabilitiesSchema>;
-
-export const unavailableCodeCapabilities = codeCapabilitiesSchema.parse({
-  available: false,
-  version: null,
-  upstreamRevision: null,
-  patchset: 0,
-  transport: "web-proxy",
-  sharedTransportProtocolVersion: 1,
-  maxSessions: 1,
-  reason: "This worker has not reported a Cantrip Code runtime.",
-});
-
 export const remoteSurfaceIceServerSchema = z.object({
   urls: z.array(z.string().min(1)).min(1),
   username: z.string().min(1).optional(),
@@ -234,7 +195,7 @@ export const unprobedCodexRuntimeReport = codexRuntimeReportSchema.parse({
   adapter: "app-server",
   compatibility: "missing",
   version: null,
-  testedRange: ">=0.160.1 <0.161.0",
+  testedRange: ">=0.163.0 <0.164.0",
   initialize: null,
   methods: {},
   features: [],

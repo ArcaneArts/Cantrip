@@ -4,6 +4,7 @@ import {
   type ComposerAttachmentState,
 } from "./composer-draft-attachments";
 import { useChatExecutionControls } from "./use-chat-execution-controls";
+import { useChatGoalQuery } from "@/lib/chat-goal-query";
 import { nativePermissionControlState } from "./native-permission-control-state";
 import type {
   AgentInteractionResponse,
@@ -139,7 +140,6 @@ import {
   deleteQueuedPrompt,
   forkChat,
   getChatComposerDraft,
-  getChatGoal,
   getChatPermissionProfiles,
   getChatPlan,
   getChatReasoning,
@@ -186,6 +186,7 @@ export function useChatTranscriptController({
   onOpenFile,
   onRename,
   onOpenRelocation,
+  onConfigureModels,
   onToast,
   relocationJob,
   refocusOnWindowActivation,
@@ -206,9 +207,10 @@ export function useChatTranscriptController({
   onForked(chat: ChatSummary | StandaloneChatSummary): void;
   onFilesOpenChange?(open: boolean): void;
   onInspectOpenChange(open: boolean): void;
-  onOpenFile(path: string): void;
+  onOpenFile(path: string, worktreeId?: string | null): void;
   onRename(title: string): void;
   onOpenRelocation(): void;
+  onConfigureModels?(): void;
   onToast(toast: AppToastInput): void;
   relocationJob: ChatRelocationJobSummary | null;
   refocusOnWindowActivation: boolean;
@@ -650,7 +652,7 @@ export function useChatTranscriptController({
     ),
     queryFn: async () => {
       const result = await syncChat(chat.id);
-      if (result.turns.length > 0) {
+      if (result.turns.length > 0 || result.statusSource === "native-thread") {
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ["messages", chat.id] }),
           queryClient.invalidateQueries({
@@ -661,7 +663,9 @@ export function useChatTranscriptController({
       return result;
     },
     queryKey: ["chat-sync", chat.id],
-    refetchInterval: chatRefreshInterval,
+    // A live socket can remain healthy while a turn's lifecycle publication
+    // was lost. Observe the actual runtime even when there are no new messages.
+    refetchInterval: 5_000,
     retry: false,
   });
   const queuedPromptState = useQuery({
@@ -673,13 +677,11 @@ export function useChatTranscriptController({
     ...queuedPromptState,
     data: queuedPromptState.data?.items,
   };
-  const goalState = useQuery({
-    enabled: capabilities.modes === "agent-modes",
-    queryFn: () => getChatGoal(chat.id),
-    queryKey: ["goal", chat.id],
-    refetchInterval: chatRefreshInterval,
-    retry: false,
-  });
+  const goalState = useChatGoalQuery(
+    chat.id,
+    chat.status,
+    capabilities.modes === "agent-modes",
+  );
   const planState = useQuery({
     enabled: capabilities.modes === "agent-modes",
     queryFn: () => getChatPlan(chat.id),
@@ -886,8 +888,12 @@ export function useChatTranscriptController({
     [agentProjection.rootMessages],
   );
   const latestLiveActivityGroupKey = useMemo(
-    () => findLatestLiveActivityGroupKey(timeline),
-    [timeline],
+    () =>
+      !chat.automationPaused &&
+      (chat.status === "running" || chat.status === "waiting-for-approval")
+        ? findLatestLiveActivityGroupKey(timeline)
+        : null,
+    [timeline, chat.status, chat.automationPaused],
   );
   const latestEditableMessage = useMemo(
     () =>
@@ -1397,9 +1403,10 @@ export function useChatTranscriptController({
     mutationFn: () => compactChat(chat.id),
   });
   const updateGoal = useMutation({
-    mutationFn: (status: "active" | "paused") =>
-      updateChatGoal(chat.id, { status }),
-    onSuccess: async () => {
+    mutationFn: (input: { status?: "active" | "paused"; objective?: string }) =>
+      updateChatGoal(chat.id, input),
+    onSuccess: async (result) => {
+      queryClient.setQueryData(["goal", chat.id], result);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["goal", chat.id] }),
         queryClient.invalidateQueries({ queryKey: ["messages", chat.id] }),
@@ -1410,6 +1417,7 @@ export function useChatTranscriptController({
   const clearGoal = useMutation({
     mutationFn: () => clearChatGoal(chat.id),
     onSuccess: async () => {
+      queryClient.setQueryData(["goal", chat.id], { goal: null });
       await queryClient.invalidateQueries({ queryKey: ["goal", chat.id] });
     },
   });
@@ -1935,6 +1943,7 @@ export function useChatTranscriptController({
     onFilesOpenChange,
     onOpenFile,
     onOpenRelocation,
+    onConfigureModels,
     permissionProfiles,
     nativePermissions,
     planImplementationDisabled,

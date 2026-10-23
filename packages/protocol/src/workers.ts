@@ -9,11 +9,9 @@ import {
   workerEncryptionStatusSchema,
 } from "./encryption.js";
 import {
-  codeCapabilitiesSchema,
   codexRuntimeReportSchema,
   defaultRemoteSurfaceCapabilities,
   remoteSurfaceCapabilitiesSchema,
-  unavailableCodeCapabilities,
   unprobedCodexRuntimeReport,
 } from "./runtime-capabilities.js";
 import {
@@ -42,7 +40,6 @@ export const workerHeartbeatSchema = z.object({
   directBroker: directBrokerAdvertisementSchema.default(
     unavailableDirectBroker,
   ),
-  code: codeCapabilitiesSchema.optional(),
   projectReplicas: projectReplicaCapabilitiesSchema.default(
     unavailableProjectReplicaCapabilities,
   ),
@@ -67,7 +64,6 @@ export const workerHeartbeatSchema = z.object({
 });
 
 export const workerSummarySchema = workerHeartbeatSchema.extend({
-  code: codeCapabilitiesSchema.default(unavailableCodeCapabilities),
   online: z.boolean(),
   lastSeenAt: z.string().datetime(),
 });

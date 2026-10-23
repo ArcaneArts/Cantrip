@@ -43,10 +43,9 @@ their mutations.
   allowed operations and lanes, channel count, and lease.
   Candidate addresses are rendezvous data; the authenticated DTLS-bound peer
   handshake and installed grant are authority.
-- Cantrip Code additionally binds the Code session, managed tunnel, and
-  attachment. The worker stores the installed token hash while the client gets
-  the bearer, and verifies the selected editor session before opening the
-  loopback target.
+- Native editor file operations bind the authenticated owner and assigned worker
+  to the project checkout or Chat scratch scope. The worker validates the target
+  before reading or saving; writes also require the matching file version.
 - The server does not bind or inspect a project-share root. It binds the tenant,
   project or standalone chat, worker, tunnel, and attachment. Root, Digest
   credentials, and data key remain protected tunnel content; the worker opens

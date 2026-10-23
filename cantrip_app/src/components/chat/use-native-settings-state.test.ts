@@ -117,12 +117,74 @@ beforeEach(() => {
   runtime.encryption = { ...runtime.encryption, status: "ready" };
 });
 afterEach(async () => {
+  vi.restoreAllMocks();
   await act(async () => {
     cleanup.splice(0).forEach((dispose) => dispose());
   });
 });
 
 describe("native settings view subscription", () => {
+  it("recovers pending changes by reading native evidence without resubmitting the request", async () => {
+    const pending: NativeSettingsState = {
+      ...state(),
+      pending: [
+        {
+          desiredRevision: "1",
+          bindingId: null,
+          status: "dispatched",
+          intent: {
+            operationId: "operation",
+            operationGeneration: "generation",
+            origin: "gui",
+            source: {
+              workerId: "worker",
+              threadId: "thread",
+              runtimeGeneration: "runtime",
+            },
+            payloadDigest: "a".repeat(64),
+            protectedContent: {
+              version: 1,
+              algorithm: "AES-256-GCM",
+              keyRevision: 1,
+              nonce: "AAAAAAAAAAAAAAAA",
+              ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+            },
+          },
+        },
+      ],
+    };
+    const now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+    runtime.request.mockResolvedValue(pending);
+    const view = await mount();
+    expect(view.current().state.data?.pending).toHaveLength(1);
+    await act(async () => {
+      await view.current().state.refetch();
+    });
+    expect(runtime.request.mock.calls.at(-1)?.[1].method).toBe("POST");
+    // A native refresh publishes live invalidation itself. The ensuing query
+    // reads canonical state without recursively refreshing the worker.
+    await act(async () => {
+      await view.client.invalidateQueries({
+        queryKey: ["native-settings", "chat"],
+      });
+    });
+    expect(runtime.request.mock.calls.at(-1)?.[1].method).toBe("GET");
+    clock.mockReturnValue(now + 3_001);
+    runtime.request.mockResolvedValueOnce(state("2"));
+    await act(async () => {
+      await view.current().state.refetch();
+    });
+    await flush();
+    expect(runtime.request.mock.calls.at(-1)).toMatchObject([
+      "/api/chats/chat/native-settings/refresh",
+      { method: "POST" },
+      { expectedIdentity: runtime.identity },
+    ]);
+    expect(view.current().state.data?.pending).toHaveLength(0);
+    expect(view.current().state.data?.revision).toBe("2");
+    expect(runtime.request).toHaveBeenCalledTimes(4);
+  });
   it("preserves readable confirmed state when a desired request cannot be decrypted", async () => {
     runtime.intents.mockRejectedValue(new Error("Bad desired envelope"));
     const view = await mount();

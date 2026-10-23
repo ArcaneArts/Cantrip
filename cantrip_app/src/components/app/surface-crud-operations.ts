@@ -1,3 +1,4 @@
+import { confirmNativeCodeDiscard } from "@/components/code/native-code-lifecycle";
 import type {
   BrowserSummary,
   ChatSummary,
@@ -24,7 +25,6 @@ import type { ExplorerLifecycleActions } from "@/components/explorer/explorer-vi
 import {
   acknowledgeChatCompletion,
   deleteBrowser,
-  deleteChat,
   deleteCodeTab,
   deleteExplorer,
   deleteProjectView,
@@ -39,6 +39,10 @@ import {
   updateCodeTab,
 } from "@/lib/api";
 import { CantripApiError } from "@/lib/api-client";
+import {
+  removeAgentChat,
+  type AgentChatRemoval,
+} from "@/lib/remove-agent-chat";
 import {
   browserUpdateForPageState,
   type BrowserPageStateUpdate,
@@ -184,28 +188,26 @@ export function useChatDeleteOperation({
   selectedProjectId,
   setChatConsoleOpen,
   setProjectTaskChatIds,
-  setTaskChatViewIds,
   surfaceClose,
 }: {
   queryClient: QueryClient;
   selectedProjectId: string | null;
   setChatConsoleOpen: (chatId: string, open: boolean) => void;
   setProjectTaskChatIds: Dispatch<SetStateAction<ReadonlyMap<string, string>>>;
-  setTaskChatViewIds: Dispatch<SetStateAction<ReadonlySet<string>>>;
   surfaceClose: ProjectSurfaceCloseCoordinator;
 }) {
   return useImmediateProjectSurfaceDelete({
-    getTabId: (tabId: string) => tabId,
+    getTabId: (input: AgentChatRemoval) =>
+      typeof input === "string" ? input : input.chatId,
     kind: "chat",
-    mutationFn: deleteChat,
-    onSuccess: async (_value, deletedId, projectId) => {
+    mutationFn: (input: AgentChatRemoval) =>
+      removeAgentChat(
+        typeof input === "string" ? input : input.chatId,
+        typeof input !== "string" && input.stopRunning,
+      ),
+    onSuccess: async (_value, input, projectId) => {
+      const deletedId = typeof input === "string" ? input : input.chatId;
       setChatConsoleOpen(deletedId, false);
-      setTaskChatViewIds((current) => {
-        if (!current.has(deletedId)) return current;
-        const next = new Set(current);
-        next.delete(deletedId);
-        return next;
-      });
       setProjectTaskChatIds((current) => {
         const next = new Map(
           [...current].filter(([, chatId]) => chatId !== deletedId),
@@ -555,7 +557,22 @@ export function useCodeSurfaceOperations({
     selectedProjectId,
     surfaceClose,
   });
-  return { deleteCodeTabMutation, updateCodeTabMutation } as const;
+  const guardedDelete: typeof deleteCodeTabMutation = {
+    ...deleteCodeTabMutation,
+    mutate(id, options) {
+      if (confirmNativeCodeDiscard(id))
+        deleteCodeTabMutation.mutate(id, options);
+    },
+    mutateAsync(id, options) {
+      return confirmNativeCodeDiscard(id)
+        ? deleteCodeTabMutation.mutateAsync(id, options)
+        : Promise.resolve();
+    },
+  };
+  return {
+    deleteCodeTabMutation: guardedDelete,
+    updateCodeTabMutation,
+  } as const;
 }
 
 export function useProjectViewSurfaceOperations({

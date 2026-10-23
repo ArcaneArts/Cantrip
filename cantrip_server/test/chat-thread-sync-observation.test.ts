@@ -69,6 +69,79 @@ const context: ChatExecutionContext = {
 };
 
 describe("observational custom-child thread reconciliation", () => {
+  it.each(["running", "idle", "failed"] as const)(
+    "recovers %s from native lifecycle even when history has no imported turns",
+    async (status) => {
+      const current = { ...context, status: "failed", executionLaneId: "lane" };
+      const repository = {
+        setChatStatus: vi.fn(),
+        finishChatExecutionLane: vi.fn(),
+      };
+      const publishChatSummary = vi.fn();
+      const sync = createChatThreadSyncRuntime({
+        applicationOwnerId: () => "owner",
+        repository,
+        bridge: {
+          isConnected: () => true,
+          request: vi.fn().mockResolvedValue({
+            threadId: context.threadId,
+            status,
+            statusSource: "native-thread",
+            turns: [],
+          }),
+        },
+        runtimeForContext: async () => root,
+        publishChatSummary,
+        continuePendingWorktreeTransition: vi.fn().mockResolvedValue(false),
+        dispatchNextQueuedPrompt: vi.fn(),
+      } as unknown as ChatThreadSyncRuntimeDependencies);
+      await sync.reconcileChatThread(current);
+      if (status === "running") {
+        expect(repository.setChatStatus).toHaveBeenCalledWith(
+          "chat",
+          "running",
+        );
+        expect(repository.finishChatExecutionLane).not.toHaveBeenCalled();
+      } else {
+        expect(repository.finishChatExecutionLane).toHaveBeenCalledWith(
+          "chat",
+          "lane",
+          status,
+        );
+      }
+      expect(publishChatSummary).toHaveBeenCalledWith("chat", "project");
+    },
+  );
+  it("publishes goal status even when native history synchronization fails", async () => {
+    const publishChatInvalidation = vi.fn();
+    const sync = createChatThreadSyncRuntime({
+      applicationOwnerId: () => "owner",
+      repository: {
+        getChatExecutionContext: vi.fn().mockResolvedValue(context),
+      },
+      bridge: {
+        isConnected: () => true,
+        request: vi
+          .fn()
+          .mockRejectedValue(
+            new Error("Native history open failed with HTTP 404."),
+          ),
+      },
+      runtimeForContext: async () => root,
+      publishChatInvalidation,
+    } as unknown as ChatThreadSyncRuntimeDependencies);
+    await expect(
+      sync.reconcileObservedChatThread("chat", "worker", "native-thread", [
+        "goal",
+      ]),
+    ).rejects.toThrow("HTTP 404");
+    expect(publishChatInvalidation).toHaveBeenCalledWith(
+      "chat",
+      "chat-goal",
+      null,
+      context,
+    );
+  });
   it.each(["requested", "notified"])(
     "sends a %s history read when actual child execution routing fails",
     async (source) => {

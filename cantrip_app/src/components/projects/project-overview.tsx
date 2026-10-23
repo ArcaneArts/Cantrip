@@ -23,7 +23,6 @@ import {
   Rows3,
 } from "lucide-react";
 import { useMemo, useState } from "react";
-
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { InlineAlert } from "@/components/ui/inline-alert";
@@ -39,7 +38,6 @@ import type {
 import { ProjectSurfaceIcon } from "@/components/workspace/project-surface-icon";
 import type { ProjectSurface } from "@/lib/project-surface";
 import { cn } from "@/lib/utils";
-
 import { ProjectTokenUsageDialog } from "./project-token-usage-dialog";
 import {
   formatAgentTime,
@@ -91,22 +89,6 @@ export function projectSurfaceRuntimeState(
       return { label: "Offline", running: false, tone: "muted" };
     if (surface.entity.status === "exited")
       return { label: "Exited", running: false, tone: "muted" };
-    return { label: "Ready", running: false, tone: "muted" };
-  }
-  if (surface.kind === "code") {
-    if (["running", "starting"].includes(surface.entity.status)) {
-      return {
-        label: surface.entity.status === "starting" ? "Starting" : "Running",
-        running: true,
-        tone: "default",
-      };
-    }
-    if (surface.entity.status === "failed")
-      return { label: "Failed", running: false, tone: "destructive" };
-    if (surface.entity.status === "offline")
-      return { label: "Offline", running: false, tone: "muted" };
-    if (surface.entity.status === "stopped")
-      return { label: "Stopped", running: false, tone: "muted" };
     return { label: "Ready", running: false, tone: "muted" };
   }
   return { label: "Open", running: false, tone: "muted" };

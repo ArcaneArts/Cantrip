@@ -38,6 +38,151 @@ function message(
 }
 
 describe("chat activity timeline", () => {
+  it("keeps a failed goal cycle in history while the next cycle stays live", () => {
+    const correlation = (turnId: string) => ({
+      turnId,
+      threadId: "thread",
+      itemId: null,
+      diagnosticId: null,
+      sourceMethod: "turn/completed",
+    });
+    const timeline = buildChatTimeline([
+      message("user", "user", "2026-08-07T12:00:00.000Z", [
+        { type: "text", text: "Goal", correlation: correlation("first") },
+      ]),
+      message("old-command", "assistant", "2026-08-07T12:00:01.000Z", [
+        {
+          type: "activity",
+          activity: {
+            type: "command",
+            id: "old-command",
+            command: "old",
+            cwd: ".",
+            status: "running",
+            exitCode: null,
+            output: null,
+            correlation: correlation("first"),
+          },
+        },
+      ]),
+      message("summary", "assistant", "2026-08-07T12:00:02.000Z", [
+        {
+          type: "activity",
+          activity: {
+            type: "turnSummary",
+            id: "summary",
+            status: "failed",
+            startedAt: 1_786_104_000,
+            completedAt: 1_786_104_002,
+            durationMs: 2000,
+            correlation: correlation("first"),
+          },
+        },
+      ]),
+      message("new-command", "assistant", "2026-08-07T12:00:03.000Z", [
+        {
+          type: "activity",
+          activity: {
+            type: "command",
+            id: "new-command",
+            command: "new",
+            cwd: ".",
+            status: "running",
+            exitCode: null,
+            output: null,
+            correlation: correlation("second"),
+          },
+        },
+      ]),
+    ]);
+    expect(timeline).toHaveLength(4);
+    expect(timeline[1]).toMatchObject({
+      type: "activityGroup",
+      kind: "turn",
+      turnId: "first",
+      messages: [{ content: [{ activity: { status: "failed" } }] }],
+    });
+    expect(timeline[2]).toMatchObject({
+      type: "message",
+      message: {
+        content: [{ activity: { type: "notice", message: "Turn failed" } }],
+      },
+    });
+    expect(timeline[3]).toMatchObject({
+      type: "activityGroup",
+      endedAt: null,
+      turnId: "second",
+      messages: [{ content: [{ activity: { status: "running" } }] }],
+    });
+    expect(findLatestLiveActivityGroupKey(timeline)).toBe(
+      timeline[3]?.type === "activityGroup" ? timeline[3].key : null,
+    );
+  });
+
+  it("does not revive an unfinished old command after a newer prompt", () => {
+    const timeline = buildChatTimeline([
+      message("old-command", "assistant", "2026-08-07T12:00:00.000Z", [
+        {
+          type: "activity",
+          activity: {
+            type: "command",
+            id: "old-command",
+            command: "old",
+            cwd: ".",
+            status: "running",
+            exitCode: null,
+            output: null,
+          },
+        },
+      ]),
+      message("user", "user", "2026-08-07T12:00:01.000Z", [
+        { type: "text", text: "Continue" },
+      ]),
+    ]);
+    expect(findLatestLiveActivityGroupKey(timeline)).toBeNull();
+  });
+
+  it("does not shimmer old commands while a new autonomous turn emits commentary", () => {
+    const timeline = buildChatTimeline([
+      message("old-command", "assistant", "2026-08-07T12:00:00.000Z", [
+        {
+          type: "activity",
+          activity: {
+            type: "command",
+            id: "old-command",
+            command: "old",
+            cwd: ".",
+            status: "running",
+            correlation: {
+              turnId: "old",
+              threadId: "thread",
+              diagnosticId: null,
+              itemId: null,
+              sourceMethod: "item/started",
+            },
+            exitCode: null,
+            output: null,
+          },
+        },
+      ]),
+      message("next", "assistant", "2026-08-07T12:00:01.000Z", [
+        {
+          type: "text",
+          text: "Continuing",
+          phase: "commentary",
+          correlation: {
+            turnId: "new",
+            threadId: "thread",
+            diagnosticId: null,
+            itemId: null,
+            sourceMethod: "item/started",
+          },
+        },
+      ]),
+    ]);
+    expect(findLatestLiveActivityGroupKey(timeline)).toBeNull();
+  });
+
   it("groups a completed turn and measures user-to-response time", () => {
     const messages = [
       message("user", "user", "2026-08-07T12:00:00.000Z", [
@@ -817,6 +962,30 @@ describe("chat activity timeline", () => {
       "1m 2s",
     );
     expect(formatTurnMetadata(null)).toBeNull();
+    expect(
+      formatTurnMetadata({
+        durationMs: 20_000,
+        totalTokens: 21_000,
+        tokenPerformance: {
+          durationMs: 20_000,
+          totalTokens: 21_000,
+          outputTokens: 1_000,
+          outputDurationMs: 10_000,
+        },
+      }),
+    ).toBe("21,000tok · 20s · 50 tok/s real");
+    expect(
+      formatTurnMetadata({
+        durationMs: 0,
+        totalTokens: 21_000,
+        tokenPerformance: {
+          durationMs: 0,
+          totalTokens: 21_000,
+          outputTokens: 1_000,
+          outputDurationMs: null,
+        },
+      }),
+    ).toBe("21,000tok · 0ms");
   });
 
   it("does not show rate-limit telemetry in the chat timeline", () => {

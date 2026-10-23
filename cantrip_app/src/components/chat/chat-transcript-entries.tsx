@@ -125,7 +125,7 @@ export interface ChatTranscriptEntriesProps {
   onCopyResponse(messageId: string, text: string): Promise<void>;
   onEditMessage(message: ChatMessage): void;
   onForkMessage(messageId: string): void;
-  onOpenFile(path: string): void;
+  onOpenFile(path: string, worktreeId?: string | null): void;
   onSubmitEditedMessage(message: ChatMessage, event?: FormEvent): void;
   onViewSubagent?: (agentKey: string) => void;
   onViewTrajectory?: (turnKey: string) => void;
@@ -283,11 +283,11 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
           className={cn(
             "min-w-0",
             user &&
-              "max-w-[85%] overflow-hidden rounded-2xl border border-transparent bg-muted/80 px-4 py-3 text-foreground sm:max-w-[42rem]",
+              "max-w-[85%] overflow-clip rounded-2xl border border-transparent bg-muted/80 px-4 py-3 text-foreground sm:max-w-[42rem]",
             editingThisMessage && "w-full",
             !user && !system && "flex-1 py-1",
             system &&
-              "max-w-[85%] overflow-hidden rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-destructive",
+              "max-w-[85%] overflow-clip rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-destructive",
           )}
         >
           {user && message.mode !== "default" ? (
@@ -378,10 +378,13 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
               <ChatMessageFileSummary
                 chatId={chatId}
                 model={fileSummary}
-                onOpenFile={onOpenFile}
+                onOpenFile={(path) => onOpenFile(path, message.worktreeId)}
               />
             ) : (
-              <MessageFileSummary model={fileSummary} onOpenFile={onOpenFile} />
+              <MessageFileSummary
+                model={fileSummary}
+                onOpenFile={(path) => onOpenFile(path, message.worktreeId)}
+              />
             )
           ) : null}
           {user && modelLabels.has(message.id) ? (

@@ -25,6 +25,7 @@ import {
 } from "../tasks/state.js";
 import * as schema from "./schema.js";
 import { toTaskDispatchCycleSummary } from "./task-dispatch.js";
+import { taskRetrySummary } from "../tasks/automatic-retry.js";
 import { detachProjectTab, projectTabKey } from "./tab-layouts.js";
 
 type TaskDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
@@ -122,6 +123,7 @@ export function toTaskOpaqueSummary(
   dispatch: typeof schema.taskDispatchCycles.$inferSelect | null = null,
 ): TaskOpaqueSummary {
   return taskOpaqueSummarySchema.parse({
+    automaticRetry: taskRetrySummary(row.automaticRetry),
     chatId: row.chatId,
     planGoalEnabled: row.planGoalEnabled,
     priority: row.priority,
@@ -1183,6 +1185,13 @@ export class TaskRepository {
       }
       if (
         current.state !== next.classification.state &&
+        !(
+          current.state === "failed" &&
+          next.classification.state === "complete" &&
+          current.implementationStartedAt &&
+          current.hasFinalPlan &&
+          current.hasGoalPrompt
+        ) &&
         !canTransitionTaskState(current.state, next.classification.state)
       ) {
         throw new TaskStateTransitionError(

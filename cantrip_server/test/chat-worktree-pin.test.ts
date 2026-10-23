@@ -51,7 +51,7 @@ beforeAll(async () => {
     name: "Pin Worker",
     platform: "darwin",
     architecture: "arm64",
-    codexVersion: "0.160.1",
+    codexVersion: "0.163.0",
     codexRuntime: unprobedCodexRuntimeReport,
     remoteSurfaces: {
       browser: false,
@@ -284,6 +284,42 @@ describe("worktree pinning against the migrated database schema", () => {
           "Could not update the agent worktree. Try again or reload the agent.",
       });
       expect(result.body).not.toContain("PRIVATE_QUERY_DATA");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("does not let recovery replace a newer placement", async () => {
+    const chat = await createChat();
+    const read = database.repository.getProjectWorktreeContext.bind(
+      database.repository,
+    );
+    const spy = vi
+      .spyOn(database.repository, "getProjectWorktreeContext")
+      .mockImplementationOnce(async (...args) => {
+        await database.repository.updateChatWorktree(LOCAL_USER_ID, chat.id, {
+          worktreeId: consoleGuardId,
+          mode: "pinned",
+        });
+        return read(...args);
+      });
+    try {
+      await expect(
+        database.repository.updateChatWorktree(
+          LOCAL_USER_ID,
+          chat.id,
+          { worktreeId: primaryId, mode: "agent-managed" },
+          primaryId,
+        ),
+      ).rejects.toThrow("placement changed during recovery");
+      expect(
+        (
+          await database.repository.getChatExecutionContext(
+            LOCAL_USER_ID,
+            chat.id,
+          )
+        )?.worktreeId,
+      ).toBe(consoleGuardId);
     } finally {
       spy.mockRestore();
     }

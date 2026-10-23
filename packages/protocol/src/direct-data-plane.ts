@@ -19,7 +19,6 @@ export const directResourceKindSchema = z.enum([
   "tunnel",
   "project-share",
   "terminal",
-  "code",
   "worker-link",
 ]);
 

@@ -1,4 +1,6 @@
+// @vitest-environment jsdom
 import { standaloneChatSummarySchema } from "@cantrip/protocol";
+import type { EditorDocumentSession } from "@/components/editor/document-session";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createElement, type ReactNode } from "react";
 import TestRenderer, { act } from "react-test-renderer";
@@ -46,12 +48,19 @@ const api = vi.hoisted(() => ({
       workerId: "worker-one",
     },
   ]),
+  getStandaloneChats: vi.fn(async () => []),
   loadStandaloneChatFileMedia: vi.fn(),
   saveStandaloneChatFile: vi.fn(),
 }));
 const desktop = vi.hoisted(() => ({
   openDesktopStandaloneChatFile: vi.fn(async () => "created" as const),
 }));
+const editor = vi.hoisted(() => ({ current: null as unknown }));
+interface EditorProps {
+  session: EditorDocumentSession;
+  onChange(text: string): void;
+  onSave(): void;
+}
 
 vi.mock("@/components/chat/markdown", () => ({
   Markdown: () => createElement("div", { "data-markdown": true }),
@@ -66,8 +75,11 @@ vi.mock("@/components/ui/styled-menu", () => ({
     children,
   StyledContextMenuItem: ({ children }: { children?: ReactNode }) => children,
 }));
-vi.mock("@/components/explorer/monaco-file-editor", () => ({
-  MonacoFileEditor: () => createElement("div", { "data-editor": true }),
+vi.mock("@/components/editor/native-code-editor", () => ({
+  NativeCodeEditor: (props: EditorProps) => {
+    editor.current = props;
+    return createElement("div", { "data-editor": true });
+  },
 }));
 vi.mock("@/components/explorer/structured-file-visual", () => ({
   StructuredFileVisual: () => createElement("div", { "data-visual": true }),
@@ -93,6 +105,8 @@ vi.mock("@/lib/desktop-popout", () => ({
 }));
 
 import { StandaloneChatFilesPanel } from "./standalone-chat-files-panel";
+import { ChatFilePreview } from "./standalone-chat-file-preview";
+import { chatEditorSessions } from "./standalone-chat-editor-sessions";
 
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -125,7 +139,7 @@ const chat = standaloneChatSummarySchema.parse({
   worktreeMode: null,
 });
 
-async function renderPanel(desktopRuntime: boolean) {
+async function renderPanel(desktopRuntime: boolean, selectedChat = chat) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -134,7 +148,7 @@ async function renderPanel(desktopRuntime: boolean) {
     renderer = TestRenderer.create(
       <QueryClientProvider client={client}>
         <StandaloneChatFilesPanel
-          chat={chat}
+          chat={selectedChat}
           desktopRuntime={desktopRuntime}
           requestedPath={null}
         />
@@ -150,7 +164,156 @@ async function renderPanel(desktopRuntime: boolean) {
 }
 
 describe("standalone Chat files panel", () => {
-  beforeEach(() => desktop.openDesktopStandaloneChatFile.mockClear());
+  beforeEach(() => {
+    chatEditorSessions.discardAll();
+    desktop.openDesktopStandaloneChatFile.mockClear();
+    api.saveStandaloneChatFile.mockReset();
+    api.saveStandaloneChatFile.mockResolvedValue({
+      path: "notes.txt",
+      content: "saved",
+      version: "version-two",
+      markdown: false,
+    });
+  });
+
+  it("opens a license preview and preserves its editable draft and explicit save binding", async () => {
+    const content = "Copyright (c) 2026 Arcane Arts\nAll rights reserved.\n";
+    api.getStandaloneChatFile.mockResolvedValueOnce({
+      content,
+      path: "LICENSE",
+      markdown: false,
+      version: "version-one",
+    });
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        <QueryClientProvider client={client}>
+          <ChatFilePreview
+            chatId={chat.id}
+            chat={chat}
+            onSaved={() => undefined}
+            entry={{
+              kind: "file",
+              name: "LICENSE",
+              path: "LICENSE",
+              markdown: false,
+              viewable: true,
+              symbolicLink: false,
+              size: content.length,
+              modifiedAt: "2026-10-21T00:00:00Z",
+            }}
+          />
+        </QueryClientProvider>,
+      );
+    });
+    try {
+      await vi.waitFor(() =>
+        expect(
+          renderer.root.findAllByProps({ "data-license-view": "true" }),
+        ).toHaveLength(1),
+      );
+      expect(
+        renderer.root.findAllByProps({ "data-editor": true }),
+      ).toHaveLength(0);
+      const click = async (text: string) =>
+        act(async () =>
+          renderer.root
+            .findAllByType("button")
+            .find((button) => button.children.includes(text))!
+            .props.onClick(),
+        );
+      await click("Edit");
+      const document = (editor.current as EditorProps).session;
+      await act(async () =>
+        (editor.current as EditorProps).onChange("custom license draft"),
+      );
+      await click("Preview");
+      expect(
+        renderer.root
+          .findByProps({ "aria-label": "License text" })
+          .children.join(""),
+      ).toBe("custom license draft");
+      expect(api.saveStandaloneChatFile).not.toHaveBeenCalled();
+      await click("Edit");
+      expect((editor.current as EditorProps).session).toBe(document);
+      await act(async () => (editor.current as EditorProps).onSave());
+      await vi.waitFor(() =>
+        expect(api.saveStandaloneChatFile).toHaveBeenCalledWith(
+          chat.id,
+          {
+            path: "LICENSE",
+            content: "custom license draft",
+            version: "version-one",
+          },
+          {
+            workerId: chat.activeWorkerId,
+            scratchRootId: chat.activeScratchRootId,
+          },
+        ),
+      );
+    } finally {
+      await act(async () => renderer.unmount());
+      client.clear();
+    }
+  });
+
+  it("saves an owned document against its exact worker and scratch root and confirms dirty close", async () => {
+    const { client, renderer } = await renderPanel(false);
+    await act(async () =>
+      renderer.root
+        .findByProps({ "data-chat-file-path": "notes.txt" })
+        .props.onClick(),
+    );
+    await vi.waitFor(() =>
+      expect(
+        renderer.root.findAllByProps({ "data-editor": true }),
+      ).toHaveLength(1),
+    );
+    await act(async () =>
+      (editor.current as EditorProps).onChange("first draft"),
+    );
+    await act(async () => (editor.current as EditorProps).onSave());
+    await vi.waitFor(() =>
+      expect(api.saveStandaloneChatFile).toHaveBeenCalledWith(
+        chat.id,
+        { path: "notes.txt", content: "first draft", version: "version-one" },
+        {
+          workerId: chat.activeWorkerId,
+          scratchRootId: chat.activeScratchRootId,
+        },
+      ),
+    );
+    await act(async () =>
+      (editor.current as EditorProps).onChange("unsaved after save"),
+    );
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    await act(async () =>
+      renderer.root
+        .findByProps({ "aria-label": "Close Chat file" })
+        .props.onClick(),
+    );
+    expect(renderer.root.findAllByProps({ "data-editor": true })).toHaveLength(
+      1,
+    );
+    expect((editor.current as EditorProps).session.text).toBe(
+      "unsaved after save",
+    );
+    confirm.mockReturnValue(true);
+    await act(async () =>
+      renderer.root
+        .findByProps({ "aria-label": "Close Chat file" })
+        .props.onClick(),
+    );
+    expect(renderer.root.findAllByProps({ "data-editor": true })).toHaveLength(
+      0,
+    );
+    confirm.mockRestore();
+    await act(async () => renderer.unmount());
+    client.clear();
+  });
 
   it("renders only the file tree until a browser file is opened full screen", async () => {
     const { client, renderer } = await renderPanel(false);
@@ -181,6 +344,112 @@ describe("standalone Chat files panel", () => {
     ).toHaveLength(0);
     await act(async () => renderer.unmount());
     client.clear();
+  });
+
+  it("retains a Chat file draft across in-app unmounts and actually discards it on confirmed close", async () => {
+    const first = await renderPanel(false);
+    await act(async () =>
+      first.renderer.root
+        .findByProps({ "data-chat-file-path": "notes.txt" })
+        .props.onClick(),
+    );
+    await vi.waitFor(() =>
+      expect(
+        first.renderer.root.findAllByProps({ "data-editor": true }),
+      ).toHaveLength(1),
+    );
+    await act(async () =>
+      (editor.current as EditorProps).onChange("retained navigation draft"),
+    );
+    const retained = (editor.current as EditorProps).session;
+    retained.selection = { start: 2, end: 7, direction: "backward" };
+    retained.scrollTop = 120;
+    await act(async () => first.renderer.unmount());
+    first.client.clear();
+
+    const unloadWhileHidden = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(unloadWhileHidden);
+    expect(unloadWhileHidden.defaultPrevented).toBe(true);
+
+    api.getStandaloneChatFile.mockRejectedValueOnce(
+      new Error("worker disconnected"),
+    );
+    const second = await renderPanel(false, {
+      ...chat,
+      activeScratchRootId: "00000000-0000-4000-8000-000000000003",
+    });
+    await act(async () =>
+      second.renderer.root
+        .findByProps({ "data-chat-file-path": "notes.txt" })
+        .props.onClick(),
+    );
+    await vi.waitFor(() =>
+      expect(
+        second.renderer.root.findAllByProps({ "data-editor": true }),
+      ).toHaveLength(1),
+    );
+    expect((editor.current as EditorProps).session).toBe(retained);
+    expect(retained.selection).toEqual({
+      start: 2,
+      end: 7,
+      direction: "backward",
+    });
+    expect(retained.scrollTop).toBe(120);
+    expect(api.getStandaloneChatFile).toHaveBeenLastCalledWith(
+      chat.id,
+      "notes.txt",
+      {
+        workerId: chat.activeWorkerId,
+        scratchRootId: chat.activeScratchRootId,
+      },
+    );
+    expect(retained.history.undo(retained.text)?.text).toBe("hello");
+    api.saveStandaloneChatFile.mockRejectedValueOnce(
+      new Error("scratch binding moved"),
+    );
+    await act(async () => (editor.current as EditorProps).onSave());
+    await vi.waitFor(() =>
+      expect(JSON.stringify(second.renderer.toJSON())).toContain(
+        "scratch binding moved",
+      ),
+    );
+    expect(api.saveStandaloneChatFile).toHaveBeenLastCalledWith(
+      chat.id,
+      {
+        path: "notes.txt",
+        content: "retained navigation draft",
+        version: "version-one",
+      },
+      {
+        workerId: chat.activeWorkerId,
+        scratchRootId: chat.activeScratchRootId,
+      },
+    );
+    expect(retained.text).toBe("retained navigation draft");
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    await act(async () =>
+      second.renderer.root
+        .findByProps({ "aria-label": "Close Chat file" })
+        .props.onClick(),
+    );
+    await act(async () =>
+      second.renderer.root
+        .findByProps({ "data-chat-file-path": "notes.txt" })
+        .props.onClick(),
+    );
+    await vi.waitFor(() =>
+      expect(
+        second.renderer.root.findAllByProps({ "data-editor": true }),
+      ).toHaveLength(1),
+    );
+    expect((editor.current as EditorProps).session.text).toBe("hello");
+    expect((editor.current as EditorProps).session).not.toBe(retained);
+    const cleanUnload = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(cleanUnload);
+    expect(cleanUnload.defaultPrevented).toBe(false);
+    confirm.mockRestore();
+    await act(async () => second.renderer.unmount());
+    second.client.clear();
   });
 
   it("opens Chat files in a native desktop window", async () => {

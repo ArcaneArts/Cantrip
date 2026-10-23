@@ -33,10 +33,6 @@ const supportedConsumers = [
     required: ["useRemoteSurfaceWorkerLink", "activeRoutes"],
   },
   {
-    path: "cantrip_app/src/lib/browser-code-tunnel.ts",
-    required: ["createBrowserCodeWorkerLinkSocket"],
-  },
-  {
     path: "cantrip_app/src/lib/desktop-tunnel.ts",
     required: ["startDesktopTunnelWorkerLinkForward"],
   },

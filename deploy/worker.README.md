@@ -23,10 +23,8 @@ worker's credential to another worker. The worker makes the outbound server
 control connection. Authorized apps may then use direct WorkerLink carriers or
 the server relay for scoped feature data.
 
-Cantrip Code editor processes stay warm after their last tunnel closes and are
-reclaimed after `CANTRIP_CODE_IDLE_TIMEOUT_MS` (30 minutes by default). Durable
-session identity, profiles, extensions, and workspace state remain available
-for the next authorized attachment.
+Code viewing and editing runs in the client. The worker supplies encrypted file
+operations and does not install or launch an editor server.
 
 The supported Linux container is headless: repository, Codex, terminal, and
 Code capabilities work, but host GUI browser/desktop capture does not. Persist

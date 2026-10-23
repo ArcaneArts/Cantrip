@@ -573,6 +573,29 @@ edits and cached data, then refresh stale queries when shown again. Filter and
 unrelated parent renders reuse trajectory projections until the messages,
 projection inputs, or live clock change.
 
+## Task overview change counts
+
+**Files changed** and **Lines changed** come from Git on the physical Worker in
+that Task's bound worktree, independently of the worktree selected elsewhere in
+the IDE. They do not use transcript edit previews. The worker combines distinct
+file paths and cumulative added/removed lines from commits on the checkout's
+current first-parent history during implementation (or planning before
+implementation starts), plus current staged, unstaged, and untracked changes.
+Completed Tasks bound the commit time window at completion. The uncommitted
+portion always describes the current checkout, including for completed Tasks.
+Merge commits include incoming changes once. Binary files count as changed
+files without adding text-line totals.
+
+Commit attribution is based on the worktree, branch, and commit time window;
+it is not proof that only this Task authored every change. Other processes in
+the same checkout are included. Commits on unrelated branches or removed
+worktrees are not scanned. The Overview shows the included commit count and
+marks bounded scans as partial; unavailable worker/Git data displays an
+unavailable state instead of zero. Counts refresh on worktree status events
+and every ten seconds while the Overview is visible. History totals are cached
+by worktree HEAD and time window. Requests and results use the existing
+end-to-end encrypted repository-operation channel.
+
 ## Failure, recovery, and fairness
 
 - Duplicate scheduler wakeups and worker completions are idempotent.
@@ -585,6 +608,22 @@ projection inputs, or live clock change.
   actionable eligibility reason.
 - A failed Task appears in Failed and never silently loses its
   original FIFO timestamp.
+- Technical failures (timeouts, capacity, rate limiting, connection loss, and
+  runtime errors) schedule an automatic retry after five seconds. The Task
+  shows the actual failure category and countdown instead of a human blocker.
+- Retry accounting is durable and account/Task scoped, not a browser timer.
+  Five automatic attempts are allowed in a rolling 60-second window. Another
+  failure inside that window latches automatic recovery until the user explicitly
+  chooses Retry, which starts a fresh window. Spaced-out attempts age out; there
+  is no lifetime retry cap. Refreshing, observing status, pausing, and restarting
+  the server do not reset a latched Task.
+- User/Project pause and pending approvals/input prevent automatic execution.
+  Genuine Goal blockers, configuration errors, and usage or token-budget limits
+  require user assistance instead of automatic retries. No retry raises a budget,
+  changes provider/model family, or clears a user's pause.
+- Every retry retains history and uses the existing fenced scheduler/capacity
+  rules. Native execution is observed before replaying a possibly started turn;
+  a still-running turn is not duplicated. Saved finalized Goal relays are reused.
 - Archived or completed Tasks cannot be claimed.
 - Per-profile global FIFO may skip Tasks ineligible for that profile, but must
   not skip an older eligible Task for a newer eligible Task.

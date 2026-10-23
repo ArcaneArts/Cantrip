@@ -130,6 +130,103 @@ function message(
 }
 
 describe("AgentTrajectory", () => {
+  it("shows active-output and whole-turn rates without including child output or prompt tokens", () => {
+    const messages = [
+      message("user", 1, "user", 1000, [
+        { type: "text", text: "Run a command" },
+      ]),
+      message("summary", 2, "assistant", 21000, [
+        {
+          type: "activity",
+          activity: {
+            type: "turnSummary",
+            id: "turn:summary",
+            status: "completed",
+            durationMs: 20_000,
+            startedAt: 1,
+            completedAt: 21,
+            tokenPerformance: {
+              durationMs: 20_000,
+              outputDurationMs: 10_000,
+              totalTokens: 21_000,
+              outputTokens: 1_000,
+            },
+          },
+        },
+      ]),
+    ];
+    const root = messages[1]!.content[0]!;
+    if (root.type !== "activity") throw new Error("Missing summary fixture");
+    messages[1]!.content.push({
+      type: "activity",
+      activity: {
+        ...root.activity,
+        id: "child-summary",
+        agentScope: {
+          agentThreadId: "child",
+          rootThreadId: "root",
+          parentThreadId: "root",
+          rootTurnId: "turn",
+          agentPath: ["child"],
+          nickname: "Child",
+          role: null,
+          depth: 1,
+          isRoot: false,
+        },
+        ...(root.activity.type === "turnSummary"
+          ? {
+              tokenPerformance: {
+                ...root.activity.tokenPerformance!,
+                outputTokens: 9_000,
+              },
+            }
+          : {}),
+      },
+    });
+    const html = renderToStaticMarkup(
+      <AgentTrajectory active={false} messages={messages} visible />,
+    );
+    expect(html).toContain("Output speed ≈100 tok/s");
+    expect(html).toContain("Real speed 50 tok/s");
+    const live = renderToStaticMarkup(
+      <AgentTrajectory active messages={messages} visible />,
+    );
+    expect(live).toContain("Output speed ≈100 tok/s");
+    const unknown = renderToStaticMarkup(
+      <AgentTrajectory
+        active={false}
+        messages={messages.slice(0, 1)}
+        visible
+      />,
+    );
+    expect(unknown).toContain("Output speed —");
+    expect(unknown).toContain("Real speed —");
+  });
+  it("lets the shell show through the timeline surface and agent labels", () => {
+    const markup = renderToStaticMarkup(
+      <AgentTrajectory
+        active={false}
+        messages={[
+          message("transparent-user", 1, "user", 1_000, [
+            { type: "text", text: "Inspect the turn" },
+          ]),
+        ]}
+        visible
+      />,
+    );
+    for (const slot of [
+      "trajectory-timeline-surface",
+      "trajectory-agent-labels",
+    ]) {
+      const surface = markup.match(
+        new RegExp(`<[^>]+data-slot="${slot}"[^>]*>`),
+      )?.[0];
+      expect(surface).toBeDefined();
+      const classes = surface?.match(/class="([^"]*)"/)?.[1]?.split(/\s+/);
+      expect(classes).toContain("bg-transparent");
+    }
+  });
+
   it("reuses the trajectory across filter and parent renders but still advances its live clock", async () => {
     const messages = [
       message("clock-user", 1, "user", 1_000, [

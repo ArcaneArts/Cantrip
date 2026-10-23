@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import {
   clearSensitiveBytes,
@@ -8,6 +8,8 @@ import {
 } from "@cantrip/crypto";
 import {
   agentTurnResultSchema,
+  chatGoalWireResponseSchema,
+  type ChatGoalResponse,
   chatMessageContentSchema,
   chatMessageRelayResultSchema,
   encryptedChatTurnCreateSchema,
@@ -204,6 +206,31 @@ export async function protectChatMessage(input: {
   } finally {
     clearSensitiveBytes(component.key);
   }
+}
+
+export async function protectChatGoalResponse(
+  response: ChatGoalResponse,
+  service: WorkerEncryptionService,
+) {
+  if (!response.goal) return { kind: "chat-encrypted" as const, goal: null };
+  const { objective, ...goal } = response.goal;
+  const id = randomUUID();
+  return chatGoalWireResponseSchema.parse({
+    kind: "chat-encrypted",
+    goal: {
+      ...goal,
+      protectedObjective: await protectChatMessage({
+        id,
+        service,
+        message: {
+          role: "user",
+          mode: "goal",
+          content: [{ type: "text", text: objective }],
+          idempotencyKey: `goal-snapshot:${id}`,
+        },
+      }),
+    },
+  });
 }
 
 export async function reprotectChatMessages(input: {

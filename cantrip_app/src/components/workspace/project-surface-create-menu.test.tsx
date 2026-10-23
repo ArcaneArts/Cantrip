@@ -207,6 +207,19 @@ describe("project surface creation menu", () => {
     });
   });
 
+  it("offers native Code tabs on a ready checkout without VS Code", () => {
+    expect(
+      projectSurfaceWorkerPlacements("code", {
+        projectId: "project-one",
+        replicas: [replica("worker-a")],
+        workers: [worker("worker-a", { code: false })],
+        worktrees: [
+          worktree("worker-a", "Primary", { isDefault: true, isPrimary: true }),
+        ],
+      })[0],
+    ).toMatchObject({ disabled: false, reason: null });
+  });
+
   it("checks surface capabilities without requiring replicas for machine surfaces", () => {
     const context = {
       projectId: "project-one",
@@ -216,7 +229,7 @@ describe("project surface creation menu", () => {
     };
     expect(projectSurfaceWorkerPlacements("code", context)[0]).toMatchObject({
       disabled: true,
-      reason: "Code unavailable",
+      reason: "No project replica",
     });
     expect(projectSurfaceWorkerPlacements("browser", context)[0]).toMatchObject(
       { disabled: false, reason: null },

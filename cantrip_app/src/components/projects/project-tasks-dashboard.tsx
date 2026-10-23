@@ -1,3 +1,4 @@
+import { PanelToolbar } from "@/components/workspace/panel-toolbar";
 import type {
   ChatSummary,
   SettingsBundle,
@@ -17,6 +18,7 @@ import {
   Pause,
   Play,
   Plus,
+  RefreshCw,
   Settings2,
   Trash2,
 } from "lucide-react";
@@ -31,10 +33,16 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { TooltipButton } from "@/components/ui/tooltip";
+import { TaskDetailTabs } from "@/components/tasks/task-detail-tabs";
 import { PersistentTaskViews } from "@/components/tasks/persistent-task-views";
 import { TaskDialog } from "@/components/tasks/task-dialog";
 import type { TaskSurfaceHandle } from "@/components/tasks/task-surface";
 import { taskCanBeDeleted } from "@/components/tasks/task-deletion";
+import { taskImplementationCanRecover } from "@/components/tasks/task-implementation-dashboard";
+import {
+  TaskRetryStatus,
+  taskRetryFailureLabel,
+} from "@/components/tasks/task-retry-status";
 import {
   EmptyState,
   EmptyStateActions,
@@ -50,6 +58,7 @@ import {
   getProjectTaskWorkload,
   getTaskWorkers,
   setProjectTaskPauseState,
+  recoverTaskImplementation,
 } from "@/lib/api";
 import { errorMessage } from "@/lib/error-message";
 import { cn } from "@/lib/utils";
@@ -116,8 +125,35 @@ export function projectTaskWorkloadPresentation(
     };
   }
   if (
+    task.automaticRetry &&
+    !chat?.automationPaused &&
+    !projectPaused &&
+    !["running", "waiting-for-approval"].includes(chat?.status ?? "") &&
+    task.dispatch?.state !== "queued" &&
+    task.state !== "blocked"
+  )
+    return {
+      band: "failed",
+      label: taskRetryFailureLabel(task),
+      paused: false,
+      tone: "attention",
+    };
+  if (
+    task.planGoalEnabled &&
+    task.state === "implementing" &&
+    chat?.status === "offline"
+  )
+    return {
+      band: "running",
+      label: "Reconnecting",
+      paused: false,
+      tone: "muted",
+    };
+  if (
     (chat?.status === "waiting-for-approval" && !chat.automationPaused) ||
-    (chat?.status === "failed" && dispatch?.state !== "queued")
+    (chat?.status === "failed" &&
+      task.state !== "blocked" &&
+      dispatch?.state !== "queued")
   ) {
     return {
       band: chat.status === "failed" ? "failed" : "attention",
@@ -419,6 +455,14 @@ function TaskWorkloadRow({
         <p className="mt-1 truncate text-xs text-muted-foreground">
           {promptSummary(task.briefMarkdown)}
         </p>
+        {task.automaticRetry ? (
+          <p className="mt-1 text-xs text-muted-foreground">
+            <TaskRetryStatus
+              task={task}
+              paused={paused || chat?.automationPaused}
+            />
+          </p>
+        ) : null}
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
           <span>Assignment: {requestedWorker}</span>
           {claimedWorker ? <span>Worker: {claimedWorker}</span> : null}
@@ -544,7 +588,6 @@ export function ProjectTasksDashboard({
   settings,
   taskCreationError,
   taskChatContent,
-  taskDialogActions,
   workers,
 }: {
   active: boolean;
@@ -560,7 +603,6 @@ export function ProjectTasksDashboard({
   settings: SettingsBundle | undefined;
   taskCreationError: unknown;
   taskChatContent?: ReactNode;
-  taskDialogActions?: ReactNode;
   workers: WorkerSummary[];
 }) {
   const queryClient = useQueryClient();
@@ -603,9 +645,62 @@ export function ProjectTasksDashboard({
     },
     onSuccess: (next) => {
       queryClient.setQueryData(["project-task-pause", projectId], next);
-      void queryClient.invalidateQueries({
-        queryKey: ["project-task-workload", projectId],
-      });
+    },
+    onSettled: async () => {
+      const taskIds = workload.data?.items.map(({ task }) => task.chatId) ?? [];
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["project-task-pause", projectId],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["project-task-workload", projectId],
+        }),
+        queryClient.invalidateQueries({ queryKey: ["chats", projectId] }),
+        ...taskIds.flatMap((chatId) => [
+          queryClient.invalidateQueries({ queryKey: ["task", chatId] }),
+          queryClient.invalidateQueries({
+            queryKey: ["task-dashboard", chatId],
+          }),
+          queryClient.invalidateQueries({ queryKey: ["goal", chatId] }),
+        ]),
+      ]);
+    },
+  });
+  const recoveryCandidates = (workload.data?.items ?? []).filter(
+    ({ task }) =>
+      taskImplementationCanRecover(task) &&
+      (task.state === "failed" ||
+        ["expired", "failed"].includes(task.dispatch?.state ?? "") ||
+        ["failed", "offline"].includes(
+          chats.find((chat) => chat.id === task.chatId)?.status ?? "",
+        )),
+  );
+  const recoveryMutation = useMutation({
+    mutationFn: async () => {
+      const results = await Promise.allSettled(
+        recoveryCandidates.map(({ task }) =>
+          recoverTaskImplementation(task.chatId),
+        ),
+      );
+      const errors = results.flatMap((result) =>
+        result.status === "rejected" ? [errorMessage(result.reason)] : [],
+      );
+      if (errors.length) throw new Error(errors.join("; "));
+    },
+    onSettled: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["project-task-workload", projectId],
+        }),
+        queryClient.invalidateQueries({ queryKey: ["chats", projectId] }),
+        ...recoveryCandidates.flatMap(({ task }) => [
+          queryClient.invalidateQueries({ queryKey: ["task", task.chatId] }),
+          queryClient.invalidateQueries({
+            queryKey: ["task-dashboard", task.chatId],
+          }),
+          queryClient.invalidateQueries({ queryKey: ["goal", task.chatId] }),
+        ]),
+      ]);
     },
   });
   const deleteTaskMutation = useMutation({
@@ -689,35 +784,30 @@ export function ProjectTasksDashboard({
       <TaskDialog
         key={activeTask?.id}
         beforeClose={() => taskSurfaceRef.current?.prepareClose()}
-        headerActions={taskDialogActions}
         onClose={onCloseTask}
         open={active && Boolean(activeTask)}
         title={activeTask?.title ?? "Task"}
       >
-        <div
-          className={cn(
-            "min-h-0 flex-1 flex-col",
-            taskChatContent ? "hidden" : "flex",
-          )}
-          aria-hidden={Boolean(taskChatContent)}
-        >
-          <PersistentTaskViews
-            visible={active && !taskChatContent}
-            activeTask={
-              activeTask ? { chat: activeTask, worker: activeTaskWorker } : null
-            }
-            deleting={deleteTaskMutation.isPending}
-            settings={settings}
-            surfaceRef={taskSurfaceRef}
-            onDelete={
-              activeTask
-                ? () => requestDeleteTask(activeTask.id, activeTask.title)
-                : undefined
-            }
-            onRename={onRenameTask}
+        {activeTask ? (
+          <TaskDetailTabs
+            chat={activeTask}
+            chatContent={taskChatContent}
+            visible={active}
+            overview={(visible) => (
+              <PersistentTaskViews
+                visible={visible}
+                activeTask={{ chat: activeTask, worker: activeTaskWorker }}
+                deleting={deleteTaskMutation.isPending}
+                settings={settings}
+                surfaceRef={taskSurfaceRef}
+                onDelete={() =>
+                  requestDeleteTask(activeTask.id, activeTask.title)
+                }
+                onRename={onRenameTask}
+              />
+            )}
           />
-        </div>
-        {taskChatContent}
+        ) : null}
       </TaskDialog>
       {deleteTaskDialog}
     </>
@@ -783,105 +873,127 @@ export function ProjectTasksDashboard({
   }
   const error = workload.error ?? pauseState.error ?? taskWorkers.error;
   return renderDashboard(
-    <div className="min-h-0 flex-1 overflow-y-auto">
-      <div
-        className="flex min-h-full w-full flex-col px-4 py-5 sm:px-6 sm:py-7"
-        data-content-gutter="standard"
+    <div className="flex min-h-0 flex-1 flex-col">
+      <PanelToolbar
+        as="header"
+        aria-label="Task controls"
+        className="flex-nowrap"
       >
-        <header className="mb-5 flex items-center gap-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <ClipboardList className="size-5 shrink-0 text-muted-foreground" />
-            <h1 className="truncate text-lg font-semibold tracking-tight">
-              Tasks
-            </h1>
-          </div>
-          <div className="ml-auto flex shrink-0 items-center gap-1">
-            <TooltipButton
-              className="size-8"
-              pending={creatingTask}
-              size="icon"
-              tooltip="Add Task"
-              variant="ghost"
-              onClick={onCreateTask}
-            >
-              <Plus aria-hidden="true" className="size-4" />
-            </TooltipButton>
-            <TooltipButton
-              className="size-8"
-              pending={pauseMutation.isPending}
-              size="icon"
-              tooltip={pauseState.data?.paused ? "Resume Tasks" : "Pause Tasks"}
-              variant="ghost"
-              onClick={() => pauseMutation.mutate(!pauseState.data?.paused)}
-            >
-              {pauseState.data?.paused ? (
-                <Play aria-hidden="true" className="size-4" />
-              ) : (
-                <Pause aria-hidden="true" className="size-4" />
-              )}
-            </TooltipButton>
-          </div>
-        </header>
-        {error || pauseMutation.isError || taskCreationError ? (
-          <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-            {error instanceof Error
-              ? error.message
-              : pauseMutation.error instanceof Error
-                ? pauseMutation.error.message
-                : taskCreationError instanceof Error
-                  ? taskCreationError.message
-                  : "The Task workload could not be loaded."}
-          </div>
-        ) : null}
-        {workload.isSuccess &&
-        sorted.active.length === 0 &&
-        sorted.failed.length === 0 &&
-        sorted.completed.length === 0 ? (
-          <EmptyState>
-            <EmptyStateContent>
-              <EmptyStateIcon>
-                <ClipboardList className="size-5" />
-              </EmptyStateIcon>
-              <EmptyStateTitle>No tasks yet</EmptyStateTitle>
-              <EmptyStateActions>
-                <Button pending={creatingTask} onClick={onCreateTask}>
-                  <Plus className="size-4" />
-                  Create a task
-                </Button>
-              </EmptyStateActions>
-            </EmptyStateContent>
-          </EmptyState>
-        ) : (
-          <div className="space-y-7">
-            <WorkloadList
-              chats={chatMap}
-              items={sorted.active}
-              label="Active"
-              onDeleteTask={requestDeleteTask}
-              paused={pauseState.data?.paused ?? false}
-              taskWorkers={workerMap}
-              onOpenTask={onOpenTask}
-            />
-            <WorkloadList
-              chats={chatMap}
-              items={sorted.failed}
-              label="Failed"
-              onDeleteTask={requestDeleteTask}
-              paused={false}
-              taskWorkers={workerMap}
-              onOpenTask={onOpenTask}
-            />
-            <WorkloadList
-              chats={chatMap}
-              items={sorted.completed}
-              label="Completed"
-              onDeleteTask={requestDeleteTask}
-              paused={false}
-              taskWorkers={workerMap}
-              onOpenTask={onOpenTask}
-            />
-          </div>
-        )}
+        <div className="flex min-w-0 items-center gap-2">
+          <ClipboardList className="size-4 shrink-0 text-muted-foreground" />
+          <h1 className="truncate text-sm font-medium">Tasks</h1>
+        </div>
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          <TooltipButton
+            className="size-8"
+            pending={creatingTask}
+            size="icon"
+            tooltip="Add Task"
+            variant="ghost"
+            onClick={onCreateTask}
+          >
+            <Plus aria-hidden="true" className="size-4" />
+          </TooltipButton>
+          <TooltipButton
+            className="size-8"
+            pending={pauseMutation.isPending}
+            size="icon"
+            tooltip={pauseState.data?.paused ? "Resume Tasks" : "Pause Tasks"}
+            variant="ghost"
+            onClick={() => pauseMutation.mutate(!pauseState.data?.paused)}
+          >
+            {pauseState.data?.paused ? (
+              <Play aria-hidden="true" className="size-4" />
+            ) : (
+              <Pause aria-hidden="true" className="size-4" />
+            )}
+          </TooltipButton>
+          <TooltipButton
+            className="size-8"
+            size="icon"
+            variant="ghost"
+            tooltip="Retry interrupted Tasks"
+            pending={recoveryMutation.isPending}
+            disabled={
+              recoveryCandidates.length === 0 || pauseMutation.isPending
+            }
+            onClick={() => recoveryMutation.mutate()}
+          >
+            <RefreshCw aria-hidden="true" className="size-4" />
+          </TooltipButton>
+        </div>
+      </PanelToolbar>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div
+          className="flex min-h-full w-full flex-col px-4 py-5 sm:px-6 sm:py-7"
+          data-content-gutter="standard"
+        >
+          {error ||
+          pauseMutation.isError ||
+          recoveryMutation.isError ||
+          taskCreationError ? (
+            <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+              {error instanceof Error
+                ? error.message
+                : pauseMutation.error instanceof Error
+                  ? pauseMutation.error.message
+                  : recoveryMutation.error instanceof Error
+                    ? recoveryMutation.error.message
+                    : taskCreationError instanceof Error
+                      ? taskCreationError.message
+                      : "The Task workload could not be loaded."}
+            </div>
+          ) : null}
+          {workload.isSuccess &&
+          sorted.active.length === 0 &&
+          sorted.failed.length === 0 &&
+          sorted.completed.length === 0 ? (
+            <EmptyState>
+              <EmptyStateContent>
+                <EmptyStateIcon>
+                  <ClipboardList className="size-5" />
+                </EmptyStateIcon>
+                <EmptyStateTitle>No tasks yet</EmptyStateTitle>
+                <EmptyStateActions>
+                  <Button pending={creatingTask} onClick={onCreateTask}>
+                    <Plus className="size-4" />
+                    Create a task
+                  </Button>
+                </EmptyStateActions>
+              </EmptyStateContent>
+            </EmptyState>
+          ) : (
+            <div className="space-y-7">
+              <WorkloadList
+                chats={chatMap}
+                items={sorted.active}
+                label="Active"
+                onDeleteTask={requestDeleteTask}
+                paused={pauseState.data?.paused ?? false}
+                taskWorkers={workerMap}
+                onOpenTask={onOpenTask}
+              />
+              <WorkloadList
+                chats={chatMap}
+                items={sorted.failed}
+                label="Failed"
+                onDeleteTask={requestDeleteTask}
+                paused={false}
+                taskWorkers={workerMap}
+                onOpenTask={onOpenTask}
+              />
+              <WorkloadList
+                chats={chatMap}
+                items={sorted.completed}
+                label="Completed"
+                onDeleteTask={requestDeleteTask}
+                paused={false}
+                taskWorkers={workerMap}
+                onOpenTask={onOpenTask}
+              />
+            </div>
+          )}
+        </div>
       </div>
     </div>,
   );

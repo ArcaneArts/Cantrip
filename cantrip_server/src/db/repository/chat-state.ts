@@ -214,6 +214,7 @@ export class ChatStateRepository {
     ownerId: string,
     chatId: string,
     input: ChatWorktreeUpdate,
+    expectedWorktreeId?: string,
   ): Promise<ChatWireSummary | null> {
     const rows = await this.database
       .select({ chat: schema.chats })
@@ -229,6 +230,14 @@ export class ChatStateRepository {
       .limit(1);
     const chat = rows[0]?.chat;
     if (!chat) return null;
+    if (
+      expectedWorktreeId !== undefined &&
+      (chat.activeWorktreeId !== expectedWorktreeId ||
+        chat.worktreeMode !== input.mode)
+    )
+      throw new ExecutionLaneConflictError(
+        "The Task placement changed during recovery. Please retry.",
+      );
     const projectId = requiredProjectChatProjectId(chat.projectId);
     const target = await this.collaborators.getProjectWorktreeContext(
       ownerId,
@@ -389,8 +398,27 @@ export class ChatStateRepository {
           worktreeMode: input.mode,
           updatedAt: new Date(),
         })
-        .where(eq(schema.chats.id, chatId))
+        .where(
+          and(
+            eq(schema.chats.id, chatId),
+            ...(expectedWorktreeId !== undefined
+              ? [
+                  eq(schema.chats.activeWorktreeId, expectedWorktreeId),
+                  eq(schema.chats.placementRevision, chat.placementRevision),
+                  chat.worktreeMode === null
+                    ? isNull(schema.chats.worktreeMode)
+                    : eq(schema.chats.worktreeMode, chat.worktreeMode),
+                  eq(schema.chats.automationPaused, chat.automationPaused),
+                  eq(schema.chats.status, chat.status),
+                ]
+              : []),
+          ),
+        )
         .returning();
+      if (!updated[0] && expectedWorktreeId !== undefined)
+        throw new ExecutionLaneConflictError(
+          "The Task placement changed during recovery. Please retry.",
+        );
       return updated[0] ? toChatWireSummary(updated[0]) : null;
     });
   }

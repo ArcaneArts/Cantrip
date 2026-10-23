@@ -60,12 +60,6 @@ const workerBridge: WorkerCommandBus = {
     return () => undefined;
   },
   async request(_workerId, command) {
-    if (command.type === "code.prepareAgentTurn") {
-      return { prepared: true, sessions: [] };
-    }
-    if (command.type === "code.agentTurnState") {
-      return { notifiedSessions: 0, refreshed: [], conflicts: [] };
-    }
     if (command.type === "computer-use.preview.revoke") {
       return { closed: true };
     }

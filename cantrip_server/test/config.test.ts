@@ -291,6 +291,32 @@ describe("server configuration safety", () => {
     });
   });
 
+  it("reads the optional administrator password without trimming it", () => {
+    vi.stubEnv("CANTRIP_AUTH_MODE", "accounts");
+    vi.stubEnv("CANTRIP_ADMIN_EMAIL", "admin@example.com");
+    vi.stubEnv("CANTRIP_ADMIN_PASSWORD", "  correct horse battery staple  ");
+    expect(readServerConfig().adminPassword).toBe(
+      "  correct horse battery staple  ",
+    );
+    vi.stubEnv("CANTRIP_ADMIN_PASSWORD", "");
+    expect(readServerConfig().adminPassword).toBeUndefined();
+  });
+
+  it("requires an email and a valid account password for environment provisioning", () => {
+    vi.stubEnv("CANTRIP_AUTH_MODE", "accounts");
+    vi.stubEnv("CANTRIP_LICENSE_WHITELIST_ENABLED", "false");
+    vi.stubEnv("CANTRIP_ADMIN_EMAIL", "");
+    vi.stubEnv("CANTRIP_ADMIN_PASSWORD", "correct horse battery staple");
+    expect(() => readServerConfig()).toThrow(
+      /ADMIN_PASSWORD requires.*ADMIN_EMAIL/,
+    );
+    vi.stubEnv("CANTRIP_ADMIN_EMAIL", "admin@example.com");
+    for (const password of ["too-short", "x".repeat(1_025)]) {
+      vi.stubEnv("CANTRIP_ADMIN_PASSWORD", password);
+      expect(() => readServerConfig()).toThrow(/12 to 1024/);
+    }
+  });
+
   it("requires Secure cookies when SameSite is none", () => {
     vi.stubEnv("CANTRIP_COOKIE_SAME_SITE", "none");
     vi.stubEnv("CANTRIP_COOKIE_SECURE", "false");

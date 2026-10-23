@@ -52,29 +52,6 @@ export const tunnelContentDestinationEndpointSchema = z.discriminatedUnion(
       .strict(),
     z
       .object({
-        kind: z.literal("worker-code"),
-        workerId: tunnelContentIdSchema,
-        resourceId: tunnelContentIdSchema,
-        sessionId: tunnelContentIdSchema,
-      })
-      .strict(),
-    z
-      .object({
-        kind: z.literal("worker-code-transport"),
-        workerId: tunnelContentIdSchema,
-        resourceId: tunnelContentIdSchema,
-      })
-      .strict(),
-    z
-      .object({
-        kind: z.literal("worker-adapter"),
-        workerId: tunnelContentIdSchema,
-        adapter: z.literal("code"),
-        resourceId: tunnelContentIdSchema,
-      })
-      .strict(),
-    z
-      .object({
         kind: z.literal("worker-project-share"),
         workerId: tunnelContentIdSchema,
         resourceId: tunnelContentIdSchema,
@@ -158,7 +135,7 @@ export const tunnelPublicDestinationEndpointSchema = z.discriminatedUnion(
       .object({
         kind: z.literal("worker-adapter"),
         workerId: tunnelContentIdSchema,
-        adapter: z.enum(["code", "project-share"]),
+        adapter: z.enum(["project-share"]),
         resourceId: tunnelContentIdSchema,
       })
       .strict(),
@@ -188,17 +165,6 @@ export function tunnelPublicDestinationEndpoint(
       kind: "worker-adapter",
       workerId: destination.workerId,
       adapter: "project-share",
-      resourceId: destination.resourceId,
-    };
-  }
-  if (
-    destination.kind === "worker-code" ||
-    destination.kind === "worker-code-transport"
-  ) {
-    return {
-      kind: "worker-adapter",
-      workerId: destination.workerId,
-      adapter: "code",
       resourceId: destination.resourceId,
     };
   }

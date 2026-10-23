@@ -160,6 +160,7 @@ impl ConfigManager {
             http_client_factory,
         );
         if let Ok(mut guard) = self.cloud_config_bundle.write() {
+            guard.retire_ema_policy();
             *guard = loader;
         } else {
             warn!("failed to update cloud config bundle loader");
@@ -168,6 +169,7 @@ impl ConfigManager {
 
     pub(crate) fn clear_cloud_config_bundle_loader(&self) {
         if let Ok(mut guard) = self.cloud_config_bundle.write() {
+            guard.retire_ema_policy();
             *guard = CloudConfigBundleLoader::default();
         } else {
             warn!("failed to clear cloud config bundle loader");
@@ -190,11 +192,14 @@ impl ConfigManager {
         &self,
         fallback_cwd: Option<PathBuf>,
     ) -> std::io::Result<Config> {
+        let Some(fallback_cwd) = fallback_cwd else {
+            return self.load_non_project_config().await;
+        };
         self.load_with_cli_overrides(
             &self.current_cli_overrides(),
             /*request_overrides*/ None,
             ConfigOverrides::default(),
-            fallback_cwd,
+            Some(fallback_cwd),
         )
         .await
     }
@@ -202,9 +207,23 @@ impl ConfigManager {
     /// Loads system, user, and runtime settings without discovering a project
     /// from the app-server process's working directory.
     pub(crate) async fn load_non_project_config(&self) -> std::io::Result<Config> {
-        let mut manager = self.clone();
-        manager.loader_overrides.ignore_project_config = true;
-        manager.load_latest_config(/*fallback_cwd*/ None).await
+        let policy_load = self.refresh_application_network_policy().await?;
+        let mut config = ConfigBuilder::default()
+            .codex_home(self.codex_home.clone())
+            .cli_overrides(self.current_cli_overrides())
+            .loader_overrides(self.loader_overrides.clone())
+            .strict_config(self.strict_config)
+            .fallback_cwd(Some(self.codex_home.clone()))
+            .cloud_config_bundle(policy_load.cloud_config.clone())
+            .thread_config_loader(Arc::clone(&self.thread_config_loader))
+            .without_project_context()
+            .build()
+            .await?;
+        self.check_application_policy_load(&policy_load)?;
+        self.apply_network_policy(&mut config);
+        self.apply_runtime_feature_enablement(&mut config);
+        self.apply_arg0_paths(&mut config);
+        Ok(config)
     }
 
     pub(crate) async fn load_latest_config_with_session_layers(
@@ -212,21 +231,18 @@ impl ConfigManager {
         session_layers: &ConfigLayerStack,
         cwd: &Path,
     ) -> std::io::Result<Config> {
-        let refreshed_config = self.load_latest_config(Some(cwd.to_path_buf())).await?;
+        let codex_home = AbsolutePathBuf::from_absolute_path(&self.codex_home)?;
+        let layers = self
+            .load_config_layers_for_cwd(AbsolutePathBuf::from_absolute_path(cwd)?)
+            .await?;
         let mut config = Config::rebuild_with_session_layers(
             session_layers,
             cwd.to_path_buf(),
-            &refreshed_config.config_layer_stack,
-            refreshed_config.codex_home.clone(),
-            refreshed_config
-                .zsh_path
-                .clone()
-                .map(AbsolutePathBuf::try_from)
-                .transpose()?,
+            &layers,
+            codex_home,
         )
         .await?;
-        config.application_network_policy = refreshed_config.application_network_policy;
-        config.application_auth_route_config = refreshed_config.application_auth_route_config;
+        self.apply_network_policy(&mut config);
         self.apply_runtime_feature_enablement(&mut config);
         self.apply_arg0_paths(&mut config);
         Ok(config)
@@ -249,7 +265,6 @@ impl ConfigManager {
             cwd.to_path_buf(),
             &refreshed_layers,
             AbsolutePathBuf::from_absolute_path(&self.codex_home)?,
-            /*default_zsh_path*/ None,
         )
         .await?;
         self.apply_network_policy(&mut config);
@@ -384,6 +399,10 @@ impl ConfigManager {
             cwd,
         )
         .await
+        .and_then(|config| {
+            config.validate_windows_mxc_requirement()?;
+            Ok(config)
+        })
     }
 
     /// Reload sources using the task's session flags before materializing config.
@@ -417,12 +436,15 @@ impl ConfigManager {
                 cwd: Some(cwd.to_path_buf()),
                 default_permissions: Some(permission_profile),
                 codex_linux_sandbox_exe: self.arg0_paths.codex_linux_sandbox_exe.clone(),
-                main_execve_wrapper_exe: self.arg0_paths.main_execve_wrapper_exe.clone(),
                 ..Default::default()
             },
             Some(cwd.to_path_buf()),
         )
         .await
+        .and_then(|config| {
+            config.validate_windows_mxc_requirement()?;
+            Ok(config)
+        })
     }
 
     #[instrument(level = "trace", skip_all)]
@@ -531,7 +553,6 @@ impl ConfigManager {
     fn apply_arg0_paths(&self, config: &mut Config) {
         config.codex_self_exe = self.arg0_paths.codex_self_exe.clone();
         config.codex_linux_sandbox_exe = self.arg0_paths.codex_linux_sandbox_exe.clone();
-        config.main_execve_wrapper_exe = self.arg0_paths.main_execve_wrapper_exe.clone();
     }
 
     #[cfg(test)]
@@ -594,6 +615,10 @@ pub(crate) fn apply_runtime_feature_enablement(
     config: &mut Config,
     runtime_feature_enablement: &BTreeMap<String, bool>,
 ) {
+    config.runtime_feature_defaults = runtime_feature_enablement
+        .iter()
+        .filter_map(|(name, enabled)| feature_for_key(name).map(|feature| (feature, *enabled)))
+        .collect();
     let protected_features = protected_feature_keys(&config.config_layer_stack);
     for (name, enabled) in runtime_feature_enablement {
         if protected_features.contains(name) {

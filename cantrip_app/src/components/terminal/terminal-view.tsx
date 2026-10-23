@@ -1,3 +1,5 @@
+import { PanelToolbar } from "@/components/workspace/panel-toolbar";
+import { ContentHeaderActions } from "@/components/workspace/content-header-actions";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import type { TerminalServerMessage, TerminalSummary } from "@cantrip/protocol";
@@ -730,105 +732,121 @@ export function TerminalView({
     setTerminalFocused(false);
   };
   return (
-    <div
-      className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background"
-      data-slot="terminal-view"
-      ref={terminalSurfaceRef}
-    >
+    <>
+      {!terminal.linkedChatId && onServicePanelOpenChange ? (
+        <PanelToolbar aria-label="Terminal controls">
+          <span className="min-w-0 flex-1 truncate text-muted-foreground">
+            {terminal.title}
+          </span>
+          <ContentHeaderActions
+            compact
+            terminalService={{
+              active: servicePanelOpen,
+              open: () => setServicePanelOpen(!servicePanelOpen),
+            }}
+          />
+        </PanelToolbar>
+      ) : null}
       <div
-        className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden"
-        data-elite-global={hasLoaded ? "" : undefined}
-        style={{
-          paddingBottom: mobileCommandBarVisible
-            ? `${mobileKeyboard.contentInset}px`
-            : undefined,
-        }}
+        className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background"
+        data-slot="terminal-view"
+        ref={terminalSurfaceRef}
       >
         <div
-          ref={containerRef}
-          className="min-h-0 min-w-0 flex-1 overflow-hidden p-3"
-          data-selectable-text="true"
-        />
-        <SurfaceLoadingVeil
-          fade={false}
-          label={
-            terminal.linkedChatId
-              ? "Starting Codex console…"
-              : error
-                ? `${error} Retrying…`
-                : "Starting terminal…"
-          }
-          visible={!hasLoaded}
-        />
-        {hasLoaded && state === "exited" ? (
+          className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden"
+          data-elite-global={hasLoaded ? "" : undefined}
+          style={{
+            paddingBottom: mobileCommandBarVisible
+              ? `${mobileKeyboard.contentInset}px`
+              : undefined,
+          }}
+        >
           <div
-            className="pointer-events-none absolute right-4 top-3 rounded-md bg-muted/90 px-2 py-1 text-xs text-muted-foreground"
-            role="status"
+            ref={containerRef}
+            className="min-h-0 min-w-0 flex-1 overflow-hidden p-3"
+            data-selectable-text="true"
+          />
+          <SurfaceLoadingVeil
+            fade={false}
+            label={
+              terminal.linkedChatId
+                ? "Starting Codex console…"
+                : error
+                  ? `${error} Retrying…`
+                  : "Starting terminal…"
+            }
+            visible={!hasLoaded}
+          />
+          {hasLoaded && state === "exited" ? (
+            <div
+              className="pointer-events-none absolute right-4 top-3 rounded-md bg-muted/90 px-2 py-1 text-xs text-muted-foreground"
+              role="status"
+            >
+              Process exited {exitCode}
+            </div>
+          ) : hasLoaded && state !== "ready" ? (
+            <div className="pointer-events-none absolute right-4 top-3 flex items-center gap-2 rounded-md bg-muted/90 px-2 py-1 text-xs text-muted-foreground">
+              <Loader2 className="size-3 animate-spin" />
+              {state === "connecting"
+                ? "Connecting"
+                : error
+                  ? `${error} Retrying…`
+                  : "Reconnecting…"}
+            </div>
+          ) : null}
+          {hasLoaded && recoveryError ? (
+            <div
+              className="absolute inset-x-4 bottom-4 flex items-start gap-2 rounded-md border border-destructive/50 bg-background/95 px-3 py-2 text-xs text-destructive shadow-sm"
+              role="alert"
+            >
+              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+              <span>{recoveryError}</span>
+            </div>
+          ) : null}
+        </div>
+        {onServicePanelOpenChange ? (
+          <ResizablePanel
+            ariaLabel="Resize terminal service panel"
+            className="absolute inset-y-0 right-0 z-20 max-w-full md:relative md:inset-auto md:z-auto"
+            defaultWidth={DEFAULT_SERVICE_PANEL_WIDTH}
+            handleDataSlot="terminal-service-panel-resize-handle"
+            maxWidth={MAX_SERVICE_PANEL_WIDTH}
+            minWidth={MIN_SERVICE_PANEL_WIDTH}
+            open={servicePanelOpen}
+            shellDataSlot="terminal-service-panel-shell"
+            storageKey={SERVICE_PANEL_WIDTH_STORAGE_KEY}
+            surfaceClassName="max-w-[100vw] bg-background"
+            surfaceDataSlot="terminal-service-panel-surface"
+            title="Drag to resize terminal service panel"
           >
-            Process exited {exitCode}
-          </div>
-        ) : hasLoaded && state !== "ready" ? (
-          <div className="pointer-events-none absolute right-4 top-3 flex items-center gap-2 rounded-md bg-muted/90 px-2 py-1 text-xs text-muted-foreground">
-            <Loader2 className="size-3 animate-spin" />
-            {state === "connecting"
-              ? "Connecting"
-              : error
-                ? `${error} Retrying…`
-                : "Reconnecting…"}
-          </div>
+            <TerminalServicePanel
+              onClose={() => setServicePanelOpen(false)}
+              terminal={terminal}
+            />
+          </ResizablePanel>
         ) : null}
-        {hasLoaded && recoveryError ? (
-          <div
-            className="absolute inset-x-4 bottom-4 flex items-start gap-2 rounded-md border border-destructive/50 bg-background/95 px-3 py-2 text-xs text-destructive shadow-sm"
-            role="alert"
-          >
-            <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-            <span>{recoveryError}</span>
-          </div>
+        {onCommandPaletteOpenChange ? (
+          <TerminalScriptCommandDialog
+            terminalId={terminal.id}
+            workerId={terminal.activeWorkerId}
+            open={commandPaletteOpen}
+            onOpenChange={setCommandPaletteOpen}
+            onRun={(command) =>
+              inputSenderRef.current?.(terminalCommandInput(command))
+                ? null
+                : "The terminal is reconnecting. Try again when it is ready."
+            }
+          />
+        ) : null}
+        {mobileCommandBarVisible ? (
+          <MobileTerminalCommandBar
+            bottomInset={mobileKeyboard.bottomInset}
+            disabled={state !== "ready"}
+            onDismiss={dismissMobileKeyboard}
+            onKey={runMobileTerminalKey}
+          />
         ) : null}
       </div>
-      {onServicePanelOpenChange ? (
-        <ResizablePanel
-          ariaLabel="Resize terminal service panel"
-          className="absolute inset-y-0 right-0 z-20 max-w-full md:relative md:inset-auto md:z-auto"
-          defaultWidth={DEFAULT_SERVICE_PANEL_WIDTH}
-          handleDataSlot="terminal-service-panel-resize-handle"
-          maxWidth={MAX_SERVICE_PANEL_WIDTH}
-          minWidth={MIN_SERVICE_PANEL_WIDTH}
-          open={servicePanelOpen}
-          shellDataSlot="terminal-service-panel-shell"
-          storageKey={SERVICE_PANEL_WIDTH_STORAGE_KEY}
-          surfaceClassName="max-w-[100vw] bg-background"
-          surfaceDataSlot="terminal-service-panel-surface"
-          title="Drag to resize terminal service panel"
-        >
-          <TerminalServicePanel
-            onClose={() => setServicePanelOpen(false)}
-            terminal={terminal}
-          />
-        </ResizablePanel>
-      ) : null}
-      {onCommandPaletteOpenChange ? (
-        <TerminalScriptCommandDialog
-          terminalId={terminal.id}
-          workerId={terminal.activeWorkerId}
-          open={commandPaletteOpen}
-          onOpenChange={setCommandPaletteOpen}
-          onRun={(command) =>
-            inputSenderRef.current?.(terminalCommandInput(command))
-              ? null
-              : "The terminal is reconnecting. Try again when it is ready."
-          }
-        />
-      ) : null}
-      {mobileCommandBarVisible ? (
-        <MobileTerminalCommandBar
-          bottomInset={mobileKeyboard.bottomInset}
-          disabled={state !== "ready"}
-          onDismiss={dismissMobileKeyboard}
-          onKey={runMobileTerminalKey}
-        />
-      ) : null}
-    </div>
+    </>
   );
 }

@@ -6,15 +6,12 @@ import {
 import { workerHeartbeatSchema } from "@cantrip/protocol";
 import type { FastifyInstance } from "fastify";
 
-import type { CodeTunnelBroker } from "../../code/tunnel.js";
 import type { ServerConfig } from "../../config.js";
 import type { ServerRepository } from "../../db/repository.js";
-import { errorMessage, invalidBody } from "../../http/request-helpers.js";
-import { serverLogger } from "../../logger.js";
+import { invalidBody } from "../../http/request-helpers.js";
 import { authenticateWorkerRequest } from "../../workers/credentials.js";
 
 export interface InternalWorkerHttpControlRouteDependencies {
-  codeTunnel: Pick<CodeTunnelBroker, "revokeSharedWorkerSecurity">;
   config: ServerConfig;
   publishWorkerPresence: (
     ownerId: string,
@@ -42,7 +39,6 @@ export interface InternalWorkerHttpControlRouteDependencies {
 export function installInternalWorkerHttpControlRoutes(
   app: FastifyInstance,
   {
-    codeTunnel,
     config,
     publishWorkerPresence,
     repository,
@@ -139,23 +135,6 @@ export function installInternalWorkerHttpControlRoutes(
           error:
             "Worker encryption identity conflicts with the registered principal.",
         });
-      }
-      if (replacedWorkerPrincipal) {
-        void codeTunnel
-          .revokeSharedWorkerSecurity(workerAuth.ownerId, workerId)
-          .catch((error) => {
-            serverLogger.warn(
-              "Could not immediately retire shared Code transports after worker encryption identity rotation",
-              {
-                error: errorMessage(error),
-                event: "code.transport.security-retirement-failed",
-                operation: "revoke-worker-security",
-                status: "failed",
-                subsystem: "code",
-                workerId,
-              },
-            );
-          });
       }
       const grantResult =
         principal.state === "approved"

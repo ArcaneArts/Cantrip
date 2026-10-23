@@ -110,9 +110,14 @@ test("signs every embedded Mach-O and applies runtime JIT entitlements", async (
     await chmod(node, 0o755);
     await chmod(codex, 0o644);
     await writeFile(path.join(root, "README.txt"), "not native\n");
-    const codeRoot = path.join(root, "worker", "resources", "cantrip-code");
-    await mkdir(codeRoot, { recursive: true });
-    await writeFile(path.join(codeRoot, "native.dylib"), thinMachO);
+    const nativeModuleRoot = path.join(
+      root,
+      "worker",
+      "node_modules",
+      "native-module",
+    );
+    await mkdir(nativeModuleRoot, { recursive: true });
+    await writeFile(path.join(nativeModuleRoot, "native.dylib"), thinMachO);
     assert.deepEqual(
       new Set(await findMachOBinaries(root)),
       new Set([
@@ -120,7 +125,7 @@ test("signs every embedded Mach-O and applies runtime JIT entitlements", async (
         codex,
         cua,
         codeModeHost,
-        path.join(codeRoot, "native.dylib"),
+        path.join(nativeModuleRoot, "native.dylib"),
       ]),
     );
 
@@ -273,16 +278,9 @@ test("signs generated disk images after Tauri packaging", async () => {
     );
     const build = packageScript.indexOf('"tauri:build"');
     const runtimeSign = packageScript.indexOf('"sign-macos-runtime.mjs"');
-    const codeVerification = packageScript.indexOf(
-      "await verifyPackagedCantripCode",
-    );
     const sign = packageScript.indexOf('"sign-macos-disk-images.mjs"');
     const verify = packageScript.indexOf('"verify-macos-distribution.mjs"');
-    assert.ok(
-      runtimeSign >= 0 &&
-        codeVerification > runtimeSign &&
-        build > codeVerification,
-    );
+    assert.ok(runtimeSign >= 0 && build > runtimeSign);
     assert.ok(build >= 0 && sign > build && verify > sign);
   } finally {
     await rm(root, { force: true, recursive: true });

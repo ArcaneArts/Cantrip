@@ -1,6 +1,7 @@
 import { ComputerUseEffectsSettings } from "./computer-use-effects-settings";
 import { LabelingSettings } from "./labeling-settings";
 import { Monitor } from "lucide-react";
+import { FileChangeSettings } from "./file-change-settings";
 import { TabDisplaySettings } from "./tab-display-settings";
 import type {
   CodeAppearance,
@@ -29,7 +30,6 @@ import {
   ChevronDown,
   ChevronUp,
   Copy,
-  Code2,
   Cpu,
   Gauge,
   KeyRound,
@@ -128,7 +128,6 @@ import { TunnelSettings } from "./tunnel-settings";
 import { LogSettings } from "./log-settings";
 import { EliteSettings } from "./elite-settings";
 import { PolicySettings } from "./policy-settings";
-import { CodeSettings } from "./code-settings";
 import { AccountUsageSettings } from "./account-usage-settings";
 import { EncryptionRecoverySettings } from "./encryption-recovery-settings";
 import { TaskSettings } from "./task-settings";
@@ -187,7 +186,6 @@ export type SettingsSection =
   | "remote-desktop"
   | "appearance"
   | "usage"
-  | "code"
   | "elite"
   | "models"
   | "tasks"
@@ -291,31 +289,6 @@ export const settingsNavigationSections: readonly SettingsNavigationSection<Sett
           keywords: [
             "light dark brightness opacity transparency gutter width spacing",
           ],
-        },
-      ],
-    },
-    {
-      id: "code",
-      label: "Code",
-      description: "Editor and extensions",
-      icon: Code2,
-      searchItems: [
-        {
-          id: "code-editor",
-          label: "Code editor",
-          description: "Code-OSS customization and editor preferences.",
-          keywords: ["vscode vs code workbench"],
-        },
-        {
-          id: "extensions",
-          label: "Extensions",
-          description: "Install and manage editor extensions.",
-          keywords: ["vsix marketplace"],
-        },
-        {
-          id: "themes",
-          label: "Editor themes",
-          description: "Choose how Code follows Cantrip appearance.",
         },
       ],
     },
@@ -1118,7 +1091,6 @@ function CatalogModelMetadata({
 }
 
 export function SettingsPage({
-  appearance,
   initialSection = "general",
   initialPolicyId = null,
   mobileSectionOpen,
@@ -1139,7 +1111,6 @@ export function SettingsPage({
   const [section, setSection] = useState<SettingsSection>(initialSection);
   const [activeModelsTab, setActiveModelsTab] =
     useState<ModelsSettingsTab>("general");
-  const [codeActivated, setCodeActivated] = useState(initialSection === "code");
   const [policyEditorId, setPolicyEditorId] = useState<string | null>(
     initialPolicyId,
   );
@@ -1641,7 +1612,7 @@ export function SettingsPage({
     !generalSearch ||
     matchesSearch(
       generalSearch,
-      "appearance theme system light dark high contrast pro mode opacity transparency vibrancy blur macos operating system elite experimental reveal effects configure tab bar top bottom rail icons tabs hybrid display",
+      "appearance theme system light dark high contrast pro mode opacity transparency vibrancy blur macos operating system elite experimental reveal effects configure tab bar top bottom rail icons tabs hybrid display file change shimmer animation added modified deleted",
     );
   const desktopStreamingMatches =
     !generalSearch ||
@@ -1708,7 +1679,6 @@ export function SettingsPage({
 
   useEffect(() => {
     setSection(initialSection);
-    if (initialSection === "code") setCodeActivated(true);
   }, [initialSection]);
   useEffect(() => {
     if (initialPolicyId) setPolicyEditorId(initialPolicyId);
@@ -1728,7 +1698,6 @@ export function SettingsPage({
         onSearchQueryChange={setSettingsSearchQuery}
         onMobileSectionOpenChange={onMobileSectionOpenChange}
         onSectionChange={(next) => {
-          if (next === "code") setCodeActivated(true);
           setSection(next);
         }}
         onSearchResultSelect={(result) => {
@@ -1740,15 +1709,13 @@ export function SettingsPage({
       >
         <div
           data-content-gutter={
-            section === "code"
-              ? undefined
-              : section === "logs"
-                ? "expansive"
-                : section === "usage" || section === "tunnels"
-                  ? "wide"
-                  : "standard"
+            section === "logs"
+              ? "expansive"
+              : section === "usage" || section === "tunnels"
+                ? "wide"
+                : "standard"
           }
-          className={`min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden ${section === "code" ? "overflow-hidden" : section === "logs" || section === "elite" ? "overflow-hidden p-3 sm:p-4" : "overflow-y-auto p-4 sm:p-6"}`}
+          className={`min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden ${section === "logs" || section === "elite" ? "overflow-hidden p-3 sm:p-4" : "overflow-y-auto p-4 sm:p-6"}`}
         >
           <div
             className={`${section === "general" || section === "appearance" || section === "computer-use" || section === "remote-desktop" ? "grid" : "hidden"} w-full min-w-0 gap-4`}
@@ -1765,6 +1732,7 @@ export function SettingsPage({
                   <section>
                     <div className="px-3 py-3">
                       <TabDisplaySettings />
+                      <FileChangeSettings />
                     </div>
                     <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-3">
                       <div className="flex min-w-0 items-center gap-2.5">
@@ -2246,15 +2214,6 @@ export function SettingsPage({
           {section === "workers" ? <WorkerSettings /> : null}
           {section === "tasks" ? <TaskSettings /> : null}
           {section === "usage" ? <AccountUsageSettings /> : null}
-          {codeActivated ? (
-            <CodeSettings
-              active={section === "code"}
-              appearance={appearance}
-              defaultWorkerId={
-                settings.data?.preferences.defaultWorkerId ?? null
-              }
-            />
-          ) : null}
           {section === "elite" ? (
             <EliteSettings
               appWideEnabled={settings.data?.preferences.eliteMode ?? false}

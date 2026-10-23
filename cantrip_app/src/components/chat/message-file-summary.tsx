@@ -1,14 +1,8 @@
 import type { AgentActivity, ChatMessage } from "@cantrip/protocol";
 import type { ChatFileReferencesResult } from "@cantrip/protocol/surface-stream";
-import {
-  ChevronDown,
-  ChevronRight,
-  FileDiff,
-  FileText,
-  Folder,
-  FolderOpen,
-} from "lucide-react";
+import { ChevronDown, ChevronRight, FileDiff } from "lucide-react";
 import { useState } from "react";
+import { FileTypeIcon } from "@/components/files/file-type-icon";
 
 import type { AgentTranscriptEntry } from "@/components/chat/agent-turn-projection";
 import {
@@ -213,7 +207,6 @@ function MessageFileTreeItem({
 }) {
   const [expanded, setExpanded] = useState(depth === 0);
   const folder = node.kind === "directory";
-  const Icon = folder ? (expanded ? FolderOpen : Folder) : FileText;
   const entry = node.entry;
   return (
     <li>
@@ -238,7 +231,12 @@ function MessageFileTreeItem({
         ) : (
           <span className="size-3.5 shrink-0" />
         )}
-        <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+        <FileTypeIcon
+          path={node.name}
+          kind={node.kind}
+          expanded={expanded}
+          className="size-3.5 text-muted-foreground"
+        />
         <code className="min-w-0 flex-1 truncate font-mono text-xs">
           {node.name}
         </code>

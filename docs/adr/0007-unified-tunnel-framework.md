@@ -3,6 +3,10 @@
 - Status: Accepted
 - Date: 2026-08-11
 
+> Scope update: The embedded workbench has been retired. Its editor-specific
+> sessions and adapters below describe the earlier implementation; the common
+> transport and authorization rules continue to apply to active features.
+
 > Amendment: the unified tunnel identities, endpoint encryption, lifecycle,
 > and adapters remain accepted. ADRs 0009 and 0010 place the tunnel framing
 > inside WorkerLink: LOCAL, LAN, and WAN may bypass the byte relay after server

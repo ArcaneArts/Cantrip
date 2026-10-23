@@ -24,6 +24,7 @@ export function ProjectChatList({
   overviewSelected,
   onFilePin,
   onFileCreateFolder,
+  onFileCreateFile,
   onFileDelete,
   onFileOpenGraph,
   onFileOpenNative,
@@ -56,6 +57,12 @@ export function ProjectChatList({
   onFileCreateFolder(
     explorer: ExplorerSummary,
     parentPath: string,
+    authorization: ExplorerFileMutationAuthorization,
+  ): Promise<ExplorerEntry>;
+  onFileCreateFile(
+    explorer: ExplorerSummary,
+    parentPath: string,
+    name: string,
     authorization: ExplorerFileMutationAuthorization,
   ): Promise<ExplorerEntry>;
   onFileDelete(
@@ -107,6 +114,20 @@ export function ProjectChatList({
                     error={fileTreeError}
                     explorer={fileExplorer}
                     loading={fileTreeLoading}
+                    onCreateFile={(parentPath, name, authorization) => {
+                      if (!fileExplorer)
+                        return Promise.reject(
+                          new Error(
+                            "The project file explorer is unavailable.",
+                          ),
+                        );
+                      return onFileCreateFile(
+                        fileExplorer,
+                        parentPath,
+                        name,
+                        authorization,
+                      );
+                    }}
                     onCreateFolder={(parentPath, authorization) => {
                       if (!fileExplorer) {
                         return Promise.reject(

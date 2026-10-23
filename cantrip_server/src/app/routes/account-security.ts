@@ -38,7 +38,6 @@ import {
   normalizeAccountEmail,
   verifyPassword,
 } from "../../auth/service.js";
-import type { CodeTunnelBroker } from "../../code/tunnel.js";
 import type { ServerConfig } from "../../config.js";
 import type { ServerRepository } from "../../db/repository.js";
 import { invalidBody } from "../../http/request-helpers.js";
@@ -52,7 +51,6 @@ import type { AppendAudit } from "../http/audit.js";
 
 export interface AccountSecurityRouteDependencies {
   appendAudit: AppendAudit;
-  codeTunnel: Pick<CodeTunnelBroker, "revokeSharedWorkerSecurity">;
   config: ServerConfig;
   consumeAuthAttempt: (
     request: FastifyRequest,
@@ -82,7 +80,6 @@ export function installAccountSecurityRoutes(
   app: FastifyInstance,
   {
     appendAudit,
-    codeTunnel,
     config,
     consumeAuthAttempt,
     licenseWhitelistEnabled,
@@ -165,6 +162,16 @@ export function installAccountSecurityRoutes(
     }
     const principal = authenticatedPrincipal(request);
     const ownerId = principalOwnerId(request);
+    if (
+      config.adminPassword &&
+      principal.user.email &&
+      normalizeAccountEmail(principal.user.email) === normalizedAdminEmail
+    ) {
+      return reply.code(409).send({
+        error:
+          "This administrator password is managed by CANTRIP_ADMIN_PASSWORD.",
+      });
+    }
     const limited = consumeAuthAttempt(
       request,
       "password-change",
@@ -282,12 +289,6 @@ export function installAccountSecurityRoutes(
         request.params.principalId,
         input.data,
       );
-      if (principal?.kind === "worker" && principal.workerId) {
-        await codeTunnel.revokeSharedWorkerSecurity(
-          principal.ownerId,
-          principal.workerId,
-        );
-      }
       return principal
         ? reply
             .header("cache-control", "no-store")
@@ -329,30 +330,12 @@ export function installAccountSecurityRoutes(
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const ownerId = principalOwnerId(request);
-      const tunnelGrantWorkerId =
-        input.data.component === "tunnel-content"
-          ? (await repository.encryptionRegistry.listPrincipals(ownerId)).find(
-              (candidate) =>
-                candidate.id === request.params.principalId &&
-                candidate.kind === "worker" &&
-                candidate.workerId,
-            )?.workerId
-          : null;
       const result = await repository.encryptionRegistry.createGrant(
         ownerId,
         request.params.principalId,
         input.data,
       );
       if (result.status === "created") {
-        if (
-          result.grant.component === "tunnel-content" &&
-          tunnelGrantWorkerId
-        ) {
-          await codeTunnel.revokeSharedWorkerSecurity(
-            ownerId,
-            tunnelGrantWorkerId,
-          );
-        }
         return reply
           .header("cache-control", "no-store")
           .code(201)
@@ -389,24 +372,6 @@ export function installAccountSecurityRoutes(
         request.params.grantId,
         input.data,
       );
-      if (grant?.component === "tunnel-content") {
-        const principals = await repository.encryptionRegistry.listPrincipals(
-          grant.ownerId,
-        );
-        const workerPrincipal = principals.find(
-          (candidate) =>
-            candidate.id === grant.principalId &&
-            candidate.kind === "worker" &&
-            candidate.workerId,
-        );
-        if (workerPrincipal?.workerId) {
-          await codeTunnel.revokeSharedWorkerSecurity(
-            grant.ownerId,
-            workerPrincipal.workerId,
-            grant.keyRevision,
-          );
-        }
-      }
       return grant
         ? reply
             .header("cache-control", "no-store")

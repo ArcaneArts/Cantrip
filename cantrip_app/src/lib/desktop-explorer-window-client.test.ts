@@ -9,6 +9,59 @@ import {
 } from "./desktop-explorer-window-protocol";
 
 describe("DesktopExplorerWindowClient", () => {
+  it("retires pending operations and ignores queued context after account revocation", async () => {
+    const launchId = crypto.randomUUID();
+    const broker = new BroadcastChannel(
+      desktopExplorerWindowChannelName(launchId),
+    );
+    const context = {
+      appearance: "dark",
+      explorer: { id: "one" } as ExplorerSummary,
+      path: "src/main.ts",
+      requestedAtMs: 1,
+    } as DesktopExplorerWindowContext;
+    let requested = false;
+    broker.addEventListener("message", (event) => {
+      if (event.data.type === "launch.request")
+        broker.postMessage({ type: "launch.ready", launchId, context });
+      else if (event.data.type === "file.read") requested = true;
+    });
+    const callbacks = {
+      onContext: vi.fn(),
+      onContextRevoked: vi.fn(),
+      onLaunchError: vi.fn(),
+    };
+    const client = new DesktopExplorerWindowClient(launchId, callbacks);
+    try {
+      client.start();
+      await vi.waitFor(() =>
+        expect(callbacks.onContext).toHaveBeenCalledTimes(1),
+      );
+      const pending = client.readFile();
+      const rejected = expect(pending).rejects.toThrow("closed");
+      await vi.waitFor(() => expect(requested).toBe(true));
+      broker.postMessage({
+        type: "context.revoked",
+        launchId,
+        error: "account changed",
+      });
+      broker.postMessage({
+        type: "launch.ready",
+        launchId,
+        context: { ...context, path: "stale-private-path" },
+      });
+      await rejected;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(callbacks.onContextRevoked).toHaveBeenCalledWith(
+        "account changed",
+      );
+      expect(callbacks.onContext).toHaveBeenCalledTimes(1);
+      await expect(client.readFile()).rejects.toThrow("closed");
+    } finally {
+      client.dispose();
+      broker.close();
+    }
+  });
   it("receives launch state and file data from the owning main window", async () => {
     const launchId = crypto.randomUUID();
     const broker = new BroadcastChannel(
@@ -29,15 +82,6 @@ describe("DesktopExplorerWindowClient", () => {
       const request = event.data as DesktopExplorerWindowRequest;
       if (request.type === "launch.request") {
         broker.postMessage({ context, launchId, type: "launch.ready" });
-      } else if (request.type === "editor.workbench-ready") {
-        broker.postMessage({
-          configuredAtMs: 123,
-          launchId,
-          nonce: request.nonce,
-          path: context.path,
-          requestedAtMs: context.requestedAtMs,
-          type: "editor.ready",
-        });
       } else if (request.type === "file.read") {
         broker.postMessage({
           file,
@@ -54,61 +98,14 @@ describe("DesktopExplorerWindowClient", () => {
         resolveContext = resolve;
       },
     );
-    let resolveConfigured!: (value: number) => void;
-    const configured = new Promise<number>((resolve) => {
-      resolveConfigured = resolve;
-    });
     const client = new DesktopExplorerWindowClient(launchId, {
       onContext: resolveContext,
-      onEditorEndpoint: vi.fn(),
-      onEditorError: vi.fn(),
-      onEditorReady: resolveConfigured,
       onLaunchError: vi.fn(),
     });
     client.start();
-    client.editorWorkbenchMounted("mount_nonce_1234567890");
-    client.editorWorkbenchReady("mount_nonce_1234567890");
 
     await expect(receivedContext).resolves.toEqual(context);
-    await expect(configured).resolves.toBe(123);
     await expect(client.readFile()).resolves.toEqual(file);
-
-    client.dispose();
-    broker.close();
-  });
-
-  it("reports only verified workbench mount readiness and failure stages", async () => {
-    const launchId = crypto.randomUUID();
-    const broker = new BroadcastChannel(
-      desktopExplorerWindowChannelName(launchId),
-    );
-    const messages: DesktopExplorerWindowRequest[] = [];
-    broker.addEventListener("message", (event) => {
-      const request = event.data as DesktopExplorerWindowRequest;
-      if (request.type.startsWith("editor.")) messages.push(request);
-    });
-    const client = new DesktopExplorerWindowClient(launchId, {
-      onContext: vi.fn(),
-      onEditorEndpoint: vi.fn(),
-      onEditorError: vi.fn(),
-      onEditorReady: vi.fn(),
-      onLaunchError: vi.fn(),
-    });
-    client.start();
-
-    client.editorWorkbenchMounted("mount_nonce_1234567890");
-    client.editorWorkbenchReady("mount_nonce_1234567890");
-    client.editorWorkbenchFailed(
-      "mount_nonce_1234567890",
-      "frame failed",
-      "frame",
-    );
-    await vi.waitFor(() => expect(messages).toHaveLength(3));
-    expect(messages.map((message) => message.type)).toEqual([
-      "editor.workbench-mounted",
-      "editor.workbench-ready",
-      "editor.workbench-failed",
-    ]);
 
     client.dispose();
     broker.close();
@@ -130,9 +127,6 @@ describe("DesktopExplorerWindowClient", () => {
     );
     const client = new DesktopExplorerWindowClient(launchId, {
       onContext: resolveContext,
-      onEditorEndpoint: vi.fn(),
-      onEditorError: vi.fn(),
-      onEditorReady: vi.fn(),
       onLaunchError: vi.fn(),
     });
     client.start();
@@ -182,9 +176,6 @@ describe("DesktopExplorerWindowClient", () => {
     const onContext = vi.fn();
     const client = new DesktopExplorerWindowClient(launchId, {
       onContext,
-      onEditorEndpoint: vi.fn(),
-      onEditorError: vi.fn(),
-      onEditorReady: vi.fn(),
       onLaunchError: vi.fn(),
     });
     client.start();

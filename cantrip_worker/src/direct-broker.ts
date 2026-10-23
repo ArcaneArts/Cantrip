@@ -417,7 +417,7 @@ export class DirectBroker {
       // terminal close after receiving a destination close/error. Deleting the
       // entry here made that valid acknowledgement look like an unknown
       // connection and closed the entire direct capability, including every
-      // unrelated workbench HTTP and WebSocket stream sharing it.
+      // unrelated HTTP and WebSocket stream sharing it.
       return true;
     } catch (error) {
       active.socket.terminate();

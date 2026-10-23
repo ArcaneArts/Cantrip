@@ -92,6 +92,24 @@ test("requires every production secret and the configured public origins", () =>
   );
 });
 
+test("forwards the optional administrator password exactly as stored in Infisical", () => {
+  const secrets = productionSecrets();
+  assert.equal(
+    "CANTRIP_ADMIN_PASSWORD" in buildProductionEnvironment(secrets, config),
+    false,
+  );
+  secrets.set("CANTRIP_ADMIN_PASSWORD", '  password with $ and " quotes  ');
+  assert.equal(
+    buildProductionEnvironment(secrets, config).CANTRIP_ADMIN_PASSWORD,
+    secrets.get("CANTRIP_ADMIN_PASSWORD"),
+  );
+  secrets.set("CANTRIP_ADMIN_PASSWORD", "");
+  assert.equal(
+    "CANTRIP_ADMIN_PASSWORD" in buildProductionEnvironment(secrets, config),
+    false,
+  );
+});
+
 test("serializes systemd environment values without losing URL punctuation", () => {
   assert.equal(
     quoteSystemdEnvironmentValue('space # dollar $ quote " slash \\'),
