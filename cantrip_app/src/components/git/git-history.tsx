@@ -102,6 +102,7 @@ import {
 import { cn } from "@/lib/utils";
 import { liveResourceRefreshInterval } from "@/lib/live-resource-refresh";
 import { projectHasGithubCapability } from "@/lib/project-capabilities";
+import { resolveGitHistoryWorktreeId } from "@/lib/git-history-worktree";
 import {
   defaultGitHistoryOptions,
   parseGitHistoryRoute,
@@ -569,7 +570,7 @@ export function GitHistoryView({
   showSectionTabs = true,
   view,
   workers,
-  worktreeId,
+  worktreeId: requestedWorktreeId,
   worktrees,
 }: {
   activeSection?: GitViewSection;
@@ -604,6 +605,25 @@ export function GitHistoryView({
   worktreeId: string;
   worktrees: ProjectWorktreeSummary[];
 }) {
+  const worktreeId = resolveGitHistoryWorktreeId(
+    requestedWorktreeId,
+    worktrees,
+  );
+  const recoveredSelectionRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (worktreeId === requestedWorktreeId) {
+      recoveredSelectionRef.current = null;
+      return;
+    }
+    const recovery = JSON.stringify([
+      project.id,
+      requestedWorktreeId,
+      worktreeId,
+    ]);
+    if (recoveredSelectionRef.current === recovery) return;
+    recoveredSelectionRef.current = recovery;
+    onSelectWorktree(worktreeId);
+  }, [onSelectWorktree, project.id, requestedWorktreeId, worktreeId]);
   const queryClient = useQueryClient();
   const gitResourcesLive = useAppLiveStatus() === "live";
   const compactLayout = useCompactLayout();
