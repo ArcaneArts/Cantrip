@@ -2,6 +2,67 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
+/** The divider follows the whole surface's hover, not focus or gutter hover alone. */
+export async function checkNativeEditorGutterHover(page) {
+  const input = page.getByRole("textbox");
+  const gutter = page.locator(".cantrip-editor-gutter");
+  const canHover = await page.evaluate(
+    () => matchMedia("(hover: hover)").matches,
+  );
+  const waitForDivider = (visible) =>
+    page.waitForFunction((expected) => {
+      const color = getComputedStyle(
+        document.querySelector(".cantrip-editor-gutter"),
+      ).borderRightColor;
+      return (color !== "rgba(0, 0, 0, 0)") === expected;
+    }, visible);
+  const geometry = () =>
+    gutter.evaluate((node) => ({
+      width: node.getBoundingClientRect().width,
+      codeX: document
+        .querySelector(".cantrip-editor-body")
+        .getBoundingClientRect().x,
+      borderWidth: getComputedStyle(node).borderRightWidth,
+    }));
+  const original = await input.inputValue();
+  for (const readOnly of [false, true]) {
+    if (readOnly)
+      await page
+        .getByRole("button", { name: "View code", exact: true })
+        .click();
+    assert.equal(await input.evaluate((node) => node.readOnly), readOnly);
+    await page.mouse.move(1, 1);
+    await input.focus();
+    await waitForDivider(false);
+    const hidden = await geometry();
+    assert.equal(hidden.borderWidth, "1px");
+    assert.ok(
+      (await gutter.textContent()).includes("1"),
+      "Line numbers remain visible",
+    );
+    await input.hover();
+    await waitForDivider(canHover);
+    assert.deepEqual(
+      await geometry(),
+      hidden,
+      "Hover must not shift code or numbers",
+    );
+    await gutter.hover();
+    await waitForDivider(canHover);
+    await page.mouse.move(1, 1);
+    await waitForDivider(false);
+    assert.equal(await input.inputValue(), original);
+    assert.equal(await input.evaluate((node) => node.readOnly), readOnly);
+  }
+  await page.getByRole("button", { name: "Edit code", exact: true }).click();
+  return {
+    editorAndViewer: true,
+    surfaceHover: canHover,
+    focusDoesNotReveal: true,
+    noLayoutShift: true,
+  };
+}
+
 /** Exercise browser read-only input while preserving native selection/copy. */
 export async function checkNativeEditorReadOnly(
   page,
