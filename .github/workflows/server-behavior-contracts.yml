@@ -42,11 +42,14 @@ jobs:
       - run: pnpm --filter @cantrip/server typecheck
       - name: Encrypted Task Goal continuity, recovery fencing and lifecycle
         if: ${{ !cancelled() }}
+        # These cold PGlite migration/transaction fixtures exceed Vitest's
+        # five-second unit-test default on shared macOS/Windows runners.
         run: >-
           pnpm --filter @cantrip/server exec vitest run
           test/task-goal-observation.test.ts test/task-execution-recovery.test.ts
           test/task-goal-worker-interruption.test.ts test/task-dispatch.test.ts
           test/task-e2ee-lifecycle.test.ts --maxWorkers=2
+          --testTimeout=30000 --hookTimeout=30000
       - name: Task Goal status rendering and encrypted native projections
         if: ${{ !cancelled() }}
         run: >-
