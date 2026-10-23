@@ -171,6 +171,7 @@ export interface ExplorerHeaderState {
   isFetching: boolean;
   isSaving: boolean;
   selectedPath: string | null;
+  showFileClose?: boolean;
   back(): void;
   refresh(): void;
   openFileHistory?(): void;
@@ -1032,6 +1033,9 @@ export function ExplorerView({
           : undefined,
       save: saveDraft,
       selectedPath: graphVisible ? null : selectedPath,
+      // Persisted file selections have their own workspace tab close control.
+      // Transient previews still need a way back to their containing Explorer.
+      showFileClose: Boolean(transientFilePath) || !explorer.selectedPath,
       setFileMode: changeFileMode,
     }),
     [
@@ -1043,6 +1047,7 @@ export function ExplorerView({
       dirty,
       editableLanguage,
       explorer.projectId,
+      explorer.selectedPath,
       explorer.worktreeId,
       file.isFetching,
       fileMode,
@@ -1054,6 +1059,7 @@ export function ExplorerView({
       saveFilePending,
       selectedPath,
       structuredFormat,
+      transientFilePath,
       viewStatePending,
       mediaType,
     ],

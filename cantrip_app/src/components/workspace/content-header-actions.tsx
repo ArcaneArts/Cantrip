@@ -230,6 +230,7 @@ export function ExplorerFileCloseButton({
   header: ExplorerHeaderState | null;
 }) {
   if (!header || (!header.selectedPath && !header.canGoBack)) return null;
+  if (header.selectedPath && header.showFileClose === false) return null;
   return (
     <TooltipButton
       className={compact ? "size-6 shrink-0" : "size-8 shrink-0"}
@@ -305,13 +306,10 @@ export function ContentHeaderActions({
         <ExplorerHeaderActions compact={compact} header={explorer} />
       ) : null}
       {code?.header?.explorer ? (
-        <>
-          <ExplorerFileCloseButton header={code.header.explorer} />
-          <ExplorerHeaderActions
-            compact={compact}
-            header={code.header.explorer}
-          />
-        </>
+        <ExplorerHeaderActions
+          compact={compact}
+          header={code.header.explorer}
+        />
       ) : null}
       {terminalService ? (
         <TooltipButton

@@ -125,6 +125,30 @@ async function choose(mode: "preview" | "edit" | "visual") {
   expect(header!.fileMode).toBe(mode);
 }
 describe("Explorer transient renderer modes", () => {
+  it("leaves file-tab closing to the tab while retaining transient preview navigation", async () => {
+    const render = await setup("README.md", {
+      ...explorer,
+      selectedPath: "README.md",
+    });
+    expect(header!.showFileClose).toBe(true);
+    expect(
+      container.querySelector('button[aria-label="Close file"]'),
+    ).not.toBeNull();
+
+    await render({ ...explorer, selectedPath: "README.md" }, null);
+    expect(header!.selectedPath).toBe("README.md");
+    expect(header!.showFileClose).toBe(false);
+    expect(
+      container.querySelector('button[aria-label="Close file"]'),
+    ).toBeNull();
+    expect(
+      container.querySelector('button[aria-label="Refresh Explorer"]'),
+    ).not.toBeNull();
+    expect(
+      container.querySelector('button[aria-label="View mode"]'),
+    ).not.toBeNull();
+  });
+
   it.each(["data/settings.yaml", "data/settings.json"])(
     "renders selected Visual/View/Edit independently of Code readiness: %s",
     async (path) => {
