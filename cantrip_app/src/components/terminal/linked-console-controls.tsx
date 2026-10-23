@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+import { PanelToolbar } from "@/components/workspace/panel-toolbar";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, Pause, Play, Square } from "lucide-react";
 import { useChatExecutionControls } from "@/components/chat/use-chat-execution-controls";
@@ -9,9 +11,11 @@ import { errorMessage as errorText } from "@/lib/error-message";
  * Read the same canonical chat cache as the GUI; input remains server-resolved
  * even when that observation is stale or unavailable. */
 export function LinkedConsoleControls({
+  actions,
   chatId,
   projectId,
 }: {
+  actions?: ReactNode;
   chatId: string;
   projectId: string;
 }) {
@@ -43,15 +47,8 @@ export function LinkedConsoleControls({
       ? "Pausing at the next safe boundary…"
       : "Resuming…";
   return (
-    <div
-      className="shrink-0 border-b px-3 py-2"
-      data-slot="linked-console-controls"
-    >
-      <div
-        role="toolbar"
-        aria-label="Agent console controls"
-        className="flex min-w-0 items-center gap-2"
-      >
+    <div className="shrink-0" data-slot="linked-console-controls">
+      <PanelToolbar aria-label="Agent console controls">
         <span
           role="status"
           className="min-w-0 flex-1 text-xs text-muted-foreground"
@@ -104,7 +101,8 @@ export function LinkedConsoleControls({
             <Square className="size-3 fill-current" />
           )}
         </Button>
-      </div>
+        {actions}
+      </PanelToolbar>
       {chats.error ? (
         <p role="alert" className="mt-1 text-xs text-destructive">
           Could not read agent status: {errorText(chats.error)}

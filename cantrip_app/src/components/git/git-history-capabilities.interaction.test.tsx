@@ -190,6 +190,7 @@ async function mount(
     worktreeId: string;
     worktrees: ProjectWorktreeSummary[];
   } = { worktreeId: "primary", worktrees: [primary] },
+  focused = true,
 ) {
   await act(async () => {
     root.render(
@@ -208,7 +209,7 @@ async function mount(
             onCreateHistory={ignore}
             onCreateTerminal={ignore}
             onHeaderChange={(value) => {
-              header = value;
+              if (focused) header = value;
             }}
             onArchiveChat={async () => undefined}
             onOpenChat={ignore}
@@ -240,7 +241,10 @@ function button(name: string) {
   const result = [
     ...document.querySelectorAll<HTMLButtonElement>("button"),
   ].find(
-    (b) => b.textContent?.trim() === name || b.getAttribute("title") === name,
+    (b) =>
+      b.textContent?.trim() === name ||
+      b.getAttribute("title") === name ||
+      b.getAttribute("aria-label") === name,
   );
   expect(result, `Missing button ${name}`).toBeDefined();
   return result!;
@@ -404,11 +408,14 @@ describe("History managed-worktree capabilities", () => {
   it.each([false, true])(
     "refreshes local history without managed reconciliation (standalone=%s)",
     async (standalone) => {
-      await mount(false, standalone);
+      await mount(false, standalone, undefined, false);
+      expect(header).toBeNull();
+      expect(
+        container.querySelector('[role="toolbar"][aria-label="Git controls"]'),
+      ).not.toBeNull();
       vi.mocked(api.getProjectWorktreeHistory).mockClear();
       await act(async () => {
-        if (standalone) button("Refresh Git history").click();
-        else header!.refresh();
+        button("Refresh Git history").click();
       });
       expect(api.getProjectWorktreeHistory).toHaveBeenCalled();
       expect(api.reconcileProjectWorktrees).not.toHaveBeenCalled();

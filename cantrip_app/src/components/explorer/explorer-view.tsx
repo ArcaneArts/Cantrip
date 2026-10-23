@@ -1,3 +1,8 @@
+import { PanelToolbar } from "@/components/workspace/panel-toolbar";
+import {
+  ExplorerFileCloseButton,
+  ExplorerHeaderActions,
+} from "@/components/workspace/content-header-actions";
 import {
   explorerMediaTypeForPath,
   type CodeAppearance,
@@ -212,6 +217,7 @@ export function ExplorerView({
   onOpenTerminal,
   prewarmInlineCode = false,
   repositoryGraphAvailable,
+  showToolbar = true,
   transientFile,
   workerOnline = true,
 }: {
@@ -242,6 +248,7 @@ export function ExplorerView({
   onOpenTerminal?(explorer: ExplorerSummary, entry: ExplorerEntry): void;
   prewarmInlineCode?: boolean;
   repositoryGraphAvailable: boolean;
+  showToolbar?: boolean;
   transientFile?: TransientExplorerFile;
   workerOnline?: boolean;
 }) {
@@ -993,9 +1000,8 @@ export function ExplorerView({
     [persistViewState],
   );
 
-  useEffect(() => {
-    if (!active) return;
-    onHeaderChange?.({
+  const panelHeader = useMemo<ExplorerHeaderState>(
+    () => ({
       backLabel: graphVisible ? "Close graph" : undefined,
       back,
       canEdit: !graphVisible && editableLanguage !== null,
@@ -1027,31 +1033,35 @@ export function ExplorerView({
       save: saveDraft,
       selectedPath: graphVisible ? null : selectedPath,
       setFileMode: changeFileMode,
-    });
-  }, [
-    active,
-    back,
-    changeFileMode,
-    commitFetches,
-    directoryFetches,
-    dirty,
-    editableLanguage,
-    explorer.projectId,
-    explorer.worktreeId,
-    file.isFetching,
-    fileMode,
-    graphRootPath,
-    graphStatus?.isFetching,
-    graphVisible,
-    onHeaderChange,
-    refreshExplorer,
-    saveDraft,
-    saveFilePending,
-    selectedPath,
-    structuredFormat,
-    viewStatePending,
-    mediaType,
-  ]);
+    }),
+    [
+      active,
+      back,
+      changeFileMode,
+      commitFetches,
+      directoryFetches,
+      dirty,
+      editableLanguage,
+      explorer.projectId,
+      explorer.worktreeId,
+      file.isFetching,
+      fileMode,
+      graphRootPath,
+      graphStatus?.isFetching,
+      graphVisible,
+      refreshExplorer,
+      saveDraft,
+      saveFilePending,
+      selectedPath,
+      structuredFormat,
+      viewStatePending,
+      mediaType,
+    ],
+  );
+
+  useEffect(() => {
+    if (active) onHeaderChange?.(panelHeader);
+  }, [active, onHeaderChange, panelHeader]);
 
   useEffect(() => {
     return () => {
@@ -1177,11 +1187,29 @@ export function ExplorerView({
       aria-hidden={!active}
       inert={active ? undefined : true}
       className={cn(
-        "min-h-0 flex-1 overflow-hidden",
+        "min-h-0 flex-1 flex-col overflow-hidden",
         active ? "flex" : "pointer-events-none invisible absolute inset-0 flex",
       )}
       data-slot="explorer-view"
     >
+      {showToolbar ? (
+        <PanelToolbar aria-label="File controls">
+          <span
+            className="min-w-0 flex-1 truncate text-muted-foreground"
+            title={
+              graphVisible
+                ? (graphRootPath ?? "Repository graph")
+                : (selectedPath ?? explorer.title)
+            }
+          >
+            {graphVisible
+              ? graphRootPath || "Repository graph"
+              : (selectedPath ?? explorer.title)}
+          </span>
+          <ExplorerHeaderActions compact header={panelHeader} />
+          <ExplorerFileCloseButton header={panelHeader} />
+        </PanelToolbar>
+      ) : null}
       {!streamEncryptionReady && !(nativeDocument?.id === nativeDocumentId) ? (
         <div className="grid h-full flex-1 place-items-center p-6 text-sm text-muted-foreground">
           {streamEncryption.error ? (

@@ -12,7 +12,6 @@ import {
 } from "@/components/app/application-shell-model";
 import {
   ContentHeaderActions,
-  ExplorerFileCloseButton,
   type ContentHeaderActionsProps,
 } from "@/components/workspace/content-header-actions";
 import { MobileAppModeSwitch } from "@/components/mobile/mobile-app-mode-switch";
@@ -308,12 +307,6 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
               )}
               data-tauri-drag-region={overlayTitlebar ? "" : undefined}
             >
-              {appMode === "ide" && selectedExplorer ? (
-                <ExplorerFileCloseButton
-                  compact={overlayTitlebar}
-                  header={activeExplorerHeader}
-                />
-              ) : null}
               <span
                 className="truncate"
                 data-tauri-drag-region={overlayTitlebar ? "" : undefined}

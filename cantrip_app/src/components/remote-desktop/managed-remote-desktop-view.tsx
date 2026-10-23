@@ -1,3 +1,4 @@
+import { PanelToolbar } from "@/components/workspace/panel-toolbar";
 import {
   RemoteCursorOverlay,
   type CursorOverlayHandle,
@@ -602,8 +603,9 @@ export function ManagedRemoteDesktopView({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background">
-      <div
-        className="flex h-12 shrink-0 items-center gap-1.5 bg-background px-3"
+      <PanelToolbar
+        aria-label="Remote Desktop controls"
+        className="gap-1.5 bg-background"
         data-remote-surface-route={activeRoute ?? undefined}
       >
         <div className="mr-auto flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
@@ -833,7 +835,7 @@ export function ManagedRemoteDesktopView({
             Retry
           </Button>
         ) : null}
-      </div>
+      </PanelToolbar>
       <div className="relative flex min-h-0 flex-1">
         <div
           ref={surfaceRef}

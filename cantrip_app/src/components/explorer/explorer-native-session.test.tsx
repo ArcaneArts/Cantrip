@@ -7,6 +7,7 @@ import TestRenderer, { act } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
+  publishHeader: true,
   ready: true,
   owner: "owner-one",
   content: "original\n",
@@ -100,7 +101,7 @@ function tree(explorer = summary) {
         ? { path: state.transientPath, close: vi.fn() }
         : undefined,
       onHeaderChange: (value) => {
-        state.header = value;
+        if (state.publishHeader) state.header = value;
       },
       onLifecycleChange: (_id, value) => {
         state.lifecycle = value;
@@ -122,6 +123,7 @@ async function edit(text: string) {
   });
 }
 beforeEach(() => {
+  state.publishHeader = true;
   state.ready = true;
   state.owner = "owner-one";
   state.content = "original\n";
@@ -151,6 +153,26 @@ afterEach(async () => {
 });
 
 describe("native Explorer document integration", () => {
+  it("saves through its own toolbar without publishing a focused shell header", async () => {
+    state.publishHeader = false;
+    await render();
+    await edit("saved from the unfocused panel\n");
+    expect(state.header).toBeNull();
+    const save = renderer!.root
+      .findAllByType("button")
+      .find((node) => node.props["aria-label"] === "Save file")!;
+    expect(save.props.disabled).toBe(false);
+    await act(async () => save.props.onClick());
+    await settle();
+    expect(api.saveExplorerFile).toHaveBeenCalledWith(
+      summary.id,
+      expect.objectContaining({
+        path: "source.ts",
+        content: "saved from the unfocused panel\n",
+      }),
+      expect.anything(),
+    );
+  });
   it("opens licenses as documents and retains the same editable draft across Preview/Edit", async () => {
     state.transientPath = "LICENSE";
     state.content = "Copyright (c) 2026 Arcane Arts\nAll rights reserved.\n";

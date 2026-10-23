@@ -1,3 +1,4 @@
+import { PanelToolbar } from "@/components/workspace/panel-toolbar";
 import type { CodeAppearance, ExplorerSummary } from "@cantrip/protocol";
 import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -74,10 +75,10 @@ export function ExplorerFilePopout({
       <NativeFileWindowCloseGuard
         hasUnsavedChanges={() => lifecycle.current?.dirty ?? false}
       />
-      <header className="flex h-9 shrink-0 items-center gap-2 border-b px-3">
+      <PanelToolbar as="header" aria-label="File controls">
         <span className="min-w-0 flex-1 truncate text-xs">{title}</span>
-        <ContentHeaderActions explorer={header} />
-      </header>
+        <ContentHeaderActions compact explorer={header} />
+      </PanelToolbar>
       {loading ? (
         <div className="grid min-h-0 flex-1 place-items-center text-muted-foreground">
           <Loader2 className="size-5 animate-spin" />
@@ -93,6 +94,7 @@ export function ExplorerFilePopout({
           appearance={appearance}
           explorer={explorer}
           transientFile={{ path, close: () => window.close() }}
+          showToolbar={false}
           onHeaderChange={setHeader}
           onLifecycleChange={onLifecycleChange}
           repositoryGraphAvailable={false}
