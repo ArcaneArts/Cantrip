@@ -132,7 +132,9 @@ export function projectTaskWorkloadPresentation(
     };
   if (
     (chat?.status === "waiting-for-approval" && !chat.automationPaused) ||
-    (chat?.status === "failed" && dispatch?.state !== "queued")
+    (chat?.status === "failed" &&
+      task.state !== "blocked" &&
+      dispatch?.state !== "queued")
   ) {
     return {
       band: chat.status === "failed" ? "failed" : "attention",

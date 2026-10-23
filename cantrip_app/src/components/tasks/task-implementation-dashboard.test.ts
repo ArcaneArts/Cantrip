@@ -20,6 +20,7 @@ import {
   taskImplementationPlacementLabel,
   taskImplementationShowsLiveActivity,
   taskImplementationStatusLabel,
+  taskImplementationStatusDescription,
 } from "./task-implementation-dashboard";
 
 const task = {
@@ -39,6 +40,12 @@ describe("Task implementation dashboard presentation", () => {
       dispatch: { state: "expired" },
     } as TaskDetail;
     expect(taskImplementationCanRecover(retained)).toBe(true);
+    expect(
+      taskImplementationCanRecover({
+        ...retained,
+        dispatch: { ...retained.dispatch!, state: "succeeded" },
+      }),
+    ).toBe(true);
     expect(
       taskImplementationCanRecover({ ...retained, state: "complete" }),
     ).toBe(false);
@@ -144,6 +151,37 @@ describe("Task implementation dashboard presentation", () => {
     expect(
       taskImplementationStatusLabel({ ...task, state: "complete" }, goal),
     ).toBe("Complete");
+  });
+
+  it("explains whether work stopped or completed despite stale failed chat flags", () => {
+    expect(
+      taskImplementationStatusLabel(
+        { ...task, state: "blocked" },
+        null,
+        false,
+        true,
+      ),
+    ).toBe("Blocked");
+    expect(
+      taskImplementationStatusLabel(
+        { ...task, state: "complete" },
+        null,
+        false,
+        true,
+      ),
+    ).toBe("Complete");
+    expect(taskImplementationStatusDescription(task, "Blocked")).toMatch(
+      /Not running/,
+    );
+    expect(taskImplementationStatusDescription(task, "Failed")).toMatch(
+      /Not running/,
+    );
+    expect(taskImplementationStatusDescription(task, "Complete")).toMatch(
+      /completed/,
+    );
+    expect(taskImplementationStatusDescription(task, "Starting")).toMatch(
+      /not been confirmed/,
+    );
   });
 
   it("shows live activity only while the Task Goal is running", () => {

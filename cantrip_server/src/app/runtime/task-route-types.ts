@@ -88,6 +88,11 @@ export interface PreparedTaskDispatchEligibility {
 }
 
 export interface TaskRouteRuntimeDependencies {
+  continueTaskGoalInWorktree: (
+    context: ChatExecutionContext,
+    input: { text: string; idempotencyKey: string },
+    lease?: TaskDispatchWorkerLease,
+  ) => Promise<boolean>;
   appendLiveTaskMessage: (
     ownerId: string,
     chatId: string,

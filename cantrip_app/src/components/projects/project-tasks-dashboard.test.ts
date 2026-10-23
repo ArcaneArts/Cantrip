@@ -102,6 +102,24 @@ function dispatch(
   return value;
 }
 
+it("does not replace a blocked Goal with a stale failed chat label", () => {
+  const blocked = dispatch(
+    task({
+      chatId: "blocked",
+      state: "blocked",
+      createdAt: "2026-10-22T00:00:00Z",
+    }),
+    "succeeded",
+  );
+  expect(
+    projectTaskWorkloadPresentation(
+      blocked,
+      { status: "failed", automationPaused: false } as ChatSummary,
+      false,
+    ),
+  ).toMatchObject({ label: "Blocked", band: "attention" });
+});
+
 function renderTaskList(
   items: ProjectTaskWorkloadItem[],
   options: {

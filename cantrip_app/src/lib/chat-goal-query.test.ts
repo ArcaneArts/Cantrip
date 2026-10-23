@@ -1,8 +1,14 @@
 // @vitest-environment jsdom
-import { QueryClient, QueryObserver } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryObserver,
+  QueryClientProvider,
+} from "@tanstack/react-query";
+import { createElement } from "react";
+import TestRenderer, { act } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getChatGoal } from "./api/chats";
-import { chatGoalQueryOptions } from "./chat-goal-query";
+import { chatGoalQueryOptions, useChatGoalQuery } from "./chat-goal-query";
 
 vi.mock("./api/chats", () => ({ getChatGoal: vi.fn() }));
 afterEach(() => vi.useRealTimers());
@@ -60,10 +66,68 @@ describe("goal status refresh", () => {
       await vi.advanceTimersByTimeAsync(1);
       expect(observer.getCurrentResult().isError).toBe(true);
       vi.mocked(getChatGoal).mockResolvedValue({ goal: null });
-      await vi.advanceTimersByTimeAsync(3_000);
+      await vi.advanceTimersByTimeAsync(30_000);
       expect(observer.getCurrentResult().isSuccess).toBe(true);
     } finally {
       unsubscribe();
+      client.clear();
+    }
+  });
+
+  it("retains a failure while retry is pending, clears it only on success, and isolates chats", async () => {
+    (
+      globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.useFakeTimers();
+    vi.mocked(getChatGoal).mockRejectedValue(new Error("Worker offline"));
+    const client = new QueryClient();
+    function Probe({ chatId }: { chatId: string }) {
+      const query = useChatGoalQuery(chatId, "idle", true);
+      return createElement("output", {
+        error: query.statusError?.message ?? null,
+      });
+    }
+    const view = (chatId: string) =>
+      createElement(
+        QueryClientProvider,
+        { client },
+        createElement(Probe, { chatId }),
+      );
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(view("one"));
+    });
+    try {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3_100);
+      });
+      expect(renderer.root.findByType("output").props.error).toBe(
+        "Worker offline",
+      );
+      let resolve!: (result: { goal: null }) => void;
+      vi.mocked(getChatGoal).mockImplementation(
+        () =>
+          new Promise((done) => {
+            resolve = done;
+          }),
+      );
+      await act(async () => {
+        void client.refetchQueries({ queryKey: ["goal", "one"] });
+      });
+      expect(renderer.root.findByType("output").props.error).toBe(
+        "Worker offline",
+      );
+      await act(async () => {
+        resolve({ goal: null });
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(renderer.root.findByType("output").props.error).toBeNull();
+      await act(async () => {
+        renderer.update(view("two"));
+      });
+      expect(renderer.root.findByType("output").props.error).toBeNull();
+    } finally {
+      await act(() => renderer.unmount());
       client.clear();
     }
   });

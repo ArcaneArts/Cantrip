@@ -250,7 +250,21 @@ export function createChatTurnRuntime({
     // lane or persist a duplicate turn after its fencing token advances.
     if (options.taskDispatchLease) {
       await observeTaskTurnBootstrapStage("mark-dispatch-running", () =>
-        repository.taskDispatch.markRunning(options.taskDispatchLease!),
+        repository.taskDispatch.markRunning(
+          options.taskDispatchLease!,
+          context.experience === "task" &&
+            context.worktreeId &&
+            context.threadId
+            ? {
+                affinity: {
+                  worktreeId: context.worktreeId,
+                  threadId: context.threadId,
+                  modelRouteId: context.modelRouteId,
+                  providerAccountId: context.providerAccountId,
+                },
+              }
+            : {},
+        ),
       );
     }
     const protectedAdmissionInput =

@@ -60,7 +60,9 @@ export function taskImplementationCanRecover(task: TaskDetail): boolean {
     task.planGoalEnabled &&
     task.implementationStartedAt &&
     task.state !== "complete" &&
-    ["running", "expired", "failed"].includes(task.dispatch?.state ?? ""),
+    ["running", "expired", "failed", "succeeded"].includes(
+      task.dispatch?.state ?? "",
+    ),
   );
 }
 
@@ -73,13 +75,16 @@ export function taskImplementationStatusLabel(
   automationPaused = false,
   reconnecting = false,
 ): string {
-  if (task.state === "failed" || chatFailed) return "Failed";
   if (task.state === "complete") return "Complete";
+  if (task.state === "blocked")
+    return goal &&
+      ["blocked", "usageLimited", "budgetLimited"].includes(goal.status)
+      ? goalLabels[goal.status]
+      : "Blocked";
+  if (task.state === "failed" || chatFailed) return "Failed";
   if (reconnecting) return "Reconnecting";
   if (task.dispatch?.state === "queued") return "Queued";
   if (task.state === "paused" || automationPaused) return "Paused";
-  if (task.state === "blocked")
-    return goal ? goalLabels[goal.status] : "Blocked";
   if (awaitingApproval) return "Needs approval";
   if (!task.planGoalEnabled && active) return "Running";
   return goal ? goalLabels[goal.status] : "Starting";
@@ -89,6 +94,31 @@ export function taskImplementationPlacementLabel(
   placement: TaskImplementationPlacement,
 ) {
   return placement.kind === "folder" ? "Direct folder" : "Git worktree";
+}
+
+export function taskImplementationStatusDescription(
+  task: TaskDetail,
+  label: string,
+): string {
+  if (label === "Complete") return "Implementation completed.";
+  if (
+    label === "Blocked" ||
+    label === "Usage limited" ||
+    label === "Budget reached"
+  )
+    return "Not running. Review the blocker in Chat before resuming.";
+  if (label === "Failed")
+    return "Not running. Use Retry / resume to recover the saved implementation.";
+  if (label === "Paused")
+    return "Paused. Resume when you are ready to continue.";
+  if (label === "Running") return "Implementation is running.";
+  if (label === "Reconnecting")
+    return "Worker disconnected; execution status is not yet confirmed.";
+  if (label === "Queued") return "Waiting for an available Task Worker.";
+  if (label === "Needs approval") return "Waiting for your approval.";
+  return task.planGoalEnabled
+    ? "Waiting for implementation status; completion has not been confirmed."
+    : "Running the saved Task prompt";
 }
 
 export function taskImplementationShowsLiveActivity(
@@ -331,9 +361,7 @@ export function TaskImplementationDashboard({
               <Badge variant="outline">{statusLabel}</Badge>
             </div>
             <p className="mt-0.5 truncate text-xs text-muted-foreground">
-              {task.planGoalEnabled
-                ? "Goal mode"
-                : "Running the saved Task prompt"}
+              {taskImplementationStatusDescription(task, statusLabel)}
             </p>
           </div>
           <Button

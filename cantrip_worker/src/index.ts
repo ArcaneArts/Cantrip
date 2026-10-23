@@ -6240,7 +6240,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                     workerEncryption.componentKey("task-content"),
                   goal: command.objective,
                   ownerId: workerEncryption.ownerId(),
-                  threadId: command.threadId,
+                  // The ciphertext belongs to the finalizer's source thread;
+                  // a controlled continuation can create a different destination.
+                  threadId: command.objective.classification.threadId,
                   codexHome: runtime.managedHistoryHome,
                 });
           const result = await runtime.createGoal({

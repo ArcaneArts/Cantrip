@@ -705,14 +705,18 @@ function implementationProjection(input: {
   context: TaskGoalSyncContext;
   goal: ReturnType<typeof chatGoalResponseSchema.parse>["goal"];
 }) {
-  if (input.context.chatStatus === "failed") {
+  // Native terminal state wins over a stale failed chat flag (for example an
+  // encrypted-result rejection after the worker already finished the turn).
+  const nativeTerminal =
+    input.goal && !["active", "paused"].includes(input.goal.status);
+  if (input.context.chatStatus === "failed" && !nativeTerminal) {
     return {
       state: "failed" as const,
       code: "implementation-runtime-failed",
       message: "The implementation runtime failed.",
     };
   }
-  if (input.context.automationPaused) {
+  if (input.context.automationPaused && !nativeTerminal) {
     return { state: "paused" as const, code: null, message: null };
   }
   switch (input.goal?.status) {

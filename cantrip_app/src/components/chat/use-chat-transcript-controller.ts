@@ -4,7 +4,7 @@ import {
   type ComposerAttachmentState,
 } from "./composer-draft-attachments";
 import { useChatExecutionControls } from "./use-chat-execution-controls";
-import { chatGoalQueryOptions } from "@/lib/chat-goal-query";
+import { useChatGoalQuery } from "@/lib/chat-goal-query";
 import { nativePermissionControlState } from "./native-permission-control-state";
 import type {
   AgentInteractionResponse,
@@ -677,10 +677,11 @@ export function useChatTranscriptController({
     ...queuedPromptState,
     data: queuedPromptState.data?.items,
   };
-  const goalState = useQuery({
-    ...chatGoalQueryOptions(chat.id, chat.status),
-    enabled: capabilities.modes === "agent-modes",
-  });
+  const goalState = useChatGoalQuery(
+    chat.id,
+    chat.status,
+    capabilities.modes === "agent-modes",
+  );
   const planState = useQuery({
     enabled: capabilities.modes === "agent-modes",
     queryFn: () => getChatPlan(chat.id),
