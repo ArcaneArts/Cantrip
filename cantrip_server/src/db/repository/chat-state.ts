@@ -232,7 +232,8 @@ export class ChatStateRepository {
     if (!chat) return null;
     if (
       expectedWorktreeId !== undefined &&
-      chat.activeWorktreeId !== expectedWorktreeId
+      (chat.activeWorktreeId !== expectedWorktreeId ||
+        chat.worktreeMode !== input.mode)
     )
       throw new ExecutionLaneConflictError(
         "The Task placement changed during recovery. Please retry.",
@@ -404,6 +405,9 @@ export class ChatStateRepository {
               ? [
                   eq(schema.chats.activeWorktreeId, expectedWorktreeId),
                   eq(schema.chats.placementRevision, chat.placementRevision),
+                  chat.worktreeMode === null
+                    ? isNull(schema.chats.worktreeMode)
+                    : eq(schema.chats.worktreeMode, chat.worktreeMode),
                   eq(schema.chats.automationPaused, chat.automationPaused),
                   eq(schema.chats.status, chat.status),
                 ]

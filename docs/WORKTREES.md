@@ -54,6 +54,14 @@ they dispatch. A deliberately pinned queued prompt retains its selected lane.
 Linked Codex consoles always follow the parent chat and its worktree-specific
 runtime.
 
+Task follow-ups refresh the owning worker's inventory when their selected
+checkout has a cached non-ready lifecycle. If the checkout still exists, the
+follow-up stays there. If an agent-managed secondary checkout has actually
+been removed, the conversation returns to the ready Primary of that same source
+and worker. Chat identity and encrypted history are retained. Pinned chats,
+active turns, folder projects, and unavailable Primary checkouts never silently
+relocate; ordinary execution and permission checks still apply.
+
 ### History and filesystem tabs
 
 History shows a compact marker at every known worktree HEAD. Shared commits may
