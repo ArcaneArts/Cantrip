@@ -32,6 +32,154 @@ const goal = {
 } as TaskGoalSnapshot;
 
 describe("Task implementation dashboard presentation", () => {
+  it.each([
+    [
+      "running",
+      "implementing",
+      "running",
+      false,
+      "active",
+      "running",
+      ["Pause", "Stop"],
+    ],
+    ["paused", "paused", "idle", true, "active", "running", ["Resume"]],
+    [
+      "paused resident turn",
+      "implementing",
+      "running",
+      true,
+      "active",
+      "running",
+      ["Resume"],
+    ],
+    [
+      "native paused",
+      "implementing",
+      "idle",
+      false,
+      "paused",
+      "running",
+      ["Resume"],
+    ],
+    [
+      "paused without Goal",
+      "paused",
+      "idle",
+      true,
+      null,
+      "running",
+      ["Resume"],
+    ],
+    ["failed", "failed", "failed", false, "active", "failed", ["Retry"]],
+    ["blocked", "blocked", "idle", false, "blocked", "succeeded", ["Retry"]],
+    [
+      "failed with stale pause",
+      "failed",
+      "failed",
+      true,
+      "paused",
+      "expired",
+      ["Retry"],
+    ],
+    [
+      "blocked with stale activity",
+      "blocked",
+      "running",
+      false,
+      "active",
+      "running",
+      ["Retry"],
+    ],
+    [
+      "usage limited",
+      "blocked",
+      "idle",
+      false,
+      "usageLimited",
+      "succeeded",
+      ["Retry"],
+    ],
+    [
+      "budget limited",
+      "blocked",
+      "idle",
+      false,
+      "budgetLimited",
+      "succeeded",
+      ["Retry"],
+    ],
+    ["complete", "complete", "idle", false, "complete", "succeeded", []],
+    [
+      "complete with stale activity",
+      "complete",
+      "running",
+      false,
+      "active",
+      "succeeded",
+      [],
+    ],
+    ["queued", "implementing", "idle", false, null, "queued", []],
+    ["no Goal yet", "implementing", "idle", false, null, "running", []],
+    ["reconnecting", "implementing", "offline", false, null, "running", []],
+  ] as const)(
+    "renders only the appropriate controls when %s",
+    (
+      _name,
+      state,
+      status,
+      automationPaused,
+      goalStatus,
+      dispatchState,
+      controls,
+    ) => {
+      const client = new QueryClient();
+      const currentTask = {
+        ...task,
+        state,
+        implementationStartedAt: "2026-10-22T00:00:00Z",
+        createdAt: "2026-10-22T00:00:00Z",
+        updatedAt: "2026-10-22T00:00:00Z",
+        dispatch: { state: dispatchState },
+      } as TaskDetail;
+      const chat = {
+        id: "controls",
+        projectId: "project",
+        status,
+        automationPaused,
+      } as ChatSummary;
+      client.setQueryData(["task-dashboard", chat.id], {
+        task: currentTask,
+        goal: goalStatus
+          ? { ...goal, status: goalStatus, timeUsedSeconds: 0, tokensUsed: 0 }
+          : null,
+        warnings: [],
+        pullRequests: [],
+      });
+      client.setQueryData(["agent-requests", chat.id, "pending"], []);
+      try {
+        const markup = renderToStaticMarkup(
+          createElement(
+            QueryClientProvider,
+            { client },
+            createElement(TaskImplementationDashboard, {
+              chat,
+              initialTask: currentTask,
+              visible: false,
+            }),
+          ),
+        );
+        for (const label of ["Pause", "Resume", "Retry", "Stop"]) {
+          if ((controls as readonly string[]).includes(label))
+            expect(markup).toContain(`${label}</button>`);
+          else expect(markup).not.toContain(`${label}</button>`);
+        }
+        expect(markup).not.toContain("Retry / resume");
+        expect(markup).not.toContain("Stop &amp; pause");
+      } finally {
+        client.clear();
+      }
+    },
+  );
   it("offers recovery even when the failed Task has lost its Goal view", () => {
     const retained = {
       ...task,
@@ -65,13 +213,22 @@ describe("Task implementation dashboard presentation", () => {
       }),
     ).toBe(false);
   });
-  it("allows explicit Resume for retained implementation Goals, but not failed planning or completed Goals", () => {
+  it("does not offer Resume for failed, blocked or completed Goals even with stale pause flags", () => {
     const failed = {
       ...task,
       state: "failed",
       lastError: { code: "implementation-runtime-failed" },
     } as TaskDetail;
-    expect(taskImplementationCanResume(failed, goal)).toBe(true);
+    expect(taskImplementationCanResume(failed, goal)).toBe(false);
+    expect(
+      taskImplementationCanResume({ ...task, state: "blocked" }, goal, true),
+    ).toBe(false);
+    expect(
+      taskImplementationCanResume(task, { ...goal, status: "blocked" }, true),
+    ).toBe(false);
+    expect(
+      taskImplementationCanResume(task, { ...goal, status: "complete" }, true),
+    ).toBe(false);
     expect(
       taskImplementationCanResume(failed, { ...goal, status: "complete" }),
     ).toBe(false);

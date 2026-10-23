@@ -56,6 +56,7 @@ jobs:
           pnpm --filter @cantrip/app exec vitest run
           src/lib/chat-goal-query.test.ts
           src/components/tasks/task-implementation-dashboard.test.ts
+          src/components/tasks/task-recovery-controls.test.tsx
           src/components/projects/project-tasks-dashboard.test.ts --maxWorkers=2
       - name: Task Goal worker encryption and permission handoff
         if: ${{ !cancelled() }}

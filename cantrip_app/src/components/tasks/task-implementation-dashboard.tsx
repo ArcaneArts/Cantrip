@@ -108,7 +108,7 @@ export function taskImplementationStatusDescription(
   )
     return "Not running. Review the blocker in Chat before resuming.";
   if (label === "Failed")
-    return "Not running. Use Retry / resume to recover the saved implementation.";
+    return "Not running. Use Retry to recover the saved implementation.";
   if (label === "Paused")
     return "Paused. Resume when you are ready to continue.";
   if (label === "Running") return "Implementation is running.";
@@ -139,21 +139,12 @@ export function taskImplementationCanResume(
   goal: TaskGoalSnapshot | null,
   automationPaused = false,
 ): boolean {
-  if (task.state === "complete") return false;
-  if (task.state === "failed") {
-    return (
-      task.planGoalEnabled &&
-      task.lastError?.code === "implementation-runtime-failed" &&
-      (goal?.status === "active" ||
-        goal?.status === "paused" ||
-        goal?.status === "blocked")
-    );
-  }
+  if (["complete", "failed", "blocked"].includes(task.state)) return false;
+  if (goal && !["active", "paused"].includes(goal.status)) return false;
   return (
     automationPaused ||
     task.state === "paused" ||
-    (task.planGoalEnabled &&
-      (goal?.status === "paused" || goal?.status === "blocked"))
+    (task.planGoalEnabled && goal?.status === "paused")
   );
 }
 
@@ -300,8 +291,13 @@ export function TaskImplementationDashboard({
     onSettled: settleControls,
   });
   const resume = useMutation({
-    mutationFn: () =>
-      resumeTaskImplementation(chat.id, chat.automationPaused, goal),
+    mutationFn: async () => {
+      if (!goal && taskImplementationCanRecover(task)) {
+        await recoverTaskImplementation(chat.id);
+      } else {
+        await resumeTaskImplementation(chat.id, chat.automationPaused, goal);
+      }
+    },
     onSettled: settleControls,
   });
   const stop = useMutation({
@@ -325,18 +321,25 @@ export function TaskImplementationDashboard({
     chat.automationPaused,
     task.planGoalEnabled && chat.status === "offline",
   );
-  const showResume = taskImplementationCanResume(
-    task,
-    goal,
-    chat.automationPaused,
-  );
+  const showResume =
+    statusLabel === "Paused" &&
+    taskImplementationCanResume(task, goal, chat.automationPaused);
+  const showRetry =
+    ["Failed", "Blocked", "Usage limited", "Budget reached"].includes(
+      statusLabel,
+    ) && taskImplementationCanRecover(task);
   const showLiveActivity = taskImplementationShowsLiveActivity(
     task,
     goal,
     active,
     chat.automationPaused,
   );
-  const showPause = task.planGoalEnabled && showLiveActivity;
+  const showPause =
+    statusLabel === "Running" && task.planGoalEnabled && showLiveActivity;
+  const showStop =
+    active &&
+    !chat.automationPaused &&
+    ["Running", "Needs approval", "Starting"].includes(statusLabel);
   const placement = dashboard.data?.placement;
   const directFolder = placement?.kind === "folder";
 
@@ -423,7 +426,7 @@ export function TaskImplementationDashboard({
               Pause
             </Button>
           ) : null}
-          {taskImplementationCanRecover(task) ? (
+          {showRetry ? (
             <Button
               size="sm"
               variant="outline"
@@ -436,10 +439,10 @@ export function TaskImplementationDashboard({
               ) : (
                 <RefreshCw className="size-3.5" />
               )}
-              Retry / resume
+              Retry
             </Button>
           ) : null}
-          {active && !chat.automationPaused ? (
+          {showStop ? (
             <Button
               size="sm"
               variant="outline"
@@ -452,7 +455,7 @@ export function TaskImplementationDashboard({
               ) : (
                 <CircleStop className="size-3.5" />
               )}
-              {task.planGoalEnabled ? "Stop & pause" : "Stop"}
+              Stop
             </Button>
           ) : null}
         </header>
