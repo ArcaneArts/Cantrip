@@ -10,6 +10,7 @@ import {
   buildProductionEnvironment,
   createProductionServerArchive,
   parseInfisicalSecrets,
+  prepareProductionSecrets,
   productionServerBuildArguments,
   quoteSystemdEnvironmentValue,
   serializeSystemdEnvironment,
@@ -63,6 +64,71 @@ test("parses Infisical output without accepting malformed or duplicate entries",
       ),
     /duplicate A/u,
   );
+});
+
+test("prepares the actual production secret read for reuse during deployment", async () => {
+  const calls = [];
+  const prepared = await prepareProductionSecrets({
+    readSecrets: (name, args, options) => {
+      calls.push({ name, args, options });
+      return JSON.stringify(
+        [...productionSecrets()].map(([secretKey, secretValue]) => ({
+          secretKey,
+          secretValue,
+        })),
+      );
+    },
+  });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].name, "infisical");
+  assert.deepEqual(calls[0].args, [
+    "secrets",
+    "--env=prod",
+    "--output=json",
+    "--silent",
+  ]);
+  assert.equal(
+    await readFile(
+      path.join(calls[0].options.cwd, "deploy/production/deploy.json"),
+      "utf8",
+    ).then((text) => JSON.parse(text).infisicalEnvironment),
+    "prod",
+  );
+  assert.equal(prepared.privateKey, "private deployment material");
+  assert.match(prepared.environmentFile, /NODE_ENV="production"/u);
+  assert.equal(prepared.environmentFile.includes(prepared.privateKey), false);
+});
+
+test("fails secret preparation on real read failures or unusable production values", async () => {
+  const failure = new Error("Infisical is not authenticated");
+  await assert.rejects(
+    prepareProductionSecrets({
+      readSecrets: () => {
+        throw failure;
+      },
+    }),
+    (error) => error === failure,
+  );
+  await assert.rejects(
+    prepareProductionSecrets({ readSecrets: () => "not-json" }),
+    /malformed JSON/u,
+  );
+  for (const missing of ["DATABASE_URL", "CANTRIP_DROPLET_SSH_PRIVATE_KEY"]) {
+    const secrets = productionSecrets();
+    secrets.delete(missing);
+    await assert.rejects(
+      prepareProductionSecrets({
+        readSecrets: () =>
+          JSON.stringify(
+            [...secrets].map(([secretKey, secretValue]) => ({
+              secretKey,
+              secretValue,
+            })),
+          ),
+      }),
+      new RegExp(missing, "u"),
+    );
+  }
 });
 
 test("builds an allowlisted hosted environment without deployment credentials", () => {

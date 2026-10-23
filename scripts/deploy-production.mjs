@@ -109,7 +109,7 @@ function secretCommand(commandName, arguments_, options = {}) {
   if (result.error) throw result.error;
   if (result.status !== 0) {
     throw new Error(
-      `${commandName} could not read production secrets. Confirm the CLI is installed, authenticated, and authorized for the configured Infisical project.`,
+      `${commandName} could not read production secrets. Run infisical login if needed, and confirm access to the configured production project.`,
     );
   }
   return result.stdout ?? "";
@@ -522,15 +522,12 @@ async function waitForPublicEndpoint(url, label) {
   throw new Error(`${label} did not become publicly ready (${lastStatus}).`);
 }
 
-export async function deployProduction({ root = scriptRoot, commit } = {}) {
-  return withProductionSource({ root, commit }, deployProductionSource);
-}
-
-async function deployProductionSource({ root, commit, versionPatch }) {
+export async function prepareProductionSecrets({
+  root = scriptRoot,
+  readSecrets = secretCommand,
+} = {}) {
   const config = await loadDeploymentConfig(root);
-  const deploymentDirectory = path.join(root, "deploy", "production");
-
-  const secretOutput = secretCommand(
+  const secretOutput = readSecrets(
     "infisical",
     [
       "secrets",
@@ -541,16 +538,40 @@ async function deployProductionSource({ root, commit, versionPatch }) {
     { cwd: root },
   );
   const secrets = parseInfisicalSecrets(secretOutput);
-  const privateKey = secrets.get(config.sshPrivateKeySecret);
-  if (!privateKey?.trim()) {
-    throw new Error(
-      `Infisical production is missing ${config.sshPrivateKeySecret}.`,
+  try {
+    const privateKey = secrets.get(config.sshPrivateKeySecret);
+    if (!privateKey?.trim()) {
+      throw new Error(
+        `Infisical production is missing ${config.sshPrivateKeySecret}.`,
+      );
+    }
+    const environmentFile = serializeSystemdEnvironment(
+      buildProductionEnvironment(secrets, config),
     );
+    return { privateKey, environmentFile };
+  } finally {
+    secrets.clear();
   }
-  const environmentFile = serializeSystemdEnvironment(
-    buildProductionEnvironment(secrets, config),
+}
+
+export async function deployProduction({
+  root = scriptRoot,
+  commit,
+  preparedSecrets,
+} = {}) {
+  return withProductionSource({ root, commit }, (source) =>
+    deployProductionSource(source, preparedSecrets),
   );
-  secrets.clear();
+}
+
+async function deployProductionSource(
+  { root, commit, versionPatch },
+  preparedSecrets,
+) {
+  const config = await loadDeploymentConfig(root);
+  const deploymentDirectory = path.join(root, "deploy", "production");
+  const { privateKey, environmentFile } =
+    preparedSecrets ?? (await prepareProductionSecrets({ root }));
 
   const temporaryDirectory = await mkdtemp(
     path.join(os.tmpdir(), "cantrip-production-deploy-"),
