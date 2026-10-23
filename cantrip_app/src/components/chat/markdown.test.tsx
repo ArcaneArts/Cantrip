@@ -6,6 +6,39 @@ import { handleMarkdownLinkClick, Markdown } from "./markdown";
 import { markdownColorDetails } from "./markdown-color";
 
 describe("Markdown", () => {
+  it.each([
+    "```rust\nfn main() {}\n```",
+    "```\nplain text\n```",
+    "```unknown-language\nraw code\n```",
+    "    indented code",
+    "```\n```",
+  ])("adds a copy control to every block, including %s", (content) => {
+    const markup = renderToStaticMarkup(<Markdown>{content}</Markdown>);
+    expect(markup.match(/aria-label="Copy code"/g)).toHaveLength(1);
+    expect(markup).toContain("data-markdown-code-block");
+    expect(markup).toContain("<pre");
+  });
+
+  it("keeps inline code inline and gives separate blocks independent controls", () => {
+    const markup = renderToStaticMarkup(
+      <Markdown>
+        {"`inline`\n\n```js\nfirst()\n```\n\n```\nsecond\n```"}
+      </Markdown>,
+    );
+    expect(markup.match(/aria-label="Copy code"/g)).toHaveLength(2);
+    expect(
+      renderToStaticMarkup(<Markdown>{"`inline` only"}</Markdown>),
+    ).not.toContain("Copy code");
+  });
+
+  it("includes copy controls in inverse message bubbles", () => {
+    const markup = renderToStaticMarkup(
+      <Markdown inverse>{"```\ncopy me\n```"}</Markdown>,
+    );
+    expect(markup).toContain('aria-label="Copy code"');
+    expect(markup).toContain("markdown-code-inverse");
+  });
+
   it("marks rendered prose as selectable application content", () => {
     const markup = renderToStaticMarkup(
       <Markdown>{"Copy **this** text."}</Markdown>,

@@ -3,6 +3,7 @@ import MarkdownRenderer, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { SyntaxHighlightedCode } from "@/components/chat/markdown-code";
+import { MarkdownCodeBlock } from "@/components/chat/markdown-code-block";
 import {
   markdownColorFromHref,
   normalizeHexColor,
@@ -169,16 +170,7 @@ export const Markdown = memo(function Markdown({
         <p className="my-3 first:mt-0 last:mb-0">{paragraphChildren}</p>
       ),
       pre: ({ children: preChildren }) => (
-        <pre
-          className={cn(
-            "my-3 max-w-full overflow-x-auto rounded-lg border p-3",
-            inverse
-              ? "markdown-code-inverse border-white/15 bg-black/25"
-              : "bg-muted/60",
-          )}
-        >
-          {preChildren}
-        </pre>
+        <MarkdownCodeBlock inverse={inverse}>{preChildren}</MarkdownCodeBlock>
       ),
       table: ({ children: tableChildren }) => (
         <div className="my-4 max-w-full overflow-x-auto">

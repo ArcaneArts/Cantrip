@@ -9,6 +9,37 @@ import { MessageContent } from "./message-content";
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
 describe("MessageContent file links", () => {
+  it.each(["assistant", "user", "system"] as const)(
+    "includes code-copy controls in %s messages and commentary",
+    async (role) => {
+      const message = {
+        id: "code-message",
+        chatId: "chat-1",
+        role,
+        content: [
+          { type: "text", text: "```rust\nfn main() {}\n```" },
+          {
+            type: "text",
+            text: "```\ncommentary code\n```",
+            phase: "commentary",
+          },
+        ],
+      } as ChatMessage;
+      let renderer!: TestRenderer.ReactTestRenderer;
+      await act(async () => {
+        renderer = TestRenderer.create(
+          <MessageContent message={message} onOpenFile={vi.fn()} />,
+        );
+      });
+      expect(
+        renderer.root
+          .findAllByProps({ "aria-label": "Copy code", type: "button" })
+          .filter((node) => typeof node.type === "string"),
+      ).toHaveLength(2);
+      await act(async () => renderer.unmount());
+    },
+  );
+
   it.each([undefined, "commentary"])(
     "preserves the message worktree for %s text",
     async (phase) => {
