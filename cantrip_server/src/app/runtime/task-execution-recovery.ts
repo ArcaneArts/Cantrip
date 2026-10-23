@@ -110,8 +110,11 @@ export function createTaskExecutionRecovery({
       context.projectId,
       cycle.worktreeId,
     );
+    if (!affinity)
+      throw new Error(
+        "The retained Task worktree is unavailable. Send a follow-up in the current checkout to continue after cleanup.",
+      );
     if (
-      !affinity ||
       affinity.workerId !== context.workerId ||
       cycle.physicalWorkerId !== context.workerId
     )

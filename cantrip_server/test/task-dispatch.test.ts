@@ -25,7 +25,11 @@ import {
 import * as schema from "../src/db/schema.js";
 import { SecretVault } from "../src/security/secret-vault.js";
 
-import { protectedProjectFields } from "./private-label-fixture.js";
+import {
+  protectedChatFields,
+  protectedProjectFields,
+} from "./private-label-fixture.js";
+import { reconcileTaskTurnPlacement } from "../src/app/runtime/task-turn-placement.js";
 
 const migrationsFolder = fileURLToPath(new URL("../drizzle", import.meta.url));
 const encryptedTaskContent = {
@@ -157,6 +161,145 @@ const eligible = async () => ({
 });
 
 describe("Task dispatch scheduling", () => {
+  it("admits a follow-up after a blocked Task's secondary checkout was cleaned up", async () => {
+    const f = await fixture();
+    try {
+      const task = await addTask(f, {
+        createdAt: new Date(),
+        planGoalEnabled: true,
+      });
+      await f.database
+        .update(schema.chats)
+        .set({
+          protectedLabel: protectedChatFields(task.chatId).titleProtection,
+        })
+        .where(eq(schema.chats.id, task.chatId));
+      const primary = (
+        await f.repository.listProjectWorktrees(LOCAL_USER_ID, task.projectId)
+      )[0]!;
+      const secondaryId = randomUUID();
+      await f.database.insert(schema.projectWorktrees).values({
+        id: secondaryId,
+        projectSourceId: primary.projectSourceId,
+        workerId: primary.workerId,
+        name: "Completed work",
+        absolutePath: "/completed-work",
+        displayPath: "/completed-work",
+        origin: "agent",
+        lifecycleState: "ready",
+      });
+      await f.repository.updateChatWorktree(LOCAL_USER_ID, task.chatId, {
+        worktreeId: secondaryId,
+        mode: "agent-managed",
+      });
+      await f.repository.updateChatRuntime(
+        task.chatId,
+        primary.workerId,
+        secondaryId,
+        "historical-thread",
+        DEFAULT_MODEL_ROUTE_ID,
+        "ready",
+      );
+      await f.database
+        .update(schema.tasks)
+        .set({ state: "blocked" })
+        .where(eq(schema.tasks.chatId, task.chatId));
+      await f.database
+        .update(schema.projectWorktrees)
+        .set({ lifecycleState: "missing" })
+        .where(eq(schema.projectWorktrees.id, secondaryId));
+      const before = (await f.repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        task.chatId,
+      ))!;
+      await expect(
+        f.repository.startChatExecutionLane(
+          LOCAL_USER_ID,
+          task.chatId,
+          "user",
+          "Follow-up",
+        ),
+      ).rejects.toThrow("not ready");
+      // A user pin arriving after the recovery snapshot must win even when
+      // the worktree ID itself did not change.
+      await f.database
+        .update(schema.chats)
+        .set({ worktreeMode: "pinned" })
+        .where(eq(schema.chats.id, task.chatId));
+      await expect(
+        f.repository.updateChatWorktree(
+          LOCAL_USER_ID,
+          task.chatId,
+          {
+            worktreeId: primary.id,
+            mode: "agent-managed",
+          },
+          secondaryId,
+        ),
+      ).rejects.toThrow("placement changed");
+      expect(
+        (await f.repository.getChatExecutionContext(LOCAL_USER_ID, task.chatId))
+          ?.worktreeId,
+      ).toBe(secondaryId);
+      await f.database
+        .update(schema.chats)
+        .set({ worktreeMode: "agent-managed" })
+        .where(eq(schema.chats.id, task.chatId));
+      const prepared = await reconcileTaskTurnPlacement(
+        f.repository,
+        {
+          isConnected: () => true,
+          request: async () => ({
+            sourcePath: primary.path,
+            primaryPath: primary.path,
+            gitCommonDir: `${primary.path}/.git`,
+            managedRoot: "/managed",
+            repositoryFingerprint: "a".repeat(64),
+            worktrees: [
+              {
+                path: primary.path,
+                head: null,
+                branch: "main",
+                detached: false,
+                isPrimary: true,
+                managed: false,
+                locked: false,
+                lockReason: null,
+                prunable: false,
+                pruneReason: null,
+                missing: false,
+              },
+            ],
+          }),
+        } as never,
+        LOCAL_USER_ID,
+        before,
+      );
+      expect(prepared).toMatchObject({
+        chatId: task.chatId,
+        workerId: primary.workerId,
+        worktreeId: primary.id,
+      });
+      expect(
+        (await f.repository.tasks.get(LOCAL_USER_ID, task.chatId))?.state,
+      ).toBe("blocked");
+      const historical = await f.database
+        .select()
+        .from(schema.chatRuntimeSessions)
+        .where(eq(schema.chatRuntimeSessions.worktreeId, secondaryId));
+      expect(historical[0]?.codexThreadId).toBe("historical-thread");
+      const execution = await f.repository.startChatExecutionLane(
+        LOCAL_USER_ID,
+        task.chatId,
+        "user",
+        "Follow-up",
+      );
+      expect(execution?.executionLaneId).toBeTruthy();
+      expect(execution?.worktreeId).toBe(primary.id);
+    } finally {
+      await f.client.close();
+    }
+  });
   it("reopens a settled handoff only with real worker capacity and records its new session affinity", async () => {
     const f = await fixture();
     try {

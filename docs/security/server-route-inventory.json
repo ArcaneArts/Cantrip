@@ -173,6 +173,7 @@
       "cantrip_server/src/app/runtime/task-route-types.ts",
       "cantrip_server/src/app/runtime/task-routes.ts",
       "cantrip_server/src/app/runtime/task-turn-bootstrap-observer.ts",
+      "cantrip_server/src/app/runtime/task-turn-placement.ts",
       "cantrip_server/src/app/runtime/task-workload-route.ts",
       "cantrip_server/src/app/runtime/tunnel-control-plane-runtime.ts",
       "cantrip_server/src/app/runtime/worker-notification-runtime.ts",

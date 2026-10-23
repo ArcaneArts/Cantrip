@@ -85,6 +85,7 @@ import type {
 import { createTaskTurnBootstrapObserver } from "./task-turn-bootstrap-observer.js";
 import { acquireChatTurnExecution } from "./chat-turn-admission.js";
 import { settleChatTurnFailure } from "./chat-turn-failure.js";
+import { reconcileTaskTurnPlacement } from "./task-turn-placement.js";
 
 /**
  * Owns the complete lifecycle of one chat turn, including execution-lane
@@ -134,12 +135,18 @@ export function createChatTurnRuntime({
   const beginTurn: BeginChatTurn = async (context, input, options = {}) => {
     const turnStartedAtMs = Date.now();
     const ownerId = applicationOwnerId();
+    validateChatTurnInput(context, input, options);
+    context = await reconcileTaskTurnPlacement(
+      repository,
+      bridge,
+      ownerId,
+      context,
+    );
     const observeTaskTurnBootstrapStage = createTaskTurnBootstrapObserver(
       app,
       context,
       options,
     );
-    validateChatTurnInput(context, input, options);
     const encryptedTaskRelay = options.structuredResult?.taskOperation
       ? taskOperationRelayTurnFields(options.structuredResult.taskOperation)
       : null;

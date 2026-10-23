@@ -105,6 +105,14 @@ function fixture(
 }
 
 describe("Task session recovery", () => {
+  it("does not misreport an unavailable checkout as a different worker", async () => {
+    const f = fixture();
+    f.repository.getProjectWorktreeContext.mockResolvedValue(null as never);
+    await expect(f.recovery.recover("chat", true)).rejects.toThrow(
+      "retained Task worktree is unavailable",
+    );
+    expect(f.repository.updateChatWorktree).not.toHaveBeenCalled();
+  });
   it("keeps a reacquired slot through explicit Resume of a settled blocked Goal", async () => {
     const f = fixture({ native: "idle" });
     f.task.state = "blocked";
