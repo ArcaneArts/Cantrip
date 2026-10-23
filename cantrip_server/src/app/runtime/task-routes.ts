@@ -124,6 +124,7 @@ export function installTaskRouteRuntime(
     ownerId: applicationOwnerId,
     leaseOwner: `${serverId}:${serverInstanceId}`,
     goals: {
+      continueTaskGoalInWorktree: dependencies.continueTaskGoalInWorktree,
       readEncryptedTaskGoal: dependencies.readEncryptedTaskGoal,
       retainTaskGoalLease,
       resumeChatAutomation,
@@ -1395,7 +1396,8 @@ export function installTaskRouteRuntime(
           goal = response.goal;
           task = response.task;
           if (!goal) {
-            goalUnavailableReason = "Codex no longer reports an active Goal.";
+            goalUnavailableReason =
+              "No Goal is attached to this session. Completion has not been confirmed. Use Retry / resume to restore the saved implementation Goal.";
           }
         } catch {
           goalUnavailableReason = "Encrypted Goal status is unavailable.";

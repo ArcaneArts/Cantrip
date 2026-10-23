@@ -105,6 +105,45 @@ function fixture(
 }
 
 describe("Task session recovery", () => {
+  it("keeps a reacquired slot through explicit Resume of a settled blocked Goal", async () => {
+    const f = fixture({ native: "idle" });
+    f.task.state = "blocked";
+    f.task.dispatch.state = "succeeded";
+    f.goals.readEncryptedTaskGoal.mockResolvedValue({
+      goal: { threadId: "thread", status: "blocked" },
+      execution: { threadId: "thread", status: "idle" },
+      task: f.task,
+    } as never);
+    expect(await f.recovery.recover("chat", true)).toBe(true);
+    expect(f.repository.taskDispatch.recoverStartedGoal).toHaveBeenCalledWith(
+      "owner",
+      f.task.dispatch,
+      "server:new",
+      expect.any(Date),
+      { allowSettled: true },
+    );
+    expect(f.goals.reconcileTaskGoalDispatch).not.toHaveBeenCalled();
+    expect(f.goals.resumeChatAutomation).toHaveBeenCalledWith(
+      "chat",
+      true,
+      true,
+    );
+  });
+  it("accepts observed completion without reacquiring capacity or starting a turn", async () => {
+    const f = fixture({ native: "idle" });
+    f.goals.readEncryptedTaskGoal.mockResolvedValue({
+      goal: { threadId: "thread", status: "complete" },
+      execution: { threadId: "thread", status: "idle" },
+      task: { ...f.task, state: "complete" },
+    } as never);
+    expect(await f.recovery.recover("chat", true)).toBe(true);
+    expect(f.repository.taskDispatch.recoverStartedGoal).not.toHaveBeenCalled();
+    expect(f.goals.reconcileTaskGoalDispatch).toHaveBeenCalledWith(
+      f.task,
+      "complete",
+    );
+    expect(f.goals.resumeChatAutomation).not.toHaveBeenCalled();
+  });
   it("adopts an already-running native Goal, re-fences its lease and cancels the obsolete handoff without a new turn", async () => {
     const f = fixture();
     expect(await f.recovery.recover("chat", true)).toBe(true);
@@ -247,5 +286,40 @@ describe("Task session recovery", () => {
     expect(await f.recovery.recover("chat")).toBe(false);
     expect(f.goals.readEncryptedTaskGoal).not.toHaveBeenCalled();
     expect(f.repository.cancelChatWorktreeTransition).not.toHaveBeenCalled();
+  });
+  it("repairs a missing Goal on the idle current handoff without moving back to an obsolete session", async () => {
+    const f = fixture();
+    f.context.threadId = "handoff-thread";
+    const continueGoal = vi.fn(async () => true);
+    Object.assign(f.goals, { continueTaskGoalInWorktree: continueGoal });
+    f.goals.readEncryptedTaskGoal.mockResolvedValue({
+      goal: null,
+      execution: { threadId: "handoff-thread", status: "idle" },
+      task: f.task,
+    } as never);
+    expect(await f.recovery.recover("chat", true)).toBe(true);
+    expect(continueGoal).toHaveBeenCalledWith(
+      expect.objectContaining({ threadId: "handoff-thread" }),
+      expect.objectContaining({
+        idempotencyKey: expect.stringContaining("task-goal-repair:"),
+      }),
+    );
+    expect(f.repository.updateChatWorktree).not.toHaveBeenCalled();
+    expect(f.goals.resumeChatAutomation).not.toHaveBeenCalled();
+  });
+  it("does not repair a missing Goal while the native turn is still running", async () => {
+    const f = fixture();
+    f.context.threadId = "handoff-thread";
+    const continueGoal = vi.fn();
+    Object.assign(f.goals, { continueTaskGoalInWorktree: continueGoal });
+    f.goals.readEncryptedTaskGoal.mockResolvedValue({
+      goal: null,
+      execution: { threadId: "handoff-thread", status: "running" },
+      task: f.task,
+    } as never);
+    await expect(f.recovery.recover("chat", true)).rejects.toThrow(
+      "different session",
+    );
+    expect(continueGoal).not.toHaveBeenCalled();
   });
 });

@@ -618,13 +618,14 @@ export function ChatTranscriptView({
           ) : null}
           {capabilities.modes === "agent-modes" ? (
             <>
-              {goalState.isError ? (
+              {goalState.statusError ? (
                 <div
                   role="alert"
                   className="mb-2 flex items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-[var(--popover-solid)] px-3 py-2 text-xs"
                 >
                   <span>
-                    Could not load goal status. {errorText(goalState.error)}
+                    Could not load goal status.{" "}
+                    {errorText(goalState.statusError)}
                   </span>
                   <Button
                     type="button"

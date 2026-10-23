@@ -157,6 +157,132 @@ const eligible = async () => ({
 });
 
 describe("Task dispatch scheduling", () => {
+  it("reopens a settled handoff only with real worker capacity and records its new session affinity", async () => {
+    const f = await fixture();
+    try {
+      const worker = await f.repository.taskScheduling.createTaskWorker(
+        LOCAL_USER_ID,
+        workerInput("One slot", { allowsPlanGoal: true }),
+      );
+      const task = await addTask(f, {
+        createdAt: new Date(),
+        planGoalEnabled: true,
+      });
+      await f.database
+        .update(schema.tasks)
+        .set({
+          state: "blocked",
+          implementationStartedAt: new Date(),
+          hasFinalPlan: true,
+          hasGoalPrompt: true,
+        })
+        .where(eq(schema.tasks.chatId, task.chatId));
+      const id = randomUUID();
+      await f.database.insert(schema.taskDispatchCycles).values({
+        id,
+        ownerId: LOCAL_USER_ID,
+        chatId: task.chatId,
+        operationId: randomUUID(),
+        operationKind: "finalize",
+        state: "succeeded",
+        fifoCreatedAt: new Date(),
+        startedAt: new Date(),
+        completedAt: new Date(),
+        fencingToken: 2,
+        codexThreadId: "source-thread",
+        worktreeId: task.worktreeId,
+        physicalWorkerId: f.physicalWorkerId,
+        selectedTaskWorkerId: worker.id,
+      });
+      const cycle = (await f.repository.taskDispatch.get(LOCAL_USER_ID, id))!;
+      const recover = () =>
+        f.repository.taskDispatch.recoverStartedGoal(
+          LOCAL_USER_ID,
+          cycle,
+          "recovery",
+          new Date(),
+          { allowSettled: true },
+        );
+      await expect(
+        f.repository.taskDispatch.recoverStartedGoal(
+          LOCAL_USER_ID,
+          cycle,
+          "passive",
+        ),
+      ).rejects.toMatchObject({ code: "stale-lease" });
+      await f.database
+        .update(schema.taskWorkers)
+        .set({ enabled: false })
+        .where(eq(schema.taskWorkers.id, worker.id));
+      await expect(recover()).rejects.toMatchObject({
+        code: "active-operation",
+      });
+      await f.database
+        .update(schema.taskWorkers)
+        .set({ enabled: true })
+        .where(eq(schema.taskWorkers.id, worker.id));
+      await f.database
+        .update(schema.taskWorkers)
+        .set({ allowsPlanGoal: false })
+        .where(eq(schema.taskWorkers.id, worker.id));
+      await expect(recover()).rejects.toThrow("no longer allows Plan + Goal");
+      await f.database
+        .update(schema.taskWorkers)
+        .set({ allowsPlanGoal: true })
+        .where(eq(schema.taskWorkers.id, worker.id));
+      const other = await addTask(f, { createdAt: new Date() });
+      const occupied = randomUUID();
+      await f.database.insert(schema.taskDispatchCycles).values({
+        id: occupied,
+        ownerId: LOCAL_USER_ID,
+        chatId: other.chatId,
+        operationId: randomUUID(),
+        operationKind: "direct",
+        state: "claimed",
+        fifoCreatedAt: new Date(),
+        selectedTaskWorkerId: worker.id,
+      });
+      await expect(recover()).rejects.toMatchObject({
+        code: "active-operation",
+      });
+      await f.database
+        .update(schema.taskDispatchCycles)
+        .set({ state: "succeeded" })
+        .where(eq(schema.taskDispatchCycles.id, occupied));
+      await f.database
+        .update(schema.tasks)
+        .set({ state: "complete" })
+        .where(eq(schema.tasks.chatId, task.chatId));
+      await expect(recover()).rejects.toMatchObject({ code: "stale-lease" });
+      await f.database
+        .update(schema.tasks)
+        .set({ state: "blocked" })
+        .where(eq(schema.tasks.chatId, task.chatId));
+      const lease = await recover();
+      expect(lease.fencingToken).toBe(3);
+      await f.repository.taskDispatch.markRunning(lease, {
+        turnId: "destination-turn",
+        affinity: {
+          worktreeId: other.worktreeId,
+          threadId: "destination-thread",
+          modelRouteId: DEFAULT_MODEL_ROUTE_ID,
+          providerAccountId: null,
+        },
+      });
+      expect(
+        await f.repository.taskDispatch.get(LOCAL_USER_ID, id),
+      ).toMatchObject({
+        state: "running",
+        codexThreadId: "destination-thread",
+        worktreeId: other.worktreeId,
+        turnId: "destination-turn",
+        fencingToken: 3,
+      });
+      await expect(recover()).rejects.toMatchObject({ code: "stale-lease" });
+    } finally {
+      await f.client.close();
+    }
+  });
   it("recovers an expired retained Goal with a new fence without replaying its finalized operation", async () => {
     const f = await fixture();
     try {

@@ -957,10 +957,21 @@ describe("worker encrypted Task operations", () => {
       },
     });
     expect(JSON.stringify(protectedGoal)).not.toContain("SENTINEL");
-    for (const [automationPaused, chatStatus, state] of [
-      [true, "idle", "paused"],
-      [false, "running", "implementing"],
-      [false, "failed", "failed"],
+    for (const [
+      automationPaused,
+      chatStatus,
+      state,
+      nativeStatus,
+      errorCode,
+    ] of [
+      [true, "idle", "paused", "active", null],
+      [false, "running", "implementing", "active", null],
+      [false, "failed", "failed", "active", "implementation-runtime-failed"],
+      [false, "failed", "complete", "complete", null],
+      [true, "failed", "complete", "complete", null],
+      [false, "failed", "blocked", "blocked", "goal-blocked"],
+      [false, "failed", "blocked", "usageLimited", "goal-usage-limited"],
+      [false, "failed", "blocked", "budgetLimited", "goal-budget-limited"],
     ] as const) {
       const synchronized = await protectTaskGoalResult({
         chatId,
@@ -979,7 +990,7 @@ describe("worker encrypted Task operations", () => {
           goal: {
             threadId: "thread-protected-goal",
             objective: "SENTINEL dashboard Goal objective",
-            status: "active",
+            status: nativeStatus,
             tokenBudget: null,
             tokensUsed: 2,
             timeUsedSeconds: 3,
@@ -999,9 +1010,7 @@ describe("worker encrypted Task operations", () => {
       expect(opened.classification.state).toBe(state);
       expect(opened.finalPlanMarkdown).toBe(current.finalPlanMarkdown);
       expect(opened.goalPrompt).toBe(current.goalPrompt);
-      expect(opened.lastError?.code ?? null).toBe(
-        chatStatus === "failed" ? "implementation-runtime-failed" : null,
-      );
+      expect(opened.lastError?.code ?? null).toBe(errorCode);
     }
     if (!protectedGoal.goal) throw new Error("Expected a protected Goal.");
     await expect(

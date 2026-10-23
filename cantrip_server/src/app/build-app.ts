@@ -699,6 +699,8 @@ export async function buildApp({
     applicationOwnerId,
     availableModelRuntimes,
     beginTurn: (...args) => beginTurn(...args),
+    continueTaskGoalInWorktree: (...args) =>
+      taskGoalRuntime.continueTaskGoalInWorktree(...args),
     recoverTaskExecution: (chatId) =>
       taskRouteRuntime.recoverTaskExecution(chatId),
     reconcileTaskExecutions: (ownerId) =>
@@ -973,6 +975,7 @@ export async function buildApp({
     beginTurn,
     bridge,
     failTaskGoalLaunch,
+    continueTaskGoalInWorktree: taskGoalRuntime.continueTaskGoalInWorktree,
     launchPreparedTaskGoal,
     publishChatInvalidation,
     publishChatSummary,

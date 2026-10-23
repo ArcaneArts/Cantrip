@@ -761,7 +761,16 @@ export class TaskDispatchRepository {
 
   async markRunning(
     fence: TaskDispatchFence,
-    options: { now?: Date; turnId?: string | null } = {},
+    options: {
+      now?: Date;
+      turnId?: string | null;
+      affinity?: {
+        worktreeId: string;
+        threadId: string;
+        modelRouteId: string | null;
+        providerAccountId: string | null;
+      };
+    } = {},
   ): Promise<TaskDispatchCycleSummary> {
     const now = options.now ?? new Date();
     const rows = await this.database
@@ -770,6 +779,14 @@ export class TaskDispatchRepository {
         state: "running",
         startedAt: sql`coalesce(${schema.taskDispatchCycles.startedAt}, ${now})`,
         turnId: options.turnId,
+        ...(options.affinity
+          ? {
+              worktreeId: options.affinity.worktreeId,
+              codexThreadId: options.affinity.threadId,
+              modelRouteId: options.affinity.modelRouteId,
+              providerAccountId: options.affinity.providerAccountId,
+            }
+          : {}),
         lastHeartbeatAt: now,
         updatedAt: now,
       })
@@ -1078,6 +1095,7 @@ export class TaskDispatchRepository {
     expected: TaskDispatchCycleSummary,
     leaseOwner: string,
     now = new Date(),
+    options: { allowSettled?: boolean } = {},
   ): Promise<TaskDispatchWorkerLease> {
     return this.database.transaction(async (transaction) => {
       // Same owner/task/cycle lock order as enqueue and claim; a recovery may
@@ -1128,15 +1146,59 @@ export class TaskDispatchRepository {
         !row.startedAt ||
         !task?.implementationStartedAt ||
         !task.planGoalEnabled ||
+        task.state === "complete" ||
         !task.hasFinalPlan ||
         !task.hasGoalPrompt ||
         row.operationId !== expected.operationId ||
         row.fencingToken !== expected.fencingToken ||
         row.codexThreadId !== expected.codexThreadId ||
         row.worktreeId !== expected.worktreeId ||
-        !["running", "expired", "failed"].includes(row.state)
+        ![
+          "running",
+          "expired",
+          "failed",
+          ...(options.allowSettled ? ["succeeded"] : []),
+        ].includes(row.state)
       )
         throw this.staleLease();
+      if (options.allowSettled && row.state !== "running") {
+        // Reopening a historical handoff must acquire real capacity, just like
+        // a new dispatch. The owner lock serializes this with normal claims.
+        if (!row.selectedTaskWorkerId) throw this.staleLease();
+        const workers = await transaction
+          .select()
+          .from(schema.taskWorkers)
+          .where(
+            and(
+              eq(schema.taskWorkers.ownerId, ownerId),
+              eq(schema.taskWorkers.id, row.selectedTaskWorkerId),
+            ),
+          )
+          .limit(1);
+        const counts = await transaction
+          .select({ count: sql<number>`count(*)::int` })
+          .from(schema.taskDispatchCycles)
+          .where(
+            and(
+              eq(schema.taskDispatchCycles.ownerId, ownerId),
+              eq(
+                schema.taskDispatchCycles.selectedTaskWorkerId,
+                row.selectedTaskWorkerId,
+              ),
+              inArray(schema.taskDispatchCycles.state, ["claimed", "running"]),
+            ),
+          );
+        if (!workers[0]?.enabled || !workers[0].allowsPlanGoal)
+          throw new TaskDispatchConflictError(
+            "The selected Task Worker is disabled or no longer allows Plan + Goal. Enable it before resuming.",
+            "active-operation",
+          );
+        if ((counts[0]?.count ?? 0) >= workers[0].maxConcurrency)
+          throw new TaskDispatchConflictError(
+            "The Task Worker has no available capacity. Retry when a running Task finishes.",
+            "active-operation",
+          );
+      }
       const live =
         row.state === "running" &&
         row.leaseExpiresAt &&

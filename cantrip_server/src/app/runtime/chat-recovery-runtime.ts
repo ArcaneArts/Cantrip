@@ -12,10 +12,7 @@ import {
   worktreeStatusResultSchema,
   type WorkerNotification,
 } from "@cantrip/protocol";
-import {
-  taskMessageRelayResultSchema,
-  taskMessageOpaqueContentSchema,
-} from "@cantrip/protocol/tasks";
+import { taskMessageRelayResultSchema } from "@cantrip/protocol/tasks";
 import type { FastifyInstance } from "fastify";
 
 import { chatIsExecuting } from "../../chats/execution-helpers.js";
@@ -63,6 +60,10 @@ export interface ChatRecoveryRuntimeDependencies
   app: Pick<FastifyInstance, "log">;
   applicationOwnerId: () => string;
   beginTurn: BeginChatTurn;
+  continueTaskGoalInWorktree?: (
+    context: ChatExecutionContext,
+    input: { text: string; idempotencyKey: string },
+  ) => Promise<boolean>;
   recoverTaskExecution?: (chatId: string) => Promise<boolean>;
   reconcileTaskExecutions?: (ownerId: string) => Promise<void>;
   bridge: LimitedWorkerCommandBus;
@@ -92,6 +93,7 @@ export function createChatRecoveryRuntime({
   applicationOwnerId,
   availableModelRuntimes,
   beginTurn,
+  continueTaskGoalInWorktree,
   recoverTaskExecution,
   reconcileTaskExecutions,
   bridge,
@@ -212,6 +214,11 @@ export function createChatRecoveryRuntime({
           mode: "default" as const,
           idempotencyKey: `worktree-continuation:${pending.lane.id}`,
         };
+        if (
+          next.experience === "task" &&
+          (await continueTaskGoalInWorktree?.(next, input))
+        )
+          return true;
         const protectedMessage = await protectChatInput(
           bridge,
           next.workerId,
@@ -225,24 +232,9 @@ export function createChatRecoveryRuntime({
           idempotencyKey: `assistant:${protectedMessage.id}`,
         };
         await beginTurn(next, input, {
-          ...(next.experience === "task"
-            ? {
-                encryptedTaskMessages: {
-                  userMessage: taskMessageOpaqueContentSchema.parse(
-                    await bridge.request(next.workerId, {
-                      type: "task.message.protect",
-                      message: protectedMessage,
-                    }),
-                  ),
-                  response,
-                },
-              }
-            : {
-                encryptedChatMessages: {
-                  userMessage: protectedMessage,
-                  response,
-                },
-              }),
+          // beginTurn converts Task conversation inputs on the worker and
+          // forwards their authenticated mode instead of defaulting to Goal.
+          encryptedChatMessages: { userMessage: protectedMessage, response },
           acquiringActor: "agent",
           messageRole: "system",
           purpose: `Controlled ${applied.transitionKind} continuation`,

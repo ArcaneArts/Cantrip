@@ -14,6 +14,7 @@ interface Dependencies {
   goals: Pick<
     Goals,
     | "readEncryptedTaskGoal"
+    | "continueTaskGoalInWorktree"
     | "retainTaskGoalLease"
     | "reconcileTaskGoalDispatch"
     | "resumeChatAutomation"
@@ -84,7 +85,12 @@ export function createTaskExecutionRecovery({
       cycle.operationKind !== "finalize" ||
       !cycle.codexThreadId ||
       !cycle.worktreeId ||
-      !["running", "expired", "failed"].includes(cycle.state)
+      ![
+        "running",
+        "expired",
+        "failed",
+        ...(resume ? ["succeeded"] : []),
+      ].includes(cycle.state)
     )
       return false;
     // Healthy turns and their intentional worktree handoffs keep using the
@@ -112,6 +118,51 @@ export function createTaskExecutionRecovery({
       throw new Error(
         "The retained Task session belongs to a different worker.",
       );
+    let currentObservation:
+      Awaited<ReturnType<Goals["readEncryptedTaskGoal"]>> | undefined;
+    if (resume && context.threadId && goals.continueTaskGoalInWorktree) {
+      currentObservation = await goals.readEncryptedTaskGoal(
+        context,
+        task,
+        null,
+        true,
+      );
+      if (
+        !currentObservation.goal &&
+        currentObservation.execution?.threadId === context.threadId &&
+        currentObservation.execution.status === "idle"
+      ) {
+        const latest = await repository.getChatExecutionContext(owner, chatId);
+        if (
+          !latest ||
+          latest.threadId !== context.threadId ||
+          latest.worktreeId !== context.worktreeId ||
+          latest.workerId !== context.workerId ||
+          latest.automationPaused !== context.automationPaused
+        )
+          throw new Error("The Task changed during recovery. Please retry.");
+        if (context.automationPaused) {
+          await unpause(owner, chatId);
+          const unpaused = await repository.getChatExecutionContext(
+            owner,
+            chatId,
+          );
+          if (
+            !unpaused ||
+            unpaused.threadId !== context.threadId ||
+            unpaused.worktreeId !== context.worktreeId ||
+            unpaused.workerId !== context.workerId ||
+            unpaused.automationPaused
+          )
+            throw new Error("The Task changed during recovery. Please retry.");
+          context = unpaused;
+        }
+        return goals.continueTaskGoalInWorktree(context, {
+          text: "Resume the saved approved Task implementation Goal in this checkout. Preserve already-completed work and validate the remaining acceptance criteria.",
+          idempotencyKey: `task-goal-repair:${chatId}:${Date.now()}`,
+        });
+      }
+    }
     if (context.threadId && context.threadId !== cycle.codexThreadId)
       throw new Error(
         "The Task already has a different session. Recovery did not replace it.",
@@ -139,12 +190,10 @@ export function createTaskExecutionRecovery({
       providerAccountId: cycle.providerAccountId,
       // Native execution observation supplies the actual chat status on worker.
     };
-    const result = await goals.readEncryptedTaskGoal(
-      observedContext,
-      task,
-      null,
-      true,
-    );
+    const result =
+      currentObservation && context.worktreeId === cycle.worktreeId
+        ? currentObservation
+        : await goals.readEncryptedTaskGoal(observedContext, task, null, true);
     if (
       !result.execution ||
       result.execution.threadId !== cycle.codexThreadId ||
@@ -169,11 +218,30 @@ export function createTaskExecutionRecovery({
       current.automationPaused !== context.automationPaused
     )
       throw new Error("The Task changed during recovery. Please retry.");
-    const lease = await repository.taskDispatch.recoverStartedGoal(
-      owner,
-      cycle,
-      leaseOwner,
-    );
+    if (result.goal.status === "complete") {
+      await goals.reconcileTaskGoalDispatch(task, "complete");
+      await repository.setChatStatus(chatId, result.execution.status);
+      publish(chatId, context.projectId!);
+      return true;
+    }
+    const shouldResume =
+      result.execution.status === "idle" &&
+      (resume || result.goal.status === "active") &&
+      context.status !== "running";
+    const lease =
+      cycle.state === "succeeded"
+        ? await repository.taskDispatch.recoverStartedGoal(
+            owner,
+            cycle,
+            leaseOwner,
+            new Date(),
+            { allowSettled: true },
+          )
+        : await repository.taskDispatch.recoverStartedGoal(
+            owner,
+            cycle,
+            leaseOwner,
+          );
     if (context.worktreeId !== cycle.worktreeId) {
       const restored = await repository.updateChatWorktree(
         owner,
@@ -202,7 +270,10 @@ export function createTaskExecutionRecovery({
       );
     await goals.retainTaskGoalLease(lease);
     const synchronized = (await repository.tasks.get(owner, chatId))!;
-    await goals.reconcileTaskGoalDispatch(synchronized, synchronized.state);
+    // Keep the slot until activation/turn admission; reconciling a stopped
+    // Goal here would settle it again immediately before Resume.
+    if (!shouldResume)
+      await goals.reconcileTaskGoalDispatch(synchronized, synchronized.state);
     if (
       result.execution.status === "running" &&
       !context.executionLaneId &&
@@ -218,12 +289,7 @@ export function createTaskExecutionRecovery({
       await repository.setChatStatus(chatId, result.execution.status);
     }
     publish(chatId, context.projectId!);
-    if (
-      result.execution.status === "idle" &&
-      result.goal.status !== "complete" &&
-      (resume || result.goal.status === "active") &&
-      context.status !== "running"
-    ) {
+    if (shouldResume) {
       // The pending handoff was already reconciled above. Do not re-enter the
       // handoff's in-progress guard and accidentally suppress this resume.
       await goals.resumeChatAutomation(chatId, resume, true);
