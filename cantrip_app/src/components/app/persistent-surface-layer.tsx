@@ -314,6 +314,16 @@ export function PersistentSurfaceLayer({
           onServicePanelOpenChange={(terminalId, open) =>
             setTerminalServiceTerminalId(open ? terminalId : null)
           }
+          renderAgentActions={(chatId) => {
+            const chat =
+              bindings.chats?.data?.find(
+                (entry: { id: string }) => entry.id === chatId,
+              ) ??
+              (activeProjectTaskChat?.id === chatId
+                ? activeProjectTaskChat
+                : undefined);
+            return chat ? bindings.renderAgentPanelActions?.(chat) : null;
+          }}
           ownedTerminals={ownedTerminals}
           pendingInputs={pendingTerminalInputs}
           selectedTerminal={

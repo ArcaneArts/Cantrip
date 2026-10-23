@@ -1,3 +1,4 @@
+import { PanelToolbar } from "@/components/workspace/panel-toolbar";
 import {
   BrowserAgentCursorOverlay,
   type BrowserAgentCursorHandle,
@@ -658,8 +659,9 @@ export function BrowserView({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background">
-      <div
-        className="flex h-12 shrink-0 items-center gap-1.5 bg-background px-3"
+      <PanelToolbar
+        aria-label="Browser controls"
+        className="gap-1.5 bg-background"
         data-remote-surface-route={activeRoute ?? undefined}
       >
         <Button
@@ -1002,7 +1004,7 @@ export function BrowserView({
             </DropdownMenuPrimitive.Content>
           </DropdownMenuPrimitive.Portal>
         </DropdownMenuPrimitive.Root>
-      </div>
+      </PanelToolbar>
       {invalidAddress ? (
         <p className="shrink-0 bg-destructive/10 px-4 py-1.5 text-xs text-destructive">
           Enter a valid HTTP or HTTPS address.

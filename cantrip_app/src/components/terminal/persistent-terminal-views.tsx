@@ -1,5 +1,5 @@
 import type { TerminalSummary } from "@cantrip/protocol";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { PersistentSurfacePortal } from "@/components/app/persistent-surface-portal";
 import { clientLogger } from "@/lib/client-log-relay";
@@ -59,6 +59,7 @@ export function PersistentTerminalViews({
   onServicePanelOpenChange,
   ownedTerminals,
   pendingInputs,
+  renderAgentActions,
   selectedTerminal,
   servicePanelTerminalId,
   visiblePlacements,
@@ -74,6 +75,7 @@ export function PersistentTerminalViews({
   onServicePanelOpenChange(terminalId: string, open: boolean): void;
   ownedTerminals: readonly TerminalSummary[];
   pendingInputs: readonly PendingTerminalInput[];
+  renderAgentActions?(chatId: string): ReactNode;
   selectedTerminal: TerminalSummary | null;
   servicePanelTerminalId: string | null;
   excludedIds?: ReadonlySet<string>;
@@ -222,6 +224,7 @@ export function PersistentTerminalViews({
         {visible && linkedChatId ? (
           <LinkedConsoleControls
             key={linkedChatId}
+            actions={renderAgentActions?.(linkedChatId)}
             chatId={linkedChatId}
             projectId={terminal.projectId}
           />

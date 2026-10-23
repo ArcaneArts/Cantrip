@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import type { ExplorerSummary } from "@cantrip/protocol";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createElement } from "react";

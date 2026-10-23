@@ -74,7 +74,7 @@ export interface ContentHeaderActionsProps {
   terminalService?: TerminalServiceAction | null;
 }
 
-function ExplorerHeaderActions({
+export function ExplorerHeaderActions({
   compact,
   header,
 }: {

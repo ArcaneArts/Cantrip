@@ -2,6 +2,19 @@
 
 Status: implemented through Milestone 7.
 
+## Panel controls
+
+Every visible surface owns its controls in a shared panel toolbar. Git reuses
+its tools row for pull, push, and refresh; Explorer and Code keep file modes,
+save, history, refresh, and close beside the displayed path. Agent controls,
+including those in linked Codex consoles, act on their own chat. Terminals,
+Run output, Browser, Remote Desktop, and Tasks reuse the same toolbar styling.
+Task controls remain above the scrolling list. Narrow Git panes collapse extra
+tools into a menu based on their own width.
+
+Panel controls remain available while another pane is focused. The window bar
+retains the common pop-out and Run Configurations controls.
+
 ## Tab bar display
 
 Settings → Appearance independently selects Tabs, Icons, or Hybrid for the top

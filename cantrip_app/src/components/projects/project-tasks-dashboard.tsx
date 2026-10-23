@@ -1,3 +1,4 @@
+import { PanelToolbar } from "@/components/workspace/panel-toolbar";
 import type {
   ChatSummary,
   SettingsBundle,
@@ -846,123 +847,127 @@ export function ProjectTasksDashboard({
   }
   const error = workload.error ?? pauseState.error ?? taskWorkers.error;
   return renderDashboard(
-    <div className="min-h-0 flex-1 overflow-y-auto">
-      <div
-        className="flex min-h-full w-full flex-col px-4 py-5 sm:px-6 sm:py-7"
-        data-content-gutter="standard"
+    <div className="flex min-h-0 flex-1 flex-col">
+      <PanelToolbar
+        as="header"
+        aria-label="Task controls"
+        className="flex-nowrap"
       >
-        <header className="mb-5 flex items-center gap-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <ClipboardList className="size-5 shrink-0 text-muted-foreground" />
-            <h1 className="truncate text-lg font-semibold tracking-tight">
-              Tasks
-            </h1>
-          </div>
-          <div className="ml-auto flex shrink-0 items-center gap-1">
-            <TooltipButton
-              className="size-8"
-              pending={creatingTask}
-              size="icon"
-              tooltip="Add Task"
-              variant="ghost"
-              onClick={onCreateTask}
-            >
-              <Plus aria-hidden="true" className="size-4" />
-            </TooltipButton>
-            <TooltipButton
-              className="size-8"
-              pending={pauseMutation.isPending}
-              size="icon"
-              tooltip={pauseState.data?.paused ? "Resume Tasks" : "Pause Tasks"}
-              variant="ghost"
-              onClick={() => pauseMutation.mutate(!pauseState.data?.paused)}
-            >
-              {pauseState.data?.paused ? (
-                <Play aria-hidden="true" className="size-4" />
-              ) : (
-                <Pause aria-hidden="true" className="size-4" />
-              )}
-            </TooltipButton>
-            <TooltipButton
-              className="size-8"
-              size="icon"
-              variant="ghost"
-              tooltip="Retry interrupted Tasks"
-              pending={recoveryMutation.isPending}
-              disabled={
-                recoveryCandidates.length === 0 || pauseMutation.isPending
-              }
-              onClick={() => recoveryMutation.mutate()}
-            >
-              <RefreshCw aria-hidden="true" className="size-4" />
-            </TooltipButton>
-          </div>
-        </header>
-        {error ||
-        pauseMutation.isError ||
-        recoveryMutation.isError ||
-        taskCreationError ? (
-          <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-            {error instanceof Error
-              ? error.message
-              : pauseMutation.error instanceof Error
-                ? pauseMutation.error.message
-                : recoveryMutation.error instanceof Error
-                  ? recoveryMutation.error.message
-                  : taskCreationError instanceof Error
-                    ? taskCreationError.message
-                    : "The Task workload could not be loaded."}
-          </div>
-        ) : null}
-        {workload.isSuccess &&
-        sorted.active.length === 0 &&
-        sorted.failed.length === 0 &&
-        sorted.completed.length === 0 ? (
-          <EmptyState>
-            <EmptyStateContent>
-              <EmptyStateIcon>
-                <ClipboardList className="size-5" />
-              </EmptyStateIcon>
-              <EmptyStateTitle>No tasks yet</EmptyStateTitle>
-              <EmptyStateActions>
-                <Button pending={creatingTask} onClick={onCreateTask}>
-                  <Plus className="size-4" />
-                  Create a task
-                </Button>
-              </EmptyStateActions>
-            </EmptyStateContent>
-          </EmptyState>
-        ) : (
-          <div className="space-y-7">
-            <WorkloadList
-              chats={chatMap}
-              items={sorted.active}
-              label="Active"
-              onDeleteTask={requestDeleteTask}
-              paused={pauseState.data?.paused ?? false}
-              taskWorkers={workerMap}
-              onOpenTask={onOpenTask}
-            />
-            <WorkloadList
-              chats={chatMap}
-              items={sorted.failed}
-              label="Failed"
-              onDeleteTask={requestDeleteTask}
-              paused={false}
-              taskWorkers={workerMap}
-              onOpenTask={onOpenTask}
-            />
-            <WorkloadList
-              chats={chatMap}
-              items={sorted.completed}
-              label="Completed"
-              onDeleteTask={requestDeleteTask}
-              paused={false}
-              taskWorkers={workerMap}
-              onOpenTask={onOpenTask}
-            />
-          </div>
-        )}
+        <div className="flex min-w-0 items-center gap-2">
+          <ClipboardList className="size-4 shrink-0 text-muted-foreground" />
+          <h1 className="truncate text-sm font-medium">Tasks</h1>
+        </div>
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          <TooltipButton
+            className="size-8"
+            pending={creatingTask}
+            size="icon"
+            tooltip="Add Task"
+            variant="ghost"
+            onClick={onCreateTask}
+          >
+            <Plus aria-hidden="true" className="size-4" />
+          </TooltipButton>
+          <TooltipButton
+            className="size-8"
+            pending={pauseMutation.isPending}
+            size="icon"
+            tooltip={pauseState.data?.paused ? "Resume Tasks" : "Pause Tasks"}
+            variant="ghost"
+            onClick={() => pauseMutation.mutate(!pauseState.data?.paused)}
+          >
+            {pauseState.data?.paused ? (
+              <Play aria-hidden="true" className="size-4" />
+            ) : (
+              <Pause aria-hidden="true" className="size-4" />
+            )}
+          </TooltipButton>
+          <TooltipButton
+            className="size-8"
+            size="icon"
+            variant="ghost"
+            tooltip="Retry interrupted Tasks"
+            pending={recoveryMutation.isPending}
+            disabled={
+              recoveryCandidates.length === 0 || pauseMutation.isPending
+            }
+            onClick={() => recoveryMutation.mutate()}
+          >
+            <RefreshCw aria-hidden="true" className="size-4" />
+          </TooltipButton>
+        </div>
+      </PanelToolbar>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div
+          className="flex min-h-full w-full flex-col px-4 py-5 sm:px-6 sm:py-7"
+          data-content-gutter="standard"
+        >
+          {error ||
+          pauseMutation.isError ||
+          recoveryMutation.isError ||
+          taskCreationError ? (
+            <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+              {error instanceof Error
+                ? error.message
+                : pauseMutation.error instanceof Error
+                  ? pauseMutation.error.message
+                  : recoveryMutation.error instanceof Error
+                    ? recoveryMutation.error.message
+                    : taskCreationError instanceof Error
+                      ? taskCreationError.message
+                      : "The Task workload could not be loaded."}
+            </div>
+          ) : null}
+          {workload.isSuccess &&
+          sorted.active.length === 0 &&
+          sorted.failed.length === 0 &&
+          sorted.completed.length === 0 ? (
+            <EmptyState>
+              <EmptyStateContent>
+                <EmptyStateIcon>
+                  <ClipboardList className="size-5" />
+                </EmptyStateIcon>
+                <EmptyStateTitle>No tasks yet</EmptyStateTitle>
+                <EmptyStateActions>
+                  <Button pending={creatingTask} onClick={onCreateTask}>
+                    <Plus className="size-4" />
+                    Create a task
+                  </Button>
+                </EmptyStateActions>
+              </EmptyStateContent>
+            </EmptyState>
+          ) : (
+            <div className="space-y-7">
+              <WorkloadList
+                chats={chatMap}
+                items={sorted.active}
+                label="Active"
+                onDeleteTask={requestDeleteTask}
+                paused={pauseState.data?.paused ?? false}
+                taskWorkers={workerMap}
+                onOpenTask={onOpenTask}
+              />
+              <WorkloadList
+                chats={chatMap}
+                items={sorted.failed}
+                label="Failed"
+                onDeleteTask={requestDeleteTask}
+                paused={false}
+                taskWorkers={workerMap}
+                onOpenTask={onOpenTask}
+              />
+              <WorkloadList
+                chats={chatMap}
+                items={sorted.completed}
+                label="Completed"
+                onDeleteTask={requestDeleteTask}
+                paused={false}
+                taskWorkers={workerMap}
+                onOpenTask={onOpenTask}
+              />
+            </div>
+          )}
+        </div>
       </div>
     </div>,
   );

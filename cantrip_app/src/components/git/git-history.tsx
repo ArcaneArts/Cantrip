@@ -1,3 +1,6 @@
+import { TooltipButton } from "@/components/ui/tooltip";
+import { PanelToolbar } from "@/components/workspace/panel-toolbar";
+import { ContentHeaderActions } from "@/components/workspace/content-header-actions";
 import {
   githubIssueListFiltersSchema,
   type GithubIssueListFilters,
@@ -33,8 +36,6 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import {
-  ArrowDownToLine,
-  ArrowUpFromLine,
   Check,
   CircleCheck,
   CircleDot,
@@ -1387,8 +1388,8 @@ export function GitHistoryView({
   const issuesRefreshing =
     issues.isFetching && !issues.isFetchingNextPage && !issues.isLoading;
 
-  useEffect(() => {
-    onHeaderChange({
+  const panelHeader = useMemo<GitHistoryHeaderState>(
+    () => ({
       branch:
         firstPage?.branch ?? status?.branch ?? selectedWorktree?.branch ?? "",
       canPush: Boolean(
@@ -1416,7 +1417,7 @@ export function GitHistoryView({
       activeActionRunCount: actionsStatus?.activeRunCount ?? 0,
       issueCount: githubTotal,
       issueState,
-      isGitActionPending: gitAction.isPending,
+      isGitActionPending: gitAction.isPending || !selectedAvailable,
       section,
       pull: () => gitAction.mutate("pull"),
       push: requestPush,
@@ -1431,40 +1432,45 @@ export function GitHistoryView({
           refreshIssues();
         }
       },
-    });
-  }, [
-    commits.length,
-    actionsStatus?.activeRunCount,
-    actionsStatus?.isFetching,
-    actionsStatus?.runCount,
-    firstPage,
-    history.isFetching,
-    history.refetch,
-    gitAction.isPending,
-    gitAction.mutate,
-    graphStatus?.head,
-    graphStatus?.isFetching,
-    graphStatus?.nodeCount,
-    issueState,
-    issuesRefreshing,
-    githubTotal,
-    onHeaderChange,
-    project.id,
-    queryClient,
-    requestPush,
-    refreshHistory,
-    refreshIssues,
-    reconcile.isPending,
-    reconcile.mutate,
-    selectedWorktree?.branch,
-    selectedWorktree?.head,
-    status?.ahead,
-    status?.branch,
-    status?.branches,
-    status?.head,
-    status?.upstream,
-    section,
-  ]);
+    }),
+    [
+      commits.length,
+      actionsStatus?.activeRunCount,
+      actionsStatus?.isFetching,
+      actionsStatus?.runCount,
+      firstPage,
+      history.isFetching,
+      history.refetch,
+      gitAction.isPending,
+      gitAction.mutate,
+      graphStatus?.head,
+      graphStatus?.isFetching,
+      graphStatus?.nodeCount,
+      issueState,
+      issuesRefreshing,
+      githubTotal,
+      project.id,
+      queryClient,
+      requestPush,
+      refreshHistory,
+      refreshIssues,
+      reconcile.isPending,
+      reconcile.mutate,
+      selectedAvailable,
+      selectedWorktree?.branch,
+      selectedWorktree?.head,
+      status?.ahead,
+      status?.branch,
+      status?.branches,
+      status?.head,
+      status?.upstream,
+      section,
+    ],
+  );
+
+  useEffect(() => {
+    onHeaderChange(panelHeader);
+  }, [onHeaderChange, panelHeader]);
 
   useEffect(() => {
     setInternalSection(view);
@@ -1597,7 +1603,7 @@ export function GitHistoryView({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-slot="git-history">
-      <div className="relative flex min-h-10 shrink-0 flex-wrap items-center gap-2 px-3 md:h-10 md:flex-nowrap">
+      <PanelToolbar aria-label="Git controls">
         {showSectionTabs ? (
           <ProjectOverviewNavigation
             activeTab={section}
@@ -1610,10 +1616,22 @@ export function GitHistoryView({
               else setSection(next);
             }}
           />
-        ) : null}
+        ) : (
+          <span className="shrink-0 font-medium">
+            {section === "history"
+              ? "History"
+              : section === "graph"
+                ? "Graph"
+                : section === "actions"
+                  ? "Actions"
+                  : section === "prs"
+                    ? "Pull Requests"
+                    : "Issues"}
+          </span>
+        )}
 
-        <div className="ml-auto flex min-w-0 items-center gap-1 max-md:w-full max-md:justify-end">
-          {section === "history" && standalone ? (
+        <div className="ml-auto flex min-w-0 flex-1 flex-wrap items-center justify-end gap-1">
+          {section === "history" || section === "graph" ? (
             <>
               {selectedWorktree && worktreesEnabled ? (
                 <WorktreeControl
@@ -1633,39 +1651,12 @@ export function GitHistoryView({
                   }}
                 />
               ) : null}
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-6 gap-1 px-2 text-[11px]"
-                disabled={gitAction.isPending || !selectedAvailable}
-                onClick={() => gitAction.mutate("pull")}
-              >
-                <ArrowDownToLine className="size-3" /> Pull
-              </Button>
-              {Boolean(
-                status?.head &&
-                status.branch &&
-                (status.ahead > 0 ||
-                  (!status.upstream &&
-                    status.branches.some(
-                      (branch) => branch.kind === "remote",
-                    ))),
-              ) ? (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 gap-1 px-2 text-[11px]"
-                  disabled={gitAction.isPending}
-                  onClick={requestPush}
-                >
-                  <ArrowUpFromLine className="size-3" /> Push
-                </Button>
-              ) : null}
             </>
           ) : null}
           {section === "history" ? (
             <GitWorkbenchToolbar
               compact={compactLayout}
+              responsive
               disabled={!selectedAvailable}
               tools={{
                 operations: {
@@ -1724,55 +1715,27 @@ export function GitHistoryView({
               onTabChange={setIssueState}
             />
           ) : null}
-          {standalone || section !== "history" ? (
-            <Button
+          {section === "history" || section === "graph" ? (
+            <ContentHeaderActions compact git={panelHeader} />
+          ) : (
+            <TooltipButton
+              disabled={panelHeader.isFetching}
+              onClick={panelHeader.refresh}
               size="icon"
+              tooltip={`Refresh ${section === "actions" ? "GitHub Actions" : section === "prs" ? "pull requests" : "issues"}`}
               variant="ghost"
-              className="size-6"
-              disabled={
-                section === "history"
-                  ? history.isFetching || reconcile.isPending
-                  : section === "graph"
-                    ? (graphStatus?.isFetching ?? false)
-                    : section === "actions"
-                      ? (actionsStatus?.isFetching ?? false)
-                      : issuesRefreshing
-              }
-              onClick={() =>
-                section === "history"
-                  ? refreshHistory()
-                  : section === "graph"
-                    ? setGraphRefreshEpoch((epoch) => epoch + 1)
-                    : section === "actions"
-                      ? setActionsRefreshEpoch((epoch) => epoch + 1)
-                      : refreshIssues()
-              }
-              title={`Refresh ${section === "history" ? "Git history" : section === "graph" ? "repository graph" : section === "actions" ? "GitHub Actions" : section === "prs" ? "pull requests" : "issues"}`}
             >
               <RefreshCw
                 className={cn(
-                  "size-3",
-                  (section === "history"
-                    ? history.isFetching || reconcile.isPending
-                    : section === "graph"
-                      ? graphStatus?.isFetching
-                      : section === "actions"
-                        ? actionsStatus?.isFetching
-                        : issuesRefreshing) && "animate-spin",
+                  "size-4",
+                  panelHeader.isFetching && "animate-spin",
                 )}
               />
               <span className="sr-only">Refresh</span>
-            </Button>
-          ) : null}
-        </div>
-        <span
-          aria-hidden="true"
-          className={cn(
-            "pointer-events-none absolute inset-x-0 bottom-0 h-px bg-border transition-opacity duration-200",
-            contentScrolled ? "opacity-100" : "opacity-0",
+            </TooltipButton>
           )}
-        />
-      </div>
+        </div>
+      </PanelToolbar>
       {gitAction.error ? (
         <p className="shrink-0 bg-destructive/10 px-4 py-2 text-xs text-destructive">
           {gitAction.error instanceof Error
