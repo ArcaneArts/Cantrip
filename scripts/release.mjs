@@ -5,7 +5,10 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 import { deployAppPlatform } from "./deploy-app-platform.mjs";
-import { deployProduction } from "./deploy-production.mjs";
+import {
+  deployProduction,
+  prepareProductionSecrets,
+} from "./deploy-production.mjs";
 
 const scriptRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -61,10 +64,7 @@ function finishPromotion(root, commit, changed, skipped) {
   return { changed, commit };
 }
 
-export function promoteReleaseBranch({
-  root = scriptRoot,
-  verifyCompatibility = verifyInstallationCompatibility,
-} = {}) {
+function prepareReleaseSource(root, verifyCompatibility) {
   const topLevel = realpathSync(
     git(root, ["rev-parse", "--show-toplevel"]).stdout,
   );
@@ -96,7 +96,20 @@ export function promoteReleaseBranch({
   }
 
   verifyCompatibility({ root });
+  return mainCommit;
+}
 
+export function promoteReleaseBranch({
+  root = scriptRoot,
+  verifyCompatibility = verifyInstallationCompatibility,
+} = {}) {
+  return promotePreparedReleaseBranch(
+    root,
+    prepareReleaseSource(root, verifyCompatibility),
+  );
+}
+
+function promotePreparedReleaseBranch(root, mainCommit) {
   let promotionCommit = mainCommit;
   let previousRelease = null;
   const remoteRelease = git(
@@ -243,15 +256,24 @@ export async function releaseCantrip({
   root = scriptRoot,
   deploy = deployProduction,
   deployWeb = deployAppPlatform,
+  prepareSecrets = prepareProductionSecrets,
   verifyCompatibility = verifyInstallationCompatibility,
 } = {}) {
-  const promotion = promoteReleaseBranch({ root, verifyCompatibility });
+  const mainCommit = prepareReleaseSource(root, verifyCompatibility);
+  // Perform the actual authenticated production read before publishing anything.
+  // Reuse it for deployment instead of making a second read after promotion.
+  const preparedSecrets = await prepareSecrets({ root });
+  const promotion = promotePreparedReleaseBranch(root, mainCommit);
   const appPlatformDeployment = await deployWeb({
     root,
     commit: promotion.commit,
     waitForActivation: false,
   });
-  const deployment = await deploy({ root, commit: promotion.commit });
+  const deployment = await deploy({
+    root,
+    commit: promotion.commit,
+    preparedSecrets,
+  });
   return { appPlatformDeployment, deployment, promotion };
 }
 
