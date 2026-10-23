@@ -138,6 +138,7 @@ describe("ContentHeaderActions", () => {
           backLabel: "Close graph",
           canGoBack: true,
           selectedPath: null,
+          showFileClose: false,
         }}
       />,
     );
@@ -145,6 +146,16 @@ describe("ContentHeaderActions", () => {
     expect(markup).not.toContain(" title=");
     expect(markup).toContain('aria-label="Close graph"');
     expect(markup).toContain(">Close graph</span>");
+  });
+
+  it("omits the redundant close action for a file with its own tab", () => {
+    expect(
+      renderActions(
+        <ExplorerFileCloseButton
+          header={{ ...explorerHeader(), showFileClose: false }}
+        />,
+      ),
+    ).toBe("");
   });
 
   it("labels the structured Explorer mode as Visual", () => {
@@ -173,17 +184,24 @@ describe("ContentHeaderActions", () => {
     expect(markup).not.toContain("Push</button>");
   });
 
-  it("uses native file actions for Code tabs without runtime controls", () => {
-    const markup = renderActions(
-      <ContentHeaderActions
-        git={gitHeader(false)}
-        code={{ header: codeHeader() }}
-      />,
-    );
-    expect(markup).not.toContain('aria-label="Push local commits"');
-    expect(markup).toContain('aria-label="Edit mode"');
-    expect(markup).toContain(">Close file</span>");
-    expect(markup).not.toContain("Restart editor");
-    expect(markup).not.toContain("Stop editor");
-  });
+  it.each([false, true])(
+    "uses file actions without a duplicate close action for Code tabs (compact: %s)",
+    (compact) => {
+      const markup = renderActions(
+        <ContentHeaderActions
+          compact={compact}
+          git={gitHeader(false)}
+          code={{ header: codeHeader() }}
+        />,
+      );
+      expect(markup).not.toContain('aria-label="Push local commits"');
+      expect(markup).toContain('aria-label="Edit mode"');
+      expect(markup).not.toContain('aria-label="Close file"');
+      expect(markup).not.toContain(">Close file</span>");
+      expect(markup).toContain('aria-label="Save file"');
+      expect(markup).toContain('aria-label="Refresh Explorer"');
+      expect(markup).not.toContain("Restart editor");
+      expect(markup).not.toContain("Stop editor");
+    },
+  );
 });
