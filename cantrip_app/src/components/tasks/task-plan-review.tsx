@@ -29,6 +29,7 @@ import {
 } from "react";
 
 import { Markdown } from "@/components/chat/markdown";
+import { TaskRetryStatus } from "./task-retry-status";
 import { Button } from "@/components/ui/button";
 import {
   beginTaskImplementation,
@@ -445,10 +446,21 @@ export function TaskPlanReview({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      {task.automaticRetry && !failed ? (
+        <p className="border-b px-5 py-3 text-sm text-muted-foreground">
+          <TaskRetryStatus task={task} paused={chat.automationPaused} />
+        </p>
+      ) : null}
       {failed && task.lastError ? (
         <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-destructive/30 bg-destructive/5 px-5 py-3 text-sm text-destructive">
           <CircleAlert className="size-4 shrink-0" />
-          <span className="min-w-0 flex-1">{task.lastError.message}</span>
+          <span className="min-w-0 flex-1">
+            <TaskRetryStatus
+              task={task}
+              paused={chat.automationPaused}
+              fallback={task.lastError.message}
+            />
+          </span>
           <Button
             disabled={
               !taskWorkerEncryptionCanAttempt(workerEncryptionReadiness) ||

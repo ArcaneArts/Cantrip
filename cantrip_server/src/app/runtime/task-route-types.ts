@@ -11,6 +11,7 @@ import type {
   TaskMessageOpaqueContent,
   TaskOpaqueSummary,
   TaskOperationRelayRequest,
+  TaskGoalSyncContext,
 } from "@cantrip/protocol/tasks";
 import type { FastifyReply } from "fastify";
 import type {
@@ -142,6 +143,8 @@ export interface TaskRouteRuntimeDependencies {
     } | null,
     observeExecution?: boolean,
     activateGoal?: boolean,
+    runtimeFailure?: TaskGoalSyncContext["runtimeFailure"],
+    observationOnly?: boolean,
   ) => Promise<
     Omit<TaskGoalWorkerResult, "task"> & { task: TaskOpaqueSummary }
   >;

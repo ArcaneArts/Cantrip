@@ -558,7 +558,7 @@ const workerBridge: WorkerCommandBus = {
     if (command.type === "chat.turn") {
       if (rejectNextNativeTurn) {
         rejectNextNativeTurn = false;
-        throw new Error("Fixture native Task turn dispatch failed.");
+        throw new Error("Fixture native Task turn dispatch timed out.");
       }
       try {
         return await encryptedTaskTurn(command, options?.onEvent);
@@ -1224,7 +1224,74 @@ describe.sequential("Task E2EE closure lifecycle", () => {
     }
   });
 
-  it("fails a blocked launch without retaining Task Worker capacity", async () => {
+  it("automatically retries a timed-out encrypted Task without an open browser or manual action", async () => {
+    const chatId = randomUUID();
+    const initial = await sealTask(chatId, {
+      version: 1,
+      classification: {
+        state: "draft",
+        stableStateBeforeFailure: null,
+        activeOperationKind: null,
+        planAuthorship: "agent",
+        planningRound: 0,
+        hasPlan: false,
+        hasQuestions: false,
+        hasFinalPlan: false,
+        hasGoalPrompt: false,
+        lastError: null,
+      },
+      briefMarkdown: `${sentinel} automatic timeout retry`,
+      planMarkdown: null,
+      currentQuestions: [],
+      currentAnswers: [],
+      additionalDirection: "",
+      finalPlanMarkdown: null,
+      goalPrompt: null,
+      lastError: null,
+    });
+    const created = await app!.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/tasks`,
+      payload: {
+        chatId,
+        planGoalEnabled: false,
+        titleProtection: protectedChatFields(chatId).titleProtection,
+        task: initial,
+      },
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    const row = taskWireCreateResultSchema.parse(created.json());
+    rejectNextNativeTurn = true;
+    const started = await app!.inject({
+      method: "POST",
+      url: `/api/tasks/${chatId}/start`,
+      payload: { operationId: randomUUID(), rowVersion: row.task.rowVersion },
+    });
+    expect(started.statusCode, started.body).toBe(202);
+    await expect
+      .poll(async () => (await taskSummary(chatId)).automaticRetry, {
+        timeout: 5000,
+      })
+      .toMatchObject({
+        status: "scheduled",
+        failureKind: "timeout",
+        recentAttempts: 0,
+      });
+    const failed = await taskSummary(chatId);
+    const due = Date.parse(failed.automaticRetry!.nextAttemptAt!);
+    expect(due - Date.now()).toBeGreaterThan(3000);
+    await expect
+      .poll(async () => (await taskSummary(chatId)).state, { timeout: 12000 })
+      .toBe("complete");
+    expect(Date.now()).toBeGreaterThanOrEqual(due);
+    const complete = await openTask(await taskSummary(chatId));
+    expect(complete.lastError).toBeNull();
+    expect(complete.dispatch?.operationId).not.toBe(
+      failed.dispatch?.operationId,
+    );
+  }, 30000);
+
+  it("fails a rejected launch without retaining Task Worker capacity", async () => {
     taskOperationPrepareTimeouts.length = 0;
     rejectNextNativeTurn = true;
     const blockedChatId = randomUUID();

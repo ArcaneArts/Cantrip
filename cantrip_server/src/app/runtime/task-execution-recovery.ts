@@ -37,19 +37,25 @@ export function createTaskExecutionRecovery({
 }: Dependencies) {
   const recovering = new Map<
     string,
-    { operation: Promise<boolean>; resume: boolean }
+    { operation: Promise<boolean>; resume: boolean; automatic: boolean }
   >();
   const observedAt = new Map<string, number>();
-  async function recover(chatId: string, resume = false): Promise<boolean> {
+  async function recover(
+    chatId: string,
+    resume = false,
+    automatic = false,
+  ): Promise<boolean> {
     const prior = recovering.get(chatId);
     if (prior) {
       const recovered = await prior.operation;
       // An explicit Resume must not be swallowed by a concurrent passive
       // observation which intentionally preserves the user's paused state.
-      return resume && !prior.resume ? recover(chatId, true) : recovered;
+      return resume && (!prior.resume || (prior.automatic && !automatic))
+        ? recover(chatId, true, automatic)
+        : recovered;
     }
-    const operation = run(chatId, resume);
-    recovering.set(chatId, { operation, resume });
+    const operation = run(chatId, resume, automatic);
+    recovering.set(chatId, { operation, resume, automatic });
     try {
       return await operation;
     } finally {
@@ -58,7 +64,7 @@ export function createTaskExecutionRecovery({
     }
   }
 
-  async function run(chatId: string, resume: boolean) {
+  async function run(chatId: string, resume: boolean, automatic: boolean) {
     const owner = ownerId();
     let context = await repository.getChatExecutionContext(owner, chatId);
     const task = await repository.tasks.get(owner, chatId);
@@ -78,7 +84,7 @@ export function createTaskExecutionRecovery({
       throw new Error(
         "The project worker is offline. Reconnect it, then retry recovery.",
       );
-    if (context.automationPaused && !resume) return true;
+    if (context.automationPaused && (!resume || automatic)) return true;
     const cycle = task.dispatch;
     if (
       !cycle ||
@@ -133,7 +139,7 @@ export function createTaskExecutionRecovery({
       if (
         !currentObservation.goal &&
         currentObservation.execution?.threadId === context.threadId &&
-        currentObservation.execution.status === "idle"
+        ["idle", "failed"].includes(currentObservation.execution.status)
       ) {
         const latest = await repository.getChatExecutionContext(owner, chatId);
         if (
@@ -144,7 +150,7 @@ export function createTaskExecutionRecovery({
           latest.automationPaused !== context.automationPaused
         )
           throw new Error("The Task changed during recovery. Please retry.");
-        if (context.automationPaused) {
+        if (context.automationPaused && !automatic) {
           await unpause(owner, chatId);
           const unpaused = await repository.getChatExecutionContext(
             owner,
@@ -170,7 +176,7 @@ export function createTaskExecutionRecovery({
       throw new Error(
         "The Task already has a different session. Recovery did not replace it.",
       );
-    if (context.automationPaused && resume) {
+    if (context.automationPaused && resume && !automatic) {
       await unpause(owner, chatId);
       const unpaused = await repository.getChatExecutionContext(owner, chatId);
       if (
@@ -206,10 +212,20 @@ export function createTaskExecutionRecovery({
       throw new Error(
         "The worker could not observe the retained Task session. No new agent was started.",
       );
-    if (result.execution.status === "failed")
+    if (result.execution.status === "failed" && !resume)
       throw new Error(
         "The native Task session reports a runtime error. Its history was preserved.",
       );
+    // Automatic technical recovery is never permission to resume a human
+    // blocker, a native pause, or an exhausted user/provider budget.
+    if (
+      automatic &&
+      (result.task.state === "blocked" ||
+        ["paused", "usageLimited", "budgetLimited"].includes(
+          result.goal.status,
+        ))
+    )
+      return true;
     // Re-read before changing placement: a concurrent user action must win.
     const current = await repository.getChatExecutionContext(owner, chatId);
     if (
@@ -228,11 +244,12 @@ export function createTaskExecutionRecovery({
       return true;
     }
     const shouldResume =
-      result.execution.status === "idle" &&
+      (result.execution.status === "idle" ||
+        (resume && result.execution.status === "failed")) &&
       (resume || result.goal.status === "active") &&
       context.status !== "running";
     const lease =
-      cycle.state === "succeeded"
+      cycle.state === "succeeded" || (automatic && cycle.state !== "running")
         ? await repository.taskDispatch.recoverStartedGoal(
             owner,
             cycle,
@@ -289,7 +306,10 @@ export function createTaskExecutionRecovery({
         "Recovered native Task Goal",
       );
     } else if (context.status !== "running") {
-      await repository.setChatStatus(chatId, result.execution.status);
+      await repository.setChatStatus(
+        chatId,
+        shouldResume ? "idle" : result.execution.status,
+      );
     }
     publish(chatId, context.projectId!);
     if (shouldResume) {

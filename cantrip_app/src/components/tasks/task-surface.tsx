@@ -90,6 +90,7 @@ import { TaskInteractionRequests } from "./task-interaction-requests";
 import { taskCanBeDeleted } from "./task-deletion";
 import { TaskListBackButton } from "./task-list-back-button";
 import { TaskPlanReview } from "./task-plan-review";
+import { TaskRetryStatus } from "./task-retry-status";
 
 const TaskMarkdownEditor = lazy(() =>
   import("./task-markdown-editor").then((module) => ({
@@ -925,10 +926,21 @@ export function TaskSurface({
         </p>
       ) : null}
 
+      {task.data.automaticRetry && mode !== "failed" ? (
+        <p className="border-b px-5 py-3 text-sm text-muted-foreground">
+          <TaskRetryStatus task={task.data} paused={chat.automationPaused} />
+        </p>
+      ) : null}
       {mode === "failed" && task.data.lastError ? (
         <div className="flex shrink-0 items-start gap-3 border-b border-destructive/30 bg-destructive/5 px-5 py-3 text-sm text-destructive">
           <CircleAlert className="mt-0.5 size-4 shrink-0" />
-          <span data-selectable-text>{task.data.lastError.message}</span>
+          <span data-selectable-text>
+            <TaskRetryStatus
+              task={task.data}
+              paused={chat.automationPaused}
+              fallback={task.data.lastError.message}
+            />
+          </span>
         </div>
       ) : null}
 

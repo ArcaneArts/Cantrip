@@ -266,6 +266,7 @@ import {
   protectTaskGoalResult,
   protectTaskGoalLaunchFailure,
   protectTaskConversationMessage,
+  protectedTaskRuntimeError,
   openTaskConversationPrompt,
 } from "./task-operation.js";
 import { discoverOllamaModels } from "./ollama.js";
@@ -5872,7 +5873,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                 service: workerEncryption,
               })
             : command.prompt!;
-          const result = await runTurn(prompt, { kind: "visible" });
+          const result = await runTurn(prompt, { kind: "visible" }).catch(
+            (error) => {
+              throw protectedTaskRuntimeError(error);
+            },
+          );
           await protectedEventQueue;
           if (protectedEventFailure) throw protectedEventFailure;
           return encryptTaskTurnResult({

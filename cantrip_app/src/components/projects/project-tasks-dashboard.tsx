@@ -40,6 +40,10 @@ import type { TaskSurfaceHandle } from "@/components/tasks/task-surface";
 import { taskCanBeDeleted } from "@/components/tasks/task-deletion";
 import { taskImplementationCanRecover } from "@/components/tasks/task-implementation-dashboard";
 import {
+  TaskRetryStatus,
+  taskRetryFailureLabel,
+} from "@/components/tasks/task-retry-status";
+import {
   EmptyState,
   EmptyStateActions,
   EmptyStateContent,
@@ -120,6 +124,20 @@ export function projectTaskWorkloadPresentation(
       tone: "completed",
     };
   }
+  if (
+    task.automaticRetry &&
+    !chat?.automationPaused &&
+    !projectPaused &&
+    !["running", "waiting-for-approval"].includes(chat?.status ?? "") &&
+    task.dispatch?.state !== "queued" &&
+    task.state !== "blocked"
+  )
+    return {
+      band: "failed",
+      label: taskRetryFailureLabel(task),
+      paused: false,
+      tone: "attention",
+    };
   if (
     task.planGoalEnabled &&
     task.state === "implementing" &&
@@ -437,6 +455,14 @@ function TaskWorkloadRow({
         <p className="mt-1 truncate text-xs text-muted-foreground">
           {promptSummary(task.briefMarkdown)}
         </p>
+        {task.automaticRetry ? (
+          <p className="mt-1 text-xs text-muted-foreground">
+            <TaskRetryStatus
+              task={task}
+              paused={paused || chat?.automationPaused}
+            />
+          </p>
+        ) : null}
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
           <span>Assignment: {requestedWorker}</span>
           {claimedWorker ? <span>Worker: {claimedWorker}</span> : null}

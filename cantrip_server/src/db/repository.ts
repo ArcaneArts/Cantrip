@@ -121,6 +121,7 @@ import { ProjectReplicaJobRepository } from "./project-replica-jobs.js";
 import { TaskRepository } from "./tasks.js";
 import { TaskSchedulingRepository } from "./task-scheduling.js";
 import { TaskDispatchRepository } from "./task-dispatch.js";
+import { TaskRetryRepository } from "./task-retries.js";
 import { ProjectTabLayoutRepository } from "./tab-layouts.js";
 import { WorkspaceRepositoryDiscoveryJobRepository } from "./workspace-repository-discovery-jobs.js";
 import { ProjectExecutionRepositoryFacade } from "./repository-facade-project-execution.js";
@@ -331,6 +332,7 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
   readonly policies: PolicyRepository;
   readonly tasks: TaskRepository;
   readonly taskDispatch: TaskDispatchRepository;
+  readonly taskRetries: TaskRetryRepository;
   readonly taskScheduling: TaskSchedulingRepository;
   readonly projectReplicaJobs: ProjectReplicaJobRepository;
   readonly projectFolderSetupJobs: ProjectFolderSetupJobRepository;
@@ -660,6 +662,7 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
     });
     this.tasks = new TaskRepository(database);
     this.taskDispatch = new TaskDispatchRepository(database);
+    this.taskRetries = new TaskRetryRepository(database);
     this.taskScheduling = new TaskSchedulingRepository(database);
     this.projectReplicaJobs = new ProjectReplicaJobRepository(database);
     this.projectFolderSetupJobs = new ProjectFolderSetupJobRepository(database);

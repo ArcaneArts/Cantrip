@@ -608,6 +608,22 @@ end-to-end encrypted repository-operation channel.
   actionable eligibility reason.
 - A failed Task appears in Failed and never silently loses its
   original FIFO timestamp.
+- Technical failures (timeouts, capacity, rate limiting, connection loss, and
+  runtime errors) schedule an automatic retry after five seconds. The Task
+  shows the actual failure category and countdown instead of a human blocker.
+- Retry accounting is durable and account/Task scoped, not a browser timer.
+  Five automatic attempts are allowed in a rolling 60-second window. Another
+  failure inside that window latches automatic recovery until the user explicitly
+  chooses Retry, which starts a fresh window. Spaced-out attempts age out; there
+  is no lifetime retry cap. Refreshing, observing status, pausing, and restarting
+  the server do not reset a latched Task.
+- User/Project pause and pending approvals/input prevent automatic execution.
+  Genuine Goal blockers, configuration errors, and usage or token-budget limits
+  require user assistance instead of automatic retries. No retry raises a budget,
+  changes provider/model family, or clears a user's pause.
+- Every retry retains history and uses the existing fenced scheduler/capacity
+  rules. Native execution is observed before replaying a possibly started turn;
+  a still-running turn is not duplicated. Saved finalized Goal relays are reused.
 - Archived or completed Tasks cannot be claimed.
 - Per-profile global FIFO may skip Tasks ineligible for that profile, but must
   not skip an older eligible Task for a newer eligible Task.
