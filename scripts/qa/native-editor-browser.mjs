@@ -7,6 +7,7 @@ import {
   checkNativeEditorInput,
   checkNativeEditorLongLine,
   checkNativeEditorReadOnly,
+  checkNativeEditorGutterHover,
   measureNativeInputPaint,
 } from "./native-editor-input-acceptance.mjs";
 
@@ -81,6 +82,7 @@ for (const [name, browserType] of [
         .click();
       await page.waitForFunction(() => window.__qaSyntaxWorkers.active === 1);
       const original = await input.inputValue();
+      const gutterAcceptance = await checkNativeEditorGutterHover(page);
       await input.focus();
       await input.press(
         process.platform === "darwin" ? "Meta+ArrowDown" : "Control+End",
@@ -249,6 +251,7 @@ for (const [name, browserType] of [
         visibleLines: await page.locator("[data-editor-line]").count(),
         initialCharacters: original.length,
         inputAcceptance,
+        gutterAcceptance,
         readOnlyAcceptance,
         longLineAcceptance,
         status: "pass",
