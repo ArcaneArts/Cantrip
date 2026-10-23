@@ -4,6 +4,7 @@ import { useMemo } from "react";
 
 import { sortExplorerEntries } from "@/components/explorer/explorer-entry-metadata";
 import { getExplorerDirectory, getExplorerDirectoryCommits } from "@/lib/api";
+import { CantripApiError } from "@/lib/api-client";
 
 // Live worktree notifications invalidate these queries immediately. Keep a
 // bounded fallback for filesystems where recursive watching is unavailable.
@@ -69,6 +70,12 @@ export function useExplorerDirectory({
       queryScope,
       ...(preservePreviousDataKey ? [preservePreviousDataKey] : []),
     ],
+    // Directory reads are safe to retry while the worker channel recovers.
+    // The application default excludes 503, which otherwise latches a brief
+    // disconnect into a permanent sidebar error until the user clicks Retry.
+    retry: (failureCount, error) =>
+      failureCount < 3 &&
+      (!(error instanceof CantripApiError) || error.status >= 500),
     staleTime: EXPLORER_DIRECTORY_STALE_TIME_MS,
   });
   const commits = useQuery({
