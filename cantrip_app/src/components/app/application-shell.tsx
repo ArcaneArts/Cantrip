@@ -8,6 +8,7 @@ import { useWorkspaceWindowRecovery } from "./use-workspace-window-recovery";
 import { openOwnedFile } from "@/lib/open-owned-file";
 import { focusWorkspaceNativeWindow } from "@/lib/desktop-popout";
 import {
+  type ExplorerSummary,
   type ProjectBuiltInSurfaceDefinitionId,
   type ProjectPaneRegion,
   ChatSummary,
@@ -845,13 +846,37 @@ export function App() {
     setExplorerGraphRequest,
     setPopoutError,
   });
-  const { createSidebarExplorerMutation, pinSidebarFileMutation } =
-    useSidebarExplorerMutations({
-      fileState: sidebarFileState,
-      lifecycle: explorerLifecycle,
+  const { createSidebarExplorerMutation } = useSidebarExplorerMutations({
+    queryClient,
+  });
+  const openSidebarOwnedFile = async (
+    explorer: ExplorerSummary,
+    path: string,
+    preview: boolean,
+  ) => {
+    if (!ownedWorkspace) throw new Error("Workspace connection is not ready.");
+    await openOwnedFile({
+      ...ownedWorkspace,
       queryClient,
-      setPopoutError,
+      projectId: explorer.projectId,
+      worktreeId: explorer.worktreeId,
+      path,
+      preview,
+      reservePreview: (resourceId) =>
+        explorerLifecycleRef.current
+          .get(resourceId)
+          ?.reservePreviewReplacement?.() ?? null,
     });
+  };
+  const pinSidebarFileMutation = useMutation({
+    mutationFn: ({
+      explorer,
+      path,
+    }: {
+      explorer: ExplorerSummary;
+      path: string;
+    }) => openSidebarOwnedFile(explorer, path, false),
+  });
   const { newBrowser, newCodeTab } = useBrowserCodeViewCreationOperations({
     ownedPlacement: true,
     openCreatedTab,
@@ -2072,22 +2097,10 @@ export function App() {
     renameSidebarFileEntry,
     retrySidebarFileTree,
   } = createSidebarExplorerCommands({
-    openOwnedFile: async (explorer, path, preview) => {
-      if (!ownedWorkspace)
-        throw new Error("Workspace connection is not ready.");
-      await openOwnedFile({
-        ...ownedWorkspace,
-        queryClient,
-        projectId: explorer.projectId,
-        worktreeId: explorer.worktreeId,
-        path,
-        preview,
-        reservePreview: (resourceId) =>
-          explorerLifecycleRef.current
-            .get(resourceId)
-            ?.reservePreviewReplacement?.() ?? null,
-      });
-    },
+    openOwnedFile: (explorer, path, preview) =>
+      preview
+        ? openSidebarOwnedFile(explorer, path, true)
+        : pinSidebarFileMutation.mutateAsync({ explorer, path }),
     abandonSidebarFilePinHandoff,
     createSidebarExplorerMutation,
     explorers: explorers.data,
@@ -2095,8 +2108,6 @@ export function App() {
     lifecycle: explorerLifecycle,
     newGraphExplorer,
     newTerminal,
-    openCreatedTab,
-    pinSidebarFileMutation,
     projects: projects.data,
     queryClient,
     revealWorkspace,

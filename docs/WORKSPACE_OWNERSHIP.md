@@ -1512,3 +1512,45 @@ observations are in the migration QA session's `OBSERVATIONS.md`. App typecheck
 and diff checks also passed. The cycle is ready for final source review and PR
 packaging, not yet merged; the broader goal's remaining adapters, entrypoint
 cleanup, simultaneous-device verification, and final documentation audit remain.
+
+### Sidebar ownership cutover (in progress)
+
+Legacy document migration merged in PR #2227 as `1535bdd62`. Primary was
+fast-forwarded; 102 integrated workspace-command tests passed. Its clean worktree
+was archived after preserving QA data at
+`/Users/cyberpwn/.codex/qa-artifacts/workspace-legacy-document-migration-pr2227`.
+The prior full server test process was discovered still running after worktree
+cleanup and was stopped; that run is not counted as passing. The separately
+completed focused server rerun passed all 29 tests.
+
+Native-contract CI `40128254658` passed on all three platforms. Worker-command
+CI `40128254703` passed on Linux/macOS but failed on Windows with two failures:
+the existing broken-symlink assertion in `explorer.test.ts:136`, and a Git
+`index.lock` collision in the filesystem-notification test in `worktrees.test.ts`.
+Neither file changed in #2227. These remain unresolved, not waived or green.
+Server-contract run `40128254649` also failed on all platforms at the unchanged
+timeout-policy assertion (six streaming contexts found, ten expected). CUA,
+App API domains, and Worker Codex runtime passed on all their platforms.
+
+Current-source audit found that the shell always supplies `openOwnedFile`, but
+sidebar commands still carried an optional fallback that repurposed Explorer
+resources, waited for a warm successor, force-saved a dirty preview, and wrote
+legacy placement. This cycle removes that fallback and makes owned opening
+mandatory. It also removes the legacy pin mutation and its project-layout query
+write; the shell's pin progress now tracks the actual document/workspace operation.
+Compatibility readers and legacy preview teardown remain until their consumers
+are removed; they are not a new-file placement authority. The broader goal still
+requires the remaining compatibility cleanup, file mutation/entrypoint audit,
+concurrent mobile/desktop acceptance, and final `TABS.md` reconciliation.
+
+Verification for this cutover: all 547 app test files passed (3,792 tests,
+three skipped), including owned preview/pin identity, errors without legacy
+fallback, non-file boundaries, and center placement while a dock is focused.
+The final direct command and owned-file reruns passed 12 and 13 tests respectively.
+Production app build (including TypeScript) passed after fixing a missing type
+import and removing a stale destructuring reference exposed by the first check.
+Changed-file formatting and `git diff --check` passed. `pnpm check` again stopped
+at the unchanged 2,006-line server tab-layout budget. No new native QA is claimed
+for this removal of the unused fallback; the preceding migration cycle's actual
+native two-window evidence is recorded above. PR delivery is the remaining step
+for this cycle, not for the full goal.

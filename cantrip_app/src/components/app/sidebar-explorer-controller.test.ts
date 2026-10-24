@@ -297,53 +297,6 @@ describe("sidebar file pin completion", () => {
   });
 });
 
-describe("sidebar preview successor provisioning", () => {
-  it("waits event-driven for the already-provisioned successor", async () => {
-    const source = {
-      id: "explorer-source",
-      projectId: "project-1",
-      worktreeId: "worktree-1",
-    } as ExplorerSummary;
-    const successor = {
-      ...source,
-      id: "explorer-successor",
-    } as ExplorerSummary;
-    const observed: {
-      current: ReturnType<typeof useSidebarFileState> | null;
-    } = { current: null };
-    const Probe = () => {
-      observed.current = useSidebarFileState();
-      return null;
-    };
-    let renderer!: TestRenderer.ReactTestRenderer;
-
-    await act(async () => {
-      renderer = TestRenderer.create(
-        createElement(StrictMode, null, createElement(Probe)),
-      );
-    });
-    act(() => {
-      observed.current?.updateSidebarExplorerPool([source]);
-    });
-
-    let settled = false;
-    const waiting = observed
-      .current!.waitForSidebarFileSuccessor(source.id)
-      .then((value) => {
-        settled = true;
-        return value;
-      });
-    await Promise.resolve();
-    expect(settled).toBe(false);
-
-    act(() => {
-      observed.current?.updateSidebarExplorerPool([source, successor]);
-    });
-    await expect(waiting).resolves.toBe(successor);
-    await act(async () => renderer.unmount());
-  });
-});
-
 describe("sidebar preview ownership handoff", () => {
   it("keeps the promoted preview surface addressable without returning it to the file tree under Strict Mode", async () => {
     const pinned = {

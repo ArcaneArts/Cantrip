@@ -202,6 +202,32 @@ it("does not interpret a catalog failure as permission to create a duplicate", a
   expect(getProjectWorktrees).not.toHaveBeenCalled();
 });
 
+it("opens a sidebar preview in the center without replacing the focused dock", async () => {
+  const input = fixture();
+  await input.controller.openResource(
+    {
+      kind: "entity",
+      definitionId: "project.terminal",
+      resourceId: "terminal",
+    },
+    { targetRegion: "right" },
+  );
+  const dock =
+    input.controller.getSnapshot().authoritative.windows[0]!.panes[0]!;
+  await openOwnedFile({ ...input, preview: true });
+  const window = input.controller.getSnapshot().authoritative.windows[0]!;
+  expect(window.panes.find((pane) => pane.id === dock.id)).toEqual(dock);
+  const center = window.panes.find((pane) => pane.region === "center")!;
+  expect(center.tabs).toHaveLength(1);
+  expect(center.tabs[0]!.resource).toEqual({
+    kind: "entity",
+    definitionId: "project.file",
+    resourceId: resource.id,
+  });
+  expect(center.tabs[0]!.preview).toBe(true);
+  expect(window.focusedPaneId).toBe(center.id);
+});
+
 it("pins a file preview without changing its view or backing identity", async () => {
   const input = fixture();
   await openOwnedFile({ ...input, preview: true });

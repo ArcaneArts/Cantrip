@@ -15,18 +15,12 @@ import {
 } from "@/components/app/application-shell-model";
 import type { ShellEnvironment } from "@/components/app/shell-environment";
 import { resolveChatFileReferenceTarget } from "@/components/app/chat-file-reference-target";
-import { defaultExplorerFileMode } from "@/components/explorer/explorer-file-language";
 import type {
   ExplorerGraphRequest,
   ExplorerLifecycleActions,
 } from "@/components/explorer/explorer-view";
 import type { AppToastInput } from "@/components/ui/app-toast";
-import {
-  createExplorer,
-  getProjectTabLayout,
-  getProjectWorktrees,
-  pinExplorer,
-} from "@/lib/api";
+import { createExplorer, getProjectWorktrees } from "@/lib/api";
 import { clientLogger } from "@/lib/client-log-relay";
 import { errorMessage as errorText } from "@/lib/error-message";
 import { explorerFileIntentContext } from "@/lib/explorer-lifecycle-trace";
@@ -36,7 +30,6 @@ import {
   preferredSidebarExplorer,
   primaryWorktreeId,
   SIDEBAR_EXPLORER_POOL_SIZE,
-  sidebarFileName,
   surfaceWorktreeId,
   tabbedExplorerIds,
   type SidebarFilePreviewState,
@@ -84,54 +77,6 @@ export function useSidebarFileState() {
     useState<SidebarFilePinHandoffState | null>(null);
   const sidebarFilePinHandoffRef = useRef(sidebarFilePinHandoff);
   sidebarFilePinHandoffRef.current = sidebarFilePinHandoff;
-  const sidebarExplorerPoolRef = useRef<readonly ExplorerSummary[]>([]);
-  const sidebarSuccessorWaitersRef = useRef(new Set<() => void>());
-  const notifySidebarSuccessorWaiters = useCallback(() => {
-    for (const waiter of sidebarSuccessorWaitersRef.current) waiter();
-  }, []);
-  const updateSidebarExplorerPool = useCallback(
-    (pool: readonly ExplorerSummary[]) => {
-      sidebarExplorerPoolRef.current = pool.slice(
-        0,
-        SIDEBAR_EXPLORER_POOL_SIZE,
-      );
-      notifySidebarSuccessorWaiters();
-    },
-    [notifySidebarSuccessorWaiters],
-  );
-  const waitForSidebarFileSuccessor = useCallback(
-    (
-      sourceExplorerId: string,
-      timeoutMs = SIDEBAR_FILE_PIN_HANDOFF_TIMEOUT_MS,
-    ): Promise<ExplorerSummary | null> => {
-      const availableSuccessor = () =>
-        sidebarExplorerPoolRef.current.find(
-          ({ id }) => id !== sourceExplorerId,
-        ) ?? null;
-      const immediate = availableSuccessor();
-      if (immediate) return Promise.resolve(immediate);
-      return new Promise((resolve) => {
-        let settled = false;
-        let timeout: ReturnType<typeof setTimeout>;
-        let check: () => void;
-        const finish = (successor: ExplorerSummary | null) => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timeout);
-          sidebarSuccessorWaitersRef.current.delete(check);
-          resolve(successor);
-        };
-        check = () => {
-          const successor = availableSuccessor();
-          if (successor) finish(successor);
-        };
-        timeout = setTimeout(() => finish(null), timeoutMs);
-        sidebarSuccessorWaitersRef.current.add(check);
-        check();
-      });
-    },
-    [],
-  );
   const [explorerGraphRequest, setExplorerGraphRequest] =
     useState<ExplorerGraphRequest | null>(null);
   return {
@@ -142,8 +87,6 @@ export function useSidebarFileState() {
     sidebarFilePinHandoff,
     sidebarFilePinHandoffRef,
     sidebarFilePreview,
-    updateSidebarExplorerPool,
-    waitForSidebarFileSuccessor,
   } as const;
 }
 
@@ -213,21 +156,10 @@ export function useExplorerLifecycleRegistration({
 }
 
 export function useSidebarExplorerMutations({
-  fileState,
-  lifecycle,
   queryClient,
-  setPopoutError,
 }: {
-  fileState: Pick<
-    SidebarFileState,
-    "setSidebarFilePinHandoff" | "sidebarFilePinHandoffRef"
-  >;
-  lifecycle: Pick<ExplorerLifecycleRefs, "sidebarExplorerCreationKeyRef">;
   queryClient: QueryClient;
-  setPopoutError: (error: string | null) => void;
 }) {
-  const { setSidebarFilePinHandoff, sidebarFilePinHandoffRef } = fileState;
-  const { sidebarExplorerCreationKeyRef } = lifecycle;
   const createSidebarExplorerMutation = useMutation({
     mutationFn: ({
       projectId,
@@ -257,154 +189,7 @@ export function useSidebarExplorerMutations({
       });
     },
   });
-  const pinSidebarFileMutation = useMutation({
-    mutationFn: async ({
-      destinationExplorerId,
-      paneId,
-      path,
-      transactionId,
-    }: {
-      destinationExplorerId: string;
-      paneId: string | null;
-      path: string;
-      transactionId: string;
-    }) => {
-      clientLogger.info("Explorer file pin mutation started", {
-        ...explorerFileIntentContext(destinationExplorerId),
-        event: "explorer.file.pin.phase",
-        explorerId: destinationExplorerId,
-        operation: "pin-file",
-        phase: "mutation-started",
-        status: "started",
-        subsystem: "explorer",
-        transactionId,
-      });
-      const explorer = await pinExplorer(
-        destinationExplorerId,
-        sidebarFileName(path),
-        {
-          fileMode: defaultExplorerFileMode(path),
-          selectedPath: path,
-        },
-        paneId ?? undefined,
-      );
-      clientLogger.info("Explorer file pin mutation updated surface", {
-        ...explorerFileIntentContext(destinationExplorerId),
-        event: "explorer.file.pin.phase",
-        explorerId: destinationExplorerId,
-        operation: "pin-file",
-        phase: "surface-pinned",
-        projectId: explorer.projectId,
-        samePath: explorer.selectedPath === path,
-        status: "completed",
-        subsystem: "explorer",
-        transactionId,
-        worktreeId: explorer.worktreeId,
-      });
-      const layout = await getProjectTabLayout(explorer.projectId);
-      return { explorer, layout };
-    },
-    onSuccess: ({ explorer, layout }, input) => {
-      queryClient.setQueryData<ExplorerSummary[]>(
-        ["explorers", explorer.projectId],
-        (current = []) =>
-          [...current.filter((item) => item.id !== explorer.id), explorer].sort(
-            (left, right) => left.position - right.position,
-          ),
-      );
-      queryClient.setQueryData<ProjectTabLayoutSummary>(
-        ["project-tab-layout", explorer.projectId],
-        layout,
-      );
-      const handoff = sidebarFilePinHandoffRef.current;
-      if (!handoff || handoff.transactionId !== input.transactionId) {
-        return;
-      }
-      const expectedFileMode = defaultExplorerFileMode(input.path);
-      if (
-        explorer.id !== input.destinationExplorerId ||
-        explorer.selectedPath !== input.path ||
-        explorer.fileMode !== expectedFileMode
-      ) {
-        clientLogger.warn("Explorer file pin mutation returned invalid state", {
-          ...explorerFileIntentContext(input.destinationExplorerId),
-          event: "explorer.file.pin.phase",
-          explorerId: input.destinationExplorerId,
-          operation: "pin-file",
-          phase: "mutation-validation",
-          projectId: explorer.projectId,
-          reasonCode: "destination-state-mismatch",
-          samePath: explorer.selectedPath === input.path,
-          status: "failed",
-          subsystem: "explorer",
-          transactionId: input.transactionId,
-          worktreeId: explorer.worktreeId,
-        });
-        sidebarFilePinHandoffRef.current = null;
-        setSidebarFilePinHandoff(null);
-        void queryClient.invalidateQueries({
-          queryKey: ["explorers", explorer.projectId],
-        });
-        void queryClient.invalidateQueries({
-          queryKey: ["project-tab-layout", explorer.projectId],
-        });
-        setPopoutError(
-          "The pinned Explorer did not preserve the requested file state.",
-        );
-        return;
-      }
-      const nextHandoff = {
-        ...handoff,
-        destinationExplorer: explorer,
-        ready: true,
-      };
-      // This Explorer is now a tab. Permit the creation effect to replenish
-      // the bounded pool with a retained, prewarmed successor.
-      sidebarExplorerCreationKeyRef.current = null;
-      sidebarFilePinHandoffRef.current = nextHandoff;
-      setSidebarFilePinHandoff(nextHandoff);
-      clientLogger.info("Explorer file pin handoff destination ready", {
-        ...explorerFileIntentContext(explorer.id),
-        event: "explorer.file.pin.phase",
-        explorerId: explorer.id,
-        operation: "pin-file",
-        phase: "destination-ready",
-        projectId: explorer.projectId,
-        ready: true,
-        status: "completed",
-        subsystem: "explorer",
-        transactionId: input.transactionId,
-        worktreeId: explorer.worktreeId,
-      });
-    },
-    onError: (error, input) => {
-      const handoff = sidebarFilePinHandoffRef.current;
-      if (handoff?.transactionId === input.transactionId) {
-        sidebarFilePinHandoffRef.current = null;
-        setSidebarFilePinHandoff(null);
-        void queryClient.invalidateQueries({
-          queryKey: ["explorers", handoff.sourceExplorer.projectId],
-        });
-        void queryClient.invalidateQueries({
-          queryKey: ["project-tab-layout", handoff.sourceExplorer.projectId],
-        });
-      }
-      clientLogger.warn("Explorer file pin mutation failed", {
-        ...explorerFileIntentContext(input.destinationExplorerId),
-        errorClass: error instanceof Error ? error.name : typeof error,
-        event: "explorer.file.pin.phase",
-        explorerId: input.destinationExplorerId,
-        operation: "pin-file",
-        phase: "mutation",
-        reasonCode: "mutation-failed",
-        status: "failed",
-        subsystem: "explorer",
-        transactionId: input.transactionId,
-      });
-      setPopoutError(errorText(error));
-    },
-  });
-  return { createSidebarExplorerMutation, pinSidebarFileMutation } as const;
+  return { createSidebarExplorerMutation } as const;
 }
 
 export type SidebarExplorerMutations = ReturnType<
@@ -877,7 +662,7 @@ export function useSidebarExplorerProvisioning({
   explorersIsSuccess: boolean;
   fileState: Pick<
     SidebarFileState,
-    "setSidebarFilePreview" | "sidebarFilePreview" | "updateSidebarExplorerPool"
+    "setSidebarFilePreview" | "sidebarFilePreview"
   >;
   isPopout: boolean;
   lifecycle: Pick<
@@ -899,11 +684,7 @@ export function useSidebarExplorerProvisioning({
   tabLayoutIsSuccess: boolean;
   workers: WorkerSummary[] | undefined;
 }) {
-  const {
-    setSidebarFilePreview,
-    sidebarFilePreview,
-    updateSidebarExplorerPool,
-  } = fileState;
+  const { setSidebarFilePreview, sidebarFilePreview } = fileState;
   const { sidebarExplorerCreationKeyRef, sidebarFilePreviewLifecycleRef } =
     lifecycle;
   const {
@@ -937,9 +718,6 @@ export function useSidebarExplorerProvisioning({
     sidebarExplorer,
     sidebarInlineExplorers,
   });
-  useEffect(() => {
-    updateSidebarExplorerPool(sidebarInlineExplorers);
-  }, [sidebarInlineExplorers, updateSidebarExplorerPool]);
   useEffect(() => {
     if (
       isPopout ||
