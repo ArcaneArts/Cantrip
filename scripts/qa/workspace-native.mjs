@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { startEditorRecoveryFixture } from "./editor-recovery-fixture.mjs";
 import { startWorkspaceBrowserFixture } from "./workspace-browser-fixture.mjs";
+import { buildCantripCua } from "../cantrip-cua/build.mjs";
 
 if (process.platform !== "darwin")
   throw new Error(
@@ -12,9 +13,12 @@ if (process.platform !== "darwin")
   );
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const require = createRequire(path.join(root, "cantrip_app/package.json"));
+// Build the helper this worker actually runs, not a stale installed/bundled copy.
+const cuaBinary = buildCantripCua(root);
 const fixture = await startEditorRecoveryFixture({
   repositoryProject: true,
   nativeLoopbackOrigin: true,
+  cuaBinary,
 });
 const identifier = `art.cantrip.qa.workspace${randomUUID().replaceAll("-", "")}`;
 const config = {

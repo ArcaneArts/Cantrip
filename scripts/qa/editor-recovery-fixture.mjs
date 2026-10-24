@@ -70,6 +70,7 @@ export async function startEditorRecoveryFixture({
   requireExplicitBootstrapRefresh = false,
   repositoryProject = false,
   nativeLoopbackOrigin = false,
+  cuaBinary,
 } = {}) {
   const runId = randomUUID();
   const directory = path.join(root, ".qa", `editor-${runId}`);
@@ -397,7 +398,10 @@ export async function startEditorRecoveryFixture({
         ],
         {
           cwd: path.join(root, `cantrip_${name}`),
-          env: childEnvironment,
+          env:
+            name === "worker" && cuaBinary
+              ? { ...childEnvironment, CANTRIP_CUA_BIN: cuaBinary }
+              : childEnvironment,
           stdio: ["ignore", "pipe", "pipe"],
         },
       );

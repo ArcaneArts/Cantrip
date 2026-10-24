@@ -9,13 +9,20 @@ pnpm cli:build
 node scripts/qa/workspace-native.mjs
 ```
 
-The launcher compiles the current native source, creates a unique application
+The launcher compiles the current native app and `cantrip-cua` helper source,
+passes Cargo's reported helper executable directly to the isolated worker,
+creates a unique application
 bundle under `.qa/editor-*`, and uses isolated desktop and worker data paths.
 It does not launch the production app or connect to its account. An optional
 `CARGO_TARGET_DIR` can reuse build artifacts; it is not an alternate source tree.
 Stop the launcher with Ctrl-C after testing. It signals only its native process
 group and shuts down its owned fixture services. Do not delete fixture artifacts
 until observations and logs have been collected.
+
+The helper build is an actual build operation, not an availability precheck.
+Build failures stop launch with Cargo's diagnostics. No helper is installed into
+the production worker or copied into the source tree. macOS capture/input
+permissions remain required; the launcher does not grant them.
 
 Complete ordinary onboarding in **Cantrip Workspace QA**, save the disposable
 recovery file in the fixture directory, and open the fixture repository. Test
