@@ -22,6 +22,7 @@ const sections: readonly SettingsNavigationSection<Section>[] = [
         id: "appearance",
         label: "Appearance",
         description: "Theme and contrast",
+        keywords: ["shared option"],
       },
     ],
   },
@@ -35,6 +36,7 @@ const sections: readonly SettingsNavigationSection<Section>[] = [
         id: "providers",
         label: "Model providers",
         description: "API endpoints and credentials",
+        keywords: ["shared option"],
       },
     ],
   },
@@ -54,8 +56,8 @@ const sections: readonly SettingsNavigationSection<Section>[] = [
 ];
 
 describe("settings navigation", () => {
-  it("passes the selected result to nested navigation and clears search", async () => {
-    const selected = vi.fn();
+  it("embeds one working control under its category without navigating or clearing search", async () => {
+    const changed = vi.fn();
     const section = vi.fn();
     const query = vi.fn();
     let view!: TestRenderer.ReactTestRenderer;
@@ -69,27 +71,33 @@ describe("settings navigation", () => {
           title="Settings"
           onSearchQueryChange={query}
           onSectionChange={section}
-          onSearchResultSelect={selected}
         >
-          <div>Content</div>
+          {(section, results) => (
+            <label>
+              <input
+                aria-label="Provider option"
+                type="checkbox"
+                onChange={changed}
+              />
+              {section}: {results?.[0]?.label}
+            </label>
+          )}
         </SettingsNavigationLayout>,
       );
     });
-    const result = view.root
-      .findAllByType("button")
-      .find(
-        (button) =>
-          button.props.onClick &&
-          button
-            .findAllByType("span")
-            .some((span) => span.children.includes("Model providers")),
-      );
-    await act(async () => result!.props.onClick());
-    expect(selected).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "providers", sectionId: "models" }),
-    );
-    expect(section).toHaveBeenCalledWith("models");
-    expect(query).toHaveBeenCalledWith("");
+    const groups = view.root.findAllByProps({
+      "data-slot": "settings-search-section",
+    });
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.props["aria-label"]).toBe("Models");
+    const controls = view.root.findAllByProps({
+      "aria-label": "Provider option",
+    });
+    expect(controls).toHaveLength(1);
+    await act(async () => controls[0]!.props.onChange());
+    expect(changed).toHaveBeenCalledOnce();
+    expect(section).not.toHaveBeenCalled();
+    expect(query).not.toHaveBeenCalled();
     await act(async () => view.unmount());
   });
   it("searches setting metadata across inactive categories", () => {
@@ -108,6 +116,28 @@ describe("settings navigation", () => {
     ]);
   });
 
+  it("groups controls from multiple categories in navigation order", () => {
+    const markup = renderToStaticMarkup(
+      <SettingsNavigationLayout
+        activeSection="workers"
+        ariaLabel="Settings"
+        searchQuery="shared option"
+        sections={sections}
+        title="Settings"
+        onSearchQueryChange={vi.fn()}
+        onSectionChange={vi.fn()}
+      >
+        {(section) => <input aria-label={`${section} option`} />}
+      </SettingsNavigationLayout>,
+    );
+    expect(markup.indexOf('data-settings-section="general"')).toBeLessThan(
+      markup.indexOf('data-settings-section="models"'),
+    );
+    expect(markup.match(/aria-label="general option"/g)).toHaveLength(1);
+    expect(markup.match(/aria-label="models option"/g)).toHaveLength(1);
+    expect(markup).not.toContain('aria-label="workers option"');
+  });
+
   it("renders a desktop sidebar and a mobile category index", () => {
     const markup = renderToStaticMarkup(
       <SettingsNavigationLayout
@@ -119,7 +149,7 @@ describe("settings navigation", () => {
         onSearchQueryChange={vi.fn()}
         onSectionChange={vi.fn()}
       >
-        <div>General settings content</div>
+        {() => <div>General settings content</div>}
       </SettingsNavigationLayout>,
     );
 
@@ -144,7 +174,13 @@ describe("settings navigation", () => {
         onSearchQueryChange={vi.fn()}
         onSectionChange={vi.fn()}
       >
-        <div>General settings content</div>
+        {(section) => (
+          <div>
+            {section === "workers"
+              ? "Worker connectivity"
+              : "General settings content"}
+          </div>
+        )}
       </SettingsNavigationLayout>,
     );
 
