@@ -338,6 +338,171 @@ describe("project surface close coordinator", () => {
 });
 
 describe("project surface view operations", () => {
+  it.each(["success", "failure"] as const)(
+    "does not let a duplicate close cancel the original reservation: %s",
+    async (outcome) => {
+      const queryClient = new QueryClient();
+      let settle!: () => void;
+      const pending = new Promise<void>((resolve) => {
+        settle = resolve;
+      });
+      const dispatch = vi.fn(async () => {
+        await pending;
+        if (outcome === "failure") throw new Error("close failed");
+        return {};
+      });
+      const controller = {
+        getSnapshot: () => ({ authoritative: { projectId } }),
+        dispatch,
+      } as unknown as WorkspaceCommandClient;
+      const finalize = vi.fn();
+      const beforeClose = vi.fn(async () => finalize);
+      const onCloseError = vi.fn();
+      const surfaceClose = {
+        begin: vi.fn(),
+        commit: vi.fn(),
+        commitView: vi.fn(),
+        rollback: vi.fn(),
+        pendingTabKeys: new Set<string>(),
+      };
+      const surface = {
+        kind: "chat",
+        projectId,
+        tabId: "resource",
+        tabKey: "view",
+        view: { id: "view" },
+      } as ProjectSurface;
+      let operations!: ReturnType<typeof useProjectSurfaceViewOperations>;
+      function Probe() {
+        operations = useProjectSurfaceViewOperations({
+          queryClient,
+          beforeClose,
+          onCloseError,
+          surfaceClose,
+          workspace: { controller },
+        });
+        return null;
+      }
+      let renderer!: TestRenderer.ReactTestRenderer;
+      await act(async () => {
+        renderer = TestRenderer.create(
+          <QueryClientProvider client={queryClient}>
+            <Probe />
+          </QueryClientProvider>,
+        );
+      });
+      let first!: Promise<unknown>;
+      await act(async () => {
+        first = operations.closeSurfaceViewMutation
+          .mutateAsync(surface)
+          .catch((error) => error);
+      });
+      await act(async () => {
+        await expect(
+          operations.closeSurfaceViewMutation.mutateAsync(surface),
+        ).rejects.toThrow("already closing");
+      });
+      expect(beforeClose).toHaveBeenCalledOnce();
+      expect(dispatch).toHaveBeenCalledOnce();
+      expect(onCloseError).not.toHaveBeenCalled();
+      expect(finalize).not.toHaveBeenCalled();
+      await act(async () => {
+        settle();
+        await first;
+      });
+      expect(finalize).toHaveBeenCalledTimes(outcome === "success" ? 1 : 0);
+      expect(onCloseError).toHaveBeenCalledTimes(outcome === "failure" ? 1 : 0);
+      if (outcome === "failure") {
+        dispatch.mockResolvedValueOnce({});
+        await act(async () => {
+          await operations.closeSurfaceViewMutation.mutateAsync(surface);
+        });
+        expect(finalize).toHaveBeenCalledOnce();
+      }
+      await act(async () => renderer.unmount());
+      queryClient.clear();
+    },
+  );
+  it.each(["success", "close-failed", "cleanup-failed"] as const)(
+    "finalizes the captured renderer only after confirmed close: %s",
+    async (outcome) => {
+      const queryClient = new QueryClient();
+      const order: string[] = [];
+      const failure = new Error(outcome);
+      const finalize = vi.fn(async () => {
+        order.push("cleanup");
+        if (outcome === "cleanup-failed") throw failure;
+      });
+      const dispatch = vi.fn(async () => {
+        order.push("close");
+        if (outcome === "close-failed") throw failure;
+        return {};
+      });
+      const controller = {
+        getSnapshot: () => ({ authoritative: { projectId } }),
+        dispatch,
+      } as unknown as WorkspaceCommandClient;
+      const surfaceClose = {
+        begin: vi.fn(),
+        commit: vi.fn(),
+        commitView: vi.fn(),
+        rollback: vi.fn(),
+        pendingTabKeys: new Set<string>(),
+      };
+      const surface = {
+        kind: "chat",
+        projectId,
+        tabId: "resource",
+        tabKey: "view",
+        view: { id: "view" },
+      } as ProjectSurface;
+      const onCloseError = vi.fn();
+      const onCloseCleanupError = vi.fn();
+      let operations!: ReturnType<typeof useProjectSurfaceViewOperations>;
+      function Probe() {
+        operations = useProjectSurfaceViewOperations({
+          beforeClose: async () => {
+            order.push("prepare");
+            return finalize;
+          },
+          onCloseError,
+          onCloseCleanupError,
+          queryClient,
+          surfaceClose,
+          workspace: { controller },
+        });
+        return null;
+      }
+      let renderer!: TestRenderer.ReactTestRenderer;
+      await act(async () => {
+        renderer = TestRenderer.create(
+          <QueryClientProvider client={queryClient}>
+            <Probe />
+          </QueryClientProvider>,
+        );
+      });
+      await act(async () => {
+        const operation =
+          operations.closeSurfaceViewMutation.mutateAsync(surface);
+        if (outcome === "success") await operation;
+        else await expect(operation).rejects.toBe(failure);
+      });
+      expect(order).toEqual(
+        outcome === "close-failed"
+          ? ["prepare", "close"]
+          : ["prepare", "close", "cleanup"],
+      );
+      expect(onCloseError).toHaveBeenCalledTimes(
+        outcome === "close-failed" ? 1 : 0,
+      );
+      expect(onCloseCleanupError).toHaveBeenCalledTimes(
+        outcome === "cleanup-failed" ? 1 : 0,
+      );
+      expect(surfaceClose.rollback).not.toHaveBeenCalled();
+      await act(async () => renderer.unmount());
+      queryClient.clear();
+    },
+  );
   it.each(["builtin", "chat"] as const)(
     "closes the owned %s tab identity without legacy resource-keyed hiding or cache writes",
     async (kind) => {

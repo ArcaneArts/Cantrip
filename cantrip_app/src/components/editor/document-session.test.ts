@@ -10,6 +10,57 @@ import { EditorLineIndex, editorViewport } from "./viewport";
 import { isCurrentHighlight } from "./syntax/worker-protocol";
 
 describe("endpoint document sessions", () => {
+  it("reconciles clean recovered text and clamps its selection without overwriting dirty recovery", () => {
+    const original = new EditorDocumentSession(
+      "file",
+      "original content",
+      "v1",
+    );
+    original.selection = { start: 7, end: 12, direction: "backward" };
+    const restored = EditorDocumentSession.fromTransfer(
+      original.captureRecovery(),
+    );
+    restored.reconcile("new", "v2");
+    expect(restored.text).toBe("new");
+    expect(restored.selection).toEqual({
+      start: 3,
+      end: 3,
+      direction: "backward",
+    });
+    restored.edit("unsaved recovery");
+    restored.reconcile("disk update", "v3");
+    expect(restored.text).toBe("unsaved recovery");
+    expect(restored.version).toBe("v2");
+  });
+  it("captures newer edits for recovery without waiting for an in-flight save", async () => {
+    const store = new EditorSessionStore();
+    store.resetScope("account");
+    const document = store.open("file", "baseline", "v1");
+    document.edit("saving");
+    let accept!: (value: { version: string }) => void;
+    const saved = document.save(
+      () =>
+        new Promise((resolve) => {
+          accept = resolve;
+        }),
+    );
+    await Promise.resolve();
+    document.edit("newer unsaved text");
+    const captured = store.captureRecovery();
+    expect(captured.documents[0]).toMatchObject({
+      text: "newer unsaved text",
+      version: "v1",
+      baselineContent: "baseline",
+    });
+    accept({ version: "v2" });
+    await saved;
+    expect(store.captureRecovery().documents[0]).toMatchObject({
+      text: "newer unsaved text",
+      version: "v2",
+      baselineContent: "saving",
+    });
+    expect(captured.documents[0]!.baselineContent).toBe("baseline");
+  });
   it("binds close approval to every document revision without depending on recency order", () => {
     const store = new EditorSessionStore();
     store.resetScope("account");

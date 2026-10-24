@@ -24,6 +24,7 @@ it("reports readiness after installing the document into its inert DOM input", a
   const container = document.createElement("div");
   const root = createRoot(container);
   const session = new EditorDocumentSession("file", "saved", "v1");
+  const viewChanged = vi.fn();
   session.edit("unsaved contents");
   session.selection = { start: 2, end: 7, direction: "backward" };
   session.scrollTop = 120;
@@ -49,6 +50,7 @@ it("reports readiness after installing the document into its inert DOM input", a
           active={false}
           readOnly
           onReady={ready}
+          onViewStateChange={viewChanged}
         />,
       ),
     );
@@ -61,6 +63,7 @@ it("reports readiness after installing the document into its inert DOM input", a
           path="file.ts"
           active
           onReady={ready}
+          onViewStateChange={viewChanged}
         />,
       ),
     );
@@ -68,6 +71,31 @@ it("reports readiness after installing the document into its inert DOM input", a
     expect(input!.readOnly).toBe(false);
     expect(ready).toHaveBeenCalledOnce();
     expect(session.dirty).toBe(true);
+    await act(async () => {
+      input!.scrollTop = 180;
+      input!.scrollLeft = 45;
+      input!.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+    expect(viewChanged).toHaveBeenCalledOnce();
+    expect([session.scrollTop, session.scrollLeft]).toEqual([180, 45]);
+    await act(async () =>
+      input!.dispatchEvent(new Event("scroll", { bubbles: true })),
+    );
+    expect(viewChanged).toHaveBeenCalledOnce();
+    await act(async () => {
+      input!.setSelectionRange(3, 8, "backward");
+      input!.dispatchEvent(new Event("select", { bubbles: true }));
+    });
+    expect(session.selection).toEqual({
+      start: 3,
+      end: 8,
+      direction: "backward",
+    });
+    expect(viewChanged).toHaveBeenCalledTimes(2);
+    await act(async () =>
+      input!.dispatchEvent(new Event("select", { bubbles: true })),
+    );
+    expect(viewChanged).toHaveBeenCalledTimes(2);
   } finally {
     await act(async () => root.unmount());
   }

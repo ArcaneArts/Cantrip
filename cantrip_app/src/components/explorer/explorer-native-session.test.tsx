@@ -17,6 +17,8 @@ const state = vi.hoisted(() => ({
   input: null as unknown,
   transientPath: undefined as string | undefined,
   fileAccess: undefined as import("@/lib/file-access").FileAccess | undefined,
+  recovery: undefined as
+    import("./use-file-document-recovery").FileDocumentRecovery | undefined,
   initialTransfer: undefined as
     import("./explorer-view").ExplorerTransferState | undefined,
   staging: undefined as
@@ -63,6 +65,7 @@ interface InputProps {
   path: string;
   onReady?(session: EditorDocumentSession): void;
   onChange(text: string): void;
+  onViewStateChange?(): void;
 }
 vi.mock("@/components/editor/native-code-editor", () => ({
   NativeCodeEditor: (props: InputProps) => {
@@ -107,6 +110,7 @@ function tree(explorer: ExplorerSummary | FileDocumentEditorView = summary) {
       appearance: "dark",
       explorer,
       fileAccess: state.fileAccess,
+      documentRecovery: state.recovery,
       initialTransfer: state.initialTransfer,
       transferStaging: state.staging,
       repositoryGraphAvailable: false,
@@ -151,6 +155,7 @@ beforeEach(() => {
   state.lifecycle = null;
   state.transientPath = undefined;
   state.fileAccess = undefined;
+  state.recovery = undefined;
   state.initialTransfer = undefined;
   state.staging = undefined;
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -175,6 +180,55 @@ afterEach(async () => {
 });
 
 describe("native Explorer document integration", () => {
+  it("holds approved close input inert until cancellation without discarding its draft", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    try {
+      await render();
+      await edit("close-approved draft");
+      const actions = state.lifecycle as ExplorerLifecycleActions;
+      await act(async () => {
+        await actions.prepareClose();
+      });
+      expect(input().readOnly).toBe(true);
+      expect(input().session.text).toBe("close-approved draft");
+      await act(async () => input().onChange("late input"));
+      expect(input().session.text).toBe("close-approved draft");
+      await act(async () => actions.cancelClose());
+      expect(input().readOnly).toBe(false);
+      expect(input().session.text).toBe("close-approved draft");
+      await edit("editing resumed");
+      expect(input().session.text).toBe("editing resumed");
+    } finally {
+      confirm.mockRestore();
+    }
+  });
+  it("checkpoints edits and viewport state, and awaits recovery before transfer capture completes", async () => {
+    const checkpoint = vi.fn(
+      async (_snapshot: import("./explorer-view").ExplorerTransferState) => {},
+    );
+    state.recovery = { checkpoint, closeCommitted: vi.fn(async () => {}) };
+    await render();
+    await edit("recovery draft");
+    expect(checkpoint.mock.lastCall![0].documents.documents[0]!.text).toBe(
+      "recovery draft",
+    );
+    await act(async () => {
+      input().session.selection = { start: 1, end: 4, direction: "forward" };
+      input().session.scrollTop = 240;
+      input().onViewStateChange!();
+    });
+    expect(checkpoint.mock.lastCall![0].documents.documents[0]).toMatchObject({
+      selection: { start: 1, end: 4, direction: "forward" },
+      scrollTop: 240,
+    });
+    const failure = new Error("recovery storage failed");
+    checkpoint.mockRejectedValueOnce(failure);
+    await expect(
+      (state.lifecycle as ExplorerLifecycleActions).captureTransfer!(),
+    ).rejects.toBe(failure);
+    expect(input().session.text).toBe("recovery draft");
+  });
+
   it("renders a document view without an Explorer entity or Explorer mode writes", async () => {
     const setMode = vi.fn(async (_mode: string) => {});
     const view: FileDocumentEditorView = {
@@ -291,6 +345,64 @@ describe("native Explorer document integration", () => {
       }
     },
   );
+  it("retains the approved draft when the replacement read fails", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    try {
+      await render();
+      await edit("retain me if reading fails");
+      const document = input().session;
+      api.getExplorerFile.mockRejectedValueOnce(
+        new Error("worker unavailable"),
+      );
+      await act(async () => {
+        await expect(header().refresh()).rejects.toThrow("worker unavailable");
+      });
+      expect(document.text).toBe("retain me if reading fails");
+      expect(document.dirty).toBe(true);
+      const snapshot = await (state.lifecycle as ExplorerLifecycleActions)
+        .captureTransfer!();
+      expect(snapshot.documents.documents[0]!.text).toBe(
+        "retain me if reading fails",
+      );
+    } finally {
+      confirm.mockRestore();
+    }
+  });
+
+  it("does not discard edits made after approval while the replacement file is loading", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    try {
+      await render();
+      await edit("approved draft");
+      let finish!: (value: unknown) => void;
+      api.getExplorerFile.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      );
+      let pending!: Promise<unknown>;
+      await act(async () => {
+        pending = Promise.resolve(header().refresh());
+      });
+      await edit("new edit during read");
+      await act(async () => {
+        finish({
+          path: "source.ts",
+          content: "replacement",
+          version: "fresh",
+          markdown: false,
+        });
+        await expect(pending).rejects.toThrow(
+          "document changed while reloading",
+        );
+      });
+      expect(input().session.text).toBe("new edit during read");
+      expect(input().session.dirty).toBe(true);
+    } finally {
+      confirm.mockRestore();
+    }
+  });
   it.each(["back", "refresh"] as const)(
     "awaits %s confirmation and rejects approval for a newer draft",
     async (action) => {

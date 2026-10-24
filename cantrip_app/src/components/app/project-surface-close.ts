@@ -234,19 +234,36 @@ function closeInputForSurface(
   };
 }
 
+class SurfaceCloseInProgress extends Error {
+  constructor() {
+    super("This view is already closing.");
+  }
+}
+
+const closeOperationKey = (surface: ProjectSurface) =>
+  JSON.stringify([surface.projectId, surface.tabKey]);
+
 export function useProjectSurfaceViewOperations({
   beforeClose,
   onCloseError,
+  onCloseCleanupError,
   queryClient,
   surfaceClose,
   workspace,
 }: {
-  beforeClose?: (surface: ProjectSurface) => Promise<void> | void;
+  beforeClose?: (
+    surface: ProjectSurface,
+  ) =>
+    | Promise<void | (() => void | Promise<void>)>
+    | void
+    | (() => void | Promise<void>);
   onCloseError?: (surface: ProjectSurface) => void;
+  onCloseCleanupError?: (error: unknown, surface: ProjectSurface) => void;
   queryClient: QueryClient;
   surfaceClose: ProjectSurfaceCloseCoordinator;
   workspace?: { controller: WorkspaceCommandClient } | null;
 }) {
+  const closing = useRef(new Set<string>());
   const closeSurfaceViewMutation = useMutation({
     mutationFn: (surface: ProjectSurface) => {
       if (workspace !== undefined) {
@@ -272,6 +289,9 @@ export function useProjectSurfaceViewOperations({
       );
     },
     onMutate: async (surface) => {
+      const key = closeOperationKey(surface);
+      if (closing.current.has(key)) throw new SurfaceCloseInProgress();
+      closing.current.add(key);
       if (
         surface.kind === "code" &&
         !(await confirmNativeCodeDiscard(surface.tabId))
@@ -279,23 +299,40 @@ export function useProjectSurfaceViewOperations({
         throw new Error("Code tab close canceled.");
       if (workspace === undefined)
         surfaceClose.begin(closeInputForSurface(surface));
-      await beforeClose?.(surface);
+      // Retain the prepared renderer's finalizer: authoritative close may
+      // unmount it and remove its registry entry before onSuccess runs.
+      const finalize = await beforeClose?.(surface);
+      return { finalize, committed: false };
     },
-    onError: (_error, surface) => {
+    onError: (error, surface, preparation) => {
+      // The duplicate never prepared this renderer and cannot release another
+      // operation's close reservation or roll back its pending placement.
+      if (error instanceof SurfaceCloseInProgress) return;
+      if (preparation?.committed) {
+        // A cleanup failure cannot undo a successful ownership mutation.
+        // Keep recovery data and report it separately from a rejected close.
+        onCloseCleanupError?.(error, surface);
+        return;
+      }
       if (workspace === undefined)
         surfaceClose.rollback(closeInputForSurface(surface));
       onCloseError?.(surface);
     },
-    onSuccess: (result, surface) => {
+    onSuccess: async (result, surface, preparation) => {
+      if (preparation) preparation.committed = true;
       if (result)
         surfaceClose.commitView(closeInputForSurface(surface), result.layout);
+      await preparation?.finalize?.();
     },
-    onSettled: (_data, _error, surface) =>
-      workspace !== undefined
+    onSettled: (_data, error, surface) => {
+      if (error instanceof SurfaceCloseInProgress) return;
+      closing.current.delete(closeOperationKey(surface));
+      return workspace !== undefined
         ? undefined
         : queryClient.invalidateQueries({
             queryKey: ["project-tab-layout", surface.projectId],
-          }),
+          });
+    },
   });
   return { closeSurfaceViewMutation } as const;
 }
