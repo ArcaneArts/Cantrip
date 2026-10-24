@@ -94,8 +94,6 @@ function view(
   client: QueryClient,
   activeExplorer: ExplorerSummary,
   openExplorers: ExplorerSummary[],
-  prewarmExplorer: ExplorerSummary | null = null,
-  prewarmSuccessorExplorer: ExplorerSummary | null = null,
   onHeaderChange?: (header: ExplorerHeaderState | null) => void,
 ) {
   return createElement(
@@ -106,8 +104,6 @@ function view(
       appearance: "dark",
       gitStatuses: {},
       openExplorers,
-      prewarmExplorer,
-      prewarmSuccessorExplorer,
       repositoryGraphAvailable: false,
       onHeaderChange,
     }),
@@ -123,28 +119,20 @@ const settle = () =>
 async function mounted(
   first: ExplorerSummary,
   opened: ExplorerSummary[],
-  prewarm: ExplorerSummary | null = null,
-  successor: ExplorerSummary | null = null,
   onHeader?: (header: ExplorerHeaderState | null) => void,
 ) {
   const client = createClient();
   let renderer!: TestRenderer.ReactTestRenderer;
   await act(async () => {
-    renderer = TestRenderer.create(
-      view(client, first, opened, prewarm, successor, onHeader),
-    );
+    renderer = TestRenderer.create(view(client, first, opened, onHeader));
   });
   await settle();
   return {
     client,
     renderer,
-    async update(
-      active: ExplorerSummary,
-      open: ExplorerSummary[],
-      warm: ExplorerSummary | null = null,
-    ) {
+    async update(active: ExplorerSummary, open: ExplorerSummary[]) {
       await act(async () =>
-        renderer.update(view(client, active, open, warm, null, onHeader)),
+        renderer.update(view(client, active, open, onHeader)),
       );
       await settle();
     },
@@ -162,15 +150,10 @@ describe("Persistent Explorer native editor ownership", () => {
     owners.code.length = 0;
     owners.sessions.clear();
   });
-  it("loads open documents without starting workbenches for empty prewarm owners", async () => {
+  it("loads open documents without starting Code workbenches", async () => {
     const first = explorer("first", "src/first.ts"),
       second = explorer("second", "src/second.ts");
-    const state = await mounted(
-      first,
-      [first, second],
-      explorer("prewarm", null),
-      explorer("successor", null),
-    );
+    const state = await mounted(first, [first, second]);
     expect(owners.created).toEqual([first.selectedPath, second.selectedPath]);
     expect(owners.code).toEqual([]);
     expect(owners.released).toEqual([]);
@@ -185,12 +168,12 @@ describe("Persistent Explorer native editor ownership", () => {
     const first = explorer("first", "src/first.ts"),
       empty = explorer("prewarm", null),
       promoted = explorer("prewarm", "src/promoted.ts");
-    const state = await mounted(first, [first], empty);
-    await state.update(promoted, [first, promoted], promoted);
+    const state = await mounted(first, [first, empty]);
+    await state.update(promoted, [first, promoted]);
     const input = state.renderer.root.findByProps({
       "data-native-path": promoted.selectedPath,
     });
-    await state.update(promoted, [first, promoted], promoted);
+    await state.update(promoted, [first, promoted]);
     expect(
       state.renderer.root.findByProps({
         "data-native-path": promoted.selectedPath,

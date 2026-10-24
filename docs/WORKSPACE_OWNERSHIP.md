@@ -1752,3 +1752,22 @@ disk-full failures before space became available; those runs are not passes.
 This is not completion of the overall goal. Sidebar prewarm cleanup, remaining
 native surface/recovery acceptance, TABS.md replacement, known server-suite
 failures and the final requirement audit remain outstanding.
+
+### Sidebar tree ownership without hidden preview editors
+
+Ordinary Keep Open controls merged in #2235 (`67537e4dc`); its native/runtime
+contract CI passed on Linux, macOS, and Windows. The sidebar now provisions
+one tree resource for the desired worktree instead of a two-Explorer preview
+pool. It no longer mounts hidden prewarm or successor editors. Existing open
+and retained dirty legacy editors keep their normal ownership and transfer
+behavior; no existing resources are deleted. Selecting an ordinary file tab
+now supplies that file's worktree to the sidebar tree selector.
+
+Validation: full app suite 548 files / 3,797 passed / three skipped;
+TypeScript, decomposition, large-file audit, formatting and diff checks passed.
+The desktop/mobile browser harness passed all ten checkpoints, including
+dirty-buffer reload, independent device placement, preview pinning and retry.
+Fixture: `editor-ced0222a-8567-46d2-84da-21cbceef0463`.
+Remaining work includes native surface/recovery acceptance, the TABS.md rewrite,
+known server-suite failures and the final requirement audit. This cleanup does
+not establish additional native multiwindow acceptance.

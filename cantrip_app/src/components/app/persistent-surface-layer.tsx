@@ -19,7 +19,6 @@ import {
 } from "@/lib/client-session";
 import { ProjectPaneTabStrip } from "@/components/workspace/project-tab-bar";
 import { revealProjectInNativeFileManager } from "@/lib/desktop-project-share";
-import { sidebarExplorerPrewarmTarget } from "@/lib/sidebar-file-tabs";
 type PersistentSurfaceBindings = Readonly<Record<string, any>>;
 const browserSessionKey = () =>
   JSON.stringify(getClientSessionIdentitySnapshot());
@@ -101,8 +100,6 @@ export function PersistentSurfaceLayer({
     showProjectSettings,
     showServerAdmin,
     showSettings,
-    sidebarInlineExplorer,
-    sidebarPreviewSuccessorExplorer,
     terminalCommandPaletteTerminalId,
     terminalServiceTerminalId,
     terminalSurfaceVisible,
@@ -647,14 +644,6 @@ export function PersistentSurfaceLayer({
           }}
           onlineWorkerIds={onlineWorkerIds}
           openExplorers={openExplorers}
-          prewarmExplorer={sidebarExplorerPrewarmTarget({
-            isPopout,
-            sidebarExplorer: sidebarInlineExplorer,
-          })}
-          prewarmSuccessorExplorer={sidebarExplorerPrewarmTarget({
-            isPopout,
-            sidebarExplorer: sidebarPreviewSuccessorExplorer,
-          })}
         />
       </Suspense>
     </>

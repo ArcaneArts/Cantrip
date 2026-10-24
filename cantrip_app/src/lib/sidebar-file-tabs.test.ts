@@ -5,12 +5,10 @@ import type {
 import { describe, expect, it } from "vitest";
 
 import {
-  dedicatedSidebarExplorer,
-  dedicatedSidebarExplorers,
   pinnedExplorerForPath,
   preferredSidebarExplorer,
   moveSidebarPath,
-  sidebarExplorerPrewarmTarget,
+  surfaceWorktreeId,
   sidebarFileName,
   sidebarFileTargetPaneId,
   sidebarPathAtOrBelow,
@@ -39,17 +37,14 @@ function layout(...explorerIds: string[]): ProjectTabLayoutSummary {
 }
 
 describe("sidebar file tabs", () => {
-  it("prewarms sidebar workbenches only in the main window", () => {
-    const sidebarExplorer = explorer("sidebar", "worktree-1");
-    const initial = {
-      isPopout: false,
-      sidebarExplorer,
-    };
-
-    expect(sidebarExplorerPrewarmTarget(initial)).toBe(sidebarExplorer);
+  it("follows the selected file document's worktree", () => {
     expect(
-      sidebarExplorerPrewarmTarget({ ...initial, isPopout: true }),
-    ).toBeNull();
+      surfaceWorktreeId({
+        kind: "file",
+        entity: { worktreeId: "feature" },
+      } as Parameters<typeof surfaceWorktreeId>[0]),
+    ).toBe("feature");
+    expect(surfaceWorktreeId(undefined)).toBeNull();
   });
 
   it("prefers the hidden Explorer for the active worktree", () => {
@@ -82,7 +77,6 @@ describe("sidebar file tabs", () => {
         desiredWorktreeId: "worktree-1",
         explorers: [pinnedEmpty, pinnedFile],
         layout: tabLayout,
-        previewExplorerId: pinnedFile.id,
       }),
     ).toBeNull();
   });
@@ -98,7 +92,6 @@ describe("sidebar file tabs", () => {
         desiredWorktreeId: "worktree-1",
         explorers: [pinned, otherWorktree],
         layout: tabLayout,
-        previewExplorerId: pinned.id,
       }),
     ).toBeNull();
     expect(
@@ -106,24 +99,23 @@ describe("sidebar file tabs", () => {
         desiredWorktreeId: "worktree-1",
         explorers: [pinned, otherWorktree, replacement],
         layout: tabLayout,
-        previewExplorerId: pinned.id,
       }),
     ).toBe(replacement);
   });
 
-  it("requires a non-tabbed Explorer for inline sidebar prewarm", () => {
+  it("requires a non-tabbed Explorer for sidebar tree navigation", () => {
     const visible = explorer("visible", "worktree-1");
     const hidden = explorer("hidden", "worktree-1");
 
     expect(
-      dedicatedSidebarExplorer({
+      preferredSidebarExplorer({
         desiredWorktreeId: "worktree-1",
         explorers: [visible],
         layout: layout("visible"),
       }),
     ).toBeNull();
     expect(
-      dedicatedSidebarExplorer({
+      preferredSidebarExplorer({
         desiredWorktreeId: "worktree-1",
         explorers: [visible, hidden],
         layout: layout("visible"),
@@ -131,15 +123,15 @@ describe("sidebar file tabs", () => {
     ).toBe(hidden);
 
     expect(
-      dedicatedSidebarExplorers({
+      preferredSidebarExplorer({
         desiredWorktreeId: "worktree-1",
         explorers: [visible, hidden, explorer("second", "worktree-1")],
         layout: layout("visible"),
-      }).map(({ id }) => id),
-    ).toEqual(["hidden", "second"]);
+      }),
+    ).toBe(hidden);
   });
 
-  it("keeps the preview Explorer stable across worktree selection", () => {
+  it("does not retain a tree from a different selected worktree", () => {
     const preview = explorer("preview", "worktree-1");
     const other = explorer("other", "worktree-2");
 
@@ -148,9 +140,8 @@ describe("sidebar file tabs", () => {
         desiredWorktreeId: "worktree-2",
         explorers: [preview, other],
         layout: layout("other"),
-        previewExplorerId: preview.id,
       }),
-    ).toBe(preview);
+    ).toBeNull();
   });
 
   it("keeps sidebar files in center panes when a dock is focused", () => {

@@ -6,6 +6,7 @@ import type {
   ProjectWorktreeSummary,
 } from "@cantrip/protocol";
 import { QueryClient } from "@tanstack/react-query";
+import type { ProjectSurface } from "@/lib/project-surface";
 import { createElement, StrictMode } from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
@@ -168,7 +169,10 @@ describe("project file opening", () => {
 });
 
 function explorer(workerId: string | null = "worker-explorer") {
-  return { activeWorkerId: workerId } as ExplorerSummary;
+  return {
+    activeWorkerId: workerId,
+    worktreeId: "worktree-1",
+  } as ExplorerSummary;
 }
 
 describe("sidebar Explorer provisioning", () => {
@@ -180,7 +184,6 @@ describe("sidebar Explorer provisioning", () => {
         selectedProjectWorkerId: "worker-project",
         sidebarDesiredWorktreeId: null,
         sidebarExplorer: null,
-        sidebarInlineExplorers: [],
       }).sidebarExplorerCreationInput,
     ).toBeNull();
 
@@ -191,14 +194,13 @@ describe("sidebar Explorer provisioning", () => {
         selectedProjectWorkerId: "worker-project",
         sidebarDesiredWorktreeId: "worktree-1",
         sidebarExplorer: null,
-        sidebarInlineExplorers: [],
       }),
     ).toMatchObject({
       sidebarExplorerCreationInput: {
         projectId: "project-1",
         worktreeId: "worktree-1",
       },
-      sidebarExplorerCreationKey: "project-1:worktree-1:0",
+      sidebarExplorerCreationKey: "project-1:worktree-1",
       sidebarHasDesiredExplorer: false,
     });
   });
@@ -211,7 +213,6 @@ describe("sidebar Explorer provisioning", () => {
         selectedProjectWorkerId: "worker-project",
         sidebarDesiredWorktreeId: "worktree-1",
         sidebarExplorer: explorer(),
-        sidebarInlineExplorers: [explorer(), explorer()],
       }),
     ).toMatchObject({
       sidebarFileWorkerId: "worker-explorer",
@@ -220,7 +221,7 @@ describe("sidebar Explorer provisioning", () => {
     });
   });
 
-  it("provisions one bounded warm successor while a sidebar Explorer owns preview navigation", () => {
+  it("needs only one sidebar tree and does not provision a warm successor", () => {
     const previewExplorer = explorer();
     expect(
       sidebarExplorerProvisioningDetails({
@@ -228,12 +229,10 @@ describe("sidebar Explorer provisioning", () => {
         selectedProject: project,
         selectedProjectWorkerId: "worker-project",
         sidebarDesiredWorktreeId: "worktree-1",
-        sidebarExplorer: previewExplorer,
-        sidebarInlineExplorers: [previewExplorer],
+        sidebarExplorer: { ...previewExplorer, worktreeId: "another-worktree" },
       }),
     ).toMatchObject({
-      sidebarExplorerCreationKey: "project-1:worktree-1:1",
-      sidebarExplorerPoolSize: 1,
+      sidebarExplorerCreationKey: "project-1:worktree-1",
       sidebarHasDesiredExplorer: false,
     });
 
@@ -244,11 +243,9 @@ describe("sidebar Explorer provisioning", () => {
         selectedProjectWorkerId: "worker-project",
         sidebarDesiredWorktreeId: "worktree-1",
         sidebarExplorer: previewExplorer,
-        sidebarInlineExplorers: [previewExplorer, explorer()],
       }),
     ).toMatchObject({
-      sidebarExplorerCreationKey: "project-1:worktree-1:2",
-      sidebarExplorerPoolSize: 2,
+      sidebarExplorerCreationKey: "project-1:worktree-1",
       sidebarHasDesiredExplorer: true,
     });
   });
@@ -282,7 +279,13 @@ describe("sidebar tree ownership", () => {
     const observed: {
       current: ReturnType<typeof useSidebarExplorerModel> | null;
     } = { current: null };
-    const Probe = ({ explorers }: { explorers: ExplorerSummary[] }) => {
+    const Probe = ({
+      explorers,
+      selectedSurface,
+    }: {
+      explorers: ExplorerSummary[];
+      selectedSurface?: ProjectSurface;
+    }) => {
       observed.current = useSidebarExplorerModel({
         unavailablePaneIds: new Set(),
         environment: {
@@ -293,7 +296,7 @@ describe("sidebar tree ownership", () => {
         explorers,
         openCreatedTab: vi.fn(),
         selectedProjectId: "project-1",
-        selectedSurface: undefined,
+        selectedSurface,
         tabLayout,
         worktrees,
       });
@@ -322,6 +325,29 @@ describe("sidebar tree ownership", () => {
       );
     });
     expect(observed.current?.sidebarExplorer).toBe(replacement);
+    const featureTree = {
+      ...replacement,
+      id: "feature-tree",
+      worktreeId: "feature",
+    };
+    await act(async () => {
+      renderer.update(
+        createElement(
+          StrictMode,
+          null,
+          createElement(Probe, {
+            explorers: [pinned, replacement, featureTree],
+            selectedSurface: {
+              kind: "file",
+              entity: { worktreeId: "feature" },
+            } as ProjectSurface,
+          }),
+        ),
+      );
+    });
+    expect(observed.current?.sidebarDesiredWorktreeId).toBe("feature");
+    expect(observed.current?.sidebarExplorer).toBe(featureTree);
+    expect(observed.current?.openExplorers).toEqual([pinned]);
     await act(async () => renderer.unmount());
   });
 });

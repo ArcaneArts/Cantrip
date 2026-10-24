@@ -1116,9 +1116,6 @@ export function App() {
     selectedProjectIdRef,
     sidebarDesiredWorktreeId,
     sidebarExplorer,
-    sidebarInlineExplorer,
-    sidebarInlineExplorers,
-    sidebarPreviewSuccessorExplorer,
   } = sidebarExplorerModel;
   const {
     onlineWorkerIds,
@@ -2189,7 +2186,7 @@ export function App() {
     showChatConsole, showContentTitlebar, showCustomizations, showImporter, showProjectSettings,
     showServerAdmin, showSettings, sidebarCollapsed, sidebarExplorer,
     sidebarFileWorkerId, sidebarFileWorkerOnline,
-    sidebarInlineExplorer, sidebarPreviewSuccessorExplorer, sidebarRef, sidebarResizing, sidebarWidth,
+    sidebarRef, sidebarResizing, sidebarWidth,
     standaloneChatCreationAvailable, standaloneChatCreationUnavailableReason, standaloneChatWorkerAvailable, standaloneChats, standaloneFilePath,
     standaloneFilesOpen, stopAndDeleteRunTerminalMutation, surfaceCreationFailure, switchToChat, switchToIde,
     tabLayout, tabLayoutMutation, terminals, terminalCommandPaletteTerminalId, terminalServiceTerminalId, updateBrowserMutation, updateCodeTabMutation,
