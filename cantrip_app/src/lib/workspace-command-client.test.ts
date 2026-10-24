@@ -121,6 +121,7 @@ it("pins local file previews once while leaving remote views and focus untouched
     centerRoot: { kind: "pane", paneId: "remote-pane" },
     focusedPaneId: "remote-pane",
     recentPaneIds: ["remote-pane"],
+    recentTabIds: ["remote-tab"],
   });
   base.revision++;
   setServer(base);

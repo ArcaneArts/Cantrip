@@ -20,6 +20,13 @@ moves only the addressed tab; the second prepares every tab in its pane and
 moves the pane as a unit. Both use the same transfer coordinator and overlapping
 transfer guard. The header shortcut continues to move only the active tab.
 
+The ownership model records recent tab activation per window, independently of
+tab order and pane focus history. Mobile's picker displays up to five available
+recent views and retains the full Open views list. Older layouts have no observed
+history until activation occurs. Reordering does not change recency; closing or
+transferring a tab removes it from its previous window's history. Recent navigation
+does not change the adjacent-right-otherwise-left active-tab close rule.
+
 ## Panel controls
 
 Every visible surface owns its controls in a shared panel toolbar. Git reuses

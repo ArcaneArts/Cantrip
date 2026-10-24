@@ -38,6 +38,10 @@ function focus(window: WorkspaceWindow, pane: WorkspacePane, tabId: string) {
     pane.id,
     ...window.recentPaneIds.filter((id) => id !== pane.id),
   ];
+  window.recentTabIds = [
+    tabId,
+    ...(window.recentTabIds ?? []).filter((id) => id !== tabId),
+  ];
 }
 
 function removePane(window: WorkspaceWindow, pane: WorkspacePane) {
@@ -462,12 +466,25 @@ export function applyWorkspaceCommand(
     }
     case "close-tab": {
       const { pane, tab } = tabById(action.tabId);
+      const wasFocused =
+        window.focusedPaneId === pane.id && pane.activeTabId === tab.id;
       takeTab(window, pane, tab);
+      const next = window.panes.find(
+        (candidate) => candidate.id === window.focusedPaneId,
+      );
+      if (wasFocused && next) focus(window, next, next.activeTabId);
       break;
     }
-    case "close-pane":
-      removePane(window, paneById(action.paneId));
+    case "close-pane": {
+      const pane = paneById(action.paneId);
+      const wasFocused = window.focusedPaneId === pane.id;
+      removePane(window, pane);
+      const next = window.panes.find(
+        (candidate) => candidate.id === window.focusedPaneId,
+      );
+      if (wasFocused && next) focus(window, next, next.activeTabId);
       break;
+    }
     case "pin":
       tabById(action.tabId).tab.preview = false;
       break;
@@ -717,6 +734,15 @@ export function applyWorkspaceCommand(
       }
       break;
     }
+  }
+  // Ownership is authoritative. Closed/moved views cannot survive in another
+  // window's recent list, and layout-only changes must not invent activations.
+  for (const owner of layout.windows) {
+    if (!owner.recentTabIds) continue;
+    const owned = new Set(
+      owner.panes.flatMap((pane) => pane.tabs.map((tab) => tab.id)),
+    );
+    owner.recentTabIds = owner.recentTabIds.filter((id) => owned.has(id));
   }
   layout.revision++;
   const validated = workspaceOwnershipSchema.safeParse(layout);

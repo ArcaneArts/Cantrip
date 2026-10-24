@@ -105,6 +105,13 @@ export function ShellOverlays({
           overviewSelected={projectOverviewSelected}
           projectName={selectedProject.name}
           surfaces={projectSurfaces}
+          recentTabIds={
+            bindings.workspaceConnection?.controllerState?.projected.windows.find(
+              (window: { id: string }) =>
+                window.id ===
+                bindings.workspaceConnection?.connection?.windowId,
+            )?.recentTabIds
+          }
         />
       ) : null}
 

@@ -86,6 +86,8 @@ export const workspaceWindowSchema = z
     centerRoot: projectCenterLayoutNodeSchema.nullable(),
     focusedPaneId: identity.nullable(),
     recentPaneIds: z.array(identity),
+    // Optional for existing persisted layouts; absence means no observed history.
+    recentTabIds: z.array(identity).optional(),
     returnPlacement: pendingTransferSchema
       .pick({
         sourceWindowId: true,
@@ -135,6 +137,18 @@ export const workspaceOwnershipSchema = z
         issue([...wp, "focusedPaneId"], "Focus must belong to this window.");
       }
       const recentIds = new Set<string>();
+      const localTabIds = new Set(
+        window.panes.flatMap((pane) => pane.tabs.map((tab) => tab.id)),
+      );
+      const recentTabs = new Set<string>();
+      for (const [ri, id] of (window.recentTabIds ?? []).entries()) {
+        if (!localTabIds.has(id) || recentTabs.has(id))
+          issue(
+            [...wp, "recentTabIds", ri],
+            "Recent tabs must be unique and belong to this window.",
+          );
+        recentTabs.add(id);
+      }
       for (const [ri, id] of window.recentPaneIds.entries()) {
         if (!localPaneIds.has(id) || recentIds.has(id)) {
           issue(

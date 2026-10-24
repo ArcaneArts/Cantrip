@@ -61,6 +61,30 @@ function picker(overrides: Record<string, unknown> = {}) {
 }
 
 describe("MobileSurfacePicker", () => {
+  it("shows actual recent identities separately without hiding open views", () => {
+    const second = {
+      ...chat,
+      tabKey: "chat:two",
+      title: "Agent Two",
+    } as ProjectSurface;
+    const markup = renderToStaticMarkup(
+      picker({
+        surfaces: [chat, second],
+        recentTabIds: ["missing", "chat:two", "chat:two", "chat:one"],
+      }),
+    );
+    expect(markup.indexOf('aria-label="Reopen recent Agent Two"')).toBeLessThan(
+      markup.indexOf('aria-label="Reopen recent Agent One"'),
+    );
+    expect(markup.match(/aria-label="Reopen recent Agent Two"/g)).toHaveLength(
+      1,
+    );
+    expect(markup).toContain('aria-label="Open Agent One"');
+    expect(markup).toContain('aria-label="Open Agent Two"');
+    expect(renderToStaticMarkup(picker())).not.toContain(
+      'aria-label="Recently used views"',
+    );
+  });
   it("shows one flat list of open views before direct creation actions", () => {
     const markup = renderToStaticMarkup(picker());
 
@@ -86,7 +110,13 @@ describe("MobileSurfacePicker", () => {
 
     await act(async () => {
       renderer = TestRenderer.create(
-        picker({ onArchiveSurface, onCloseSurface, onOpenChange, onSelect }),
+        picker({
+          onArchiveSurface,
+          onCloseSurface,
+          onOpenChange,
+          onSelect,
+          recentTabIds: [chat.tabKey],
+        }),
       );
     });
 
@@ -95,6 +125,14 @@ describe("MobileSurfacePicker", () => {
       .props.onClick();
     expect(onSelect).toHaveBeenCalledWith("chat:one");
     expect(onOpenChange).toHaveBeenCalledWith(false);
+
+    onSelect.mockClear();
+    renderer.root
+      .findByProps({ "aria-label": "Reopen recent Agent One" })
+      .props.onClick();
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith(chat.tabKey);
+    expect(onCloseSurface).not.toHaveBeenCalled();
+    expect(onArchiveSurface).not.toHaveBeenCalled();
 
     renderer.root
       .findByProps({ "aria-label": "Close Agent One view" })
