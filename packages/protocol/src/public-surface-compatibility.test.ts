@@ -401,7 +401,11 @@ const liveTrafficExports = [
   "ACCOUNT_LIVE_TRAFFIC_WINDOW_SECONDS",
 ];
 const workspaceOwnershipExports = [
+  "WorkspaceCommandError",
+  "applyWorkspaceCommand",
   "seedWorkspaceOwnership",
+  "workspaceActionSchema",
+  "workspaceCommandSchema",
   "workspaceOwnershipSchema",
   "workspacePaneSchema",
   "workspaceTabSchema",
@@ -440,7 +444,7 @@ describe("protocol public surface compatibility", () => {
     expect(
       exportNames.filter((name) => retiredWorkbenchExports.includes(name)),
     ).toEqual([]);
-    expect(exportNames).toHaveLength(2078);
+    expect(exportNames).toHaveLength(2082);
     expect(
       exportNames.filter((name) => liveTrafficExports.includes(name)),
     ).toEqual(liveTrafficExports);
