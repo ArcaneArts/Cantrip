@@ -1846,3 +1846,27 @@ to investigate. Remote Desktop opened a worker session but had not delivered a
 frame at inspection (1x1, 0 FPS); live capture/input transfer is not established.
 The harness checklist does not imply remaining concurrent-window, remote-desktop,
 loading-layout, full-suite, documentation or final-audit requirements have passed.
+
+### Native helper setup and Remote Desktop continuation
+
+The native acceptance harness merged in #2239 (`2d83f5714`); its Linux, macOS
+and Windows CI jobs passed. The isolated worker initially had no bundled
+`cantrip-cua` executable. Running the missing executable failed with ENOENT;
+building the current helper restored capture. The launcher now builds that
+helper before starting its services and supplies Cargo's actual executable path
+only to the fixture worker. It neither installs a production helper nor relies
+on a stale binary in the checkout. Build errors propagate before services start.
+
+After refreshing targets and selecting the disposable QA main window, native
+capture became ready at 1280x800 with no input warning. Detaching Remote Desktop
+preserved that target and capture; the captured main window showed only its five
+sibling tabs, without a disabled Remote Desktop placeholder. Closing the native
+popout returned the tab and restored capture in main. A click on a sibling tab
+inside the remote image did not visibly select it: remote input remains
+unverified, and clearing a warning is not evidence of input delivery.
+
+Validation for the launcher correction: the current helper compiled successfully
+using a shared Cargo target directory; all four helper build/bundle regression
+tests passed, including actual-output selection and rejection of failed/stale
+build results. Both changed JavaScript files passed syntax checks. Full native
+acceptance, remaining transport findings and the final scope audit remain open.
