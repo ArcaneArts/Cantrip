@@ -4,6 +4,14 @@ import {
   type ComposerAttachmentState,
 } from "./composer-draft-attachments";
 import { useChatExecutionControls } from "./use-chat-execution-controls";
+import { flushSync } from "react-dom";
+import { useChatViewTransfer } from "./use-chat-view-transfer";
+import type { IncomingChatView } from "./chat-view-state";
+import { restoreChatTransferHistory } from "./restore-chat-transfer-history";
+import {
+  chatMessageLoadedHeadQueryKey,
+  chatMessagePagesQueryKey,
+} from "@/lib/chat-message-history";
 import { useChatGoalQuery } from "@/lib/chat-goal-query";
 import { nativePermissionControlState } from "./native-permission-control-state";
 import type {
@@ -140,6 +148,7 @@ import {
   deleteQueuedPrompt,
   forkChat,
   getChatComposerDraft,
+  getMessagePage,
   getChatPermissionProfiles,
   getChatPlan,
   getChatReasoning,
@@ -192,6 +201,8 @@ export function useChatTranscriptController({
   refocusOnWindowActivation,
   settings,
   syncEnabled,
+  workspaceTabId,
+  incomingChatView,
 }: {
   capabilities: ChatSurfaceCapabilities;
   chat: ChatSummary | StandaloneChatSummary;
@@ -216,6 +227,8 @@ export function useChatTranscriptController({
   refocusOnWindowActivation: boolean;
   settings: SettingsBundle | undefined;
   syncEnabled: boolean;
+  workspaceTabId?: string;
+  incomingChatView?: IncomingChatView;
 }) {
   const queryClient = useQueryClient();
   const projectId = chat.projectId;
@@ -348,6 +361,8 @@ export function useChatTranscriptController({
         : 0;
   const idleHistoryPrefetchChatRef = useRef<string | null>(null);
   const {
+    captureScrollState,
+    restoreScrollState,
     contentRef: transcriptContentRef,
     onScroll: handleTranscriptScroll,
     preserveScrollDuringPrepend,
@@ -355,6 +370,121 @@ export function useChatTranscriptController({
     showScrollToBottom,
     viewportRef: transcriptViewportRef,
   } = useStickyChatScroll(chat.id);
+  const { transferLocked } = useChatViewTransfer({
+    owner:
+      workspaceTabId && projectId
+        ? { tabId: workspaceTabId, chatId: chat.id, projectId }
+        : undefined,
+    incoming: incomingChatView,
+    flush: () => composerDraftPersistence.flush(),
+    capture: () => {
+      if (!projectId)
+        throw new Error("Only project chat views use workspace transfer.");
+      if (!composerDraftHydrated)
+        throw new Error("The chat draft has not loaded yet.");
+      if (
+        send.isPending ||
+        updatePrompt.isPending ||
+        retrySentMessage.isPending
+      )
+        throw new Error(
+          "Wait for the current message update before moving this chat.",
+        );
+      if (
+        draftAttachments.some(
+          (item) =>
+            item.uploading ||
+            item.localPreview ||
+            item.error ||
+            item.attachment.status !== "ready",
+        )
+      )
+        throw new Error(
+          "Finish or remove pending attachments before moving this chat.",
+        );
+      const textarea = composerRef.current;
+      return {
+        version: 1,
+        chatId: chat.id,
+        projectId,
+        draft: {
+          text: draft,
+          mode: effectiveComposerMode,
+          reasoningEffort: composerReasoningEffort,
+          attachments: draftAttachments.map(({ attachment }) => attachment),
+        },
+        nativeModeIntent,
+        composerSelection: {
+          start: textarea?.selectionStart ?? composerCaret,
+          end: textarea?.selectionEnd ?? composerCaret,
+          scrollTop: Math.max(0, textarea?.scrollTop ?? composerScrollTop),
+        },
+        transcript: {
+          ...captureScrollState(),
+          oldestSequence: messages.data[0]?.sequence ?? null,
+        },
+        editingPrompt,
+        editingSentMessage,
+        inspectTab,
+        trajectoryTargetKey,
+        sidePanelView,
+        selectedGithubReferences,
+        inspectOpen,
+        inspectWidth,
+      };
+    },
+    restore: async (state, signal) => {
+      const history = await restoreChatTransferHistory(
+        state.transcript.oldestSequence ?? null,
+        (beforeSequence) => getMessagePage(chat.id, { beforeSequence, signal }),
+        signal,
+      );
+      await queryClient.cancelQueries({
+        queryKey: chatMessagePagesQueryKey(chat.id),
+      });
+      signal.throwIfAborted();
+      flushSync(() => {
+        queryClient.setQueryData(
+          chatMessageLoadedHeadQueryKey(chat.id),
+          history,
+        );
+        queryClient.setQueryData(chatMessagePagesQueryKey(chat.id), history);
+        composerDraftEditedRef.current = true;
+        setComposerDraftHydrated(true);
+        setDraft(state.draft.text);
+        setComposerMode(state.draft.mode);
+        setComposerReasoningEffort(state.draft.reasoningEffort);
+        setNativeModeIntent(state.nativeModeIntent);
+        setDraftAttachments(
+          restoreComposerDraftAttachments(
+            chat.id,
+            state.draft,
+            chatAttachmentContentUrl,
+          ),
+        );
+        setEditingPrompt(state.editingPrompt);
+        setEditingSentMessage(state.editingSentMessage);
+        setInspectTab(state.inspectTab);
+        setTrajectoryTargetKey(state.trajectoryTargetKey);
+        setSidePanelView(state.sidePanelView);
+        setSelectedGithubReferences(state.selectedGithubReferences ?? []);
+        if (state.inspectWidth !== undefined)
+          setInspectWidth(state.inspectWidth);
+        if (state.inspectOpen !== undefined)
+          onInspectOpenChange(state.inspectOpen);
+        setComposerCaret(state.composerSelection.end);
+        setComposerScrollTop(state.composerSelection.scrollTop);
+      });
+      signal.throwIfAborted();
+      const textarea = composerRef.current;
+      textarea?.setSelectionRange(
+        state.composerSelection.start,
+        state.composerSelection.end,
+      );
+      if (textarea) textarea.scrollTop = state.composerSelection.scrollTop;
+      restoreScrollState(state.transcript);
+    },
+  });
   useEffect(() => {
     setInspectTab("trajectory");
     setTrajectoryTargetKey(null);
@@ -400,7 +530,7 @@ export function useChatTranscriptController({
     [capabilities.subagents, onInspectOpenChange],
   );
   useEffect(() => {
-    if (!refocusOnWindowActivation) return;
+    if (!refocusOnWindowActivation || transferLocked) return;
     let mounted = true;
     let stopWatching: (() => void) | null = null;
     void watchDesktopWindowFocus(() => {
@@ -430,7 +560,7 @@ export function useChatTranscriptController({
       mounted = false;
       stopWatching?.();
     };
-  }, [chat.id, refocusOnWindowActivation]);
+  }, [chat.id, refocusOnWindowActivation, transferLocked]);
   const fallbackModelId =
     chat.contextKind === "standalone"
       ? (settings?.preferences.defaultChatModelId ??
@@ -599,9 +729,15 @@ export function useChatTranscriptController({
     viewportRef: transcriptViewportRef,
   });
   const loadOlderMessages = useCallback(async () => {
-    if (!messages.hasOlder || messages.isFetchingOlder) return;
+    if (
+      incomingChatView?.staging ||
+      !messages.hasOlder ||
+      messages.isFetchingOlder
+    )
+      return;
     await preserveScrollDuringPrepend(messages.fetchOlder);
   }, [
+    incomingChatView?.staging,
     messages.fetchOlder,
     messages.hasOlder,
     messages.isFetchingOlder,
@@ -609,6 +745,7 @@ export function useChatTranscriptController({
   ]);
   useEffect(() => {
     if (
+      incomingChatView?.staging ||
       !messages.hasOlder ||
       messages.isFetchingOlder ||
       idleHistoryPrefetchChatRef.current === chat.id
@@ -619,7 +756,13 @@ export function useChatTranscriptController({
       idleHistoryPrefetchChatRef.current = chat.id;
       void loadOlderMessages();
     });
-  }, [chat.id, loadOlderMessages, messages.hasOlder, messages.isFetchingOlder]);
+  }, [
+    chat.id,
+    incomingChatView?.staging,
+    loadOlderMessages,
+    messages.hasOlder,
+    messages.isFetchingOlder,
+  ]);
   const handleChatTranscriptScroll = useCallback(() => {
     handleTranscriptScroll();
     const viewport = transcriptViewportRef.current;
@@ -648,7 +791,7 @@ export function useChatTranscriptController({
   useQuery({
     enabled: shouldSyncChatWithExternalConsole(
       capabilities.context,
-      syncEnabled,
+      syncEnabled && !transferLocked,
     ),
     queryFn: async () => {
       const result = await syncChat(chat.id);
@@ -774,7 +917,7 @@ export function useChatTranscriptController({
   );
 
   useEffect(() => {
-    if (!composerDraftHydrated || editingPrompt) return;
+    if (!composerDraftHydrated || editingPrompt || transferLocked) return;
     const nextDraft = composerDraftWithAttachments(
       {
         text: draft,
@@ -789,6 +932,7 @@ export function useChatTranscriptController({
     stagePersistedComposerDraft(nextDraft);
   }, [
     composerDraftHydrated,
+    transferLocked,
     capabilities.modes,
     effectiveComposerMode,
     composerReasoningEffort,
@@ -1873,6 +2017,7 @@ export function useChatTranscriptController({
     composerNotice = { message: commandNotice };
   }
   return {
+    transferLocked,
     activeChatWorker,
     agentProjection,
     answerPlanError,

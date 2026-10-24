@@ -10,6 +10,91 @@ import {
 } from "./use-sticky-chat-scroll";
 
 describe("sticky chat scrolling", () => {
+  it("restores reading state without a queued mount frame jumping to latest", async () => {
+    (
+      globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = true;
+    const viewport = { clientHeight: 100, scrollHeight: 1000, scrollTop: 0 };
+    const frames: Array<() => void> = [];
+    let resize!: () => void;
+    vi.stubGlobal("window", {
+      requestAnimationFrame: (callback: () => void) => frames.push(callback),
+      cancelAnimationFrame: vi.fn(),
+    });
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: () => void) {
+          resize = callback;
+        }
+        observe = vi.fn();
+        disconnect = vi.fn();
+      },
+    );
+    let scroll!: ReturnType<typeof useStickyScroll>;
+    function Probe({ id }: { id: string }) {
+      scroll = useStickyScroll(id);
+      return createElement(
+        "div",
+        { ref: scroll.viewportRef, onScroll: scroll.onScroll },
+        createElement("div", { ref: scroll.contentRef }),
+      );
+    }
+    let renderer!: TestRenderer.ReactTestRenderer;
+    try {
+      await act(async () => {
+        renderer = TestRenderer.create(createElement(Probe, { id: "chat" }), {
+          createNodeMock: (element) =>
+            (element.props as { onScroll?: unknown }).onScroll ? viewport : {},
+        });
+      });
+      await act(async () => {
+        scroll.restoreScrollState({ scrollTop: 240, following: false });
+        for (const frame of frames.splice(0)) frame();
+      });
+      expect(scroll.captureScrollState()).toEqual({
+        scrollTop: 240,
+        following: false,
+      });
+      viewport.scrollHeight += 100;
+      await act(async () => resize());
+      expect(viewport.scrollTop).toBe(240);
+      expect(scroll.showScrollToLatest).toBe(true);
+      viewport.clientHeight = 0;
+      await act(async () =>
+        scroll.restoreScrollState({ scrollTop: 320, following: false }),
+      );
+      // Hidden DOM scroll offsets may be clamped while a destination is staged.
+      viewport.scrollTop = 0;
+      await act(async () => resize());
+      expect(scroll.captureScrollState()).toEqual({
+        scrollTop: 320,
+        following: false,
+      });
+      viewport.clientHeight = 100;
+      await act(async () => resize());
+      expect(viewport.scrollTop).toBe(320);
+      expect(() =>
+        scroll.restoreScrollState({ scrollTop: NaN, following: false }),
+      ).toThrow("Invalid");
+      await act(async () =>
+        scroll.restoreScrollState({ scrollTop: 240, following: true }),
+      );
+      expect(viewport.scrollTop).toBe(1100);
+      expect(scroll.captureScrollState().following).toBe(true);
+      await act(async () =>
+        renderer.update(createElement(Probe, { id: "other" })),
+      );
+      await act(async () => {
+        for (const frame of frames.splice(0)) frame();
+      });
+      expect(scroll.captureScrollState().following).toBe(true);
+    } finally {
+      await act(async () => renderer?.unmount());
+      vi.unstubAllGlobals();
+    }
+  });
+
   it.each([false, true])(
     "preserves the visible row during overlapping prepend and append (browser anchoring %s)",
     async (browserAnchors) => {

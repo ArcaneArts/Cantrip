@@ -12,6 +12,15 @@ import {
   parseBrowserViewState,
   type BrowserTransferLifecycle,
 } from "@/components/browser/browser-view-state";
+import {
+  parseChatViewState,
+  type ChatTransferLifecycle,
+  type ChatTransferOwner,
+} from "@/components/chat/chat-view-state";
+
+export interface ChatTransferEntry extends ChatTransferOwner {
+  lifecycle: ChatTransferLifecycle;
+}
 
 export interface BrowserTransferEntry {
   tabId: string;
@@ -48,6 +57,7 @@ export function stageWorkspaceViewTransferBatch(
   editors: readonly Pick<ExplorerTransferEntry, "tabId" | "scope">[],
   terminals: readonly ExpectedTerminal[],
   browsers: readonly Omit<BrowserTransferEntry, "lifecycle">[] = [],
+  chats: readonly ChatTransferOwner[] = [],
 ) {
   const editorStates = stageExplorerTransferBatch(bytes, editors);
   const payload = JSON.parse(
@@ -93,10 +103,28 @@ export function stageWorkspaceViewTransferBatch(
       state: parseBrowserViewState(matches[0].state, expected),
     };
   });
+  const incomingChats: unknown = payload.chats ?? [];
+  if (!Array.isArray(incomingChats) || incomingChats.length !== chats.length)
+    throw new Error("Invalid chat transfer batch.");
+  const chatStates = chats.map((expected) => {
+    if (ids.has(expected.tabId))
+      throw new Error("Duplicate transfer tab identity.");
+    ids.add(expected.tabId);
+    const matches = incomingChats.filter(
+      (item) =>
+        item && typeof item === "object" && item.tabId === expected.tabId,
+    );
+    if (matches.length !== 1) throw new Error("Invalid chat transfer batch.");
+    return {
+      tabId: expected.tabId,
+      state: parseChatViewState(matches[0].state, expected),
+    };
+  });
   return {
     editors: editorStates,
     terminals: terminalStates,
     browsers: browserStates,
+    chats: chatStates,
   };
 }
 
@@ -105,11 +133,13 @@ export function prepareWorkspaceViewTransferBatch(
   editors: readonly ExplorerTransferEntry[],
   terminals: readonly TerminalTransferEntry[],
   browsers: readonly BrowserTransferEntry[] = [],
+  chats: readonly ChatTransferEntry[] = [],
 ) {
   const entries = terminals.map((entry) => ({ ...entry }));
   const browserEntries = browsers.map((entry) => ({ ...entry }));
+  const chatEntries = chats.map((entry) => ({ ...entry }));
   const ids = new Set(editors.map(({ tabId }) => tabId));
-  for (const entry of [...entries, ...browserEntries]) {
+  for (const entry of [...entries, ...browserEntries, ...chatEntries]) {
     if (!entry.tabId || ids.has(entry.tabId))
       throw new Error("Duplicate transfer tab identity.");
     ids.add(entry.tabId);
@@ -142,7 +172,7 @@ export function prepareWorkspaceViewTransferBatch(
       );
   };
   try {
-    for (const entry of [...entries, ...browserEntries])
+    for (const entry of [...entries, ...browserEntries, ...chatEntries])
       releases.push(entry.lifecycle.suspendTransfer());
   } catch (error) {
     try {
@@ -184,6 +214,18 @@ export function prepareWorkspaceViewTransferBatch(
           );
         browserStates.push({ tabId: entry.tabId, state });
       }
+      const chatStates = [];
+      for (const entry of chatEntries) {
+        const state = parseChatViewState(
+          await entry.lifecycle.captureTransfer(),
+          entry,
+        );
+        if (released)
+          throw new Error(
+            "Workspace transfer batch was released during capture.",
+          );
+        chatStates.push({ tabId: entry.tabId, state });
+      }
       if (released)
         throw new Error(
           "Workspace transfer batch was released during capture.",
@@ -195,6 +237,7 @@ export function prepareWorkspaceViewTransferBatch(
           editors: editorStates,
           terminals: terminalStates,
           browsers: browserStates,
+          chats: chatStates,
         }),
       );
     },
@@ -202,7 +245,7 @@ export function prepareWorkspaceViewTransferBatch(
       if (released || !captured)
         throw new Error("Capture workspace state before retirement.");
       editorBatch.retire();
-      for (const entry of [...entries, ...browserEntries]) {
+      for (const entry of [...entries, ...browserEntries, ...chatEntries]) {
         if (retired.has(entry.tabId)) continue;
         await entry.lifecycle.retireTransfer();
         retired.add(entry.tabId);

@@ -684,7 +684,8 @@ export function GlobalContentHost({
               }
               onHeaderChange={setGitHistoryHeader}
             />
-          ) : bindings.selectedSurface?.kind === "file" ? null : selectedCodeTab ? null : selectedBrowser ? null : selectedExplorer ? null : selectedTerminal?.kind ===
+          ) : bindings.selectedSurface?.kind ===
+            "file" ? null : selectedCodeTab ? null : selectedBrowser ? null : selectedExplorer ? null : selectedTerminal?.kind ===
             "run-configuration" ? (
             <Suspense
               fallback={
@@ -718,59 +719,7 @@ export function GlobalContentHost({
                 }
               />
             </Suspense>
-          ) : selectedTerminal ? null : selectedChat ? (
-            <>
-              <PanelToolbar aria-label="Agent controls">
-                <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                  {selectedChat.title}
-                </span>
-                <div className="ml-auto flex shrink-0 items-center gap-1">
-                  {bindings.renderAgentPanelActions?.(selectedChat)}
-                </div>
-              </PanelToolbar>
-              <ChatTranscript
-                key={selectedChat.id}
-                capabilities={IDE_CHAT_SURFACE_CAPABILITIES}
-                chat={selectedChat}
-                onConfigureModels={() => openCompactRootSettings("models")}
-                githubEnabled={selectedProject?.capabilities.github ?? false}
-                inspectOnly={selectedChat.experience === "task"}
-                inspectOpen={agentInspectOpenChats.has(selectedChat.id)}
-                inspectOverlay={narrowViewport}
-                settings={settings.data}
-                syncEnabled
-                onCreateChat={() =>
-                  newChat.mutate({ projectId: selectedChat.projectId })
-                }
-                onDelete={() => {
-                  setAgentInspectOpen(selectedChat.id, false);
-                  deleteChatMutation.mutate(selectedChat.id);
-                }}
-                onForked={(forked) => {
-                  if (forked.contextKind !== "standalone") {
-                    openCreatedTab(forked.projectId, "chat", forked.id);
-                  }
-                }}
-                onInspectOpenChange={(open) =>
-                  setAgentInspectOpen(selectedChat.id, open)
-                }
-                onOpenFile={(reference, worktreeId) =>
-                  openChatFileLink(selectedChat, reference, worktreeId)
-                }
-                onOpenRelocation={() => setChatRelocationOpen(true)}
-                onToast={showAppToast}
-                onRename={(title) =>
-                  renameChatMutation.mutate({ chatId: selectedChat.id, title })
-                }
-                relocationJob={
-                  selectedProject?.capabilities.relocation
-                    ? currentRelocation
-                    : null
-                }
-                refocusOnWindowActivation={desktopRuntime}
-              />
-            </>
-          ) : selectedProject ? (
+          ) : selectedTerminal ? null : selectedChat ? null : selectedProject ? (
             <ProjectOverviewHost>
               {selectedProject.setupStatus !== "ready" ? (
                 <EmptyState>

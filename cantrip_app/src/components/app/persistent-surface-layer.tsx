@@ -1,4 +1,6 @@
 import { chatConsoleTerminal } from "@/components/chat/chat-console-state";
+import { PersistentChatViews } from "@/components/chat/persistent-chat-views";
+import { WorkspaceChatPanel } from "@/components/chat/workspace-chat-panel";
 import type { ProjectSummary } from "@cantrip/protocol";
 import { Loader2 } from "lucide-react";
 import { Suspense, useMemo, useSyncExternalStore } from "react";
@@ -151,6 +153,39 @@ export function PersistentSurfaceLayer({
       ),
     [surfaceDockPanePresentations],
   );
+  const chatOwners = useMemo(
+    () =>
+      projectSurfaces?.flatMap((surface: any) =>
+        excludedPersistentSurfaceIds?.has(surface.tabKey)
+          ? []
+          : surface.kind === "chat"
+            ? [
+                {
+                  tabId: surface.tabKey,
+                  resourceId: surface.entity.id,
+                  chat: surface.entity,
+                },
+              ]
+            : surface.kind === "unresolved" && surface.member.tabKind === "chat"
+              ? [{ tabId: surface.tabKey, resourceId: surface.member.tabId }]
+              : [],
+      ) ?? [],
+    [projectSurfaces, excludedPersistentSurfaceIds],
+  );
+  const chatPlacements = useMemo(
+    () =>
+      surfaceDockPanePresentations?.flatMap((presentation: any) =>
+        presentation.activeSurface?.kind === "chat"
+          ? [
+              {
+                tabId: presentation.activeSurface.tabKey,
+                portalTarget: presentation.portalTarget,
+              },
+            ]
+          : [],
+      ),
+    [surfaceDockPanePresentations],
+  );
   const browserOwners = useMemo(
     () =>
       projectSurfaces?.flatMap((surface: any) =>
@@ -262,6 +297,33 @@ export function PersistentSurfaceLayer({
   ]);
   return (
     <>
+      <PersistentChatViews
+        key={JSON.stringify([sessionKey, selectedProjectId])}
+        owners={chatOwners}
+        incomingViews={bindings.incomingChatViews}
+        placements={chatPlacements}
+        selectedTabId={
+          appMode === "ide" &&
+          !showImporter &&
+          !showSettings &&
+          !bindings.showProjectOverview &&
+          !showArchivedStandaloneChats &&
+          !showServerAdmin &&
+          !showProjectSettings &&
+          !selectedPaneOwnedElsewhere
+            ? (selectedTabKey ?? null)
+            : null
+        }
+        renderChat={(chat, tabId, visible, incoming) => (
+          <WorkspaceChatPanel
+            tabId={tabId}
+            incoming={incoming}
+            chat={chat}
+            visible={visible && selectedTabKey === tabId}
+            bindings={bindings}
+          />
+        )}
+      />
       <Suspense fallback={null}>
         <PersistentBrowserViews
           incomingViews={bindings.incomingBrowserViews}

@@ -741,3 +741,100 @@ this is not native WebView validation. The isolated native fixture is still live
 but the computer-use tool reported that the Mac is locked and could not unlock
 it. Native interaction must resume after manual unlock; no native timing result
 is claimed and production app data has not been touched.
+
+Refresh cycle merged as PR #2220 (`bcc2a6175115f79a73923400a569c58aaa45aae1`);
+Primary was fast-forwarded and the refresh worktree archived. All three domain
+CI jobs (macOS, Linux, Windows) subsequently passed.
+
+### Chat view lifecycle cycle (in progress)
+
+Source inspection confirms the transfer path already waits for ready and
+restored-state acknowledgments before committing. However, its surface adapter
+rejects chats, remote desktop, and several tool surfaces. Project chats still
+render directly from `selectedChat`, keyed by resource identity, unlike retained
+browser/file views. Their composer has protected draft persistence, but that
+does not by itself preserve all local view state or flush in-flight edits on a
+window transfer.
+
+The isolated chat-view lane introduces a tab-keyed retained renderer and two
+passing regression tests for draft retention across selection, query-gap metadata,
+resource replacement, and independent closure. This component is not wired into
+the shell at that checkpoint. Remaining work in this cycle includes shell integration, hidden
+view focus behavior, encrypted transfer capture/restoration (including draft and
+scroll state), and integration/native verification. No chat-transfer behavior is
+claimed from these component tests alone.
+
+Shell integration checkpoint: project chat rendering now goes through the
+tab-keyed persistent surface layer, with the old selected-resource renderer
+removed from GlobalContentHost. Existing chat actions are retained in
+WorkspaceChatPanel; only the selected visible tab subscribes to native
+window-activation focus. Nine focused owner/layer/linked-console tests and the
+app/dependency production build pass. The full app suite passed: 526 files,
+3,638 tests passed and three skipped. Encrypted
+chat transfer capture/restoration, inactive view side-effect review, and native
+interaction verification remain unfinished; this cycle is not ready to merge.
+
+Transfer-contract checkpoint: the common encrypted batch now validates reserved
+chat/project identities and private composer/transcript state. The chat lifecycle
+registry fences replaced renderers and account generations. Eleven focused tests
+pass, including stale cancellation, pending capture during account rotation,
+unauthenticated registration, and batch capture/staging. App TypeScript build
+checking and diff whitespace checks pass. The app now directly declares the
+existing locked Zod version; lockfile changes are limited to that dependency.
+These contracts are not yet connected to live chat capture/restore or destination
+staging, so chat window transfer remains unfinished and this is not native QA.
+
+The source transfer adapter now includes registered chat views in mixed-pane
+batches, using the reserved tab/chat/project identity. Its six tests pass.
+The scroll hook has explicit capture/restoration methods and prevents its queued
+mount-time jump from overwriting a restored reading position. Eighteen focused
+scroll, registry, state, and batch tests pass. Destination callers must load the
+required transcript rows before restoring; live chat registration, historical-row
+restoration and destination staging are still required before the cycle can merge.
+
+Destination staging now loads the authorized project chat catalog, matches each
+reserved tab to its chat, validates the private snapshot, and waits for the chat
+renderer acknowledgment. Cancellation drops staged state; committed views retain
+it until that tab closes. The retained chat component accepts staged incoming
+views, keeps them inert before commit, and preserves component identity on
+activation. Twenty-one destination/retained-view/surface-layer tests and app
+TypeScript checking pass. Live transcript capture/restore and shell propagation
+of the incoming state are not connected yet; no end-to-end transfer is claimed.
+
+The chat-view lifecycle hook now coordinates source suspension, draft flush before
+capture/retirement, cancellation release, and abortable destination restoration.
+Three hook tests pass for ordering, release idempotency, and suppression of late
+acknowledgments after disposal. This hook does not stop server execution. It still
+needs the transcript controller's concrete capture/restore callbacks; inspection
+confirmed paginated history must be restored before applying scroll coordinates,
+and pending attachment uploads must not be silently filtered out of capture.
+
+Live integration checkpoint: shell incoming-chat propagation and transcript
+lifecycle registration are connected. Capture includes draft, attachments,
+selection, editing state, inspector state, GitHub references and loaded-history
+boundary. Destination restoration reads authoritative history pages, trims extra
+prefix rows, restores local state, and acknowledges completion. Pending attachment
+operations report an explicit transfer failure. Staged views suppress draft writes,
+console synchronization and incidental older-history prefetch; source suspension
+makes the transcript inert without stopping agent execution. Hidden viewport scroll
+restoration is retained until the viewport becomes measurable. The full app suite
+passed (530 files; 3,656 tests and three skips) before the final prefetch guard and
+hidden-viewport regression additions. Native two-window validation, live integration
+race review, and PR delivery remain outstanding; this is not completion of the goal.
+
+Review checkpoint: the app/dependency production build passes with the existing
+crypto externalization, chunk-size and ineffective dynamic-import warnings.
+Native QA was attempted again; the computer-use tool reports the Mac is locked
+and automatic unlock failed. Manual unlock is needed for native interaction.
+Source suspension now disables background draft scheduling, console synchronization
+and native focus handling, and capture rejects an actual in-flight message update.
+A regression covers cancelling a transfer while its draft flush is pending; late
+flush completion cannot capture the cancelled source. Native results remain
+unverified and the implementation remains in its isolated unmerged cycle.
+
+PR packaging checkpoint: final automated validation passes on the integrated
+chat-view implementation (530 app test files; 3,657 tests passed, three skipped;
+app/dependency production build and whitespace checks). The cycle is ready for
+automated PR review with native QA explicitly outstanding, not represented as
+passed. The broader goal still requires native/mobile verification, remaining
+surface adapters, migration/legacy-path retirement and final TABS documentation.
