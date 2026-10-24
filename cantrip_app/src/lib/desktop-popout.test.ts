@@ -140,6 +140,7 @@ import {
   openDesktopPopoutGroup,
   openDesktopPopoutPane,
   openWorkspaceTransferWindow,
+  reopenWorkspaceWindow,
   openDesktopExplorerFile,
   openDesktopStandaloneChatFile,
   parseDesktopExplorerFileTarget,
@@ -166,6 +167,48 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
     resolve,
   };
 }
+
+it("reopens the committed native identity without focusing or replacing a surviving window", async () => {
+  tauri.isTauri.mockReturnValue(true);
+  vi.stubGlobal("window", { location: { pathname: "/" } });
+  try {
+    const target = {
+      projectId: "project",
+      paneId: "pane",
+      activeTabKey: "tab",
+    };
+    await reopenWorkspaceWindow("committed-window", target, () => true);
+    const native = webviews.windows.get("committed-window")!;
+    expect(native.options).toMatchObject({ visible: true, focus: false });
+    expect(native.options?.url).not.toContain("cantrip-transfer");
+    await reopenWorkspaceWindow("committed-window", target, () => true);
+    expect(webviews.windows.get("committed-window")).toBe(native);
+    expect(native.setFocus).not.toHaveBeenCalled();
+    expect(native.show).not.toHaveBeenCalled();
+  } finally {
+    webviews.windows.clear();
+    tauri.isTauri.mockReturnValue(false);
+    vi.unstubAllGlobals();
+  }
+});
+
+it("does not create a recovery window after its scope expires", async () => {
+  tauri.isTauri.mockReturnValue(true);
+  try {
+    await reopenWorkspaceWindow(
+      "expired-window",
+      {
+        projectId: "project",
+        paneId: "pane",
+        activeTabKey: "tab",
+      },
+      () => false,
+    );
+    expect(webviews.windows.has("expired-window")).toBe(false);
+  } finally {
+    tauri.isTauri.mockReturnValue(false);
+  }
+});
 
 beforeEach(() => {
   identityRuntime.reset();

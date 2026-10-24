@@ -121,6 +121,7 @@ type DesktopWindowOpenBehavior = {
   focus?: boolean;
   visible?: boolean;
   reuseWithoutFocus?: boolean;
+  assertBeforeCreate?: () => void;
 };
 
 export function isSyntheticBuildProgressWindow(search: string): boolean {
@@ -824,6 +825,37 @@ export async function openWorkspaceTransferWindow(
   return result === "created" ? "created" : "existing";
 }
 
+/** Reopen a committed owner under its existing native identity. Existing
+ * windows are neither focused nor reloaded; missing owners load authorized
+ * workspace state, not the obsolete transfer snapshot. */
+export async function reopenWorkspaceWindow(
+  windowId: string,
+  target: DesktopPopoutPaneTarget,
+  isCurrent: () => boolean,
+): Promise<void> {
+  if (!isDesktopRuntime()) return;
+  const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+  const existing = await WebviewWindow.getByLabel(windowId);
+  if (!isCurrent() || existing) return;
+  if (windowId === "main" || target.transfer)
+    throw new Error("Expected a committed detached workspace window.");
+  await openDesktopWindow(
+    windowId,
+    desktopPopoutPaneSearch(target),
+    "Workspace",
+    undefined,
+    undefined,
+    {
+      focus: false,
+      visible: true,
+      reuseWithoutFocus: true,
+      assertBeforeCreate: () => {
+        if (!isCurrent()) throw new Error("Workspace recovery context changed.");
+      },
+    },
+  );
+}
+
 export async function openDesktopProjectOverviewPopout(
   target: DesktopProjectOverviewTarget,
   title: string,
@@ -1255,6 +1287,7 @@ async function openDesktopWindow(
       ? Boolean(await WebviewWindow.getByLabel(label))
       : focusWindow(label);
   if (await reuse()) return "focused";
+  behavior.assertBeforeCreate?.();
 
   const path = window.location.pathname || "/";
   const macos = isMacosDesktopRuntime();
