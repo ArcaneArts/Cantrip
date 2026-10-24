@@ -1554,3 +1554,31 @@ at the unchanged 2,006-line server tab-layout budget. No new native QA is claime
 for this removal of the unused fallback; the preceding migration cycle's actual
 native two-window evidence is recorded above. PR delivery is the remaining step
 for this cycle, not for the full goal.
+
+### Simultaneous mobile/desktop acceptance
+
+Sidebar ownership cutover merged as PR #2228 (`036b9724a`); Primary was
+fast-forwarded and 40 integrated focused tests passed. This cycle adds the
+repeatable `scripts/qa/workspace-mobile-desktop.mjs` acceptance harness and
+[execution instructions](qa/WORKSPACE_MOBILE_DESKTOP.md). It changes no production
+layout behavior. Two independent Chromium installations connect to the same
+disposable account/project through the actual recovery-file import, app, server,
+worker, and protected workspace transport.
+
+The expanded run `.qa/editor-6c24fdb0-aff4-46db-996c-58ffeb548b7f` exited zero
+with six passing checkpoints: different device workspace IDs, mobile file opens
+without desktop placement changes, dirty buffer and tab identities surviving
+viewport resize/reload, inactive close preserving selection, Rust default Edit
+mode plus interaction-based recency and adjacent close selection, and desktop
+opens/pins without mobile placement changes. Both owned fixture processes exited
+cleanly with no surviving owned processes. The mobile screenshot shows the
+unsaved draft and single remaining file tab. An initial exploratory run waited
+for an obsolete Switch to IDE step even though recovered account preferences had
+already restored IDE; the harness was corrected and fresh runs passed.
+
+`pnpm check` still fails the unchanged server `tab-layouts.ts` line budget
+(2,006 versus 2,000). This is not waived. The test uses representative mobile
+Chromium, not physical iOS/Android, and does not establish large-tab overflow or
+all native surface adapters. Those, the remaining compatibility cleanup, final
+`TABS.md` rewrite, and goal-wide acceptance audit remain required. PR delivery
+for this verification cycle is pending.
