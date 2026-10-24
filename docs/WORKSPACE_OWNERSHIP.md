@@ -1698,3 +1698,32 @@ Prior server CI run 40131223407 has now finished: each platform failed the
 existing worker-command-timeout-policy expectation (10 unbounded commands
 expected, six actual); its encrypted identity/ownership batch otherwise passed
 147 tests. This remains unresolved, not waived by the app cleanup.
+
+### Retire unused preview component contracts
+
+Shell transient ownership removal merged in #2233 (`a2d1b9318`), and all
+109 focused tests passed again on integrated Primary. The component cleanup
+removes the tab strip's separate `previewFile` contract and its special
+renderer, plus transient-file/lifecycle forwarding in PersistentExplorerViews.
+Ordinary file surfaces remain the tab strip's sole file presentation, including
+their preview flag and view identity. Dirty legacy Explorer retention and
+incoming editor transfers are unchanged.
+
+Tests now select and middle-click-close both preview and pinned ordinary file
+surfaces by view identity. Legacy Explorer tests check keyed metadata updates,
+inactive open-view retention beyond the clean cache bound, and dirty retention.
+The lower-level ExplorerView transient-path API remains intentionally supported:
+Code views and the legacy popout reader still call it. Sidebar prewarm pooling
+also remains for the next cleanup cycle.
+
+The audit additionally found that ordinary file tabs currently lack the old
+preview renderer's double-click/Keep Open action. Sidebar pinning works through
+the owned controller, but the tab-strip action must be wired to that same
+controller in a subsequent behavior change. This is remaining work, not a
+completed preview/pin acceptance claim.
+
+Validation: full app suite 547 files / 3,786 passed / three skipped; final
+focused suite 95 passed, including the retained ExplorerView transient/mode
+and native-session cases. Production build (including TypeScript), application
+decomposition, large-file audit, changed-file formatting, and diff checks passed.
+This dead-API removal makes no new native-window acceptance claim.

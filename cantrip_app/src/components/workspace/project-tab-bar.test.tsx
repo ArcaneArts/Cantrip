@@ -495,100 +495,51 @@ describe("project pane tab strip", () => {
     await act(async () => renderer.unmount());
   });
 
-  it("renders a left-clicked file as an italic filename preview in its target group", async () => {
-    const onPin = vi.fn();
-    const onSelect = vi.fn();
-    let renderer!: TestRenderer.ReactTestRenderer;
-    await act(async () => {
-      renderer = TestRenderer.create(
-        <DndContext>
-          <ProjectPaneTabStrip
-            activeTabKey=""
-            onClose={vi.fn()}
-            onCreate={vi.fn()}
-            onDelete={vi.fn()}
-            onRename={vi.fn()}
-            onSelect={vi.fn()}
-            previewFile={{
-              active: true,
-              path: "src/preview-file.ts",
-              projectId: "project-1",
-              title: "preview-file.ts",
-              onClose: vi.fn(),
-              onPin,
-              onSelect,
-            }}
-            surfaces={[]}
-          />
-        </DndContext>,
-      );
-    });
-
-    const preview = renderer.root.findByProps({
-      "data-preview-file-path": "src/preview-file.ts",
-    });
-    const previewButton = preview.findByProps({ role: "tab" });
-    expect(textContent(previewButton.props.children)).toContain(
-      "preview-file.ts",
-    );
-    expect(previewButton.props.className).toContain("italic");
-    expect(JSON.stringify(renderer.toJSON())).toContain("Color…");
-
-    await act(async () => previewButton.props.onClick());
-    expect(onSelect).toHaveBeenCalledOnce();
-    const event = { preventDefault: vi.fn() };
-    await act(async () => previewButton.props.onDoubleClick(event));
-    expect(event.preventDefault).toHaveBeenCalledOnce();
-    expect(onPin).toHaveBeenCalledOnce();
-    await act(async () => renderer.unmount());
-  });
-
-  it("closes a File preview tab on middle click", async () => {
-    const onClose = vi.fn();
-    let renderer!: TestRenderer.ReactTestRenderer;
-    await act(async () => {
-      renderer = TestRenderer.create(
-        <DndContext>
-          <ProjectPaneTabStrip
-            activeTabKey=""
-            onClose={vi.fn()}
-            onCreate={vi.fn()}
-            onDelete={vi.fn()}
-            onRename={vi.fn()}
-            onSelect={vi.fn()}
-            previewFile={{
-              active: true,
-              path: "src/file.ts",
-              projectId: "project-1",
-              title: "file.ts",
-              onClose,
-              onPin: vi.fn(),
-              onSelect: vi.fn(),
-            }}
-            surfaces={[]}
-          />
-        </DndContext>,
-      );
-    });
-    const preview = renderer.root.findByProps({
-      "data-preview-file-path": "src/file.ts",
-    });
-    const mouseDown = { button: 1, preventDefault: vi.fn() };
-    const auxiliaryClick = {
-      button: 1,
-      preventDefault: vi.fn(),
-      stopPropagation: vi.fn(),
-    };
-
-    preview.props.onMouseDown(mouseDown);
-    preview.props.onAuxClick(auxiliaryClick);
-
-    expect(mouseDown.preventDefault).toHaveBeenCalledOnce();
-    expect(auxiliaryClick.preventDefault).toHaveBeenCalledOnce();
-    expect(auxiliaryClick.stopPropagation).toHaveBeenCalledOnce();
-    expect(onClose).toHaveBeenCalledOnce();
-    await act(async () => renderer.unmount());
-  });
+  it.each([true, false])(
+    "selects and closes an ordinary file tab with preview=%s by its view identity",
+    async (preview) => {
+      const surface = fileSurface();
+      surface.preview = preview;
+      const onClose = vi.fn();
+      const onSelect = vi.fn();
+      let renderer!: TestRenderer.ReactTestRenderer;
+      await act(async () => {
+        renderer = TestRenderer.create(
+          <DndContext>
+            <ProjectPaneTabStrip
+              activeTabKey={surface.tabKey}
+              onClose={onClose}
+              onCreate={vi.fn()}
+              onDelete={vi.fn()}
+              onRename={vi.fn()}
+              onSelect={onSelect}
+              surfaces={[surface]}
+            />
+          </DndContext>,
+        );
+      });
+      const tab = renderer.root.findByProps({
+        "data-project-tab-key": surface.tabKey,
+      });
+      const button = tab.findByProps({ role: "tab" });
+      expect(button.props["aria-selected"]).toBe(true);
+      await act(async () => button.props.onClick());
+      expect(onSelect).toHaveBeenCalledExactlyOnceWith(surface.tabKey);
+      const mouseDown = { button: 1, preventDefault: vi.fn() };
+      const auxiliaryClick = {
+        button: 1,
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      };
+      tab.props.onMouseDown(mouseDown);
+      tab.props.onAuxClick(auxiliaryClick);
+      expect(mouseDown.preventDefault).toHaveBeenCalledOnce();
+      expect(auxiliaryClick.preventDefault).toHaveBeenCalledOnce();
+      expect(auxiliaryClick.stopPropagation).toHaveBeenCalledOnce();
+      expect(onClose).toHaveBeenCalledExactlyOnceWith(surface);
+      await act(async () => renderer.unmount());
+    },
+  );
 
   it("renders only the pinned file presentation", () => {
     const markup = renderTabs(fileSurface());
