@@ -1791,3 +1791,25 @@ The history suite's app-alias import failure and task continuation encryption
 fixture failure were separately reproduced and are not fixed by these changes.
 Native lifecycle acceptance, remaining suite failures, TABS.md and the final
 requirements audit remain outstanding.
+
+### Restore history and continuation verification
+
+Timeout/retry verification merged in #2237 (`85de5cd5a`), with all 23 focused
+tests passing again on Primary. The server test runner now resolves the app
+source alias used by the real client history projection; test discovery remains
+unchanged. The previously unloaded history suite now executes its database-backed
+ingestion and projection cases.
+
+Continuation encryption assertions now follow the #2190 contract: ordinary
+Task and Agent continuations pass an encrypted chat envelope to beginTurn, while
+active Task Goals use their dedicated continuation runtime. Tests decrypt both
+ordinary envelopes, check system/default classification and protected worktree
+text, reject another owner's decryption, and ensure a handled Goal does not
+start a duplicate turn or issue another protection request.
+
+Validation: all 66 tests across native-history-items, worktree-continuation-
+encryption and task-goal-observation passed; server type-check, formatting and
+diff checks passed. This cycle does not change runtime behavior. The full server
+run started in the previous verification worktree remains separate evidence;
+other known failures, native acceptance, documentation replacement and the final
+requirements audit are not declared complete.
