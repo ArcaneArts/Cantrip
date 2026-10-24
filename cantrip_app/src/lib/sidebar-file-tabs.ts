@@ -57,8 +57,6 @@ export function sidebarExplorerPrewarmTarget({
   isPopout,
   sidebarExplorer,
 }: {
-  hasOpenExplorer: boolean;
-  pinInProgress: boolean;
   isPopout: boolean;
   sidebarExplorer: ExplorerSummary | null;
 }): ExplorerSummary | null {
@@ -193,18 +191,6 @@ export function preferredSidebarExplorer({
     ? explorers.filter((explorer) => explorer.worktreeId === desiredWorktreeId)
     : [...explorers];
   return candidates.find((explorer) => !tabbed.has(explorer.id)) ?? null;
-}
-
-export function sidebarExplorerCanOwnPreview({
-  explorerId,
-  layout,
-  pinInProgress,
-}: {
-  explorerId: string;
-  layout: ProjectTabLayoutSummary | null | undefined;
-  pinInProgress: boolean;
-}): boolean {
-  return !pinInProgress && !tabbedExplorerIds(layout).has(explorerId);
 }
 
 export function dedicatedSidebarExplorers({

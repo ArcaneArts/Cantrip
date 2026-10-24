@@ -25,8 +25,6 @@ const EMPTY_EXCLUDED_EXPLORER_IDS: ReadonlySet<string> = new Set();
 interface ExplorerOwnershipDiagnostic {
   active: boolean;
   explorerId: string;
-  handoffDestination: boolean;
-  handoffSource: boolean;
   openOwner: boolean;
   ownershipKind: string;
   prewarm: boolean;
@@ -42,8 +40,6 @@ function sameExplorerOwnershipDiagnostic(
   return (
     left?.active === right.active &&
     left.explorerId === right.explorerId &&
-    left.handoffDestination === right.handoffDestination &&
-    left.handoffSource === right.handoffSource &&
     left.openOwner === right.openOwner &&
     left.ownershipKind === right.ownershipKind &&
     left.prewarm === right.prewarm &&
@@ -115,8 +111,6 @@ export function ownedExplorerSurfaceTabs(
   openExplorers: readonly ExplorerSummary[],
   active: ExplorerSummary | null,
   prewarm: ExplorerSummary | null | undefined,
-  handoff?: ExplorerSummary | null,
-  handoffSource?: ExplorerSummary | null,
   prewarmSuccessor?: ExplorerSummary | null,
 ): ExplorerSummary[] {
   const owned: ExplorerSummary[] = [];
@@ -125,8 +119,6 @@ export function ownedExplorerSurfaceTabs(
     ...openExplorers,
     prewarm,
     prewarmSuccessor,
-    handoffSource,
-    handoff,
     active,
   ]) {
     if (!explorer) continue;
@@ -147,12 +139,9 @@ export function PersistentExplorerViews({
   appearance,
   graphRequest,
   gitStatuses,
-  handoffExplorer,
-  handoffSourceExplorer,
   onlineWorkerIds,
   onChanged,
   onHeaderChange,
-  onInlineCodeReady,
   onLifecycleChange,
   onTransientLifecycleChange,
   onOpenFile,
@@ -179,12 +168,9 @@ export function PersistentExplorerViews({
   appearance: CodeAppearance;
   graphRequest?: ExplorerGraphRequest | null;
   gitStatuses: Readonly<Record<string, GitStatus | undefined>>;
-  handoffExplorer?: ExplorerSummary | null;
-  handoffSourceExplorer?: ExplorerSummary | null;
   onlineWorkerIds?: ReadonlySet<string>;
   onChanged?(explorer: ExplorerSummary): void;
   onHeaderChange?(state: ExplorerHeaderState | null): void;
-  onInlineCodeReady?(explorerId: string): void;
   onLifecycleChange?(
     explorerId: string,
     actions: ExplorerLifecycleActions | null,
@@ -273,8 +259,6 @@ export function PersistentExplorerViews({
             openExplorers,
             activeExplorer,
             prewarmExplorer,
-            handoffExplorer,
-            handoffSourceExplorer,
             prewarmSuccessorExplorer,
           )
         : ownedExplorerSurfaceTabs(
@@ -288,8 +272,6 @@ export function PersistentExplorerViews({
             ),
             activeExplorer,
             prewarmExplorer,
-            handoffExplorer,
-            handoffSourceExplorer,
             prewarmSuccessorExplorer,
           )
       ).filter(({ id }) => !excludedIds.has(id)),
@@ -297,8 +279,6 @@ export function PersistentExplorerViews({
       activeExplorer,
       dirtyIds,
       excludedIds,
-      handoffExplorer,
-      handoffSourceExplorer,
       openExplorers,
       prewarmExplorer,
       prewarmSuccessorExplorer,
@@ -307,17 +287,8 @@ export function PersistentExplorerViews({
     ],
   );
   const inlineCodeOwnerIds = useMemo(
-    () =>
-      new Set([
-        ...(openExplorers?.map(({ id }) => id) ?? []),
-        // A pin handoff becomes an ordinary open owner after the layout
-        // refresh, without changing the keyed ExplorerView instance.
-        ...(handoffExplorer ? [handoffExplorer.id] : []),
-        // The source is captured before the pin request so query/layout
-        // reconciliation cannot release the Code owner during promotion.
-        ...(handoffSourceExplorer ? [handoffSourceExplorer.id] : []),
-      ]),
-    [handoffExplorer, handoffSourceExplorer, openExplorers],
+    () => new Set(openExplorers?.map(({ id }) => id) ?? []),
+    [openExplorers],
   );
   const placementById = useMemo(
     () =>
@@ -335,8 +306,6 @@ export function PersistentExplorerViews({
         const active = visiblePlacements
           ? placementById.has(explorer.id)
           : activeExplorer?.id === explorer.id;
-        const handoffDestination = handoffExplorer?.id === explorer.id;
-        const handoffSource = handoffSourceExplorer?.id === explorer.id;
         const openOwner = Boolean(
           openExplorers?.some(({ id }) => id === explorer.id),
         );
@@ -349,14 +318,10 @@ export function PersistentExplorerViews({
           openOwner ? "open" : null,
           transient ? "transient" : null,
           prewarm ? "prewarm" : null,
-          handoffSource ? "handoff-source" : null,
-          handoffDestination ? "handoff-destination" : null,
         ].filter((role): role is string => role !== null);
         return {
           active,
           explorerId: explorer.id,
-          handoffDestination,
-          handoffSource,
           openOwner,
           ownershipKind: roles.join("+") || "retained-only",
           prewarm,
@@ -367,8 +332,6 @@ export function PersistentExplorerViews({
       }),
     [
       activeExplorer?.id,
-      handoffExplorer?.id,
-      handoffSourceExplorer?.id,
       openExplorers,
       prewarmExplorer?.id,
       prewarmSuccessorExplorer?.id,
@@ -482,9 +445,6 @@ export function PersistentExplorerViews({
             : active
               ? onHeaderChange
               : undefined
-        }
-        onInlineCodeReady={
-          onInlineCodeReady ? () => onInlineCodeReady(explorer.id) : undefined
         }
         onLifecycleChange={handleLifecycleChange}
         onOpenFile={

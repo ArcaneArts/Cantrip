@@ -8,7 +8,6 @@ import type {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as api from "@/lib/api";
 
-import type { SidebarFilePinHandoffState } from "./application-shell-model";
 import { createSidebarExplorerCommands } from "./sidebar-explorer-commands";
 
 afterEach(() => vi.restoreAllMocks());
@@ -36,7 +35,6 @@ const previewOwner = {
 
 function commandHarness({
   openOwnedFile = vi.fn(async () => {}),
-  handoff = null,
   layout,
   projects = [],
   selectedPane = layout.panes[0],
@@ -49,7 +47,6 @@ function commandHarness({
   openOwnedFile?: Parameters<
     typeof createSidebarExplorerCommands
   >[0]["openOwnedFile"];
-  handoff?: SidebarFilePinHandoffState | null;
   layout: ProjectTabLayoutSummary;
   projects?: ProjectSummary[];
   selectedPane?: ProjectTabLayoutSummary["panes"][number];
@@ -64,7 +61,6 @@ function commandHarness({
   const setWorkspaceSelection = vi.fn();
   const input = {
     openOwnedFile,
-    abandonSidebarFilePinHandoff: vi.fn(),
     createSidebarExplorerMutation: {
       isPending: false,
       mutate: vi.fn(),
@@ -72,9 +68,7 @@ function commandHarness({
     },
     explorers: [previewOwner],
     fileState: {
-      setSidebarFilePinHandoff: vi.fn(),
       setSidebarFilePreview,
-      sidebarFilePinHandoffRef: { current: handoff },
       sidebarFilePreview: {
         active: true,
         explorerId: previewOwner.id,
@@ -240,18 +234,9 @@ describe("sidebar Explorer ownership commands", () => {
     );
   });
 
-  it("opens another file even if an obsolete pin handoff is present", async () => {
+  it("opens another file without a legacy handoff", async () => {
     const openOwnedFile = vi.fn(async () => {});
-    const handoff = {
-      destinationExplorer: null,
-      destinationExplorerId: previewOwner.id,
-      ready: false,
-      sourceExplorer: previewOwner,
-      sourcePath: "src/first.ts",
-      transactionId: "pin-1",
-    } satisfies SidebarFilePinHandoffState;
     const harness = commandHarness({
-      handoff,
       layout: layout([]),
       openOwnedFile,
     });

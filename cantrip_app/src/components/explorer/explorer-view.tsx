@@ -283,7 +283,6 @@ export function ExplorerView({
   gitStatus,
   onChanged,
   onHeaderChange,
-  onInlineCodeReady,
   onLifecycleChange,
   keepInlineCodeWarm = false,
   onOpenFile,
@@ -311,7 +310,6 @@ export function ExplorerView({
   gitStatus?: GitStatus;
   onChanged?(explorer: ExplorerSummary): void;
   onHeaderChange?(state: ExplorerHeaderState | null): void;
-  onInlineCodeReady?(): void;
   onLifecycleChange?(
     explorerId: string,
     actions: ExplorerLifecycleActions | null,
@@ -761,15 +759,6 @@ export function ExplorerView({
     displayedSelectedPath,
     nativeDocumentId,
     nativeDocument,
-  ]);
-  useEffect(() => {
-    if (nativeDocument?.id === nativeDocumentId && streamEncryptionReady)
-      onInlineCodeReady?.();
-  }, [
-    nativeDocument,
-    nativeDocumentId,
-    streamEncryptionReady,
-    onInlineCodeReady,
   ]);
 
   const applyViewState = useCallback(

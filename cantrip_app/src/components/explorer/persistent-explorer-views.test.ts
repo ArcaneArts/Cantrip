@@ -35,6 +35,7 @@ vi.mock("@/components/explorer/explorer-view", () => ({
 
 import {
   MAX_RETAINED_EXPLORER_VIEWS,
+  ownedExplorerSurfaceTabs,
   PersistentExplorerViews,
   retainExplorerSurfaceTabs,
   retainRequestedExplorerSurfaceTabs,
@@ -43,6 +44,33 @@ import {
 function explorer(id: string): ExplorerSummary {
   return { id, title: id } as ExplorerSummary;
 }
+
+describe("ownedExplorerSurfaceTabs", () => {
+  it("renders only the requested open, active and warm owners", () => {
+    const open = explorer("open");
+    const warm = explorer("warm");
+    const successor = explorer("successor");
+    const active = explorer("active");
+    expect(ownedExplorerSurfaceTabs([open], active, warm, successor)).toEqual([
+      open,
+      warm,
+      successor,
+      active,
+    ]);
+  });
+
+  it("keeps one renderer identity when an open owner is also active and warm", () => {
+    const open = explorer("same");
+    const active = { ...open, title: "Current title" };
+    expect(ownedExplorerSurfaceTabs([open], active, open, open)).toEqual([
+      active,
+    ]);
+  });
+
+  it("does not invent a replacement owner for an empty layout", () => {
+    expect(ownedExplorerSurfaceTabs([], null, null)).toEqual([]);
+  });
+});
 
 describe("retainExplorerSurfaceTabs", () => {
   beforeEach(() => {

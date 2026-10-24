@@ -1,23 +1,11 @@
 import type {
   CodeAppearance,
-  ExplorerSummary,
   ModelProfileSummary,
   ProjectBuiltInSurfaceDefinitionId,
   ProjectTabLayoutSummary,
 } from "@cantrip/protocol";
 
 import type { ProjectOverviewSection } from "@/lib/project-overview-section";
-
-export const SIDEBAR_FILE_PIN_HANDOFF_TIMEOUT_MS = 20_000;
-
-export interface SidebarFilePinHandoffState {
-  destinationExplorer: ExplorerSummary | null;
-  destinationExplorerId: string;
-  ready: boolean;
-  sourceExplorer: ExplorerSummary;
-  sourcePath: string;
-  transactionId: string;
-}
 
 export type WorktreeBindingTarget =
   | {
