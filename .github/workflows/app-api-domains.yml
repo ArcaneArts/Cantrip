@@ -57,7 +57,32 @@ jobs:
         run: pnpm --filter @cantrip/app exec vitest run src/lib/api-client.test.ts src/lib/api-domain-state.test.ts src/lib/api-shared-code-identity.test.ts src/lib/api-folder-root.test.ts src/lib/api-native-history-settings.test.ts src/lib/run-configuration-api.test.ts src/lib/api-terminal-create.test.ts src/lib/api-managed-queue.test.ts src/lib/api-task-conversation.test.ts src/lib/attachment-encryption.test.ts src/lib/policy-encryption.test.ts src/lib/tunnel-worker-readiness-cache.test.ts src/lib/short-lived-request-cache.test.ts src/lib/client-encryption.test.ts --maxWorkers=2
       - name: Workspace command reconciliation and identity lifetime
         if: ${{ !cancelled() }}
-        run: pnpm --filter @cantrip/app exec vitest run src/lib/workspace-command-client.test.ts src/lib/api-workspace-layouts.test.ts --maxWorkers=2
+        run: pnpm --filter @cantrip/app exec vitest run src/lib/workspace-command-client.test.ts src/lib/api-workspace-layouts.test.ts src/lib/workspace-device-identity.test.ts src/lib/workspace-bootstrap.test.ts src/lib/workspace-window-presentation.test.ts src/lib/workspace-presentation-store.test.ts src/lib/workspace-layout-command.test.ts src/components/app/shell-navigation-ownership.test.ts src/components/app/use-workspace-connection.test.ts --maxWorkers=2
+      - name: Workspace resource loading and creation boundaries
+        if: ${{ !cancelled() }}
+        run: pnpm --filter @cantrip/app exec vitest run src/lib/project-surface.test.ts src/components/app/unresolved-project-surface.test.tsx src/components/app/surface-creation-ownership.test.ts src/components/app/project-workspace-selection.test.ts src/components/app/surface-commands.test.ts src/components/workspace/project-tab-bar.test.tsx src/components/app/project-workspace-frame-dock-rail.test.tsx --maxWorkers=2
+      - name: Workspace resource removal coordination
+        if: ${{ !cancelled() }}
+        run: pnpm --filter @cantrip/app exec vitest run src/components/app/project-surface-close.test.tsx src/components/app/surface-crud-operations.test.tsx src/components/app/workspace-recovery-banner.test.tsx src/lib/editor-confirmation.test.ts src/components/code/native-code-lifecycle.test.ts --maxWorkers=2
+      - name: Owned file opening
+        if: ${{ !cancelled() }}
+        run: pnpm --filter @cantrip/app exec vitest run src/lib/open-owned-file.test.ts src/components/app/sidebar-explorer-controller.test.ts src/components/app/sidebar-explorer-commands.test.ts --maxWorkers=2
+      - name: Mobile workspace view navigation
+        if: ${{ !cancelled() }}
+        run: pnpm --filter @cantrip/app exec vitest run src/components/app/mobile-project-navigation.test.ts src/components/mobile/mobile-surface-picker.test.tsx src/components/mobile/mobile-project-shell.test.tsx --maxWorkers=2
+      - name: Native workspace observation boundaries
+        if: ${{ !cancelled() }}
+        run: pnpm --filter @cantrip/app exec vitest run src/components/app/desktop-popout-lifecycle.test.tsx src/lib/desktop-popout.test.ts --maxWorkers=2
+      - name: Editor transfer state continuity
+        if: ${{ !cancelled() }}
+        run: pnpm --filter @cantrip/app exec vitest run src/components/editor/document-session.test.ts src/components/explorer/explorer-native-session.test.tsx src/components/explorer/explorer-transfer-state.test.ts src/components/explorer/explorer-transfer-batch.test.ts src/lib/workspace-transfer-encryption.test.ts src/lib/workspace-transfer-channel.test.ts src/lib/workspace-transfer-destination.test.ts src/lib/workspace-transfer-source.test.ts --maxWorkers=2
+      - name: Persistent editor transfer initialization
+        if: ${{ !cancelled() }}
+        working-directory: .
+        run: pnpm --filter @cantrip/app exec vitest run src/components/explorer/persistent-editor-transfer.test.tsx src/components/code/code-view.test.tsx src/components/app/use-workspace-editor-transfer.test.ts src/components/app/detach-workspace-editors.test.ts src/components/app/use-workspace-window-return.test.ts --maxWorkers=2
+      - name: Terminal and mixed-pane transfer continuity
+        if: ${{ !cancelled() }}
+        run: pnpm --filter @cantrip/app exec vitest run src/components/app/workspace-view-transfer-batch.test.ts src/components/terminal/terminal-transfer-lifecycle.test.ts src/components/terminal/terminal-view-state.test.ts src/components/terminal/terminal-view-anchors.test.ts src/components/terminal/terminal-view.test.tsx src/components/terminal/persistent-terminal-views.test.tsx src/lib/terminal-worker-link.test.ts src/lib/worker-link.test.ts --maxWorkers=2
       - name: Repository bootstrap ordering and authorization lifetime
         if: ${{ !cancelled() }}
         run: pnpm --filter @cantrip/app exec vitest run src/lib/repository-worker-encryption.test.ts src/lib/worker-encryption-grants.test.ts --maxWorkers=2

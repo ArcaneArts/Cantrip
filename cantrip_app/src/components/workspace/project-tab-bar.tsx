@@ -18,7 +18,6 @@ import {
   useTabDisplay,
 } from "@/lib/tab-display";
 import "./tab-display.css";
-import { useAgentTabCloseConfirmation } from "./use-agent-tab-close-confirmation";
 
 import {
   ProjectSurfaceCreateMenu,
@@ -41,7 +40,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { StyledContextMenuContent } from "@/components/ui/styled-menu";
-import { nextProjectTabAfterRemoval } from "@/lib/project-pane";
 import type { ProjectSurface } from "@/lib/project-surface";
 import {
   closeTabOnMiddleClick,
@@ -63,6 +61,8 @@ export interface ProjectPaneTabStripProps {
   onCreate(kind: ProjectSurfaceCreateKind, target?: ExecutionTarget): void;
   onOpenRunning?(terminalId: string): void;
   onClose(surface: ProjectSurface): void;
+  onPopOut?(surface: ProjectSurface): void;
+  onPopOutPane?(surface: ProjectSurface): void;
   onDelete(surface: ProjectSurface, stopRunning?: true): void;
   onRename(surface: ProjectSurface, title: string): void;
   onMoveToRegion?(
@@ -89,12 +89,17 @@ export interface ProjectPaneTabStripProps {
 function surfaceCanRename(surface: ProjectSurface): boolean {
   return !(
     surface.kind === "builtin" ||
+    surface.kind === "unresolved" ||
     (surface.kind === "terminal" && surface.entity.kind === "run-configuration")
   );
 }
 
 export function surfaceCanDelete(surface: ProjectSurface): boolean {
-  return surface.kind !== "builtin" && surface.definition.deletable;
+  return (
+    surface.kind !== "builtin" &&
+    surface.kind !== "unresolved" &&
+    surface.definition.deletable
+  );
 }
 
 export function surfaceDeleteLabel(surface: ProjectSurface): string {
@@ -122,7 +127,12 @@ function SurfaceTabIcon({ surface }: { surface: ProjectSurface }) {
   ) : surface.kind === "explorer" && surface.entity.selectedPath ? (
     <FileTypeIcon path={surface.entity.selectedPath} className="size-3.5" />
   ) : (
-    <ProjectSurfaceIcon className="size-3.5 shrink-0" kind={surface.kind} />
+    <ProjectSurfaceIcon
+      className="size-3.5 shrink-0"
+      kind={
+        surface.kind === "unresolved" ? surface.member.tabKind : surface.kind
+      }
+    />
   );
 }
 
@@ -133,6 +143,8 @@ export function ProjectPaneTabStrip({
   onCreate,
   onOpenRunning,
   onClose,
+  onPopOut,
+  onPopOutPane,
   onDelete,
   onRename,
   onMoveToRegion,
@@ -154,7 +166,6 @@ export function ProjectPaneTabStrip({
   );
   const [renameValue, setRenameValue] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<ProjectSurface | null>(null);
-  const agentClose = useAgentTabCloseConfirmation(onDelete);
   const lastSurface = surfaces.at(-1);
   const paneId = explicitPaneId ?? lastSurface?.paneId ?? "empty";
   const projectId =
@@ -205,11 +216,6 @@ export function ProjectPaneTabStrip({
     if (title && title !== surface.title) onRename(surface, title);
   };
   const closeImmediately = (surface: ProjectSurface) => {
-    if (surface.kind === "chat") return;
-    if (surface.tabKey === activeTabKey) {
-      const nextTabKey = nextProjectTabAfterRemoval(surfaces, surface.tabKey);
-      if (nextTabKey) onSelect(nextTabKey);
-    }
     onClose(surface);
   };
 
@@ -260,10 +266,11 @@ export function ProjectPaneTabStrip({
                     ? (region) => onMoveToRegion(surface, region)
                     : undefined,
                 ),
-                onClose:
-                  surface.kind === "chat"
-                    ? undefined
-                    : () => closeImmediately(surface),
+                onClose: () => closeImmediately(surface),
+                onPopOut: onPopOut ? () => onPopOut(surface) : undefined,
+                onPopOutPane: onPopOutPane
+                  ? () => onPopOutPane(surface)
+                  : undefined,
                 onDelete: canDelete
                   ? () => setDeleteTarget(surface)
                   : undefined,
@@ -295,6 +302,7 @@ export function ProjectPaneTabStrip({
                         <ContextMenu.Trigger asChild>
                           <div
                             data-project-tab-key={surface.tabKey}
+                            data-preview={surface.preview || undefined}
                             data-condensed={
                               !editing && memberPosition >= expanded
                             }
@@ -309,9 +317,7 @@ export function ProjectPaneTabStrip({
                             }}
                             onAuxClick={(event) =>
                               closeTabOnMiddleClick(event, () =>
-                                surface.kind === "chat"
-                                  ? agentClose.requestClose(surface)
-                                  : closeImmediately(surface),
+                                closeImmediately(surface),
                               )
                             }
                             onMouseDown={preventMiddleMouseDefault}
@@ -344,7 +350,12 @@ export function ProjectPaneTabStrip({
                                 }}
                               >
                                 <SurfaceTabIcon surface={surface} />
-                                <span className="truncate">
+                                <span
+                                  className={cn(
+                                    "truncate",
+                                    surface.preview && "italic",
+                                  )}
+                                >
                                   {surface.title}
                                 </span>
                               </button>
@@ -492,7 +503,6 @@ export function ProjectPaneTabStrip({
           />
         </div>
       </div>
-      {agentClose.confirmation}
       <ConfirmDialog
         confirmLabel={
           deleteTarget ? surfaceDeleteLabel(deleteTarget) : "Delete Resource"

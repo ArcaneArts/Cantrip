@@ -101,6 +101,7 @@ function grant(activeSession: WorkerLinkSession): WorkerLinkResourceGrant {
 }
 
 class FakeStream implements WorkerLinkStream {
+  drain = vi.fn(async () => {});
   readonly channelId = "44444444-4444-4444-8444-444444444444";
   readonly connectionId = "55555555-5555-4555-8555-555555555555";
   readonly lane = "interactive" as const;
@@ -210,6 +211,52 @@ afterEach(() => {
 });
 
 describe("Terminal WorkerLink client", () => {
+  it.each([false, true])(
+    "drains queued frames through worker acknowledgement (close=%s)",
+    async (close) => {
+      const fixture = setup();
+      const connection = await openTerminalWorkerLink(
+        {
+          onClose: vi.fn(),
+          onMessage: vi.fn(),
+          operationId,
+          terminalId: "terminal-1",
+          workerId: "worker-1",
+        },
+        fixture.dependencies,
+      );
+      fixture.stream.writable = false;
+      expect(connection.send({ type: "resize", cols: 80, rows: 24 })).toBe(
+        true,
+      );
+      const drained = vi.fn();
+      const draining = connection.drain().then(drained);
+      await Promise.resolve();
+      expect(fixture.stream.drain).not.toHaveBeenCalled();
+      if (close) {
+        connection.close();
+        await expect(draining).rejects.toThrow(/closed before drain/);
+        expect(drained).not.toHaveBeenCalled();
+      } else {
+        let acknowledge!: () => void;
+        fixture.stream.drain.mockImplementationOnce(
+          () =>
+            new Promise<void>((resolve) => {
+              acknowledge = resolve;
+            }),
+        );
+        fixture.stream.makeWritable();
+        await Promise.resolve();
+        expect(fixture.stream.writes).toHaveLength(1);
+        expect(fixture.stream.drain).toHaveBeenCalledOnce();
+        expect(drained).not.toHaveBeenCalled();
+        acknowledge();
+        await draining;
+        expect(drained).toHaveBeenCalledOnce();
+        connection.close();
+      }
+    },
+  );
   it("keeps a healthy terminal usable through a transient renewal failure", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(now);

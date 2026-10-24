@@ -63,8 +63,7 @@ export function MobileBottomNavigation({
           </button>
           {surfaces.map((surface) => {
             const active = !overviewSelected && surface.tabKey === activeTabKey;
-            const label =
-              surface.kind === "explorer" ? "Explorer" : surface.title;
+            const label = surface.title;
             return (
               <ContextMenu.Root key={surface.tabKey}>
                 <ContextMenu.Trigger asChild>
@@ -98,7 +97,9 @@ export function MobileBottomNavigation({
                           surface.kind === "chat" &&
                           surface.entity.experience === "task"
                             ? "task"
-                            : surface.kind
+                            : surface.kind === "unresolved"
+                              ? surface.member.tabKind
+                              : surface.kind
                         }
                       />
                       <span className="max-w-full truncate">{label}</span>
@@ -107,23 +108,16 @@ export function MobileBottomNavigation({
                 </ContextMenu.Trigger>
                 <ContextMenu.Portal>
                   <StyledContextMenuContent className="min-w-40">
-                    <StyledContextMenuItem
-                      onSelect={() =>
-                        surface.kind === "chat"
-                          ? onArchive(surface)
-                          : onClose(surface)
-                      }
-                    >
-                      {surface.kind === "chat" ? (
-                        <>
-                          <Archive className="size-4" /> Archive Resource
-                        </>
-                      ) : (
-                        <>
-                          <X className="size-4" /> Close View
-                        </>
-                      )}
+                    <StyledContextMenuItem onSelect={() => onClose(surface)}>
+                      <X className="size-4" /> Close View
                     </StyledContextMenuItem>
+                    {surface.kind === "chat" ? (
+                      <StyledContextMenuItem
+                        onSelect={() => onArchive(surface)}
+                      >
+                        <Archive className="size-4" /> Archive Resource
+                      </StyledContextMenuItem>
+                    ) : null}
                   </StyledContextMenuContent>
                 </ContextMenu.Portal>
               </ContextMenu.Root>

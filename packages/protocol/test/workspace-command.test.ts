@@ -3,6 +3,7 @@ import {
   applyWorkspaceCommand,
   workspaceOwnershipSchema,
   WorkspaceCommandError,
+  workspaceActionSchema,
   type WorkspaceAction,
   type WorkspaceCommand,
   type WorkspaceOwnership,
@@ -87,6 +88,145 @@ function fixture(): WorkspaceOwnership {
     ],
   });
 }
+
+it.each([true, false])(
+  "prepares a detach without moving source ownership (whole pane=%s)",
+  (wholePane) => {
+    const initial = fixture();
+    const action: WorkspaceAction = {
+      type: "prepare-detach",
+      transferId: "transfer",
+      paneId: "a",
+      ...(wholePane ? {} : { tabId: "a2" }),
+      destinationWindowId: "new-window",
+      destinationPaneId: wholePane ? "a" : "new-pane",
+    };
+    const prepared = applyWorkspaceCommand(
+      initial,
+      command(initial, action),
+    ).layout;
+    expect(prepared.windows.slice(0, 2)).toEqual(initial.windows);
+    expect(prepared.windows.at(-1)?.panes).toEqual([]);
+    expect(prepared.pendingTransfers?.[0]).toMatchObject({
+      phase: "preparing",
+      tabIds: wholePane ? ["a1", "a2", "a3"] : ["a2"],
+    });
+    expect(() =>
+      applyWorkspaceCommand(
+        prepared,
+        command(prepared, { type: "transfer-ready", transferId: "transfer" }),
+      ),
+    ).toThrow("Only the destination");
+    const readyCommand = {
+      ...command(prepared, { type: "transfer-ready", transferId: "transfer" }),
+      windowId: "new-window",
+      attachmentGeneration: 0,
+    };
+    const ready = applyWorkspaceCommand(prepared, readyCommand).layout;
+    expect(ready.pendingTransfers?.[0]?.phase).toBe("destination-ready");
+    expect(ready.windows[0]).toEqual(initial.windows[0]);
+    expect(() =>
+      applyWorkspaceCommand(ready, {
+        ...readyCommand,
+        expectedRevision: ready.revision,
+        action: { type: "home" },
+      }),
+    ).toThrow("reserved");
+    const cancelled = applyWorkspaceCommand(
+      ready,
+      command(ready, { type: "cancel-transfer", transferId: "transfer" }),
+    ).layout;
+    expect(cancelled.windows).toEqual(initial.windows);
+    expect(cancelled.pendingTransfers).toEqual([]);
+    expect(initial.pendingTransfers).toBeUndefined();
+  },
+);
+
+it("rejects overlapping transfer reservations and stale destination generations", () => {
+  const initial = fixture();
+  const action: WorkspaceAction = {
+    type: "prepare-detach",
+    transferId: "transfer",
+    paneId: "a",
+    tabId: "a2",
+    destinationWindowId: "new-window",
+    destinationPaneId: "new-pane",
+  };
+  const prepared = applyWorkspaceCommand(
+    initial,
+    command(initial, action),
+  ).layout;
+  expect(() =>
+    applyWorkspaceCommand(
+      prepared,
+      command(prepared, {
+        ...action,
+        transferId: "other",
+        destinationWindowId: "other-window",
+        destinationPaneId: "other-pane",
+      }),
+    ),
+  ).toThrow("already in use");
+  expect(() =>
+    applyWorkspaceCommand(prepared, {
+      ...command(prepared, { type: "transfer-ready", transferId: "transfer" }),
+      windowId: "new-window",
+      attachmentGeneration: 1,
+    }),
+  ).toThrow("renderer");
+  expect(() =>
+    applyWorkspaceCommand(
+      prepared,
+      command(prepared, {
+        ...action,
+        transferId: "other",
+        tabId: "missing",
+        destinationWindowId: "other-window",
+      }),
+    ),
+  ).toThrow("source pane");
+});
+
+it.each(["main", "popout"])(
+  "pins an existing preview in %s without replacing its identity",
+  (ownerId) => {
+    const initial = fixture();
+    const owner = initial.windows.find((window) => window.id === ownerId)!;
+    const original = owner.panes[0]!.tabs[0]!;
+    original.preview = true;
+    const opened = applyWorkspaceCommand(
+      initial,
+      command(initial, {
+        type: "open",
+        tab: { ...original, id: "unused-new-id", preview: false },
+        target: { kind: "pane", paneId: "a" },
+      }),
+    );
+    const surviving = opened.layout.windows.find(
+      (window) => window.id === ownerId,
+    )!.panes[0]!.tabs[0]!;
+    expect(surviving.id).toBe(original.id);
+    expect(surviving.preview).toBe(false);
+    expect(
+      opened.layout.windows
+        .flatMap((window) => window.panes)
+        .flatMap((pane) => pane.tabs)
+        .some((tab) => tab.id === "unused-new-id"),
+    ).toBe(false);
+    const previewAgain = applyWorkspaceCommand(
+      opened.layout,
+      command(opened.layout, {
+        type: "open",
+        tab: { ...original, id: "another-unused-id", preview: true },
+        target: { kind: "pane", paneId: "a" },
+      }),
+    );
+    expect(
+      previewAgain.layout.windows.find((window) => window.id === ownerId)!
+        .panes[0]!.tabs[0]!.preview,
+    ).toBe(false);
+  },
+);
 function command(
   layout: WorkspaceOwnership,
   action: WorkspaceAction,
@@ -107,6 +247,414 @@ function command(
 function run(action: WorkspaceAction, layout = fixture(), windowId = "main") {
   return applyWorkspaceCommand(layout, command(layout, action, windowId));
 }
+
+describe("prepared return to main", () => {
+  const prepare: WorkspaceAction = {
+    type: "prepare-return",
+    transferId: "return",
+    paneId: "p",
+    splitId: "return-split",
+  };
+  function ready(layout: WorkspaceOwnership) {
+    layout = run(
+      { type: "transfer-ready", transferId: "return" },
+      layout,
+    ).layout;
+    return run({ type: "transfer-state-ready", transferId: "return" }, layout)
+      .layout;
+  }
+  it("keeps source ownership until ready and preserves main when cancelled", () => {
+    const initial = fixture();
+    const prepared = run(prepare, initial, "popout").layout;
+    expect(prepared.windows).toEqual(initial.windows);
+    expect(() =>
+      run(
+        { type: "commit-transfer", transferId: "return" },
+        prepared,
+        "popout",
+      ),
+    ).toThrow(/restoration/);
+    const cancelled = run(
+      { type: "cancel-transfer", transferId: "return" },
+      prepared,
+      "popout",
+    );
+    expect(cancelled.layout.windows).toEqual(initial.windows);
+    expect(cancelled.emptyWindowIds).toEqual([]);
+  });
+  it("preserves concurrent main changes and appends only the surviving source pane", () => {
+    let layout = run(prepare, fixture(), "popout").layout;
+    layout = run({ type: "close-tab", tabId: "a1" }, layout).layout;
+    const result = run(
+      { type: "commit-transfer", transferId: "return" },
+      ready(layout),
+      "popout",
+    );
+    expect(result.layout.windows[0]!.panes.map(({ id }) => id)).toEqual([
+      "a",
+      "b",
+      "dock",
+      "p",
+    ]);
+    expect(
+      result.layout.windows[0]!.panes[0]!.tabs.map(({ id }) => id),
+    ).toEqual(["a2", "a3"]);
+    expect(result.layout.windows[1]!.panes).toEqual([]);
+    expect(result.emptyWindowIds).toEqual(["popout"]);
+    expect(result.layout.pendingTransfers).toEqual([]);
+  });
+  it("returns a detached single tab to its surviving original pane", () => {
+    const initial = fixture();
+    initial.windows[1]!.returnPlacement = {
+      detachedPaneId: "p",
+      sourceWindowId: "main",
+      sourcePaneId: "a",
+      wholePane: false,
+      sourcePlacement: {
+        panePosition: 0,
+        tabPosition: 1,
+        region: "center",
+        centerRoot: null,
+      },
+    };
+    const result = run(
+      { type: "commit-transfer", transferId: "return" },
+      ready(run(prepare, initial, "popout").layout),
+      "popout",
+    );
+    expect(
+      result.layout.windows[0]!.panes[0]!.tabs.map(({ id }) => id),
+    ).toEqual(["a1", "p1", "a2", "a3"]);
+    expect(result.layout.windows[0]!.panes.map(({ id }) => id)).toEqual([
+      "a",
+      "b",
+      "dock",
+    ]);
+  });
+  it("rejects returning main to itself and rejects overlapping reservations", () => {
+    expect(() => run({ ...prepare, paneId: "a" })).toThrow(/itself/);
+    const prepared = run(prepare, fixture(), "popout").layout;
+    expect(() =>
+      run({ ...prepare, transferId: "other" }, prepared, "popout"),
+    ).toThrow(/already in use/);
+  });
+});
+
+describe("prepared ownership commit", () => {
+  function prepare(wholePane = false) {
+    return run({
+      type: "prepare-detach",
+      transferId: "transfer",
+      paneId: "a",
+      ...(wholePane ? {} : { tabId: "a2" }),
+      destinationWindowId: "destination",
+      destinationPaneId: wholePane ? "a" : "new-pane",
+    }).layout;
+  }
+  function acknowledge(layout: WorkspaceOwnership) {
+    const ready = run(
+      { type: "transfer-ready", transferId: "transfer" },
+      layout,
+      "destination",
+    ).layout;
+    return run(
+      { type: "transfer-state-ready", transferId: "transfer" },
+      ready,
+      "destination",
+    ).layout;
+  }
+  const commit: WorkspaceAction = {
+    type: "commit-transfer",
+    transferId: "transfer",
+  };
+
+  it("restores the original split geometry when returning an unchanged whole pane", () => {
+    const originalTree = fixture().windows[0]!.centerRoot;
+    let layout = run(commit, acknowledge(prepare(true))).layout;
+    layout = run(
+      {
+        type: "prepare-return",
+        transferId: "return",
+        paneId: "a",
+        splitId: "fallback",
+      },
+      layout,
+      "destination",
+    ).layout;
+    layout = run(
+      { type: "transfer-ready", transferId: "return" },
+      layout,
+    ).layout;
+    layout = run(
+      { type: "transfer-state-ready", transferId: "return" },
+      layout,
+    ).layout;
+    const result = run(
+      { type: "commit-transfer", transferId: "return" },
+      layout,
+      "destination",
+    );
+    expect(result.layout.windows[0]!.centerRoot).toEqual(originalTree);
+    expect(result.layout.windows[0]!.panes.map(({ id }) => id)).toEqual([
+      "a",
+      "b",
+      "dock",
+    ]);
+  });
+
+  it.each([true, false])(
+    "moves ownership atomically without changing tab identities (whole pane=%s)",
+    (wholePane) => {
+      const ready = acknowledge(prepare(wholePane));
+      const before = structuredClone(ready);
+      const result = run(commit, ready);
+      expect(ready).toEqual(before);
+      const source = result.layout.windows.find(({ id }) => id === "main")!;
+      const destination = result.layout.windows.find(
+        ({ id }) => id === "destination",
+      )!;
+      expect(destination.panes[0]!.tabs).toEqual(
+        wholePane ? [tab("a1"), tab("a2"), tab("a3")] : [tab("a2")],
+      );
+      expect(destination.panes[0]!.id).toBe(wholePane ? "a" : "new-pane");
+      expect(
+        source.panes.find(({ id }) => id === "a")?.tabs.map(({ id }) => id),
+      ).toEqual(wholePane ? undefined : ["a1", "a3"]);
+      expect(source.panes.find(({ id }) => id === "b")).toEqual(
+        fixture().windows[0]!.panes[1],
+      );
+      expect(destination.returnPlacement?.sourcePaneId).toBe("a");
+      expect(result.layout.pendingTransfers).toEqual([]);
+      expect(result.focusWindowId).toBe("destination");
+      expect(workspaceOwnershipSchema.safeParse(result.layout).success).toBe(
+        true,
+      );
+      expect(() => run(commit, result.layout)).toThrow();
+    },
+  );
+
+  it("requires application readiness before restored-state acknowledgement and commit", () => {
+    const prepared = prepare();
+    expect(() => run(commit, prepared)).toThrow(/restoration/);
+    expect(() =>
+      run(
+        { type: "transfer-state-ready", transferId: "transfer" },
+        prepared,
+        "destination",
+      ),
+    ).toThrow(/application readiness/);
+    const ready = run(
+      { type: "transfer-ready", transferId: "transfer" },
+      prepared,
+      "destination",
+    ).layout;
+    expect(() => run(commit, ready)).toThrow(/restoration/);
+    expect(() =>
+      run({ type: "transfer-state-ready", transferId: "transfer" }, ready),
+    ).toThrow(/Only the destination/);
+    expect(() => run(commit, acknowledge(prepared), "popout")).toThrow(
+      /Only the source/,
+    );
+  });
+
+  it("does not regress restored state on a repeated application-ready acknowledgement", () => {
+    const ready = acknowledge(prepare());
+    const repeated = run(
+      { type: "transfer-ready", transferId: "transfer" },
+      ready,
+      "destination",
+    ).layout;
+    expect(repeated.pendingTransfers?.[0]?.phase).toBe("state-ready");
+    expect(() => run(commit, repeated)).not.toThrow();
+  });
+
+  it.each([true, false])(
+    "does not resurrect a tab closed during transfer (whole pane=%s)",
+    (wholePane) => {
+      const ready = acknowledge(prepare(wholePane));
+      const closed = run({ type: "close-tab", tabId: "a2" }, ready).layout;
+      const before = structuredClone(closed);
+      expect(() => run(commit, closed)).toThrow(/no longer belongs/);
+      expect(closed).toEqual(before);
+      const cancelled = run(
+        { type: "cancel-transfer", transferId: "transfer" },
+        closed,
+      ).layout;
+      expect(cancelled.windows.some(({ id }) => id === "destination")).toBe(
+        false,
+      );
+      expect(cancelled.windows[0]!.panes[0]!.tabs.map(({ id }) => id)).toEqual([
+        "a1",
+        "a3",
+      ]);
+    },
+  );
+});
+
+describe("window-local pane operations", () => {
+  it("renames and resets only the owned pane using an opaque title", () => {
+    const titleProtection = {
+      classification: { recordKind: "tab-group" as const },
+      protectedLabel: {
+        formatVersion: 1 as const,
+        keyRevision: 1,
+        envelope: {
+          version: 1 as const,
+          algorithm: "AES-256-GCM" as const,
+          keyRevision: 1,
+          nonce: "AAAAAAAAAAAAAAAA",
+          ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+        },
+      },
+    };
+    const source = fixture();
+    const named = run(
+      { type: "rename-pane", paneId: "a", titleProtection },
+      source,
+    ).layout;
+    expect(named.windows[0]!.panes[0]!.titleProtection).toEqual(
+      titleProtection,
+    );
+    expect(named.windows[1]).toEqual(source.windows[1]);
+    expect(
+      run({ type: "rename-pane", paneId: "a", titleProtection: null }, named)
+        .layout.windows[0]!.panes[0]!.titleProtection,
+    ).toBeNull();
+    expect(() =>
+      run({ type: "rename-pane", paneId: "p", titleProtection }),
+    ).toThrow(WorkspaceCommandError);
+    expect(
+      workspaceActionSchema.safeParse({
+        type: "rename-pane",
+        paneId: "a",
+        title: "plaintext",
+      }).success,
+    ).toBe(false);
+    expect(
+      workspaceActionSchema.safeParse({
+        type: "rename-pane",
+        paneId: "a",
+        titleProtection: {
+          ...titleProtection,
+          classification: { recordKind: "chat" },
+        },
+      }).success,
+    ).toBe(false);
+  });
+  it("updates dock presentation without changing focus or other tabs", () => {
+    const presentation = {
+      preferredMode: "split" as const,
+      splitFraction: 0.3,
+      restoreFraction: 0.4,
+    };
+    const source = fixture();
+    const updated = run(
+      { type: "dock-presentation", tabId: "d1", presentation },
+      source,
+    ).layout;
+    expect(updated.windows[0]!.panes[2]!.tabs[0]!.dockPresentation).toEqual(
+      presentation,
+    );
+    expect(updated.windows[0]!.focusedPaneId).toBe("a");
+    expect(updated.windows[0]!.panes[0]).toEqual(source.windows[0]!.panes[0]);
+    expect(() =>
+      run({ type: "dock-presentation", tabId: "a1", presentation }),
+    ).toThrow(WorkspaceCommandError);
+    expect(() =>
+      run({ type: "dock-presentation", tabId: "p1", presentation }),
+    ).toThrow(WorkspaceCommandError);
+  });
+  it("reorders center leaves without replacing split geometry or focus", () => {
+    const source = fixture();
+    const result = run(
+      { type: "reorder-panes", region: "center", paneIds: ["b", "a"] },
+      source,
+    ).layout;
+    expect(result.windows[0]!.panes.map((p) => p.id)).toEqual([
+      "b",
+      "a",
+      "dock",
+    ]);
+    expect(result.windows[0]!.centerRoot).toEqual({
+      ...source.windows[0]!.centerRoot!,
+      first: { kind: "pane", paneId: "b" },
+      second: { kind: "pane", paneId: "a" },
+    });
+    expect(result.windows[0]!.focusedPaneId).toBe("a");
+    expect(result.windows[1]).toEqual(source.windows[1]);
+    expect(source.windows[0]!.panes[0]!.id).toBe("a");
+  });
+  it.each([["a"], ["a", "a"], ["a", "p"], ["a", "dock"]])(
+    "rejects incomplete, duplicate or foreign pane order %j",
+    (...paneIds) => {
+      expect(() =>
+        run({ type: "reorder-panes", region: "center", paneIds }),
+      ).toThrow(WorkspaceCommandError);
+    },
+  );
+  it("moves a tab into a new dock pane without changing its identity or siblings", () => {
+    const result = run({
+      type: "move-new-pane",
+      tabId: "a2",
+      paneId: "new-dock",
+      region: "right",
+      position: 0,
+      splitId: "unused",
+    }).layout;
+    const window = result.windows[0]!;
+    expect(
+      window.panes.find((p) => p.id === "a")!.tabs.map((t) => t.id),
+    ).toEqual(["a1", "a3"]);
+    expect(window.panes.find((p) => p.id === "a")!.activeTabId).toBe("a3");
+    expect(
+      window.panes.filter((p) => p.region === "right").map((p) => p.id),
+    ).toEqual(["new-dock", "dock"]);
+    expect(window.panes.find((p) => p.id === "new-dock")!.tabs).toEqual([
+      tab("a2"),
+    ]);
+    expect(window.focusedPaneId).toBe("new-dock");
+  });
+  it("collapses an emptied source and inserts a new center leaf at the requested position", () => {
+    const result = run({
+      type: "move-new-pane",
+      tabId: "b1",
+      paneId: "new-center",
+      region: "center",
+      position: 0,
+      splitId: "replacement",
+    }).layout;
+    expect(result.windows[0]!.panes.some((p) => p.id === "b")).toBe(false);
+    expect(result.windows[0]!.centerRoot).toEqual({
+      kind: "split",
+      id: "replacement",
+      direction: "horizontal",
+      fraction: 0.5,
+      first: { kind: "pane", paneId: "new-center" },
+      second: { kind: "pane", paneId: "a" },
+    });
+  });
+  it("rejects invalid insertion and duplicate pane identity atomically", () => {
+    const source = fixture();
+    const before = structuredClone(source);
+    for (const change of [{ position: 3 }, { paneId: "p" }, { tabId: "p1" }]) {
+      expect(() =>
+        run(
+          {
+            type: "move-new-pane",
+            tabId: "a2",
+            paneId: "new",
+            region: "right",
+            position: 0,
+            splitId: "new-split",
+            ...change,
+          },
+          source,
+        ),
+      ).toThrow(WorkspaceCommandError);
+      expect(source).toEqual(before);
+    }
+  });
+});
 
 describe("workspace command scope and atomicity", () => {
   it.each<[string, Partial<WorkspaceCommand>, string]>([

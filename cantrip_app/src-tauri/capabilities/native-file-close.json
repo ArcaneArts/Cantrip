@@ -2,6 +2,10 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "native-file-close",
   "description": "Allow Cantrip file windows to close after their unsaved-change decision",
-  "windows": ["cantrip-editor-*", "cantrip-chat-file-*"],
+  "windows": [
+    "cantrip-editor-*",
+    "cantrip-chat-file-*",
+    "cantrip-pane-workspace-*"
+  ],
   "permissions": ["core:window:allow-close", "core:window:allow-destroy"]
 }

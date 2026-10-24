@@ -6,6 +6,7 @@ import type {
 import { and, eq, inArray, isNotNull, isNull, lte, sql } from "drizzle-orm";
 
 import * as schema from "../schema.js";
+import { removeResourceWorkspaceViews } from "../workspace-resource-removal.js";
 import {
   attachProjectTab,
   detachProjectTab,
@@ -59,6 +60,13 @@ export class ChatArchiveLifecycleRepository {
     if (chatIsExecuting(chat.status as ChatWireSummary["status"]))
       return "running";
     return this.database.transaction(async (transaction) => {
+      await removeResourceWorkspaceViews(
+        transaction,
+        ownerId,
+        projectId,
+        "project.agent",
+        chatId,
+      );
       const messages = await transaction
         .select({ id: schema.chatMessages.id })
         .from(schema.chatMessages)

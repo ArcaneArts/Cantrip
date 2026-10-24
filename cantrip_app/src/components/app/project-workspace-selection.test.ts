@@ -95,15 +95,64 @@ const surfaceIndex = buildProjectSurfaceIndex(layout, {
 });
 
 describe("project workspace selection", () => {
+  it("resolves an opaque tab identity through membership, not its spelling", () => {
+    const opaqueLayout = {
+      ...layout,
+      panes: layout.panes.map((pane) => ({
+        ...pane,
+        members: pane.members.map((member) => ({
+          ...member,
+          tabKey: `opaque-${member.tabId}`,
+        })),
+      })),
+    };
+    const selection = {
+      activeTabByPane: { "group-one": "opaque-one" },
+      destination: "surface" as const,
+      focusedPaneId: "group-one",
+      projectId: "project-1",
+    };
+    expect(
+      projectWorkspaceSurfaceSelection(selection, opaqueLayout),
+    ).toMatchObject({
+      selectedChatId: "one",
+      selectedTabKey: "opaque-one",
+      selectedExplorerId: null,
+    });
+    expect(
+      projectWorkspaceSurfaceSelection(selection, undefined).selectedChatId,
+    ).toBeNull();
+    expect(
+      projectWorkspaceSurfaceSelection(
+        { ...selection, projectId: "other" },
+        opaqueLayout,
+      ).selectedChatId,
+    ).toBeNull();
+    expect(
+      projectWorkspaceSurfaceSelection(
+        {
+          ...selection,
+          focusedPaneId: "group-two",
+          activeTabByPane: { "group-two": "opaque-one" },
+        },
+        opaqueLayout,
+      ).selectedChatId,
+    ).toBeNull();
+  });
+
   it("derives exactly one typed surface id from the selected tab key", () => {
     expect(
-      projectWorkspaceSurfaceSelection({
-        activeTabByPane: { "group-one": "chat:one" },
-        destination: "surface",
-        focusedPaneId: "group-one",
-        projectId: "project-1",
-      }),
+      projectWorkspaceSurfaceSelection(
+        {
+          activeTabByPane: { "group-one": "chat:one" },
+          destination: "surface",
+          focusedPaneId: "group-one",
+          projectId: "project-1",
+        },
+        layout,
+      ),
     ).toEqual({
+      selectedBuiltInDefinitionId: null,
       selectedBrowserId: null,
       selectedChatId: "one",
       selectedCodeTabId: null,
@@ -112,6 +161,35 @@ describe("project workspace selection", () => {
       selectedTabKey: "chat:one",
       selectedTerminalId: null,
     });
+  });
+
+  it("resolves a built-in from membership metadata with an opaque tab id", () => {
+    const builtinLayout: ProjectTabLayoutSummary = structuredClone(layout);
+    const member = builtinLayout.panes[0]!.members[0]!;
+    member.tabKey = "opaque-tasks";
+    member.tabKind = "builtin";
+    member.tabId = "project.tasks";
+    member.builtInState = { definitionId: "project.tasks", worktreeId: null };
+    const selection = {
+      projectId: "project-1",
+      destination: "surface" as const,
+      focusedPaneId: "group-one",
+      activeTabByPane: { "group-one": "opaque-tasks" },
+    };
+    expect(
+      projectWorkspaceSurfaceSelection(selection, builtinLayout)
+        .selectedBuiltInDefinitionId,
+    ).toBe("project.tasks");
+    expect(
+      projectWorkspaceSurfaceSelection(selection, undefined)
+        .selectedBuiltInDefinitionId,
+    ).toBeNull();
+    expect(
+      projectWorkspaceSurfaceSelection(
+        { ...selection, projectId: "other" },
+        builtinLayout,
+      ).selectedBuiltInDefinitionId,
+    ).toBeNull();
   });
 
   it("keeps every surface kind in the selected pane strip", () => {

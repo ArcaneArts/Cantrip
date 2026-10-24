@@ -4699,7 +4699,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/workspace-layouts.ts",
-      "line": 26,
+      "line": 27,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/workspace-layouts/:workspaceId",
@@ -4712,7 +4712,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/workspace-layouts.ts",
-      "line": 65,
+      "line": 60,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/workspace-layouts/:workspaceId/commands",
@@ -4725,7 +4725,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/workspace-layouts.ts",
-      "line": 36,
+      "line": 37,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/workspace-layouts/:workspaceId/seed",
@@ -11976,97 +11976,97 @@
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 638,
+      "line": 639,
       "method": "get",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 907,
+      "line": 908,
       "method": "updatePane",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 952,
+      "line": 953,
       "method": "updateDockPresentation",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 1010,
+      "line": 1011,
       "method": "reorderPanes",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 1056,
+      "line": 1057,
       "method": "reorderLegacyPanes",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 1105,
+      "line": 1106,
       "method": "reorderMembers",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 1147,
+      "line": 1148,
       "method": "moveMember",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 1432,
+      "line": 1433,
       "method": "splitMember",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 1600,
+      "line": 1601,
       "method": "resizeCenterSplit",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 1625,
+      "line": 1626,
       "method": "openSurfaceView",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 1733,
+      "line": 1734,
       "method": "closeSurfaceView",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 1769,
+      "line": 1770,
       "method": "listSurfaceLaunchers",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 1808,
+      "line": 1809,
       "method": "setSurfaceLauncherPin",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 1845,
+      "line": 1846,
       "method": "updateBuiltInSurfaceWorktree",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 1896,
+      "line": 1897,
       "method": "nextProjectTabPosition",
       "ownerEvidence": "delegated-or-missing-review"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 1943,
+      "line": 1944,
       "method": "reorderProjects",
       "ownerEvidence": "explicit-owner"
     }

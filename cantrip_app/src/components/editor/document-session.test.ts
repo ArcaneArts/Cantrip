@@ -10,6 +10,141 @@ import { EditorLineIndex, editorViewport } from "./viewport";
 import { isCurrentHighlight } from "./syntax/worker-protocol";
 
 describe("endpoint document sessions", () => {
+  it("binds close approval to every document revision without depending on recency order", () => {
+    const store = new EditorSessionStore();
+    store.resetScope("account");
+    const first = store.open("first", "one", "v1");
+    store.open("second", "two", "v1");
+    const unchanged = store.captureCloseGuard();
+    store.get("first");
+    expect(unchanged()).toBe(true);
+    first.edit("inactive draft");
+    expect(unchanged()).toBe(false);
+    const edited = store.captureCloseGuard();
+    store.discard("first");
+    store.open("first", "inactive draft", "v1");
+    expect(edited()).toBe(false);
+    const replaced = store.captureCloseGuard();
+    store.resetScope("other account");
+    expect(replaced()).toBe(false);
+  });
+
+  it("transfers inactive dirty documents with formatting, selection, scroll and undo history without saving", async () => {
+    const source = new EditorSessionStore();
+    source.resetScope("account");
+    const first = source.open("first", "\uFEFFone\r\ntwo\r\n", "v1");
+    first.editExternal("one\ntwo edited\n");
+    first.selection = { start: 4, end: 7, direction: "backward" };
+    first.scrollTop = 135;
+    first.scrollLeft = 42;
+    source.open("second", "second", "v2").editExternal("second draft");
+    const captured = await source.captureTransfer();
+    const destination = new EditorSessionStore();
+    destination.resetScope("account");
+    destination.restoreTransfer(captured);
+    const restored = destination.get("first")!;
+    expect(restored).not.toBe(first);
+    expect(restored.text).toBe(first.text);
+    expect(restored.dirty).toBe(true);
+    expect(restored.selection).toEqual(first.selection);
+    expect([restored.scrollTop, restored.scrollLeft]).toEqual([135, 42]);
+    expect(restored.history.undo(restored.text)?.text).toBe("one\ntwo\n");
+    expect(first.history.undo(first.text)?.text).toBe("one\ntwo\n");
+    expect(destination.get("second")?.text).toBe("second draft");
+    await restored.save(async (input) => {
+      expect(input).toEqual({
+        content: "\uFEFFone\r\ntwo edited\r\n",
+        version: "v1",
+      });
+      return { version: "v3" };
+    });
+    expect(first.dirty).toBe(true);
+    expect(restored.dirty).toBe(false);
+  });
+
+  it("waits for an actual pending save and captures subsequent unsaved typing", async () => {
+    const source = new EditorDocumentSession("file", "old", "v1");
+    source.edit("saved");
+    let resolve!: (value: { version: string }) => void;
+    const saving = source.save(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        }),
+    );
+    await Promise.resolve();
+    source.edit("later draft");
+    const snapshot = source.captureTransfer();
+    resolve({ version: "v2" });
+    await saving;
+    const restored = EditorDocumentSession.fromTransfer(await snapshot);
+    expect(restored.baseline).toBe("saved");
+    expect(restored.text).toBe("later draft");
+    expect(restored.version).toBe("v2");
+    expect(restored.dirty).toBe(true);
+  });
+
+  it("preserves uncertain failed-save state even when text equals the baseline", async () => {
+    const source = new EditorDocumentSession("file", "old", "v1");
+    source.edit("new");
+    await expect(
+      source.save(async () => {
+        throw new Error("lost acknowledgement");
+      }),
+    ).rejects.toThrow();
+    source.edit("old");
+    const restored = EditorDocumentSession.fromTransfer(
+      await source.captureTransfer(),
+    );
+    expect(restored.dirty).toBe(true);
+    const write = vi.fn(async () => ({ version: "v2" }));
+    await restored.save(write);
+    expect(write).toHaveBeenCalledWith({ content: "old", version: "v1" });
+  });
+
+  it("rejects cross-account and conflicting-draft batches atomically", async () => {
+    const source = new EditorSessionStore();
+    source.resetScope("account");
+    source.open("first", "one", "v1");
+    source.open("second", "two", "v1");
+    const snapshot = await source.captureTransfer();
+    const destination = new EditorSessionStore();
+    destination.resetScope("other-account");
+    expect(() => destination.restoreTransfer(snapshot)).toThrow(
+      /account scope/,
+    );
+    expect(destination.get("first")).toBeUndefined();
+    destination.resetScope("account");
+    const existing = destination.open("second", "original", "v0");
+    existing.edit("local draft");
+    expect(() => destination.restoreTransfer(snapshot)).toThrow(
+      /live destination/,
+    );
+    expect(destination.get("first")).toBeUndefined();
+    expect(destination.get("second")).toBe(existing);
+    expect(existing.text).toBe("local draft");
+  });
+
+  it("rejects a capture whose scope is reset while a save settles", async () => {
+    const source = new EditorSessionStore();
+    source.resetScope("account");
+    const document = source.open("file", "old", "v1");
+    document.edit("draft");
+    let resolve!: (value: { version: string }) => void;
+    const pending = document.save(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        }),
+    );
+    await Promise.resolve();
+    const capture = source.captureTransfer();
+    source.resetScope("other");
+    resolve({ version: "v2" });
+    await pending;
+    await expect(capture).rejects.toThrow(/ownership changed/);
+  });
+
   it("keeps structured edits in the same undo history without duplicating native edits", () => {
     const session = new EditorDocumentSession("file", "original", "v1");
     session.history.record(

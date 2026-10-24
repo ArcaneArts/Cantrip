@@ -8,7 +8,7 @@ import {
   terminalOutputContentSchema,
 } from "@cantrip/protocol/surface-stream";
 import { AlertTriangle, Loader2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MutableRefObject } from "react";
 
 import { getWorkers } from "@/lib/api";
 import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
@@ -44,13 +44,32 @@ import { TerminalScriptCommandDialog } from "./terminal-script-command-dialog";
 import { TerminalServicePanel } from "./terminal-service-panel";
 import { terminalBackground } from "./terminal-theme";
 import { useMobileTerminalKeyboard } from "./use-mobile-terminal-keyboard";
+import {
+  captureTerminalViewState,
+  restoreTerminalViewState,
+  type TerminalViewState,
+} from "./terminal-view-state";
 
 import "@xterm/xterm/css/xterm.css";
+import { registerTerminalTransferLifecycle } from "./terminal-transfer-lifecycle";
 
 const DEFAULT_SERVICE_PANEL_WIDTH = 360;
 const MIN_SERVICE_PANEL_WIDTH = 280;
 const MAX_SERVICE_PANEL_WIDTH = 640;
 const SERVICE_PANEL_WIDTH_STORAGE_KEY = "cantrip:terminal-service-panel-width";
+
+export interface TerminalTransferLifecycle {
+  /** Stop accepting new input. Release only after ownership cancellation. */
+  suspendTransfer(): () => void;
+  captureTransfer(): Promise<TerminalViewState>;
+  /** Drain input through worker acknowledgement, then detach this renderer, never the PTY. */
+  retireTransfer(): Promise<void>;
+}
+
+export interface TerminalTransferStaging {
+  onRestored(): void;
+  onError(error: unknown): void;
+}
 
 function terminalTheme() {
   const styles = getComputedStyle(document.documentElement);
@@ -73,6 +92,10 @@ export function TerminalView({
   pendingInput = null,
   servicePanelOpen = false,
   terminal,
+  initialViewState,
+  transferLifecycleRef,
+  transferTabId,
+  transferStaging,
   visible = true,
   onExit,
   onOpenExternalLink,
@@ -85,12 +108,21 @@ export function TerminalView({
   pendingInput?: { data: string; id: string } | null;
   servicePanelOpen?: boolean;
   terminal: TerminalSummary;
+  initialViewState?: TerminalViewState;
+  transferLifecycleRef?: MutableRefObject<TerminalTransferLifecycle | null>;
+  transferTabId?: string;
+  /** Hydrate a passive destination attachment before ownership commit. */
+  transferStaging?: TerminalTransferStaging;
   visible?: boolean;
   onExit?(): void;
   onOpenExternalLink?(url: string): void;
   onOpenLink?(url: string): void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const pendingViewState = useRef(initialViewState);
+  const stagingRef = useRef(transferStaging);
+  stagingRef.current = transferStaging;
+  const activateTransferRef = useRef<(() => void) | null>(null);
   const inputSenderRef = useRef<((data: string) => boolean) | null>(null);
   const reconnectAttemptRef = useRef(0);
   const terminalSurfaceRef = useRef<HTMLDivElement>(null);
@@ -146,6 +178,15 @@ export function TerminalView({
     });
 
     const xterm = new Terminal({
+      ...(pendingViewState.current
+        ? {
+            cols: pendingViewState.current.cols,
+            ...(pendingViewState.current.rows === undefined
+              ? {}
+              : { rows: pendingViewState.current.rows }),
+          }
+        : {}),
+      disableStdin: Boolean(stagingRef.current),
       allowProposedApi: false,
       allowTransparency: true,
       convertEol: false,
@@ -159,6 +200,8 @@ export function TerminalView({
     xterm.loadAddon(fit);
     xterm.open(container);
     xterm.attachCustomKeyEventHandler((event) => {
+      if (transferSuspended || transferRetired || stagingRef.current)
+        return false;
       if (!isTerminalClearShortcut(event, terminal.linkedChatId)) return true;
       event.preventDefault();
       event.stopPropagation();
@@ -188,16 +231,34 @@ export function TerminalView({
     let connection: TerminalWorkerLinkConnection | null = null;
     let ready = false;
     let disposed = false;
+    let transferSuspended = false;
+    let transferRetired = false;
+    let transferGeneration = 0;
     let exited = false;
     let inputSequence = 0;
     let inputQueue = Promise.resolve();
+    let inputFailure: Error | null = null;
     let outputSequence = 0;
     let outputQueue = Promise.resolve();
+    let outputFailure: Error | null = null;
     const hydration = new TerminalHydrationController();
     let hydrationStartedAt: number | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     const scheduleReconnect = () => {
-      if (disposed || exited || reconnectTimer) return;
+      if (stagingRef.current) {
+        stagingRef.current.onError(
+          new Error("The staged terminal connection was lost."),
+        );
+        return;
+      }
+      if (
+        disposed ||
+        transferSuspended ||
+        transferRetired ||
+        exited ||
+        reconnectTimer
+      )
+        return;
       const delay = Math.min(500 * 2 ** reconnectAttemptRef.current, 5_000);
       reconnectAttemptRef.current += 1;
       setState("reconnecting");
@@ -221,7 +282,14 @@ export function TerminalView({
       );
     };
     const sendSize = (beforeReady = false) => {
-      if ((!ready && !beforeReady) || !connection) return false;
+      if (
+        stagingRef.current ||
+        transferSuspended ||
+        transferRetired ||
+        (!ready && !beforeReady) ||
+        !connection
+      )
+        return false;
       const cols = xterm.cols;
       const rows = xterm.rows;
       if (
@@ -246,6 +314,7 @@ export function TerminalView({
       return true;
     };
     const resize = () => {
+      if (transferSuspended || transferRetired || stagingRef.current) return;
       if (
         !terminalViewportCanFit(
           visibleRef.current,
@@ -309,7 +378,14 @@ export function TerminalView({
       attributes: true,
     });
     const sendInput = (data: string) => {
-      if (ready && connection) {
+      if (
+        !disposed &&
+        !stagingRef.current &&
+        !transferSuspended &&
+        !transferRetired &&
+        ready &&
+        connection
+      ) {
         const sequence = inputSequence;
         inputSequence += 1;
         inputQueue = inputQueue
@@ -326,8 +402,8 @@ export function TerminalView({
               schema: terminalInputContentSchema,
             });
             if (
-              ready &&
-              connection &&
+              !ready ||
+              !connection ||
               !connection.send({
                 type: "input",
                 operationId,
@@ -339,6 +415,10 @@ export function TerminalView({
             }
           })
           .catch(() => {
+            inputFailure = new Error(
+              "Terminal input could not be delivered before transfer.",
+            );
+            ready = false;
             if (!disposed) {
               setError("Terminal input encryption failed.");
               scheduleReconnect();
@@ -349,8 +429,119 @@ export function TerminalView({
       return false;
     };
     inputSenderRef.current = sendInput;
+    const activateTransfer = () => {
+      if (
+        disposed ||
+        transferSuspended ||
+        transferRetired ||
+        stagingRef.current ||
+        outputFailure
+      )
+        return;
+      xterm.options.disableStdin = false;
+      restoreVisibleSurface();
+      const queued = pendingInputRef.current;
+      if (queued && sendInput(queued.data)) {
+        pendingInputRef.current = null;
+        onPendingInputSentRef.current?.(queued.id);
+      }
+    };
+    activateTransferRef.current = activateTransfer;
     const input = xterm.onData(sendInput);
+    const lifecycle: TerminalTransferLifecycle = {
+      suspendTransfer() {
+        if (disposed || transferSuspended || transferRetired)
+          throw new Error("Terminal renderer is unavailable for transfer.");
+        transferSuspended = true;
+        const generation = ++transferGeneration;
+        xterm.options.disableStdin = true;
+        if (reconnectTimer) {
+          clearTimeout(reconnectTimer);
+          reconnectTimer = null;
+        }
+        let released = false;
+        return () => {
+          if (released || disposed || generation !== transferGeneration) return;
+          released = true;
+          transferSuspended = false;
+          // Retired renderers must hydrate from the existing worker session;
+          // never reactivate their stale transport or retry accepted input.
+          if (transferRetired || (!ready && !exited)) {
+            setConnectionKey((key) => key + 1);
+          } else {
+            xterm.options.disableStdin = false;
+            restoreVisibleSurface();
+            const queuedInput = pendingInputRef.current;
+            if (queuedInput && sendInput(queuedInput.data)) {
+              pendingInputRef.current = null;
+              onPendingInputSentRef.current?.(queuedInput.id);
+            }
+          }
+        };
+      },
+      async retireTransfer() {
+        if (disposed || !transferSuspended)
+          throw new Error("Suspend the terminal before retiring its renderer.");
+        const generation = transferGeneration;
+        await inputQueue;
+        if (inputFailure) throw inputFailure;
+        if (connection) await connection.drain();
+        await outputQueue;
+        if (outputFailure) throw outputFailure;
+        if (disposed || !transferSuspended || generation !== transferGeneration)
+          throw new Error("Terminal transfer was cancelled during retirement.");
+        if (transferRetired) return;
+        pendingViewState.current = captureTerminalViewState(
+          xterm,
+          terminal.id,
+          terminal.activeWorkerId,
+        );
+        transferRetired = true;
+        ready = false;
+        connection?.close("normal");
+        connection = null;
+      },
+      async captureTransfer() {
+        if (disposed || !transferSuspended || transferRetired)
+          throw new Error(
+            "Suspend the live terminal before capturing its view.",
+          );
+        const generation = transferGeneration;
+        await inputQueue;
+        if (inputFailure) throw inputFailure;
+        if (connection) await connection.drain();
+        await outputQueue;
+        if (outputFailure) throw outputFailure;
+        if (
+          disposed ||
+          !transferSuspended ||
+          transferRetired ||
+          generation !== transferGeneration
+        )
+          throw new Error(
+            "Terminal transfer changed while capturing its view.",
+          );
+        return captureTerminalViewState(
+          xterm,
+          terminal.id,
+          terminal.activeWorkerId,
+        );
+      },
+    };
+    if (transferLifecycleRef) transferLifecycleRef.current = lifecycle;
+    const unregisterTransfer = transferTabId
+      ? registerTerminalTransferLifecycle(
+          {
+            tabId: transferTabId,
+            projectId: terminal.projectId,
+            terminalId: terminal.id,
+            workerId: terminal.activeWorkerId,
+          },
+          lifecycle,
+        )
+      : () => {};
     const handleMessage = (message: TerminalServerMessage): Promise<void> => {
+      if (disposed || transferRetired) return Promise.resolve();
       if (message.type === "ready") {
         let completedHydration: ReturnType<
           TerminalHydrationController["assertReady"]
@@ -358,6 +549,12 @@ export function TerminalView({
         try {
           completedHydration = hydration.assertReady();
         } catch (hydrationError) {
+          outputFailure =
+            hydrationError instanceof Error
+              ? hydrationError
+              : new Error("The terminal snapshot was incomplete.");
+          ready = false;
+          stagingRef.current?.onError(outputFailure);
           setError("The terminal snapshot was incomplete.");
           clientLogger.warn("Terminal snapshot hydration failed", {
             ...operationalErrorMetadata(hydrationError),
@@ -405,8 +602,40 @@ export function TerminalView({
         // xterm can answer capability queries while parsing scrollback. Keep
         // input closed until every replay write ahead of ready has finished.
         outputQueue = outputQueue.then(() => {
-          if (disposed || exited || !connection) return;
+          if (
+            disposed ||
+            transferRetired ||
+            exited ||
+            !connection ||
+            outputFailure
+          )
+            return;
+          if (pendingViewState.current) {
+            try {
+              restoreTerminalViewState(
+                xterm,
+                pendingViewState.current,
+                terminal.id,
+                terminal.activeWorkerId,
+              );
+              pendingViewState.current = undefined;
+            } catch (error) {
+              if (stagingRef.current) {
+                stagingRef.current.onError(error);
+                return;
+              }
+              setRecoveryError(
+                error instanceof Error
+                  ? error.message
+                  : "Terminal view state could not be restored.",
+              );
+              // Keep the hydrated session usable and report the actual view
+              // restore failure; reconnecting cannot repair incompatible coordinates.
+              pendingViewState.current = undefined;
+            }
+          }
           ready = true;
+          stagingRef.current?.onRestored();
           reconnectAttemptRef.current = 0;
           setLoadedTerminalId(terminal.id);
           setState("ready");
@@ -435,6 +664,11 @@ export function TerminalView({
           message.operationId !== operationId ||
           message.sequence !== outputSequence
         ) {
+          outputFailure = new Error(
+            "The protected terminal stream is out of sequence.",
+          );
+          stagingRef.current?.onError(outputFailure);
+          ready = false;
           setError("The protected terminal stream is out of sequence.");
           connection?.close("protocol-error");
           return Promise.resolve();
@@ -474,7 +708,7 @@ export function TerminalView({
               opaque: message.protectedData,
               schema: terminalOutputContentSchema,
             });
-            if (!disposed) {
+            if (!disposed && !transferRetired) {
               await new Promise<void>((resolve) => {
                 xterm.write(content.data, resolve);
               });
@@ -482,6 +716,14 @@ export function TerminalView({
             hydration.consumedOutput();
           })
           .catch((outputError: unknown) => {
+            outputFailure =
+              outputError instanceof Error
+                ? outputError
+                : new Error(
+                    "The protected terminal output could not be opened.",
+                  );
+            ready = false;
+            stagingRef.current?.onError(outputFailure);
             if (!disposed) {
               setError("The protected terminal output could not be opened.");
               clientLogger.warn("Terminal output or hydration failed", {
@@ -515,8 +757,8 @@ export function TerminalView({
         // Keep the renderer and drain protected output before closing or
         // allowing a linked console's owner to unmount it.
         outputQueue = outputQueue.then(async () => {
-          if (disposed) return;
-          if (onExitRef.current) {
+          if (disposed || transferRetired) return;
+          if (onExitRef.current && !stagingRef.current) {
             onExitRef.current();
           } else {
             await new Promise<void>((resolve) => {
@@ -548,7 +790,7 @@ export function TerminalView({
       return outputQueue;
     };
     const fail = () => {
-      if (disposed || exited) return;
+      if (disposed || transferRetired || exited) return;
       ready = false;
       setError("Could not connect to the terminal session.");
       clientLogger.rateLimited(
@@ -578,7 +820,7 @@ export function TerminalView({
         workerId: terminal.activeWorkerId,
       })
         .then((nextConnection) => {
-          if (disposed) {
+          if (disposed || transferRetired) {
             nextConnection.close("normal");
             return;
           }
@@ -593,8 +835,10 @@ export function TerminalView({
           // Fit and send the real viewport before replay is consumed. The
           // resulting PTY resize gives alternate-screen TUIs a fresh redraw
           // opportunity after a detached browser terminal is reconstructed.
-          resize();
-          if (!sendSize(true)) return;
+          if (!stagingRef.current) {
+            resize();
+            if (!sendSize(true)) return;
+          }
           nextConnection.activate();
         })
         .catch((error: unknown) => {
@@ -637,8 +881,13 @@ export function TerminalView({
       });
 
     return () => {
+      if (activateTransferRef.current === activateTransfer)
+        activateTransferRef.current = null;
+      unregisterTransfer();
       ready = false;
       disposed = true;
+      if (transferLifecycleRef?.current === lifecycle)
+        transferLifecycleRef.current = null;
       if (reconnectTimer) clearTimeout(reconnectTimer);
       input.dispose();
       if (terminalFocusFrame !== null) cancelAnimationFrame(terminalFocusFrame);
@@ -662,7 +911,19 @@ export function TerminalView({
       terminalLinks.dispose();
       xterm.dispose();
     };
-  }, [connectionKey, terminal.activeWorkerId, terminal.id]);
+  }, [
+    connectionKey,
+    terminal.activeWorkerId,
+    terminal.id,
+    terminal.projectId,
+    transferTabId,
+    transferLifecycleRef,
+  ]);
+
+  const staging = Boolean(transferStaging);
+  useEffect(() => {
+    if (!staging) activateTransferRef.current?.();
+  }, [staging]);
 
   useEffect(() => {
     const xterm = xtermRef.current;

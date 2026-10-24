@@ -26,6 +26,7 @@ import type {
   ProjectPaneMemberOrder,
   ProjectPaneOrder,
   WorkspaceLayoutProfile,
+  PrivateDisplayLabelOpaque,
 } from "@cantrip/protocol";
 import {
   projectSurfaceTabKind,
@@ -69,7 +70,7 @@ export type TabLayoutExecutor = Pick<
   "delete" | "insert" | "select" | "update"
 >;
 
-function surfaceDefinitionIdForTab(
+export function surfaceDefinitionIdForTab(
   tabKind: ProjectTabKind,
   tabId: string,
 ): ProjectSurfaceDefinitionId {
@@ -507,15 +508,25 @@ export async function resolveEntitySurface(
   database: TabLayoutExecutor,
   projectId: string,
   surface: ProjectSurfaceResourceRef,
-): Promise<{ tabId: string; tabKind: ProjectTabKind } | null> {
+): Promise<{
+  tabId: string;
+  tabKind: ProjectTabKind;
+  titleProtection: PrivateDisplayLabelOpaque | null;
+} | null> {
   if (surface.kind !== "entity") return null;
   const tabKind = projectSurfaceTabKind(surface);
   if (!tabKind) return null;
   const tabId = surface.resourceId;
-  let rows: Array<{ id: string }>;
+  let rows: Array<{
+    id: string;
+    titleProtection: PrivateDisplayLabelOpaque | null;
+  }>;
   if (tabKind === "chat") {
     rows = await database
-      .select({ id: schema.chats.id })
+      .select({
+        id: schema.chats.id,
+        titleProtection: schema.chats.protectedLabel,
+      })
       .from(schema.chats)
       .where(
         and(
@@ -527,7 +538,10 @@ export async function resolveEntitySurface(
       .limit(1);
   } else if (tabKind === "terminal") {
     rows = await database
-      .select({ id: schema.terminals.id })
+      .select({
+        id: schema.terminals.id,
+        titleProtection: schema.terminals.protectedLabel,
+      })
       .from(schema.terminals)
       .where(
         and(
@@ -539,7 +553,10 @@ export async function resolveEntitySurface(
       .limit(1);
   } else if (tabKind === "explorer") {
     rows = await database
-      .select({ id: schema.explorers.id })
+      .select({
+        id: schema.explorers.id,
+        titleProtection: schema.explorers.protectedLabel,
+      })
       .from(schema.explorers)
       .where(
         and(
@@ -550,7 +567,10 @@ export async function resolveEntitySurface(
       .limit(1);
   } else if (tabKind === "browser") {
     rows = await database
-      .select({ id: schema.browsers.id })
+      .select({
+        id: schema.browsers.id,
+        titleProtection: schema.browsers.protectedLabel,
+      })
       .from(schema.browsers)
       .where(
         and(
@@ -561,7 +581,10 @@ export async function resolveEntitySurface(
       .limit(1);
   } else if (tabKind === "code") {
     rows = await database
-      .select({ id: schema.codeTabs.id })
+      .select({
+        id: schema.codeTabs.id,
+        titleProtection: schema.codeTabs.protectedLabel,
+      })
       .from(schema.codeTabs)
       .where(
         and(
@@ -572,7 +595,10 @@ export async function resolveEntitySurface(
       .limit(1);
   } else {
     rows = await database
-      .select({ id: schema.projectViews.id })
+      .select({
+        id: schema.projectViews.id,
+        titleProtection: schema.projectViews.protectedLabel,
+      })
       .from(schema.projectViews)
       .where(
         and(
@@ -583,7 +609,9 @@ export async function resolveEntitySurface(
       )
       .limit(1);
   }
-  return rows[0] ? { tabId, tabKind } : null;
+  return rows[0]
+    ? { tabId, tabKind, titleProtection: rows[0].titleProtection }
+    : null;
 }
 
 async function updateGroupPositions(

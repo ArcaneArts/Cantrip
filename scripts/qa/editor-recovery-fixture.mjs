@@ -69,6 +69,7 @@ async function availablePort() {
 export async function startEditorRecoveryFixture({
   requireExplicitBootstrapRefresh = false,
   repositoryProject = false,
+  nativeLoopbackOrigin = false,
 } = {}) {
   const runId = randomUUID();
   const directory = path.join(root, ".qa", `editor-${runId}`);
@@ -268,7 +269,11 @@ export async function startEditorRecoveryFixture({
     const { build, preview } = await import(appRequire.resolve("vite"));
     // This affects only this fixture process, never a persisted development profile.
     process.env.VITE_CANTRIP_LOCAL_ONLY = "true";
-    const hostname = `qa-${runId}.localhost`;
+    // Native WebViews apply transport rules differently to generated DNS names.
+    // The disposable server port and native app identifier still isolate runs.
+    const hostname = nativeLoopbackOrigin
+      ? "127.0.0.1"
+      : `qa-${runId}.localhost`;
     const appDirectory = path.join(directory, "app");
     await build({
       root: path.join(root, "cantrip_app"),

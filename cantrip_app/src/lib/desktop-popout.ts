@@ -24,6 +24,14 @@ export type DesktopPopoutPaneTarget = {
   activeTabKey: string;
   paneId: string;
   projectId: string;
+  transfer?: DesktopWorkspaceTransferTarget;
+};
+
+export type DesktopWorkspaceTransferTarget = {
+  id: string;
+  workspaceId: string;
+  windowId: string;
+  generation: number;
 };
 
 export type DesktopProjectOverviewTarget = {
@@ -112,6 +120,7 @@ export type DesktopWindowTheme = "dark" | "light" | null;
 type DesktopWindowOpenBehavior = {
   focus?: boolean;
   visible?: boolean;
+  reuseWithoutFocus?: boolean;
 };
 
 export function isSyntheticBuildProgressWindow(search: string): boolean {
@@ -147,8 +156,31 @@ export function parseDesktopPopoutPaneTarget(
     parameters.get(paneParameter) ?? parameters.get(groupParameter);
   const projectId = parameters.get("project");
   const activeTabKey = parameters.get("active");
+  const transferId = parameters.get("cantrip-transfer");
+  const workspaceId = parameters.get("workspace");
+  const windowId = parameters.get("window");
+  const generationText = parameters.get("generation");
+  let transfer: DesktopWorkspaceTransferTarget | undefined;
+  if (
+    [transferId, workspaceId, windowId, generationText].some(
+      (value) => value !== null,
+    )
+  ) {
+    const generation = Number(generationText);
+    if (
+      !transferId ||
+      !workspaceId ||
+      !windowId ||
+      windowId === "main" ||
+      !generationText ||
+      !/^\d+$/u.test(generationText) ||
+      !Number.isSafeInteger(generation)
+    )
+      return null;
+    transfer = { id: transferId, workspaceId, windowId, generation };
+  }
   return paneId && projectId && activeTabKey
-    ? { activeTabKey, paneId, projectId }
+    ? { activeTabKey, paneId, projectId, ...(transfer ? { transfer } : {}) }
     : null;
 }
 
@@ -171,6 +203,12 @@ export function desktopPopoutPaneSearch(
     active: target.activeTabKey,
     project: target.projectId,
   });
+  if (target.transfer) {
+    parameters.set("cantrip-transfer", target.transfer.id);
+    parameters.set("workspace", target.transfer.workspaceId);
+    parameters.set("window", target.transfer.windowId);
+    parameters.set("generation", String(target.transfer.generation));
+  }
   return `?${parameters.toString()}`;
 }
 
@@ -399,6 +437,20 @@ async function focusWindow(label: string): Promise<boolean> {
   return true;
 }
 
+export async function currentDesktopWorkspaceWindowId(): Promise<
+  string | undefined
+> {
+  if (!isDesktopRuntime()) return undefined;
+  const { getCurrentWindow } = await import("@tauri-apps/api/window");
+  const label = getCurrentWindow().label;
+  return label === "main" ? undefined : label;
+}
+
+export async function focusWorkspaceNativeWindow(label: string): Promise<void> {
+  if (!isDesktopRuntime() || !(await focusWindow(label)))
+    throw new Error("The owning workspace window is unavailable.");
+}
+
 async function closeWindow(label: string): Promise<void> {
   const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
   const existing = await WebviewWindow.getByLabel(label);
@@ -573,7 +625,17 @@ export async function focusDesktopPopoutPane(paneId: string): Promise<boolean> {
 export async function discoverDesktopPopoutPaneIds(
   paneIds: readonly string[],
 ): Promise<ReadonlySet<string>> {
-  if (!isDesktopRuntime()) return new Set();
+  return new Set(
+    (await discoverDesktopPopoutPanes(paneIds)).map(({ paneId }) => paneId),
+  );
+}
+
+/** Preserve the actual native label, including legacy group windows, during
+ * migration. A failed native observation must propagate rather than reclaim. */
+export async function discoverDesktopPopoutPanes(
+  paneIds: readonly string[],
+): Promise<Array<{ paneId: string; windowId: string }>> {
+  if (!isDesktopRuntime()) return [];
   const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
   const found = await Promise.all(
     paneIds.map(async (paneId) => {
@@ -583,10 +645,13 @@ export async function discoverDesktopPopoutPaneIds(
       const legacy = canonical
         ? null
         : await WebviewWindow.getByLabel(desktopPopoutGroupWindowLabel(paneId));
-      return canonical || legacy ? paneId : null;
+      const window = canonical ?? legacy;
+      return window ? { paneId, windowId: window.label } : null;
     }),
   );
-  return new Set(found.filter((paneId): paneId is string => paneId !== null));
+  return found.filter(
+    (claim): claim is { paneId: string; windowId: string } => claim !== null,
+  );
 }
 
 export async function observeDesktopPopoutClosure(
@@ -630,6 +695,24 @@ export async function watchDesktopPopoutGroup(
   if (!isDesktopRuntime()) return noDesktopListener;
   const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
   const label = desktopPopoutGroupWindowLabel(groupId);
+  return observeDesktopPopoutClosure(async () => {
+    const popout = await WebviewWindow.getByLabel(label);
+    return popout
+      ? {
+          listenDestroyed: (listener) =>
+            popout.once("tauri://destroyed", listener),
+        }
+      : null;
+  }, onClosed);
+}
+
+/** Observe an exact ownership window, rather than deriving a label from a pane. */
+export async function watchWorkspaceNativeWindow(
+  label: string,
+  onClosed: () => void,
+): Promise<() => void> {
+  if (!isDesktopRuntime()) return noDesktopListener;
+  const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
   return observeDesktopPopoutClosure(async () => {
     const popout = await WebviewWindow.getByLabel(label);
     return popout
@@ -717,6 +800,28 @@ export async function openDesktopPopoutPane(
     title,
     position,
   );
+}
+
+/** Uses the server-reserved window identity, not a pane-derived legacy label.
+ * Native creation is not readiness: the coordinator reveals it after handoff. */
+export async function openWorkspaceTransferWindow(
+  target: DesktopPopoutPaneTarget & {
+    transfer: DesktopWorkspaceTransferTarget;
+  },
+  title: string,
+): Promise<"created" | "existing"> {
+  const search = desktopPopoutPaneSearch(target);
+  if (!parseDesktopPopoutPaneTarget(search)?.transfer)
+    throw new Error("Invalid workspace transfer window target.");
+  const result = await openDesktopWindow(
+    target.transfer.windowId,
+    search,
+    title,
+    undefined,
+    undefined,
+    { focus: false, visible: false, reuseWithoutFocus: true },
+  );
+  return result === "created" ? "created" : "existing";
 }
 
 export async function openDesktopProjectOverviewPopout(
@@ -1144,9 +1249,13 @@ async function openDesktopWindow(
   if (!isDesktopRuntime()) {
     throw new Error("Pop-out windows are only available in the desktop app.");
   }
-  if (await focusWindow(label)) return "focused";
-
   const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+  const reuse = async () =>
+    behavior.reuseWithoutFocus
+      ? Boolean(await WebviewWindow.getByLabel(label))
+      : focusWindow(label);
+  if (await reuse()) return "focused";
+
   const path = window.location.pathname || "/";
   const macos = isMacosDesktopRuntime();
   const popout = new WebviewWindow(label, {
@@ -1197,7 +1306,7 @@ async function openDesktopWindow(
     // Two callers may race after both observe no owner. The stable label lets
     // the loser recover by focusing the window that won instead of surfacing a
     // duplicate-window error.
-    if (await focusWindow(label)) return "focused";
+    if (await reuse()) return "focused";
     throw error;
   }
 }

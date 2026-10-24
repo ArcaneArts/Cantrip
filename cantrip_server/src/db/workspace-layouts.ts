@@ -6,6 +6,8 @@ import {
   WorkspaceCommandError,
   workspaceCommandSchema,
   workspaceOwnershipSchema,
+  workspaceSeedRequestSchema,
+  type WorkspaceSeedRequest,
   type WorkspaceCommand,
   type WorkspaceOwnership,
 } from "@cantrip/protocol";
@@ -86,7 +88,12 @@ export class WorkspaceLayoutRepository {
     projectId: string,
     workspaceId: string,
     mainWindowId: string,
+    observations: Omit<WorkspaceSeedRequest, "mainWindowId"> = {},
   ) {
+    const seedRequest = workspaceSeedRequestSchema.parse({
+      ...observations,
+      mainWindowId,
+    });
     return this.database.transaction(async (tx) => {
       if (!(await ownedProject(tx, ownerId, projectId))) return null;
       const [existing] = await tx
@@ -101,6 +108,7 @@ export class WorkspaceLayoutRepository {
       );
       if (!legacy) return null;
       const layout = seedWorkspaceOwnership({
+        ...seedRequest,
         workspaceId,
         mainWindowId,
         legacy,
@@ -179,16 +187,28 @@ export class WorkspaceLayoutRepository {
           emptyWindowIds: [] as string[],
         };
       }
+      let effectiveCommand = command;
       if (command.action.type === "open") {
         const resource = command.action.tab.resource;
-        if (
-          resource.kind === "entity" &&
-          !(await resolveEntitySurface(tx, projectId, resource))
-        ) {
-          throw new WorkspaceCommandError(
-            "missing",
-            "The resource is unavailable in this project.",
-          );
+        if (resource.kind === "entity") {
+          const resolved = await resolveEntitySurface(tx, projectId, resource);
+          if (!resolved)
+            throw new WorkspaceCommandError(
+              "missing",
+              "The resource is unavailable in this project.",
+            );
+          // Retain the original command bytes in the receipt for retry identity;
+          // only execution uses the canonical authorized resource label.
+          effectiveCommand = {
+            ...command,
+            action: {
+              ...command.action,
+              tab: {
+                ...command.action.tab,
+                titleProtection: resolved.titleProtection,
+              },
+            },
+          };
         }
         const worktreeId = command.action.tab.builtInState?.worktreeId;
         if (worktreeId) {
@@ -217,22 +237,20 @@ export class WorkspaceLayoutRepository {
             );
         }
       }
-      const result = applyWorkspaceCommand(layout, command);
+      const result = applyWorkspaceCommand(layout, effectiveCommand);
       validatePlacements(result.layout);
       await tx
         .update(schema.workspaceLayouts)
         .set({ layout: result.layout })
         .where(scope(ownerId, projectId, workspaceId));
-      await tx
-        .insert(schema.workspaceCommandReceipts)
-        .values({
-          ownerId,
-          projectId,
-          workspaceId,
-          operationId,
-          command,
-          appliedRevision: result.layout.revision,
-        });
+      await tx.insert(schema.workspaceCommandReceipts).values({
+        ownerId,
+        projectId,
+        workspaceId,
+        operationId,
+        command,
+        appliedRevision: result.layout.revision,
+      });
       return {
         ...result,
         appliedRevision: result.layout.revision,

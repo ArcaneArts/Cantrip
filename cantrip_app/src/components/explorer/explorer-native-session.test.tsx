@@ -2,12 +2,13 @@
 import type { ExplorerSummary } from "@cantrip/protocol";
 import type { EditorDocumentSession } from "@/components/editor/document-session";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { createElement } from "react";
+import { createElement, StrictMode } from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
   publishHeader: true,
+  strict: false,
   ready: true,
   owner: "owner-one",
   content: "original\n",
@@ -15,6 +16,10 @@ const state = vi.hoisted(() => ({
   lifecycle: null as unknown,
   input: null as unknown,
   transientPath: undefined as string | undefined,
+  initialTransfer: undefined as
+    import("./explorer-view").ExplorerTransferState | undefined,
+  staging: undefined as
+    import("./explorer-view").ExplorerTransferStaging | undefined,
 }));
 const api = vi.hoisted(() => ({
   getExplorerFile: vi.fn(),
@@ -51,8 +56,11 @@ vi.mock("@/components/git/git-graph", () => ({
   GitRepositoryGraphView: () => null,
 }));
 interface InputProps {
+  readOnly?: boolean;
+  active?: boolean;
   session: EditorDocumentSession;
   path: string;
+  onReady?(session: EditorDocumentSession): void;
   onChange(text: string): void;
 }
 vi.mock("@/components/editor/native-code-editor", () => ({
@@ -96,6 +104,8 @@ function tree(explorer = summary) {
     createElement(ExplorerView, {
       appearance: "dark",
       explorer,
+      initialTransfer: state.initialTransfer,
+      transferStaging: state.staging,
       repositoryGraphAvailable: false,
       transientFile: state.transientPath
         ? { path: state.transientPath, close: vi.fn() }
@@ -111,8 +121,11 @@ function tree(explorer = summary) {
 }
 async function render(explorer = summary) {
   await act(async () => {
-    if (renderer) renderer.update(tree(explorer));
-    else renderer = TestRenderer.create(tree(explorer));
+    const content = state.strict
+      ? createElement(StrictMode, null, tree(explorer))
+      : tree(explorer);
+    if (renderer) renderer.update(content);
+    else renderer = TestRenderer.create(content);
   });
   await settle();
 }
@@ -124,6 +137,7 @@ async function edit(text: string) {
 }
 beforeEach(() => {
   state.publishHeader = true;
+  state.strict = false;
   state.ready = true;
   state.owner = "owner-one";
   state.content = "original\n";
@@ -131,6 +145,8 @@ beforeEach(() => {
   state.header = null;
   state.lifecycle = null;
   state.transientPath = undefined;
+  state.initialTransfer = undefined;
+  state.staging = undefined;
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   api.getExplorerFile.mockReset();
   api.saveExplorerFile.mockReset();
@@ -153,6 +169,457 @@ afterEach(async () => {
 });
 
 describe("native Explorer document integration", () => {
+  it.each(["back", "refresh"] as const)(
+    "performs %s after async approval for the unchanged revision",
+    async (action) => {
+      const confirm = vi
+        .spyOn(window, "confirm")
+        .mockImplementation((() =>
+          Promise.resolve(true)) as unknown as typeof window.confirm);
+      try {
+        await render();
+        await edit("approved discard");
+        await act(async () => {
+          await header()[action]();
+        });
+        await settle();
+        expect(confirm).toHaveBeenCalledOnce();
+        expect(header().selectedPath).toBe(
+          action === "back" ? null : "source.ts",
+        );
+        expect(header().dirty).toBe(false);
+        if (action === "refresh")
+          expect(input().session.text).toBe("original\n");
+      } finally {
+        confirm.mockRestore();
+      }
+    },
+  );
+  it.each(["back", "refresh"] as const)(
+    "awaits %s confirmation and rejects approval for a newer draft",
+    async (action) => {
+      let answer!: (value: boolean) => void;
+      const confirm = vi.spyOn(window, "confirm").mockImplementation(
+        (() =>
+          new Promise<boolean>((resolve) => {
+            answer = resolve;
+          })) as unknown as typeof window.confirm,
+      );
+      try {
+        await render();
+        await edit("first draft");
+        const document = input().session;
+        let pending!: Promise<unknown>;
+        await act(async () => {
+          pending = Promise.resolve(header()[action]());
+        });
+        expect(document.text).toBe("first draft");
+        await edit("newer draft while dialog is open");
+        await act(async () => {
+          answer(true);
+          await pending;
+        });
+        expect(input().session).toBe(document);
+        expect(document.text).toBe("newer draft while dialog is open");
+        expect(document.dirty).toBe(true);
+        expect(header().selectedPath).toBe("source.ts");
+        confirm.mockImplementation((() =>
+          Promise.resolve(false)) as unknown as typeof window.confirm);
+        await act(async () => {
+          await header()[action]();
+        });
+        expect(document.dirty).toBe(true);
+        expect(header().selectedPath).toBe("source.ts");
+        confirm.mockImplementation((() =>
+          Promise.reject(
+            new Error("native dialog failed"),
+          )) as unknown as typeof window.confirm);
+        await act(async () => {
+          await header()[action]();
+        });
+        expect(document.text).toBe("newer draft while dialog is open");
+        expect(header().selectedPath).toBe("source.ts");
+      } finally {
+        confirm.mockRestore();
+      }
+    },
+  );
+  it("awaits native async close confirmation and preserves drafts when the dialog rejects", async () => {
+    let answer!: (approved: boolean) => void;
+    const confirm = vi.spyOn(window, "confirm").mockImplementation(
+      // Tauri's dialog plugin overrides the DOM signature with an async call.
+      (() =>
+        new Promise<boolean>((resolve) => {
+          answer = resolve;
+        })) as unknown as typeof window.confirm,
+    );
+    try {
+      await render();
+      await edit("native pending confirmation");
+      const lifecycle = state.lifecycle as ExplorerLifecycleActions;
+      let settled = false;
+      const close = lifecycle.prepareClose();
+      void close.then(
+        () => {
+          settled = true;
+        },
+        () => {
+          settled = true;
+        },
+      );
+      await Promise.resolve();
+      expect(settled).toBe(false);
+      answer(false);
+      await expect(close).rejects.toThrow(/close canceled/);
+      expect(input().session.text).toBe("native pending confirmation");
+      confirm.mockImplementation((() =>
+        Promise.reject(
+          new Error("dialog unavailable"),
+        )) as unknown as typeof window.confirm);
+      await expect(lifecycle.prepareClose()).rejects.toThrow(
+        "dialog unavailable",
+      );
+      expect(input().session.dirty).toBe(true);
+      confirm.mockImplementation((() =>
+        Promise.resolve(true)) as unknown as typeof window.confirm);
+      await expect(lifecycle.prepareClose()).resolves.toBeUndefined();
+      expect(input().session.text).toBe("native pending confirmation");
+    } finally {
+      confirm.mockRestore();
+    }
+  });
+  it("closes a clean view without asking about unsaved changes", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    try {
+      await render();
+      await (state.lifecycle as ExplorerLifecycleActions).prepareClose();
+      expect(confirm).not.toHaveBeenCalled();
+    } finally {
+      confirm.mockRestore();
+    }
+  });
+
+  it("rejects close approval after a newer edit while the native dialog is open", async () => {
+    let answer!: (approved: boolean) => void;
+    const confirm = vi.spyOn(window, "confirm").mockImplementation(
+      (() =>
+        new Promise<boolean>((resolve) => {
+          answer = resolve;
+        })) as unknown as typeof window.confirm,
+    );
+    try {
+      await render();
+      await edit("original draft");
+      const pending = (
+        state.lifecycle as ExplorerLifecycleActions
+      ).prepareClose();
+      await edit("newer draft");
+      answer(true);
+      await expect(pending).rejects.toThrow(/changed while confirming close/);
+      expect(input().session.text).toBe("newer draft");
+      expect(input().session.dirty).toBe(true);
+    } finally {
+      confirm.mockRestore();
+    }
+  });
+
+  it("preserves dirty buffers on canceled and subsequently failed closes", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    try {
+      await render();
+      await edit("unsaved close regression");
+      const lifecycle = state.lifecycle as ExplorerLifecycleActions;
+      const before = await lifecycle.captureTransfer!();
+      await expect(lifecycle.prepareClose()).rejects.toThrow(/close canceled/);
+      expect(await lifecycle.captureTransfer!()).toEqual(before);
+      confirm.mockReturnValue(true);
+      await lifecycle.prepareClose();
+      lifecycle.cancelClose();
+      expect(await lifecycle.captureTransfer!()).toEqual(before);
+      expect(input().session.dirty).toBe(true);
+      expect(api.saveExplorerFile).not.toHaveBeenCalled();
+      expect(confirm).toHaveBeenCalledTimes(2);
+    } finally {
+      confirm.mockRestore();
+    }
+  });
+
+  it("acknowledges a restored file browser without waiting for a nonexistent editor", async () => {
+    const browser = { ...summary, selectedPath: null };
+    await render(browser);
+    const snapshot = await (state.lifecycle as ExplorerLifecycleActions)
+      .captureTransfer!();
+    await act(async () => renderer!.unmount());
+    renderer = null;
+    state.initialTransfer = snapshot;
+    state.staging = { onRestored: vi.fn(), onError: vi.fn() };
+    await render(browser);
+    expect(state.staging.onRestored).toHaveBeenCalledOnce();
+    expect(state.staging.onError).not.toHaveBeenCalled();
+    expect(
+      renderer!.root.findByProps({ "data-slot": "explorer-view" }).props.inert,
+    ).toBe(true);
+  });
+
+  it("keeps a staged draft inert until commit and acknowledges actual editor restoration", async () => {
+    await render();
+    await edit("staged unsaved text");
+    const snapshot = await (state.lifecycle as ExplorerLifecycleActions)
+      .captureTransfer!();
+    await act(async () => renderer!.unmount());
+    renderer = null;
+    state.initialTransfer = snapshot;
+    const staging = { onRestored: vi.fn(), onError: vi.fn() };
+    state.staging = staging;
+    await render();
+    const document = input().session;
+    expect(document.text).toBe("staged unsaved text");
+    expect(input().readOnly).toBe(true);
+    expect(input().active).toBe(false);
+    expect(await header().save()).toBe(false);
+    expect(staging.onRestored).not.toHaveBeenCalled();
+    await act(async () => input().onReady!(document));
+    expect(staging.onRestored).toHaveBeenCalledOnce();
+    expect(staging.onError).not.toHaveBeenCalled();
+    expect(api.saveExplorerFile).not.toHaveBeenCalled();
+    state.staging = undefined;
+    await render();
+    expect(input().session).toBe(document);
+    expect(input().readOnly).toBe(false);
+    await edit("committed edit");
+    expect(document.text).toBe("committed edit");
+  });
+
+  it("initializes a destination with its unsaved snapshot before exposing the editor", async () => {
+    await render();
+    await edit("transferred draft");
+    const snapshot = await (state.lifecycle as ExplorerLifecycleActions)
+      .captureTransfer!();
+    await act(async () => renderer!.unmount());
+    renderer = null;
+    state.input = null;
+    state.initialTransfer = snapshot;
+    state.strict = true;
+    await render();
+    expect(input().session.text).toBe("transferred draft");
+    expect(header().dirty).toBe(true);
+    expect(api.saveExplorerFile).not.toHaveBeenCalled();
+    await edit("destination edit");
+    await render();
+    expect(input().session.text).toBe("destination edit");
+  });
+
+  it("keeps an invalid initial transfer inert instead of opening a different document", async () => {
+    await render();
+    const snapshot = await (state.lifecycle as ExplorerLifecycleActions)
+      .captureTransfer!();
+    await act(async () => renderer!.unmount());
+    renderer = null;
+    state.input = null;
+    state.initialTransfer = { ...snapshot, worktreeId: "other-worktree" };
+    state.staging = { onRestored: vi.fn(), onError: vi.fn() };
+    await render();
+    expect(state.staging.onRestored).not.toHaveBeenCalled();
+    expect(state.staging.onError).toHaveBeenCalledWith(expect.any(Error));
+    expect(state.input).toBeNull();
+    expect(
+      renderer!.root.findByProps({ "data-slot": "explorer-view" }).props.inert,
+    ).toBe(true);
+    expect(
+      renderer!.root.findByProps({ role: "alert" }).children.join(""),
+    ).toMatch(/resource scope/);
+    expect(await header().save()).toBe(false);
+  });
+
+  it("suspends input and retained header actions without saving, then resumes the same dirty draft", async () => {
+    await render();
+    await edit("unsaved source");
+    const staleInput = input();
+    const staleHeader = header();
+    const lifecycle = state.lifecycle as ExplorerLifecycleActions;
+    let resume!: () => void;
+    await act(async () => {
+      resume = lifecycle.suspendTransfer!();
+    });
+    expect(input().readOnly).toBe(true);
+    expect(input().active).toBe(false);
+    expect(() => lifecycle.suspendTransfer!()).toThrow(/already transferring/);
+    await act(async () => {
+      staleInput.onChange("late event");
+      staleHeader.setFileMode("preview");
+      staleHeader.back();
+      expect(await staleHeader.save()).toBe(false);
+      lifecycle.discard!();
+    });
+    const snapshot = await lifecycle.captureTransfer!();
+    expect(snapshot.documents.documents[0]?.text).toBe("unsaved source");
+    expect(snapshot.fileMode).toBe("edit");
+    expect(snapshot.selectedPath).toBe("source.ts");
+    expect(api.saveExplorerFile).not.toHaveBeenCalled();
+    await act(async () => {
+      resume();
+      resume();
+    });
+    expect(input().readOnly).toBe(false);
+    expect(input().active).toBe(true);
+    await edit("resumed source");
+    expect(input().session.text).toBe("resumed source");
+    expect(header().dirty).toBe(true);
+  });
+
+  it("does not reconcile a new file over a suspended draft", async () => {
+    await render();
+    await edit("keep this draft");
+    const lifecycle = state.lifecycle as ExplorerLifecycleActions;
+    let resume!: () => void;
+    await act(async () => {
+      resume = lifecycle.suspendTransfer!();
+    });
+    await act(async () => {
+      await lifecycle.reconcile({ ...summary, selectedPath: "another.ts" });
+    });
+    expect((await lifecycle.captureTransfer!()).selectedPath).toBe("source.ts");
+    expect(input().session.text).toBe("keep this draft");
+    await act(async () => resume());
+  });
+
+  it("retires rendered content and reattaches the same dirty session after cancellation", async () => {
+    await render();
+    await edit("unsaved retirement");
+    const document = input().session;
+    document.selection = { start: 1, end: 4, direction: "forward" };
+    document.scrollTop = 71;
+    const lifecycle = state.lifecycle as ExplorerLifecycleActions;
+    expect(() => lifecycle.retireTransfer!()).toThrow(/suspended/);
+    let resume!: () => void;
+    await act(async () => {
+      resume = lifecycle.suspendTransfer!();
+    });
+    const before = await lifecycle.captureTransfer!();
+    await act(async () => {
+      lifecycle.retireTransfer!();
+    });
+    expect(renderer!.root.findAllByType("textarea")).toHaveLength(0);
+    expect(await lifecycle.captureTransfer!()).toEqual(before);
+    expect(await header().save()).toBe(false);
+    await act(async () => resume());
+    expect(renderer!.root.findAllByType("textarea")).toHaveLength(1);
+    expect(input().session).toBe(document);
+    expect(input().session.text).toBe("unsaved retirement");
+    expect(input().session.selection).toEqual({
+      start: 1,
+      end: 4,
+      direction: "forward",
+    });
+    expect(input().session.scrollTop).toBe(71);
+    expect(api.saveExplorerFile).not.toHaveBeenCalled();
+  });
+
+  it("restores a captured dirty editor into a fresh renderer without saving", async () => {
+    await render();
+    await edit("private unsaved transfer");
+    input().session.selection = { start: 2, end: 6, direction: "backward" };
+    input().session.scrollTop = 93;
+    const source = input().session;
+    const transfer = await (state.lifecycle as ExplorerLifecycleActions)
+      .captureTransfer!();
+    await act(async () => renderer!.unmount());
+    renderer = null;
+    await render();
+    expect(input().session.text).toBe("original\n");
+    await act(async () =>
+      (state.lifecycle as ExplorerLifecycleActions).restoreTransfer!(transfer),
+    );
+    expect(input().session).not.toBe(source);
+    expect(input().session.text).toBe("private unsaved transfer");
+    expect(input().session.selection).toEqual(source.selection);
+    expect(input().session.scrollTop).toBe(93);
+    expect(header().dirty).toBe(true);
+    expect(api.saveExplorerFile).not.toHaveBeenCalled();
+    expect(source.text).toBe("private unsaved transfer");
+  });
+
+  it("rejects transfer to a different checkout without changing its editor", async () => {
+    await render();
+    await edit("source draft");
+    const transfer = await (state.lifecycle as ExplorerLifecycleActions)
+      .captureTransfer!();
+    await render({ ...summary, worktreeId: "other-worktree" });
+    const destination = input().session;
+    expect(() =>
+      (state.lifecycle as ExplorerLifecycleActions).restoreTransfer!(transfer),
+    ).toThrow(/resource scope/);
+    expect(input().session).toBe(destination);
+    expect(destination.text).toBe("original\n");
+    expect(api.saveExplorerFile).not.toHaveBeenCalled();
+  });
+
+  it("rejects retained lifecycle callbacks immediately after the signed-in account changes", async () => {
+    await render();
+    await edit("private source draft");
+    const lifecycle = state.lifecycle as ExplorerLifecycleActions;
+    const transfer = await lifecycle.captureTransfer!();
+    state.owner = "other-owner";
+    // Deliberately do not render: session events may precede React cleanup.
+    await expect(lifecycle.captureTransfer!()).rejects.toThrow(
+      /account changed/,
+    );
+    expect(() => lifecycle.restoreTransfer!(transfer)).toThrow(/account scope/);
+    expect(api.saveExplorerFile).not.toHaveBeenCalled();
+  });
+
+  it("fences retained transfer callbacks after the resource changes", async () => {
+    await render();
+    const stale = state.lifecycle as ExplorerLifecycleActions;
+    const transfer = await stale.captureTransfer!();
+    await render({ ...summary, worktreeId: "other-worktree" });
+    const current = input().session;
+    await expect(stale.captureTransfer!()).rejects.toThrow(/resource changed/);
+    expect(() => stale.restoreTransfer!(transfer)).toThrow(/resource changed/);
+    expect(() => stale.suspendTransfer!()).toThrow(/resource changed/);
+    expect(input().session).toBe(current);
+    expect(input().readOnly).toBe(false);
+    // Returning to the same resource does not revive an old attachment callback.
+    await render(summary);
+    await expect(stale.captureTransfer!()).rejects.toThrow(/resource changed/);
+    expect(
+      (await (state.lifecycle as ExplorerLifecycleActions).captureTransfer!())
+        .worktreeId,
+    ).toBe(summary.worktreeId);
+  });
+
+  it("fences retained transfer callbacks after unmount", async () => {
+    await render();
+    const stale = state.lifecycle as ExplorerLifecycleActions;
+    const transfer = await stale.captureTransfer!();
+    await act(async () => renderer!.unmount());
+    renderer = null;
+    await expect(stale.captureTransfer!()).rejects.toThrow(/resource changed/);
+    expect(() => stale.restoreTransfer!(transfer)).toThrow(/resource changed/);
+    expect(() => stale.suspendTransfer!()).toThrow(/resource changed/);
+  });
+
+  it("validates every transferred document before replacing the rendered document", async () => {
+    await render();
+    const lifecycle = state.lifecycle as ExplorerLifecycleActions;
+    const transfer = await lifecycle.captureTransfer!();
+    const original = input().session;
+    transfer.documents.documents[0]!.history.undo = [
+      {
+        change: { from: -1, to: 1, insert: "private text" },
+        inverse: { from: 0, to: 1, insert: "original" },
+        before: { start: 0, end: 0, direction: "none" },
+        after: { start: 0, end: 0, direction: "none" },
+      },
+    ];
+    expect(() => lifecycle.restoreTransfer!(transfer)).toThrow(
+      "Invalid or mismatched editor transfer state.",
+    );
+    expect(input().session).toBe(original);
+    expect(original.text).toBe("original\n");
+    expect(api.saveExplorerFile).not.toHaveBeenCalled();
+  });
+
   it("saves through its own toolbar without publishing a focused shell header", async () => {
     state.publishHeader = false;
     await render();

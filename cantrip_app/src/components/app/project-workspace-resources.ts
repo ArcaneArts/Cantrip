@@ -1,4 +1,8 @@
-import type { ProjectSummary, WorkerSummary } from "@cantrip/protocol";
+import type {
+  ProjectSummary,
+  WorkerSummary,
+  ProjectTabLayoutSummary,
+} from "@cantrip/protocol";
 import type { QueryClient } from "@tanstack/react-query";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef } from "react";
@@ -25,7 +29,20 @@ import {
 import { installRunConfigurationFocusRecovery } from "@/lib/run-configuration-focus-recovery";
 import type { ProjectOverviewSection } from "@/lib/project-overview-section";
 
+export function useProjectWorkspaceLayout(
+  selectedProjectId: string | null,
+  projectResourcesLive: boolean,
+) {
+  return useQuery({
+    enabled: Boolean(selectedProjectId),
+    queryFn: () => getProjectTabLayout(selectedProjectId!),
+    queryKey: ["project-tab-layout", selectedProjectId],
+    refetchInterval: projectResourcesLive ? false : 10_000,
+  });
+}
+
 export function useProjectWorkspaceResources({
+  tabLayout,
   activeProjectOverviewSection,
   projectOverviewSelected,
   projectResourcesLive,
@@ -36,6 +53,7 @@ export function useProjectWorkspaceResources({
   selectedProjectViewId,
   workers,
 }: {
+  tabLayout: { data: ProjectTabLayoutSummary | undefined; isSuccess: boolean };
   activeProjectOverviewSection: ProjectOverviewSection;
   projectOverviewSelected: boolean;
   projectResourcesLive: boolean;
@@ -47,12 +65,6 @@ export function useProjectWorkspaceResources({
   workers: WorkerSummary[] | undefined;
 }) {
   const projectResourcesLoggedRef = useRef<string | null>(null);
-  const tabLayout = useQuery({
-    enabled: Boolean(selectedProjectId),
-    queryFn: () => getProjectTabLayout(selectedProjectId!),
-    queryKey: ["project-tab-layout", selectedProjectId],
-    refetchInterval: projectResourcesLive ? false : 10_000,
-  });
   const worktrees = useQuery({
     enabled: Boolean(selectedProjectId),
     queryFn: () =>
@@ -171,6 +183,7 @@ export function useProjectWorkspaceResources({
     if (
       projectResourcesLoggedRef.current === selectedProjectId ||
       !tabLayout.isSuccess ||
+      !tabLayout.data ||
       (selectedProject?.capabilities.worktrees && !worktrees.isSuccess) ||
       !chats.isSuccess ||
       !terminals.isSuccess ||

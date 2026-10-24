@@ -10,6 +10,33 @@ import {
 
 const identity = z.string().min(1);
 
+// Durable preparation only. Contents and runtime state must use protected
+// surface handoff channels, never plaintext layout metadata.
+const pendingTransferSchema = z
+  .object({
+    id: identity,
+    sourceWindowId: identity,
+    sourceGeneration: z.int().nonnegative(),
+    sourcePaneId: identity,
+    sourcePlacement: z
+      .object({
+        panePosition: z.int().nonnegative(),
+        tabPosition: z.int().nonnegative(),
+        region: projectPaneRegionSchema,
+        centerRoot: projectCenterLayoutNodeSchema.nullable(),
+      })
+      .strict(),
+    tabIds: z.array(identity).min(1),
+    wholePane: z.boolean(),
+    destinationWindowId: identity,
+    destinationGeneration: z.int().nonnegative(),
+    destinationPaneId: identity,
+    // Present only for a prepared return into the existing main window.
+    returnSplitId: identity.optional(),
+    phase: z.enum(["preparing", "destination-ready", "state-ready"]),
+  })
+  .strict();
+
 /** A view identity is independent of the resource it displays. No plaintext content. */
 export const workspaceTabSchema = z
   .object({
@@ -59,6 +86,15 @@ export const workspaceWindowSchema = z
     centerRoot: projectCenterLayoutNodeSchema.nullable(),
     focusedPaneId: identity.nullable(),
     recentPaneIds: z.array(identity),
+    returnPlacement: pendingTransferSchema
+      .pick({
+        sourceWindowId: true,
+        sourcePaneId: true,
+        sourcePlacement: true,
+        wholePane: true,
+      })
+      .extend({ detachedPaneId: identity.optional() })
+      .optional(),
   })
   .strict();
 
@@ -76,6 +112,7 @@ export const workspaceOwnershipSchema = z
     revision: z.int().nonnegative(),
     mainWindowId: identity,
     windows: z.array(workspaceWindowSchema).min(1),
+    pendingTransfers: z.array(pendingTransferSchema).max(128).optional(),
   })
   .strict()
   .superRefine((layout, context) => {
@@ -173,6 +210,62 @@ export const workspaceOwnershipSchema = z
     }
     if (!windowIds.has(layout.mainWindowId))
       issue(["mainWindowId"], "The main window must exist in this workspace.");
+    const transfers = new Set<string>();
+    const destinations = new Set<string>();
+    const reservedTabs = new Set<string>();
+    const reservedPanes = new Set<string>();
+    for (const [index, transfer] of (layout.pendingTransfers ?? []).entries()) {
+      const path = ["pendingTransfers", index];
+      const source = layout.windows.find(
+        ({ id }) => id === transfer.sourceWindowId,
+      );
+      const destination = layout.windows.find(
+        ({ id }) => id === transfer.destinationWindowId,
+      );
+      if (
+        transfers.has(transfer.id) ||
+        (!transfer.returnSplitId &&
+          destinations.has(transfer.destinationWindowId))
+      )
+        issue(path, "Transfer and destination identities must be unique.");
+      transfers.add(transfer.id);
+      if (!transfer.returnSplitId)
+        destinations.add(transfer.destinationWindowId);
+      if (
+        reservedPanes.has(transfer.destinationPaneId) ||
+        (transfer.wholePane
+          ? transfer.destinationPaneId !== transfer.sourcePaneId
+          : paneIds.has(transfer.destinationPaneId))
+      )
+        issue(path, "Destination pane identities must be uniquely reserved.");
+      reservedPanes.add(transfer.destinationPaneId);
+      if (
+        !source ||
+        !destination ||
+        source === destination ||
+        (transfer.returnSplitId
+          ? destination.id !== layout.mainWindowId || !transfer.wholePane
+          : destination.id === layout.mainWindowId ||
+            destination.panes.length > 0)
+      )
+        issue(
+          path,
+          "A pending transfer requires a distinct empty destination window.",
+        );
+      if (
+        source?.attachmentGeneration !== transfer.sourceGeneration ||
+        destination?.attachmentGeneration !== transfer.destinationGeneration
+      )
+        issue(
+          path,
+          "Transfer generations must match their window attachments.",
+        );
+      for (const tabId of transfer.tabIds) {
+        if (reservedTabs.has(tabId))
+          issue(path, "A tab cannot participate in overlapping transfers.");
+        reservedTabs.add(tabId);
+      }
+    }
   });
 
 export type WorkspaceTab = z.infer<typeof workspaceTabSchema>;

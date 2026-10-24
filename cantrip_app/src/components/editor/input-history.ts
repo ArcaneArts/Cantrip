@@ -9,10 +9,23 @@ interface HistoryEntry {
   after: EditorSelection;
 }
 
+export interface EditorHistoryState {
+  undo: HistoryEntry[];
+  redo: HistoryEntry[];
+}
+
 /** Browser-independent history also survives a document's input DOM being retired. */
 export class EditorInputHistory {
   private undoEntries: HistoryEntry[] = [];
   private redoEntries: HistoryEntry[] = [];
+  capture(): EditorHistoryState {
+    return structuredClone({ undo: this.undoEntries, redo: this.redoEntries });
+  }
+  restore(state: EditorHistoryState): void {
+    const copy = structuredClone(state);
+    this.undoEntries = copy.undo;
+    this.redoEntries = copy.redo;
+  }
   record(
     beforeText: string,
     afterText: string,

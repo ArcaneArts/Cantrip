@@ -122,7 +122,7 @@ export function createSurfaceCommandController({
     }
   };
   const renameSurface = (surface: ProjectSurface, title: string) => {
-    if (surface.kind === "builtin") return;
+    if (surface.kind === "builtin" || surface.kind === "unresolved") return;
     if (surface.kind === "chat") {
       crud.chat.rename.mutate({ chatId: surface.tabId, title });
     } else if (surface.kind === "terminal") {
@@ -141,14 +141,13 @@ export function createSurfaceCommandController({
     }
   };
   const closeSurfaceView = (surface: ProjectSurface) => {
-    if (surface.kind === "chat") return;
     views.close.mutate(surface);
   };
   const deleteSurfaceResource = (
     surface: ProjectSurface,
     stopRunning?: true,
   ) => {
-    if (surface.kind === "builtin") return;
+    if (surface.kind === "builtin" || surface.kind === "unresolved") return;
     if (surface.kind === "chat")
       crud.chat.delete.mutate(
         stopRunning ? { chatId: surface.tabId, stopRunning } : surface.tabId,

@@ -20,7 +20,6 @@ import type {
   ProjectSurfaceCloseInput,
   StoredProjectSurfaceKind,
 } from "@/components/app/project-surface-close";
-import { confirmExplorerDiscard } from "@/components/explorer/explorer-lifecycle";
 import type { ExplorerLifecycleActions } from "@/components/explorer/explorer-view";
 import {
   acknowledgeChatCompletion,
@@ -71,6 +70,7 @@ function useImmediateProjectSurfaceDelete<TData, TVariables>({
   getTabId,
   kind,
   mutationFn,
+  prepare,
   onBegin,
   onError,
   onSuccess,
@@ -81,6 +81,7 @@ function useImmediateProjectSurfaceDelete<TData, TVariables>({
   getTabId: (variables: TVariables) => string;
   kind: StoredProjectSurfaceKind;
   mutationFn: (variables: TVariables) => Promise<TData>;
+  prepare?: (variables: TVariables) => Promise<void>;
   onBegin?: (variables: TVariables) => void;
   onError?: (error: Error, variables: TVariables) => void;
   onSuccess?: (
@@ -94,6 +95,12 @@ function useImmediateProjectSurfaceDelete<TData, TVariables>({
   const pending = useRef(new Map<string, ProjectSurfaceCloseInput>());
   const mutation = useMutation<TData, Error, TVariables>({
     mutationFn,
+    onMutate: prepare
+      ? async (variables) => {
+          await prepare(variables);
+          begin(variables);
+        }
+      : undefined,
     onError: (error, variables) => {
       const tabId = getTabId(variables);
       const input = pending.current.get(tabId);
@@ -109,7 +116,7 @@ function useImmediateProjectSurfaceDelete<TData, TVariables>({
       await onSuccess?.(data, variables, input?.projectId ?? selectedProjectId);
     },
   });
-  return withImmediateClose(mutation, (variables) => {
+  const begin = (variables: TVariables) => {
     onBegin?.(variables);
     const projectId = getProjectId?.(variables) ?? selectedProjectId;
     if (!projectId) return;
@@ -121,7 +128,8 @@ function useImmediateProjectSurfaceDelete<TData, TVariables>({
     } satisfies ProjectSurfaceCloseInput;
     pending.current.set(tabId, input);
     surfaceClose.begin(input);
-  });
+  };
+  return prepare ? mutation : withImmediateClose(mutation, begin);
 }
 
 export function useChatRenameAndForkOperations({
@@ -335,13 +343,7 @@ export function useExplorerSurfaceOperations({
   surfaceClose: ProjectSurfaceCloseCoordinator;
 }) {
   const preparedCloseActions = useRef(
-    new Map<
-      string,
-      {
-        actions: ExplorerLifecycleActions | undefined;
-        preparation: Promise<void>;
-      }
-    >(),
+    new Map<string, ExplorerLifecycleActions | undefined>(),
   );
   const renameExplorerMutation = useMutation({
     mutationFn: ({
@@ -363,20 +365,14 @@ export function useExplorerSurfaceOperations({
   const deleteExplorerMutation = useImmediateProjectSurfaceDelete({
     getTabId: (explorerId: string) => explorerId,
     kind: "explorer",
-    mutationFn: async (explorerId: string) => {
-      const prepared = preparedCloseActions.current.get(explorerId);
-      await prepared?.preparation;
-      return deleteExplorer(explorerId);
-    },
-    onBegin: (explorerId) => {
+    mutationFn: (explorerId: string) => deleteExplorer(explorerId),
+    prepare: async (explorerId) => {
       const actions = explorerLifecycleRef.current.get(explorerId);
-      preparedCloseActions.current.set(explorerId, {
-        actions,
-        preparation: actions?.prepareClose() ?? Promise.resolve(),
-      });
+      preparedCloseActions.current.set(explorerId, actions);
+      await actions?.prepareClose();
     },
     onError: (_error, deletedId) => {
-      preparedCloseActions.current.get(deletedId)?.actions?.cancelClose();
+      preparedCloseActions.current.get(deletedId)?.cancelClose();
       preparedCloseActions.current.delete(deletedId);
     },
     onSuccess: async (_value, deletedId, projectId) => {
@@ -393,16 +389,6 @@ export function useExplorerSurfaceOperations({
     surfaceClose,
   });
   const requestDeleteExplorer = (explorerId: string) => {
-    const lifecycle = explorerLifecycleRef.current.get(explorerId);
-    if (
-      !confirmExplorerDiscard(lifecycle, () =>
-        window.confirm(
-          "Delete this Explorer and discard its unsaved file changes?",
-        ),
-      )
-    ) {
-      return;
-    }
     deleteExplorerMutation.mutate(explorerId);
   };
   return {
@@ -546,6 +532,10 @@ export function useCodeSurfaceOperations({
     getTabId: (codeTabId: string) => codeTabId,
     kind: "code",
     mutationFn: deleteCodeTab,
+    prepare: async (id) => {
+      if (!(await confirmNativeCodeDiscard(id)))
+        throw new Error("Code tab deletion canceled.");
+    },
     onSuccess: async (_value, _deletedId, projectId) => {
       await queryClient.invalidateQueries({
         queryKey: ["code-tabs", projectId],
@@ -557,20 +547,8 @@ export function useCodeSurfaceOperations({
     selectedProjectId,
     surfaceClose,
   });
-  const guardedDelete: typeof deleteCodeTabMutation = {
-    ...deleteCodeTabMutation,
-    mutate(id, options) {
-      if (confirmNativeCodeDiscard(id))
-        deleteCodeTabMutation.mutate(id, options);
-    },
-    mutateAsync(id, options) {
-      return confirmNativeCodeDiscard(id)
-        ? deleteCodeTabMutation.mutateAsync(id, options)
-        : Promise.resolve();
-    },
-  };
   return {
-    deleteCodeTabMutation: guardedDelete,
+    deleteCodeTabMutation,
     updateCodeTabMutation,
   } as const;
 }

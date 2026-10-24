@@ -3,11 +3,13 @@ import type {
   ExplorerSummary,
   ProjectSummary,
   ProjectTabLayoutSummary,
+  WorkspaceOwnership,
 } from "@cantrip/protocol";
 import type { QueryClient } from "@tanstack/react-query";
 import {
   useCallback,
   useEffect,
+  useRef,
   useState,
   type Dispatch,
   type MutableRefObject,
@@ -81,6 +83,7 @@ export async function openOwnedDesktopPane({
 }
 
 export function useDesktopPopoutModel({
+  detachOwnedPane,
   activeProjectOverviewSection,
   currentSurface,
   desktopRuntime,
@@ -96,6 +99,11 @@ export function useDesktopPopoutModel({
   selectedPaneId,
   status,
 }: {
+  detachOwnedPane?(
+    paneId: string,
+    title: string,
+    tabId?: string,
+  ): Promise<unknown>;
   activeProjectOverviewSection: ProjectOverviewSection;
   currentSurface: { tabKey: string; title: string } | null;
   desktopRuntime: boolean;
@@ -111,6 +119,7 @@ export function useDesktopPopoutModel({
   selectedPaneId: string | null;
   status: DesktopPopoutStatusState;
 }) {
+  const ownedTransferPending = useRef(false);
   const activePopout =
     desktopRuntime &&
     !isPopout &&
@@ -143,10 +152,17 @@ export function useDesktopPopoutModel({
       : null;
   const paneOwnedElsewhere = useCallback(
     (paneId: string) =>
+      !detachOwnedPane &&
       !isPopout &&
       desktopRuntime &&
       (detached.claims.has(paneId) || !detached.inspectedPaneIds.has(paneId)),
-    [desktopRuntime, detached.claims, detached.inspectedPaneIds, isPopout],
+    [
+      desktopRuntime,
+      detached.claims,
+      detached.inspectedPaneIds,
+      isPopout,
+      detachOwnedPane,
+    ],
   );
   const selectedPaneOwnedElsewhere = Boolean(
     selectedPaneId && paneOwnedElsewhere(selectedPaneId),
@@ -186,8 +202,56 @@ export function useDesktopPopoutModel({
     },
     [detached.claims, detached.releasePane, explorerLifecycleRef, queryClient],
   );
+  const startOwnedTransfer = (
+    paneId: string,
+    title: string,
+    tabId?: string,
+  ) => {
+    if (
+      !detachOwnedPane ||
+      status.popoutPending ||
+      ownedTransferPending.current
+    )
+      return;
+    // UI state updates on the next render; claim synchronously so menu and
+    // header actions in the same event batch cannot create overlapping moves.
+    ownedTransferPending.current = true;
+    status.setPopoutPending(true);
+    status.setPopoutError(null);
+    void (async () => {
+      try {
+        if (tabId === undefined) await detachOwnedPane(paneId, title);
+        else await detachOwnedPane(paneId, title, tabId);
+      } catch (error) {
+        status.setPopoutError(errorText(error));
+      } finally {
+        ownedTransferPending.current = false;
+        status.setPopoutPending(false);
+      }
+    })();
+  };
+  const popOutTab =
+    desktopRuntime && detachOwnedPane
+      ? (surface: { paneId: string; tabKey: string; title: string }) => {
+          startOwnedTransfer(surface.paneId, surface.title, surface.tabKey);
+        }
+      : undefined;
+  const popOutPane =
+    desktopRuntime && detachOwnedPane
+      ? (surface: { paneId: string; title: string }) => {
+          startOwnedTransfer(surface.paneId, surface.title);
+        }
+      : undefined;
   const popOutActiveView = () => {
     if (!activePopout || status.popoutPending) return;
+    if (detachOwnedPane) {
+      startOwnedTransfer(
+        activePopout.target.paneId,
+        activePopout.title,
+        activePopout.target.activeTabKey,
+      );
+      return;
+    }
     void (async () => {
       const startedAt = performance.now();
       clientLogger.info("Desktop pop-out preparation started", {
@@ -321,6 +385,8 @@ export function useDesktopPopoutModel({
     selectedPaneOwnedElsewhere,
     paneOwnedElsewhere,
     popOutActiveView,
+    popOutTab,
+    popOutPane,
     popOutProjectOverviewView,
     resumeDetachedPane,
   } as const;
@@ -434,7 +500,8 @@ export function useDesktopPopoutEffects({
             subsystem: "desktop-window",
             surfaceId: paneId,
           });
-          resumeLocally();
+          // Observer failure is not evidence that the native owner closed.
+          // Keep its claim until destruction or a successful native lookup.
         });
     }
     return () => {
@@ -449,15 +516,42 @@ export function useOrphanedDesktopPopoutEffect({
   layout,
   layoutIsSuccess,
   popoutTarget,
+  ownership,
 }: {
   isLayoutMutationPending: boolean;
   layout: ProjectTabLayoutSummary | null | undefined;
   layoutIsSuccess: boolean;
   popoutTarget: DesktopPopoutPaneTarget | null;
+  /** null means ownership is still loading; undefined is legacy-only callers. */
+  ownership?: { layout: WorkspaceOwnership; windowId: string } | null;
 }) {
+  const usesOwnership = ownership !== undefined;
+  const owned = ownership?.layout;
+  const windowId = ownership?.windowId;
   useEffect(() => {
     if (!popoutTarget || !layoutIsSuccess || isLayoutMutationPending) return;
-    if (layout?.panes.some(({ id }) => id === popoutTarget.paneId)) return;
+    if (usesOwnership) {
+      if (!owned || !windowId || owned.projectId !== popoutTarget.projectId)
+        return;
+      if (windowId === owned.mainWindowId) return;
+      if (
+        owned.pendingTransfers?.some(
+          (transfer) =>
+            transfer.destinationWindowId === windowId ||
+            transfer.sourceWindowId === windowId,
+        )
+      )
+        return;
+      // A popout may have been split or rearranged since its launch URL was
+      // created. Its original pane is not the lifetime of the native window.
+      if (
+        owned.windows
+          .find(({ id }) => id === windowId)
+          ?.panes.some((pane) => pane.tabs.length > 0)
+      )
+        return;
+    } else if (layout?.panes.some(({ id }) => id === popoutTarget.paneId))
+      return;
     void closeCurrentDesktopWindow().catch((error: unknown) => {
       clientLogger.warn("Orphaned desktop pop-out failed to close", {
         ...operationalErrorMetadata(error),
@@ -468,7 +562,15 @@ export function useOrphanedDesktopPopoutEffect({
         subsystem: "desktop-window",
       });
     });
-  }, [popoutTarget, layout, layoutIsSuccess, isLayoutMutationPending]);
+  }, [
+    popoutTarget,
+    layout,
+    layoutIsSuccess,
+    isLayoutMutationPending,
+    usesOwnership,
+    owned,
+    windowId,
+  ]);
 }
 
 export function createDesktopPaneSelectionCommands({
@@ -525,7 +627,7 @@ export function createDesktopPaneSelectionCommands({
           selectLocally();
         }
       })
-      .catch(() => selectLocally());
+      .catch((error: unknown) => setPopoutError(errorText(error)));
   };
   const focusDetachedPane = (paneId: string) => {
     void focusDesktopPopoutPane(paneId)

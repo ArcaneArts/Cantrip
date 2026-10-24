@@ -1,5 +1,5 @@
 import { textChange, type TextChange } from "./syntax/document";
-import { EditorInputHistory } from "./input-history";
+import { EditorInputHistory, type EditorHistoryState } from "./input-history";
 
 export interface EditorIdentity {
   server: string;
@@ -23,6 +23,25 @@ export interface EditorSelection {
   start: number;
   end: number;
   direction: "forward" | "backward" | "none";
+}
+
+/** Sensitive endpoint-only state: encrypt before transport; never put in layout metadata. */
+export interface EditorDocumentTransfer {
+  id: string;
+  baselineContent: string;
+  text: string;
+  version: string;
+  revision: number;
+  selection: EditorSelection;
+  scrollTop: number;
+  scrollLeft: number;
+  saveFailed: boolean;
+  history: EditorHistoryState;
+}
+
+export interface EditorSessionTransfer {
+  scope: string | null;
+  documents: EditorDocumentTransfer[];
 }
 
 /** In-memory endpoint state. Never persists plaintext documents to storage. */
@@ -56,6 +75,43 @@ export class EditorDocumentSession {
   }
   get saving(): boolean {
     return this.pendingSave !== null;
+  }
+  /** The transfer coordinator must suspend input before capturing its final state. */
+  async captureTransfer(): Promise<EditorDocumentTransfer> {
+    // An actual in-flight write must settle; guessing its result could restore
+    // an obsolete version and cause a conflict on the destination's next save.
+    while (this.pendingSave) {
+      const pending = this.pendingSave;
+      await pending.catch(() => {});
+      await Promise.resolve();
+    }
+    return {
+      id: this.id,
+      baselineContent: this.format.encode(this.baseline),
+      text: this.text,
+      version: this.version,
+      revision: this.revision,
+      selection: { ...this.selection },
+      scrollTop: this.scrollTop,
+      scrollLeft: this.scrollLeft,
+      saveFailed: this.saveFailed,
+      history: this.history.capture(),
+    };
+  }
+  static fromTransfer(state: EditorDocumentTransfer): EditorDocumentSession {
+    const session = new EditorDocumentSession(
+      state.id,
+      state.baselineContent,
+      state.version,
+    );
+    session.text = state.text;
+    session.revision = state.revision;
+    session.selection = { ...state.selection };
+    session.scrollTop = state.scrollTop;
+    session.scrollLeft = state.scrollLeft;
+    session.saveFailed = state.saveFailed;
+    session.history.restore(state.history);
+    return session;
   }
   edit(text: string): void {
     if (this.text !== text) {
@@ -146,6 +202,51 @@ export class EditorSessionStore {
     return [...this.sessions.values()].some(
       (session) => session.dirty || session.saving,
     );
+  }
+  /** Bind a close answer to all current drafts, including inactive documents. */
+  captureCloseGuard(): () => boolean {
+    const scope = this.scope;
+    const revisions = [...this.sessions.values()].map(
+      (session) => [session, session.revision] as const,
+    );
+    return () =>
+      scope === this.scope &&
+      revisions.length === this.sessions.size &&
+      revisions.every(
+        ([session, revision]) =>
+          this.sessions.get(session.id) === session &&
+          session.revision === revision,
+      );
+  }
+  /** Includes inactive drafts. Callers bind the snapshot to an authorized transfer. */
+  async captureTransfer(): Promise<EditorSessionTransfer> {
+    const scope = this.scope;
+    const sessions = [...this.sessions.values()];
+    const documents = await Promise.all(
+      sessions.map((session) => session.captureTransfer()),
+    );
+    if (
+      scope !== this.scope ||
+      sessions.some((session) => this.sessions.get(session.id) !== session)
+    )
+      throw new Error("Document ownership changed while preparing transfer.");
+    return { scope, documents };
+  }
+  restoreTransfer(state: EditorSessionTransfer): void {
+    if (state.scope !== this.scope)
+      throw new Error("Document transfer belongs to another account scope.");
+    const restored = new Map<string, EditorDocumentSession>();
+    for (const document of state.documents) {
+      if (restored.has(document.id))
+        throw new Error("Duplicate document in transfer.");
+      const existing = this.sessions.get(document.id);
+      if (existing?.dirty || existing?.saving)
+        throw new Error("Cannot replace a live destination document draft.");
+      restored.set(document.id, EditorDocumentSession.fromTransfer(document));
+    }
+    // Validate the entire batch before changing any session, and do not trim
+    // inactive clean views that are part of the handoff.
+    for (const [id, session] of restored) this.sessions.set(id, session);
   }
   find(
     predicate: (session: EditorDocumentSession) => boolean,

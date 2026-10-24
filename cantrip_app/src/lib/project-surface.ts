@@ -13,6 +13,7 @@ import type {
   ProjectSurfaceView,
   ProjectViewSummary,
   TerminalSummary,
+  WorkspaceOwnership,
 } from "@cantrip/protocol";
 import {
   projectBuiltinSurfaceDefinitionIdSchema,
@@ -21,6 +22,7 @@ import {
 import {
   projectBuiltInSurfaceIdentity,
   projectSurfaceIdentityForTab,
+  projectSurfaceDefinition,
 } from "./project-surface-registry";
 
 export interface ProjectBuiltInSurfaceEntity {
@@ -44,11 +46,15 @@ export type ProjectSurface =
   | ProjectSurfaceBase<"prs", ProjectViewSummary>
   | ProjectSurfaceBase<"actions", ProjectViewSummary>
   | ProjectSurfaceBase<"remote-desktop", ProjectViewSummary>
-  | ProjectSurfaceBase<"builtin", ProjectBuiltInSurfaceEntity>;
+  | ProjectSurfaceBase<"builtin", ProjectBuiltInSurfaceEntity>
+  | ProjectSurfaceBase<"unresolved", null>;
 
 export type ProjectFileSurface = Extract<ProjectSurface, { kind: "explorer" }>;
 
-export interface ProjectSurfaceBase<Kind extends ProjectTabKind, Entity> {
+export interface ProjectSurfaceBase<
+  Kind extends ProjectTabKind | "unresolved",
+  Entity,
+> {
   definition: ProjectSurfaceDefinition;
   entity: Entity;
   paneId: string;
@@ -64,6 +70,7 @@ export interface ProjectSurfaceBase<Kind extends ProjectTabKind, Entity> {
   tabKey: string;
   title: string;
   view: ProjectSurfaceView;
+  preview?: boolean;
 }
 
 export interface ProjectSurfaceCollections {
@@ -184,7 +191,7 @@ function surfaceForMember(
       placement: {
         paneId: member.paneId,
         position: member.position,
-        viewId: identity.viewId,
+        viewId: member.tabKey,
       },
       projectId: member.projectId,
       resource: { entity, ref: identity.resource },
@@ -192,7 +199,7 @@ function surfaceForMember(
       tabKey: member.tabKey,
       title: identity.definition.label,
       view: {
-        id: identity.viewId,
+        id: member.tabKey,
         projectId: member.projectId,
         resource: identity.resource,
       },
@@ -219,7 +226,7 @@ function surfaceForMember(
       placement: {
         paneId: member.paneId,
         position: member.position,
-        viewId: identity.viewId,
+        viewId: member.tabKey,
       },
       projectId: member.projectId,
       resource: { entity, ref: identity.resource },
@@ -227,7 +234,7 @@ function surfaceForMember(
       tabKey: member.tabKey,
       title,
       view: {
-        id: identity.viewId,
+        id: member.tabKey,
         projectId: member.projectId,
         resource: identity.resource,
       },
@@ -271,11 +278,22 @@ function surfaceForMember(
 export function buildProjectSurfaceIndex(
   layout: ProjectTabLayoutSummary | null | undefined,
   collections: ProjectSurfaceCollections,
+  ownership?: { layout: WorkspaceOwnership; windowId: string },
 ): ProjectSurfaceIndex {
   const byTabKey = new Map<string, ProjectSurface>();
   const byPaneId = new Map<string, ProjectSurface[]>();
   const unresolvedTabKeys: string[] = [];
   if (!layout) return { byPaneId, byTabKey, unresolvedTabKeys };
+  const owner =
+    ownership?.layout.projectId === layout.projectId
+      ? ownership.layout.windows.find(({ id }) => id === ownership.windowId)
+      : undefined;
+  if (ownership && !owner) return { byPaneId, byTabKey, unresolvedTabKeys };
+  const ownedTabs = new Map(
+    owner?.panes.flatMap((pane) =>
+      pane.tabs.map((tab) => [tab.id, { tab, paneId: pane.id }] as const),
+    ),
+  );
 
   const entities = {
     browsers: entityMap(collections.browsers),
@@ -288,16 +306,71 @@ export function buildProjectSurfaceIndex(
   for (const pane of layout.panes) {
     const surfaces: ProjectSurface[] = [];
     for (const member of pane.members) {
+      const owned = ownedTabs.get(member.tabKey);
+      if (
+        ownership &&
+        (!owned ||
+          owned.paneId !== pane.id ||
+          (owned.tab.resource.kind === "entity"
+            ? owned.tab.resource.resourceId
+            : owned.tab.resource.definitionId) !== member.tabId)
+      )
+        continue;
       if (
         member.tabKind === "chat" &&
         entities.chats.get(member.tabId)?.experience === "task"
       ) {
         continue;
       }
-      const surface = surfaceForMember(member, entities);
+      let surface = surfaceForMember(member, entities);
       if (!surface) {
         unresolvedTabKeys.push(member.tabKey);
-        continue;
+        // Invalid built-in metadata has no trustworthy resource definition.
+        // Entity query absence, by contrast, must never erase owned placement.
+        if (member.tabKind === "builtin") continue;
+        if (
+          member.tabKind === "terminal" &&
+          entities.terminals.get(member.tabId)?.linkedChatId
+        )
+          continue;
+        const identity = projectSurfaceIdentityForTab({
+          kind: member.tabKind,
+          projectId: member.projectId,
+          resourceId: member.tabId,
+        });
+        surface = {
+          kind: "unresolved",
+          entity: null,
+          member,
+          definition: identity.definition,
+          paneId: member.paneId,
+          placement: {
+            paneId: member.paneId,
+            position: member.position,
+            viewId: member.tabKey,
+          },
+          projectId: member.projectId,
+          resource: { entity: null, ref: identity.resource },
+          tabId: member.tabId,
+          tabKey: member.tabKey,
+          title: member.title,
+          view: {
+            id: member.tabKey,
+            projectId: member.projectId,
+            resource: identity.resource,
+          },
+        };
+      }
+      if (owned) {
+        // Compatibility membership does not encode file definitions or preview
+        // state. Use the owner, not query availability, as their authority.
+        surface = {
+          ...surface,
+          definition: projectSurfaceDefinition(owned.tab.resource.definitionId),
+          resource: { ...surface.resource, ref: owned.tab.resource },
+          view: { ...surface.view, resource: owned.tab.resource },
+          preview: owned.tab.preview,
+        } as ProjectSurface;
       }
       byTabKey.set(surface.tabKey, surface);
       surfaces.push(surface);

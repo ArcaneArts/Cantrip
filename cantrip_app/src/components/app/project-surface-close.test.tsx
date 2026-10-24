@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { closeProjectSurfaceView } from "@/lib/api";
 import type { ProjectSurface } from "@/lib/project-surface";
+import type { WorkspaceCommandClient } from "@/lib/workspace-command-client";
 
 import {
   selectedWorkspaceTabKey,
@@ -82,11 +83,21 @@ const selected: WorkspaceSelection = {
 };
 const closeInput = { kind: "chat", projectId, tabId: "agent-1" } as const;
 
-function CloseHarness({ queryClient }: { queryClient: QueryClient }) {
+type CoordinatorWorkspace = Parameters<
+  typeof useProjectSurfaceCloseCoordinator
+>[0]["workspace"];
+function CloseHarness({
+  queryClient,
+  workspace,
+}: {
+  queryClient: QueryClient;
+  workspace?: CoordinatorWorkspace;
+}) {
   const [selection, setSelection] = useState(selected);
   const close = useProjectSurfaceCloseCoordinator({
     queryClient,
     setWorkspaceSelection: setSelection,
+    workspace,
   });
   return (
     <>
@@ -126,10 +137,15 @@ function CloseHarness({ queryClient }: { queryClient: QueryClient }) {
   );
 }
 
-async function renderHarness(queryClient: QueryClient) {
+async function renderHarness(
+  queryClient: QueryClient,
+  workspace?: CoordinatorWorkspace,
+) {
   let renderer!: TestRenderer.ReactTestRenderer;
   await act(async () => {
-    renderer = TestRenderer.create(<CloseHarness queryClient={queryClient} />);
+    renderer = TestRenderer.create(
+      <CloseHarness queryClient={queryClient} workspace={workspace} />,
+    );
   });
   return renderer;
 }
@@ -139,6 +155,64 @@ function text(renderer: TestRenderer.ReactTestRenderer, id: string) {
 }
 
 describe("project surface close coordinator", () => {
+  it.each([
+    "ready",
+    "initializing",
+    "failed-read",
+    "other-project",
+    "disposed",
+  ] as const)(
+    "does not apply legacy placement or selection during owned deletion (%s)",
+    async (mode) => {
+      const queryClient = new QueryClient();
+      queryClient.setQueryData(["chats", projectId], [chat]);
+      queryClient.setQueryData(["project-tab-layout", projectId], layout);
+      const refresh = vi.fn(async () => {
+        if (mode === "failed-read") throw new Error("offline");
+      });
+      const workspace =
+        mode === "initializing"
+          ? null
+          : {
+              refresh,
+              getSnapshot: () => ({
+                disposed: mode === "disposed",
+                authoritative: {
+                  projectId: mode === "other-project" ? "project-2" : projectId,
+                },
+              }),
+            };
+      const renderer = await renderHarness(queryClient, workspace);
+      for (const id of ["begin", "rollback", "commit"]) {
+        await act(async () =>
+          renderer.root.findByProps({ id }).props.onClick(),
+        );
+        expect(text(renderer, "selected")).toBe("chat:agent-1");
+        expect(text(renderer, "pending")).toBe("");
+        expect(
+          queryClient.getQueryData(["project-tab-layout", projectId]),
+        ).toEqual(layout);
+        expect(queryClient.getQueryData(["chats", projectId])).toEqual(
+          id === "commit" ? [] : [chat],
+        );
+      }
+      expect(queryClient.getQueryData(["chats", projectId])).toEqual([]);
+      expect(refresh).toHaveBeenCalledTimes(
+        mode === "ready" || mode === "failed-read" ? 1 : 0,
+      );
+      await act(async () =>
+        renderer.root.findByProps({ id: "commit-view" }).props.onClick(),
+      );
+      expect(
+        queryClient.getQueryData(["project-tab-layout", projectId]),
+      ).toEqual(layout);
+      expect(text(renderer, "selected")).toBe("chat:agent-1");
+      expect(refresh).toHaveBeenCalledTimes(
+        mode === "ready" || mode === "failed-read" ? 2 : 0,
+      );
+      await act(async () => renderer.unmount());
+    },
+  );
   it("hides the closing tab and selects its successor before committing", async () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(["chats", projectId], [chat]);
@@ -264,6 +338,61 @@ describe("project surface close coordinator", () => {
 });
 
 describe("project surface view operations", () => {
+  it.each(["builtin", "chat"] as const)(
+    "closes the owned %s tab identity without legacy resource-keyed hiding or cache writes",
+    async (kind) => {
+      const queryClient = new QueryClient();
+      const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+      const dispatch = vi.fn().mockResolvedValue({});
+      const controller = {
+        getSnapshot: () => ({ authoritative: { projectId } }),
+        dispatch,
+      } as unknown as WorkspaceCommandClient;
+      const surfaceClose = {
+        begin: vi.fn(),
+        commit: vi.fn(),
+        commitView: vi.fn(),
+        rollback: vi.fn(),
+        pendingTabKeys: new Set<string>(),
+      };
+      const surface = {
+        kind,
+        projectId,
+        tabId: kind === "builtin" ? "project.tasks" : "agent-resource",
+        tabKey: "independent-view",
+        view: { id: "independent-view" },
+      } as ProjectSurface;
+      let operations!: ReturnType<typeof useProjectSurfaceViewOperations>;
+      function Probe() {
+        operations = useProjectSurfaceViewOperations({
+          queryClient,
+          surfaceClose,
+          workspace: { controller },
+        });
+        return null;
+      }
+      let renderer!: TestRenderer.ReactTestRenderer;
+      await act(async () => {
+        renderer = TestRenderer.create(
+          <QueryClientProvider client={queryClient}>
+            <Probe />
+          </QueryClientProvider>,
+        );
+      });
+      await act(async () => {
+        await operations.closeSurfaceViewMutation.mutateAsync(surface);
+      });
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "close-tab",
+        tabId: "independent-view",
+      });
+      expect(surfaceClose.begin).not.toHaveBeenCalled();
+      expect(surfaceClose.commitView).not.toHaveBeenCalled();
+      expect(invalidate).not.toHaveBeenCalled();
+      await act(async () => renderer.unmount());
+      queryClient.clear();
+    },
+  );
   it("hides the view before awaiting Explorer attachment retirement", async () => {
     const order: string[] = [];
     const queryClient = new QueryClient();

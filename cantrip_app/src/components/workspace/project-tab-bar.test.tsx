@@ -423,6 +423,45 @@ describe("project pane tab strip", () => {
     await act(async () => renderer.unmount());
   });
 
+  it("renders an owned preview in its ordinary tab without a separate preview identity", async () => {
+    const surface = fileSurface();
+    surface.preview = true;
+    let renderer!: TestRenderer.ReactTestRenderer;
+    const render = () => (
+      <DndContext>
+        <ProjectPaneTabStrip
+          activeTabKey={surface.tabKey}
+          onClose={vi.fn()}
+          onCreate={vi.fn()}
+          onDelete={vi.fn()}
+          onRename={vi.fn()}
+          onSelect={vi.fn()}
+          surfaces={[surface]}
+        />
+      </DndContext>
+    );
+    await act(async () => {
+      renderer = TestRenderer.create(render());
+    });
+    const tab = () =>
+      renderer.root.findByProps({ "data-project-tab-key": surface.tabKey });
+    expect(tab().props["data-preview"]).toBe(true);
+    expect(
+      tab()
+        .findAllByType("span")
+        .some((span) => span.props.className?.includes("italic")),
+    ).toBe(true);
+    surface.preview = false;
+    await act(async () => renderer.update(render()));
+    expect(tab().props["data-preview"]).toBeUndefined();
+    expect(
+      tab()
+        .findAllByType("span")
+        .some((span) => span.props.className?.includes("italic")),
+    ).toBe(false);
+    await act(async () => renderer.unmount());
+  });
+
   it("renders a left-clicked file as an italic filename preview in its target group", async () => {
     const onPin = vi.fn();
     const onSelect = vi.fn();
@@ -650,6 +689,7 @@ describe("project pane tab strip", () => {
     expect(markup.match(/lucide-x/gu)).toHaveLength(2);
     expect(markup.match(/lucide-trash-2/gu)).toHaveLength(2);
     expect(markup).not.toContain("Close file tab?");
+    expect(markup).not.toContain("Move Tab to New Window");
   });
 
   it.each(["center", "right", "bottom"] as const)(
@@ -657,6 +697,8 @@ describe("project pane tab strip", () => {
     async (paneRegion) => {
       const surface = fileSurface();
       const onMove = vi.fn();
+      const onPopOut = vi.fn();
+      const onPopOutPane = vi.fn();
       let renderer!: TestRenderer.ReactTestRenderer;
       await act(async () => {
         renderer = TestRenderer.create(
@@ -668,6 +710,8 @@ describe("project pane tab strip", () => {
               onDelete={vi.fn()}
               onRename={vi.fn()}
               onMoveToRegion={onMove}
+              onPopOut={onPopOut}
+              onPopOutPane={onPopOutPane}
               onSelect={vi.fn()}
               paneRegion={paneRegion}
               surfaces={[surface]}
@@ -687,6 +731,33 @@ describe("project pane tab strip", () => {
       expect(labels(menus[0]!)).toContain("Rename");
       expect(labels(menus[0]!)).toContain("Close View");
       expect(labels(menus[0]!)).toContain("Delete Resource");
+      expect(labels(menus[0]!)).toContain("Move Tab to New Window");
+      for (const menu of menus) {
+        await act(async () =>
+          menu
+            .findAllByType("button")
+            .find(
+              (item) => textContent(item).trim() === "Move Tab to New Window",
+            )!
+            .props.onClick(),
+        );
+      }
+      expect(onPopOut).toHaveBeenCalledTimes(2);
+      expect(onPopOut).toHaveBeenCalledWith(surface);
+      expect(onPopOutPane).not.toHaveBeenCalled();
+      for (const menu of menus) {
+        await act(async () =>
+          menu
+            .findAllByType("button")
+            .find(
+              (item) => textContent(item).trim() === "Move Pane to New Window",
+            )!
+            .props.onClick(),
+        );
+      }
+      expect(onPopOutPane).toHaveBeenCalledTimes(2);
+      expect(onPopOutPane).toHaveBeenCalledWith(surface);
+      expect(onPopOut).toHaveBeenCalledTimes(2);
       const target = ["center", "right", "bottom"].find(
         (region) => region !== paneRegion,
       )!;
@@ -706,7 +777,7 @@ describe("project pane tab strip", () => {
     },
   );
 
-  it("archives agent tabs on middle click and hides both Close View menu entries", async () => {
+  it("closes agent views on middle click and offers archive separately", async () => {
     const onClose = vi.fn();
     const onDelete = vi.fn();
     const onSelect = vi.fn();
@@ -731,7 +802,7 @@ describe("project pane tab strip", () => {
     const buttons = renderer.root.findAllByType("button");
     expect(
       buttons.filter((button) => textContent(button).trim() === "Close View"),
-    ).toHaveLength(0);
+    ).toHaveLength(2);
     expect(
       buttons.filter(
         (button) => textContent(button).trim() === "Archive Resource",
@@ -748,14 +819,14 @@ describe("project pane tab strip", () => {
     await act(async () => frame.props.onAuxClick(event));
     expect(event.preventDefault).toHaveBeenCalledOnce();
     expect(event.stopPropagation).toHaveBeenCalledOnce();
-    expect(onDelete).toHaveBeenCalledExactlyOnceWith(surface);
-    expect(onClose).not.toHaveBeenCalled();
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledExactlyOnceWith(surface);
     expect(onSelect).not.toHaveBeenCalled();
     await act(async () => renderer.unmount());
   });
 
   it.each(["running", "waiting-for-approval"] as const)(
-    "confirms middle-click removal of a %s agent without selecting it",
+    "closes a %s agent view without stopping, archiving, or selecting it",
     async (status) => {
       const surface = chatSurface();
       surface.entity.status = status;
@@ -790,30 +861,12 @@ describe("project pane tab strip", () => {
           });
       await act(async () => middleClick());
       expect(onDelete).not.toHaveBeenCalled();
-      const confirmation = () =>
-        renderer.root.findByProps({
-          "data-confirm-label": "Stop and remove",
-        });
-      expect(confirmation().props["data-description"]).toBe(
-        "Are you sure you want to stop and remove this agent tab?",
-      );
-      await act(async () =>
-        renderer.root
-          .findByProps({
-            "data-cancel-confirmation": true,
-          })
-          .props.onClick(),
-      );
-      expect(onDelete).not.toHaveBeenCalled();
       expect(
         renderer.root.findAllByProps({
           "data-confirm-label": "Stop and remove",
         }),
       ).toHaveLength(0);
-      await act(async () => middleClick());
-      await act(async () => confirmation().props.onClick());
-      expect(onDelete).toHaveBeenCalledExactlyOnceWith(surface, true);
-      expect(onClose).not.toHaveBeenCalled();
+      expect(onClose).toHaveBeenCalledExactlyOnceWith(surface);
       expect(onSelect).not.toHaveBeenCalled();
       await act(async () => renderer.unmount());
     },
@@ -822,6 +875,7 @@ describe("project pane tab strip", () => {
   it("routes middle-click and menu close through view lifecycle only", async () => {
     const onClose = vi.fn();
     const onDelete = vi.fn();
+    const onSelect = vi.fn();
     const surface = fileSurface();
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => {
@@ -833,8 +887,8 @@ describe("project pane tab strip", () => {
             onCreate={vi.fn()}
             onDelete={onDelete}
             onRename={vi.fn()}
-            onSelect={vi.fn()}
-            surfaces={[surface]}
+            onSelect={onSelect}
+            surfaces={[surface, chatSurface()]}
           />
         </DndContext>,
       );
@@ -850,6 +904,7 @@ describe("project pane tab strip", () => {
     });
     expect(onClose).toHaveBeenCalledWith(surface);
     expect(onDelete).not.toHaveBeenCalled();
+    expect(onSelect).not.toHaveBeenCalled();
 
     onClose.mockClear();
     const menuButtons = renderer.root.findAllByType("button");
@@ -858,6 +913,7 @@ describe("project pane tab strip", () => {
       .props.onClick();
     expect(onClose).toHaveBeenCalledWith(surface);
     expect(onDelete).not.toHaveBeenCalled();
+    expect(onSelect).not.toHaveBeenCalled();
 
     await act(async () =>
       menuButtons

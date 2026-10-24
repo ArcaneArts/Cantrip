@@ -1,0 +1,140 @@
+import type { ExplorerLifecycleActions } from "@/components/explorer/explorer-view";
+import type { ExplorerTransferEntry } from "@/components/explorer/explorer-transfer-batch";
+import {
+  prepareWorkspaceViewTransferBatch,
+  type TerminalTransferEntry,
+} from "./workspace-view-transfer-batch";
+import { getTerminalTransferLifecycle } from "@/components/terminal/terminal-transfer-lifecycle";
+import { getNativeCodeLifecycle } from "@/components/code/native-code-lifecycle";
+import type { ProjectSurface } from "@/lib/project-surface";
+import {
+  getClientSessionIdentitySnapshot,
+  clientSessionIdentityMatches,
+  onClientSessionIdentityChanged,
+} from "@/lib/client-session";
+import { focusWorkspaceNativeWindow } from "@/lib/desktop-popout";
+import type { WorkspaceCommandClient } from "@/lib/workspace-command-client";
+import { detachWorkspaceViews } from "@/lib/workspace-transfer-source";
+
+/** Source adapter for native document-backed and terminal surfaces. Other live surfaces must
+ * supply their own transfer adapters before they can use this path. */
+export async function detachWorkspaceEditors(
+  input: {
+    controller: WorkspaceCommandClient;
+    windowId: string;
+    paneId: string;
+    tabId?: string;
+    returnToMain?: boolean;
+    title: string;
+    surfaces: ReadonlyMap<string, ProjectSurface>;
+    explorers: ReadonlyMap<string, ExplorerLifecycleActions>;
+  },
+  detach = detachWorkspaceViews,
+) {
+  const identity = getClientSessionIdentitySnapshot();
+  if (!identity) throw new Error("Sign in before moving a workspace view.");
+  const signal = new AbortController();
+  const unsubscribe = input.controller.subscribe(() => {
+    if (
+      input.controller.getSnapshot().disposed ||
+      !clientSessionIdentityMatches(identity)
+    )
+      signal.abort(new Error("Workspace transfer source context changed."));
+  });
+  const unsubscribeSession = onClientSessionIdentityChanged(() => {
+    if (!clientSessionIdentityMatches(identity))
+      signal.abort(new Error("Workspace transfer account changed."));
+  });
+  try {
+    return await detach({
+      controller: input.controller,
+      windowId: input.windowId,
+      paneId: input.paneId,
+      tabId: input.tabId,
+      returnToMain: input.returnToMain,
+      title: input.title,
+      identity: { serverId: identity.serverId, ownerId: identity.userId },
+      signal: signal.signal,
+      activate: (windowId) =>
+        focusWorkspaceNativeWindow(
+          windowId === input.controller.getSnapshot().authoritative.mainWindowId
+            ? "main"
+            : windowId,
+        ),
+      prepare: async (tabIds) => {
+        if (!clientSessionIdentityMatches(identity))
+          throw new Error("Workspace transfer account changed.");
+        const layout = input.controller.getSnapshot().authoritative;
+        const pane = layout.windows
+          .find(({ id }) => id === input.windowId)
+          ?.panes.find(({ id }) => id === input.paneId);
+        const entries: ExplorerTransferEntry[] = [];
+        const terminalEntries: TerminalTransferEntry[] = [];
+        for (const tabId of tabIds) {
+          const tab = pane?.tabs.find(({ id }) => id === tabId);
+          const surface = input.surfaces.get(tabId);
+          if (
+            !tab ||
+            tab.resource.kind !== "entity" ||
+            !surface ||
+            (surface.kind !== "explorer" &&
+              surface.kind !== "code" &&
+              surface.kind !== "terminal")
+          )
+            throw new Error(
+              "This surface does not yet have a workspace transfer adapter.",
+            );
+          const entity = surface.entity;
+          if (
+            entity.id !== tab.resource.resourceId ||
+            entity.projectId !== layout.projectId
+          )
+            throw new Error("Workspace transfer resource changed.");
+          if (surface.kind === "terminal") {
+            const owner = {
+              tabId,
+              projectId: entity.projectId,
+              terminalId: entity.id,
+              workerId: entity.activeWorkerId,
+            };
+            const lifecycle = getTerminalTransferLifecycle(owner);
+            if (!lifecycle)
+              throw new Error("The terminal is not attached for transfer.");
+            terminalEntries.push({ ...owner, lifecycle });
+            continue;
+          }
+          const lifecycle =
+            surface.kind === "code"
+              ? getNativeCodeLifecycle(entity.id)
+              : input.explorers.get(entity.id);
+          if (!lifecycle)
+            throw new Error("The editor is not attached for transfer.");
+          entries.push({
+            tabId,
+            lifecycle,
+            scope: {
+              serverId: identity.serverId,
+              ownerId: identity.userId,
+              explorerId: entity.id,
+              projectId: entity.projectId,
+              worktreeId: entity.worktreeId,
+              workerId: entity.activeWorkerId,
+            },
+          });
+        }
+        const batch = prepareWorkspaceViewTransferBatch(
+          entries,
+          terminalEntries,
+        );
+        return {
+          capture: batch.captureBytes,
+          retire: async () => batch.retire(),
+          resume: async () => batch.resume(),
+        };
+      },
+    });
+  } finally {
+    unsubscribe();
+    unsubscribeSession();
+  }
+}

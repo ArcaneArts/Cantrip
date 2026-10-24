@@ -1135,7 +1135,12 @@ describe("WorkerLinkManager", () => {
     stream.onWritable(writable);
     expect(writable).toHaveBeenCalledOnce();
     const outbound = new Uint8Array([1, 2, 3]);
+    await stream.drain();
     expect(stream.write(outbound)).toBe(true);
+    const drained = vi.fn();
+    const draining = stream.drain().then(drained);
+    await Promise.resolve();
+    expect(drained).not.toHaveBeenCalled();
     outbound.fill(9);
 
     carrier.receive(
@@ -1182,9 +1187,25 @@ describe("WorkerLinkManager", () => {
       sequence: 2,
       kind: "credit",
       direction: "client-to-worker",
-      bytes: 3,
+      bytes: 2,
     });
     expect(writable).toHaveBeenCalledTimes(2);
+    await Promise.resolve();
+    expect(drained).not.toHaveBeenCalled();
+    carrier.receive({
+      protocolVersion: 1,
+      sessionId: open.sessionId,
+      routeGeneration: open.routeGeneration,
+      effectiveRoute: "local",
+      channel: open.channel,
+      lane: open.lane,
+      sequence: 3,
+      kind: "credit",
+      direction: "client-to-worker",
+      bytes: 1,
+    });
+    await draining;
+    expect(drained).toHaveBeenCalledOnce();
     await vi.waitFor(() => expect(carrier.sent).toHaveLength(3));
     expect(carrier.sent.map((frame) => frame.header.kind)).toEqual([
       "open",
@@ -1192,6 +1213,11 @@ describe("WorkerLinkManager", () => {
       "credit",
     ]);
     expect(carrier.sent[1]?.payload).toEqual(new Uint8Array([1, 2, 3]));
+    expect(stream.write(new Uint8Array([4]))).toBe(true);
+    const interruptedDrain = stream.drain();
+    stream.close();
+    await expect(interruptedDrain).rejects.toThrow(/closed before drain/);
+    await expect(stream.drain()).rejects.toThrow(/closed/);
 
     reference.release();
     await vi.waitFor(() =>
@@ -1206,7 +1232,7 @@ describe("WorkerLinkManager", () => {
           event: "channel-opened",
           lane: "interactive",
         }),
-        expect.objectContaining({ event: "bytes-sent", value: 3 }),
+        expect.objectContaining({ event: "bytes-sent", value: 4 }),
         expect.objectContaining({ event: "bytes-received", value: 2 }),
         expect.objectContaining({
           event: "frame-dropped",
@@ -1215,7 +1241,7 @@ describe("WorkerLinkManager", () => {
         expect.objectContaining({
           event: "relay-bytes-avoided",
           route: "local",
-          value: 5,
+          value: 6,
         }),
         expect.objectContaining({
           event: "channel-closed",

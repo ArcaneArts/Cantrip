@@ -1,6 +1,11 @@
 import { useProjectToolNavigationBridge } from "./project-tool-navigation-bridge";
+import { useWorkspaceConnection } from "./use-workspace-connection";
+import { useWorkspaceEditorTransfer } from "./use-workspace-editor-transfer";
+import { detachWorkspaceEditors } from "./detach-workspace-editors";
+import { useWorkspaceWindowReturn } from "./use-workspace-window-return";
+import { openOwnedFile } from "@/lib/open-owned-file";
+import { focusWorkspaceNativeWindow } from "@/lib/desktop-popout";
 import {
-  projectBuiltInDefinitionIdFromViewId,
   type ProjectBuiltInSurfaceDefinitionId,
   type ProjectPaneRegion,
   ChatSummary,
@@ -79,7 +84,6 @@ import {
   useProjectSurfaceSelection,
   useProjectWorkspaceSelectionState,
   useWorkspaceLiveScopes,
-  useWorkspaceSelectionReconciliation,
   workspacePaneSelection,
 } from "@/components/app/project-workspace-selection";
 import { useShellEnvironment } from "@/components/app/shell-environment";
@@ -257,9 +261,52 @@ export function App() {
   const {
     pendingSurfaceSelection,
     setPendingSurfaceSelection,
-    setWorkspaceSelection,
-    workspaceSelection,
+    setWorkspaceSelection: setSeedWorkspaceSelection,
+    workspaceSelection: seedWorkspaceSelection,
   } = useProjectWorkspaceSelectionState({ popoutProjectId, popoutTarget });
+  const workspaceConnection = useWorkspaceConnection(
+    selectedProjectId,
+    seedWorkspaceSelection,
+  );
+  const workspaceSelection = workspaceConnection.workspaceSelection;
+  const [workspaceConnectionError, setWorkspaceConnectionError] =
+    useState<unknown>(null);
+  const setWorkspaceSelection = useCallback<typeof setSeedWorkspaceSelection>(
+    (update) => {
+      // Project navigation may seed a different connection; it is not a layout
+      // command against the old project. Current-project focus is controller-owned.
+      if (
+        typeof update !== "function" &&
+        update.projectId !== selectedProjectId
+      ) {
+        setSeedWorkspaceSelection(update);
+        return;
+      }
+      if (!workspaceConnection.connection) {
+        setSeedWorkspaceSelection(update);
+        return;
+      }
+      void workspaceConnection
+        .setSelection(update)
+        .catch(setWorkspaceConnectionError);
+    },
+    [
+      selectedProjectId,
+      setSeedWorkspaceSelection,
+      workspaceConnection.connection,
+      workspaceConnection.setSelection,
+    ],
+  );
+  const ownedWorkspace = workspaceConnection.connection
+    ? {
+        controller: workspaceConnection.connection.controller,
+        windowId: workspaceConnection.connection.windowId,
+        focusWindow: (id: string) =>
+          focusWorkspaceNativeWindow(
+            id === workspaceConnection.connection!.mainWindowId ? "main" : id,
+          ),
+      }
+    : null;
   const gitHistoryNavigation = useGitHistoryNavigation();
   const surfaceOpenRequestRef = useRef(0);
   const setPendingSurfaceSelectionWithOpenCancellation = useCallback<
@@ -274,6 +321,7 @@ export function App() {
   const projectSurfaceClose = useProjectSurfaceCloseCoordinator({
     queryClient,
     setWorkspaceSelection,
+    workspace: ownedWorkspace?.controller ?? null,
   });
   useEffect(() => {
     const openFileHistory = (event: Event) => {
@@ -359,16 +407,22 @@ export function App() {
     setAppToast({ ...toast, id: crypto.randomUUID() });
   }, []);
   const detachedDesktopPane = useDetachedDesktopPaneState();
-  const selectedWorkspacePaneOwnedElsewhere = Boolean(
-    desktopRuntime &&
-    !isPopout &&
-    workspaceSelection.focusedPaneId &&
-    (detachedDesktopPane.claims.has(workspaceSelection.focusedPaneId) ||
-      !detachedDesktopPane.inspectedPaneIds.has(
-        workspaceSelection.focusedPaneId,
-      )),
-  );
+  const selectedWorkspacePaneOwnedElsewhere = false;
+  const tabLayout = {
+    data: workspaceConnection.presentation.presentation?.layout,
+    isSuccess: Boolean(workspaceConnection.presentation.presentation),
+  };
+  useEffect(() => {
+    const error = workspaceConnectionError;
+    if (error)
+      showAppToast({
+        title: "Workspace action failed",
+        tone: "error",
+        message: error instanceof Error ? error.message : String(error),
+      });
+  }, [workspaceConnectionError, showAppToast]);
   const {
+    selectedBuiltInDefinitionId,
     selectedBrowserId,
     selectedChatId,
     selectedCodeTabId,
@@ -376,7 +430,7 @@ export function App() {
     selectedProjectViewId,
     selectedTabKey,
     selectedTerminalId,
-  } = projectWorkspaceSurfaceSelection(workspaceSelection);
+  } = projectWorkspaceSurfaceSelection(workspaceSelection, tabLayout.data);
   useWorkspaceLiveScopes({
     appMode,
     selectedChatId: selectedWorkspacePaneOwnedElsewhere ? null : selectedChatId,
@@ -391,9 +445,6 @@ export function App() {
     string | "new" | null
   >(null);
   useEffect(() => setRunConfigurationEditorId(null), [selectedProjectId]);
-  const selectedBuiltInDefinitionId = selectedProjectId
-    ? projectBuiltInDefinitionIdFromViewId(selectedProjectId, selectedTabKey)
-    : null;
   const sidebarFilePreviewFocused = sidebarFilePreviewHasPaneFocus({
     focusedPaneId: workspaceSelection.focusedPaneId,
     preview: sidebarFilePreview,
@@ -463,6 +514,18 @@ export function App() {
   const [codeHeader, setCodeHeader] = useState<CodeHeaderState | null>(null);
   const desktopPopoutStatus = useDesktopPopoutStatusState();
   const { popoutError, popoutPending, setPopoutError } = desktopPopoutStatus;
+  const {
+    stagedExplorerTransfers,
+    stagedCodeTransfers,
+    stagedTerminalTransfers,
+    incomingTerminalViews,
+    incomingExplorerViews,
+    incomingCodeViews,
+  } = useWorkspaceEditorTransfer({
+    connection: workspaceConnection.connection,
+    target: popoutTarget,
+    onError: (error) => setPopoutError(errorText(error)),
+  });
   const [
     terminalCommandPaletteTerminalId,
     setTerminalCommandPaletteTerminalId,
@@ -484,6 +547,7 @@ export function App() {
     sidebarFilePreviewLifecycleRef,
   } = explorerLifecycle;
   const { closeSurfaceViewMutation } = useProjectSurfaceViewOperations({
+    workspace: ownedWorkspace,
     beforeClose: async (surface) => {
       if (surface.kind === "explorer") {
         await explorerLifecycleRef.current.get(surface.tabId)?.prepareClose();
@@ -504,6 +568,14 @@ export function App() {
   );
   const { codeAppearance, proModeActive, setCodeAppearance, setProModeActive } =
     useShellAppearanceState();
+  const pinDirtyOwnedFile = useCallback(
+    (resourceId: string) => {
+      void workspaceConnection.connection?.controller
+        .pinFilePreviews(resourceId)
+        .catch(setWorkspaceConnectionError);
+    },
+    [workspaceConnection.connection],
+  );
   const {
     handleExplorerChanged,
     handleExplorerLifecycleChange,
@@ -513,6 +585,7 @@ export function App() {
     codeAppearance,
     lifecycle: explorerLifecycle,
     queryClient,
+    onDirtyFile: pinDirtyOwnedFile,
   });
 
   const {
@@ -525,6 +598,7 @@ export function App() {
     openProjectTask,
     openTunnelOwner,
   } = createShellProjectNavigationCommands({
+    workspace: ownedWorkspace,
     compactShell,
     getActiveProjectWorkspaceId: () => activeProjectWorkspace?.id ?? null,
     navigation: {
@@ -550,6 +624,7 @@ export function App() {
     setWorkspaceSelection,
   });
   const newProjectToolSurface = useProjectToolSurfaceCreationOperation({
+    ownedPlacement: true,
     openCreatedTab,
     queryClient,
   });
@@ -599,6 +674,7 @@ export function App() {
       setWorkspaceSelection,
     });
   const projectWorkspaceResources = useProjectWorkspaceResources({
+    tabLayout,
     activeProjectOverviewSection,
     projectOverviewSelected,
     projectResourcesLive,
@@ -620,7 +696,6 @@ export function App() {
     repositoryStats,
     runConfigurationRuntimes,
     runConfigurations,
-    tabLayout,
     terminals,
     worktreeStatuses,
     worktrees,
@@ -631,6 +706,7 @@ export function App() {
         (tabLayout.data?.panes ?? [])
           .filter(
             ({ id }) =>
+              !ownedWorkspace &&
               desktopRuntime &&
               !isPopout &&
               (detachedDesktopPane.claims.has(id) ||
@@ -643,10 +719,12 @@ export function App() {
       detachedDesktopPane.claims,
       detachedDesktopPane.inspectedPaneIds,
       isPopout,
+      ownedWorkspace?.controller,
       tabLayout.data?.panes,
     ],
   );
   const newChat = useProjectChatCreationOperation({
+    ownedPlacement: true,
     openCreatedTab,
     queryClient,
     randomAgentNames: settings.data?.preferences.randomAgentNames ?? false,
@@ -675,6 +753,7 @@ export function App() {
     queryClient,
   });
   const newTerminal = useTerminalCreationOperation({
+    ownedPlacement: true,
     openCreatedTab,
     queryClient,
     setPendingTerminalInputs,
@@ -725,6 +804,7 @@ export function App() {
     setChatConsoleOpen,
   });
   const { newExplorer, newGraphExplorer } = useExplorerCreationOperations({
+    ownedPlacement: true,
     openCreatedTab,
     queryClient,
     setExplorerGraphRequest,
@@ -738,6 +818,7 @@ export function App() {
       setPopoutError,
     });
   const { newBrowser, newCodeTab } = useBrowserCodeViewCreationOperations({
+    ownedPlacement: true,
     openCreatedTab,
     queryClient,
   });
@@ -823,6 +904,7 @@ export function App() {
     createSurface: newProjectToolSurface.mutate,
   });
   const newRemoteDesktop = useRemoteDesktopCreationOperation({
+    ownedPlacement: true,
     openCreatedTab,
     queryClient,
   });
@@ -901,6 +983,7 @@ export function App() {
   });
   const { dockPresentationMutation, renamePaneMutation, tabLayoutMutation } =
     useTabLayoutOperations({
+      workspace: ownedWorkspace,
       queryClient,
       setWorkspaceDragError,
     });
@@ -951,6 +1034,13 @@ export function App() {
     });
   const { displayTerminals, projectSurfaceIndex, selectedSurface } =
     useProjectSurfaceSelection({
+      ownership:
+        workspaceConnection.controllerState && ownedWorkspace
+          ? {
+              layout: workspaceConnection.controllerState.projected,
+              windowId: ownedWorkspace.windowId,
+            }
+          : undefined,
       omittedTabKeys: projectSurfaceClose.pendingTabKeys,
       resources: projectWorkspaceResources,
       selectedTabKey,
@@ -1017,8 +1107,8 @@ export function App() {
     [projectSurfaceIndex],
   );
   const mobileNavigationSurfaces = useMemo(
-    () => mobileProjectSurfaces(projectSurfaces, selectedTabKey),
-    [projectSurfaces, selectedTabKey],
+    () => mobileProjectSurfaces(projectSurfaces),
+    [projectSurfaces],
   );
   const sidebarFilePreviewPaneVisible = sidebarFilePreviewIsVisible({
     previewActive: sidebarFilePreview?.active ?? false,
@@ -1554,6 +1644,17 @@ export function App() {
     showSettings,
   ]);
   const desktopPopout = useDesktopPopoutModel({
+    detachOwnedPane: ownedWorkspace
+      ? (paneId, title, tabId) =>
+          detachWorkspaceEditors({
+            ...ownedWorkspace,
+            paneId,
+            title,
+            tabId,
+            surfaces: projectSurfaceIndex.byTabKey,
+            explorers: explorerLifecycleRef.current,
+          })
+      : undefined,
     activeProjectOverviewSection,
     currentSurface,
     desktopRuntime,
@@ -1569,12 +1670,25 @@ export function App() {
     selectedPaneId: selectedPane?.id ?? null,
     status: desktopPopoutStatus,
   });
+  useWorkspaceWindowReturn({
+    enabled: desktopRuntime && isPopout,
+    source: ownedWorkspace
+      ? {
+          ...ownedWorkspace,
+          surfaces: projectSurfaceIndex.byTabKey,
+          explorers: explorerLifecycleRef.current,
+        }
+      : null,
+    onError: (error) => setPopoutError(errorText(error)),
+  });
   const {
     activePopout,
     activeProjectOverviewPopout,
     selectedPaneOwnedElsewhere,
     paneOwnedElsewhere,
     popOutActiveView,
+    popOutTab,
+    popOutPane,
     popOutProjectOverviewView,
   } = desktopPopout;
   const activeContentKey = showImporter
@@ -1714,21 +1828,20 @@ export function App() {
     }
   }, [createdRepositoryOnboarding, projects.data]);
 
-  useWorkspaceSelectionReconciliation({
-    openCenterTab:
-      !compactShell && !isPopout && projectOverviewSection === "overview",
-    layout: tabLayout.data,
-    pendingSurfaceSelection,
-    selectedProjectId,
-    setPendingSurfaceSelection,
-    setWorkspaceSelection,
-  });
-
   useOrphanedDesktopPopoutEffect({
     isLayoutMutationPending: tabLayoutMutation.isPending,
     layout: tabLayout.data,
     layoutIsSuccess: tabLayout.isSuccess,
     popoutTarget,
+    ownership:
+      workspaceConnection.controllerState &&
+      ownedWorkspace &&
+      !workspaceConnection.controllerState.disposed
+        ? {
+            layout: workspaceConnection.controllerState.authoritative,
+            windowId: ownedWorkspace.windowId,
+          }
+        : null,
   });
 
   const {
@@ -1897,6 +2010,18 @@ export function App() {
     renameSidebarFileEntry,
     retrySidebarFileTree,
   } = createSidebarExplorerCommands({
+    openOwnedFile: async (explorer, path, preview) => {
+      if (!ownedWorkspace)
+        throw new Error("Workspace connection is not ready.");
+      await openOwnedFile({
+        ...ownedWorkspace,
+        queryClient,
+        projectId: explorer.projectId,
+        worktreeId: explorer.worktreeId,
+        path,
+        preview,
+      });
+    },
     abandonSidebarFilePinHandoff,
     createSidebarExplorerMutation,
     explorers: explorers.data,
@@ -1920,6 +2045,18 @@ export function App() {
   });
   const { openChatFileLink, openProjectExplorerFile } =
     createProjectExplorerFileOpening({
+      openOwnedFile: async (projectId, worktreeId, path) => {
+        if (!ownedWorkspace)
+          throw new Error("Workspace connection is not ready.");
+        await openOwnedFile({
+          ...ownedWorkspace,
+          queryClient,
+          projectId,
+          worktreeId,
+          path,
+        });
+        revealWorkspace();
+      },
       codeAppearance,
       desktopRuntime,
       explorers: explorers.data,
@@ -2016,7 +2153,7 @@ export function App() {
     appToast, archiveStandaloneChat, archivedStandaloneChats, beginSidebarResize, bindChatWorktree,
     bindWorktreeMutation, bootstrap, browsers, chatRelocationOpen, chatRelocations,
     chatConsoleOpenChats, chats, closeCompactProject, closeProjectTask, closeSidebarFilePreview, codeAppearance,
-    codeHeader, codeTabs, commandBarOpen, compactManagedHeader, compactShell,
+    codeHeader, codeTabs, stagedExplorerTransfers, stagedCodeTransfers, stagedTerminalTransfers, incomingTerminalViews, incomingExplorerViews, incomingCodeViews, commandBarOpen, compactManagedHeader, compactShell,
     completeSidebarFilePinHandoff, contentRootRef, contentScrolled, createProjectSurface, createSidebarExplorerMutation, createSidebarFolder, createSidebarFile,
     createWorkspaceMutation, createWorktreeMutation, creatingSurfaceKinds, currentRelocation, deleteBrowserMutation, dockPresentationMutation,
     deleteChatMutation, deleteCodeTabMutation, deleteExplorerMutation, deleteProjectViewMutation, deleteSidebarFileEntry,
@@ -2035,7 +2172,7 @@ export function App() {
     openProjectSettings, openProjectTask, openServerAdmin, openSidebarFilePreview, openSidebarFolderGraph,
     openSidebarFolderNative, openSidebarRootNative, openSidebarFolderTerminal, openTerminalLink, openTerminalLinkExternally, openTunnelOwner,
     overlayTitlebar, pendingTerminalInputs, permanentlyDeleteStandaloneChat, pinSidebarFile, pinSidebarFileMutation,
-    pinSidebarFilePath, popOutActiveView, popOutProjectOverviewView, popoutError, popoutPending,
+    pinSidebarFilePath, popOutActiveView, popOutTab, popOutPane, popOutProjectOverviewView, popoutError, popoutPending,
     prepareExplorerRebind, projectOverviewGitProject, projectOverviewGitSection, projectOverviewPopoutTarget, projectOverviewSelected,
     projectInventorySurfaces, projectRevealButtonLabel, projectRevealLabel, projectSettingsSection, projectSetupJobs, projectSurfaceIndex, projectSurfaces,
     projectTaskChatIds, projectTokenUsage, projectViews, projectWorkspaces,
@@ -2069,7 +2206,7 @@ export function App() {
     standaloneChatCreationAvailable, standaloneChatCreationUnavailableReason, standaloneChatWorkerAvailable, standaloneChats, standaloneFilePath,
     standaloneFilesOpen, stopAndDeleteRunTerminalMutation, surfaceCreationFailure, switchToChat, switchToIde,
     tabLayout, tabLayoutMutation, terminals, terminalCommandPaletteTerminalId, terminalServiceTerminalId, updateBrowserMutation, updateCodeTabMutation,
-    visibleProjects, workers, workspaceDragError, workspaceSelection, worktreeActionError,
+    visibleProjects, workers, workspaceConnection, workspaceDragError, workspaceSelection, worktreeActionError,
     worktreeCreateTarget, worktreeStatuses, worktrees,
   };
   return <ApplicationShellRender bindings={renderBindings} />;

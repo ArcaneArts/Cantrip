@@ -244,6 +244,69 @@ describe("workspace ownership contract", () => {
 });
 
 describe("legacy workspace seeding", () => {
+  it("imports detached panes without source placeholders or lost selection", () => {
+    const value = seedWorkspaceOwnership({
+      workspaceId: "desktop",
+      mainWindowId: "main",
+      legacy: legacy(),
+      activeTabByPane: { b: "terminal:b-2" },
+      focusedPaneId: "b",
+      detachedPanes: [
+        { paneId: "b", windowId: "native-b" },
+        { paneId: "dock", windowId: "native-dock" },
+      ],
+    });
+    expect(value.windows[0]!.panes.map((p) => p.id)).toEqual(["a"]);
+    expect(value.windows[0]!.centerRoot).toEqual({ kind: "pane", paneId: "a" });
+    expect(value.windows[0]!.focusedPaneId).toBeNull();
+    const moved = value.windows[1]!.panes[0]!;
+    expect(moved.tabs).toEqual(seed().windows[0]!.panes[1]!.tabs);
+    expect(moved.activeTabId).toBe(moved.tabs[1]!.id);
+    expect(value.windows[2]!.centerRoot).toBeNull();
+    expect(value.windows[2]!.panes[0]!.region).toBe("right");
+  });
+
+  it.each([
+    [{ paneId: "unknown", windowId: "pop" }],
+    [{ paneId: "a", windowId: "main" }],
+    [{ paneId: "a", windowId: "" }],
+    [
+      { paneId: "a", windowId: "pop" },
+      { paneId: "a", windowId: "other" },
+    ],
+    [
+      { paneId: "a", windowId: "pop" },
+      { paneId: "b", windowId: "pop" },
+    ],
+  ])("rejects invalid detached ownership %j", (...detachedPanes) => {
+    expect(() =>
+      seedWorkspaceOwnership({
+        workspaceId: "desktop",
+        mainWindowId: "main",
+        legacy: legacy(),
+        detachedPanes,
+      }),
+    ).toThrow("Invalid or duplicate legacy detached pane ownership");
+  });
+
+  it("allows every pane to be detached and never reimports over initialized ownership", () => {
+    const input = {
+      workspaceId: "desktop",
+      mainWindowId: "main",
+      legacy: legacy(),
+      detachedPanes: ["a", "b", "dock"].map((paneId) => ({
+        paneId,
+        windowId: `pop-${paneId}`,
+      })),
+    };
+    const existing = seedWorkspaceOwnership(input);
+    expect(existing.windows[0]!.panes).toEqual([]);
+    expect(existing.windows[0]!.centerRoot).toBeNull();
+    expect(
+      seedWorkspaceOwnership({ ...input, existing, detachedPanes: [] }),
+    ).toEqual(existing);
+  });
+
   it("preserves built-in references and worktree selection without manufacturing entities", () => {
     const source = legacy();
     const member = source.panes[0]!.members[0]!;

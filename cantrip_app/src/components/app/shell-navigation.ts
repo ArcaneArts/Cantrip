@@ -4,6 +4,7 @@ import type {
   ChatSummary,
   ClientControlCommand,
   ProjectSummary,
+  ProjectTabKind,
   ProjectPaneRegion,
   ProjectSurfaceResourceRef,
   ProjectTabLayoutSummary,
@@ -13,6 +14,8 @@ import type {
   TunnelSummary,
 } from "@cantrip/protocol";
 import { projectSurfaceViewId } from "@cantrip/protocol";
+import type { WorkspaceCommandClient } from "@/lib/workspace-command-client";
+import { openWorkspaceWindowPresentation } from "@/lib/workspace-window-presentation";
 import type { QueryClient } from "@tanstack/react-query";
 import {
   useCallback,
@@ -51,6 +54,7 @@ import {
 import { projectSelectionAction } from "@/lib/mobile-navigation";
 import type { ProjectOverviewSection } from "@/lib/project-overview-section";
 import { projectSurfaceTabKey } from "@/lib/project-surface";
+import { projectSurfaceResourceRefForTab } from "@/lib/project-surface-registry";
 import { resolveProjectWorkspaceForSelection } from "@/lib/project-workspaces";
 import { recordProjectAccess } from "@/lib/project-recency";
 import type { SidebarFilePreviewState } from "@/lib/sidebar-file-tabs";
@@ -88,6 +92,7 @@ export async function openOrFocusProjectSurface({
   targetRegion,
   revealDock = false,
   moveToTargetRegion = false,
+  workspace,
 }: {
   projectId: string;
   queryClient: QueryClient;
@@ -96,7 +101,85 @@ export async function openOrFocusProjectSurface({
   targetRegion?: ProjectPaneRegion;
   revealDock?: boolean;
   moveToTargetRegion?: boolean;
+  workspace?: {
+    controller: WorkspaceCommandClient;
+    windowId: string;
+    focusWindow: (windowId: string) => Promise<void>;
+  } | null;
 }) {
+  if (workspace !== undefined) {
+    if (!workspace) throw new Error("Workspace connection is not ready.");
+    const { controller, windowId, focusWindow } = workspace;
+    if (controller.getSnapshot().authoritative.projectId !== projectId)
+      throw new Error("Workspace command belongs to another project.");
+    let receipt = await controller.openResource(surfaceRef, {
+      targetPaneId,
+      targetRegion,
+    });
+    const locate = () =>
+      receipt.layout.windows.flatMap((window) =>
+        window.panes.flatMap((pane) =>
+          pane.tabs
+            .filter(
+              (tab) =>
+                tab.resource.kind === surfaceRef.kind &&
+                tab.resource.definitionId === surfaceRef.definitionId &&
+                (tab.resource.kind === "builtin" ||
+                  (surfaceRef.kind === "entity" &&
+                    tab.resource.resourceId === surfaceRef.resourceId)),
+            )
+            .map((tab) => ({ window, pane, tab })),
+        ),
+      )[0];
+    let location = locate();
+    if (!location) throw new Error("Opened workspace view is unavailable.");
+    const viewId = location.tab.id;
+    if (location.window.id !== windowId) {
+      await focusWindow(location.window.id);
+      return {
+        layout: (
+          await openWorkspaceWindowPresentation(receipt.layout, windowId)
+        ).layout,
+        viewId,
+        focusWindowId: location.window.id,
+      };
+    }
+    if (
+      moveToTargetRegion &&
+      targetRegion &&
+      location.pane.region !== targetRegion
+    ) {
+      const target = location.window.panes.find((pane) =>
+        targetPaneId ? pane.id === targetPaneId : pane.region === targetRegion,
+      );
+      receipt = await controller.dispatchLayout({
+        type: "move-member",
+        tabKey: viewId,
+        targetPaneId: target?.id ?? null,
+        targetMemberPosition: target?.tabs.length ?? 0,
+        targetRegion,
+      });
+      location = locate();
+      if (!location) throw new Error("Moved workspace view is unavailable.");
+    }
+    const preference = location.tab.dockPresentation;
+    if (
+      revealDock &&
+      (location.pane.region === "right" || location.pane.region === "bottom") &&
+      preference?.preferredMode === "closed"
+    )
+      receipt = await controller.dispatch({
+        type: "dock-presentation",
+        tabId: viewId,
+        presentation: revealDockPresentation(preference),
+      });
+    return {
+      layout: (await openWorkspaceWindowPresentation(receipt.layout, windowId))
+        .layout,
+      viewId,
+      focusWindowId: null,
+    };
+  }
   const viewId = projectSurfaceViewId({ projectId, resource: surfaceRef });
   let layout =
     queryClient.getQueryData<ProjectTabLayoutSummary>([
@@ -672,7 +755,7 @@ export function useShellClientControlNavigation({
   chats: ChatSummary[] | undefined;
   openCreatedTab(
     projectId: string,
-    kind: "browser" | "chat" | "code" | "explorer" | "terminal" | "view",
+    kind: Exclude<ProjectTabKind, "builtin">,
     tabId: string,
   ): void;
   openOrFocusSurface: ReturnType<
@@ -1054,6 +1137,7 @@ export function createShellProjectNavigationCommands({
   setSidebarFilePreview,
   surfaceOpenRequestRef,
   setWorkspaceSelection,
+  workspace,
 }: {
   compactShell: boolean;
   getActiveProjectWorkspaceId(): string | null;
@@ -1087,6 +1171,7 @@ export function createShellProjectNavigationCommands({
   >;
   surfaceOpenRequestRef: MutableRefObject<number>;
   setWorkspaceSelection: Dispatch<SetStateAction<WorkspaceSelection>>;
+  workspace?: Parameters<typeof openOrFocusProjectSurface>[0]["workspace"];
 }) {
   const {
     setAppMode,
@@ -1144,9 +1229,19 @@ export function createShellProjectNavigationCommands({
   };
   const openCreatedTab = (
     projectId: string,
-    kind: "browser" | "chat" | "code" | "explorer" | "terminal" | "view",
+    kind: Exclude<ProjectTabKind, "builtin">,
     tabId: string,
+    placement?: { paneId?: string; targetRegion?: ProjectPaneRegion },
   ) => {
+    if (workspace !== undefined) {
+      void openOrFocusSurface(
+        projectId,
+        projectSurfaceResourceRefForTab(kind, tabId),
+        placement?.paneId,
+        placement?.targetRegion,
+      );
+      return;
+    }
     setAppMode("ide");
     setSidebarFilePreview((current) =>
       current?.projectId === projectId
@@ -1200,21 +1295,30 @@ export function createShellProjectNavigationCommands({
     setDesktopSidebarDrawerOpen(false);
     setSelectedProjectId(projectId);
     const viewId = projectSurfaceViewId({ projectId, resource: surfaceRef });
+    // Owned views receive independent IDs from the command controller. Never
+    // publish the legacy resource-derived key as their pending selection.
+    setPendingSurfaceSelection(
+      workspace !== undefined ? null : { projectId, tabKey: viewId },
+    );
+    // Clearing pending selection cancels earlier opens in the shell. Allocate
+    // this request only after that cancellation so it cannot cancel itself.
     const requestId = ++surfaceOpenRequestRef.current;
-    setPendingSurfaceSelection({ projectId, tabKey: viewId });
     const openRequest = openOrFocusProjectSurface({
       projectId,
       queryClient,
       surfaceRef,
+      workspace,
       ...(targetPaneId ? { targetPaneId } : {}),
       ...(targetRegion ? { targetRegion } : {}),
       ...presentation,
     })
-      .then(({ layout }) => {
+      .then((result) => {
         if (surfaceOpenRequestRef.current !== requestId) return false;
-        setWorkspaceSelection((current) =>
-          selectWorkspaceTab(current, layout, viewId),
-        );
+        if (!("focusWindowId" in result && result.focusWindowId)) {
+          setWorkspaceSelection((current) =>
+            selectWorkspaceTab(current, result.layout, result.viewId),
+          );
+        }
         setPendingSurfaceSelection(null);
         return true;
       })
@@ -1226,9 +1330,11 @@ export function createShellProjectNavigationCommands({
           projectId,
           viewId,
         });
-        void queryClient.invalidateQueries({
-          queryKey: ["project-tab-layout", projectId],
-        });
+        if (workspace === undefined) {
+          void queryClient.invalidateQueries({
+            queryKey: ["project-tab-layout", projectId],
+          });
+        }
         return false;
       });
     setShowImporter(false);
@@ -1253,6 +1359,10 @@ export function createShellProjectNavigationCommands({
       kind: "builtin",
       definitionId: "project.tasks",
     } as const;
+    if (workspace !== undefined) {
+      void openOrFocusSurface(projectId, surfaceRef);
+      return;
+    }
     const tabKey = projectSurfaceViewId({ projectId, resource: surfaceRef });
     const cachedLayout = queryClient.getQueryData<ProjectTabLayoutSummary>([
       "project-tab-layout",

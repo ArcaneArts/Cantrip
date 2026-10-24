@@ -1,4 +1,8 @@
 import { PanelToolbar } from "@/components/workspace/panel-toolbar";
+import {
+  UnresolvedProjectSurface,
+  unresolvedSurfaceCollection,
+} from "./unresolved-project-surface";
 import type {
   BrowserFleetService,
   WorkerSummary,
@@ -472,6 +476,14 @@ export function GlobalContentHost({
           workerId={onlineWorker?.workerId ?? null}
           workers={workers.data ?? []}
           workspaces={projectWorkspaces.data ?? []}
+        />
+      ) : bindings.selectedSurface?.kind === "unresolved" ? (
+        <UnresolvedProjectSurface
+          surface={bindings.selectedSurface}
+          query={
+            bindings[unresolvedSurfaceCollection(bindings.selectedSurface)]
+          }
+          onClose={() => bindings.closeSurfaceView(bindings.selectedSurface)}
         />
       ) : selectedPaneOwnedElsewhere && selectedPane ? (
         <DetachedPanePlaceholder

@@ -51,7 +51,100 @@ const layout: ProjectTabLayoutSummary = {
   ],
 };
 
+it("retains owned tab identities and order while resource queries are absent", () => {
+  const collections = {
+    browsers: [],
+    chats: [],
+    codeTabs: [],
+    explorers: [],
+    projectViews: [],
+    terminals: [],
+  };
+  const index = buildProjectSurfaceIndex(layout, collections);
+  expect(
+    index.byPaneId.get("group-1")?.map((surface) => surface.tabKey),
+  ).toEqual(["chat:chat-1", "view:issues-1"]);
+  expect(index.byTabKey.get("chat:chat-1")).toMatchObject({
+    kind: "unresolved",
+    entity: null,
+    title: "Chat",
+    view: { id: "chat:chat-1" },
+  });
+  const hydrated = buildProjectSurfaceIndex(layout, {
+    ...collections,
+    projectViews: [
+      {
+        id: "issues-1",
+        projectId: "project-1",
+        title: "Issues",
+        kind: "issues",
+        worktreeId: null,
+        position: 1,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+    ],
+  });
+  expect(hydrated.byTabKey.get("view:issues-1")?.kind).toBe("issues");
+  expect(hydrated.byTabKey.get("view:issues-1")?.view.id).toBe(
+    index.byTabKey.get("view:issues-1")?.view.id,
+  );
+  const refreshed = buildProjectSurfaceIndex(layout, collections);
+  expect([...refreshed.byTabKey.keys()]).toEqual([...hydrated.byTabKey.keys()]);
+});
+
 describe("project surfaces", () => {
+  it("keeps view identity independent of a shared resource across panes", () => {
+    const member = layout.panes[0]!.members[1]!;
+    const panes = ["pane-a", "pane-b"].map((id, position) => ({
+      ...layout.panes[0]!,
+      id,
+      position,
+      anchorTabKey: `tab-${position}`,
+      members: [
+        { ...member, paneId: id, tabKey: `tab-${position}`, position: 0 },
+      ],
+    }));
+    const index = buildProjectSurfaceIndex(
+      { ...layout, panes },
+      {
+        browsers: [],
+        chats: [],
+        codeTabs: [],
+        explorers: [],
+        terminals: [],
+        projectViews: [
+          {
+            id: "issues-1",
+            projectId: "project-1",
+            title: "Issues",
+            kind: "issues",
+            worktreeId: null,
+            position: 0,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          },
+        ],
+      },
+    );
+    const first = index.byTabKey.get("tab-0")!;
+    const second = index.byTabKey.get("tab-1")!;
+    expect(first.resource).toEqual(second.resource);
+    expect(first.view.id).toBe("tab-0");
+    expect(second.view.id).toBe("tab-1");
+    expect(first.placement).toMatchObject({
+      paneId: "pane-a",
+      viewId: "tab-0",
+    });
+    expect(second.placement).toMatchObject({
+      paneId: "pane-b",
+      viewId: "tab-1",
+    });
+    const remaining = omitProjectSurfaceTabs(index, new Set(["tab-0"]));
+    expect(remaining.byTabKey.get("tab-1")).toBe(second);
+    expect(remaining.byPaneId.get("pane-b")).toEqual([second]);
+  });
+
   it("resolves a built-in project tool without an entity collection row", () => {
     const builtInTabKey = "builtin:project-1:git.history";
     const index = buildProjectSurfaceIndex(

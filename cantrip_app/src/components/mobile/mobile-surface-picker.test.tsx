@@ -69,6 +69,7 @@ describe("MobileSurfacePicker", () => {
     expect(markup).toContain("Add a view");
     expect(markup).toContain('aria-label="Open Agent One"');
     expect(markup).toContain('aria-label="Archive Agent One"');
+    expect(markup).toContain('aria-label="Close Agent One view"');
     expect(markup).not.toContain(
       'aria-label="Remove Agent One from project tabs"',
     );
@@ -76,7 +77,7 @@ describe("MobileSurfacePicker", () => {
     expect(markup).not.toContain("Automatic");
   });
 
-  it("selects and archives agents through separate tap targets", async () => {
+  it("selects, closes, and archives agents through separate tap targets", async () => {
     const onArchiveSurface = vi.fn();
     const onCloseSurface = vi.fn();
     const onOpenChange = vi.fn();
@@ -96,12 +97,34 @@ describe("MobileSurfacePicker", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
 
     renderer.root
+      .findByProps({ "aria-label": "Close Agent One view" })
+      .props.onClick();
+    expect(onCloseSurface).toHaveBeenCalledExactlyOnceWith(chat);
+    expect(onArchiveSurface).not.toHaveBeenCalled();
+
+    renderer.root
       .findByProps({ "aria-label": "Archive Agent One" })
       .props.onClick();
     expect(onArchiveSurface).toHaveBeenCalledWith(chat);
-    expect(onCloseSurface).not.toHaveBeenCalled();
+    expect(onCloseSurface).toHaveBeenCalledTimes(1);
 
     await act(async () => renderer.unmount());
+  });
+
+  it("exposes distinct file titles in the same worktree", () => {
+    const files = ["first.ts", "second.ts"].map(
+      (title) =>
+        ({
+          kind: "explorer",
+          title,
+          tabKey: `file:${title}`,
+          entity: { selectedPath: title, worktreeId: "shared-worktree" },
+        }) as ProjectSurface,
+    );
+    const markup = renderToStaticMarkup(picker({ surfaces: files }));
+    expect(markup).toContain('aria-label="Open first.ts"');
+    expect(markup).toContain('aria-label="Open second.ts"');
+    expect(markup).not.toContain('aria-label="Open Explorer"');
   });
 
   it("creates a view without exposing desktop placement nesting", async () => {

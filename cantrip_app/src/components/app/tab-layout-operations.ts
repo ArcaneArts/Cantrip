@@ -5,6 +5,9 @@ import type {
 } from "@cantrip/protocol";
 import { useMutation, type QueryClient } from "@tanstack/react-query";
 import { useRef } from "react";
+import { projectPaneUpdateSchema } from "@cantrip/protocol";
+import { chatTitleEncryption } from "@/lib/chat-title-encryption";
+import type { WorkspaceCommandClient } from "@/lib/workspace-command-client";
 
 import {
   moveProjectPaneMember,
@@ -73,10 +76,20 @@ export function prepareOptimisticTabLayoutMutation(
 export function useTabLayoutOperations({
   queryClient,
   setWorkspaceDragError,
+  workspace,
 }: {
   queryClient: QueryClient;
   setWorkspaceDragError: (error: string | null) => void;
+  workspace?: { controller: WorkspaceCommandClient } | null;
 }) {
+  const owned = (projectId: string) => {
+    if (!workspace) throw new Error("Workspace ownership is not connected.");
+    if (
+      workspace.controller.getSnapshot().authoritative.projectId !== projectId
+    )
+      throw new Error("Workspace command belongs to another project.");
+    return workspace;
+  };
   const preparedTabLayouts = useRef(
     new WeakMap<TabLayoutMutationInput, PreparedTabLayoutMutation>(),
   );
@@ -89,6 +102,10 @@ export function useTabLayoutOperations({
       projectId: string;
       command: TabLayoutCommand;
     }) => {
+      if (workspace !== undefined) {
+        const { controller } = owned(projectId);
+        return controller.dispatchLayout(command).then(() => null);
+      }
       const current = queryClient.getQueryData<ProjectTabLayoutSummary>([
         "project-tab-layout",
         projectId,
@@ -144,6 +161,7 @@ export function useTabLayoutOperations({
     },
     onMutate: async (input: TabLayoutMutationInput) => {
       setWorkspaceDragError(null);
+      if (workspace !== undefined) return;
       const prepared = preparedTabLayouts.current.get(input);
       if (prepared) {
         preparedTabLayouts.current.delete(input);
@@ -155,15 +173,19 @@ export function useTabLayoutOperations({
       return next.snapshot;
     },
     onError: (error, _input, context) => {
-      restoreOptimisticTabLayoutCache(queryClient, context);
+      if (workspace === undefined)
+        restoreOptimisticTabLayoutCache(queryClient, context);
       setWorkspaceDragError(errorText(error));
     },
-    onSuccess: (layout) =>
+    onSuccess: (layout) => {
+      if (!layout) return;
       queryClient.setQueryData(
         ["project-tab-layout", layout.projectId],
         layout,
-      ),
+      );
+    },
     onSettled: (_data, _error, input) => {
+      if (workspace !== undefined) return;
       revisionMutationPending.current = false;
       return queryClient.invalidateQueries({
         queryKey: ["project-tab-layout", input.projectId],
@@ -172,8 +194,13 @@ export function useTabLayoutOperations({
   });
   const tabLayoutMutation = {
     isPending:
-      baseTabLayoutMutation.isPending || revisionMutationPending.current,
+      workspace === undefined &&
+      (baseTabLayoutMutation.isPending || revisionMutationPending.current),
     mutate: (input: TabLayoutMutationInput) => {
+      if (workspace !== undefined) {
+        baseTabLayoutMutation.mutate(input);
+        return;
+      }
       if (revisionMutationPending.current) {
         setWorkspaceDragError(
           "Wait for the current workspace layout change to finish.",
@@ -196,6 +223,23 @@ export function useTabLayoutOperations({
       projectId: string;
       title: string;
     }) => {
+      if (workspace !== undefined) {
+        const { controller } = owned(projectId);
+        const input = projectPaneUpdateSchema.parse({
+          revision: controller.getSnapshot().authoritative.revision,
+          title,
+        });
+        return chatTitleEncryption
+          .protectTabGroup(paneId, input.title)
+          .then((titleProtection) =>
+            controller.dispatch({
+              type: "rename-pane",
+              paneId,
+              titleProtection,
+            }),
+          )
+          .then(() => null);
+      }
       const current = queryClient.getQueryData<ProjectTabLayoutSummary>([
         "project-tab-layout",
         projectId,
@@ -203,15 +247,19 @@ export function useTabLayoutOperations({
       if (!current) throw new Error("The project tab layout is not loaded.");
       return updateProjectPane(projectId, paneId, current.revision, title);
     },
-    onSuccess: (layout) =>
+    onSuccess: (layout) => {
+      if (!layout) return;
       queryClient.setQueryData(
         ["project-tab-layout", layout.projectId],
         layout,
-      ),
+      );
+    },
     onSettled: (_data, _error, input) =>
-      queryClient.invalidateQueries({
-        queryKey: ["project-tab-layout", input.projectId],
-      }),
+      workspace !== undefined
+        ? undefined
+        : queryClient.invalidateQueries({
+            queryKey: ["project-tab-layout", input.projectId],
+          }),
   });
   const baseDockPresentationMutation = useMutation({
     mutationFn: ({
@@ -223,6 +271,12 @@ export function useTabLayoutOperations({
       projectId: string;
       tabKey: string;
     }) => {
+      if (workspace !== undefined) {
+        const { controller } = owned(projectId);
+        return controller
+          .dispatch({ type: "dock-presentation", tabId: tabKey, presentation })
+          .then(() => null);
+      }
       const current = queryClient.getQueryData<ProjectTabLayoutSummary>([
         "project-tab-layout",
         projectId,
@@ -235,6 +289,7 @@ export function useTabLayoutOperations({
       });
     },
     onMutate: async ({ presentation, projectId, tabKey }) => {
+      if (workspace !== undefined) return;
       const queryKey = ["project-tab-layout", projectId] as const;
       await queryClient.cancelQueries({ queryKey });
       const previous =
@@ -247,17 +302,20 @@ export function useTabLayoutOperations({
       return { previous, queryKey };
     },
     onError: (error, _input, context) => {
-      if (context?.previous) {
+      if (workspace === undefined && context?.previous) {
         queryClient.setQueryData(context.queryKey, context.previous);
       }
       setWorkspaceDragError(errorText(error));
     },
-    onSuccess: (layout) =>
+    onSuccess: (layout) => {
+      if (!layout) return;
       queryClient.setQueryData(
         ["project-tab-layout", layout.projectId],
         layout,
-      ),
+      );
+    },
     onSettled: (_data, _error, input) => {
+      if (workspace !== undefined) return;
       revisionMutationPending.current = false;
       return queryClient.invalidateQueries({
         queryKey: ["project-tab-layout", input.projectId],
@@ -266,12 +324,18 @@ export function useTabLayoutOperations({
   });
   const dockPresentationMutation = {
     isPending:
-      baseDockPresentationMutation.isPending || revisionMutationPending.current,
+      workspace === undefined &&
+      (baseDockPresentationMutation.isPending ||
+        revisionMutationPending.current),
     mutate: (input: {
       presentation: ProjectDockPresentationPreference;
       projectId: string;
       tabKey: string;
     }) => {
+      if (workspace !== undefined) {
+        baseDockPresentationMutation.mutate(input);
+        return;
+      }
       if (revisionMutationPending.current) {
         setWorkspaceDragError(
           "Wait for the current workspace layout change to finish.",

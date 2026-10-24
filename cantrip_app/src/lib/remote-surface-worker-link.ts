@@ -137,6 +137,7 @@ export class RemoteSurfaceWorkerLinkClient {
   #reconnectAttempt = 0;
   #reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   #started = false;
+  #inputSuspensions = 0;
 
   constructor(
     private readonly options: RemoteSurfaceWorkerLinkClientOptions,
@@ -167,7 +168,28 @@ export class RemoteSurfaceWorkerLinkClient {
     payload: Uint8Array,
     coalesceKey?: string,
   ): boolean {
+    if (this.#inputSuspensions) return false;
     return this.#active?.send(channel, payload, coalesceKey) ?? false;
+  }
+
+  /** Stop accepting new input without interrupting already accepted frames. */
+  suspendInput(): () => void {
+    this.#inputSuspensions++;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.#inputSuspensions--;
+    };
+  }
+
+  async drain(): Promise<void> {
+    const active = this.#active;
+    if (!active || this.#disposed)
+      throw new Error("Remote surface is not attached for input drain.");
+    await active.drain();
+    if (this.#disposed || this.#active !== active)
+      throw new Error("Remote surface attachment changed during input drain.");
   }
 
   close(): void {
@@ -371,6 +393,10 @@ class ActiveRemoteSurfaceWorkerLink {
   readonly #latestRealtimeSequences = new Map<RemoteSurfaceChannel, number>();
   #nextOutboundFrameId = 0;
   readonly #outbound: PendingOutboundFrame[] = [];
+  readonly #outboundWaiters = new Set<{
+    resolve(): void;
+    reject(error: Error): void;
+  }>();
   #outboundBytes = 0;
   readonly #outboundSequences = new Map<RemoteSurfaceChannel, number>();
   #leaseRenewal: LeaseRenewal<WorkerLinkLease> | null = null;
@@ -461,6 +487,21 @@ class ActiveRemoteSurfaceWorkerLink {
 
   close(code: WorkerLinkChannelCloseCode): void {
     this.#retire(code, true, false);
+  }
+
+  async drain(): Promise<void> {
+    if (this.#closed) throw new Error("Remote surface input stream is closed.");
+    if (this.#outbound.length) {
+      await new Promise<void>((resolve, reject) => {
+        this.#outboundWaiters.add({ resolve, reject });
+      });
+    }
+    // An empty local queue only means chunks reached WorkerLink. Its credit
+    // acknowledgments establish receipt at the worker transport boundary, not
+    // completion of a browser navigation or a desktop action.
+    await this.interactive.drain();
+    if (this.#closed || !this.isCurrent())
+      throw new Error("Remote surface attachment changed during input drain.");
   }
 
   #receive(
@@ -633,6 +674,10 @@ class ActiveRemoteSurfaceWorkerLink {
         this.#retire("protocol-error", true, true);
       } finally {
         this.#drainingOutbound = false;
+        if (!this.#closed && !this.#outbound.length) {
+          for (const waiter of this.#outboundWaiters) waiter.resolve();
+          this.#outboundWaiters.clear();
+        }
       }
     })();
   }
@@ -666,6 +711,11 @@ class ActiveRemoteSurfaceWorkerLink {
   ): void {
     if (this.#closed) return;
     this.#closed = true;
+    for (const waiter of this.#outboundWaiters)
+      waiter.reject(
+        new Error(`Remote surface closed before input drain: ${code}.`),
+      );
+    this.#outboundWaiters.clear();
     this.#leaseRenewal?.stop();
     this.#leaseRenewal = null;
     for (const unsubscribe of this.#unsubscribers) unsubscribe();

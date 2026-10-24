@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type {
   EditorDocumentSession,
   EditorSelection,
@@ -27,6 +27,7 @@ export function NativeCodeEditor({
   onSave,
   active = true,
   readOnly = false,
+  onReady,
 }: {
   session: EditorDocumentSession;
   path: string;
@@ -34,6 +35,8 @@ export function NativeCodeEditor({
   onSave?(): void;
   active?: boolean;
   readOnly?: boolean;
+  /** Fires after this document's DOM text, selection and scroll are installed. */
+  onReady?(session: EditorDocumentSession): void;
 }) {
   const input = useRef<HTMLTextAreaElement>(null);
   const activeRef = useRef(active);
@@ -158,6 +161,9 @@ export function NativeCodeEditor({
     node.scrollLeft = session.scrollLeft;
     node.dispatchEvent(new Event("scroll"));
   }, [active]);
+  useEffect(() => {
+    if (input.current) onReady?.(session);
+  }, [session, onReady]);
 
   return (
     <div

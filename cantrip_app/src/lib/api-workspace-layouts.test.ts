@@ -139,3 +139,73 @@ it("connects the command queue to the bound endpoint and disposes it on logout",
   expect(fetcher).toHaveBeenCalledTimes(2);
   connection.dispose();
 });
+
+it("imports observations only after an actual missing workspace response", async () => {
+  const observations = {
+    mainWindowId: "main",
+    detachedPanes: [],
+    activeTabByPane: {},
+  };
+  const prepare = vi.fn(async () => observations);
+  const fetcher = vi.fn(async (_url: unknown, init?: RequestInit) =>
+    init?.method === "POST"
+      ? Response.json(layout)
+      : Response.json({ error: "Workspace not found." }, { status: 404 }),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  const connection = await connectWorkspaceCommands(
+    layout.projectId,
+    layout.id,
+    "main",
+    prepare,
+  );
+  expect(prepare).toHaveBeenCalledOnce();
+  expect(fetcher.mock.calls[1]![0]).toContain("/seed");
+  expect(JSON.parse(fetcher.mock.calls[1]![1]!.body as string)).toEqual(
+    observations,
+  );
+  connection.dispose();
+});
+
+it.each([403, 409, 500, 503])("does not seed after HTTP %i", async (status) => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => Response.json({ error: "failed" }, { status })),
+  );
+  const prepare = vi.fn(async () => ({ mainWindowId: "main" }));
+  await expect(
+    connectWorkspaceCommands(layout.projectId, layout.id, "main", prepare),
+  ).rejects.toBeInstanceOf(CantripApiError);
+  expect(prepare).not.toHaveBeenCalled();
+});
+
+it("does not seed when ownership already exists", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => Response.json(layout)),
+  );
+  const prepare = vi.fn(async () => ({ mainWindowId: "main" }));
+  const connection = await connectWorkspaceCommands(
+    layout.projectId,
+    layout.id,
+    "main",
+    prepare,
+  );
+  expect(prepare).not.toHaveBeenCalled();
+  connection.dispose();
+});
+
+it("does not seed into a replacement account after delayed observation", async () => {
+  const fetcher = vi.fn(async () =>
+    Response.json({ error: "missing" }, { status: 404 }),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  const prepare = async () => {
+    clearClientSession();
+    return { mainWindowId: "main" };
+  };
+  await expect(
+    connectWorkspaceCommands(layout.projectId, layout.id, "main", prepare),
+  ).rejects.toMatchObject({ code: "client-identity-changed" });
+  expect(fetcher).toHaveBeenCalledOnce();
+});

@@ -2,6 +2,7 @@ import {
   WorkspaceCommandError,
   workspaceCommandSchema,
   workspaceReceiptSchema,
+  workspaceSeedRequestSchema,
 } from "@cantrip/protocol";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import type { TabLayoutRouteDependencies } from "./tab-layouts.js";
@@ -36,23 +37,17 @@ export function installWorkspaceLayoutRoutes(
   app.post<{ Params: Params; Body: { mainWindowId?: unknown } }>(
     `${base}/seed`,
     async (request, reply) => {
-      const body = request.body;
-      if (
-        !body ||
-        typeof body.mainWindowId !== "string" ||
-        !body.mainWindowId.length ||
-        Object.keys(body).some((key) => key !== "mainWindowId")
-      ) {
-        return reply
-          .code(400)
-          .send({ error: "A main window identity is required." });
+      const input = workspaceSeedRequestSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
       }
       try {
         const layout = await repository.workspaceLayouts.seed(
           applicationOwnerId(),
           request.params.projectId,
           request.params.workspaceId,
-          body.mainWindowId,
+          input.data.mainWindowId,
+          input.data,
         );
         return layout
           ? reply.send(layout)

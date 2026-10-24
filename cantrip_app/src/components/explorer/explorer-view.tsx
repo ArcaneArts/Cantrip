@@ -28,6 +28,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { flushSync } from "react-dom";
 
 import { ExplorerMarkdown } from "@/components/explorer/explorer-markdown";
 import { ExplorerFileBrowser } from "@/components/explorer/explorer-file-browser";
@@ -35,15 +36,18 @@ import { explorerSurfaceSelectedPath } from "@/components/explorer/explorer-file
 import { explorerFileEntryForGraphPath } from "@/components/explorer/explorer-graph-routing";
 import { ExplorerImageViewport } from "@/components/explorer/explorer-image-viewport";
 import { nextExplorerEntryReplayKey } from "@/components/explorer/explorer-lifecycle";
+import { validateExplorerTransfer } from "@/components/explorer/explorer-transfer-state";
 import {
   EditorSessionStore,
   editorDocumentId,
   type EditorDocumentSession,
+  type EditorSessionTransfer,
 } from "@/components/editor/document-session";
 import { NativeCodeEditor } from "@/components/editor/native-code-editor";
 import { isLicenseFile } from "@/components/editor/license-file";
 import { LicenseFileView } from "@/components/editor/license-file-view";
 import { getClientSession } from "@/lib/client-session";
+import { confirmEditorAction } from "@/lib/editor-confirmation";
 import { useExplorerWorkerEncryption } from "@/components/explorer/use-explorer-worker-encryption";
 import {
   defaultExplorerFileMode,
@@ -70,6 +74,10 @@ const StructuredFileVisual = lazy(async () => {
   const module = await import("@/components/explorer/structured-file-visual");
   return { default: module.StructuredFileVisual };
 });
+function RestoredView({ onReady }: { onReady(): void }) {
+  useEffect(onReady, [onReady]);
+  return null;
+}
 
 function ExplorerMediaView({
   explorerId,
@@ -77,15 +85,23 @@ function ExplorerMediaView({
   mimeType,
   path,
   revision,
+  onReady,
+  onError,
 }: {
   explorerId: string;
   kind: ExplorerMediaKind;
   mimeType: string;
   path: string;
   revision: number;
+  onReady?(): void;
+  onError?(error: unknown): void;
 }) {
   const [failed, setFailed] = useState(false);
   const [source, setSource] = useState<string | null>(null);
+  useEffect(() => {
+    if (failed) onError?.(new Error("Transferred media could not be loaded."));
+    else if (source) onReady?.();
+  }, [failed, source, onReady, onError]);
   useEffect(() => {
     let disposed = false;
     let objectUrl: string | null = null;
@@ -179,7 +195,23 @@ export interface ExplorerHeaderState {
   setFileMode(mode: ExplorerFileMode): void;
 }
 
+export interface ExplorerTransferState {
+  explorerId: string;
+  projectId: string;
+  worktreeId: string;
+  workerId: string;
+  selectedPath: string | null;
+  fileMode: ExplorerFileMode;
+  documents: EditorSessionTransfer;
+}
+
 export interface ExplorerLifecycleActions {
+  /** Freeze source input until ownership commits or cancellation is confirmed. */
+  suspendTransfer?(): () => void;
+  /** Detach rendered content but retain document sessions until commit/cancel. */
+  retireTransfer?(): void;
+  captureTransfer?(): Promise<ExplorerTransferState>;
+  restoreTransfer?(state: ExplorerTransferState): void;
   cancelClose(): void;
   discard?(): void;
   dirty: boolean;
@@ -198,6 +230,17 @@ export interface ExplorerGraphRequest {
   explorerId: string;
   requestId: string;
   rootPath: string | null;
+}
+
+export interface ExplorerTransferStaging {
+  onRestored(): void;
+  onError(error: unknown): void;
+}
+export interface IncomingEditorView<T> {
+  tabId: string;
+  resource: T;
+  state: ExplorerTransferState;
+  staging?: ExplorerTransferStaging;
 }
 
 export function ExplorerView({
@@ -221,7 +264,12 @@ export function ExplorerView({
   showToolbar = true,
   transientFile,
   workerOnline = true,
+  initialTransfer,
+  transferStaging,
 }: {
+  /** Staged destination state; install before exposing interactive content. */
+  initialTransfer?: ExplorerTransferState;
+  transferStaging?: ExplorerTransferStaging;
   active?: boolean;
   appearance: CodeAppearance;
   explorer: ExplorerSummary;
@@ -357,6 +405,21 @@ export function ExplorerView({
   streamEncryptionReadyRef.current = streamEncryptionReady;
   const queryClient = useQueryClient();
   const mountedRef = useRef(true);
+  const transferSuspendedRef = useRef(false);
+  const [sourceTransferSuspended, setTransferSuspended] = useState(false);
+  const transferSuspended = sourceTransferSuspended || Boolean(transferStaging);
+  transferSuspendedRef.current = transferSuspended;
+  const stagingRef = useRef(transferStaging);
+  stagingRef.current = transferStaging;
+  const [transferRetired, setTransferRetired] = useState(false);
+  const transferInstallingRef = useRef(Boolean(initialTransfer));
+  const [installedTransfer, setInstalledTransfer] = useState<{
+    snapshot: ExplorerTransferState;
+    resource: object;
+  } | null>(null);
+  const [transferInstallError, setTransferInstallError] = useState<
+    string | null
+  >(null);
   const selectedPathRef = useRef(selectedPath);
   const fileModeRef = useRef(fileMode);
   const draftRef = useRef(draft);
@@ -438,7 +501,52 @@ export function ExplorerView({
     clientSession?.serverId,
     clientSession?.user.id,
   ]);
+  // A callback from an earlier checkout must not read the shared session store
+  // under its old metadata, even if this component instance was reused.
+  const transferResource = useMemo(
+    () => ({}),
+    [
+      accountScope,
+      explorer.id,
+      explorer.projectId,
+      explorer.worktreeId,
+      explorer.activeWorkerId,
+      transientFilePath,
+      surfaceInstanceId,
+    ],
+  );
+  const liveTransferResourceRef = useRef(transferResource);
+  liveTransferResourceRef.current = transferResource;
+  // Initial state is consumed once per resource attachment. Ordinary file
+  // navigation changes callback scope but must not replay the incoming draft.
+  const initialTransferResource = useMemo(
+    () => ({}),
+    [
+      accountScope,
+      explorer.id,
+      explorer.projectId,
+      explorer.worktreeId,
+      explorer.activeWorkerId,
+      surfaceInstanceId,
+    ],
+  );
+  const transferInstalling = Boolean(
+    initialTransfer &&
+    (installedTransfer?.snapshot !== initialTransfer ||
+      installedTransfer.resource !== initialTransferResource),
+  );
+  transferInstallingRef.current = transferInstalling;
+  const assertTransferResource = useCallback(() => {
+    if (
+      !mountedRef.current ||
+      liveTransferResourceRef.current !== transferResource
+    )
+      throw new Error("Editor transfer resource changed or was unmounted.");
+  }, [transferResource]);
+  const initializedAccountScopeRef = useRef<string | null>(null);
   useEffect(() => {
+    if (initializedAccountScopeRef.current === accountScope) return;
+    initializedAccountScopeRef.current = accountScope;
     sessions.current!.resetScope(accountScope);
     setNativeDocument(null);
     setDraft("");
@@ -490,6 +598,7 @@ export function ExplorerView({
   const hasDirtyDocuments = dirty || sessions.current!.hasDirtyDocuments;
   dirtyRef.current = dirty;
   const changeDraft = useCallback((text: string) => {
+    if (transferSuspendedRef.current || transferInstallingRef.current) return;
     nativeDocumentRef.current?.editExternal(text);
     setDraft(text);
   }, []);
@@ -568,6 +677,8 @@ export function ExplorerView({
 
   useEffect(() => {
     if (
+      transferSuspended ||
+      transferInstalling ||
       !file.data ||
       file.data.path !== selectedPath ||
       file.data.path !== displayedSelectedPath ||
@@ -586,6 +697,8 @@ export function ExplorerView({
     setBaselineContent(document.baseline);
     setDraftVersion(document.version);
   }, [
+    transferSuspended,
+    transferInstalling,
     draftVersion,
     file.data,
     selectedPath,
@@ -619,6 +732,8 @@ export function ExplorerView({
 
   const persistViewState = useCallback(
     (next: { selectedPath: string | null; fileMode: ExplorerFileMode }) => {
+      if (transferSuspendedRef.current || transferInstallingRef.current)
+        return Promise.resolve(false);
       applyViewState(next);
       if (transientFilePath) return Promise.resolve(true);
       if (mountedRef.current) setViewStatePending((count) => count + 1);
@@ -660,6 +775,7 @@ export function ExplorerView({
 
   const loadFile = useCallback(
     async (path: string, discardDraft = false) => {
+      if (transferSuspendedRef.current || transferInstallingRef.current) return;
       const bindingKey = streamEncryptionBindingRef.current;
       const previous = nativeDocumentRef.current;
       if (previous && discardDraft) sessions.current!.discard(previous.id);
@@ -684,6 +800,7 @@ export function ExplorerView({
       });
       if (
         !mountedRef.current ||
+        transferSuspendedRef.current ||
         selectedPathRef.current !== path ||
         streamEncryptionBindingRef.current !== bindingKey
       ) {
@@ -757,6 +874,8 @@ export function ExplorerView({
   ]);
 
   const saveDraft = useCallback(async (): Promise<boolean> => {
+    if (transferSuspendedRef.current || transferInstallingRef.current)
+      return false;
     const bindingKey = streamEncryptionBindingRef.current;
     const path = selectedPathRef.current;
     const version = draftVersionRef.current;
@@ -862,6 +981,7 @@ export function ExplorerView({
   const reconcile = useCallback(
     async (persisted: ExplorerSummary) => {
       await viewStateQueueRef.current;
+      if (transferSuspendedRef.current || transferInstallingRef.current) return;
       worktreeIdRef.current = persisted.worktreeId;
       const nextSelectedPath = explorerSurfaceSelectedPath({
         openFilesExternally: Boolean(onOpenFile),
@@ -895,7 +1015,7 @@ export function ExplorerView({
   useEffect(() => {
     // Desktop Explorer surfaces remain file browsers. Their editor windows are
     // transient and must not be pulled back inline by legacy saved view state.
-    if (transientFilePath || onOpenFile) return;
+    if (transferSuspended || transientFilePath || onOpenFile) return;
     const worktreeChanged = worktreeIdRef.current !== explorer.worktreeId;
     const previous = persistedViewStateRef.current;
     // A local open/mode change can render before the query publishes its saved
@@ -928,15 +1048,47 @@ export function ExplorerView({
     explorer.worktreeId,
     onOpenFile,
     reconcile,
+    transferSuspended,
     transientFilePath,
     viewStatePending,
   ]);
 
+  const confirmCurrentDocumentDiscard = useCallback(async (message: string) => {
+    const resource = liveTransferResourceRef.current;
+    const document = nativeDocumentRef.current;
+    const revision = document?.revision;
+    if (dirtyRef.current) {
+      try {
+        if (!(await confirmEditorAction(message))) return false;
+      } catch (error) {
+        if (mountedRef.current)
+          setViewStateError(
+            error instanceof Error
+              ? error.message
+              : "File confirmation failed.",
+          );
+        return false;
+      }
+    }
+    // A native dialog is asynchronous. Approval for one document revision must
+    // never discard edits made later or a newly selected/transferred document.
+    return (
+      mountedRef.current &&
+      liveTransferResourceRef.current === resource &&
+      !transferSuspendedRef.current &&
+      !transferInstallingRef.current &&
+      nativeDocumentRef.current === document &&
+      document?.revision === revision
+    );
+  }, []);
+
   const refreshExplorer = useCallback(async () => {
+    if (transferSuspendedRef.current) return;
     if (!streamEncryptionReadyRef.current) return;
     if (
-      dirtyRef.current &&
-      !window.confirm("Reload this file and discard its unsaved changes?")
+      !(await confirmCurrentDocumentDiscard(
+        "Reload this file and discard its unsaved changes?",
+      ))
     ) {
       return;
     }
@@ -966,6 +1118,7 @@ export function ExplorerView({
         : Promise.resolve(),
     ]);
   }, [
+    confirmCurrentDocumentDiscard,
     explorer.id,
     explorer.projectId,
     explorer.worktreeId,
@@ -973,15 +1126,17 @@ export function ExplorerView({
     queryClient,
   ]);
 
-  const back = useCallback(() => {
+  const back = useCallback(async () => {
+    if (transferSuspendedRef.current || transferInstallingRef.current) return;
     if (graphRootPath !== undefined) {
       setGraphRootPath(undefined);
       setGraphStatus(null);
       return;
     }
     if (
-      dirtyRef.current &&
-      !window.confirm("Close this file and discard its unsaved changes?")
+      !(await confirmCurrentDocumentDiscard(
+        "Close this file and discard its unsaved changes?",
+      ))
     ) {
       return;
     }
@@ -999,10 +1154,17 @@ export function ExplorerView({
     setDraftVersion(null);
     resetSaveFile();
     void persistViewState({ selectedPath: null, fileMode: "preview" });
-  }, [graphRootPath, persistViewState, resetSaveFile, transientFilePath]);
+  }, [
+    confirmCurrentDocumentDiscard,
+    graphRootPath,
+    persistViewState,
+    resetSaveFile,
+    transientFilePath,
+  ]);
 
   const changeFileMode = useCallback(
     (mode: ExplorerFileMode) => {
+      if (transferSuspendedRef.current) return;
       const path = selectedPathRef.current;
       if (
         !path ||
@@ -1093,12 +1255,142 @@ export function ExplorerView({
     };
   }, [active, onHeaderChange]);
 
-  const prepareClose = useCallback(() => Promise.resolve(), []);
+  const prepareClose = useCallback(async () => {
+    if (transferSuspendedRef.current || transferInstallingRef.current)
+      throw new Error("Wait for the editor transfer before closing this view.");
+    const resource = liveTransferResourceRef.current;
+    const isCurrent = sessions.current!.captureCloseGuard();
+    if (
+      (dirtyRef.current || sessions.current!.hasDirtyDocuments) &&
+      !(await confirmEditorAction(
+        "Close this view with unsaved changes? Cancel to keep editing or save your files first.",
+      ))
+    )
+      throw new Error("Editor view close canceled.");
+    if (
+      !mountedRef.current ||
+      resource !== liveTransferResourceRef.current ||
+      transferSuspendedRef.current ||
+      transferInstallingRef.current ||
+      !isCurrent()
+    )
+      throw new Error(
+        "Editor changed while confirming close. Try closing again.",
+      );
+    // Preparation is not a committed close. Keep buffers and recovery intact:
+    // a rejected layout mutation must leave the editor exactly as it was.
+  }, []);
   const cancelClose = useCallback(() => {}, []);
   const lifecycle = useMemo<ExplorerLifecycleActions>(
     () => ({
+      suspendTransfer: () => {
+        assertTransferResource();
+        const session = getClientSession();
+        if (
+          accountScope !== JSON.stringify([session?.serverId, session?.user.id])
+        )
+          throw new Error("Editor transfer account changed before suspension.");
+        if (!mountedRef.current || transferSuspendedRef.current)
+          throw new Error("Editor is unavailable or already transferring.");
+        transferSuspendedRef.current = true;
+        // Commit readOnly/inert before capture, not at a later React batch.
+        flushSync(() => setTransferSuspended(true));
+        let released = false;
+        return () => {
+          if (released) return;
+          released = true;
+          transferSuspendedRef.current = false;
+          if (mountedRef.current)
+            flushSync(() => {
+              setTransferRetired(false);
+              setTransferSuspended(false);
+            });
+        };
+      },
+      retireTransfer: () => {
+        assertTransferResource();
+        const session = getClientSession();
+        if (
+          accountScope !== JSON.stringify([session?.serverId, session?.user.id])
+        )
+          throw new Error("Editor transfer account changed before retirement.");
+        if (!transferSuspendedRef.current)
+          throw new Error("Editor must be suspended before retirement.");
+        // The parent owns the protected sessions. Unmount only the rendered
+        // content, so cancellation can reattach the same dirty documents.
+        flushSync(() => setTransferRetired(true));
+      },
+      captureTransfer: async () => {
+        assertTransferResource();
+        await viewStateQueueRef.current;
+        assertTransferResource();
+        const documents = await sessions.current!.captureTransfer();
+        assertTransferResource();
+        const session = getClientSession();
+        if (
+          documents.scope !== accountScope ||
+          accountScope !== JSON.stringify([session?.serverId, session?.user.id])
+        )
+          throw new Error("Editor transfer account changed during capture.");
+        return {
+          explorerId: explorer.id,
+          projectId: explorer.projectId,
+          worktreeId: explorer.worktreeId,
+          workerId: explorer.activeWorkerId,
+          selectedPath: transientFilePath ?? selectedPathRef.current,
+          fileMode: fileModeRef.current,
+          documents,
+        };
+      },
+      restoreTransfer: (state) => {
+        assertTransferResource();
+        const session = getClientSession();
+        if (
+          state.documents.scope !== accountScope ||
+          accountScope !== JSON.stringify([session?.serverId, session?.user.id])
+        )
+          throw new Error("Editor transfer belongs to another account scope.");
+        if (
+          state.explorerId !== explorer.id ||
+          state.projectId !== explorer.projectId ||
+          state.worktreeId !== explorer.worktreeId ||
+          state.workerId !== explorer.activeWorkerId
+        )
+          throw new Error("Editor transfer belongs to another resource scope.");
+        state = validateExplorerTransfer(state, {
+          serverId: session?.serverId ?? "",
+          ownerId: session?.user.id ?? "",
+          explorerId: explorer.id,
+          projectId: explorer.projectId,
+          workerId: explorer.activeWorkerId,
+          worktreeId: explorer.worktreeId,
+        });
+        sessions.current!.restoreTransfer(state.documents);
+        applyViewState({
+          selectedPath: state.selectedPath,
+          fileMode: state.fileMode,
+        });
+        const document = state.selectedPath
+          ? sessions.current!.get(
+              editorDocumentId({
+                server: session?.serverId ?? "",
+                account: session?.user.id ?? "",
+                worker: explorer.activeWorkerId,
+                project: explorer.projectId,
+                worktree: explorer.worktreeId,
+                path: state.selectedPath,
+              }),
+            )
+          : undefined;
+        setNativeDocument(document ?? null);
+        setDraft(document?.text ?? "");
+        setBaselineContent(document?.baseline ?? "");
+        setDraftVersion(document?.version ?? null);
+      },
       cancelClose,
       discard: () => {
+        if (transferSuspendedRef.current || transferInstallingRef.current)
+          return;
         sessions.current!.discardAll();
         setNativeDocument(null);
         setDraft("");
@@ -1122,6 +1414,14 @@ export function ExplorerView({
       },
     }),
     [
+      assertTransferResource,
+      explorer.id,
+      explorer.projectId,
+      explorer.worktreeId,
+      explorer.activeWorkerId,
+      transientFilePath,
+      applyViewState,
+      accountScope,
       cancelClose,
       hasDirtyDocuments,
       prepareClose,
@@ -1130,6 +1430,85 @@ export function ExplorerView({
       resetSaveFile,
     ],
   );
+
+  const transferLifecycleRef = useRef(lifecycle);
+  transferLifecycleRef.current = lifecycle;
+  const installedTransferRef = useRef(installedTransfer);
+  useEffect(() => {
+    if (!initialTransfer) return;
+    if (
+      installedTransferRef.current?.snapshot === initialTransfer &&
+      installedTransferRef.current.resource === initialTransferResource
+    )
+      return;
+    try {
+      transferLifecycleRef.current.restoreTransfer!(initialTransfer);
+      const installed = {
+        snapshot: initialTransfer,
+        resource: initialTransferResource,
+      };
+      installedTransferRef.current = installed;
+      setInstalledTransfer(installed);
+      setTransferInstallError(null);
+    } catch (error) {
+      stagingRef.current?.onError(error);
+      setTransferInstallError(
+        error instanceof Error
+          ? error.message
+          : "Editor transfer could not be installed.",
+      );
+    }
+  }, [initialTransfer, initialTransferResource]);
+
+  const onTransferredViewReady = useCallback(() => {
+    if (
+      !mountedRef.current ||
+      !initialTransfer ||
+      installedTransferRef.current?.snapshot !== initialTransfer ||
+      installedTransferRef.current.resource !== initialTransferResource
+    )
+      return;
+    try {
+      assertTransferResource();
+      stagingRef.current?.onRestored();
+    } catch (error) {
+      stagingRef.current?.onError(error);
+    }
+  }, [initialTransfer, initialTransferResource, assertTransferResource]);
+  const onTransferredDocumentReady = useCallback(
+    (document: EditorDocumentSession) => {
+      if (nativeDocumentRef.current === document) onTransferredViewReady();
+    },
+    [onTransferredViewReady],
+  );
+  const onTransferredViewError = useCallback((error: unknown) => {
+    if (mountedRef.current) stagingRef.current?.onError(error);
+  }, []);
+  useEffect(() => {
+    if (transferInstalling || !transferStaging) return;
+    if (!selectedPath) onTransferredViewReady();
+    else if (!mediaType && file.isError) onTransferredViewError(file.error);
+    else if (
+      !mediaType &&
+      file.data &&
+      fileMode !== "edit" &&
+      !(fileMode === "visual" && structuredFormat) &&
+      (file.data.markdown || isLicenseFile(file.data.path))
+    )
+      onTransferredViewReady();
+  }, [
+    transferInstalling,
+    transferStaging,
+    selectedPath,
+    mediaType,
+    file.isError,
+    file.error,
+    file.data,
+    fileMode,
+    structuredFormat,
+    onTransferredViewReady,
+    onTransferredViewError,
+  ]);
 
   useEffect(() => {
     onLifecycleChange?.(explorer.id, lifecycle);
@@ -1147,6 +1526,7 @@ export function ExplorerView({
   }, [hasDirtyDocuments]);
 
   const openEntry = (entry: ExplorerEntry) => {
+    if (transferSuspendedRef.current) return;
     if (entry.kind !== "file" || !entry.viewable) return;
     if (onOpenFile) {
       setViewStateError(null);
@@ -1209,7 +1589,10 @@ export function ExplorerView({
   return (
     <div
       aria-hidden={!active}
-      inert={active ? undefined : true}
+      inert={
+        active && !transferSuspended && !transferInstalling ? undefined : true
+      }
+      aria-busy={transferSuspended || transferInstalling || undefined}
       className={cn(
         "min-h-0 flex-1 flex-col overflow-hidden",
         active ? "flex" : "pointer-events-none invisible absolute inset-0 flex",
@@ -1234,7 +1617,19 @@ export function ExplorerView({
           <ExplorerFileCloseButton header={panelHeader} />
         </PanelToolbar>
       ) : null}
-      {!streamEncryptionReady && !(nativeDocument?.id === nativeDocumentId) ? (
+      {transferRetired ? (
+        <div role="status" className="p-4 text-sm text-muted-foreground">
+          Moving editor to another window…
+        </div>
+      ) : transferInstalling ? (
+        <div
+          role={transferInstallError ? "alert" : "status"}
+          className="p-4 text-sm text-muted-foreground"
+        >
+          {transferInstallError ?? "Restoring transferred editor…"}
+        </div>
+      ) : !streamEncryptionReady &&
+        !(nativeDocument?.id === nativeDocumentId) ? (
         <div className="grid h-full flex-1 place-items-center p-6 text-sm text-muted-foreground">
           {streamEncryption.error ? (
             <div className="space-y-3 text-center">
@@ -1299,13 +1694,17 @@ export function ExplorerView({
                   mimeType={mediaType.mimeType}
                   path={selectedPath}
                   revision={mediaRevision}
+                  onReady={onTransferredViewReady}
+                  onError={onTransferredViewError}
                 />
               ) : nativeDocument?.id === nativeDocumentId &&
                 fileMode === "edit" ? (
                 <NativeCodeEditor
                   session={nativeDocument}
                   path={selectedPath}
-                  active={active}
+                  active={active && !transferSuspended}
+                  readOnly={transferSuspended}
+                  onReady={onTransferredDocumentReady}
                   onChange={changeDraft}
                   onSave={() => void saveDraft()}
                 />
@@ -1341,6 +1740,7 @@ export function ExplorerView({
                     onSave={() => void saveDraft()}
                     path={file.data.path}
                   />
+                  <RestoredView onReady={onTransferredViewReady} />
                 </Suspense>
               ) : file.data &&
                 (fileMode === "preview" ||
@@ -1373,8 +1773,9 @@ export function ExplorerView({
                   <NativeCodeEditor
                     session={nativeDocument}
                     path={file.data.path}
-                    active={active}
+                    active={active && !transferSuspended}
                     readOnly
+                    onReady={onTransferredDocumentReady}
                   />
                 ) : null
               ) : null}
