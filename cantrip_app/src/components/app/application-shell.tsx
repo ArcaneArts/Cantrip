@@ -4,6 +4,7 @@ import { useWorkspaceEditorTransfer } from "./use-workspace-editor-transfer";
 import { detachWorkspaceEditors } from "./detach-workspace-editors";
 import { useOwnedFileWindow } from "./use-owned-file-window";
 import { useWorkspaceWindowReturn } from "./use-workspace-window-return";
+import { useWorkspaceWindowRecovery } from "./use-workspace-window-recovery";
 import { openOwnedFile } from "@/lib/open-owned-file";
 import { focusWorkspaceNativeWindow } from "@/lib/desktop-popout";
 import {
@@ -515,6 +516,9 @@ export function App() {
   const [codeHeader, setCodeHeader] = useState<CodeHeaderState | null>(null);
   const desktopPopoutStatus = useDesktopPopoutStatusState();
   const { popoutError, popoutPending, setPopoutError } = desktopPopoutStatus;
+  useWorkspaceWindowRecovery(workspaceConnection.connection, (error) =>
+    setPopoutError(errorText(error)),
+  );
   const {
     stagedExplorerTransfers,
     stagedCodeTransfers,

@@ -995,3 +995,32 @@ File-window routing final local verification: all 535 app test files passed
 build and whitespace check. The build retains known crypto externalization,
 large-chunk and ineffective-dynamic-import warnings. This cycle is ready for PR
 delivery; actual native interaction remains blocked by the host lock screen.
+
+File-window routing delivery: #2223 merged as `a7c0e9d3e`; its merged tree
+matched the source commit, clean Primary fast-forwarded, and the worktree was
+confirmed recoverably archived. GitHub reported no checks for that PR; this
+does not establish a CI pass.
+
+Committed-window restart recovery cycle: bootstrap previously reconnected to
+persisted ownership without reopening its missing native hosts. Main now performs
+an authoritative refresh on connection and focus, then reopens committed,
+nonempty detached owners under their original window identities. The native
+lookup leaves surviving windows untouched; creation does not focus each restored
+window or replay an old transfer payload. Ownership and protected document
+storage are not rewritten. Context is checked again immediately before native
+creation, and errors preserve the owner while other independent windows continue.
+
+Windows involved in pending transfers are deliberately not reopened as committed
+views. Reconciliation of interrupted reservations, startup-ready acknowledgement,
+full session restoration across projects, legacy standalone-file receiver
+migration, and genuine native restart/dirty-buffer QA remain outstanding. This
+cycle does not claim those requirements are complete. Initial focused validation
+passed 51 tests, and app/dependency build plus TypeScript checks passed; final
+full-suite results and delivery are recorded below when available.
+
+Final local validation: 537 app test files passed (3,701 tests, three skipped),
+including native-launch mocks, context cancellation, focused-host behavior,
+empty/transferring-owner exclusion, and per-window failure isolation. Production
+app/dependency build, TypeScript, and whitespace checks passed. Existing bundle
+size, crypto externalization and dynamic-import warnings remain. These automated
+results do not establish native restart or protected-draft recovery correctness.
