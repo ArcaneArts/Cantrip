@@ -265,6 +265,63 @@ const unavailableDirectBroker = {
   available: false,
 } satisfies DirectBrokerAdvertisement;
 
+export const workspaceLayouts = pgTable(
+  "workspace_layouts",
+  {
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id").notNull(),
+    layout: jsonb("layout")
+      .$type<import("@cantrip/protocol").WorkspaceOwnership>()
+      .notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.ownerId, table.projectId, table.workspaceId],
+    }),
+  ],
+);
+
+export const workspaceCommandReceipts = pgTable(
+  "workspace_command_receipts",
+  {
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id").notNull(),
+    operationId: text("operation_id").notNull(),
+    command: jsonb("command")
+      .$type<import("@cantrip/protocol").WorkspaceCommand>()
+      .notNull(),
+    appliedRevision: bigint("applied_revision", { mode: "number" }).notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [
+        table.ownerId,
+        table.projectId,
+        table.workspaceId,
+        table.operationId,
+      ],
+    }),
+    foreignKey({
+      columns: [table.ownerId, table.projectId, table.workspaceId],
+      foreignColumns: [
+        workspaceLayouts.ownerId,
+        workspaceLayouts.projectId,
+        workspaceLayouts.workspaceId,
+      ],
+    }).onDelete("cascade"),
+  ],
+);
+
 export const systemState = pgTable("system_state", {
   key: text("key").primaryKey(),
   value: jsonb("value").notNull().default({}),

@@ -123,6 +123,7 @@ import { TaskSchedulingRepository } from "./task-scheduling.js";
 import { TaskDispatchRepository } from "./task-dispatch.js";
 import { TaskRetryRepository } from "./task-retries.js";
 import { ProjectTabLayoutRepository } from "./tab-layouts.js";
+import { WorkspaceLayoutRepository } from "./workspace-layouts.js";
 import { WorkspaceRepositoryDiscoveryJobRepository } from "./workspace-repository-discovery-jobs.js";
 import { ProjectExecutionRepositoryFacade } from "./repository-facade-project-execution.js";
 import {
@@ -340,6 +341,7 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
   readonly standaloneChatRootJobs: StandaloneChatRootJobRepository;
   readonly projectGithubConversionJobs: ProjectGithubConversionJobRepository;
   readonly tabLayouts: ProjectTabLayoutRepository;
+  readonly workspaceLayouts: WorkspaceLayoutRepository;
 
   constructor(database: RepositoryDatabase, secretVault: SecretVault) {
     super();
@@ -688,6 +690,7 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
         this.listProjectReplicas(ownerId, projectId),
     });
     this.tabLayouts = new ProjectTabLayoutRepository(database);
+    this.workspaceLayouts = new WorkspaceLayoutRepository(database);
   }
 
   async updateChat(

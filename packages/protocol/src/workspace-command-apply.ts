@@ -297,8 +297,15 @@ export function applyWorkspaceCommand(
     }
   }
   layout.revision++;
+  const validated = workspaceOwnershipSchema.safeParse(layout);
+  if (!validated.success) {
+    throw new WorkspaceCommandError(
+      "invalid",
+      "The command would create invalid workspace ownership.",
+    );
+  }
   return {
-    layout: workspaceOwnershipSchema.parse(layout),
+    layout: validated.data,
     operationId: command.operationId,
     focusWindowId,
     // The native coordinator must close these only after the durable receipt.

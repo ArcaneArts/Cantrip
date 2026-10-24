@@ -78,6 +78,7 @@ jobs:
           test/openrouter-catalog.test.ts test/remote-desktop-fleet-api.test.ts
           test/skills-settings-api.test.ts test/surface-title-persistence.test.ts
           test/tab-group-title-persistence.test.ts test/tenant-authorization.test.ts
+          test/workspace-layouts.test.ts
           test/worker-command-timeout-policy.test.ts test/worker-enrollment-api.test.ts
           test/workflow-removal-migration.test.ts test/zai-catalog.test.ts
           --maxWorkers=2

@@ -70,7 +70,8 @@ archival after merge verification.
 
 ## Cycle 2: deterministic workspace command controller
 
-Branch: `codex/workspace-command-controller`. PR/merge: pending.
+Branch: `codex/workspace-command-controller`. [PR #2210](https://github.com/ArcaneArts/Cantrip/pull/2210)
+merged as `5bd2edad7`; Primary synchronized and worktree recoverably archived.
 
 - Added strict commands with operation, workspace, project, window, attachment
   generation, and expected-revision identity. Pure execution rejects stale
@@ -93,6 +94,43 @@ Verification: all 608 protocol tests passed, including 39 new transition tests;
 protocol typecheck and build passed. Scoped formatting, large-file checks, and
 `git diff --check` passed. Reviewed inputs remain unchanged after both successful
 and rejected operations. Native/UI integration is still outstanding.
+
+Merged-tree verification: 72 ownership, command, and export-compatibility tests
+passed. Broader CI finished with 15 successful jobs and four failures (the same
+server timeout-policy count on three platforms and Windows broken-symlink case).
+
+## Cycle 3: durable workspace commands
+
+Branch: `codex/workspace-persistence`. PR/merge: pending.
+
+- Additive PostgreSQL/PGlite workspace and receipt tables, scoped by authenticated
+  owner, project, and client workspace. Layouts store protected metadata and
+  resource identities, not plaintext document contents or file paths.
+- Owner-authorized read, one-time seed, and command endpoints. Seed reads the
+  server's legacy layout; a client cannot submit an arbitrary imported snapshot.
+- Transactional workspace row locking serializes revisions and commits receipt
+  and layout together. Duplicate operation IDs acknowledge their original revision
+  while returning current state, never stale snapshots or repeated native effects.
+  Reusing an operation ID for different input is rejected.
+- Entity opens reuse project-resource authorization; built-in worktree references
+  are checked against actual project source/worktree records. Attachment generation
+  checks also apply to replays. Placement capabilities are validated before commit.
+- Existing device layouts are not overwritten by legacy writes or repeated seeds.
+  This is separate persistence, not live client cutover. Native detached-window
+  import must still be integrated before clients begin invoking seed automatically.
+- Pending-operation rebasing, typed client API integration, live subscriptions,
+  native handoff receipts, resource-deletion propagation, and device identity
+  provisioning remain subsequent work. No automatic client seed is enabled here.
+
+Validation: 13 new database-backed cases plus three existing title/tenant tests
+passed (16 total); the protocol test command passed 848 tests. Server typecheck
+and build, protocol build, seven installation compatibility simulations, scoped
+formatting, large-file check, and diff whitespace check passed. Cases exercise
+migration, owner and device isolation, atomic rejection, concurrent replay,
+stale revisions/generations, HTTP validation, legacy-write isolation, and receipt
+persistence across restart. Invalid ownership results now produce a command
+rejection (HTTP 400) instead of an unhandled schema error.
+Native two-window and mobile validation remain required after live integration.
 
 ## Remaining implementation and acceptance ledger
 
