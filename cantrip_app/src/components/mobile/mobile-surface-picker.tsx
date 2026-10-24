@@ -1,5 +1,5 @@
 import type { ExecutionTarget, ProjectCapabilities } from "@cantrip/protocol";
-import { Archive, LayoutDashboard, Loader2, Plus, X } from "lucide-react";
+import { Archive, LayoutDashboard, Loader2, Pin, Plus, X } from "lucide-react";
 
 import { performMobileNavigationHaptic } from "@/components/mobile/mobile-navigation-haptics";
 import { Button } from "@/components/ui/button";
@@ -33,6 +33,7 @@ export function MobileSurfacePicker({
   creatingKinds,
   onArchiveSurface,
   onCloseSurface,
+  onKeepOpen,
   onCreate,
   onOpenChange,
   onOverview,
@@ -48,6 +49,7 @@ export function MobileSurfacePicker({
   creatingKinds: ReadonlySet<ProjectSurfaceCreateKind>;
   onArchiveSurface(surface: ProjectSurface): void;
   onCloseSurface(surface: ProjectSurface): void;
+  onKeepOpen?(surface: ProjectSurface): void;
   onCreate(kind: ProjectSurfaceCreateKind, target?: ExecutionTarget): void;
   onOpenChange(open: boolean): void;
   onOverview(): void;
@@ -207,6 +209,21 @@ export function MobileSurfacePicker({
                         </span>
                       </span>
                     </button>
+                    {surface.kind === "file" &&
+                    surface.preview &&
+                    onKeepOpen ? (
+                      <Button
+                        aria-label={`Keep ${label} open`}
+                        className="mr-2 size-10"
+                        onClick={() => onKeepOpen(surface)}
+                        size="icon"
+                        title="Keep Open"
+                        type="button"
+                        variant="ghost"
+                      >
+                        <Pin className="size-4" />
+                      </Button>
+                    ) : null}
                     <Button
                       aria-label={removeLabel}
                       className="mr-2 size-10"

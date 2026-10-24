@@ -456,6 +456,71 @@ describe("project pane tab strip", () => {
     await act(async () => renderer.unmount());
   });
 
+  it.each([true, false])(
+    "offers Keep Open and double-click pinning only for preview=%s",
+    async (preview) => {
+      const document = {
+        id: "document",
+        projectId: "project-1",
+        workerId: "worker-1",
+        worktreeId: "worktree-1",
+        path: "src/index.ts",
+        createdAt: now,
+      };
+      const surface: ProjectFileSurface = {
+        ...fileSurface(),
+        kind: "file",
+        tabKey: "file-view",
+        tabId: "document",
+        entity: document,
+        resource: {
+          entity: document,
+          ref: {
+            kind: "entity",
+            definitionId: "project.file",
+            resourceId: document.id,
+          },
+        },
+        preview,
+      };
+      const onKeepOpen = vi.fn();
+      const onRename = vi.fn();
+      let renderer!: TestRenderer.ReactTestRenderer;
+      await act(async () => {
+        renderer = TestRenderer.create(
+          <DndContext>
+            <ProjectPaneTabStrip
+              activeTabKey={surface.tabKey}
+              onClose={vi.fn()}
+              onCreate={vi.fn()}
+              onDelete={vi.fn()}
+              onSelect={vi.fn()}
+              onRename={onRename}
+              onKeepOpen={onKeepOpen}
+              surfaces={[surface]}
+            />
+          </DndContext>,
+        );
+      });
+      const tab = renderer.root.findByProps({ role: "tab" });
+      await act(async () =>
+        tab.props.onDoubleClick({ preventDefault: vi.fn() }),
+      );
+      expect(onKeepOpen).toHaveBeenCalledTimes(preview ? 1 : 0);
+      expect(onRename).not.toHaveBeenCalled();
+      const menus = renderer.root.findAllByType(SurfaceMenuItems);
+      expect(menus.length).toBeGreaterThan(0);
+      for (const menu of menus) {
+        if (preview) {
+          expect(menu.props.onKeepOpen).toBeTypeOf("function");
+          await act(async () => menu.props.onKeepOpen());
+          expect(onKeepOpen).toHaveBeenLastCalledWith(surface);
+        } else expect(menu.props.onKeepOpen).toBeUndefined();
+      }
+      await act(async () => renderer.unmount());
+    },
+  );
+
   it("renders an owned preview in its ordinary tab without a separate preview identity", async () => {
     const surface = fileSurface();
     surface.preview = true;

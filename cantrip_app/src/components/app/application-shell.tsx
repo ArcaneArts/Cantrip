@@ -80,6 +80,7 @@ import {
   useProjectSurfaceCloseCoordinator,
   useProjectSurfaceViewOperations,
 } from "@/components/app/project-surface-close";
+import { useProjectSurfacePin } from "@/components/app/project-surface-pin";
 import {
   projectWorkspaceSurfaceSelection,
   useActiveProjectWorkspace,
@@ -533,6 +534,9 @@ export function App() {
   const explorerLifecycle = useExplorerLifecycleRefs();
   const { explorerLifecycleRef, sidebarExplorerCreationKeyRef } =
     explorerLifecycle;
+  const pinSurfaceViewMutation = useProjectSurfacePin(ownedWorkspace, (error) =>
+    setPopoutError(errorText(error)),
+  );
   const { closeSurfaceViewMutation } = useProjectSurfaceViewOperations({
     workspace: ownedWorkspace,
     beforeClose: async (surface) => {
@@ -2057,6 +2061,7 @@ export function App() {
     });
   const {
     closeSurfaceView,
+    keepSurfaceOpen,
     createProjectSurface,
     creatingSurfaceKinds,
     deleteSurfaceResource,
@@ -2094,7 +2099,7 @@ export function App() {
         rename: renameTerminalMutation,
       },
     },
-    views: { close: closeSurfaceViewMutation },
+    views: { close: closeSurfaceViewMutation, pin: pinSurfaceViewMutation },
   });
 
   const selectedPlacementContext: ProjectSurfacePlacementContext | undefined =
@@ -2139,7 +2144,7 @@ export function App() {
     contentRootRef, contentScrolled, createProjectSurface, createSidebarExplorerMutation, createSidebarFolder, createSidebarFile,
     createWorkspaceMutation, createWorktreeMutation, creatingSurfaceKinds, currentRelocation, deleteBrowserMutation, dockPresentationMutation,
     deleteChatMutation, deleteCodeTabMutation, deleteExplorerMutation, deleteProjectViewMutation, deleteSidebarFileEntry,
-    closeSurfaceView, deleteSurfaceResource, deleteTerminalMutation, desktopRuntime, desktopSidebarDrawer,
+    closeSurfaceView, keepSurfaceOpen, deleteSurfaceResource, deleteTerminalMutation, desktopRuntime, desktopSidebarDrawer,
     desktopSidebarDrawerOpen, dismissedLongPathFailure, displayTerminals, displayedGitProject, executeAppAction,
     explorerDisplayPath, explorerFileTarget, explorerGraphRequest, explorers, finishSidebarResize,
     focusDetachedPane, folderProjectDialogMode, folderProjectDialogOpen, folderRevealLabel, folderSetupJobs,

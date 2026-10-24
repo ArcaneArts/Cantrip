@@ -47,11 +47,29 @@ function operations() {
   } as unknown as SurfaceCrudOperations;
   const views = {
     close: { mutate: vi.fn() },
+    pin: { mutate: vi.fn() },
   } satisfies SurfaceViewOperations;
   return { creation, crud, views };
 }
 
 describe("surface command controller", () => {
+  it("routes Keep Open only for file previews to the view mutation", () => {
+    const operationSet = operations();
+    const controller = createSurfaceCommandController(operationSet);
+    const preview = {
+      kind: "file",
+      preview: true,
+      tabId: "document",
+      tabKey: "view",
+    } as ProjectSurface;
+    controller.keepSurfaceOpen(preview);
+    controller.keepSurfaceOpen({ ...preview, preview: false });
+    controller.keepSurfaceOpen({ ...preview, kind: "chat" } as ProjectSurface);
+    expect(operationSet.views.pin.mutate).toHaveBeenCalledExactlyOnceWith(
+      preview,
+    );
+    expect(operationSet.views.close.mutate).not.toHaveBeenCalled();
+  });
   it("closes document views without routing document identities to resource mutations", () => {
     const operationSet = operations();
     const controller = createSurfaceCommandController(operationSet);

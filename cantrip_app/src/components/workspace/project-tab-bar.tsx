@@ -61,6 +61,7 @@ export interface ProjectPaneTabStripProps {
   onCreate(kind: ProjectSurfaceCreateKind, target?: ExecutionTarget): void;
   onOpenRunning?(terminalId: string): void;
   onClose(surface: ProjectSurface): void;
+  onKeepOpen?(surface: ProjectSurface): void;
   onPopOut?(surface: ProjectSurface): void;
   onPopOutPane?(surface: ProjectSurface): void;
   onDelete(surface: ProjectSurface, stopRunning?: true): void;
@@ -138,6 +139,7 @@ export function ProjectPaneTabStrip({
   onCreate,
   onOpenRunning,
   onClose,
+  onKeepOpen,
   onPopOut,
   onPopOutPane,
   onDelete,
@@ -252,6 +254,10 @@ export function ProjectPaneTabStrip({
                     : undefined,
                 ),
                 onClose: () => closeImmediately(surface),
+                onKeepOpen:
+                  surface.kind === "file" && surface.preview && onKeepOpen
+                    ? () => onKeepOpen(surface)
+                    : undefined,
                 onPopOut: onPopOut ? () => onPopOut(surface) : undefined,
                 onPopOutPane: onPopOutPane
                   ? () => onPopOutPane(surface)
@@ -331,7 +337,9 @@ export function ProjectPaneTabStrip({
                                 onClick={() => onSelect(surface.tabKey)}
                                 onDoubleClick={(event) => {
                                   event.preventDefault();
-                                  if (canRename) beginRename(surface);
+                                  if (menuActions.onKeepOpen)
+                                    menuActions.onKeepOpen();
+                                  else if (canRename) beginRename(surface);
                                 }}
                               >
                                 <SurfaceTabIcon surface={surface} />

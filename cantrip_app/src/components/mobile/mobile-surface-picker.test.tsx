@@ -61,6 +61,40 @@ function picker(overrides: Record<string, unknown> = {}) {
 }
 
 describe("MobileSurfacePicker", () => {
+  it.each([true, false])(
+    "offers a separate Keep Open target only for preview=%s",
+    async (preview) => {
+      const file = {
+        kind: "file",
+        preview,
+        title: "first.ts",
+        tabKey: "view-id",
+        tabId: "document-id",
+      } as ProjectSurface;
+      const onKeepOpen = vi.fn();
+      const onSelect = vi.fn();
+      const onCloseSurface = vi.fn();
+      let renderer!: TestRenderer.ReactTestRenderer;
+      await act(async () => {
+        renderer = TestRenderer.create(
+          picker({ surfaces: [file], onKeepOpen, onSelect, onCloseSurface }),
+        );
+      });
+      const buttons = renderer.root
+        .findAllByType("button")
+        .filter(
+          (button) => button.props["aria-label"] === "Keep first.ts open",
+        );
+      expect(buttons).toHaveLength(preview ? 1 : 0);
+      if (preview) {
+        await act(async () => buttons[0]!.props.onClick());
+        expect(onKeepOpen).toHaveBeenCalledExactlyOnceWith(file);
+      }
+      expect(onSelect).not.toHaveBeenCalled();
+      expect(onCloseSurface).not.toHaveBeenCalled();
+      await act(async () => renderer.unmount());
+    },
+  );
   it("shows actual recent identities separately without hiding open views", () => {
     const second = {
       ...chat,

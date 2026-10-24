@@ -1727,3 +1727,28 @@ focused suite 95 passed, including the retained ExplorerView transient/mode
 and native-session cases. Production build (including TypeScript), application
 decomposition, large-file audit, changed-file formatting, and diff checks passed.
 This dead-API removal makes no new native-window acceptance claim.
+
+### Ordinary preview Keep Open controls
+
+Component cleanup merged in #2234 (`53a1ced1c`), with 95 focused tests passing
+again on Primary. Ordinary file tabs now expose Keep Open in both menus and
+on double-click. The mobile picker exposes a separate pin action. All three
+dispatch the existing owned-workspace `pin` command with the view identity;
+no Explorer promotion, replacement document, selection change, or successor
+handoff is introduced. Already-pinned files and non-file resources are ignored.
+Rejected requests preserve the preview and remain retryable.
+
+Validation: full app suite 548 files / 3,797 passed / three skipped; focused
+suite 81 passed; TypeScript, decomposition, large-file and diff checks passed.
+The disposable desktop/mobile browser harness passed ten checkpoints, including
+double-click pinning, menu pinning, mobile pinning, an injected HTTP rejection
+followed by successful retry, unchanged tab fields except preview, dirty-buffer
+reload, close selection, and device isolation. Final fixture:
+`editor-b13fd1c5-3e4f-4404-9a5a-492969ceaf2e`. An earlier failure-injection run
+missed a response because its listener was installed after the click; the
+harness now installs that listener first. Initial builds/QA also hit actual
+disk-full failures before space became available; those runs are not passes.
+
+This is not completion of the overall goal. Sidebar prewarm cleanup, remaining
+native surface/recovery acceptance, TABS.md replacement, known server-suite
+failures and the final requirement audit remain outstanding.

@@ -44,6 +44,7 @@ export function PersistentSurfaceLayer({
     codeSurfaceVisible,
     compactShell,
     closeSurfaceView,
+    keepSurfaceOpen,
     createProjectSurface,
     creatingSurfaceKinds,
     deleteSurfaceResource,
@@ -425,6 +426,7 @@ export function PersistentSurfaceLayer({
             }
           }}
           onClose={closeSurfaceView}
+          onKeepOpen={keepSurfaceOpen}
           onDelete={deleteSurfaceResource}
           onRename={renameSurface}
           onSelect={selectTopTab}
