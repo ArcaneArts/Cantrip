@@ -9,7 +9,6 @@ export function projectFrameVisibility({
   showServerAdmin,
   showSettings,
   showProjectOverview = false,
-  sidebarFilePreviewVisible: _sidebarFilePreviewVisible,
   workspaceDestination,
 }: {
   desktopProjectFrame: boolean;
@@ -20,7 +19,6 @@ export function projectFrameVisibility({
   showServerAdmin: boolean;
   showSettings: boolean;
   showProjectOverview?: boolean;
-  sidebarFilePreviewVisible: boolean;
   workspaceDestination: WorkspaceSelection["destination"];
 }) {
   const railsVisible = Boolean(

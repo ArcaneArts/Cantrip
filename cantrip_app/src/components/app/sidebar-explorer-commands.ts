@@ -8,15 +8,12 @@ import type {
   ProjectWorktreeSummary,
 } from "@cantrip/protocol";
 import type { QueryClient } from "@tanstack/react-query";
-import type { Dispatch, SetStateAction } from "react";
 
 import type {
   ExplorerLifecycleRefs,
   SidebarExplorerMutations,
-  SidebarFileState,
 } from "@/components/app/sidebar-explorer-controller";
 import { defaultExplorerFileMode } from "@/components/explorer/explorer-file-language";
-import { confirmExplorerDiscard } from "@/components/explorer/explorer-lifecycle";
 import type { ExplorerFileMutationAuthorization } from "@/components/sidebar/project-sidebar-file-tree";
 import {
   createExplorerDirectory,
@@ -27,16 +24,11 @@ import {
 } from "@/lib/api";
 import { revealProjectInNativeFileManager } from "@/lib/desktop-project-share";
 import { errorMessage as errorText } from "@/lib/error-message";
-import { recordExplorerFileIntent } from "@/lib/explorer-lifecycle-trace";
 import {
   moveSidebarPath,
   sidebarFileTargetPaneId,
   sidebarPathAtOrBelow,
 } from "@/lib/sidebar-file-tabs";
-import {
-  selectWorkspacePane,
-  type WorkspaceSelection,
-} from "@/lib/workspace-selection";
 
 interface MutationOperation<Input> {
   isPending?: boolean;
@@ -47,7 +39,6 @@ interface MutationOperation<Input> {
 export function createSidebarExplorerCommands({
   createSidebarExplorerMutation,
   explorers,
-  fileState,
   lifecycle,
   newGraphExplorer,
   newTerminal,
@@ -58,7 +49,6 @@ export function createSidebarExplorerCommands({
   selectedPane,
   setDesktopSidebarDrawerOpen,
   setPopoutError,
-  setWorkspaceSelection,
   sidebarExplorerCreationInput,
   sidebarExplorerCreationKey,
   tabLayout,
@@ -66,10 +56,6 @@ export function createSidebarExplorerCommands({
 }: {
   createSidebarExplorerMutation: SidebarExplorerMutations["createSidebarExplorerMutation"];
   explorers: ExplorerSummary[] | undefined;
-  fileState: Pick<
-    SidebarFileState,
-    "setSidebarFilePreview" | "sidebarFilePreview"
-  >;
   lifecycle: ExplorerLifecycleRefs;
   newGraphExplorer: MutationOperation<{
     entry: ExplorerEntry;
@@ -95,7 +81,6 @@ export function createSidebarExplorerCommands({
   selectedPane: ProjectPaneSummary | undefined;
   setDesktopSidebarDrawerOpen: (open: boolean) => void;
   setPopoutError: (error: string | null) => void;
-  setWorkspaceSelection: Dispatch<SetStateAction<WorkspaceSelection>>;
   sidebarExplorerCreationInput: {
     projectId: string;
     worktreeId?: string;
@@ -104,18 +89,11 @@ export function createSidebarExplorerCommands({
   tabLayout: ProjectTabLayoutSummary | undefined;
   worktrees: ProjectWorktreeSummary[] | undefined;
 }) {
-  const { setSidebarFilePreview, sidebarFilePreview } = fileState;
-  const {
-    explorerLifecycleRef,
-    sidebarExplorerCreationKeyRef,
-    sidebarFilePreviewLifecycleRef,
-  } = lifecycle;
-  const sidebarFilePaneId = (explorer: ExplorerSummary): string | null => {
+  const { explorerLifecycleRef, sidebarExplorerCreationKeyRef } = lifecycle;
+  const sidebarFilePaneId = (): string | null => {
     return sidebarFileTargetPaneId({
       activePaneId: selectedPane?.id,
-      explorerId: explorer.id,
       panes: tabLayout?.panes ?? [],
-      preview: sidebarFilePreview,
     });
   };
   const openSidebarFilePreviewPath = (
@@ -245,17 +223,6 @@ export function createSidebarExplorerCommands({
     if (!authorization.isCurrent()) {
       throw new Error("Explorer authorization changed. Try renaming again.");
     }
-    if (
-      sidebarFilePreview?.explorerId === explorer.id &&
-      sidebarPathAtOrBelow(sidebarFilePreview.path, entry.path) &&
-      sidebarFilePreviewLifecycleRef.current?.dirty &&
-      !(await sidebarFilePreviewLifecycleRef.current.save())
-    ) {
-      throw new Error("Save the open file before renaming it.");
-    }
-    if (!authorization.isCurrent()) {
-      throw new Error("Explorer authorization changed. Try renaming again.");
-    }
     const result = await renameExplorerEntry(explorer.id, {
       name,
       path: entry.path,
@@ -270,16 +237,6 @@ export function createSidebarExplorerCommands({
         setPopoutError(
           `The entry was renamed, but an open file tab could not be updated: ${errorText(error)}`,
         ),
-      );
-      setSidebarFilePreview((current) =>
-        current &&
-        current.projectId === explorer.projectId &&
-        sidebarPathAtOrBelow(current.path, result.path)
-          ? {
-              ...current,
-              path: moveSidebarPath(current.path, result.path, result.newPath!),
-            }
-          : current,
       );
     }
     await refreshSidebarExplorerEntries(explorer);
@@ -350,17 +307,6 @@ export function createSidebarExplorerCommands({
         `The entry was deleted, but an open file tab could not be updated: ${errorText(error)}`,
       ),
     );
-    setSidebarFilePreview((current) => {
-      if (
-        !current ||
-        current.projectId !== explorer.projectId ||
-        !sidebarPathAtOrBelow(current.path, entry.path)
-      ) {
-        return current;
-      }
-      sidebarFilePreviewLifecycleRef.current = null;
-      return null;
-    });
     await refreshSidebarExplorerEntries(explorer);
   };
   const openSidebarFolderNative = (
@@ -407,7 +353,7 @@ export function createSidebarExplorerCommands({
     newTerminal.mutate({
       projectId: explorer.projectId,
       directoryPath: entry.path,
-      paneId: sidebarFilePaneId(explorer) ?? undefined,
+      paneId: sidebarFilePaneId() ?? undefined,
       title: `Terminal · ${entry.name}`,
       target: {
         kind: "worktree",
@@ -423,51 +369,8 @@ export function createSidebarExplorerCommands({
     newGraphExplorer.mutate({
       explorer,
       entry,
-      paneId: sidebarFilePaneId(explorer) ?? undefined,
+      paneId: sidebarFilePaneId() ?? undefined,
     });
-  };
-  const closeSidebarFilePreview = () => {
-    if (
-      !confirmExplorerDiscard(sidebarFilePreviewLifecycleRef.current, () =>
-        window.confirm("Close this preview and discard its unsaved changes?"),
-      )
-    ) {
-      return;
-    }
-    if (sidebarFilePreview) {
-      recordExplorerFileIntent({
-        actionKind: "close-preview",
-        explorerId: sidebarFilePreview.explorerId,
-        projectId: sidebarFilePreview.projectId,
-        samePath: true,
-      });
-    }
-    sidebarFilePreviewLifecycleRef.current = null;
-    setSidebarFilePreview(null);
-  };
-  const activateSidebarFilePreview = () => {
-    if (!sidebarFilePreview) return;
-    recordExplorerFileIntent({
-      actionKind: "activate-preview",
-      explorerId: sidebarFilePreview.explorerId,
-      projectId: sidebarFilePreview.projectId,
-      samePath: true,
-    });
-    if (
-      tabLayout &&
-      sidebarFilePreview.paneId &&
-      selectedPane?.id !== sidebarFilePreview.paneId
-    ) {
-      setWorkspaceSelection((current) =>
-        selectWorkspacePane(current, tabLayout, sidebarFilePreview.paneId!),
-      );
-    }
-    if (!sidebarFilePreview.active) {
-      setSidebarFilePreview((current) =>
-        current ? { ...current, active: true } : null,
-      );
-    }
-    revealWorkspace();
   };
   const retrySidebarFileTree = () => {
     createSidebarExplorerMutation.reset();
@@ -477,8 +380,6 @@ export function createSidebarExplorerCommands({
     createSidebarExplorerMutation.mutate(sidebarExplorerCreationInput);
   };
   return {
-    activateSidebarFilePreview,
-    closeSidebarFilePreview,
     createSidebarFolder,
     createSidebarFile,
     deleteSidebarFileEntry,

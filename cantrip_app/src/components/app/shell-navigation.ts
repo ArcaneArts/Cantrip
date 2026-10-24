@@ -57,7 +57,6 @@ import { projectSurfaceTabKey } from "@/lib/project-surface";
 import { projectSurfaceResourceRefForTab } from "@/lib/project-surface-registry";
 import { resolveProjectWorkspaceForSelection } from "@/lib/project-workspaces";
 import { recordProjectAccess } from "@/lib/project-recency";
-import type { SidebarFilePreviewState } from "@/lib/sidebar-file-tabs";
 import {
   emptyWorkspaceSelection,
   selectWorkspaceTab,
@@ -875,7 +874,6 @@ export function createShellNavigationCommands({
   setDesktopSidebarDrawerOpen,
   setFolderProjectDialogOpen,
   setPendingSurfaceSelection,
-  setSidebarFilePreview,
   setWorkspaceSelection,
   settings,
   visibleProjects,
@@ -911,9 +909,6 @@ export function createShellNavigationCommands({
   setFolderProjectDialogOpen: Dispatch<SetStateAction<boolean>>;
   setPendingSurfaceSelection: Dispatch<
     SetStateAction<PendingSurfaceSelection | null>
-  >;
-  setSidebarFilePreview: Dispatch<
-    SetStateAction<SidebarFilePreviewState | null>
   >;
   setWorkspaceSelection: Dispatch<SetStateAction<WorkspaceSelection>>;
   settings: SettingsBundle | undefined;
@@ -1040,9 +1035,6 @@ export function createShellNavigationCommands({
     projectId: string,
     workspaceId = activeProjectWorkspace?.id ?? null,
   ) => {
-    setSidebarFilePreview((current) =>
-      current?.projectId === projectId ? { ...current, active: false } : null,
-    );
     setSelectedProjectId(projectId);
     setProjectOverviewSection("overview");
     setProjectOverviewWorktreeId(null);
@@ -1134,7 +1126,6 @@ export function createShellProjectNavigationCommands({
   setFolderProjectDialogOpen,
   setPendingSurfaceSelection,
   setProjectTaskChatIds,
-  setSidebarFilePreview,
   surfaceOpenRequestRef,
   setWorkspaceSelection,
   workspace,
@@ -1166,9 +1157,6 @@ export function createShellProjectNavigationCommands({
     SetStateAction<PendingSurfaceSelection | null>
   >;
   setProjectTaskChatIds: Dispatch<SetStateAction<ReadonlyMap<string, string>>>;
-  setSidebarFilePreview: Dispatch<
-    SetStateAction<SidebarFilePreviewState | null>
-  >;
   surfaceOpenRequestRef: MutableRefObject<number>;
   setWorkspaceSelection: Dispatch<SetStateAction<WorkspaceSelection>>;
   workspace?: Parameters<typeof openOrFocusProjectSurface>[0]["workspace"];
@@ -1205,7 +1193,6 @@ export function createShellProjectNavigationCommands({
   const openCreatedProject = (project: ProjectSummary) => {
     setAppMode("ide");
     setDesktopSidebarDrawerOpen(false);
-    setSidebarFilePreview(null);
     setSelectedProjectId(project.id);
     setProjectOverviewSection("overview");
     setWorkspaceSelection(emptyWorkspaceSelection(project.id));
@@ -1243,13 +1230,6 @@ export function createShellProjectNavigationCommands({
       return;
     }
     setAppMode("ide");
-    setSidebarFilePreview((current) =>
-      current?.projectId === projectId
-        ? current.active
-          ? { ...current, active: false }
-          : current
-        : null,
-    );
     setDesktopSidebarDrawerOpen(false);
     const tabKey = projectSurfaceTabKey(kind, tabId);
     setSelectedProjectId(projectId);
@@ -1289,9 +1269,6 @@ export function createShellProjectNavigationCommands({
     presentation?: { revealDock?: boolean; moveToTargetRegion?: boolean },
   ) => {
     setAppMode("ide");
-    setSidebarFilePreview((current) =>
-      current?.projectId === projectId ? { ...current, active: false } : null,
-    );
     setDesktopSidebarDrawerOpen(false);
     setSelectedProjectId(projectId);
     const viewId = projectSurfaceViewId({ projectId, resource: surfaceRef });
@@ -1376,9 +1353,6 @@ export function createShellProjectNavigationCommands({
       return;
     }
     setAppMode("ide");
-    setSidebarFilePreview((current) =>
-      current?.projectId === projectId ? { ...current, active: false } : null,
-    );
     setDesktopSidebarDrawerOpen(false);
     setSelectedProjectId(projectId);
     setWorkspaceSelection((current) =>

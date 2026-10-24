@@ -200,10 +200,6 @@ export function projectPaneRenderBindings(
     setGitHistoryHeader: focused
       ? bindings.setGitHistoryHeader
       : ignoreGitHistoryHeaderChange,
-    showSidebarPreviewTab: false,
-    sidebarFilePreview: null,
-    sidebarFilePreviewPaneVisible: false,
-    sidebarFilePreviewVisible: false,
     terminalSurfaceVisible: Boolean(
       selectedTerminal && selectedTerminal.kind !== "run-configuration",
     ),

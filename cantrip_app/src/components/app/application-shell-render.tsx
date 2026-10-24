@@ -49,7 +49,6 @@ function ShellContent({
     showServerAdmin,
     showSettings,
     showProjectOverview,
-    sidebarFilePreviewVisible,
     tabLayout,
     workspaceSelection,
   } = bindings;
@@ -69,7 +68,6 @@ function ShellContent({
     showServerAdmin,
     showSettings,
     showProjectOverview,
-    sidebarFilePreviewVisible,
     workspaceDestination: workspaceSelection.destination,
   });
   return (
@@ -344,10 +342,6 @@ export function ApplicationShellRender({
     sidebarToggleVisible,
     terminalSurfaceVisible:
       terminalSurfaceVisible && !bindings.showProjectOverview,
-    sidebarFilePreviewPaneVisible:
-      bindings.sidebarFilePreviewPaneVisible && !bindings.showProjectOverview,
-    sidebarFilePreviewVisible:
-      bindings.sidebarFilePreviewVisible && !bindings.showProjectOverview,
   };
 
   return (

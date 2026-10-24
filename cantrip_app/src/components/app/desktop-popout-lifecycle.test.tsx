@@ -320,7 +320,6 @@ it("reports focus errors without selecting or reclaiming the remote pane", async
     model: modelFixture(resumeDetachedPane),
     revealWorkspace,
     setPopoutError,
-    setSidebarFilePreview: vi.fn(),
     setWorkspaceSelection,
   });
   commands.selectPaneFromSidebar("pane");

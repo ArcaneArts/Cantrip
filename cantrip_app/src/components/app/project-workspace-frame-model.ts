@@ -11,7 +11,6 @@ import {
   type CenterLayoutNode,
 } from "@/components/app/center-split-layout";
 import type { ProjectSurface } from "@/lib/project-surface";
-import type { SidebarFilePreviewState } from "@/lib/sidebar-file-tabs";
 import { effectiveDockFraction } from "./project-dock-presentation";
 
 export interface VisibleProjectPane {
@@ -42,47 +41,6 @@ export function legacyTopStripPresentation(
       ({ focused, pane }) => focused && pane.region === "center",
     ) ?? presentations.find(({ pane }) => pane.region === "center")
   );
-}
-
-export function legacyTopStripShowsSidebarPreview(
-  presentation: VisibleProjectPane | undefined,
-  preview: SidebarFilePreviewState | null,
-): boolean {
-  return Boolean(
-    presentation &&
-    preview &&
-    (preview.active || sidebarFilePreviewForPane(presentation, preview)),
-  );
-}
-
-export function sidebarFilePreviewForPane(
-  presentation: VisibleProjectPane | undefined,
-  preview: SidebarFilePreviewState | null,
-): SidebarFilePreviewState | null {
-  return presentation && preview?.paneId === presentation.pane.id
-    ? preview
-    : null;
-}
-
-export function dockPresentationsForSidebarPreview(
-  presentations: readonly VisibleProjectPane[] | undefined,
-  preview: SidebarFilePreviewState | null,
-  previewVisible: boolean,
-) {
-  const activePreviewPresentation =
-    previewVisible && preview?.active
-      ? presentations?.find((presentation) =>
-          sidebarFilePreviewForPane(presentation, preview),
-        )
-      : undefined;
-  return {
-    activePreviewPresentation,
-    surfacePresentations: activePreviewPresentation
-      ? presentations?.filter(
-          (presentation) => presentation !== activePreviewPresentation,
-        )
-      : presentations,
-  } as const;
 }
 
 export const definitionIdByCreateKind = {

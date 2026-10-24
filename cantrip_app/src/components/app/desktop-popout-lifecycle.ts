@@ -35,7 +35,6 @@ import {
 } from "@/lib/desktop-popout";
 import { errorMessage as errorText } from "@/lib/error-message";
 import type { ProjectOverviewSection } from "@/lib/project-overview-section";
-import type { SidebarFilePreviewState } from "@/lib/sidebar-file-tabs";
 import {
   selectWorkspacePane,
   type WorkspaceSelection,
@@ -581,7 +580,6 @@ export function createDesktopPaneSelectionCommands({
   model,
   revealWorkspace,
   setPopoutError,
-  setSidebarFilePreview,
   setWorkspaceSelection,
 }: {
   desktopRuntime: boolean;
@@ -591,15 +589,9 @@ export function createDesktopPaneSelectionCommands({
   model: ReturnType<typeof useDesktopPopoutModel>;
   revealWorkspace(): void;
   setPopoutError(error: string | null): void;
-  setSidebarFilePreview: Dispatch<
-    SetStateAction<SidebarFilePreviewState | null>
-  >;
   setWorkspaceSelection: Dispatch<SetStateAction<WorkspaceSelection>>;
 }) {
   const selectPaneFromSidebar = (paneId: string) => {
-    setSidebarFilePreview((current) =>
-      current ? { ...current, active: false } : null,
-    );
     if (!layout) return;
     const selectLocally = () => {
       setWorkspaceSelection((current) =>

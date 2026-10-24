@@ -1671,3 +1671,30 @@ the final focused run passed all 66 tests including the new owner-set cases.
 App TypeScript checking, production build, application decomposition, large-file
 audit, and `git diff --check` passed. No native UI claim is based on this
 dead-code removal; native lifecycle acceptance remains a separate requirement.
+
+### Retire shell transient-preview ownership
+
+The pin-handoff cleanup merged in #2232 (`0f716ffb0`), with all 66 focused
+tests passing again on integrated Primary. This cycle removes the remaining
+shell-level transient sidebar preview identity, its lifecycle/header state,
+navigation setters, special tab-strip injection, and pane-body suppression.
+Sidebar file opening and pinning continue through owned file tabs; ordinary
+preview flags, protected buffers, and legacy Explorer migration remain intact.
+
+Regression tests now exercise owned file and Code placements independently
+with either pane focused, rather than constructing an obsolete transient
+preview. Sidebar tree ownership still excludes tabbed Explorers. Target-pane
+coverage includes missing, empty, and dock-only layouts.
+
+Validation: the full app suite passed 547 files / 3,784 tests with three skips
+before the final two target-pane boundary cases were added. The final focused
+run passed all 109 tests, including those boundary cases. The production
+build (including TypeScript), decomposition audit, large-file audit, and diff
+checks passed. Component-level transient APIs and sidebar prewarm pooling remain
+follow-up cleanup; native lifecycle acceptance, the TABS.md rewrite, and the
+final requirements audit are still outstanding.
+
+Prior server CI run 40131223407 has now finished: each platform failed the
+existing worker-command-timeout-policy expectation (10 unbounded commands
+expected, six actual); its encrypted identity/ownership batch otherwise passed
+147 tests. This remains unresolved, not waived by the app cleanup.

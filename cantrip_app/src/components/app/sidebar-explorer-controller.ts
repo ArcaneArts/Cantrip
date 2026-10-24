@@ -26,7 +26,6 @@ import {
   SIDEBAR_EXPLORER_POOL_SIZE,
   surfaceWorktreeId,
   tabbedExplorerIds,
-  type SidebarFilePreviewState,
 } from "@/lib/sidebar-file-tabs";
 
 type OpenCreatedTab = (
@@ -36,15 +35,11 @@ type OpenCreatedTab = (
 ) => void;
 
 export function useSidebarFileState() {
-  const [sidebarFilePreview, setSidebarFilePreview] =
-    useState<SidebarFilePreviewState | null>(null);
   const [explorerGraphRequest, setExplorerGraphRequest] =
     useState<ExplorerGraphRequest | null>(null);
   return {
     explorerGraphRequest,
     setExplorerGraphRequest,
-    setSidebarFilePreview,
-    sidebarFilePreview,
   } as const;
 }
 
@@ -54,13 +49,10 @@ export function useExplorerLifecycleRefs() {
   const explorerLifecycleRef = useRef(
     new Map<string, ExplorerLifecycleActions>(),
   );
-  const sidebarFilePreviewLifecycleRef =
-    useRef<ExplorerLifecycleActions | null>(null);
   const sidebarExplorerCreationKeyRef = useRef<string | null>(null);
   return {
     explorerLifecycleRef,
     sidebarExplorerCreationKeyRef,
-    sidebarFilePreviewLifecycleRef,
   } as const;
 }
 
@@ -77,7 +69,7 @@ export function useExplorerLifecycleRegistration({
   onDirtyFile?: (explorerId: string) => void;
   onRegistered?: () => void;
 }) {
-  const { explorerLifecycleRef, sidebarFilePreviewLifecycleRef } = lifecycle;
+  const { explorerLifecycleRef } = lifecycle;
   const handleExplorerLifecycleChange = useCallback(
     (explorerId: string, actions: ExplorerLifecycleActions | null) => {
       const wasRegistered = explorerLifecycleRef.current.has(explorerId);
@@ -87,12 +79,6 @@ export function useExplorerLifecycleRegistration({
       if (wasRegistered !== Boolean(actions)) onRegistered?.();
     },
     [explorerLifecycleRef, onDirtyFile, onRegistered],
-  );
-  const handleSidebarFilePreviewLifecycleChange = useCallback(
-    (_explorerId: string, actions: ExplorerLifecycleActions | null) => {
-      sidebarFilePreviewLifecycleRef.current = actions;
-    },
-    [sidebarFilePreviewLifecycleRef],
   );
   const handleExplorerChanged = useCallback(
     (updated: ExplorerSummary) => {
@@ -109,7 +95,6 @@ export function useExplorerLifecycleRegistration({
   return {
     handleExplorerChanged,
     handleExplorerLifecycleChange,
-    handleSidebarFilePreviewLifecycleChange,
   } as const;
 }
 
@@ -235,7 +220,6 @@ export function useSidebarExplorerModel({
   unavailablePaneIds,
   environment,
   explorers,
-  fileState,
   openCreatedTab,
   selectedProjectId,
   selectedSurface,
@@ -248,7 +232,6 @@ export function useSidebarExplorerModel({
     "explorerFileTarget" | "popoutTarget" | "projectOverviewPopoutTarget"
   >;
   explorers: ExplorerSummary[] | undefined;
-  fileState: Pick<SidebarFileState, "sidebarFilePreview">;
   openCreatedTab: OpenCreatedTab;
   selectedProjectId: string | null;
   selectedSurface: ProjectSurface | undefined;
@@ -257,21 +240,13 @@ export function useSidebarExplorerModel({
 }) {
   const { explorerFileTarget, popoutTarget, projectOverviewPopoutTarget } =
     environment;
-  const { sidebarFilePreview } = fileState;
   const sidebarDesiredWorktreeId =
     surfaceWorktreeId(selectedSurface) ?? primaryWorktreeId(worktrees ?? []);
-  const sidebarPreviewExplorer = sidebarFilePreview
-    ? (explorers?.find(
-        (explorer) => explorer.id === sidebarFilePreview.explorerId,
-      ) ?? null)
-    : null;
   const sidebarExplorer = preferredSidebarExplorer({
     desiredWorktreeId: sidebarDesiredWorktreeId,
     explorers: explorers ?? [],
     layout: tabLayout,
-    previewExplorerId: sidebarFilePreview?.active
-      ? sidebarFilePreview.explorerId
-      : null,
+    previewExplorerId: null,
   });
   const sidebarInlineExplorers = useMemo(
     () =>
@@ -310,8 +285,6 @@ export function useSidebarExplorerModel({
       (explorers ?? []).filter((explorer) => openExplorerIds.has(explorer.id)),
     [explorers, openExplorerIds],
   );
-  const sidebarFilePreviewRef = useRef(sidebarFilePreview);
-  sidebarFilePreviewRef.current = sidebarFilePreview;
   const selectedProjectIdRef = useRef(selectedProjectId);
   selectedProjectIdRef.current = selectedProjectId;
   const openCreatedTabRef = useRef(openCreatedTab);
@@ -323,11 +296,9 @@ export function useSidebarExplorerModel({
     selectedProjectIdRef,
     sidebarDesiredWorktreeId,
     sidebarExplorer,
-    sidebarFilePreviewRef,
     sidebarInlineExplorer,
     sidebarInlineExplorers,
     sidebarPreviewSuccessorExplorer,
-    sidebarPreviewExplorer,
   } as const;
 }
 
@@ -384,7 +355,6 @@ export function sidebarExplorerProvisioningDetails({
 export function useSidebarExplorerProvisioning({
   explorers,
   explorersIsSuccess,
-  fileState,
   isPopout,
   lifecycle,
   model,
@@ -397,22 +367,14 @@ export function useSidebarExplorerProvisioning({
 }: {
   explorers: ExplorerSummary[] | undefined;
   explorersIsSuccess: boolean;
-  fileState: Pick<
-    SidebarFileState,
-    "setSidebarFilePreview" | "sidebarFilePreview"
-  >;
   isPopout: boolean;
-  lifecycle: Pick<
-    ExplorerLifecycleRefs,
-    "sidebarExplorerCreationKeyRef" | "sidebarFilePreviewLifecycleRef"
-  >;
+  lifecycle: Pick<ExplorerLifecycleRefs, "sidebarExplorerCreationKeyRef">;
   model: Pick<
     SidebarExplorerModel,
     | "sidebarDesiredWorktreeId"
     | "sidebarExplorer"
     | "sidebarInlineExplorer"
     | "sidebarInlineExplorers"
-    | "sidebarPreviewExplorer"
   >;
   mutations: Pick<SidebarExplorerMutations, "createSidebarExplorerMutation">;
   selectedProject: ProjectSummary | undefined;
@@ -421,15 +383,12 @@ export function useSidebarExplorerProvisioning({
   tabLayoutIsSuccess: boolean;
   workers: WorkerSummary[] | undefined;
 }) {
-  const { setSidebarFilePreview, sidebarFilePreview } = fileState;
-  const { sidebarExplorerCreationKeyRef, sidebarFilePreviewLifecycleRef } =
-    lifecycle;
+  const { sidebarExplorerCreationKeyRef } = lifecycle;
   const {
     sidebarDesiredWorktreeId,
     sidebarExplorer,
     sidebarInlineExplorer,
     sidebarInlineExplorers,
-    sidebarPreviewExplorer,
   } = model;
   const { createSidebarExplorerMutation } = mutations;
   const onlineWorkerIds = useMemo(
@@ -479,23 +438,6 @@ export function useSidebarExplorerProvisioning({
     sidebarHasDesiredExplorer,
     sidebarExplorerCreationKeyRef,
     tabLayoutIsSuccess,
-  ]);
-  useEffect(() => {
-    if (
-      sidebarFilePreview &&
-      (sidebarFilePreview.projectId !== selectedProjectId ||
-        (explorersIsSuccess && !sidebarPreviewExplorer))
-    ) {
-      sidebarFilePreviewLifecycleRef.current = null;
-      setSidebarFilePreview(null);
-    }
-  }, [
-    explorersIsSuccess,
-    selectedProjectId,
-    setSidebarFilePreview,
-    sidebarFilePreview,
-    sidebarFilePreviewLifecycleRef,
-    sidebarPreviewExplorer,
   ]);
   return {
     onlineWorkerIds,

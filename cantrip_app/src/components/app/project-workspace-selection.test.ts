@@ -199,40 +199,23 @@ describe("project workspace selection", () => {
       destination: "surface" as const,
       focusedPaneId: "group-one",
     };
-    const preview = {
-      active: true,
-      explorerId: "sidebar-explorer",
-      paneId: "group-two",
-      path: "src/index.ts",
-      projectId: "project-1",
-    };
-
-    const activePreview = workspacePaneSelection({
+    const selection = workspacePaneSelection({
       projectSurfaceIndex: surfaceIndex,
-      sidebarFilePreview: preview,
-      tabLayout: layout,
-      workspaceSelection,
-    });
-    const inactivePreview = workspacePaneSelection({
-      projectSurfaceIndex: surfaceIndex,
-      sidebarFilePreview: { ...preview, active: false },
       tabLayout: layout,
       workspaceSelection,
     });
 
+    expect(selection.selectedPaneSurfaces.map(({ tabKey }) => tabKey)).toEqual([
+      "chat:one",
+      "explorer:file-one",
+    ]);
     expect(
-      activePreview.selectedPaneSurfaces.map(({ tabKey }) => tabKey),
-    ).toEqual(["chat:one", "explorer:file-one"]);
-    expect(
-      activePreview.orderedProjectSurfaces.map(({ tabKey }) => tabKey),
+      selection.orderedProjectSurfaces.map(({ tabKey }) => tabKey),
     ).toEqual([
       "chat:one",
       "explorer:file-one",
       "chat:two",
       "explorer:file-two",
     ]);
-    expect(inactivePreview.selectedPaneSurfaces).toEqual(
-      activePreview.selectedPaneSurfaces,
-    );
   });
 });

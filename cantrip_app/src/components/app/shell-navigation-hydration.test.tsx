@@ -173,7 +173,6 @@ async function mount({
       setDesktopSidebarDrawerOpen: vi.fn(),
       setFolderProjectDialogOpen: vi.fn(),
       setPendingSurfaceSelection: vi.fn(),
-      setSidebarFilePreview: vi.fn(),
       setWorkspaceSelection: vi.fn(),
       settings: settings.data,
       visibleProjects: projects,

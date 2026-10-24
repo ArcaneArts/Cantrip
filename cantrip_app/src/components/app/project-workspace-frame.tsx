@@ -47,10 +47,8 @@ import { projectPaneRenderBindings } from "@/components/app/project-pane-render-
 import {
   createKindsForPaneRegion,
   legacyTopStripPresentation,
-  legacyTopStripShowsSidebarPreview,
   partitionVisibleWorkspacePanes,
   responsiveProjectWorkspaceGridModel,
-  sidebarFilePreviewForPane,
   visibleWorkspacePanes,
   type VisibleProjectPane,
 } from "@/components/app/project-workspace-frame-model";
@@ -106,7 +104,6 @@ import {
   preventMiddleMouseDefault,
 } from "@/lib/tab-middle-click";
 import { useAppLiveScope } from "@/lib/app-live-react";
-import { sidebarFileName } from "@/lib/sidebar-file-tabs";
 import { cn } from "@/lib/utils";
 import {
   type WorkspaceDndData,
@@ -508,12 +505,6 @@ function genericPaneBody(
         />
       </div>
     );
-  }
-  if (
-    bindings.sidebarFilePreviewPaneVisible &&
-    sidebarFilePreviewForPane(presentation, bindings.sidebarFilePreview)?.active
-  ) {
-    return null;
   }
   const kind = presentation.activeSurface?.kind;
   if (
@@ -931,10 +922,6 @@ export function ProjectWorkspaceFrame({
     [],
   );
   const tabStrip = (presentation: VisibleProjectPane) => {
-    const sidebarPreview = sidebarFilePreviewForPane(
-      presentation,
-      bindings.sidebarFilePreview,
-    );
     return (
       <div
         className="min-w-0 overflow-hidden border-b border-transparent transition-colors duration-150 hover:border-border motion-reduce:transition-none"
@@ -972,26 +959,6 @@ export function ProjectWorkspaceFrame({
           paneId={presentation.pane.id}
           paneRegion={presentation.pane.region}
           placement={bindings.selectedPlacementContext}
-          previewFile={
-            sidebarPreview
-              ? {
-                  active: sidebarPreview.active,
-                  onClose: bindings.closeSidebarFilePreview,
-                  onPin: () => {
-                    if (bindings.sidebarPreviewExplorer) {
-                      void bindings.pinSidebarFilePath(
-                        bindings.sidebarPreviewExplorer,
-                        sidebarPreview.path,
-                      );
-                    }
-                  },
-                  onSelect: bindings.activateSidebarFilePreview,
-                  path: sidebarPreview.path,
-                  projectId: sidebarPreview.projectId,
-                  title: sidebarFileName(sidebarPreview.path),
-                }
-              : undefined
-          }
           projectId={presentation.pane.projectId}
           surfaces={presentation.surfaces}
         />
@@ -1111,13 +1078,6 @@ export function ProjectWorkspaceFrame({
     if (!paneId || paneId === bindings.workspaceSelection.focusedPaneId) return;
     const presentation = presentations.find(({ pane }) => pane.id === paneId);
     if (!presentation) return;
-    if (
-      bindings.sidebarFilePreview?.active &&
-      bindings.sidebarFilePreview.paneId === paneId
-    ) {
-      bindings.activateSidebarFilePreview();
-      return;
-    }
     bindings.selectTopTab(presentation.activeTabKey);
   };
   const presentationMutationPending = Boolean(
@@ -1140,10 +1100,6 @@ export function ProjectWorkspaceFrame({
             : false,
           selectedPaneSurfaces: legacyTopStrip?.surfaces ?? [],
           selectedTabKey: legacyTopStrip?.activeTabKey ?? null,
-          showSidebarPreviewTab: legacyTopStripShowsSidebarPreview(
-            legacyTopStrip,
-            bindings.sidebarFilePreview,
-          ),
         }
       : bindings;
 
