@@ -7,18 +7,6 @@ import type {
 
 import type { ProjectSurface } from "./project-surface";
 
-export const SIDEBAR_EXPLORER_POOL_SIZE = 2;
-
-export function sidebarExplorerPrewarmTarget({
-  isPopout,
-  sidebarExplorer,
-}: {
-  isPopout: boolean;
-  sidebarExplorer: ExplorerSummary | null;
-}): ExplorerSummary | null {
-  return !isPopout ? sidebarExplorer : null;
-}
-
 export function sidebarFileName(path: string): string {
   return path.split("/").at(-1) || path;
 }
@@ -72,6 +60,7 @@ export function surfaceWorktreeId(surface: ProjectSurface | undefined) {
   if (
     surface.kind === "terminal" ||
     surface.kind === "explorer" ||
+    surface.kind === "file" ||
     surface.kind === "code"
   ) {
     return surface.entity.worktreeId;
@@ -88,57 +77,16 @@ export function preferredSidebarExplorer({
   desiredWorktreeId,
   explorers,
   layout,
-  previewExplorerId,
 }: {
   desiredWorktreeId: string | null;
   explorers: readonly ExplorerSummary[];
   layout: ProjectTabLayoutSummary | null | undefined;
-  previewExplorerId?: string | null;
 }): ExplorerSummary | null {
   const tabbed = tabbedExplorerIds(layout);
-  const preview = previewExplorerId
-    ? explorers.find((explorer) => explorer.id === previewExplorerId)
-    : undefined;
-  if (preview && !tabbed.has(preview.id)) return preview;
-
   const candidates = desiredWorktreeId
     ? explorers.filter((explorer) => explorer.worktreeId === desiredWorktreeId)
     : [...explorers];
   return candidates.find((explorer) => !tabbed.has(explorer.id)) ?? null;
-}
-
-export function dedicatedSidebarExplorers({
-  desiredWorktreeId,
-  explorers,
-  layout,
-}: {
-  desiredWorktreeId: string | null;
-  explorers: readonly ExplorerSummary[];
-  layout: ProjectTabLayoutSummary | null | undefined;
-}): ExplorerSummary[] {
-  const tabbed = tabbedExplorerIds(layout);
-  return explorers
-    .filter(
-      (explorer) =>
-        !tabbed.has(explorer.id) &&
-        (!desiredWorktreeId || explorer.worktreeId === desiredWorktreeId),
-    )
-    .slice(0, SIDEBAR_EXPLORER_POOL_SIZE);
-}
-
-export function dedicatedSidebarExplorer({
-  desiredWorktreeId,
-  explorers,
-  layout,
-}: {
-  desiredWorktreeId: string | null;
-  explorers: readonly ExplorerSummary[];
-  layout: ProjectTabLayoutSummary | null | undefined;
-}): ExplorerSummary | null {
-  return (
-    dedicatedSidebarExplorers({ desiredWorktreeId, explorers, layout })[0] ??
-    null
-  );
 }
 
 export function primaryWorktreeId(

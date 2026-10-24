@@ -20,10 +20,8 @@ import { createExplorer, getProjectWorktrees } from "@/lib/api";
 import { errorMessage as errorText } from "@/lib/error-message";
 import type { ProjectSurface } from "@/lib/project-surface";
 import {
-  dedicatedSidebarExplorers,
   preferredSidebarExplorer,
   primaryWorktreeId,
-  SIDEBAR_EXPLORER_POOL_SIZE,
   surfaceWorktreeId,
   tabbedExplorerIds,
 } from "@/lib/sidebar-file-tabs";
@@ -246,19 +244,7 @@ export function useSidebarExplorerModel({
     desiredWorktreeId: sidebarDesiredWorktreeId,
     explorers: explorers ?? [],
     layout: tabLayout,
-    previewExplorerId: null,
   });
-  const sidebarInlineExplorers = useMemo(
-    () =>
-      dedicatedSidebarExplorers({
-        desiredWorktreeId: sidebarDesiredWorktreeId,
-        explorers: explorers ?? [],
-        layout: tabLayout,
-      }),
-    [explorers, sidebarDesiredWorktreeId, tabLayout],
-  );
-  const sidebarInlineExplorer = sidebarInlineExplorers[0] ?? null;
-  const sidebarPreviewSuccessorExplorer = sidebarInlineExplorers[1] ?? null;
   const connectedExplorerPaneIds = useMemo(() => {
     if (projectOverviewPopoutTarget || explorerFileTarget) {
       return new Set<string>();
@@ -296,9 +282,6 @@ export function useSidebarExplorerModel({
     selectedProjectIdRef,
     sidebarDesiredWorktreeId,
     sidebarExplorer,
-    sidebarInlineExplorer,
-    sidebarInlineExplorers,
-    sidebarPreviewSuccessorExplorer,
   } as const;
 }
 
@@ -310,14 +293,12 @@ export function sidebarExplorerProvisioningDetails({
   selectedProjectWorkerId,
   sidebarDesiredWorktreeId,
   sidebarExplorer,
-  sidebarInlineExplorers,
 }: {
   onlineWorkerIds: ReadonlySet<string>;
   selectedProject: ProjectSummary | undefined;
   selectedProjectWorkerId: string | null;
   sidebarDesiredWorktreeId: string | null;
   sidebarExplorer: ExplorerSummary | null;
-  sidebarInlineExplorers: readonly ExplorerSummary[];
 }) {
   const sidebarFileWorkerId =
     sidebarExplorer?.activeWorkerId ?? selectedProjectWorkerId;
@@ -336,11 +317,13 @@ export function sidebarExplorerProvisioningDetails({
         }
       : null;
   const sidebarExplorerCreationKey = sidebarExplorerCreationInput
-    ? `${sidebarExplorerCreationInput.projectId}:${sidebarExplorerCreationInput.worktreeId ?? "default"}:${sidebarInlineExplorers.length}`
+    ? `${sidebarExplorerCreationInput.projectId}:${sidebarExplorerCreationInput.worktreeId ?? "default"}`
     : null;
   const sidebarHasDesiredExplorer = Boolean(
     sidebarExplorerCreationInput &&
-    sidebarInlineExplorers.length >= SIDEBAR_EXPLORER_POOL_SIZE,
+    sidebarExplorer &&
+    (!sidebarDesiredWorktreeId ||
+      sidebarExplorer.worktreeId === sidebarDesiredWorktreeId),
   );
   return {
     sidebarExplorerCreationInput,
@@ -348,7 +331,6 @@ export function sidebarExplorerProvisioningDetails({
     sidebarFileWorkerId,
     sidebarFileWorkerOnline,
     sidebarHasDesiredExplorer,
-    sidebarExplorerPoolSize: sidebarInlineExplorers.length,
   } as const;
 }
 
@@ -371,10 +353,7 @@ export function useSidebarExplorerProvisioning({
   lifecycle: Pick<ExplorerLifecycleRefs, "sidebarExplorerCreationKeyRef">;
   model: Pick<
     SidebarExplorerModel,
-    | "sidebarDesiredWorktreeId"
-    | "sidebarExplorer"
-    | "sidebarInlineExplorer"
-    | "sidebarInlineExplorers"
+    "sidebarDesiredWorktreeId" | "sidebarExplorer"
   >;
   mutations: Pick<SidebarExplorerMutations, "createSidebarExplorerMutation">;
   selectedProject: ProjectSummary | undefined;
@@ -384,12 +363,7 @@ export function useSidebarExplorerProvisioning({
   workers: WorkerSummary[] | undefined;
 }) {
   const { sidebarExplorerCreationKeyRef } = lifecycle;
-  const {
-    sidebarDesiredWorktreeId,
-    sidebarExplorer,
-    sidebarInlineExplorer,
-    sidebarInlineExplorers,
-  } = model;
+  const { sidebarDesiredWorktreeId, sidebarExplorer } = model;
   const { createSidebarExplorerMutation } = mutations;
   const onlineWorkerIds = useMemo(
     () =>
@@ -412,7 +386,6 @@ export function useSidebarExplorerProvisioning({
     selectedProjectWorkerId,
     sidebarDesiredWorktreeId,
     sidebarExplorer,
-    sidebarInlineExplorers,
   });
   useEffect(() => {
     if (

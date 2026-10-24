@@ -44,29 +44,20 @@ function explorer(id: string): ExplorerSummary {
 }
 
 describe("ownedExplorerSurfaceTabs", () => {
-  it("renders only the requested open, active and warm owners", () => {
+  it("renders only the requested open and active owners", () => {
     const open = explorer("open");
-    const warm = explorer("warm");
-    const successor = explorer("successor");
     const active = explorer("active");
-    expect(ownedExplorerSurfaceTabs([open], active, warm, successor)).toEqual([
-      open,
-      warm,
-      successor,
-      active,
-    ]);
+    expect(ownedExplorerSurfaceTabs([open], active)).toEqual([open, active]);
   });
 
-  it("keeps one renderer identity when an open owner is also active and warm", () => {
+  it("keeps one renderer identity when an open owner is also active", () => {
     const open = explorer("same");
     const active = { ...open, title: "Current title" };
-    expect(ownedExplorerSurfaceTabs([open], active, open, open)).toEqual([
-      active,
-    ]);
+    expect(ownedExplorerSurfaceTabs([open], active)).toEqual([active]);
   });
 
   it("does not invent a replacement owner for an empty layout", () => {
-    expect(ownedExplorerSurfaceTabs([], null, null)).toEqual([]);
+    expect(ownedExplorerSurfaceTabs([], null)).toEqual([]);
   });
 });
 
@@ -113,7 +104,7 @@ describe("retainExplorerSurfaceTabs", () => {
     expect(next.at(-1)?.id).toBe("active");
   });
 
-  it("protects both requested views when every retained view is dirty", () => {
+  it("protects the active view when every retained view is dirty", () => {
     const retained = Array.from(
       { length: MAX_RETAINED_EXPLORER_VIEWS },
       (_, index) => explorer(String(index)),
@@ -121,11 +112,10 @@ describe("retainExplorerSurfaceTabs", () => {
     const next = retainRequestedExplorerSurfaceTabs(
       retained,
       explorer("active"),
-      explorer("prewarm"),
       new Set(retained.map(({ id }) => id)),
     );
 
-    expect(next.map(({ id }) => id)).toContain("prewarm");
+    expect(next).toHaveLength(MAX_RETAINED_EXPLORER_VIEWS + 1);
     expect(next.at(-1)?.id).toBe("active");
   });
 
@@ -137,12 +127,11 @@ describe("retainExplorerSurfaceTabs", () => {
     const next = retainRequestedExplorerSurfaceTabs(
       retained,
       explorer("active"),
-      explorer("prewarm"),
       new Set(["preview"]),
     );
 
     expect(next.map(({ id }) => id)).toContain("preview");
-    expect(next.map(({ id }) => id)).toContain("prewarm");
+    expect(next).toHaveLength(MAX_RETAINED_EXPLORER_VIEWS);
     expect(next.at(-1)?.id).toBe("active");
   });
 
@@ -306,7 +295,7 @@ describe("retainExplorerSurfaceTabs", () => {
           activeExplorer: active,
           appearance: "dark",
           gitStatuses: {},
-          prewarmExplorer: prewarm,
+          openExplorers: [prewarm],
           repositoryGraphAvailable: false,
         }),
       );
@@ -325,7 +314,7 @@ describe("retainExplorerSurfaceTabs", () => {
     await act(async () => renderer.unmount());
   });
 
-  it("promotes the warm successor without remounting it and provisions one replacement", async () => {
+  it("selects an inactive open view without remounting or inventing a replacement", async () => {
     const source = {
       ...explorer("preview-source"),
       activeWorkerId: "worker-one",
@@ -336,35 +325,25 @@ describe("retainExplorerSurfaceTabs", () => {
       ...source,
       id: "preview-successor",
     } as ExplorerSummary;
-    const replacement = {
-      ...source,
-      id: "preview-replacement",
-    } as ExplorerSummary;
     const render = ({
       active,
       open,
-      primary,
-      next,
     }: {
       active: ExplorerSummary;
       open: readonly ExplorerSummary[];
-      primary: ExplorerSummary;
-      next: ExplorerSummary;
     }) =>
       createElement(PersistentExplorerViews, {
         activeExplorer: active,
         appearance: "dark",
         gitStatuses: {},
         openExplorers: open,
-        prewarmExplorer: primary,
-        prewarmSuccessorExplorer: next,
         repositoryGraphAvailable: false,
       });
     let renderer!: TestRenderer.ReactTestRenderer;
 
     await act(async () => {
       renderer = TestRenderer.create(
-        render({ active: source, next: successor, open: [], primary: source }),
+        render({ active: source, open: [source, successor] }),
       );
     });
     const successorInstance = renderer.root.findByProps({
@@ -375,9 +354,7 @@ describe("retainExplorerSurfaceTabs", () => {
       renderer.update(
         render({
           active: successor,
-          next: replacement,
-          open: [source],
-          primary: successor,
+          open: [source, successor],
         }),
       );
     });
@@ -387,7 +364,6 @@ describe("retainExplorerSurfaceTabs", () => {
     expect(views.map((view) => view.props["data-explorer-id"])).toEqual([
       source.id,
       successor.id,
-      replacement.id,
     ]);
     expect(
       renderer.root.findByProps({ "data-explorer-id": successor.id }).props[
@@ -417,13 +393,6 @@ describe("retainExplorerSurfaceTabs", () => {
       selectedPath: "src/second.ts",
       worktreeId: "worktree-one",
     } as ExplorerSummary;
-    const preview = {
-      ...explorer("preview-explorer"),
-      activeWorkerId: "worker-one",
-      projectId: "project-one",
-      selectedPath: null,
-      worktreeId: "worktree-one",
-    } as ExplorerSummary;
     const render = (
       activeExplorer: ExplorerSummary,
       openExplorers: ExplorerSummary[],
@@ -433,7 +402,6 @@ describe("retainExplorerSurfaceTabs", () => {
         appearance: "dark",
         gitStatuses: {},
         openExplorers,
-        prewarmExplorer: preview,
         repositoryGraphAvailable: false,
       });
     let renderer!: TestRenderer.ReactTestRenderer;
@@ -449,14 +417,10 @@ describe("retainExplorerSurfaceTabs", () => {
           view.props["data-instance"] as number,
         ]),
     );
-    expect([...initialInstances.keys()]).toEqual([
-      first.id,
-      second.id,
-      preview.id,
-    ]);
+    expect([...initialInstances.keys()]).toEqual([first.id, second.id]);
 
     await act(async () => renderer.update(render(second, [first, second])));
-    for (const explorerId of [first.id, second.id, preview.id]) {
+    for (const explorerId of [first.id, second.id]) {
       const view = renderer.root.findByProps({
         "data-explorer-id": explorerId,
       });
@@ -474,11 +438,6 @@ describe("retainExplorerSurfaceTabs", () => {
         "data-keep-inline-code-warm"
       ],
     ).toBe(true);
-    expect(
-      renderer.root.findByProps({ "data-explorer-id": preview.id }).props[
-        "data-keep-inline-code-warm"
-      ],
-    ).toBe(false);
 
     await act(async () => renderer.update(render(second, [second])));
     expect(
@@ -489,16 +448,11 @@ describe("retainExplorerSurfaceTabs", () => {
         "data-instance"
       ],
     ).toBe(initialInstances.get(second.id));
-    expect(
-      renderer.root.findByProps({ "data-explorer-id": preview.id }).props[
-        "data-instance"
-      ],
-    ).toBe(initialInstances.get(preview.id));
 
     await act(async () => renderer.unmount());
   });
 
-  it("keeps external file opening only on a non-prewarm Explorer", async () => {
+  it("keeps external file opening on trees but not file editors", async () => {
     const active = {
       ...explorer("active-explorer"),
       activeWorkerId: "worker-active",
@@ -508,6 +462,7 @@ describe("retainExplorerSurfaceTabs", () => {
       ...explorer("prewarm-explorer"),
       activeWorkerId: "worker-prewarm",
       worktreeId: "worktree-prewarm",
+      selectedPath: "src/file.ts",
     } as ExplorerSummary;
     let renderer!: TestRenderer.ReactTestRenderer;
 
@@ -518,7 +473,7 @@ describe("retainExplorerSurfaceTabs", () => {
           appearance: "dark",
           gitStatuses: {},
           onOpenFile: vi.fn(),
-          prewarmExplorer: prewarm,
+          openExplorers: [prewarm],
           repositoryGraphAvailable: false,
         }),
       );

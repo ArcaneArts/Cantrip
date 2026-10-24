@@ -290,7 +290,6 @@ export function ExplorerView({
   onRevealFolder,
   revealLabel,
   onOpenTerminal,
-  prewarmInlineCode = false,
   repositoryGraphAvailable,
   showToolbar = true,
   transientFile,
@@ -327,7 +326,6 @@ export function ExplorerView({
   ): void | Promise<void>;
   revealLabel?: string;
   onOpenTerminal?(explorer: ExplorerSummary, entry: ExplorerEntry): void;
-  prewarmInlineCode?: boolean;
   repositoryGraphAvailable: boolean;
   showToolbar?: boolean;
   transientFile?: TransientExplorerFile;
@@ -402,7 +400,6 @@ export function ExplorerView({
   const streamEncryption = useExplorerWorkerEncryption(
     explorer,
     active ||
-      prewarmInlineCode ||
       keepInlineCodeWarm ||
       selectedPath !== null ||
       nativeDocument !== null,

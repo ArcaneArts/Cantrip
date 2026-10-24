@@ -26,7 +26,6 @@ interface ExplorerOwnershipDiagnostic {
   explorerId: string;
   openOwner: boolean;
   ownershipKind: string;
-  prewarm: boolean;
   projectId: string;
   worktreeId: string;
 }
@@ -40,7 +39,6 @@ function sameExplorerOwnershipDiagnostic(
     left.explorerId === right.explorerId &&
     left.openOwner === right.openOwner &&
     left.ownershipKind === right.ownershipKind &&
-    left.prewarm === right.prewarm &&
     left.projectId === right.projectId &&
     left.worktreeId === right.worktreeId
   );
@@ -70,11 +68,9 @@ export function retainExplorerSurfaceTabs(
 export function retainRequestedExplorerSurfaceTabs(
   retained: ExplorerSummary[],
   active: ExplorerSummary | null,
-  prewarm: ExplorerSummary | null | undefined,
   dirtyIds: ReadonlySet<string>,
-  prewarmSuccessor?: ExplorerSummary | null,
 ): ExplorerSummary[] {
-  const requested = [prewarm, prewarmSuccessor, active].filter(
+  const requested = [active].filter(
     (explorer): explorer is ExplorerSummary =>
       explorer !== null && explorer !== undefined,
   );
@@ -105,17 +101,10 @@ export function retainRequestedExplorerSurfaceTabs(
 export function ownedExplorerSurfaceTabs(
   openExplorers: readonly ExplorerSummary[],
   active: ExplorerSummary | null,
-  prewarm: ExplorerSummary | null | undefined,
-  prewarmSuccessor?: ExplorerSummary | null,
 ): ExplorerSummary[] {
   const owned: ExplorerSummary[] = [];
   const indexById = new Map<string, number>();
-  for (const explorer of [
-    ...openExplorers,
-    prewarm,
-    prewarmSuccessor,
-    active,
-  ]) {
+  for (const explorer of [...openExplorers, active]) {
     if (!explorer) continue;
     const existingIndex = indexById.get(explorer.id);
     if (existingIndex === undefined) {
@@ -143,8 +132,6 @@ export function PersistentExplorerViews({
   revealLabel,
   onOpenTerminal,
   openExplorers: providedOpenExplorers,
-  prewarmExplorer,
-  prewarmSuccessorExplorer,
   repositoryGraphAvailable,
   visiblePlacements,
   excludedIds = EMPTY_EXCLUDED_EXPLORER_IDS,
@@ -177,8 +164,6 @@ export function PersistentExplorerViews({
   revealLabel?: string;
   onOpenTerminal?(explorer: ExplorerSummary, entry: ExplorerEntry): void;
   openExplorers?: readonly ExplorerSummary[];
-  prewarmExplorer?: ExplorerSummary | null;
-  prewarmSuccessorExplorer?: ExplorerSummary | null;
   repositoryGraphAvailable: boolean;
   excludedIds?: ReadonlySet<string>;
   visiblePlacements?: readonly {
@@ -215,57 +200,28 @@ export function PersistentExplorerViews({
 
   useEffect(() => {
     if (openExplorers) return;
-    if (!activeExplorer && !prewarmExplorer && !prewarmSuccessorExplorer) {
+    if (!activeExplorer) {
       return;
     }
     setRetainedExplorers((current) =>
-      retainRequestedExplorerSurfaceTabs(
-        current,
-        activeExplorer,
-        prewarmExplorer,
-        dirtyIds,
-        prewarmSuccessorExplorer,
-      ),
+      retainRequestedExplorerSurfaceTabs(current, activeExplorer, dirtyIds),
     );
-  }, [
-    activeExplorer,
-    dirtyIds,
-    openExplorers,
-    prewarmExplorer,
-    prewarmSuccessorExplorer,
-  ]);
+  }, [activeExplorer, dirtyIds, openExplorers]);
 
   const renderedExplorers = useMemo(
     () =>
       (openExplorers
-        ? ownedExplorerSurfaceTabs(
-            openExplorers,
-            activeExplorer,
-            prewarmExplorer,
-            prewarmSuccessorExplorer,
-          )
+        ? ownedExplorerSurfaceTabs(openExplorers, activeExplorer)
         : ownedExplorerSurfaceTabs(
             retainRequestedExplorerSurfaceTabs(
               retainedExplorers,
               activeExplorer,
-              prewarmExplorer,
               dirtyIds,
-              prewarmSuccessorExplorer,
             ),
             activeExplorer,
-            prewarmExplorer,
-            prewarmSuccessorExplorer,
           )
       ).filter(({ id }) => !excludedIds.has(id)),
-    [
-      activeExplorer,
-      dirtyIds,
-      excludedIds,
-      openExplorers,
-      prewarmExplorer,
-      prewarmSuccessorExplorer,
-      retainedExplorers,
-    ],
+    [activeExplorer, dirtyIds, excludedIds, openExplorers, retainedExplorers],
   );
   const inlineCodeOwnerIds = useMemo(
     () => new Set(openExplorers?.map(({ id }) => id) ?? []),
@@ -290,32 +246,20 @@ export function PersistentExplorerViews({
         const openOwner = Boolean(
           openExplorers?.some(({ id }) => id === explorer.id),
         );
-        const prewarm =
-          prewarmExplorer?.id === explorer.id ||
-          prewarmSuccessorExplorer?.id === explorer.id;
         const roles = [
           active ? "active" : null,
           openOwner ? "open" : null,
-          prewarm ? "prewarm" : null,
         ].filter((role): role is string => role !== null);
         return {
           active,
           explorerId: explorer.id,
           openOwner,
           ownershipKind: roles.join("+") || "retained-only",
-          prewarm,
           projectId: explorer.projectId,
           worktreeId: explorer.worktreeId,
         };
       }),
-    [
-      activeExplorer?.id,
-      openExplorers,
-      prewarmExplorer?.id,
-      prewarmSuccessorExplorer?.id,
-      renderedExplorers,
-      placementById,
-    ],
+    [activeExplorer?.id, openExplorers, renderedExplorers, placementById],
   );
   const previousOwnershipRef = useRef(
     new Map<string, ExplorerOwnershipDiagnostic>(),
@@ -385,9 +329,6 @@ export function PersistentExplorerViews({
     const active = visiblePlacements
       ? Boolean(placement && placement.portalTarget !== null)
       : activeExplorer?.id === explorer.id;
-    const prewarm =
-      prewarmExplorer?.id === explorer.id ||
-      prewarmSuccessorExplorer?.id === explorer.id;
     const view = (
       <ExplorerView
         active={active}
@@ -414,12 +355,11 @@ export function PersistentExplorerViews({
               : undefined
         }
         onLifecycleChange={handleLifecycleChange}
-        onOpenFile={prewarm || explorer.selectedPath ? undefined : onOpenFile}
+        onOpenFile={explorer.selectedPath ? undefined : onOpenFile}
         onOpenGraphFile={onOpenGraphFile}
         onRevealFolder={onRevealFolder}
         revealLabel={revealLabel}
         onOpenTerminal={onOpenTerminal}
-        prewarmInlineCode={prewarm}
         repositoryGraphAvailable={repositoryGraphAvailable}
         workerOnline={
           onlineWorkerIds
