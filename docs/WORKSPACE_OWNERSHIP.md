@@ -1813,3 +1813,36 @@ diff checks passed. This cycle does not change runtime behavior. The full server
 run started in the previous verification worktree remains separate evidence;
 other known failures, native acceptance, documentation replacement and the final
 requirements audit are not declared complete.
+
+### Repeatable native surface acceptance harness
+
+History/continuation verification merged in #2238 (`721c5dc0d`); its CI and
+#2237's CI both completed successfully. A checked-in macOS launcher now builds
+the current native source into a uniquely identified disposable app bundle,
+with isolated server, worker, repository and desktop data. The local browser
+fixture provides a random document-instance ID, volatile input and counter so
+native transfer tests distinguish session retention from a page reload.
+
+Actual native checks on the #2238 baseline:
+
+- A terminal retained output and a live shell variable through tab detach and
+  native-window return. A whole-pane two-terminal move left main empty, with no
+  disabled placeholder; closing one view and then its window returned only the
+  surviving terminal, without resurrecting the closed sibling.
+- A browser retained the same document UUID, unsaved input and in-memory count
+  through detach, destination interaction and return. Main was directly inspected
+  while detached and contained only the sibling terminal.
+- A verified full unsent chat draft survived detach and return. An initial
+  rapid typing/detach attempt arrived partially typed; the source was not checked
+  before that move, so its cause remains unproven rather than called a pass.
+- A mixed pane of terminal, browser, chat and two native Code tabs moved and
+  returned. Both dirty Code drafts, including the inactive editor, were verified
+  at the destination and after return. Both fixture files retained their original
+  bytes on disk and the fixture Git worktree remained clean.
+
+The terminal whole-pane run included a transport error after 22.45 seconds and
+an automatic successful reconnect without shell-state loss. Its cause remains
+to investigate. Remote Desktop opened a worker session but had not delivered a
+frame at inspection (1x1, 0 FPS); live capture/input transfer is not established.
+The harness checklist does not imply remaining concurrent-window, remote-desktop,
+loading-layout, full-suite, documentation or final-audit requirements have passed.
