@@ -296,6 +296,7 @@ export function ChatTranscriptView({
       <ChatTurnPromptOverlay
         eliteModeEnabled={settings?.preferences.eliteMode ?? false}
         message={turnPromptOverlay.message}
+        rightInset={reservedSidePanelWidth}
         visible={turnPromptOverlay.visible}
       />
       {chat.contextKind === "project" &&
