@@ -195,6 +195,7 @@ export const STORAGE_ACCOUNTING_MANIFEST: readonly StorageAccountingManifestEntr
     chatOwned(schema.taskPlanningRounds),
     projectOwned(schema.terminals),
     projectOwned(schema.explorers),
+    projectOwned(schema.fileDocuments),
     projectOwned(schema.codeTabs),
     projectOwned(schema.browsers),
     projectOwned(schema.remoteSurfaces),

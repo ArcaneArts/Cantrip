@@ -49,6 +49,15 @@ describe("account resource usage storage accounting", () => {
     expect(categoryFor(schema.taskDispatchCycles)).toBe("conversations");
     expect(categoryFor(schema.projectAutomations)).toBe("projects");
     expect(categoryFor(schema.projectAutomationRuns)).toBe("projects");
+    expect(
+      STORAGE_ACCOUNTING_MANIFEST.find(
+        (entry) => entry.table === schema.fileDocuments,
+      ),
+    ).toMatchObject({
+      category: "projects",
+      classification: "project-owned",
+      ownerResolution: "project",
+    });
     for (const table of [
       schema.workspaceLayouts,
       schema.workspaceCommandReceipts,
