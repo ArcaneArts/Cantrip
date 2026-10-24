@@ -74,8 +74,11 @@ describe("observational custom-child thread reconciliation", () => {
     async (status) => {
       const current = { ...context, status: "failed", executionLaneId: "lane" };
       const repository = {
-        setChatStatus: vi.fn(),
-        finishChatExecutionLane: vi.fn(),
+        nativeCommands: {
+          reconcileThreadObservation: vi
+            .fn()
+            .mockResolvedValue({ applied: true, execution: current }),
+        },
       };
       const publishChatSummary = vi.fn();
       const sync = createChatThreadSyncRuntime({
@@ -96,19 +99,9 @@ describe("observational custom-child thread reconciliation", () => {
         dispatchNextQueuedPrompt: vi.fn(),
       } as unknown as ChatThreadSyncRuntimeDependencies);
       await sync.reconcileChatThread(current);
-      if (status === "running") {
-        expect(repository.setChatStatus).toHaveBeenCalledWith(
-          "chat",
-          "running",
-        );
-        expect(repository.finishChatExecutionLane).not.toHaveBeenCalled();
-      } else {
-        expect(repository.finishChatExecutionLane).toHaveBeenCalledWith(
-          "chat",
-          "lane",
-          status,
-        );
-      }
+      expect(
+        repository.nativeCommands.reconcileThreadObservation,
+      ).toHaveBeenCalledExactlyOnceWith("owner", current, status);
       expect(publishChatSummary).toHaveBeenCalledWith("chat", "project");
     },
   );
