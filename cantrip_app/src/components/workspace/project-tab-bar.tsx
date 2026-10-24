@@ -1,6 +1,6 @@
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import { TabColor, TabIndicator } from "./tab-color";
-import { surfaceColorKey, tabColorKey } from "@/lib/tab-colors";
+import { surfaceColorKey } from "@/lib/tab-colors";
 import { useDroppable } from "@dnd-kit/core";
 import {
   horizontalListSortingStrategy,
@@ -8,7 +8,7 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Info, MoreHorizontal, Plus, X } from "lucide-react";
+import { Info, MoreHorizontal, Plus } from "lucide-react";
 import { FileTypeIcon } from "@/components/files/file-type-icon";
 import type { ExecutionTarget, ProjectPaneRegion } from "@cantrip/protocol";
 import { Fragment, useCallback, useState, type ReactNode } from "react";
@@ -71,15 +71,6 @@ export interface ProjectPaneTabStripProps {
   ): void;
   onSelect(tabKey: string): void;
   placement?: ProjectSurfacePlacementContext;
-  previewFile?: {
-    active: boolean;
-    path: string;
-    projectId: string;
-    title: string;
-    onClose(): void;
-    onPin(): void;
-    onSelect(): void;
-  };
   paneId?: string;
   paneRegion?: ProjectPaneRegion;
   projectId?: string;
@@ -154,7 +145,6 @@ export function ProjectPaneTabStrip({
   onMoveToRegion,
   onSelect,
   placement,
-  previewFile,
   paneId: explicitPaneId,
   paneRegion = "center",
   projectId: explicitProjectId,
@@ -163,20 +153,12 @@ export function ProjectPaneTabStrip({
   const [editingTabKey, setEditingTabKey] = useState<string | null>(null);
   const displayMode = useTabDisplay("top");
   const { setElement, width } = useTabBarWidth();
-  const expanded = expandedTabCount(
-    displayMode,
-    surfaces.length + (previewFile ? 1 : 0),
-    width,
-  );
+  const expanded = expandedTabCount(displayMode, surfaces.length, width);
   const [renameValue, setRenameValue] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<ProjectSurface | null>(null);
   const lastSurface = surfaces.at(-1);
   const paneId = explicitPaneId ?? lastSurface?.paneId ?? "empty";
-  const projectId =
-    explicitProjectId ??
-    surfaces[0]?.projectId ??
-    previewFile?.projectId ??
-    "empty";
+  const projectId = explicitProjectId ?? surfaces[0]?.projectId ?? "empty";
   const workspaceDnd = useWorkspaceDndState();
   const crossPaneDrag =
     workspaceDnd.activeDrag?.type === "surface" &&
@@ -250,8 +232,7 @@ export function ProjectPaneTabStrip({
             strategy={horizontalListSortingStrategy}
           >
             {surfaces.map((surface, memberPosition) => {
-              const active =
-                !previewFile?.active && surface.tabKey === activeTabKey;
+              const active = surface.tabKey === activeTabKey;
               const editing = editingTabKey === surface.tabKey;
               const tabLabel = surfaceNeedsApproval(surface)
                 ? `${surface.title} (Approval required)`
@@ -403,90 +384,6 @@ export function ProjectPaneTabStrip({
               />
             ) : null}
           </SortableContext>
-
-          {previewFile ? (
-            <TabColor
-              colorKey={tabColorKey(
-                previewFile.projectId,
-                "",
-                previewFile.path,
-              )}
-              active={previewFile.active}
-            >
-              <ContextMenu.Root>
-                <ContextMenu.Trigger asChild>
-                  <div
-                    onAuxClick={(event) =>
-                      closeTabOnMiddleClick(event, previewFile.onClose)
-                    }
-                    onMouseDown={preventMiddleMouseDefault}
-                    className={cn(
-                      "group relative flex min-w-0 max-w-56 shrink-0 self-start items-center text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                      previewFile.active && "text-foreground",
-                    )}
-                    data-preview-file-path={previewFile.path}
-                    data-condensed={surfaces.length >= expanded}
-                    style={{
-                      width:
-                        surfaces.length >= expanded
-                          ? 40
-                          : displayMode === "hybrid"
-                            ? 160
-                            : undefined,
-                    }}
-                    title={`${previewFile.path}\nDouble-click to keep open`}
-                  >
-                    <button
-                      aria-selected={previewFile.active}
-                      aria-label={previewFile.title}
-                      className="tab-color-content flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left italic"
-                      onClick={previewFile.onSelect}
-                      onDoubleClick={(event) => {
-                        event.preventDefault();
-                        previewFile.onPin();
-                      }}
-                      role="tab"
-                      type="button"
-                    >
-                      <FileTypeIcon
-                        path={previewFile.path}
-                        className="size-3.5"
-                      />
-                      <span className="truncate">{previewFile.title}</span>
-                    </button>
-                    <button
-                      aria-label={`Close preview ${previewFile.title}`}
-                      className="mr-1 grid size-6 shrink-0 place-items-center rounded opacity-60 hover:bg-background/70 hover:opacity-100 focus:opacity-100"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        previewFile.onClose();
-                      }}
-                      title="Close preview"
-                      type="button"
-                    >
-                      <X className="size-3.5" />
-                    </button>
-                    <TabIndicator active={previewFile.active} />
-                  </div>
-                </ContextMenu.Trigger>
-                <ContextMenu.Portal>
-                  <StyledContextMenuContent>
-                    <SurfaceMenuItems
-                      colorKey={tabColorKey(
-                        previewFile.projectId,
-                        "",
-                        previewFile.path,
-                      )}
-                      kind="context"
-                      onClose={previewFile.onClose}
-                      onKeepOpen={previewFile.onPin}
-                      title={previewFile.title}
-                    />
-                  </StyledContextMenuContent>
-                </ContextMenu.Portal>
-              </ContextMenu.Root>
-            </TabColor>
-          ) : null}
 
           <ProjectSurfaceCreateMenu
             allowedKinds={allowedCreateKinds}
