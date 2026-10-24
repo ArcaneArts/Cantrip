@@ -55,6 +55,9 @@ jobs:
       - name: API domains, shared caches, identity and encryption
         if: ${{ !cancelled() }}
         run: pnpm --filter @cantrip/app exec vitest run src/lib/api-client.test.ts src/lib/api-domain-state.test.ts src/lib/api-shared-code-identity.test.ts src/lib/api-folder-root.test.ts src/lib/api-native-history-settings.test.ts src/lib/run-configuration-api.test.ts src/lib/api-terminal-create.test.ts src/lib/api-managed-queue.test.ts src/lib/api-task-conversation.test.ts src/lib/attachment-encryption.test.ts src/lib/policy-encryption.test.ts src/lib/tunnel-worker-readiness-cache.test.ts src/lib/short-lived-request-cache.test.ts src/lib/client-encryption.test.ts --maxWorkers=2
+      - name: Workspace command reconciliation and identity lifetime
+        if: ${{ !cancelled() }}
+        run: pnpm --filter @cantrip/app exec vitest run src/lib/workspace-command-client.test.ts src/lib/api-workspace-layouts.test.ts --maxWorkers=2
       - name: Repository bootstrap ordering and authorization lifetime
         if: ${{ !cancelled() }}
         run: pnpm --filter @cantrip/app exec vitest run src/lib/repository-worker-encryption.test.ts src/lib/worker-encryption-grants.test.ts --maxWorkers=2

@@ -2,6 +2,7 @@ export * from "./native-settings-state.js";
 export * from "./workspace-ownership.js";
 export * from "./workspace-command.js";
 export * from "./workspace-command-apply.js";
+export * from "./workspace-receipt.js";
 export * from "./workspace-ownership-seed.js";
 export * from "./labeling.js";
 export * from "./computer-use-effects.js";
