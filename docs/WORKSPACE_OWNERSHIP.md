@@ -1,7 +1,7 @@
 # Workspace ownership implementation record
 
-Status: **active and incomplete**. Cycles 1–4 are merged. Cycle 5 remains
-unmerged on `codex/workspace-shell-integration`. The target contract is not
+Status: **active and incomplete**. Cycles 1–5 are merged. Cycle 5's stale
+boundary inventory is being corrected in an isolated follow-up. The target contract is not
 a claim that all surfaces and recovery paths already satisfy it.
 
 ## Target contract
@@ -31,6 +31,19 @@ model; file preview/pin are ordinary tab state, not competing identities.
 | 2     | Revisioned commands, adjacent close selection, local focus, open-existing  | [#2210](https://github.com/ArcaneArts/Cantrip/pull/2210), `5bd2edad7` |
 | 3     | Authorized persistence, transactional revisions, durable receipts          | [#2211](https://github.com/ArcaneArts/Cantrip/pull/2211), `deb9f73cd` |
 | 4     | Session-bound client queue, pending reconciliation, stale-response fencing | [#2212](https://github.com/ArcaneArts/Cantrip/pull/2212), `1f2abe76e` |
+| 5     | Production shell integration, editor/terminal transfers, mobile file tabs | [#2213](https://github.com/ArcaneArts/Cantrip/pull/2213), `18b67a29e` |
+
+Cycle 5 merged before its CI finished. App API CI found 16 stale source-line
+references in the boundary inventory after formatting; regenerating the inventory
+changes no authorization classifications. The regenerated inventory check and
+network tranche-two verification pass locally. Server contracts also report the
+timeout-policy count mismatch (expected 10, observed 6); Windows worker commands
+report the broken-symlink creation assertion. These are not waived or claimed green.
+
+The final native QA fixture exited with code 0 and no surviving owned worker or
+server processes or sockets. Its harness and evidence were preserved at
+`/tmp/cantrip-workspace-qa-85gyIh/cycle-5-qa.tar.gz` before recoverable worktree
+archival was requested. Primary was fast-forwarded to the verified merge tree.
 
 Merged-tree checks were performed and worktrees submitted for recoverable
 archival. Primary was synchronized after these cycles. These foundations alone
@@ -187,9 +200,8 @@ checks) does not prove all native, mobile, or recovery requirements.
    overflow, keyboard focus, and every file-opening entry point.
 6. Replay native confirmation/failed-return cases and expand real native QA to
    concurrent popouts, inactive drafts, all adapters, and lifecycle recovery.
-7. Run final-tree checks, investigate failures, review the full diff, and deliver
-   Cycle 5 through observed squash automerge. No PR exists for this cycle at
-   the time of this record.
+7. Correct the Cycle 5 boundary inventory in a follow-up PR, observe its checks,
+   and continue investigating CI failures without weakening assertions.
 8. Update `docs/TABS.md` to the final enabled contract and audit every objective
    requirement before completion.
 
