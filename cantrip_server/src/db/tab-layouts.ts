@@ -503,7 +503,7 @@ export async function detachProjectTab(
   }
 }
 
-async function resolveEntitySurface(
+export async function resolveEntitySurface(
   database: TabLayoutExecutor,
   projectId: string,
   surface: ProjectSurfaceResourceRef,

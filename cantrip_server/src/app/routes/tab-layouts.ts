@@ -33,6 +33,7 @@ import {
   TabLayoutInvariantError,
 } from "../../db/tab-layouts.js";
 import { invalidBody } from "../../http/request-helpers.js";
+import { installWorkspaceLayoutRoutes } from "./workspace-layouts.js";
 
 export interface TabLayoutRouteDependencies {
   applicationOwnerId: () => string;
@@ -43,6 +44,7 @@ export function installTabLayoutRoutes(
   app: FastifyInstance,
   { applicationOwnerId, repository }: TabLayoutRouteDependencies,
 ): void {
+  installWorkspaceLayoutRoutes(app, { applicationOwnerId, repository });
   app.get<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/panes",
     async (request, reply) => {
