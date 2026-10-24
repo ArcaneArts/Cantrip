@@ -7,6 +7,7 @@ import {
   type WorkspaceOwnership,
 } from "@cantrip/protocol";
 import { CantripApiError, request } from "@/lib/api-client";
+import { bindWorkspaceRefreshChannel } from "@/lib/workspace-refresh-channel";
 import {
   clientSessionIdentityMatches,
   getClientSessionIdentitySnapshot,
@@ -108,8 +109,10 @@ export async function connectWorkspaceCommands(
     window.attachmentGeneration,
     transport,
   );
+  const closeRefreshChannel = bindWorkspaceRefreshChannel(controller, identity);
   const unsubscribe = onClientSessionIdentityChanged(() => {
     if (!clientSessionIdentityMatches(identity)) {
+      closeRefreshChannel();
       controller.dispose();
       unsubscribe();
     }
@@ -117,6 +120,7 @@ export async function connectWorkspaceCommands(
   return {
     controller,
     dispose: () => {
+      closeRefreshChannel();
       unsubscribe();
       controller.dispose();
     },

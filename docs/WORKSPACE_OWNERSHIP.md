@@ -709,3 +709,35 @@ return-reconciliation delay or remaining full-goal lifecycle requirements.
 A schema, focused passing tests, successful editor popout, or opened PR does not
 complete the goal. All required behavior must be enabled, verified, documented,
 and merged.
+
+### Local-window refresh cycle (in progress)
+
+The first-class file-document cycle merged as PR #2219, squash commit
+`71afc1aa54dddfff37514526dd1f13d715efa9c0`. Subsequent CI is not fully green:
+the Windows worker commands job failed the existing-file assertion for a dangling
+symlink in `test/explorer.test.ts`; the Ubuntu server contracts job failed
+`worker-command-timeout-policy.test.ts` (ten expected streaming call sites,
+six found). These are
+unresolved validation failures, not evidence of full-goal completion.
+
+The next isolated lane adds revision-only BroadcastChannel notifications scoped
+to server, account, project, and device workspace. Receiving windows request an
+authorized server refresh; no layout, document content, or ownership authority
+is accepted from a broadcast. Existing polling remains the fallback. Bursts
+coalesce, failed reads do not spin, and disposal cancels queued refresh work.
+Account changes dispose the channel with the workspace connection.
+
+Validation: all 50 focused refresh-channel, workspace API, and command-client
+tests passed; the app and dependency production build passed; diff whitespace
+checks passed. The unit-test additions cover in-flight disposal and late events
+after controller disposal. Native two-window timing remains unverified for this
+change. This notification mechanism is not a substitute for the required
+destination-restored acknowledgment before native window destruction.
+
+The API regression test now uses actual BroadcastChannel delivery between two
+connections, with mocked authorized HTTP responses: a committed revision reaches
+the second controller through a server read without a polling tick. It passed;
+this is not native WebView validation. The isolated native fixture is still live,
+but the computer-use tool reported that the Mac is locked and could not unlock
+it. Native interaction must resume after manual unlock; no native timing result
+is claimed and production app data has not been touched.
