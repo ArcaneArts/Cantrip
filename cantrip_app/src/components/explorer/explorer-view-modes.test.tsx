@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { ExplorerSummary } from "@cantrip/protocol";
+import type { ExplorerEntry, ExplorerSummary } from "@cantrip/protocol";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -7,7 +7,20 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import * as api from "@/lib/api";
 import { ExplorerView, type ExplorerHeaderState } from "./explorer-view";
 vi.mock("@/components/explorer/explorer-file-browser", () => ({
-  ExplorerFileBrowser: () => createElement("div"),
+  ExplorerFileBrowser: ({
+    onOpenFile,
+  }: {
+    onOpenFile(entry: ExplorerEntry): void;
+  }) =>
+    createElement("button", {
+      "aria-label": "Open source file",
+      onClick: () =>
+        onOpenFile({
+          kind: "file",
+          path: "src/main.ts",
+          viewable: true,
+        } as ExplorerEntry),
+    }),
 }));
 
 vi.mock("@/components/explorer/use-explorer-worker-encryption", () => ({
@@ -61,6 +74,7 @@ const explorer = {
   worktreeId: "worktree-one",
 } as ExplorerSummary;
 const contents: Record<string, string> = {
+  "src/main.ts": "export const ready = true;\n",
   "data/settings.yaml": "enabled: true\nnested:\n  value: 42\n",
   "data/settings.json": '{"enabled":true,"nested":{"value":42}}\n',
   "README.md": "# Original document\n",
@@ -124,7 +138,77 @@ async function choose(mode: "preview" | "edit" | "visual") {
   await settle();
   expect(header!.fileMode).toBe(mode);
 }
-describe("Explorer transient renderer modes", () => {
+describe("Explorer renderer modes", () => {
+  it("keeps an inline code file in Edit while its saved summary is still the old browser state", async () => {
+    const render = await setup("");
+    await act(async () => {
+      container
+        .querySelector<HTMLButtonElement>('[aria-label="Open source file"]')!
+        .click();
+    });
+    await settle();
+    expect(api.updateExplorerViewState).toHaveBeenCalledWith(explorer.id, {
+      selectedPath: "src/main.ts",
+      fileMode: "edit",
+    });
+    expect(header!.selectedPath).toBe("src/main.ts");
+    expect(header!.fileMode).toBe("edit");
+    expect(container.querySelector("textarea")?.readOnly).toBe(false);
+    const input = container.querySelector("textarea");
+    // A cache notification can publish another copy of the old summary before
+    // the acknowledged state reaches this owner.
+    await render({ ...explorer }, null);
+    expect(header!.fileMode).toBe("edit");
+    expect(header!.selectedPath).toBe("src/main.ts");
+    await render(
+      { ...explorer, selectedPath: "src/main.ts", fileMode: "edit" },
+      null,
+    );
+    expect(container.querySelector("textarea")).toBe(input);
+    expect(api.updateExplorerViewState).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not roll an inline mode choice back while waiting for updated props", async () => {
+    const initial = { ...explorer, selectedPath: "src/main.ts" };
+    const render = await setup("", initial);
+    await choose("edit");
+    expect(container.querySelector("textarea")?.readOnly).toBe(false);
+    await render({ ...initial, fileMode: "edit" }, null);
+    await choose("preview");
+    expect(container.querySelector("textarea")?.readOnly).toBe(true);
+    await render(initial, null);
+    expect(header!.fileMode).toBe("preview");
+  });
+
+  it("retains inline Edit and reports a failed view-state save instead of reverting the open", async () => {
+    await setup("");
+    vi.mocked(api.updateExplorerViewState).mockRejectedValueOnce(
+      new Error("Timed out saving view state"),
+    );
+    await act(async () => {
+      container
+        .querySelector<HTMLButtonElement>('[aria-label="Open source file"]')!
+        .click();
+    });
+    await settle();
+    expect(header!.selectedPath).toBe("src/main.ts");
+    expect(header!.fileMode).toBe("edit");
+    expect(container.querySelector("textarea")?.readOnly).toBe(false);
+    expect(container.textContent).toContain("Timed out saving view state");
+  });
+
+  it("still applies a genuinely changed persisted mode after opening inline", async () => {
+    const initial = {
+      ...explorer,
+      selectedPath: "src/main.ts",
+      fileMode: "edit" as const,
+    };
+    const render = await setup("", initial);
+    await render({ ...initial, fileMode: "preview" }, null);
+    expect(header!.fileMode).toBe("preview");
+    expect(container.querySelector("textarea")?.readOnly).toBe(true);
+  });
+
   it("leaves file-tab closing to the tab while retaining transient preview navigation", async () => {
     const render = await setup("README.md", {
       ...explorer,
