@@ -708,9 +708,41 @@ export function applyWorkspaceCommand(
       }
       if (action.target.kind === "pane") {
         const target = paneById(action.target.paneId);
-        target.tabs.push(action.tab);
+        const replacing = action.replacePreviewTabId
+          ? tabById(action.replacePreviewTabId)
+          : null;
+        if (
+          replacing &&
+          (replacing.pane.id !== target.id ||
+            replacing.tab.resource.definitionId !== "project.file" ||
+            action.tab.resource.definitionId !== "project.file" ||
+            !action.tab.preview)
+        )
+          throw new WorkspaceCommandError(
+            "invalid",
+            "Preview replacement requires file views in the same pane.",
+          );
+        // A pin that wins a revision race preserves the old view. Opening the
+        // new file still succeeds, but it must no longer replace that tab.
+        if (replacing?.tab.preview) {
+          if (
+            (layout.pendingTransfers ?? []).some((transfer) =>
+              transfer.tabIds.includes(replacing.tab.id),
+            )
+          )
+            throw new WorkspaceCommandError(
+              "invalid",
+              "Preview is reserved for a pending transfer.",
+            );
+          target.tabs.splice(target.tabs.indexOf(replacing.tab), 1, action.tab);
+        } else target.tabs.push(action.tab);
         focus(window, target, action.tab.id);
       } else {
+        if (action.replacePreviewTabId)
+          throw new WorkspaceCommandError(
+            "invalid",
+            "Preview replacement requires an existing pane.",
+          );
         const target: WorkspacePane = {
           id: action.target.paneId,
           region: action.target.region,

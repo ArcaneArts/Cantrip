@@ -206,6 +206,8 @@ export interface ExplorerTransferState {
 }
 
 export interface ExplorerLifecycleActions {
+  /** Hold a loaded, clean preview inert until its ownership operation settles. */
+  reservePreviewReplacement?(): (() => void) | null;
   /** Freeze source input until ownership commits or cancellation is confirmed. */
   suspendTransfer?(): () => void;
   /** Detach rendered content but retain document sessions until commit/cancel. */
@@ -1283,6 +1285,23 @@ export function ExplorerView({
   const cancelClose = useCallback(() => {}, []);
   const lifecycle = useMemo<ExplorerLifecycleActions>(
     () => ({
+      reservePreviewReplacement: (): (() => void) | null => {
+        const document = nativeDocumentRef.current;
+        if (
+          !mountedRef.current ||
+          transferSuspendedRef.current ||
+          transferInstallingRef.current ||
+          dirtyRef.current ||
+          sessions.current!.hasDirtyDocuments ||
+          (!mediaType &&
+            (!document ||
+              document.id !== nativeDocumentId ||
+              document.dirty ||
+              document.saving))
+        )
+          return null;
+        return transferLifecycleRef.current.suspendTransfer?.() ?? null;
+      },
       suspendTransfer: () => {
         assertTransferResource();
         const session = getClientSession();
@@ -1424,6 +1443,8 @@ export function ExplorerView({
       accountScope,
       cancelClose,
       hasDirtyDocuments,
+      mediaType,
+      nativeDocumentId,
       prepareClose,
       reconcile,
       saveDraft,

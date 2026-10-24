@@ -254,7 +254,53 @@ touch selection, dialog close/reopen, deduplication, five-item recency ordering,
 and access to the twelfth open tab in Chromium and WebKit with no page errors.
 This isolated component harness does not establish simultaneous-device isolation
 or full-shell persistence. Evidence is in QA session
-`20261024-033256-validate-mobile-recent-tab-picke`; PR delivery remains pending.
+`20261024-033256-validate-mobile-recent-tab-picke`; merged as PR #2217
+(`621e4a069`). QA evidence was preserved at
+`/tmp/cantrip-recency-qa-3PgZ8l/mobile-recency-qa.tar.gz`.
+Post-merge CI exposed the Windows dangling-symlink create failure, also present
+in earlier run `40074994363`. Server-contract failures in run `40078679437`
+are the timeout-policy inventory assertion (expected ten call sites, found six)
+on all three platforms. Final CI: 15 passing checks and these four failures;
+this is not an all-green CI claim.
+
+### Atomic preview replacement increment (in progress)
+
+The new isolated cycle introduces one atomic open/replace operation scoped to
+an existing file preview in the same pane. A pin that wins a revision race keeps
+the old view and appends the new file instead. A moved replacement target rejects
+the operation rather than closing a view in another pane. The protocol suite
+passes 65 files / 652 tests in the fresh worktree, including these three cases.
+The sidebar file-open path now requests a renderer-side clean-state reservation.
+Dirty, saving, transferring, or uninitialized text documents cannot be replaced;
+loaded clean previews stay inert until the command settles. Replacement is not
+optimistically projected, so rejection retains the original renderer rather than
+unmounting and recreating it. Unknown transport outcomes retain the reservation
+through explicit retry. Controller success/rejection/uncertain-outcome tests and
+focused file-opening/editor tests passed (48 tests); app typecheck passed.
+A regression reproduced a reservation leak when synchronous command construction
+throws; the controller now releases that reservation without sending a command.
+The app suite passed 521 files / 3,575 tests, with 3 skipped. An additional renderer
+test then passed in the 13-test editor-mode suite: reservation makes the clean
+editor read-only, rejects a second reservation, and idempotent release restores
+the same textarea and contents. This is component evidence, not native handoff QA.
+The editor-mode suite now passes 14 tests, including refusal while dirty or
+saving and successful reservation after save completion. Additional protocol
+coverage verifies concurrent existing-file focus and invalid replacement inputs.
+A pending-detach regression initially failed: replacement could remove a tab
+reserved by a transfer. The mutation now explicitly rejects that replacement;
+the full protocol suite passes 89 files / 897 tests. App typecheck and diff checks
+passed. Browser interaction QA passed in Chromium and WebKit using real
+ExplorerView/document-session/controller/protocol code with fixture file APIs
+and in-memory transport: clean replacement, typed dirty-buffer preservation,
+and rejected replacement retaining the original editable textarea. Evidence is
+in `.qa/20261024-035232-validate-preview-replacement-wit` (two collected pass
+events and screenshots). The runner waits for command completion before arming
+rejection. This does not establish full-shell/native transfer or production
+styling correctness; the fixture editor layout is intentionally minimal.
+Final rebuilt-package verification: app typecheck; 521 app test files with
+3,577 tests passed / 3 skipped; 15 server workspace-layout tests passed.
+QA evidence archive: `/tmp/cantrip-preview-qa-Fbxu6Q/preview-qa.tar.gz`.
+Do not substitute an unguarded close-then-open pair for this integration.
 
 1. Complete first-class document/view separation beyond path-specific Explorer
    backing, safe preview replacement, and legacy preview/provisioning/rebind

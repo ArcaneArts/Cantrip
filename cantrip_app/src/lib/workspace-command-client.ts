@@ -103,6 +103,10 @@ export class WorkspaceCommandClient {
   private publish() {
     let projected = this.base;
     for (const pending of this.queue) {
+      // A preview owns a live document session. Do not unmount it based on an
+      // optimistic removal: a rejection must retain the original renderer.
+      if (pending.action.type === "open" && pending.action.replacePreviewTabId)
+        continue;
       // A newer observation may already include this sent operation. Until its
       // receipt arrives, avoid applying it twice to a newer observed snapshot.
       if (pending.sent && this.base.revision > pending.sent.expectedRevision)
@@ -237,8 +241,10 @@ export class WorkspaceCommandClient {
       targetRegion?: ProjectPaneRegion;
       worktreeId?: string | null;
       preview?: boolean;
+      reservePreview?: (resourceId: string) => (() => void) | null;
     } = {},
   ): Promise<WorkspaceReceipt> {
+    let release: (() => void) | null | undefined;
     try {
       const window = this.state.projected.windows.find(
         (owner) => owner.id === this.windowId,
@@ -266,9 +272,40 @@ export class WorkspaceCommandClient {
                   splitId: this.allocateId(),
                 };
           })();
+      const alreadyOpen = this.state.projected.windows.some((owner) =>
+        owner.panes.some((pane) =>
+          pane.tabs.some(
+            (tab) =>
+              tab.resource.kind === resource.kind &&
+              tab.resource.definitionId === resource.definitionId &&
+              tab.resource.kind === "entity" &&
+              resource.kind === "entity" &&
+              tab.resource.resourceId === resource.resourceId,
+          ),
+        ),
+      );
+      const candidate =
+        options.preview &&
+        resource.definitionId === "project.file" &&
+        !alreadyOpen &&
+        target.kind === "pane"
+          ? window.panes
+              .find((pane) => pane.id === target.paneId)
+              ?.tabs.find(
+                (tab) =>
+                  tab.preview &&
+                  tab.resource.kind === "entity" &&
+                  tab.resource.definitionId === "project.file",
+              )
+          : undefined;
+      release =
+        candidate?.resource.kind === "entity"
+          ? options.reservePreview?.(candidate.resource.resourceId)
+          : null;
       return this.dispatch({
         type: "open",
         target,
+        ...(release && candidate ? { replacePreviewTabId: candidate.id } : {}),
         tab: {
           id: this.allocateId(),
           resource,
@@ -283,8 +320,9 @@ export class WorkspaceCommandClient {
                 }
               : null,
         },
-      });
+      }).finally(() => release?.());
     } catch (error) {
+      release?.();
       return Promise.reject(error);
     }
   }

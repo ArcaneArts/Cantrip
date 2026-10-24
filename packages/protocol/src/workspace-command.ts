@@ -112,6 +112,9 @@ export const workspaceActionSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("open"),
       tab: workspaceTabSchema,
+      // The caller must hold a clean renderer reservation until this command
+      // settles. The server additionally verifies current preview ownership.
+      replacePreviewTabId: id.optional(),
       target: z.discriminatedUnion("kind", [
         z.object({ kind: z.literal("pane"), paneId: id }).strict(),
         z

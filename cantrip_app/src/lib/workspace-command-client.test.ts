@@ -101,6 +101,114 @@ function setup() {
   };
 }
 
+it.each(["success", "rejected", "uncertain"] as const)(
+  "retains a reserved preview until replacement settles: %s",
+  async (outcome) => {
+    const { client, transport, server } = setup();
+    const oldResource = {
+      kind: "entity",
+      definitionId: "project.file",
+      resourceId: "old",
+    } as const;
+    await client.openResource(oldResource, { preview: true });
+    const oldId = server().windows[0]!.panes[0]!.tabs[0]!.id;
+    const gate = deferred<WorkspaceReceipt>();
+    vi.mocked(transport.execute).mockImplementationOnce(() => gate.promise);
+    const release = vi.fn();
+    const reserve = vi.fn(() => release);
+    const opening = client.openResource(
+      { ...oldResource, resourceId: "new" },
+      { preview: true, reservePreview: reserve },
+    );
+    const failed =
+      outcome === "rejected" ? expect(opening).rejects.toBe("rejected") : null;
+    expect(reserve).toHaveBeenCalledWith("old");
+    expect(
+      client
+        .getSnapshot()
+        .projected.windows[0]!.panes[0]!.tabs.map((t) => t.id),
+    ).toEqual([oldId]);
+    expect(release).not.toHaveBeenCalled();
+    const sent = vi.mocked(transport.execute).mock.calls.at(-1)![0];
+    if (outcome === "success") gate.resolve(result(server(), sent));
+    else gate.reject(outcome);
+    if (outcome === "uncertain") {
+      await vi.waitFor(() =>
+        expect(client.getSnapshot().error).toBe("uncertain"),
+      );
+      expect(release).not.toHaveBeenCalled();
+      expect(
+        client.getSnapshot().projected.windows[0]!.panes[0]!.tabs[0]!.id,
+      ).toBe(oldId);
+      client.retry();
+    }
+    if (failed) await failed;
+    else await opening;
+    expect(release).toHaveBeenCalledOnce();
+    expect(
+      client.getSnapshot().projected.windows[0]!.panes[0]!.tabs,
+    ).toHaveLength(1);
+    expect(
+      client.getSnapshot().projected.windows[0]!.panes[0]!.tabs[0]!.resource,
+    ).toEqual(
+      outcome === "rejected"
+        ? oldResource
+        : { ...oldResource, resourceId: "new" },
+    );
+  },
+);
+
+it("releases the preview reservation when command construction throws", async () => {
+  const { client, transport, server } = setup();
+  const resource = {
+    kind: "entity",
+    definitionId: "project.file",
+    resourceId: "old",
+  } as const;
+  await client.openResource(resource, { preview: true });
+  const before = structuredClone(server());
+  const failure = new Error("ID allocation failed");
+  const failingClient = new WorkspaceCommandClient(
+    before,
+    "main",
+    0,
+    transport,
+    () => {
+      throw failure;
+    },
+  );
+  const release = vi.fn();
+  const reserve = vi.fn(() => release);
+  vi.mocked(transport.execute).mockClear();
+  await expect(
+    failingClient.openResource(
+      { ...resource, resourceId: "new" },
+      { preview: true, reservePreview: reserve },
+    ),
+  ).rejects.toBe(failure);
+  expect(reserve).toHaveBeenCalledWith("old");
+  expect(release).toHaveBeenCalledOnce();
+  expect(transport.execute).not.toHaveBeenCalled();
+  expect(failingClient.getSnapshot().projected).toEqual(before);
+});
+
+it("keeps an unreservable preview when opening another file", async () => {
+  const { client } = setup();
+  const resource = {
+    kind: "entity",
+    definitionId: "project.file",
+    resourceId: "old",
+  } as const;
+  await client.openResource(resource, { preview: true });
+  await client.openResource(
+    { ...resource, resourceId: "new" },
+    { preview: true, reservePreview: () => null },
+  );
+  expect(
+    client.getSnapshot().authoritative.windows[0]!.panes[0]!.tabs,
+  ).toHaveLength(2);
+});
+
 it("pins local file previews once while leaving remote views and focus untouched", async () => {
   const { client, transport, server, setServer } = setup();
   await client.openResource(

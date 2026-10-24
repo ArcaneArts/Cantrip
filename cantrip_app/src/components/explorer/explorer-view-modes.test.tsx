@@ -5,7 +5,11 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as api from "@/lib/api";
-import { ExplorerView, type ExplorerHeaderState } from "./explorer-view";
+import {
+  ExplorerView,
+  type ExplorerHeaderState,
+  type ExplorerLifecycleActions,
+} from "./explorer-view";
 vi.mock("@/components/explorer/explorer-file-browser", () => ({
   ExplorerFileBrowser: ({
     onOpenFile,
@@ -51,6 +55,7 @@ let root: Root;
 let client: QueryClient;
 let container: HTMLDivElement;
 let header: ExplorerHeaderState | null;
+let lifecycle: ExplorerLifecycleActions | null;
 vi.stubGlobal(
   "ResizeObserver",
   class {
@@ -118,6 +123,9 @@ async function setup(
             onHeaderChange={(state) => {
               header = state;
             }}
+            onLifecycleChange={(_id, actions) => {
+              lifecycle = actions;
+            }}
             repositoryGraphAvailable={false}
             transientFile={
               transientPath
@@ -139,6 +147,78 @@ async function choose(mode: "preview" | "edit" | "visual") {
   expect(header!.fileMode).toBe(mode);
 }
 describe("Explorer renderer modes", () => {
+  it("refuses replacement while dirty or saving and permits it after save succeeds", async () => {
+    await setup("data/settings.yaml");
+    await choose("visual");
+    await act(async () => {
+      container
+        .querySelector<HTMLElement>('[aria-label="Edit enabled"]')!
+        .click();
+    });
+    expect(header!.dirty).toBe(true);
+    expect(lifecycle!.reservePreviewReplacement!()).toBeNull();
+    await choose("edit");
+    const input = container.querySelector("textarea")!;
+    const draft = input.value;
+    let finishSave!: (
+      value: Awaited<ReturnType<typeof api.saveExplorerFile>>,
+    ) => void;
+    vi.mocked(api.saveExplorerFile).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishSave = resolve;
+        }),
+    );
+    let saving!: Promise<unknown>;
+    await act(async () => {
+      saving = header!.save();
+    });
+    expect(api.saveExplorerFile).toHaveBeenCalledOnce();
+    expect(lifecycle!.reservePreviewReplacement!()).toBeNull();
+    expect(input.value).toBe(draft);
+    expect(input.readOnly).toBe(false);
+    await act(async () => {
+      finishSave({
+        path: "data/settings.yaml",
+        content: draft,
+        markdown: false,
+        version: "two",
+      } as Awaited<ReturnType<typeof api.saveExplorerFile>>);
+      await saving;
+    });
+    expect(header!.dirty).toBe(false);
+    let release: (() => void) | null = null;
+    await act(async () => {
+      release = lifecycle!.reservePreviewReplacement!();
+    });
+    expect(release).toBeTypeOf("function");
+    await act(async () => {
+      release!();
+    });
+    expect(input.value).toBe(draft);
+  });
+
+  it("freezes a clean preview during replacement and restores editing on release", async () => {
+    await setup("src/main.ts");
+    await choose("edit");
+    const input = container.querySelector("textarea")!;
+    expect(input.readOnly).toBe(false);
+    let release: (() => void) | null = null;
+    await act(async () => {
+      release = lifecycle!.reservePreviewReplacement!();
+    });
+    expect(release).toBeTypeOf("function");
+    expect(input.readOnly).toBe(true);
+    expect(lifecycle!.reservePreviewReplacement!()).toBeNull();
+    await act(async () => {
+      release!();
+      release!();
+    });
+    expect(container.querySelector("textarea")).toBe(input);
+    expect(input.readOnly).toBe(false);
+    expect(input.value).toBe(contents["src/main.ts"]);
+  });
+
   it("keeps an inline code file in Edit while its saved summary is still the old browser state", async () => {
     const render = await setup("");
     await act(async () => {
