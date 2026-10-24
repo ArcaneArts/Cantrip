@@ -18,8 +18,18 @@ import {
   type ChatTransferOwner,
 } from "@/components/chat/chat-view-state";
 
+import {
+  parseRemoteDesktopViewState,
+  type RemoteDesktopTransferLifecycle,
+  type RemoteDesktopTransferOwner,
+} from "@/components/remote-desktop/remote-desktop-view-state";
+
 export interface ChatTransferEntry extends ChatTransferOwner {
   lifecycle: ChatTransferLifecycle;
+}
+
+export interface RemoteDesktopTransferEntry extends RemoteDesktopTransferOwner {
+  lifecycle: RemoteDesktopTransferLifecycle;
 }
 
 export interface BrowserTransferEntry {
@@ -58,6 +68,7 @@ export function stageWorkspaceViewTransferBatch(
   terminals: readonly ExpectedTerminal[],
   browsers: readonly Omit<BrowserTransferEntry, "lifecycle">[] = [],
   chats: readonly ChatTransferOwner[] = [],
+  desktops: readonly RemoteDesktopTransferOwner[] = [],
 ) {
   const editorStates = stageExplorerTransferBatch(bytes, editors);
   const payload = JSON.parse(
@@ -120,11 +131,33 @@ export function stageWorkspaceViewTransferBatch(
       state: parseChatViewState(matches[0].state, expected),
     };
   });
+  const incomingDesktops: unknown = payload.desktops ?? [];
+  if (
+    !Array.isArray(incomingDesktops) ||
+    incomingDesktops.length !== desktops.length
+  )
+    throw new Error("Invalid remote desktop transfer batch.");
+  const desktopStates = desktops.map((expected) => {
+    if (ids.has(expected.tabId))
+      throw new Error("Duplicate transfer tab identity.");
+    ids.add(expected.tabId);
+    const matches = incomingDesktops.filter(
+      (item) =>
+        item && typeof item === "object" && item.tabId === expected.tabId,
+    );
+    if (matches.length !== 1)
+      throw new Error("Invalid remote desktop transfer batch.");
+    return {
+      tabId: expected.tabId,
+      state: parseRemoteDesktopViewState(matches[0].state, expected),
+    };
+  });
   return {
     editors: editorStates,
     terminals: terminalStates,
     browsers: browserStates,
     chats: chatStates,
+    desktops: desktopStates,
   };
 }
 
@@ -134,12 +167,20 @@ export function prepareWorkspaceViewTransferBatch(
   terminals: readonly TerminalTransferEntry[],
   browsers: readonly BrowserTransferEntry[] = [],
   chats: readonly ChatTransferEntry[] = [],
+  desktops: readonly RemoteDesktopTransferEntry[] = [],
 ) {
   const entries = terminals.map((entry) => ({ ...entry }));
   const browserEntries = browsers.map((entry) => ({ ...entry }));
   const chatEntries = chats.map((entry) => ({ ...entry }));
+  const desktopEntries = desktops.map((entry) => ({ ...entry }));
+  const liveEntries = [
+    ...entries,
+    ...browserEntries,
+    ...chatEntries,
+    ...desktopEntries,
+  ];
   const ids = new Set(editors.map(({ tabId }) => tabId));
-  for (const entry of [...entries, ...browserEntries, ...chatEntries]) {
+  for (const entry of liveEntries) {
     if (!entry.tabId || ids.has(entry.tabId))
       throw new Error("Duplicate transfer tab identity.");
     ids.add(entry.tabId);
@@ -172,7 +213,7 @@ export function prepareWorkspaceViewTransferBatch(
       );
   };
   try {
-    for (const entry of [...entries, ...browserEntries, ...chatEntries])
+    for (const entry of liveEntries)
       releases.push(entry.lifecycle.suspendTransfer());
   } catch (error) {
     try {
@@ -226,6 +267,18 @@ export function prepareWorkspaceViewTransferBatch(
           );
         chatStates.push({ tabId: entry.tabId, state });
       }
+      const desktopStates = [];
+      for (const entry of desktopEntries) {
+        const state = parseRemoteDesktopViewState(
+          await entry.lifecycle.captureTransfer(),
+          entry,
+        );
+        if (released)
+          throw new Error(
+            "Workspace transfer batch was released during capture.",
+          );
+        desktopStates.push({ tabId: entry.tabId, state });
+      }
       if (released)
         throw new Error(
           "Workspace transfer batch was released during capture.",
@@ -238,6 +291,7 @@ export function prepareWorkspaceViewTransferBatch(
           terminals: terminalStates,
           browsers: browserStates,
           chats: chatStates,
+          desktops: desktopStates,
         }),
       );
     },
@@ -245,7 +299,7 @@ export function prepareWorkspaceViewTransferBatch(
       if (released || !captured)
         throw new Error("Capture workspace state before retirement.");
       editorBatch.retire();
-      for (const entry of [...entries, ...browserEntries, ...chatEntries]) {
+      for (const entry of liveEntries) {
         if (retired.has(entry.tabId)) continue;
         await entry.lifecycle.retireTransfer();
         retired.add(entry.tabId);

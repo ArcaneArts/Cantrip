@@ -14,6 +14,7 @@ import type {
   CodeTabSummary,
   BrowserSummary,
   ChatSummary,
+  RemoteDesktopSummary,
 } from "@cantrip/protocol";
 import type { TerminalTransferStaging } from "@/components/terminal/terminal-view";
 import type {
@@ -29,12 +30,18 @@ import {
   getTerminals,
   getBrowsers,
   getChats,
+  getRemoteDesktops,
 } from "@/lib/api";
 import type {
   BrowserViewState,
   BrowserTransferStaging,
 } from "@/components/browser/browser-view-state";
 import type { IncomingBrowserView } from "@/components/browser/persistent-browser-views";
+import type {
+  RemoteDesktopViewState,
+  RemoteDesktopTransferStaging,
+  IncomingRemoteDesktopView,
+} from "@/components/remote-desktop/remote-desktop-view-state";
 import type {
   ChatViewState,
   ChatTransferStaging,
@@ -53,6 +60,13 @@ const subscribeSession = (listener: () => void) =>
   onClientSessionIdentityChanged(listener);
 const noSubscription = () => () => {};
 type StagedEditor =
+  | {
+      tabId: string;
+      kind: "remote-desktop";
+      state: RemoteDesktopViewState;
+      desktop: RemoteDesktopSummary;
+      staging: RemoteDesktopTransferStaging;
+    }
   | {
       tabId: string;
       kind: "chat";
@@ -296,37 +310,50 @@ export function useWorkspaceEditorTransfer({
           const chatTabs = tabs.filter(
             ({ resource }) => resource.definitionId === "project.agent",
           );
+          const desktopTabs = tabs.filter(
+            ({ resource }) =>
+              resource.definitionId === "project.remote-desktop",
+          );
           if (
             editorTabs.length +
               terminalTabs.length +
               browserTabs.length +
-              chatTabs.length !==
+              chatTabs.length +
+              desktopTabs.length !==
             tabs.length
           )
             throw new Error(
               "This surface does not yet have a workspace transfer adapter.",
             );
-          const [explorers, code, terminals, browsers, documents, chats] =
-            await Promise.all([
-              editorTabs.some(
-                ({ resource }) => resource.definitionId !== "project.code",
-              )
-                ? getExplorers(layout.projectId)
-                : [],
-              editorTabs.some(
-                ({ resource }) => resource.definitionId === "project.code",
-              )
-                ? getCodeTabs(layout.projectId)
-                : [],
-              terminalTabs.length ? getTerminals(layout.projectId) : [],
-              browserTabs.length ? getBrowsers(layout.projectId) : [],
-              editorTabs.some(
-                ({ resource }) => resource.definitionId === "project.file",
-              )
-                ? getFileDocuments(layout.projectId)
-                : [],
-              chatTabs.length ? getChats(layout.projectId) : [],
-            ]);
+          const [
+            explorers,
+            code,
+            terminals,
+            browsers,
+            documents,
+            chats,
+            desktops,
+          ] = await Promise.all([
+            editorTabs.some(
+              ({ resource }) => resource.definitionId !== "project.code",
+            )
+              ? getExplorers(layout.projectId)
+              : [],
+            editorTabs.some(
+              ({ resource }) => resource.definitionId === "project.code",
+            )
+              ? getCodeTabs(layout.projectId)
+              : [],
+            terminalTabs.length ? getTerminals(layout.projectId) : [],
+            browserTabs.length ? getBrowsers(layout.projectId) : [],
+            editorTabs.some(
+              ({ resource }) => resource.definitionId === "project.file",
+            )
+              ? getFileDocuments(layout.projectId)
+              : [],
+            chatTabs.length ? getChats(layout.projectId) : [],
+            desktopTabs.length ? getRemoteDesktops(layout.projectId) : [],
+          ]);
           assertCurrent();
           const expected = editorTabs.map((tab) => {
             const isCode = tab.resource.definitionId === "project.code";
@@ -422,17 +449,36 @@ export function useWorkspaceEditorTransfer({
               projectId: chat.projectId,
             };
           });
+          const expectedDesktops = desktopTabs.map((tab) => {
+            const resource = tab.resource;
+            const desktop =
+              resource.kind === "entity"
+                ? desktops.find(({ id }) => id === resource.resourceId)
+                : undefined;
+            if (!desktop || desktop.projectId !== layout.projectId)
+              throw new Error(
+                "Transferred remote desktop resource is unavailable.",
+              );
+            return {
+              tabId: tab.id,
+              desktopId: desktop.id,
+              projectId: desktop.projectId,
+              workerId: desktop.workerId,
+            };
+          });
           const {
             editors: snapshots,
             terminals: terminalSnapshots,
             browsers: browserSnapshots,
             chats: chatSnapshots,
+            desktops: desktopSnapshots,
           } = stageWorkspaceViewTransferBatch(
             bytes,
             expected,
             expectedTerminals,
             expectedBrowsers,
             expectedChats,
+            expectedDesktops,
           );
           const explorerStates = new Map<string, ExplorerTransferState>();
           const codeStates = new Map<string, ExplorerTransferState>();
@@ -520,6 +566,15 @@ export function useWorkspaceEditorTransfer({
               staging: restoration(),
             }),
           );
+          const stagedDesktops = desktopSnapshots.map(
+            ({ tabId, state }): StagedEditor => ({
+              tabId,
+              state,
+              kind: "remote-desktop",
+              desktop: desktops.find(({ id }) => id === state.desktopId)!,
+              staging: restoration(),
+            }),
+          );
           // Complete React staging before the coordinator acknowledges readiness.
           flushSync(() =>
             setStaged((current) => ({
@@ -539,6 +594,9 @@ export function useWorkspaceEditorTransfer({
                         ) &&
                         !chatSnapshots.some(
                           (snapshot) => snapshot.tabId === tabId,
+                        ) &&
+                        !desktopSnapshots.some(
+                          (snapshot) => snapshot.tabId === tabId,
                         ),
                     )
                   : []),
@@ -546,6 +604,7 @@ export function useWorkspaceEditorTransfer({
                 ...stagedTerminals,
                 ...stagedBrowsers,
                 ...stagedChats,
+                ...stagedDesktops,
               ],
             })),
           );
@@ -609,6 +668,7 @@ export function useWorkspaceEditorTransfer({
         incomingCodeViews: undefined,
         incomingBrowserViews: undefined,
         incomingChatViews: undefined,
+        incomingRemoteDesktopViews: undefined,
       };
     const explorers = new Map<string, ExplorerTransferState>();
     const code = new Map<string, ExplorerTransferState>();
@@ -618,6 +678,7 @@ export function useWorkspaceEditorTransfer({
     const incomingCodeViews: IncomingEditorView<CodeTabSummary>[] = [];
     const incomingBrowserViews: IncomingBrowserView[] = [];
     const incomingChatViews: IncomingChatView[] = [];
+    const incomingRemoteDesktopViews: IncomingRemoteDesktopView[] = [];
     const incomingTerminalViews: {
       tabId: string;
       terminal: TerminalSummary;
@@ -626,6 +687,13 @@ export function useWorkspaceEditorTransfer({
     }[] = [];
     for (const editor of staged.editors) {
       if (!retainedTabs.has(editor.tabId)) continue;
+      if (editor.kind === "remote-desktop") {
+        incomingRemoteDesktopViews.push({
+          ...editor,
+          staging: pendingTabs.has(editor.tabId) ? editor.staging : undefined,
+        });
+        continue;
+      }
       if (editor.kind === "chat") {
         incomingChatViews.push({
           ...editor,
@@ -678,6 +746,7 @@ export function useWorkspaceEditorTransfer({
       incomingCodeViews,
       incomingBrowserViews,
       incomingChatViews,
+      incomingRemoteDesktopViews,
     };
   }, [context, staged, retainedTabs, pendingTabs]);
 }

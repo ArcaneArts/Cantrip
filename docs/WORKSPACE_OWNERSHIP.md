@@ -838,3 +838,90 @@ app/dependency production build and whitespace checks). The cycle is ready for
 automated PR review with native QA explicitly outstanding, not represented as
 passed. The broader goal still requires native/mobile verification, remaining
 surface adapters, migration/legacy-path retirement and final TABS documentation.
+
+### Remote desktop lifecycle cycle (in progress)
+
+The preceding chat-view cycle merged as PR #2221, squash
+`905ac2e37f3902bd84bf7e4670802dc6eed3888b`. Its source and merged trees match;
+Primary is clean and synchronized. App-domain CI passed on Linux, macOS and
+Windows. The Windows command lane failed the existing dangling-symlink creation
+case in `test/explorer.test.ts:136`. Linux and macOS server-contract lanes failed
+`test/worker-command-timeout-policy.test.ts:65` (six streaming contexts versus ten
+expected). Neither the worker/server source nor those tests changed in #2221.
+Windows server contracts subsequently finished with the same timeout-policy
+assertion. All CI is now terminal. These failures remain unresolved; this is not
+a claim that all CI passed. Recoverable archival of the clean chat-view worktree
+was requested after verifying that its tree matches the merged result.
+
+Remote desktop inspection found its renderer still mounted through selected
+global content, and its worker link enabled by encryption readiness without a
+workspace transfer suspension boundary. The next cycle must retain tab-keyed
+views, stage incoming state, and coordinate source input cancellation and renderer
+retirement with the existing ownership handshake. Worker session/target identity
+must remain intact; attachment input epochs must not be copied to a new renderer.
+
+The isolated remote-desktop cycle now has a strict private view-state parser
+covering desktop/project/worker reservation identity, viewport and local fleet
+search state. Ten focused tests pass after building the protocol package. They
+cover successful capture data, empty search, mismatched ownership, invalid fields
+and rejection of attachment input epochs. Live capture/restore, retained views,
+source/destination integration and native validation remain to be implemented;
+the parser alone does not establish remote-desktop transfer support.
+
+The remote-desktop registry now fences callbacks by tab/desktop/project/worker
+identity and the authenticated client generation. Stale renderer cleanup cannot
+remove a replacement, and a capture finishing after account rotation is rejected.
+Unregistering does not retire the worker session. The mixed-pane private envelope
+now captures, validates, stages and retires registered remote-desktop entries,
+rejecting missing reservations and duplicate tab identities. Twenty-two focused
+parser, registry and mixed-batch tests pass, as does app TypeScript checking.
+These adapters still require live source registration and destination mounting;
+the UI continues to reject remote-desktop transfers until those are connected.
+
+Renderer integration checkpoint: `ManagedRemoteDesktopView` accepts transfer
+identity, private state and staging callbacks. Its lifecycle hook cancels input
+before suspension, drains accepted transport work before capture and retirement,
+and detaches only the renderer attachment. Cancellation during drain prevents
+capture; rollback after retirement permits a new attachment. Staged destinations
+restore local state but do not connect or accept input before ownership commits.
+Capture rejects an actual pending target mutation instead of guessing readiness.
+Four hook tests and nine existing desktop/clipboard tests pass after building
+workspace dependencies; app TypeScript and whitespace checks pass. The source
+adapter, retained tab-keyed mounting and destination shell integration are still
+pending, so native remote-desktop transfer is not yet enabled or verified.
+
+Shell integration checkpoint: source preparation resolves the authorized desktop
+and its registered renderer; destination preparation loads the project desktop
+catalog, validates the reserved identities, and waits for renderer restoration.
+Incoming desktop state now reaches the shell's retained, tab-keyed desktop owner.
+The selected-content renderer was removed, avoiding a second interactive desktop
+view. Hidden retained views preserve their last usable viewport rather than
+sending a one-pixel resize. Destination regression coverage now includes both
+successful acknowledgment/commit/close and reservation cancellation, plus a
+mismatched-worker rejection (14 destination tests pass). The existing source and
+surface-layer suites also passed before the new destination cases. App TypeScript
+and whitespace checks pass. Dedicated retained-view and live source regressions,
+review of pending asynchronous desktop actions, full app checks, native QA and
+PR delivery remain outstanding; shell wiring is not end-to-end verification.
+
+Regression/review checkpoint: retained-desktop tests verify inactive state,
+close-only disposal, staging-to-commit identity and stale incoming-resource
+rejection. A mixed editor/desktop source test covers authorized capture and
+rejects a desktop from another project. Review found an in-flight clipboard read
+could otherwise finish after suspension and lose its paste; transfer preparation
+now rejects while an actual clipboard or target-update operation is pending,
+before cancelling input. The clipboard regression confirms the accepted paste
+still dispatches. The full app suite passed (534 files, 3,682 tests, three skips),
+and the final retained-view/source run passed all ten tests. App TypeScript,
+app/dependency production build and whitespace checks pass. Build warnings remain
+for crypto externalization, chunk sizes and ineffective dynamic imports. Native
+two-window desktop validation and final review/PR delivery are still outstanding.
+
+Final integration review checkpoint: remote desktop inline visibility now follows
+the same project-screen conditions as retained chat/browser views, keeping the
+renderer mounted but hidden while Settings, overview, or another non-project
+screen is displayed. Removed unused imports/bindings from its former global
+content host and grouped transfer imports. Re-ran app TypeScript and the
+surface-layer, retained-desktop, and transfer-hook suites (13 tests passed);
+whitespace checks passed. These checks do not substitute for native multi-window
+validation; PR delivery and the wider goal remain unfinished.

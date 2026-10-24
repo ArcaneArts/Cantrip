@@ -5,10 +5,13 @@ import {
   type TerminalTransferEntry,
   type BrowserTransferEntry,
   type ChatTransferEntry,
+  type RemoteDesktopTransferEntry,
 } from "./workspace-view-transfer-batch";
 import { getTerminalTransferLifecycle } from "@/components/terminal/terminal-transfer-lifecycle";
 import { getBrowserTransferLifecycle } from "@/components/browser/browser-transfer-lifecycle";
 import { getChatTransferLifecycle } from "@/components/chat/chat-transfer-lifecycle";
+import { getRemoteDesktopTransferLifecycle } from "@/components/remote-desktop/remote-desktop-transfer-lifecycle";
+import { getRemoteDesktop } from "@/lib/api";
 import { getNativeCodeLifecycle } from "@/components/code/native-code-lifecycle";
 import type { ProjectSurface } from "@/lib/project-surface";
 import {
@@ -76,6 +79,7 @@ export async function detachWorkspaceEditors(
         const terminalEntries: TerminalTransferEntry[] = [];
         const browserEntries: BrowserTransferEntry[] = [];
         const chatEntries: ChatTransferEntry[] = [];
+        const desktopEntries: RemoteDesktopTransferEntry[] = [];
         for (const tabId of tabIds) {
           const tab = pane?.tabs.find(({ id }) => id === tabId);
           const surface = input.surfaces.get(tabId);
@@ -88,6 +92,7 @@ export async function detachWorkspaceEditors(
               surface.kind !== "code" &&
               surface.kind !== "terminal" &&
               surface.kind !== "chat" &&
+              surface.kind !== "remote-desktop" &&
               surface.kind !== "browser")
           )
             throw new Error(
@@ -108,6 +113,29 @@ export async function detachWorkspaceEditors(
             if (!lifecycle)
               throw new Error("The chat view is not attached for transfer.");
             chatEntries.push({ ...owner, lifecycle });
+            continue;
+          }
+          if (surface.kind === "remote-desktop") {
+            const desktop = await getRemoteDesktop(surface.entity.id);
+            if (
+              desktop.id !== surface.entity.id ||
+              desktop.projectId !== layout.projectId
+            )
+              throw new Error("Workspace transfer remote desktop changed.");
+            if (!clientSessionIdentityMatches(identity))
+              throw new Error("Workspace transfer account changed.");
+            const owner = {
+              tabId,
+              desktopId: desktop.id,
+              projectId: desktop.projectId,
+              workerId: desktop.workerId,
+            };
+            const lifecycle = getRemoteDesktopTransferLifecycle(owner);
+            if (!lifecycle)
+              throw new Error(
+                "The remote desktop view is not attached for transfer.",
+              );
+            desktopEntries.push({ ...owner, lifecycle });
             continue;
           }
           if (surface.kind === "browser") {
@@ -184,6 +212,7 @@ export async function detachWorkspaceEditors(
           terminalEntries,
           browserEntries,
           chatEntries,
+          desktopEntries,
         );
         return {
           capture: batch.captureBytes,

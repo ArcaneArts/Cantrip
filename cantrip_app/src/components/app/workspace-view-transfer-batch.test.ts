@@ -5,6 +5,76 @@ import {
 } from "./workspace-view-transfer-batch";
 import type { TerminalViewState } from "@/components/terminal/terminal-view-state";
 import type { BrowserViewState } from "@/components/browser/browser-view-state";
+import type { RemoteDesktopViewState } from "@/components/remote-desktop/remote-desktop-view-state";
+
+it("captures remote desktop state in a mixed pane and validates its reservation", async () => {
+  const state: RemoteDesktopViewState = {
+    version: 1,
+    desktopId: "desktop",
+    projectId: "project",
+    workerId: "worker",
+    viewport: { width: 1280, height: 720, devicePixelRatio: 1 },
+    fleetOpen: true,
+    targetSearch: "Editor",
+  };
+  const release = vi.fn();
+  const desktop = {
+    tabId: "desktop-tab",
+    ...state,
+    lifecycle: {
+      suspendTransfer: vi.fn(() => release),
+      captureTransfer: vi.fn(async () => state),
+      retireTransfer: vi.fn(async () => {}),
+    },
+  };
+  const f = fixture();
+  const batch = prepareWorkspaceViewTransferBatch(
+    [f.editor],
+    [f.terminal],
+    [],
+    [],
+    [desktop],
+  );
+  const bytes = await batch.captureBytes();
+  expect(
+    stageWorkspaceViewTransferBatch(
+      bytes,
+      [f.editor],
+      [f.terminal],
+      [],
+      [],
+      [desktop],
+    ).desktops,
+  ).toEqual([{ tabId: desktop.tabId, state }]);
+  expect(() =>
+    stageWorkspaceViewTransferBatch(bytes, [f.editor], [f.terminal]),
+  ).toThrow("Invalid remote desktop transfer batch");
+  expect(() =>
+    stageWorkspaceViewTransferBatch(
+      bytes,
+      [f.editor],
+      [f.terminal],
+      [],
+      [],
+      [{ ...desktop, workerId: "other" }],
+    ),
+  ).toThrow("does not match its reservation");
+  expect(() =>
+    prepareWorkspaceViewTransferBatch(
+      [f.editor],
+      [],
+      [],
+      [],
+      [{ ...desktop, tabId: f.editor.tabId }],
+    ),
+  ).toThrow("Duplicate transfer tab identity");
+  await batch.retire();
+  await batch.retire();
+  expect(desktop.lifecycle.retireTransfer).toHaveBeenCalledOnce();
+  batch.resume();
+  batch.resume();
+  expect(release).toHaveBeenCalledOnce();
+});
 
 it("validates browser ownership, stages private drafts, and retires one mixed pane", async () => {
   const state: BrowserViewState = {
