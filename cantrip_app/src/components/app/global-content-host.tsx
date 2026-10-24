@@ -684,7 +684,7 @@ export function GlobalContentHost({
               }
               onHeaderChange={setGitHistoryHeader}
             />
-          ) : selectedCodeTab ? null : selectedBrowser ? null : selectedExplorer ? null : selectedTerminal?.kind ===
+          ) : bindings.selectedSurface?.kind === "file" ? null : selectedCodeTab ? null : selectedBrowser ? null : selectedExplorer ? null : selectedTerminal?.kind ===
             "run-configuration" ? (
             <Suspense
               fallback={

@@ -44,6 +44,69 @@ function fixture(): WorkspaceOwnership {
   };
 }
 
+it("hydrates an owned file document without an Explorer and retains its view while loading", async () => {
+  const ownership = fixture();
+  const tab = ownership.windows[0]!.panes[0]!.tabs[0]!;
+  tab.resource = {
+    kind: "entity",
+    definitionId: "project.file",
+    resourceId: "document-1",
+  };
+  tab.fileMode = "preview";
+  tab.builtInState = null;
+  const { layout } = await openWorkspaceWindowPresentation(ownership, "main");
+  const document = {
+    id: "document-1",
+    projectId: "project",
+    workerId: "worker",
+    worktreeId: "worktree",
+    path: "src/main.rs",
+    createdAt: "2026-08-09T12:00:00.000Z",
+  };
+  const surface = (documents: (typeof document)[]) =>
+    buildProjectSurfaceIndex(
+      layout,
+      {
+        browsers: [],
+        chats: [],
+        codeTabs: [],
+        explorers: [],
+        projectViews: [],
+        terminals: [],
+        fileDocuments: documents,
+      },
+      { layout: ownership, windowId: "main" },
+    ).byTabKey.get(tab.id);
+
+  expect(surface([document])).toMatchObject({
+    kind: "file",
+    entity: document,
+    title: "main.rs",
+    fileMode: "preview",
+    preview: true,
+    view: { id: tab.id, resource: tab.resource },
+  });
+  expect(surface([])).toMatchObject({
+    kind: "unresolved",
+    fileMode: "preview",
+    preview: true,
+    view: { id: tab.id, resource: tab.resource },
+  });
+  expect(
+    surface([{ ...document, projectId: "another-project" }]),
+  ).toMatchObject({
+    kind: "unresolved",
+    entity: null,
+    view: { id: tab.id },
+  });
+  tab.preview = false;
+  expect(surface([document])).toMatchObject({
+    kind: "file",
+    preview: false,
+    view: { id: tab.id },
+  });
+});
+
 it("retains owner file identity and preview state across loading and pinning", async () => {
   const ownership = fixture();
   const tab = ownership.windows[0]!.panes[0]!.tabs[0]!;

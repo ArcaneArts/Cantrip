@@ -3874,6 +3874,29 @@ export const terminals = pgTable(
   ],
 );
 
+/** Shared document location. View preferences live in workspace tabs. */
+export const fileDocuments = pgTable(
+  "file_documents",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    // Immutable historical bindings, not checkout retention leases. Creation and
+    // every operation join current ownership; removed checkouts leave documents
+    // recoverable but unavailable rather than cascading deletion or blocking cleanup.
+    workerId: text("worker_id").notNull(),
+    worktreeId: text("worktree_id").notNull(),
+    protectedState: jsonb("protected_state")
+      .$type<SurfacePrivateStateOpaque>()
+      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [index("file_documents_project_index").on(table.projectId)],
+);
+
 export const explorers = pgTable("explorers", {
   id: text("id").primaryKey(),
   projectId: text("project_id")

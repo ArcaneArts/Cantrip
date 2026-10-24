@@ -69,6 +69,7 @@ import { clientLogger } from "@/lib/client-log-relay";
 import { explorerFileIntentContext } from "@/lib/explorer-lifecycle-trace";
 import { requestGitFileHistory } from "@/lib/git-history-navigation";
 import { cn } from "@/lib/utils";
+import type { FileAccess } from "@/lib/file-access";
 
 const StructuredFileVisual = lazy(async () => {
   const module = await import("@/components/explorer/structured-file-visual");
@@ -81,6 +82,7 @@ function RestoredView({ onReady }: { onReady(): void }) {
 
 function ExplorerMediaView({
   explorerId,
+  fileAccess,
   kind,
   mimeType,
   path,
@@ -89,6 +91,7 @@ function ExplorerMediaView({
   onError,
 }: {
   explorerId: string;
+  fileAccess?: FileAccess;
   kind: ExplorerMediaKind;
   mimeType: string;
   path: string;
@@ -107,7 +110,9 @@ function ExplorerMediaView({
     let objectUrl: string | null = null;
     setFailed(false);
     setSource(null);
-    void loadExplorerMedia(explorerId, path)
+    void (
+      fileAccess ? fileAccess.media(path) : loadExplorerMedia(explorerId, path)
+    )
       .then((blob) => {
         if (disposed) return;
         objectUrl = URL.createObjectURL(blob);
@@ -120,7 +125,7 @@ function ExplorerMediaView({
       disposed = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [explorerId, path, revision]);
+  }, [explorerId, path, revision, fileAccess]);
   if (failed) {
     return (
       <div className="grid h-full place-items-center p-6">
@@ -197,6 +202,7 @@ export interface ExplorerHeaderState {
 
 export interface ExplorerTransferState {
   explorerId: string;
+  documentId?: string;
   projectId: string;
   worktreeId: string;
   workerId: string;
@@ -245,10 +251,31 @@ export interface IncomingEditorView<T> {
   staging?: ExplorerTransferStaging;
 }
 
+/** An editor view model, not an Explorer entity or a mutable tree selection. */
+export interface FileDocumentEditorView {
+  kind: "file-document";
+  id: string;
+  documentId: string;
+  projectId: string;
+  worktreeId: string;
+  activeWorkerId: string;
+  selectedPath: string;
+  fileMode: ExplorerFileMode;
+  title: string;
+  setMode(mode: ExplorerFileMode): void | Promise<void>;
+  openFile(path: string): void;
+}
+function isDocumentView(
+  view: ExplorerSummary | FileDocumentEditorView,
+): view is FileDocumentEditorView {
+  return "kind" in view && view.kind === "file-document";
+}
+
 export function ExplorerView({
   active = true,
   appearance,
   explorer,
+  fileAccess,
   graphRequest,
   gitStatus,
   onChanged,
@@ -274,7 +301,8 @@ export function ExplorerView({
   transferStaging?: ExplorerTransferStaging;
   active?: boolean;
   appearance: CodeAppearance;
-  explorer: ExplorerSummary;
+  explorer: ExplorerSummary | FileDocumentEditorView;
+  fileAccess?: FileAccess;
   graphRequest?: ExplorerGraphRequest | null;
   gitStatus?: GitStatus;
   onChanged?(explorer: ExplorerSummary): void;
@@ -470,10 +498,13 @@ export function ExplorerView({
       selectedPath &&
       explorerMediaTypeForPath(selectedPath) === null,
     ),
-    queryFn: () => getExplorerFile(explorer.id, selectedPath!, fileBinding),
+    queryFn: () =>
+      fileAccess
+        ? fileAccess.read(selectedPath!)
+        : getExplorerFile(explorer.id, selectedPath!, fileBinding),
     queryKey: [
       "explorer-file",
-      explorer.id,
+      fileAccess?.cacheKey ?? explorer.id,
       selectedPath,
       streamEncryption.bindingKey,
     ],
@@ -491,7 +522,10 @@ export function ExplorerView({
       path: string;
       version: string;
       binding: typeof fileBinding;
-    }) => saveExplorerFile(explorerId, { content, path, version }, binding),
+    }) =>
+      fileAccess
+        ? fileAccess.save({ content, path, version })
+        : saveExplorerFile(explorerId, { content, path, version }, binding),
   });
   const saveFileError = saveFile.error;
   const saveFilePending = saveFile.isPending;
@@ -513,6 +547,7 @@ export function ExplorerView({
       explorer.projectId,
       explorer.worktreeId,
       explorer.activeWorkerId,
+      isDocumentView(explorer) ? explorer.documentId : null,
       transientFilePath,
       surfaceInstanceId,
     ],
@@ -530,6 +565,7 @@ export function ExplorerView({
       explorer.worktreeId,
       explorer.activeWorkerId,
       surfaceInstanceId,
+      isDocumentView(explorer) ? explorer.documentId : null,
     ],
   );
   const transferInstalling = Boolean(
@@ -736,15 +772,21 @@ export function ExplorerView({
     (next: { selectedPath: string | null; fileMode: ExplorerFileMode }) => {
       if (transferSuspendedRef.current || transferInstallingRef.current)
         return Promise.resolve(false);
+      if (isDocumentView(explorer)) {
+        if (next.selectedPath !== explorer.selectedPath)
+          return Promise.resolve(false);
+      }
       applyViewState(next);
       if (transientFilePath) return Promise.resolve(true);
       if (mountedRef.current) setViewStatePending((count) => count + 1);
       const operation = viewStateQueueRef.current.then(async () => {
         try {
-          const updated = await updateExplorerViewState(explorer.id, next);
+          const updated = isDocumentView(explorer)
+            ? (await explorer.setMode(next.fileMode), null)
+            : await updateExplorerViewState(explorer.id, next);
           if (mountedRef.current) {
             setViewStateError(null);
-            onChanged?.(updated);
+            if (updated) onChanged?.(updated);
           }
           return true;
         } catch (error) {
@@ -772,7 +814,7 @@ export function ExplorerView({
       viewStateQueueRef.current = operation;
       return operation;
     },
-    [applyViewState, explorer.id, onChanged, transientFilePath],
+    [applyViewState, explorer, onChanged, transientFilePath],
   );
 
   const loadFile = useCallback(
@@ -793,12 +835,25 @@ export function ExplorerView({
       }
       await queryClient.invalidateQueries({
         exact: true,
-        queryKey: ["explorer-file", explorer.id, path, bindingKey],
+        queryKey: [
+          "explorer-file",
+          fileAccess?.cacheKey ?? explorer.id,
+          path,
+          bindingKey,
+        ],
         refetchType: "none",
       });
       await queryClient.fetchQuery({
-        queryFn: () => getExplorerFile(explorer.id, path, fileBinding),
-        queryKey: ["explorer-file", explorer.id, path, bindingKey],
+        queryFn: () =>
+          fileAccess
+            ? fileAccess.read(path)
+            : getExplorerFile(explorer.id, path, fileBinding),
+        queryKey: [
+          "explorer-file",
+          fileAccess?.cacheKey ?? explorer.id,
+          path,
+          bindingKey,
+        ],
       });
       if (
         !mountedRef.current ||
@@ -810,7 +865,7 @@ export function ExplorerView({
       }
       // The query result is installed by the identity-fenced document effect.
     },
-    [explorer.id, queryClient, resetSaveFile, fileBinding],
+    [explorer.id, queryClient, resetSaveFile, fileBinding, fileAccess],
   );
 
   useEffect(() => {
@@ -910,7 +965,12 @@ export function ExplorerView({
       if (!savedFile) return !document.dirty;
       if (bindingKey)
         queryClient.setQueryData(
-          ["explorer-file", explorer.id, savedFile.path, bindingKey],
+          [
+            "explorer-file",
+            fileAccess?.cacheKey ?? explorer.id,
+            savedFile.path,
+            bindingKey,
+          ],
           savedFile,
         );
       if (
@@ -978,6 +1038,7 @@ export function ExplorerView({
     saveFilePending,
     nativeDocumentId,
     fileBinding,
+    fileAccess,
   ]);
 
   const reconcile = useCallback(
@@ -1017,7 +1078,13 @@ export function ExplorerView({
   useEffect(() => {
     // Desktop Explorer surfaces remain file browsers. Their editor windows are
     // transient and must not be pulled back inline by legacy saved view state.
-    if (transferSuspended || transientFilePath || onOpenFile) return;
+    if (
+      transferSuspended ||
+      transientFilePath ||
+      onOpenFile ||
+      isDocumentView(explorer)
+    )
+      return;
     const worktreeChanged = worktreeIdRef.current !== explorer.worktreeId;
     const previous = persistedViewStateRef.current;
     // A local open/mode change can render before the query publishes its saved
@@ -1188,7 +1255,8 @@ export function ExplorerView({
       backLabel: graphVisible ? "Close graph" : undefined,
       back,
       canEdit: !graphVisible && editableLanguage !== null,
-      canGoBack: graphVisible || Boolean(selectedPath),
+      canGoBack:
+        !isDocumentView(explorer) && (graphVisible || Boolean(selectedPath)),
       canVisual: !graphVisible && structuredFormat !== null,
       directoryPath: graphVisible
         ? (graphRootPath ?? "")
@@ -1353,6 +1421,9 @@ export function ExplorerView({
           throw new Error("Editor transfer account changed during capture.");
         return {
           explorerId: explorer.id,
+          ...(isDocumentView(explorer)
+            ? { documentId: explorer.documentId }
+            : {}),
           projectId: explorer.projectId,
           worktreeId: explorer.worktreeId,
           workerId: explorer.activeWorkerId,
@@ -1380,6 +1451,12 @@ export function ExplorerView({
           serverId: session?.serverId ?? "",
           ownerId: session?.user.id ?? "",
           explorerId: explorer.id,
+          ...(isDocumentView(explorer)
+            ? {
+                documentId: explorer.documentId,
+                documentPath: explorer.selectedPath,
+              }
+            : {}),
           projectId: explorer.projectId,
           workerId: explorer.activeWorkerId,
           worktreeId: explorer.worktreeId,
@@ -1443,6 +1520,7 @@ export function ExplorerView({
       accountScope,
       cancelClose,
       hasDirtyDocuments,
+      explorer,
       mediaType,
       nativeDocumentId,
       prepareClose,
@@ -1549,6 +1627,10 @@ export function ExplorerView({
   const openEntry = (entry: ExplorerEntry) => {
     if (transferSuspendedRef.current) return;
     if (entry.kind !== "file" || !entry.viewable) return;
+    if (isDocumentView(explorer)) {
+      explorer.openFile(entry.path);
+      return;
+    }
     if (onOpenFile) {
       setViewStateError(null);
       void Promise.resolve(onOpenFile(explorer, entry)).catch(
@@ -1578,7 +1660,7 @@ export function ExplorerView({
   };
 
   const revealEntry = (entry: ExplorerEntry, localFolder: boolean) => {
-    if (!onRevealFolder) return;
+    if (!onRevealFolder || isDocumentView(explorer)) return;
     setViewStateError(null);
     void Promise.resolve(onRevealFolder(explorer, entry, localFolder)).catch(
       (error: unknown) => {
@@ -1600,7 +1682,8 @@ export function ExplorerView({
 
   const openGraphFile = (path: string) => {
     if (onOpenGraphFile) {
-      onOpenGraphFile(explorer, path);
+      if (isDocumentView(explorer)) explorer.openFile(path);
+      else onOpenGraphFile(explorer, path);
       return;
     }
     if (!onOpenFile) setGraphRootPath(undefined);
@@ -1710,6 +1793,7 @@ export function ExplorerView({
               {mediaType ? (
                 <ExplorerMediaView
                   explorerId={explorer.id}
+                  fileAccess={fileAccess}
                   key={`${selectedPath}:${mediaRevision}`}
                   kind={mediaType.kind}
                   mimeType={mediaType.mimeType}
@@ -1781,7 +1865,9 @@ export function ExplorerView({
                         path={file.data.path}
                         onOpenFile={(path) => {
                           setViewStateError(null);
-                          if (onOpenGraphFile) onOpenGraphFile(explorer, path);
+                          if (isDocumentView(explorer)) explorer.openFile(path);
+                          else if (onOpenGraphFile)
+                            onOpenGraphFile(explorer, path);
                           else openEntry(explorerFileEntryForGraphPath(path));
                         }}
                         onError={setViewStateError}
@@ -1801,7 +1887,7 @@ export function ExplorerView({
                 ) : null
               ) : null}
             </div>
-          ) : !selectedPath ? (
+          ) : !selectedPath && !isDocumentView(explorer) ? (
             <div className="flex min-h-0 flex-1 flex-col">
               {viewStateError ? (
                 <div className="shrink-0 border-b border-destructive/30 bg-destructive/5 px-4 py-2 text-xs text-destructive">
@@ -1815,7 +1901,10 @@ export function ExplorerView({
                 onRevealFolder={onRevealFolder ? revealEntry : undefined}
                 revealLabel={revealLabel}
                 onShowInGraph={repositoryGraphAvailable ? openGraph : undefined}
-                onOpenTerminal={(entry) => onOpenTerminal?.(explorer, entry)}
+                onOpenTerminal={(entry) => {
+                  if (!isDocumentView(explorer))
+                    onOpenTerminal?.(explorer, entry);
+                }}
                 queryScope={streamEncryption.bindingKey!}
                 replayKey={entryReplayKey}
                 revealedPath={revealedPath}

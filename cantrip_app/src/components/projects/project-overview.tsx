@@ -213,8 +213,13 @@ export function ProjectOverview({
   const orderedSurfaces = useMemo(
     () =>
       [...surfaces].sort((left, right) =>
-        (right.entity?.updatedAt ?? right.member.updatedAt).localeCompare(
-          left.entity?.updatedAt ?? left.member.updatedAt,
+        (right.kind === "file"
+          ? right.member.updatedAt
+          : (right.entity?.updatedAt ?? right.member.updatedAt)
+        ).localeCompare(
+          left.kind === "file"
+            ? left.member.updatedAt
+            : (left.entity?.updatedAt ?? left.member.updatedAt),
         ),
       ),
     [surfaces],

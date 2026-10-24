@@ -519,6 +519,7 @@ function genericPaneBody(
   if (
     kind === "code" ||
     kind === "explorer" ||
+    kind === "file" ||
     (kind === "terminal" &&
       presentation.activeSurface?.entity.kind !== "run-configuration")
   ) {

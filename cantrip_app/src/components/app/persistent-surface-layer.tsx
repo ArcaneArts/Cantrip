@@ -5,6 +5,7 @@ import { Suspense, useMemo, useSyncExternalStore } from "react";
 import {
   PersistentCodeViews,
   PersistentExplorerViews,
+  PersistentFileDocumentViews,
   PersistentTerminalViews,
   PersistentBrowserViews,
 } from "@/components/app/application-shell-surfaces";
@@ -63,6 +64,7 @@ export function PersistentSurfaceLayer({
     stagedTerminalTransfers,
     incomingTerminalViews,
     incomingExplorerViews,
+    incomingFileDocumentViews,
     incomingCodeViews,
     handleExplorerLifecycleChange,
     handleSidebarFilePreviewLifecycleChange,
@@ -72,6 +74,7 @@ export function PersistentSurfaceLayer({
     openExplorerFileWindow,
     openExplorers,
     openProjectExplorerFile,
+    persistFileViewMode,
     openTerminalLink,
     openTerminalLinkExternally,
     ownedTerminals,
@@ -481,6 +484,35 @@ export function PersistentSurfaceLayer({
           ) : null
         }
       >
+        <PersistentFileDocumentViews
+          incomingViews={incomingFileDocumentViews}
+          key={`documents:${sessionKey}:${selectedProjectId}`}
+          surfaces={(projectSurfaces ?? []).filter(
+            (surface: any) =>
+              !excludedPersistentSurfaceIds?.has(surface.tabKey) &&
+              !excludedPersistentSurfaceIds?.has(surface.tabId),
+          )}
+          placements={surfaceDockPanePresentations?.flatMap(
+            (presentation: any) =>
+              presentation.activeSurface?.definition?.id === "project.file"
+                ? [
+                    {
+                      tabId: presentation.activeSurface.tabKey,
+                      paneId: presentation.pane.id,
+                      portalTarget: presentation.portalTarget,
+                      focused: presentation.focused,
+                    },
+                  ]
+                : [],
+          )}
+          activeTabId={selectedTabKey}
+          appearance={codeAppearance}
+          onlineWorkerIds={onlineWorkerIds}
+          onOpenFile={openProjectExplorerFile}
+          onModeChange={persistFileViewMode}
+          onHeaderChange={setExplorerHeader}
+          onLifecycleChange={handleExplorerLifecycleChange}
+        />
         <PersistentExplorerViews
           incomingViews={incomingExplorerViews}
           initialTransfers={stagedExplorerTransfers}

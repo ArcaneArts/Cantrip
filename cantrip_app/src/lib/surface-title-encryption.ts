@@ -1,4 +1,10 @@
 import {
+  clearSensitiveBytes,
+  computeBlindLookupTag,
+  decodeBase64Url,
+  deriveLookupKey,
+} from "@cantrip/crypto";
+import {
   browserSummarySchema,
   codeTabSummarySchema,
   explorerSummarySchema,
@@ -13,6 +19,7 @@ import {
   type CodeTabWireSummary,
   type ExplorerSummary,
   type ExplorerWireSummary,
+  type FileDocumentWireSummary,
   type ProjectViewSummary,
   type ProjectViewWireSummary,
   type RemoteDesktopFleet,
@@ -31,6 +38,8 @@ import type {
 import {
   browserPrivateStateProtectedContentSchema,
   explorerPrivateStateProtectedContentSchema,
+  fileDocumentPrivateStateProtectedContentSchema,
+  fileDocumentPrivateStateOpaqueSchema,
   remoteDesktopPrivateInventoryProtectedContentSchema,
   remoteDesktopPrivateStateProtectedContentSchema,
   terminalPrivateStateProtectedContentSchema,
@@ -110,6 +119,121 @@ export class SurfaceTitleEncryptionAdapter {
       },
       service: this.service,
     });
+  }
+
+  fileDocumentId(location: {
+    projectId: string;
+    workerId: string;
+    worktreeId: string;
+    path: string;
+  }): string {
+    const identity = this.identity();
+    const value = fileDocumentPrivateStateProtectedContentSchema.parse({
+      version: 1,
+      classification: { recordKind: "file-document-state" },
+      ...location,
+    });
+    // This is the identity derivation version, not the ciphertext revision.
+    // Envelope revision changes must not rename a document. Callers reuse
+    // existing catalog IDs rather than deriving replacements for those records.
+    const componentKey = this.service.componentKey({
+      component: "repository-content",
+      identity,
+      keyRevision: 1,
+    });
+    let lookupKey: Uint8Array | undefined;
+    try {
+      lookupKey = deriveLookupKey({
+        componentKey,
+        ownerId: identity.ownerId,
+        component: "repository-content",
+        table: "file_documents",
+        field: "document_identity",
+        keyRevision: 1,
+      });
+      const bytes = decodeBase64Url(
+        computeBlindLookupTag(
+          lookupKey,
+          JSON.stringify([
+            identity.serverId,
+            identity.ownerId,
+            value.projectId,
+            value.workerId,
+            value.worktreeId,
+            value.path,
+          ]),
+        ),
+      ).slice(0, 16);
+      // RFC 9562 application-defined UUID with 122 keyed identity bits.
+      bytes[6] = (bytes[6]! & 0x0f) | 0x80;
+      bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+      const hex = Array.from(bytes, (byte) =>
+        byte.toString(16).padStart(2, "0"),
+      ).join("");
+      return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+    } finally {
+      if (lookupKey) clearSensitiveBytes(lookupKey);
+      clearSensitiveBytes(componentKey);
+    }
+  }
+
+  async protectFileDocumentState(
+    documentId: string,
+    location: {
+      projectId: string;
+      workerId: string;
+      worktreeId: string;
+      path: string;
+    },
+  ) {
+    const identity = this.identity();
+    return fileDocumentPrivateStateOpaqueSchema.parse(
+      await encodeSurfacePrivateStateForClient({
+        identity,
+        context: {
+          serverId: identity.serverId,
+          resource: "file-document-row",
+          resourceId: documentId,
+          operationId: null,
+          recordKind: "file-document-state",
+        },
+        content: fileDocumentPrivateStateProtectedContentSchema.parse({
+          ...location,
+          version: 1,
+          classification: { recordKind: "file-document-state" },
+        }),
+        service: this.service,
+      }),
+    );
+  }
+
+  async openFileDocument(document: FileDocumentWireSummary) {
+    const identity = this.identity();
+    const state = fileDocumentPrivateStateProtectedContentSchema.parse(
+      await decodeSurfacePrivateStateForClient({
+        identity,
+        context: {
+          serverId: identity.serverId,
+          resource: "file-document-row",
+          resourceId: document.id,
+          operationId: null,
+          recordKind: "file-document-state",
+        },
+        opaque: document.stateProtection,
+        service: this.service,
+      }),
+    );
+    if (
+      state.projectId !== document.projectId ||
+      state.workerId !== document.workerId ||
+      state.worktreeId !== document.worktreeId
+    ) {
+      throw new Error(
+        "The protected file document belongs to another checkout.",
+      );
+    }
+    const { stateProtection: _protection, ...publicDocument } = document;
+    return { ...publicDocument, path: state.path };
   }
 
   protectExplorerState(

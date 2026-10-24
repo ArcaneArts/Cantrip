@@ -22,6 +22,7 @@ import {
   getTerminals,
 } from "@/lib/api";
 import { clientLogger } from "@/lib/client-log-relay";
+import { getFileDocuments } from "@/lib/api/file-documents";
 import {
   listRunConfigurationRuntimes,
   listRunConfigurations,
@@ -157,6 +158,12 @@ export function useProjectWorkspaceResources({
     queryKey: ["explorers", selectedProjectId],
     refetchInterval: projectResourcesLive ? false : 10_000,
   });
+  const fileDocuments = useQuery({
+    enabled: Boolean(selectedProjectId),
+    queryFn: () => getFileDocuments(selectedProjectId!),
+    queryKey: ["file-documents", selectedProjectId],
+    refetchInterval: projectResourcesLive ? false : 10_000,
+  });
   const browsers = useQuery({
     enabled: Boolean(selectedProjectId),
     queryFn: () => getBrowsers(selectedProjectId!),
@@ -275,6 +282,7 @@ export function useProjectWorkspaceResources({
     chats,
     codeTabs,
     explorers,
+    fileDocuments,
     projectTokenUsage,
     projectViews,
     remoteDesktop,

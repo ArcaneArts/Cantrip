@@ -9,9 +9,14 @@ const surfaceProps = vi.hoisted(() => ({
   code: null as Record<string, unknown> | null,
   explorer: null as Record<string, unknown> | null,
   browser: null as Record<string, unknown> | null,
+  documents: null as Record<string, unknown> | null,
 }));
 
 vi.mock("@/components/app/application-shell-surfaces", () => ({
+  PersistentFileDocumentViews: (props: Record<string, unknown>) => {
+    surfaceProps.documents = props;
+    return null;
+  },
   PersistentBrowserViews: (props: Record<string, unknown>) => {
     surfaceProps.browser = props;
     return null;
@@ -35,6 +40,67 @@ vi.mock("@/components/workspace/project-tab-bar", () => ({
 }));
 
 describe("persistent surface layer", () => {
+  it("routes document views by tab identity and excludes transferred views", async () => {
+    (
+      globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = true;
+    const surface = {
+      kind: "file",
+      definition: { id: "project.file" },
+      tabKey: "file-view",
+      tabId: "document",
+      entity: { id: "document", projectId: "project" },
+    };
+    const host = {};
+    const incomingViews = [{ tabId: "incoming-view" }];
+    const persistFileViewMode = vi.fn(async () => {});
+    const bindings = {
+      appMode: "ide",
+      openExplorers: [],
+      selectedProjectId: "project",
+      selectedTabKey: "file-view",
+      projectSurfaces: [surface],
+      incomingFileDocumentViews: incomingViews,
+      persistFileViewMode,
+      dockPanePresentations: [
+        {
+          activeSurface: surface,
+          pane: { id: "pane" },
+          portalTarget: host,
+          focused: true,
+        },
+      ],
+    };
+    let tree!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      tree = TestRenderer.create(
+        <PersistentSurfaceLayer bindings={bindings} />,
+      );
+    });
+    expect(surfaceProps.documents?.surfaces).toEqual([surface]);
+    expect(surfaceProps.documents?.activeTabId).toBe("file-view");
+    expect(surfaceProps.documents?.incomingViews).toBe(incomingViews);
+    await (surfaceProps.documents?.onModeChange as Function)(
+      "file-view",
+      "visual",
+    );
+    expect(persistFileViewMode).toHaveBeenCalledWith("file-view", "visual");
+    expect(surfaceProps.documents?.placements).toEqual([
+      { tabId: "file-view", paneId: "pane", portalTarget: host, focused: true },
+    ]);
+    await act(async () => {
+      tree.update(
+        <PersistentSurfaceLayer
+          bindings={{
+            ...bindings,
+            excludedPersistentSurfaceIds: new Set(["file-view"]),
+          }}
+        />,
+      );
+    });
+    expect(surfaceProps.documents?.surfaces).toEqual([]);
+    await act(async () => tree.unmount());
+  });
   it("routes browser ownership and callbacks through the persistent tab layer", async () => {
     (
       globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }

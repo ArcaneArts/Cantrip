@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { explorerFileModeSchema } from "./explorer-surfaces.js";
 import { projectPaneRegionSchema } from "./project-pane-identifiers.js";
 import {
   projectCenterSplitEdgeSchema,
@@ -39,6 +40,13 @@ export const workspaceActionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("close-tab"), tabId: id }).strict(),
   z.object({ type: z.literal("close-pane"), paneId: id }).strict(),
   z.object({ type: z.literal("pin"), tabId: id }).strict(),
+  z
+    .object({
+      type: z.literal("file-mode"),
+      tabId: id,
+      mode: explorerFileModeSchema,
+    })
+    .strict(),
   z
     .object({
       type: z.literal("rename-pane"),

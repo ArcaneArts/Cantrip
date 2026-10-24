@@ -110,15 +110,15 @@ const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
     "601cfa1ef62b1fe37e7779ace69d80961404ad97ddc2089da85eef315183f9d9",
   applicationRoutes:
-    "61773f4a7c34a263177c5c73123e3d3ba29b3a50699947d725463f3ad7611eba",
+    "17506e8b974f8db337034a2d29f93248839df8cb66a6369f88a9d254e31e3ccb",
   clientControlCommands:
     "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
   cliCommands:
     "dac89683226ba9ee6f6211eba252fb0b83a5a022aa9150f107315733a4e44251",
   liveResources:
-    "60a4250f1562ae48ad8b931cc0324b2e1653b9cb59bc5cc31cb357349a4063a1",
+    "1df67a68c239eaa16bb27951a17becba63fd86bf36c84ca235846157e1b75b1a",
   workerCommands:
-    "23c6dcf548cd2a4c274263f5ca6fb7e58276d3a326df4bf8e3d984bcbab9d066",
+    "32c03ddad943054978bbafa0eb83244b49f225c453a6bce9fc937e05c1c50b26",
   tunnelFrameKinds:
     "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8",
 };
@@ -200,6 +200,7 @@ const DURABLE_TABLE_CLASSIFICATIONS = {
   taskDispatchCycles: "minimized-operational-metadata",
   terminals: "endpoint-protected",
   explorers: "endpoint-protected",
+  fileDocuments: "endpoint-protected",
   codeTabs: "endpoint-protected",
   browsers: "endpoint-protected",
   remoteSurfaces: "endpoint-protected",
@@ -1553,6 +1554,12 @@ function surfacePrivateStateRouteBoundaryAudit(routes) {
 function surfaceStreamRouteBoundaryAudit(routes, applicationText) {
   const failures = [];
   const requirements = [
+    [
+      "POST",
+      "/api/file-documents/:documentId/operation",
+      "surfaceStreamWireRequestSchema",
+      "opaque-file-document-operation",
+    ],
     [
       "POST",
       "/api/explorers/:explorerId/operation",
@@ -3421,6 +3428,19 @@ function durableTableContentInventory(schemaText) {
 }
 
 function applicationRouteContentClassification(route) {
+  if (
+    [
+      "/api/projects/:projectId/file-documents",
+      "/api/file-documents/:documentId",
+      "/api/file-documents/:documentId/operation",
+    ].includes(route.path)
+  ) {
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "owner/project-authorized immutable document catalog; paths use row-bound encrypted state; file requests/results use operation-bound surface-stream envelopes and exact worker-side location checks",
+    };
+  }
   const native = nativeRouteContentClassification(route);
   if (native) return native;
   const key = `${route.method} ${route.path}`;
@@ -3558,6 +3578,13 @@ function applicationRouteContentClassification(route) {
 }
 
 function workerCommandContentClassification(command) {
+  if (command === "file-document.operation") {
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "server-derived checkout authority routes encrypted document location and file payloads; worker decrypts and confines operations to the exact document",
+    };
+  }
   if (command === "label.generate") {
     return {
       classification: "endpoint-protected",
@@ -3658,6 +3685,13 @@ function workerCommandContentClassification(command) {
 }
 
 function liveResourceContentClassification(resource) {
+  if (resource === "file-document") {
+    return {
+      classification: "minimized-operational-metadata",
+      rationale:
+        "owner-scoped project catalog invalidation only; no paths, file contents, or view placement",
+    };
+  }
   if (resource === "tunnel") {
     return {
       classification: "endpoint-protected",
@@ -3880,6 +3914,10 @@ async function surfaceStreamProtocolBoundaryAudit(streamProtocolText) {
     [
       "explorer.operation",
       /type:\s*z\.literal\(["']explorer\.operation["']\)[\s\S]{0,500}surfaceStreamWireRequestSchema\.shape/u,
+    ],
+    [
+      "file-document.operation",
+      /type:\s*z\.literal\(["']file-document\.operation["']\)[\s\S]{0,500}stateProtection:\s*fileDocumentPrivateStateOpaqueSchema[\s\S]{0,100}surfaceStreamWireRequestSchema\.shape/u,
     ],
     [
       "terminal.input",

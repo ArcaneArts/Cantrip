@@ -21,6 +21,10 @@ import {
   installExplorerWorktreeRoute,
 } from "./explorer-runtime.js";
 import { installProjectExportRoutes } from "./project-exports.js";
+import {
+  installFileDocumentRoutes,
+  installFileDocumentOperationRoute,
+} from "./file-documents.js";
 import { installProjectExternalChatHistoryRoute } from "./project-external-chat-history.js";
 import { installProjectViewRoutes } from "./project-views.js";
 import { installRemoteDesktopManagementRoutes } from "./remote-desktop-management.js";
@@ -134,6 +138,8 @@ export function installInteractiveWorkspaceRoutes(
   installTerminalWorktreeLifecycleRoutes(app, terminalContextRouteDependencies);
 
   installExplorerListRoute(app, dependencies);
+  installFileDocumentRoutes(app, dependencies);
+  installFileDocumentOperationRoute(app, dependencies);
 
   installCodeTabManagementRoutes(app, {
     ...dependencies,

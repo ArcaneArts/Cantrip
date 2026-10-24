@@ -7,6 +7,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { flushSync } from "react-dom";
+import { getFileDocuments, type FileDocument } from "@/lib/api/file-documents";
 import type {
   TerminalSummary,
   ExplorerSummary,
@@ -45,6 +46,13 @@ const subscribeSession = (listener: () => void) =>
   onClientSessionIdentityChanged(listener);
 const noSubscription = () => () => {};
 type StagedEditor =
+  | {
+      tabId: string;
+      kind: "file";
+      state: ExplorerTransferState;
+      resource: FileDocument;
+      staging: ExplorerTransferStaging;
+    }
   | {
       tabId: string;
       kind: "browser";
@@ -278,24 +286,54 @@ export function useWorkspaceEditorTransfer({
             throw new Error(
               "This surface does not yet have a workspace transfer adapter.",
             );
-          const [explorers, code, terminals, browsers] = await Promise.all([
-            editorTabs.some(
-              ({ resource }) => resource.definitionId !== "project.code",
-            )
-              ? getExplorers(layout.projectId)
-              : [],
-            editorTabs.some(
-              ({ resource }) => resource.definitionId === "project.code",
-            )
-              ? getCodeTabs(layout.projectId)
-              : [],
-            terminalTabs.length ? getTerminals(layout.projectId) : [],
-            browserTabs.length ? getBrowsers(layout.projectId) : [],
-          ]);
+          const [explorers, code, terminals, browsers, documents] =
+            await Promise.all([
+              editorTabs.some(
+                ({ resource }) => resource.definitionId !== "project.code",
+              )
+                ? getExplorers(layout.projectId)
+                : [],
+              editorTabs.some(
+                ({ resource }) => resource.definitionId === "project.code",
+              )
+                ? getCodeTabs(layout.projectId)
+                : [],
+              terminalTabs.length ? getTerminals(layout.projectId) : [],
+              browserTabs.length ? getBrowsers(layout.projectId) : [],
+              editorTabs.some(
+                ({ resource }) => resource.definitionId === "project.file",
+              )
+                ? getFileDocuments(layout.projectId)
+                : [],
+            ]);
           assertCurrent();
           const expected = editorTabs.map((tab) => {
             const isCode = tab.resource.definitionId === "project.code";
             const resource = tab.resource;
+            const document =
+              resource.kind === "entity" &&
+              resource.definitionId === "project.file"
+                ? documents.find(({ id }) => id === resource.resourceId)
+                : undefined;
+            if (document) {
+              if (document.projectId !== layout.projectId)
+                throw new Error(
+                  "Transferred document resource is unavailable.",
+                );
+              return {
+                tabId: tab.id,
+                scope: {
+                  serverId: identity.serverId,
+                  ownerId: identity.userId,
+                  explorerId: tab.id,
+                  documentId: document.id,
+                  documentPath: document.path,
+                  projectId: document.projectId,
+                  worktreeId: document.worktreeId,
+                  workerId: document.workerId,
+                },
+              };
+            }
             const entity =
               resource.kind === "entity"
                 ? (isCode ? code : explorers).find(
@@ -387,6 +425,16 @@ export function useWorkspaceEditorTransfer({
           const stagedEditors = snapshots.map(
             ({ tabId, state }, index): StagedEditor => {
               const staging = restoration();
+              if (state.documentId)
+                return {
+                  tabId,
+                  state,
+                  kind: "file",
+                  resource: documents.find(
+                    ({ id }) => id === state.documentId,
+                  )!,
+                  staging,
+                };
               return editorTabs[index]!.resource.definitionId === "project.code"
                 ? {
                     tabId,
@@ -507,6 +555,7 @@ export function useWorkspaceEditorTransfer({
         stagedTerminalTransfers: undefined,
         incomingTerminalViews: undefined,
         incomingExplorerViews: undefined,
+        incomingFileDocumentViews: undefined,
         incomingCodeViews: undefined,
         incomingBrowserViews: undefined,
       };
@@ -514,6 +563,7 @@ export function useWorkspaceEditorTransfer({
     const code = new Map<string, ExplorerTransferState>();
     const terminals = new Map<string, TerminalViewState>();
     const incomingExplorerViews: IncomingEditorView<ExplorerSummary>[] = [];
+    const incomingFileDocumentViews: IncomingEditorView<FileDocument>[] = [];
     const incomingCodeViews: IncomingEditorView<CodeTabSummary>[] = [];
     const incomingBrowserViews: IncomingBrowserView[] = [];
     const incomingTerminalViews: {
@@ -524,6 +574,13 @@ export function useWorkspaceEditorTransfer({
     }[] = [];
     for (const editor of staged.editors) {
       if (!retainedTabs.has(editor.tabId)) continue;
+      if (editor.kind === "file") {
+        incomingFileDocumentViews.push({
+          ...editor,
+          staging: pendingTabs.has(editor.tabId) ? editor.staging : undefined,
+        });
+        continue;
+      }
       if (editor.kind === "browser") {
         incomingBrowserViews.push({
           ...editor,
@@ -558,6 +615,7 @@ export function useWorkspaceEditorTransfer({
       stagedTerminalTransfers: terminals,
       incomingTerminalViews,
       incomingExplorerViews,
+      incomingFileDocumentViews,
       incomingCodeViews,
       incomingBrowserViews,
     };

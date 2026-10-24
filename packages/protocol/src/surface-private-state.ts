@@ -12,6 +12,7 @@ export const SURFACE_PRIVATE_STATE_PROTECTED_CONTENT_BYTES_LIMIT =
 export const surfacePrivateStateRecordKindSchema = z.enum([
   "terminal-state",
   "explorer-state",
+  "file-document-state",
   "browser-state",
   "remote-desktop-state",
   "remote-desktop-inventory",
@@ -22,6 +23,7 @@ export const surfacePrivateStateResourceSchema = z.enum([
   "terminal-operation",
   "explorer-row",
   "explorer-operation",
+  "file-document-row",
   "browser-row",
   "browser-remote-surface",
   "browser-operation",
@@ -83,6 +85,27 @@ const protectedHttpUrlSchema = z
   .refine((value) => /^https?:\/\//u.test(value), {
     message: "Protected browser URLs must use HTTP or HTTPS.",
   });
+
+/** Immutable document location, separate from any tab's mode or selection. */
+export const fileDocumentPrivateStateProtectedContentSchema = z
+  .object({
+    version: z.literal(1),
+    classification: z
+      .object({ recordKind: z.literal("file-document-state") })
+      .strict(),
+    projectId: z.string().min(1),
+    workerId: z.string().min(1),
+    worktreeId: z.string().min(1),
+    path: z
+      .string()
+      .min(1)
+      .max(8_192)
+      .refine(
+        (value) => !value.includes("\0"),
+        "File paths cannot contain NUL.",
+      ),
+  })
+  .strict();
 
 export const browserPrivateStateProtectedContentSchema = z
   .object({
@@ -182,6 +205,7 @@ export const remoteDesktopPrivateInventoryProtectedContentSchema = z
 export const surfacePrivateStateProtectedContentSchema = z.union([
   terminalPrivateStateProtectedContentSchema,
   explorerPrivateStateProtectedContentSchema,
+  fileDocumentPrivateStateProtectedContentSchema,
   browserPrivateStateProtectedContentSchema,
   remoteDesktopPrivateStateProtectedContentSchema,
   remoteDesktopPrivateInventoryProtectedContentSchema,
@@ -234,6 +258,9 @@ function opaqueFor(recordKind: SurfacePrivateStateRecordKind) {
 
 export const terminalPrivateStateOpaqueSchema = opaqueFor("terminal-state");
 export const explorerPrivateStateOpaqueSchema = opaqueFor("explorer-state");
+export const fileDocumentPrivateStateOpaqueSchema = opaqueFor(
+  "file-document-state",
+);
 export const browserPrivateStateOpaqueSchema = opaqueFor("browser-state");
 export const remoteDesktopPrivateStateOpaqueSchema = opaqueFor(
   "remote-desktop-state",

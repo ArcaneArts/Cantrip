@@ -206,6 +206,7 @@ export function useProjectSurfaceSelection({
     | "chats"
     | "codeTabs"
     | "explorers"
+    | "fileDocuments"
     | "projectViews"
     | "runConfigurations"
     | "tabLayout"
@@ -235,6 +236,7 @@ export function useProjectSurfaceSelection({
         chats: resources.chats.data ?? [],
         codeTabs: resources.codeTabs.data ?? [],
         explorers: resources.explorers.data ?? [],
+        fileDocuments: resources.fileDocuments.data ?? [],
         projectViews: resources.projectViews.data ?? [],
         terminals: displayTerminals,
       },
@@ -249,6 +251,7 @@ export function useProjectSurfaceSelection({
     resources.chats.data,
     resources.codeTabs.data,
     resources.explorers.data,
+    resources.fileDocuments.data,
     resources.projectViews.data,
     resources.tabLayout.data,
     displayTerminals,

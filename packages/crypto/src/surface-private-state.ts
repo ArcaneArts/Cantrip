@@ -32,6 +32,7 @@ export const surfacePrivateStateResourceTables = {
   "terminal-row": "terminals",
   "terminal-operation": "protocol:terminal-operation",
   "explorer-row": "explorers",
+  "file-document-row": "file_documents",
   "explorer-operation": "protocol:explorer-operation",
   "browser-row": "browsers",
   "browser-remote-surface": "remote_surfaces",
@@ -45,6 +46,7 @@ export const surfacePrivateStateResourceTables = {
 export const surfacePrivateStateFields = {
   "terminal-state": "protected_terminal_state",
   "explorer-state": "protected_explorer_state",
+  "file-document-state": "protected_file_document_state",
   "browser-state": "protected_browser_state",
   "remote-desktop-state": "protected_remote_desktop_state",
   "remote-desktop-inventory": "protected_remote_desktop_inventory",
@@ -53,6 +55,7 @@ export const surfacePrivateStateFields = {
 const allowedResources = {
   "terminal-state": ["terminal-row", "terminal-operation"],
   "explorer-state": ["explorer-row", "explorer-operation"],
+  "file-document-state": ["file-document-row"],
   "browser-state": [
     "browser-row",
     "browser-remote-surface",
@@ -72,6 +75,7 @@ const allowedResources = {
 const persistentResources = new Set<SurfacePrivateStateResource>([
   "terminal-row",
   "explorer-row",
+  "file-document-row",
   "browser-row",
   "browser-remote-surface",
   "remote-desktop-row",

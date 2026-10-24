@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   clearSensitiveBytes,
+  decodeBase64Url,
   decryptRepositoryOperationPayload,
   deriveComponentKey,
   encryptRepositoryOperationPayload,
+  encodeBase64Url,
   generateAccountMasterKey,
 } from "../src/index.js";
 
@@ -69,7 +71,13 @@ describe("repository operation encryption", () => {
         ).rejects.toThrow();
       }
       const tampered = structuredClone(opaque);
-      tampered.envelope.ciphertext = `${tampered.envelope.ciphertext.slice(0, -1)}A`;
+      // Mutate authenticated bytes, not possibly identical base64 padding bits.
+      const ciphertext = decodeBase64Url(tampered.envelope.ciphertext);
+      ciphertext[0] = ciphertext[0]! ^ 1;
+      tampered.envelope.ciphertext = encodeBase64Url(ciphertext);
+      expect(decodeBase64Url(tampered.envelope.ciphertext)).not.toEqual(
+        decodeBase64Url(opaque.envelope.ciphertext),
+      );
       await expect(
         decryptRepositoryOperationPayload({
           ownerId,

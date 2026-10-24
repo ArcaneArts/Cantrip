@@ -119,7 +119,54 @@ const cases: Array<{
   },
 ];
 
+cases.push({
+  context: {
+    serverId,
+    resource: "file-document-row",
+    resourceId: "document-1",
+    operationId: null,
+    recordKind: "file-document-state",
+  },
+  content: {
+    version: 1,
+    classification: { recordKind: "file-document-state" },
+    projectId: "project-1",
+    workerId: "worker-1",
+    worktreeId: "worktree-1",
+    path: "Private/document.ts",
+  },
+});
+
 describe("surface private-state trusted-endpoint codec", () => {
+  it("rejects file-document state replayed as another document or Explorer", async () => {
+    const entry = cases.at(-1)!;
+    const componentKey = randomBytes(32);
+    const opaque = await encryptSurfacePrivateState({
+      ownerId,
+      keyRevision,
+      componentKey,
+      ...entry,
+    });
+    for (const context of [
+      { ...entry.context, resourceId: "document-2" },
+      { ...entry.context, serverId: "https://other.test" },
+      {
+        ...entry.context,
+        resource: "explorer-row" as const,
+        recordKind: "explorer-state" as const,
+      },
+    ]) {
+      await expect(
+        decryptSurfacePrivateState({
+          ownerId,
+          keyRevision,
+          componentKey,
+          opaque,
+          context,
+        }),
+      ).rejects.toBeInstanceOf(CantripDecryptionError);
+    }
+  });
   it("round-trips every protected state kind", async () => {
     const componentKey = randomBytes(32);
     for (const entry of cases) {

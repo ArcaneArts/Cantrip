@@ -191,6 +191,7 @@ export const appLiveResourceSchema = z.enum([
   "run-configuration",
   "explorer",
   "explorer-filesystem",
+  "file-document",
   "browser",
   "code-tab",
   "project-view",

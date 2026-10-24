@@ -12,6 +12,7 @@ vi.mock("@/components/app/application-shell-surfaces", async () => ({
   ).PersistentTerminalViews,
   PersistentCodeViews: () => null,
   PersistentExplorerViews: () => null,
+  PersistentFileDocumentViews: () => null,
 }));
 vi.mock("@/components/terminal/linked-console-controls", () => ({
   LinkedConsoleControls: () => null,

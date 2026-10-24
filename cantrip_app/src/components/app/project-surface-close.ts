@@ -216,7 +216,9 @@ function closeInputForSurface(
   surface: ProjectSurface,
 ): ProjectSurfaceCloseInput {
   const kind =
-    surface.kind === "unresolved" ? surface.member.tabKind : surface.kind;
+    surface.kind === "unresolved" || surface.kind === "file"
+      ? surface.member.tabKind
+      : surface.kind;
   return {
     kind:
       kind === "history" ||

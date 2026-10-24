@@ -106,6 +106,11 @@ export function mutationLiveResources(
   if (route.includes("/explorers")) {
     return ["explorer", "project-tab-layout"];
   }
+  // Creating an immutable document changes the catalog, not view placement.
+  // Protected file operations do not mutate document identity metadata.
+  if (route === "/api/projects/:projectId/file-documents") {
+    return ["file-document"];
+  }
   if (route.includes("/browsers")) {
     return ["browser", "project-tab-layout"];
   }
