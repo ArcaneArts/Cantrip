@@ -10,7 +10,6 @@ import type {
 import type { QueryClient } from "@tanstack/react-query";
 import type { Dispatch, SetStateAction } from "react";
 
-import type { SidebarFilePinHandoffState } from "@/components/app/application-shell-model";
 import type {
   ExplorerLifecycleRefs,
   SidebarExplorerMutations,
@@ -46,7 +45,6 @@ interface MutationOperation<Input> {
 }
 
 export function createSidebarExplorerCommands({
-  abandonSidebarFilePinHandoff,
   createSidebarExplorerMutation,
   explorers,
   fileState,
@@ -66,15 +64,11 @@ export function createSidebarExplorerCommands({
   tabLayout,
   worktrees,
 }: {
-  abandonSidebarFilePinHandoff: (
-    handoff: SidebarFilePinHandoffState,
-    message?: string,
-  ) => void;
   createSidebarExplorerMutation: SidebarExplorerMutations["createSidebarExplorerMutation"];
   explorers: ExplorerSummary[] | undefined;
   fileState: Pick<
     SidebarFileState,
-    "setSidebarFilePreview" | "sidebarFilePinHandoffRef" | "sidebarFilePreview"
+    "setSidebarFilePreview" | "sidebarFilePreview"
   >;
   lifecycle: ExplorerLifecycleRefs;
   newGraphExplorer: MutationOperation<{
@@ -110,11 +104,7 @@ export function createSidebarExplorerCommands({
   tabLayout: ProjectTabLayoutSummary | undefined;
   worktrees: ProjectWorktreeSummary[] | undefined;
 }) {
-  const {
-    setSidebarFilePreview,
-    sidebarFilePinHandoffRef,
-    sidebarFilePreview,
-  } = fileState;
+  const { setSidebarFilePreview, sidebarFilePreview } = fileState;
   const {
     explorerLifecycleRef,
     sidebarExplorerCreationKeyRef,
@@ -451,14 +441,6 @@ export function createSidebarExplorerCommands({
         projectId: sidebarFilePreview.projectId,
         samePath: true,
       });
-    }
-    const handoff = sidebarFilePinHandoffRef.current;
-    if (
-      handoff &&
-      sidebarFilePreview?.explorerId === handoff.sourceExplorer.id &&
-      sidebarFilePreview.path === handoff.sourcePath
-    ) {
-      abandonSidebarFilePinHandoff(handoff);
     }
     sidebarFilePreviewLifecycleRef.current = null;
     setSidebarFilePreview(null);

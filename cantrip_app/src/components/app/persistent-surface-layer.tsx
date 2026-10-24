@@ -50,7 +50,6 @@ export function PersistentSurfaceLayer({
     codeSurfaceVisible,
     compactShell,
     closeSurfaceView,
-    completeSidebarFilePinHandoff,
     createProjectSurface,
     creatingSurfaceKinds,
     deleteSurfaceResource,
@@ -111,7 +110,6 @@ export function PersistentSurfaceLayer({
     showServerAdmin,
     showSettings,
     showSidebarPreviewTab,
-    sidebarFilePinHandoff,
     sidebarFilePreview,
     sidebarFilePreviewPaneVisible,
     sidebarFilePreviewVisible,
@@ -673,18 +671,6 @@ export function PersistentSurfaceLayer({
           appearance={codeAppearance}
           graphRequest={explorerGraphRequest}
           gitStatuses={worktreeStatuses}
-          handoffExplorer={
-            sidebarFilePinHandoff?.destinationExplorer?.projectId ===
-            selectedProjectId
-              ? sidebarFilePinHandoff.destinationExplorer
-              : null
-          }
-          handoffSourceExplorer={
-            sidebarFilePinHandoff?.sourceExplorer.projectId ===
-            selectedProjectId
-              ? sidebarFilePinHandoff.sourceExplorer
-              : null
-          }
           key={selectedProjectId ?? "no-project"}
           onChanged={handleExplorerChanged}
           onHeaderChange={
@@ -692,7 +678,6 @@ export function PersistentSurfaceLayer({
               ? setSidebarFilePreviewHeader
               : setExplorerHeader
           }
-          onInlineCodeReady={completeSidebarFilePinHandoff}
           onLifecycleChange={handleExplorerLifecycleChange}
           onTransientLifecycleChange={handleSidebarFilePreviewLifecycleChange}
           onOpenFile={desktopRuntime ? openExplorerFileWindow : undefined}
@@ -747,15 +732,11 @@ export function PersistentSurfaceLayer({
           onlineWorkerIds={onlineWorkerIds}
           openExplorers={openExplorers}
           prewarmExplorer={sidebarExplorerPrewarmTarget({
-            hasOpenExplorer: openExplorers.length > 0,
             isPopout,
-            pinInProgress: Boolean(sidebarFilePinHandoff),
             sidebarExplorer: sidebarInlineExplorer,
           })}
           prewarmSuccessorExplorer={sidebarExplorerPrewarmTarget({
-            hasOpenExplorer: openExplorers.length > 0,
             isPopout,
-            pinInProgress: Boolean(sidebarFilePinHandoff),
             sidebarExplorer: sidebarPreviewSuccessorExplorer,
           })}
         />

@@ -65,7 +65,6 @@ import {
   useSidebarExplorerModel,
   useSidebarExplorerMutations,
   useSidebarExplorerProvisioning,
-  useSidebarFilePinHandoffLifecycle,
   useSidebarFileState,
 } from "@/components/app/sidebar-explorer-controller";
 import {
@@ -376,10 +375,7 @@ export function App() {
   const {
     explorerGraphRequest,
     setExplorerGraphRequest,
-    setSidebarFilePinHandoff,
     setSidebarFilePreview,
-    sidebarFilePinHandoff,
-    sidebarFilePinHandoffRef,
     sidebarFilePreview,
   } = sidebarFileState;
   const [chatConsoleOpenChats, setChatConsoleOpenChats] = useState<
@@ -1147,15 +1143,6 @@ export function App() {
     sidebarPreviewSuccessorExplorer,
     sidebarPreviewExplorer,
   } = sidebarExplorerModel;
-  const { abandonSidebarFilePinHandoff, completeSidebarFilePinHandoff } =
-    useSidebarFilePinHandoffLifecycle({
-      fileState: sidebarFileState,
-      lifecycle: explorerLifecycle,
-      model: sidebarExplorerModel,
-      queryClient,
-      selectedProjectId,
-      setPopoutError,
-    });
   const {
     onlineWorkerIds,
     sidebarExplorerCreationInput,
@@ -2101,7 +2088,6 @@ export function App() {
       preview
         ? openSidebarOwnedFile(explorer, path, true)
         : pinSidebarFileMutation.mutateAsync({ explorer, path }),
-    abandonSidebarFilePinHandoff,
     createSidebarExplorerMutation,
     explorers: explorers.data,
     fileState: sidebarFileState,
@@ -2221,7 +2207,7 @@ export function App() {
     bindWorktreeMutation, bootstrap, browsers, chatRelocationOpen, chatRelocations,
     chatConsoleOpenChats, chats, closeCompactProject, closeProjectTask, closeSidebarFilePreview, codeAppearance,
     codeHeader, codeTabs, stagedExplorerTransfers, stagedCodeTransfers, stagedTerminalTransfers, incomingTerminalViews, incomingExplorerViews, incomingFileDocumentViews, incomingCodeViews, incomingBrowserViews, incomingChatViews, incomingRemoteDesktopViews, commandBarOpen, compactManagedHeader, compactShell,
-    completeSidebarFilePinHandoff, contentRootRef, contentScrolled, createProjectSurface, createSidebarExplorerMutation, createSidebarFolder, createSidebarFile,
+    contentRootRef, contentScrolled, createProjectSurface, createSidebarExplorerMutation, createSidebarFolder, createSidebarFile,
     createWorkspaceMutation, createWorktreeMutation, creatingSurfaceKinds, currentRelocation, deleteBrowserMutation, dockPresentationMutation,
     deleteChatMutation, deleteCodeTabMutation, deleteExplorerMutation, deleteProjectViewMutation, deleteSidebarFileEntry,
     closeSurfaceView, deleteSurfaceResource, deleteTerminalMutation, desktopRuntime, desktopSidebarDrawer,
@@ -2268,7 +2254,7 @@ export function App() {
     settings, settingsPolicyId, settingsSection, showAppToast, showArchivedStandaloneChats,
     showChatConsole, showContentTitlebar, showCustomizations, showImporter, showProjectSettings,
     showServerAdmin, showSettings, showSidebarPreviewTab, sidebarCollapsed, sidebarExplorer,
-    sidebarFilePinHandoff, sidebarFilePreview, sidebarFilePreviewPaneVisible, sidebarFilePreviewVisible, sidebarFileWorkerId, sidebarFileWorkerOnline,
+    sidebarFilePreview, sidebarFilePreviewPaneVisible, sidebarFilePreviewVisible, sidebarFileWorkerId, sidebarFileWorkerOnline,
     sidebarInlineExplorer, sidebarPreviewExplorer, sidebarPreviewSuccessorExplorer, sidebarRef, sidebarResizing, sidebarWidth,
     standaloneChatCreationAvailable, standaloneChatCreationUnavailableReason, standaloneChatWorkerAvailable, standaloneChats, standaloneFilePath,
     standaloneFilesOpen, stopAndDeleteRunTerminalMutation, surfaceCreationFailure, switchToChat, switchToIde,

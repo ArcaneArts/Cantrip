@@ -1643,3 +1643,31 @@ not waive those failures or complete the broader ownership goal.
 Validation: all 19 account-resource-usage and workspace-layout tests passed,
 including execution of the complete accounting query against PGlite; server
 TypeScript checking and `git diff --check` passed.
+
+### Retire the legacy sidebar pin handoff
+
+File-document accounting merged in #2231 (`ede667bd8`); all 19 focused tests
+passed again on integrated Primary. Server behavior CI was still running when
+this cleanup began.
+
+Source audit confirmed that sidebar pinning has no producer for the old
+`SidebarFilePinHandoffState`: preview and pin requests both enter the owned
+file-tab controller. This cycle removes that dead state, its timeout and
+completion effects, successor activation, source/destination Explorer overrides,
+and inline-editor readiness callback. Sidebar progress now reflects only the
+real owned-file mutation. The unused preview-ownership gate and obsolete prewarm
+arguments are removed as well. Protected document transfer/recovery and legacy
+Explorer migration are unchanged.
+
+Tests specific to the retired handoff are removed; owned-file success/failure
+coverage remains. Renderer-owner regression cases verify the requested owner
+set, deduplication with current active metadata, and an empty layout without an
+invented owner. Remaining transient-preview readers and Explorer prewarm pooling
+still require cleanup; this cycle does not claim the complete identity goal or
+native acceptance audit is finished.
+
+Validation: the full app run passed 547 files / 3,790 tests with three skips;
+the final focused run passed all 66 tests including the new owner-set cases.
+App TypeScript checking, production build, application decomposition, large-file
+audit, and `git diff --check` passed. No native UI claim is based on this
+dead-code removal; native lifecycle acceptance remains a separate requirement.

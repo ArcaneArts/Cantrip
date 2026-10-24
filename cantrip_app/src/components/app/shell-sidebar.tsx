@@ -154,7 +154,6 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
     sidebarCollapsed,
     sidebarExpanded,
     sidebarExplorer,
-    sidebarFilePinHandoff,
     sidebarFilePreview,
     sidebarFileWorkerId,
     sidebarFileWorkerOnline,
@@ -421,7 +420,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                     fileTreePinningPath={
                       pinSidebarFileMutation.isPending
                         ? (pinSidebarFileMutation.variables?.path ?? null)
-                        : (sidebarFilePinHandoff?.sourcePath ?? null)
+                        : null
                     }
                     fileTreeWorkerId={sidebarFileWorkerId}
                     fileTreeWorkerOnline={sidebarFileWorkerOnline}

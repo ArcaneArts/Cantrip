@@ -10,7 +10,6 @@ import {
   pinnedExplorerForPath,
   preferredSidebarExplorer,
   moveSidebarPath,
-  sidebarExplorerCanOwnPreview,
   sidebarExplorerPrewarmTarget,
   sidebarFilePreviewAfterPaneSelection,
   sidebarFilePreviewHasPaneFocus,
@@ -107,22 +106,14 @@ describe("sidebar file tabs", () => {
     ).toBe(false);
   });
 
-  it("keeps sidebar workbenches prewarmed through pinning and open tabs", () => {
+  it("prewarms sidebar workbenches only in the main window", () => {
     const sidebarExplorer = explorer("sidebar", "worktree-1");
     const initial = {
-      hasOpenExplorer: false,
       isPopout: false,
-      pinInProgress: false,
       sidebarExplorer,
     };
 
     expect(sidebarExplorerPrewarmTarget(initial)).toBe(sidebarExplorer);
-    expect(
-      sidebarExplorerPrewarmTarget({ ...initial, pinInProgress: true }),
-    ).toBe(sidebarExplorer);
-    expect(
-      sidebarExplorerPrewarmTarget({ ...initial, hasOpenExplorer: true }),
-    ).toBe(sidebarExplorer);
     expect(
       sidebarExplorerPrewarmTarget({ ...initial, isPopout: true }),
     ).toBeNull();
@@ -220,30 +211,6 @@ describe("sidebar file tabs", () => {
         previewExplorerId: pinned.id,
       }),
     ).toBe(replacement);
-  });
-
-  it("blocks stale preview interactions during pin handoff or for a tabbed owner", () => {
-    expect(
-      sidebarExplorerCanOwnPreview({
-        explorerId: "preview",
-        layout: layout(),
-        pinInProgress: false,
-      }),
-    ).toBe(true);
-    expect(
-      sidebarExplorerCanOwnPreview({
-        explorerId: "preview",
-        layout: layout(),
-        pinInProgress: true,
-      }),
-    ).toBe(false);
-    expect(
-      sidebarExplorerCanOwnPreview({
-        explorerId: "pinned",
-        layout: layout("pinned"),
-        pinInProgress: false,
-      }),
-    ).toBe(false);
   });
 
   it("requires a non-tabbed Explorer for inline sidebar prewarm", () => {

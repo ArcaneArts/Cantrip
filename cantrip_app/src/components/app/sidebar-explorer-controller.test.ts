@@ -13,7 +13,6 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createProjectExplorerFileOpening,
   sidebarExplorerProvisioningDetails,
-  sidebarFilePinCompletion,
   useExplorerLifecycleRefs,
   useExplorerLifecycleRegistration,
   useSidebarExplorerModel,
@@ -255,48 +254,6 @@ describe("sidebar Explorer provisioning", () => {
   });
 });
 
-describe("sidebar file pin completion", () => {
-  const source = {
-    id: "explorer-source",
-    projectId: "project-1",
-  } as ExplorerSummary;
-  const destination = {
-    id: "explorer-pinned",
-    projectId: "project-1",
-  } as ExplorerSummary;
-  const handoff = {
-    destinationExplorer: destination,
-    destinationExplorerId: destination.id,
-    ready: true,
-    sourceExplorer: source,
-    sourcePath: "scripts/setup.ps1",
-    transactionId: "pin-1",
-  };
-
-  it("activates a completed dock even if its transient preview rerendered inactive", () => {
-    expect(
-      sidebarFilePinCompletion(
-        handoff,
-        {
-          active: false,
-          explorerId: source.id,
-          paneId: "group-1",
-          path: handoff.sourcePath,
-          projectId: source.projectId,
-        },
-        source.projectId,
-      ),
-    ).toEqual({ action: "activate", clearPreview: true, destination });
-  });
-
-  it("refreshes without stealing focus after the user changes projects", () => {
-    expect(sidebarFilePinCompletion(handoff, null, "project-2")).toEqual({
-      action: "refresh",
-      destination,
-    });
-  });
-});
-
 describe("sidebar preview ownership handoff", () => {
   it("keeps the promoted preview surface addressable without returning it to the file tree under Strict Mode", async () => {
     const pinned = {
@@ -342,7 +299,6 @@ describe("sidebar preview ownership handoff", () => {
         },
         explorers,
         fileState: {
-          sidebarFilePinHandoff: null,
           sidebarFilePreview: preview,
         },
         openCreatedTab: vi.fn(),

@@ -103,7 +103,6 @@ describe("desktop app mode menu", () => {
         projectId: "project-a",
         worktreeId: "worktree-a",
       },
-      sidebarFilePinHandoff: null,
       sidebarFilePreview: null,
       sidebarFileWorkerId: "worker-a",
       sidebarFileWorkerOnline: true,
