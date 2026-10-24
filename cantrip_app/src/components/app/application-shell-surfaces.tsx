@@ -30,6 +30,12 @@ export const BrowserView = lazy(() =>
   })),
 );
 
+export const PersistentBrowserViews = lazy(() =>
+  import("@/components/browser/persistent-browser-views").then((module) => ({
+    default: module.PersistentBrowserViews,
+  })),
+);
+
 export const PersistentCodeViews = lazy(() =>
   import("@/components/code/persistent-code-views").then((module) => ({
     default: module.PersistentCodeViews,

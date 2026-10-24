@@ -1,7 +1,7 @@
 # Workspace ownership implementation record
 
-Status: **active and incomplete**. Cycles 1–5 are merged. Cycle 5's stale
-boundary inventory is being corrected in an isolated follow-up. The target contract is not
+Status: **active and incomplete**. Cycles 1–5 and the boundary-inventory follow-up
+[#2214](https://github.com/ArcaneArts/Cantrip/pull/2214) are merged. The target contract is not
 a claim that all surfaces and recovery paths already satisfy it.
 
 ## Target contract
@@ -186,6 +186,26 @@ checks) does not prove all native, mobile, or recovery requirements.
 
 ## Remaining implementation and acceptance
 
+### Browser lifecycle increment
+
+The next isolated cycle replaces selected-only browser rendering with a
+tab-keyed persistent layer. Inactive tabs retain their address drafts and live
+renderer, temporary resource-query gaps retain resolved metadata, and actual
+ownership removal releases the view. Account/session and project changes reset
+the retained layer. The stable portal is shared across docked and inline/mobile
+presentations; hidden views do not resize the worker viewport to hidden bounds.
+Address drafts survive blur and background page updates; navigation commits them
+and Escape cancels them. Shell callbacks retain the owning browser/project/pane.
+
+This is production integration, but not browser cross-window transfer: source
+quiescence, encrypted capture, passive destination restoration, and acknowledgment
+still need implementation. No new native/mobile interactive result is claimed.
+Regression tests cover draft retention, query gaps, ownership removal, responsive
+portal continuity, resource replacement, and shell callback routing. Final-tree
+app validation passed 518 files / 3,549 tests with 3 intentional skips; app
+typecheck, focused tests, formatting, boundary inventory, transport verification,
+and diff checks also passed. Interactive browser handoff remains unverified.
+
 1. Complete first-class document/view separation beyond path-specific Explorer
    backing, safe preview replacement, and legacy preview/provisioning/rebind
    removal, including synchronous confirmations.
@@ -200,8 +220,8 @@ checks) does not prove all native, mobile, or recovery requirements.
    overflow, keyboard focus, and every file-opening entry point.
 6. Replay native confirmation/failed-return cases and expand real native QA to
    concurrent popouts, inactive drafts, all adapters, and lifecycle recovery.
-7. Correct the Cycle 5 boundary inventory in a follow-up PR, observe its checks,
-   and continue investigating CI failures without weakening assertions.
+7. Continue investigating CI failures without weakening assertions. The Cycle 5
+   inventory repair merged in #2214 and passed the audit on the merged tree.
 8. Update `docs/TABS.md` to the final enabled contract and audit every objective
    requirement before completion.
 

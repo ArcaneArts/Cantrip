@@ -1,13 +1,18 @@
 import { chatConsoleTerminal } from "@/components/chat/chat-console-state";
 import type { ProjectSummary } from "@cantrip/protocol";
 import { Loader2 } from "lucide-react";
-import { Suspense, useMemo } from "react";
+import { Suspense, useMemo, useSyncExternalStore } from "react";
 import {
   PersistentCodeViews,
   PersistentExplorerViews,
   PersistentTerminalViews,
+  PersistentBrowserViews,
 } from "@/components/app/application-shell-surfaces";
 import { explorerRepositoryGraphAvailable } from "@/components/explorer/explorer-graph-routing";
+import {
+  getClientSessionIdentitySnapshot,
+  onClientSessionIdentityChanged,
+} from "@/lib/client-session";
 import { ProjectPaneTabStrip } from "@/components/workspace/project-tab-bar";
 import { dockPresentationsForSidebarPreview } from "@/components/app/project-workspace-frame-model";
 import { revealProjectInNativeFileManager } from "@/lib/desktop-project-share";
@@ -16,12 +21,21 @@ import {
   sidebarFileName,
 } from "@/lib/sidebar-file-tabs";
 type PersistentSurfaceBindings = Readonly<Record<string, any>>;
+const browserSessionKey = () =>
+  JSON.stringify(getClientSessionIdentitySnapshot());
+const subscribeBrowserSession = (listener: () => void) =>
+  onClientSessionIdentityChanged(listener);
 
 export function PersistentSurfaceLayer({
   bindings,
 }: {
   bindings: PersistentSurfaceBindings;
 }) {
+  const sessionKey = useSyncExternalStore(
+    subscribeBrowserSession,
+    browserSessionKey,
+    browserSessionKey,
+  );
   const {
     activateSidebarFilePreview,
     activeProjectTaskChat,
@@ -134,6 +148,41 @@ export function PersistentSurfaceLayer({
       ),
     [surfaceDockPanePresentations],
   );
+  const browserOwners = useMemo(
+    () =>
+      projectSurfaces?.flatMap((surface: any) =>
+        excludedPersistentSurfaceIds?.has(surface.tabId)
+          ? []
+          : surface.kind === "browser"
+            ? [
+                {
+                  tabId: surface.tabKey,
+                  resourceId: surface.entity.id,
+                  browser: surface.entity,
+                },
+              ]
+            : surface.kind === "unresolved" &&
+                surface.member.tabKind === "browser"
+              ? [{ tabId: surface.tabKey, resourceId: surface.member.tabId }]
+              : [],
+      ) ?? [],
+    [projectSurfaces, excludedPersistentSurfaceIds],
+  );
+  const browserPlacements = useMemo(
+    () =>
+      surfaceDockPanePresentations?.flatMap((presentation: any) =>
+        presentation.activeSurface?.kind === "browser"
+          ? [
+              {
+                tabId: presentation.activeSurface.tabKey,
+                paneId: presentation.pane.id,
+                portalTarget: presentation.portalTarget,
+              },
+            ]
+          : [],
+      ),
+    [surfaceDockPanePresentations],
+  );
   const dockTerminalPlacements = useMemo(
     () =>
       surfaceDockPanePresentations?.flatMap((presentation: any) => {
@@ -210,6 +259,50 @@ export function PersistentSurfaceLayer({
   ]);
   return (
     <>
+      <Suspense fallback={null}>
+        <PersistentBrowserViews
+          key={JSON.stringify([sessionKey, selectedProjectId])}
+          owners={browserOwners}
+          placements={browserPlacements}
+          selectedTabId={
+            appMode === "ide" &&
+            !showImporter &&
+            !showSettings &&
+            !bindings.showProjectOverview &&
+            !showArchivedStandaloneChats &&
+            !showServerAdmin &&
+            !showProjectSettings &&
+            !selectedPaneOwnedElsewhere
+              ? (selectedTabKey ?? null)
+              : null
+          }
+          fleetDiscovery={
+            bindings.bootstrap?.data?.capabilities.browserFleetDiscovery ??
+            false
+          }
+          onOpenService={(browser, service, paneId) =>
+            bindings.newBrowser.mutate({
+              projectId: browser.projectId,
+              paneId,
+              target: {
+                kind: "worker",
+                projectId: browser.projectId,
+                workerId: service.workerId,
+              },
+              title:
+                service.title ?? service.processName ?? `Port ${service.port}`,
+              url: service.url,
+            })
+          }
+          onPageState={(browser, pageState) =>
+            bindings.updateBrowserMutation.mutate({
+              browserId: browser.id,
+              projectId: browser.projectId,
+              pageState,
+            })
+          }
+        />
+      </Suspense>
       {!dockPanePresentations &&
       appMode === "ide" &&
       !compactShell &&
