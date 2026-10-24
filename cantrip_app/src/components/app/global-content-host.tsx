@@ -4,7 +4,6 @@ import {
   unresolvedSurfaceCollection,
 } from "./unresolved-project-surface";
 import type {
-  BrowserFleetService,
   WorkerSummary,
   ProjectViewSummary,
   RemoteDesktopTarget,
@@ -23,7 +22,6 @@ import {
 import { Suspense, type ReactNode } from "react";
 import { EmptyWorkspace } from "./empty-workspace";
 import {
-  BrowserView,
   RemoteDesktopView,
   RunTerminalView,
 } from "@/components/app/application-shell-surfaces";
@@ -149,7 +147,6 @@ export function GlobalContentHost({
     mobileProjectSelectorOpen,
     mobileSettingsSectionOpen,
     narrowViewport,
-    newBrowser,
     newChat,
     newCodeTab,
     newExplorer,
@@ -255,7 +252,6 @@ export function GlobalContentHost({
     standaloneFilesOpen,
     switchToChat,
     tabLayout,
-    updateBrowserMutation,
     workers,
     worktreeStatuses,
     worktrees,
@@ -688,45 +684,7 @@ export function GlobalContentHost({
               }
               onHeaderChange={setGitHistoryHeader}
             />
-          ) : selectedCodeTab ? null : selectedBrowser ? (
-            <Suspense
-              fallback={
-                <div className="grid flex-1 place-items-center text-muted-foreground">
-                  <Loader2 className="size-5 animate-spin" />
-                </div>
-              }
-            >
-              <BrowserView
-                browser={selectedBrowser}
-                fleetDiscovery={
-                  bootstrap.data?.capabilities.browserFleetDiscovery ?? false
-                }
-                onOpenService={(service: BrowserFleetService) =>
-                  newBrowser.mutate({
-                    projectId: selectedBrowser.projectId,
-                    paneId: selectedPane?.id,
-                    target: {
-                      kind: "worker",
-                      projectId: selectedBrowser.projectId,
-                      workerId: service.workerId,
-                    },
-                    title:
-                      service.title ??
-                      service.processName ??
-                      `Port ${service.port}`,
-                    url: service.url,
-                  })
-                }
-                onPageState={(pageState) => {
-                  updateBrowserMutation.mutate({
-                    browserId: selectedBrowser.id,
-                    projectId: selectedBrowser.projectId,
-                    pageState,
-                  });
-                }}
-              />
-            </Suspense>
-          ) : selectedExplorer ? null : selectedTerminal?.kind ===
+          ) : selectedCodeTab ? null : selectedBrowser ? null : selectedExplorer ? null : selectedTerminal?.kind ===
             "run-configuration" ? (
             <Suspense
               fallback={

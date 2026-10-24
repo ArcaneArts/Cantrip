@@ -6,6 +6,7 @@ import { PersistentSurfaceLayer } from "./persistent-surface-layer";
 
 const lifecycle = vi.hoisted(() => ({ mounts: vi.fn(), unmounts: vi.fn() }));
 vi.mock("@/components/app/application-shell-surfaces", async () => ({
+  PersistentBrowserViews: () => null,
   PersistentTerminalViews: (
     await import("@/components/terminal/persistent-terminal-views")
   ).PersistentTerminalViews,

@@ -544,7 +544,11 @@ function genericPaneBody(
   }
   const paneBindings = projectPaneRenderBindings(bindings, presentation);
   // The persistent layer places linked CLIs in the same host as their chat.
-  if (paneBindings.terminalSurfaceVisible) return null;
+  if (
+    paneBindings.terminalSurfaceVisible ||
+    presentation.activeSurface.kind === "browser"
+  )
+    return null;
   return (
     <div
       className={cn(

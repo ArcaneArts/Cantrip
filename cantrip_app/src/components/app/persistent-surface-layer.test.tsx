@@ -8,9 +8,14 @@ const surfaceProps = vi.hoisted(() => ({
   terminal: null as Record<string, unknown> | null,
   code: null as Record<string, unknown> | null,
   explorer: null as Record<string, unknown> | null,
+  browser: null as Record<string, unknown> | null,
 }));
 
 vi.mock("@/components/app/application-shell-surfaces", () => ({
+  PersistentBrowserViews: (props: Record<string, unknown>) => {
+    surfaceProps.browser = props;
+    return null;
+  },
   PersistentCodeViews: (props: Record<string, unknown>) => {
     surfaceProps.code = props;
     return null;
@@ -30,6 +35,77 @@ vi.mock("@/components/workspace/project-tab-bar", () => ({
 }));
 
 describe("persistent surface layer", () => {
+  it("routes browser ownership and callbacks through the persistent tab layer", async () => {
+    (
+      globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = true;
+    const browser = { id: "resource", projectId: "project" };
+    const surface = {
+      kind: "browser",
+      tabId: browser.id,
+      tabKey: "view",
+      entity: browser,
+    };
+    const update = vi.fn();
+    const create = vi.fn();
+    const host = {};
+    const bindings = {
+      appMode: "ide",
+      openExplorers: [],
+      selectedProjectId: "project",
+      projectSurfaces: [
+        surface,
+        {
+          kind: "unresolved",
+          tabKey: "loading-view",
+          member: { tabId: "loading", tabKind: "browser" },
+        },
+      ],
+      dockPanePresentations: [
+        { activeSurface: surface, pane: { id: "pane" }, portalTarget: host },
+      ],
+      updateBrowserMutation: { mutate: update },
+      newBrowser: { mutate: create },
+    };
+    let tree!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      tree = TestRenderer.create(
+        <PersistentSurfaceLayer bindings={bindings} />,
+      );
+    });
+    expect(surfaceProps.browser?.owners).toEqual([
+      { tabId: "view", resourceId: "resource", browser },
+      { tabId: "loading-view", resourceId: "loading" },
+    ]);
+    expect(surfaceProps.browser?.placements).toEqual([
+      { tabId: "view", paneId: "pane", portalTarget: host },
+    ]);
+    const state = {
+      previousTitle: null,
+      title: "Page",
+      url: "https://example.com/",
+    };
+    (surfaceProps.browser?.onPageState as Function)(browser, state);
+    expect(update).toHaveBeenCalledWith({
+      browserId: "resource",
+      projectId: "project",
+      pageState: state,
+    });
+    await act(async () => {
+      tree.update(
+        <PersistentSurfaceLayer
+          bindings={{
+            ...bindings,
+            excludedPersistentSurfaceIds: new Set(["resource"]),
+          }}
+        />,
+      );
+    });
+    expect(surfaceProps.browser?.owners).toEqual([
+      { tabId: "loading-view", resourceId: "loading" },
+    ]);
+    await act(async () => tree.unmount());
+  });
   it("places linked consoles in chat panes and reacts to GUI/CLI toggles", async () => {
     (
       globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }

@@ -76,6 +76,8 @@ import type {
   RemoteSurfaceWorkerLinkInboundFrame,
 } from "@/lib/remote-surface-worker-link";
 
+import { useBrowserAddress } from "./use-browser-address";
+
 const decoder = new TextDecoder();
 // The server permits a worker attachment to spend up to 30 seconds starting.
 // Keep the initial Browser veil in its recovering state for that same window so
@@ -216,11 +218,13 @@ export function browserSurfaceStartupState(input: {
 
 export function BrowserView({
   browser,
+  visible = true,
   fleetDiscovery,
   onOpenService,
   onPageState,
 }: {
   browser: BrowserSummary;
+  visible?: boolean;
   fleetDiscovery: boolean;
   onOpenService(service: BrowserFleetService): void;
   onPageState(state: {
@@ -232,7 +236,6 @@ export function BrowserView({
   const agentCursorRef = useRef<BrowserAgentCursorHandle>(null);
   const remoteCanvasRef = useRef<RemoteSurfaceCanvasHandle>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
-  const inputFocusedRef = useRef(false);
   const onPageStateRef = useRef(onPageState);
   const browserStateRevisionRef = useRef(browser.stateRevision);
   const pageStateRef = useRef<{ title: string; url: string } | null>(null);
@@ -242,7 +245,12 @@ export function BrowserView({
     height: 720,
     devicePixelRatio: window.devicePixelRatio || 1,
   });
-  const [address, setAddress] = useState(browser.url);
+  const {
+    address,
+    edit: editAddress,
+    commit: commitAddress,
+    followPage: followPageAddress,
+  } = useBrowserAddress(browser.url);
   const [currentUrl, setCurrentUrl] = useState(browser.url);
   const [invalidAddress, setInvalidAddress] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -372,7 +380,7 @@ export function BrowserView({
               const normalized = normalizeBrowserAddress(privateState.url);
               if (normalized) {
                 setCurrentUrl(normalized);
-                if (!inputFocusedRef.current) setAddress(normalized);
+                followPageAddress(normalized);
                 const previous = pageStateRef.current;
                 if (
                   previous?.url !== normalized ||
@@ -422,7 +430,7 @@ export function BrowserView({
         );
       }
     },
-    [browser.id],
+    [browser.id, followPageAddress],
   );
 
   const { activeRoute, connectionState, error, retry, sendFrame, setError } =
@@ -493,7 +501,7 @@ export function BrowserView({
   };
 
   useEffect(() => {
-    setAddress(browser.url);
+    commitAddress(browser.url);
     setCurrentUrl(browser.url);
     setInvalidAddress(false);
     pageStateRef.current = null;
@@ -507,7 +515,7 @@ export function BrowserView({
   useEffect(() => {
     if (pageStateRef.current?.url === browser.url) return;
     setCurrentUrl(browser.url);
-    if (!inputFocusedRef.current) setAddress(browser.url);
+    followPageAddress(browser.url);
   }, [browser.url]);
 
   useEffect(() => {
@@ -518,7 +526,7 @@ export function BrowserView({
 
   useEffect(() => {
     const surface = surfaceRef.current;
-    if (!surface) return;
+    if (!surface || !visible) return;
     const updateViewport = () => {
       const bounds = surface.getBoundingClientRect();
       const viewport = {
@@ -533,7 +541,7 @@ export function BrowserView({
     const observer = new ResizeObserver(updateViewport);
     observer.observe(surface);
     return () => observer.disconnect();
-  }, [send]);
+  }, [send, visible]);
 
   useEffect(() => {
     if (connectionState === "ready") {
@@ -548,7 +556,7 @@ export function BrowserView({
       return false;
     }
     setInvalidAddress(false);
-    setAddress(normalized);
+    commitAddress(normalized);
     setCurrentUrl(normalized);
     setCurrentWorkerId(workerId);
     setLoading(true);
@@ -707,15 +715,14 @@ export function BrowserView({
             <input
               aria-label="Address"
               value={address}
-              onFocus={() => {
-                inputFocusedRef.current = true;
-              }}
-              onBlur={() => {
-                inputFocusedRef.current = false;
-                setAddress(currentUrl);
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  commitAddress(currentUrl);
+                  setInvalidAddress(false);
+                }
               }}
               onChange={(event) => {
-                setAddress(event.target.value);
+                editAddress(event.target.value);
                 setInvalidAddress(false);
               }}
               className="h-8 w-full rounded-md border bg-background pl-9 pr-3 text-sm outline-none ring-ring placeholder:text-muted-foreground focus:ring-2"
