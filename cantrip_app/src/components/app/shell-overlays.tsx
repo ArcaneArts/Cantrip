@@ -26,6 +26,7 @@ export function ShellOverlays({
     chatRelocationOpen,
     chatRelocations,
     closeSurfaceView,
+    keepSurfaceOpen,
     commandBarOpen,
     compactShell,
     createProjectSurface,
@@ -95,6 +96,7 @@ export function ShellOverlays({
           creatingKinds={creatingSurfaceKinds}
           onArchiveSurface={deleteSurfaceResource}
           onCloseSurface={closeSurfaceView}
+          onKeepOpen={keepSurfaceOpen}
           onCreate={(kind, target) =>
             createProjectSurface(selectedProject.id, kind, undefined, target)
           }

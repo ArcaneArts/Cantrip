@@ -78,12 +78,37 @@ try {
     .locator('[data-slot="project-switcher-project"]')
     .filter({ hasText: fixture.repositorySeed.name })
     .click();
-  await desktop
-    .getByRole("treeitem", { name: "qa.txt", exact: true })
-    .dblclick();
+  await desktop.getByRole("treeitem", { name: "qa.txt", exact: true }).click();
   await desktop
     .getByRole("textbox", { name: "Edit qa.txt", exact: true })
     .waitFor({ timeout: 30000 });
+  const tabs = (layout) =>
+    layout.windows.flatMap((w) => w.panes.flatMap((p) => p.tabs));
+  const previewLayout = await desktop.evaluate(() =>
+    window.__qaRepositoryFixture.workspace(),
+  );
+  const preview = tabs(previewLayout).find((tab) => tab.preview);
+  assert.ok(preview, "Single-click opens an ordinary preview tab");
+  await desktop.getByRole("tab", { name: "qa.txt", exact: true }).dblclick();
+  await desktop.waitForFunction(async (id) => {
+    const layout = await window.__qaRepositoryFixture.workspace();
+    return layout.windows
+      .flatMap((w) => w.panes.flatMap((p) => p.tabs))
+      .some((t) => t.id === id && !t.preview);
+  }, preview.id);
+  const pinnedLayout = await desktop.evaluate(() =>
+    window.__qaRepositoryFixture.workspace(),
+  );
+  assert.deepEqual(
+    tabs(pinnedLayout),
+    tabs(previewLayout).map((tab) =>
+      tab.id === preview.id ? { ...tab, preview: false } : tab,
+    ),
+  );
+  record(
+    "desktop.double-click-pin",
+    "Ordinary tab double-click preserves every tab field except preview",
+  );
   const desktopBefore = await desktop.evaluate(() =>
     window.__qaRepositoryFixture.workspace(),
   );
@@ -137,8 +162,6 @@ try {
   const mobileSecond = await mobile.evaluate(() =>
     window.__qaRepositoryFixture.workspace(),
   );
-  const tabs = (layout) =>
-    layout.windows.flatMap((w) => w.panes.flatMap((p) => p.tabs));
   assert.ok(tabs(mobileSecond).length > tabs(mobileFirst).length);
   assert.deepEqual(
     await desktop.evaluate(() => window.__qaRepositoryFixture.workspace()),
@@ -219,6 +242,28 @@ try {
     await recent.getByRole("button").first().getAttribute("aria-label"),
     "Reopen recent main.rs",
   );
+  const mobilePreview = await mobile.evaluate(() =>
+    window.__qaRepositoryFixture.workspace(),
+  );
+  await mobile
+    .getByRole("button", { name: "Keep main.rs open", exact: true })
+    .click();
+  await mobile
+    .getByRole("button", { name: "Keep main.rs open", exact: true })
+    .waitFor({ state: "hidden" });
+  const mobilePinned = await mobile.evaluate(() =>
+    window.__qaRepositoryFixture.workspace(),
+  );
+  assert.deepEqual(
+    tabs(mobilePinned),
+    tabs(mobilePreview).map((tab) =>
+      tab.preview ? { ...tab, preview: false } : tab,
+    ),
+  );
+  record(
+    "mobile.keep-open",
+    "Picker pins preview in place without selecting or closing another view",
+  );
   await mobile
     .getByRole("button", { name: "Close main.rs view", exact: true })
     .click();
@@ -241,10 +286,80 @@ try {
   );
   await desktop
     .getByRole("treeitem", { name: "second.txt", exact: true })
-    .dblclick();
+    .click();
   await desktop
     .getByRole("textbox", { name: "Edit second.txt", exact: true })
     .waitFor();
+  const beforeMenu = await desktop.evaluate(() =>
+    window.__qaRepositoryFixture.workspace(),
+  );
+  const menuPreview = tabs(beforeMenu).find((tab) => tab.preview);
+  assert.ok(menuPreview);
+  let rejectedPin = false;
+  const rejectPin = async (route) => {
+    if (
+      route.request().postDataJSON()?.action?.type === "pin" &&
+      !rejectedPin
+    ) {
+      rejectedPin = true;
+      await route.fulfill({
+        status: 400,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "QA pin rejected" }),
+      });
+    } else await route.continue();
+  };
+  await desktop.route("**/workspace-layouts/*/commands", rejectPin);
+  await desktop
+    .getByRole("tab", { name: "second.txt", exact: true })
+    .click({ button: "right" });
+  const rejectedResponse = desktop.waitForResponse(
+    (response) =>
+      response.url().includes("/commands") && response.status() === 400,
+  );
+  await desktop
+    .getByRole("menuitem", { name: "Keep Open", exact: true })
+    .click();
+  await rejectedResponse;
+  await desktop
+    .locator(`[data-project-tab-key="${menuPreview.id}"][data-preview="true"]`)
+    .waitFor();
+  assert.ok(rejectedPin);
+  assert.deepEqual(
+    tabs(
+      await desktop.evaluate(() => window.__qaRepositoryFixture.workspace()),
+    ),
+    tabs(beforeMenu),
+  );
+  await desktop.unroute("**/workspace-layouts/*/commands", rejectPin);
+  record(
+    "desktop.pin-failure",
+    "Rejected command restores preview without losing identity or other tab state; retry remains available",
+  );
+  await desktop
+    .getByRole("tab", { name: "second.txt", exact: true })
+    .click({ button: "right" });
+  await desktop
+    .getByRole("menuitem", { name: "Keep Open", exact: true })
+    .click();
+  await desktop.waitForFunction(async (id) => {
+    const layout = await window.__qaRepositoryFixture.workspace();
+    return layout.windows
+      .flatMap((w) => w.panes.flatMap((p) => p.tabs))
+      .some((t) => t.id === id && !t.preview);
+  }, menuPreview.id);
+  assert.deepEqual(
+    tabs(
+      await desktop.evaluate(() => window.__qaRepositoryFixture.workspace()),
+    ),
+    tabs(beforeMenu).map((tab) =>
+      tab.id === menuPreview.id ? { ...tab, preview: false } : tab,
+    ),
+  );
+  record(
+    "desktop.menu-pin",
+    "Context menu pins existing preview with stable identity and view state",
+  );
   assert.deepEqual(
     await mobile.evaluate(() => window.__qaRepositoryFixture.workspace()),
     mobileBefore,

@@ -75,6 +75,7 @@ export interface SurfaceCrudOperations {
 
 export interface SurfaceViewOperations {
   close: MutationOperation<ProjectSurface>;
+  pin: MutationOperation<ProjectSurface>;
 }
 
 const projectToolCreateKinds = new Set<ProjectSurfaceCreateKind>([
@@ -147,6 +148,9 @@ export function createSurfaceCommandController({
   };
   const closeSurfaceView = (surface: ProjectSurface) => {
     views.close.mutate(surface);
+  };
+  const keepSurfaceOpen = (surface: ProjectSurface) => {
+    if (surface.kind === "file" && surface.preview) views.pin.mutate(surface);
   };
   const deleteSurfaceResource = (
     surface: ProjectSurface,
@@ -234,6 +238,7 @@ export function createSurfaceCommandController({
     createProjectSurface,
     creatingSurfaceKinds,
     closeSurfaceView,
+    keepSurfaceOpen,
     deleteSurfaceResource,
     renameSurface,
     surfaceCreationFailure,

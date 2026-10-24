@@ -950,6 +950,7 @@ export function ProjectWorkspaceFrame({
             )
           }
           onClose={bindings.closeSurfaceView}
+          onKeepOpen={bindings.keepSurfaceOpen}
           onPopOut={bindings.popOutTab}
           onPopOutPane={bindings.popOutPane}
           onDelete={bindings.deleteSurfaceResource}

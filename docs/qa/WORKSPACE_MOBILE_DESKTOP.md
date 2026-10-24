@@ -20,7 +20,8 @@ The mobile client is touch-enabled Chromium at 390 × 844, not a physical phone.
 
 The harness performs these UI actions automatically:
 
-1. On desktop, create the disposable project and open/pin `qa.txt`.
+1. On desktop, create the disposable project, single-click `qa.txt`, and
+   double-click its ordinary tab. Only its preview flag may change.
 2. On mobile, import the disposable recovery file and open the same project.
    Its workspace identity must differ from desktop's.
 3. Edit `qa.txt` without saving; open `second.txt`. Both tabs must remain
@@ -30,8 +31,12 @@ The harness performs these UI actions automatically:
 5. Open the mobile tab picker. Recent ordering must reflect the selected file.
    Close the inactive second file; the first must remain selected.
 6. Open `main.rs`. It must default to Edit mode and become the most recent view.
+   Use the picker's Keep Open button; the same tab must become pinned.
    Close it through the picker; selection must return to its left neighbor.
-7. Open/pin another file on desktop. Mobile's authoritative layout must remain
+7. Open another file on desktop and use the context menu's Keep Open action.
+   Inject one rejected pin request: the preview must remain intact and retryable.
+   Retry successfully, retaining the same tab identity and view state.
+   Mobile's authoritative layout must remain
    unchanged. No mobile action may have changed desktop's layout.
 
 ## Artifacts and limits
