@@ -4,7 +4,13 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { clearClientSession, setClientSession } from "@/lib/client-session";
 import type { WorkspaceCommandClient } from "@/lib/workspace-command-client";
 import { startWorkspaceTransferDestination } from "@/lib/workspace-transfer-destination";
-import { getExplorers, getTerminals, getBrowsers, getChats } from "@/lib/api";
+import {
+  getExplorers,
+  getTerminals,
+  getBrowsers,
+  getChats,
+  getRemoteDesktops,
+} from "@/lib/api";
 import { stageExplorerTransferBatch } from "@/components/explorer/explorer-transfer-batch";
 import { useWorkspaceEditorTransfer } from "./use-workspace-editor-transfer";
 import { getFileDocuments } from "@/lib/api/file-documents";
@@ -19,6 +25,7 @@ vi.mock("@/lib/api", () => ({
   getTerminals: vi.fn(),
   getBrowsers: vi.fn(),
   getChats: vi.fn(),
+  getRemoteDesktops: vi.fn(),
 }));
 vi.mock("@/lib/workspace-transfer-destination", () => ({
   startWorkspaceTransferDestination: vi.fn(),
@@ -140,6 +147,93 @@ async function mount(returning = false) {
       .restore,
   };
 }
+
+it.each([false, true])(
+  "stages remote desktop state until renderer acknowledgment or cancellation (cancel=%s)",
+  async (cancel) => {
+    const f = await mount();
+    try {
+      f.layout.windows[0]!.panes[0]!.tabs[0]!.resource = {
+        kind: "entity",
+        definitionId: "project.remote-desktop",
+        resourceId: "desktop",
+      };
+      const desktop = {
+        id: "desktop",
+        projectId: "project",
+        workerId: "worker",
+      };
+      vi.mocked(getRemoteDesktops).mockResolvedValue([desktop] as never);
+      vi.mocked(stageExplorerTransferBatch).mockReturnValue([]);
+      const state = {
+        version: 1,
+        desktopId: "desktop",
+        projectId: "project",
+        workerId: "worker",
+        viewport: { width: 1280, height: 720, devicePixelRatio: 1 },
+        fleetOpen: true,
+        targetSearch: "Editor",
+      };
+      const payload = (state: unknown) =>
+        new TextEncoder().encode(
+          JSON.stringify({
+            version: 1,
+            editors: [],
+            desktops: [{ tabId: "tab", state }],
+          }),
+        );
+      await expect(
+        f.restore(payload({ ...state, workerId: "other" })),
+      ).rejects.toThrow("reservation");
+      expect(f.value().incomingRemoteDesktopViews).toBeUndefined();
+      let completion!: Promise<unknown>;
+      let completed = false;
+      await act(async () => {
+        completion = f
+          .restore(payload(state))
+          .then(() => {
+            completed = true;
+          })
+          .catch((error) => error);
+      });
+      expect(getRemoteDesktops).toHaveBeenCalledWith("project");
+      expect(completed).toBe(false);
+      expect(f.value().incomingRemoteDesktopViews![0]).toMatchObject({
+        tabId: "tab",
+        desktop,
+        state,
+      });
+      if (cancel) {
+        f.layout.pendingTransfers = [];
+        await act(async () => f.notify());
+        expect(await completion).toEqual(
+          expect.objectContaining({
+            message: expect.stringContaining("reservation ended"),
+          }),
+        );
+        expect(completed).toBe(false);
+      } else {
+        await act(async () => {
+          f.value().incomingRemoteDesktopViews![0]!.staging!.onRestored();
+          await completion;
+        });
+        expect(completed).toBe(true);
+        f.layout.pendingTransfers = [];
+        f.layout.windows[0]!.id = "destination";
+        await act(async () => f.notify());
+        expect(
+          f.value().incomingRemoteDesktopViews![0]!.staging,
+        ).toBeUndefined();
+        expect(f.value().incomingRemoteDesktopViews![0]!.state).toEqual(state);
+        f.layout.windows[0]!.panes = [];
+        await act(async () => f.notify());
+      }
+      expect(f.value().incomingRemoteDesktopViews).toEqual([]);
+    } finally {
+      await act(async () => f.renderer.unmount());
+    }
+  },
+);
 
 it.each([false, true])(
   "stages authorized chat state until restoration or cancellation (cancel=%s)",

@@ -10,6 +10,9 @@ import {
 import { detachWorkspaceEditors } from "./detach-workspace-editors";
 import { registerTerminalTransferLifecycle } from "@/components/terminal/terminal-transfer-lifecycle";
 import { registerChatTransferLifecycle } from "@/components/chat/chat-transfer-lifecycle";
+import { registerRemoteDesktopTransferLifecycle } from "@/components/remote-desktop/remote-desktop-transfer-lifecycle";
+import { getRemoteDesktop } from "@/lib/api";
+vi.mock("@/lib/api", () => ({ getRemoteDesktop: vi.fn() }));
 
 beforeEach(() =>
   setClientSession({
@@ -104,6 +107,82 @@ function fixture() {
     cleanup: () => setNativeCodeLifecycle(codeKey, null),
   };
 }
+
+it("uses the authorized remote desktop renderer in a mixed pane transfer", async () => {
+  const f = fixture();
+  const tab =
+    f.input.controller.getSnapshot().authoritative.windows[0]!.panes[0]!
+      .tabs[1]!;
+  tab.resource = {
+    kind: "entity",
+    definitionId: "project.remote-desktop",
+    resourceId: "code",
+  };
+  f.input.surfaces.set("code", {
+    kind: "remote-desktop",
+    entity: { id: "code", projectId: "project" },
+  } as ProjectSurface);
+  vi.mocked(getRemoteDesktop).mockResolvedValue({
+    id: "code",
+    projectId: "project",
+    workerId: "worker",
+  } as never);
+  const release = vi.fn();
+  const retireTransfer = vi.fn(async () => {});
+  const unregister = registerRemoteDesktopTransferLifecycle(
+    {
+      tabId: "code",
+      desktopId: "code",
+      projectId: "project",
+      workerId: "worker",
+    },
+    {
+      suspendTransfer: () => release,
+      captureTransfer: async () => ({
+        version: 1,
+        desktopId: "code",
+        projectId: "project",
+        workerId: "worker",
+        viewport: { width: 1280, height: 720, devicePixelRatio: 1 },
+        fleetOpen: true,
+        targetSearch: "Editor",
+      }),
+      retireTransfer,
+    },
+  );
+  try {
+    await detachWorkspaceEditors(f.input, async (options) => {
+      const lease = await options.prepare(["file", "code"]);
+      const payload = JSON.parse(
+        new TextDecoder().decode(await lease.capture()),
+      );
+      expect(payload.editors).toHaveLength(1);
+      expect(payload.desktops[0]).toMatchObject({
+        tabId: "code",
+        state: { desktopId: "code", targetSearch: "Editor" },
+      });
+      await lease.retire();
+      expect(retireTransfer).toHaveBeenCalledOnce();
+      await lease.resume();
+      expect(release).toHaveBeenCalledOnce();
+      return "destination";
+    });
+    vi.mocked(getRemoteDesktop).mockResolvedValue({
+      id: "code",
+      projectId: "other",
+      workerId: "worker",
+    } as never);
+    await expect(
+      detachWorkspaceEditors(f.input, async (options) => {
+        await options.prepare(["code"]);
+        return "destination";
+      }),
+    ).rejects.toThrow("remote desktop changed");
+  } finally {
+    unregister();
+    f.cleanup();
+  }
+});
 
 it("uses the registered terminal view for a mixed pane transfer", async () => {
   const f = fixture();

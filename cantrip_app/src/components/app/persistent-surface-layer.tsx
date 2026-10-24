@@ -1,5 +1,6 @@
 import { chatConsoleTerminal } from "@/components/chat/chat-console-state";
 import { PersistentChatViews } from "@/components/chat/persistent-chat-views";
+import { PersistentRemoteDesktopViews } from "@/components/remote-desktop/persistent-remote-desktop-views";
 import { WorkspaceChatPanel } from "@/components/chat/workspace-chat-panel";
 import type { ProjectSummary } from "@cantrip/protocol";
 import { Loader2 } from "lucide-react";
@@ -153,6 +154,48 @@ export function PersistentSurfaceLayer({
       ),
     [surfaceDockPanePresentations],
   );
+  const desktopOwners = useMemo(
+    () =>
+      projectSurfaces?.flatMap((surface: any) => {
+        if (excludedPersistentSurfaceIds?.has(surface.tabKey)) return [];
+        if (surface.kind === "remote-desktop")
+          return [
+            {
+              tabId: surface.tabKey,
+              resourceId: surface.entity.id,
+              projectId: surface.entity.projectId,
+            },
+          ];
+        if (
+          surface.kind === "unresolved" &&
+          surface.member.tabKind === "remote-desktop" &&
+          selectedProjectId
+        )
+          return [
+            {
+              tabId: surface.tabKey,
+              resourceId: surface.member.tabId,
+              projectId: selectedProjectId,
+            },
+          ];
+        return [];
+      }) ?? [],
+    [projectSurfaces, excludedPersistentSurfaceIds, selectedProjectId],
+  );
+  const desktopPlacements = useMemo(
+    () =>
+      surfaceDockPanePresentations?.flatMap((presentation: any) =>
+        presentation.activeSurface?.kind === "remote-desktop"
+          ? [
+              {
+                tabId: presentation.activeSurface.tabKey,
+                portalTarget: presentation.portalTarget,
+              },
+            ]
+          : [],
+      ),
+    [surfaceDockPanePresentations],
+  );
   const chatOwners = useMemo(
     () =>
       projectSurfaces?.flatMap((surface: any) =>
@@ -297,6 +340,37 @@ export function PersistentSurfaceLayer({
   ]);
   return (
     <>
+      <PersistentRemoteDesktopViews
+        key={`desktop:${sessionKey}`}
+        owners={desktopOwners}
+        selectedTabId={
+          appMode === "ide" &&
+          !showImporter &&
+          !showSettings &&
+          !bindings.showProjectOverview &&
+          !showArchivedStandaloneChats &&
+          !showServerAdmin &&
+          !showProjectSettings &&
+          !selectedPaneOwnedElsewhere
+            ? (selectedTabKey ?? null)
+            : null
+        }
+        placements={desktopPlacements}
+        incomingViews={bindings.incomingRemoteDesktopViews}
+        fleetDiscovery={
+          bindings.bootstrap?.data?.capabilities.remoteDesktopFleet ?? false
+        }
+        onOpenFleetTarget={(tabId, projectId, workerId, desktopTarget) =>
+          bindings.newRemoteDesktop.mutate({
+            projectId,
+            paneId: projectSurfaces?.find(
+              (surface: any) => surface.tabKey === tabId,
+            )?.paneId,
+            target: { kind: "worker", projectId, workerId },
+            desktopTarget,
+          })
+        }
+      />
       <PersistentChatViews
         key={JSON.stringify([sessionKey, selectedProjectId])}
         owners={chatOwners}

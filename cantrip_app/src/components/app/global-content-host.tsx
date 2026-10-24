@@ -6,7 +6,6 @@ import {
 import type {
   WorkerSummary,
   ProjectViewSummary,
-  RemoteDesktopTarget,
 } from "@cantrip/protocol";
 import type { QueryClient } from "@tanstack/react-query";
 import {
@@ -22,7 +21,6 @@ import {
 import { Suspense, type ReactNode } from "react";
 import { EmptyWorkspace } from "./empty-workspace";
 import {
-  RemoteDesktopView,
   RunTerminalView,
 } from "@/components/app/application-shell-surfaces";
 import { ArchivedStandaloneChatsPage } from "@/components/chat/archived-standalone-chats-page";
@@ -150,7 +148,6 @@ export function GlobalContentHost({
     newChat,
     newCodeTab,
     newExplorer,
-    newRemoteDesktop,
     newStandaloneChat,
     newTask,
     newTerminal,
@@ -181,7 +178,6 @@ export function GlobalContentHost({
     projectWorkspaces,
     projects,
     queryClient: untypedQueryClient,
-    remoteDesktop,
     renameChatMutation,
     renameStandaloneChat,
     repositoryStats,
@@ -487,48 +483,9 @@ export function GlobalContentHost({
         />
       ) : (
         <ProjectSurfaceHost>
-          {selectedProjectView?.kind === "remote-desktop" ? (
-            remoteDesktop.data ? (
-              <Suspense
-                fallback={
-                  <div className="grid flex-1 place-items-center text-muted-foreground">
-                    <Loader2 className="size-5 animate-spin" />
-                  </div>
-                }
-              >
-                <RemoteDesktopView
-                  desktop={remoteDesktop.data}
-                  fleetDiscovery={
-                    bootstrap.data?.capabilities.remoteDesktopFleet ?? false
-                  }
-                  workerName={selectedWorker?.name}
-                  onOpenFleetTarget={(
-                    workerId: string,
-                    desktopTarget: RemoteDesktopTarget,
-                  ) =>
-                    newRemoteDesktop.mutate({
-                      projectId: remoteDesktop.data.projectId,
-                      paneId: selectedPane?.id,
-                      target: {
-                        kind: "worker",
-                        projectId: remoteDesktop.data.projectId,
-                        workerId,
-                      },
-                      desktopTarget,
-                    })
-                  }
-                />
-              </Suspense>
-            ) : remoteDesktop.isError ? (
-              <div className="grid flex-1 place-items-center p-6 text-center text-sm text-destructive">
-                {errorText(remoteDesktop.error)}
-              </div>
-            ) : (
-              <div className="grid flex-1 place-items-center text-muted-foreground">
-                <Loader2 className="size-5 animate-spin" />
-              </div>
-            )
-          ) : selectedBuiltInSurface && selectedProjectToolUnavailable ? (
+          {selectedProjectView?.kind ===
+          "remote-desktop" ? null : selectedBuiltInSurface &&
+            selectedProjectToolUnavailable ? (
             <EmptyState>
               <EmptyStateContent>
                 <EmptyStateIcon>
