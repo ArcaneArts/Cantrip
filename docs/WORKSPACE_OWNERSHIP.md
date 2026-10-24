@@ -1582,3 +1582,40 @@ Chromium, not physical iOS/Android, and does not establish large-tab overflow or
 all native surface adapters. Those, the remaining compatibility cleanup, final
 `TABS.md` rewrite, and goal-wide acceptance audit remain required. PR delivery
 for this verification cycle is pending.
+
+### Legacy surface policy decomposition
+
+Concurrent mobile/desktop acceptance merged in #2229 (`8bb0b2304`). Its six
+checkpoints passed again on integrated Primary after rebuilding the documented
+dependencies. The first integrated attempt failed opening the initial desktop
+file and logged a worker encryption-identity conflict while using older built
+packages; it is not counted as passing. Native contract CI `40130094719` passed
+on Linux, macOS, and Windows. QA artifacts were preserved outside the archived
+worktree at `/Users/cyberpwn/.codex/qa-artifacts/workspace-mobile-acceptance-pr2229`.
+
+This cycle extracts legacy surface kind/definition/region validation into
+`tab-layout-surface-policy.ts`, retaining the old public export and behavior.
+The repository drops from 2,006 to 1,949 lines without increasing its budget.
+The generated security inventory changes only the corresponding source line
+numbers; classifications and reviewed contract digests are unchanged. New
+table-driven tests cover every legacy kind, explicit file-definition overrides,
+built-in validation, unavailable definitions, and every registered surface's
+allowed/rejected regions. All 50 focused policy, ownership, pane-migration, and
+overview-retirement tests passed; server TypeScript checking passed.
+
+The repository-wide check now passes decomposition, workflow removal, route
+inventory, and network-contract audits; later stages are still being evaluated.
+This structural extraction does not remove the remaining compatibility readers
+or establish the outstanding native lifecycle/entrypoint acceptance. The full
+goal remains incomplete, including the final `TABS.md` rewrite and requirements
+audit.
+
+Expanded verification passed all workspace typechecks, source/patch checks,
+CLI and interaction/CUA checks, and the protocol/crypto/logging/glitch suites.
+The ongoing full server run exposed existing failures. A separate identical
+two-file rerun on both this branch and unchanged Primary reproduced exactly
+two failures with 27 passing tests: `local-foundation.test.ts:1771` parses a
+provider response missing the expected fields, and `worktree-api.test.ts:4159`
+expects HTTP 200 from a retired plaintext route that returns 410. Neither is
+caused by the policy extraction; both remain unresolved and are not waived.
+The full suite has not yet completed, so it is not recorded as passing.

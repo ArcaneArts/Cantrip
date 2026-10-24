@@ -55,6 +55,11 @@ import {
 } from "./center-layouts.js";
 import * as schema from "./schema.js";
 import {
+  surfaceDefinitionIdForTab,
+  definitionForTab,
+  assertTabSupportsRegion,
+} from "./tab-layout-surface-policy.js";
+import {
   TabLayoutConflictError,
   TabLayoutInvariantError,
 } from "./tab-layout-errors.js";
@@ -70,53 +75,7 @@ export type TabLayoutExecutor = Pick<
   "delete" | "insert" | "select" | "update"
 >;
 
-export function surfaceDefinitionIdForTab(
-  tabKind: ProjectTabKind,
-  tabId: string,
-): ProjectSurfaceDefinitionId {
-  switch (tabKind) {
-    case "chat":
-      return "project.agent";
-    case "terminal":
-      return "project.terminal";
-    case "explorer":
-      return "project.explorer";
-    case "browser":
-      return "project.browser";
-    case "code":
-      return "project.code";
-    case "history":
-      return "project.git-history";
-    case "graph":
-      return "project.git-graph";
-    case "issues":
-      return "project.github-issues";
-    case "prs":
-      return "project.github-pull-requests";
-    case "actions":
-      return "project.github-actions";
-    case "remote-desktop":
-      return "project.remote-desktop";
-    case "builtin":
-      return projectBuiltinSurfaceDefinitionIdSchema.parse(tabId);
-  }
-}
-
-function definitionForTab(
-  tabKind: ProjectTabKind,
-  tabId: string,
-  definitionId = surfaceDefinitionIdForTab(tabKind, tabId),
-): (typeof PROJECT_SURFACE_DEFINITIONS)[number] {
-  const definition = PROJECT_SURFACE_DEFINITIONS.find(
-    ({ id }) => id === definitionId,
-  );
-  if (!definition) {
-    throw new TabLayoutInvariantError(
-      `Surface definition ${definitionId} is unavailable.`,
-    );
-  }
-  return definition;
-}
+export { surfaceDefinitionIdForTab } from "./tab-layout-surface-policy.js";
 
 async function suggestedPlacementForTab(
   database: TabLayoutExecutor,
@@ -137,22 +96,6 @@ async function suggestedPlacementForTab(
     .limit(1);
   const profile = (rows[0]?.profile ?? "hybrid") as WorkspaceLayoutProfile;
   return workspaceLayoutProfilePlacement(profile, definition.id);
-}
-
-function assertTabSupportsRegion(
-  tabKind: ProjectTabKind,
-  tabId: string,
-  region: ProjectPaneRegion,
-  definitionId = surfaceDefinitionIdForTab(tabKind, tabId),
-): void {
-  const definition = PROJECT_SURFACE_DEFINITIONS.find(
-    ({ id }) => id === definitionId,
-  );
-  if (!definition?.supportedPlacements.includes(region)) {
-    throw new TabLayoutInvariantError(
-      `${definitionId} does not support the ${region} region.`,
-    );
-  }
 }
 
 function isSinglePaneDockRegion(
