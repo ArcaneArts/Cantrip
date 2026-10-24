@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  accountLiveTrafficSchema,
   accountResourceUsageHistoryQuerySchema,
   accountResourceUsageSchema,
   accountStorageCategorySchema,
@@ -86,5 +87,66 @@ describe("account resource usage protocol", () => {
         to: "2026-08-01T00:00:00.000Z",
       }).success,
     ).toBe(false);
+  });
+});
+
+describe("live traffic protocol", () => {
+  const sample = {
+    timestamp: "2026-10-23T00:00:00.250Z",
+    uploadBytes: 1,
+    downloadBytes: 2,
+    httpRequests: 1,
+    websocketMessages: { upload: 0, download: 0, total: 0 },
+  };
+  const traffic = {
+    schemaVersion: 1,
+    epoch: "11111111-1111-4111-8111-111111111111",
+    cursor: "1:1",
+    instanceId: "test-server",
+    scope: "current-server-instance",
+    sampleIntervalSeconds: 0.25,
+    windowSeconds: 600,
+    generatedAt: sample.timestamp,
+    reset: false,
+    current: sample,
+    samples: Array.from({ length: 2400 }, () => sample),
+    measurement: {
+      basis: "application-payload",
+      directTrafficIncluded: false,
+      transportOverheadIncluded: false,
+    },
+  };
+
+  it("accepts ten minutes of quarter-second samples and bounds the payload", () => {
+    expect(accountLiveTrafficSchema.safeParse(traffic).success).toBe(true);
+    expect(
+      accountLiveTrafficSchema.safeParse({
+        ...traffic,
+        samples: [...traffic.samples, sample],
+      }).success,
+    ).toBe(false);
+    expect(
+      accountLiveTrafficSchema.safeParse({
+        ...traffic,
+        sampleIntervalSeconds: 0,
+      }).success,
+    ).toBe(false);
+    expect(
+      accountLiveTrafficSchema.safeParse({
+        ...traffic,
+        current: { ...sample, downloadBytes: -1 },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("still accepts five-minute one-second snapshots from older servers", () => {
+    expect(
+      accountLiveTrafficSchema.safeParse({
+        ...traffic,
+        sampleIntervalSeconds: 1,
+        windowSeconds: 300,
+        samples: traffic.samples.slice(0, 300),
+      }).success,
+    ).toBe(true);
   });
 });

@@ -237,6 +237,12 @@ export const accountResourceUsageHistorySchema = z.discriminatedUnion(
   ],
 );
 
+export const ACCOUNT_LIVE_TRAFFIC_SAMPLE_INTERVAL_SECONDS = 0.25;
+export const ACCOUNT_LIVE_TRAFFIC_WINDOW_SECONDS = 600;
+export const ACCOUNT_LIVE_TRAFFIC_MAX_SAMPLES =
+  ACCOUNT_LIVE_TRAFFIC_WINDOW_SECONDS /
+  ACCOUNT_LIVE_TRAFFIC_SAMPLE_INTERVAL_SECONDS;
+
 export const accountLiveTrafficCursorSchema = z
   .string()
   .regex(/^\d+:\d+$/u, "Expected a live traffic cursor.");
@@ -286,12 +292,20 @@ export const accountLiveTrafficSchema = z
     cursor: accountLiveTrafficCursorSchema,
     instanceId: z.string().trim().min(1).max(100),
     scope: z.literal("current-server-instance"),
-    sampleIntervalSeconds: z.literal(1),
-    windowSeconds: z.literal(300),
+    sampleIntervalSeconds: z.union([
+      z.literal(ACCOUNT_LIVE_TRAFFIC_SAMPLE_INTERVAL_SECONDS),
+      z.literal(1),
+    ]),
+    windowSeconds: z.union([
+      z.literal(ACCOUNT_LIVE_TRAFFIC_WINDOW_SECONDS),
+      z.literal(300),
+    ]),
     generatedAt: z.iso.datetime(),
     reset: z.boolean(),
     current: accountLiveTrafficSampleSchema,
-    samples: z.array(accountLiveTrafficSampleSchema).max(300),
+    samples: z
+      .array(accountLiveTrafficSampleSchema)
+      .max(ACCOUNT_LIVE_TRAFFIC_MAX_SAMPLES),
     measurement: z
       .object({
         basis: z.literal("application-payload"),

@@ -28,8 +28,8 @@ const response = {
   cursor: "1:1",
   instanceId: "instance",
   scope: "current-server-instance",
-  sampleIntervalSeconds: 1,
-  windowSeconds: 300,
+  sampleIntervalSeconds: 0.25,
+  windowSeconds: 600,
   generatedAt: timestamp,
   reset: false,
   current: {
@@ -59,7 +59,11 @@ describe("server live traffic polling", () => {
   afterAll(() => vi.unstubAllGlobals());
 
   beforeEach(() => vi.useFakeTimers());
-  afterEach(() => vi.useRealTimers());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  });
 
   it("polls only while visible and resumes incrementally", async () => {
     const fetchTraffic = vi.fn(
@@ -79,7 +83,11 @@ describe("server live traffic polling", () => {
     expect(fetchTraffic.mock.calls[0]?.[0]).toBeUndefined();
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(1_000);
+      await vi.advanceTimersByTimeAsync(249);
+    });
+    expect(fetchTraffic).toHaveBeenCalledOnce();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
     });
     expect(fetchTraffic).toHaveBeenCalledTimes(2);
 
@@ -96,6 +104,98 @@ describe("server live traffic polling", () => {
       epoch: response.epoch,
     });
 
+    await act(async () => renderer.unmount());
+  });
+
+  it("waits for the panel and document to be visible, then catches up immediately", async () => {
+    class VisibilityTarget extends EventTarget {
+      visibilityState: DocumentVisibilityState = "hidden";
+    }
+    const documentTarget = new VisibilityTarget();
+    vi.stubGlobal("document", documentTarget);
+    const fetchTraffic = vi.fn(async () => response);
+    const Harness = ({ visible }: { visible: boolean }) => {
+      useServerLiveTraffic("selected-server", visible, fetchTraffic);
+      return null;
+    };
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<Harness visible />);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(fetchTraffic).not.toHaveBeenCalled();
+    await act(async () => {
+      documentTarget.visibilityState = "visible";
+      documentTarget.dispatchEvent(new Event("visibilitychange"));
+    });
+    expect(fetchTraffic).toHaveBeenCalledOnce();
+    await act(async () => {
+      documentTarget.visibilityState = "hidden";
+      documentTarget.dispatchEvent(new Event("visibilitychange"));
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(fetchTraffic).toHaveBeenCalledOnce();
+    await act(async () => {
+      documentTarget.visibilityState = "visible";
+      documentTarget.dispatchEvent(new Event("visibilitychange"));
+    });
+    expect(fetchTraffic).toHaveBeenCalledTimes(2);
+    expect(fetchTraffic.mock.calls[1]).toEqual([
+      { after: response.cursor, epoch: response.epoch },
+      expect.any(AbortSignal),
+    ]);
+    await act(async () => renderer.update(<Harness visible={false} />));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(fetchTraffic).toHaveBeenCalledTimes(2);
+    await act(async () => renderer.unmount());
+  });
+
+  it("aborts hidden requests, ignores late responses, and does not overlap slow polls", async () => {
+    let resolve!: (traffic: AccountLiveTraffic) => void;
+    const fetchTraffic = vi.fn(
+      (_input?: AccountLiveTrafficQuery, _signal?: AbortSignal) =>
+        new Promise<AccountLiveTraffic>((done) => {
+          resolve = done;
+        }),
+    );
+    const Harness = ({ visible }: { visible: boolean }) => {
+      const traffic = useServerLiveTraffic(
+        "selected-server",
+        visible,
+        fetchTraffic,
+      );
+      return (
+        <output>{traffic.history?.current.downloadBytes ?? "empty"}</output>
+      );
+    };
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<Harness visible />);
+    });
+    const signal = fetchTraffic.mock.calls[0]![1]!;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(fetchTraffic).toHaveBeenCalledOnce();
+    await act(async () => renderer.update(<Harness visible={false} />));
+    expect(signal.aborted).toBe(true);
+    await act(async () => resolve(response));
+    expect(renderer.root.findByType("output").children).toEqual(["empty"]);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(fetchTraffic).toHaveBeenCalledOnce();
+    await act(async () => renderer.update(<Harness visible />));
+    expect(fetchTraffic).toHaveBeenCalledTimes(2);
+    expect(fetchTraffic.mock.calls[1]?.[0]).toBeUndefined();
+    await act(async () => resolve(response));
+    expect(renderer.root.findByType("output").children).toEqual(["0"]);
     await act(async () => renderer.unmount());
   });
 
