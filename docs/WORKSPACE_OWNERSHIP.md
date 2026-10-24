@@ -1771,3 +1771,23 @@ Fixture: `editor-ced0222a-8567-46d2-84da-21cbceef0463`.
 Remaining work includes native surface/recovery acceptance, the TABS.md rewrite,
 known server-suite failures and the final requirement audit. This cleanup does
 not establish additional native multiwindow acceptance.
+
+### Restore timeout and retry verification contracts
+
+Sidebar tree ownership merged in #2236 (`7584e9d7f`); all 41 focused tests
+passed on integrated Primary, and editor lifecycle CI passed on all three
+platforms. Its worktree was archived after preserving browser QA artifacts.
+
+The server timeout inventory still expected duplicated pause routes removed
+by #2181. It now asserts the exact six streaming call-site owners (three
+terminal attachments, one turn, and two shared pause-runtime calls), retaining
+the runtime deadline and streaming-completion tests. Task submission fixtures
+now include the retry store and explicitly assert user submissions reset the
+latch, automatic submissions preserve it, and rejected submissions never reset
+it. No production timeout or retry policy changes are made.
+
+The four focused timeout, queue, pause and interruption suites pass 23 tests.
+The history suite's app-alias import failure and task continuation encryption
+fixture failure were separately reproduced and are not fixed by these changes.
+Native lifecycle acceptance, remaining suite failures, TABS.md and the final
+requirements audit remain outstanding.

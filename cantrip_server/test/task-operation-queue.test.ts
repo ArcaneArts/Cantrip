@@ -13,8 +13,13 @@ describe("task title submission boundary", () => {
     const nameTask = vi.fn();
     const tick = vi.fn();
     const publish = vi.fn();
+    const reset = vi.fn().mockResolvedValue(undefined);
     const queue = createTaskOperationQueue({
-      repository: { taskDispatch: { enqueue }, tasks: { get } },
+      repository: {
+        taskDispatch: { enqueue },
+        tasks: { get },
+        taskRetries: { reset },
+      },
       applicationOwnerId: () => "owner",
       nameTask,
       queueTaskScheduleTick: tick,
@@ -24,7 +29,7 @@ describe("task title submission boundary", () => {
       operationId: "operation",
       rowVersion: 2,
     } as TaskOperationStart;
-    return { task, enqueue, get, nameTask, tick, publish, queue, input };
+    return { task, enqueue, get, nameTask, tick, publish, queue, input, reset };
   }
   it.each(["direct", "initial-plan", "continue-plan", "finalize"] as const)(
     "labels only first user submissions (%s)",
@@ -42,6 +47,7 @@ describe("task title submission boundary", () => {
         kind === "direct" || kind === "initial-plan" ? 1 : 0,
       );
       expect(f.tick).toHaveBeenCalledTimes(1);
+      expect(f.reset).toHaveBeenCalledExactlyOnceWith("owner", "chat");
       expect(f.publish).toHaveBeenCalledExactlyOnceWith("chat", "task");
     },
   );
@@ -54,5 +60,15 @@ describe("task title submission boundary", () => {
     expect(f.nameTask).not.toHaveBeenCalled();
     expect(f.get).not.toHaveBeenCalled();
     expect(f.tick).not.toHaveBeenCalled();
+    expect(f.reset).not.toHaveBeenCalled();
+  });
+  it("preserves the retry latch for automatic submissions", async () => {
+    const f = fixture();
+    expect(
+      await f.queue("chat", f.input, "direct", { automatic: true }),
+    ).toEqual(f.task);
+    expect(f.enqueue).toHaveBeenCalledOnce();
+    expect(f.reset).not.toHaveBeenCalled();
+    expect(f.tick).toHaveBeenCalledOnce();
   });
 });
