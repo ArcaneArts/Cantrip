@@ -1619,3 +1619,27 @@ provider response missing the expected fields, and `worktree-api.test.ts:4159`
 expects HTTP 200 from a retired plaintext route that returns 410. Neither is
 caused by the policy extraction; both remain unresolved and are not waived.
 The full suite has not yet completed, so it is not recorded as passing.
+
+### File-document storage accounting
+
+Compatibility policy extraction merged in #2230 (`9c291a7c4`), with 50 focused
+tests passing again on integrated Primary. Its full repository check subsequently
+finished with 1,535 server tests passing, 57 skipped, nine failed tests and one
+suite-loading failure (seven failed files). The remaining recursive package
+checks were not completed by that failed run.
+
+That run exposed a goal-related omission: `file_documents` was absent from the
+exhaustive storage-accounting manifest. File documents now use project-owned
+accounting, resolving their account through `project_id`, matching their schema
+rather than assuming an `owner_id` column. The existing exhaustive table test is
+retained and additionally asserts this specific ownership classification.
+
+Other full-run failures remain unresolved: native-history app alias resolution,
+the local-foundation provider fixture, task-operation queue fixtures, streaming
+timeout policy expectations, the retired plaintext worktree route expectation,
+and worktree-continuation live-message setup. This accounting correction does
+not waive those failures or complete the broader ownership goal.
+
+Validation: all 19 account-resource-usage and workspace-layout tests passed,
+including execution of the complete accounting query against PGlite; server
+TypeScript checking and `git diff --check` passed.
