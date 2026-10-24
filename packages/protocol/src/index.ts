@@ -1,4 +1,6 @@
 export * from "./native-settings-state.js";
+export * from "./workspace-ownership.js";
+export * from "./workspace-ownership-seed.js";
 export * from "./labeling.js";
 export * from "./computer-use-effects.js";
 export * from "./managed-session.js";
