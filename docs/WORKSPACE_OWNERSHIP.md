@@ -31,7 +31,7 @@ model; file preview/pin are ordinary tab state, not competing identities.
 | 2     | Revisioned commands, adjacent close selection, local focus, open-existing  | [#2210](https://github.com/ArcaneArts/Cantrip/pull/2210), `5bd2edad7` |
 | 3     | Authorized persistence, transactional revisions, durable receipts          | [#2211](https://github.com/ArcaneArts/Cantrip/pull/2211), `deb9f73cd` |
 | 4     | Session-bound client queue, pending reconciliation, stale-response fencing | [#2212](https://github.com/ArcaneArts/Cantrip/pull/2212), `1f2abe76e` |
-| 5     | Production shell integration, editor/terminal transfers, mobile file tabs | [#2213](https://github.com/ArcaneArts/Cantrip/pull/2213), `18b67a29e` |
+| 5     | Production shell integration, editor/terminal transfers, mobile file tabs  | [#2213](https://github.com/ArcaneArts/Cantrip/pull/2213), `18b67a29e` |
 
 Cycle 5 merged before its CI finished. App API CI found 16 stale source-line
 references in the boundary inventory after formatting; regenerating the inventory
@@ -205,7 +205,7 @@ app validation passed 518 files / 3,549 tests with 3 intentional skips; app
 typecheck, focused tests, formatting, boundary inventory, transport verification,
 and diff checks also passed.
 
-### Browser cross-window transfer increment (in progress)
+### Browser cross-window transfer increment
 
 Browser tabs now join mixed-pane encrypted handoffs with exact tab/resource/
 project/worker scope validation. Source input is suspended, accepted asynchronous
@@ -229,7 +229,32 @@ State-parser regression tests cover private draft preservation, malformed values
 empty identities, and mismatched browser/project/worker reservations. The focused
 parser/operation-boundary/mixed-batch run passed 19 tests; app typecheck passed.
 Final-tree app validation passed 521 files / 3,569 tests with 3 intentional skips;
-app typecheck and diff checks passed. PR delivery remains pending for this increment.
+app typecheck and diff checks passed. This increment merged in PR #2216
+(`c3465a4e8`). The native QA evidence is archived at
+`/tmp/cantrip-browser-handoff-qa-TW922F/browser-handoff-qa.tar.gz`.
+
+### Window-scoped tab recency increment (in progress)
+
+Window ownership now records observed tab activation separately from tab order.
+Legacy layouts start without tab history rather than deriving fictional recency
+from their persisted order. Commands prune closed and transferred tabs from the
+source window's history; destination activation records only the activated tab.
+Closing an inactive tab does not manufacture an activation. Active-tab close
+continues to choose the right neighbor, otherwise the left, independently of MRU.
+
+The mobile picker presents up to five available, deduplicated recent views from
+its current window, while retaining the complete Open views list. Selection uses
+the same existing tab identity and command path. Schema checks reject duplicate,
+missing, and foreign-window history IDs. Protocol validation passed 89 files /
+889 tests; focused mobile-picker and client reconciliation tests passed 29 tests.
+Full app validation passed 521 files / 3,570 tests with 3 intentional skips;
+app typecheck and 15 server workspace-layout tests passed. Formatting and diff
+checks passed. A real-component phone-width (390 × 844) browser harness passed
+touch selection, dialog close/reopen, deduplication, five-item recency ordering,
+and access to the twelfth open tab in Chromium and WebKit with no page errors.
+This isolated component harness does not establish simultaneous-device isolation
+or full-shell persistence. Evidence is in QA session
+`20261024-033256-validate-mobile-recent-tab-picke`; PR delivery remains pending.
 
 1. Complete first-class document/view separation beyond path-specific Explorer
    backing, safe preview replacement, and legacy preview/provisioning/rebind

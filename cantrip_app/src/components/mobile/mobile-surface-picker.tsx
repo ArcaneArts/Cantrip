@@ -41,6 +41,7 @@ export function MobileSurfacePicker({
   overviewSelected,
   projectName,
   surfaces,
+  recentTabIds = [],
 }: {
   activeTabKey: string | null;
   capabilities?: ProjectCapabilities;
@@ -55,10 +56,18 @@ export function MobileSurfacePicker({
   overviewSelected: boolean;
   projectName: string;
   surfaces: readonly ProjectSurface[];
+  recentTabIds?: readonly string[];
 }) {
   const existingSurfaces = surfaces.filter(
     (surface) => !isMobileProjectOverviewSurface(surface),
   );
+  const byTab = new Map(
+    existingSurfaces.map((surface) => [surface.tabKey, surface]),
+  );
+  const recentSurfaces = [...new Set(recentTabIds)]
+    .map((id) => byTab.get(id))
+    .filter((surface): surface is ProjectSurface => Boolean(surface))
+    .slice(0, 5);
   const createOptions = projectSurfaceCreateOptions(
     creatingKinds,
     capabilities,
@@ -105,6 +114,24 @@ export function MobileSurfacePicker({
         </DialogHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
+          {recentSurfaces.length > 0 && (
+            <section aria-label="Recently used views" className="mb-4">
+              <h2 className="px-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Recent
+              </h2>
+              {recentSurfaces.map((surface) => (
+                <button
+                  key={surface.tabKey}
+                  type="button"
+                  className="block min-h-11 w-full truncate rounded-xl px-3 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label={`Reopen recent ${surface.title}`}
+                  onClick={() => selectSurface(surface)}
+                >
+                  {surface.title}
+                </button>
+              ))}
+            </section>
+          )}
           <section aria-labelledby="mobile-open-project-views">
             <h2
               className="px-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground"

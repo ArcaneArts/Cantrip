@@ -368,6 +368,26 @@ describe("prepared ownership commit", () => {
     transferId: "transfer",
   };
 
+  it("moves recent ownership only at commit and records only the destination activation", () => {
+    const prepared = prepare(true);
+    prepared.windows[0]!.recentTabIds = ["a3", "d1", "a2", "a1"];
+    const acknowledged = acknowledge(prepared);
+    expect(acknowledged.windows[0]!.recentTabIds).toEqual([
+      "a3",
+      "d1",
+      "a2",
+      "a1",
+    ]);
+    const transferred = run(commit, acknowledged).layout;
+    expect(transferred.windows[0]!.recentTabIds).toEqual(["d1"]);
+    expect(
+      transferred.windows.find(({ id }) => id === "destination")!.recentTabIds,
+    ).toEqual(["a2"]);
+    expect(
+      transferred.windows.find(({ id }) => id === "popout")!.recentTabIds,
+    ).toBeUndefined();
+  });
+
   it("restores the original split geometry when returning an unchanged whole pane", () => {
     const originalTree = fixture().windows[0]!.centerRoot;
     let layout = run(commit, acknowledge(prepare(true))).layout;
@@ -715,6 +735,71 @@ describe("workspace command scope and atomicity", () => {
     ).toThrow();
     expect(input).toEqual(before);
   });
+});
+
+describe("tab activation history", () => {
+  it("records actual selection without changing tab order or other windows", () => {
+    let layout = fixture();
+    const other = structuredClone(layout.windows[1]);
+    for (const tabId of ["a3", "a1", "a3"])
+      layout = applyWorkspaceCommand(
+        layout,
+        command(layout, { type: "select", tabId }),
+      ).layout;
+    expect(layout.windows[0]!.recentTabIds).toEqual(["a3", "a1"]);
+    expect(layout.windows[0]!.panes[0]!.tabs.map(({ id }) => id)).toEqual([
+      "a1",
+      "a2",
+      "a3",
+    ]);
+    expect(layout.windows[1]).toEqual(other);
+    layout = applyWorkspaceCommand(
+      layout,
+      command(layout, {
+        type: "reorder",
+        paneId: "a",
+        tabIds: ["a3", "a2", "a1"],
+      }),
+    ).layout;
+    expect(layout.windows[0]!.recentTabIds).toEqual(["a3", "a1"]);
+  });
+
+  it("prunes inactive closed views without manufacturing an activation", () => {
+    const layout = fixture();
+    layout.windows[0]!.recentTabIds = ["d1", "a1", "a2"];
+    const result = applyWorkspaceCommand(
+      layout,
+      command(layout, { type: "close-tab", tabId: "a1" }),
+    ).layout;
+    expect(result.windows[0]!.recentTabIds).toEqual(["d1", "a2"]);
+    expect(result.windows[0]!.panes[0]!.activeTabId).toBe("a2");
+  });
+
+  it("records the adjacent replacement, not the MRU tab, after active close", () => {
+    const layout = fixture();
+    layout.windows[0]!.recentTabIds = ["a2", "d1", "a1"];
+    const result = applyWorkspaceCommand(
+      layout,
+      command(layout, { type: "close-tab", tabId: "a2" }),
+    ).layout;
+    expect(result.windows[0]!.panes[0]!.activeTabId).toBe("a3");
+    expect(result.windows[0]!.recentTabIds).toEqual(["a3", "d1", "a1"]);
+  });
+
+  it("does not infer tab history when reading legacy layouts", () => {
+    expect(
+      workspaceOwnershipSchema.parse(fixture()).windows[0]!.recentTabIds,
+    ).toBeUndefined();
+  });
+
+  it.each([["a1", "a1"], ["p1"], ["missing"]])(
+    "rejects duplicate or foreign recent entries %j",
+    (...ids) => {
+      const layout = fixture();
+      layout.windows[0]!.recentTabIds = ids;
+      expect(workspaceOwnershipSchema.safeParse(layout).success).toBe(false);
+    },
+  );
 });
 
 describe("close selection", () => {
