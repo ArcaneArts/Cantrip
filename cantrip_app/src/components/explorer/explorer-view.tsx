@@ -225,6 +225,8 @@ export interface ExplorerLifecycleActions {
   dirty: boolean;
   flushViewState(): Promise<boolean>;
   prepareClose(): Promise<void>;
+  /** Only after authoritative tab closure, never on unmount or preparation. */
+  closeCommitted?(): Promise<void>;
   reconcile(explorer: ExplorerSummary): Promise<void>;
   save(): Promise<boolean>;
 }
@@ -272,6 +274,7 @@ function isDocumentView(
 }
 
 export function ExplorerView({
+  documentRecovery,
   active = true,
   appearance,
   explorer,
@@ -296,6 +299,7 @@ export function ExplorerView({
   initialTransfer,
   transferStaging,
 }: {
+  documentRecovery?: import("./use-file-document-recovery").FileDocumentRecovery;
   /** Staged destination state; install before exposing interactive content. */
   initialTransfer?: ExplorerTransferState;
   transferStaging?: ExplorerTransferStaging;
@@ -382,6 +386,10 @@ export function ExplorerView({
       : explorer.fileMode,
   );
   const [draft, setDraft] = useState("");
+  const [documentViewRevision, setDocumentViewRevision] = useState(0);
+  const checkpointDocumentView = useCallback(() => {
+    setDocumentViewRevision((revision) => revision + 1);
+  }, []);
   const sessions = useRef<EditorSessionStore | null>(null);
   sessions.current ??= new EditorSessionStore();
   const [nativeDocument, setNativeDocument] =
@@ -720,7 +728,14 @@ export function ExplorerView({
       !file.data ||
       file.data.path !== selectedPath ||
       file.data.path !== displayedSelectedPath ||
-      (draftVersion !== null && nativeDocument?.id === nativeDocumentId)
+      (draftVersion !== null &&
+        nativeDocument?.id === nativeDocumentId &&
+        (!documentRecovery ||
+          nativeDocument.dirty ||
+          nativeDocument.saving ||
+          !file.isFetchedAfterMount ||
+          file.isFetching ||
+          nativeDocument.version === file.data.version))
     ) {
       return;
     }
@@ -739,6 +754,9 @@ export function ExplorerView({
     transferInstalling,
     draftVersion,
     file.data,
+    file.isFetchedAfterMount,
+    file.isFetching,
+    documentRecovery,
     selectedPath,
     displayedSelectedPath,
     nativeDocumentId,
@@ -822,12 +840,7 @@ export function ExplorerView({
       if (transferSuspendedRef.current || transferInstallingRef.current) return;
       const bindingKey = streamEncryptionBindingRef.current;
       const previous = nativeDocumentRef.current;
-      if (previous && discardDraft) sessions.current!.discard(previous.id);
-      setNativeDocument(null);
-      setDraft("");
-      setBaselineContent("");
-      setDraftVersion(null);
-      resetSaveFile();
+      const approvedRevision = previous?.revision;
       if (!streamEncryptionReadyRef.current || !bindingKey) return;
       if (explorerMediaTypeForPath(path)) {
         setMediaRevision((revision) => revision + 1);
@@ -858,11 +871,29 @@ export function ExplorerView({
       if (
         !mountedRef.current ||
         transferSuspendedRef.current ||
+        transferInstallingRef.current ||
         selectedPathRef.current !== path ||
         streamEncryptionBindingRef.current !== bindingKey
       ) {
         return;
       }
+      if (discardDraft && previous) {
+        if (
+          nativeDocumentRef.current !== previous ||
+          previous.revision !== approvedRevision
+        )
+          throw new Error(
+            "The document changed while reloading. Review the latest edits before discarding them.",
+          );
+        sessions.current!.discard(previous.id);
+      }
+      // Keep the live draft (and its recovery checkpoint) until the actual read
+      // succeeds. A failed reload must not turn an approved discard into loss.
+      setNativeDocument(null);
+      setDraft("");
+      setBaselineContent("");
+      setDraftVersion(null);
+      resetSaveFile();
       // The query result is installed by the identity-fenced document effect.
     },
     [explorer.id, queryClient, resetSaveFile, fileBinding, fileAccess],
@@ -1325,6 +1356,7 @@ export function ExplorerView({
     };
   }, [active, onHeaderChange]);
 
+  const closePreparedRef = useRef(false);
   const prepareClose = useCallback(async () => {
     if (transferSuspendedRef.current || transferInstallingRef.current)
       throw new Error("Wait for the editor transfer before closing this view.");
@@ -1349,8 +1381,19 @@ export function ExplorerView({
       );
     // Preparation is not a committed close. Keep buffers and recovery intact:
     // a rejected layout mutation must leave the editor exactly as it was.
+    // Freeze input so approval cannot silently cover edits made while the
+    // authoritative close request is in flight. Cancellation releases only
+    // this close's reservation, never an unrelated transfer reservation.
+    closePreparedRef.current = true;
+    transferSuspendedRef.current = true;
+    flushSync(() => setTransferSuspended(true));
   }, []);
-  const cancelClose = useCallback(() => {}, []);
+  const cancelClose = useCallback(() => {
+    if (!closePreparedRef.current) return;
+    closePreparedRef.current = false;
+    transferSuspendedRef.current = false;
+    if (mountedRef.current) flushSync(() => setTransferSuspended(false));
+  }, []);
   const lifecycle = useMemo<ExplorerLifecycleActions>(
     () => ({
       reservePreviewReplacement: (): (() => void) | null => {
@@ -1419,7 +1462,7 @@ export function ExplorerView({
           accountScope !== JSON.stringify([session?.serverId, session?.user.id])
         )
           throw new Error("Editor transfer account changed during capture.");
-        return {
+        const state: ExplorerTransferState = {
           explorerId: explorer.id,
           ...(isDocumentView(explorer)
             ? { documentId: explorer.documentId }
@@ -1431,6 +1474,9 @@ export function ExplorerView({
           fileMode: fileModeRef.current,
           documents,
         };
+        await documentRecovery?.checkpoint(state);
+        assertTransferResource();
+        return state;
       },
       restoreTransfer: (state) => {
         assertTransferResource();
@@ -1497,6 +1543,7 @@ export function ExplorerView({
       dirty: hasDirtyDocuments,
       flushViewState: () => viewStateQueueRef.current,
       prepareClose,
+      closeCommitted: documentRecovery?.closeCommitted,
       reconcile,
       save: async () => {
         if (!(await saveDraft())) return false;
@@ -1510,6 +1557,7 @@ export function ExplorerView({
       },
     }),
     [
+      documentRecovery,
       assertTransferResource,
       explorer.id,
       explorer.projectId,
@@ -1532,6 +1580,44 @@ export function ExplorerView({
 
   const transferLifecycleRef = useRef(lifecycle);
   transferLifecycleRef.current = lifecycle;
+  useEffect(() => {
+    if (
+      !documentRecovery ||
+      !nativeDocument ||
+      transferInstalling ||
+      transferStaging ||
+      transferSuspended
+    )
+      return;
+    const state: ExplorerTransferState = {
+      explorerId: explorer.id,
+      ...(isDocumentView(explorer) ? { documentId: explorer.documentId } : {}),
+      projectId: explorer.projectId,
+      worktreeId: explorer.worktreeId,
+      workerId: explorer.activeWorkerId,
+      selectedPath: transientFilePath ?? selectedPathRef.current,
+      fileMode: fileModeRef.current,
+      documents: sessions.current!.captureRecovery(),
+    };
+    // The recovery owner surfaces errors and retains the prior ciphertext.
+    void documentRecovery.checkpoint(state).catch(() => {});
+  }, [
+    documentRecovery,
+    nativeDocument,
+    draft,
+    draftVersion,
+    baselineContent,
+    fileMode,
+    documentViewRevision,
+    transferInstalling,
+    transferStaging,
+    transferSuspended,
+    explorer.id,
+    explorer.projectId,
+    explorer.worktreeId,
+    explorer.activeWorkerId,
+    transientFilePath,
+  ]);
   const installedTransferRef = useRef(installedTransfer);
   useEffect(() => {
     if (!initialTransfer) return;
@@ -1810,6 +1896,7 @@ export function ExplorerView({
                   active={active && !transferSuspended}
                   readOnly={transferSuspended}
                   onReady={onTransferredDocumentReady}
+                  onViewStateChange={checkpointDocumentView}
                   onChange={changeDraft}
                   onSave={() => void saveDraft()}
                 />
@@ -1883,6 +1970,7 @@ export function ExplorerView({
                     active={active && !transferSuspended}
                     readOnly
                     onReady={onTransferredDocumentReady}
+                    onViewStateChange={checkpointDocumentView}
                   />
                 ) : null
               ) : null}

@@ -1024,3 +1024,240 @@ empty/transferring-owner exclusion, and per-window failure isolation. Production
 app/dependency build, TypeScript, and whitespace checks passed. Existing bundle
 size, crypto externalization and dynamic-import warnings remain. These automated
 results do not establish native restart or protected-draft recovery correctness.
+
+Committed-window recovery delivery: #2224 merged as `f1d7156be`; the merged tree
+matched source `44a80ac2a`, Primary synchronized cleanly, and recoverable archival
+was confirmed. No GitHub checks/runs were reported for the PR or merge.
+
+Interrupted-transfer investigation (next cycle): the native editor's
+`EditorSessionStore` is an in-memory Map owned by `ExplorerView`'s React ref.
+`EditorDocumentSession.captureTransfer` captures inactive drafts after actual
+writes settle, but neither that store nor the transfer channel durably journals
+them. The channel encrypts the snapshot for BroadcastChannel transport and
+clears its retained envelope on disposal. The protected file-document catalog
+is a resource locator, not a durable draft store. Consequently, reopening a
+committed native window is not evidence that unsaved text survives a process
+crash, and automatic cancellation of stranded reservations alone would be an
+incomplete recovery implementation.
+
+The next implementation must establish encrypted endpoint recovery before
+reconciling interrupted transfers: durable snapshots bound to account/server,
+device workspace, resource/view and generation; actual write completion before
+source retirement; validated restoration without overwriting a newer dirty
+document; and explicit save/discard/retirement cleanup. It must cover ordinary
+document edits as well as the handoff checkpoint, since transfer-only persistence
+does not protect edits made after commit. Plaintext document bytes and paths
+must not enter layout metadata or a plaintext local-storage fallback. Failed
+storage or decryption must retain a visible recoverable error, not be interpreted
+as an empty draft. Native restart fault tests remain necessary.
+
+Open PR #2140 touches embedded Code authority recovery and documents a failed
+dirty-buffer acceptance test. Its changes are not adopted by this lane; the
+native editor's in-memory store is a distinct path. Coordinate before changing
+that PR's embedded-editor lifecycle files. No recovery implementation or passing
+crash test is claimed by this investigation checkpoint.
+
+Protected-recovery implementation checkpoint: added a versioned IndexedDB
+ciphertext-record store with opaque digest keys, strict transaction completion,
+atomic compare-and-swap revisions, and revision-bearing discard tombstones.
+Corrupt/unsupported data and unavailable storage reject instead of returning an
+empty draft. Delayed writers cannot overwrite a newer revision or resurrect a
+discarded record. Four focused validation/conflict tests and the app/dependency
+production build passed (existing bundle warnings remain). This store is not
+yet connected to editor sessions: scope-bound encryption, live edit persistence,
+validated restore/cleanup, actual IndexedDB concurrency tests and native fault
+validation remain required before this cycle can be delivered. No production
+draft-recovery behavior is claimed at this checkpoint.
+
+Encryption checkpoint: recovery envelopes now have a dedicated field-key domain
+and authenticate account/server, device workspace, project, worker, checkout,
+opaque document/view identity and record revision. The storage identifier is a
+digest of those opaque identities (never a path); moving a view between windows
+does not change it. Plaintext is copied before asynchronous encryption and
+temporary key/plaintext buffers are cleared. Account changes during crypto and
+stale key revisions reject explicitly. Seventeen focused crypto/storage tests
+pass, covering each binding field, revision substitution, mutable input, locked
+encryption, account changes and stale revisions. App TypeScript and whitespace
+checks passed. Live session integration and real storage/crash tests remain;
+this is still an unfinished cycle, not a delivered draft-recovery feature.
+
+Session integration foundation: `DocumentRecoverySession` now combines encrypted
+records with serialized checkpoint/clear operations. Loading must decrypt and
+validate successfully before the session accepts the storage revision; invalid
+content remains retained. Cross-renderer conflicts are not automatically rebased.
+Disposal/account changes fence queued work, and `flush` propagates prior write
+failures until a later checkpoint actually succeeds. Review caught and fixed an
+initial queue implementation that would have swallowed that failure at flush.
+The 22 focused crypto/storage/session tests and app TypeScript pass. Editor
+callbacks, restore/error UI, save/discard handling, transfer flush integration,
+actual IndexedDB transaction testing and native crash QA are still unwired or
+unverified. No production behavior change or PR readiness is claimed yet.
+
+Storage adapter checkpoint: the existing IndexedDB emulator now exercises the
+production adapter across reopened instances, retained corrupt records, and four
+writers attempting the same revision. Exactly one writer commits; rejected
+writers leave the winning record intact. All 25 focused recovery tests pass.
+These are emulator checks, not proof of native crash durability. Close-path
+inspection also confirmed that `beforeClose` runs before the authoritative
+close command, while `onSuccess` currently has no editor cleanup callback.
+Recovery deletion must be attached to confirmed close completion and retain the
+prepared editor handle across unmount; it must not run in `prepareClose`.
+Editor integration and native fault validation remain unfinished in this lane.
+
+Confirmed-close integration: the surface-close mutation now retains the prepared
+renderer finalizer across authoritative removal/unmount and invokes it only after
+the close succeeds. A cleanup rejection is reported separately and cannot call
+the close rollback or cancellation hooks after ownership already committed.
+The shell captures the exact editor lifecycle object rather than looking it up
+again after its registry entry may have disappeared. Three regression cases
+cover successful close, rejected close, and failed post-commit cleanup; the
+16-test surface-close suite passes. The optional editor finalizer is the hook
+for durable recovery deletion; it is not yet connected to the recovery session.
+
+File-view wiring checkpoint (unmerged): first-class file views now load and
+validate their encrypted recovery snapshot before ordinary editor initialization.
+Load/write errors are visible and retryable, rather than treated as empty drafts.
+Staged destinations do not acquire a recovery writer revision until staging ends;
+source transfer capture awaits the real encrypted checkpoint before retirement.
+Ordinary edit/save-state changes checkpoint without waiting for an in-flight file
+save, retaining newer text with its last acknowledged version. Confirmed close
+writes a tombstone through the retained editor callback and rejects later stale
+checkpoint calls. Unmount itself never clears recovery. The account wrapper does
+not remount merely because connection generation changes.
+
+Hook regressions cover StrictMode, staged-to-owned transition, restore failure
+and retry, and confirmed cleanup after unmount; document-session coverage checks
+recovery capture during a pending save. This integration still requires broader
+review and native validation, including save/discard cleanup, scroll/selection
+checkpointing, encryption unlock transitions, and interrupted-transfer recovery.
+It is not yet a completed or PR-ready recovery cycle.
+
+Viewport/clean-file review: native selection and scroll events now notify the
+recovery owner even when document text is unchanged, suppressing duplicate
+unchanged events. After an actual post-mount file fetch, clean recovered sessions
+can reconcile a changed disk version; dirty or saving sessions remain protected.
+Reconciliation clamps a restored selection when the fresh file is shorter.
+Integration coverage verifies edit/viewport checkpoints and that a failed
+recovery write rejects transfer capture while retaining the source draft.
+The full app suite passed: 541 files, 3,735 tests passed and 3 skipped; app
+TypeScript also passed. Native fault validation, encryption-transition handling,
+and the remaining recovery lifecycle review are still outstanding.
+
+Encryption retry review: a changed encryption snapshot previously left an already
+loaded recovery session permanently fenced, even after unlocking the same key.
+Explicit retry now authenticates the retained record with the current account
+key while requiring the exact previously accepted storage revision. It does not
+replay saved contents over the live editor or adopt another writer's revision.
+Regression tests cover same-key renewal, stale writers, wrong accounts/keys,
+and retry ordering. Native UI inspection on this continuation reported the Mac
+locked with automatic unlock unsuccessful; manual unlock was requested. A QA
+session was initialized at `.qa/20261024-071030-validate-encrypted-file-tab-reco`.
+No native acceptance pass is claimed; source-level work remains available.
+
+Write-queue review: ordinary not-yet-started recovery checkpoints now coalesce
+to the latest captured bytes, clearing the superseded buffer. In-flight writes
+still settle normally, and explicit clears and encryption renewal remain ordering
+barriers. Callers of a coalesced checkpoint wait for the actual replacement write;
+they are not acknowledged early. Tests hold an actual mocked storage operation
+pending, verify that the latest edit wins with two writes rather than three,
+and verify that an intervening clear is not skipped. Confirmed-close cleanup also
+renews the authenticated encryption context before its tombstone, without
+adopting a newer writer's revision. Explicit reload/discard ordering remains to
+be reviewed before delivery.
+
+Reload review: the editor previously discarded/reset its session before the
+replacement read succeeded. It now retains the live session until that read
+completes and rejects discard approval if the document revision changed while
+reading. Two regressions cover a failed worker read and edits made during the
+read; the 35-test native-session suite and app TypeScript pass. A disposable
+Chromium acceptance run was attempted; its worker exited because this worktree's
+Cantrip CLI binary had not been built. The CLI build was started to resolve that
+actual startup failure. This attempt is not an editor acceptance pass.
+
+The CLI build completed, the failed fixture reached a terminal result and closed
+its processes, and a fresh desktop Chromium acceptance run passed. Evidence is
+`.qa/editor-c529707d-efa1-4291-977f-990b9832276d/native-editor-results.json`.
+It covers ordinary open/save, BOM/CRLF, legacy file-window routes, tab continuity,
+server/worker restarts, alternate-worktree and chat files, conflicts, Code tabs,
+and account revocation. These existing scenarios do not prove browser-reload
+draft recovery or native two-window ownership; those remain required.
+
+Close review additionally found that approved input remained editable during the
+authoritative close request. Close preparation now holds input inert, retaining
+all buffers; cancellation releases only that close reservation, not an unrelated
+transfer. A regression exercises attempted late input and resumed editing after
+cancellation. This final close change postdates the Chromium run above and is
+covered by the focused native-session regression, not that browser run.
+
+Renderer-reload acceptance now waits for the actual recovery checkpoint to
+settle before reloading the browser, then verifies the unsaved text returns
+without appearing on disk. The expanded desktop Chromium run passed with no
+page errors (`.qa/editor-5f0790e6-ca9f-4c9a-ac2d-582817137602`). The phone-sized
+WebKit run also passed this draft-reload assertion and each functional scenario,
+but its overall result failed the page-error assertion with two worker-link peer
+network access-control errors
+(`.qa/editor-6b442ee0-0a42-4ba3-8a48-6292e96ebdc7`). This is not a mobile suite
+pass; the error assertion remains intact. Selection and undo-history reload
+assertions were subsequently added and require their own run evidence. Neither
+headless run establishes native two-window transfer acceptance.
+
+The stronger phone WebKit reload case exposed a real selection-checkpoint bug:
+the native `select` listener updated the session before React's callback compared
+the selection, suppressing the recovery notification. Both paths now share a
+change-detecting notifier, with a current callback reference for the persistent
+DOM listener. The focused editor regression verifies a changed native selection
+notifies exactly once and repeated unchanged events do not notify. The complete
+app suite before this final selection fix passed 541 files / 3,746 tests with
+3 skipped; that full-suite result is not coverage of the subsequent fix.
+
+After the selection fix, phone WebKit fixture
+`.qa/editor-23ee5aa1-98af-4fdd-a811-2c992a514e28` passed reload restoration of
+text, backward selection, and undo/redo history, plus all subsequent functional
+scenarios. Its final page-error assertion still failed on the same two peer
+network access-control errors; no error filtering was added. Focused editor
+regression, TypeScript, and diff whitespace checks pass. The recovery cycle
+remains unmerged pending the remaining review and acceptance work.
+
+WebKit error investigation: fixture
+`.qa/editor-2db8d273-c8de-4e2b-8b7f-33b5816a4c5d` captured no window `error` or
+`unhandledrejection` events while Playwright reported peer access-control page
+errors. A standalone HTTP page reproduced the same Playwright error with a
+caught DELETE fetch started in `pagehide`; no Cantrip code was involved. The
+reproducer is retained in the recovery QA session as
+`harness_app/webkit-pagehide.cjs`. The integration harness now records these
+separately only during its deliberate renderer reload, only on WebKit, and only
+for exact same-origin peer endpoint access-control errors. Runtime errors and
+all other page errors remain fatal; classified messages remain in the results
+artifact. This addresses teardown diagnostic classification, not a claim that
+arbitrary WorkerLink failures are harmless. Native UI availability was checked
+again and the Mac remains locked.
+
+With that evidenced classification, phone-sized WebKit fixture
+`.qa/editor-9e49bcb5-78b9-4246-9243-69186c461a14` completed with exit zero:
+all functional assertions passed, runtime and unexpected page errors were empty,
+and teardown messages were retained separately. The post-selection-fix full app
+suite also passed 541 files / 3,746 tests with 3 skipped. Native multi-window
+acceptance remains outstanding and is not implied by this representative mobile
+pass.
+
+Duplicate-close review found a reservation ownership hazard: a second close
+could reject preparation and invoke cancellation while the first close still
+awaited its authoritative mutation. The close hook now tracks in-flight tab
+identities, rejects duplicates without preparation/cancellation/rollback, and
+releases only the original operation's entry on settlement. Deterministic tests
+hold the mutation pending and cover both success and failure followed by retry;
+the focused close suite passes 18 tests. Actual app type checking was rerun with
+`pnpm --filter @cantrip/app typecheck` (`tsc -b --pretty false`) and passed.
+The earlier standalone `tsc --noEmit` invocation only checked the empty root
+project configuration and must not be treated as referenced-project coverage.
+
+Delivery checkpoint: the encrypted file-view reload/confirmed-close increment is
+ready for its own PR. Final full app verification passed 541 test files with
+3,748 tests passed and 3 skipped; referenced-project typecheck, production build,
+changed-file formatting, large-file safety, app decomposition, and diff whitespace
+checks passed. Desktop Chromium and representative phone WebKit evidence is
+recorded above. This increment enables durable recovery for first-class file
+views; it does not complete interrupted ownership-transfer reconciliation or
+native crash/two-window acceptance. Those remain required follow-up work for the
+unbounded workspace goal. The local QA fixture artifacts remain intentionally
+untracked and must be preserved until native acceptance is finished.

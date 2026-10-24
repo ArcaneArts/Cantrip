@@ -558,12 +558,18 @@ export function App() {
   const { closeSurfaceViewMutation } = useProjectSurfaceViewOperations({
     workspace: ownedWorkspace,
     beforeClose: async (surface) => {
-      if (surface.kind === "explorer") {
-        await explorerLifecycleRef.current.get(surface.tabId)?.prepareClose();
-      } else if (surface.kind === "file") {
-        await explorerLifecycleRef.current.get(surface.tabKey)?.prepareClose();
-      }
+      const actions =
+        surface.kind === "explorer"
+          ? explorerLifecycleRef.current.get(surface.tabId)
+          : surface.kind === "file"
+            ? explorerLifecycleRef.current.get(surface.tabKey)
+            : undefined;
+      await actions?.prepareClose();
+      return actions?.closeCommitted
+        ? () => actions.closeCommitted!()
+        : undefined;
     },
+    onCloseCleanupError: (error) => setPopoutError(errorText(error)),
     onCloseError: (surface) => {
       if (surface.kind === "explorer") {
         explorerLifecycleRef.current.get(surface.tabId)?.cancelClose();

@@ -85,6 +85,11 @@ export class EditorDocumentSession {
       await pending.catch(() => {});
       await Promise.resolve();
     }
+    return this.captureRecovery();
+  }
+  /** Capture current edits even while a save is pending. On recovery its old
+   * version may conflict, but text must not disappear while awaiting a write. */
+  captureRecovery(): EditorDocumentTransfer {
     return {
       id: this.id,
       baselineContent: this.format.encode(this.baseline),
@@ -139,6 +144,11 @@ export class EditorDocumentSession {
     if (this.text !== format.text) {
       this.revision++;
       this.history.clear();
+      this.selection = {
+        ...this.selection,
+        start: Math.min(this.selection.start, format.text.length),
+        end: Math.min(this.selection.end, format.text.length),
+      };
     }
     this.format = format;
     this.text = format.text;
@@ -219,6 +229,14 @@ export class EditorSessionStore {
       );
   }
   /** Includes inactive drafts. Callers bind the snapshot to an authorized transfer. */
+  captureRecovery(): EditorSessionTransfer {
+    return {
+      scope: this.scope,
+      documents: [...this.sessions.values()].map((session) =>
+        session.captureRecovery(),
+      ),
+    };
+  }
   async captureTransfer(): Promise<EditorSessionTransfer> {
     const scope = this.scope;
     const sessions = [...this.sessions.values()];
