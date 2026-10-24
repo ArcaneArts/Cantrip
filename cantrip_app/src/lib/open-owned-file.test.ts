@@ -90,7 +90,10 @@ it("uses the same scoped document identity across independent controllers", asyn
 
 it("creates a file-specific backing without legacy placement and coalesces concurrent opens", async () => {
   const input = fixture();
-  await Promise.all([openOwnedFile(input), openOwnedFile(input)]);
+  const results = await Promise.all([
+    openOwnedFile(input),
+    openOwnedFile(input),
+  ]);
   expect(createFileDocument).toHaveBeenCalledTimes(1);
   expect(createFileDocument).toHaveBeenCalledWith({
     id: expect.any(String),
@@ -109,6 +112,15 @@ it("creates a file-specific backing without legacy placement and coalesces concu
     definitionId: "project.file",
     resourceId: resource.id,
   });
+  for (const result of results) {
+    expect(result.resource).toEqual(resource);
+    expect(
+      result.receipt.layout.windows
+        .flatMap((w) => w.panes)
+        .flatMap((p) => p.tabs)
+        .map((tab) => tab.id),
+    ).toEqual([tabs[0]!.id]);
+  }
 });
 it("reuses only the exact project/worktree/path without changing view state", async () => {
   const input = fixture();
@@ -124,6 +136,22 @@ it("reuses only the exact project/worktree/path without changing view state", as
     [resource],
   );
 });
+it("does not return a usable open result after the context changes during native focus", async () => {
+  const input = fixture();
+  const open = input.controller.openResource.bind(input.controller);
+  vi.spyOn(input.controller, "openResource").mockImplementation(
+    async (...args) => ({
+      ...(await open(...args)),
+      focusWindowId: "another-window",
+    }),
+  );
+  input.focusWindow.mockImplementation(async () => {
+    input.controller.dispose();
+  });
+  await expect(openOwnedFile(input)).rejects.toThrow("context changed");
+  expect(input.focusWindow).toHaveBeenCalledWith("another-window");
+});
+
 it("does not place a tab after creation fails", async () => {
   vi.mocked(createFileDocument).mockRejectedValue(
     new Error("worker unavailable"),

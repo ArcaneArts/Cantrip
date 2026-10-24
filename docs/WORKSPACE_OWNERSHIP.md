@@ -925,3 +925,73 @@ content host and grouped transfer imports. Re-ran app TypeScript and the
 surface-layer, retained-desktop, and transfer-hook suites (13 tests passed);
 whitespace checks passed. These checks do not substitute for native multi-window
 validation; PR delivery and the wider goal remain unfinished.
+
+Remote-desktop delivery: #2222 merged as `307c174b0`; the merged tree matched
+source commit `1f9dfef28`, and clean Primary fast-forwarded to that result.
+GitHub reported no checks/runs for this PR or merge, so this is not a CI-pass
+claim. The cycle worktree was recoverably archived. Native interaction was
+attempted again, but the Mac lock screen prevented access; no new native pass
+is claimed.
+
+Next cycle: dedicated file-window routing. Current-source inspection confirms
+`useExplorerLifecycleRegistration.openExplorerFileWindow` still calls
+`openDesktopExplorerFile`, and `PersistentSurfaceLayer` passes that callback to
+the retained Explorer on desktop. That route creates the independent
+`DesktopExplorerFileWindow` document store and discard-on-close guard rather
+than a workspace-owned file tab and return-to-main handoff. Existing
+`openOwnedFile` already resolves the protected document and opens/focuses its
+workspace tab, but does not return the resulting resource/placement to a caller
+that needs to detach it. This cycle must bridge that actual open result to the
+ordinary transfer lifecycle, wait for renderer registration rather than assume
+query arrival means readiness, preserve existing-window focus/deduplication,
+and retain safe handling for legacy links. No routing replacement is implemented
+at this checkpoint.
+
+File-window routing implementation checkpoint: `openOwnedFile` now returns its
+resolved protected document and authoritative open receipt, allowing the next
+step to identify the exact opened/focused view rather than use Explorer
+selection as a proxy. It revalidates context after asynchronous native focus
+before exposing that result. Existing coalesced-open coverage now asserts both
+callers receive the same tab identity, and a focused regression rejects a result
+when the controller is disposed during focus. All 12 file-opening tests and
+dependency builds pass. The UI routing and actual renderer-ready handoff remain
+to implement; this result contract alone does not change native file opening.
+
+Routing checkpoint: the shell now supplies a workspace-owned file-window action
+instead of the standalone launcher. It opens/pins the ordinary file tab, focuses
+an existing owner in another window, and otherwise waits for the source surface
+and its lifecycle registration before invoking the same detach handshake as tab
+popouts. Repeated clicks share the pending action; context changes, closed tabs,
+and failed destinations do not silently create a second document/window. The
+registration wait is bounded and leaves the ordinary tab intact on failure.
+Focused coverage passes (27 tests across routing, Explorer lifecycle, and file
+opening). Native QA, additional cancellation review, legacy-link handling, full
+app verification, and PR delivery remain outstanding.
+
+Cancellation review found that rejecting the UI promise on workspace change did
+not cancel an already-started handoff. Requests now carry an abort signal through
+the source adapter into the existing coordinator, preserving its rollback and
+uncertain-outcome handling. Removed the unused standalone launcher callback from
+Explorer lifecycle registration. The old project-file compatibility fallback
+and native legacy-link receiver remain to retire or translate. The full app run
+passed 535 files / 3,689 tests (three skipped); subsequent focused runs cover the
+new unmount and adapter cancellation cases. App TypeScript and production build
+passed after routing/registration cleanup, with existing bundle/crypto warnings.
+Native testing and PR delivery are not yet complete.
+
+Legacy opening cleanup: the project/chat-file helper now requires the owned-file
+opener. Removed its fallback that chose an arbitrary Explorer, created a legacy
+Explorer resource, changed its selected path, or launched a standalone native
+file window. Production calls to `openDesktopExplorerFile` are now absent outside
+that legacy launcher's own implementation. Checkout-resolution tests retain their
+original meaning but assert the owned opener, with explicit failure propagation
+coverage and no alternative mutation path. App TypeScript and 28 focused tests
+pass after this removal. Existing legacy URL receivers/launch support are still
+present for compatibility and need a separate safe migration/retirement review;
+their removal is not claimed here.
+
+File-window routing final local verification: all 535 app test files passed
+(3,691 tests, three skipped), followed by a successful app/dependency production
+build and whitespace check. The build retains known crypto externalization,
+large-chunk and ineffective-dynamic-import warnings. This cycle is ready for PR
+delivery; actual native interaction remains blocked by the host lock screen.

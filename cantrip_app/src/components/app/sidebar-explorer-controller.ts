@@ -1,7 +1,5 @@
 import type {
   ChatSummary,
-  CodeAppearance,
-  ExplorerEntry,
   ExplorerSummary,
   ProjectSummary,
   ProjectTabLayoutSummary,
@@ -28,10 +26,8 @@ import {
   getProjectTabLayout,
   getProjectWorktrees,
   pinExplorer,
-  updateExplorerViewState,
 } from "@/lib/api";
 import { clientLogger } from "@/lib/client-log-relay";
-import { openDesktopExplorerFile } from "@/lib/desktop-popout";
 import { errorMessage as errorText } from "@/lib/error-message";
 import { explorerFileIntentContext } from "@/lib/explorer-lifecycle-trace";
 import type { ProjectSurface } from "@/lib/project-surface";
@@ -170,24 +166,26 @@ export function useExplorerLifecycleRefs() {
 export type ExplorerLifecycleRefs = ReturnType<typeof useExplorerLifecycleRefs>;
 
 export function useExplorerLifecycleRegistration({
-  codeAppearance,
   lifecycle,
   queryClient,
   onDirtyFile,
+  onRegistered,
 }: {
-  codeAppearance: CodeAppearance;
   lifecycle: ExplorerLifecycleRefs;
   queryClient: QueryClient;
   onDirtyFile?: (explorerId: string) => void;
+  onRegistered?: () => void;
 }) {
   const { explorerLifecycleRef, sidebarFilePreviewLifecycleRef } = lifecycle;
   const handleExplorerLifecycleChange = useCallback(
     (explorerId: string, actions: ExplorerLifecycleActions | null) => {
+      const wasRegistered = explorerLifecycleRef.current.has(explorerId);
       if (actions) explorerLifecycleRef.current.set(explorerId, actions);
       else explorerLifecycleRef.current.delete(explorerId);
       if (actions?.dirty) onDirtyFile?.(explorerId);
+      if (wasRegistered !== Boolean(actions)) onRegistered?.();
     },
-    [explorerLifecycleRef, onDirtyFile],
+    [explorerLifecycleRef, onDirtyFile, onRegistered],
   );
   const handleSidebarFilePreviewLifecycleChange = useCallback(
     (_explorerId: string, actions: ExplorerLifecycleActions | null) => {
@@ -207,25 +205,10 @@ export function useExplorerLifecycleRegistration({
     },
     [queryClient],
   );
-  const openExplorerFileWindow = useCallback(
-    async (explorer: ExplorerSummary, entry: ExplorerEntry) => {
-      await openDesktopExplorerFile(
-        {
-          explorerId: explorer.id,
-          path: entry.path,
-          projectId: explorer.projectId,
-        },
-        entry.name,
-        { appearance: codeAppearance, explorer },
-      );
-    },
-    [codeAppearance],
-  );
   return {
     handleExplorerChanged,
     handleExplorerLifecycleChange,
     handleSidebarFilePreviewLifecycleChange,
-    openExplorerFileWindow,
   } as const;
 }
 
@@ -429,12 +412,6 @@ export type SidebarExplorerMutations = ReturnType<
 >;
 
 export function createProjectExplorerFileOpening({
-  codeAppearance,
-  desktopRuntime,
-  explorers,
-  explorerLifecycleRef,
-  openCreatedTab,
-  openSidebarFilePreviewPath,
   openOwnedFile,
   queryClient,
   selectedProject,
@@ -442,13 +419,7 @@ export function createProjectExplorerFileOpening({
   showAppToast,
   worktrees,
 }: {
-  codeAppearance: CodeAppearance;
-  desktopRuntime: boolean;
-  explorers: ExplorerSummary[] | undefined;
-  explorerLifecycleRef: ExplorerLifecycleRefs["explorerLifecycleRef"];
-  openCreatedTab: OpenCreatedTab;
-  openSidebarFilePreviewPath?: (worktreeId: string, path: string) => boolean;
-  openOwnedFile?: (
+  openOwnedFile: (
     projectId: string,
     worktreeId: string,
     path: string,
@@ -464,61 +435,9 @@ export function createProjectExplorerFileOpening({
     worktreeId: string,
     path: string,
   ) => {
-    if (openOwnedFile) {
-      void openOwnedFile(projectId, worktreeId, path).catch((error: unknown) =>
-        setPopoutError(errorText(error)),
-      );
-      return;
-    }
-    if (openSidebarFilePreviewPath?.(worktreeId, path)) return;
-    void (async () => {
-      let explorer = (explorers ?? []).find(
-        (candidate) =>
-          candidate.projectId === projectId &&
-          candidate.worktreeId === worktreeId &&
-          (desktopRuntime ||
-            !explorerLifecycleRef.current.get(candidate.id)?.dirty),
-      );
-      if (!explorer) {
-        const created = await createExplorer(projectId, "Explorer", worktreeId);
-        explorer = created;
-        queryClient.setQueryData<ExplorerSummary[]>(
-          ["explorers", created.projectId],
-          (current = []) =>
-            [
-              ...current.filter((candidate) => candidate.id !== created.id),
-              created,
-            ].sort((left, right) => left.position - right.position),
-        );
-        void queryClient.invalidateQueries({
-          queryKey: ["explorers", created.projectId],
-        });
-      }
-      if (desktopRuntime) {
-        await openDesktopExplorerFile(
-          {
-            explorerId: explorer.id,
-            path,
-            projectId: explorer.projectId,
-          },
-          path.split("/").at(-1) ?? path,
-          { appearance: codeAppearance, explorer },
-        );
-        return;
-      }
-      const updated = await updateExplorerViewState(explorer.id, {
-        fileMode: defaultExplorerFileMode(path),
-        selectedPath: path,
-      });
-      queryClient.setQueryData<ExplorerSummary[]>(
-        ["explorers", updated.projectId],
-        (current = []) =>
-          current.map((candidate) =>
-            candidate.id === updated.id ? updated : candidate,
-          ),
-      );
-      openCreatedTab(updated.projectId, "explorer", updated.id);
-    })().catch((error: unknown) => setPopoutError(errorText(error)));
+    void openOwnedFile(projectId, worktreeId, path).catch((error: unknown) =>
+      setPopoutError(errorText(error)),
+    );
   };
   const openChatFileLink = (
     chat: ChatSummary,

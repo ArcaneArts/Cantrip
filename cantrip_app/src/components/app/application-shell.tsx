@@ -2,6 +2,7 @@ import { useProjectToolNavigationBridge } from "./project-tool-navigation-bridge
 import { useWorkspaceConnection } from "./use-workspace-connection";
 import { useWorkspaceEditorTransfer } from "./use-workspace-editor-transfer";
 import { detachWorkspaceEditors } from "./detach-workspace-editors";
+import { useOwnedFileWindow } from "./use-owned-file-window";
 import { useWorkspaceWindowReturn } from "./use-workspace-window-return";
 import { openOwnedFile } from "@/lib/open-owned-file";
 import { focusWorkspaceNativeWindow } from "@/lib/desktop-popout";
@@ -596,16 +597,19 @@ export function App() {
     },
     [workspaceConnection.connection],
   );
+  const [fileLifecycleRevision, setFileLifecycleRevision] = useState(0);
+  const fileLifecycleRegistered = useCallback(() => {
+    setFileLifecycleRevision((revision) => revision + 1);
+  }, []);
   const {
     handleExplorerChanged,
     handleExplorerLifecycleChange,
     handleSidebarFilePreviewLifecycleChange,
-    openExplorerFileWindow,
   } = useExplorerLifecycleRegistration({
-    codeAppearance,
     lifecycle: explorerLifecycle,
     queryClient,
     onDirtyFile: pinDirtyOwnedFile,
+    onRegistered: fileLifecycleRegistered,
   });
 
   const {
@@ -1065,6 +1069,13 @@ export function App() {
       resources: projectWorkspaceResources,
       selectedTabKey,
     });
+  const openExplorerFileWindow = useOwnedFileWindow({
+    workspace: ownedWorkspace,
+    queryClient,
+    surfaces: projectSurfaceIndex.byTabKey,
+    explorers: explorerLifecycleRef.current,
+    lifecycleRevision: fileLifecycleRevision,
+  });
   const sidebarExplorerModel = useSidebarExplorerModel({
     unavailablePaneIds: unavailableDetachedPaneIds,
     environment: {
@@ -2093,20 +2104,6 @@ export function App() {
           path,
         });
         revealWorkspace();
-      },
-      codeAppearance,
-      desktopRuntime,
-      explorers: explorers.data,
-      explorerLifecycleRef,
-      openCreatedTab,
-      openSidebarFilePreviewPath: (worktreeId, path) => {
-        const explorer = sidebarInlineExplorers.find(
-          (candidate) => candidate.worktreeId === worktreeId,
-        );
-        if (!explorer) return false;
-        setSidebarCollapsed(false);
-        openSidebarFilePreviewPath(explorer, path);
-        return true;
       },
       queryClient,
       selectedProject,

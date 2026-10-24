@@ -108,6 +108,35 @@ function fixture() {
   };
 }
 
+it.each([false, true])(
+  "forwards caller cancellation to the coordinator (already aborted=%s)",
+  async (alreadyAborted) => {
+    const f = fixture();
+    const cancellation = new AbortController();
+    const reason = new Error("File window context changed.");
+    if (alreadyAborted) cancellation.abort(reason);
+    let forwarded!: AbortSignal;
+    try {
+      await expect(
+        detachWorkspaceEditors(
+          { ...f.input, signal: cancellation.signal },
+          async (input) => {
+            forwarded = input.signal!;
+            if (!alreadyAborted) cancellation.abort(reason);
+            forwarded.throwIfAborted();
+            return "unreachable";
+          },
+        ),
+      ).rejects.toBe(reason);
+      expect(forwarded.aborted).toBe(true);
+      expect(f.unsubscribe).toHaveBeenCalledOnce();
+      expect(f.events).toEqual([]);
+    } finally {
+      f.cleanup();
+    }
+  },
+);
+
 it("uses the authorized remote desktop renderer in a mixed pane transfer", async () => {
   const f = fixture();
   const tab =
